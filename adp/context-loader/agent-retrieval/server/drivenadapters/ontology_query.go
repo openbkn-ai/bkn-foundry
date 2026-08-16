@@ -225,7 +225,8 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("行动查询接口调用失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ActionQueryRequestFailed"))
 	}
 
 	resp = &interfaces.QueryActionsResponse{}
@@ -233,7 +234,8 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	err = json.Unmarshal(resultByt, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析行动查询响应失败: %v", err))
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "ActionQueryResponseInvalid"))
 		return nil, err
 	}
 
@@ -282,7 +284,8 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	err = json.Unmarshal(resultByt, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析行动执行响应失败: %v", err))
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "ActionExecutionResponseInvalid"))
 		return nil, err
 	}
 
@@ -306,14 +309,16 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 	_, respBody, err := o.httpClient.Get(ctx, reqURL, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("行动执行查询接口调用失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ActionExecutionLookupFailed"))
 	}
 
 	result := map[string]any{}
 	resultByt := utils.ObjectToByte(respBody)
 	if err = json.Unmarshal(resultByt, &result); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析行动执行查询响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "ActionExecutionLookupResponseInvalid"))
 	}
 
 	return result, nil
@@ -366,14 +371,16 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	_, respBody, err := o.httpClient.Get(ctx, reqURL, query, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("行动执行历史查询接口调用失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ActionExecutionHistoryRequestFailed"))
 	}
 
 	result := map[string]any{}
 	resultByt := utils.ObjectToByte(respBody)
 	if err = json.Unmarshal(resultByt, &result); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析行动执行历史查询响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "ActionExecutionHistoryResponseInvalid"))
 	}
 
 	return result, nil
@@ -428,7 +435,8 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	err = json.Unmarshal(resultByt, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析子图查询响应失败: %v", err))
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "SubgraphQueryResponseInvalid"))
 		return nil, err
 	}
 

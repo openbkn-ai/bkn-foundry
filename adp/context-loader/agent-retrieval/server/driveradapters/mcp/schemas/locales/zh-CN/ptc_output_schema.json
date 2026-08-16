@@ -1,0 +1,1 @@
+{"type":"object","properties":{"stdout":{"type":"string","description":"标准输出。只有 print 的内容会回到这里。"},"stderr":{"type":"string","description":"标准错误。退出码为 0 时也可能非空（库告警等）。"},"exit_code":{"type":"integer","description":"退出码。非 0 表示脚本自身失败，报文在 stderr 里。"}},"required":["stdout","exit_code"]}

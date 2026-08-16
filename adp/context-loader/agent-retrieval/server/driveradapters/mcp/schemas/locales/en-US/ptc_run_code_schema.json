@@ -1,0 +1,1 @@
+{"type":"object","properties":{"code":{"type":"string","description":"Python code to execute. Only output written with print is returned."},"timeout":{"type":"integer","default":60,"description":"Execution timeout in seconds."}},"required":["code"]}

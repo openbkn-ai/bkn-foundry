@@ -41,7 +41,7 @@ const (
 	callMCPToolURI = "/internal-v1/mcp/proxy/%s/tool/call"
 )
 
-// NewOperatorIntegrationClient 创建 OperatorIntegrationClient
+// NewOperatorIntegrationClient creates an OperatorIntegration client.
 func NewOperatorIntegrationClient() interfaces.DrivenOperatorIntegration {
 	operatorIntegrationOnce.Do(func() {
 		configLoader := config.NewConfigLoader()
@@ -54,12 +54,12 @@ func NewOperatorIntegrationClient() interfaces.DrivenOperatorIntegration {
 	return operatorIntegration
 }
 
-// GetToolDetail 获取工具详情
+// GetToolDetail retrieves tool details.
 func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *interfaces.GetToolDetailRequest) (resp *interfaces.GetToolDetailResponse, err error) {
 	uri := fmt.Sprintf(getToolDetailURI, req.BoxID, req.ToolID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
-	// 记录请求日志
+	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetToolDetail] URL: %s", url)
 
 	header := common.GetHeaderForChildOperation(ctx, "operator.tool.get", 1)
@@ -67,7 +67,8 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetToolDetail] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("工具详情接口调用失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "ToolDetailRequestFailed"))
 	}
 
 	resp = &interfaces.GetToolDetailResponse{}
@@ -75,29 +76,31 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 	err = json.Unmarshal(resultByt, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetToolDetail] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析工具详情响应失败: %v", err))
+		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "ToolDetailResponseInvalid"))
 		return nil, err
 	}
 
-	// 记录响应日志
+	// Response logging is intentionally performed after a successful decode.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetToolDetail] Tool: %s, Name: %s", resp.ToolID, resp.Name)
 
 	return resp, nil
 }
 
-// GetMCPToolDetail 获取 MCP 工具详情
+// GetMCPToolDetail retrieves MCP tool details.
 func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *interfaces.GetMCPToolDetailRequest) (*interfaces.GetMCPToolDetailResponse, error) {
 	uri := fmt.Sprintf(getMCPToolListURI, req.McpID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
-	// 记录请求日志
+	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetMCPToolDetail] URL: %s", url)
 
 	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.get", 1)
 	_, respBody, err := o.httpClient.Get(ctx, url, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDetail] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("MCP工具列表接口调用失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "MCPToolListRequestFailed"))
 	}
 
 	var listResp struct {
@@ -108,31 +111,33 @@ func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *i
 	err = json.Unmarshal(resultByt, &listResp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDetail] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析MCP工具列表响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "MCPToolListResponseInvalid"))
 	}
 
 	for _, tool := range listResp.Tools {
 		if tool.Name == req.ToolName {
-			// 记录响应日志
+			// Response logging is intentionally performed after a tool is found.
 			o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetMCPToolDetail] Found Tool: %s", tool.Name)
 			return &tool, nil
 		}
 	}
 
-	return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("未找到指定工具: %s", req.ToolName))
+	return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound,
+		infraErr.LocalizedDetail(ctx, "MCPToolNotFound"))
 }
 
-// CallMCPTool 调用 MCP 工具
+// CallMCPTool calls an MCP tool.
 func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interfaces.CallMCPToolRequest) (map[string]interface{}, error) {
 	uri := fmt.Sprintf(callMCPToolURI, req.McpID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
-	// 记录请求日志
+	// Request logging is intentionally performed before the downstream call.
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#CallMCPTool] URL: %s, Tool: %s", url, req.ToolName)
 
 	header := common.GetHeaderForChildOperation(ctx, "operator.mcp_tool.call", 1)
 
-	// 构建请求体
+	// Build the request body.
 	reqBody := map[string]interface{}{
 		"tool_name":  req.ToolName,
 		"parameters": req.Parameters,
@@ -141,7 +146,8 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	_, respBody, err := o.httpClient.Post(ctx, url, header, reqBody)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("MCP工具调用接口失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "MCPToolCallRequestFailed"))
 	}
 
 	var result map[string]interface{}
@@ -149,7 +155,8 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	err = json.Unmarshal(resultByt, &result)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析MCP工具调用响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "MCPToolCallResponseInvalid"))
 	}
 
 	return result, nil

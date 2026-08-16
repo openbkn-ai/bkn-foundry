@@ -1,0 +1,3 @@
+Execute one shell command in the sandbox and return stdout and stderr.
+
+Use this only to inspect the environment or files. Do not use it to retrieve BKN data; access knowledge networks, object types, instances, and SQL through the functions provided by run_code.

@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -28,6 +29,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 const (
@@ -58,54 +60,6 @@ const (
 	toolKeyExecuteSkill             = "execute_skill"
 )
 
-// serverInstructions is returned at MCP initialize. It gives the LLM a
-// shared exploration order and query-routing guide once, instead of
-// repeating it across every tool description.
-const serverInstructions = `ContextLoader 知识网络查询工具集使用指南。
-
-探索顺序：
-1. list_knowledge_networks 获取 kn_id（其余工具都需要 kn_id）。
-2. 摸清 schema，两条路二选一：
-   - 自然语言按需找对象类 → search_schema（返回 ot_id、属性、condition_operations、data_source.id）。默认精简（schema_brief=true，省约 70%，够写查询）；要属性备注/主键/标签的完整 Schema 才传 schema_brief=false。
-   - 通读整网结构 → get_kn_detail（默认 summary：骨架 + 属性名，体积小）；要某对象完整字段映射再 get_object_types(ids)，要关系 mapping_rules 再 get_relation_types(ids)。别一上来就 detail_level=full。
-3. 按查询类型选工具（见下）。
-
-查询分流：
-- 单对象类过滤 + 排序 + 分页（field op value，可 and/or 组合）→ query_object_instance；比较算子（==/!=/in/>/range/like/regex 等）按属性 type 自行判断，索引算子 match / knn 才看属性的 condition_operations——该键缺失只说明字段没建索引，不代表不能过滤。
-- 聚合 / 统计 / 排名（SUM、COUNT、AVG、GROUP BY、按聚合值排序、跨表 join）→ run_sql（MySQL 只读 SQL）；表名用占位符 {{.<data_source.id>}}，<data_source.id> 必须替换成 search_schema 返回的真实 id 值（禁止照抄字面 resource_id；JOIN 多表时每个表用各自不同的 id）；列名用 search_schema 的 data_property.column（物理列，需 include_columns=true 获取），不是 name（逻辑名）。query_object_instance 不支持聚合。
-- 沿关系多跳取子图 → query_instance_subgraph。
-- 对象可执行行动召回 → get_action_info。
-
-指标取数（OT 优先，三选一，禁止用 run_sql 重写已建模指标的口径）：
-1. 先锁定对象类：search_schema 或 get_kn_detail（summary 里 related_metric_count>0 的对象类才有指标）。
-2. get_object_types(ids) 看该对象类下有什么：logic_properties（data_source.type=metric）是实例级，related_metrics 是这个对象类 scope 下的全部指标（含未绑逻辑属性的）。
-3. 选定后计算：
-   - 实例级 + 已绑逻辑属性 → get_logic_properties_values
-   - 类级 / 未绑逻辑属性 → query_metric（传 metric_id，可选 condition / analysis_dimensions / time）
-   - 指标压根没建模，才用 run_sql 现算
-
-数据层直查（资源未建成对象类、或只想绕本体直查数据时）：
-- list_resources 列出数据资源（resource_id、name、type、catalog_id）。想知道「某张知识网络有哪些表」就传 kn_id，一次全返该网络绑定的资源（还会把没绑数据源的对象类放进 unbound、绑了但取不回来的放进 missing）；不传 kn_id 才是账户级资源池分页，可按 catalog_id / type 过滤。别用「不带 kn_id 拉一页再自己求交集」的办法找本网络的表——资源池一大就必然漏。
-- describe_resource 取某 resource 的物理列（columns）与 connector_type。
-- 然后 run_sql：表名用占位符 {{.<resource_id>}}，列名用 describe_resource 返回的物理列名。
-即数据层链路：list_resources → describe_resource → run_sql（无需 search_schema/对象类）。与本体路（search_schema）互补，两者都喂给 run_sql。
-
-提示：聚合类问题（如「每个 X 的 Y 总数/排名」）直接走 run_sql，不要用 query_object_instance 的 sort 近似。
-
-run_sql 语法边界：仅写单条 SELECT；可用同一 catalog 内的 JOIN、WHERE、GROUP BY/HAVING、ORDER BY、LIMIT 与常用聚合函数。不得使用 WITH/CTE、UNION/INTERSECT/EXCEPT、多语句、写入/DDL 或跨 catalog join；子查询和窗口函数不在当前兼容性承诺内。
-
-MySQL 标识符需要引用时用反引号包裹；双引号是字符串字面量，不是标识符。
-
-run_sql 占位符示例（id 必须来自 search_schema / list_resources 的真实返回值，逐表替换，别照抄 'resource_id' 字面量；JOIN 多表 = 多个不同 id）：
-  search_schema("进球") → data_source.id = "goals_rid"
-  search_schema("赛事") → data_source.id = "tourn_rid"
-  run_sql:
-    SELECT t.tournament_name, g.family_name, COUNT(*) AS c
-    FROM {{.goals_rid}} g
-    JOIN {{.tourn_rid}} t ON g.tournament_id = t.tournament_id
-    GROUP BY t.tournament_name, g.family_name ORDER BY c DESC
-  其中 goals_rid / tourn_rid 是上面两次 search_schema 各自返回的真实 data_source.id（点可选：{{id}} 与 {{.id}} 等价）。`
-
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
 // Tool metadata comes from schemas/tools_meta.json; schemas from schemas/*.json.
 // NewMCPHandler creates an http.Handler for the MCP Streamable HTTP Server.
@@ -119,7 +73,24 @@ func NewMCPHandler() http.Handler {
 }
 
 func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
-	srv, _ := newMCPServer(lifecycleClient)
+	return newLocalizedMCPHandler(lifecycleClient)
+}
+
+type localizedMCPHandler struct {
+	handlers       map[string]http.Handler
+	sessionLocales sync.Map // Mcp-Session-Id -> normalized locale
+}
+
+func newLocalizedMCPHandler(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
+	handlers := make(map[string]http.Handler, 2)
+	for _, locale := range []sharedrest.Language{sharedrest.SimplifiedChinese, sharedrest.AmericanEnglish} {
+		srv, _ := newMCPServerForLocale(lifecycleClient, string(locale))
+		handlers[normalizeMCPLocale(string(locale))] = newMCPStreamableHTTPHandler(srv, endpointPath)
+	}
+	return &localizedMCPHandler{handlers: handlers}
+}
+
+func newMCPStreamableHTTPHandler(srv *server.MCPServer, path string) http.Handler {
 	return server.NewStreamableHTTPServer(srv,
 		// The incoming ctx already carries the MCP client session; returning
 		// r.Context() outright would drop it, and the session-level lifecycle
@@ -128,8 +99,58 @@ func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.
 		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 			return common.CopyRequestScopedValues(r.Context(), ctx)
 		}),
-		server.WithEndpointPath(endpointPath),
+		server.WithEndpointPath(path),
 	)
+}
+
+func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.Header.Get(server.HeaderKeySessionID)
+	locale := h.localeForRequest(r, sessionID)
+	handler, ok := h.handlers[locale]
+	if !ok {
+		handler = h.handlers[defaultMCPLocale]
+	}
+
+	response := &mcpLocaleResponseWriter{ResponseWriter: w}
+	handler.ServeHTTP(response, r)
+	if initializedSessionID := response.Header().Get(server.HeaderKeySessionID); initializedSessionID != "" {
+		h.sessionLocales.Store(initializedSessionID, locale)
+	}
+	if r.Method == http.MethodDelete && sessionID != "" && response.status >= http.StatusOK && response.status < http.StatusMultipleChoices {
+		h.sessionLocales.Delete(sessionID)
+	}
+}
+
+func (h *localizedMCPHandler) localeForRequest(r *http.Request, sessionID string) string {
+	if sessionID != "" {
+		if value, ok := h.sessionLocales.Load(sessionID); ok {
+			return value.(string)
+		}
+	}
+	return normalizeMCPLocale(string(sharedrest.ResolveLanguage(r.Header.Get(sharedrest.AcceptLanguageHeader))))
+}
+
+type mcpLocaleResponseWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *mcpLocaleResponseWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *mcpLocaleResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(data)
+}
+
+func (w *mcpLocaleResponseWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 // newMCPServer assembles the tool surface. Split out of NewMCPHandler so tests
@@ -143,7 +164,11 @@ func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.
 // from mcptool instead (Extras / DecoratorFor / Allowed), and
 // TestInfoAndToolsListAgree… pins the two answers together.
 func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer, *toolBuilder) {
-	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
+	return newMCPServerForLocale(lifecycleClient, mcpLocaleFromEnv())
+}
+
+func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale string) (*server.MCPServer, *toolBuilder) {
+	localeBundle := loadMCPLocaleBundle(locale)
 	b := newToolBuilder(localeBundle)
 
 	knSearchService := knsearch.NewKnSearchService()
@@ -184,7 +209,8 @@ func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer,
 	b.add(toolKeyListResources, handleListResources(resourcesService))
 	b.add(toolKeyDescribeResource, handleDescribeResource(resourcesService))
 
-	// 技能面：find_skills 只回 id/名/描述，下面三条才是拿到 id 之后能走的路。
+	// The skill surface: find_skills returns only ID, name, and description; the
+	// following tools are used after a client has selected a skill.
 	skillsService := knskills.NewKnSkillsService()
 	b.add(toolKeyListSkills, handleListSkills(skillsService))
 	b.add(toolKeyGetSkillContent, handleGetSkillContent(skillsService))

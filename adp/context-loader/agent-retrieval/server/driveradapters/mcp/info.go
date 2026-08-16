@@ -62,9 +62,15 @@ func tryLoadToolSchemas(locale *mcpLocaleBundle, toolKey string) (input, output 
 	return locale.OverlaySchemas(toolKey, wrapper.InputSchema, wrapper.OutputSchema)
 }
 
-// BuildMCPInfo 基于内嵌的 tools_meta.json + schemas/*.json 组装 MCP 自描述文档。
-// endpoint 为本服务对外的 MCP Streamable HTTP 地址。
+// BuildMCPInfo builds the MCP self-description with the process default locale.
+// New request-facing callers should use BuildMCPInfoForLocale.
 func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
+	return BuildMCPInfoForLocale(endpoint, mcpLocaleFromEnv())
+}
+
+// BuildMCPInfoForLocale builds the MCP self-description using the requested
+// effective locale. endpoint is the public MCP Streamable HTTP address.
+func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 	data, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		return nil, fmt.Errorf("read tools_meta.json: %w", err)
@@ -73,8 +79,7 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 	if err := json.Unmarshal(data, &meta); err != nil {
 		return nil, fmt.Errorf("parse tools_meta.json: %w", err)
 	}
-	// 本地化按与 tools/list 同一个来源解析（进程环境）。这个端点此前对 locale
-	// 失明，非中文部署下它与 tools/list 会给出两种语言的同一份目录。
+	// Resolve localized text from the same resource bundle as tools/list.
 
 	// 与 tools/list 用同一套按当前档位的判定：装饰过的工具带上付费参数、
 	// 未授权的企业工具不出现。两处若不一致，这个端点就比不存在更糟——它的
@@ -83,7 +88,7 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 		key  string
 		info MCPToolInfo
 	}
-	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
+	locale := loadMCPLocaleBundle(localeName)
 	all := make([]entry, 0, len(meta))
 	for key := range meta {
 		// 未装配的工具不能出现在这里：这个端点的用途是「不握手就看清能力面」，

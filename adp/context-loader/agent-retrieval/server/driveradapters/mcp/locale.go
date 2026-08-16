@@ -21,6 +21,7 @@ const defaultMCPLocale = "zh-CN"
 type mcpLocaleBundle struct {
 	locale             string
 	instructions       string
+	ptcInstructions    string
 	toolMeta           map[string]ToolMeta
 	schemaDescriptions map[string]map[string]string
 }
@@ -48,8 +49,9 @@ func buildMCPLocaleBundle(normalized string) *mcpLocaleBundle {
 
 func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBundle {
 	bundle := &mcpLocaleBundle{
-		locale:       normalized,
-		instructions: serverInstructions,
+		locale:          normalized,
+		instructions:    mustReadMCPInstructions(resources, defaultMCPLocale),
+		ptcInstructions: mustReadMCPResource(resources, defaultMCPLocale, "ptc_instructions.txt"),
 	}
 	if normalized == defaultMCPLocale {
 		return bundle
@@ -61,6 +63,13 @@ func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBu
 		log.Printf("WARN: MCP locale instructions for %s are empty; using baseline", normalized)
 	} else {
 		bundle.instructions = string(data)
+	}
+	if data, err := fs.ReadFile(resources, base+"/ptc_instructions.txt"); err != nil {
+		log.Printf("WARN: cannot load PTC MCP locale instructions for %s: %v; using baseline", normalized, err)
+	} else if strings.TrimSpace(string(data)) == "" {
+		log.Printf("WARN: PTC MCP locale instructions for %s are empty; using baseline", normalized)
+	} else {
+		bundle.ptcInstructions = string(data)
 	}
 	if data, err := fs.ReadFile(resources, base+"/tools_meta.json"); err != nil {
 		log.Printf("WARN: cannot load MCP locale tool metadata for %s: %v; using baseline", normalized, err)
@@ -83,6 +92,23 @@ func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBu
 		}
 	}
 	return bundle
+}
+
+func mustReadMCPInstructions(resources fs.FS, locale string) string {
+	return mustReadMCPResource(resources, locale, "instructions.txt")
+}
+
+func mustReadMCPResource(resources fs.FS, locale, resource string) string {
+	path := fmt.Sprintf("schemas/locales/%s/%s", locale, resource)
+	data, err := fs.ReadFile(resources, path)
+	if err != nil {
+		panic("cannot load MCP baseline resource: " + err.Error())
+	}
+	instructions := strings.TrimSpace(string(data))
+	if instructions == "" {
+		panic("MCP baseline resource must not be empty")
+	}
+	return instructions
 }
 
 func mcpLocaleFromEnv() string {
@@ -114,6 +140,23 @@ func normalizeMCPLocale(locale string) string {
 
 func (b *mcpLocaleBundle) ServerInstructions() string {
 	return b.instructions
+}
+
+func (b *mcpLocaleBundle) PTCServerInstructions() string {
+	return b.ptcInstructions
+}
+
+func (b *mcpLocaleBundle) PTCResource(name string) string {
+	base := mustReadMCPResource(schemasFS, defaultMCPLocale, name)
+	if b.locale == defaultMCPLocale {
+		return base
+	}
+	path := fmt.Sprintf("schemas/locales/%s/%s", b.locale, name)
+	data, err := fs.ReadFile(schemasFS, path)
+	if err != nil || strings.TrimSpace(string(data)) == "" {
+		return base
+	}
+	return string(data)
 }
 
 // ToolMeta returns the tool's metadata for the bundle's locale.

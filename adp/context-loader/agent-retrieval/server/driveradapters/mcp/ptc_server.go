@@ -22,27 +22,26 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// PTC（代码化工具调用）的独立 MCP 端点。
+// PTC is the dedicated MCP endpoint for programmatic tool calling.
 //
-// 与 /mcp 的差别只在工具面：那边是二十来个业务工具逐个暴露，这边只有 run_code /
-// run_shell 加会话生命周期。两者不能并存于同一个端点——客户端同时看到 run_code
-// 和二十个业务工具时，模型会挑后者，PTC 就退化成了普通工具调用。
+// Unlike /mcp, which exposes individual business tools, this endpoint exposes
+// only run_code, run_shell, and lifecycle tools. They must not coexist on one
+// endpoint because models otherwise choose the individual tools and bypass PTC.
 //
-// 执行发生在服务端：客户端只发一段代码，context-loader 拿**调用方本人的令牌**去打
-// 执行工厂的公开面。这样任何 MCP 客户端（Claude Desktop、Cursor、第三方 Agent）
-// 都能用 PTC，不必自己实现「取工具包 + 拼 handler + 打执行工厂」那一整套。
+// Execution occurs server-side with the caller's token, allowing any MCP client
+// to use PTC without implementing toolkit retrieval and execution-factory calls.
 const (
 	ptcEndpointPath   = "/api/agent-retrieval/v1/mcp/ptc"
 	ptcServerName     = "context-loader-ptc"
 	ptcDefaultTimeout = 60
-	// defaultPTCServicePort 是沙箱回访本服务时用的集群内端口，可由
-	// PTC_SANDBOX_MCP_URL / PTC_SANDBOX_MCP_HOST 覆盖（见 sandboxMCPURL）。
+	// defaultPTCServicePort is the in-cluster port used when the sandbox calls
+	// back. PTC_SANDBOX_MCP_URL and PTC_SANDBOX_MCP_HOST override it.
 	defaultPTCServicePort = 30779
-	// ptcMaxTimeout 与执行工厂的沙箱超时同量级；再长的任务不该占着一次工具调用。
+	// ptcMaxTimeout aligns with the execution-factory sandbox timeout.
 	ptcMaxTimeout = 600
 )
 
-// NewPTCMCPHandler 创建 PTC MCP 端点的 http.Handler。
+// NewPTCMCPHandler creates the PTC MCP HTTP handler.
 func NewPTCMCPHandler() (http.Handler, error) {
 	return NewPTCMCPHandlerWith(
 		bkntrace.NewLifecycleClientFromEnv(),
@@ -51,22 +50,21 @@ func NewPTCMCPHandler() (http.Handler, error) {
 	)
 }
 
-// NewPTCMCPHandlerWith 注入依赖创建（测试用）。
+// NewPTCMCPHandlerWith creates the handler with injected dependencies for tests.
 func NewPTCMCPHandlerWith(
 	lifecycleClient *bkntrace.LifecycleClient,
 	executor interfaces.DrivenOperatorIntegration,
 	servicePort int,
 ) (http.Handler, error) {
-	srv, err := newPTCMCPServer(lifecycleClient, executor, servicePort)
-	if err != nil {
-		return nil, err
+	handlers := make(map[string]http.Handler, 2)
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		srv, err := newPTCMCPServerForLocale(lifecycleClient, executor, servicePort, locale)
+		if err != nil {
+			return nil, err
+		}
+		handlers[locale] = newMCPStreamableHTTPHandler(srv, ptcEndpointPath)
 	}
-	return server.NewStreamableHTTPServer(srv,
-		server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
-			return common.CopyRequestScopedValues(r.Context(), ctx)
-		}),
-		server.WithEndpointPath(ptcEndpointPath),
-	), nil
+	return &localizedMCPHandler{handlers: handlers}, nil
 }
 
 func newPTCMCPServer(
@@ -74,44 +72,45 @@ func newPTCMCPServer(
 	executor interfaces.DrivenOperatorIntegration,
 	servicePort int,
 ) (*server.MCPServer, error) {
-	// 工具包在装配期渲染一次：内容只取决于工具目录与环境变量，与请求无关。
-	toolkit, err := BuildPTCToolkit(ptcEndpointPath, servicePort)
+	return newPTCMCPServerForLocale(lifecycleClient, executor, servicePort, mcpLocaleFromEnv())
+}
+
+func newPTCMCPServerForLocale(
+	lifecycleClient *bkntrace.LifecycleClient,
+	executor interfaces.DrivenOperatorIntegration,
+	servicePort int,
+	locale string,
+) (*server.MCPServer, error) {
+	// Render the toolkit during assembly because it depends only on the tool
+	// catalog and environment, not an individual request.
+	toolkit, err := BuildPTCToolkitForLocale(ptcEndpointPath, servicePort, locale)
 	if err != nil {
 		return nil, err
 	}
-	localeBundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
+	localeBundle := loadMCPLocaleBundle(locale)
 
 	mcpServer := server.NewMCPServer(ptcServerName, serverVersion,
 		server.WithToolCapabilities(true),
-		server.WithInstructions(ptcServerInstructions),
-		// run_code / run_shell 是业务工具，要进证据链：这个中间件对非生命周期
-		// 工具强制 bkn_context，并把每次调用登记成一个 operation。
+		server.WithInstructions(localeBundle.PTCServerInstructions()),
+		// run_code and run_shell are business tools. The middleware requires
+		// bkn_context for non-lifecycle tools and records each call as an operation.
 		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
 	)
-	// 生命周期工具必须一起暴露：外部客户端没有 studio 那样的前端帮它开关交互，
-	// 不给它 bkn_start_interaction，它连第一次 run_code 都发不出去。
+	// External clients require lifecycle tools to start and finish interactions.
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 
 	for _, tool := range toolkit.Tools {
 		input := ptcToolInputSchemaWithContext(tool.InputSchema)
 		mcpServer.AddTool(
-			newToolWithSchemas(ToolMeta{Name: tool.Name, Description: tool.Description, Title: tool.Name}, input, ptcOutputSchema),
+			newToolWithSchemas(ToolMeta{Name: tool.Name, Description: tool.Description, Title: tool.Name}, input,
+				json.RawMessage(localeBundle.PTCResource("ptc_output_schema.json"))),
 			handlePTCExecute(executor, toolkit, tool),
 		)
 	}
 	return mcpServer, nil
 }
 
-const ptcServerInstructions = `本端点只提供两个执行工具：run_code（Python）与 run_shell（shell）。
-
-BKN 的全部能力——知识网络、对象类、实例查询、SQL——都在 run_code 的沙箱里以
-函数形式提供，签名清单见 run_code 的工具描述。请把整个问题写成一段脚本，在脚本内
-完成探查、取数与聚合，只 print 结论；不要一次调用只做一件事。
-
-调用前先 bkn_start_interaction 拿到 conversation_id 与 interaction_id，随后每次
-调用都带上 bkn_context，结束时 bkn_finish_interaction。`
-
-// ptcOutputSchema run_code / run_shell 的返回结构。
+// ptcOutputSchema is the result schema for run_code and run_shell.
 var ptcOutputSchema = json.RawMessage(`{
   "type": "object",
   "properties": {
@@ -122,10 +121,10 @@ var ptcOutputSchema = json.RawMessage(`{
   "required": ["stdout", "exit_code"]
 }`)
 
-// ptcToolInputSchemaWithContext 给工具入参补上 bkn_context。
+// ptcToolInputSchemaWithContext adds bkn_context to a tool's input schema.
 //
-// 工具包里的 schema 是给 studio 用的——那边由前端管理会话，bkn_context 不该出现在
-// 模型的入参里。MCP 客户端没有那一层，必须自己带，所以在这里补进去。
+// The toolkit schema is used by Studio, where the frontend manages the session.
+// MCP clients must provide bkn_context themselves, so it is added here.
 func ptcToolInputSchemaWithContext(raw json.RawMessage) json.RawMessage {
 	var schema map[string]any
 	if err := json.Unmarshal(raw, &schema); err != nil {
@@ -176,11 +175,11 @@ func handlePTCExecute(
 
 		event := map[string]any{"bkn": businessContext}
 		if tool.Wrap == ptcWrapHandler {
-			// 只有 Python 那条路会回访 MCP，需要端点与凭据；shell 不需要，也就
-			// 不下发——沙箱里少一份可读到的令牌。
+			// Only Python calls back to MCP and requires the endpoint and token.
 			token, _ := common.GetRawTokenFromCtx(ctx)
 			event["mcp"] = toolkit.SandboxMCPURL
 			event["token"] = token
+			event["locale"] = common.GetLanguageFromCtx(ctx)
 		}
 
 		resp, err := executor.ExecuteFunction(ctx, &interfaces.ExecuteFunctionRequest{
@@ -193,8 +192,8 @@ func handlePTCExecute(
 		payload := map[string]any{
 			"stdout": resp.Stdout, "stderr": resp.Stderr, "exit_code": resp.ExitCode,
 		}
-		// 退出码非 0 标成工具错误，让调用方的模型据 stderr 自行修正；报文照常带回，
-		// 吞掉它等于让对方盲目重试。
+		// A non-zero exit code is a tool error. Return stderr so the caller can
+		// correct its script instead of blindly retrying.
 		result, err := BuildMCPToolResult(payload, rest.FormatJSON)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -206,8 +205,8 @@ func handlePTCExecute(
 	}
 }
 
-// buildPTCCode 把模型给的入参组装成交给沙箱的完整脚本。
-// 两种组装方式与 PTCTool.Wrap 的取值一一对应，客户端侧走的是同一套规则。
+// buildPTCCode turns model input into the full script sent to the sandbox.
+// Its assembly modes correspond one-to-one with PTCTool.Wrap values.
 func buildPTCCode(
 	toolkit *PTCToolkit, tool PTCTool, req mcp.CallToolRequest, businessContext map[string]any,
 ) (string, string) {
@@ -225,15 +224,15 @@ func buildPTCCode(
 			}
 			body.WriteString("    " + line + "\n")
 		}
-		// 沙箱按 Lambda 规范执行，入口必须是单参数的 handler(event)。
+		// The sandbox follows the Lambda convention: handler(event).
 		return fmt.Sprintf("%s\n\ndef handler(event):\n    _configure(event)\n%s", toolkit.Stub, body.String()), ""
 	case ptcWrapCdWorkdir:
 		command := strings.TrimSpace(getStringArg(req, "command", ""))
 		if command == "" {
 			return "", "command is required"
 		}
-		// 与 run_code 落在同一个目录，两个工具看到同一批文件。目录名只含
-		// [A-Za-z0-9_-]，可以安全地拼进命令。
+		// run_shell shares the run_code work directory. The directory name only
+		// contains [A-Za-z0-9_-], so it can be embedded safely in the command.
 		workdir := ptcWorkdir(businessContext)
 		return fmt.Sprintf("mkdir -p %s && cd %s\n%s", workdir, workdir, command), ""
 	default:
@@ -241,10 +240,10 @@ func buildPTCCode(
 	}
 }
 
-// ptcWorkdir 本次对话在沙箱里的工作目录。
+// ptcWorkdir returns the sandbox work directory for this conversation.
 //
-// 规则必须与 stub 里 _configure 的实现逐字一致（归一化字符集、截断长度、缺省名），
-// 否则 run_shell 与 run_code 会落在两个目录里，彼此看不见对方写的文件。
+// It must match the stub's _configure implementation exactly so run_code and
+// run_shell share files.
 func ptcWorkdir(businessContext map[string]any) string {
 	conversation, _ := businessContext["conversation_id"].(string)
 	var safe strings.Builder
@@ -265,15 +264,11 @@ func ptcWorkdir(businessContext map[string]any) string {
 	return "/workspace/conv-" + safe.String()
 }
 
-// ptcBusinessContextArg 取出 bkn_context。
+// ptcBusinessContextArg extracts bkn_context.
 //
-// 生命周期中间件已经校验过它在场且字段合法，这里只负责取值转发给沙箱——沙箱侧的
-// stub 用它挑工作目录，并在回访 MCP 时原样带上，好让脚本内的调用挂在同一次交互下。
-//
-// 不要用 GetRawArguments()：走 JSON-RPC 时它返回的是 json.RawMessage 而不是
-// map[string]any，断言必然落空，于是 bkn_context 变成空——run_code 在沙箱里报
-// conversation_required，run_shell 落进 /workspace/shared。两者都不会在服务端报错，
-// 只在沙箱里表现为「上下文丢了」。RawArguments 兜底是给非 JSON-RPC 传输留的。
+// The lifecycle middleware has already validated it. The sandbox uses this
+// value to select a working directory and to preserve the same interaction
+// when it calls MCP.
 func ptcBusinessContextArg(req mcp.CallToolRequest) map[string]any {
 	if arguments := req.GetArguments(); arguments != nil {
 		if value, ok := arguments["bkn_context"].(map[string]any); ok {

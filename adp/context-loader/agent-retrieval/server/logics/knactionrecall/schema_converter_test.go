@@ -132,9 +132,9 @@ func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 		props := result["properties"].(map[string]any)
 		body := props["body"].(map[string]any)
 
-		// 验证 body 添加了默认描述
-		if desc, ok := body["description"].(string); !ok || desc != "Request Body参数" {
-			t.Errorf("Expected body description 'Request Body参数', got %v", body["description"])
+		// Verify that body receives the default English description.
+		if desc, ok := body["description"].(string); !ok || desc != "Request body parameters." {
+			t.Errorf("Expected body description 'Request body parameters.', got %v", body["description"])
 		}
 
 		// 验证 path 保持原有描述
@@ -242,9 +242,9 @@ func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 		props := result["properties"].(map[string]any)
 		body := props["body"].(map[string]any)
 
-		// 验证 body 添加了默认描述
-		if desc, ok := body["description"].(string); !ok || desc != "Request Body参数" {
-			t.Errorf("Expected body description 'Request Body参数', got %v", body["description"])
+		// Verify that body receives the default English description.
+		if desc, ok := body["description"].(string); !ok || desc != "Request body parameters." {
+			t.Errorf("Expected body description 'Request body parameters.', got %v", body["description"])
 		}
 	})
 }

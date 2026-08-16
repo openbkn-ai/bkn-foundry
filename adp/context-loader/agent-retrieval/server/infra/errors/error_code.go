@@ -31,6 +31,8 @@ const (
 	ErrExtMCPInstanceAlreadyExists = "MCPInstanceAlreadyExists" // MCP实例已存在
 	ErrExtMCPInstanceNotFound      = "MCPInstanceNotFound"      // MCP实例不存在
 	ErrExtMCPInfoBuildFailed       = "MCPInfoBuildFailed"       // MCP 信息构建失败
+	ErrExtMCPPTCUnavailable         = "MCPPTCUnavailable"        // PTC MCP endpoint is unavailable
+	ErrExtMCPPTCToolkitBuildFailed  = "MCPPTCToolkitBuildFailed" // PTC MCP toolkit build failed
 )
 
 // 业务知识网络行动召回拓展错误码定义

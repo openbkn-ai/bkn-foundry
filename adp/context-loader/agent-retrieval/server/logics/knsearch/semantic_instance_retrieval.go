@@ -19,6 +19,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -57,7 +58,7 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 
 	if len(objectTypes) == 0 {
 		return &interfaces.KnSearchSemanticInstanceResult{
-			Message: "没有可检索的对象类型",
+			Message: infraErr.LocalizedDetail(ctx, "NoSearchableObjectTypes"),
 		}, nil
 	}
 
@@ -120,7 +121,7 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	}
 
 	if len(allNodes) == 0 {
-		result.Message = "未检索到符合条件的实例数据"
+		result.Message = infraErr.LocalizedDetail(ctx, "NoMatchingInstances")
 	}
 
 	return result, nil

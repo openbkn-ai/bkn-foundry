@@ -484,6 +484,34 @@ help(query_object_instance)
 	return b.String()
 }
 
+func renderPTCDigestForLocale(locale *mcpLocaleBundle, tools []MCPToolInfo) string {
+	if locale.locale == defaultMCPLocale {
+		return renderPTCDigest(tools)
+	}
+	var b strings.Builder
+	b.WriteString(locale.PTCResource("ptc_digest_prefix.txt"))
+	b.WriteString("\n\n## Available functions\n")
+	group := ""
+	for _, tool := range tools {
+		if next := ptcGroupOf(tool); next != group {
+			if group != "" {
+				b.WriteString("```\n")
+			}
+			fmt.Fprintf(&b, "\n### %s\n\n```python\n", next)
+			group = next
+		}
+		fmt.Fprintf(&b, "%s -> %s\n", ptcSignature(tool), ptcReturnKeys(tool))
+		if tool.Title != "" {
+			fmt.Fprintf(&b, "    # %s\n", tool.Title)
+		}
+	}
+	if group != "" {
+		b.WriteString("```\n")
+	}
+	b.WriteString(locale.PTCResource("ptc_digest_suffix.txt"))
+	return b.String()
+}
+
 // ptcStubPreamble 是沙箱侧运行时。只用标准库：MCP streamable HTTP 就是 JSON-RPC
 // over POST，urllib 足够，沙箱镜像无需预装任何依赖，也就没有 SDK 版本漂移。
 const ptcStubPreamble = `"""BKN 能力的沙箱侧 stub —— 由 context-loader 生成，请勿手工编辑。
@@ -549,9 +577,10 @@ def _rpc(method, params=None, notify=False):
         body["id"] = _SESSION.get("seq", 0) + 1
         _SESSION["seq"] = body["id"]
     headers = {
-        "Content-Type": "application/json",
-        "Accept": "application/json, text/event-stream",
-        "Authorization": "Bearer " + _CFG["token"],
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/event-stream",
+    "Accept-Language": _CFG.get("locale", "zh-CN"),
+    "Authorization": "Bearer " + _CFG["token"],
     }
     if _SESSION.get("id"):
         headers["Mcp-Session-Id"] = _SESSION["id"]
@@ -634,30 +663,39 @@ func renderPTCStub(tools []MCPToolInfo) string {
 // BuildPTCToolkit 渲染 PTC 工具包。endpoint 与 BuildMCPInfo 一致（仅用于自描述），
 // port 是本服务监听端口，用于推导沙箱回访地址。
 func BuildPTCToolkit(endpoint string, port int) (*PTCToolkit, error) {
-	info, err := BuildMCPInfo(endpoint)
+	return BuildPTCToolkitForLocale(endpoint, port, mcpLocaleFromEnv())
+}
+
+// BuildPTCToolkitForLocale renders the PTC toolkit from the effective locale.
+func BuildPTCToolkitForLocale(endpoint string, port int, locale string) (*PTCToolkit, error) {
+	info, err := BuildMCPInfoForLocale(endpoint, locale)
 	if err != nil {
 		return nil, err
 	}
-	return buildPTCToolkitFrom(ptcUsableTools(info), port)
+	return buildPTCToolkitFromLocale(ptcUsableTools(info), port, loadMCPLocaleBundle(locale))
 }
 
 // buildPTCToolkitFrom 从已筛好的工具目录渲染工具包。与 BuildPTCToolkit 分开，
 // 是为了让测试不必起一个真实端点就能覆盖工具表与版本号。
 func buildPTCToolkitFrom(tools []MCPToolInfo, port int) (*PTCToolkit, error) {
-	digest := renderPTCDigest(tools)
+	return buildPTCToolkitFromLocale(tools, port, loadMCPLocaleBundle(defaultMCPLocale))
+}
+
+func buildPTCToolkitFromLocale(tools []MCPToolInfo, port int, locale *mcpLocaleBundle) (*PTCToolkit, error) {
+	digest := renderPTCDigestForLocale(locale, tools)
 	stub := renderPTCStub(tools)
 	exposed := []PTCTool{
 		{
 			Name:        "run_code",
 			Description: digest,
-			InputSchema: json.RawMessage(ptcRunCodeSchema),
+			InputSchema: json.RawMessage(locale.PTCResource("ptc_run_code_schema.json")),
 			Language:    "python",
 			Wrap:        ptcWrapHandler,
 		},
 		{
 			Name:        "run_shell",
-			Description: ptcRunShellDescription,
-			InputSchema: json.RawMessage(ptcRunShellSchema),
+			Description: locale.PTCResource("ptc_run_shell_description.txt"),
+			InputSchema: json.RawMessage(locale.PTCResource("ptc_run_shell_schema.json")),
 			Language:    "shell",
 			Wrap:        ptcWrapCdWorkdir,
 		},

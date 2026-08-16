@@ -16,9 +16,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// GetActionInfo 获取行动信息（行动召回）
+// GetActionInfo retrieves action information for action recall.
 func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *interfaces.KnActionRecallRequest) (*interfaces.KnActionRecallResponse, error) {
-	// 1. 参数合并：_instance_identities 优先，回退到 _instance_identity 包装为数组
+	// 1. Prefer _instance_identities and fall back to _instance_identity as an array.
 	instanceIdentities := make([]map[string]any, 0)
 	if len(req.InstanceIdentities) > 0 {
 		for _, id := range req.InstanceIdentities {
@@ -30,7 +30,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		instanceIdentities = append(instanceIdentities, req.InstanceIdentity)
 	}
 
-	// 2. 调用行动查询接口
+	// 2. Query actions.
 	actionsReq := &interfaces.QueryActionsRequest{
 		KnID:               req.KnID,
 		AtID:               req.AtID,
@@ -44,7 +44,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		return nil, err
 	}
 
-	// 3. 检查返回结果
+	// 3. Validate the response.
 	if actionsResp.ActionSource == nil {
 		s.logger.WithContext(ctx).Warnf("[KnActionRecall#GetActionInfo] ActionSource is nil")
 		return &interfaces.KnActionRecallResponse{
@@ -59,21 +59,20 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		}, nil
 	}
 
-	// 4. 检查 action_source.type
+	// 4. Validate action_source.type.
 	if actionsResp.ActionSource.Type != interfaces.ActionSourceTypeTool && actionsResp.ActionSource.Type != interfaces.ActionSourceTypeMCP {
 		s.logger.WithContext(ctx).Warnf("[KnActionRecall#GetActionInfo] Unsupported action_source type: %s", actionsResp.ActionSource.Type)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
-			fmt.Sprintf("当前仅支持 type=%s 或 %s 的行动源。当前类型: %s",
-				interfaces.ActionSourceTypeTool, interfaces.ActionSourceTypeMCP, actionsResp.ActionSource.Type))
+			infraErr.LocalizedDetail(ctx, "ActionSourceTypeUnsupported"))
 	}
 
-	// 5. 仅处理 actions[0]
+	// 5. Process actions[0] only.
 	firstAction := actionsResp.Actions[0]
 
-	// 6. 统一构造行动驱动 API URL
+	// 6. Build the action driver API URL.
 	apiURL := s.buildActionDriverAPIURL(req.KnID, req.AtID)
 
-	// 7. 统一构造行动驱动 fixed_params
+	// 7. Build action driver fixed_params.
 	fixedParams := interfaces.ActionDriverFixedParams{
 		DynamicParams:      firstAction.Parameters,
 		InstanceIdentities: instanceIdentities,
@@ -82,7 +81,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 	var dynamicTool interfaces.KnDynamicTool
 
 	if actionsResp.ActionSource.Type == interfaces.ActionSourceTypeTool {
-		// 8a. Tool 类型：获取工具详情
+		// 8a. Tool source: retrieve tool details.
 		toolDetailReq := &interfaces.GetToolDetailRequest{
 			BoxID:  actionsResp.ActionSource.BoxID,
 			ToolID: actionsResp.ActionSource.ToolID,
@@ -94,15 +93,15 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 			return nil, err
 		}
 
-		// 9a. 将 Tool Schema 转换为行动驱动参数结构
+		// 9a. Convert the tool schema to action driver parameters.
 		parameters, err := s.convertToolSchemaToActionDriver(ctx, toolDetail.Metadata.APISpec)
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionInfo] ConvertToolSchemaToActionDriver failed, err: %v", err)
 			return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-				fmt.Sprintf("Tool Schema 转换为行动驱动结构失败: %v", err))
+				infraErr.LocalizedDetail(ctx, "ToolSchemaConversionFailed"))
 		}
 
-		// 10a. 构建 KnDynamicTool
+		// 10a. Build KnDynamicTool.
 		dynamicTool = interfaces.KnDynamicTool{
 			Name:            toolDetail.Name,
 			Description:     toolDetail.Description,
@@ -112,7 +111,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 			APICallStrategy: interfaces.ResultProcessStrategyKnActionRecall,
 		}
 	} else {
-		// 8b. MCP 类型：获取 MCP 工具详情
+		// 8b. MCP source: retrieve MCP tool details.
 		mcpReq := &interfaces.GetMCPToolDetailRequest{
 			McpID:    actionsResp.ActionSource.McpID,
 			ToolName: actionsResp.ActionSource.ToolName,
@@ -124,15 +123,15 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 			return nil, err
 		}
 
-		// 9b. 将 MCP Schema 转换为行动驱动参数结构
+		// 9b. Convert the MCP schema to action driver parameters.
 		parameters, err := s.convertMCPSchemaToActionDriver(ctx, toolDetail.InputSchema)
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[KnActionRecall#GetActionInfo] ConvertMCPSchemaToActionDriver failed, err: %v", err)
 			return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-				fmt.Sprintf("MCP Schema 转换为行动驱动结构失败: %v", err))
+				infraErr.LocalizedDetail(ctx, "MCPSchemaConversionFailed"))
 		}
 
-		// 10b. 构建 KnDynamicTool
+		// 10b. Build KnDynamicTool.
 		dynamicTool = interfaces.KnDynamicTool{
 			Name:            toolDetail.Name,
 			Description:     toolDetail.Description,
@@ -143,7 +142,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		}
 	}
 
-	// 11. 构建headers
+	// 11. Build request headers.
 	headers := common.GetHeaderForChildOperation(ctx, "ontology.action.execute", 1)
 
 	return &interfaces.KnActionRecallResponse{
@@ -152,8 +151,8 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 	}, nil
 }
 
-// buildActionDriverAPIURL 统一生成行动驱动内部执行接口地址
-// Tool 和 MCP 类型均调用此方法生成相同格式的 api_url
+// buildActionDriverAPIURL builds the internal action driver execution endpoint.
+// Tool and MCP sources use the same api_url format.
 func (s *knActionRecallServiceImpl) buildActionDriverAPIURL(knID, atID string) string {
 	servicePath := fmt.Sprintf("/api/ontology-query/in/v1/knowledge-networks/%s/action-types/%s/execute", knID, atID)
 	return s.config.OntologyQuery.BuildURL(servicePath)

@@ -78,7 +78,7 @@ func (h *knSkillsHandler) GetSkillContent(c *gin.Context) {
 	_ = c.ShouldBindQuery(req)
 	_ = c.ShouldBindJSON(req)
 	if req.SkillID == "" {
-		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, logicsSkills.ErrSkillIDRequired.Error()))
+		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, logicsSkills.SkillIDRequiredError(ctx).Error()))
 		return
 	}
 

@@ -1,0 +1,1 @@
+{"type":"object","properties":{"command":{"type":"string","description":"Shell command executed by sh -c. Pipes and && are supported."},"timeout":{"type":"integer","default":60,"description":"Execution timeout in seconds."}},"required":["command"]}

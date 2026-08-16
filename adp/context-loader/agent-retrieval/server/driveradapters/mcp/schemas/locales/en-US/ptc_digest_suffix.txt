@@ -1,0 +1,2 @@
+
+Use .get() for optional response fields. Prefer run_sql for database-side aggregation; use run_shell only to inspect files or the sandbox environment. Keep intermediate results in the sandbox work directory instead of printing large payloads.

@@ -16,27 +16,29 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
-// executeFunctionURI 沙箱代码执行，走执行工厂的**公开面**。
+// executeFunctionURI invokes sandbox execution through Execution Factory's public API.
 //
-// 内部面的 /internal-v1/function/exec/:version 只能跑已注册的函数版本
-// （version 校验为 uuid4），跑不了任意代码，用不上。
+// The internal endpoint /internal-v1/function/exec/:version runs only a
+// registered function version and cannot execute arbitrary code.
 //
-// 更要紧的是不能用内部面：公开面对调用方校验算子类型上的 execute 权限（#345
-// 补的，此前任何持有有效令牌的账号都能拿到沙箱代码执行能力）。以服务端身份走
-// 内部面等于把那道检查洗掉。因此这里带调用方本人的 bearer 令牌。
+// The public API enforces the caller's execute permission on the operator type.
+// Calling the internal endpoint with a service identity would bypass that check,
+// so this request carries the original caller bearer token.
 const executeFunctionURI = "/v1/function/execute"
 
-// ErrCallerTokenMissing 上下文里没有调用方令牌。
+// ErrCallerTokenMissing indicates that the caller token is absent from context.
 //
-// 不静默降级成服务端身份：那样会绕过执行工厂的 execute 权限判定。
+// Do not silently fall back to a service identity because that would bypass
+// Execution Factory's execute permission check.
 var ErrCallerTokenMissing = fmt.Errorf("caller token is required for sandbox execution")
 
-// ExecuteFunction 在沙箱内执行一段代码。
+// ExecuteFunction executes code in the sandbox.
 func (o *operatorIntegrationClient) ExecuteFunction(
 	ctx context.Context, req *interfaces.ExecuteFunctionRequest,
 ) (*interfaces.ExecuteFunctionResponse, error) {
 	if req == nil || req.Code == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, "执行代码不能为空")
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+			infraErr.LocalizedDetail(ctx, "FunctionCodeRequired"))
 	}
 
 	token, ok := common.GetRawTokenFromCtx(ctx)
@@ -49,7 +51,7 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 
 	event := req.Event
 	if event == nil {
-		// 执行工厂要求 event 在场，无入参也得传 {}，省略会 400。
+		// Execution Factory requires event; send an empty object when there is no input.
 		event = map[string]any{}
 	}
 	body := map[string]any{"code": req.Code, "language": req.Language, "event": event}
@@ -63,14 +65,14 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteFunction] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "沙箱代码执行接口调用失败", err)
+		return nil, skillUpstreamError(ctx, code, "FunctionExecutionRequestFailed", err)
 	}
 
 	resp := &interfaces.ExecuteFunctionResponse{}
 	if err = json.Unmarshal(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteFunction] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
-			fmt.Sprintf("解析沙箱执行响应失败: %v", err))
+			infraErr.LocalizedDetail(ctx, "FunctionExecutionResponseInvalid"))
 	}
 	return resp, nil
 }

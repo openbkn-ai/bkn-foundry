@@ -1,0 +1,5 @@
+This endpoint provides two execution tools: run_code (Python) and run_shell (shell).
+
+All BKN capabilities, including knowledge networks, object types, instance queries, and SQL, are available as functions in the run_code sandbox. Use the signatures in the run_code description and solve the complete task in one script: inspect, retrieve, and aggregate data there, then print only the conclusion. Do not use one call for one small step.
+
+Call bkn_start_interaction first to obtain conversation_id and interaction_id. Include bkn_context in every subsequent call, then call bkn_finish_interaction when the work is complete.

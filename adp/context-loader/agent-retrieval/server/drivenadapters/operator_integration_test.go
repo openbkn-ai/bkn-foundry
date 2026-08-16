@@ -14,8 +14,11 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 // TestGetToolDetail_Success 测试 GetToolDetail 成功场景
@@ -36,7 +39,7 @@ func TestGetToolDetail_Success(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := context.Background()
+		ctx := common.SetLanguageToCtx(context.Background(), sharedrest.AmericanEnglish)
 		req := &interfaces.GetToolDetailRequest{
 			BoxID:  "box-001",
 			ToolID: "tool-001",
@@ -84,7 +87,7 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 			httpClient: mockHTTPClient,
 		}
 
-		ctx := context.Background()
+		ctx := common.SetLanguageToCtx(context.Background(), sharedrest.AmericanEnglish)
 		req := &interfaces.GetToolDetailRequest{
 			BoxID:  "box-001",
 			ToolID: "tool-001",
@@ -96,6 +99,9 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 
 		_, err := client.GetToolDetail(ctx, req)
 		convey.So(err, convey.ShouldNotBeNil)
+		httpErr, ok := err.(*infraErr.HTTPError)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(httpErr.ErrorDetails, convey.ShouldEqual, "Unable to retrieve the tool details.")
 	})
 }
 

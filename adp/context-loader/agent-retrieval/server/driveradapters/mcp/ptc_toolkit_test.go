@@ -66,6 +66,28 @@ func ptcTestToolkit(t *testing.T) *PTCToolkit {
 	return toolkit
 }
 
+func TestPTCToolkitUsesLocalizedSchemasAndDescription(t *testing.T) {
+	toolkit, err := BuildPTCToolkitForLocale("https://example.invalid/mcp", 30779, "en-US")
+	if err != nil {
+		t.Fatalf("build English toolkit: %v", err)
+	}
+	for _, tool := range toolkit.Tools {
+		switch tool.Name {
+		case "run_code":
+			if !strings.Contains(string(tool.InputSchema), "Python code to execute") ||
+				!strings.Contains(tool.Description, "The following BKN capabilities") ||
+				strings.Contains(tool.Description, "下列 BKN 能力") {
+				t.Fatalf("run_code text is not localized: description=%q schema=%s", tool.Description, tool.InputSchema)
+			}
+		case "run_shell":
+			if !strings.Contains(tool.Description, "Use this only to inspect") ||
+				!strings.Contains(string(tool.InputSchema), "Shell command executed") {
+				t.Fatalf("run_shell text is not localized: description=%q schema=%s", tool.Description, tool.InputSchema)
+			}
+		}
+	}
+}
+
 func TestPTCDigestRendersSignatures(t *testing.T) {
 	digest := ptcTestDigest()
 

@@ -139,22 +139,22 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 	properties := map[string]any{
 		"header": map[string]any{
 			"type":        "object",
-			"description": "HTTP Header 参数",
+			"description": "HTTP header parameters",
 			"properties":  make(map[string]any),
 		},
 		"path": map[string]any{
 			"type":        "object",
-			"description": "URL Path 参数",
+			"description": "URL path parameters",
 			"properties":  make(map[string]any),
 		},
 		"query": map[string]any{
 			"type":        "object",
-			"description": "URL Query 参数",
+			"description": "URL query parameters",
 			"properties":  make(map[string]any),
 		},
 		"body": map[string]any{
 			"type":        "object",
-			"description": "Request Body 参数",
+			"description": "Request body parameters",
 			"properties":  make(map[string]any),
 		},
 	}
@@ -188,55 +188,55 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 				continue
 			}
 
-			// 解析参数 schema（支持 $ref，支持深度控制）
+			// Resolve the parameter schema with $ref and depth support.
 			paramSchema, err := s.resolveSchema(ctx, param["schema"], apiSpec, visitedRefs, 0)
 			if err != nil {
 				s.logger.WithContext(ctx).Warnf("[KnActionRecall#convertSchema] Failed to resolve param schema for %s: %v", paramName, err)
 				continue
 			}
 
-			// 构建参数定义
+			// Build the parameter definition.
 			propDef := s.buildPropertyDefinition(paramSchema, param["description"])
 
-			// 根据位置放入对应的 properties
+			// Place the definition under its parameter location.
 			if locationProps, ok := properties[paramLocation].(map[string]any); ok {
 				if props, ok := locationProps["properties"].(map[string]any); ok {
 					props[paramName] = propDef
 				}
 			}
 
-			// 收集必填参数
+			// Collect required parameters.
 			if isRequired, ok := param["required"].(bool); ok && isRequired {
 				requiredByLocation[paramLocation] = append(requiredByLocation[paramLocation], paramName)
 			}
 		}
 	}
 
-	// 2. 处理 request_body (body 参数)
+	// 2. Process request_body parameters.
 	if requestBody, ok := apiSpec["request_body"].(map[string]any); ok {
 		if content, ok := requestBody["content"].(map[string]any); ok {
 			if appJSON, ok := content["application/json"].(map[string]any); ok {
 				if schema, ok := appJSON["schema"].(map[string]any); ok {
-					// 解析 body schema（支持 $ref，支持深度控制）
+					// Resolve the body schema with $ref and depth support.
 					bodySchema, err := s.resolveSchema(ctx, schema, apiSpec, visitedRefs, 0)
 					if err != nil {
 						s.logger.WithContext(ctx).Warnf("[KnActionRecall#convertSchema] Failed to resolve body schema: %v", err)
-						// 添加一个通用的 body 参数作为兜底
+						// Add a generic body parameter as a fallback.
 						if bodyProps, ok := properties["body"].(map[string]any); ok {
 							if props, ok := bodyProps["properties"].(map[string]any); ok {
 								props["request_body"] = map[string]any{
 									"type":        "object",
-									"description": "请求体参数",
+									"description": "Request body parameters.",
 								}
 							}
 						}
 					} else {
-						// 展开 body schema 的 properties
+						// Expand the body schema properties.
 						if bodyProps, ok := properties["body"].(map[string]any); ok {
 							if props, ok := bodyProps["properties"].(map[string]any); ok {
 								s.mergeSchemaProperties(ctx, props, bodySchema, apiSpec, visitedRefs, 0)
 							}
-							// 合并必填项
+							// Merge required fields.
 							if bodyRequired, ok := bodySchema["required"].([]any); ok {
 								for _, req := range bodyRequired {
 									if reqStr, ok := req.(string); ok {
@@ -251,7 +251,7 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 		}
 	}
 
-	// 3. 设置各位置的 required 字段
+	// 3. Set required fields for each parameter location.
 	for location, required := range requiredByLocation {
 		if len(required) > 0 {
 			if locationProps, ok := properties[location].(map[string]any); ok {
@@ -260,7 +260,7 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 		}
 	}
 
-	// 4. 清理空的 location（如果没有参数，移除该位置）
+	// 4. Remove empty parameter locations.
 	result := map[string]any{
 		"type":       "object",
 		"properties": make(map[string]any),
@@ -275,11 +275,11 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 		}
 	}
 
-	// 如果没有任何参数，至少返回一个空结构
+	// Return an empty body structure when no parameters are available.
 	if len(resultProps) == 0 {
 		resultProps["body"] = map[string]any{
 			"type":        "object",
-			"description": "Request Body 参数",
+			"description": "Request body parameters.",
 			"properties":  make(map[string]any),
 		}
 	}
@@ -287,12 +287,12 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 	return result, nil
 }
 
-// resolveSchema 解析 schema，支持 $ref 引用、循环引用检测和深度控制
-// 采用深度限制剪枝策略：
-// - 每次解析 $ref 时，深度 +1
-// - 解析 properties 中的属性时，深度不变（同一层级）
-// - 达到最大深度时，执行剪枝（保留类型和原始描述，移除 properties）
-// currentDepth: 当前递归深度，用于控制循环引用的展开深度
+// resolveSchema resolves a schema with $ref, cycle detection, and depth control.
+// It prunes by depth:
+// - Each $ref resolution increases depth by one.
+// - Resolving properties keeps the same depth.
+// - At the maximum depth it retains type and description but removes properties.
+// currentDepth controls expansion depth for cyclic references.
 func (s *knActionRecallServiceImpl) resolveSchema(
 	ctx context.Context,
 	schema any,
@@ -636,8 +636,7 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToFunctionCall(ctx context.C
 		rootDefs = defs
 	}
 
-	// 构建 MCP 专用的引用解析器
-	// MCP 引用格式: #/$defs/SchemaName
+	// Build an MCP-specific reference resolver. MCP references use #/$defs/SchemaName.
 	mcpRefResolver := func(refPath string) (map[string]any, error) {
 		prefix := "#/$defs/"
 		if !strings.HasPrefix(refPath, prefix) {
@@ -650,29 +649,28 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToFunctionCall(ctx context.C
 		return nil, fmt.Errorf("MCP schema definition not found: %s", name)
 	}
 
-	// 使用通用解析器解析 schema
+	// Resolve the schema with the generic resolver.
 	resolvedSchema, err := s.resolveSchemaWithResolver(ctx, inputSchema, mcpRefResolver, visitedRefs, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	// NOTE: 为第一层 body 参数添加默认描述
-	// 当 body 参数存在但缺少 description 时（例如通过 $ref 引用的 schema 没有 description），
-	// 自动添加默认描述 "Request Body参数"
+	// Add a default description for the first-level body parameter when its
+	// referenced schema does not define one.
 	if props, ok := resolvedSchema["properties"].(map[string]any); ok {
 		if bodyProp, ok := props["body"].(map[string]any); ok {
 			if _, hasDesc := bodyProp["description"]; !hasDesc {
-				bodyProp["description"] = "Request Body参数"
+				bodyProp["description"] = "Request body parameters."
 			}
 		}
 	}
 
-	// 确保有 type=object (通常 MCP schema 根就是 object，但为了保险)
+	// Ensure the root has type=object.
 	if _, ok := resolvedSchema["type"]; !ok {
 		resolvedSchema["type"] = "object"
 	}
 
-	// 移除 $defs (因为已经解析并内联了)
+	// Remove $defs because all definitions have been resolved inline.
 	delete(resolvedSchema, "$defs")
 
 	return resolvedSchema, nil
@@ -715,7 +713,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 			// 冲突检测：同名字段来自不同 location
 			if existingLocation, exists := paramLocationMap[paramName]; exists {
 				if existingLocation != paramLocation {
-					errMsg := fmt.Sprintf("参数名 '%s' 在不同位置重复出现 (已有: %s, 当前: %s)，无法生成行动驱动动态工具",
+					errMsg := fmt.Sprintf("parameter %q is duplicated across locations (existing: %s, current: %s); cannot build action driver tool",
 						paramName, existingLocation, paramLocation)
 					s.logger.WithContext(ctx).Errorf("[KnActionRecall#convertToolSchemaToActionDriver] %s", errMsg)
 					return nil, fmt.Errorf("%s", errMsg)
@@ -755,7 +753,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 							for propName, propDef := range bodyProps {
 								// 冲突检测
 								if existingLocation, exists := paramLocationMap[propName]; exists {
-									errMsg := fmt.Sprintf("参数名 '%s' 在不同位置重复出现 (已有: %s, 当前: body)，无法生成行动驱动动态工具",
+									errMsg := fmt.Sprintf("parameter %q is duplicated across locations (existing: %s, current: body); cannot build action driver tool",
 										propName, existingLocation)
 									s.logger.WithContext(ctx).Errorf("[KnActionRecall#convertToolSchemaToActionDriver] %s", errMsg)
 									return nil, fmt.Errorf("%s", errMsg)
@@ -790,7 +788,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 	// 3. 构造 dynamic_params schema
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
-		"description": "行动执行动态参数",
+		"description": "Action execution dynamic parameters",
 		"properties":  dynamicProperties,
 	}
 	if len(dynamicRequired) > 0 {
@@ -842,7 +840,7 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.C
 	// 构造 dynamic_params schema：使用解析后的 MCP schema 作为 dynamic_params
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
-		"description": "行动执行动态参数",
+		"description": "Action execution dynamic parameters",
 	}
 	if props, ok := resolvedSchema["properties"].(map[string]any); ok {
 		dynamicParamsSchema["properties"] = props
@@ -866,10 +864,10 @@ func (s *knActionRecallServiceImpl) wrapActionDriverParameters(dynamicParamsSche
 			"dynamic_params": dynamicParamsSchema,
 			"_instance_identities": map[string]any{
 				"type":        "array",
-				"description": "目标实例列表；为空时由行动驱动按条件扫描。如果需要指定实例，请根据上下文提取实例的动态属性作为键值对填入（例如 [{\"id\": \"123\"}, {\"name\": \"test_instance\"}]）",
+				"description": "Target instance identities. When empty, the action driver scans by condition. To target instances explicitly, provide dynamic property key-value pairs, for example [{\"id\": \"123\"}, {\"name\": \"test_instance\"}].",
 				"items": map[string]any{
 					"type":                 "object",
-					"description":          "实例标识对象，包含动态的属性键值对",
+					"description":          "An instance identity object containing dynamic property key-value pairs.",
 					"additionalProperties": map[string]any{},
 				},
 			},

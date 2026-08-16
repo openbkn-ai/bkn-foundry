@@ -1,0 +1,5 @@
+本端点只提供两个执行工具：run_code（Python）与 run_shell（shell）。
+
+BKN 的全部能力——知识网络、对象类、实例查询、SQL——都在 run_code 的沙箱里以函数形式提供，签名清单见 run_code 的工具描述。请把整个问题写成一段脚本，在脚本内完成探查、取数与聚合，只 print 结论；不要一次调用只做一件事。
+
+调用前先 bkn_start_interaction 拿到 conversation_id 与 interaction_id，随后每次调用都带上 bkn_context，结束时 bkn_finish_interaction。

@@ -2,12 +2,11 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package knskills 提供技能的浏览 / 阅读 / 执行能力，补齐 find_skills 之后的链路：
-// find_skills 只回 skill_id + name + description，拿到之后既读不到 SKILL.md，
-// 也列不出附属文件，更执行不了脚本。
+// Package knskills provides skill browsing, reading, and execution after
+// find_skills. The latter returns only skill_id, name, and description.
 //
-// 这一层是薄的：出站两跳（元数据 + 对象存储正文）由 drivenadapters 完成，这里只管
-// 面向大模型的整形——文本判定、体积截断、空结果说明。授权在执行工厂侧按账户判定。
+// This layer formats results for models: text detection, size truncation, and
+// empty-result messages. Driven adapters perform the metadata and object-store calls.
 package knskills
 
 import (
@@ -20,27 +19,52 @@ import (
 	"unicode/utf8"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 const (
-	// maxDocChars SKILL.md / 技能文件返回给模型的字符上限。
-	// 超出即截断并显式标注，宁可让模型知道自己只看了一半，也不要静默丢尾。
+	// maxDocChars is the character limit for SKILL.md and skill files returned to a model.
+	// Mark truncated content explicitly instead of silently dropping its tail.
 	maxDocChars = 40000
-	// maxStreamChars 执行结果 stdout / stderr 各自的字符上限。
+	// maxStreamChars is the character limit for each execution stdout and stderr stream.
 	maxStreamChars = 8000
 )
 
-// ErrSkillIDRequired 入参缺 skill_id。
+// ErrSkillIDRequired identifies a missing skill_id argument.
 var ErrSkillIDRequired = errors.New("skill_id is required")
 
-// ErrRelPathRequired read_skill_file 缺 rel_path。
-var ErrRelPathRequired = errors.New("rel_path is required (take it from get_skill_content 的 files 清单)")
+// ErrRelPathRequired identifies a missing rel_path argument.
+var ErrRelPathRequired = errors.New("rel_path is required")
 
-// ErrEntryShellRequired execute_skill 缺 entry_shell。
-var ErrEntryShellRequired = errors.New("entry_shell is required (取自 SKILL.md 中声明的入口命令)")
+// ErrEntryShellRequired identifies a missing entry_shell argument.
+var ErrEntryShellRequired = errors.New("entry_shell is required")
 
-// ListSkillsReq list_skills 入参。
+type localizedInputError struct {
+	message string
+	cause   error
+}
+
+func (e localizedInputError) Error() string { return e.message }
+
+func (e localizedInputError) Unwrap() error { return e.cause }
+
+// SkillIDRequiredError returns a localized missing skill_id error.
+func SkillIDRequiredError(ctx context.Context) error {
+	return localizedInputError{message: infraErr.LocalizedDetail(ctx, "SkillIDRequired"), cause: ErrSkillIDRequired}
+}
+
+// RelPathRequiredError returns a localized missing rel_path error.
+func RelPathRequiredError(ctx context.Context) error {
+	return localizedInputError{message: infraErr.LocalizedDetail(ctx, "SkillRelativePathRequired"), cause: ErrRelPathRequired}
+}
+
+// EntryShellRequiredError returns a localized missing entry_shell error.
+func EntryShellRequiredError(ctx context.Context) error {
+	return localizedInputError{message: infraErr.LocalizedDetail(ctx, "SkillEntryShellRequired"), cause: ErrEntryShellRequired}
+}
+
+// ListSkillsReq is the input for list_skills.
 type ListSkillsReq struct {
 	Name     string `json:"name"`      // 可选，按名称模糊过滤
 	Category string `json:"category"`  // 可选，按分类过滤
@@ -48,7 +72,7 @@ type ListSkillsReq struct {
 	PageSize int    `json:"page_size"` // 可选，每页大小
 }
 
-// SkillEntry list_skills 的技能条目。
+// SkillEntry is a skill entry returned by list_skills.
 type SkillEntry struct {
 	SkillID     string `json:"skill_id"`
 	Name        string `json:"name"`
@@ -57,7 +81,7 @@ type SkillEntry struct {
 	Category    string `json:"category,omitempty"`
 }
 
-// ListSkillsResp list_skills 响应。
+// ListSkillsResp is the list_skills response.
 type ListSkillsResp struct {
 	Entries    []SkillEntry `json:"entries"`
 	TotalCount int          `json:"total_count"`
@@ -66,7 +90,7 @@ type ListSkillsResp struct {
 	Message    string       `json:"message,omitempty"`
 }
 
-// SkillFileEntry 技能包内的文件条目（渐进式阅读的下钻线索）。
+// SkillFileEntry describes a file in a skill package for progressive reading.
 type SkillFileEntry struct {
 	RelPath  string `json:"rel_path"`
 	FileType string `json:"file_type,omitempty"`
@@ -74,7 +98,7 @@ type SkillFileEntry struct {
 	MimeType string `json:"mime_type,omitempty"`
 }
 
-// GetSkillContentResp get_skill_content 响应：SKILL.md 正文 + 包内文件清单。
+// GetSkillContentResp is the get_skill_content response: SKILL.md and its file list.
 type GetSkillContentResp struct {
 	SkillID   string           `json:"skill_id"`
 	Status    string           `json:"status,omitempty"`
@@ -84,14 +108,14 @@ type GetSkillContentResp struct {
 	Message   string           `json:"message,omitempty"`
 }
 
-// ReadSkillFileReq read_skill_file 入参。
+// ReadSkillFileReq is the input for read_skill_file.
 type ReadSkillFileReq struct {
 	SkillID string `json:"skill_id"`
 	RelPath string `json:"rel_path"`
 }
 
-// ReadSkillFileResp read_skill_file 响应。
-// 二进制文件不回正文，只回元数据 + message 说明，避免把乱码灌进上下文。
+// ReadSkillFileResp is the read_skill_file response.
+// Binary files return metadata and a message instead of content.
 type ReadSkillFileResp struct {
 	SkillID   string `json:"skill_id"`
 	RelPath   string `json:"rel_path"`
@@ -102,14 +126,14 @@ type ReadSkillFileResp struct {
 	Message   string `json:"message,omitempty"`
 }
 
-// ExecuteSkillReq execute_skill 入参。
+// ExecuteSkillReq is the input for execute_skill.
 type ExecuteSkillReq struct {
 	SkillID    string `json:"skill_id"`
 	EntryShell string `json:"entry_shell"`
 	Timeout    int    `json:"timeout"` // 秒，可选
 }
 
-// ExecuteSkillResp execute_skill 响应。
+// ExecuteSkillResp is the execute_skill response.
 type ExecuteSkillResp struct {
 	SkillID       string `json:"skill_id"`
 	ExitCode      int    `json:"exit_code"`
@@ -122,7 +146,7 @@ type ExecuteSkillResp struct {
 	Mocked        bool   `json:"mocked,omitempty"`
 }
 
-// KnSkillsService 技能浏览 / 阅读 / 执行。
+// KnSkillsService supports skill browsing, reading, and execution.
 type KnSkillsService interface {
 	ListSkills(ctx context.Context, req *ListSkillsReq) (*ListSkillsResp, error)
 	GetSkillContent(ctx context.Context, skillID string) (*GetSkillContentResp, error)
@@ -139,7 +163,7 @@ var (
 	instance KnSkillsService
 )
 
-// NewKnSkillsService 创建 KnSkillsService 单例。
+// NewKnSkillsService creates the KnSkillsService singleton.
 func NewKnSkillsService() KnSkillsService {
 	once.Do(func() {
 		instance = &knSkillsService{operator: drivenadapters.NewOperatorIntegrationClient()}
@@ -147,12 +171,13 @@ func NewKnSkillsService() KnSkillsService {
 	return instance
 }
 
-// NewKnSkillsServiceWith 注入依赖创建（测试用）。
+// NewKnSkillsServiceWith creates a service with injected dependencies for tests.
 func NewKnSkillsServiceWith(operator interfaces.DrivenOperatorIntegration) KnSkillsService {
 	return &knSkillsService{operator: operator}
 }
 
-// ListSkills 浏览已发布技能。与 find_skills 互补：那条按对象类召回，这条不需要知识网络上下文。
+// ListSkills lists published skills. Unlike find_skills, it does not require a
+// knowledge-network context.
 func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*ListSkillsResp, error) {
 	if req == nil {
 		req = &ListSkillsReq{}
@@ -183,16 +208,16 @@ func (s *knSkillsService) ListSkills(ctx context.Context, req *ListSkillsReq) (*
 		})
 	}
 	if len(out.Entries) == 0 {
-		out.Message = "没有匹配的已发布技能。技能需先在执行工厂注册并发布；也可放宽 name / category 过滤后重试。"
+		out.Message = infraErr.LocalizedDetail(ctx, "NoPublishedSkillsMatched")
 	}
 	return out, nil
 }
 
-// GetSkillContent 取技能主文档正文与包内文件清单，供模型判断要不要继续下钻。
+// GetSkillContent returns the skill document and its file list for progressive reading.
 func (s *knSkillsService) GetSkillContent(ctx context.Context, skillID string) (*GetSkillContentResp, error) {
 	skillID = strings.TrimSpace(skillID)
 	if skillID == "" {
-		return nil, ErrSkillIDRequired
+		return nil, SkillIDRequiredError(ctx)
 	}
 	resp, err := s.operator.GetSkillContent(ctx, skillID)
 	if err != nil {
@@ -216,23 +241,23 @@ func (s *knSkillsService) GetSkillContent(ctx context.Context, skillID string) (
 		})
 	}
 	if truncated {
-		out.Message = "SKILL.md 超长已截断；需要完整内容请用 read_skill_file 分文件读取。"
+		out.Message = infraErr.LocalizedDetail(ctx, "SkillContentTruncated")
 	}
 	return out, nil
 }
 
-// ReadSkillFile 读技能包内单个文件。二进制文件只回元数据不回正文。
+// ReadSkillFile reads one skill package file. Binary files return metadata only.
 func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileReq) (*ReadSkillFileResp, error) {
 	if req == nil {
-		return nil, ErrSkillIDRequired
+		return nil, SkillIDRequiredError(ctx)
 	}
 	skillID := strings.TrimSpace(req.SkillID)
 	if skillID == "" {
-		return nil, ErrSkillIDRequired
+		return nil, SkillIDRequiredError(ctx)
 	}
 	relPath := strings.TrimSpace(req.RelPath)
 	if relPath == "" {
-		return nil, ErrRelPathRequired
+		return nil, RelPathRequiredError(ctx)
 	}
 
 	resp, err := s.operator.ReadSkillFile(ctx, &interfaces.ReadSkillFileRequest{SkillID: skillID, RelPath: relPath})
@@ -247,29 +272,29 @@ func (s *knSkillsService) ReadSkillFile(ctx context.Context, req *ReadSkillFileR
 		FileType: resp.FileType,
 	}
 	if !isTextual(resp.MimeType, resp.Content) {
-		out.Message = "该文件不是文本（mime_type=" + resp.MimeType + "），未返回正文。二进制内容请用技能包下载接口获取。"
+		out.Message = infraErr.LocalizedDetail(ctx, "SkillFileNotTextual")
 		return out, nil
 	}
 	out.Content, out.Truncated = truncateRunes(string(resp.Content), maxDocChars)
 	if out.Truncated {
-		out.Message = "文件超长已截断，仅返回前 " + strconv.Itoa(maxDocChars) + " 个字符。"
+		out.Message = infraErr.LocalizedDetail(ctx, "SkillFileTruncated")
 	}
 	return out, nil
 }
 
-// ExecuteSkill 在沙箱内执行技能入口命令。
-// entry_shell 取自 SKILL.md 声明的入口；授权由执行工厂按账户强制。
+// ExecuteSkill runs a skill entry command in the sandbox.
+// entry_shell comes from SKILL.md; Execution Factory enforces account authorization.
 func (s *knSkillsService) ExecuteSkill(ctx context.Context, req *ExecuteSkillReq) (*ExecuteSkillResp, error) {
 	if req == nil {
-		return nil, ErrSkillIDRequired
+		return nil, SkillIDRequiredError(ctx)
 	}
 	skillID := strings.TrimSpace(req.SkillID)
 	if skillID == "" {
-		return nil, ErrSkillIDRequired
+		return nil, SkillIDRequiredError(ctx)
 	}
 	entryShell := strings.TrimSpace(req.EntryShell)
 	if entryShell == "" {
-		return nil, ErrEntryShellRequired
+		return nil, EntryShellRequiredError(ctx)
 	}
 
 	resp, err := s.operator.ExecuteSkill(ctx, &interfaces.ExecuteSkillRequest{
@@ -296,7 +321,7 @@ func (s *knSkillsService) ExecuteSkill(ctx context.Context, req *ExecuteSkillReq
 	}, nil
 }
 
-// truncateRunes 按字符（非字节）截断，避免切在多字节字符中间产出乱码。
+// truncateRunes truncates by characters rather than bytes to avoid splitting UTF-8 sequences.
 func truncateRunes(text string, limit int) (string, bool) {
 	if utf8.RuneCountInString(text) <= limit {
 		return text, false
@@ -311,8 +336,8 @@ func truncateRunes(text string, limit int) (string, bool) {
 	return text, false
 }
 
-// isTextual 判定文件正文能否直接喂给模型。
-// mime 是弱证据（对象存储常回 application/octet-stream），最终以正文是否合法 UTF-8 为准。
+// isTextual determines whether a file body can be returned directly to a model.
+// MIME type is weak evidence, so UTF-8 validity is the final check.
 func isTextual(mimeType string, content []byte) bool {
 	mimeType = strings.ToLower(strings.TrimSpace(mimeType))
 	switch {
@@ -328,23 +353,19 @@ func isTextual(mimeType string, content []byte) bool {
 	if !utf8.Valid(content) {
 		return false
 	}
-	// 合法 UTF-8 里混着 NUL 基本只可能是二进制。
+	// NUL bytes in otherwise valid UTF-8 strongly indicate binary content.
 	return !strings.ContainsRune(string(content), '\x00')
 }
 
-// ExecuteEnabledEnv 控制 execute_skill 是否装配（MCP 工具面与 REST 路由共用）。
+// ExecuteEnabledEnv controls whether execute_skill is registered for MCP and REST.
 const ExecuteEnabledEnv = "EXECUTE_SKILL_ENABLED"
 
-// legacyExecuteEnabledEnv 是 MCP-only 时期的旧名。那会儿开关只管工具面，
-// 名字里带 MCP 是准确的；改成总闸后名字不再合适，但已经有人按旧名配过，
-// 继续认它，免得升上来的部署突然把开着的能力关掉。
+// legacyExecuteEnabledEnv is the legacy name from the MCP-only configuration.
+// Continue supporting it so upgrades do not disable an already enabled capability.
 const legacyExecuteEnabledEnv = "MCP_EXECUTE_SKILL_ENABLED"
 
-// ExecuteEnabled 判断本部署是否提供技能执行能力。默认关。
-//
-// 它是总闸而不只是工具面开关：关闭时 MCP 不装配 execute_skill，/in 与公开面的
-// execute_skill 路由也不注册。文档把这条描述成「唯一的命令执行通道」，若 REST
-// 那侧仍然开着，这句话就是假的——而看文档决定要不要开的人会据此误判风险。
+// ExecuteEnabled determines whether the deployment provides skill execution.
+// It defaults to disabled and gates both MCP registration and REST routes.
 func ExecuteEnabled() bool {
 	for _, key := range []string{ExecuteEnabledEnv, legacyExecuteEnabledEnv} {
 		value := strings.TrimSpace(os.Getenv(key))

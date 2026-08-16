@@ -29,3 +29,21 @@ func TestDefaultHTTPErrorUsesBCP47Locale(t *testing.T) {
 		})
 	}
 }
+
+func TestLocalizedDetailUsesBCP47Locale(t *testing.T) {
+	tests := []struct {
+		locale string
+		want   string
+	}{
+		{locale: "en-US", want: "Code is required for sandbox execution."},
+		{locale: "zh-CN", want: "沙箱执行必须提供代码。"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.locale, func(t *testing.T) {
+			ctx := common.SetLanguageToCtx(context.Background(), tt.locale)
+			if got := LocalizedDetail(ctx, "FunctionCodeRequired"); got != tt.want {
+				t.Fatalf("LocalizedDetail() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

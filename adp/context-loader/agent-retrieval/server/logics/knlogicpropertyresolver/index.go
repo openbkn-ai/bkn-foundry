@@ -730,7 +730,7 @@ func (s *knLogicPropertyResolverService) buildMissingParamsError(
 
 	missingError := &interfaces.MissingParamsError{
 		ErrorCode: "MISSING_INPUT_PARAMS",
-		Message:   "dynamic_params 缺少必需的 input 参数",
+		Message:   errors.LocalizedDetail(ctx, "LogicPropertyInputMissing"),
 		ErrorMsg:  errorMsg,
 		Debug:     debugInfo,
 		TraceID:   "",
@@ -756,5 +756,5 @@ func (s *knLogicPropertyResolverService) buildGenerationFailedError(
 	}
 
 	return errors.DefaultHTTPError(ctx, http.StatusInternalServerError,
-		fmt.Sprintf("DYNAMIC_PARAMS_GENERATION_FAILED: 动态参数生成失败（LLM 或依赖服务异常，非缺少入参）: %s", errorMsg))
+		fmt.Sprintf("%s: %s", errors.LocalizedDetail(ctx, "LogicPropertyGenerationFailed"), errorMsg))
 }

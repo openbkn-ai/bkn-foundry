@@ -25,6 +25,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraerrors "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	infrarest "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -55,7 +56,7 @@ type restPublicHandler struct {
 	ServicePort int
 }
 
-var buildMCPInfo = mcp.BuildMCPInfo
+var buildMCPInfo = mcp.BuildMCPInfoForLocale
 
 // NewRestPublicHandler 创建restHandler实例
 // servicePort 用于推导沙箱回访地址；沙箱在集群内，走不了浏览器侧的网关地址。
@@ -80,7 +81,7 @@ func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.
 	}
 }
 
-// RegisterPublic 注册公共路由
+// RegisterRouter registers public routes.
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
 	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
@@ -99,7 +100,8 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/kn_search", r.KnSearchHandler.KnSearch)
 	engine.POST("/kn/find_skills", r.KnFindSkillsHandler.FindSkills)
 
-	// 同时作为 MCP 工具 + operator-integration toolbox(OpenAPI HTTP)入口
+	// These are available both as MCP tools and through the operator-integration
+	// toolbox (OpenAPI HTTP) entry point.
 	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
 	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
 	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
@@ -109,48 +111,55 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
 	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
 
-	// 技能面：浏览 / 读文件 / 执行（find_skills 之后的下钻链路）
+	// Skill surface: list, read, and execute after find_skills discovery.
 	engine.POST("/kn/list_skills", r.KnSkillsHandler.ListSkills)
 	engine.POST("/kn/get_skill_content", r.KnSkillsHandler.GetSkillContent)
 	engine.POST("/kn/read_skill_file", r.KnSkillsHandler.ReadSkillFile)
-	// 与 MCP 工具面同一道闸：关闭时这条路由根本不注册，而不是注册后再拒绝。
-	// 「这个部署没有技能执行能力」要在路由表上成立，否则文档里那句「唯一的
-	// 命令执行通道」在 REST 这侧就是假的。
+	// Use the same gate as the MCP tool surface. When disabled, do not register
+	// the route instead of registering it and rejecting requests later.
 	if logicsSkills.ExecuteEnabled() {
 		engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
 	}
 
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
-	// GET /mcp/info 返回自描述文档（工具目录 + 连接方式），
-	// GET /mcp/toolkit 返回同一工具面的代码模式形态，其余走标准 MCP Streamable HTTP。
+	// GET /mcp/info returns the self-description (tool catalog and connection
+	// details). GET /mcp/toolkit returns the code-mode representation; all other
+	// requests use standard MCP Streamable HTTP.
 	engine.Any("/mcp/*path", r.handleMCP)
 }
 
-// handlePTCToolkit 返回 PTC 工具包（GET …/mcp/toolkit）。
-// 内容随工具面变化，客户端按 version 缓存。
+// handlePTCToolkit returns the PTC toolkit for GET .../mcp/toolkit.
+// Its contents change with the tool surface; clients cache it by version.
 func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
-	toolkit, err := mcp.BuildPTCToolkit(publicEndpointURL(c.Request, mcpPath), r.ServicePort)
+	toolkit, err := buildPTCToolkit(publicEndpointURL(c.Request, mcpPath), r.ServicePort)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if r.Logger != nil {
+			r.Logger.Errorf("BuildPTCToolkit failed: %v", err)
+		}
+		sharedrest.MarkLocalizedCacheableResponse(c)
+		infrarest.ReplyError(c, infraerrors.NewHTTPError(
+			c.Request.Context(), http.StatusInternalServerError, infraerrors.ErrExtMCPPTCToolkitBuildFailed, nil))
 		return
 	}
 	c.JSON(http.StatusOK, toolkit)
 }
 
-// handleMCP 在 MCP catch-all 路由内分流。
+var buildPTCToolkit = mcp.BuildPTCToolkit
+
+// handleMCP dispatches requests inside the MCP catch-all route.
 //
-// 路径布局（两台 MCP Server，接入时二选一）：
+// Path layout (choose one of the two MCP servers per integration):
 //
-//	/mcp                 MCP，二十来个业务工具逐个暴露
-//	/mcp/info            文档：描述 /mcp
-//	/mcp/ptc             MCP，只有 run_code / run_shell 加生命周期
-//	/mcp/ptc/info        文档：描述 /mcp/ptc
-//	/mcp/ptc/toolkit     自己实现 PTC 的素材（stub / digest / 工具表）
-//	/mcp/toolkit         /mcp/ptc/toolkit 的旧别名，已弃用
+//	/mcp                 MCP with individual business tools
+//	/mcp/info            Self-description for /mcp
+//	/mcp/ptc             MCP with run_code/run_shell and lifecycle tools
+//	/mcp/ptc/info        Self-description for /mcp/ptc
+//	/mcp/ptc/toolkit     PTC assets (stub, digest, and tool catalog)
+//	/mcp/toolkit         Deprecated alias for /mcp/ptc/toolkit
 //
-// 分流顺序是有意的：**精确匹配必须排在 /ptc 的前缀判断之前**。mcp-go 按前缀吃
-// 路径，把前缀判断提前会让 /mcp/ptc/toolkit 被当成一次 MCP 调用交给 PTC Server，
-// 然后 404——而且是静默的，看起来就像端点没上线。
+// Exact matches must precede the /ptc prefix match. Otherwise mcp-go consumes
+// /mcp/ptc/toolkit as an MCP request for the PTC server and returns a silent
+// 404, making the endpoint appear unavailable.
 func (r *restPublicHandler) handleMCP(c *gin.Context) {
 	path := c.Param("path")
 	isGet := c.Request.Method == http.MethodGet
@@ -159,8 +168,7 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 	case isGet && path == ptcToolkitPath:
 		r.handlePTCToolkit(c)
 		return
-	// 旧路径。它描述的是 PTC 那套，却挂在 /mcp 下面，读起来像在描述 /mcp——
-	// 与 /mcp/info 的对称关系是错的。保留只为兼容先上线的客户端。
+	// Legacy path retained only for clients released before /mcp/ptc/toolkit.
 	case isGet && path == legacyToolkitPath:
 		r.handlePTCToolkit(c)
 		return
@@ -171,16 +179,17 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 		r.replyMCPInfo(c, mcpEndpointURL(c.Request))
 		return
 	case strings.HasPrefix(path, ptcPathPrefix):
-		// 总闸关着时按「没编译进来」处理，报 404 而不是 503：503 等于向任何探测者
-		// 承认这里本该有一条执行通道，只是眼下不可用。与 /kn/execute_skill 关闭时
-		// 根本不注册路由是同一个取向。
+		// When the global gate is disabled, make this endpoint indistinguishable
+		// from one that was never deployed.
 		if !ptcExecutionEnabled() {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		// 闸是开的却没装配起来，那是故障，得让它看得见。
+		// A configured but unassembled endpoint is a visible service failure.
 		if r.PTCMCPHandler == nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "PTC MCP endpoint is unavailable"})
+			sharedrest.MarkLocalizedCacheableResponse(c)
+			infrarest.ReplyError(c, infraerrors.NewHTTPError(
+				c.Request.Context(), http.StatusServiceUnavailable, infraerrors.ErrExtMCPPTCUnavailable, nil))
 			return
 		}
 		r.PTCMCPHandler.ServeHTTP(c.Writer, c.Request)
@@ -189,7 +198,7 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 	r.MCPHandler.ServeHTTP(c.Writer, c.Request)
 }
 
-// MCP catch-all 之下的子路径。集中在一处，好让分流顺序与这份清单对着看。
+// MCP catch-all subpaths are centralized so this list matches dispatch order.
 const (
 	mcpPath           = "/mcp"
 	ptcMCPPath        = "/mcp/ptc"
@@ -200,11 +209,11 @@ const (
 	legacyToolkitPath = "/toolkit"
 )
 
-// replyMCPInfo 输出某个 MCP 端点的自描述文档。
+// replyMCPInfo returns the self-description for an MCP endpoint.
 //
-// 两个 info 端点（/mcp/info 与 /mcp/ptc/info）共用这一份实现，差别只在 endpoint。
+// /mcp/info and /mcp/ptc/info share this implementation; only the endpoint differs.
 func (r *restPublicHandler) replyMCPInfo(c *gin.Context, endpoint string) {
-	info, err := buildMCPInfo(endpoint)
+	info, err := buildMCPInfo(endpoint, string(common.GetLanguageFromCtx(c.Request.Context())))
 	if err != nil {
 		if r.Logger != nil {
 			r.Logger.Errorf("BuildMCPInfo failed: %v", err)
@@ -217,16 +226,16 @@ func (r *restPublicHandler) replyMCPInfo(c *gin.Context, endpoint string) {
 	c.JSON(http.StatusOK, info)
 }
 
-// mcpEndpointURL 依据请求推导本服务对外的 MCP 端点（去掉末尾的 /info）。
+// mcpEndpointURL derives the public MCP endpoint by removing a trailing /info.
 func mcpEndpointURL(req *http.Request) string {
 	scheme := requestScheme(req)
 	base := strings.TrimSuffix(req.URL.Path, "/info")
 	return scheme + "://" + req.Host + base
 }
 
-// publicEndpointURL 按本组路由前缀拼出同一服务下另一个端点的对外地址。
-// 供路径不同的端点复用（如 /ptc/toolkit 需要报出 /mcp 的地址），
-// 不能用 mcpEndpointURL 那套「从当前路径去尾」的推法。
+// publicEndpointURL builds another public endpoint of this service from the
+// route-group prefix. It is used where removing a suffix from the current URL
+// is insufficient, such as /ptc/toolkit describing /mcp.
 func publicEndpointURL(req *http.Request, suffix string) string {
 	base := req.URL.Path
 	if i := strings.Index(base, "/v1/"); i >= 0 {
@@ -246,23 +255,19 @@ func requestScheme(req *http.Request) string {
 	return scheme
 }
 
-// ptcExecutionEnabled 本部署是否允许经工具面执行命令。
+// ptcExecutionEnabled reports whether this deployment permits tool-surface commands.
 //
-// PTC 的 run_code / run_shell 是一条沙箱执行通道，且比 execute_skill 更宽——后者
-// 只能跑已注册技能的入口命令，这两个跑的是调用方现写的任意 Python 与 shell。因此
-// 它必须服从同一道总闸：一个从没设过 EXECUTE_SKILL_ENABLED 的存量部署，其「本部署
-// 没有命令执行能力」的约定不能因为升级就被悄悄推翻。
-//
-// 复用既有开关而不是新开一个：这是同一条部署级策略，拆成两个旋钮只会让运维以为
-// 关掉一个就够了。
+// PTC's run_code and run_shell execute arbitrary Python and shell, which is
+// broader than executing a registered skill entry point. Both must therefore
+// use the same deployment-level gate.
 func ptcExecutionEnabled() bool {
 	return logicsSkills.ExecuteEnabled()
 }
 
-// newPTCMCPHandlerOrNil 装配 PTC MCP 端点，失败只记日志并返回 nil。
+// newPTCMCPHandlerOrNil assembles the PTC MCP endpoint and returns nil on failure.
 //
-// PTC 依赖内嵌的工具元数据渲染工具包，读失败时不该把整个服务拖垮——主工具面
-// 与全部 REST 端点与它无关。该路由随后返回 503，故障是可见的。
+// PTC depends on embedded tool metadata. A failure must not prevent the main
+// MCP surface or REST APIs from starting; the PTC route reports a visible 503.
 func newPTCMCPHandlerOrNil(logger interfaces.Logger) http.Handler {
 	if !ptcExecutionEnabled() {
 		return nil

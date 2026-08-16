@@ -29,12 +29,12 @@ const (
 	executeSkillURI = "/internal-v1/skills/%s/execute"
 
 	defaultSkillPageSize = 20
-	// maxSkillAssetBytes 单个技能文件从对象存储取回的上限。超出即报错而不是截断：
-	// 截断点落在多字节字符中间会产出乱码，交给上层按 mime 决定要不要读更划算。
+	// maxSkillAssetBytes limits one skill asset fetched from object storage. Return
+	// an error instead of truncating because truncation can split a multibyte character.
 	maxSkillAssetBytes = 5 << 20
 )
 
-// ListSkills 浏览已发布技能（走执行工厂的技能市场列表，只含已发布态）。
+// ListSkills lists published skills from Execution Factory's skill marketplace.
 func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfaces.ListSkillsRequest) (*interfaces.ListSkillsResponse, error) {
 	if req == nil {
 		req = &interfaces.ListSkillsRequest{}
@@ -64,7 +64,7 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 	code, respBody, err := o.httpClient.Get(ctx, fullURL, query, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListSkills] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "技能列表接口调用失败", err)
+		return nil, skillUpstreamError(ctx, code, "SkillListRequestFailed", err)
 	}
 
 	var raw struct {
@@ -82,7 +82,8 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 	}
 	if err = json.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListSkills] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析技能列表响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "SkillListResponseInvalid"))
 	}
 
 	resp := &interfaces.ListSkillsResponse{
@@ -104,8 +105,8 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 	return resp, nil
 }
 
-// GetSkillContent 取技能主文档正文 + 包内文件清单。
-// 执行工厂只回 presigned URL，正文由这里补第二跳取回。
+// GetSkillContent returns the skill document body and its file list.
+// Execution Factory returns a presigned URL, which this client follows to get the body.
 func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID string) (*interfaces.GetSkillContentResponse, error) {
 	fullURL := o.baseURL + fmt.Sprintf(getSkillContentURI, url.PathEscape(skillID))
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#GetSkillContent] URL: %s", fullURL)
@@ -114,7 +115,7 @@ func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID
 	code, respBody, err := o.httpClient.Get(ctx, fullURL, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "技能内容接口调用失败", err)
+		return nil, skillUpstreamError(ctx, code, "SkillContentRequestFailed", err)
 	}
 
 	var raw struct {
@@ -125,7 +126,8 @@ func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID
 	}
 	if err = json.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析技能内容响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "SkillContentResponseInvalid"))
 	}
 
 	content, err := o.fetchSkillAsset(ctx, raw.URL)
@@ -140,17 +142,17 @@ func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID
 	}, nil
 }
 
-// ReadSkillFile 读技能包内单个文件（同样两跳）。
+// ReadSkillFile reads one file from a skill package using the same two-hop flow.
 func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
 	fullURL := o.baseURL + fmt.Sprintf(readSkillFileURI, url.PathEscape(req.SkillID))
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ReadSkillFile] URL: %s, RelPath: %s", fullURL, req.RelPath)
 
 	header := o.skillHeader(ctx, "operator.skill.file_read")
-	// 字段名是 rel_path，执行工厂侧 validate:"required"；发 path 会 400。
+	// Execution Factory requires the rel_path field; sending path returns 400.
 	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, map[string]string{"rel_path": req.RelPath})
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFile] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "技能文件读取接口调用失败", err)
+		return nil, skillUpstreamError(ctx, code, "SkillFileReadRequestFailed", err)
 	}
 
 	var raw struct {
@@ -162,7 +164,8 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 	}
 	if err = json.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFile] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析技能文件响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "SkillFileReadResponseInvalid"))
 	}
 
 	content, err := o.fetchSkillAsset(ctx, raw.URL)
@@ -178,7 +181,8 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 	}, nil
 }
 
-// ExecuteSkill 在沙箱内执行技能入口命令。授权由执行工厂按账户强制（execute / public_access）。
+// ExecuteSkill runs a skill entry command in the sandbox. Execution Factory
+// enforces account authorization (execute / public_access).
 func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillRequest) (*interfaces.ExecuteSkillResponse, error) {
 	fullURL := o.baseURL + fmt.Sprintf(executeSkillURI, url.PathEscape(req.SkillID))
 	o.logger.WithContext(ctx).Debugf("[OperatorIntegration#ExecuteSkill] URL: %s", fullURL)
@@ -191,13 +195,14 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 	code, respBody, err := o.httpClient.Post(ctx, fullURL, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteSkill] Request failed, err: %v", err)
-		return nil, skillUpstreamError(ctx, code, "技能执行接口调用失败", err)
+		return nil, skillUpstreamError(ctx, code, "SkillExecutionRequestFailed", err)
 	}
 
 	resp := &interfaces.ExecuteSkillResponse{}
 	if err = json.Unmarshal(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteSkill] Unmarshal failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("解析技能执行响应失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
+			infraErr.LocalizedDetail(ctx, "SkillExecutionResponseInvalid"))
 	}
 	if resp.SkillID == "" {
 		resp.SkillID = req.SkillID
@@ -205,30 +210,34 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 	return resp, nil
 }
 
-// fetchSkillAsset 取对象存储上的技能文件正文。
-// 这是发布态技能的第二跳：元数据接口只回 presigned URL，正文得自己取。
+// fetchSkillAsset retrieves a skill file body from object storage.
+// It is the second hop for a published skill because the metadata API returns only a presigned URL.
 func (o *operatorIntegrationClient) fetchSkillAsset(ctx context.Context, assetURL string) ([]byte, error) {
 	if assetURL == "" {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound, "技能文件下载地址为空")
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound,
+			infraErr.LocalizedDetail(ctx, "SkillAssetURLMissing"))
 	}
-	// presigned URL 自带签名，不能带上账户/追踪头（部分对象存储会把额外头计入签名校验）。
+	// The presigned URL carries its own signature. Do not send account or trace
+	// headers because some object stores include additional headers in signature validation.
 	code, body, err := o.httpClient.GetNoUnmarshal(ctx, assetURL, nil, nil)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#fetchSkillAsset] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("技能文件下载失败: %v", err))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "SkillAssetDownloadFailed"))
 	}
 	if code < http.StatusOK || code >= http.StatusMultipleChoices {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("技能文件下载返回异常状态: %d", code))
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+			infraErr.LocalizedDetail(ctx, "SkillAssetUnexpectedStatus"))
 	}
 	if len(body) > maxSkillAssetBytes {
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusRequestEntityTooLarge,
-			fmt.Sprintf("技能文件超过 %d 字节上限，请改用技能包下载接口获取", maxSkillAssetBytes))
+			infraErr.LocalizedDetail(ctx, "SkillAssetTooLarge"))
 	}
 	return body, nil
 }
 
-// skillHeader 组装出站头：账户身份 + 追踪上下文 + 业务域。
-// 业务域是技能市场列表的必填项，取不到时退回默认业务域。
+// skillHeader builds outbound account, trace, and business-domain headers.
+// The skill marketplace requires a business domain, so use the default if absent.
 func (o *operatorIntegrationClient) skillHeader(ctx context.Context, operationName string) map[string]string {
 	header := common.GetHeaderForChildOperation(ctx, operationName, 1)
 	if bd := header[string(interfaces.HeaderXBusinessDomain)]; bd == "" {
@@ -237,16 +246,16 @@ func (o *operatorIntegrationClient) skillHeader(ctx context.Context, operationNa
 	return header
 }
 
-// skillUpstreamError 把执行工厂的失败按其状态码归类。
+// skillUpstreamError classifies an Execution Factory failure by status code.
 //
-// 下游的 4xx 是调用方参数错（路径越出技能包、技能不存在、无权限），照原码回给调用方；
-// 一律翻成 502 会让模型以为服务坏了而不是自己传错，于是重试同样错误的参数。
-// 其余（连不上、5xx）才是真的上游故障。
-func skillUpstreamError(ctx context.Context, code int, action string, err error) error {
+// A downstream 4xx is a caller error (for example, an invalid package path,
+// a missing skill, or insufficient permission), so preserve its status code.
+// Transport errors and 5xx responses are upstream failures and become 502.
+func skillUpstreamError(ctx context.Context, code int, detailKey string, _ error) error {
 	if code >= http.StatusBadRequest && code < http.StatusInternalServerError {
-		return infraErr.DefaultHTTPError(ctx, code, fmt.Sprintf("%s: %v", action, err))
+		return infraErr.DefaultHTTPError(ctx, code, infraErr.LocalizedDetail(ctx, detailKey))
 	}
-	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, fmt.Sprintf("%s: %v", action, err))
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, infraErr.LocalizedDetail(ctx, detailKey))
 }
 
 func firstNonEmptyStr(values ...string) string {

@@ -4,9 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors 定义错误码
-// @file errors.go
-// @description: 错误码统一处理
+// Package errors defines application error codes.
 package errors
 
 import (
@@ -20,17 +18,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/localize"
 )
 
-// HTTPError HTTP错误
+// HTTPError represents a public HTTP error.
 type HTTPError struct {
 	HTTPCode     int         `json:"-"`
 	Language     string      `json:"-"`
 	Code         string      `json:"code,omitempty"`
-	Description  string      `json:"description,omitempty"` // 错误描述
-	Solution     string      `json:"solution,omitempty"`    // 解决方法
-	ErrorLink    string      `json:"link,omitempty"`        // 错误链接
-	ErrorDetails interface{} `json:"details,omitempty"`     // 详细内容
-	// DescriptionTemplateData map[string]any `json:"-"`                     // 错误描述参数
-	// SolutionTemplateData    map[string]any `json:"-"`                     // 解决方法参数
+	Description  string      `json:"description,omitempty"` // Localized error description.
+	Solution     string      `json:"solution,omitempty"`    // Localized remediation guidance.
+	ErrorLink    string      `json:"link,omitempty"`        // Error reference link.
+	ErrorDetails interface{} `json:"details,omitempty"`     // Additional public detail.
 }
 
 func (e *HTTPError) WithDescription(extCode string, params ...interface{}) *HTTPError {
@@ -64,9 +60,8 @@ var (
 		http.StatusNotFound:         "NotFound",
 		http.StatusMethodNotAllowed: "MethodNotAllowed",
 		http.StatusConflict:         "Conflict",
-		// 413 与 502 曾不在表里，落到 fallback 后 code 一律是 InternalServerError——
-		// 调用方（尤其是模型）据 code 判断该不该重试，「文件太大」和「上游挂了」
-		// 都被说成内部错误，于是它会重试一个永远不会变小的文件。
+		// Keep 413 and 502 distinct from InternalServerError. Callers, including
+		// models, use the code to decide whether a retry is appropriate.
 		http.StatusRequestEntityTooLarge: "RequestEntityTooLarge",
 		http.StatusBadGateway:            "BadGateway",
 		http.StatusInternalServerError:   "InternalServerError",
@@ -75,7 +70,7 @@ var (
 	}
 )
 
-// DefaultHTTPError 公共错误码
+// DefaultHTTPError creates a public error with a standard error code.
 func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
 	tr := localize.NewI18nTranslator(language)
@@ -83,16 +78,16 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
 	}
-	// 获取带默认值的解决方案和错误链接
+	// Resolve solution and error link with defaults.
 	solutionKey := "sol." + errCode
 	solution := tr.Trans(solutionKey)
-	if solution == solutionKey { // 没有找到对应翻译时回退通用方案
+	if solution == solutionKey { // Fall back to the generic solution when missing.
 		solution = tr.Trans("sol.Common")
 	}
 
 	errorLinkKey := "link." + errCode
 	errorLink := tr.Trans(errorLinkKey)
-	if errorLink == errorLinkKey { // 没有找到对应翻译时返回"无"
+	if errorLink == errorLinkKey { // Return the no-link value when missing.
 		errorLink = tr.Trans("link.None")
 	}
 
@@ -107,7 +102,20 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 	}
 }
 
-// NewHTTPError 创建 HTTPError @extCode: 拓展错误码
+// LocalizedDetail returns a localized public error detail for a stable resource key.
+// The underlying error is intentionally kept in server-side logs rather than returned
+// to callers.
+func LocalizedDetail(ctx context.Context, key string, params ...interface{}) string {
+	tr := localize.NewI18nTranslator(common.GetLanguageFromCtx(ctx))
+	messageID := "detail." + key
+	detail := tr.Trans(messageID)
+	if detail == messageID {
+		detail = tr.Trans("desc.InternalServerError")
+	}
+	return fmt.Sprintf(detail, params...)
+}
+
+// NewHTTPError creates an HTTPError with an extension error code.
 func NewHTTPError(ctx context.Context, httpCode int, extCode string, details interface{}, descParams ...interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
 	tr := localize.NewI18nTranslator(language)
@@ -115,23 +123,23 @@ func NewHTTPError(ctx context.Context, httpCode int, extCode string, details int
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
 	}
-	// 获取带默认值的解决方案和错误链接
+	// Resolve solution and error link with defaults.
 	solutionKey := "sol." + extCode
 	solution := tr.Trans(solutionKey)
-	if solution == solutionKey { // 没有找到对应翻译时回退通用方案
+	if solution == solutionKey { // Fall back to the generic solution when missing.
 		solution = tr.Trans("sol.Common")
 	}
 
 	errorLinkKey := "link." + extCode
 	errorLink := tr.Trans(errorLinkKey)
-	if errorLink == errorLinkKey { // 没有找到对应翻译时返回"无"
+	if errorLink == errorLinkKey { // Return the no-link value when missing.
 		errorLink = tr.Trans("link.None")
 	}
 	return &HTTPError{
 		HTTPCode:     httpCode,
 		Language:     language,
 		Code:         fmt.Sprintf("%s.%s.%s", errServerName, errCode, extCode),
-		Description:  fmt.Sprintf(tr.Trans("desc."+extCode), descParams...), // 可以处理%d、%s、%v等格式化占位符。
+		Description:  fmt.Sprintf(tr.Trans("desc."+extCode), descParams...), // Supports standard fmt placeholders.
 		Solution:     solution,
 		ErrorLink:    errorLink,
 		ErrorDetails: details,

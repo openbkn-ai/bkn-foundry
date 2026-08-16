@@ -14,14 +14,15 @@ func TestMCPLocaleBundle(t *testing.T) {
 		bundle := loadMCPLocaleBundle("en-US")
 
 		convey.So(bundle.ServerInstructions(), convey.ShouldContainSubstring, "Context Loader knowledge network tools")
+		convey.So(bundle.PTCServerInstructions(), convey.ShouldContainSubstring, "This endpoint provides two execution tools")
 
 		meta := bundle.ToolMeta(toolKeySearchSchema)
 		convey.So(meta.Name, convey.ShouldEqual, "search_schema")
 		convey.So(meta.Description, convey.ShouldContainSubstring, "Explore schema")
 		convey.So(meta.Title, convey.ShouldEqual, "Explore Schema")
 		convey.So(meta.GroupTitle, convey.ShouldEqual, "Networks & Schema")
-		// group / order 只在基准文件里声明，本地化文件不重复一遍——翻译改不动
-		// 分组归属和排序。
+		// Group and order belong only to the baseline file. Locales can translate
+		// presentation text, but must not alter grouping or ordering.
 		convey.So(meta.Group, convey.ShouldEqual, "discovery")
 		convey.So(meta.Order, convey.ShouldEqual, 130)
 
@@ -36,7 +37,7 @@ func TestMCPLocaleBundle(t *testing.T) {
 	convey.Convey("unknown MCP locale should fall back to the default bundle", t, func() {
 		bundle := loadMCPLocaleBundle("fr-FR")
 
-		convey.So(bundle.ServerInstructions(), convey.ShouldEqual, serverInstructions)
+		convey.So(bundle.ServerInstructions(), convey.ShouldEqual, mustReadMCPInstructions(schemasFS, defaultMCPLocale))
 		convey.So(bundle.ToolMeta(toolKeyRunSQL).Name, convey.ShouldEqual, toolKeyRunSQL)
 	})
 
@@ -58,12 +59,18 @@ func TestMCPLocaleBundle(t *testing.T) {
 }
 
 func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreUnavailable(t *testing.T) {
-	resources := fstest.MapFS{}
+	resources := fstest.MapFS{
+		"schemas/locales/zh-CN/instructions.txt":     &fstest.MapFile{Data: []byte("Chinese baseline instructions")},
+		"schemas/locales/zh-CN/ptc_instructions.txt": &fstest.MapFile{Data: []byte("Chinese baseline PTC instructions")},
+	}
 
 	bundle := buildMCPLocaleBundleFromFS(resources, "en-US")
 
-	if got := bundle.ServerInstructions(); got != serverInstructions {
-		t.Fatalf("instructions = %q, want baseline %q", got, serverInstructions)
+	if got := bundle.ServerInstructions(); got != "Chinese baseline instructions" {
+		t.Fatalf("instructions = %q, want baseline instructions", got)
+	}
+	if got := bundle.PTCServerInstructions(); got != "Chinese baseline PTC instructions" {
+		t.Fatalf("PTC instructions = %q, want baseline instructions", got)
 	}
 	if bundle.toolMeta != nil {
 		t.Fatalf("tool metadata = %#v, want no overlay", bundle.toolMeta)
@@ -75,7 +82,10 @@ func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreUnavailable(t *testing.T
 
 func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) {
 	resources := fstest.MapFS{
+		"schemas/locales/zh-CN/instructions.txt":         &fstest.MapFile{Data: []byte("Chinese baseline instructions")},
+		"schemas/locales/zh-CN/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("Chinese baseline PTC instructions")},
 		"schemas/locales/en-US/instructions.txt":         &fstest.MapFile{Data: []byte("English instructions")},
+		"schemas/locales/en-US/ptc_instructions.txt":     &fstest.MapFile{Data: []byte("English PTC instructions")},
 		"schemas/locales/en-US/tools_meta.json":          &fstest.MapFile{Data: []byte(`{`)},
 		"schemas/locales/en-US/schema_descriptions.json": &fstest.MapFile{Data: []byte(`{`)},
 	}
@@ -84,6 +94,9 @@ func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) 
 
 	if got := bundle.ServerInstructions(); got != "English instructions" {
 		t.Fatalf("instructions = %q, want localized instructions", got)
+	}
+	if got := bundle.PTCServerInstructions(); got != "English PTC instructions" {
+		t.Fatalf("PTC instructions = %q, want localized instructions", got)
 	}
 	if bundle.toolMeta != nil {
 		t.Fatalf("tool metadata = %#v, want no overlay", bundle.toolMeta)

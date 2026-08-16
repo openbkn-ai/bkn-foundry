@@ -8,14 +8,58 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
+
+func TestPTCMCPInitializeUsesRequestLocale(t *testing.T) {
+	handler, err := NewPTCMCPHandlerWith(nil, &fakeExecutor{}, defaultPTCServicePort)
+	if err != nil {
+		t.Fatalf("create PTC MCP handler: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, ptcEndpointPath, strings.NewReader(`{
+		"jsonrpc":"2.0",
+		"id":1,
+		"method":"initialize",
+		"params":{
+			"protocolVersion":"2025-06-18",
+			"capabilities":{},
+			"clientInfo":{"name":"locale-test","version":"1.0"}
+		}
+	}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("initialize status = %d, body = %s", response.Code, response.Body.String())
+	}
+	if response.Header().Get(server.HeaderKeySessionID) == "" {
+		t.Fatal("initialize response did not return Mcp-Session-Id")
+	}
+	var payload struct {
+		Result struct {
+			Instructions string `json:"instructions"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode initialize response: %v", err)
+	}
+	if !strings.HasPrefix(payload.Result.Instructions, "This endpoint provides two execution tools") {
+		t.Fatalf("instructions = %q, want English PTC instructions", payload.Result.Instructions)
+	}
+}
 
 // fakeExecutor 记录最后一次沙箱执行请求。
 type fakeExecutor struct {
@@ -123,7 +167,7 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	executor := &fakeExecutor{}
 	handler := handlePTCExecute(executor, toolkit, ptcToolByName(t, "run_code"))
 
-	ctx := common.SetRawTokenToCtx(context.Background(), "tok-123")
+	ctx := common.SetLanguageToCtx(common.SetRawTokenToCtx(context.Background(), "tok-123"), "en-US")
 	_, err := handler(ctx, ptcCallRequest("run_code", map[string]any{
 		"code": "print(1)\n\nprint(2)",
 		"bkn_context": map[string]any{
@@ -153,6 +197,12 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	}
 	if executor.last.Event["mcp"] != toolkit.SandboxMCPURL {
 		t.Fatalf("未下发沙箱回访地址: %v", executor.last.Event["mcp"])
+	}
+	if executor.last.Event["locale"] != "en-US" {
+		t.Fatalf("未下发有效语言: %v", executor.last.Event["locale"])
+	}
+	if !strings.Contains(toolkit.Stub, `"Accept-Language": _CFG.get("locale", "zh-CN")`) {
+		t.Fatal("PTC sandbox stub does not forward the effective locale to MCP")
 	}
 }
 

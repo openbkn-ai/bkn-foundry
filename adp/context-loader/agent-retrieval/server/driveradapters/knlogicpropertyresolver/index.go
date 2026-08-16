@@ -51,20 +51,20 @@ func NewKnLogicPropertyResolverHandler() KnLogicPropertyResolverHandler {
 	return handler
 }
 
-// ResolveLogicProperties 解析逻辑属性
-// @Summary 解析逻辑属性
-// @Description 基于 query + 上下文生成 dynamic_params，并调用底层 ontology-query 接口批量获取逻辑属性值（metric + tool）
+// ResolveLogicProperties resolves logic properties.
+// @Summary Resolve logic properties
+// @Description Generates dynamic_params from the query and context, then retrieves logic-property values (metrics and tools) through ontology-query.
 // @Tags kn-context-loader
 // @Accept json
 // @Produce json
-// @Param x-account-id header string false "账户ID"
-// @Param x-account-type header string false "账户类型"
-// @Param x-kn-id header string true "知识网络ID"
-// @Param body body interfaces.ResolveLogicPropertiesRequest true "请求参数"
-// @Success 200 {object} interfaces.ResolveLogicPropertiesResponse "成功响应"
-// @Failure 400 {object} interfaces.MissingParamsError "缺参错误"
-// @Failure 404 {object} interfaces.KnBaseError "对象类不存在"
-// @Failure 500 {object} interfaces.KnBaseError "服务器错误"
+// @Param x-account-id header string false "Account ID"
+// @Param x-account-type header string false "Account type"
+// @Param x-kn-id header string true "Knowledge network ID"
+// @Param body body interfaces.ResolveLogicPropertiesRequest true "Request payload"
+// @Success 200 {object} interfaces.ResolveLogicPropertiesResponse "Success response"
+// @Failure 400 {object} interfaces.MissingParamsError "Missing parameter error"
+// @Failure 404 {object} interfaces.KnBaseError "Object type not found"
+// @Failure 500 {object} interfaces.KnBaseError "Internal server error"
 // @Router /api/kn/logic-property-resolver [post]
 func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 	var err error

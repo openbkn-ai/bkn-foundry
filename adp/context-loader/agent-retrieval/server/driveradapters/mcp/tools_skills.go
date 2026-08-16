@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
-// handleListSkills handles list_skills tool calls: 浏览已发布技能，不需要知识网络上下文。
+// handleListSkills handles list_skills tool calls without a knowledge-network context.
 func handleListSkills(svc knskills.KnSkillsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -38,7 +38,7 @@ func handleListSkills(svc knskills.KnSkillsService) func(ctx context.Context, re
 	}
 }
 
-// handleGetSkillContent handles get_skill_content tool calls: SKILL.md 正文 + 包内文件清单。
+// handleGetSkillContent handles get_skill_content calls for SKILL.md and its file list.
 func handleGetSkillContent(svc knskills.KnSkillsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -48,7 +48,7 @@ func handleGetSkillContent(svc knskills.KnSkillsService) func(ctx context.Contex
 
 		skillID := getStringArg(req, "skill_id", "")
 		if skillID == "" {
-			return mcp.NewToolResultError(knskills.ErrSkillIDRequired.Error()), nil
+			return mcp.NewToolResultError(knskills.SkillIDRequiredError(ctx).Error()), nil
 		}
 
 		resp, err := svc.GetSkillContent(ctx, skillID)
@@ -63,7 +63,7 @@ func handleGetSkillContent(svc knskills.KnSkillsService) func(ctx context.Contex
 	}
 }
 
-// handleReadSkillFile handles read_skill_file tool calls: 按 rel_path 取技能包内单个文件正文。
+// handleReadSkillFile handles read_skill_file calls for one skill package file.
 func handleReadSkillFile(svc knskills.KnSkillsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -76,10 +76,10 @@ func handleReadSkillFile(svc knskills.KnSkillsService) func(ctx context.Context,
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if readReq.SkillID == "" {
-			return mcp.NewToolResultError(knskills.ErrSkillIDRequired.Error()), nil
+			return mcp.NewToolResultError(knskills.SkillIDRequiredError(ctx).Error()), nil
 		}
 		if readReq.RelPath == "" {
-			return mcp.NewToolResultError(knskills.ErrRelPathRequired.Error()), nil
+			return mcp.NewToolResultError(knskills.RelPathRequiredError(ctx).Error()), nil
 		}
 
 		resp, err := svc.ReadSkillFile(ctx, readReq)
@@ -94,8 +94,8 @@ func handleReadSkillFile(svc knskills.KnSkillsService) func(ctx context.Context,
 	}
 }
 
-// handleExecuteSkill handles execute_skill tool calls: 在沙箱内执行技能入口命令。
-// 授权由执行工厂按账户强制（execute / public_access 二者之一）。
+// handleExecuteSkill runs a skill entry command in the sandbox.
+// Execution Factory enforces either execute or public_access authorization.
 func handleExecuteSkill(svc knskills.KnSkillsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		execReq := &knskills.ExecuteSkillReq{}
@@ -103,17 +103,17 @@ func handleExecuteSkill(svc knskills.KnSkillsService) func(ctx context.Context, 
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if execReq.SkillID == "" {
-			return mcp.NewToolResultError(knskills.ErrSkillIDRequired.Error()), nil
+			return mcp.NewToolResultError(knskills.SkillIDRequiredError(ctx).Error()), nil
 		}
 		if execReq.EntryShell == "" {
-			return mcp.NewToolResultError(knskills.ErrEntryShellRequired.Error()), nil
+			return mcp.NewToolResultError(knskills.EntryShellRequiredError(ctx).Error()), nil
 		}
 
 		resp, err := svc.ExecuteSkill(ctx, execReq)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		// 与 execute_action 一致：执行结果始终返回 JSON，exit_code / stdout 需机器可消费。
+		// Match execute_action: execution results are always machine-readable JSON.
 		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil

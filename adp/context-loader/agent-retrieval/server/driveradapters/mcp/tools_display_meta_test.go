@@ -179,16 +179,14 @@ func TestEveryRegistrationPathHonoursTheLocale(t *testing.T) {
 	}
 }
 
-// 这条钉的是 /mcp/info 那一侧的 locale 接线，而且必须在非默认 locale 下钉。
-//
-// zh-CN 下本地化覆盖层是空的：OverlaySchemas 原样返回，ToolMeta 也落回基准
-// 文件，于是把 BuildMCPInfo 里的 locale 参数删掉两侧照样相等——默认 locale 的
-// 那条一致性测试永远绿，看不出任何东西。en-US 下两侧才真正走不同的代码路径。
+// This pins locale handling for /mcp/info under a non-default locale.
+// zh-CN has no overlay, so only en-US proves that the info endpoint receives
+// and applies the same locale as tools/list.
 func TestMCPInfoAgreesWithToolsListUnderANonDefaultLocale(t *testing.T) {
 	noExtensions(t)
 	t.Setenv("MCP_LOCALE", "en-US")
 
-	info, err := BuildMCPInfo("https://example.invalid/mcp")
+	info, err := BuildMCPInfoForLocale("https://example.invalid/mcp", "en-US")
 	if err != nil {
 		t.Fatalf("BuildMCPInfo: %v", err)
 	}
