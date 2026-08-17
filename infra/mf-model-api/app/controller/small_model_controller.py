@@ -428,14 +428,14 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
                 # Fall back to the database when cached data is invalid.
                 model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
                 if len(model_info) == 0:
-                    return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                    return JSONResponse(status_code=404, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
                 # Refresh the cache.
                 await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
         else:
             # Query the database when the cache is missing or malformed.
             model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
             if len(model_info) == 0:
-                return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                return JSONResponse(status_code=404, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
             # Cache the database result.
             await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
         # Refresh records written by older mf-model-api instances, whose query did
@@ -443,7 +443,7 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
         if model_info and "f_embedding_dim" not in model_info[0]:
             model_info = small_model_dao.get_model_info_by_name_id(model_name, model_id)
             if len(model_info) == 0:
-                return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                return JSONResponse(status_code=404, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
             await redis_util.set_str(key=cache_key, value=str(model_info), expire=3600 * 24)
         model_info = model_info[0]
         config_info = json.loads(model_info["f_model_config"])
@@ -524,7 +524,8 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
                 # Fall back to the database when cached data is invalid.
                 model_info = _load_small_model(is_default, RERANKER_MODEL_TYPE, model_name, model_id)
                 if len(model_info) == 0:
-                    return JSONResponse(status_code=400, content=_model_missing_error(is_default))
+                    return JSONResponse(status_code=404 if not is_default else 400,
+                                        content=_model_missing_error(is_default))
                 # Refresh the cache.
                 await redis_util.set_str(key=cache_key, value=str(model_info),
                                          expire=_model_cache_ttl(is_default))
@@ -532,7 +533,8 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
             # Query the database when the cache is missing or malformed.
             model_info = _load_small_model(is_default, RERANKER_MODEL_TYPE, model_name, model_id)
             if len(model_info) == 0:
-                return JSONResponse(status_code=400, content=_model_missing_error(is_default))
+                return JSONResponse(status_code=404 if not is_default else 400,
+                                    content=_model_missing_error(is_default))
             # Cache the database result.
             await redis_util.set_str(key=cache_key, value=str(model_info),
                                      expire=_model_cache_ttl(is_default))
