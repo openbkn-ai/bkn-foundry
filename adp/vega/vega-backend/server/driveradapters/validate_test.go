@@ -16,6 +16,7 @@ import (
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 var testSortTypes = map[string]string{
@@ -255,6 +256,25 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		require.Error(t, err)
 	})
 
+	// dataset 的 ref_property 在 #837 之前就是 400，归一化只对原始资源生效，不能顺手把
+	// 这条也放宽——那属于本次回归之外的行为变更。
+	t.Run("ValidateResourceRequest still rejects a dataset self-referencing feature", func(t *testing.T) {
+		req := baseReq([]*interfaces.Property{
+			{
+				Name: "content",
+				Type: interfaces.DataType_Text,
+				Features: []interfaces.PropertyFeature{
+					{FeatureName: "content_fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "content"},
+				},
+			},
+		})
+
+		err := ValidateResourceRequest(ctx, req)
+
+		require.Error(t, err)
+		assert.Equal(t, "content", req.SchemaDefinition[0].Features[0].RefProperty)
+	})
+
 	t.Run("ValidateResourceRequest rejects invalid table feature", func(t *testing.T) {
 		err := ValidateResourceRequest(ctx, &interfaces.ResourceRequest{
 			Name:     "table",
@@ -368,15 +388,47 @@ func TestValidateResourceRequestDatasetSchema(t *testing.T) {
 		}
 	})
 
-	t.Run("validateSchemaProperties rejects self-referencing ref_property", func(t *testing.T) {
-		err := validateSchemaProperties(ctx, []*interfaces.Property{
+	t.Run("NormalizeSelfReferencingFeatures drops self-referencing ref_property", func(t *testing.T) {
+		props := []*interfaces.Property{
 			{Name: "body", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
 				{FeatureName: "body.ft", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "body", IsNative: true},
 			}},
-		}, true)
+		}
 
-		require.Error(t, err)
-		assert.ErrorContains(t, err, "cannot reference itself")
+		resourcelogic.NormalizeSelfReferencingFeatures(props)
+
+		assert.Empty(t, props[0].Features[0].RefProperty)
+		require.NoError(t, validateSchemaProperties(ctx, props, true))
+	})
+
+	t.Run("NormalizeSelfReferencingFeatures keeps ref_property pointing at another field", func(t *testing.T) {
+		props := []*interfaces.Property{
+			{Name: "title_keyword", Type: interfaces.DataType_String},
+			{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+				{FeatureName: "title.keyword", FeatureType: interfaces.PropertyFeatureType_Keyword, RefProperty: "title_keyword"},
+			}},
+		}
+
+		resourcelogic.NormalizeSelfReferencingFeatures(props)
+
+		assert.Equal(t, "title_keyword", props[1].Features[0].RefProperty)
+	})
+
+	// 迁移前平台自己写入的形状就是「特征挂在源字段上、ref_property 指向字段自身」。
+	// 这类存量资源必须仍然能被读改写，否则 vega dataset build 无法重建索引。
+	t.Run("ValidateResourceRequest accepts legacy self-referencing feature", func(t *testing.T) {
+		req := &interfaces.ResourceRequest{
+			Name:     "legacy",
+			Category: interfaces.ResourceCategoryTable,
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "title", Type: interfaces.DataType_Text, Features: []interfaces.PropertyFeature{
+					{FeatureName: "title_fulltext", FeatureType: interfaces.PropertyFeatureType_Fulltext, RefProperty: "title"},
+				}},
+			},
+		}
+
+		require.NoError(t, ValidateResourceRequest(ctx, req))
+		assert.Empty(t, req.SchemaDefinition[0].Features[0].RefProperty)
 	})
 
 	t.Run("validateSchemaProperties accepts valid original resource fields", func(t *testing.T) {

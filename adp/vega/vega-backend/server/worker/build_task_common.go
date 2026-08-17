@@ -157,6 +157,12 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 		schema = schemaDefinition
 	}
 
+	// 从没被 PUT 过的存量资源，库里仍是自引用形状。不抹平的话：dataset 类目会撞上「不许带
+	// ref_property」，text 字段上的 keyword 自引用还会撞上 ref 类型校验（keyword 要求
+	// string），构建任务直接建不起来——正是这个 PR 要解的「索引重建不了」。
+	// 只作用在上面那份深拷贝上，资源行本身不动，等下一次更新自愈。
+	resourcelogic.NormalizeSelfReferencingFeatures(schema)
+
 	if err := validateBuildTaskSchemaFeatures(resource.Category, schema); err != nil {
 		return nil, err
 	}
