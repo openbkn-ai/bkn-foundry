@@ -172,7 +172,28 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
+	resolveTotalCount(req, resp)
 	return
+}
+
+// resolveTotalCount recovers the "zero hits" case that the wire format cannot carry.
+//
+// ontology-query's Objects.TotalCount is `json:"total_count,omitempty"`, so a real
+// total of 0 is dropped before it ever reaches us — indistinguishable, in the body
+// alone, from the total not having been computed. The request tells them apart:
+// need_total is forced on for every call, and the only thing downstream does with it
+// is turn it off when search_after is non-empty (logics/common.go BuildDslQuery). So
+// with no cursor in the request, an absent total means the count ran and came back 0;
+// with a cursor, it means no count ran and the caller must not read it as 0.
+func resolveTotalCount(req *interfaces.QueryObjectInstancesReq, resp *interfaces.QueryObjectInstancesResp) {
+	if resp == nil || resp.TotalCount != nil {
+		return
+	}
+	if req != nil && len(req.SearchAfter) > 0 {
+		return
+	}
+	zero := int64(0)
+	resp.TotalCount = &zero
 }
 
 // classifyQueryError re-classifies a downstream client error (4xx) from

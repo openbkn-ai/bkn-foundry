@@ -81,6 +81,54 @@ func TestQueryObjectInstancesResp_TotalCountIsThreeState(t *testing.T) {
 	})
 }
 
+// 下游 Objects.TotalCount 自己带 omitempty，真实的 0 在线上根本传不过来，光看响应体
+// 分不出「零命中」与「没算」。判据在请求里：无游标 ⇒ 算过了，缺失即 0；有游标 ⇒ 下游
+// 强制关了总数计算，必须保持缺失。
+func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
+	convey.Convey("无 search_after 时缺失的总数补成 0", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		client, mockHTTP := newObjectQueryClient(t, ctrl)
+		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, map[string]any{"datas": []any{}}, nil)
+
+		resp, err := client.QueryObjectInstances(context.Background(),
+			&interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
+		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(0))
+	})
+
+	convey.Convey("带 search_after 时保持缺失，不伪造 0", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		client, mockHTTP := newObjectQueryClient(t, ctrl)
+		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, map[string]any{"datas": []any{map[string]any{"id": "i1"}}}, nil)
+
+		resp, err := client.QueryObjectInstances(context.Background(),
+			&interfaces.QueryObjectInstancesReq{
+				KnID: "kn1", OtID: "ot1", Limit: 10, SearchAfter: []any{"cursor"},
+			})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.TotalCount, convey.ShouldBeNil)
+	})
+
+	convey.Convey("下游给了真实总数就不动它", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		client, mockHTTP := newObjectQueryClient(t, ctrl)
+		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, map[string]any{"datas": []any{}, "total_count": 42}, nil)
+
+		resp, err := client.QueryObjectInstances(context.Background(),
+			&interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(resp.TotalCount, convey.ShouldNotBeNil)
+		convey.So(*resp.TotalCount, convey.ShouldEqual, int64(42))
+	})
+}
+
 // "sort":[null] 绑成 []*SortSpec{nil}。下游 validate.go 与 logics/common.go 都直接取
 // sp.Field，转发过去换来的是空指针 panic 而不是 400，所以结构性 nil 必须在本层拦掉。
 func TestQueryObjectInstances_RejectsNilSortEntry(t *testing.T) {
