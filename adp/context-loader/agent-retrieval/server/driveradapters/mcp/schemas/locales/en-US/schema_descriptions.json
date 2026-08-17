@@ -138,7 +138,7 @@
     "input_schema.properties.offset.description": "Legacy offset. Prefer search_after when available.",
     "input_schema.properties.properties.description": "Optional selected property names to return.",
     "output_schema.properties.datas.description": "Object instances returned by the query.",
-    "output_schema.properties.total_count.description": "Total number of instances matching the filter, independent of limit. Always returned - read it instead of accumulating page sizes.",
+    "output_schema.properties.total_count.description": "Total number of instances matching the filter, independent of limit. Always returned, and 0 on no match rather than absent - read it instead of accumulating page sizes.",
     "output_schema.properties.search_after.description": "Cursor for the next page."
   },
   "run_sql": {

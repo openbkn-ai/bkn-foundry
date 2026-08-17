@@ -469,7 +469,7 @@ components:
           format: int64
           description: |
             满足过滤条件的实例总数，不受 `limit` 限制。恒定返回（服务端对下游固定
-            开启 `need_total`），仅在总数为 0 时因 `omitempty` 不出现。
+            开启 `need_total`），零命中时为 `0` 而非缺失。
         search_after:
           type: array
           items: {}

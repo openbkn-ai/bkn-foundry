@@ -252,7 +252,7 @@
       },
       "total_count": {
         "type": "integer",
-        "description": "满足过滤条件的实例总数（不受 limit 限制），恒返回。判断「一共有多少条」用它，不要靠翻页累加。"
+        "description": "满足过滤条件的实例总数（不受 limit 限制），恒返回，零命中时是 0 而非字段缺失。判断「一共有多少条」用它，不要靠翻页累加。"
       },
       "search_after": {
         "type": "array",

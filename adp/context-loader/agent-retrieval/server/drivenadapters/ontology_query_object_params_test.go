@@ -56,6 +56,16 @@ func TestQueryObjectInstances_AlwaysAsksForTotal(t *testing.T) {
 	})
 }
 
+// total_count 必须连 0 一起序列化。带 omitempty 的话零命中与「服务端没回」在调用方
+// 看来长得一模一样，而零命中是有效结论，不该缺失。
+func TestQueryObjectInstancesResp_SerializesZeroTotal(t *testing.T) {
+	convey.Convey("零命中时 total_count 仍出现且为 0", t, func() {
+		out, err := json.Marshal(&interfaces.QueryObjectInstancesResp{Data: []any{}})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(string(out), convey.ShouldContainSubstring, `"total_count":0`)
+	})
+}
+
 // sort 原样透传：field 是否属于该对象类只有下游知道，本层再校验一半只会让两侧规则漂移。
 func TestQueryObjectInstances_ForwardsSort(t *testing.T) {
 	convey.Convey("sort 原样进请求体", t, func() {

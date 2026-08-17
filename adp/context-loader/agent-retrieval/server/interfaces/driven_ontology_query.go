@@ -77,7 +77,11 @@ type FlatFilter struct {
 type QueryObjectInstancesResp struct {
 	Data          []any          `json:"datas"`                 // List of object instances
 	ObjectConcept map[string]any `json:"object_type,omitempty"` // Object type definition，由 req.include_type_info 控制是否返回
-	TotalCount    int64          `json:"total_count,omitempty"` // 命中总数（need_total 时有效）
+	// TotalCount 满足过滤条件的实例总数，不受 limit 限制。
+	// 不带 omitempty：driven adapter 对下游固定开启 need_total，这个值恒有意义，
+	// 而「字段缺失」与「总数为 0」在调用方看来无法区分——零命中是有效结论，
+	// 不该长得像服务没回。
+	TotalCount int64 `json:"total_count"`
 	// SearchAfter 下一页游标：非空时把它作为下次请求的 search_after 传入以取下一页；为空表示无更多数据。
 	SearchAfter []any `json:"search_after,omitempty"`
 }
