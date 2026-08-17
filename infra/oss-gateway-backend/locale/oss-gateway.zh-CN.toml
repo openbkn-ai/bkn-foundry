@@ -1,3 +1,7 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
 [OssGateway.BadRequest]
 Message = "请求错误"
 Description = "请求参数无效。"
