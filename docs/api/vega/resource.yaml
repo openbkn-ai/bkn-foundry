@@ -478,7 +478,9 @@ components:
         is_native:
           type: boolean
         config:
-          description: 特性配置，opaque
+          description: |
+            特性配置。`feature_type=vector` 时，`embedding_model` 为模型管理服务中的
+            embedding `model_id`；省略时继承 `index_config.default_embedding_model`。
           type: object
           additionalProperties: true
     LogicDefinitionNode:
@@ -745,6 +747,7 @@ components:
         default_fulltext_analyzer:
           type: string
         default_embedding_model:
+          description: 默认 embedding 模型的 `model_id`；vector feature 未设置 `config.embedding_model` 时使用。
           type: string
     ListResources:
       description: 资源列表响应

@@ -359,7 +359,6 @@ components:
         - mode
         - total_count
         - synced_count
-        - vectorized_count
         - creator
         - create_time
       properties:
@@ -409,10 +408,6 @@ components:
           description: 已同步数
           type: integer
           format: int64
-        vectorized_count:
-          description: 已向量化数
-          type: integer
-          format: int64
         synced_mark:
           description: 同步标记（增量构建用）
           type: string
@@ -442,12 +437,10 @@ components:
           type: string
         index_config:
           $ref: "#/components/schemas/BuildTaskIndexConfig"
-        index_health:
-          $ref: "#/components/schemas/IndexHealth"
     BuildTaskSummary:
       description: 构建任务列表摘要；索引配置快照和 failure_detail 请调用单条详情接口获取。
       type: object
-      required: [id, resource_id, catalog_id, status, mode, total_count, synced_count, vectorized_count, synced_mark, creator, create_time]
+      required: [id, resource_id, catalog_id, status, mode, total_count, synced_count, synced_mark, creator, create_time]
       properties:
         id: { type: string }
         resource_id: { type: string }
@@ -459,7 +452,6 @@ components:
         execute_type: { type: string }
         total_count: { type: integer, format: int64 }
         synced_count: { type: integer, format: int64 }
-        vectorized_count: { type: integer, format: int64 }
         synced_mark: { type: string }
         error_msg: { type: string }
         creator: { $ref: "#/components/schemas/AccountInfo" }
@@ -467,7 +459,6 @@ components:
         start_time: { type: integer, format: int64 }
         finish_time: { type: integer, format: int64 }
         last_progress_time: { type: integer, format: int64 }
-        index_health: { $ref: "#/components/schemas/IndexHealth" }
     BuildTaskIndexConfig:
       description: 创建任务时从 Resource 派生的索引配置快照
       type: object
@@ -485,42 +476,28 @@ components:
       properties:
         vector:
           type: object
+          description: 创建构建任务时解析并固化的嵌入模型快照
           required:
             - model_id
-            - dimensions
+            - embedding_dim
           properties:
             model_id:
               type: string
-            dimensions:
+            model_name:
+              type: string
+            model_type:
+              type: string
+            embedding_dim:
+              type: integer
+            batch_size:
+              type: integer
+            max_tokens:
               type: integer
         fulltext:
           type: object
           properties:
             analyzer:
               type: string
-    IndexHealth:
-      description: 索引派生健康状态；不持久化
-      type: object
-      required:
-        - embedding
-        - fulltext
-        - usable
-      properties:
-        embedding:
-          type: string
-          enum:
-            - none
-            - building
-            - ok
-            - partial
-            - failed
-        fulltext:
-          type: string
-          enum:
-            - none
-            - ok
-        usable:
-          type: boolean
     CreateBuildTaskRequest:
       description: 创建构建任务请求体
       type: object

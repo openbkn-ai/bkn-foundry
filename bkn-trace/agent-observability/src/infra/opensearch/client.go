@@ -344,6 +344,40 @@ func (c *Client) EnsureIndex(ctx context.Context, index string, mapping []byte) 
 	return fmt.Errorf("opensearch create-index failed with status %d: %s", resp.StatusCode, string(body))
 }
 
+func (c *Client) AliasExists(ctx context.Context, alias string) (bool, error) {
+	return c.resourceExists(ctx, http.MethodGet, "_alias/"+strings.TrimLeft(alias, "/"))
+}
+
+func (c *Client) IndexExists(ctx context.Context, index string) (bool, error) {
+	return c.resourceExists(ctx, http.MethodHead, strings.TrimLeft(index, "/"))
+}
+
+func (c *Client) resourceExists(ctx context.Context, method, resource string) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+"/"+resource, nil)
+	if err != nil {
+		return false, fmt.Errorf("create opensearch existence request: %w", err)
+	}
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("execute opensearch existence request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return true, nil
+	}
+	if resp.StatusCode == http.StatusNotFound {
+		return false, nil
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, fmt.Errorf("read opensearch existence response: %w", err)
+	}
+	return false, fmt.Errorf("opensearch existence check failed with status %d: %s", resp.StatusCode, string(body))
+}
+
 func (c *Client) CountDocuments(ctx context.Context, index string) (uint64, error) {
 	body, err := c.Search(ctx, index, []byte(`{"size":0,"track_total_hits":true}`))
 	if err != nil {

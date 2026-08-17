@@ -327,7 +327,7 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 		defaultFulltextAnalyzer = resource.IndexConfig.DefaultFulltextAnalyzer
 	}
 
-	embeddingModelCache := map[string]interfaces.BuildTaskEmbeddingConfig{}
+	embeddingModelCache := map[string]*interfaces.SmallModel{}
 
 	for _, prop := range resource.SchemaDefinition {
 		if prop == nil {
@@ -340,24 +340,35 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 			}
 			switch feature.FeatureType {
 			case interfaces.PropertyFeatureType_Vector:
-				model := stringConfigValue(feature.Config, "embedding_model")
-				if model == "" {
-					model = defaultEmbeddingModel
+				modelID := stringConfigValue(feature.Config, "embedding_model")
+				if modelID == "" {
+					modelID = defaultEmbeddingModel
 				}
-				embeddingConfig, ok := embeddingModelCache[model]
+				if modelID == "" {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel).
+						WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", fieldName))
+				}
+				model, ok := embeddingModelCache[modelID]
 				if !ok {
-					normalizedModel, modelDimensions, err := bts.normalizeEmbeddingModel(ctx, model, fieldName, 0)
+					var err error
+					model, err = bts.mfs.GetModelByID(ctx, modelID)
 					if err != nil {
-						return err
+						if errors.Is(err, interfaces.ErrModelNotFound) {
+							return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel).
+								WithErrorDetails(fmt.Sprintf("embedding model ID %q for vector field %q not found", modelID, fieldName))
+						}
+						return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+							WithErrorDetails(err.Error())
 					}
-					embeddingConfig = interfaces.BuildTaskEmbeddingConfig{
-						ModelID:    normalizedModel,
-						Dimensions: modelDimensions,
+					if model == nil || model.ModelID == "" {
+						return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+							WithErrorDetails(fmt.Sprintf("model %q is unavailable", modelID))
 					}
-					embeddingModelCache[model] = embeddingConfig
+					embeddingModelCache[modelID] = model
 				}
+				embeddingModel := *model
 				fieldConfig := buildTask.IndexConfig.Features[fieldName]
-				fieldConfig.Vector = &embeddingConfig
+				fieldConfig.Vector = &embeddingModel
 				buildTask.IndexConfig.Features[fieldName] = fieldConfig
 			case interfaces.PropertyFeatureType_Fulltext:
 				analyzer := stringConfigValue(feature.Config, "analyzer")
@@ -391,29 +402,6 @@ func stringConfigValue(config map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
-func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embeddingModel string, embeddingFields string, modelDimensions int) (string, int, error) {
-	if embeddingModel == "" && embeddingFields != "" {
-		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel).
-			WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", embeddingFields))
-	}
-	if embeddingModel == "" {
-		return "", modelDimensions, nil
-	}
-	// The embedding_model is uniformly normalized and stored as a model ID: if the model name is passed in, it is parsed as an ID and the dimensions are completed.
-	// When the model ID is already passed in, GetModelByName cannot be found by name (err!) = nil), at this time, if a dimension is already included, it is retained as ID as it is.
-	// If a vector index cannot be created and there is neither a resolution nor a dimension, it will be treated as an error.
-	if model, err := bts.mfs.GetModelByName(ctx, embeddingModel); err == nil {
-		embeddingModel = model.ModelID
-		if modelDimensions == 0 {
-			modelDimensions = model.EmbeddingDim
-		}
-	} else if modelDimensions == 0 {
-		return "", 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
-			WithErrorDetails(err.Error())
-	}
-	return embeddingModel, modelDimensions, nil
-}
-
 // GetByID retrieves a build task by ID.
 func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task")
@@ -440,7 +428,6 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 		logger.Warnf("Failed to populate build task account names: %v", err)
 	}
 
-	buildTask.IndexHealth = computeIndexHealth(buildTask)
 	span.SetStatus(codes.Ok, "")
 	return buildTask, nil
 }
@@ -621,57 +608,6 @@ func (bts *buildTaskService) InternalGetStatus(ctx context.Context, id string) (
 	return bts.bta.GetStatus(ctx, id)
 }
 
-// computeIndexHealth derives the health of each index based on the current count (without being recorded in the database). embedding and fulltext
-// Independent of each other: fulltext takes effect immediately upon synchronization, and it's done once created. embedding is not considered ok until the vector is filled up.
-// Only give ok/partial/failed in the final state, and uniformly build during progress to avoid mistakenly reporting the progress as a failure in the middle.
-func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
-	h := &interfaces.IndexHealth{Embedding: "none", Fulltext: "none"}
-	if hasFulltextIndexConfig(bt) {
-		h.Fulltext = "ok"
-	}
-	switch {
-	case !hasEmbeddingIndexConfig(bt):
-		h.Embedding = "none"
-	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusPending:
-		h.Embedding = "building"
-	case bt.SyncedCount == 0:
-		// No data can be vectorized, and an empty index is considered available
-		h.Embedding = "ok"
-	case bt.VectorizedCount >= bt.SyncedCount:
-		h.Embedding = "ok"
-	case bt.VectorizedCount == 0:
-		h.Embedding = "failed"
-	default:
-		h.Embedding = "partial"
-	}
-	h.Usable = h.Embedding == "none" || h.Embedding == "ok"
-	return h
-}
-
-func hasEmbeddingIndexConfig(bt *interfaces.BuildTask) bool {
-	if bt == nil || bt.IndexConfig == nil {
-		return false
-	}
-	for _, feature := range bt.IndexConfig.Features {
-		if feature.Vector != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func hasFulltextIndexConfig(bt *interfaces.BuildTask) bool {
-	if bt == nil || bt.IndexConfig == nil {
-		return false
-	}
-	for _, feature := range bt.IndexConfig.Features {
-		if feature.Fulltext != nil {
-			return true
-		}
-	}
-	return false
-}
-
 // List retrieves build tasks with filters and pagination.
 func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
@@ -691,12 +627,6 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks))
 	for _, bt := range buildTasks {
 		accountInfos = append(accountInfos, &bt.Creator)
-		bt.IndexHealth = computeIndexHealth(&interfaces.BuildTask{
-			Status:          bt.Status,
-			SyncedCount:     bt.SyncedCount,
-			VectorizedCount: bt.VectorizedCount,
-			IndexConfig:     bt.IndexConfig,
-		})
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
 		span.RecordError(err)
@@ -969,7 +899,7 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 
 	deleteIDs := make([]string, 0, len(toDelete))
 	for _, bt := range toDelete {
-		// 先 drop 索引（尽力，失败仅记日志），再删任务行——与删资源/删 catalog 的级联
+		// Drop the index on a best-effort basis before deleting the task row, consistent with resource and catalog cascades.
 		// Semantic consistency is maintained to prevent the deletion of a single UI task from leaving an orphan index (#66 only covers the two paths of resources and directories).
 		idx := interfaces.BuildIndexName(bt.ResourceID, bt.ID)
 		if err := bts.lim.DeleteIndex(ctx, idx); err != nil {

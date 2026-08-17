@@ -25,6 +25,7 @@ import (
 // KnQuerySubgraphHandler 子图查询处理器
 type KnQuerySubgraphHandler interface {
 	QueryInstanceSubgraph(c *gin.Context)
+	ExploreSubgraph(c *gin.Context)
 }
 
 type knQuerySubgraphHandler struct {
@@ -105,5 +106,49 @@ func (h *knQuerySubgraphHandler) QueryInstanceSubgraph(c *gin.Context) {
 	}
 
 	// 返回成功响应
+	rest.ReplyOK(c, http.StatusOK, resp)
+}
+
+// ExploreSubgraph 起点探索式子图查询
+func (h *knQuerySubgraphHandler) ExploreSubgraph(c *gin.Context) {
+	var err error
+	req := &interfaces.ExploreSubgraphReq{}
+
+	if err = c.ShouldBindHeader(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	if err = c.ShouldBindQuery(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	if err = c.ShouldBindJSON(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	if err = defaults.Set(req); err != nil {
+		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
+		rest.ReplyError(c, err)
+		return
+	}
+
+	if err = validator.New().Struct(req); err != nil {
+		rest.ReplyError(c, err)
+		return
+	}
+
+	resp, err := h.KnQuerySubgraphService.ExploreSubgraph(c.Request.Context(), req)
+	if err != nil {
+		h.Logger.Errorf("[KnQuerySubgraphHandler#ExploreSubgraph] ExploreSubgraph failed, err: %v", err)
+		rest.ReplyError(c, err)
+		return
+	}
+
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

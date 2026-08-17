@@ -12,14 +12,12 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
@@ -27,6 +25,7 @@ import (
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/local_index"
+	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/resource"
 )
 
@@ -52,9 +51,8 @@ type streamingBuildWorker struct {
 	httpClient  rest.HTTPClient
 	kafkaAccess interfaces.KafkaAccess
 	lim         interfaces.LocalIndexManager
+	mfs         interfaces.ModelFactoryService
 	rs          interfaces.ResourceService
-
-	embeddingQueue chan<- string
 }
 
 // NewStreamingBuildWorker creates a new build worker.
@@ -67,6 +65,7 @@ func NewStreamingBuildWorker(appSetting *common.AppSetting) *streamingBuildWorke
 		httpClient:  common.NewHTTPClient(),
 		kafkaAccess: logics.KA,
 		lim:         local_index.NewLocalIndexManager(appSetting),
+		mfs:         model_factory.NewModelFactoryService(appSetting),
 		rs:          rs,
 	}
 }
@@ -81,19 +80,6 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	// Asynchronous tasks have no original request context and perform downstream permission checks as the task creator
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
-	// Tasks that are stopped during the queue are skipped directly to avoid reviving and overwriting the status after leaving the queue.
-	// stopping the queue indicates that the original worker is no longer available, and it will be stopped at the end.
-	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
-		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping ||
-		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
-		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
-		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
-			if _, err := sbw.bts.InternalMarkStopped(ctx, taskID); err != nil {
-				return fmt.Errorf("update build task status failed: %w", err)
-			}
-		}
-		return nil
-	}
 	resourceID := buildTaskInfo.ResourceID
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
@@ -156,14 +142,6 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)
 	}
-	if buildTaskHasEmbedding(buildTaskInfo) {
-		err = sendEmbeddingTask(ctx, sbw.embeddingQueue, taskID)
-		if err != nil {
-			return fmt.Errorf("send embedding task failed: %w", err)
-		}
-		logger.Infof("Embedding task sent for task %s", taskID)
-	}
-
 	// Execute build
 	err = sbw.executeBuild(ctx, catalog, resource, buildTaskInfo, indexName, database, sourceIdentifier)
 	if err != nil {
@@ -200,21 +178,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 		fieldMap[prop.Name] = prop
 	}
 
-	// Create embedding topic if needed
-	var writer *kafka.Writer
-	if buildTaskHasEmbedding(buildTaskInfo) {
-		topic := getEmbeddingTopic(resource.ID, buildTaskInfo.ID)
-		// Create Kafka writer
-		writer, err = sbw.kafkaAccess.NewWriter(ctx, topic)
-		if err != nil {
-			logger.Errorf("failed to create Kafka writer: %v", err)
-		}
-		// Create Kafka topic if it doesn't exist
-		if err := sbw.kafkaAccess.CreateTopic(ctx, topic); err != nil {
-			logger.Errorf("Failed to create Kafka topic %s failed: %v", topic, err)
-		}
-		defer sbw.kafkaAccess.CloseWriter(writer)
-	}
+	pipeline := &embeddingPipeline{mfs: sbw.mfs}
 
 	err = sbw.createKafkaConnector(ctx, catalog, resource, database, sourceIdentifier)
 	if err != nil {
@@ -349,29 +313,34 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 						document[k] = v
 					}
 
-					if docIDs, err := sbw.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": getOldDocID(getPrimaryKeyValue(keyMap)), "document": document}}); err != nil {
+					kafkaKeyValues, err := getKafkaKeyValues(buildTaskBuildKeyFields(buildTaskInfo), keyMap)
+					if err != nil {
+						return fmt.Errorf("extract Kafka key values: %w", err)
+					}
+					docID, err := generateDocumentID(kafkaKeyValues)
+					if err != nil {
+						return fmt.Errorf("generate streaming document ID: %w", err)
+					}
+					if buildTaskHasEmbedding(buildTaskInfo) {
+						if err := pipeline.enrich(ctx, map[string]map[string]any{docID: document}, buildTaskEmbeddingConfig(buildTaskInfo)); err != nil {
+							return fmt.Errorf("vectorize streaming document: %w", err)
+						}
+					}
+					if _, err := sbw.lim.IndexDocuments(ctx, indexName, map[string]map[string]any{docID: document}); err != nil {
 						logger.Errorf("Failed to write document to local index: %v", err)
 						time.Sleep(retryInterval)
 						continue
-					} else if buildTaskHasEmbedding(buildTaskInfo) && len(docIDs) > 0 {
-						// Send document ID to Kafka for embedding
-						err = sendEmbeddingMessage(ctx, writer, sbw.kafkaAccess, docIDs)
-						if err != nil {
-							logger.Errorf(err.Error())
-							time.Sleep(retryInterval)
-							continue
-						}
 					}
 				case "u":
 					// Update operation
-					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, writer); err != nil {
+					if err := sbw.handleUpdateOperation(ctx, keyMap, after, indexName, buildTaskInfo, pipeline); err != nil {
 						logger.Errorf("Failed to handle update operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
 					}
 				case "d":
 					// Delete operation
-					if err := sbw.handleDeleteOperation(ctx, keyMap, indexName); err != nil {
+					if err := sbw.handleDeleteOperation(ctx, keyMap, indexName, buildTaskInfo); err != nil {
 						logger.Errorf("Failed to handle delete operation: %v", err)
 						time.Sleep(retryInterval)
 						continue
@@ -574,13 +543,17 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 	}
 }
 
-// handleUpdateOperation handles update operations
-func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, writer *kafka.Writer) error {
-	primaryKeyValues := getPrimaryKeyValue(keyMap)
-	if primaryKeyValues == nil {
-		return fmt.Errorf("failed to extract unique key values from keyMap")
+// handleUpdateOperation handles update operations.
+func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, pipeline *embeddingPipeline) error {
+	documentIDFields := buildTaskBuildKeyFields(buildTaskInfo)
+	kafkaKeyValues, err := getKafkaKeyValues(documentIDFields, keyMap)
+	if err != nil {
+		return fmt.Errorf("extract Kafka key values: %w", err)
 	}
-	oldDocID := getOldDocID(primaryKeyValues)
+	oldDocID, err := generateDocumentID(kafkaKeyValues)
+	if err != nil {
+		return fmt.Errorf("generate old document ID: %w", err)
+	}
 
 	// Create updated document from the after data
 	document := make(map[string]any)
@@ -588,35 +561,42 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 		document[k] = v
 	}
 
-	newDocID := getNewDocID(primaryKeyValues, document)
-	if newDocID != oldDocID {
-		err := sbw.lim.DeleteDocument(ctx, indexName, oldDocID)
-		if err != nil {
-			return fmt.Errorf("failed to delete document in local index: %w", err)
+	newKeyValues, err := extractKeyValues(documentIDFields, document)
+	if err != nil {
+		return fmt.Errorf("generate new document key values: %w", err)
+	}
+	newDocID, err := generateDocumentID(newKeyValues)
+	if err != nil {
+		return fmt.Errorf("generate new document ID: %w", err)
+	}
+	if buildTaskHasEmbedding(buildTaskInfo) {
+		if err := pipeline.enrich(ctx, map[string]map[string]any{newDocID: document}, buildTaskEmbeddingConfig(buildTaskInfo)); err != nil {
+			return fmt.Errorf("vectorize updated document: %w", err)
 		}
 	}
-
-	_, err := sbw.lim.UpsertDocuments(ctx, indexName, []map[string]any{{"id": newDocID, "document": document}})
+	_, err = sbw.lim.IndexDocuments(ctx, indexName, map[string]map[string]any{newDocID: document})
 	if err != nil {
 		return fmt.Errorf("failed to update document in local index: %w", err)
-	} else if buildTaskHasEmbedding(buildTaskInfo) {
-		// Send document ID to Kafka for embedding
-		err = sendEmbeddingMessage(ctx, writer, sbw.kafkaAccess, []string{newDocID})
-		if err != nil {
-			return err
+	}
+	if newDocID != oldDocID {
+		if err := sbw.lim.DeleteDocument(ctx, indexName, oldDocID); err != nil {
+			return fmt.Errorf("failed to delete old document in local index: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// handleDeleteOperation handles deletion operations
-func (sbw *streamingBuildWorker) handleDeleteOperation(ctx context.Context, keyMap map[string]any, indexName string) error {
-	primaryKeyValues := getPrimaryKeyValue(keyMap)
-	if primaryKeyValues == nil {
-		return fmt.Errorf("failed to extract unique key values from keyMap")
+// handleDeleteOperation handles deletion operations.
+func (sbw *streamingBuildWorker) handleDeleteOperation(ctx context.Context, keyMap map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask) error {
+	kafkaKeyValues, err := getKafkaKeyValues(buildTaskBuildKeyFields(buildTaskInfo), keyMap)
+	if err != nil {
+		return fmt.Errorf("extract Kafka key values: %w", err)
 	}
-	oldDocID := getOldDocID(primaryKeyValues)
+	oldDocID, err := generateDocumentID(kafkaKeyValues)
+	if err != nil {
+		return fmt.Errorf("generate old document ID: %w", err)
+	}
 
 	// Delete documents by query
 	if err := sbw.lim.DeleteDocument(ctx, indexName, oldDocID); err != nil {
@@ -640,28 +620,7 @@ func (sbw *streamingBuildWorker) checkConnectorNeedToStop(ctx context.Context, c
 	return true, nil
 }
 
-// getPrimaryKeyValue gets the primary key value
-func getPrimaryKeyValue(keyMap map[string]any) []interfaces.KeyValue {
-	keySize := len(keyMap)
-	primaryKeyValues := make([]interfaces.KeyValue, 0, keySize)
-	// Check whether the keyMap contains the payload field
-	keyData := keyMap
-	if payload, ok := keyMap["payload"].(map[string]any); ok {
-		keyData = payload
-	}
-
-	keys := make([]string, 0, keySize)
-	for key := range keyData {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		if value, ok := keyData[key]; ok {
-			primaryKeyValues = append(primaryKeyValues, interfaces.KeyValue{
-				Key:   key,
-				Value: value,
-			})
-		}
-	}
-	return primaryKeyValues
+// getKafkaKeyValues extracts the task's document-ID fields from a Kafka key.
+func getKafkaKeyValues(documentIDFields []string, keyMap map[string]any) ([]interfaces.KeyValue, error) {
+	return extractKeyValues(documentIDFields, keyMap)
 }

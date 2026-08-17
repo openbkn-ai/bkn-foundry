@@ -1,7 +1,6 @@
 name: ci-infra-oss-gateway
 
-# Compile gate for PRs touching infra/oss-gateway-backend. Build-only for now;
-# add `go test` once the test harness is CI-ready.
+# Build and unit-test gate for PRs touching infra/oss-gateway-backend.
 
 on:
   pull_request:
@@ -25,3 +24,4 @@ jobs:
         with:
           go-version-file: infra/oss-gateway-backend/go.mod
       - run: go build ./...
+      - run: go test ./...

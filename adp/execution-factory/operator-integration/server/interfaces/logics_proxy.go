@@ -43,4 +43,15 @@ type FunctionProxyExecuteCodeReq struct {
 	UserName        string            `json:"user_name,omitempty"`                                           // 用户名
 	Dependencies    []*DependencyInfo `json:"dependencies,omitempty"`                                        // 依赖资源
 	DependenciesURL string            `json:"dependencies_url,omitempty" default:"https://pypi.org/simple/"` // 安装源URL
+	// 下面三项供沙箱内的 sandbox_sdk.bkn 调用 BKN 用，转成本次执行的进程级环境变量。
+	//
+	// 走环境变量而不是 event：event 是用户函数的业务入参，凭据混在里面既污染了它的
+	// 参数命名空间，也让每个想调 BKN 的人都得知道该往 event 里塞什么。走 env 之后
+	// 用户代码里看不到它们，与 task_id / user_id 那几个追踪字段是同一条既有通道。
+	//
+	// 生命周期与 event 相同：executor 为每次执行现组一份环境再 --setenv 进 bwrap，
+	// 随进程消亡。注意与建会话时的 env_vars 区分，那个是容器级的，会跨调用方存活。
+	BKNToken          string `json:"bkn_token,omitempty"`           // 调用方令牌，沙箱据此以调用方身份访问 BKN
+	BKNConversationID string `json:"bkn_conversation_id,omitempty"` // 会话 ID，取自 bkn_start_interaction
+	BKNInteractionID  string `json:"bkn_interaction_id,omitempty"`  // 交互 ID，同上
 }

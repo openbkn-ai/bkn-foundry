@@ -32,7 +32,7 @@ func (h *UploadHandler) GetUploadURL(c *gin.Context) {
 
 	decodedKey, err := url.PathUnescape(objectKey)
 	if err != nil {
-		response.InvalidParam(c, "invalid object key")
+		response.InvalidParam(c, "object_key")
 		return
 	}
 
@@ -44,13 +44,16 @@ func (h *UploadHandler) GetUploadURL(c *gin.Context) {
 	if expiresStr != "" {
 		expires, err = strconv.ParseInt(expiresStr, 10, 64)
 		if err != nil {
-			response.InvalidParam(c, "invalid expires")
+			response.InvalidParam(c, "expires")
 			return
 		}
 	}
 
 	presignedURL, err := h.service.GetUploadURL(c.Request.Context(), storageID, decodedKey, requestMethod, expires, internalRequest)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}
@@ -69,24 +72,27 @@ func (h *UploadHandler) InitMultipartUpload(c *gin.Context) {
 
 	decodedKey, err := url.PathUnescape(objectKey)
 	if err != nil {
-		response.InvalidParam(c, "invalid object key")
+		response.InvalidParam(c, "object_key")
 		return
 	}
 
 	sizeStr := c.Query("size")
 	if sizeStr == "" {
-		response.InvalidParam(c, "size is required")
+		response.InvalidParam(c, "size")
 		return
 	}
 
 	fileSize, err := strconv.ParseInt(sizeStr, 10, 64)
 	if err != nil {
-		response.InvalidParam(c, "invalid size")
+		response.InvalidParam(c, "size")
 		return
 	}
 
 	result, err := h.service.InitMultipartUpload(c.Request.Context(), storageID, decodedKey, fileSize)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}
@@ -105,7 +111,7 @@ func (h *UploadHandler) GetUploadPartURLs(c *gin.Context) {
 
 	decodedKey, err := url.PathUnescape(objectKey)
 	if err != nil {
-		response.InvalidParam(c, "invalid object key")
+		response.InvalidParam(c, "object_key")
 		return
 	}
 
@@ -125,13 +131,16 @@ func (h *UploadHandler) GetUploadPartURLs(c *gin.Context) {
 	if expiresStr != "" {
 		expires, err = strconv.ParseInt(expiresStr, 10, 64)
 		if err != nil {
-			response.InvalidParam(c, "invalid expires")
+			response.InvalidParam(c, "expires")
 			return
 		}
 	}
 
 	urls, err := h.service.GetUploadPartURLs(c.Request.Context(), storageID, decodedKey, req.UploadID, req.PartID, expires, req.InternalRequest)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}
@@ -157,13 +166,13 @@ func (h *UploadHandler) CompleteMultipartUpload(c *gin.Context) {
 
 	decodedKey, err := url.PathUnescape(objectKey)
 	if err != nil {
-		response.InvalidParam(c, "invalid object key")
+		response.InvalidParam(c, "object_key")
 		return
 	}
 
 	uploadID := c.Query("upload_id")
 	if uploadID == "" {
-		response.InvalidParam(c, "upload_id is required")
+		response.InvalidParam(c, "upload_id")
 		return
 	}
 
@@ -192,6 +201,9 @@ func (h *UploadHandler) CompleteMultipartUpload(c *gin.Context) {
 
 	presignedURL, err := h.service.CompleteMultipartUpload(c.Request.Context(), storageID, decodedKey, uploadID, parts)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}

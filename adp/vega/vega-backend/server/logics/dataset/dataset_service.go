@@ -84,7 +84,7 @@ func (ds *datasetService) Delete(ctx context.Context, id string) error {
 	defer span.End()
 
 	// Check dataset exist first
-	exist, err := ds.lim.CheckExist(ctx, id)
+	exist, err := ds.lim.CheckIndexExist(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Check dataset exist failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
@@ -108,7 +108,7 @@ func (ds *datasetService) CheckExist(ctx context.Context, id string) (bool, erro
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Check dataset exist")
 	defer span.End()
 
-	exist, err := ds.lim.CheckExist(ctx, id)
+	exist, err := ds.lim.CheckIndexExist(ctx, id)
 	if err != nil {
 		span.SetStatus(codes.Error, "Check dataset exist failed")
 		return false, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).

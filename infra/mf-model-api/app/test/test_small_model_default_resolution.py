@@ -4,7 +4,10 @@
 兜底（context-loader 猜 "reranker"、vega 猜 "embedding"），注册名一改就全线
 NameNotExist——而管理员在模型管理里勾的默认反倒没人读。
 """
-from unittest.mock import Mock, patch
+import json
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from app.controller.small_model_controller import (
     DEFAULT_MODEL_CACHE_TTL_SECONDS,
@@ -13,6 +16,7 @@ from app.controller.small_model_controller import (
     _load_small_model,
     _model_cache_ttl,
     _model_missing_error,
+    embedding_model_used,
 )
 from app.commons.errors import (
     ModelFactory_DefaultSmallModel_NotExist,
@@ -21,6 +25,21 @@ from app.commons.errors import (
 
 
 class TestDefaultSmallModelResolution:
+    @pytest.mark.asyncio
+    async def test_explicit_missing_model_returns_not_found(self):
+        request = Mock(model="missing-model", model_id="", input=["text"])
+        mock_redis = AsyncMock()
+        mock_redis.get_str.return_value = None
+
+        with patch("app.controller.small_model_controller.redis_util", mock_redis), \
+                patch("app.controller.small_model_controller.small_model_dao.get_model_info_by_name_id",
+                      return_value=[]):
+            response = await embedding_model_used(request, "user1", "zh", "test", "embedding")
+
+        assert response.status_code == 404
+        assert json.loads(response.body)["code"] == \
+            "ModelFactory.ExternalSmallModel.Used.NameNotExist"
+
     def test_unspecified_model_resolves_the_type_default(self):
         """既没给名字也没给 id 时，走 f_default=1 那条，而不是按名字瞎查。"""
         with patch("app.controller.small_model_controller.small_model_dao") as dao:

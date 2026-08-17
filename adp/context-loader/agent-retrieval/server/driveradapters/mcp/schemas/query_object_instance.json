@@ -191,6 +191,32 @@
         "type": "integer",
         "description": "单页返回数量，默认 10，范围 1-10000"
       },
+      "sort": {
+        "type": "array",
+        "description": "排序字段，按数组顺序依次比较（前一个相等才看后一个）。不传则由服务端按默认序返回，默认序不保证语义（不是「最新」也不是「最相关」），所以「最近的 N 条」「金额最高的 N 个」这类问题必须显式传 sort，不能靠 limit 截默认序。field 必须是该对象类的属性名，用 search_schema 或 get_object_types 确认后再传。",
+        "items": {
+          "type": "object",
+          "required": [
+            "field",
+            "direction"
+          ],
+          "properties": {
+            "field": {
+              "type": "string",
+              "description": "排序字段（对象类属性名）"
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "description": "排序方向"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
       "search_after": {
         "type": "array",
         "items": {},
@@ -226,7 +252,7 @@
       },
       "total_count": {
         "type": "integer",
-        "description": "命中总数（仅在底层启用 need_total 时有效）"
+        "description": "满足过滤条件的实例总数，不受 limit 限制。判断「一共有多少条」读它，不要靠翻页累加。零命中时是 0（有值），不是字段缺失。字段缺失表示服务端本次没有计算总数——用 search_after 翻页时第二页起即如此，此时不能推断为 0，要总数就回到不带 search_after 的首次查询。"
       },
       "search_after": {
         "type": "array",

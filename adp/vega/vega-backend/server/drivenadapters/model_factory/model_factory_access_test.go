@@ -27,14 +27,14 @@ func newTestModelFactoryAccess(appSetting *common.AppSetting, httpClient rest.HT
 	return &modelFactoryAccess{
 		appSetting:   appSetting,
 		httpClient:   httpClient,
-		mfManagerUrl: appSetting.MfModelManagerUrl,
-		mfAPIUrl:     appSetting.MfModelApiUrl,
+		mfManagerUrl: appSetting.ModelFactoryManagerUrl,
+		mfAPIUrl:     appSetting.ModelFactoryAPIUrl,
 	}
 }
 
-func TestModelFactoryAccessGetModelByName(t *testing.T) {
+func TestModelFactoryAccessGetModelByID(t *testing.T) {
 	ctx := context.Background()
-	modelName := "test-model"
+	modelID := "model-1"
 
 	setup := func(t *testing.T) (*modelFactoryAccess, *rmock.MockHTTPClient) {
 		t.Helper()
@@ -43,31 +43,31 @@ func TestModelFactoryAccessGetModelByName(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		appSetting := &common.AppSetting{
-			MfModelManagerUrl: "http://test-mf-manager",
-			MfModelApiUrl:     "http://test-mf-api",
+			ModelFactoryManagerUrl: "http://test-mf-manager",
+			ModelFactoryAPIUrl:     "http://test-mf-api",
 		}
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
 		return newTestModelFactoryAccess(appSetting, mockHTTPClient), mockHTTPClient
 	}
 
-	t.Run("success getting model by name", func(t *testing.T) {
+	t.Run("success getting model by ID", func(t *testing.T) {
 		mfa, mockHTTPClient := setup(t)
 		model := interfaces.SmallModel{
-			ModelID:   "model1",
-			ModelName: modelName,
+			ModelID:   modelID,
+			ModelName: "test-model",
 		}
 		respData, err := sonic.Marshal(model)
 		require.NoError(t, err)
 
 		mockHTTPClient.EXPECT().
-			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			GetNoUnmarshal(gomock.Any(), "http://test-mf-manager/small-model/get?model_id=model-1", gomock.Any(), gomock.Any()).
 			Return(http.StatusOK, respData, nil)
 
-		result, err := mfa.GetModelByName(ctx, modelName)
+		result, err := mfa.GetModelByID(ctx, modelID)
 
 		require.NoError(t, err)
 		require.NotNil(t, result)
-		assert.Equal(t, modelName, result.ModelName)
+		assert.Equal(t, modelID, result.ModelID)
 	})
 
 	t.Run("model not found", func(t *testing.T) {
@@ -76,9 +76,10 @@ func TestModelFactoryAccessGetModelByName(t *testing.T) {
 			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(http.StatusNotFound, []byte(""), nil)
 
-		result, err := mfa.GetModelByName(ctx, modelName)
+		result, err := mfa.GetModelByID(ctx, modelID)
 
 		require.Error(t, err)
+		assert.ErrorIs(t, err, interfaces.ErrModelNotFound)
 		assert.Nil(t, result)
 	})
 
@@ -88,7 +89,7 @@ func TestModelFactoryAccessGetModelByName(t *testing.T) {
 			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, []byte(""), errors.New("network error"))
 
-		result, err := mfa.GetModelByName(ctx, modelName)
+		result, err := mfa.GetModelByID(ctx, modelID)
 
 		require.Error(t, err)
 		assert.Nil(t, result)
@@ -100,7 +101,7 @@ func TestModelFactoryAccessGetModelByName(t *testing.T) {
 			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(http.StatusInternalServerError, []byte("internal error"), nil)
 
-		result, err := mfa.GetModelByName(ctx, modelName)
+		result, err := mfa.GetModelByID(ctx, modelID)
 
 		require.Error(t, err)
 		assert.Nil(t, result)
@@ -112,7 +113,7 @@ func TestModelFactoryAccessGetModelByName(t *testing.T) {
 			GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(http.StatusOK, []byte("invalid json"), nil)
 
-		result, err := mfa.GetModelByName(ctx, modelName)
+		result, err := mfa.GetModelByID(ctx, modelID)
 
 		require.Error(t, err)
 		assert.Nil(t, result)
@@ -135,8 +136,8 @@ func TestModelFactoryAccessGetVector(t *testing.T) {
 		t.Cleanup(mockCtrl.Finish)
 
 		appSetting := &common.AppSetting{
-			MfModelManagerUrl: "http://test-mf-manager",
-			MfModelApiUrl:     "http://test-mf-api",
+			ModelFactoryManagerUrl: "http://test-mf-manager",
+			ModelFactoryAPIUrl:     "http://test-mf-api",
 		}
 		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
 		return newTestModelFactoryAccess(appSetting, mockHTTPClient), mockHTTPClient
@@ -156,7 +157,13 @@ func TestModelFactoryAccessGetVector(t *testing.T) {
 
 		mockHTTPClient.EXPECT().
 			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(http.StatusOK, respData, nil)
+			DoAndReturn(func(_ context.Context, rawURL string, _ map[string]string, body map[string]any) (int, []byte, error) {
+				assert.Equal(t, "http://test-mf-api/small-model/embeddings", rawURL)
+				assert.Equal(t, model.ModelID, body["model_id"])
+				assert.Equal(t, "", body["model"])
+				assert.Equal(t, words, body["input"])
+				return http.StatusOK, respData, nil
+			})
 
 		result, err := mfa.GetVector(ctx, model.ModelID, words)
 
@@ -164,17 +171,33 @@ func TestModelFactoryAccessGetVector(t *testing.T) {
 		require.Len(t, result, 3)
 	})
 
-	t.Run("empty model name", func(t *testing.T) {
-		mfa, _ := setup(t)
+	t.Run("forwards an empty model ID to model factory", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		respData, err := sonic.Marshal(map[string]any{"data": []*interfaces.VectorResp{}})
+		require.NoError(t, err)
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, body map[string]any) (int, []byte, error) {
+				assert.Equal(t, "", body["model_id"])
+				return http.StatusOK, respData, nil
+			})
 
 		result, err := mfa.GetVector(ctx, "", words)
 
-		require.Error(t, err)
+		require.NoError(t, err)
 		assert.Empty(t, result)
 	})
 
-	t.Run("empty words", func(t *testing.T) {
-		mfa, _ := setup(t)
+	t.Run("forwards empty input to model factory", func(t *testing.T) {
+		mfa, mockHTTPClient := setup(t)
+		respData, err := sonic.Marshal(map[string]any{"data": []*interfaces.VectorResp{}})
+		require.NoError(t, err)
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, body map[string]any) (int, []byte, error) {
+				assert.Equal(t, []string{}, body["input"])
+				return http.StatusOK, respData, nil
+			})
 
 		result, err := mfa.GetVector(ctx, model.ModelID, []string{})
 

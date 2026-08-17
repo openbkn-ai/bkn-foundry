@@ -79,7 +79,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                     model_info = llm_model_dao.get_data_from_default_model()
                 if len(model_info) == 0:
                     if not is_default:
-                        return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 400)
+                        return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 404)
                     else:
                         return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
                 # Refresh the cache with valid JSON.
@@ -92,7 +92,7 @@ async def used_model_openai(request, user_id, language, func_module, trace_heade
                 model_info = llm_model_dao.get_data_from_default_model()
             if len(model_info) == 0:
                 if not is_default:
-                    return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 400)
+                    return envelope_error_response(ModelFactory_ExternalSmallModel_Used_NameNotExist, 404)
                 else:
                     return envelope_error_response(ModelFactory_DedaultModel_NotExist, 400)
             # Cache the database result as JSON.

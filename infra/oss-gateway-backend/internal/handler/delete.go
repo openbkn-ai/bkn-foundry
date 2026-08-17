@@ -28,7 +28,7 @@ func (h *DeleteHandler) GetDeleteURL(c *gin.Context) {
 
 	decodedKey, err := url.PathUnescape(objectKey)
 	if err != nil {
-		response.InvalidParam(c, "invalid object key")
+		response.InvalidParam(c, "object_key")
 		return
 	}
 
@@ -39,13 +39,16 @@ func (h *DeleteHandler) GetDeleteURL(c *gin.Context) {
 	if expiresStr != "" {
 		expires, err = strconv.ParseInt(expiresStr, 10, 64)
 		if err != nil {
-			response.InvalidParam(c, "invalid expires")
+			response.InvalidParam(c, "expires")
 			return
 		}
 	}
 
 	presignedURL, err := h.service.GetDeleteURL(c.Request.Context(), storageID, decodedKey, expires, internalRequest)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}

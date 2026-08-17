@@ -8,15 +8,14 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
-	"strings"
-	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/mohae/deepcopy"
-	"github.com/segmentio/kafka-go"
 
 	"vega-backend/interfaces"
 	"vega-backend/logics"
@@ -27,30 +26,43 @@ func getIndexName(resourceID, buildTaskID string) string {
 	return interfaces.BuildIndexName(resourceID, buildTaskID)
 }
 
-func getEmbeddingTopic(resourceID, buildTaskID string) string {
-	return fmt.Sprintf("%s-%s-%s-embedding", interfaces.BUILD_PREFIX, resourceID, buildTaskID)
-}
-
-func getOldDocID(primaryKeyValues []interfaces.KeyValue) string {
-	// Concatenate all the values in primaryKeyValues into an id
-	var idBuilder strings.Builder
-	for _, item := range primaryKeyValues {
-		fmt.Fprintf(&idBuilder, "%v", item.Value)
-		fmt.Fprintf(&idBuilder, "-")
+// generateDocumentID builds a document ID from ordered build-key values.
+func generateDocumentID(keys []interfaces.KeyValue) (string, error) {
+	if len(keys) == 0 {
+		return "", fmt.Errorf("build document ID: no build key fields")
 	}
-	return idBuilder.String()
-}
 
-func getNewDocID(primaryKeyValues []interfaces.KeyValue, document map[string]any) string {
-	// Construct a new document ID and ensure that the concatenation order is the same as that of oldDocID
-	var newDocIDBuilder strings.Builder
-	for _, item := range primaryKeyValues {
-		if value, ok := document[item.Key]; ok {
-			fmt.Fprintf(&newDocIDBuilder, "%v", value)
-			fmt.Fprintf(&newDocIDBuilder, "-")
+	for _, key := range keys {
+		if key.Value == nil {
+			return "", fmt.Errorf("build document ID: build key field %q is null", key.Key)
+		}
+		if stringValue, ok := key.Value.(string); ok && stringValue == "" {
+			return "", fmt.Errorf("build document ID: build key field %q is empty", key.Key)
 		}
 	}
-	return newDocIDBuilder.String()
+
+	serialized, err := sonic.Marshal(keys)
+	if err != nil {
+		return "", fmt.Errorf("marshal build key values: %w", err)
+	}
+	sum := sha256.Sum256(serialized)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func extractKeyValues(fields []string, document map[string]any) ([]interfaces.KeyValue, error) {
+	if document == nil {
+		return nil, fmt.Errorf("build document ID: document is required")
+	}
+
+	values := make([]interfaces.KeyValue, 0, len(fields))
+	for _, field := range fields {
+		value, exists := document[field]
+		if !exists {
+			return nil, fmt.Errorf("build document ID: build key field %q is missing", field)
+		}
+		values = append(values, interfaces.KeyValue{Key: field, Value: value})
+	}
+	return values, nil
 }
 
 // updateResourceIndexName updates the index name of a resource
@@ -67,7 +79,8 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 	return nil
 }
 
-func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces.Resource, rs interfaces.ResourceService, bts interfaces.BuildTaskService, taskID, indexName string) error {
+func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces.Resource,
+	rs interfaces.ResourceService, bts interfaces.BuildTaskService, taskID, indexName string) error {
 	if logics.DB == nil {
 		return errors.New("database is not initialized")
 	}
@@ -137,7 +150,7 @@ func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManag
 	if err != nil {
 		return err
 	}
-	exist, err := lim.CheckExist(ctx, indexName)
+	exist, err := lim.CheckIndexExist(ctx, indexName)
 	if err != nil {
 		return fmt.Errorf("check local index exist failed: %w", err)
 	}
@@ -216,7 +229,7 @@ func appendTaskEmbeddingVectorFields(schema []*interfaces.Property, buildTask *i
 				{
 					FeatureType: interfaces.DataType_Vector,
 					Config: map[string]any{
-						"dimension": feature.Vector.Dimensions,
+						"dimension": feature.Vector.EmbeddingDim,
 						"method": map[string]any{
 							"name":   "hnsw",
 							"engine": "lucene",
@@ -355,44 +368,4 @@ func indexFeatureFieldName(prop *interfaces.Property, feature interfaces.Propert
 		return feature.RefProperty
 	}
 	return prop.Name
-}
-
-// sendEmbeddingTask hands an internal build phase to the bounded local queue.
-func sendEmbeddingTask(ctx context.Context, queue chan<- string, taskID string) error {
-	if queue == nil {
-		return errors.New("embedding task queue is not initialized")
-	}
-	select {
-	case queue <- taskID:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// sendEmbeddingMessage sends a document ID to Kafka for embedding
-func sendEmbeddingMessage(ctx context.Context, writer *kafka.Writer, kafkaAccess interfaces.KafkaAccess, docIDs []string) error {
-	for _, docID := range docIDs {
-		// Create message
-		messageData := map[string]any{
-			"document_id": docID,
-		}
-		messageBytes, err := sonic.Marshal(messageData)
-		if err != nil {
-			return fmt.Errorf("failed to marshal message: %w", err)
-		}
-
-		// Write message to Kafka
-		// Use docID + timestamp as key to avoid conflicts even if document is modified multiple times
-		err = kafkaAccess.WriteMessages(ctx, writer, []kafka.Message{
-			{
-				Key:   fmt.Appendf(nil, "%s-%d", docID, time.Now().UnixNano()),
-				Value: messageBytes,
-			},
-		}...)
-		if err != nil {
-			return fmt.Errorf("failed to write message to Kafka: %w", err)
-		}
-	}
-	return nil
 }

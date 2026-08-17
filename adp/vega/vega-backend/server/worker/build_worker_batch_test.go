@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,6 +33,29 @@ func TestBatchBuildExecuteType(t *testing.T) {
 	assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, batchBuildExecuteType(fullTask))
 }
 
+func TestBuildBatchCursorFilter(t *testing.T) {
+	filter := buildBatchCursorFilter(
+		[]string{"tenant_id", "id"},
+		[]interfaces.KeyValue{{Key: "tenant_id", Value: "tenant-1"}, {Key: "id", Value: 100}},
+	)
+
+	require.Equal(t, "or", filter.Operation)
+	require.Len(t, filter.SubConds, 2)
+	assert.Equal(t, &interfaces.FilterCondCfg{
+		Operation: "and",
+		SubConds: []*interfaces.FilterCondCfg{
+			{Name: "tenant_id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: "tenant-1", ValueFrom: interfaces.ValueFrom_Const}},
+		},
+	}, filter.SubConds[0])
+	assert.Equal(t, &interfaces.FilterCondCfg{
+		Operation: "and",
+		SubConds: []*interfaces.FilterCondCfg{
+			{Name: "tenant_id", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{Value: "tenant-1", ValueFrom: interfaces.ValueFrom_Const}},
+			{Name: "id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: 100, ValueFrom: interfaces.ValueFrom_Const}},
+		},
+	}, filter.SubConds[1])
+}
+
 func TestBatchBuildWorkerHandleTask(t *testing.T) {
 	t.Run("injects creator into downstream context", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -41,7 +63,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		lim.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+		lim.EXPECT().CheckIndexExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		bbw := &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
 		creator := interfaces.AccountInfo{ID: "u1", Type: "user"}
 
@@ -107,7 +129,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		lim.EXPECT().CheckExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
+		lim.EXPECT().CheckIndexExist(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		bbw := &batchBuildWorker{bts: bts, rs: rs, cs: cs, lim: lim}
 
 		resource := &interfaces.Resource{
@@ -133,16 +155,9 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 }
 
 func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
-	t.Run("does not dispatch embedding when index creation fails", func(t *testing.T) {
+	t.Run("does not invoke model when index creation fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		enqueueCalled := false
-		patches := gomonkey.ApplyFunc(sendEmbeddingTask,
-			func(context.Context, chan<- string, string) error {
-				enqueueCalled = true
-				return nil
-			})
-		defer patches.Reset()
 		bbw := &batchBuildWorker{lim: lim}
 		resource := &interfaces.Resource{
 			ID: "r1",
@@ -156,48 +171,17 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		buildTask := &interfaces.BuildTask{
 			ID: "t1",
 			IndexConfig: &interfaces.BuildTaskIndexConfig{Features: map[string]interfaces.BuildTaskFieldIndexFeature{
-				"content": {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 3}},
+				"content": {Vector: &interfaces.SmallModel{ModelID: "m1", EmbeddingDim: 3}},
 			}},
 		}
 
-		lim.EXPECT().CheckExist(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(false, nil)
+		lim.EXPECT().CheckIndexExist(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(false, nil)
 		lim.EXPECT().CreateIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1"), gomock.Any()).
 			Return(errors.New("opensearch unavailable"))
 
-		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, buildTask,
-			interfaces.BuildTaskExecuteTypeIncremental)
+		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, buildTask)
 		require.Error(t, err)
 		assert.ErrorContains(t, err, "create local index failed: opensearch unavailable")
-		assert.False(t, enqueueCalled)
-	})
-}
-
-func TestAdvanceCursor(t *testing.T) {
-	t.Run("advances across batches", func(t *testing.T) {
-		keys := []string{"key_id"}
-
-		cursor := advanceCursor(nil, keys, map[string]any{"key_id": "1000"})
-		require.Len(t, cursor, 1)
-		assert.Equal(t, "1000", cursor[0].Value)
-
-		cursor = advanceCursor(cursor, keys, map[string]any{"key_id": "2000"})
-		assert.Equal(t, "2000", cursor[0].Value)
-
-		cursor = advanceCursor(cursor, keys, map[string]any{"key_id": "3000"})
-		assert.Equal(t, "3000", cursor[0].Value)
-	})
-
-	t.Run("advances multiple keys", func(t *testing.T) {
-		keys := []string{"id", "name"}
-		cursor := advanceCursor(nil, keys, map[string]any{"id": 1, "name": "a"})
-		cursor = advanceCursor(cursor, keys, map[string]any{"id": 2, "name": "b"})
-
-		got := map[string]any{}
-		for _, kv := range cursor {
-			got[kv.Key] = kv.Value
-		}
-		assert.Equal(t, 2, got["id"])
-		assert.Equal(t, "b", got["name"])
 	})
 }
 
@@ -370,7 +354,7 @@ func buildTaskWithVector(field string) *interfaces.BuildTask {
 	return &interfaces.BuildTask{
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
 			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
-				field: {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}},
+				field: {Vector: &interfaces.SmallModel{ModelID: "m1", EmbeddingDim: 1024}},
 			},
 		},
 	}
@@ -391,7 +375,7 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 			IndexConfig: &interfaces.BuildTaskIndexConfig{
 				Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 					"title": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}},
-					"body":  {Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}},
+					"body":  {Vector: &interfaces.SmallModel{ModelID: "m1", EmbeddingDim: 1024}},
 				},
 			},
 		}
@@ -427,11 +411,11 @@ func TestBuildLocalIndexSchemaAppliesTaskIndexConfigWithoutMutatingResourceSchem
 				Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 					"title": {
 						Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"},
-						Vector:   &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 768},
+						Vector:   &interfaces.SmallModel{ModelID: "m1", EmbeddingDim: 768},
 					},
 					"body": {
 						Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "standard"},
-						Vector:   &interfaces.BuildTaskEmbeddingConfig{ModelID: "m2", Dimensions: 1024},
+						Vector:   &interfaces.SmallModel{ModelID: "m2", EmbeddingDim: 1024},
 					},
 				},
 			},

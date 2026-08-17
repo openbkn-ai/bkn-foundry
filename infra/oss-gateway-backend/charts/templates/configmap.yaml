@@ -44,17 +44,17 @@ data:
   TEXTVECTORMAPPING: {{ quote .Values.depServices.text_vector.mapping | quote }}
   VLMVECTORMAPPING: {{ quote .Values.depServices.text_vector.mapping | quote }}
   TEXTRERANKERMAPPING: {{ quote .Values.depServices.text_reranker.mapping | quote }}
-  # 授权服务
+  # OAuth service.
   OAUTHPUBLICHOST: {{ .Values.depServices.hydra.publicHost | quote }}
   OAUTHPUBLICPORT: {{ .Values.depServices.hydra.publicPort | quote }}
   OAUTHADMINHOST: {{ .Values.depServices.hydra.administrativeHost | quote }}
   OAUTHADMINPORT: {{ .Values.depServices.hydra.administrativePort | quote }}
-  # user-management服务
+  # User management service.
   USERMANAGEMENTPUBLICHOST: {{ .Values.depServices.user_management.publicHost | quote }}
   USERMANAGEMENTPUBLICPORT: {{ .Values.depServices.user_management.publicPort | quote }}
   USERMANAGEMENTPRIVATEHOST: {{ .Values.depServices.user_management.privateHost | quote }}
   USERMANAGEMENTPRIVATEPORT: {{ .Values.depServices.user_management.privatePort | quote }}
-  # authorization服务
+  # Authorization service.
   AUTHORIZATIONPRIVATEHOST: {{ .Values.depServices.authorization.privateHost | quote }}
   AUTHORIZATIONPRIVATEPORT: {{ .Values.depServices.authorization.privatePort | quote }}
   dm_svc.conf: |

@@ -55,11 +55,10 @@ type BuildTask struct {
 	ResourceID       string                `json:"resource_id"`
 	Status           string                `json:"status"`
 	Mode             string                `json:"mode"`                   // Task mode: streaming/batch
-	ExecuteType      string                `json:"execute_type,omitempty"` // batch execution type: incremental/full; streaming is not applicable.
-	TotalCount       int64                 `json:"total_count"`            // Total number
-	SyncedCount      int64                 `json:"synced_count"`           // Synchronized number
-	VectorizedCount  int64                 `json:"vectorized_count"`       // The vector number has been done
-	SyncedMark       string                `json:"synced_mark"`            // Synchronous tag
+	ExecuteType      string                `json:"execute_type,omitempty"` // Batch execution type: incremental/full; not applicable to streaming.
+	TotalCount       int64                 `json:"total_count"`            // Total number of documents
+	SyncedCount      int64                 `json:"synced_count"`           // Number of synchronized documents
+	SyncedMark       string                `json:"synced_mark"`            // Synchronization cursor
 	ErrorMsg         string                `json:"error_msg,omitempty"`
 	FailureDetail    string                `json:"failure_detail,omitempty"` // The details of the completed construction but partial document vectorization failure, which is different from the hard failure of the entire task of error_msg
 	Creator          AccountInfo           `json:"creator"`
@@ -72,47 +71,37 @@ type BuildTask struct {
 	// The following associated fields are only used for response display and will not be included in the database. The service will batch complete the tasks according to the current task set.
 	ResourceName string `json:"resource_name,omitempty"`
 	CatalogName  string `json:"catalog_name,omitempty"`
-
-	// The derived state calculated by IndexHealth during response ** does not fall into the database ** : allowing consumers to avoid making their own inferences
-	// A completed task may still have unhealthy index state; the service populates this field before returning.
-	IndexHealth *IndexHealth `json:"index_health,omitempty"`
 }
 
 // BuildTaskSummary is the lightweight representation returned by list APIs.
 // Index configuration snapshots and detailed partial-failure diagnostics are
 // available from GetByID.
 type BuildTaskSummary struct {
-	ID               string       `json:"id"`
-	ResourceID       string       `json:"resource_id"`
-	ResourceName     string       `json:"resource_name,omitempty"`
-	CatalogID        string       `json:"catalog_id"`
-	CatalogName      string       `json:"catalog_name,omitempty"`
-	Status           string       `json:"status"`
-	Mode             string       `json:"mode"`
-	ExecuteType      string       `json:"execute_type,omitempty"`
-	TotalCount       int64        `json:"total_count"`
-	SyncedCount      int64        `json:"synced_count"`
-	VectorizedCount  int64        `json:"vectorized_count"`
-	SyncedMark       string       `json:"synced_mark"`
-	ErrorMsg         string       `json:"error_msg,omitempty"`
-	Creator          AccountInfo  `json:"creator"`
-	CreateTime       int64        `json:"create_time"`
-	StartTime        int64        `json:"start_time,omitempty"`
-	FinishTime       int64        `json:"finish_time,omitempty"`
-	LastProgressTime int64        `json:"last_progress_time,omitempty"`
-	IndexHealth      *IndexHealth `json:"index_health,omitempty"`
-
-	// IndexConfig is loaded only to derive IndexHealth and is never serialized.
-	IndexConfig *BuildTaskIndexConfig `json:"-"`
+	ID               string      `json:"id"`
+	ResourceID       string      `json:"resource_id"`
+	ResourceName     string      `json:"resource_name,omitempty"`
+	CatalogID        string      `json:"catalog_id"`
+	CatalogName      string      `json:"catalog_name,omitempty"`
+	Status           string      `json:"status"`
+	Mode             string      `json:"mode"`
+	ExecuteType      string      `json:"execute_type,omitempty"`
+	TotalCount       int64       `json:"total_count"`
+	SyncedCount      int64       `json:"synced_count"`
+	SyncedMark       string      `json:"synced_mark"`
+	ErrorMsg         string      `json:"error_msg,omitempty"`
+	Creator          AccountInfo `json:"creator"`
+	CreateTime       int64       `json:"create_time"`
+	StartTime        int64       `json:"start_time,omitempty"`
+	FinishTime       int64       `json:"finish_time,omitempty"`
+	LastProgressTime int64       `json:"last_progress_time,omitempty"`
 }
 
 // BuildTaskProgress describes persisted execution progress without changing task status.
 type BuildTaskProgress struct {
-	TotalCount      *int64
-	SyncedCount     *int64
-	VectorizedCount *int64
-	SyncedMark      *string
-	FailureDetail   *string
+	TotalCount    *int64
+	SyncedCount   *int64
+	SyncedMark    *string
+	FailureDetail *string
 }
 
 type BuildTaskIndexConfig struct {
@@ -121,28 +110,12 @@ type BuildTaskIndexConfig struct {
 }
 
 type BuildTaskFieldIndexFeature struct {
-	Vector   *BuildTaskEmbeddingConfig `json:"vector,omitempty"`
-	Fulltext *BuildTaskFulltextConfig  `json:"fulltext,omitempty"`
-}
-
-type BuildTaskEmbeddingConfig struct {
-	ModelID    string `json:"model_id"`
-	Dimensions int    `json:"dimensions"`
+	Vector   *SmallModel              `json:"vector,omitempty"`
+	Fulltext *BuildTaskFulltextConfig `json:"fulltext,omitempty"`
 }
 
 type BuildTaskFulltextConfig struct {
 	Analyzer string `json:"analyzer,omitempty"`
-}
-
-// IndexHealth splits the health of each index. status=completed only indicates that sync is completed and fulltext takes effect
-// This does not mean that the embedding index is available - this structure separates the two, and the overall usability is considered Usable.
-type IndexHealth struct {
-	// none(Not built)/building(in progress)/ok/partial(Some documents are missing vectors)/failed(All missing vectors)
-	Embedding string `json:"embedding"`
-	// none(Not created) ok (The full text takes effect immediately upon synchronization. Once created, it's ok)
-	Fulltext string `json:"fulltext"`
-	// Whether the embedding index is fully available (none or ok is true; partial/failed/building is false)
-	Usable bool `json:"usable"`
 }
 
 // CreateBuildTaskRequest represents the request to create a build task.
@@ -167,8 +140,8 @@ type BuildTasksQueryParams struct {
 }
 
 type KeyValue struct {
-	Key   string
-	Value any
+	Key   string `json:"key"`
+	Value any    `json:"value"`
 }
 
 // BuildIndexName returns the OpenSearch index name corresponding to the build task. Index name = Prefix - Resource ID- Task ID

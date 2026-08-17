@@ -9,7 +9,8 @@ Query routing:
 - Use query_object_instance for single object-type filtering, sorting, and cursor-style pagination.
 - Use run_sql for joins, aggregation, ranking, GROUP BY, COUNT, SUM, AVG, and cross-table analysis. Use read-only MySQL SQL. Reference tables with placeholders such as {{.resource_id}} where resource_id comes from search_schema or list_resources. Use physical column names from search_schema with include_columns=true or from describe_resource.
 - Quote MySQL identifiers with backticks when needed (for example, `order_id`); double quotes are string literals, not identifiers.
-- Use query_instance_subgraph to expand related instances along relation paths.
+- Use query_instance_subgraph when you can already name the path - which object types it passes through and which relation types connect them - to pull instances along that template, with per-node filters and sorting.
+- Use explore_subgraph when the topology is unknown and the question is what something connects to. Give a source object type, a direction and a hop count; the engine finds the paths. Do NOT enumerate relation types to hand-assemble a path for query_instance_subgraph instead - that turns discovery into a combinatorial search.
 - Use get_action_info to discover actions that can be executed for object instances.
 
 Metrics, object type first. Never re-derive a modelled metric in run_sql — its formula lives in the metric definition:

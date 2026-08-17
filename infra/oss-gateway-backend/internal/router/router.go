@@ -3,6 +3,7 @@ package router
 import (
 	"oss-gateway/internal/handler"
 	"oss-gateway/internal/middleware"
+	"oss-gateway/locale"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
@@ -19,9 +20,11 @@ type RouterConfig struct {
 }
 
 func SetupRouter(config *RouterConfig) *gin.Engine {
+	locale.Register()
 	r := gin.New()
 
 	r.Use(middleware.Recovery(config.Logger))
+	r.Use(middleware.Language())
 	r.Use(middleware.Logger(config.Logger))
 	r.Use(middleware.CORS())
 

@@ -72,6 +72,22 @@ class TestUsedModelOpenai:
                 assert json.loads(result.body)["error"]["code"] == "ModelFactory.LLM.DefaultNotExist"
 
     @pytest.mark.asyncio
+    async def test_missing_named_model_returns_not_found(self, valid_request):
+        """模型名称不存在时返回 HTTP 404，并保留业务错误码。"""
+        mock_redis = AsyncMock()
+        mock_redis.get_str = AsyncMock(return_value=None)
+
+        with patch('app.controller.llm_controller.get_redis_util', return_value=mock_redis):
+            with patch('app.controller.llm_controller.llm_model_dao.get_data_from_model_list_by_name_id',
+                       return_value=[]):
+                result = await used_model_openai(valid_request, "user1", "zh", "test")
+
+        assert isinstance(result, JSONResponse)
+        assert result.status_code == 404
+        assert json.loads(result.body)["error"]["code"] == \
+            "ModelFactory.ExternalSmallModel.Used.NameNotExist"
+
+    @pytest.mark.asyncio
     async def test_max_tokens_exceeds_limit(self, valid_request, mock_model_data):
         """测试max_tokens超过限制"""
         request = valid_request.copy()

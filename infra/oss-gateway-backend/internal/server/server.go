@@ -51,7 +51,7 @@ func (s *Server) Start() {
 	storageService := service.NewStorageService(storageRepo, s.crypto, storageCache, s.config, s.log.WithField("module", "storage_service"))
 	urlService := service.NewURLService(storageService, uploadTaskRepo, s.config, s.log.WithField("module", "url_service"))
 
-	// 启动时清理超过7天未完成的上传任务
+	// Remove incomplete upload tasks older than seven days during startup.
 	s.cleanExpiredTasksOnStartup(urlService)
 
 	healthHandler := handler.NewHealthHandler(s.db, redisClient)
@@ -99,7 +99,7 @@ func (s *Server) Start() {
 	s.log.Info("Server exited")
 }
 
-// cleanExpiredTasksOnStartup 在服务启动时清理超过7天未完成的上传任务
+// cleanExpiredTasksOnStartup removes incomplete upload tasks older than seven days.
 func (s *Server) cleanExpiredTasksOnStartup(urlService service.URLService) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

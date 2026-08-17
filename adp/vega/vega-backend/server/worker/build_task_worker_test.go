@@ -131,16 +131,17 @@ func TestBuildTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
 }
 
 func TestNewBuildTaskWorkerUsesModeSpecificConcurrency(t *testing.T) {
-	worker := newBuildTaskWorker(&common.AppSetting{TaskWorker: common.TaskWorkerConfig{
-		BatchWorkerCount:     2,
-		StreamingWorkerCount: 3,
-	}}, nil, &batchBuildWorker{}, &streamingBuildWorker{}, &embeddingWorker{})
+	batchWorkerCount, streamingWorkerCount := calculateTaskWorkerCounts(
+		&common.AppSetting{
+			TaskWorker: common.TaskWorkerConfig{
+				BatchWorkerCount:     2,
+				StreamingWorkerCount: 3,
+			},
+		},
+	)
 
-	assert.Equal(t, 2, worker.batchWorkerCount)
-	assert.Equal(t, 3, worker.streamingWorkerCount)
-	assert.Equal(t, 8, cap(worker.batchQueue))
-	assert.Equal(t, 12, cap(worker.streamingQueue))
-	assert.Equal(t, 5, cap(worker.embeddingQueue))
+	assert.Equal(t, 2, batchWorkerCount)
+	assert.Equal(t, 3, streamingWorkerCount)
 }
 
 func TestBuildTaskWorkerRejectsModeMismatch(t *testing.T) {

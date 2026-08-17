@@ -76,19 +76,19 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 }
 
 func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
-	return lim.lic.Create(ctx, indexName, schema)
+	return lim.lic.CreateIndex(ctx, indexName, schema)
 }
 
 func (lim *localIndexManager) UpdateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
-	return lim.lic.Update(ctx, indexName, schema)
+	return lim.lic.UpdateIndex(ctx, indexName, schema)
 }
 
 func (lim *localIndexManager) DeleteIndex(ctx context.Context, indexName string) error {
-	return lim.lic.Delete(ctx, indexName)
+	return lim.lic.DeleteIndex(ctx, indexName)
 }
 
-func (lim *localIndexManager) CheckExist(ctx context.Context, indexName string) (bool, error) {
-	return lim.lic.CheckExist(ctx, indexName)
+func (lim *localIndexManager) CheckIndexExist(ctx context.Context, indexName string) (bool, error) {
+	return lim.lic.CheckIndexExist(ctx, indexName)
 }
 
 func (lim *localIndexManager) ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error) {
@@ -134,6 +134,10 @@ func (lim *localIndexManager) GetDocument(ctx context.Context, indexName string,
 
 func (lim *localIndexManager) CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error) {
 	return lim.lic.CreateDocuments(ctx, indexName, documents)
+}
+
+func (lim *localIndexManager) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
+	return lim.lic.IndexDocuments(ctx, indexName, documents)
 }
 
 func (lim *localIndexManager) UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error) {

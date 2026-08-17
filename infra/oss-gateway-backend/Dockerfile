@@ -1,8 +1,8 @@
-# 全局 ARG：在 FROM 之前声明，才能在 FROM 中使用
+# Global build arguments must be declared before FROM.
 ARG GO_BUILD_IMAGE=golang:1.25.10
 ARG BASE_IMAGE=ubuntu:24.04
 
-# 构建阶段
+# Build stage.
 FROM ${GO_BUILD_IMAGE} AS builder
 ARG GOPROXY=https://proxy.golang.org,direct
 ENV GOPROXY=${GOPROXY}
@@ -15,16 +15,17 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o oss-gateway main.go
 
-# 运行阶段 - 需要重新声明 ARG
+# Runtime stage; redeclare the build argument after FROM.
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
 
-# Ubuntu 使用 apt-get 安装依赖
+# Install runtime dependencies with apt-get on Ubuntu.
 RUN apt-get update && apt-get install -y ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /root/
 
 COPY --from=builder /app/oss-gateway .
+COPY --from=builder /app/locale ./locale
 
 EXPOSE 8080
 

@@ -95,6 +95,7 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/list_action_executions", r.KnActionRecallHandler.ListActionExecutions)
 	engine.POST("/kn/query_object_instance", r.KnQueryObjectInstanceHandler.QueryObjectInstance)
 	engine.POST("/kn/query_instance_subgraph", r.KnQuerySubgraphHandler.QueryInstanceSubgraph)
+	engine.POST("/kn/explore_subgraph", r.KnQuerySubgraphHandler.ExploreSubgraph)
 	engine.POST("/kn/search_schema", r.KnSearchHandler.SearchSchema)
 	engine.POST("/kn/search_instance", r.KnSearchHandler.SearchInstance)
 	engine.POST("/kn/kn_search", r.KnSearchHandler.KnSearch)

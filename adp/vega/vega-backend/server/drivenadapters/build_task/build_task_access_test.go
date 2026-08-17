@@ -337,10 +337,8 @@ func TestBuildTaskAccessList(t *testing.T) {
 		assert.Equal(t, int64(2), total)
 		require.Len(t, got, 1)
 		assert.Equal(t, task.ID, got[0].ID)
-		assert.Equal(t, task.IndexConfig, got[0].IndexConfig)
 		payload, err := sonic.MarshalString(got[0])
 		require.NoError(t, err)
-		assert.NotContains(t, payload, "index_config")
 		assert.NotContains(t, payload, "failure_detail")
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -375,7 +373,6 @@ func TestBuildTaskAccessInternalList(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Len(t, got, 1)
-	assert.Equal(t, task.IndexConfig, got[0].IndexConfig)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -473,7 +470,6 @@ func sampleBuildTask() *interfaces.BuildTask {
 		ExecuteType:      interfaces.BuildTaskExecuteTypeIncremental,
 		TotalCount:       100,
 		SyncedCount:      80,
-		VectorizedCount:  70,
 		SyncedMark:       "cursor-1",
 		ErrorMsg:         "soft error",
 		Creator:          interfaces.AccountInfo{ID: "creator-1", Type: interfaces.ACCESSOR_TYPE_USER},
@@ -485,11 +481,11 @@ func sampleBuildTask() *interfaces.BuildTask {
 			BuildKeyFields: []string{"id"},
 			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 				"title": {
-					Vector:   &interfaces.BuildTaskEmbeddingConfig{ModelID: "embedding", Dimensions: 1024},
+					Vector:   &interfaces.SmallModel{ModelID: "embedding", EmbeddingDim: 1024},
 					Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"},
 				},
 				"body": {
-					Vector: &interfaces.BuildTaskEmbeddingConfig{ModelID: "embedding-v2", Dimensions: 2048},
+					Vector: &interfaces.SmallModel{ModelID: "embedding-v2", EmbeddingDim: 2048},
 				},
 			},
 		},
@@ -514,7 +510,6 @@ func buildTaskRowValues(task *interfaces.BuildTask) []driver.Value {
 		task.Status,
 		task.TotalCount,
 		task.SyncedCount,
-		task.VectorizedCount,
 		task.SyncedMark,
 		task.ErrorMsg,
 		task.FailureDetail,
@@ -561,5 +556,7 @@ func joinBuildTaskSummaryColumns() string {
 
 func buildTaskSummaryRowValues(task *interfaces.BuildTask) []driver.Value {
 	values := buildTaskRowValues(task)
-	return append(values[:12], values[13:]...)
+	result := append([]driver.Value{}, values[:5]...)
+	result = append(result, values[6:11]...)
+	return append(result, values[12:]...)
 }

@@ -47,6 +47,7 @@ _CONTEXT_LOADER_RETRIEVAL_PATHS = {
     "/api/agent-retrieval/in/v1/kn/search_instance",
     "/api/agent-retrieval/in/v1/kn/query_object_instance",
     "/api/agent-retrieval/in/v1/kn/query_instance_subgraph",
+    "/api/agent-retrieval/in/v1/kn/explore_subgraph",
 }
 
 

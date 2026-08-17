@@ -66,7 +66,10 @@ def _is_pydantic_model(anno) -> bool:
     return _HAS_PYDANTIC and isinstance(anno, type) and issubclass(anno, BaseModel)
 
 
-__all__ = ["tool", "Context", "dispatch", "export_schema", "run"]
+__all__ = ["tool", "Context", "dispatch", "export_schema", "run", "bkn"]
+
+# BKN 能力面。子模块导入即可，装配是惰性的——不碰 BKN 的纯计算函数不付代价。
+from . import bkn  # noqa: E402  （放在 __all__ 之后只为让上面那份清单先被读到）
 
 
 # ==================================================================== #
@@ -418,6 +421,9 @@ def dispatch(event: dict = None, entry: str = None) -> Any:
     - 缺失的必填参数在此暴露，报清是哪个参数
     """
     event = event or {}
+    # 把本次执行的 event 交给能力面，用户函数因此不必自己接 token / conversation_id。
+    # 每次执行都重置：沙箱会话池化复用，上一个调用方的凭据不能留在进程里。
+    bkn.configure_runtime(event)
     key = entry or _ENTRY
     if key is None:
         raise RuntimeError(

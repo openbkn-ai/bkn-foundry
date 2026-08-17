@@ -427,10 +427,10 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		}
 	}
 
-	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
+	if err := validateSchemaDefinition(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
 	}
-	if err := validateSingleFeatureTypePerProperty(ctx, req.SchemaDefinition); err != nil {
+	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
 	}
 	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
@@ -917,10 +917,10 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		resource.IndexConfig = req.IndexConfig
 	}
 
-	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
+	if err := validateSchemaDefinition(ctx, resource.SchemaDefinition); err != nil {
 		return err
 	}
-	if err := validateSingleFeatureTypePerProperty(ctx, resource.SchemaDefinition); err != nil {
+	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
 		return err
 	}
 	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
@@ -1290,35 +1290,15 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	return schemaChanged || indexConfigChanged, err
 }
 
-func validateSingleFeatureTypePerProperty(ctx context.Context, schema []*interfaces.Property) error {
-	for _, property := range schema {
-		if property == nil {
-			continue
-		}
-		seen := make(map[string]struct{}, len(property.Features))
-		for _, feature := range property.Features {
-			if feature.FeatureType == "" {
-				continue
-			}
-			if _, exists := seen[feature.FeatureType]; exists {
-				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-					WithErrorDetails(fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
-			}
-			seen[feature.FeatureType] = struct{}{}
-		}
-	}
-	return nil
-}
-
 func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema []*interfaces.Property, indexConfig *interfaces.ResourceIndexConfig) error {
 	if err := validateIndexConfigBuildKeyFields(ctx, schema, indexConfig); err != nil {
 		return err
 	}
-	defaultEmbeddingModel := ""
+	defaultEmbeddingModelID := ""
 	if indexConfig != nil {
-		defaultEmbeddingModel = strings.TrimSpace(indexConfig.DefaultEmbeddingModel)
+		defaultEmbeddingModelID = strings.TrimSpace(indexConfig.DefaultEmbeddingModel)
 	}
-	checkedModels := map[string]struct{}{}
+	checkedModelIDs := map[string]struct{}{}
 	for _, prop := range schema {
 		if prop == nil {
 			continue
@@ -1333,27 +1313,27 @@ func (rs *resourceService) validateIndexConfigModels(ctx context.Context, schema
 				fieldName = feature.RefProperty
 			}
 
-			modelName := ""
+			modelID := ""
 			if feature.Config != nil {
 				if value, ok := feature.Config["embedding_model"].(string); ok {
-					modelName = strings.TrimSpace(value)
+					modelID = strings.TrimSpace(value)
 				}
 			}
-			if modelName == "" {
-				modelName = defaultEmbeddingModel
+			if modelID == "" {
+				modelID = defaultEmbeddingModelID
 			}
-			if modelName == "" {
+			if modelID == "" {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 					WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", fieldName))
 			}
 
-			if _, ok := checkedModels[modelName]; !ok {
-				if _, err := rs.mfs.GetModelByName(ctx, modelName); err != nil {
+			if _, ok := checkedModelIDs[modelID]; !ok {
+				if _, err := rs.mfs.GetModelByID(ctx, modelID); err != nil {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
-						WithErrorDetails(fmt.Sprintf("embedding model %q for field %q not found", modelName, fieldName))
+						WithErrorDetails(fmt.Sprintf("embedding model ID %q for field %q not found", modelID, fieldName))
 				}
 
-				checkedModels[modelName] = struct{}{}
+				checkedModelIDs[modelID] = struct{}{}
 			}
 		}
 	}
@@ -1448,6 +1428,25 @@ func validateIndexConfigBuildKeyFields(ctx context.Context, schema []*interfaces
 func unsupportedResourceUpdateError(ctx context.Context, details string) error {
 	return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 		WithErrorDetails(details)
+}
+
+func validateSchemaDefinition(ctx context.Context, schema []*interfaces.Property) error {
+	for _, property := range schema {
+		if property == nil {
+			return unsupportedResourceUpdateError(ctx, "schema_definition cannot contain null fields")
+		}
+		seen := make(map[string]struct{}, len(property.Features))
+		for _, feature := range property.Features {
+			if feature.FeatureType == "" {
+				continue
+			}
+			if _, exists := seen[feature.FeatureType]; exists {
+				return unsupportedResourceUpdateError(ctx, fmt.Sprintf("property %q has more than one %q feature", property.Name, feature.FeatureType))
+			}
+			seen[feature.FeatureType] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func validateMutableSchemaUpdate(ctx context.Context, current []*interfaces.Property, requested []*interfaces.Property, allowPropertyAdditions bool) (bool, error) {

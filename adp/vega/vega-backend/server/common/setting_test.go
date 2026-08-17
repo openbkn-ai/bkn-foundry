@@ -50,28 +50,6 @@ func TestGetAuthEnabled(t *testing.T) {
 	}
 }
 
-func TestGetDebugMode(t *testing.T) {
-	tests := []struct {
-		name string
-		env  string
-		want bool
-	}{
-		{name: "defaults disabled", want: false},
-		{name: "true enables", env: "true", want: true},
-		{name: "one enables", env: "1", want: true},
-		{name: "mixed case true enables", env: " TrUe ", want: true},
-		{name: "false disables", env: "false", want: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("DEBUG_MODE", tt.env)
-
-			assert.Equal(t, tt.want, GetDebugMode())
-		})
-	}
-}
-
 func TestSetServiceSettings(t *testing.T) {
 	t.Run("sets service settings from dependency map", func(t *testing.T) {
 		resetAppSetting(t, map[string]map[string]any{
@@ -119,12 +97,12 @@ func TestSetServiceSettings(t *testing.T) {
 				"host":     "connect",
 				"port":     8083,
 			},
-			mfModelManagerServiceName: {
+			modelFactoryManagerServiceName: {
 				"protocol": "http",
 				"host":     "model-manager",
 				"port":     8001,
 			},
-			mfModelApiServiceName: {
+			modelFactoryAPIServiceName: {
 				"protocol": "https",
 				"host":     "model-api",
 				"port":     8002,
@@ -139,8 +117,8 @@ func TestSetServiceSettings(t *testing.T) {
 		SetPermissionSetting()
 		SetUserMgmtSetting()
 		SetKafkaConnectSetting()
-		SetMfModelManagerSetting()
-		SetMfModelApiSetting()
+		SetModelFactoryManagerSetting()
+		SetModelFactoryAPISetting()
 
 		assert.Equal(t, "db", appSetting.DBSetting.Host)
 		assert.Equal(t, 3306, appSetting.DBSetting.Port)
@@ -171,8 +149,8 @@ func TestSetServiceSettings(t *testing.T) {
 		assert.Equal(t, "connect", appSetting.KafkaConnectSetting.Host)
 		assert.Equal(t, 8083, appSetting.KafkaConnectSetting.Port)
 		assert.Equal(t, "http", appSetting.KafkaConnectSetting.Protocol)
-		assert.Equal(t, "http://model-manager:8001", appSetting.MfModelManagerUrl)
-		assert.Equal(t, "https://model-api:8002", appSetting.MfModelApiUrl)
+		assert.Equal(t, "http://model-manager:8001/api/private/mf-model-manager/v1", appSetting.ModelFactoryManagerUrl)
+		assert.Equal(t, "https://model-api:8002/api/private/mf-model-api/v1", appSetting.ModelFactoryAPIUrl)
 	})
 }
 

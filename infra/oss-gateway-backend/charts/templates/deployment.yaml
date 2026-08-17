@@ -19,14 +19,13 @@ spec:
         app: {{ .Values.image.name }}
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
-      # 把 ndots 从 ClusterFirst 默认 5 降到 1：sentinel 返回的
-      # redis-proton-redis-announce-0.resource.svc.cluster.local 是带 4 个
-      # 点的 FQDN，ndots=5 让 libc 先用所有 search domain 拼接试一遍
-      # (kweaver.svc.cluster.local / svc.cluster.local / cluster.local /
-      # localdomain)，每个 ~1s NXDOMAIN，FQDN 解析硬生生耗 6s。redis-py
-      # sentinel pool 启动期会做多次此查询，叠出分钟级 startup hang ->
-      # startup probe CrashLoop。降到 ndots=1 后直接以 FQDN 查询，毫秒返回。
-      # 不影响业务里 ClusterFirst 短名查询（短名仍 < ndots，走 search list）。
+      # Reduce ndots from the ClusterFirst default of 5 to 1. Sentinel returns
+      # a four-dot FQDN such as redis-proton-redis-announce-0.resource.svc.cluster.local.
+      # With ndots=5, libc first appends every search domain and each attempt can
+      # spend about one second on NXDOMAIN. Redis Sentinel repeats the lookup at
+      # startup, causing minute-long hangs and startup-probe CrashLoops. ndots=1
+      # resolves the FQDN directly while short ClusterFirst names still use the
+      # search list.
       dnsConfig:
         options:
           - name: ndots
@@ -254,7 +253,7 @@ spec:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-yaml
                   key: KAFKAPASS
-            # 修复以下三个环境变量的配置
+            # Vector mapping environment variables.
             - name: TEXTVECTORMAPPING
               valueFrom:
                 configMapKeyRef:
@@ -322,7 +321,7 @@ spec:
                 configMapKeyRef:
                   name: {{ .Release.Name }}-yaml
                   key: AUTHORIZATIONPRIVATEPORT
-            # 可观测相关配置
+            # Observability configuration.
             - name: LOG_ENABLED
               value: {{ .Values.observability.logEnabled | quote }}
             - name: TRACE_ENABLED

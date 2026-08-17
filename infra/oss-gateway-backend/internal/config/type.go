@@ -15,7 +15,7 @@ type CommonConfig struct {
 }
 
 type DatabaseConfig struct {
-	// 本地开发默认值
+	// Local development defaults.
 	Host     string `envconfig:"RDSHOST"     default:"localhost"`
 	Port     string `envconfig:"RDSPORT"     default:"3306"`
 	User     string `envconfig:"RDSUSER"     default:"root"`
@@ -32,10 +32,10 @@ type DatabaseConfig struct {
 
 type RedisConfig struct {
 	// Redis cluster mode: standalone, master-slave, sentinel
-	// 统一使用与 Python 项目一致的环境变量命名
+	// Environment variable names match the Python services.
 	ClusterMode string `envconfig:"REDISCLUSTERMODE" default:"sentinel"`
 
-	// Standalone mode (单机模式) - 本地开发默认值
+	// Standalone mode defaults for local development.
 	Host     string `envconfig:"REDISHOST" default:"localhost"`
 	Port     string `envconfig:"REDISPORT" default:"6379"`
 	User     string `envconfig:"REDISUSER" default:""`
@@ -43,19 +43,19 @@ type RedisConfig struct {
 	DB       int    `envconfig:"REDIS_DB"  default:"2"`
 	PoolSize int    `envconfig:"REDIS_POOL_SIZE" default:"100"`
 
-	// Master-Slave mode (主从模式 - 读)
+	// Master-slave read connection.
 	ReadHost     string `envconfig:"REDISREADHOST" default:"localhost"`
 	ReadPort     string `envconfig:"REDISREADPORT" default:"6379"`
 	ReadUser     string `envconfig:"REDISREADUSER" default:""`
 	ReadPassword string `envconfig:"REDISREADPASS" default:""`
 
-	// Master-Slave mode (主从模式 - 写)
+	// Master-slave write connection.
 	WriteHost     string `envconfig:"REDISWRITEHOST" default:"localhost"`
 	WritePort     string `envconfig:"REDISWRITEPORT" default:"6379"`
 	WriteUser     string `envconfig:"REDISWRITEUSER" default:""`
 	WritePassword string `envconfig:"REDISWRITEPASS" default:""`
 
-	// Sentinel mode (哨兵模式)
+	// Sentinel mode.
 	SentinelAddrs    []string `envconfig:"REDIS_SENTINEL_ADDRS" default:"192.168.40.104:26379"`
 	SentinelMaster   string   `envconfig:"SENTINELMASTER"       default:"mymaster"`
 	SentinelUser     string   `envconfig:"SENTINELUSER"         default:"root"`

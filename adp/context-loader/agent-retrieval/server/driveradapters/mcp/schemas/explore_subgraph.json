@@ -1,0 +1,194 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "response_format": {
+        "type": "string",
+        "enum": [
+          "json",
+          "toon"
+        ],
+        "default": "toon",
+        "description": "文本格式：json 或 toon，默认 toon"
+      },
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID。也可改用 X-Kn-ID 请求头传入。"
+      },
+      "source_object_type_id": {
+        "type": "string",
+        "description": "探索起点的对象类 ID。用 search_schema 或 get_object_types 先确认。"
+      },
+      "direction": {
+        "type": "string",
+        "enum": [
+          "forward",
+          "backward",
+          "bidirectional"
+        ],
+        "description": "探索方向。forward 只沿关系定义的出边走，backward 只沿入边走，bidirectional 两个方向都走。不确定关系是怎么定义的就用 bidirectional。"
+      },
+      "path_length": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 3,
+        "description": "最大跳数，取 1-3，超出返回 400。路径数随跳数快速增长，先从 1-2 起步，不够再加。"
+      },
+      "condition": {
+        "type": "object",
+        "description": "起点对象类的过滤条件，结构与 query_object_instance 的 condition 完全一致（operation 必填；比较算子配 field + value + value_from=const；and/or 配 sub_conditions 递归嵌套）。只作用于**起点**，不过滤路径上的其他对象类。不传则以该对象类的全部实例为起点（受 limit 限制）。",
+        "required": [
+          "operation"
+        ],
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "字段名（起点对象类的属性）"
+          },
+          "operation": {
+            "type": "string",
+            "description": "条件操作符，取值规则与 query_object_instance 相同：比较算子按属性 type 判断，索引算子 match / knn 以该属性的 condition_operations 为准。"
+          },
+          "sub_conditions": {
+            "type": "array",
+            "description": "子条件数组，用于 and/or",
+            "items": {
+              "type": "object"
+            }
+          },
+          "value_from": {
+            "type": "string",
+            "enum": [
+              "const"
+            ],
+            "description": "值来源，仅支持 const"
+          },
+          "value": {
+            "description": "字段值；单值算子用单值，in/not_in 用数组，range/out_range 用 [min, max]，exist/not_exist 不传",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "concept_groups": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "概念分组 ID 数组，把探索范围限定在这些分组内的概念上。不传则不限范围。"
+      },
+      "include_incomplete_path": {
+        "type": "boolean",
+        "default": false,
+        "description": "是否返回残缺路径——已走过至少一条边、但没走满 path_length 就无路可走的那些。默认 false 只返回完整路径。想知道「到底连到了哪儿为止」时打开。零边路径任何情况下都不返回。"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "**起点对象类**的实例数量上限，默认 10。不是返回路径的条数上限，也不是对象总数上限。"
+      },
+      "sort": {
+        "type": "array",
+        "description": "**起点对象类**的排序字段，按数组顺序依次比较。与 limit 配合决定「从哪些起点出发」，不影响路径本身的顺序。",
+        "items": {
+          "type": "object",
+          "required": [
+            "field",
+            "direction"
+          ],
+          "properties": {
+            "field": {
+              "type": "string",
+              "description": "排序字段（起点对象类的属性名）"
+            },
+            "direction": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "description": "排序方向"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "offset": {
+        "type": "integer",
+        "description": "**起点对象类**的偏移翻页：跳过前 N 个起点。与 search_after 互斥。"
+      },
+      "search_after": {
+        "type": "array",
+        "items": {},
+        "description": "**起点对象类**的游标翻页：传上一次响应返回的 search_after 取下一批起点；首次不传。与 offset 互斥。"
+      },
+      "include_logic_params": {
+        "type": "boolean",
+        "description": "是否返回逻辑属性的计算参数，默认 false"
+      }
+    },
+    "required": [
+      "kn_id",
+      "source_object_type_id",
+      "direction",
+      "path_length"
+    ]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "objects": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "参与了关系的对象，key 是对象 id，value 含 object_type_id / _instance_identity / _display / properties。"
+      },
+      "isolated_objects": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "没有建立任何关系的孤立对象。**这是有效结论不是失败**：它明确回答了「这些起点在给定方向与跳数内没有关联」，不要因为这里有值就重试或改问法。"
+      },
+      "relation_paths": {
+        "type": "array",
+        "description": "具体的关系路径。每条含 relations 数组（relation_type_id / source_object_id / target_object_id）与 length（边数）。对象详情去 objects 里按 id 查。",
+        "items": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "total_count": {
+        "type": "integer",
+        "description": "**起点对象类**的命中总数，不受 limit 限制，与路径条数或对象总数无关。零命中时是 0（有值）。字段缺失表示本次没有计算总数——用 search_after 翻页时第二页起即如此——不能推断为 0。"
+      },
+      "search_after": {
+        "type": "array",
+        "items": {},
+        "description": "起点对象类的下一页游标：非空时作为下次请求的 search_after 传入以取下一批起点；为空表示起点已取完。"
+      }
+    }
+  }
+}

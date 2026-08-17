@@ -516,10 +516,19 @@ func TestQueryObjectTruncatedUsesExplicitNextPageSignals(t *testing.T) {
 	}
 	lastPageResp := &interfaces.QueryObjectInstancesResp{
 		Data:       []any{map[string]any{"id": "inst_1"}, map[string]any{"id": "inst_2"}},
-		TotalCount: 2,
+		TotalCount: int64Ptr(2),
 	}
 	if queryObjectTruncated(req, lastPageResp) {
 		t.Fatalf("truncated should be false when total_count proves the current page is complete")
+	}
+
+	// 下游在游标翻页第二页起不算总数，TotalCount 为 nil。缺失不是零命中，
+	// 更不能当成「本页已完整」——不然证据链会把截断的结果标成完整的。
+	unknownTotalResp := &interfaces.QueryObjectInstancesResp{
+		Data: []any{map[string]any{"id": "inst_1"}, map[string]any{"id": "inst_2"}},
+	}
+	if queryObjectTruncated(req, unknownTotalResp) {
+		t.Fatalf("truncated should be false when total_count is absent and no cursor is returned")
 	}
 
 	hasNextCursorResp := &interfaces.QueryObjectInstancesResp{
@@ -532,12 +541,14 @@ func TestQueryObjectTruncatedUsesExplicitNextPageSignals(t *testing.T) {
 
 	hasMoreOffsetResp := &interfaces.QueryObjectInstancesResp{
 		Data:       []any{map[string]any{"id": "inst_1"}, map[string]any{"id": "inst_2"}},
-		TotalCount: 3,
+		TotalCount: int64Ptr(3),
 	}
 	if !queryObjectTruncated(req, hasMoreOffsetResp) {
 		t.Fatalf("truncated should be true when total_count exceeds returned offset range")
 	}
 }
+
+func int64Ptr(v int64) *int64 { return &v }
 
 func TestBuildQueryInstanceSubgraphEventsUsesHashAndRefsOnly(t *testing.T) {
 	req := &interfaces.QueryInstanceSubgraphReq{

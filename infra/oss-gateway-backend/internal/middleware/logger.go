@@ -26,6 +26,9 @@ func Logger(log *logrus.Entry) gin.HandlerFunc {
 			"method":      method,
 			"path":        path,
 		})
+		if privateErrors := c.Errors.ByType(gin.ErrorTypePrivate); len(privateErrors) > 0 {
+			entry = entry.WithField("errors", privateErrors.Errors())
+		}
 
 		if statusCode >= 500 {
 			entry.Error("Server error")

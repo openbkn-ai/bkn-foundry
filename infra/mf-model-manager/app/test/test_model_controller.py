@@ -111,6 +111,20 @@ class TestUsedModelOpenai(TestCase):
             llm_controller.used_model_openai(request, "111", "zh", "test"))
         self.assertEqual(isinstance(res, EventSourceResponse), True)
 
+    def test_used_model_openai_missing_model_returns_not_found(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_controller.redis_util = self._redis_mock()
+        llm_model_dao.get_data_from_model_list_by_name = mock.Mock(return_value=[])
+
+        res = loop.run_until_complete(
+            llm_controller.used_model_openai(
+                {"model": "missing_model", "stream": False}, "111", "zh", "test"))
+
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(json.loads(res.body)["code"],
+                         "ModelFactory.ExternalSmallModel.Used.NameNotExist")
+
 
 class TestAddModel(TestCase):
     def setUp(self) -> None:

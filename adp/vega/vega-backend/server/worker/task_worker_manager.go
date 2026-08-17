@@ -36,11 +36,8 @@ func NewTaskWorkerManager(appSetting *common.AppSetting) *TaskWorkerManger {
 		rs := resource.NewResourceService(appSetting)
 		bts := build_task.NewBuildTaskService(appSetting, rs)
 		sutw := NewSemanticUnderstandingTaskWorker(appSetting)
-		bbw := NewBatchBuildWorker(appSetting)
-		sbw := NewStreamingBuildWorker(appSetting)
-		ebw := NewEmbeddingBuildWorker(appSetting)
 		taskWorkerManger = &TaskWorkerManger{
-			btw:  newBuildTaskWorker(appSetting, bts, bbw, sbw, ebw),
+			btw:  NewBuildTaskWorker(appSetting, bts),
 			dtw:  NewDiscoverTaskWorker(appSetting),
 			sutw: sutw,
 		}

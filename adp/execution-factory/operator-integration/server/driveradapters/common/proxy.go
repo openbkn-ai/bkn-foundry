@@ -114,6 +114,10 @@ func executionEnvKeys() []string {
 	return []string{
 		"source", "task_id", "capability_id", "capability_name",
 		"function_version_id", "user_id", "user_name",
+		// BKN 身份与会话上下文。必须列在这里：newExecutionEnv 靠这份清单把每个键
+		// 预置成空串，从而做到「每次执行下发全套」。漏一个，池化会话里上一个调用方
+		// 的令牌就会留给下一个——而令牌漏的不是标记，是身份。
+		"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID",
 	}
 }
 
@@ -144,15 +148,15 @@ func buildFunctionProxyExecutionEnv(version string) map[string]any {
 
 // FunctionExecuteResp 函数执行响应
 type FunctionExecuteResp struct {
-	Stdout          string `json:"stdout"`                     // 标准输出
-	Stderr          string `json:"stderr"`                     // 标准错误输出
-	Result          any    `json:"result"`                     // 执行结果值
-	Metrics         any    `json:"metrics"`                    // 执行指标
-	ExitCode        int    `json:"exit_code"`                  // 退出码,0 表示成功
-	ErrorMessage    string `json:"error_message,omitempty"`    // 沙箱侧错误信息
-	ExecutionTimeMS int64  `json:"execution_time_ms"`          // 执行耗时,单位毫秒
-	Artifacts       any    `json:"artifacts,omitempty"`        // 文件制品
-	SessionID       string `json:"session_id,omitempty"`       // 沙箱会话ID,便于排障
+	Stdout          string `json:"stdout"`                  // 标准输出
+	Stderr          string `json:"stderr"`                  // 标准错误输出
+	Result          any    `json:"result"`                  // 执行结果值
+	Metrics         any    `json:"metrics"`                 // 执行指标
+	ExitCode        int    `json:"exit_code"`               // 退出码,0 表示成功
+	ErrorMessage    string `json:"error_message,omitempty"` // 沙箱侧错误信息
+	ExecutionTimeMS int64  `json:"execution_time_ms"`       // 执行耗时,单位毫秒
+	Artifacts       any    `json:"artifacts,omitempty"`     // 文件制品
+	SessionID       string `json:"session_id,omitempty"`    // 沙箱会话ID,便于排障
 }
 
 // newFunctionExecuteResp 把沙箱执行结果转成对外响应。
@@ -196,6 +200,13 @@ func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[
 	if req.UserName != "" {
 		env["user_name"] = req.UserName
 	}
+	// BKN 上下文。键名大写并加前缀，与 user_id 那几个追踪标记区分开——那些注释里
+	// 明写「仅作追踪标记，不参与鉴权」，而 bkn_token 是真凭据，不该混进同一命名风格。
+	// 无条件赋值，不传就是空串：这三个键已在 executionEnvKeys 里预置，条件写入会让
+	// 未传的那次留下上一个调用方的值。空串在沙箱侧等同于未配置。
+	env["BKN_TOKEN"] = req.BKNToken
+	env["BKN_CONVERSATION_ID"] = req.BKNConversationID
+	env["BKN_INTERACTION_ID"] = req.BKNInteractionID
 	return env
 }
 
@@ -347,11 +358,11 @@ type FunctionInferSchemaReq struct {
 // FunctionInferSchemaResp 推导结果。代码未使用 @tool 时 Supported 为 false，
 // 其余字段为空，调用方据此回退到手工填写。
 type FunctionInferSchemaResp struct {
-	Supported   bool                      `json:"supported"`             // 是否推导出了 @tool 函数
-	Name        string                    `json:"name,omitempty"`        // 函数名
-	Description string                    `json:"description,omitempty"` // 取自 docstring
-	Inputs      []*interfaces.ParameterDef `json:"inputs,omitempty"`     // 输入参数定义
-	Outputs     []*interfaces.ParameterDef `json:"outputs,omitempty"`    // 输出参数定义
+	Supported   bool                       `json:"supported"`             // 是否推导出了 @tool 函数
+	Name        string                     `json:"name,omitempty"`        // 函数名
+	Description string                     `json:"description,omitempty"` // 取自 docstring
+	Inputs      []*interfaces.ParameterDef `json:"inputs,omitempty"`      // 输入参数定义
+	Outputs     []*interfaces.ParameterDef `json:"outputs,omitempty"`     // 输出参数定义
 }
 
 // 探针代码：附在用户代码之后，向 SDK 取它登记的 schema。

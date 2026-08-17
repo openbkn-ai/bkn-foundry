@@ -134,8 +134,8 @@ func TestStorageHandler_Create_ValidationError_StorageNameExists(t *testing.T) {
 
 	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
 		Return("", &service.StorageValidationError{
-			Code:        "400031107",
-			Description: "Storage name already exists",
+			Code:   "400031107",
+			Params: map[string]interface{}{"StorageName": "existing-storage"},
 		})
 
 	body, _ := json.Marshal(req)
@@ -146,6 +146,8 @@ func TestStorageHandler_Create_ValidationError_StorageNameExists(t *testing.T) {
 	router.ServeHTTP(w, r)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"400031107"`)
+	assert.Contains(t, w.Body.String(), "existing-storage")
 	mockService.AssertExpectations(t)
 }
 
@@ -167,8 +169,11 @@ func TestStorageHandler_Create_ValidationError_StorageExists(t *testing.T) {
 
 	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
 		Return("", &service.StorageValidationError{
-			Code:        "400031108",
-			Description: "Storage already exists",
+			Code: "400031108",
+			Params: map[string]interface{}{
+				"Bucket":   "existing-bucket",
+				"Location": "https://oss-cn-hangzhou.aliyuncs.com",
+			},
 		})
 
 	body, _ := json.Marshal(req)
@@ -179,6 +184,9 @@ func TestStorageHandler_Create_ValidationError_StorageExists(t *testing.T) {
 	router.ServeHTTP(w, r)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"400031108"`)
+	assert.Contains(t, w.Body.String(), "existing-bucket")
+	assert.Contains(t, w.Body.String(), "https://oss-cn-hangzhou.aliyuncs.com")
 	mockService.AssertExpectations(t)
 }
 
@@ -200,8 +208,8 @@ func TestStorageHandler_Create_ValidationError_InvalidVendorType(t *testing.T) {
 
 	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
 		Return("", &service.StorageValidationError{
-			Code:        "400031110",
-			Description: "Invalid vendor type",
+			Code:   "400031110",
+			Params: map[string]interface{}{"VendorType": "INVALID"},
 		})
 
 	body, _ := json.Marshal(req)
@@ -212,6 +220,8 @@ func TestStorageHandler_Create_ValidationError_InvalidVendorType(t *testing.T) {
 	router.ServeHTTP(w, r)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"400031110"`)
+	assert.Contains(t, w.Body.String(), "INVALID")
 	mockService.AssertExpectations(t)
 }
 
@@ -322,6 +332,7 @@ func TestStorageHandler_Get_NotFound(t *testing.T) {
 	router.ServeHTTP(w, r)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"404001"`)
 	mockService.AssertExpectations(t)
 }
 

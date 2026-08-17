@@ -19,8 +19,7 @@ service:
 
 ingress:
   enabled: true
-  # 基于路径（Path）的路由分发
-  # 不配置 host，通过不同的 path 前缀区分服务
+  # Path-based routing without a host; services are separated by path prefix.
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "500M"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"

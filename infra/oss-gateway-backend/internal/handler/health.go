@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"oss-gateway/internal/cache"
-	"oss-gateway/pkg/errors"
+	"oss-gateway/pkg/response"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -67,12 +67,6 @@ func (h *HealthHandler) Ready(c *gin.Context) {
 			"checks": checks,
 		})
 	} else {
-		code := errors.ServiceNotReady
-		c.JSON(http.StatusServiceUnavailable, gin.H{
-			"code":        code.Code,
-			"message":     code.Message,
-			"description": code.Description,
-			"checks":      checks,
-		})
+		response.ServiceNotReady(c, checks)
 	}
 }

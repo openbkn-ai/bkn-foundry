@@ -46,7 +46,6 @@ func buildTaskColumns() []string {
 		"f_status",
 		"f_total_count",
 		"f_synced_count",
-		"f_vectorized_count",
 		"f_synced_mark",
 		"f_error_msg",
 		"f_failure_detail",
@@ -67,11 +66,9 @@ func buildTaskSummaryColumns() []string {
 		"f_catalog_id",
 		"f_mode",
 		"f_execute_type",
-		"f_index_config",
 		"f_status",
 		"f_total_count",
 		"f_synced_count",
-		"f_vectorized_count",
 		"f_synced_mark",
 		"f_error_msg",
 		"f_creator",
@@ -106,7 +103,6 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 		&buildTask.Status,
 		&buildTask.TotalCount,
 		&buildTask.SyncedCount,
-		&buildTask.VectorizedCount,
 		&buildTask.SyncedMark,
 		&buildTask.ErrorMsg,
 		&buildTask.FailureDetail,
@@ -132,18 +128,16 @@ func scanBuildTask(scanner buildTaskScanner) (*interfaces.BuildTask, error) {
 
 func scanBuildTaskSummary(scanner buildTaskScanner) (*interfaces.BuildTaskSummary, error) {
 	task := &interfaces.BuildTaskSummary{}
-	var creatorID, creatorType, indexConfigJSON string
+	var creatorID, creatorType string
 	err := scanner.Scan(
 		&task.ID,
 		&task.ResourceID,
 		&task.CatalogID,
 		&task.Mode,
 		&task.ExecuteType,
-		&indexConfigJSON,
 		&task.Status,
 		&task.TotalCount,
 		&task.SyncedCount,
-		&task.VectorizedCount,
 		&task.SyncedMark,
 		&task.ErrorMsg,
 		&creatorID,
@@ -155,11 +149,6 @@ func scanBuildTaskSummary(scanner buildTaskScanner) (*interfaces.BuildTaskSummar
 	)
 	if err != nil {
 		return nil, err
-	}
-	if indexConfigJSON != "" {
-		if err := sonic.UnmarshalString(indexConfigJSON, &task.IndexConfig); err != nil {
-			return nil, err
-		}
 	}
 	task.Creator = interfaces.AccountInfo{ID: creatorID, Type: creatorType}
 	return task, nil
@@ -198,7 +187,6 @@ func (bta *buildTaskAccess) Create(ctx context.Context, buildTask *interfaces.Bu
 			buildTask.Status,
 			buildTask.TotalCount,
 			buildTask.SyncedCount,
-			buildTask.VectorizedCount,
 			buildTask.SyncedMark,
 			buildTask.ErrorMsg,
 			buildTask.FailureDetail,
@@ -305,9 +293,6 @@ func (bta *buildTaskAccess) SetProgress(
 	if progress.SyncedCount != nil {
 		updateColumns["f_synced_count"] = *progress.SyncedCount
 	}
-	if progress.VectorizedCount != nil {
-		updateColumns["f_vectorized_count"] = *progress.VectorizedCount
-	}
 	if progress.SyncedMark != nil {
 		updateColumns["f_synced_mark"] = *progress.SyncedMark
 	}
@@ -333,7 +318,6 @@ func (bta *buildTaskAccess) MarkPending(ctx context.Context, id string, reset bo
 	if reset {
 		updateColumns["f_total_count"] = int64(0)
 		updateColumns["f_synced_count"] = int64(0)
-		updateColumns["f_vectorized_count"] = int64(0)
 		updateColumns["f_synced_mark"] = ""
 		updateColumns["f_error_msg"] = ""
 		updateColumns["f_failure_detail"] = ""

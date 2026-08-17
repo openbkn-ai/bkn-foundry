@@ -663,14 +663,14 @@ async def used_model_openai(request, user_id, language, func_module):
                 # Fall back to the database when cached data is invalid.
                 model_info = llm_model_dao.get_data_from_model_list_by_name(model_name)
                 if len(model_info) == 0:
-                    return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                    return JSONResponse(status_code=404, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
                 # Refresh the quota cache.
                 await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
         else:
             # Query the database when the cache is missing or has an unexpected type.
             model_info = llm_model_dao.get_data_from_model_list_by_name(model_name)
             if len(model_info) == 0:
-                return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
+                return JSONResponse(status_code=404, content=ModelFactory_ExternalSmallModel_Used_NameNotExist)
             # Cache the quota result.
             await redis_util.set_str(key=cache_key, value=str(model_info), expire=300)
     except Exception as e:

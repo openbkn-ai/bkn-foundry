@@ -711,6 +711,25 @@ components:
         user_name:
           type: string
           description: 用户名，写进沙箱环境变量。同样只作追踪标记。
+        bkn_token:
+          type: string
+          format: password
+          description: |
+            调用方令牌，写进沙箱的进程级环境变量 `BKN_TOKEN`，供沙箱内的
+            `sandbox_sdk.bkn` 以**调用方身份**访问 BKN。
+
+            与上面几个追踪标记不同，这是真凭据，参与鉴权。走环境变量而不是 `event`：
+            `event` 是用户函数的业务入参，凭据混在里面既污染参数命名空间，也逼着
+            每个想调 BKN 的人知道该往 `event` 里塞什么。
+
+            生命周期与 `event` 相同——executor 为每次执行现组一份环境再注入，随进程
+            消亡，不会留在池化复用的容器里。
+        bkn_conversation_id:
+          type: string
+          description: 会话 ID，写进 `BKN_CONVERSATION_ID`。取自 `bkn_start_interaction` 的返回。
+        bkn_interaction_id:
+          type: string
+          description: 交互 ID，写进 `BKN_INTERACTION_ID`。与 `bkn_conversation_id` 同源，两者一起决定沙箱内的调用挂在哪次交互下。
 
     FunctionExecuteResponse:
       type: object

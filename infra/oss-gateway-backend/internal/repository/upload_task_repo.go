@@ -49,7 +49,7 @@ func (r *uploadTaskRepository) Delete(ctx context.Context, taskID string) error 
 		Delete(&model.MultipartUploadTask{}).Error
 }
 
-// DeleteExpired 删除创建时间超过7天且未完成的任务
+// DeleteExpired removes incomplete tasks created more than seven days ago.
 func (r *uploadTaskRepository) DeleteExpired(ctx context.Context, before time.Time) error {
 	return r.db.WithContext(ctx).
 		Where("f_created_at < ? AND f_status = ?", before, model.UploadStatusInProgress).

@@ -5,7 +5,7 @@ import (
 	"oss-gateway/internal/config"
 	"time"
 
-	_ "github.com/openbkn-ai/bkn-comm-go/db/driver"
+	_ "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
 	"github.com/sirupsen/logrus"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"

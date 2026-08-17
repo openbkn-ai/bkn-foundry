@@ -197,6 +197,59 @@ func handleQueryInstanceSubgraph(service logicsKqs.KnQuerySubgraphService) func(
 	}
 }
 
+// handleExploreSubgraph handles explore_subgraph tool calls.
+func handleExploreSubgraph(service logicsKqs.KnQuerySubgraphService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		format, err := GetResponseFormatFromRequest(req)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		exploreReq := &interfaces.ExploreSubgraphReq{}
+		if err := bindArguments(req, exploreReq); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+
+		exploreReq.KnID = getStringArg(req, "kn_id", exploreReq.KnID)
+		if exploreReq.KnID == "" {
+			exploreReq.KnID = getKnIDFromHeader(req)
+		}
+		exploreReq.IncludeLogicParams = req.GetBool("include_logic_params", exploreReq.IncludeLogicParams)
+		if exploreReq.Limit == 0 {
+			exploreReq.Limit = 10
+		}
+		// 三个必填项分开报，合成一句 "required" 会让模型猜是哪个漏了。
+		for _, missing := range []struct {
+			empty bool
+			name  string
+		}{
+			{exploreReq.KnID == "", "kn_id"},
+			{exploreReq.SourceObjectTypeID == "", "source_object_type_id"},
+			{exploreReq.Direction == "", "direction"},
+		} {
+			if missing.empty {
+				return mcp.NewToolResultError(missing.name + " is required"), nil
+			}
+		}
+		// path_length 的取值范围由下游把关（>3 回 400），但 0 在这里就得拦：它是 int
+		// 的零值，分不清「没传」还是「传了 0」，而下游对 0 不报错、只会返回空子图,
+		// 让调用方以为「什么都没连上」。
+		if exploreReq.PathLength <= 0 {
+			return mcp.NewToolResultError("path_length is required and must be at least 1"), nil
+		}
+
+		resp, err := service.ExploreSubgraph(ctx, exploreReq)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(resp, format)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
+}
+
 // handleGetLogicPropertiesValues handles get_logic_properties_values tool calls.
 func handleGetLogicPropertiesValues(service interfaces.IKnLogicPropertyResolverService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

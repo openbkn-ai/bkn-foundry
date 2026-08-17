@@ -218,6 +218,10 @@ func (stubQuerySubgraphHandler) QueryInstanceSubgraph(c *gin.Context) {
 	c.Status(http.StatusOK)
 }
 
+func (stubQuerySubgraphHandler) ExploreSubgraph(c *gin.Context) {
+	c.Status(http.StatusOK)
+}
+
 type stubKnSearchHandler struct{}
 
 func (stubKnSearchHandler) KnSearch(c *gin.Context) {

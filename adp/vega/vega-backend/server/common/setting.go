@@ -109,11 +109,11 @@ type AppSetting struct {
 	HydraAdminSetting   hydra.HydraAdminSetting
 	KafkaConnectSetting KafkaConnectSetting
 
-	PermissionUrl     string
-	UserMgmtUrl       string
-	MfModelManagerUrl string
-	MfModelApiUrl     string
-	BknAgentUrl       string
+	PermissionUrl          string
+	UserMgmtUrl            string
+	ModelFactoryManagerUrl string
+	ModelFactoryAPIUrl     string
+	BknAgentUrl            string
 }
 
 const (
@@ -122,16 +122,16 @@ const (
 	configName string = "vega-backend-config"
 	configType string = "yaml"
 
-	rdsServiceName            string = "rds"
-	mqServiceName             string = "mq"
-	opensearchServiceName     string = "opensearch"
-	permissionServiceName     string = "authorization-private"
-	userMgmtServiceName       string = "user-management"
-	hydraAdminServiceName     string = "hydra-admin"
-	kafkaConnectServiceName   string = "kafka-connect"
-	mfModelManagerServiceName string = "mf-model-manager"
-	mfModelApiServiceName     string = "mf-model-api"
-	bknAgentServiceName       string = "bkn-agent"
+	rdsServiceName                 string = "rds"
+	mqServiceName                  string = "mq"
+	opensearchServiceName          string = "opensearch"
+	permissionServiceName          string = "authorization-private"
+	userMgmtServiceName            string = "user-management"
+	hydraAdminServiceName          string = "hydra-admin"
+	kafkaConnectServiceName        string = "kafka-connect"
+	modelFactoryManagerServiceName string = "mf-model-manager"
+	modelFactoryAPIServiceName     string = "mf-model-api"
+	bknAgentServiceName            string = "bkn-agent"
 
 	DATA_BASE_NAME string = "openbkn"
 )
@@ -229,8 +229,10 @@ func loadSetting(vp *viper.Viper) {
 
 	SetUserMgmtSetting()
 
-	SetMfModelManagerSetting()
-	SetMfModelApiSetting()
+	SetModelFactoryManagerSetting()
+
+	SetModelFactoryAPISetting()
+
 	SetBknAgentSetting()
 
 	appSetting.OtelSetting.ServiceName = version.ServerName
@@ -241,6 +243,7 @@ func loadSetting(vp *viper.Viper) {
 
 	s, _ := sonic.MarshalString(appSetting)
 	logger.Debug(s)
+	logger.Infof("Application settings loaded")
 }
 
 func SetDBSetting() {
@@ -328,13 +331,6 @@ func GetAuthEnabled() bool {
 	envVal := os.Getenv("AUTH_ENABLED")
 	// Disable authentication only when it is explicitly set to false or 0
 	return envVal != "false" && envVal != "0"
-}
-
-// GetDebugMode to obtain the debug mode status
-// Controlled by the environment variable DEBUG_MODE, it is enabled when explicitly set to true or 1
-func GetDebugMode() bool {
-	envVal := strings.TrimSpace(os.Getenv("DEBUG_MODE"))
-	return strings.EqualFold(envVal, "true") || envVal == "1"
 }
 
 func SetHydraAdminSetting() {
@@ -428,30 +424,30 @@ func SetKafkaConnectSetting() {
 	}
 }
 
-func SetMfModelManagerSetting() {
-	setting, ok := appSetting.DepServices[mfModelManagerServiceName]
+func SetModelFactoryManagerSetting() {
+	setting, ok := appSetting.DepServices[modelFactoryManagerServiceName]
 	if !ok {
-		logger.Fatalf("service %s not found in depServices", mfModelManagerServiceName)
+		logger.Fatalf("service %s not found in depServices", modelFactoryManagerServiceName)
 	}
 
 	protocol := setting["protocol"].(string)
 	host := setting["host"].(string)
 	port := setting["port"].(int)
 
-	appSetting.MfModelManagerUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
+	appSetting.ModelFactoryManagerUrl = fmt.Sprintf("%s://%s:%d/api/private/mf-model-manager/v1", protocol, host, port)
 }
 
-func SetMfModelApiSetting() {
-	setting, ok := appSetting.DepServices[mfModelApiServiceName]
+func SetModelFactoryAPISetting() {
+	setting, ok := appSetting.DepServices[modelFactoryAPIServiceName]
 	if !ok {
-		logger.Fatalf("service %s not found in depServices", mfModelApiServiceName)
+		logger.Fatalf("service %s not found in depServices", modelFactoryAPIServiceName)
 	}
 
 	protocol := setting["protocol"].(string)
 	host := setting["host"].(string)
 	port := setting["port"].(int)
 
-	appSetting.MfModelApiUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
+	appSetting.ModelFactoryAPIUrl = fmt.Sprintf("%s://%s:%d/api/private/mf-model-api/v1", protocol, host, port)
 }
 
 func SetBknAgentSetting() {

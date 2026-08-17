@@ -41,6 +41,7 @@ const (
 	toolKeySearchInstance           = "search_instance"
 	toolKeyQueryObjectInstance      = "query_object_instance"
 	toolKeyQueryInstanceSubgraph    = "query_instance_subgraph"
+	toolKeyExploreSubgraph          = "explore_subgraph"
 	toolKeyGetLogicPropertiesValues = "get_logic_properties_values"
 	toolKeyQueryMetric              = "query_metric"
 	toolKeyGetActionInfo            = "get_action_info"
@@ -185,6 +186,7 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 
 	knQuerySubgraphService := logicsKqs.NewKnQuerySubgraphService()
 	b.add(toolKeyQueryInstanceSubgraph, handleQueryInstanceSubgraph(knQuerySubgraphService))
+	b.add(toolKeyExploreSubgraph, handleExploreSubgraph(knQuerySubgraphService))
 
 	getLogicPropertiesValuesService := logicsKlp.NewKnLogicPropertyResolverService()
 	b.add(toolKeyGetLogicPropertiesValues, handleGetLogicPropertiesValues(getLogicPropertiesValuesService))

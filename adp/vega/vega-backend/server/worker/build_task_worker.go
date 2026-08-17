@@ -29,19 +29,35 @@ type BuildTaskWorker struct {
 	bts interfaces.BuildTaskService
 	bbw *batchBuildWorker
 	sbw *streamingBuildWorker
-	ebw *embeddingWorker
 
 	batchWorkerCount     int
 	streamingWorkerCount int
 	batchQueue           chan string
 	streamingQueue       chan string
-	embeddingQueue       chan string
 	mu                   sync.Mutex
 	inFlight             map[string]struct{}
 }
 
-func newBuildTaskWorker(appSetting *common.AppSetting, bts interfaces.BuildTaskService,
-	bbw *batchBuildWorker, sbw *streamingBuildWorker, ebw *embeddingWorker) *BuildTaskWorker {
+func NewBuildTaskWorker(appSetting *common.AppSetting, bts interfaces.BuildTaskService) *BuildTaskWorker {
+	batchWorkerCount, streamingWorkerCount := calculateTaskWorkerCounts(appSetting)
+
+	bbw := NewBatchBuildWorker(appSetting)
+	sbw := NewStreamingBuildWorker(appSetting)
+	worker := &BuildTaskWorker{
+		bts: bts,
+		bbw: bbw,
+		sbw: sbw,
+
+		batchWorkerCount:     batchWorkerCount,
+		streamingWorkerCount: streamingWorkerCount,
+		batchQueue:           make(chan string, batchWorkerCount*taskQueueSizeMultiplier),
+		streamingQueue:       make(chan string, streamingWorkerCount*taskQueueSizeMultiplier),
+		inFlight:             make(map[string]struct{}),
+	}
+	return worker
+}
+
+func calculateTaskWorkerCounts(appSetting *common.AppSetting) (int, int) {
 	batchWorkerCount := defaultBatchBuildWorkerCount
 	streamingWorkerCount := defaultStreamingBuildWorkerCount
 	if appSetting != nil {
@@ -52,23 +68,7 @@ func newBuildTaskWorker(appSetting *common.AppSetting, bts interfaces.BuildTaskS
 			streamingWorkerCount = appSetting.TaskWorker.StreamingWorkerCount
 		}
 	}
-	embeddingWorkerCount := batchWorkerCount + streamingWorkerCount
-	worker := &BuildTaskWorker{
-		bts: bts,
-		bbw: bbw,
-		sbw: sbw,
-		ebw: ebw,
-
-		batchWorkerCount:     batchWorkerCount,
-		streamingWorkerCount: streamingWorkerCount,
-		batchQueue:           make(chan string, batchWorkerCount*taskQueueSizeMultiplier),
-		streamingQueue:       make(chan string, streamingWorkerCount*taskQueueSizeMultiplier),
-		embeddingQueue:       make(chan string, embeddingWorkerCount),
-		inFlight:             make(map[string]struct{}),
-	}
-	bbw.embeddingQueue = worker.embeddingQueue
-	sbw.embeddingQueue = worker.embeddingQueue
-	return worker
+	return batchWorkerCount, streamingWorkerCount
 }
 
 // startLoops starts the local worker pools and database producer after startup recovery succeeds.
@@ -78,9 +78,6 @@ func (btw *BuildTaskWorker) startLoops(ctx context.Context) {
 	}
 	for i := 0; i < btw.streamingWorkerCount; i++ {
 		go btw.runStreamingTasks(ctx)
-	}
-	for i := 0; i < btw.batchWorkerCount+btw.streamingWorkerCount; i++ {
-		go btw.runEmbeddingTasks(ctx)
 	}
 	go btw.pollTasks(ctx)
 }
@@ -250,29 +247,6 @@ func (btw *BuildTaskWorker) runStreamingSafely(ctx context.Context, taskID strin
 	}()
 	if err := btw.runStreamingTask(ctx, taskID); err != nil {
 		logger.Errorf("Run streaming build task failed: id=%s, error=%v", taskID, err)
-	}
-}
-
-func (btw *BuildTaskWorker) runEmbeddingTasks(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case taskID := <-btw.embeddingQueue:
-			btw.runEmbeddingSafely(ctx, taskID)
-		}
-	}
-}
-
-func (btw *BuildTaskWorker) runEmbeddingSafely(ctx context.Context, taskID string) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			logger.Errorf("Run build embedding panicked: id=%s, error=%v", taskID, recovered)
-			btw.failTask(ctx, taskID, fmt.Sprintf("embedding panicked: %v", recovered))
-		}
-	}()
-	if err := btw.ebw.Run(ctx, taskID); err != nil {
-		logger.Errorf("Run build embedding failed: id=%s, error=%v", taskID, err)
 	}
 }
 

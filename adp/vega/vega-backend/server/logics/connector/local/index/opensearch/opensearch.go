@@ -195,18 +195,18 @@ func (c *OpenSearchConnector) TestConnection(ctx context.Context) error {
 }
 
 // Create index
-func (c *OpenSearchConnector) Create(ctx context.Context, name string, schemaDefinition []*interfaces.Property) error {
+func (c *OpenSearchConnector) CreateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	exist, err := c.indexExist(ctx, name)
+	exist, err := c.indexExist(ctx, indexName)
 	if err != nil {
 		return err
 	}
 	// index exist
 	if exist {
-		return fmt.Errorf("index %s already exist", name)
+		return fmt.Errorf("index %s already exist", indexName)
 	}
 
 	// Construct field mapping
@@ -241,7 +241,7 @@ func (c *OpenSearchConnector) Create(ctx context.Context, name string, schemaDef
 		return err
 	}
 	createReq := opensearchapi.IndicesCreateRequest{
-		Index: name,
+		Index: indexName,
 		Body:  bytes.NewReader(data),
 	}
 
@@ -259,18 +259,18 @@ func (c *OpenSearchConnector) Create(ctx context.Context, name string, schemaDef
 }
 
 // Update index.
-func (c *OpenSearchConnector) Update(ctx context.Context, name string, schemaDefinition []*interfaces.Property) error {
+func (c *OpenSearchConnector) UpdateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	exist, err := c.indexExist(ctx, name)
+	exist, err := c.indexExist(ctx, indexName)
 	if err != nil {
 		return err
 	}
 	// index not exist
 	if !exist {
-		return fmt.Errorf("index %s not exist", name)
+		return fmt.Errorf("index %s not exist", indexName)
 	}
 
 	// Construct field mapping
@@ -290,7 +290,7 @@ func (c *OpenSearchConnector) Update(ctx context.Context, name string, schemaDef
 		return err
 	}
 	updateReq := opensearchapi.IndicesPutMappingRequest{
-		Index: []string{name},
+		Index: []string{indexName},
 		Body:  bytes.NewReader(data),
 	}
 	updateResp, err := updateReq.Do(ctx, c.client)
@@ -307,12 +307,12 @@ func (c *OpenSearchConnector) Update(ctx context.Context, name string, schemaDef
 }
 
 // Delete a Dataset.
-func (c *OpenSearchConnector) Delete(ctx context.Context, name string) error {
+func (c *OpenSearchConnector) DeleteIndex(ctx context.Context, indexName string) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	exist, err := c.CheckExist(ctx, name)
+	exist, err := c.CheckIndexExist(ctx, indexName)
 	if err != nil {
 		return err
 	}
@@ -322,7 +322,7 @@ func (c *OpenSearchConnector) Delete(ctx context.Context, name string) error {
 	}
 
 	deleteReq := opensearchapi.IndicesDeleteRequest{
-		Index: []string{name},
+		Index: []string{indexName},
 	}
 
 	deleteResp, err := deleteReq.Do(ctx, c.client)
@@ -339,16 +339,16 @@ func (c *OpenSearchConnector) Delete(ctx context.Context, name string) error {
 }
 
 // Check Index Exist
-func (c *OpenSearchConnector) CheckExist(ctx context.Context, name string) (bool, error) {
+func (c *OpenSearchConnector) CheckIndexExist(ctx context.Context, indexName string) (bool, error) {
 	if err := c.Connect(ctx); err != nil {
 		return false, err
 	}
 
-	return c.indexExist(ctx, name)
+	return c.indexExist(ctx, indexName)
 }
 
 // Create Documents
-func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, name string, documents []map[string]any) ([]string, error) {
+func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
@@ -357,7 +357,7 @@ func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, name string, 
 	for _, doc := range documents {
 		opMeta := map[string]map[string]string{
 			"index": {
-				"_index": name,
+				"_index": indexName,
 			},
 		}
 		// if _id in doc, use it as document id
@@ -425,14 +425,35 @@ func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, name string, 
 	return docIDs, nil
 }
 
+// IndexDocuments replaces complete documents when their IDs already exist and
+// creates them otherwise. It uses the OpenSearch bulk index action.
+func (c *OpenSearchConnector) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
+	indexDocuments := make([]map[string]any, 0, len(documents))
+	for documentID, document := range documents {
+		if documentID == "" {
+			return nil, fmt.Errorf("index document: id is required")
+		}
+		if document == nil {
+			return nil, fmt.Errorf("index document %q: document is required", documentID)
+		}
+		copyDocument := make(map[string]any, len(document)+1)
+		for key, value := range document {
+			copyDocument[key] = value
+		}
+		copyDocument["_id"] = documentID
+		indexDocuments = append(indexDocuments, copyDocument)
+	}
+	return c.CreateDocuments(ctx, indexName, indexDocuments)
+}
+
 // Get Document
-func (c *OpenSearchConnector) GetDocument(ctx context.Context, name string, docID string) (map[string]any, error) {
+func (c *OpenSearchConnector) GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
 
 	req := opensearchapi.GetRequest{
-		Index:      name,
+		Index:      indexName,
 		DocumentID: docID,
 	}
 
@@ -462,13 +483,13 @@ func (c *OpenSearchConnector) GetDocument(ctx context.Context, name string, docI
 }
 
 // Delete Document
-func (c *OpenSearchConnector) DeleteDocument(ctx context.Context, name string, docID string) error {
+func (c *OpenSearchConnector) DeleteDocument(ctx context.Context, indexName string, docID string) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
 	req := opensearchapi.DeleteRequest{
-		Index:      name,
+		Index:      indexName,
 		DocumentID: docID,
 	}
 
@@ -486,7 +507,7 @@ func (c *OpenSearchConnector) DeleteDocument(ctx context.Context, name string, d
 }
 
 // Update Documents
-func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, name string, updateRequests []map[string]any) ([]string, error) {
+func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
@@ -504,7 +525,7 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, name string, 
 
 		metadata := map[string]map[string]string{
 			"update": {
-				"_index": name,
+				"_index": indexName,
 				"_id":    docID,
 			},
 		}
@@ -575,7 +596,7 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, name string, 
 }
 
 // Delete Documents
-func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, name string, docIDs string) error {
+func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, indexName string, docIDs string) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
@@ -591,7 +612,7 @@ func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, name string, 
 
 		metadata := map[string]map[string]string{
 			"delete": {
-				"_index": name,
+				"_index": indexName,
 				"_id":    docID,
 			},
 		}
@@ -619,7 +640,7 @@ func (c *OpenSearchConnector) DeleteDocuments(ctx context.Context, name string, 
 }
 
 // Delete Documents By Query
-func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, name string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
+func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, indexName string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
@@ -647,7 +668,7 @@ func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, name s
 
 	refresh := true
 	req := opensearchapi.DeleteByQueryRequest{
-		Index:   []string{name},
+		Index:   []string{indexName},
 		Body:    bytes.NewReader(queryBytes),
 		Refresh: &refresh,
 	}
@@ -666,9 +687,9 @@ func (c *OpenSearchConnector) DeleteDocumentsByQuery(ctx context.Context, name s
 }
 
 // index exist
-func (c *OpenSearchConnector) indexExist(ctx context.Context, name string) (bool, error) {
+func (c *OpenSearchConnector) indexExist(ctx context.Context, indexName string) (bool, error) {
 	existsReq := opensearchapi.IndicesExistsRequest{
-		Index: []string{name},
+		Index: []string{indexName},
 	}
 
 	existsResp, err := existsReq.Do(ctx, c.client)
