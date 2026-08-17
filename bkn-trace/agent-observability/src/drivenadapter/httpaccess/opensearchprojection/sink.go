@@ -66,6 +66,33 @@ func (s *Sink) PrepareVersion(ctx context.Context, indexVersion string) error {
 	return s.client.EnsureIndex(ctx, indexVersion, []byte(receiptProjectionIndexMapping))
 }
 
+// EnsureBootstrap creates the initial versioned index only when the configured
+// projection alias does not exist. Writing directly to an alias name would let
+// OpenSearch auto-create a concrete index and make later alias swaps fail.
+func (s *Sink) EnsureBootstrap(ctx context.Context, indexVersion string) error {
+	aliasExists, err := s.client.AliasExists(ctx, s.index)
+	if err != nil {
+		return fmt.Errorf("check projection alias: %w", err)
+	}
+	if aliasExists {
+		return nil
+	}
+	indexExists, err := s.client.IndexExists(ctx, s.index)
+	if err != nil {
+		return fmt.Errorf("check projection index: %w", err)
+	}
+	if indexExists {
+		return fmt.Errorf("projection index %q exists as a concrete index; expected an alias", s.index)
+	}
+	if err := s.PrepareVersion(ctx, indexVersion); err != nil {
+		return fmt.Errorf("prepare initial projection index: %w", err)
+	}
+	if err := s.SwitchAlias(ctx, s.index, indexVersion); err != nil {
+		return fmt.Errorf("switch initial projection alias: %w", err)
+	}
+	return nil
+}
+
 func (s *Sink) ProjectVersion(ctx context.Context, indexVersion string, item iprojectionoutbox.Item) error {
 	if item.AggregateVersion == 0 {
 		return iprojectionoutbox.Permanent(errors.New("projection aggregate version is required"))

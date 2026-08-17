@@ -20,14 +20,17 @@ func TestCoreConfigRequiresExplicitMariaDBDSN(t *testing.T) {
 	}
 }
 
-func TestProjectionUsesVersionedIndexBehindAliasByDefault(t *testing.T) {
+func TestProjectionDoesNotRebuildByDefault(t *testing.T) {
 	t.Setenv("BKN_TRACE_PROJECTION_ENABLED", "true")
 	t.Setenv("BKN_TRACE_PROJECTION_INDEX", "bkn-trace-core")
 	t.Setenv("BKN_TRACE_PROJECTION_REBUILD_VERSION", "")
 
 	config := NewCoreConfig()
-	if config.ProjectionRebuildVersion != "bkn-trace-core-v014-r1" {
-		t.Fatalf("projection could create a concrete alias index: %#v", config)
+	if config.ProjectionRebuildVersion != "" {
+		t.Fatalf("projection rebuild must require an explicit version: %#v", config)
+	}
+	if config.ProjectionBootstrapVersion != "bkn-trace-core-v014-r1" {
+		t.Fatalf("projection bootstrap must retain a versioned index: %#v", config)
 	}
 }
 

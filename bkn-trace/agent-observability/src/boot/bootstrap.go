@@ -265,6 +265,13 @@ func NewApp() (*App, error) {
 				)
 				return err
 			}
+		} else if err := sink.EnsureBootstrap(workerContext, coreConfig.ProjectionBootstrapVersion); err != nil {
+			stopWorkers()
+			app.workers.Wait()
+			if closeDatabase != nil {
+				_ = closeDatabase()
+			}
+			return nil, fmt.Errorf("initialize projection alias: %w", err)
 		}
 		worker := projectorsvc.NewWorker(
 			outboxStore, sink, projectorsvc.WorkerOptions{Metrics: metrics},

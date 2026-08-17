@@ -8,16 +8,17 @@ import (
 )
 
 type CoreConfig struct {
-	Store                    string
-	MariaDBDSN               string
-	AutoMigrate              bool
-	AbandonInterval          time.Duration
-	OneShotIdleTTL           time.Duration
-	ProjectionEnabled        bool
-	ProjectionIndex          string
-	ProjectionInterval       time.Duration
-	ProjectionRebuildVersion string
-	EvidenceCollectionState  string
+	Store                      string
+	MariaDBDSN                 string
+	AutoMigrate                bool
+	AbandonInterval            time.Duration
+	OneShotIdleTTL             time.Duration
+	ProjectionEnabled          bool
+	ProjectionIndex            string
+	ProjectionInterval         time.Duration
+	ProjectionBootstrapVersion string
+	ProjectionRebuildVersion   string
+	EvidenceCollectionState    string
 }
 
 func NewCoreConfig() CoreConfig {
@@ -50,15 +51,17 @@ func NewCoreConfig() CoreConfig {
 		projectionIndex = "bkn-trace-core"
 	}
 	projectionRebuildVersion := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_REBUILD_VERSION"))
-	if projectionEnabled && projectionRebuildVersion == "" {
-		projectionRebuildVersion = projectionIndex + "-v014-r1"
+	projectionBootstrapVersion := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_BOOTSTRAP_VERSION"))
+	if projectionBootstrapVersion == "" {
+		projectionBootstrapVersion = projectionIndex + "-v014-r1"
 	}
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),
 		AutoMigrate: autoMigrate, AbandonInterval: interval, OneShotIdleTTL: oneShotIdleTTL,
 		ProjectionEnabled: projectionEnabled, ProjectionIndex: projectionIndex,
-		ProjectionInterval:       projectionInterval,
-		ProjectionRebuildVersion: projectionRebuildVersion,
-		EvidenceCollectionState:  strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_COLLECTION_STATE")),
+		ProjectionInterval:         projectionInterval,
+		ProjectionBootstrapVersion: projectionBootstrapVersion,
+		ProjectionRebuildVersion:   projectionRebuildVersion,
+		EvidenceCollectionState:    strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_COLLECTION_STATE")),
 	}
 }

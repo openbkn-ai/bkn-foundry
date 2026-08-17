@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +103,86 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyReceiptQuery(t *testing.T) 
 	requestID, ok := properties["request_id"].(map[string]any)
 	if !ok || requestID["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
 		t.Fatalf("request_id must retain the exact keyword subfield used by summary queries: %#v", requestID)
+	}
+}
+
+func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testing.T) {
+	t.Parallel()
+
+	requests := make([]string, 0, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch r.Method + " " + r.URL.Path {
+		case http.MethodGet + " /_alias/bkn-trace-core":
+			http.NotFound(w, r)
+		case http.MethodHead + " /bkn-trace-core":
+			w.WriteHeader(http.StatusNotFound)
+		case http.MethodPut + " /bkn-trace-core-v014-r1":
+			w.WriteHeader(http.StatusCreated)
+		case http.MethodPost + " /_aliases":
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected bootstrap request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1"); err != nil {
+		t.Fatalf("bootstrap projection alias: %v", err)
+	}
+	want := []string{
+		"GET /_alias/bkn-trace-core",
+		"HEAD /bkn-trace-core",
+		"PUT /bkn-trace-core-v014-r1",
+		"POST /_aliases",
+	}
+	if len(requests) != len(want) {
+		t.Fatalf("unexpected bootstrap sequence: got=%v want=%v", requests, want)
+	}
+	for index := range want {
+		if requests[index] != want[index] {
+			t.Fatalf("unexpected bootstrap sequence: got=%v want=%v", requests, want)
+		}
+	}
+}
+
+func TestEnsureBootstrapDoesNotReplaceAnExistingAlias(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/_alias/bkn-trace-core" {
+			t.Fatalf("bootstrap changed an existing alias: %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1"); err != nil {
+		t.Fatalf("accept existing projection alias: %v", err)
+	}
+}
+
+func TestEnsureBootstrapRejectsAConcreteIndexWithTheAliasName(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case http.MethodGet + " /_alias/bkn-trace-core":
+			http.NotFound(w, r)
+		case http.MethodHead + " /bkn-trace-core":
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("bootstrap must not mutate a concrete alias-name index: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+	err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1")
+	if err == nil || !strings.Contains(err.Error(), "concrete index") {
+		t.Fatalf("bootstrap must reject concrete index collision: %v", err)
 	}
 }
 

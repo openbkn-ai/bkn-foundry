@@ -120,7 +120,9 @@ core:
     enabled: false
     index: bkn-trace-core
     interval: 1s
-    rebuildVersion: bkn-trace-core-v014
+    # Rebuilding projections is an explicit maintenance operation. Leave empty
+    # during normal startup so a rollout does not continuously rebuild indexes.
+    rebuildVersion: ""
   mariadb:
     existingSecret: bkn-trace-core-mariadb
     dsnKey: dsn
