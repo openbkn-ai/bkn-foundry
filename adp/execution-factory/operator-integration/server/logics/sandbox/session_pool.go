@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 const (
@@ -312,7 +312,7 @@ func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessio
 			CPU:        p.reqConfig.CPU,
 			Memory:     p.reqConfig.Memory,
 			Disk:       p.reqConfig.Disk,
-			EnvVars:    cloneSessionEnvVars(envVars),
+			EnvVars:    sessionScopedEnvVars(envVars),
 		}
 
 		_, err := p.client.CreateSession(ctx, req)
@@ -329,6 +329,38 @@ func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessio
 	}
 	p.addSession(sessionID)
 	return nil
+}
+
+// perExecutionOnlyEnvKeys 只属于单次执行、不得进入会话级环境的键。
+//
+// 会话级 env 会被控制面存进 t_session.f_env_vars、写进 Pod spec，并由
+// GET /api/v1/sessions/{id} 原样读出，生命周期是会话寿命（默认最长 6 小时），
+// 而不是发起它的那次执行。凭据落在那里等于把一次调用的令牌留成了半天的明文。
+//
+// 过滤掉不影响功能：每次执行的 env 另有一条路（ExecuteCodeReq.EnvVars ->
+// executor -> --setenv 进 bwrap），且合并时以本次执行的为准。
+var perExecutionOnlyEnvKeys = map[string]bool{
+	"BKN_TOKEN":           true,
+	"BKN_CONVERSATION_ID": true,
+	"BKN_INTERACTION_ID":  true,
+}
+
+// sessionScopedEnvVars 取出可以安全地挂在会话上的那部分环境变量。
+func sessionScopedEnvVars(envVars map[string]any) map[string]any {
+	if len(envVars) == 0 {
+		return nil
+	}
+	scoped := make(map[string]any, len(envVars))
+	for key, value := range envVars {
+		if perExecutionOnlyEnvKeys[key] {
+			continue
+		}
+		scoped[key] = value
+	}
+	if len(scoped) == 0 {
+		return nil
+	}
+	return scoped
 }
 
 func cloneSessionEnvVars(envVars map[string]any) map[string]any {
@@ -349,7 +381,7 @@ func (p *sessionPoolImpl) recordExecutionContext(sessionID string, envVars map[s
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if item, ok := p.sessions[sessionID]; ok && item != nil {
-		item.ExecutionContext = cloneSessionEnvVars(envVars)
+		item.ExecutionContext = sessionScopedEnvVars(envVars)
 		item.LastUsedAt = time.Now()
 	}
 }
