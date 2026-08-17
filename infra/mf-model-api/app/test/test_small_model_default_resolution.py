@@ -34,7 +34,7 @@ class TestDefaultSmallModelResolution:
         with patch("app.controller.small_model_controller.redis_util", mock_redis), \
                 patch("app.controller.small_model_controller.small_model_dao.get_model_info_by_name_id",
                       return_value=[]):
-            response = await embedding_model_used(request, "user1", "zh", "test")
+            response = await embedding_model_used(request, "user1", "zh", "test", "embedding")
 
         assert response.status_code == 404
         assert json.loads(response.body)["code"] == \
