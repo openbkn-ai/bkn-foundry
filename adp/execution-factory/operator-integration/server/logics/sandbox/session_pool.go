@@ -331,28 +331,38 @@ func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessio
 	return nil
 }
 
-// perExecutionOnlyEnvKeys 只属于单次执行、不得进入会话级环境的键。
+// sessionScopedEnvKeys 允许挂到会话上的键，白名单。
 //
 // 会话级 env 会被控制面存进 t_session.f_env_vars、写进 Pod spec，并由
 // GET /api/v1/sessions/{id} 原样读出，生命周期是会话寿命（默认最长 6 小时），
-// 而不是发起它的那次执行。凭据落在那里等于把一次调用的令牌留成了半天的明文。
+// 而不是发起它的那次执行。
 //
-// 过滤掉不影响功能：每次执行的 env 另有一条路（ExecuteCodeReq.EnvVars ->
-// executor -> --setenv 进 bwrap），且合并时以本次执行的为准。
-var perExecutionOnlyEnvKeys = map[string]bool{
-	"BKN_TOKEN":           true,
-	"BKN_CONVERSATION_ID": true,
-	"BKN_INTERACTION_ID":  true,
+// 用白名单而不是「屏蔽已知凭据」的黑名单：黑名单默认放行，往执行 env 里加一个新的
+// 凭据类键而忘了同步，它就会静默落库；白名单默认拦下，漏登记一个追踪标记顶多是会话
+// 查询里少一个字段，看得见也无害。
+//
+// 这里列的都是追踪标记——它们的契约文档明写「仅作追踪标记，不参与鉴权」。
+var sessionScopedEnvKeys = map[string]bool{
+	"source":              true,
+	"task_id":             true,
+	"capability_id":       true,
+	"capability_name":     true,
+	"function_version_id": true,
+	"user_id":             true,
+	"user_name":           true,
 }
 
 // sessionScopedEnvVars 取出可以安全地挂在会话上的那部分环境变量。
+//
+// 过滤掉的键不影响功能：每次执行的 env 另有一条路（ExecuteCodeReq.EnvVars ->
+// executor -> --setenv 进 bwrap），且合并时以本次执行的为准。
 func sessionScopedEnvVars(envVars map[string]any) map[string]any {
 	if len(envVars) == 0 {
 		return nil
 	}
 	scoped := make(map[string]any, len(envVars))
 	for key, value := range envVars {
-		if perExecutionOnlyEnvKeys[key] {
+		if !sessionScopedEnvKeys[key] {
 			continue
 		}
 		scoped[key] = value

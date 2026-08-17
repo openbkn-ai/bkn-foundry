@@ -28,6 +28,19 @@ func TestSessionScopedEnvVarsDropsCredentials(t *testing.T) {
 	}
 }
 
+// 白名单是默认拦下：没登记过的键一律不进会话级 env。黑名单默认放行，
+// 往执行 env 里加一个新凭据而忘了同步，就会静默落库。
+func TestSessionScopedEnvVarsDeniesUnknownKeys(t *testing.T) {
+	scoped := sessionScopedEnvVars(map[string]any{
+		"source":                "function_debug",
+		"SOME_FUTURE_SECRET":    "s3cret",
+		"another_unknown_field": "x",
+	})
+	if len(scoped) != 1 || scoped["source"] != "function_debug" {
+		t.Fatalf("未登记的键必须拦下，得到 %v", scoped)
+	}
+}
+
 // 全是凭据时返回 nil 而不是空 map：空 map 会让控制面存下一个 "{}"，
 // 平白多出一条看不出用途的记录。
 func TestSessionScopedEnvVarsReturnsNilWhenOnlyCredentials(t *testing.T) {
