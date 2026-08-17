@@ -79,6 +79,7 @@ func TestModelFactoryAccessGetModelByID(t *testing.T) {
 		result, err := mfa.GetModelByID(ctx, modelID)
 
 		require.Error(t, err)
+		assert.ErrorIs(t, err, interfaces.ErrModelNotFound)
 		assert.Nil(t, result)
 	})
 

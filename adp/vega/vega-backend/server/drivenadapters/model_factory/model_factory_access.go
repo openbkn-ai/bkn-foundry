@@ -76,6 +76,9 @@ func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string)
 	}
 
 	if respCode != http.StatusOK {
+		if respCode == http.StatusNotFound {
+			return nil, fmt.Errorf("%w: %s", interfaces.ErrModelNotFound, modelID)
+		}
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		logger.Errorf("Get model request failed with status code: %d, %s", respCode, result)
 		return nil, fmt.Errorf("get model request failed with status code: %d, %s", respCode, result)

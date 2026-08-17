@@ -800,14 +800,14 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				return nil, nil
 			})
 		mockMFS.EXPECT().GetModelByID(gomock.Any(), "bogus-model-id").
-			Return(nil, fmt.Errorf("model not found"))
+			Return(nil, fmt.Errorf("lookup model: %w", interfaces.ErrModelNotFound))
 
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
 			ResourceID: "resource-1",
 			Mode:       interfaces.BuildTaskModeBatch,
 		})
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_CreateFailed)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel)
+		assert.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
 	})
 }
 

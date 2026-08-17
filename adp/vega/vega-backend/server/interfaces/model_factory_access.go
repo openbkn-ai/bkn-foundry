@@ -8,7 +8,10 @@ package interfaces
 
 import (
 	"context"
+	"errors"
 )
+
+var ErrModelNotFound = errors.New("model not found")
 
 // ModelFactoryAccess 定义模型工厂相关的访问接口
 //

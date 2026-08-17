@@ -353,6 +353,10 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 					var err error
 					model, err = bts.mfs.GetModelByID(ctx, modelID)
 					if err != nil {
+						if errors.Is(err, interfaces.ErrModelNotFound) {
+							return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel).
+								WithErrorDetails(fmt.Sprintf("embedding model ID %q for vector field %q not found", modelID, fieldName))
+						}
 						return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
 							WithErrorDetails(err.Error())
 					}
