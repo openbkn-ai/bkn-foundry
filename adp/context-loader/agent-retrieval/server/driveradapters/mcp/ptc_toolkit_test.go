@@ -21,7 +21,9 @@ func ptcTestTools() []MCPToolInfo {
 				"response_format":{"type":"string","default":"toon","description":"格式"},
 				"limit":{"type":"integer"}}}`),
 			OutputSchema: json.RawMessage(`{"type":"object","properties":{
-				"entries":{},"total_count":{}}}`),
+				"entries":{"type":"array","items":{"type":"object","properties":{
+					"kn_id":{"type":"string"},"name":{"type":"string"}}}},
+				"total_count":{"type":"integer"}}}`),
 		},
 		{
 			Name: "query_object_instance", Title: "实例查询",
@@ -35,7 +37,10 @@ func ptcTestTools() []MCPToolInfo {
 				"limit":{"type":"integer"}},
 				"required":["kn_id","ot_id","bkn_context"]}`),
 			OutputSchema: json.RawMessage(`{"type":"object","properties":{
-				"datas":{},"total_count":{},"search_after":{}}}`),
+				"datas":{"type":"array","items":{"type":"object","properties":{
+					"_display":{"type":"string"},"_instance_id":{"type":"string"}}}},
+				"total_count":{"type":"integer"},
+				"search_after":{"type":"array","items":{}}}}`),
 		},
 		{
 			Name: "run_sql", Title: "SQL 查询",
@@ -97,9 +102,34 @@ func TestPTCDigestRendersSignatures(t *testing.T) {
 	}
 	// 返回键必须写出来：键名在各工具间不统一（entries 与 datas 并存），
 	// 模型无从推断，不写出来首次调用就会因 KeyError 失败。
-	if !strings.Contains(digest, "-> {entries, total_count}") ||
-		!strings.Contains(digest, "-> {datas, search_after, total_count}") {
-		t.Fatalf("返回键缺失:\n%s", digest)
+	//
+	// 数组键还要再展开一层元素字段。只写顶层键时，模型得先猜取值路径、猜错再花一整轮
+	// print 原始结构找字段名——实测中 search_schema 的 object_types 就是这么被当成有
+	// name 字段的（真实字段是 concept_name）。
+	if !strings.Contains(digest, "-> {entries[kn_id name], total_count}") {
+		t.Fatalf("数组元素字段未展开:\n%s", digest)
+	}
+	if !strings.Contains(digest, "-> {datas[_display _instance_id], search_after, total_count}") {
+		t.Fatalf("数组展开或非数组键渲染有误:\n%s", digest)
+	}
+}
+
+// 元素没声明字段（items 为空、或 items 只有 type）时按普通键渲染，不能凭空造出
+// 一对空方括号——search_after 那种不透明游标就是有意不声明的。
+func TestPTCDigestLeavesUndeclaredArraysFlat(t *testing.T) {
+	tools := []MCPToolInfo{{
+		Name: "probe", Group: "g", GroupTitle: "G", Order: 1, Description: "d",
+		InputSchema: json.RawMessage(`{"type":"object","properties":{"x":{"type":"string"}}}`),
+		OutputSchema: json.RawMessage(`{"type":"object","properties":{
+			"opaque":{"type":"array","items":{}},
+			"plain":{"type":"string"}}}`),
+	}}
+	digest := renderPTCDigest(ptcUsableTools(&MCPInfo{Tools: tools}))
+	if !strings.Contains(digest, "-> {opaque, plain}") {
+		t.Fatalf("未声明元素字段的数组应按普通键渲染:\n%s", digest)
+	}
+	if strings.Contains(digest, "opaque[]") {
+		t.Fatalf("不该渲染出空方括号:\n%s", digest)
 	}
 }
 

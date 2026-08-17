@@ -161,20 +161,42 @@ def _shape_report():
 
 
 def _install_shape_hook():
-    """脚本抛出未捕获异常时，在 traceback 之后补一段返回结构。
+    """让脚本失败时带上最近几次调用的返回结构。
 
-    装在 stub 里而不是调用方的包装里：包装规则目前有三处实现（服务端 /mcp/ptc、
-    studio、以及将来的 SDK），装在这里三条路一起生效，且它们一行都不用改。
+    要挂两处，因为沙箱的两套 wrapper 对异常的处理不一样：
+
+      - subprocess runner 直接 `result = handler(event)`，异常未捕获，走 excepthook；
+      - bwrap runner 把它包在 try/except 里，打完 traceback 后 sys.exit(1)，
+        excepthook 永远不会被调用。
+
+    只挂 excepthook 的话，这段在开了 bwrap 的部署上完全不生效——而那是生产配置。
+    所以同时接管 sys.exit：非零退出即视为失败。
+
+    装在 stub 而不是 wrapper 里：wrapper 有三处实现（服务端 /mcp/ptc、studio、
+    沙箱 SDK），且改 wrapper 等于让沙箱运行时去认识 BKN 的东西。
     """
     if getattr(sys, "_bkn_shape_hook", False):
         return
-    previous = sys.excepthook
 
-    def hook(kind, value, tb):
-        previous(kind, value, tb)
+    def emit():
         report = _shape_report()
         if report:
             sys.stderr.write(report + "\n")
 
+    previous_hook = sys.excepthook
+
+    def hook(kind, value, tb):
+        previous_hook(kind, value, tb)
+        emit()
+
+    previous_exit = sys.exit
+
+    def guarded_exit(code=0):
+        # 只在失败时补报告：成功退出时它是噪音，而 stderr 会原样回到调用方。
+        if code:
+            emit()
+        previous_exit(code)
+
     sys.excepthook = hook
+    sys.exit = guarded_exit
     sys._bkn_shape_hook = True

@@ -84,12 +84,12 @@
             },
             "comment": {
               "type": "string",
-              "description": "说明"
+              "description": "说明；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
             },
             "data_source": {
               "type": "object",
               "additionalProperties": true,
-              "description": "绑定的数据资源 {type, id, name}"
+              "description": "绑定的数据资源 {type, id, name}；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
             },
             "data_properties": {
               "type": "array",
@@ -97,14 +97,14 @@
                 "type": "object",
                 "additionalProperties": true
               },
-              "description": "数据属性 [{name, type, condition_operations}]"
+              "description": "数据属性 [{name, type, condition_operations}]；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
             },
             "primary_keys": {
               "type": "array",
               "items": {
                 "type": "string"
               },
-              "description": "主键属性名"
+              "description": "主键属性名；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
             }
           },
           "additionalProperties": true
@@ -126,7 +126,7 @@
             },
             "comment": {
               "type": "string",
-              "description": "说明"
+              "description": "说明；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
             },
             "source_object_type_id": {
               "type": "string",
@@ -156,7 +156,7 @@
             },
             "comment": {
               "type": "string",
-              "description": "说明"
+              "description": "说明；仅 detail_level=full 时出现——默认的 summary 只给骨架与 name+type 的属性表，照这一条去取会拿到 None，要完整字段映射改调 get_object_types"
             },
             "object_type_id": {
               "type": "string",
