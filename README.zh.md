@@ -16,6 +16,8 @@ OpenBKN 是一个本体驱动的业务知识网络平台，它通过本体建模
 
 **BKN Foundry** 是 OpenBKN 的技术底座，为上述业务知识网络提供统一的数据接入、安全执行与治理能力。
 
+> 仓库范围：本仓库维护 BKN Foundry 运行时的后端服务、部署自动化、迁移脚本、API 定义和产品文档。
+
 **本文目录：** [📚 快速链接](#toc-quick-links) · [🚀 快速开始](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ 平台管理](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 基准测试](#toc-benchmarks)
 
 > **注意：** BKN Foundry 是**纯后台框架**，不提供 Web 界面。所有交互通过 CLI、SDK 或 API 完成。
