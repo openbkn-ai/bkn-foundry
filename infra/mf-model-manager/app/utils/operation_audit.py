@@ -74,6 +74,13 @@ async def operation_audit_middleware(request, call_next):
     if not rule:
         return await call_next(request)
     body = await request.body()
+
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    # The audit middleware consumes the ASGI body before FastAPI parses Body(...).
+    # Replay it so the downstream route can parse the same payload.
+    request._receive = receive
     response = await call_next(request)
     tenant = request.headers.get("x-tenant-id", "").strip()
     domain = request.headers.get("x-business-domain", "").strip()
