@@ -484,6 +484,9 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	if req.IgnoringStoreCache {
 		query.Set("ignoring_store_cache", "true")
 	}
+	for _, prop := range req.ExcludeSystemProperties {
+		query.Add("exclude_system_properties", prop)
+	}
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
 	header := common.GetHeaderForChildOperation(ctx, "ontology.subgraph.explore", 1)

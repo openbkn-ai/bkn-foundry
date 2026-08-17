@@ -173,10 +173,6 @@ paths:
         下界必须拦在这里：`path_length` 为 0 时下游不报错，只返回空子图，会被读成
         「什么都没连上」。路径数随跳数快速增长，先从 1-2 起步，不够再加。
 
-        **`exclude_system_properties` 在本接口无效**，虽然
-        [object-instance.yaml](object-instance.yaml) 的对象查询支持它：下游探索分支
-        组装起点查询时没有传递该参数，因此 Context Loader 不发送它，避免出现一个
-        「传了像是生效、实际没裁」的开关。
 
         **`condition` 只过滤起点**，不约束路径上的其他对象类。要约束中间节点就说明
         路径其实是已知的，改用 `query_instance_subgraph` 逐节点加条件。

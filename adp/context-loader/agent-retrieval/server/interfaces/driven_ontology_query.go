@@ -197,15 +197,16 @@ type ExploreSubgraphReq struct {
 	// 以下字段走 URL，不进请求体：整个结构体会被直接序列化成 body 发给下游。
 	KnID               string `json:"-" form:"kn_id"`
 	IncludeLogicParams bool   `json:"-" form:"include_logic_params"`
-	// IgnoringStoreCache 只供服务内部调用方使用，不进 MCP 工具 schema，理由与
-	// QueryObjectInstancesReq 上的同名字段一致。
-	IgnoringStoreCache bool `json:"-" form:"ignoring_store_cache"`
+	// ExcludeSystemProperties / IgnoringStoreCache 只供服务内部调用方使用，不进 MCP
+	// 工具 schema，理由与 QueryObjectInstancesReq 上的同名字段一致。
 	//
-	// 这里**没有** ExcludeSystemProperties，虽然 query_object_instance 有：探索分支的
-	// 下游把它的赋值注释掉了（adp/bkn/ontology-query/server/logics/knowledge_network/
-	// knowledge_network_service.go 组装 startObjectQuery 处），传了不生效。暴露一个
-	// 静默失效的开关比没有更糟——调用方以为裁了字段，实际 context 照样被占。
-	// 下游放开后再补，届时与对象查询那侧对齐即可。
+	// 关于 ExcludeSystemProperties 在本接口是否生效：下游确实把嵌套的起点对象查询
+	// （startObjectQuery）里这行赋值注释掉了，但那**不代表参数无效**——子图的系统字段
+	// 由子图层自己生成而非起点查询带出（那行注释旁边写着这个原因），裁剪发生在
+	// expandObjectPathsBatch 组装 ObjectInfoInSubgraph 时，读的正是
+	// query.ExcludeSystemProperties。所以照常透传。
+	ExcludeSystemProperties []string `json:"-" form:"exclude_system_properties"`
+	IgnoringStoreCache      bool     `json:"-" form:"ignoring_store_cache"`
 
 	// SourceObjectTypeID 探索起点的对象类。
 	SourceObjectTypeID string `json:"source_object_type_id"`
