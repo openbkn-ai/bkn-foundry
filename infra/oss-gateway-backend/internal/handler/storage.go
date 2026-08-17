@@ -24,23 +24,8 @@ func (h *StorageHandler) Create(c *gin.Context) {
 
 	storageID, err := h.service.Create(c.Request.Context(), &req)
 	if err != nil {
-		// 检查是否是校验错误
-		if validationErr, ok := err.(*service.StorageValidationError); ok {
-			switch validationErr.Code {
-			case "400031107":
-				response.StorageNameExist(c, req.StorageName)
-				return
-			case "400031108":
-				response.StorageExist(c, validationErr.Description)
-				return
-			case "400031110":
-				response.InvalidVendorType(c, req.VendorType)
-				return
-			case "400031112":
-				// validationErr.Description 已经是完整的错误描述
-				response.DefaultStorageExists(c, validationErr.Description)
-				return
-			}
+		if writeValidationError(c, err) {
+			return
 		}
 		response.InternalError(c, err.Error())
 		return
@@ -62,12 +47,8 @@ func (h *StorageHandler) Update(c *gin.Context) {
 	}
 
 	if err := h.service.Update(c.Request.Context(), storageID, &req); err != nil {
-		// 检查是否是校验错误
-		if validationErr, ok := err.(*service.StorageValidationError); ok {
-			if validationErr.Code == "400031112" {
-				response.DefaultStorageExists(c, validationErr.Description)
-				return
-			}
+		if writeValidationError(c, err) {
+			return
 		}
 		response.InternalError(c, err.Error())
 		return
@@ -114,6 +95,9 @@ func (h *StorageHandler) List(c *gin.Context) {
 
 	result, err := h.service.List(c.Request.Context(), &req)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}
@@ -125,6 +109,9 @@ func (h *StorageHandler) CheckConnection(c *gin.Context) {
 	storageID := c.Param("id")
 
 	if err := h.service.CheckConnection(c.Request.Context(), storageID); err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.ConnectionFailed(c, err.Error())
 		return
 	}

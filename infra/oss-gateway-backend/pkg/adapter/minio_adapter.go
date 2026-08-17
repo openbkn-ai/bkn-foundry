@@ -38,14 +38,14 @@ func NewMinIOAdapter(config StorageConfig) (*MinIOAdapter, error) {
 		Region: config.Region,
 	}
 
-	// 火山云 TOS 必须使用 VirtualHostStyle（DNS 方式），不支持 PathStyle
+	// Volcengine TOS requires VirtualHostStyle (DNS addressing) and does not support PathStyle.
 	// https://{bucketname}.tos-s3-cn-beijing.volces.com
 	if config.VendorType == VendorTOS {
 		options.BucketLookup = minio.BucketLookupDNS
 	}
 
-	// 对于 ECEPH 存储，如果使用 HTTPS，跳过证书验证
-	// 因为私有化部署可能使用自签名证书或没有购买证书
+	// ECEPH private deployments may use self-signed certificates, so their HTTPS
+	// endpoints retain the existing certificate-verification exception.
 	if config.VendorType == VendorECEPH && config.UseSSL {
 		options.Transport = &http.Transport{
 			TLSClientConfig: &tls.Config{

@@ -17,7 +17,7 @@ type StorageRepository interface {
 	ListWithPagination(ctx context.Context, vendorType string, enabled *bool, isDefault *bool, name string, page int, size int, order string, rule string) ([]*model.StorageConfig, int, error)
 	GetDefault(ctx context.Context) (*model.StorageConfig, error)
 	HasDefaultStorage(ctx context.Context, excludeStorageID string) (*model.StorageConfig, error)
-	// 唯一性校验方法
+	// Uniqueness checks.
 	ExistsByStorageName(ctx context.Context, storageName string) (bool, error)
 	ExistsByBucketAndEndpoint(ctx context.Context, bucketName string, endpoint string) (bool, error)
 	ExistsByBucketAndSiteID(ctx context.Context, bucketName string, siteID string) (bool, error)
@@ -99,14 +99,14 @@ func (r *storageRepository) HasDefaultStorage(ctx context.Context, excludeStorag
 	return &storage, nil
 }
 
-// ListWithPagination 分页查询存储列表，支持模糊搜索和排序
+// ListWithPagination lists storages with fuzzy-name filtering and sorting.
 func (r *storageRepository) ListWithPagination(ctx context.Context, vendorType string, enabled *bool, isDefault *bool, name string, page int, size int, order string, rule string) ([]*model.StorageConfig, int, error) {
 	var storages []*model.StorageConfig
 	var total int64
 
 	query := r.db.WithContext(ctx).Model(&model.StorageConfig{})
 
-	// 过滤条件
+	// Apply filters.
 	if vendorType != "" {
 		query = query.Where("f_vendor_type = ?", vendorType)
 	}
@@ -119,17 +119,17 @@ func (r *storageRepository) ListWithPagination(ctx context.Context, vendorType s
 		query = query.Where("f_is_default = ?", *isDefault)
 	}
 
-	// 模糊搜索存储名称
+	// Apply the fuzzy storage-name search.
 	if name != "" {
 		query = query.Where("f_storage_name LIKE ?", "%"+name+"%")
 	}
 
-	// 获取总数
+	// Count matching records before pagination.
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// 排序字段映射
+	// Map the public sort field to its database column.
 	orderField := "f_updated_at"
 	switch rule {
 	case "create_time":
@@ -140,13 +140,13 @@ func (r *storageRepository) ListWithPagination(ctx context.Context, vendorType s
 		orderField = "f_storage_name"
 	}
 
-	// 排序方向
+	// Normalize the sort direction.
 	orderDirection := "DESC"
 	if order == "asc" {
 		orderDirection = "ASC"
 	}
 
-	// 分页查询
+	// Apply pagination.
 	offset := (page - 1) * size
 	err := query.Order(orderField + " " + orderDirection).
 		Limit(size).
@@ -156,7 +156,7 @@ func (r *storageRepository) ListWithPagination(ctx context.Context, vendorType s
 	return storages, int(total), err
 }
 
-// ExistsByStorageName 检查存储名称是否已存在（基于数据库）
+// ExistsByStorageName checks storage-name uniqueness in the database.
 func (r *storageRepository) ExistsByStorageName(ctx context.Context, storageName string) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&model.StorageConfig{}).
@@ -168,7 +168,7 @@ func (r *storageRepository) ExistsByStorageName(ctx context.Context, storageName
 	return count > 0, nil
 }
 
-// ExistsByBucketAndEndpoint 检查 bucket + endpoint 是否已存在（基于数据库）
+// ExistsByBucketAndEndpoint checks bucket and endpoint uniqueness in the database.
 func (r *storageRepository) ExistsByBucketAndEndpoint(ctx context.Context, bucketName string, endpoint string) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).Model(&model.StorageConfig{}).
@@ -180,8 +180,7 @@ func (r *storageRepository) ExistsByBucketAndEndpoint(ctx context.Context, bucke
 	return count > 0, nil
 }
 
-// ExistsByBucketAndSiteID 检查 bucket + siteId 是否已存在（基于数据库）
-// 注意：需要在 model.StorageConfig 中添加 SiteID 字段
+// ExistsByBucketAndSiteID checks bucket and siteId uniqueness in the database.
 func (r *storageRepository) ExistsByBucketAndSiteID(ctx context.Context, bucketName string, siteID string) (bool, error) {
 	if siteID == "" {
 		return false, nil

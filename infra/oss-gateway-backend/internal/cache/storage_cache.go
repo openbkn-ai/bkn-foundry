@@ -12,9 +12,9 @@ import (
 
 const (
 	storageConfigPrefix     = "kweaver-core:oss-gateway-backend:storage:config:"
-	storageNamePrefix       = "kweaver-core:oss-gateway-backend:storage:name:"        // storage_name 唯一性索引
-	storageBucketHostPrefix = "kweaver-core:oss-gateway-backend:storage:bucket:host:" // bucket_name + host 唯一性索引
-	storageBucketSitePrefix = "kweaver-core:oss-gateway-backend:storage:bucket:site:" // bucket_name + siteId 唯一性索引
+	storageNamePrefix       = "kweaver-core:oss-gateway-backend:storage:name:"        // storage_name uniqueness index.
+	storageBucketHostPrefix = "kweaver-core:oss-gateway-backend:storage:bucket:host:" // bucket_name and host uniqueness index.
+	storageBucketSitePrefix = "kweaver-core:oss-gateway-backend:storage:bucket:site:" // bucket_name and siteId uniqueness index.
 	storageConfigTTL        = 1 * time.Hour
 )
 
@@ -65,7 +65,7 @@ func (c *StorageCache) InvalidateStorage(ctx context.Context, storageID string) 
 	return c.DeleteStorage(ctx, storageID)
 }
 
-// CheckStorageNameExists 检查 storage_name 是否已存在
+// CheckStorageNameExists reports whether storage_name is indexed.
 func (c *StorageCache) CheckStorageNameExists(ctx context.Context, storageName string) (bool, error) {
 	key := storageNamePrefix + storageName
 	count, err := c.redis.Exists(ctx, key)
@@ -75,19 +75,19 @@ func (c *StorageCache) CheckStorageNameExists(ctx context.Context, storageName s
 	return count > 0, nil
 }
 
-// SetStorageName 设置 storage_name 索引
+// SetStorageName creates the storage_name index.
 func (c *StorageCache) SetStorageName(ctx context.Context, storageName string, storageID string) error {
 	key := storageNamePrefix + storageName
 	return c.redis.Set(ctx, key, storageID, storageConfigTTL)
 }
 
-// DeleteStorageName 删除 storage_name 索引
+// DeleteStorageName removes the storage_name index.
 func (c *StorageCache) DeleteStorageName(ctx context.Context, storageName string) error {
 	key := storageNamePrefix + storageName
 	return c.redis.Del(ctx, key)
 }
 
-// CheckBucketHostExists 检查 bucket_name + host 是否已存在
+// CheckBucketHostExists reports whether a bucket_name and host pair is indexed.
 func (c *StorageCache) CheckBucketHostExists(ctx context.Context, bucketName string, host string) (bool, error) {
 	key := storageBucketHostPrefix + bucketName + ":" + host
 	count, err := c.redis.Exists(ctx, key)
@@ -97,19 +97,19 @@ func (c *StorageCache) CheckBucketHostExists(ctx context.Context, bucketName str
 	return count > 0, nil
 }
 
-// SetBucketHost 设置 bucket_name + host 索引
+// SetBucketHost creates the bucket_name and host index.
 func (c *StorageCache) SetBucketHost(ctx context.Context, bucketName string, host string, storageID string) error {
 	key := storageBucketHostPrefix + bucketName + ":" + host
 	return c.redis.Set(ctx, key, storageID, storageConfigTTL)
 }
 
-// DeleteBucketHost 删除 bucket_name + host 索引
+// DeleteBucketHost removes the bucket_name and host index.
 func (c *StorageCache) DeleteBucketHost(ctx context.Context, bucketName string, host string) error {
 	key := storageBucketHostPrefix + bucketName + ":" + host
 	return c.redis.Del(ctx, key)
 }
 
-// CheckBucketSiteExists 检查 bucket_name + siteId 是否已存在
+// CheckBucketSiteExists reports whether a bucket_name and siteId pair is indexed.
 func (c *StorageCache) CheckBucketSiteExists(ctx context.Context, bucketName string, siteID string) (bool, error) {
 	key := storageBucketSitePrefix + bucketName + ":" + siteID
 	count, err := c.redis.Exists(ctx, key)
@@ -119,13 +119,13 @@ func (c *StorageCache) CheckBucketSiteExists(ctx context.Context, bucketName str
 	return count > 0, nil
 }
 
-// SetBucketSite 设置 bucket_name + siteId 索引
+// SetBucketSite creates the bucket_name and siteId index.
 func (c *StorageCache) SetBucketSite(ctx context.Context, bucketName string, siteID string, storageID string) error {
 	key := storageBucketSitePrefix + bucketName + ":" + siteID
 	return c.redis.Set(ctx, key, storageID, storageConfigTTL)
 }
 
-// DeleteBucketSite 删除 bucket_name + siteId 索引
+// DeleteBucketSite removes the bucket_name and siteId index.
 func (c *StorageCache) DeleteBucketSite(ctx context.Context, bucketName string, siteID string) error {
 	key := storageBucketSitePrefix + bucketName + ":" + siteID
 	return c.redis.Del(ctx, key)

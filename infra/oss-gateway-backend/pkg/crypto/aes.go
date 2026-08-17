@@ -35,9 +35,10 @@ func (c *AESCrypto) Encrypt(plaintext string) (string, error) {
 		return "", err
 	}
 
-	// CFB 是未认证模式（Go 1.24 起标记废弃）。存量凭据都是这个格式加密的，
-	// 直接换 GCM 会导致老数据解不开，迁移方案见 #766。
-	stream := cipher.NewCFBEncrypter(block, iv) //nolint:staticcheck // SA1019: 待 #766 带版本前缀迁移到 GCM
+	// CFB is unauthenticated and deprecated as of Go 1.24. Existing credentials
+	// use this format, so switching directly to GCM would make them unreadable.
+	// See #766 for the versioned migration plan.
+	stream := cipher.NewCFBEncrypter(block, iv) //nolint:staticcheck // SA1019: migrate to versioned GCM in #766
 	stream.XORKeyStream(ciphertext[aes.BlockSize:], plaintextBytes)
 
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
@@ -61,7 +62,7 @@ func (c *AESCrypto) Decrypt(ciphertext string) (string, error) {
 	iv := ciphertextBytes[:aes.BlockSize]
 	ciphertextBytes = ciphertextBytes[aes.BlockSize:]
 
-	stream := cipher.NewCFBDecrypter(block, iv) //nolint:staticcheck // SA1019: 同上，见 #766
+	stream := cipher.NewCFBDecrypter(block, iv) //nolint:staticcheck // SA1019: same compatibility constraint; see #766
 	stream.XORKeyStream(ciphertextBytes, ciphertextBytes)
 
 	return string(ciphertextBytes), nil

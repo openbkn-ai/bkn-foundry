@@ -1,132 +1,142 @@
 package response
 
 import (
-	"fmt"
 	"net/http"
+
+	"oss-gateway/locale"
 	"oss-gateway/pkg/errors"
 
 	"github.com/gin-gonic/gin"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// Response 统一响应结构，参考 Python FastAPI 的响应格式
+// Response is the OSS Gateway response envelope.
 type Response struct {
-	Res         int         `json:"res,omitempty"`         // 兼容旧格式：0表示成功
-	Code        string      `json:"code,omitempty"`        // 错误码字符串
-	Message     string      `json:"message,omitempty"`     // 错误消息
-	Description string      `json:"description,omitempty"` // 错误描述
-	Detail      string      `json:"detail,omitempty"`      // 错误详情
-	Solution    string      `json:"solution,omitempty"`    // 解决方案
-	Cause       string      `json:"cause,omitempty"`       // 错误原因
-	Data        interface{} `json:"data,omitempty"`        // 成功时返回的数据
-	Count       int         `json:"count,omitempty"`       // 列表总数（分页时使用）
+	Res         int         `json:"res,omitempty"`
+	Code        string      `json:"code,omitempty"`
+	Message     string      `json:"message,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Detail      string      `json:"detail,omitempty"`
+	Solution    string      `json:"solution,omitempty"`
+	Cause       string      `json:"cause,omitempty"`
+	Data        interface{} `json:"data,omitempty"`
+	Count       int         `json:"count,omitempty"`
 }
 
-// Success 成功响应
+type localizedError struct {
+	Message     string
+	Description string
+	Solution    string
+}
+
+// Success writes a successful response.
 func Success(c *gin.Context, data interface{}) {
-	c.JSON(http.StatusOK, Response{
-		Res:  0,
-		Data: data,
-	})
+	c.JSON(http.StatusOK, Response{Res: 0, Data: data})
 }
 
-// SuccessWithCount 成功响应，带总数（用于分页列表）
+// SuccessWithCount writes a successful paginated response.
 func SuccessWithCount(c *gin.Context, data interface{}, count int) {
-	c.JSON(http.StatusOK, Response{
-		Count: count,
-		Data:  data,
-	})
+	c.JSON(http.StatusOK, Response{Count: count, Data: data})
 }
 
-// Error 错误响应
-func Error(c *gin.Context, httpStatus int, code string, message string, description string, solution string, cause string) {
-	c.JSON(httpStatus, Response{
-		Code:        code,
-		Message:     message,
-		Description: description,
-		Detail:      description,
-		Solution:    solution,
+// ErrorWithCode writes a localized error while preserving the stable code and
+// HTTP status. Cause remains an English diagnostic in the existing response field.
+func ErrorWithCode(c *gin.Context, code *errors.ErrorCode, templateData map[string]interface{}, cause string) {
+	if code == nil {
+		code = &errors.InternalError
+	}
+	text := localize(c, code, templateData)
+	sharedrest.MarkLocalizedResponse(c)
+	c.JSON(code.HTTPStatus, Response{
+		Code:        code.Code,
+		Message:     text.Message,
+		Description: text.Description,
+		Detail:      text.Description,
+		Solution:    text.Solution,
 		Cause:       cause,
 	})
 }
 
-// BadRequest 400 错误请求
-func BadRequest(c *gin.Context, message string) {
-	ErrorWithCode(c, http.StatusBadRequest, &errors.BadRequest, message)
+// BadRequest writes the generic invalid-request contract without exposing
+// parser or validator diagnostics as public response text.
+func BadRequest(c *gin.Context, _ string) {
+	ErrorWithCode(c, &errors.BadRequest, nil, "")
 }
 
-// NotFound 404 未找到
-func NotFound(c *gin.Context, message string) {
-	ErrorWithCode(c, http.StatusNotFound, &errors.NotFound, message)
+// NotFound writes the generic missing-resource contract.
+func NotFound(c *gin.Context, _ string) {
+	ErrorWithCode(c, &errors.NotFound, nil, "")
 }
 
-// InternalError 500 内部错误
-func InternalError(c *gin.Context, message string) {
-	ErrorWithCode(c, http.StatusInternalServerError, &errors.InternalError, message)
+// InternalError writes a localized public error without exposing internal
+// implementation details to clients.
+func InternalError(c *gin.Context, _ string) {
+	ErrorWithCode(c, &errors.InternalError, nil, "")
 }
 
-// InvalidParam 无效参数
-func InvalidParam(c *gin.Context, param string) {
-	code := &errors.InvalidParam
-	Error(c, http.StatusBadRequest, code.Code, code.Message, fmt.Sprintf(code.Description, param), code.Solution, param)
+// InvalidParam writes an invalid-parameter response for a stable field name.
+func InvalidParam(c *gin.Context, parameter string) {
+	ErrorWithCode(c, &errors.InvalidParam, map[string]interface{}{"Parameter": parameter}, "")
 }
 
-// StorageNotFound 存储未找到
+// StorageNotFound writes the missing-storage response.
 func StorageNotFound(c *gin.Context) {
-	code := &errors.StorageNotFound
-	Error(c, http.StatusNotFound, code.Code, code.Message, code.Description, code.Solution, "")
+	ErrorWithCode(c, &errors.StorageNotFound, nil, "")
 }
 
-// ConnectionFailed 连接失败
+// ConnectionFailed writes a storage-connection failure response.
 func ConnectionFailed(c *gin.Context, cause string) {
-	code := &errors.ConnectionFailed
-	Error(c, http.StatusInternalServerError, code.Code, code.Message, code.Description, code.Solution, cause)
+	ErrorWithCode(c, &errors.ConnectionFailed, nil, cause)
 }
 
-// StorageNameExist 存储名称已存在
+// StorageNameExist writes a duplicate storage-name response.
 func StorageNameExist(c *gin.Context, storageName string) {
-	code := &errors.StorageNameExists
-	Error(c, http.StatusBadRequest, code.Code, code.Message,
-		fmt.Sprintf(code.Description, storageName),
-		code.Solution, "")
+	ErrorWithCode(c, &errors.StorageNameExists, map[string]interface{}{"StorageName": storageName}, "")
 }
 
-// StorageExist 存储已存在（bucket+host 或 bucket+siteId）
-func StorageExist(c *gin.Context, description string) {
-	code := &errors.StorageExists
-	Error(c, http.StatusBadRequest, code.Code, code.Message,
-		description,
-		code.Solution, "")
+// StorageExist writes a duplicate bucket/location response.
+func StorageExist(c *gin.Context, bucket, location string) {
+	ErrorWithCode(c, &errors.StorageExists, map[string]interface{}{
+		"Bucket":   bucket,
+		"Location": location,
+	}, "")
 }
 
-// TooManyKeys 键过多
+// TooManyKeys writes the batch-size limit response.
 func TooManyKeys(c *gin.Context, maxKeys int) {
-	code := &errors.TooManyKeys
-	Error(c, http.StatusBadRequest, code.Code, code.Message,
-		fmt.Sprintf(code.Description, maxKeys),
-		code.Solution, "")
+	ErrorWithCode(c, &errors.TooManyKeys, map[string]interface{}{"MaxKeys": maxKeys}, "")
 }
 
-// InvalidVendorType 无效的供应商类型
+// InvalidVendorType writes an unsupported-vendor response.
 func InvalidVendorType(c *gin.Context, vendorType string) {
-	code := &errors.InvalidVendorType
-	Error(c, http.StatusBadRequest, code.Code, code.Message,
-		fmt.Sprintf(code.Description, vendorType),
-		code.Solution, "")
+	ErrorWithCode(c, &errors.InvalidVendorType, map[string]interface{}{"VendorType": vendorType}, "")
 }
 
-// DefaultStorageExists 默认存储已存在
+// DefaultStorageExists writes a duplicate-default-storage response.
 func DefaultStorageExists(c *gin.Context, existingStorageName string) {
-	code := &errors.DefaultStorageExists
-	Error(c, http.StatusBadRequest, code.Code, code.Message,
-		fmt.Sprintf(code.Description, existingStorageName),
-		code.Solution, "")
+	ErrorWithCode(c, &errors.DefaultStorageExists, map[string]interface{}{"StorageName": existingStorageName}, "")
 }
 
-// ErrorWithCode 使用 ErrorCode 结构返回错误
-func ErrorWithCode(c *gin.Context, httpStatus int, code *errors.ErrorCode, customMessage string) {
-	description := customMessage
-	if description == "" {
-		description = code.Description
+// ServiceNotReady preserves the readiness response shape while localizing its
+// human-readable fields.
+func ServiceNotReady(c *gin.Context, checks map[string]string) {
+	code := &errors.ServiceNotReady
+	text := localize(c, code, nil)
+	sharedrest.MarkLocalizedResponse(c)
+	c.JSON(code.HTTPStatus, gin.H{
+		"code":        code.Code,
+		"message":     text.Message,
+		"description": text.Description,
+		"solution":    text.Solution,
+		"checks":      checks,
+	})
+}
+
+func localize(c *gin.Context, code *errors.ErrorCode, templateData map[string]interface{}) localizedError {
+	ctx := c.Request.Context()
+	return localizedError{
+		Message:     locale.Translate(ctx, code.MessageID+".Message", templateData),
+		Description: locale.Translate(ctx, code.MessageID+".Description", templateData),
+		Solution:    locale.Translate(ctx, code.MessageID+".Solution", templateData),
 	}
-	Error(c, httpStatus, code.Code, code.Message, description, code.Solution, "")
 }

@@ -3,11 +3,13 @@ package pkg_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"oss-gateway/internal/middleware"
 	"oss-gateway/pkg/errors"
 	"oss-gateway/pkg/response"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -15,6 +17,8 @@ func setupTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 	gin.SetMode(gin.TestMode)
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	c.Request = req.WithContext(sharedrest.WithLanguage(req.Context(), sharedrest.SimplifiedChinese))
 	return c, w
 }
 
@@ -49,12 +53,11 @@ func TestSuccessWithCount(t *testing.T) {
 func TestError(t *testing.T) {
 	c, w := setupTestContext()
 
-	response.Error(c, http.StatusBadRequest, "400001", "Invalid parameter",
-		"The parameter is invalid", "Please check your input", "missing field")
+	response.ErrorWithCode(c, &errors.InvalidParam, map[string]interface{}{"Parameter": "field"}, "missing field")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "\"code\":\"400001\"")
-	assert.Contains(t, w.Body.String(), "\"message\":\"Invalid parameter\"")
+	assert.Contains(t, w.Body.String(), "\"message\":\"参数无效\"")
 }
 
 func TestBadRequest(t *testing.T) {
@@ -63,7 +66,8 @@ func TestBadRequest(t *testing.T) {
 	response.BadRequest(c, "Invalid JSON")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), "Invalid JSON")
+	assert.Contains(t, w.Body.String(), "请求参数无效")
+	assert.NotContains(t, w.Body.String(), "Invalid JSON")
 }
 
 func TestNotFound(t *testing.T) {
@@ -72,7 +76,8 @@ func TestNotFound(t *testing.T) {
 	response.NotFound(c, "Resource not found")
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
-	assert.Contains(t, w.Body.String(), "Resource not found")
+	assert.Contains(t, w.Body.String(), "资源不存在")
+	assert.NotContains(t, w.Body.String(), "Resource not found")
 }
 
 func TestInternalError(t *testing.T) {
@@ -81,7 +86,8 @@ func TestInternalError(t *testing.T) {
 	response.InternalError(c, "Database connection failed")
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	assert.Contains(t, w.Body.String(), "Database connection failed")
+	assert.Contains(t, w.Body.String(), "服务内部错误")
+	assert.NotContains(t, w.Body.String(), "Database connection failed")
 }
 
 func TestInvalidParam(t *testing.T) {
@@ -124,8 +130,7 @@ func TestStorageNameExist(t *testing.T) {
 func TestStorageExist(t *testing.T) {
 	c, w := setupTestContext()
 
-	description := "Bucket(test-bucket) with endpoint(https://oss.aliyuncs.com) already exists"
-	response.StorageExist(c, description)
+	response.StorageExist(c, "test-bucket", "https://oss.aliyuncs.com")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "test-bucket")
@@ -155,7 +160,7 @@ func TestInvalidVendorType(t *testing.T) {
 func TestErrorWithCode(t *testing.T) {
 	c, w := setupTestContext()
 
-	response.ErrorWithCode(c, http.StatusBadRequest, &errors.BadRequest, "Custom message")
+	response.ErrorWithCode(c, &errors.BadRequest, nil, "Custom message")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "Custom message")
@@ -165,10 +170,10 @@ func TestErrorWithCode(t *testing.T) {
 func TestErrorWithCode_DefaultMessage(t *testing.T) {
 	c, w := setupTestContext()
 
-	response.ErrorWithCode(c, http.StatusBadRequest, &errors.BadRequest, "")
+	response.ErrorWithCode(c, &errors.BadRequest, nil, "")
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	assert.Contains(t, w.Body.String(), errors.BadRequest.Description)
+	assert.Contains(t, w.Body.String(), "请求参数无效")
 }
 
 func TestSuccess_WithNilData(t *testing.T) {
@@ -194,7 +199,7 @@ func TestSuccessWithCount_ZeroCount(t *testing.T) {
 	response.SuccessWithCount(c, []interface{}{}, 0)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	// count=0时可能不显示在JSON中
+	// count=0 may be omitted from the JSON response.
 }
 
 func TestSuccessWithCount_LargeCount(t *testing.T) {
@@ -204,4 +209,69 @@ func TestSuccessWithCount_LargeCount(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Body.String(), "\"count\":1000000")
+}
+
+func TestInvalidParamNegotiatesLanguage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name           string
+		header         string
+		language       string
+		wantLanguage   string
+		wantMessage    string
+		wantStableCode string
+	}{
+		{
+			name:           "accept language selects Chinese",
+			header:         sharedrest.AcceptLanguageHeader,
+			language:       "zh-CN",
+			wantLanguage:   "zh-CN",
+			wantMessage:    "参数无效",
+			wantStableCode: errors.InvalidParam.Code,
+		},
+		{
+			name:           "accept language selects English",
+			header:         sharedrest.AcceptLanguageHeader,
+			language:       "en-US",
+			wantLanguage:   "en-US",
+			wantMessage:    "Invalid parameter",
+			wantStableCode: errors.InvalidParam.Code,
+		},
+		{
+			name:           "legacy header remains compatible",
+			header:         "X-Language",
+			language:       "en_US",
+			wantLanguage:   "en-US",
+			wantMessage:    "Invalid parameter",
+			wantStableCode: errors.InvalidParam.Code,
+		},
+		{
+			name:           "unsupported language falls back to Chinese",
+			header:         sharedrest.AcceptLanguageHeader,
+			language:       "fr-FR",
+			wantLanguage:   "zh-CN",
+			wantMessage:    "参数无效",
+			wantStableCode: errors.InvalidParam.Code,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := gin.New()
+			router.Use(middleware.Language())
+			router.GET("/error", func(c *gin.Context) {
+				response.InvalidParam(c, "object_key")
+			})
+
+			request := httptest.NewRequest(http.MethodGet, "/error", nil)
+			request.Header.Set(tt.header, tt.language)
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+
+			assert.Equal(t, http.StatusBadRequest, recorder.Code)
+			assert.Equal(t, tt.wantLanguage, recorder.Header().Get(sharedrest.ContentLanguageHeader))
+			assert.Contains(t, recorder.Body.String(), tt.wantMessage)
+			assert.Contains(t, recorder.Body.String(), tt.wantStableCode)
+		})
+	}
 }

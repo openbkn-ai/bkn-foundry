@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// GenerateStorageID 生成存储ID（使用19位雪花ID）
+// GenerateStorageID returns a 19-digit Snowflake storage ID.
 func GenerateStorageID() string {
 	id, err := snowflake.GenerateID()
 	if err != nil {
-		// 如果雪花ID生成失败，降级为时间戳+随机数
+		// Fall back to a timestamp and random suffix if Snowflake generation fails.
 		return fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 	return strconv.FormatInt(id, 10)

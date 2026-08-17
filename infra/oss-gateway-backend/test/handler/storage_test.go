@@ -134,8 +134,8 @@ func TestStorageHandler_Create_ValidationError_StorageNameExists(t *testing.T) {
 
 	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
 		Return("", &service.StorageValidationError{
-			Code:        "400031107",
-			Description: "Storage name already exists",
+			Code:   "400031107",
+			Params: map[string]interface{}{"StorageName": "existing-storage"},
 		})
 
 	body, _ := json.Marshal(req)
@@ -167,8 +167,11 @@ func TestStorageHandler_Create_ValidationError_StorageExists(t *testing.T) {
 
 	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
 		Return("", &service.StorageValidationError{
-			Code:        "400031108",
-			Description: "Storage already exists",
+			Code: "400031108",
+			Params: map[string]interface{}{
+				"Bucket":   "existing-bucket",
+				"Location": "https://oss-cn-hangzhou.aliyuncs.com",
+			},
 		})
 
 	body, _ := json.Marshal(req)
@@ -200,8 +203,8 @@ func TestStorageHandler_Create_ValidationError_InvalidVendorType(t *testing.T) {
 
 	mockService.On("Create", mock.Anything, mock.AnythingOfType("*service.CreateStorageRequest")).
 		Return("", &service.StorageValidationError{
-			Code:        "400031110",
-			Description: "Invalid vendor type",
+			Code:   "400031110",
+			Params: map[string]interface{}{"VendorType": "INVALID"},
 		})
 
 	body, _ := json.Marshal(req)

@@ -10,8 +10,8 @@ type StorageConfig struct {
 	VendorType       string    `gorm:"column:f_vendor_type;type:varchar(32);not null" json:"vendor_type"`
 	Endpoint         string    `gorm:"column:f_endpoint;type:varchar(256);not null" json:"endpoint"`
 	BucketName       string    `gorm:"column:f_bucket_name;type:varchar(128);not null" json:"bucket_name"`
-	AccessKeyID      string    `gorm:"column:f_access_key_id;type:varchar(256);not null" json:"access_key_id,omitempty"` // 改为 omitempty，缓存时包含
-	AccessKey        string    `gorm:"column:f_access_key;type:varchar(512);not null" json:"access_key,omitempty"`       // 改为 omitempty，缓存时包含
+	AccessKeyID      string    `gorm:"column:f_access_key_id;type:varchar(256);not null" json:"access_key_id,omitempty"` // Included when populated in cached records.
+	AccessKey        string    `gorm:"column:f_access_key;type:varchar(512);not null" json:"access_key,omitempty"`       // Included when populated in cached records.
 	Region           string    `gorm:"column:f_region;type:varchar(64);default:''" json:"region"`
 	IsDefault        bool      `gorm:"column:f_is_default;type:int;default:0" json:"is_default"`
 	IsEnabled        bool      `gorm:"column:f_is_enabled;type:int;default:1" json:"is_enabled"`

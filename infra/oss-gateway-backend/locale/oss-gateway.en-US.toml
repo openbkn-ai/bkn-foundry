@@ -1,0 +1,79 @@
+[OssGateway.BadRequest]
+Message = "Bad request"
+Description = "The request parameters are invalid."
+Solution = "Check the request parameters."
+
+[OssGateway.InvalidParameter]
+Message = "Invalid parameter"
+Description = "The parameter is invalid: {{.Parameter}}."
+Solution = "Check the parameter format."
+
+[OssGateway.TooManyKeys]
+Message = "Too many keys"
+Description = "A request can contain at most {{.MaxKeys}} keys."
+Solution = "Reduce the number of keys in the request."
+
+[OssGateway.NotFound]
+Message = "Resource not found"
+Description = "The requested resource was not found."
+Solution = "Check the resource identifier."
+
+[OssGateway.StorageNotFound]
+Message = "Storage not found"
+Description = "The specified storage configuration does not exist."
+Solution = "Check the storage configuration ID."
+
+[OssGateway.InternalError]
+Message = "Internal server error"
+Description = "OSS Gateway encountered an internal error while processing the request."
+Solution = "Try again later; contact an administrator if the problem persists."
+
+[OssGateway.ConnectionFailed]
+Message = "Connection failed"
+Description = "OSS Gateway could not connect to the specified storage service."
+Solution = "Check the storage configuration and network connection."
+
+[OssGateway.ServiceNotReady]
+Message = "Service not ready"
+Description = "One or more OSS Gateway dependencies are not ready."
+Solution = "Try again later."
+
+[OssGateway.StorageNameExists]
+Message = "Storage name already exists"
+Description = "The storage name {{.StorageName}} is already in use."
+Solution = "Use a different storage name."
+
+[OssGateway.StorageExists]
+Message = "Storage configuration already exists"
+Description = "A storage configuration for bucket {{.Bucket}} and location {{.Location}} already exists."
+Solution = "Use a different bucket or location."
+
+[OssGateway.StorageDisabled]
+Message = "Storage is disabled"
+Description = "The specified storage configuration is disabled."
+Solution = "Enable the storage configuration or select another one."
+
+[OssGateway.InvalidVendorType]
+Message = "Invalid storage vendor type"
+Description = "The storage vendor type {{.VendorType}} is not supported."
+Solution = "Use OSS, OBS, ECEPH, or TOS."
+
+[OssGateway.InvalidEndpoint]
+Message = "Invalid storage endpoint"
+Description = "The storage endpoint must start with http:// or https://."
+Solution = "Check the storage endpoint."
+
+[OssGateway.DefaultStorageExists]
+Message = "Default storage already exists"
+Description = "Storage {{.StorageName}} is already configured as the default."
+Solution = "Unset the existing default storage first."
+
+[OssGateway.Unauthorized]
+Message = "Unauthorized"
+Description = "The request could not be authenticated."
+Solution = "Provide valid authentication credentials."
+
+[OssGateway.Forbidden]
+Message = "Forbidden"
+Description = "You are not permitted to perform this operation."
+Solution = "Contact an administrator to obtain the required permission."

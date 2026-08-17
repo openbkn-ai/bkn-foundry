@@ -28,7 +28,7 @@ func (h *DownloadHandler) GetDownloadURL(c *gin.Context) {
 
 	decodedKey, err := url.PathUnescape(objectKey)
 	if err != nil {
-		response.InvalidParam(c, "invalid object key")
+		response.InvalidParam(c, "object_key")
 		return
 	}
 
@@ -40,7 +40,7 @@ func (h *DownloadHandler) GetDownloadURL(c *gin.Context) {
 	if expiresStr != "" {
 		expires, err = strconv.ParseInt(expiresStr, 10, 64)
 		if err != nil {
-			response.InvalidParam(c, "invalid expires")
+			response.InvalidParam(c, "expires")
 			return
 		}
 	}
@@ -48,13 +48,16 @@ func (h *DownloadHandler) GetDownloadURL(c *gin.Context) {
 	if saveName != "" {
 		saveName, err = url.QueryUnescape(saveName)
 		if err != nil {
-			response.InvalidParam(c, "invalid save_name")
+			response.InvalidParam(c, "save_name")
 			return
 		}
 	}
 
 	presignedURL, err := h.service.GetDownloadURL(c.Request.Context(), storageID, decodedKey, expires, saveName, internalRequest)
 	if err != nil {
+		if writeValidationError(c, err) {
+			return
+		}
 		response.InternalError(c, err.Error())
 		return
 	}

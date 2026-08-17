@@ -17,15 +17,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// StorageValidationError 存储校验错误
+// StorageValidationError carries a stable public code and localization data.
 type StorageValidationError struct {
-	Code        string
-	Message     string
-	Description string
+	Code   string
+	Params map[string]interface{}
 }
 
 func (e *StorageValidationError) Error() string {
-	return e.Description
+	return fmt.Sprintf("storage validation failed: code=%s", e.Code)
 }
 
 type StorageService interface {
@@ -38,22 +37,22 @@ type StorageService interface {
 	GetAdapter(ctx context.Context, storageID string, useInternal bool) (adapter.OSSAdapter, error)
 }
 
-// ListStorageRequest 列表查询请求，参考 Python FastAPI 的分页规范
+// ListStorageRequest follows the Python FastAPI pagination contract.
 type ListStorageRequest struct {
-	Page       int    `form:"page"`        // 页码，从1开始，默认1
-	Size       int    `form:"size"`        // 每页大小，默认10，最大1000
-	Order      string `form:"order"`       // 排序方向: asc/desc，默认 desc
-	Rule       string `form:"rule"`        // 排序字段: create_time/update_time/storage_name，默认 update_time
-	Name       string `form:"name"`        // 模糊搜索存储名称
-	VendorType string `form:"vendor_type"` // 供应商类型过滤
-	Enabled    *bool  `form:"enabled"`     // 启用状态过滤
-	IsDefault  *bool  `form:"is_default"`  // 默认存储过滤
+	Page       int    `form:"page"`        // Page number, starting at 1; defaults to 1.
+	Size       int    `form:"size"`        // Page size; defaults to 10 and is capped at 1000.
+	Order      string `form:"order"`       // Sort direction: asc or desc; defaults to desc.
+	Rule       string `form:"rule"`        // Sort field; defaults to update_time.
+	Name       string `form:"name"`        // Fuzzy storage-name filter.
+	VendorType string `form:"vendor_type"` // Storage vendor filter.
+	Enabled    *bool  `form:"enabled"`     // Enabled-state filter.
+	IsDefault  *bool  `form:"is_default"`  // Default-storage filter.
 }
 
-// ListStorageResponse 列表响应
+// ListStorageResponse is the paginated storage response.
 type ListStorageResponse struct {
-	Count int                `json:"count"` // 总记录数
-	Data  []*StorageResponse `json:"data"`  // 数据列表
+	Count int                `json:"count"` // Total number of matching records.
+	Data  []*StorageResponse `json:"data"`  // Records in the current page.
 }
 
 type storageService struct {
@@ -71,10 +70,10 @@ type CreateStorageRequest struct {
 	BucketName       string `json:"bucket_name" binding:"required"`
 	AccessKeyID      string `json:"access_key_id" binding:"required"`
 	AccessKeySecret  string `json:"access_key_secret" binding:"required"`
-	Region           string `json:"region"` // OSS、OBS、TOS必填，ECEPH非必填
+	Region           string `json:"region"` // Required for OSS, OBS, and TOS; optional for ECEPH.
 	IsDefault        bool   `json:"is_default"`
 	InternalEndpoint string `json:"internal_endpoint"`
-	SiteID           string `json:"site_id"` // 站点ID，用于校验 bucket_name + siteId 唯一性
+	SiteID           string `json:"site_id"` // Used with bucket_name for uniqueness checks.
 }
 
 type UpdateStorageRequest struct {
@@ -117,24 +116,25 @@ func NewStorageService(repo repository.StorageRepository, crypto *crypto.AESCryp
 func (s *storageService) Create(ctx context.Context, req *CreateStorageRequest) (string, error) {
 	if !s.isValidVendorType(req.VendorType) {
 		return "", &StorageValidationError{
-			Code:        errors.InvalidVendorType.Code,
-			Message:     errors.InvalidVendorType.Message,
-			Description: fmt.Sprintf(errors.InvalidVendorType.Description, req.VendorType),
+			Code:   errors.InvalidVendorType.Code,
+			Params: map[string]interface{}{"VendorType": req.VendorType},
 		}
 	}
 
-	// Region 校验：OSS、OBS、TOS必填，ECEPH非必填
+	// Region is required for OSS, OBS, and TOS, but optional for ECEPH.
 	if (req.VendorType == "OSS" || req.VendorType == "OBS" || req.VendorType == "TOS") && req.Region == "" {
-		return "", fmt.Errorf("region is required for vendor type %s", req.VendorType)
+		return "", &StorageValidationError{
+			Code:   errors.InvalidParam.Code,
+			Params: map[string]interface{}{"Parameter": "region"},
+		}
 	}
 
 	if !strings.HasPrefix(req.Endpoint, "http://") && !strings.HasPrefix(req.Endpoint, "https://") {
-		return "", fmt.Errorf("endpoint must start with http:// or https://")
+		return "", &StorageValidationError{Code: errors.InvalidEndpoint.Code}
 	}
 
-	// ========== 唯一性校验（基于数据库，Redis 仅作缓存加速） ==========
-
-	// 唯一性校验1: storage_name 唯一性（先查数据库）
+	// Uniqueness is enforced by the database; Redis only accelerates lookups.
+	// Check storage_name uniqueness first.
 	nameExists, err := s.repo.ExistsByStorageName(ctx, req.StorageName)
 	if err != nil {
 		s.log.WithError(err).Error("failed to check storage name in database")
@@ -142,13 +142,12 @@ func (s *storageService) Create(ctx context.Context, req *CreateStorageRequest) 
 	}
 	if nameExists {
 		return "", &StorageValidationError{
-			Code:        errors.StorageNameExists.Code,
-			Message:     errors.StorageNameExists.Message,
-			Description: fmt.Sprintf(errors.StorageNameExists.Description, req.StorageName),
+			Code:   errors.StorageNameExists.Code,
+			Params: map[string]interface{}{"StorageName": req.StorageName},
 		}
 	}
 
-	// 唯一性校验2: bucket_name + endpoint 唯一性（基于数据库）
+	// Check bucket_name and endpoint uniqueness.
 	bucketEndpointExists, err := s.repo.ExistsByBucketAndEndpoint(ctx, req.BucketName, req.Endpoint)
 	if err != nil {
 		s.log.WithError(err).Error("failed to check bucket+endpoint in database")
@@ -156,13 +155,15 @@ func (s *storageService) Create(ctx context.Context, req *CreateStorageRequest) 
 	}
 	if bucketEndpointExists {
 		return "", &StorageValidationError{
-			Code:        errors.StorageExists.Code,
-			Message:     errors.StorageExists.Message,
-			Description: fmt.Sprintf("Bucket(%s) with endpoint(%s) already exists", req.BucketName, req.Endpoint),
+			Code: errors.StorageExists.Code,
+			Params: map[string]interface{}{
+				"Bucket":   req.BucketName,
+				"Location": req.Endpoint,
+			},
 		}
 	}
 
-	// 唯一性校验3: bucket_name + siteId 唯一性（基于数据库）
+	// Check bucket_name and siteId uniqueness when a site is supplied.
 	if req.SiteID != "" {
 		bucketSiteExists, err := s.repo.ExistsByBucketAndSiteID(ctx, req.BucketName, req.SiteID)
 		if err != nil {
@@ -171,9 +172,11 @@ func (s *storageService) Create(ctx context.Context, req *CreateStorageRequest) 
 		}
 		if bucketSiteExists {
 			return "", &StorageValidationError{
-				Code:        errors.StorageExists.Code,
-				Message:     errors.StorageExists.Message,
-				Description: fmt.Sprintf("Bucket(%s) with site already exists", req.BucketName),
+				Code: errors.StorageExists.Code,
+				Params: map[string]interface{}{
+					"Bucket":   req.BucketName,
+					"Location": req.SiteID,
+				},
 			}
 		}
 	}
@@ -190,18 +193,16 @@ func (s *storageService) Create(ctx context.Context, req *CreateStorageRequest) 
 
 	storageID := utils.GenerateStorageID()
 
-	// 如果设置为默认存储，先检查是否已存在其他默认存储
+	// Reject a second default storage.
 	if req.IsDefault {
 		existingDefault, err := s.repo.HasDefaultStorage(ctx, "")
 		if err == nil && existingDefault != nil {
-			// 已存在默认存储，拒绝创建
 			return "", &StorageValidationError{
-				Code:        errors.DefaultStorageExists.Code,
-				Message:     errors.DefaultStorageExists.Message,
-				Description: existingDefault.StorageName, // 只传存储名称
+				Code:   errors.DefaultStorageExists.Code,
+				Params: map[string]interface{}{"StorageName": existingDefault.StorageName},
 			}
 		}
-		// 如果 err == gorm.ErrRecordNotFound，说明没有默认存储，可以继续
+		// gorm.ErrRecordNotFound means no default exists and creation can continue.
 	}
 
 	storage := &model.StorageConfig{
@@ -216,14 +217,14 @@ func (s *storageService) Create(ctx context.Context, req *CreateStorageRequest) 
 		IsDefault:        req.IsDefault,
 		IsEnabled:        true,
 		InternalEndpoint: req.InternalEndpoint,
-		SiteID:           req.SiteID, // 保存站点ID
+		SiteID:           req.SiteID,
 	}
 
 	if err := s.repo.Create(ctx, storage); err != nil {
 		return "", fmt.Errorf("failed to create storage: %w", err)
 	}
 
-	// 创建成功后，设置缓存（仅用于加速查询）
+	// Cache the new record to accelerate subsequent reads.
 	if err := s.storageCache.SetStorage(ctx, storage); err != nil {
 		s.log.WithError(err).Warn("failed to cache storage config")
 	}
@@ -235,13 +236,13 @@ func (s *storageService) Update(ctx context.Context, storageID string, req *Upda
 	storage, err := s.repo.GetByID(ctx, storageID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return fmt.Errorf("storage not found")
+			return &StorageValidationError{Code: errors.StorageNotFound.Code}
 		}
 		return err
 	}
 
 	if req.StorageName != "" {
-		// 检查存储名称是否与其他存储重名
+		// Ensure the updated name does not conflict with another storage.
 		if req.StorageName != storage.StorageName {
 			nameExists, err := s.repo.ExistsByStorageName(ctx, req.StorageName)
 			if err != nil {
@@ -250,9 +251,8 @@ func (s *storageService) Update(ctx context.Context, storageID string, req *Upda
 			}
 			if nameExists {
 				return &StorageValidationError{
-					Code:        errors.StorageNameExists.Code,
-					Message:     errors.StorageNameExists.Message,
-					Description: fmt.Sprintf(errors.StorageNameExists.Description, req.StorageName),
+					Code:   errors.StorageNameExists.Code,
+					Params: map[string]interface{}{"StorageName": req.StorageName},
 				}
 			}
 		}
@@ -260,7 +260,7 @@ func (s *storageService) Update(ctx context.Context, storageID string, req *Upda
 	}
 	if req.Endpoint != "" {
 		if !strings.HasPrefix(req.Endpoint, "http://") && !strings.HasPrefix(req.Endpoint, "https://") {
-			return fmt.Errorf("endpoint must start with http:// or https://")
+			return &StorageValidationError{Code: errors.InvalidEndpoint.Code}
 		}
 		storage.Endpoint = req.Endpoint
 	}
@@ -285,18 +285,16 @@ func (s *storageService) Update(ctx context.Context, storageID string, req *Upda
 		storage.Region = req.Region
 	}
 	if req.IsDefault != nil {
-		// 如果要设置为默认存储，先检查是否已存在其他默认存储
+		// Reject an update that would create a second default storage.
 		if *req.IsDefault {
 			existingDefault, err := s.repo.HasDefaultStorage(ctx, storageID)
 			if err == nil && existingDefault != nil {
-				// 已存在其他默认存储，拒绝更新
 				return &StorageValidationError{
-					Code:        errors.DefaultStorageExists.Code,
-					Message:     errors.DefaultStorageExists.Message,
-					Description: existingDefault.StorageName, // 只传存储名称
+					Code:   errors.DefaultStorageExists.Code,
+					Params: map[string]interface{}{"StorageName": existingDefault.StorageName},
 				}
 			}
-			// 如果 err == gorm.ErrRecordNotFound，说明没有其他默认存储，可以继续
+			// gorm.ErrRecordNotFound means no other default exists.
 		}
 		storage.IsDefault = *req.IsDefault
 	}
@@ -334,7 +332,7 @@ func (s *storageService) Get(ctx context.Context, storageID string) (*StorageRes
 	storage, err := s.repo.GetByID(ctx, storageID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, fmt.Errorf("storage not found")
+			return nil, &StorageValidationError{Code: errors.StorageNotFound.Code}
 		}
 		return nil, err
 	}
@@ -343,7 +341,7 @@ func (s *storageService) Get(ctx context.Context, storageID string) (*StorageRes
 }
 
 func (s *storageService) List(ctx context.Context, req *ListStorageRequest) (*ListStorageResponse, error) {
-	// 设置默认值
+	// Apply pagination defaults.
 	if req.Page <= 0 {
 		req.Page = 1
 	}
@@ -360,18 +358,24 @@ func (s *storageService) List(ctx context.Context, req *ListStorageRequest) (*Li
 		req.Rule = "update_time"
 	}
 
-	// 验证排序参数
+	// Validate sorting parameters before building a query.
 	validOrders := map[string]bool{"asc": true, "desc": true}
 	if !validOrders[req.Order] {
-		return nil, fmt.Errorf("invalid order parameter: %s (must be asc or desc)", req.Order)
+		return nil, &StorageValidationError{
+			Code:   errors.InvalidParam.Code,
+			Params: map[string]interface{}{"Parameter": "order"},
+		}
 	}
 
 	validRules := map[string]bool{"create_time": true, "update_time": true, "storage_name": true}
 	if !validRules[req.Rule] {
-		return nil, fmt.Errorf("invalid rule parameter: %s (must be create_time, update_time or storage_name)", req.Rule)
+		return nil, &StorageValidationError{
+			Code:   errors.InvalidParam.Code,
+			Params: map[string]interface{}{"Parameter": "rule"},
+		}
 	}
 
-	// 查询数据库
+	// Query the database.
 	storages, total, err := s.repo.ListWithPagination(ctx, req.VendorType, req.Enabled, req.IsDefault, req.Name, req.Page, req.Size, req.Order, req.Rule)
 	if err != nil {
 		return nil, err
@@ -409,7 +413,7 @@ func (s *storageService) GetAdapter(ctx context.Context, storageID string, useIn
 		storage, err = s.repo.GetByID(ctx, storageID)
 		if err != nil {
 			if err == gorm.ErrRecordNotFound {
-				return nil, fmt.Errorf("storage not found")
+				return nil, &StorageValidationError{Code: errors.StorageNotFound.Code}
 			}
 			return nil, err
 		}
@@ -421,15 +425,15 @@ func (s *storageService) GetAdapter(ctx context.Context, storageID string, useIn
 	}
 
 	if !storage.IsEnabled {
-		return nil, fmt.Errorf("storage is disabled")
+		return nil, &StorageValidationError{Code: errors.StorageDisabled.Code}
 	}
 
-	// 添加详细日志
+	// Record decryption diagnostics without exposing credentials.
 	s.log.Infof("Decrypting storage %s", storageID)
 	s.log.Infof("AccessKeyID length from DB: %d", len(storage.AccessKeyID))
 	s.log.Infof("AccessKey length from DB: %d", len(storage.AccessKey))
 
-	// 尝试解密，如果解密失败则认为是明文
+	// Treat values as plaintext when legacy records cannot be decrypted.
 	accessKeyID := storage.AccessKeyID
 	if decrypted, err := s.crypto.Decrypt(storage.AccessKeyID); err == nil {
 		accessKeyID = decrypted

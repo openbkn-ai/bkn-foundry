@@ -18,7 +18,7 @@ run:
 	go run main.go
 
 test:
-	go test -v ./test/...
+	go test -v ./...
 
 test-coverage:
 	@echo "Running tests with coverage..."
