@@ -176,9 +176,10 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 				selectFields = append(selectFields, quoteColumnName(originalName(outName)))
 			}
 		} else if len(selectFields) == 0 {
-			// 没有指定输出字段，则查询所有字段
+			// 没有指定输出字段，则查询所有字段。这里同样要走 originalName 的兜底，
+			// 否则 original_name 为空的属性会拼出空标识符，整条 SQL 报错。
 			for _, prop := range resource.SchemaDefinition {
-				selectFields = append(selectFields, quoteColumnName(prop.OriginalName))
+				selectFields = append(selectFields, quoteColumnName(originalName(prop.Name)))
 			}
 		}
 	} else if len(params.OutputFields) > 0 {
