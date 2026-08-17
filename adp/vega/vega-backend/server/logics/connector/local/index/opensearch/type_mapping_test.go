@@ -165,6 +165,13 @@ func TestOpenSearchConnectorMetadataAndNew(t *testing.T) {
 		assert.True(t, connector.GetEnabled())
 
 		fields := connector.GetFieldConfig()
+		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
+			"host":          {Name: "主机地址", Type: "string", Description: "OpenSearch 服务器主机地址", Required: true, Encrypted: false},
+			"port":          {Name: "端口号", Type: "integer", Description: "OpenSearch 服务器端口", Required: true, Encrypted: false},
+			"username":      {Name: "用户名", Type: "string", Description: "认证用户名", Required: false, Encrypted: false},
+			"password":      {Name: "密码", Type: "string", Description: "认证密码", Required: false, Encrypted: true},
+			"index_pattern": {Name: "索引模式", Type: "string", Description: "索引匹配模式（可选，如 log-*）", Required: false, Encrypted: false},
+		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
 		require.Contains(t, fields, "index_pattern")

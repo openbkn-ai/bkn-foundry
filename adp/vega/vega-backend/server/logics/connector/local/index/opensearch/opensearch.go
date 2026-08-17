@@ -119,11 +119,11 @@ func (c *OpenSearchConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns the field configuration for OpenSearch connector.
 func (c *OpenSearchConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":          {Name: "Host", Type: "string", Description: "OpenSearch server host", Required: true, Encrypted: false},
-		"port":          {Name: "Port", Type: "integer", Description: "OpenSearch server port", Required: true, Encrypted: false},
-		"username":      {Name: "Username", Type: "string", Description: "Authentication username", Required: false, Encrypted: false},
-		"password":      {Name: "Password", Type: "string", Description: "Authentication password", Required: false, Encrypted: true},
-		"index_pattern": {Name: "Index pattern", Type: "string", Description: "Optional index pattern, such as log-*", Required: false, Encrypted: false},
+		"host":          {Name: "主机地址", Type: "string", Description: "OpenSearch 服务器主机地址", Required: true, Encrypted: false},
+		"port":          {Name: "端口号", Type: "integer", Description: "OpenSearch 服务器端口", Required: true, Encrypted: false},
+		"username":      {Name: "用户名", Type: "string", Description: "认证用户名", Required: false, Encrypted: false},
+		"password":      {Name: "密码", Type: "string", Description: "认证密码", Required: false, Encrypted: true},
+		"index_pattern": {Name: "索引模式", Type: "string", Description: "索引匹配模式（可选，如 log-*）", Required: false, Encrypted: false},
 	}
 }
 

@@ -35,6 +35,14 @@ func TestMariaDBConnectorMetadataAndConfig(t *testing.T) {
 		assert.True(t, connector.GetEnabled())
 
 		fields := connector.GetFieldConfig()
+		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
+			"host":      {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
+			"port":      {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
+			"username":  {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
+			"password":  {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
+			"databases": {Name: "数据库列表", Type: "array", Description: "数据库名称列表（可选，为空则连接实例级别）", Required: false, Encrypted: false},
+			"options":   {Name: "连接参数", Type: "object", Description: "连接参数（如 charset, timeout 等）", Required: false, Encrypted: false},
+		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
 		assert.True(t, fields["password"].Required)

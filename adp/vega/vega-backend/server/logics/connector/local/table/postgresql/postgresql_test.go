@@ -35,6 +35,15 @@ func TestPostgresqlConnectorMetadataAndConfig(t *testing.T) {
 		assert.True(t, connector.GetEnabled())
 
 		fields := connector.GetFieldConfig()
+		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
+			"host":     {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
+			"port":     {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
+			"username": {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
+			"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
+			"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
+			"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
+			"options":  {Name: "连接参数", Type: "object", Description: "连接参数（如 sslmode、connect_timeout 等）", Required: false, Encrypted: false},
+		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
 		assert.True(t, fields["password"].Required)

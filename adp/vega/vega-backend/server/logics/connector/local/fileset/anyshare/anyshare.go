@@ -169,15 +169,15 @@ func (c *AnyShareConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns connector form fields.
 func (c *AnyShareConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"protocol":     {Name: "Protocol", Type: "string", Description: "HTTP or HTTPS", Required: true, Encrypted: false},
-		"host":         {Name: "Host", Type: "string", Description: "AnyShare service host", Required: true, Encrypted: false},
-		"port":         {Name: "Port", Type: "integer", Description: "Service port", Required: true, Encrypted: false},
-		"auth_type":    {Name: "Authentication type", Type: "integer", Description: "1=access token, 2=AppID/AppSecret", Required: true, Encrypted: false},
-		"token":        {Name: "Access token", Type: "string", Description: "Required when auth_type=1", Required: false, Encrypted: true},
-		"app_id":       {Name: "Application account ID", Type: "string", Description: "Required when auth_type=2", Required: false, Encrypted: false},
-		"app_secret":   {Name: "Application secret", Type: "string", Description: "Required when auth_type=2", Required: false, Encrypted: true},
-		"doc_lib_type": {Name: "Document library type", Type: "integer", Description: "1=knowledge base, 2=document library", Required: true, Encrypted: false},
-		"paths":        {Name: "Paths", Type: "array", Description: "Optional starting paths resolved by document library name; when empty, libraries are listed by type", Required: false, Encrypted: false},
+		"protocol":     {Name: "协议", Type: "string", Description: "http 或 https", Required: true, Encrypted: false},
+		"host":         {Name: "主机地址", Type: "string", Description: "AnyShare 服务主机", Required: true, Encrypted: false},
+		"port":         {Name: "端口", Type: "integer", Description: "服务端口", Required: true, Encrypted: false},
+		"auth_type":    {Name: "认证方式", Type: "integer", Description: "1=访问令牌 Token，2=AppID/AppSecret", Required: true, Encrypted: false},
+		"token":        {Name: "访问令牌", Type: "string", Description: "auth_type=1 时必填", Required: false, Encrypted: true},
+		"app_id":       {Name: "应用账户 ID", Type: "string", Description: "auth_type=2 时必填", Required: false, Encrypted: false},
+		"app_secret":   {Name: "应用密钥", Type: "string", Description: "auth_type=2 时必填", Required: false, Encrypted: true},
+		"doc_lib_type": {Name: "文档库类型", Type: "integer", Description: "1=知识库，2=文档库", Required: true, Encrypted: false},
+		"paths":        {Name: "路径列表", Type: "array", Description: "可选；按文档库名称路径解析起点，空则按文档库类型枚举", Required: false, Encrypted: false},
 	}
 }
 

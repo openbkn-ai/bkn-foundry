@@ -35,6 +35,17 @@ func TestAnyShareConnectorMetadata(t *testing.T) {
 		assert.True(t, connector.GetEnabled())
 
 		fields := connector.GetFieldConfig()
+		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
+			"protocol":     {Name: "协议", Type: "string", Description: "http 或 https", Required: true, Encrypted: false},
+			"host":         {Name: "主机地址", Type: "string", Description: "AnyShare 服务主机", Required: true, Encrypted: false},
+			"port":         {Name: "端口", Type: "integer", Description: "服务端口", Required: true, Encrypted: false},
+			"auth_type":    {Name: "认证方式", Type: "integer", Description: "1=访问令牌 Token，2=AppID/AppSecret", Required: true, Encrypted: false},
+			"token":        {Name: "访问令牌", Type: "string", Description: "auth_type=1 时必填", Required: false, Encrypted: true},
+			"app_id":       {Name: "应用账户 ID", Type: "string", Description: "auth_type=2 时必填", Required: false, Encrypted: false},
+			"app_secret":   {Name: "应用密钥", Type: "string", Description: "auth_type=2 时必填", Required: false, Encrypted: true},
+			"doc_lib_type": {Name: "文档库类型", Type: "integer", Description: "1=知识库，2=文档库", Required: true, Encrypted: false},
+			"paths":        {Name: "路径列表", Type: "array", Description: "可选；按文档库名称路径解析起点，空则按文档库类型枚举", Required: false, Encrypted: false},
+		}, fields)
 		require.Contains(t, fields, "token")
 		assert.True(t, fields["token"].Encrypted)
 		require.Contains(t, fields, "app_secret")

@@ -109,12 +109,12 @@ func (c *MariaDBConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns the field configuration for MariaDB connector.
 func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":      {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
-		"port":      {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
-		"username":  {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
-		"password":  {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
-		"databases": {Name: "Databases", Type: "array", Description: "Optional database names; when empty, connect at the instance level", Required: false, Encrypted: false},
-		"options":   {Name: "Connection options", Type: "object", Description: "Connection options, such as charset and timeout", Required: false, Encrypted: false},
+		"host":      {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
+		"port":      {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
+		"username":  {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
+		"password":  {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
+		"databases": {Name: "数据库列表", Type: "array", Description: "数据库名称列表（可选，为空则连接实例级别）", Required: false, Encrypted: false},
+		"options":   {Name: "连接参数", Type: "object", Description: "连接参数（如 charset, timeout 等）", Required: false, Encrypted: false},
 	}
 }
 
