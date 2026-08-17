@@ -197,17 +197,27 @@ type ExploreSubgraphReq struct {
 	// 以下字段走 URL，不进请求体：整个结构体会被直接序列化成 body 发给下游。
 	KnID               string `json:"-" form:"kn_id"`
 	IncludeLogicParams bool   `json:"-" form:"include_logic_params"`
-	// ExcludeSystemProperties / IgnoringStoreCache 只供服务内部调用方使用，不进 MCP
-	// 工具 schema，理由与 QueryObjectInstancesReq 上的同名字段一致。
-	ExcludeSystemProperties []string `json:"-" form:"exclude_system_properties"`
-	IgnoringStoreCache      bool     `json:"-" form:"ignoring_store_cache"`
+	// IgnoringStoreCache 只供服务内部调用方使用，不进 MCP 工具 schema，理由与
+	// QueryObjectInstancesReq 上的同名字段一致。
+	IgnoringStoreCache bool `json:"-" form:"ignoring_store_cache"`
+	//
+	// 这里**没有** ExcludeSystemProperties，虽然 query_object_instance 有：探索分支的
+	// 下游把它的赋值注释掉了（adp/bkn/ontology-query/server/logics/knowledge_network/
+	// knowledge_network_service.go 组装 startObjectQuery 处），传了不生效。暴露一个
+	// 静默失效的开关比没有更糟——调用方以为裁了字段，实际 context 照样被占。
+	// 下游放开后再补，届时与对象查询那侧对齐即可。
 
 	// SourceObjectTypeID 探索起点的对象类。
 	SourceObjectTypeID string `json:"source_object_type_id"`
 	// Direction 探索方向，取 forward / backward / bidirectional，由下游校验。
 	Direction string `json:"direction"`
-	// PathLength 最大跳数。下游硬性上限为 3（driveradapters/validate.go），超出回 400。
-	PathLength int `json:"path_length"`
+	// PathLength 最大跳数，取 1-3。
+	//
+	// 上界与下游 validateSubgraphSearchRequest 一致（超 3 回 400）；**下界必须钉在这里**：
+	// 0 是 int 零值，与「没传」不可区分，而下游对 0 不报错、只返回空子图——调用方会把
+	// 「参数漏填」读成「什么都没连上」。校验挂在结构体上而不是各入口里，REST 与 MCP
+	// 才共用同一条规则（MCP 侧另有一次显式检查，为的是把字段名点出来）。
+	PathLength int `json:"path_length" validate:"min=1,max=3"`
 	// ConceptGroups 按概念分组圈定探索范围，不传则不限。
 	ConceptGroups []string `json:"concept_groups,omitempty"`
 	// Cond 起点对象类的过滤条件，与 query_object_instance 的 condition 同构。

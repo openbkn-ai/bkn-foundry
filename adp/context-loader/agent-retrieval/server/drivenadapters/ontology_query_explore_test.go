@@ -147,8 +147,7 @@ func TestExploreSubgraph_InternalParamsAndEscaping(t *testing.T) {
 		_, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
 			KnID: "kn1?ignoring_store_cache=true", SourceObjectTypeID: "ot1",
 			Direction: "bidirectional", PathLength: 3, Limit: 10,
-			ExcludeSystemProperties: []string{"_instance_id"},
-			IgnoringStoreCache:      true,
+			IgnoringStoreCache: true,
 		})
 		convey.So(err, convey.ShouldBeNil)
 
@@ -158,10 +157,11 @@ func TestExploreSubgraph_InternalParamsAndEscaping(t *testing.T) {
 		convey.So(parsed.Path, convey.ShouldEqual,
 			"/api/ontology-query/in/v1/knowledge-networks/kn1?ignoring_store_cache=true/subgraph")
 		convey.So(parsed.Query()["ignoring_store_cache"], convey.ShouldResemble, []string{"true"})
-		convey.So(parsed.Query()["exclude_system_properties"], convey.ShouldResemble, []string{"_instance_id"})
+		// exclude_system_properties 不发：下游探索分支把它注释掉了，发过去是静默无效
+		_, hasExclude := parsed.Query()["exclude_system_properties"]
+		convey.So(hasExclude, convey.ShouldBeFalse)
 
-		// 两者是 query 参数不是请求体字段
-		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "exclude_system_properties")
+		// ignoring_store_cache 是 query 参数不是请求体字段
 		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "ignoring_store_cache")
 		// kn_id 走 URL，也不该混进 body
 		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "kn1?ignoring_store_cache")
