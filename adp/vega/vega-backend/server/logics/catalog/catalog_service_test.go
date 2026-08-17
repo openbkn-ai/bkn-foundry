@@ -492,9 +492,24 @@ func TestCatalogServiceCreate(t *testing.T) {
 			},
 		)
 		mockPS.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
+			func(_ context.Context, resources []interfaces.PermissionResource, ops []string) error {
 				if resources[0].Type != interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG {
 					t.Fatalf("expected internal_catalog auth type, got %s", resources[0].Type)
+				}
+				// 建表权与取数权都判在目录上（#801），目录创建者不拿这两个就
+				// 连表都加不进自己刚建的目录。
+				held := map[string]bool{}
+				for _, op := range ops {
+					held[op] = true
+				}
+				for _, want := range []string{
+					interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
+					interfaces.OPERATION_TYPE_QUERY_DATA,
+					interfaces.OPERATION_TYPE_VIEW_DETAIL,
+				} {
+					if !held[want] {
+						t.Errorf("目录创建者授权缺 %q: %v", want, ops)
+					}
 				}
 				return nil
 			},

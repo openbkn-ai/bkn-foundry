@@ -315,12 +315,19 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			WithErrorDetails("failed to create catalog")
 	}
 
-	// Register resources
+	// Register resources.
+	//
+	// The creator also gets resource_manage and query_data (#801): both are now
+	// judged on the catalog, so without them they could not add a table to the
+	// catalog they just created — and the connection config and credentials are
+	// theirs to begin with.
+	catalogCreatorOps := append(append([]string{}, interfaces.COMMON_OPERATIONS...),
+		interfaces.OPERATION_TYPE_RESOURCE_MANAGE, interfaces.OPERATION_TYPE_QUERY_DATA)
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
 		Type: authType,
 		Name: catalog.Name,
-	}}, interfaces.COMMON_OPERATIONS)
+	}}, catalogCreatorOps)
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
 		span.SetStatus(codes.Error, "failed to create catalog resource")

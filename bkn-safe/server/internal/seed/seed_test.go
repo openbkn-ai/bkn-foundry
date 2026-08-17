@@ -366,15 +366,14 @@ func TestApplyReconcilesCurrentSeedRoleGrants(t *testing.T) {
 	}
 }
 
-// TestCatalogResourceOperationSplit pins the #801 first step, which is purely
-// additive: the catalog gains resource_manage, the resource gains query_data.
+// TestCatalogResourceOperationSplit pins where each verb lives once #801 has
+// converged: management on the catalog, reading on the table.
 //
-// The management verbs are still declared on the resource on purpose. Apply
-// wipes every seeded role's p-lines (reconcileSeedRoles) and rebuilds them from
-// grants.json, so dropping them here — before vega judges the catalog instead —
-// would revoke network_builder's ability to create a table on upgrade.
-// Remove them in the same change that switches vega, not before, and update
-// this test consciously when you do.
+// The earlier revision of this test asserted the opposite — that the management
+// verbs were STILL declared on the resource — because Apply wipes every seeded
+// role's p-lines and rebuilds them from grants.json, so removing them before
+// vega judged the catalog would have revoked network_builder's ability to create
+// a table on upgrade. vega has switched, so the assertion inverts.
 func TestCatalogResourceOperationSplit(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
@@ -410,12 +409,18 @@ func TestCatalogResourceOperationSplit(t *testing.T) {
 			t.Errorf("resource is missing read operation %q", op)
 		}
 	}
-	// Transitional: still present until vega switches. See the doc comment.
+	// The management verbs are gone from the table. Putting one back would give
+	// the vocabulary two answers to "who may change this table" — the catalog's
+	// resource_manage and a table-level verb — and only the first is the one vega
+	// asks. create is the clearest case: a table is always created inside a
+	// catalog, so a verb on the table could never say which catalog it lands in.
 	for _, op := range []string{"create", "modify", "delete", "authorize", "task_manage"} {
-		if !resourceOps[op] {
-			t.Errorf("resource lost management operation %q too early — vega still judges it, "+
-				"so network_builder would fail to create a table after an upgrade", op)
+		if resourceOps[op] {
+			t.Errorf("resource still declares %q — management is judged on the owning catalog now (#801)", op)
 		}
+	}
+	if len(resourceOps) != 2 {
+		t.Errorf("resource declares %d operations, want exactly view_detail and query_data", len(resourceOps))
 	}
 }
 
@@ -496,16 +501,19 @@ func TestSeedRevokesNormalUserDataGrants(t *testing.T) {
 		}
 	}
 
-	// The builder is unaffected: it creates tables through its own grants.
+	// The builder is unaffected. Creating a table is judged on the target catalog
+	// now (#801): a table has to be created inside one, so "may create a table"
+	// and "may act on this catalog" were always the same question — and the old
+	// resource:*/create could not answer which catalog it would land in.
 	builder := "u-builder"
 	if err := e.AssignRole(builder, networkBuilder); err != nil {
 		t.Fatal(err)
 	}
-	allowed, err = e.Check(builder, "resource", "res-1", "create")
+	allowed, err = e.Check(builder, "catalog", "c-1", "resource_manage")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !allowed {
-		t.Error("network_builder lost resource create — creating a data table would 403 after upgrade")
+		t.Error("network_builder lost catalog resource_manage — creating a data table would 403 after upgrade")
 	}
 }

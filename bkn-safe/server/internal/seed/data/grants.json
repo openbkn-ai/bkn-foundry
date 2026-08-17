@@ -137,7 +137,7 @@
       "role_name": "network_builder",
       "resource_type": "resource",
       "id_pattern": "*",
-      "operations": ["view_detail", "query_data", "create", "modify", "delete", "authorize", "task_manage"]
+      "operations": ["view_detail", "query_data"]
     },
     {
       "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",

@@ -370,20 +370,17 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	_, parentInternal := internalCatalogs[req.CatalogID]
 	authType := resourceAuthResourceType(parentInternal)
 
-	// Determine whether the userid has the permission to create data resources (policy decision). When the table was created, the resource did not exist yet. What was judged was
-	// resource:* This wildcard object - it cannot answer "which directory should this table be created in", so the person who holds it
-	// Tables can be created in any directory. Reject and then ask the resource_manage of the target directory (#817).
-	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: authType,
-		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_CREATE})
-	if err != nil {
-		if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: catalogAuthResourceType(parentInternal),
-			ID:   req.CatalogID,
-		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err2 != nil {
-			return nil, err // Return the error of the old caliber and keep the existing error message semantics unchanged
-		}
+	// Creating a table is judged on the target catalog's resource_manage (#801).
+	//
+	// A table is always created INSIDE a catalog, so "may create a table" and
+	// "may act on this catalog" were always the same question. The old check
+	// asked resource:* + create, and a wildcard object cannot answer which
+	// catalog the table lands in: whoever held it could create a table anywhere.
+	if err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: catalogAuthResourceType(parentInternal),
+		ID:   req.CatalogID,
+	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err != nil {
+		return nil, err
 	}
 
 	// Get account info from context
@@ -506,12 +503,20 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		}
 	}
 
-	// Register resources
+	// Register resources.
+	//
+	// The creator gets view_detail alone (#801). Management — modify, delete,
+	// task_manage — is decided on the owning catalog, so a second object-level
+	// management grant would only give the two sides different answers.
+	// query_data is withheld for the same reason the split was made: handing it
+	// to the creator would erase the line between "may manage" and "may see the
+	// contents" exactly where it was drawn. Read access is granted explicitly,
+	// on the catalog or on this table.
 	err = rs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   resource.ID,
 		Type: authType,
 		Name: resource.Name,
-	}}, interfaces.COMMON_OPERATIONS)
+	}}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
 		span.SetStatus(codes.Error, "failed to create resource")

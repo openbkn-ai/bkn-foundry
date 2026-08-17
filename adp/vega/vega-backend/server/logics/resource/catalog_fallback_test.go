@@ -260,3 +260,42 @@ func TestMergeCatalogPermissionsIgnoresUnmappedOps(t *testing.T) {
 		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}, result))
 	assert.Empty(t, result)
 }
+
+// TestCreateJudgesTheCatalogOnly 钉住 #801 的收口:建表只判目标目录的
+// resource_manage,不再问 resource:* 的 create。
+//
+// 表必须建在某个目录里,所以「有权建表」与「有权动这个目录」本来就是同一件事;
+// 而 resource:* 这个通配对象答不了「建在哪个目录」——持有它的人可以往任意目录
+// 里建表。mock 只允许目录那一问,多问一次就会失败。
+func TestCreateJudgesTheCatalogOnly(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	ps := vmock.NewMockPermissionService(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ra: ra, ps: ps, cs: cs}
+	expectResourceServiceTransaction(t, rs, true)
+
+	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   "c-1",
+	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(nil).Times(1)
+	cs.EXPECT().CheckExistByID(gomock.Any(), "c-1").Return(true, nil)
+	ra.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+
+	// 创建者只拿 view_detail:管理权坐在目录上,取数权要显式发。
+	ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ []interfaces.PermissionResource, ops []string) error {
+			if len(ops) != 1 || ops[0] != interfaces.OPERATION_TYPE_VIEW_DETAIL {
+				t.Errorf("创建者授权 = %v, want 只有 view_detail", ops)
+			}
+			return nil
+		},
+	)
+
+	if _, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
+		CatalogID: "c-1", Name: "t1", Category: "table",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

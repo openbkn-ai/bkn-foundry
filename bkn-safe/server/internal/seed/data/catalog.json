@@ -60,16 +60,11 @@
       "id": "resource",
       "name": "数据资源",
       "_source": "vega",
-      "_note": "过渡态(#801 第一段,只加不改):新增 query_data 让资源侧能区分「只看结构」与「能取数」。create/modify/delete/authorize/task_manage 目标是上移到所属目录(catalog.resource_manage / task_manage / authorize),但在 vega 判定切换前必须保留——seed 的 reconcileSeedRoles 会先清空角色 p 行再按本文件重建,此刻移除会让 network_builder 升级后建表 403",
+      "_note": "数据表只保留读的两个动词(#801)。管理类(改/删/任务/授权)判在所属目录上:vega 先问这张表、拒了再问目录的 resource_manage / task_manage,所以 per-table 例外将来仍有余地。建表(create)连余地都不需要——表必须建在某个目录里,「有权建表」与「有权动这个目录」是同一件事,判的就是目录的 resource_manage",
       "_parent_note": "不声明 parent_type/parent_operation:回落判定改由 vega 在自己的判定点做——它手上就有 catalog_id,不需要 bkn-safe 知道归属(#817)。bkn-safe 的层级机制(#827/#832/#839)保留但因此休眠:没有声明,那条代码路径一次都不会走。真出现需要服务端解析多级层级的场景,把这两个字段加回来即可",
       "operations": [
         {"id": "view_detail", "name": "查看表结构"},
-        {"id": "query_data", "name": "查询表数据"},
-        {"id": "create", "name": "创建"},
-        {"id": "modify", "name": "修改"},
-        {"id": "delete", "name": "删除"},
-        {"id": "authorize", "name": "授权"},
-        {"id": "task_manage", "name": "任务管理"}
+        {"id": "query_data", "name": "查询表数据"}
       ]
     },
     {
