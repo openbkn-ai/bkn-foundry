@@ -168,10 +168,10 @@ func (dsa *discoverScheduleAccess) Disable(ctx context.Context, id string) error
 }
 
 /**
- * 创建定时发现任务
+ * Create a scheduled discovery task
  * @param ctx 上下文信息，用于追踪和传递请求范围的数据
- * @param schedule 定时发现任务结构体指针，包含任务的所有信息
- * @return error 执行结果，成功为nil，失败为错误信息
+ * @param schedule regularly discovers the pointer of the task structure, which contains all the information of the task
+ * @return error execution result: nil for success and error message for failure
  */
 func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
 	// 使用OpenTelemetry追踪函数执行过程，创建一个客户端类型的span

@@ -29,7 +29,7 @@ func (c *OutRangeCond) IsSingleValue() bool        { return false }
 func (c *OutRangeCond) IsFixedLenArrayValue() bool { return true }
 func (c *OutRangeCond) RequiredValueLen() int      { return 2 }
 
-// out_range 条件, 判断字段是否不在某个范围内
+// The out_range condition determines whether a field is not within a certain range
 func (c *OutRangeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
@@ -38,13 +38,13 @@ func (c *OutRangeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// 如果字段未在Schema中定义，创建一个临时的Property对象
+		// If the field is not defined in the Schema, create a temporary Property object
 		field = &interfaces.Property{
 			Name:         cfg.Name,
 			OriginalName: cfg.Name,
 		}
 	}
-	// 对于未在Schema中定义的字段，跳过类型检查
+	// For fields not defined in the Schema, skip type checking
 	if ok && !interfaces.DataType_IsDate(field.Type) && !interfaces.DataType_IsNumber(field.Type) {
 		return nil, fmt.Errorf("condition [out_range] left field is not a date/number field: %s:%s", cfg.Name, field.Type)
 	}

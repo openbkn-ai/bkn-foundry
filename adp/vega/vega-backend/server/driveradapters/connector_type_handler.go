@@ -29,7 +29,7 @@ import (
 
 // ListConnectorTypes handles GET /api/vega-backend/v1/connector-types
 func (r *restHandler) ListConnectorTypes(c *gin.Context) {
-	// 校验token
+	// Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -45,7 +45,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 获取查询参数
+	// Obtain the query parameters
 	name := strings.TrimSpace(c.Query("name"))
 	tag := strings.TrimSpace(c.Query("tag"))
 	var enabled *bool
@@ -79,7 +79,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 	sort := common.GetQueryOrDefault(c, "sort", "name")
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
-	// 校验分页查询参数
+	// Verify the pagination query parameters
 	pageParam, err := validatePaginationQueryParams(ctx,
 		offset, limit, sort, direction, interfaces.CONNECTOR_TYPE_SORT)
 	if err != nil {
@@ -135,7 +135,7 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 
 // CreateConnectorType handles POST /api/vega-backend/v1/connector-types
 func (r *restHandler) RegisterConnectorType(c *gin.Context) {
-	// 校验token
+	// Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -204,7 +204,7 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 
 // GetConnectorType handles GET /api/vega-backend/v1/connector-types/:type
 func (r *restHandler) GetConnectorType(c *gin.Context) {
-	// 校验token
+	// Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -243,7 +243,7 @@ func (r *restHandler) GetConnectorType(c *gin.Context) {
 
 // UpdateConnectorType handles PUT /api/vega-backend/v1/connector-types/:type
 func (r *restHandler) UpdateConnectorType(c *gin.Context) {
-	// 校验token
+	// Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -332,7 +332,7 @@ func (r *restHandler) UpdateConnectorType(c *gin.Context) {
 
 // DeleteConnectorType handles DELETE /api/vega-backend/v1/connector-types/:type
 func (r *restHandler) DeleteConnectorType(c *gin.Context) {
-	// 校验token
+	// Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return

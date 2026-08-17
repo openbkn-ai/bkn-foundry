@@ -10,7 +10,7 @@ import (
 	"context"
 )
 
-// ModelFactoryAccess 定义模型工厂相关的访问接口
+// ModelFactoryAccess defines the access interfaces related to the model factory
 //
 //go:generate mockgen -source ../interfaces/model_factory_access.go -destination ../interfaces/mock/mock_model_factory_access.go
 type ModelFactoryAccess interface {

@@ -19,7 +19,7 @@ import (
 
 var Special = strings.NewReplacer(`\`, `\\\\`, `'`, `\'`, `%`, `\%`, `_`, `\_`)
 
-// quoteColumnName 将列名转为 SQL 标识符；支持 "alias.col" -> "`alias`.`col`"
+// quoteColumnName converts column names to SQL identifiers; Support "alias.col" -> "alias.col"
 func quoteColumnName(name string) string {
 	if name == "" {
 		return "``"

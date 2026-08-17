@@ -8,7 +8,7 @@ package interfaces
 
 import "github.com/openbkn-ai/bkn-foundry/comm-go/audit"
 
-type contextKey string // 自定义专属的key类型
+type contextKey string // Customize the exclusive key type
 
 const (
 	CONTENT_TYPE_NAME = "Content-Type"
@@ -21,7 +21,7 @@ const (
 
 	X_REQUEST_TOOK = "x-request-took"
 
-	ACCOUNT_INFO_KEY contextKey = "x-account-info" // 避免直接使用string
+	ACCOUNT_INFO_KEY contextKey = "x-account-info" // Avoid using string directly
 
 	NAME_MAX_LENGTH        = 255
 	DESCRIPTION_MAX_LENGTH = 1000
@@ -39,7 +39,7 @@ const (
 	TAG_INVALID_CHARACTER = "/:?\\\"<>|：？‘’“”！《》,#[]{}%&*$^!=.'"
 	TAG_MAX_LENGTH        = 40
 	TAGS_MAX_NUMBER       = 5
-	// id的校验
+	// Verification of id
 	RegexPattern_Builtin_ID    = "^[a-z0-9_][a-z0-9_-]{0,39}$"
 	RegexPattern_NonBuiltin_ID = "^[a-z0-9][a-z0-9_-]{0,39}$"
 

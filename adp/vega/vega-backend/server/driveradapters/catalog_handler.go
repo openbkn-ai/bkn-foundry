@@ -59,7 +59,7 @@ func parseDryRun(ctx context.Context, c *gin.Context) (bool, error) {
 
 // ListCatalogsByEx handles GET /api/vega-backend/v1/catalogs (External)
 func (r *restHandler) ListCatalogsByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -69,7 +69,7 @@ func (r *restHandler) ListCatalogsByEx(c *gin.Context) {
 
 // ListCatalogsByIn handles GET /api/vega-backend/in/v1/catalogs (Internal)
 func (r *restHandler) ListCatalogsByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.listCatalogs(c, visitor)
 }
@@ -87,7 +87,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 获取查询参数
+	// Obtain the query parameters
 	name := strings.TrimSpace(c.Query("name"))
 	tag := strings.TrimSpace(c.Query("tag"))
 	typ := c.Query("type")
@@ -111,7 +111,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	sort := common.GetQueryOrDefault(c, "sort", "update_time")
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
-	// 校验分页查询参数
+	// Verify the pagination query parameters
 	pageParam, err := validatePaginationQueryParams(ctx,
 		offset, limit, sort, direction, interfaces.CATALOG_SORT)
 	if err != nil {
@@ -174,7 +174,7 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 // CreateCatalogByEx handles POST /api/vega-backend/v1/catalogs (External)
 func (r *restHandler) CreateCatalogByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -184,7 +184,7 @@ func (r *restHandler) CreateCatalogByEx(c *gin.Context) {
 
 // CreateCatalogByIn handles POST /api/vega-backend/in/v1/catalogs (Internal)
 func (r *restHandler) CreateCatalogByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.createCatalog(c, visitor)
 }
@@ -284,7 +284,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 
 // GetCatalogsByEx handles GET /api/vega-backend/v1/catalogs/:ids (External)
 func (r *restHandler) GetCatalogsByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -294,7 +294,7 @@ func (r *restHandler) GetCatalogsByEx(c *gin.Context) {
 
 // GetCatalogsByIn handles GET /api/vega-backend/in/v1/catalogs/:ids (Internal)
 func (r *restHandler) GetCatalogsByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.getCatalogs(c, visitor)
 }
@@ -352,7 +352,7 @@ func (r *restHandler) getCatalogs(c *gin.Context, visitor hydra.Visitor) {
 
 // UpdateCatalogByEx handles PUT /api/vega-backend/v1/catalogs/:id (External)
 func (r *restHandler) UpdateCatalogByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -362,7 +362,7 @@ func (r *restHandler) UpdateCatalogByEx(c *gin.Context) {
 
 // UpdateCatalogByIn handles PUT /api/vega-backend/in/v1/catalogs/:id (Internal)
 func (r *restHandler) UpdateCatalogByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.updateCatalog(c, visitor)
 }
@@ -558,7 +558,7 @@ func (r *restHandler) setCatalogEnabled(c *gin.Context, visitor hydra.Visitor, e
 
 // DeleteCatalogByEx handles DELETE /api/vega-backend/v1/catalogs/:id (External).
 func (r *restHandler) DeleteCatalogByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -568,7 +568,7 @@ func (r *restHandler) DeleteCatalogByEx(c *gin.Context) {
 
 // DeleteCatalogByIn handles DELETE /api/vega-backend/in/v1/catalogs/:id (Internal).
 func (r *restHandler) DeleteCatalogByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.deleteCatalog(c, visitor)
 }
@@ -652,7 +652,7 @@ func (r *restHandler) deleteCatalog(c *gin.Context, visitor hydra.Visitor) {
 
 // GetCatalogHealthStatusByEx handles GET /api/vega-backend/v1/catalogs/:id/health-status (External)
 func (r *restHandler) GetCatalogHealthStatusByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -662,7 +662,7 @@ func (r *restHandler) GetCatalogHealthStatusByEx(c *gin.Context) {
 
 // GetCatalogHealthStatusByIn handles GET /api/vega-backend/in/v1/catalogs/:id/health-status (Internal)
 func (r *restHandler) GetCatalogHealthStatusByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.getCatalogHealthStatus(c, visitor)
 }
@@ -751,7 +751,7 @@ func (r *restHandler) testConnectionConfig(c *gin.Context, visitor hydra.Visitor
 
 // TestConnectionByEx handles POST /api/vega-backend/v1/catalogs/:id/test-connection (External)
 func (r *restHandler) TestConnectionByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -761,7 +761,7 @@ func (r *restHandler) TestConnectionByEx(c *gin.Context) {
 
 // TestConnectionByIn handles POST /api/vega-backend/in/v1/catalogs/:id/test-connection (Internal)
 func (r *restHandler) TestConnectionByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.testConnection(c, visitor)
 }
@@ -789,8 +789,8 @@ func (r *restHandler) testConnection(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// 映射缓存的健康状态为对外契约：
-	// 严格 healthy = success=true，其它（unchecked / degraded / unhealthy / offline）= false。
+	// The health status of the mapping cache is an external contract:
+	// Strictly healthy = success=true, others (unchecked/degraded/unhealthy/offline) = false.
 	result := map[string]any{
 		"success": status.HealthCheckStatus == interfaces.CatalogHealthStatusHealthy,
 		"message": status.HealthCheckResult,
@@ -805,7 +805,7 @@ func (r *restHandler) testConnection(c *gin.Context, visitor hydra.Visitor) {
 
 // DiscoverCatalogResourcesByEx handles POST /api/vega-backend/v1/catalogs/:id/discover (External)
 func (r *restHandler) DiscoverCatalogResourcesByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -815,7 +815,7 @@ func (r *restHandler) DiscoverCatalogResourcesByEx(c *gin.Context) {
 
 // DiscoverCatalogResourcesByIn handles POST /api/vega-backend/in/v1/catalogs/:id/discover (Internal)
 func (r *restHandler) DiscoverCatalogResourcesByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.discoverCatalogResources(c, visitor)
 }

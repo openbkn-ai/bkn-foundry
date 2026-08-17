@@ -13,14 +13,14 @@ type ConnectorConfig map[string]any
 type TableMeta struct {
 	Name        string                `json:"name"`
 	Description string                `json:"description"`
-	Database    string                `json:"database"`   // 所属数据库名称（实例级连接时使用）
-	Schema      string                `json:"schema"`     // 所属schema名称（实例级连接时使用）
+	Database    string                `json:"database"`   // The name of the affiliated database (used for instance-level connections)
+	Schema      string                `json:"schema"`     // The name of the schema to which it belongs (used when making instance-level connections)
 	TableType   string                `json:"table_type"` // table | view | materialized_view
-	Properties  map[string]any        `json:"properties"` // 扩展属性：charset, collation, engine, row_count 等
+	Properties  map[string]any        `json:"properties"` // Extended attributes: charset, collation, engine, row_count, etc
 	Columns     []TableColumnMeta     `json:"columns"`
 	PKs         []string              `json:"primary_keys"`
-	Indices     []TableIndexMeta      `json:"indices"`      // 索引列表
-	ForeignKeys []TableForeignKeyMeta `json:"foreign_keys"` // 外键列表
+	Indices     []TableIndexMeta      `json:"indices"`      // Index list
+	ForeignKeys []TableForeignKeyMeta `json:"foreign_keys"` // List of foreign keys
 }
 
 // TableColumnMeta represents column metadata.
@@ -30,15 +30,15 @@ type TableColumnMeta struct {
 	Description string `json:"description"`
 
 	Nullable          bool   `json:"nullable"`
-	DefaultValue      string `json:"default_value,omitempty"`      // 默认值
-	CharMaxLen        int    `json:"char_max_len,omitempty"`       // 字符最大长度
-	NumPrecision      int    `json:"num_precision,omitempty"`      // 数值精度
-	NumScale          int    `json:"num_scale,omitempty"`          // 数值小数位
-	DatetimePrecision int    `json:"datetime_precision,omitempty"` // 日期时间精度
-	Charset           string `json:"charset,omitempty"`            // 字符集
-	Collation         string `json:"collation,omitempty"`          // 排序规则
-	OrdinalPosition   int    `json:"ordinal_position"`             // 列位置（从1开始）
-	ColumnKey         string `json:"column_key"`                   // 列键
+	DefaultValue      string `json:"default_value,omitempty"`      // Default value
+	CharMaxLen        int    `json:"char_max_len,omitempty"`       // Maximum character length
+	NumPrecision      int    `json:"num_precision,omitempty"`      // Numerical accuracy
+	NumScale          int    `json:"num_scale,omitempty"`          // Decimal place of numerical value
+	DatetimePrecision int    `json:"datetime_precision,omitempty"` // Date and time accuracy
+	Charset           string `json:"charset,omitempty"`            // Character set
+	Collation         string `json:"collation,omitempty"`          // Sorting rule
+	OrdinalPosition   int    `json:"ordinal_position"`             // Column position (starting from 1
+	ColumnKey         string `json:"column_key"`                   // Column key
 }
 
 // TableIndexMeta represents index metadata.
@@ -125,15 +125,15 @@ type IndexFieldMeta struct {
 	Analyzer   string         `json:"analyzer,omitempty"`
 	Searchable bool           `json:"searchable"`
 	Attributes map[string]any `json:"attributes"`
-	// SubFields multi-fields 子字段，按 Name 字母序排列以保证序列化稳定
+	// SubFields (multi-fields) are arranged in alphabetical order by Name to ensure stable serialization
 	SubFields []IndexSubFieldMeta `json:"sub_fields,omitempty"`
 }
 
 // IndexSubFieldMeta represents an OpenSearch multi-field sub-field.
 type IndexSubFieldMeta struct {
-	Name       string         `json:"name"`       // 子字段名（如 "keyword"）
-	Type       string         `json:"type"`       // 子字段 type（如 "keyword"）
-	Attributes map[string]any `json:"attributes"` // 子字段除 type 外的属性
+	Name       string         `json:"name"`       // Subfield name (such as "keyword"
+	Type       string         `json:"type"`       // Subfield type (such as "keyword"
+	Attributes map[string]any `json:"attributes"` // Attributes of subfields other than type
 }
 
 // HealthStatus represents connection health status.

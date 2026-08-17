@@ -48,7 +48,7 @@ func (c *CurrentCond) IsSingleValue() bool        { return true }
 func (c *CurrentCond) IsFixedLenArrayValue() bool { return false }
 func (c *CurrentCond) RequiredValueLen() int      { return 1 }
 
-// 当前时间 current，判断字段是否为当前时间，时间格式为 "%Y-%m-%d %H:%i"
+// The current time, current, determines whether the field is the current time. The time format is "%Y-%m-%d %H:%i".
 func (c *CurrentCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

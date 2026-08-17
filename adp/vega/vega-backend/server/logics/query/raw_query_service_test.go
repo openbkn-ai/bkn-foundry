@@ -24,6 +24,7 @@ import (
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
+	"vega-backend/locale"
 	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
 	"vega-backend/logics/query/querypolicy"
 	"vega-backend/logics/query/sqlglot"
@@ -1135,19 +1136,37 @@ func TestRawQueryServiceCheckSameDataSource(t *testing.T) {
 	})
 
 	t.Run("rejects multi catalog resources", func(t *testing.T) {
+		locale.Register()
 		ctrl := gomock.NewController(t)
 		rs := mock_interfaces.NewMockResourceService(ctrl)
 		svc := &rawQueryService{rs: rs}
 		rs.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).Return([]*interfaces.Resource{
 			{ID: "r1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive},
 			{ID: "r2", CatalogID: "catalog-2", Status: interfaces.ResourceStatusActive},
-		}, nil)
+		}, nil).Times(2)
 
-		catalog, warnings, err := svc.checkSameDataSource(context.Background(), []string{"r1", "r2"})
+		tests := []struct {
+			name     string
+			language rest.Language
+			detail   string
+		}{
+			{name: "English", language: rest.AmericanEnglish, detail: "Cross-catalog JOIN is not supported yet; Trino or DuckDB support is planned."},
+			{name: "Chinese", language: rest.SimplifiedChinese, detail: "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"},
+		}
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				ctx := rest.WithLanguage(context.Background(), test.language)
+				catalog, warnings, err := svc.checkSameDataSource(ctx, []string{"r1", "r2"})
 
-		assertHTTPError(t, err, http.StatusNotImplemented)
-		assert.Nil(t, catalog)
-		assert.Nil(t, warnings)
+				assertHTTPError(t, err, http.StatusNotImplemented)
+				var httpErr *rest.HTTPError
+				require.ErrorAs(t, err, &httpErr)
+				assert.Equal(t, verrors.VegaBackend_Query_MultiCatalogNotSupported, httpErr.BaseError.ErrorCode)
+				assert.Equal(t, test.detail, httpErr.BaseError.ErrorDetails)
+				assert.Nil(t, catalog)
+				assert.Nil(t, warnings)
+			})
+		}
 	})
 }
 

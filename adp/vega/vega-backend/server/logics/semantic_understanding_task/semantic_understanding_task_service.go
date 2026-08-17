@@ -256,7 +256,7 @@ func (suts *semanticUnderstandingTaskService) InternalList(ctx context.Context, 
 	return tasks, nil
 }
 
-// populateSemanticUnderstandingTaskSummaryReferences 批量补齐列表任务关联的目录与资源展示名称。
+// PopulateSemanticUnderstandingTaskSummaryReferences batch task completion list associated directory and resources display name.
 func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskSummaryReferences(ctx context.Context, tasks []*interfaces.SemanticUnderstandingTaskSummary) error {
 	catalogIDs := make([]string, 0, len(tasks))
 	catalogIDSet := make(map[string]struct{}, len(tasks))
@@ -311,7 +311,7 @@ func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskS
 	return errors.Join(referenceErrors...)
 }
 
-// populateSemanticUnderstandingTaskReferences 批量补齐当前页任务关联的目录与资源展示名称。
+// PopulateSemanticUnderstandingTaskReferences batch task associated directory and resource, filling the page display name.
 func (suts *semanticUnderstandingTaskService) populateSemanticUnderstandingTaskReferences(ctx context.Context, tasks []*interfaces.SemanticUnderstandingTask) error {
 	catalogIDs := make([]string, 0, len(tasks))
 	catalogIDSet := make(map[string]struct{}, len(tasks))
@@ -632,7 +632,7 @@ func truncateSemanticUnderstandingSampleString(value string) string {
 }
 
 func semanticUnderstandingBinarySampleValue(length int) string {
-	return fmt.Sprintf("【二进制内容已省略，原始长度 %d 字节】", length)
+	return fmt.Sprintf("[binary content omitted; original length: %d bytes]", length)
 }
 
 func normalizeCatalogSemanticUnderstandingRequest(catalog *interfaces.Catalog, resources []*interfaces.Resource, req *interfaces.CreateSemanticUnderstandingTaskRequest) (*interfaces.SemanticUnderstandingTask, error) {

@@ -33,7 +33,7 @@ type modelFactoryAccess struct {
 	mfAPIUrl     string
 }
 
-// NewModelFactoryAccess 创建模型工厂访问实例
+// NewModelFactoryAccess creates a model factory access instance
 func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactoryAccess {
 	mfAccessOnce.Do(func() {
 		mfAccess = &modelFactoryAccess{
@@ -56,7 +56,7 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 		"Content-Type": "application/json",
 	}, "model_factory.list", 1)
 
-	// 发送GET请求获取模型
+	// Send a GET request to obtain the model
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
 
@@ -74,7 +74,7 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 		return nil, fmt.Errorf("get model request failed with status code: %d, %s", respCode, result)
 	}
 
-	// 解析响应数据
+	// Parse the response data
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
 		logger.Errorf("Unmarshal model response failed: %v", err)
@@ -102,10 +102,10 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, wo
 		"Content-Type": "application/json",
 	}, "model_factory.get", 1)
 
-	// 调用方传入的是已归一化的模型 id，必须发 model_id 字段。
-	// mf-model-api 的 embeddings 解析：model 字段只按 model_name 查、model_id 字段才按 id 查。
-	// 之前把 id 塞进 model（名字）字段 → 按 name 查不到 → ModelFactory.ExternalSmallModel.Used.NameNotExist
-	// （偶尔“成功”只是撞上 model_id 查询写下的同名缓存 key，并非真解析成功）。
+	// The caller passes in the normalized model id and must send the model_id field.
+	// Analysis of embeddings in the mf-model-api: The model field is only queried by model_name, while the model_id field is queried by id.
+	// Before the id into the model (name) field. - do not check by name - ModelFactory ExternalSmallModel. 2. NameNotExist
+	// Occasionally, "success" only occurs when the cache key of the same name written in the model_id query is encountered, and it is not actually resolved successfully.
 	requestBody := map[string]any{
 		"model":    "",
 		"model_id": modelID,

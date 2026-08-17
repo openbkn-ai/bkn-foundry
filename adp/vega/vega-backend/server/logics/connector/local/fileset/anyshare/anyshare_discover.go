@@ -29,13 +29,13 @@ func (c *AnyShareConnector) ListFilesets(ctx context.Context) ([]*interfaces.Fil
 	var out []*interfaces.FilesetMeta
 
 	if len(c.config.Paths) == 0 {
-		// 获取文档库列表（仅第一层）
+		// Get the list of document libraries (only the first layer)
 		libs, err := c.getEntryDocLib(ctx)
 		if err != nil {
 			return nil, err
 		}
 
-		// 将知识库信息转换为FilesetMeta返回
+		// Convert the knowledge base information to FilesetMeta and return it
 		for _, lib := range libs {
 			meta := buildFilesetMeta(lib.ID, lib.Name, lib.Name, lib.Type,
 				lib.CreatedAt, lib.ModifiedAt, lib.CreatedBy, lib.ModifiedBy, lib.Rev)
@@ -44,27 +44,27 @@ func (c *AnyShareConnector) ListFilesets(ctx context.Context) ([]*interfaces.Fil
 		return out, nil
 	}
 
-	// 遍历每个路径
+	// Traverse each path
 	for _, p := range c.config.Paths {
 
-		// 根据路径获取doc_id
+		// Obtain the doc_id based on the path
 		docInfo, err := c.getDocIDByPath(ctx, p)
 		if err != nil {
 			return nil, err
 		}
 
-		// 检查路径是否指向文件（size != -1 表示文件）
+		// Check if the path points to the file (size!) = -1 indicates file
 		if docInfo.Size != -1 {
 			return nil, fmt.Errorf("path %q must be a directory, not a file", p)
 		}
 
-		// 获取文件夹详细信息
+		// Get detailed information about the folder
 		detail, err := c.getDocItemDetail(ctx, docInfo.DocID, "all")
 		if err != nil {
 			return nil, err
 		}
 
-		// 将文件夹本身作为一个 resource
+		// Treat the folder itself as a resource
 		meta := buildFilesetMeta(detail.DocID, detail.Name, detail.Path, detail.Type,
 			detail.CreatedAt, detail.ModifiedAt, detail.CreatedBy, detail.ModifiedBy, detail.Rev)
 		out = append(out, meta)
@@ -73,7 +73,7 @@ func (c *AnyShareConnector) ListFilesets(ctx context.Context) ([]*interfaces.Fil
 	return out, nil
 }
 
-// buildFilesetMeta 创建 FilesetMeta 对象的辅助函数
+// buildFilesetMeta is an auxiliary function for creating FilesetMeta objects
 func buildFilesetMeta(id, name, displayPath, itemType, createdAt, modifiedAt string,
 	createdBy, modifiedBy userInfoDTO, rev string) *interfaces.FilesetMeta {
 	return &interfaces.FilesetMeta{
@@ -170,7 +170,7 @@ func (c *AnyShareConnector) getDocIDByPath(ctx context.Context, namepath string)
 }
 
 func (c *AnyShareConnector) getDocItemDetail(ctx context.Context, docID string, field string) (*docItemDetailDTO, error) {
-	// docID格式为 gns://.../.../object_id，需要提取object_id
+	// The docID format is gns://... /... /object_id, object_id needs to be extracted
 	parts := strings.Split(docID, "/")
 	if len(parts) == 0 {
 		return nil, fmt.Errorf("invalid docID format: %s", docID)

@@ -20,9 +20,9 @@ import (
 	"vega-backend/interfaces"
 )
 
-// ListTables 返回数据库中的所有表。
-// 如果 Config.Database 非空，只列出该数据库的表；
-// 如果 Config.Database 为空（实例级连接），遍历所有用户数据库，返回的 TableMeta.Database 字段标记所属库。
+// ListTables returns all the tables in the database.
+// If Config.Database is not empty, only list the tables of this database;
+// If Config.Database is empty (instance level connection), traverse all user databases, and the returned TableMeta.Database field marks the library to which it belongs.
 func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
@@ -131,28 +131,28 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 }
 
 // GetTableMeta returns metadata for a specific table.
-// table 格式: "table_name" 或 "database.table_name"
+// table format: "table_name" or "database.table_name"
 func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	// 1. 获取表基本信息（引擎、字符集、行数、注释）
+	// Obtain the basic information of the table (engine, character set, number of rows, comments)
 	if err := c.fetchTableStatus(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch table status: %w", err)
 	}
 
-	// 2. 获取字段信息
+	// 2. Obtain field information
 	if err := c.fetchColumns(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch columns: %w", err)
 	}
 
-	// 3. 获取索引信息
+	// 3. Obtain index information
 	if err := c.fetchIndexes(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch indexes: %w", err)
 	}
 
-	// 4. 获取外键信息
+	// 4. Obtain foreign key information
 	if err := c.fetchForeignKeys(ctx, table); err != nil {
 		return fmt.Errorf("failed to fetch foreign keys: %w", err)
 	}
@@ -209,7 +209,7 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 		table.TableType = "table"
 	}
 
-	// 初始化 Properties map
+	// Initialize the Properties map
 	if table.Properties == nil {
 		table.Properties = make(map[string]any)
 	}
@@ -231,7 +231,7 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 		table.Properties["update_time"] = updateTime.Time.UnixMilli()
 	}
 
-	// 从 Collation 推断 Charset
+	// Infer the Charset from Collation
 	if coll := collation.String; coll != "" {
 		for i, ch := range coll {
 			if ch == '_' {
@@ -304,7 +304,7 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 
 		col := interfaces.TableColumnMeta{
 			Name:        name.String,
-			Type:        columnType.String, // 使用 COLUMN_TYPE 以正确识别 unsigned（如 "int unsigned"）
+			Type:        columnType.String, // Use COLUMN_TYPE to correctly identify unsigned (such as "int unsigned")
 			Description: description.String,
 
 			Nullable:          isNullable.String == "YES",
@@ -320,7 +320,7 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 		}
 		columns = append(columns, col)
 
-		// 检查是否为主键
+		// Check if it is the primary key
 		if columnKey.String == "PRI" {
 			pkColumns = append(pkColumns, col.Name)
 		}
@@ -473,7 +473,7 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 	}
 
 	// 2. Fetch critical global variables
-	// 包含基础信息、字符集、时区、大小写敏感、SQL模式以及集群相关信息
+	// It includes basic information, character set, time zone, case sensitivity, SQL mode and cluster-related information
 	targetVars := []string{
 		"version",
 		"version_comment",

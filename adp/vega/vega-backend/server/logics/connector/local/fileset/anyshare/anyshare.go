@@ -32,10 +32,10 @@ const (
 	httpTimeout = 60 * time.Second
 
 	PORT_MIN = 1
-	// PORT_MAX 有效端口最大值
+	// PORT_MAX is the maximum value of the valid port
 	PORT_MAX = 65535
 
-	customDocLibSubTypeDocumentId = "54425A761CC54DC6A990DA3C9EFB328D" // 自定义文档库子类[文档库]id
+	customDocLibSubTypeDocumentId = "54425A761CC54DC6A990DA3C9EFB328D" // Custom Document library subclass [Document Library]id
 )
 
 type anyshareConfig struct {
@@ -76,7 +76,7 @@ type docLibSubType struct {
 	Name string `json:"name"`
 }
 
-// entryDocLibDTO 用于表示getEntryDocLib接口返回的文档库信息
+// entryDocLibDTO is used to represent the document library information returned by the getEntryDocLib interface
 type entryDocLibDTO struct {
 	ID         string      `json:"id"`
 	Name       string      `json:"name"`
@@ -169,15 +169,15 @@ func (c *AnyShareConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns connector form fields.
 func (c *AnyShareConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"protocol":     {Name: "协议", Type: "string", Description: "http 或 https", Required: true, Encrypted: false},
-		"host":         {Name: "主机地址", Type: "string", Description: "AnyShare 服务主机", Required: true, Encrypted: false},
-		"port":         {Name: "端口", Type: "integer", Description: "服务端口", Required: true, Encrypted: false},
-		"auth_type":    {Name: "认证方式", Type: "integer", Description: "1=访问令牌 Token，2=AppID/AppSecret", Required: true, Encrypted: false},
-		"token":        {Name: "访问令牌", Type: "string", Description: "auth_type=1 时必填", Required: false, Encrypted: true},
-		"app_id":       {Name: "应用账户 ID", Type: "string", Description: "auth_type=2 时必填", Required: false, Encrypted: false},
-		"app_secret":   {Name: "应用密钥", Type: "string", Description: "auth_type=2 时必填", Required: false, Encrypted: true},
-		"doc_lib_type": {Name: "文档库类型", Type: "integer", Description: "1=知识库，2=文档库", Required: true, Encrypted: false},
-		"paths":        {Name: "路径列表", Type: "array", Description: "可选；按文档库名称路径解析起点，空则按文档库类型枚举", Required: false, Encrypted: false},
+		"protocol":     {Name: "Protocol", Type: "string", Description: "HTTP or HTTPS", Required: true, Encrypted: false},
+		"host":         {Name: "Host", Type: "string", Description: "AnyShare service host", Required: true, Encrypted: false},
+		"port":         {Name: "Port", Type: "integer", Description: "Service port", Required: true, Encrypted: false},
+		"auth_type":    {Name: "Authentication type", Type: "integer", Description: "1=access token, 2=AppID/AppSecret", Required: true, Encrypted: false},
+		"token":        {Name: "Access token", Type: "string", Description: "Required when auth_type=1", Required: false, Encrypted: true},
+		"app_id":       {Name: "Application account ID", Type: "string", Description: "Required when auth_type=2", Required: false, Encrypted: false},
+		"app_secret":   {Name: "Application secret", Type: "string", Description: "Required when auth_type=2", Required: false, Encrypted: true},
+		"doc_lib_type": {Name: "Document library type", Type: "integer", Description: "1=knowledge base, 2=document library", Required: true, Encrypted: false},
+		"paths":        {Name: "Paths", Type: "array", Description: "Optional starting paths resolved by document library name; when empty, libraries are listed by type", Required: false, Encrypted: false},
 	}
 }
 
@@ -200,7 +200,7 @@ func (c *AnyShareConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conn
 	if ac.Host == "" || ac.Port <= 0 {
 		return nil, fmt.Errorf("anyshare host and port are required")
 	}
-	// 验证端口号范围
+	// Verify the range of port numbers
 	if ac.Port < PORT_MIN || ac.Port > PORT_MAX {
 		return nil, fmt.Errorf("port %d is out of valid range (%d-%d)", ac.Port, PORT_MIN, PORT_MAX)
 	}
@@ -222,7 +222,7 @@ func (c *AnyShareConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conn
 		return nil, fmt.Errorf("anyshare doc_lib_type must be 1 (knowledge) or 2 (document)")
 	}
 
-	// 检查数组中是否存在重复元素
+	// Check whether there are duplicate elements in the array
 	seen := make(map[string]bool)
 	for _, path := range ac.Paths {
 		if seen[path] {
@@ -341,39 +341,39 @@ func (c *AnyShareConnector) TestConnection(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
-	// 如果配置了 paths，遍历检查每个路径是否能获取到 docid
+	// If paths are configured, traverse and check whether each path can obtain the docid
 	if len(c.config.Paths) > 0 {
 		for _, p := range c.config.Paths {
 			docInfo, err := c.getDocIDByPath(ctx, p)
 			if err != nil {
 				return fmt.Errorf("failed to validate path %q: %w", p, err)
 			}
-			// 检查路径是否指向文件（size != -1 表示文件）
+			// Check if the path points to the file (size!) = -1 indicates file
 			if docInfo.Size != -1 {
 				return fmt.Errorf("path %q must be a directory, not a file", p)
 			}
 
-			// 获取文档详细信息，判断路径类型
+			// Obtain detailed document information and determine the path type
 			detail, err := c.getDocItemDetail(ctx, docInfo.DocID, "doc_lib")
 			if err != nil {
 				return fmt.Errorf("failed to get doc item detail for path %q: %w", p, err)
 			}
 
-			// 判断路径类型是否与配置一致
+			// Determine whether the path type is consistent with the configuration
 			if err := c.validateDocLibType(detail.DocLib); err != nil {
 				return fmt.Errorf("path %q validation failed: %w", p, err)
 			}
 		}
 		return nil
 	}
-	// 没有配置 paths 时，通过 getEntryDocLib 判断
+	// When no paths are configured, it is judged through getEntryDocLib
 	_, err := c.getEntryDocLib(ctx)
 	return err
 }
 
-// validateDocLibType 验证文档库类型是否与配置一致
+// validateDocLibType verifies whether the document library type is consistent with the configuration
 func (c *AnyShareConnector) validateDocLibType(docLib docLibDTO) error {
-	// 先判断type
+	// First, determine the type
 	if docLib.Type == "knowledge_doc_lib" {
 		if c.config.DocLibType != docLibTypeKnowledge {
 			return fmt.Errorf("path belongs to knowledge doc lib, but config expects document lib")
@@ -381,12 +381,12 @@ func (c *AnyShareConnector) validateDocLibType(docLib docLibDTO) error {
 		return nil
 	}
 
-	// 再判断subtype
+	// Then determine the subtype
 	if docLib.Type == "custom_doc_lib" {
 		if c.config.DocLibType != docLibTypeDocument {
 			return fmt.Errorf("path belongs to document lib, but config expects knowledge lib")
 		}
-		// 检查subtype是否为文档库
+		// Check whether the subtype is a document library
 		if docLib.SubType == nil {
 			return fmt.Errorf("custom doc lib missing subtype information")
 		}

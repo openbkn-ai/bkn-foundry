@@ -12,12 +12,12 @@ const (
 	Format_Original = "original"
 	Format_Flat     = "flat"
 
-	// 最大查询长度设置为10000
+	// The maximum query length is set to 10,000
 	MAX_SEARCH_SIZE = 10000
 
 	DEFAULT_DATA_LIMIT = 10
 
-	// 日历间隔常量 - 参照OpenSearch的calendar_interval枚举定义
+	// Calendar interval constant - Refer to the calendar_interval enumeration definition of OpenSearch
 	CALENDAR_UNIT_MINUTE  = "minute"
 	CALENDAR_UNIT_HOUR    = "hour"
 	CALENDAR_UNIT_DAY     = "day"
@@ -35,21 +35,21 @@ type SortField struct {
 
 // Aggregation represents an aggregation operation.
 type Aggregation struct {
-	Property string `json:"property"` // 被聚合的资源字段名
-	Aggr     string `json:"aggr"`     // 聚合函数: count, count_distinct, sum, max, min, avg
+	Property string `json:"property"` // The name of the aggregated resource field
+	Aggr     string `json:"aggr"`     // Aggregation functions: count, count_distinct, sum, max, min, avg
 	Alias    string `json:"alias,omitempty"`
 }
 
 // GroupByItem represents a group by dimension.
 type GroupByItem struct {
-	Property         string `json:"property"`                    // 分组维度
-	Description      string `json:"description,omitempty"`       // 仅文档/调试
-	CalendarInterval string `json:"calendar_interval,omitempty"` // date_histogram 的 calendar_interval 参数，支持：minute, hour, day, week, month, quarter, year
+	Property         string `json:"property"`                    // Grouping dimension
+	Description      string `json:"description,omitempty"`       // Documentation/debugging only
+	CalendarInterval string `json:"calendar_interval,omitempty"` // The calendar_interval parameter of date_histogram supports: minute, hour, day, week, month, quarter, year
 }
 
 // HavingClause represents a HAVING clause for aggregation filtering.
 type HavingClause struct {
-	Field     string `json:"field"`     // 固定为 "__value"
+	Field     string `json:"field"`     // Fixed as "__value"
 	Operation string `json:"operation"` // ==, !=, >, >=, <, <=, in, not_in, range, out_range
 	Value     any    `json:"value"`
 }
@@ -70,11 +70,11 @@ type ResourceDataQueryParams struct {
 
 	FilterCondition any `json:"filter_condition,omitempty"`
 
-	OutputFields []string `json:"output_fields"` // 指定输出的字段列表
+	OutputFields []string `json:"output_fields"` // Specify the list of fields for output
 
 	NeedTotal   bool          `json:"need_total,omitempty"`
 	Format      string        `json:"-"`
-	Timeout     time.Duration `json:"-"` // 超时时间，查询参数
+	Timeout     time.Duration `json:"-"` // Timeout period, query parameters
 	SearchAfter []any         `json:"-"` // OpenSearch internal continuation state
 
 	QueryType string `json:"-"`
@@ -82,13 +82,13 @@ type ResourceDataQueryParams struct {
 	FilterCondCfg    *FilterCondCfg  `json:"-"`
 	ActualFilterCond FilterCondition `json:"-"`
 
-	// CursorEncoded keyset 游标值，由 query session 注入；非空时用 WHERE (sort_cols) > cursor 替代 OFFSET
+	// CursorEncoded keyset cursor values are injected by the query session; When not empty, use WHERE (sort_cols) > cursor instead of OFFSET
 	CursorEncoded string `json:"-"`
 
-	// 聚合查询相关字段
-	Aggregation *Aggregation   `json:"aggregation,omitempty"` // 聚合度量
-	GroupBy     []*GroupByItem `json:"group_by,omitempty"`    // 分组维度
-	Having      *HavingClause  `json:"having,omitempty"`      // 对聚合结果过滤（HAVING）
+	// Aggregate query related fields
+	Aggregation *Aggregation   `json:"aggregation,omitempty"` // Aggregation metric
+	GroupBy     []*GroupByItem `json:"group_by,omitempty"`    // Grouping dimension
+	Having      *HavingClause  `json:"having,omitempty"`      // Filter (HAVING) the aggregation results
 }
 
 // ResourceDataQueryResult is the common response model for resource-data and

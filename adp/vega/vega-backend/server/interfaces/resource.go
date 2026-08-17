@@ -50,32 +50,32 @@ type Resource struct {
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
 
-	Category string `json:"category"` // 资源类别：table/file/fileset/...
+	Category string `json:"category"` // Resource category: table/file/fileset/...
 
-	Status             string `json:"status"`               // 状态：active/stale/disabled
-	StatusMessage      string `json:"status_message"`       // 状态消息
-	LastDiscoverStatus string `json:"last_discover_status"` // 最近一次扫描观察状态
+	Status             string `json:"status"`               // Status: active/stale/disabled
+	StatusMessage      string `json:"status_message"`       // Status message
+	LastDiscoverStatus string `json:"last_discover_status"` // The latest scan observation status
 
-	// 新增字段：支持自动发现
-	Schema           string         `json:"schema,omitempty"`            // 所属 schema，由发现流程写入
-	SourceIdentifier string         `json:"source_identifier"`           // 源端标识（原始表名/路径）
-	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // 源端配置（JSON）
-	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema定义
+	// New field: Supports automatic discovery
+	Schema           string         `json:"schema,omitempty"`            // The schema to which it belongs is written by the discovery process
+	SourceIdentifier string         `json:"source_identifier"`           // Source identifier (original table name/path)
+	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // Source configuration (JSON
+	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema Definition
 
-	// 索引相关
-	IndexConfig    *ResourceIndexConfig `json:"index_config,omitempty"` // 本地索引配置
-	LocalIndexName string               `json:"index_name,omitempty"`   // 索引名称，由构建任务填充
+	// Index related
+	IndexConfig    *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
+	LocalIndexName string               `json:"index_name,omitempty"`   // Index name, filled by the build task
 
-	// 规模信息：列表接口从原始 JSON 轻量计数得到，不反序列化完整结构；nil 表示源端无该信息（序列化时省略）
-	ColumnCount *int   `json:"column_count,omitempty"` // schema_definition 字段数
-	RowCount    *int64 `json:"row_count,omitempty"`    // 源端行数（最近一次 discover 的估算快照，仅部分资源类别有）
+	// Scale information: The list interface is obtained from the original JSON lightweight count without deserializing the complete structure. nil indicates that the source does not have this information (omitted during serialization)
+	ColumnCount *int   `json:"column_count,omitempty"` // Number of schema_definition fields
+	RowCount    *int64 `json:"row_count,omitempty"`    // Source row count (the most recent estimated snapshot from discover, available only for some resource categories)
 
-	// Extensions 根级可检索业务 KV（t_entity_extension）；列表默认省略
+	// Extensions root-level retrievable business KV (t_entity_extension); The list is omitted by default
 	Extensions map[string]string `json:"extensions,omitempty"`
 
-	// 逻辑视图特有的字段
-	LogicType       string                 `json:"logic_type,omitempty"`       // 逻辑类型: derived(衍生), composite(复合)
-	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // 逻辑定义
+	// Fields specific to the logical view
+	LogicType       string                 `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite
+	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // Logical definition
 
 	Creator    AccountInfo `json:"creator"`
 	CreateTime int64       `json:"create_time"`
@@ -86,7 +86,7 @@ type Resource struct {
 }
 
 const (
-	// Property 字段名称、显示名、备注、特征名、特征备注的最大长度
+	// The maximum length of the Property field name, display name, remarks, feature name, and feature remarks
 	MaxLength_PropertyName               = 255
 	MaxLength_PropertyDisplayName        = 255
 	MaxLength_PropertyFeatureName        = 255
@@ -106,14 +106,14 @@ type Property struct {
 
 	Features   []PropertyFeature `json:"features"`
 	Attributes map[string]any    `json:"attributes"`
-	// Extensions 字段级展示用（schema_definition JSON 内），不参与列表筛选
+	// Extensions field-level display (within schema_definition JSON), not involved in list filtering
 	Extensions map[string]string `json:"extensions,omitempty"`
 }
 
 type PropertyFeature struct {
 	FeatureName string         `json:"name"`
 	DisplayName string         `json:"display_name"`
-	FeatureType string         `json:"feature_type"` // 特性类型：keyword, fulltext, vector
+	FeatureType string         `json:"feature_type"` // Feature types: keyword, fulltext, vector
 	Description string         `json:"description"`
 	RefProperty string         `json:"ref_property"`
 	IsDefault   bool           `json:"is_default"`
@@ -154,34 +154,34 @@ type ResourceRequest struct {
 
 	Status string `json:"status"`
 
-	Schema           string         `json:"schema,omitempty"`            // 所属 schema，由发现流程写入
-	SourceIdentifier string         `json:"source_identifier"`           // 源端标识（原始表名/路径）
-	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // 源端配置（JSON）
-	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema定义
+	Schema           string         `json:"schema,omitempty"`            // The schema to which it belongs is written by the discovery process
+	SourceIdentifier string         `json:"source_identifier"`           // Source identifier (original table name/path)
+	SourceMetadata   map[string]any `json:"source_metadata,omitempty"`   // Source configuration (JSON
+	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema Definition
 
-	IndexConfig *ResourceIndexConfig `json:"index_config,omitempty"` // 本地索引配置
+	IndexConfig *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
 
-	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // 逻辑定义
+	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // Logical definition
 
 	Extensions *map[string]string `json:"extensions,omitempty"`
 }
 
-// LocalIndexVectorFieldSuffix 是构建任务为向量化字段生成的物理字段后缀。
+// LocalIndexVectorFieldSuffix is build tasks for vectorization fields generated by the physical fields suffix.
 //
-// 这些字段只存在于本地索引里，不回写资源 schema：它们是索引实现的一部分，不是
-// 数据源的列。查询侧要发 knn 就得知道这个名字，因此命名规则集中在这里，由构建侧
-// 生成、查询侧识别、BKN 随对象类 Schema 下发，三处引用同一个来源。
+// These fields only exist in the local index and do not write back to the resource schema: they are part of the index implementation, not
+// Columns of the data source. To issue knn, the query side needs to know this name. Therefore, the naming rules are concentrated here, by the build side
+// The generation, query-side identification, and BKN are issued along with the object class Schema, and the three references are from the same source.
 const LocalIndexVectorFieldSuffix = "_vector"
 
-// LocalIndexVectorFieldName 返回某个字段对应的向量字段名。
+// LocalIndexVectorFieldName returns the vector field name of a field.
 func LocalIndexVectorFieldName(field string) string {
 	return field + LocalIndexVectorFieldSuffix
 }
 
-// LocalIndexGeneratedFields 返回资源本地索引里由构建任务生成、但不在资源 schema 上的字段。
+// LocalIndexGeneratedFields return resource in the local index generated by build tasks, but not on the resource schema fields.
 //
-// 资源没有本地索引时返回 nil：那些字段还不存在，接受针对它们的过滤条件只会让
-// 查询在更下游炸掉，不如在条件构造阶段就拒绝。
+// Return nil when the resource has no local index: Those fields do not exist yet, and accepting filtering conditions for them will only allow
+// It is better to reject the query at the condition construction stage than to blow it up further downstream.
 func LocalIndexGeneratedFields(res *Resource) map[string]*Property {
 	if res == nil || res.LocalIndexName == "" {
 		return nil

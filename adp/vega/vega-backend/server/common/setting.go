@@ -27,7 +27,7 @@ import (
 	"vega-backend/version"
 )
 
-// ServerSetting server配置项
+// ServerSetting server configuration item
 type ServerSetting struct {
 	RunMode      string        `mapstructure:"runMode"`
 	HttpPort     int           `mapstructure:"httpPort"`
@@ -36,39 +36,39 @@ type ServerSetting struct {
 	WriteTimeout time.Duration `mapstructure:"writeTimeOut"`
 }
 
-// CryptoSetting RSA 密钥配置项
+// CryptoSetting RSA key configuration item
 type CryptoSetting struct {
 	Enabled        bool   `mapstructure:"enabled"`
-	PrivateKey     string `mapstructure:"-"`              // RSA 私钥 (PEM 格式) - 从文件读取
-	PublicKey      string `mapstructure:"-"`              // RSA 公钥 (PEM 格式) - 从文件读取
-	PrivateKeyPath string `mapstructure:"privateKeyPath"` // RSA 私钥文件路径
-	PublicKeyPath  string `mapstructure:"publicKeyPath"`  // RSA 公钥文件路径
+	PrivateKey     string `mapstructure:"-"`              // RSA private key (PEM format) - Read from file
+	PublicKey      string `mapstructure:"-"`              // RSA Public Key (PEM format) - Read from file
+	PrivateKeyPath string `mapstructure:"privateKeyPath"` // The path of the RSA private key file
+	PublicKeyPath  string `mapstructure:"publicKeyPath"`  // RSA public key file path
 }
 
-// KafkaConnectSetting Kafka Connect 配置项
+// KafkaConnectSetting KafkaConnect configuration item
 type KafkaConnectSetting struct {
 	Host     string
 	Port     int
 	Protocol string
 }
 
-// RateLimitingConfig rate limiting 配置项
+// RateLimitingConfig rate limiting configuration item
 type RateLimitingConfig struct {
 	Concurrency ConcurrencyConfig `mapstructure:"concurrency"`
 }
 
-// ConcurrencyConfig 并发控制配置项
+// ConcurrencyConfig concurrency control configuration item
 type ConcurrencyConfig struct {
 	Enabled bool                    `mapstructure:"enabled"`
 	Global  GlobalConcurrencyConfig `mapstructure:"global"`
 }
 
-// GlobalConcurrencyConfig 全局并发配置
+// GlobalConcurrencyConfig global concurrent configuration
 type GlobalConcurrencyConfig struct {
 	MaxConcurrentQueries int `mapstructure:"max_concurrent_queries"`
 }
 
-// QueryConfig query 服务配置项
+// QueryConfig query service configuration item
 type QueryConfig struct {
 	CursorMaxSessions int `mapstructure:"cursorMaxSessions"`
 }
@@ -91,7 +91,7 @@ type TaskWorkerConfig struct {
 	StreamingWorkerCount int `mapstructure:"streamingWorkerCount"`
 }
 
-// AppSetting app配置项
+// AppSetting contains application configuration.
 type AppSetting struct {
 	ServerSetting       ServerSetting             `mapstructure:"server"`
 	LogSetting          logger.LogSetting         `mapstructure:"log"`
@@ -117,7 +117,7 @@ type AppSetting struct {
 }
 
 const (
-	// ConfigFile 配置文件信息
+	// ConfigFile configuration file information
 	configPath string = "./config/"
 	configName string = "vega-backend-config"
 	configType string = "yaml"
@@ -142,11 +142,11 @@ var (
 
 	settingOnce sync.Once
 
-	// 当前系统时区
+	// Current system time zone
 	APP_LOCATION *time.Location
 )
 
-// NewSetting 读取服务配置
+// NewSetting reads the service configuration
 func NewSetting() *AppSetting {
 	settingOnce.Do(func() {
 		appSetting = &AppSetting{}
@@ -157,7 +157,7 @@ func NewSetting() *AppSetting {
 	return appSetting
 }
 
-// 初始化配置
+// initSetting initializes application configuration.
 func initSetting(vp *viper.Viper) {
 	logger.Infof("Init Setting From File %s%s.%s", configPath, configName, configType)
 
@@ -174,7 +174,7 @@ func initSetting(vp *viper.Viper) {
 	})
 }
 
-// 读取配置文件
+// Read the configuration file
 func loadSetting(vp *viper.Viper) {
 	logger.Infof("Load Setting File %s%s.%s", configPath, configName, configType)
 
@@ -186,7 +186,7 @@ func loadSetting(vp *viper.Viper) {
 		logger.Fatalf("err:%s\n", err)
 	}
 
-	// 联调/CI：允许用环境变量覆盖监听端口，避免与本地已占用端口冲突
+	// Joint debugging /CI: Allows environment variables to override listening ports to avoid conflicts with local occupied ports
 	if hp := strings.TrimSpace(os.Getenv("VEGA_HTTP_PORT")); hp != "" {
 		if v, err := strconv.Atoi(hp); err == nil && v > 0 && v < 65536 {
 			appSetting.ServerSetting.HttpPort = v
@@ -194,13 +194,13 @@ func loadSetting(vp *viper.Viper) {
 		}
 	}
 
-	// 联调脚本（如 issue382）：无挂载密钥时关闭 crypto，避免读取 /opt/... 失败
+	// Debugging script (such as issue382) : Disable crypto when no key is mounted to avoid reading /opt/... Failure
 	if v := strings.TrimSpace(os.Getenv("VEGA_CRYPTO_DISABLED")); strings.EqualFold(v, "1") || strings.EqualFold(v, "true") {
 		appSetting.CryptoSetting.Enabled = false
 		logger.Info("Crypto disabled via VEGA_CRYPTO_DISABLED env")
 	}
 
-	// 加载时区
+	// Loading time zone
 	loc, err := time.LoadLocation(os.Getenv("TZ"))
 	if err != nil {
 		loc = time.Local
@@ -258,7 +258,7 @@ func SetDBSetting() {
 	}
 }
 
-// overrideDBSettingFromEnv 联调/脚本用：覆盖 depServices 解析出的 DB 连接（如本地 127.0.0.1:3306）
+// overrideDBSettingFromEnv for debugging/scripting: Overwrite the DB connection parsed by depServices (such as local 127.0.0.1:3306)
 func overrideDBSettingFromEnv() {
 	if h := strings.TrimSpace(os.Getenv("VEGA_DB_HOST")); h != "" {
 		appSetting.DBSetting.Host = h
@@ -322,16 +322,16 @@ func SetOpenSearchSetting() {
 	}
 }
 
-// GetAuthEnabled 获取认证开关状态
-// 通过环境变量 AUTH_ENABLED 控制，默认 true（安全优先）
+// GetAuthEnabled returns whether authentication is enabled.
+// AUTH_ENABLED defaults to true and only explicit false values disable authentication.
 func GetAuthEnabled() bool {
 	envVal := os.Getenv("AUTH_ENABLED")
-	// 仅当显式设置为 false 或 0 时禁用认证
+	// Disable authentication only when it is explicitly set to false or 0
 	return envVal != "false" && envVal != "0"
 }
 
-// GetDebugMode 获取调试模式状态
-// 通过环境变量 DEBUG_MODE 控制，显式设置为 true 或 1 时启用
+// GetDebugMode to obtain the debug mode status
+// Controlled by the environment variable DEBUG_MODE, it is enabled when explicitly set to true or 1
 func GetDebugMode() bool {
 	envVal := strings.TrimSpace(os.Getenv("DEBUG_MODE"))
 	return strings.EqualFold(envVal, "true") || envVal == "1"
@@ -387,7 +387,7 @@ func SetUserMgmtSetting() {
 	appSetting.UserMgmtUrl = fmt.Sprintf("%s://%s:%d", protocol, host, port)
 }
 
-// loadCryptoKeys 从文件加载 RSA 密钥
+// loadCryptoKeys loads RSA keys from files
 func loadCryptoKeys() error {
 	if !appSetting.CryptoSetting.Enabled {
 		return nil

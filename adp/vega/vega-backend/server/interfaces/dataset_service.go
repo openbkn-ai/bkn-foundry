@@ -8,7 +8,7 @@ package interfaces
 
 import "context"
 
-// DatasetService 定义 dataset 业务逻辑接口
+// The DatasetService defines the dataset business logic interface
 //
 //go:generate mockgen -source ../interfaces/dataset_service.go -destination ../interfaces/mock/mock_dataset_service.go
 type DatasetService interface {

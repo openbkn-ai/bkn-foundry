@@ -28,7 +28,7 @@ func (c *NotNullCond) IsSingleValue() bool        { return false }
 func (c *NotNullCond) IsFixedLenArrayValue() bool { return false }
 func (c *NotNullCond) RequiredValueLen() int      { return -1 }
 
-// not_null 条件, 判断字段是否不为空
+// The not_null condition determines whether a field is not empty
 func (c *NotNullCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

@@ -21,7 +21,7 @@ type CatalogAccess interface {
 	GetByID(ctx context.Context, id string) (*Catalog, error)
 	// GetByIDs retrieves a Catalog by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
-	// AttachListExtensions 按列表查询参数加载或清空根级 extensions（供 List 在 GetByIDs 之后调用）。
+	// AttachListExtensions loads or clears root-level extensions by List query parameters (for list to call after GetByIDs).
 	AttachListExtensions(ctx context.Context, params CatalogsQueryParams, catalogs []*Catalog) error
 	// GetByName retrieves a Catalog by name.
 	GetByName(ctx context.Context, name string) (*Catalog, error)
@@ -29,7 +29,7 @@ type CatalogAccess interface {
 	List(ctx context.Context, params CatalogsQueryParams) ([]*Catalog, int64, error)
 	// ListIDs lists Catalog IDs with filters.
 	ListIDs(ctx context.Context, params CatalogsQueryParams) ([]string, error)
-	// ListInternalIDs 列出所有系统内部目录的 ID（用于权限校验时按 internal_catalog 类型分组）。
+	// ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
 	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.
 	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog) error

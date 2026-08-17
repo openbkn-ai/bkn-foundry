@@ -32,7 +32,7 @@ func getEmbeddingTopic(resourceID, buildTaskID string) string {
 }
 
 func getOldDocID(primaryKeyValues []interfaces.KeyValue) string {
-	// 将primaryKeyValues中的所有值拼接成id
+	// Concatenate all the values in primaryKeyValues into an id
 	var idBuilder strings.Builder
 	for _, item := range primaryKeyValues {
 		fmt.Fprintf(&idBuilder, "%v", item.Value)
@@ -42,7 +42,7 @@ func getOldDocID(primaryKeyValues []interfaces.KeyValue) string {
 }
 
 func getNewDocID(primaryKeyValues []interfaces.KeyValue, document map[string]any) string {
-	// 构造新的文档ID，确保与oldDocID的拼接顺序相同
+	// Construct a new document ID and ensure that the concatenation order is the same as that of oldDocID
 	var newDocIDBuilder strings.Builder
 	for _, item := range primaryKeyValues {
 		if value, ok := document[item.Key]; ok {
@@ -255,7 +255,7 @@ func buildTaskBuildKeyFields(buildTask *interfaces.BuildTask) []string {
 	return append([]string(nil), buildTask.IndexConfig.BuildKeyFields...)
 }
 
-// hasFulltextFeature 判断字段是否已带 fulltext 特性。
+// The hasFulltextFeature determines whether a field already has the fulltext feature.
 func hasFulltextFeature(prop *interfaces.Property) bool {
 	for _, f := range prop.Features {
 		if f.FeatureType == interfaces.PropertyFeatureType_Fulltext {
@@ -265,7 +265,7 @@ func hasFulltextFeature(prop *interfaces.Property) bool {
 	return false
 }
 
-// analyzerOf 取 fulltext 特性 config 里的分词器名，无则空串。
+// analyzerOf returns the analyzer name from fulltext feature configuration, or an empty string when absent.
 func analyzerOf(config map[string]any) string {
 	if config == nil {
 		return ""

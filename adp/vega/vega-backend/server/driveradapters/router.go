@@ -107,7 +107,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 
 	c.GET("/health", r.HealthCheck)
 
-	// 外部 API (External)
+	// External API (External
 	apiV1 := c.Group("/api/vega-backend/v1")
 	apiV1.Use(rest.PrivateNoCacheMiddleware())
 	{
@@ -144,9 +144,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByEx)
 			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByEx)
 			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByEx)
-			resources.GET("/:id", r.GetResourcesByEx) // id为资源ID，多个资源ID逗号分隔
+			resources.GET("/:id", r.GetResourcesByEx) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByEx)
-			resources.DELETE("/:id", r.DeleteResourcesByEx) // id为资源ID，多个资源ID逗号分隔
+			resources.DELETE("/:id", r.DeleteResourcesByEx) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByEx)
 		}
 
@@ -207,7 +207,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.GET("/auth-resources", r.ListAuthResources)
 	}
 
-	// 内部 API (Internal)
+	// Internal API
 	apiInV1 := c.Group("/api/vega-backend/in/v1")
 	apiInV1.Use(rest.PrivateNoCacheMiddleware())
 	{
@@ -241,9 +241,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.GET("/:id/data/:doc_id", r.GetResourceDataDocByIn)
 			resources.PUT("/:id/data/:doc_id", r.verifyJsonContentType(), r.PutResourceDataDocByIn)
 			resources.DELETE("/:id/data/:doc_ids", r.DeleteResourceDataByIn)
-			resources.GET("/:id", r.GetResourcesByIn) // id为资源ID，多个资源ID逗号分隔
+			resources.GET("/:id", r.GetResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByIn)
-			resources.DELETE("/:id", r.DeleteResourcesByIn) // id为资源ID，多个资源ID逗号分隔
+			resources.DELETE("/:id", r.DeleteResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByIn)
 		}
 
@@ -291,9 +291,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	logger.Info("RestHandler RegisterPublic")
 }
 
-// HealthCheck 健康检查
+// HealthCheck Health checkup
 func (r *restHandler) HealthCheck(c *gin.Context) {
-	// 返回服务信息
+	// Return service information
 	rest.ReplyOK(c, http.StatusOK, gin.H{
 		"ServerName":    version.ServerName,
 		"ServerVersion": version.ServerVersion,
@@ -306,7 +306,7 @@ func (r *restHandler) HealthCheck(c *gin.Context) {
 // verifyJsonContentType middleware
 func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		//拦截请求，判断ContentType是否为XXX
+		//Intercept the request and determine whether the ContentType is XXX
 		if c.ContentType() != interfaces.CONTENT_TYPE_JSON {
 			httpErr := rest.NewHTTPError(c, http.StatusNotAcceptable, verrors.VegaBackend_InvalidRequestHeader_ContentType).
 				WithErrorDetails(fmt.Sprintf("Content-Type header [%s] is not supported, expected is [application/json].", c.ContentType()))
@@ -316,7 +316,7 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 			return
 		}
 
-		//执行后续操作
+		//Perform subsequent operations
 		c.Next()
 	}
 }
@@ -354,7 +354,7 @@ func (r *restHandler) AccessLog() gin.HandlerFunc {
 	}
 }
 
-// 校验oauth
+// Verify oauth
 func (r *restHandler) verifyOAuth(ctx context.Context, c *gin.Context) (hydra.Visitor, error) {
 	visitor, err := r.as.VerifyToken(ctx, c)
 	if err != nil {

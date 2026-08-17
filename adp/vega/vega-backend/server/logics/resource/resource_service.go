@@ -84,8 +84,8 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 	return rService
 }
 
-// resourceAuthResourceType 返回数据资源在权限服务中的资源类型：
-// 系统内部目录下的资源按 internal_resource 注册，业务角色的 resource:* 通配授权匹配不到，仅超级管理员可见
+// resourceAuthResourceType returns the resource type of the data resource in the permission service:
+// Resources in the internal system directory are registered as internal_resource. The resource of the business role :* wildcard authorization cannot match, only visible to the super administrator
 func resourceAuthResourceType(internal bool) string {
 	if internal {
 		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE
@@ -93,13 +93,13 @@ func resourceAuthResourceType(internal bool) string {
 	return interfaces.AUTH_RESOURCE_TYPE_RESOURCE
 }
 
-// resourceOpOnCatalog 是「资源上的操作」到「所属目录上要问的操作」的翻译表。
+// resourceOpOnCatalog is a translation table from "operations on resources" to "operations to be asked about on the corresponding directory".
 //
-// 逐条列而不按同名照搬:目录上的 modify 语义是「改目录自己」,同名照搬就等于把
-// 「能重命名目录」的人升级成「能改目录下每一张表」,那是越权不是便利。
+// List by item without copying by the same name: The "modify" semantic on a directory is "modify the directory itself", and copying by the same name is equivalent to "modifying"
+// Those who "can rename directories" upgrade to "can modify every table under the directory", which is an overstepping of authority rather than convenience.
 //
-// authorize 故意缺席:持有目录授权权的人，不应因此获得把目录下每张表转授出去的
-// 能力。没有条目的操作到此为止，不向上问。
+// Intentional absence of authorize: The person holding the authorization right of the directory should not be granted the right to delegate each table under the directory as a result
+// Ability. Operations without entries stop here and do not ask upwards.
 var resourceOpOnCatalog = map[string]string{
 	interfaces.OPERATION_TYPE_VIEW_DETAIL: interfaces.OPERATION_TYPE_VIEW_DETAIL,
 	interfaces.OPERATION_TYPE_QUERY_DATA:  interfaces.OPERATION_TYPE_QUERY_DATA,
@@ -109,8 +109,8 @@ var resourceOpOnCatalog = map[string]string{
 	interfaces.OPERATION_TYPE_TASK_MANAGE: interfaces.OPERATION_TYPE_TASK_MANAGE,
 }
 
-// catalogAuthResourceType 返回数据目录在权限服务中的资源类型，与
-// resourceAuthResourceType 对称。
+// catalogAuthResourceType returns the resource type of the data directory in the permission service, and
+// resourceAuthResourceType is symmetrical.
 func catalogAuthResourceType(internal bool) string {
 	if internal {
 		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
@@ -118,13 +118,13 @@ func catalogAuthResourceType(internal bool) string {
 	return interfaces.AUTH_RESOURCE_TYPE_CATALOG
 }
 
-// checkResourceOrCatalog 判一个资源上的操作:先问资源自己,拒了再问它所属的目录
-// （操作按上表翻译）。
+// checkResourceOrCatalog determines an operation on a resource: First, ask the resource itself; if rejected, then ask the directory to which it belongs
+// (The operation should be translated according to the above table.)
 //
-// 这是纯放宽:今天能做的第一问就过,常态下仍然只发一次鉴权请求;只有第一问拒了
-// 才会有第二问。两问都拒时返回**第一问的错误**,调用方看到的错误码与提示一字不变。
+// This is pure relaxation: the first question that can be asked today will pass, and under normal circumstances, only one authentication request will still be sent. Only the first question was rejected
+// Only then will there be a second question. When both questions are rejected, the error of the first question is returned, and the error code and prompt seen by the caller remain unchanged.
 //
-// 归属关系不需要任何同步:catalog_id 就在 vega 正在判的那行资源记录里。
+// The attribution relationship does not require any synchronization :catalog_id is in the row of resource records that vega is judging.
 func (rs *resourceService) checkResourceOrCatalog(ctx context.Context,
 	resourceID, catalogID string, parentInternal bool, op string) error {
 
@@ -143,21 +143,21 @@ func (rs *resourceService) checkResourceOrCatalog(ctx context.Context,
 		Type: catalogAuthResourceType(parentInternal),
 		ID:   catalogID,
 	}, []string{catalogOp}); err2 != nil {
-		return err // 返回旧口径的错误,保持既有报错语义不变
+		return err // Return the error of the old caliber and keep the existing error message semantics unchanged
 	}
 	return nil
 }
 
-// mergeCatalogPermissions 给资源侧没批下来的操作补上「所属目录给的」那部分。
+// mergeCatalogPermissions adds the part of "given by the affiliated directory" to the operations that were not approved on the resource side.
 //
-// 只为差额发请求:资源侧已经全批的常态下一次额外请求都不发。这也是为什么补在
-// 过滤之后而不是之前。
+// Only send requests for the difference: In the normal situation where the resource side has been fully approved, no additional requests will be sent in the next time. This is also why it is supplemented
+// After filtering, not before.
 func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []string,
 	ops []string, result map[string]interfaces.PermissionResourceOps) error {
 
-	// 只补资源侧**完全没批**的那些。判据是「在不在结果里」而不是「操作集齐不齐」,
-	// 因为调用方读的就是前者:出现在 map 里即视为可见,Operations 只用来渲染按钮。
-	// 按后者触发会在资源侧已经放行时多发一轮请求,白花钱。
+	// Only those on the resource side that have not been approved at all. The criterion is "whether it is in the result" rather than "whether the operations are complete".
+	// Because the caller reads the former: once it appears in the map, it is regarded as visible, and Operations are only used to render buttons.
+	// Pressing the latter trigger will cause an additional round of requests when the resource side has already approved, which is a waste of money.
 	pending := make([]string, 0)
 	seenPending := map[string]bool{}
 	for _, id := range ids {
@@ -182,7 +182,7 @@ func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []st
 		catalogOps = append(catalogOps, catalogOp)
 	}
 	if len(catalogOps) == 0 {
-		return nil // 请求的操作都不向上问（如 authorize）
+		return nil // The requested operations do not ask upward (such as authorize)
 	}
 
 	resources, err := rs.ra.GetByIDsBasic(ctx, pending)
@@ -220,7 +220,7 @@ func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []st
 		}
 	}
 
-	// 每个目录批下来的操作集合。按目录问一次，页面上同目录的多张表共用一个答案。
+	// The collection of operations approved for each directory. Ask once according to the table of contents, and multiple tables in the same directory on the page share one answer.
 	granted := make(map[string]map[string]bool, len(catalogIDs))
 	for _, group := range []struct {
 		authType string
@@ -275,7 +275,7 @@ func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []st
 	return nil
 }
 
-// internalCatalogIDSet 查询所有系统内部目录 ID 集合
+// internalCatalogIDSet queries the collection of all internal directory ids of the system
 func (rs *resourceService) internalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
 	ids, err := rs.cs.ListInternalIDs(ctx)
 	if err != nil {
@@ -288,7 +288,7 @@ func (rs *resourceService) internalCatalogIDSet(ctx context.Context) (map[string
 	return set, nil
 }
 
-// internalResourceIDSet 查询所有系统内部目录下的资源 ID 集合
+// The internalResourceIDSet queries the collection of resource ids in all internal system directories
 func (rs *resourceService) internalResourceIDSet(ctx context.Context) (map[string]struct{}, error) {
 	catalogIDs, err := rs.cs.ListInternalIDs(ctx)
 	if err != nil {
@@ -308,7 +308,7 @@ func (rs *resourceService) internalResourceIDSet(ctx context.Context) (map[strin
 	return set, nil
 }
 
-// partitionResourceIDs 将资源 ID 按是否属于系统内部目录分组
+// partitionResourceIDs groups resource ids based on whether they belong to an internal system directory
 func partitionResourceIDs(ids []string, internalSet map[string]struct{}) (normalIDs, internalIDs []string) {
 	normalIDs = make([]string, 0, len(ids))
 	internalIDs = make([]string, 0)
@@ -322,8 +322,8 @@ func partitionResourceIDs(ids []string, internalSet map[string]struct{}) (normal
 	return normalIDs, internalIDs
 }
 
-// filterResourcePermissions 按内部/普通资源分组做权限过滤：内部目录下的资源按
-// internal_resource 类型校验，其余按 resource 类型校验，结果合并返回
+// Permissions filterResourcePermissions grouped by internal/common resources do filtering: according to the internal directory of resources
+// The internal_resource type is verified, and the rest are verified by the resource type. The results are merged and returned
 func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []string,
 	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
@@ -349,7 +349,7 @@ func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []
 			result[resourceOps.ResourceID] = resourceOps
 		}
 	}
-	// 资源侧没批下来的，再看它所属目录给不给（#817）。差额为空时不发请求。
+	// For those that haven't been approved on the resource side, check if they belong to the directory (#817). No request will be sent when the difference is empty.
 	if err := rs.mergeCatalogPermissions(ctx, ids, ops, result); err != nil {
 		return nil, err
 	}
@@ -361,7 +361,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create resource")
 	defer span.End()
 
-	// 内部目录下的资源按 internal_resource 类型校验/注册，默认仅超级管理员/系统 S2S 身份可建
+	// Resources in the internal directory are verified/registered according to the internal_resource type. By default, only the super administrator/system S2S identity can create them
 	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
@@ -370,9 +370,9 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	_, parentInternal := internalCatalogs[req.CatalogID]
 	authType := resourceAuthResourceType(parentInternal)
 
-	// 判断userid是否有创建数据资源的权限（策略决策）。建表时资源还不存在，判的是
-	// resource:* 这个通配对象——它答不了「这张表要建在哪个目录」，所以持有它的人
-	// 可以往任意目录里建表。拒了再问目标目录的 resource_manage（#817）。
+	// Determine whether the userid has the permission to create data resources (policy decision). When the table was created, the resource did not exist yet. What was judged was
+	// resource:* This wildcard object - it cannot answer "which directory should this table be created in", so the person who holds it
+	// Tables can be created in any directory. Reject and then ask the resource_manage of the target directory (#817).
 	err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: authType,
 		ID:   interfaces.RESOURCE_ID_ALL,
@@ -382,7 +382,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			Type: catalogAuthResourceType(parentInternal),
 			ID:   req.CatalogID,
 		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err2 != nil {
-			return nil, err // 返回旧口径的错误，保持既有报错语义不变
+			return nil, err // Return the error of the old caliber and keep the existing error message semantics unchanged
 		}
 	}
 
@@ -392,7 +392,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		accountInfo = v.(interfaces.AccountInfo)
 	}
 
-	// 检查catalog是否存在
+	// Check if the catalog exists
 	exists, err := rs.cs.CheckExistByID(ctx, req.CatalogID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Check catalog exist failed")
@@ -502,11 +502,11 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		// create dataset
 		if err := rs.ds.Create(ctx, resource); err != nil {
 			logger.Errorf("Create dataset failed: %v", err)
-			// 数据集创建失败不影响资源创建，只记录错误
+			// The failure of dataset creation does not affect resource creation; it only records errors
 		}
 	}
 
-	// 注册资源
+	// Register resources
 	err = rs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   resource.ID,
 		Type: authType,
@@ -540,8 +540,8 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
-	// 内部目录下的资源按 internal_resource 类型校验
+	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
+	// Resources in the internal directory are verified by the internal_resource type
 	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
@@ -549,9 +549,9 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
 	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
-		// 内部目录资源经集群内 S2S 访问（/in/ 内网端点）：系统内部基础设施默认放行，
-		// 不做 per-account view_detail 校验——这类资源从不授权给业务用户，
-		// 内部服务代用户访问时按 per-account 校验只会误拒。外网端点不会带该标记。
+		// Internal directory resources are accessed via S2S within the cluster (/in/ internal network endpoints) : The internal infrastructure of the system is allowed by default.
+		// Do not perform per-account view_detail verification - such resources are never authorized to business users.
+		// When internal services access on behalf of users, checking per account will only result in false rejection. The external network endpoint will not carry this tag.
 		resource.Operations = interfaces.COMMON_OPERATIONS
 	} else {
 		matchResoucesMap, err := rs.ps.FilterResources(ctx, resourceAuthResourceType(parentInternal), []string{resource.ID},
@@ -560,7 +560,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 			span.SetStatus(codes.Error, "Filter resources error")
 			return nil, err
 		}
-		// 资源侧没批，再看所属目录（#817）。
+		// The resource side has not approved it. Check the affiliated directory (#817) again.
 		if err := rs.mergeCatalogPermissions(ctx, []string{resource.ID},
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, matchResoucesMap); err != nil {
 			span.SetStatus(codes.Error, "Merge catalog permissions error")
@@ -568,7 +568,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 		}
 
 		if resrc, exist := matchResoucesMap[resource.ID]; exist {
-			resource.Operations = resrc.Operations // 用户当前有权限的操作
+			resource.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		} else {
 			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
@@ -593,7 +593,7 @@ func (rs *resourceService) InternalGetByID(ctx context.Context, id string) (*int
 	return rs.ra.GetByID(ctx, id)
 }
 
-// InternalGetByIDs 供服务端内部批量读取资源基础信息，不执行权限过滤或加载扩展字段。
+// InternalGetByIDs is used by the server to batch read the basic information of resources internally without performing permission filtering or loading extended fields.
 func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByIDs")
 	defer span.End()
@@ -611,7 +611,7 @@ func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) (
 	return resources, nil
 }
 
-// InternalGetByCatalogID 供服务端内部读取目录下完整资源信息，不执行权限过滤。
+// InternalGetByCatalogID is used by the server to internally read the complete resource information under the directory without performing permission filtering.
 func (rs *resourceService) InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByCatalogID")
 	defer span.End()
@@ -648,8 +648,8 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 			WithErrorDetails(err.Error())
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
-	// 内部目录下的资源按 internal_resource 类型校验
+	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
+	// Resources in the internal directory are verified by the internal_resource type
 	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
@@ -671,7 +671,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 	accountInfos := make([]*interfaces.AccountInfo, 0)
 	for _, resource := range resources {
 		if resrc, exist := matchResoucesMap[resource.ID]; exist {
-			resource.Operations = resrc.Operations // 用户当前有权限的操作
+			resource.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		} else {
 			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
@@ -730,7 +730,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List resources")
 	defer span.End()
 
-	// 查询所有资源的ID
+	// Query the ids of all resources
 	ids, err := rs.ra.ListIDs(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List resource IDs failed")
@@ -743,17 +743,17 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		return []*interfaces.Resource{}, 0, nil
 	}
 
-	// 内部目录下的资源 ID 集合，权限校验时按 internal_resource 类型分组
+	// The collection of resource ids in the internal directory is grouped by the internal_resource type during permission verification
 	internalResources, err := rs.internalResourceIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal resource IDs failed")
 		return []*interfaces.Resource{}, 0, err
 	}
 
-	// 根据权限过滤有查看权限的ID数组
-	// 分批处理，每批1万个ids, fix权限接口报错prepared statement contains too many placeholders
+	// Filter the array of ids with viewing permissions based on the permissions
+	// Batch processing, 10,000 ids per batch, fix permission interface error prepared statement contains too many placeholders
 	batchSize := 10000
-	// 所有有权限的resource及其操作权限
+	// All authorized resources and their operation permissions
 	matchResourceOpsMap := make(map[string]interfaces.PermissionResourceOps)
 
 	for i := 0; i < len(ids); i += batchSize {
@@ -764,7 +764,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		batchIDs := ids[i:end]
 
 		var batchMatchResources map[string]interfaces.PermissionResourceOps
-		// 校验权限管理的操作权限
+		// Verify the operation permissions of the permission management
 		batchMatchResources, err = rs.filterResourcePermissions(ctx, batchIDs, internalResources,
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
@@ -772,13 +772,13 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 			return []*interfaces.Resource{}, 0, err
 		}
 
-		// 合并结果
+		// Merge results
 		for _, resourceOps := range batchMatchResources {
 			matchResourceOpsMap[resourceOps.ResourceID] = resourceOps
 		}
 	}
 
-	// 提取有权限的资源ID，保持与ids的顺序一致
+	// Extract the resource ids with permissions and keep them in the same order as IDS
 	authorizedIDs := make([]string, 0, len(matchResourceOpsMap))
 	for _, id := range ids {
 		if _, exist := matchResourceOpsMap[id]; exist {
@@ -787,32 +787,32 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	}
 	total := int64(len(authorizedIDs))
 
-	// 如果没有有权限的资源，直接返回空结果
+	// If there is no authorized resource, return an empty result directly
 	if total == 0 {
 		span.SetStatus(codes.Ok, "")
 		return []*interfaces.Resource{}, total, nil
 	}
 
-	// 根据有权限的ID数组查询完整资源，并应用分页
-	// limit = -1,则返回所有
+	// Query the complete resource based on the array of authorized ids and apply pagination
+	// If limit = -1, all will be returned
 	if params.Limit != -1 {
-		// 分页处理authorizedIDs
-		// 检查起始位置是否越界
+		// Pagination process authorizedIDs
+		// Check whether the starting position is out of bounds
 		if params.Offset < 0 || params.Offset >= len(authorizedIDs) {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.Resource{}, total, nil
 		}
-		// 计算结束位置
+		// Calculate the end position
 		end := params.Offset + params.Limit
 		if end > len(authorizedIDs) {
 			end = len(authorizedIDs)
 		}
-		// 只查询当前页的资源ID
+		// Only query the resource ID of the current page
 		authorizedIDs = authorizedIDs[params.Offset:end]
 	}
 
-	// 根据有权限的ID数组查询完整资源
-	// 分批处理，每批10000个ids, 避免prepared statement contains too many placeholders错误
+	// Query the complete resource based on the array of authorized ids
+	// Process in batches, 10,000 ids per batch, to avoid the error of prepared statement contains too many placeholders
 	resources := make([]*interfaces.Resource, 0, len(authorizedIDs))
 	queryBatchSize := 10000
 	for i := 0; i < len(authorizedIDs); i += queryBatchSize {
@@ -838,10 +838,10 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 			WithErrorDetails(err.Error())
 	}
 
-	// 设置资源操作权限
+	// Set the operation permissions for resources
 	for _, c := range resources {
 		if resrc, exist := matchResourceOpsMap[c.ID]; exist {
-			c.Operations = resrc.Operations // 用户当前有权限的操作
+			c.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		}
 	}
 
@@ -869,7 +869,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-	// 判断userid是否有修改权限；内部目录下的资源按 internal_resource 类型校验
+	// Determine whether the userid has the permission to be modified; Resources in the internal directory are verified by the internal_resource type
 	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
@@ -935,7 +935,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		}
 	}
 
-	// 检查catalog是否存在
+	// Check if the catalog exists
 	exists, err := rs.cs.CheckExistByID(ctx, req.CatalogID)
 	if err != nil {
 		return err
@@ -1039,7 +1039,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		return nil
 	}
 
-	// 判断userid是否有删除权限；内部目录下的资源按 internal_resource 类型校验
+	// Determine whether the userid has the deletion permission; Resources in the internal directory are verified by the internal_resource type
 	internalResources, err := rs.internalResourceIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal resource IDs failed")
@@ -1052,9 +1052,9 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		return err
 	}
 
-	// 检查是否有删除权限
+	// Check if there is permission to delete
 	if len(matchResoucesMap) != len(ids) {
-		// 请求的资源id可以重复，未去重，资源过滤出来的资源id是去重过的，所以单纯判断数量不准确
+		// The requested resource id can be repeated without deduplication. However, the resource ids filtered out have been de-duplicated. Therefore, simply judging the quantity is inaccurate
 		for _, id := range ids {
 			if _, exist := matchResoucesMap[id]; !exist {
 				return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
@@ -1063,7 +1063,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		}
 	}
 
-	// 先获取要删除的资源信息，以便对不同的资源进行不同的处理
+	// First, obtain the information of the resource to be deleted so that different resources can be processed differently
 	resources, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resources failed")
@@ -1074,9 +1074,9 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 	for _, resource := range resources {
 		switch resource.Category {
 		case interfaces.ResourceCategoryTable:
-			// 级联清掉该资源的全部构建任务 + 对应 OpenSearch 索引（含历史孤儿）。
-			// 改自原先"有任务就拒删"：现在删资源连带删任务/索引（危险操作由前端二次确认把关）。
-			// 运行中/停止中任务会被 cascade 拒绝（HasRunningExecution），用户需先停止再删。
+			// Cascade clear all build tasks of this resource + corresponding OpenSearch index (including historical orphans).
+			// Now, when resources are deleted, tasks/indexes will also be deleted (dangerous operations will be confirmed and checked by the front end for the second time).
+			// Tasks that are running or stopped will be rejected by cascade (HasRunningExecution), and users need to stop them first before deleting them.
 			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta, rs.lim,
 				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}); err != nil {
 				span.SetStatus(codes.Error, "Cascade delete build tasks failed")
@@ -1086,7 +1086,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			// Delete dataset
 			if err := rs.ds.Delete(ctx, resource.ID); err != nil {
 				logger.Errorf("Delete dataset failed: %v", err)
-				// 数据集删除失败不影响资源删除，只记录错误
+				// The failure to delete the dataset does not affect the deletion of resources; it only records errors
 			}
 		}
 	}
@@ -1097,7 +1097,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			WithErrorDetails(err.Error())
 	}
 
-	//  清除资源策略，按内部/普通资源分组删除对应类型的策略
+	//  Clear resource policies and delete the corresponding type of policies by internal/ordinary resource groups
 	normalIDs, internalIDs := partitionResourceIDs(ids, internalResources)
 	if len(normalIDs) > 0 {
 		if err = rs.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_RESOURCE, normalIDs); err != nil {
@@ -1565,7 +1565,7 @@ func (rs *resourceService) ListAuthResources(ctx context.Context, params interfa
 }
 
 func (rs *resourceService) filterAuthorizedResourceAuthResources(ctx context.Context, entries []*interfaces.AuthResourceEntry) ([]*interfaces.AuthResourceEntry, error) {
-	// 系统内部目录下的资源按 internal_resource 类型授权，不进入 resource 类型的授权资源清单
+	// Resources in the internal directory of the system are authorized by type internal_resource and do not enter the list of authorized resources of type resource
 	internalResources, err := rs.internalResourceIDSet(ctx)
 	if err != nil {
 		return nil, err

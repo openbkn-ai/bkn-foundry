@@ -27,7 +27,7 @@ type ValueOptCfg struct {
 }
 
 type FilterCondCfg struct {
-	Name        string           `json:"field,omitempty" mapstructure:"field"` // 传递name
+	Name        string           `json:"field,omitempty" mapstructure:"field"` // Pass "name"
 	Operation   string           `json:"operation,omitempty" mapstructure:"operation"`
 	SubConds    []*FilterCondCfg `json:"sub_conditions,omitempty" mapstructure:"sub_conditions"`
 	ValueOptCfg `mapstructure:",squash"`

@@ -33,20 +33,20 @@ var (
 	ErrConnectorUnavailable = errors.New("connector unavailable in this binary")
 )
 
-// ConnectorFactory 创建和管理数据源连接器
-// 支持 local 和 remote 两种模式:
-// - local: 内置在 vega-backend 进程内运行的连接器
-// - remote: 作为独立服务运行，通过 HTTP 调用的连接器
+// ConnectorFactory creates and manages data source connectors
+// Supports two modes: local and remote
+// -local: A connector that runs built-in within the vega-backend process
+// -remote: A connector that runs as an independent service and is invoked via HTTP
 type connectorFactory struct {
 	mu sync.RWMutex
 
 	appSetting *common.AppSetting
-	cta        interfaces.ConnectorTypeAccess // 数据库访问层
+	cta        interfaces.ConnectorTypeAccess // Database Access layer
 
-	connectors map[string]interfaces.Connector // 内置 connector 构建器
+	connectors map[string]interfaces.Connector // Built-in connector builder
 }
 
-// Init 初始化 connector factory
+// Init initializes the connector factory
 func GetFactory(appSetting *common.AppSetting) interfaces.ConnectorFactory {
 	cFactoryOnce.Do(func() {
 		cf := &connectorFactory{
@@ -62,7 +62,7 @@ func GetFactory(appSetting *common.AppSetting) interfaces.ConnectorFactory {
 	return cFactory
 }
 
-// registerAllConnectors 注册所有 connector 构建器
+// registerAllConnectors registers all connector builders
 func (cf *connectorFactory) registerAllConnectors() {
 
 	ctx := context.Background()
@@ -87,7 +87,7 @@ func (cf *connectorFactory) registerAllConnectors() {
 	}
 }
 
-// RegisterConnector 注册 connector 构建器
+// RegisterConnector is a registered connector builder
 func (cf *connectorFactory) RegisterConnector(ctx context.Context, tp string, ct *interfaces.ConnectorType) error {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
@@ -98,7 +98,7 @@ func (cf *connectorFactory) RegisterConnector(ctx context.Context, tp string, ct
 			return err
 		}
 		if ct.Mode == interfaces.ConnectorModeLocal {
-			// 验证 FieldConfig 一致性（代码是单一真相来源）
+			// Verify the consistency of FieldConfig (the code is from a single source of truth
 			codeFieldConfig := connector.GetFieldConfig()
 			if !reflect.DeepEqual(codeFieldConfig, ct.FieldConfig) {
 				return fmt.Errorf("field config mismatch for local connector %s: code=%+v, registered=%+v",
@@ -170,7 +170,7 @@ func (cf *connectorFactory) ResolveConnectorTypeRegistration(_ context.Context,
 	return &resolved, nil
 }
 
-// DeleteConnector 删除 connector 构建器
+// DeleteConnector deletes the connector builder
 func (cf *connectorFactory) DeleteConnector(tp string) {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
@@ -211,7 +211,7 @@ func (cf *connectorFactory) IsConnectorAvailable(tp string) bool {
 	return exists
 }
 
-// CreateConnector 根据类型名称创建 connector 实例
+// CreateConnector creates connector instances based on the type name
 func (cf *connectorFactory) CreateConnectorInstance(ctx context.Context, tp string, cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()
@@ -230,7 +230,7 @@ func (cf *connectorFactory) CreateConnectorInstance(ctx context.Context, tp stri
 	return nil, fmt.Errorf("connector %s not found: %w", tp, ErrConnectorUnavailable)
 }
 
-// GetSensitiveFields 根据 connector 类型返回敏感字段列表
+// GetSensitiveFields returns a list of sensitive fields based on the connector type
 func (cf *connectorFactory) GetSensitiveFields(tp string) []string {
 	cf.mu.RLock()
 	defer cf.mu.RUnlock()

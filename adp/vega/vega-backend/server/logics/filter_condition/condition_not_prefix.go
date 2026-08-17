@@ -29,7 +29,7 @@ func (c *NotPrefixCond) IsSingleValue() bool        { return true }
 func (c *NotPrefixCond) IsFixedLenArrayValue() bool { return false }
 func (c *NotPrefixCond) RequiredValueLen() int      { return -1 }
 
-// not_prefix 条件, 判断字段是否不以某个前缀开头
+// The not_prefix condition determines whether a field does not start with a certain prefix
 func (c *NotPrefixCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

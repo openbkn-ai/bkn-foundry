@@ -78,11 +78,11 @@ var TypeMapping = map[string]string{
 }
 
 // MapType returns VEGA type for MariaDB native type.
-// nativeType 应使用 COLUMN_TYPE（如 "int unsigned"）以正确识别 unsigned 类型。
+// nativeType should use COLUMN_TYPE (such as "int unsigned") to correctly identify unsigned types.
 func (c *MariaDBConnector) MapType(nativeType string) string {
 	t := strings.ToLower(strings.TrimSpace(nativeType))
 
-	// 检查是否包含括号，如果包含则去除括号及其内容
+	// Check if parentheses are included. If they are, remove the parentheses and their contents
 	if idx := strings.Index(t, "("); idx != -1 {
 		t = strings.TrimSpace(t[:idx])
 	}

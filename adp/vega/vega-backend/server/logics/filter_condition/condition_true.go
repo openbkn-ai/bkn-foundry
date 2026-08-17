@@ -28,7 +28,7 @@ func (c *TrueCond) IsSingleValue() bool        { return false }
 func (c *TrueCond) IsFixedLenArrayValue() bool { return false }
 func (c *TrueCond) RequiredValueLen() int      { return -1 }
 
-// bool 类型为真
+// The bool type is true
 func (c *TrueCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 	if cfg.Name == "" {

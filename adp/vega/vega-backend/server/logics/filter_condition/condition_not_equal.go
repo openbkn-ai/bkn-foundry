@@ -30,7 +30,7 @@ func (c *NotEqualCond) IsSingleValue() bool        { return true }
 func (c *NotEqualCond) IsFixedLenArrayValue() bool { return false }
 func (c *NotEqualCond) RequiredValueLen() int      { return -1 }
 
-// 不等于 not_eq，判断字段是否不等于右侧值
+// Not equal to not_eq, determine whether the field is not equal to the value on the right
 func (c *NotEqualCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
@@ -39,7 +39,7 @@ func (c *NotEqualCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// 如果字段未在Schema中定义，创建一个临时的Property对象
+		// If the field is not defined in the Schema, create a temporary Property object
 		field = &interfaces.Property{
 			Name:         cfg.Name,
 			OriginalName: cfg.Name,

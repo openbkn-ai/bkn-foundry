@@ -29,7 +29,7 @@ func (c *RangeCond) IsSingleValue() bool        { return false }
 func (c *RangeCond) IsFixedLenArrayValue() bool { return true }
 func (c *RangeCond) RequiredValueLen() int      { return 2 }
 
-// range 条件, 判断字段是否在某个范围内
+// The range condition determines whether a field is within a certain range
 func (c *RangeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

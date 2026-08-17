@@ -35,10 +35,10 @@ type permissionAccess struct {
 }
 
 type PermissionError struct {
-	Code        string `json:"code"`        // 错误码
-	Message     string `json:"message"`     // 错误描述
-	Description string `json:"description"` // 错误描述
-	Cause       any    `json:"cause"`       // 原因
+	Code        string `json:"code"`        // Error code
+	Message     string `json:"message"`     // Incorrect description
+	Description string `json:"description"` // Incorrect description
+	Cause       any    `json:"cause"`       // Reason
 }
 
 func NewPermissionAccess(appSetting *common.AppSetting) interfaces.PermissionAccess {
@@ -53,7 +53,7 @@ func NewPermissionAccess(appSetting *common.AppSetting) interfaces.PermissionAcc
 	return pAccess
 }
 
-// 策略决策
+// Strategic decision-making
 func (pa *permissionAccess) CheckPermission(ctx context.Context, check interfaces.PermissionCheck) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求策略的决策接口")
 	defer span.End()
@@ -90,7 +90,7 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 		return false, fmt.Errorf("post operation-check request failed: %v", err)
 	}
 	if respCode != http.StatusOK {
-		// 转成 baseerror
+		// Convert to baseerror
 		var permissionError PermissionError
 		if err := sonic.Unmarshal(result, &permissionError); err != nil {
 			// 添加异常时的 trace 属性
@@ -130,7 +130,7 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 		return false, nil
 	}
 
-	// 处理返回结果 result
+	// Process the returned result "result"
 	var checkResult interfaces.PermissionCheckResult
 	if err := sonic.Unmarshal(result, &checkResult); err != nil {
 		// 添加异常时的 trace 属性
@@ -147,7 +147,7 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 	return checkResult.Result, nil
 }
 
-// 创建策略
+// Create a strategy
 func (pa *permissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求创建决策接口")
 	defer span.End()
@@ -183,7 +183,7 @@ func (pa *permissionAccess) CreateResources(ctx context.Context, policies []inte
 		return fmt.Errorf("post create policy request failed: %v", err)
 	}
 	if respCode != http.StatusNoContent {
-		// 转成 baseerror
+		// Convert to baseerror
 		var permissionError PermissionError
 		if err := sonic.Unmarshal(result, &permissionError); err != nil {
 			// 添加异常时的 trace 属性
@@ -218,7 +218,7 @@ func (pa *permissionAccess) CreateResources(ctx context.Context, policies []inte
 	return nil
 }
 
-// 删除资源策略
+// Resource deletion strategy
 func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interfaces.PermissionResource) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求删除决策接口")
 	defer span.End()
@@ -253,7 +253,7 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 		return fmt.Errorf("post delete policy request failed: %v", err)
 	}
 	if respCode != http.StatusNoContent {
-		// 转成 baseerror
+		// Convert to baseerror
 		var permissionError PermissionError
 		if err := sonic.Unmarshal(result, &permissionError); err != nil {
 			// 添加异常时的 trace 属性
@@ -288,7 +288,7 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 	return nil
 }
 
-// 策略决策
+// Strategic decision-making
 func (pa *permissionAccess) FilterResources(ctx context.Context,
 	filter interfaces.PermissionResourcesFilter) (map[string]interfaces.PermissionResourceOps, error) {
 
@@ -326,7 +326,7 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 		return map[string]interfaces.PermissionResourceOps{}, fmt.Errorf("post resource-filter request failed: %v", err)
 	}
 	if respCode != http.StatusOK {
-		// 转成 baseerror
+		// Convert to baseerror
 		var permissionError PermissionError
 		if err := sonic.Unmarshal(result, &permissionError); err != nil {
 			// 添加异常时的 trace 属性
@@ -369,7 +369,7 @@ func (pa *permissionAccess) FilterResources(ctx context.Context,
 		ResourceID string   `json:"id"`
 		Operations []string `json:"allow_operation,omitempty"`
 	}{}
-	// 处理返回结果 result
+	// Process the returned result "result"
 	if err := sonic.Unmarshal(result, &allowOps); err != nil {
 		// 添加异常时的 trace 属性
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal resource-filter result failed")

@@ -7,12 +7,16 @@
 package locale
 
 import (
+	"context"
 	"os"
 	"path"
 	"runtime"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/i18n"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
+
+const validationDetailPrefix = "VegaBackend.Validation.Detail."
 
 var (
 	localeDir = "/locale"
@@ -21,7 +25,7 @@ var (
 func Register() {
 	var abPath string
 
-	// 优先使用包所在目录（保证 UT 与任意 cwd 下都能找到 locale）
+	// Prefer the package directory so tests and arbitrary working directories can locate locale files.
 	_, filename, _, ok := runtime.Caller(0)
 	if ok {
 		abPath = path.Dir(filename)
@@ -30,8 +34,14 @@ func Register() {
 			return
 		}
 	}
-	// 回退：使用 cwd + /locale（兼容旧行为）
+	// Fall back to cwd + /locale for backward compatibility.
 	abPath, _ = os.Getwd()
 	abPath += localeDir
 	i18n.RegisterI18n(abPath)
+}
+
+// ValidationDetail returns a localized validation detail for the request language.
+func ValidationDetail(ctx context.Context, name string, data map[string]interface{}) string {
+	messageID := validationDetailPrefix + name
+	return i18n.Translate(string(rest.GetLanguageByCtx(ctx)), messageID, data)
 }

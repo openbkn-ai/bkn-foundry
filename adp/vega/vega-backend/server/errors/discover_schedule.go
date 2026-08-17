@@ -6,7 +6,7 @@
 
 package errors
 
-// DiscoverSchedule 相关错误码
+// Error codes related to DiscoverSchedule
 const (
 	// 400 Bad Request
 	VegaBackend_DiscoverSchedule_InvalidCronExpr   = "VegaBackend.DiscoverSchedule.InvalidCronExpr"

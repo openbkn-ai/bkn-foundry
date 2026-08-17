@@ -28,7 +28,7 @@ func (c *ExistCond) IsSingleValue() bool        { return false }
 func (c *ExistCond) IsFixedLenArrayValue() bool { return false }
 func (c *ExistCond) RequiredValueLen() int      { return -1 }
 
-// 存在 exist，判断字段是否存在
+// Exist determines whether a field exists.
 func (c *ExistCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

@@ -25,7 +25,7 @@ import (
 
 // RawQueryByEx handles POST /api/vega-backend/v1/resources/query (External)
 func (r *restHandler) RawQueryByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -35,7 +35,7 @@ func (r *restHandler) RawQueryByEx(c *gin.Context) {
 
 // RawQueryByIn handles POST /api/vega-backend/in/v1/resources/query (Internal)
 func (r *restHandler) RawQueryByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.rawQuery(c, visitor)
 }
@@ -63,8 +63,8 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// query_timeout_sec 仅在首次请求生效；续页使用 cursor session 创建时
-	// 固化的值，不能由客户端改写。
+	// query_timeout_sec takes effect only on the first request; When a new page is created using the cursor session
+	// The fixed value cannot be rewritten by the client.
 	if req.QueryTimeoutSec != 0 && (req.QueryTimeoutSec < 1 || req.QueryTimeoutSec > 3600) {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_Query_InvalidParameter_QueryTimeout).
 			WithErrorDetails(fmt.Sprintf("query_timeout_sec must be between 1 and 3600, got: %d", req.QueryTimeoutSec))
@@ -83,7 +83,7 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 		var httpErr *rest.HTTPError
 		var ok bool
 		if httpErr, ok = err.(*rest.HTTPError); !ok {
-			// 如果不是HTTPError，则转换为内部服务器错误
+			// If it is not an HTTPError, it is converted to an internal server error
 			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, errors.VegaBackend_Query_ExecuteFailed).
 				WithErrorDetails(err.Error())
 		}

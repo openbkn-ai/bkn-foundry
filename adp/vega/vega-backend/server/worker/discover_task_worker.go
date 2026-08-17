@@ -261,12 +261,12 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 		return nil
 	}
 
-	// Execute discover : 元数据采集主要逻辑
-	//首先根据 catalog ID 获取 catalog 信息，
-	//然后根据 catalog 信息获取 connector 信息，
-	//然后根据 connector 信息获取 connector 实例，
-	//然后根据 connector 实例获取 catalog 的元数据，
-	//然后根据 catalog 的元数据获取 catalog 的资源信息：元数据
+	// Execute discover: The main logic of metadata collection
+	//First, obtain the catalog information based on the catalog ID.
+	//Then obtain the connector information based on the catalog information
+	//Then obtain the connector instance based on the connector information
+	//Then obtain the metadata of the catalog based on the connector instance
+	//Then obtain the resource information of the catalog based on its metadata: metadata
 	progress := &discoverTaskReconcileProgress{}
 	result, err := dtw.discoverCatalog(ctx, catalog, taskInfo, progress)
 	if err != nil {
@@ -305,26 +305,27 @@ func (dtw *DiscoverTaskWorker) updateProgress(ctx context.Context, taskID string
 }
 
 // discoverCatalog discovers resources for a specific catalog.
-// discoverCatalog 是一个发现目录资源的方法
-// 它接收上下文和目录信息，返回发现结果或错误
-// 参数:
-//   - ctx: 上下文信息，用于控制请求的超时和取消
-//   - catalog: 目录信息，包含目录ID和类型等
+// discoverCatalog is a method for discovering catalog resources
+// It receives context and directory information and returns the discovery results or errors
+// Parameter
 //
-// 返回值:
-//   - *interfaces.DiscoverResult: 发现结果，包含发现的资源信息
-//   - error: 错误信息，如果发现过程中出现错误
+//	-ctx: Context information, used to control the timeout and cancellation of requests
+//	-catalog: Directory information, including directory ID and type, etc
+//
+// Return value:
+//   - * interfaces. DiscoverResult: findings, including resource information
+//     -error: Error message, if an error occurs during the discovery process
 func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *interfaces.Catalog,
 	task *interfaces.DiscoverTask, progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
 
 	logger.Infof("Starting discover for catalog: %s", catalog.ID)
 
-	// 验证 catalog 类型
+	// Verify the catalog type
 	if catalog.Type != interfaces.CatalogTypePhysical {
 		return nil, fmt.Errorf("discover only supports physical catalogs")
 	}
 
-	// 1. 创建 Connector 并连接
+	// 1. Create a Connector and connect
 	connector, err := dtw.createAndConnectConnector(ctx, catalog)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to data source: %w", err)
@@ -339,16 +340,16 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 	} else {
 		logger.Warnf("Failed to get metadata: %v", err)
 	}
-	// 2. 根据 connector category 分发到不同的发现函数：例如mysql会到mysql.go下面进行元数据的采集，里面会有具体的实现
+	// 2. Distribute to different discovery functions based on the connector category: For example, mysql will collect metadata under mysql.go, where there will be specific implementations
 	category := connector.GetCategory()
 	switch category {
-	// table类型的会到这里，例如mysql
+	// The table type will come here, such as mysql
 	case interfaces.ConnectorCategoryTable:
 		return dtw.discoverTableResources(ctx, task, catalog, connector, progress)
-	// index类型的会到这里，例如open search
+	// The index type will come here, such as open search
 	case interfaces.ConnectorCategoryIndex:
 		return dtw.discoverIndexResources(ctx, task, catalog, connector, progress)
-	// fileset类型的会到这里，例如anyshare
+	// fileset type ones will come here, such as anyshare
 	case interfaces.ConnectorCategoryFileset:
 		return dtw.discoverFilesetResources(ctx, task, catalog, connector, progress)
 	default:
@@ -359,13 +360,13 @@ func (dtw *DiscoverTaskWorker) discoverCatalog(ctx context.Context, catalog *int
 // createAndConnectConnector creates and connects a connector for the catalog.
 func (dtw *DiscoverTaskWorker) createAndConnectConnector(ctx context.Context, catalog *interfaces.Catalog) (interfaces.Connector, error) {
 
-	// 创建 connector
+	// Create a connector
 	connector, err := dtw.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connector: %w", err)
 	}
 
-	// 连接
+	// Connect to the data source.
 	if err := connector.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}

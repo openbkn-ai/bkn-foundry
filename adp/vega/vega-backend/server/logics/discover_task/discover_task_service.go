@@ -72,14 +72,16 @@ func (dts *discoverTaskService) RequestDispatch() {
 }
 
 // Create persists a new DiscoverTask and notifies the local database-backed worker.
-// Create 创建一个新的发现任务
-// 参数:
-//   - ctx: 上下文，用于传递请求范围的数据和取消信号
-//   - catalogID: 目录ID，用于标识要执行发现任务的目录
+// Create to create a new discovery task
+// Parameter
 //
-// 返回值:
-//   - string: 创建的任务ID
-//   - error: 错误信息，如果创建失败则返回错误
+//	-ctx: Context, used to pass the data of the request scope and the cancellation signal
+//	-catalogID: Catalogue ID, used to identify the catalogue for which the discovery task is to be performed
+//
+// Return value:
+//
+//	-string: The task ID created
+//	-error: Error message, which returns an error if the creation fails
 func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
 	// 使用分布式追踪系统创建一个span，用于追踪服务调用
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.Create")
@@ -195,7 +197,7 @@ func (dts *discoverTaskService) InternalList(ctx context.Context, params interfa
 	return tasks, nil
 }
 
-// populateDiscoverTaskSummaryReferences 批量补齐当前页任务关联目录的展示名称。
+// PopulateDiscoverTaskSummaryReferences batch task link, filling the page directory name.
 func (dts *discoverTaskService) populateDiscoverTaskSummaryReferences(ctx context.Context, tasks []*interfaces.DiscoverTaskSummary) error {
 	catalogIDs := make([]string, 0, len(tasks))
 	seen := make(map[string]struct{}, len(tasks))
@@ -228,7 +230,7 @@ func (dts *discoverTaskService) populateDiscoverTaskSummaryReferences(ctx contex
 	return nil
 }
 
-// populateDiscoverTaskReferences 批量补齐任务关联目录的展示名称。
+// PopulateDiscoverTaskReferences batch completion task associated display name of the directory.
 func (dts *discoverTaskService) populateDiscoverTaskReferences(ctx context.Context, tasks []*interfaces.DiscoverTask) error {
 	catalogIDs := make([]string, 0, len(tasks))
 	seen := make(map[string]struct{}, len(tasks))

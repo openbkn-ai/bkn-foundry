@@ -15,18 +15,17 @@ import (
 	"vega-backend/interfaces"
 )
 
-// CascadeDeleteBuildTasks 删除 filter 命中的所有构建任务及其本地索引，
-// 让"删资源"/"删数据连接(catalog)"不再留下孤儿任务行或孤儿索引。
+// CascadeDeleteBuildTasks deletes all build tasks hit by the filter and their local indexes.
+// It prevents resource and catalog deletion from leaving orphan task rows or indexes.
 //
-// filter 须设 ResourceID（删单个资源）或 CatalogID（删整个 catalog 下全部资源）之一。
-// 任一命中任务处于 running/stopping → 整体拒绝（HasRunningExecution），不删任何东西，
-// 避免删一半留下不一致；用户需先停止再删。
+// The filter must set either ResourceID for one resource or CatalogID for every resource in a catalog.
+// If a matching task is running or stopping, HasRunningExecution is returned and nothing is deleted.
 //
 // 索引 drop 失败仅记日志、不阻断（与既有"索引删除失败不影响资源删除"语义一致）；
-// 任务行删除失败才返回错误。放在 logics 包是因为它同时被 resource 与 catalog 两个
-// service 复用，而 logics/build_task 反向依赖 logics/catalog（放那会成环）。
+// Errors are returned only when task-row deletion fails. This helper lives in logics because both the
+// resource and catalog services use it, while logics/build_task already depends on logics/catalog.
 func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess, lim interfaces.LocalIndexManager, filter interfaces.BuildTasksQueryParams) error {
-	// Limit=0 → 不分页，取全部命中任务（含历史任务，连同其孤儿索引一并清）
+	// Limit=0 disables pagination so historical tasks and their orphan indexes are included.
 	filter.Limit = 0
 	filter.Offset = 0
 	tasks, err := bta.InternalList(ctx, filter)
@@ -35,7 +34,7 @@ func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess
 			WithErrorDetails(err.Error())
 	}
 
-	// 先整体校验运行态：有任务在跑就拒绝，绝不删一半
+	// First, conduct an overall verification of the running state: Reject any tasks that are running and never delete half of them
 	running := make([]string, 0)
 	for _, t := range tasks {
 		if t.Status == interfaces.BuildTaskStatusRunning || t.Status == interfaces.BuildTaskStatusStopping {

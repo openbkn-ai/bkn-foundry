@@ -24,15 +24,15 @@ var (
 	dsWorker     *DiscoverScheduleWorker
 )
 
-// DiscoverScheduleWorker 轮询数据库中的 next_run 并执行到期的 Discover Schedule。
-// 数据库是调度状态的唯一事实源。
+// The DiscoverScheduleWorker polls the next_run in the database and executes the expired DiscoverSchedule.
+// The database is the sole source of facts for the scheduling status.
 type DiscoverScheduleWorker struct {
 	appSetting *common.AppSetting
 	dsa        interfaces.DiscoverScheduleAccess
 	dss        interfaces.DiscoverScheduleService
 }
 
-// NewDiscoverScheduleWorker 创建或返回 Discover Schedule worker 单例。
+// NewDiscoverScheduleWorker create or return to Discover the Schedule worker singleton.
 func NewDiscoverScheduleWorker(appSetting *common.AppSetting, dss interfaces.DiscoverScheduleService) *DiscoverScheduleWorker {
 	dsWorkerOnce.Do(func() {
 		dsWorker = &DiscoverScheduleWorker{
@@ -44,7 +44,7 @@ func NewDiscoverScheduleWorker(appSetting *common.AppSetting, dss interfaces.Dis
 	return dsWorker
 }
 
-// Start 启动轮询循环。
+// Start the polling loop.
 func (dsw *DiscoverScheduleWorker) Start() error {
 	go dsw.run()
 	logger.Info("Discover schedule worker started")
@@ -109,8 +109,8 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 		return
 	}
 
-	// 升级前的内存 cron 不维护 next_run。首次扫描只初始化下一次运行时间，
-	// 避免所有存量计划在升级后的第一个 tick 集中执行。
+	// The memory cron before the upgrade does not maintain next_run. The first scan only initializes the time for the next run.
+	// Avoid concentrating the execution of all existing plans in the first tick after the upgrade.
 	if schedule.NextRun == 0 || schedule.StartTime > now.UnixMilli() {
 		from := now
 		if schedule.StartTime > now.UnixMilli() {
@@ -125,8 +125,8 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 		return
 	}
 
-	// 创建任务前先推进数据库中的运行时间。任务创建失败时跳过本次触发，且服务停机期间
-	// 错过的历史周期不会在恢复后逐次补跑。
+	// Advance the running time in the database before creating a task. Skip this trigger when the task creation fails and during the service downtime
+	// Missed historical cycles will not be made up for one by one after recovery.
 	nextRun := cronSchedule.Next(now)
 	if err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
 		schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(),

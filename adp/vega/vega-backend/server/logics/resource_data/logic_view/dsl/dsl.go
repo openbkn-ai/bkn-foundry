@@ -19,7 +19,7 @@ import (
 	"vega-backend/logics/filter_condition"
 )
 
-// logicViewDSLGenerator 用于生成DSL
+// logicViewDSLGenerator is used to generate DSLS
 type logicViewDSLGenerator struct {
 	nodes         map[string]*interfaces.LogicDefinitionNode
 	outputNode    *interfaces.LogicDefinitionNode
@@ -27,7 +27,7 @@ type logicViewDSLGenerator struct {
 	viewFieldMap  map[string]*interfaces.Property
 }
 
-// NewlogicViewSQLGenerator 创建SQL生成器
+// NewlogicViewSQLGenerator creates SQL generators
 func NewlogicViewDSLGenerator(view *interfaces.LogicView) *logicViewDSLGenerator {
 	nodeMap := make(map[string]*interfaces.LogicDefinitionNode)
 	var outputNode *interfaces.LogicDefinitionNode
@@ -52,13 +52,13 @@ func NewlogicViewDSLGenerator(view *interfaces.LogicView) *logicViewDSLGenerator
 	}
 }
 
-// DSL生成器
+// DSL generator
 func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.ResourceDataQueryParams, view *interfaces.LogicView,
 	viewIndicesMap map[string][]string) (interfaces.DSLCfg, error) {
 	sortParams := completeDSLSortParams(query.Sort, query.QueryType)
 
 	var dsl interfaces.DSLCfg
-	// 设置分页参数和track_total_hits
+	// Set the pagination parameters and track_total_hits
 	dsl.From = query.Offset
 	dsl.Size = query.Limit
 	if query.NeedTotal {
@@ -84,8 +84,8 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 						WithErrorDetails(fmt.Sprintf("The sort field '%s' is binary type, do not support sorting", sp.Field))
 				}
 
-				// text类型的字段需要看其下有没有配置keyword索引，配了就用 xxx.keyword 进行排序。否则不纳入排序
-				// string类型的字段直接支持排序，若其有全文索引，则在字段的 keyword 下有 text
+				// For fields of the text type, it is necessary to check whether a keyword index is configured under them. If it is configured, use xxx.keyword for sorting. Otherwise, it will not be included in the ranking
+				// string type fields directly support sorting. If they have a full-text index, there will be text under the keyword of the field
 				if IsTextType(sortField) {
 					if HasFeature(sortField, interfaces.PropertyFeatureType_Keyword) {
 						sortFieldName = sortFieldName + ".keyword"
@@ -95,7 +95,7 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 				}
 			}
 
-			// 需要将视图字段__score转为opensearch内置字段_score, 暂时不修改，兼容处理
+			// The view field __score needs to be converted to the built-in opensearch field _score. For the time being, no modification will be made and compatibility processing will be handled
 			if sortFieldName == "__score" {
 				sortFieldName = "_score"
 			}
@@ -108,7 +108,7 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 		dsl.Sort = sort
 	}
 
-	// 获取searchAfter参数
+	// Get the searchAfter parameter
 	searchAfterDSL, err := getSearchAfterDSL(nil)
 	if err != nil {
 		return dsl, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -116,11 +116,11 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 			WithErrorDetails(fmt.Sprintf("failed to get search after dsl, %s", err.Error()))
 	}
 
-	// 合并searchAfterDSL到主DSL结构体
+	// Merge searchAfterDSL into the main DSL structure
 	dsl.SearchAfter = searchAfterDSL.SearchAfter
 	dsl.Pit = searchAfterDSL.Pit
 
-	// 构建查询条件
+	// Construct query conditions
 	queryDSL, err := g.buildDSLQuery(ctx, view, viewIndicesMap)
 	if err != nil {
 		return dsl, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -128,10 +128,10 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 			WithErrorDetails(fmt.Sprintf("failed to build query dsl, %s", err.Error()))
 	}
 
-	// 合并查询条件到主DSL结构体
+	// Merge the query conditions into the main DSL structure
 	dsl.Query = queryDSL.Query
 
-	// 添加全局过滤条件，全局过滤条件的字段应该在视图字段列表里
+	// Add global filtering conditions. The fields of the global filtering conditions should be in the view field list
 	dsl, err = addGlobalFiltersToDSL(ctx, dsl, query.FilterCondCfg, g.viewFieldMap)
 	if err != nil {
 		return dsl, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -144,7 +144,7 @@ func (g *logicViewDSLGenerator) BuildDSL(ctx context.Context, query interfaces.R
 	return dsl, nil
 }
 
-// 生成Resource节点的查询条件, 返回查询条件DSL
+// Generate the query conditions for the Resource node and return the query condition DSL
 func (g *logicViewDSLGenerator) buildResourceQuery(ctx context.Context, node *interfaces.LogicDefinitionNode,
 	refResources map[string]*interfaces.Resource, viewIndicesMap map[string][]string) (map[string]any, error) {
 	var cfg interfaces.ResourceNodeCfg
@@ -190,7 +190,7 @@ func (g *logicViewDSLGenerator) buildResourceQuery(ctx context.Context, node *in
 
 }
 
-// 添加全局过滤条件到DSL
+// Add global filtering conditions to the DSL
 func addGlobalFiltersToDSL(ctx context.Context, dsl interfaces.DSLCfg, filters *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.DSLCfg, error) {
 	// condStr, needScore, err := buildDSLCondition(ctx, filters, fieldsMap)
@@ -204,7 +204,7 @@ func addGlobalFiltersToDSL(ctx context.Context, dsl interfaces.DSLCfg, filters *
 	// 		return dsl, fmt.Errorf("failed to unmarshal filter condition, %s", err.Error())
 	// 	}
 
-	// 	// 如果需要打分，使用must查询
+	// 	// If scoring is required, use the must query
 	// 	if needScore {
 	// 		dsl.TrackScores = true
 	// 		dsl.Query.Bool.Must = append(dsl.Query.Bool.Must, filterCondition)
@@ -219,12 +219,12 @@ func addGlobalFiltersToDSL(ctx context.Context, dsl interfaces.DSLCfg, filters *
 
 func (g *logicViewDSLGenerator) buildDSLQuery(ctx context.Context, view *interfaces.LogicView,
 	viewIndicesMap map[string][]string) (interfaces.DSLCfg, error) {
-	// 自定义视图logic definition不能为null
+	// The custom view logic definition cannot be null
 	if view.LogicDefinition == nil {
 		return interfaces.DSLCfg{}, fmt.Errorf("logic definition is nil")
 	}
 
-	// 提取所有视图节点
+	// Extract all view nodes
 	var viewNodes []*interfaces.LogicDefinitionNode
 	for _, node := range view.LogicDefinition {
 		switch node.Type {
@@ -237,7 +237,7 @@ func (g *logicViewDSLGenerator) buildDSLQuery(ctx context.Context, view *interfa
 				return interfaces.DSLCfg{}, fmt.Errorf("failed to decode union node config, %s", err.Error())
 			}
 
-			// interfaces.DSLCfg 类视图只允许配置 all
+			// The interfaces.DSLCfg class view only allows configuration of all
 			if unionCfg.UnionType != interfaces.UnionType_All {
 				return interfaces.DSLCfg{}, fmt.Errorf("unsupported union type: %s", unionCfg.UnionType)
 			}
@@ -248,9 +248,9 @@ func (g *logicViewDSLGenerator) buildDSLQuery(ctx context.Context, view *interfa
 	}
 
 	var dsl interfaces.DSLCfg
-	// 根据视图节点数量决定查询结构
+	// The query structure is determined based on the number of view nodes
 	if len(viewNodes) == 1 {
-		// 单视图节点，直接使用filter，不用should
+		// For single-view nodes, directly use filter instead of should
 		query, err := g.buildResourceQuery(ctx, viewNodes[0], view.RefResources, viewIndicesMap)
 		if err != nil {
 			return interfaces.DSLCfg{}, err
@@ -258,7 +258,7 @@ func (g *logicViewDSLGenerator) buildDSLQuery(ctx context.Context, view *interfa
 		dsl.Query.Bool.Filter = []any{query}
 
 	} else {
-		// 多视图节点，使用should
+		// For multi-view nodes, use should
 		shouldQueries := make([]any, 0, len(viewNodes))
 		for _, node := range viewNodes {
 			query, err := g.buildResourceQuery(ctx, node, view.RefResources, viewIndicesMap)
@@ -269,17 +269,17 @@ func (g *logicViewDSLGenerator) buildDSLQuery(ctx context.Context, view *interfa
 		}
 
 		dsl.Query.Bool.Should = shouldQueries
-		// 设置min_should_match为1，确保至少匹配一个should条件
+		// Set min_should_match to 1 to ensure that at least one should condition is matched
 		dsl.Query.Bool.MinShouldMatch = 1
 	}
 
 	return dsl, nil
 }
 
-// 构造过滤条件
+// Construct filtering conditions
 func (g *logicViewDSLGenerator) buildDSLCondition(ctx context.Context, filters *interfaces.FilterCondCfg,
 	fieldMap map[string]*interfaces.Property) (map[string]any, error) {
-	// 将过滤条件拼接到 dsl 的 query 中
+	// Concatenate the filter conditions into the query of the dsl
 	filterCond, err := filter_condition.NewFilterCondition(ctx, filters, fieldMap)
 	if err != nil {
 		return nil, fmt.Errorf("failed to new condition, %s", err.Error())
@@ -297,7 +297,7 @@ func (g *logicViewDSLGenerator) buildDSLCondition(ctx context.Context, filters *
 	return dslCond, nil
 }
 
-// 补充 sort 字段
+// Supplement the "sort" field
 func completeDSLSortParams(sort []*interfaces.SortField, queryType string) []*interfaces.SortField {
 	defaultSort := []*interfaces.SortField{}
 	if queryType == "stream" {
@@ -308,7 +308,7 @@ func completeDSLSortParams(sort []*interfaces.SortField, queryType string) []*in
 
 	sort = append(sort, defaultSort...)
 	newSort := []*interfaces.SortField{}
-	// 去重
+	// duplicate removal
 	sortFieldSet := map[string]struct{}{}
 	for _, sortParam := range sort {
 		if _, ok := sortFieldSet[sortParam.Field]; !ok {
@@ -320,12 +320,12 @@ func completeDSLSortParams(sort []*interfaces.SortField, queryType string) []*in
 	return newSort
 }
 
-// 检查字段是否为 text 类型
+// Check whether the field is of text type
 func IsTextType(fieldInfo *interfaces.Property) bool {
 	return fieldInfo != nil && fieldInfo.Type == interfaces.DataType_Text
 }
 
-// 检查字段特征是否包含指定特征
+// Check whether the field features contain the specified features
 func HasFeature(fieldInfo *interfaces.Property, feature string) bool {
 	for _, f := range fieldInfo.Features {
 		if f.FeatureType == feature {
@@ -335,10 +335,10 @@ func HasFeature(fieldInfo *interfaces.Property, feature string) bool {
 	return false
 }
 
-// 三种情况需要拼接 dsl
-// 1. 没有pit，有search_after
-// 2. 有pit，有search_after
-// 3. 有pit，没有search_after
+// Three situations require the splicing of dsl
+// 1. There is no pit, but search_after
+// 2. There is pit and search_after
+// 3. There is pit, but no search_after
 func getSearchAfterDSL(searchAfterParams *interfaces.SearchAfterParams) (interfaces.DSLCfg, error) {
 	var dsl interfaces.DSLCfg
 
@@ -350,7 +350,7 @@ func getSearchAfterDSL(searchAfterParams *interfaces.SearchAfterParams) (interfa
 		dsl.SearchAfter = searchAfterParams.SearchAfter
 	}
 
-	// 设置pit
+	// Set pit
 	if searchAfterParams.PitID != "" {
 		dsl.Pit = &struct {
 			ID        string `json:"id,omitempty"`

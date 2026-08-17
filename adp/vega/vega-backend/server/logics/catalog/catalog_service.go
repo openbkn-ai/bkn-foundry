@@ -107,8 +107,8 @@ func NewCatalogService(appSetting *common.AppSetting) interfaces.CatalogService 
 	return cService
 }
 
-// catalogAuthResourceType 返回 catalog 在权限服务中的资源类型：
-// 系统内部目录按 internal_catalog 注册，业务角色的 catalog:* 通配授权匹配不到，仅超级管理员可见
+// catalogAuthResourceType returns the resource type of catalog in the permission service:
+// The internal system directory is registered as internal_catalog. The catalog of the business role :* Generic authorization cannot match, only visible to the super administrator
 func catalogAuthResourceType(internal bool) string {
 	if internal {
 		return interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG
@@ -116,7 +116,7 @@ func catalogAuthResourceType(internal bool) string {
 	return interfaces.AUTH_RESOURCE_TYPE_CATALOG
 }
 
-// partitionCatalogIDs 将目录 ID 按是否系统内部目录分组
+// partitionCatalogIDs groups directory ids according to whether they are internal system directories
 func partitionCatalogIDs(ids []string, internalSet map[string]struct{}) (normalIDs, internalIDs []string) {
 	normalIDs = make([]string, 0, len(ids))
 	internalIDs = make([]string, 0)
@@ -130,7 +130,7 @@ func partitionCatalogIDs(ids []string, internalSet map[string]struct{}) (normalI
 	return normalIDs, internalIDs
 }
 
-// internalCatalogIDSet 查询所有系统内部目录 ID 集合
+// internalCatalogIDSet queries the collection of all internal directory ids of the system
 func (cs *catalogService) internalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
 	ids, err := cs.ca.ListInternalIDs(ctx)
 	if err != nil {
@@ -144,8 +144,8 @@ func (cs *catalogService) internalCatalogIDSet(ctx context.Context) (map[string]
 	return set, nil
 }
 
-// filterCatalogResources 按内部/普通目录分组做权限过滤：内部目录按 internal_catalog
-// 类型校验，普通目录按 catalog 类型校验，结果合并返回
+// filterCatalogResources performs permission filtering by internal/regular directory groups: internal directories are filtered by internal_catalog
+// Type verification: For regular directories, verify according to the catalog type. Merge the results and return them
 func (cs *catalogService) filterCatalogResources(ctx context.Context, ids []string,
 	internalSet map[string]struct{}, ops []string, allowOperation bool) (map[string]interfaces.PermissionResourceOps, error) {
 
@@ -186,8 +186,8 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			WithErrorDetails("internal catalogs must be logical")
 	}
 
-	// 判断userid是否有创建业务知识网络的权限（策略决策）；
-	// 内部目录按 internal_catalog 类型校验，默认仅超级管理员/系统 S2S 身份可建
+	// Determine whether the userid has the permission to create a business knowledge network (policy decision);
+	// The internal directory is verified by the internal_catalog type. By default, it can only be created by the super administrator/system S2S identity
 	authType := catalogAuthResourceType(req.Internal)
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: authType,
@@ -216,7 +216,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	} else {
 		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
 
-		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
+		// Verify whether the sensitive field is a legitimate RSA ciphertext and obtain the plaintext for connection testing
 		sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 		if err != nil {
@@ -225,7 +225,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 				verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 		}
 
-		// 用解密后的明文 config 创建 connector 并测试连接
+		// Create a connector with the decrypted plaintext config and test the connection
 		connectorCfg := interfaces.ConnectorConfig(decryptedConfig)
 		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
@@ -313,7 +313,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 			WithErrorDetails("failed to create catalog")
 	}
 
-	// 注册资源
+	// Register resources
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
 		Type: authType,
@@ -356,12 +356,12 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
-	// 内部目录按 internal_catalog 类型校验
+	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
+	// The internal directory is validated by the internal_catalog type
 	if catalog.Internal && interfaces.IsS2SInternalAccess(ctx) {
-		// 内部目录经集群内 S2S 访问（/in/ 内网端点）：系统内部基础设施默认放行，
-		// 不做 per-account view_detail 校验。与 resource 服务的同款豁免配套，
-		// 覆盖内部 dataset 数据查询时对其所属内部 catalog 的二次鉴权。外网端点不会带该标记。
+		// Internal directories are accessed via S2S within the cluster (/in/ internal network endpoints) : The internal infrastructure of the system is allowed by default.
+		// Do not perform per-account view_detail verification. The same exemption package as the resource service
+		// Override the secondary authentication of the internal catalog to which the internal dataset belongs when querying data. The external network endpoint will not carry this tag.
 		catalog.Operations = interfaces.COMMON_OPERATIONS
 	} else {
 		matchResoucesMap, err := cs.ps.FilterResources(ctx, catalogAuthResourceType(catalog.Internal), []string{catalog.ID},
@@ -372,7 +372,7 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 		}
 
 		if resrc, exist := matchResoucesMap[catalog.ID]; exist {
-			catalog.Operations = resrc.Operations // 用户当前有权限的操作
+			catalog.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		} else {
 			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
@@ -387,10 +387,10 @@ func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveF
 	}
 
 	if !withSensitiveFields {
-		// 移除敏感字段，不返回给前端
+		// Remove sensitive fields and do not return to the front end
 		cs.removeSensitiveFields(catalog)
 	} else {
-		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
+		// Verify whether the sensitive field is a legitimate RSA ciphertext and obtain the plaintext for connection testing
 		sensitiveFields := cs.cf.GetSensitiveFields(catalog.ConnectorType)
 		decryptedConfig, err := cs.decryptSensitiveFields(sensitiveFields, catalog.ConnectorCfg)
 		if err != nil {
@@ -439,7 +439,7 @@ func (cs *catalogService) InternalGetByID(ctx context.Context, id string, withSe
 	return catalog, nil
 }
 
-// InternalGetByIDs 供服务端内部批量读取目录信息，不执行权限过滤或加载扩展字段。
+// InternalGetByIDs is used for the server to batch read directory information internally without performing permission filtering or loading extended fields.
 func (cs *catalogService) InternalGetByIDs(ctx context.Context, ids []string) ([]*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.InternalGetByIDs")
 	defer span.End()
@@ -480,13 +480,13 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 
-	// 移除敏感字段，不返回给前端
+	// Remove sensitive fields and do not return to the front end
 	for _, c := range catalogs {
 		cs.removeSensitiveFields(c)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数；
-	// 内部目录按 internal_catalog 类型校验
+	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
+	// The internal directory is validated by the internal_catalog type
 	internalSet := make(map[string]struct{})
 	for _, c := range catalogs {
 		if c.Internal {
@@ -503,7 +503,7 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	accountInfos := make([]*interfaces.AccountInfo, 0)
 	for _, c := range catalogs {
 		if resrc, exist := matchResoucesMap[c.ID]; exist {
-			c.Operations = resrc.Operations // 用户当前有权限的操作
+			c.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		} else {
 			return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 				WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
@@ -526,7 +526,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List catalogs")
 	defer span.End()
 
-	// 查询所有catalog的ID
+	// Query the ids of all catalogs
 	ids, err := cs.ca.ListIDs(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List catalog IDs failed")
@@ -539,16 +539,16 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		return []*interfaces.Catalog{}, 0, nil
 	}
 
-	// 内部目录 ID 集合，权限校验时按 internal_catalog 类型分组
+	// Internal directory ID collection, grouped by internal_catalog type during permission verification
 	internalSet, err := cs.internalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return []*interfaces.Catalog{}, 0, err
 	}
 
-	// 使用分批处理的方式过滤权限，每批处理1万个ID
+	// Filter permissions using batch processing, with 10,000 ids processed in each batch
 	batchSize := 10000
-	// 所有有权限的catalog及其操作权限
+	// All authorized catalogs and their operation permissions
 	matchResourceOpsMap := make(map[string]interfaces.PermissionResourceOps)
 
 	for i := 0; i < len(ids); i += batchSize {
@@ -559,7 +559,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		batchIDs := ids[i:end]
 
 		var batchMatchResources map[string]interfaces.PermissionResourceOps
-		// 校验权限管理的操作权限
+		// Verify the operation permissions of the permission management
 		batchMatchResources, err = cs.filterCatalogResources(ctx, batchIDs, internalSet,
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
@@ -567,13 +567,13 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 			return []*interfaces.Catalog{}, 0, err
 		}
 
-		// 合并结果
+		// Merge results
 		for _, resourceOps := range batchMatchResources {
 			matchResourceOpsMap[resourceOps.ResourceID] = resourceOps
 		}
 	}
 
-	// 提取有权限的catalog ID，保持与ids的顺序一致
+	// Extract the catalog ID with permission and keep it in the same order as the ids
 	authorizedIDs := make([]string, 0, len(matchResourceOpsMap))
 	for _, id := range ids {
 		if _, exist := matchResourceOpsMap[id]; exist {
@@ -582,31 +582,31 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 	}
 	total := int64(len(authorizedIDs))
 
-	// 如果没有有权限的catalog，直接返回空结果
+	// If there is no authorized catalog, return an empty result directly
 	if total == 0 {
 		span.SetStatus(codes.Ok, "")
 		return []*interfaces.Catalog{}, total, nil
 	}
 
-	// 根据有权限的ID数组应用分页
+	// Apply pagination based on the array of authorized ids
 	if params.Limit != -1 {
-		// 分页处理authorizedIDs
-		// 检查起始位置是否越界
+		// Pagination process authorizedIDs
+		// Check whether the starting position is out of bounds
 		if params.Offset < 0 || params.Offset >= len(authorizedIDs) {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.Catalog{}, total, nil
 		}
-		// 计算结束位置
+		// Calculate the end position
 		end := params.Offset + params.Limit
 		if end > len(authorizedIDs) {
 			end = len(authorizedIDs)
 		}
-		// 只查询当前页的catalog ID
+		// Only query the catalog ID of the current page
 		authorizedIDs = authorizedIDs[params.Offset:end]
 	}
 
-	// 根据有权限的ID数组查询完整catalog
-	// 分批处理，每批10000个ids, 避免prepared statement contains too many placeholders错误
+	// Query the complete catalog based on the array of authorized ids
+	// Process in batches, 10,000 ids per batch, to avoid the error of prepared statement contains too many placeholders
 	catalogs := make([]*interfaces.Catalog, 0, len(authorizedIDs))
 	queryBatchSize := 10000
 	for i := 0; i < len(authorizedIDs); i += queryBatchSize {
@@ -632,10 +632,10 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 
-	// 设置catalog操作权限
+	// Set the operation permissions for the catalog
 	for _, c := range catalogs {
 		if resrc, exist := matchResourceOpsMap[c.ID]; exist {
-			c.Operations = resrc.Operations // 用户当前有权限的操作
+			c.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		}
 	}
 
@@ -650,7 +650,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		logger.Warnf("Failed to populate catalog account names: %v", err)
 	}
 
-	// 移除敏感字段，不返回给前端
+	// Remove sensitive fields and do not return to the front end
 	for _, c := range catalogs {
 		cs.removeSensitiveFields(c)
 	}
@@ -669,7 +669,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
 	}
 
-	// 判断userid是否有修改权限；内部目录按 internal_catalog 类型校验
+	// Determine whether the userid has the permission to be modified; The internal directory is validated by the internal_catalog type
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: catalogAuthResourceType(catalog.Internal),
 		ID:   catalog.ID,
@@ -688,10 +688,10 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	if req.ConnectorType != "" {
 		span.SetAttributes(attr.Key("connector_type").String(req.ConnectorType))
 
-		// 注：connector_type 不可变性由 PUT handler 兜底校验（catalog_handler.go），
-		// 此处不重复，仅按 req.ConnectorType 走解密 + 试连 + 持久化流程。
+		// Note: The immutability of connector_type is underpinned by the PUT handler (catalog_handler.go).
+		// Here, it will not be repeated. Just follow the req.ConnectorType to go through the decryption + trial connection + persistence process.
 
-		// 验证敏感字段是否为合法 RSA 密文，获取明文用于连接测试
+		// Verify whether the sensitive field is a legitimate RSA ciphertext and obtain the plaintext for connection testing
 		sensitiveFields := cs.cf.GetSensitiveFields(req.ConnectorType)
 		decryptedConfig, err := cs.validateAndDecryptSensitiveFields(sensitiveFields, req.ConnectorCfg)
 		if err != nil {
@@ -700,7 +700,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 				verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 		}
 
-		// 用解密后的明文 config 创建 connector 并测试连接
+		// Create a connector with the decrypted plaintext config and test the connection
 		connectorCfg := interfaces.ConnectorConfig(decryptedConfig)
 		connector, err := cs.cf.CreateConnectorInstance(ctx, req.ConnectorType, connectorCfg)
 		if err != nil {
@@ -732,7 +732,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 			}
 		}
 
-		// req.ConnectorConfig 已在 validateAndDecryptSensitiveFields 中加上 ENC: 前缀
+		// The req. ConnectorConfig has set up a file in the validateAndDecryptSensitiveFields plus ENC: prefix
 		catalog.ConnectorCfg = req.ConnectorCfg
 	}
 
@@ -784,7 +784,7 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 			WithErrorDetails("failed to update catalog")
 	}
 
-	// 请求更新资源名称的接口，更新资源的名称
+	// Request the interface to update the resource name, update the resource name
 	if nameModified {
 		err = cs.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   catalog.ID,
@@ -1102,7 +1102,7 @@ func (cs *catalogService) DeleteByID(ctx context.Context, id string) error {
 	return nil
 }
 
-// ListInternalIDs 列出所有系统内部目录的 ID。
+// ListInternalIDs lists the ids of all internal system directories.
 func (cs *catalogService) ListInternalIDs(ctx context.Context) ([]string, error) {
 	ids, err := cs.ca.ListInternalIDs(ctx)
 	if err != nil {
@@ -1291,12 +1291,12 @@ func (cs *catalogService) testConnectorConnection(ctx context.Context, connector
 	return connector.TestConnection(testCtx)
 }
 
-// validateAndDecryptSensitiveFields 验证敏感字段是否为合法 RSA 密文，
-// 返回解密后的明文 config（用于连接测试），同时在原始 config 中加上 ENC: 前缀（用于存储）。
-// 如果 cipher 为 nil（加密未启用），直接返回原始 config 的拷贝作为 decryptedConfig，不做验证。
+// ValidateAndDecryptSensitiveFields verify whether sensitive fields as legal RSA cipher,
+// Return the decrypted plaintext config (for connection testing), and at the same time add the ENC: prefix to the original config (for storage).
+// If the cipher is nil (encryption is not enabled), directly return a copy of the original config as decryptedConfig without verification.
 func (cs *catalogService) validateAndDecryptSensitiveFields(sensitiveFields []string,
 	config map[string]any) (decryptedConfig map[string]any, err error) {
-	// 拷贝 config 作为 decryptedConfig
+	// Copy config as decryptedConfig
 	decryptedConfig = make(map[string]any, len(config))
 	for k, v := range config {
 		decryptedConfig[k] = v
@@ -1311,19 +1311,19 @@ func (cs *catalogService) validateAndDecryptSensitiveFields(sensitiveFields []st
 		if !ok || val == "" {
 			continue
 		}
-		// 尝试用私钥解密，验证是否为合法密文
+		// Try to decrypt it with the private key to verify whether it is a legitimate ciphertext
 		decrypted, decryptErr := cs.cipher.Decrypt(val)
 		if decryptErr != nil {
 			return nil, fmt.Errorf("field %s: %w", field, decryptErr)
 		}
-		// 解密成功：明文放入 decryptedConfig，原始 config 加上 ENC: 前缀
+		// Decryption successful: The plaintext is placed in decryptedConfig, and the original config is prefixed with "ENC:"
 		decryptedConfig[field] = decrypted
 		config[field] = EncryptedPrefix + val
 	}
 	return decryptedConfig, nil
 }
 
-// removeSensitiveFields 从 ConnectorConfig 中移除敏感字段，用于 GET/List 返回
+// removeSensitiveFields removes sensitive fields from ConnectorConfig for GET/List returns
 func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) {
 	if catalog == nil || catalog.ConnectorType == "" {
 		return
@@ -1334,13 +1334,13 @@ func (cs *catalogService) removeSensitiveFields(catalog *interfaces.Catalog) {
 	}
 }
 
-// decryptSensitiveFields 验证敏感字段是否为合法 RSA 密文，
-// 返回解密后的明文 config（用于连接），数据从数据库获取而来，需要先去除ENC前缀，再解密
-// 如果 cipher 为 nil（加密未启用），直接返回原始 config 的拷贝作为 decryptedConfig，不做验证。
+// decryptSensitiveFields verifies whether the sensitive field is a legitimate RSA ciphertext
+// Return the decrypted plaintext config (for connection). The data is obtained from the database and the ENC prefix needs to be removed first before decryption
+// If the cipher is nil (encryption is not enabled), directly return a copy of the original config as decryptedConfig without verification.
 func (cs *catalogService) decryptSensitiveFields(sensitiveFields []string,
 	config map[string]any) (decryptedConfig map[string]any, err error) {
 
-	// 拷贝 config 作为 decryptedConfig
+	// Copy config as decryptedConfig
 	decryptedConfig = make(map[string]any, len(config))
 	for k, v := range config {
 		decryptedConfig[k] = v
@@ -1355,7 +1355,7 @@ func (cs *catalogService) decryptSensitiveFields(sensitiveFields []string,
 		if !ok || val == "" {
 			continue
 		}
-		// 尝试用私钥解密，验证是否为合法密文
+		// Try to decrypt it with the private key to verify whether it is a legitimate ciphertext
 		if !strings.HasPrefix(val, EncryptedPrefix) {
 			return nil, fmt.Errorf("field %s: %w", field, errors.New("not encrypted"))
 		} else {
@@ -1365,7 +1365,7 @@ func (cs *catalogService) decryptSensitiveFields(sensitiveFields []string,
 		if decryptErr != nil {
 			return nil, fmt.Errorf("field %s: %w", field, decryptErr)
 		}
-		// 解密成功：明文放入 decryptedConfig，原始 config 加上 ENC: 前缀
+		// Decryption successful: The plaintext is placed in decryptedConfig, and the original config is prefixed with "ENC:"
 		decryptedConfig[field] = decrypted
 		config[field] = EncryptedPrefix + val
 	}

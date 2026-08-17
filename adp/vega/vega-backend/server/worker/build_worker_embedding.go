@@ -36,10 +36,10 @@ type embeddingWorker struct {
 	lim         interfaces.LocalIndexManager
 	mfs         interfaces.ModelFactoryService
 	rs          interfaces.ResourceService
-	sleep       func(time.Duration) // 重试等待，测试中注入空实现避免真实 sleep
+	sleep       func(time.Duration) // Retry and wait. Inject an empty implementation during the test to avoid real sleep
 }
 
-// pause 等待指定时长；未注入时使用 time.Sleep
+// pause waits for the specified duration and falls back to time.Sleep when no hook is injected.
 func (ew *embeddingWorker) pause(d time.Duration) {
 	if ew.sleep != nil {
 		ew.sleep(d)
@@ -80,7 +80,7 @@ func (ew *embeddingWorker) Run(ctx context.Context, taskID string) error {
 		logger.Infof("Task %s is %s, skip embedding", taskID, buildTaskInfo.Status)
 		return nil
 	}
-	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
+	// Asynchronous tasks have no original request context and perform downstream permission checks as the task creator
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 	logger.Infof("Starting embedding for task: %s, resource: %s", taskID, buildTaskInfo.ResourceID)
 
@@ -163,11 +163,11 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 	// Message processing loop
 	retryInterval := interfaces.BUILD_TASK_RETRY_INTERVAL * time.Second
 	totalProcessed := buildTaskInfo.VectorizedCount
-	// 重试耗尽仍失败的文档：完成前补扫一轮，仍失败则写入 error_msg
-	// （仅会话内记录；worker 中途崩溃时这些文档的位点已提交，靠全量重跑恢复）
+	// Retry exhausted documents that still fail: Scan once before completion. If it still fails, write to error_msg
+	// (Only recorded within the session; when the worker crashes in the middle, the sites of these documents have been committed and are restored by a full restart.
 	failedDocIDs := []string{}
-	// 会话内已计数文档：位点倒拨/重复投递会让同一文档消息被处理多次，
-	// 向量写入幂等无害，但计数会虚高出 vectorized > synced，按 docID 去重
+	// Counted documents within the session: Site backtracking/repeated delivery will cause the same document message to be processed multiple times
+	// Vector writing to idempotence is harmless, but the count will be higher than vectorized > synced, and the docID is used to remove duplicates
 	seenDocIDs := map[string]struct{}{}
 	countProcessed := func(docID string) {
 		if _, ok := seenDocIDs[docID]; !ok {
@@ -176,7 +176,7 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 		}
 	}
 	lastUpdateTime := time.Now()
-	updateInterval := 30 * time.Second // embedding速度慢，至少每30秒更新一次
+	updateInterval := 30 * time.Second // The embedding speed is slow, updated at least once every 30 seconds
 	consecutiveReadErrs := 0           // Consecutive read errors are bounded before the local worker fails the task.
 	consecutiveCommitErrs := 0         // Consecutive commit errors are bounded before the local worker fails the task.
 	lastMessageTime := time.Now()
@@ -213,13 +213,13 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 		case <-ctx.Done():
 			// context canceled(eg: process stopped by SIGTERM), exit the loop
 			logger.Infof("Kafka subscription context canceled, exiting")
-			// 最后一次更新任务状态
+			// The last update of the task status
 			progress := interfaces.BuildTaskProgress{VectorizedCount: &totalProcessed}
 			_, _ = ew.bts.InternalSetProgress(context.Background(), nil, buildTaskInfo.ID, progress)
 			// Return the cancellation so the local worker does not treat an interrupted phase as successful.
 			return ctx.Err()
 		default:
-			// 创建带超时的上下文，避免ReadMessage一直阻塞
+			// Create a context with a timeout to prevent ReadMessage from constantly blocking
 			timeoutCtx, cancel := context.WithTimeout(context.Background(), updateInterval)
 
 			// Read message from Kafka
@@ -228,15 +228,15 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
 					consecutiveReadErrs = 0
-					// 批量模式空闲看门狗：同步侧早已发完（含哨兵），长时间一条消息都
-					// 读不到说明消费组会话假死（分区被死实例占着/会话丢失但不报错）。
-					// 重建会话从已提交位点续读；流式模式空闲是常态，不适用
+					// Batch mode idle watchdog: The synchronization side has already sent out all the messages (including sentries), and there has been a single message for a long time
+					// It cannot be read. The consumer group session is falsely dead (the partition is occupied by a dead instance/the session is lost but no error is reported).
+					// Rebuild the session and continue reading from the submitted site; Idle flow mode is the norm and is not applicable
 					if buildTaskInfo.Mode == interfaces.BuildTaskModeBatch && time.Since(lastMessageTime) > embeddingIdleRebuildAfter {
 						progress := interfaces.BuildTaskProgress{VectorizedCount: &totalProcessed}
 						_, _ = ew.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
 						return fmt.Errorf("no message for %s on batch task, rebuilding consumer session", embeddingIdleRebuildAfter)
 					}
-					// 超时，检查是否需要更新任务状态
+					// If it times out, check if the task status needs to be updated
 					if totalProcessed > buildTaskInfo.VectorizedCount && time.Since(lastUpdateTime) > updateInterval {
 						progress := interfaces.BuildTaskProgress{VectorizedCount: &totalProcessed}
 						_, _ = ew.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
@@ -245,9 +245,9 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 					}
 				} else {
 					logger.Errorf("Embedding task Failed to read message from Kafka: %v", err)
-					// 消费组协调连接死亡（broker 重启/rebalance）后读取永远失败，
+					// After the consumer group coordination connection dies (broker restart /rebalance), the read always fails.
 					// Repeated read failures indicate that this local execution can no longer make progress.
-					// reader 与消费组会话，从已提交位点续读
+					// reader converses with the consumer group and continues reading from the submitted sites
 					consecutiveReadErrs++
 					if consecutiveReadErrs >= embeddingKafkaMaxConsecutiveErrors {
 						progress := interfaces.BuildTaskProgress{VectorizedCount: &totalProcessed}
@@ -261,20 +261,20 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 			consecutiveReadErrs = 0
 			lastMessageTime = time.Now()
 
-			// 解析文档 ID；畸形消息重试无意义：提交跳过，避免后续位点提交把它悄悄盖掉
+			// Parse the document ID; Retrying abnormal messages is meaningless: Skip the submission to prevent subsequent site submissions from quietly covering it
 			docID := extractDocID(msg.Value)
 			if docID == "" {
 				_ = ew.commitMessages(reader, msg)
 				continue
 			}
 
-			// 结束哨兵。哨兵不可直接信任：上一轮哨兵 commit 失败会留在原位，新消费者
-			// 一上来先读到旧哨兵，若立即收尾则本轮文档原封未动（线上复现：teams 重建后
-			// LAG=89，向量一个没写）。先把队列排空——连续 N 次空轮询才认为干净，
-			// 途中文档照常处理、多余哨兵只提交不重复收尾
+			// End the Sentinel. The sentinel cannot be trusted directly: If the sentinel commit fails in the previous round, it will remain in its original position and become a new consumer
+			// At the beginning, I first read the old Sentinel. If I immediately wrap it up, this round of the document will remain unchanged (online reproduction: After teams was rebuilt)
+			// LAG=89, none of the vectors are written. First, empty the queue - it is only considered clean after N consecutive empty polls.
+			// Documents during the journey will be processed as usual, and additional sentries will only be submitted without repeated closing
 			if docID == interfaces.EmptyDocumentID {
-				// 触发哨兵立刻提交：Kafka 提交是绝对位点、后写覆盖，若留到收尾才提交，
-				// 会把 drain 期间已推进的位点倒拨回哨兵处，下次启动整段重放、计数虚高
+				// Trigger the sentinel to commit immediately: Kafka commits are absolute loci and postwrite overwrites. If you wait until the end to commit,
+				// The points that have been advanced during the drain period will be reversed back to the sentry. The next time the entire replay is initiated, the count will be falsely high
 				if err := ew.commitMessages(reader, msg); err != nil {
 					logger.Errorf("Failed to commit end sentinel for task %s: %v", buildTaskInfo.ID, err)
 				}
@@ -305,9 +305,9 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 					_ = ew.commitMessages(reader, dmsg)
 				}
 
-				// 排空后补扫重试耗尽的失败文档；保留一个代表性错误作为根因。
-				// 整批同一原因（如模型不存在/不可达）时，最后一条即可解释全部失败——
-				// 仅记 docID 列表看不出"为什么"，failure_detail 必须带上这个 cause。
+				// Empty, then scan and retry the exhausted failed documents. Retain a representative error as the root cause.
+				// When the entire batch has the same cause (such as the model not existing/unreachable), the last one can explain all the failures
+				// Just remembering the docID list won't show "why", but failure_detail must include this "cause".
 				stillFailed := []string{}
 				var failureCause error
 				for _, failedID := range failedDocIDs {
@@ -321,15 +321,15 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 				}
 
 				// Do not commit the sentinel when persisting the index name fails.
-				// 重启后从最后提交位点续读，哨兵会重新投递
+				// After restarting, continue reading from the last submission point, and the sentinel will resubmit
 				if err := updateResourceIndexName(ctx, resource, ew.rs, indexName); err != nil {
 					logger.Errorf("Failed to update resource index name: %v", err)
 					return fmt.Errorf("update resource index name: %w", err)
 				}
 
-				// 哨兵到达说明同步侧已发完、且组内已消费全部文档消息。
-				// total_count 是批量构建的权威完成数量；synced_count 可能因最后一次
-				// 进度写入未落账而滞后，不能用它封顶完成态进度。
+				// The arrival of the sentinel indicates that the synchronization side has completed sending and all document messages within the group have been consumed.
+				// total_count is the authoritative completion quantity for batch builds; synced_count might be due to the last time
+				// The progress written in has not been recorded and is lagging behind. It cannot be used to cap the progress in the completed state.
 				finalSyncedCount := buildTaskInfo.SyncedCount
 				finalCount := totalProcessed
 				hasFreshProgress := false
@@ -359,15 +359,16 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 				if hasFreshProgress {
 					progress.SyncedCount = &finalSyncedCount
 				}
-				// 重试耗尽的文档如实记录到 failure_detail（与 error_msg 区分：completed 但向量不全时，
-				// failure_detail 说明缺了哪些；error_msg 仅留给整任务硬失败）。显式置空以清除上一轮重建的陈旧明细。
+				// Retry exhausted documents and record them truthfully to failure_detail (distinguished from error_msg: completed but the vector is incomplete)
+				// failure_detail identifies missing data; error_msg is reserved for failures of the entire task.
+				// Set it explicitly to null to clear stale details from a previous rebuild.
 				failureDetail := ""
 				if len(stillFailed) > 0 {
 					failureDetail = formatVectorizeFailures(stillFailed, failureCause)
 				}
 				progress.FailureDetail = &failureDetail
-				// 必须同时回写最终计数：常规回写有 30 秒批量窗口，
-				// 不在这里 flush 会丢最后一个窗口的进度（短任务界面会停在 0%）
+				// The final count must be written back simultaneously: Regular write-backs have a 30-second batch window.
+				// If you don't flush here, the progress of the last window will be lost (the short task interface will stop at 0%)
 				progressUpdated, err := ew.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
 				if err != nil {
 					return fmt.Errorf("update final build task progress: %w", err)
@@ -389,21 +390,21 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 					return nil
 				}
 
-				// 触发哨兵已在 drain 入口提交；这里不可再提交——会把位点倒拨回哨兵处
+				// The trigger sentinel has been submitted at the drain inlet. No further submission is allowed here - the site will be reversed back to the sentry
 				logger.Infof("Embedding finished for task %s: %d processed, %d failed", buildTaskInfo.ID, finalCount, len(stillFailed))
 				return nil
 			}
 
-			// 单文档带重试：嵌入服务限流等瞬时错误最常见。
-			// 重试耗尽则记入失败清单并照常提交位点——原先的 sleep+continue 看似会重试，
-			// 实际 reader 已前移，后续消息提交位点时把失败文档悄悄盖掉，向量永久缺失且无痕迹
+			// Single document with retry: Transient errors such as rate limiting of embedded services are the most common.
+			// If the retry is exhausted, it will be recorded in the failure list and the site will be submitted as usual - the original sleep+continue seems to retry.
+			// The actual reader has been moved forward. When subsequent messages are submitted to the site, the failed document is quietly covered, and the vector is permanently missing without any trace
 			if err := ew.vectorizeDocWithRetry(ctx, indexName, docID, embeddingConfig, retryInterval); err != nil {
 				failedDocIDs = append(failedDocIDs, docID)
 			} else {
 				countProcessed(docID)
 			}
 
-			// 批量更新任务状态
+			// Batch update the status of tasks
 			if time.Since(lastUpdateTime) > updateInterval {
 				progress := interfaces.BuildTaskProgress{VectorizedCount: &totalProcessed}
 				_, _ = ew.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
@@ -414,7 +415,7 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 			if err := ew.commitMessages(reader, msg); err != nil {
 				logger.Errorf("Failed to commit message: %v", err)
 				// A dead consumer session cannot advance offsets; fail this local execution.
-				// 已处理未提交的文档重放时由 per-doc 去重计数兜底
+				// When replaying processed but unsubmitted documents, the per-doc deduplication count will be used as a fallback
 				consecutiveCommitErrs++
 				if consecutiveCommitErrs >= embeddingKafkaMaxConsecutiveErrors {
 					progress := interfaces.BuildTaskProgress{VectorizedCount: &totalProcessed}
@@ -428,16 +429,16 @@ func (ew *embeddingWorker) executeEmbedding(ctx context.Context, resource *inter
 	}
 }
 
-// 单文档向量化的最大尝试次数（含首次）；超过后记入失败清单，完成前补扫一轮
+// The maximum number of attempts for vectorization of a single document (including the first attempt); If exceeded, it will be recorded in the failure list. Before completion, a supplementary scan will be conducted
 const embeddingDocMaxAttempts = 3
 
-// 哨兵后的排空参数：连续 N 次空轮询（每次最长等待 PollTimeout）认为队列已干净
+// The emptying parameter after the sentinel: N consecutive empty polls (with the longest waiting time each PollTimeout) consider the queue to be clean
 const (
 	embeddingDrainEmptyPolls  = 2
 	embeddingDrainPollTimeout = 10 * time.Second
 )
 
-// extractDocID 解析嵌入消息中的 document_id；畸形消息返回空串（调用方提交跳过）
+// extractDocID parses the document_id in the embedded message; The malformed message returns an empty string (the caller's submission skips)
 func extractDocID(value []byte) string {
 	var messageData map[string]any
 	if err := sonic.Unmarshal(value, &messageData); err != nil {
@@ -448,7 +449,7 @@ func extractDocID(value []byte) string {
 	return docID
 }
 
-// vectorizeDocWithRetry 带有界重试的单文档向量化；返回错误表示重试已耗尽
+// vectorizeDocWithRetry is a single-document vectorization with bounded retry. Returning an error indicates that retries have been exhausted
 func (ew *embeddingWorker) vectorizeDocWithRetry(ctx context.Context, indexName, docID string, embeddingConfig map[string]interfaces.BuildTaskEmbeddingConfig, retryInterval time.Duration) error {
 	var vErr error
 	for attempt := 1; attempt <= embeddingDocMaxAttempts; attempt++ {
@@ -471,17 +472,17 @@ const embeddingKafkaMaxConsecutiveErrors = 3
 // the consumer-group session dies and prevent the loop from responding to stop.
 const embeddingCommitTimeout = 30 * time.Second
 
-// 批量任务连续读不到任何消息的重建阈值（见循环内看门狗注释）
+// The reconstruction threshold for batch tasks that cannot continuously read any messages (see the watchdog note within the loop)
 const embeddingIdleRebuildAfter = 10 * time.Minute
 
-// commitMessages 带有界超时提交位点
+// commitMessages has a bound timeout commit site
 func (ew *embeddingWorker) commitMessages(reader *kafka.Reader, msgs ...kafka.Message) error {
 	cctx, cancel := context.WithTimeout(context.Background(), embeddingCommitTimeout)
 	defer cancel()
 	return ew.kafkaAccess.CommitMessages(cctx, reader, msgs...)
 }
 
-// vectorizeDoc 对单个文档执行取数→嵌入→写回，返回错误表示本次尝试整体失败、可重试
+// vectorizeDoc performs data retrieval → embedding → writing back on a single document. If an error is returned, it indicates that the entire attempt failed and can be retried
 func (ew *embeddingWorker) vectorizeDoc(ctx context.Context, indexName, docID string, embeddingConfig map[string]interfaces.BuildTaskEmbeddingConfig) error {
 	document, err := ew.lim.GetDocument(ctx, indexName, docID)
 	if err != nil {
@@ -498,8 +499,8 @@ func (ew *embeddingWorker) vectorizeDoc(ctx context.Context, indexName, docID st
 			}
 		}
 	}
-	// 源字段全为空的文档没有可嵌入文本，视为成功：
-	// 分母（synced_count）包含它们，不计数则进度永远到不了 100%
+	// A document with all source fields empty and no embeddable text is considered successful
+	// The denominator (synced_count) includes them. Without counting, the progress will never reach 100%
 	if len(wordsByModel) == 0 {
 		return nil
 	}
@@ -545,9 +546,9 @@ func buildTaskEmbeddingConfig(buildTask *interfaces.BuildTask) map[string]interf
 	return config
 }
 
-// formatVectorizeFailures 生成完成态下向量缺失的说明：先给根因（cause），再列文档 ID。
-// cause 让消费方（UI/SDK）一眼看出"为什么"——整批同因失败时（模型不存在/不可达）
-// 只有 ID 列表无从判断索引为何不可用。ID 列表与 cause 均截断，避免撑爆 failure_detail。
+// Explanation of vector missing in the completed state of formatVectorizeFailures: First provide the root cause, then list the document ID.
+// cause enables the consumer (UI/SDK) to immediately understand "why" - when the entire batch of the same cause fails (the model does not exist/is unreachable)
+// Only the ID list cannot determine why the index is unavailable. Both the ID list and cause are truncated to prevent failure_detail from being overhauled.
 func formatVectorizeFailures(failed []string, cause error) string {
 	const maxListed = 20
 	const maxCauseLen = 300

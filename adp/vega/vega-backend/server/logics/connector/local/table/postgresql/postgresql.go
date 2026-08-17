@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package postgresql 提供 PostgreSQL 表连接器：连接目标为单个 database；配置项 schemas 表示 schema 白名单。
+// Package postgresql provides a PostgreSQL table connector: the connection target is a single database; The configuration item "schemas" represents the schema whitelist.
 package postgresql
 
 import (
@@ -46,12 +46,12 @@ var (
 )
 
 const (
-	databaseNameMaxLength = 63 // PostgreSQL 标识符默认上限
+	databaseNameMaxLength = 63 // The default upper limit of PostgreSQL identifiers
 	portMin               = 1
 	portMax               = 65535
 )
 
-// PostgresqlConnector 实现 TableConnector（PostgreSQL）。
+// The PostgresqlConnector implements TableConnector (PostgreSQL).
 type PostgresqlConnector struct {
 	enabled bool
 
@@ -61,60 +61,60 @@ type PostgresqlConnector struct {
 	db        *sql.DB
 }
 
-// NewPostgresqlConnector 创建 PostgreSQL connector 构建器
+// NewPostgresqlConnector creates the PostgreSQL connector builder
 func NewPostgresqlConnector() interfaces.TableConnector {
 	return &PostgresqlConnector{}
 }
 
-// GetType 返回数据源类型键（与 t_connector_type.f_type、factory 注册键一致）。
+// GetType returns the data source type key (consistent with t_connector_type.f_type, factory registration key).
 func (c *PostgresqlConnector) GetType() string {
 	return interfaces.ConnectorTypePostgreSQL
 }
 
-// GetName 返回连接器名称。
+// GetName returns the connector name.
 func (c *PostgresqlConnector) GetName() string {
 	return interfaces.ConnectorTypePostgreSQL
 }
 
-// GetMode 返回连接器模式。
+// GetMode returns the connector mode.
 func (c *PostgresqlConnector) GetMode() string {
 	return interfaces.ConnectorModeLocal
 }
 
-// GetCategory 返回连接器分类。
+// GetCategory returns the connector category.
 func (c *PostgresqlConnector) GetCategory() string {
 	return interfaces.ConnectorCategoryTable
 }
 
-// GetEnabled 是否启用。
+// Whether GetEnabled is enabled.
 func (c *PostgresqlConnector) GetEnabled() bool {
 	return c.enabled
 }
 
-// SetEnabled 设置启用状态。
+// Set the enabled status of SetEnabled.
 func (c *PostgresqlConnector) SetEnabled(enabled bool) {
 	c.enabled = enabled
 }
 
-// GetSensitiveFields 敏感字段。
+// GetSensitiveFields: Sensitive fields.
 func (c *PostgresqlConnector) GetSensitiveFields() []string {
 	return []string{"password"}
 }
 
-// GetFieldConfig 连接表单字段（须与迁移中 t_connector_type 的 JSON 完全一致）。
+// The GetFieldConfig connection form field (must be exactly the same as the JSON of t_connector_type in the migration).
 func (c *PostgresqlConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":     {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
-		"port":     {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
-		"username": {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-		"password": {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-		"database": {Name: "数据库名", Type: "string", Description: "PostgreSQL 连接目标 database", Required: true, Encrypted: false},
-		"schemas":  {Name: "Schema 列表", Type: "array", Description: "可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema", Required: false, Encrypted: false},
-		"options":  {Name: "连接参数", Type: "object", Description: "连接参数（如 sslmode、connect_timeout 等）", Required: false, Encrypted: false},
+		"host":     {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
+		"port":     {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
+		"username": {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+		"password": {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+		"database": {Name: "Database", Type: "string", Description: "PostgreSQL target database", Required: true, Encrypted: false},
+		"schemas":  {Name: "Schemas", Type: "array", Description: "Optional schema allowlist; when empty, scan non-system schemas in the current database", Required: false, Encrypted: false},
+		"options":  {Name: "Connection options", Type: "object", Description: "Connection options, such as sslmode and connect_timeout", Required: false, Encrypted: false},
 	}
 }
 
-// New 根据配置创建连接器实例。
+// New creates a connector instance from the configuration.
 func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var pCfg postgresqlConfig
 	if err := mapstructure.Decode(cfg, &pCfg); err != nil {
@@ -138,7 +138,7 @@ func (c *PostgresqlConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Co
 		if len(s) > databaseNameMaxLength {
 			return nil, fmt.Errorf("schema name '%s' exceeds maximum length of %d characters", s, databaseNameMaxLength)
 		}
-		// 检查数组中是否存在重复元素
+		// Check whether there are duplicate elements in the array
 		if seen[s] {
 			return nil, fmt.Errorf("duplicate element found in 'schemas': %s", s)
 		}
@@ -170,7 +170,7 @@ func (c *PostgresqlConnector) connectionString() string {
 	return u.String()
 }
 
-// Connect 建立连接。
+// Connect establishes a connection.
 func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 	if c.connected {
 		return nil
@@ -191,7 +191,7 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 	return nil
 }
 
-// Close 关闭连接。
+// Close to close the connection.
 func (c *PostgresqlConnector) Close(ctx context.Context) error {
 	if c.db != nil {
 		err := c.db.Close()
@@ -202,7 +202,7 @@ func (c *PostgresqlConnector) Close(ctx context.Context) error {
 	return nil
 }
 
-// Ping 检测连接。
+// Ping detects the connection.
 func (c *PostgresqlConnector) Ping(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
@@ -210,7 +210,7 @@ func (c *PostgresqlConnector) Ping(ctx context.Context) error {
 	return c.db.PingContext(ctx)
 }
 
-// TestConnection 测试连接；若配置了 schema 白名单则校验存在性。
+// TestConnection test connection; If a schema whitelist is configured, verify the existence.
 func (c *PostgresqlConnector) TestConnection(ctx context.Context) error {
 	if err := c.Connect(ctx); err != nil {
 		return err

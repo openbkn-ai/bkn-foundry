@@ -31,7 +31,7 @@ import (
 
 // ListResourcesByEx handles GET /api/vega-backend/v1/resources (External)
 func (r *restHandler) ListResourcesByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -41,7 +41,7 @@ func (r *restHandler) ListResourcesByEx(c *gin.Context) {
 
 // ListResourcesByIn handles GET /api/vega-backend/in/v1/resources (Internal)
 func (r *restHandler) ListResourcesByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.listResources(c, visitor)
 }
@@ -69,7 +69,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 	sort := common.GetQueryOrDefault(c, "sort", "update_time")
 	direction := common.GetQueryOrDefault(c, "direction", interfaces.DESC_DIRECTION)
 
-	// 校验分页查询参数
+	// Verify the pagination query parameters
 	pageParam, err := validatePaginationQueryParams(ctx,
 		offset, limit, sort, direction, interfaces.RESOURCE_SORT)
 	if err != nil {
@@ -132,7 +132,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 
 // CreateResourceByEx handles POST /api/vega-backend/v1/resources (External)
 func (r *restHandler) CreateResourceByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -142,7 +142,7 @@ func (r *restHandler) CreateResourceByEx(c *gin.Context) {
 
 // CreateResourceByIn handles POST /api/vega-backend/in/v1/resources (Internal)
 func (r *restHandler) CreateResourceByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.createResource(c, visitor)
 }
@@ -242,7 +242,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 
 // GetResourcesByEx handles GET /api/vega-backend/v1/resources/:ids (External)
 func (r *restHandler) GetResourcesByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -252,7 +252,7 @@ func (r *restHandler) GetResourcesByEx(c *gin.Context) {
 
 // GetResourcesByIn handles GET /api/vega-backend/in/v1/resources/:ids (Internal)
 func (r *restHandler) GetResourcesByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.getResources(c, visitor)
 }
@@ -319,7 +319,7 @@ func (r *restHandler) getResources(c *gin.Context, visitor hydra.Visitor) {
 
 // UpdateResourceByEx handles PUT /api/vega-backend/v1/resources/:id (External)
 func (r *restHandler) UpdateResourceByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -329,7 +329,7 @@ func (r *restHandler) UpdateResourceByEx(c *gin.Context) {
 
 // UpdateResourceByIn handles PUT /api/vega-backend/in/v1/resources/:id (Internal)
 func (r *restHandler) UpdateResourceByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.updateResource(c, visitor)
 }
@@ -406,7 +406,7 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 
 // DeleteResourcesByEx handles DELETE /api/vega-backend/v1/resources/:ids (External)
 func (r *restHandler) DeleteResourcesByEx(c *gin.Context) {
-	// 外网接口：校验token
+	// External network interface: Verify token
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
 		return
@@ -416,7 +416,7 @@ func (r *restHandler) DeleteResourcesByEx(c *gin.Context) {
 
 // DeleteResourcesByIn handles DELETE /api/vega-backend/in/v1/resources/:ids (Internal)
 func (r *restHandler) DeleteResourcesByIn(c *gin.Context) {
-	// 内网接口：user_id从header中取
+	// Internal network interface: user_id is taken from the header
 	visitor := visitor.GenerateVisitor(c)
 	r.deleteResources(c, visitor)
 }

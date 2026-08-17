@@ -12,18 +12,18 @@ import (
 )
 
 const (
-	QueryType_Standard = "standard" // 标准查询
-	QueryType_Stream   = "stream"   // 流式查询
+	QueryType_Standard = "standard" // Standard Query
+	QueryType_Stream   = "stream"   // Stream query
 )
 
-// RawQueryRequest SQL查询请求
+// RawQueryRequest SQL query request
 type RawQueryRequest struct {
 	Query           any           `json:"query,omitempty"`
 	QueryFormat     QueryFormat   `json:"query_format,omitempty"`
 	InputDialect    string        `json:"input_dialect,omitempty"`
 	Paging          PagingRequest `json:"paging,omitempty"`
-	QueryTimeoutSec int           `json:"query_timeout_sec,omitempty"` // 查询超时时间（秒），默认60，最小1，最大3600
-	NeedTotal       bool          `json:"need_total,omitempty"`        // 是否返回完整总数
+	QueryTimeoutSec int           `json:"query_timeout_sec,omitempty"` // Query timeout time (in seconds), default 60, minimum 1, maximum 3600
+	NeedTotal       bool          `json:"need_total,omitempty"`        // Whether to return the complete total
 
 	// These fields are service-internal bindings supplied by a Logic View when
 	// it delegates to Raw Query; they are never accepted from HTTP payloads.
@@ -61,27 +61,27 @@ func (r *RawQueryRequest) NormalizePaging() {
 	}
 }
 
-// RawQueryResponse SQL查询响应
+// RawQueryResponse SQL query response
 type RawQueryResponse struct {
-	Columns     []ColumnInfo     `json:"columns"`               // 列信息
-	Entries     []map[string]any `json:"entries"`               // 查询结果
-	TotalCount  *int64           `json:"total_count,omitempty"` // 总条数；nil 表示未请求
-	Warnings    []string         `json:"warnings,omitempty"`    // 非阻断告警（如 deprecated 资源命中提示）
+	Columns     []ColumnInfo     `json:"columns"`               // Column information
+	Entries     []map[string]any `json:"entries"`               // Query result
+	TotalCount  *int64           `json:"total_count,omitempty"` // Total number of items; "nil" indicates no request
+	Warnings    []string         `json:"warnings,omitempty"`    // Non-blocking alerts (such as deprecated resource hit alerts)
 	Paging      *PagingResponse  `json:"paging,omitempty"`
 	SearchAfter []any            `json:"-"` // OpenSearch internal cursor state
 	ResourceIDs []string         `json:"-"` // Resolved resources used by the executed query.
 }
 
-// ColumnInfo 列信息
+// ColumnInfo column information
 type ColumnInfo struct {
-	Name string `json:"name"` // 列名
-	Type string `json:"type"` // 列类型
+	Name string `json:"name"` // "List"
+	Type string `json:"type"` // Column type
 }
 
 //go:generate mockgen -source ../interfaces/query.go -destination ../interfaces/mock/mock_query.go
 
-// RawQueryService SQL查询服务接口
+// RawQueryService SQL query service interface
 type RawQueryService interface {
-	// Execute 执行SQL查询
+	// Execute executes SQL queries
 	Execute(ctx context.Context, req *RawQueryRequest) (*RawQueryResponse, error)
 }

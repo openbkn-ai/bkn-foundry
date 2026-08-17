@@ -13,7 +13,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-// NoopUserMgmtService 空用户管理服务（认证禁用时使用）
+// NoopUserMgmtService Empty User Management Service (used when authentication is disabled)
 type NoopUserMgmtService struct {
 	appSetting *common.AppSetting
 }
@@ -23,7 +23,7 @@ func NewNoopUserMgmtService(appSetting *common.AppSetting) interfaces.UserMgmtSe
 }
 
 func (n *NoopUserMgmtService) GetAccountNames(ctx context.Context, accountInfos []*interfaces.AccountInfo) error {
-	// 认证禁用时，使用 ID 作为名称
+	// When authentication is disabled, use "ID" as the name
 	for _, info := range accountInfos {
 		if info.Name == "" {
 			info.Name = info.ID

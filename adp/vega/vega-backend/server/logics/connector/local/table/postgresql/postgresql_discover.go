@@ -19,7 +19,7 @@ import (
 
 var pgSq = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
-// ListTables 列出表、视图和物化视图；TableMeta.Database 填 database 名，Schema 填 schema 名。
+// ListTables lists tables, views and materialized views. Fill in the database name for TableMeta.Database and the Schema name for schema.
 func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func postgresqlTableTypeFromRelkind(relKind string) string {
 	}
 }
 
-// GetTableMeta 填充表元数据。
+// GetTableMeta fills the table metadata.
 func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
 	if err := c.Connect(ctx); err != nil {
 		return err
@@ -402,7 +402,7 @@ ORDER BY c.conname, u1.ord1`
 	return nil
 }
 
-// GetMetadata 返回实例/会话级元数据。
+// GetMetadata returns instance/session-level metadata.
 func (c *PostgresqlConnector) GetMetadata(ctx context.Context) (map[string]any, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err

@@ -120,7 +120,7 @@ func mariaDBDateSetExpr(field *interfaces.Property, op string, values []any) (sq
 	), nil
 }
 
-// quoteColumnName 将列名转为 SQL 标识符；支持 "alias.col" -> "`alias`.`col`"
+// quoteColumnName converts column names to SQL identifiers; Support "alias.col" -> "alias.col"
 func quoteColumnName(name string) string {
 	if name == "" {
 		return "``"
@@ -646,7 +646,7 @@ func (c *MariaDBConnector) ConvertFilterConditionBetween(ctx context.Context, co
 		return nil, fmt.Errorf("between condition requires exactly 2 values")
 	}
 
-	// 检查字段是否为时间类型，如果是则转换long类型值为时间戳
+	// Check if the field is of time type. If it is, convert the long type value to a timestamp
 	fieldType := cond.Lfield.Type
 	isDateType := interfaces.DataType_IsDate(fieldType)
 
@@ -662,7 +662,7 @@ func (c *MariaDBConnector) ConvertFilterConditionBetween(ctx context.Context, co
 		return sq.And{lower, upper}, nil
 	}
 
-	// 非时间类型字段，直接使用参数化查询
+	// For non-time type fields, parameterized queries can be directly used
 	return sq.And{
 		sq.GtOrEq{quoteColumnName(cond.Lfield.OriginalName): values[0]},
 		sq.LtOrEq{quoteColumnName(cond.Lfield.OriginalName): values[1]},

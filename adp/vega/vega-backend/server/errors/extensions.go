@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors Extensions（Issue #382 方案 B）错误码
+// Package errors Extensions (Issue #382 option B) error code
 package errors
 
-// Extensions 错误码（当前全部为 400 Bad Request）
+// Extensions error code (currently all are 400 Bad Request)
 const (
 	// 400 Bad Request
 	VegaBackend_Extensions_InvalidFormat         = "VegaBackend.Extensions.InvalidFormat"
@@ -18,7 +18,7 @@ const (
 	VegaBackend_Extensions_TooManyFilterPairs    = "VegaBackend.Extensions.TooManyFilterPairs"
 )
 
-// ExtensionsErrCodeList 须在 init 中 rest.Register，否则返回该码时进程会 fatal（missing errorCode）。
+// The ExtensionsErrCodeList must be rest.Register in init; otherwise, the process will be fatal (missing errorCode) when this code is returned.
 var ExtensionsErrCodeList = []string{
 	// 400 Bad Request
 	VegaBackend_Extensions_InvalidFormat,

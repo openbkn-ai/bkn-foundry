@@ -76,7 +76,7 @@ func isAnalyzerNotFound(detail string) bool {
 		strings.Contains(message, "unknown analyzer")
 }
 
-// NewOpenSearchConnector 创建 OpenSearch connector 构建器
+// NewOpenSearchConnector creates the OpenSearch connector builder
 func NewOpenSearchConnector() interfaces.IndexConnector {
 	return &OpenSearchConnector{}
 }
@@ -119,11 +119,11 @@ func (c *OpenSearchConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns the field configuration for OpenSearch connector.
 func (c *OpenSearchConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":          {Name: "主机地址", Type: "string", Description: "OpenSearch 服务器主机地址", Required: true, Encrypted: false},
-		"port":          {Name: "端口号", Type: "integer", Description: "OpenSearch 服务器端口", Required: true, Encrypted: false},
-		"username":      {Name: "用户名", Type: "string", Description: "认证用户名", Required: false, Encrypted: false},
-		"password":      {Name: "密码", Type: "string", Description: "认证密码", Required: false, Encrypted: true},
-		"index_pattern": {Name: "索引模式", Type: "string", Description: "索引匹配模式（可选，如 log-*）", Required: false, Encrypted: false},
+		"host":          {Name: "Host", Type: "string", Description: "OpenSearch server host", Required: true, Encrypted: false},
+		"port":          {Name: "Port", Type: "integer", Description: "OpenSearch server port", Required: true, Encrypted: false},
+		"username":      {Name: "Username", Type: "string", Description: "Authentication username", Required: false, Encrypted: false},
+		"password":      {Name: "Password", Type: "string", Description: "Authentication password", Required: false, Encrypted: true},
+		"index_pattern": {Name: "Index pattern", Type: "string", Description: "Optional index pattern, such as log-*", Required: false, Encrypted: false},
 	}
 }
 
@@ -209,7 +209,7 @@ func (c *OpenSearchConnector) Create(ctx context.Context, name string, schemaDef
 		return fmt.Errorf("index %s already exist", name)
 	}
 
-	// 构建字段映射
+	// Construct field mapping
 	properties, hasVectorField, err := c.buildFieldMappings(schemaDefinition)
 	if err != nil {
 		return err
@@ -230,7 +230,7 @@ func (c *OpenSearchConnector) Create(ctx context.Context, name string, schemaDef
 		},
 	}
 
-	// 如果有vector字段，开启knn
+	// If there is a vector field, enable knn
 	if hasVectorField {
 		indexSettings := mapping["settings"].(map[string]any)["index"].(map[string]any)
 		indexSettings["knn"] = true
@@ -273,18 +273,18 @@ func (c *OpenSearchConnector) Update(ctx context.Context, name string, schemaDef
 		return fmt.Errorf("index %s not exist", name)
 	}
 
-	// 构建字段映射
+	// Construct field mapping
 	properties, _, err := c.buildFieldMappings(schemaDefinition)
 	if err != nil {
 		return err
 	}
 
-	// 构建properties映射
+	// Build the properties mapping
 	mappings := map[string]any{
 		"properties": properties,
 	}
 
-	// 构建 JSON 字符串
+	// Build a JSON string
 	data, err := sonic.Marshal(mappings)
 	if err != nil {
 		return err
@@ -394,13 +394,13 @@ func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, name string, 
 		return nil, err
 	}
 	if errors, ok := result["errors"].(bool); ok && errors {
-		// 遍历所有操作结果，检查是否有失败
+		// Traverse all the operation results and check if there are any failures
 		if items, ok := result["items"].([]interface{}); ok {
 			for _, item := range items {
 				if itemMap, ok := item.(map[string]interface{}); ok {
 					if indexResult, ok := itemMap["index"].(map[string]interface{}); ok {
 						if errorObj, ok := indexResult["error"].(map[string]interface{}); ok {
-							// 找到失败的文档，返回错误
+							// Find the failed document and return an error
 							return nil, fmt.Errorf("failed to create document, error type: %s, reason: %s", errorObj["type"].(string), errorObj["reason"].(string))
 						}
 					}
@@ -512,10 +512,10 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, name string, 
 			return nil, err
 		}
 
-		// 写入更新操作的文档，添加upsert功能
+		// Write the document for the update operation and add the upsert function
 		updateDoc := map[string]any{
 			"doc":    document,
-			"upsert": document, // 当文档不存在时，使用整个document作为新文档
+			"upsert": document, // When the document does not exist, use the entire Document as the new document
 		}
 		if err := sonic.ConfigDefault.NewEncoder(&bulkBody).Encode(updateDoc); err != nil {
 			return nil, err
@@ -537,7 +537,7 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, name string, 
 		return nil, fmt.Errorf("failed to update documents: %s", resp.String())
 	}
 
-	// 检查是否有部分文档更新失败
+	// Check if any documents have failed to update
 	var result map[string]interface{}
 	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
@@ -551,12 +551,12 @@ func (c *OpenSearchConnector) UpsertDocuments(ctx context.Context, name string, 
 				if updateResult, ok := itemMap["update"].(map[string]interface{}); ok {
 					if status, ok := updateResult["status"].(float64); ok {
 						if status < 400 {
-							// 提取成功的文档ID
+							// The successfully extracted document ID
 							if docID, ok := updateRequests[i]["id"].(string); ok {
 								successDocIDs = append(successDocIDs, docID)
 							}
 						} else {
-							// 记录错误信息
+							// Record error messages
 							if errMsg == "" {
 								errMsg = fmt.Sprintf("error type: %s, reason: %s", updateResult["error"].(map[string]interface{})["type"].(string), updateResult["error"].(map[string]interface{})["reason"].(string))
 							}

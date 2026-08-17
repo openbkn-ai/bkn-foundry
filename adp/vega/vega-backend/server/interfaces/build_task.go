@@ -17,20 +17,20 @@ const (
 	BuildTaskStatusFailed    string = "failed"
 	BuildTaskStatusCancelled string = "cancelled"
 
-	BuildTaskModeStreaming string = "streaming" // 流式
-	BuildTaskModeBatch     string = "batch"     // 批量
+	BuildTaskModeStreaming string = "streaming" // Flow cytometry
+	BuildTaskModeBatch     string = "batch"     // Batch production
 
 	BuildTaskSortCreateTime       string = "create_time"
 	BuildTaskSortStartTime        string = "start_time"
 	BuildTaskSortFinishTime       string = "finish_time"
 	BuildTaskSortLastProgressTime string = "last_progress_time"
 
-	BuildTaskExecuteTypeIncremental string = "incremental" // 增量
-	BuildTaskExecuteTypeFull        string = "full"        // 全量
+	BuildTaskExecuteTypeIncremental string = "incremental" // Increment
+	BuildTaskExecuteTypeFull        string = "full"        // Full quantity
 
 	EmptyDocumentID string = "empty_document"
 
-	BUILD_TASK_RETRY_INTERVAL = 5 // 重试间隔，单位秒
+	BUILD_TASK_RETRY_INTERVAL = 5 // Retry interval, unit: seconds
 
 	BUILD_PREFIX = "vega-build"
 )
@@ -54,27 +54,27 @@ type BuildTask struct {
 	ID               string                `json:"id"`
 	ResourceID       string                `json:"resource_id"`
 	Status           string                `json:"status"`
-	Mode             string                `json:"mode"`                   // 任务模式：streaming/batch
-	ExecuteType      string                `json:"execute_type,omitempty"` // batch 执行类型：incremental/full；streaming 不适用
-	TotalCount       int64                 `json:"total_count"`            // 总数
-	SyncedCount      int64                 `json:"synced_count"`           // 已同步数
-	VectorizedCount  int64                 `json:"vectorized_count"`       // 已做向量数
-	SyncedMark       string                `json:"synced_mark"`            // 同步标记
+	Mode             string                `json:"mode"`                   // Task mode: streaming/batch
+	ExecuteType      string                `json:"execute_type,omitempty"` // batch execution type: incremental/full; streaming is not applicable.
+	TotalCount       int64                 `json:"total_count"`            // Total number
+	SyncedCount      int64                 `json:"synced_count"`           // Synchronized number
+	VectorizedCount  int64                 `json:"vectorized_count"`       // The vector number has been done
+	SyncedMark       string                `json:"synced_mark"`            // Synchronous tag
 	ErrorMsg         string                `json:"error_msg,omitempty"`
-	FailureDetail    string                `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
+	FailureDetail    string                `json:"failure_detail,omitempty"` // The details of the completed construction but partial document vectorization failure, which is different from the hard failure of the entire task of error_msg
 	Creator          AccountInfo           `json:"creator"`
 	CreateTime       int64                 `json:"create_time"`
 	StartTime        int64                 `json:"start_time,omitempty"`
 	FinishTime       int64                 `json:"finish_time,omitempty"`
 	LastProgressTime int64                 `json:"last_progress_time,omitempty"`
-	IndexConfig      *BuildTaskIndexConfig `json:"index_config,omitempty"` // 创建 task 时从 resource 派生的索引配置快照
+	IndexConfig      *BuildTaskIndexConfig `json:"index_config,omitempty"` // A snapshot of the index configuration derived from resource when creating a task
 	CatalogID        string                `json:"catalog_id"`
-	// 以下关联字段仅用于响应展示，不落库；由 service 按当前任务集合批量补齐。
+	// The following associated fields are only used for response display and will not be included in the database. The service will batch complete the tasks according to the current task set.
 	ResourceName string `json:"resource_name,omitempty"`
 	CatalogName  string `json:"catalog_name,omitempty"`
 
-	// IndexHealth 为响应时计算的派生状态，**不落库**：让消费方无需自己推断
-	// "completed 其实是失败"。service 层在返回前填充。
+	// The derived state calculated by IndexHealth during response ** does not fall into the database ** : allowing consumers to avoid making their own inferences
+	// A completed task may still have unhealthy index state; the service populates this field before returning.
 	IndexHealth *IndexHealth `json:"index_health,omitempty"`
 }
 
@@ -134,22 +134,22 @@ type BuildTaskFulltextConfig struct {
 	Analyzer string `json:"analyzer,omitempty"`
 }
 
-// IndexHealth 拆分各索引的健康度。status=completed 只代表 sync 完成 + fulltext 生效，
-// 不代表 embedding 索引可用——本结构把两者分开，整体可用性看 Usable。
+// IndexHealth splits the health of each index. status=completed only indicates that sync is completed and fulltext takes effect
+// This does not mean that the embedding index is available - this structure separates the two, and the overall usability is considered Usable.
 type IndexHealth struct {
-	// none(未建) | building(进行中) | ok | partial(部分文档缺向量) | failed(全部缺向量)
+	// none(Not built)/building(in progress)/ok/partial(Some documents are missing vectors)/failed(All missing vectors)
 	Embedding string `json:"embedding"`
-	// none(未建) | ok（全文随同步即时生效，建了即 ok）
+	// none(Not created) ok (The full text takes effect immediately upon synchronization. Once created, it's ok)
 	Fulltext string `json:"fulltext"`
-	// embedding 索引是否完全可用（none 或 ok 为 true；partial/failed/building 为 false）
+	// Whether the embedding index is fully available (none or ok is true; partial/failed/building is false)
 	Usable bool `json:"usable"`
 }
 
 // CreateBuildTaskRequest represents the request to create a build task.
 type CreateBuildTaskRequest struct {
-	ResourceID  string `json:"resource_id" binding:"required"`                                    // 关联 Resource ID
-	Mode        string `json:"mode" binding:"required,oneof=streaming batch"`                     // 任务模式：streaming/batch
-	ExecuteType string `json:"execute_type,omitempty" binding:"omitempty,oneof=incremental full"` // 执行类型, batch only; default full
+	ResourceID  string `json:"resource_id" binding:"required"`                                    // Associate Resource ID
+	Mode        string `json:"mode" binding:"required,oneof=streaming batch"`                     // Task mode: streaming/batch
+	ExecuteType string `json:"execute_type,omitempty" binding:"omitempty,oneof=incremental full"` // Execution type, batch only; default full
 }
 
 // StartBuildTaskRequest represents the optional body for POST /build-tasks/{id}/start.
@@ -162,7 +162,7 @@ type BuildTasksQueryParams struct {
 	PaginationQueryParams
 	ResourceID string
 	CatalogID  string
-	Statuses   []string // 多值状态过滤(IN);空为不过滤
+	Statuses   []string // Multi-valued state filtering (IN) Empty means no filtering
 	Mode       string
 }
 
@@ -171,25 +171,25 @@ type KeyValue struct {
 	Value any
 }
 
-// BuildIndexName 返回构建任务对应的 OpenSearch 索引名。索引名 = 前缀-资源ID-任务ID，
-// 与任务一一对应。删除任务/资源/目录时据此 drop 索引，避免孤儿索引。
-// 单一来源：worker 建索引与各处级联清理都用它，别在多处手拼。
+// BuildIndexName returns the OpenSearch index name corresponding to the build task. Index name = Prefix - Resource ID- Task ID
+// Correspond one-to-one with the tasks. When deleting tasks/resources/directories, drop the index accordingly to avoid orphan indexes.
+// Single source: Use worker to build indexes and clean up cascades in various departments. Don't manually assemble in multiple places.
 func BuildIndexName(resourceID, buildTaskID string) string {
 	return BUILD_PREFIX + "-" + resourceID + "-" + buildTaskID
 }
 
-// BuildTaskIDFromIndexName 从本地索引名反解出产出它的构建任务 id。
+// The build task id that produces "BuildTaskIDFromIndexName" is inverted from the local index name.
 //
-// 索引由哪个构建任务产出，决定了里面的字段是按哪份配置建的——查询侧要用建索引时
-// 的 embedding 模型，就得找回那份快照，而不是读资源上「现在」写着什么。资源上的
-// 配置改了但没重建索引时，这两者会不一致。
-// 不是本服务生成的索引名返回空串。
+// Which build task produces the index determines which configuration the fields inside are created according to - when the query side needs to create an index
+// For the embedding model, it is necessary to retrieve that snapshot instead of reading what is written "now" on the resource. Resource-based
+// When the configuration is changed but the index is not rebuilt, the two will be inconsistent.
+// An empty string is returned if the index name is not generated by this service.
 func BuildTaskIDFromIndexName(indexName string) string {
 	prefix := BUILD_PREFIX + "-"
 	if !strings.HasPrefix(indexName, prefix) {
 		return ""
 	}
-	// 形如 vega-build-<resourceID>-<buildTaskID>
+	// In the form of vega-build-<resourceID>-<buildTaskID>
 	parts := strings.Split(strings.TrimPrefix(indexName, prefix), "-")
 	if len(parts) < 2 {
 		return ""

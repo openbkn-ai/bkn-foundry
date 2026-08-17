@@ -148,19 +148,19 @@ func (s *safePermissionAccess) CheckPermission(ctx context.Context, check interf
 	return s.safe.allowedAll(ctx, check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations)
 }
 
-// opAccess 是某个资源类型下、单个操作的授权解析结果：要么持类型级通配授权
-// （覆盖该类型全部实例），要么是具体可访问 id 集合。
+// opAccess is the authorization resolution result of a single operation under a certain resource type: either it holds type-level wildcard authorization
+// (Covering all instances of this type), or a specific collection of accessible ids.
 type opAccess struct {
 	all bool
 	ids map[string]bool
 }
 
-// resolveOps 批量解析某资源类型下每个候选操作的授权：先用一次 obj="*" 的 check
-// 判定类型级/超管通配（命中则该 op 覆盖全部实例、无需再取集合），否则向 bkn-safe
-// 取该 (accessor, 类型, 操作) 的可访问 id 集。
+// resolveOps batch resolves the authorization of each candidate operation under a certain resource type: first, use a check with obj="*"
+// Determine type-level/over-pipe matching (if hit, this op covers all instances and no further collection is required); otherwise, proceed to bkn-safe
+// Take the set of accessible ids of this (accessor, type, operation).
 //
-// 往返次数只与「操作数」相关，与待过滤的资源数无关——这正是大目录不再超时的原因
-// （#357：原实现逐资源鉴权，持全量授权的账号约 5.6k 资源即 40s+ 超时）。
+// The number of round trips is only related to the "operand" and has nothing to do with the number of resources to be filtered - this is precisely why large directories no longer time out
+// (#357: In the original implementation of resource-by-resource authentication, accounts with full authorization had approximately 5.6k resources, which led to a timeout of over 40 seconds.)
 func (s *safePermissionAccess) resolveOps(ctx context.Context, accessorID, rtype string, ops []string) (map[string]opAccess, error) {
 	out := make(map[string]opAccess, len(ops))
 	for _, op := range ops {
@@ -185,8 +185,8 @@ func (s *safePermissionAccess) resolveOps(ctx context.Context, accessorID, rtype
 	return out, nil
 }
 
-// resolveFilter 解析 filter 中出现的每个资源类型的每 op 授权，供调用方在内存里
-// 逐资源判定，避免逐资源发起鉴权请求。
+// resolveFilter parses each op authorization of each resource type that appears in the filter for the caller to store in memory
+// Determine each resource one by one to avoid initiating authentication requests resource by resource.
 func (s *safePermissionAccess) resolveFilter(ctx context.Context,
 	filter interfaces.PermissionResourcesFilter) (map[string]map[string]opAccess, error) {
 
@@ -204,7 +204,7 @@ func (s *safePermissionAccess) resolveFilter(ctx context.Context,
 	return byType, nil
 }
 
-// allowedFrom 从已解析的每 op 授权里挑出该资源上实际持有的操作。
+// allowedFrom selects the actual operations held on the resource from each op authorization that has been parsed.
 func allowedFrom(access map[string]opAccess, ops []string, id string) []string {
 	out := make([]string, 0, len(ops))
 	for _, op := range ops {

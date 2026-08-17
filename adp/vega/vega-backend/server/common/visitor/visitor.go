@@ -22,7 +22,7 @@ func GenerateVisitor(c *gin.Context) hydra.Visitor {
 	visitor := hydra.Visitor{
 		ID:         accountInfo.ID,
 		Type:       hydra.VisitorType(accountInfo.Type),
-		TokenID:    "", // 无token
+		TokenID:    "", // No token
 		IP:         c.ClientIP(),
 		Mac:        c.GetHeader("X-Request-MAC"),
 		UserAgent:  c.GetHeader("User-Agent"),

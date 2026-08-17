@@ -28,21 +28,21 @@ func (c *MatchPhraseCond) IsSingleValue() bool        { return true }
 func (c *MatchPhraseCond) IsFixedLenArrayValue() bool { return false }
 func (c *MatchPhraseCond) RequiredValueLen() int      { return -1 }
 
-// match_phrase 条件, 判断字段是否匹配某个短语
-// 支持全部字段 *
+// The match_phrase condition determines whether a field matches a certain phrase
+// Support all fields *
 func (c *MatchPhraseCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
 	fields := make([]*interfaces.Property, 0)
 
-	// 优先从 RemainCfg 中获取 fields 数组
+	// First, obtain the fields array from the RemainCfg
 	if cfgFields, ok := cfg.RemainCfg["fields"].([]any); ok {
 		if len(cfgFields) == 1 && cfgFields[0].(string) == interfaces.AllField {
 			for _, field := range fieldsMap {
 				fields = append(fields, field)
 			}
 		} else {
-			// 字段数组里的需要是个字符串数组
+			// The field array needs to be a string array
 			for _, cfgField := range cfgFields {
 				fieldName, ok := cfgField.(string)
 				if !ok {
@@ -56,7 +56,7 @@ func (c *MatchPhraseCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg
 			}
 		}
 	} else {
-		// 兼容旧的单个 field 方式
+		// Compatible with the old single field method
 		if cfg.Name == "" {
 			return nil, fmt.Errorf("condition [match_phrase] left field is empty")
 		}

@@ -63,7 +63,7 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 	}
 }
 
-// validateSchemaProperties 校验 schema 字段名、类型与 Feature。
+// validateSchemaProperties verifies the name, type and Feature of the schema field.
 func validateSchemaProperties(ctx context.Context, props []*interfaces.Property, allowFeatureRefProperty bool) error {
 	propsMap := make(map[string]*interfaces.Property, len(props))
 	for _, prop := range props {
@@ -281,7 +281,7 @@ func validateLogicViewRequest(ctx context.Context, req *interfaces.ResourceReque
 		return err
 	}
 
-	// 校验字段
+	// Verification field
 	err = validateViewFields(ctx, outputFields)
 	if err != nil {
 		return err
@@ -291,7 +291,7 @@ func validateLogicViewRequest(ctx context.Context, req *interfaces.ResourceReque
 
 }
 
-// 校验逻辑视图定义
+// Verify the logical view definition
 func validateLogicDefinition(ctx context.Context, nodes []*interfaces.LogicDefinitionNode) (outputFields []*interfaces.ViewProperty, err error) {
 	if nodes == nil {
 		return nil, nil
@@ -303,7 +303,7 @@ func validateLogicDefinition(ctx context.Context, nodes []*interfaces.LogicDefin
 	}
 
 	for _, node := range nodes {
-		// 检测 nodeType
+		// Detect nodeType
 		if _, ok := interfaces.LogicDefinitionNodeTypeMap[node.Type]; !ok {
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_InvalidParameter_LogicDefinition).
 				WithErrorDetails("The logic definition node type is invalid")
@@ -317,14 +317,14 @@ func validateLogicDefinition(ctx context.Context, nodes []*interfaces.LogicDefin
 	return outputFields, nil
 }
 
-// 校验字段和字段特征
+// Verify the fields and field characteristics
 func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProperty) error {
 	fieldsMap := make(map[string]*interfaces.ViewProperty)
 	for _, field := range viewFields {
 		fieldsMap[field.Name] = field
 	}
 
-	// 校验字段名称、显示名是否重复
+	// Check whether the field names and display names are duplicated
 	nameMap := make(map[string]struct{})
 	displayNameMap := make(map[string]struct{})
 	for _, field := range viewFields {
@@ -333,33 +333,33 @@ func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProper
 				WithErrorDetails("The field name is null")
 		}
 
-		// 校验字段名称长度, 长度限制255
+		// Verify the length of the field name. The length limit is 255
 		if utf8.RuneCountInString(field.Name) > interfaces.MaxLength_PropertyName {
 			errDetails := fmt.Sprintf("The length of the field name %s exceeds %d", field.Name, interfaces.MaxLength_PropertyName)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldName).
 				WithErrorDetails(errDetails)
 		}
 
-		// 如果display_name为 "", 将display_name的值等于field的值
+		// If display_name is "", set the value of display_name equal to the value of field
 		if field.DisplayName == "" {
 			field.DisplayName = field.Name
 		}
 
-		// 校验字段显示名长度, 长度限制255
+		// The verification field displays the name length, with a length limit of 255
 		if utf8.RuneCountInString(field.DisplayName) > interfaces.MaxLength_PropertyDisplayName {
 			errDetails := fmt.Sprintf("The length of the field display name %s exceeds %d", field.DisplayName, interfaces.MaxLength_PropertyDisplayName)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldDisplayName).
 				WithErrorDetails(errDetails)
 		}
 
-		// 校验字段备注长度，长度限制1000
+		// Note the length of the verification field. The length limit is 1000
 		if utf8.RuneCountInString(field.Description) > interfaces.MaxLength_PropertyDescription {
 			errDetails := fmt.Sprintf("The length of the field comment %s exceeds %d", field.Description, interfaces.MaxLength_PropertyDescription)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldComment).
 				WithErrorDetails(errDetails)
 		}
 
-		// 校验字段名称是否重复
+		// Check whether the field names are duplicated
 		if _, ok := nameMap[field.Name]; !ok {
 			nameMap[field.Name] = struct{}{}
 		} else {
@@ -378,7 +378,7 @@ func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProper
 				WithErrorDetails(errDetails)
 		}
 
-		// 校验特征
+		// Verification feature
 		err := validateFeatures(ctx, fieldsMap, field.Features)
 		if err != nil {
 			return err
@@ -394,7 +394,7 @@ func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProper
 	return nil
 }
 
-// 校验特征
+// Verification feature
 func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.ViewProperty, features []interfaces.PropertyFeature) error {
 	enabledMap := make(map[string]bool)
 	featureNameMap := make(map[string]struct{})
@@ -404,14 +404,14 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 				WithErrorDetails("The field feature name is null")
 		}
 
-		// 校验特征名称长度, 长度限制255
+		// Verify the length of the feature name, with a length limit of 255
 		if utf8.RuneCountInString(f.FeatureName) > interfaces.MaxLength_PropertyFeatureName {
 			errDetails := fmt.Sprintf("The length of the field feature name %s exceeds %d", f.FeatureName, interfaces.MaxLength_PropertyFeatureName)
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldFeatureName).
 				WithErrorDetails(errDetails)
 		}
 
-		// 校验特征名称是否重复
+		// Verify whether the feature names are duplicated
 		if _, ok := featureNameMap[f.FeatureName]; !ok {
 			featureNameMap[f.FeatureName] = struct{}{}
 		} else {
@@ -427,7 +427,7 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 				WithErrorDetails("The field feature type is invalid")
 		}
 
-		// 校验特征备注，长度限制1000
+		// Verification feature remarks, length limit 1000
 		if utf8.RuneCountInString(f.Description) > interfaces.MaxLength_PropertyFeatureDescription {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_LogicView_LengthExceeded_FieldFeatureComment).
 				WithErrorDetails(fmt.Sprintf("The length of the field feature comment %s exceeds %d", f.Description, interfaces.MaxLength_PropertyFeatureDescription))
@@ -438,22 +438,22 @@ func validateFeatures(ctx context.Context, fieldsMap map[string]*interfaces.View
 				WithErrorDetails("The field feature ref field is null")
 		}
 
-		// 校验非原生特征的引用字段
+		// Verify the reference fields of non-native features
 		if !f.IsNative {
-			// 引用字段是否在字段列表里
+			// Whether the referenced field is in the field list
 			if _, ok := fieldsMap[f.RefProperty]; !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, rest.PublicError_BadRequest).
 					WithErrorDetails(fmt.Sprintf("The field feature ref field '%s' is not in the field list", f.RefProperty))
 			}
 
-			// 引用字段的类型是否符合特征类型
+			// Whether the type of the referenced field conforms to the feature type
 			if !resourcelogic.IsFeatureSupported(fieldsMap[f.RefProperty].Type, f.FeatureType) {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, rest.PublicError_BadRequest).
 					WithErrorDetails(fmt.Sprintf("The field feature ref field '%s' type '%s' is not supported", f.RefProperty, fieldsMap[f.RefProperty].Type))
 			}
 		}
 
-		// 校验是否已启用
+		// Verify whether it has been enabled
 		if f.IsDefault {
 			if enabledMap[f.FeatureType] {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, rest.PublicError_BadRequest).

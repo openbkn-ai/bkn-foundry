@@ -122,10 +122,10 @@ func (r *restHandler) getBuildTask(c *gin.Context, visitor hydra.Visitor) {
 
 // =========================== GET /build-tasks ===========================
 
-// parseBuildTaskListParams 解析并校验 GET /build-tasks 的全部 query:
-// 分页(offset/limit)、排序(sort/direction)、过滤(status 多值 / mode)。
-// 排序与过滤均下沉服务端,排序全局先于分页(见 build_task_access.List);
-// total_count 始终为过滤后全量条数。
+// parseBuildTaskListParams parses and validates all queries of GET /build-tasks:
+// Pagination (offset/limit), sorting (sort/direction), filtering (status multi-value/mode).
+// Sorting and filtering both sink to the server side, with global sorting taking precedence over paging (see build_task_access.List);
+// total_count is always the full number of items after filtering.
 func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.BuildTasksQueryParams, error) {
 	params := interfaces.BuildTasksQueryParams{}
 
@@ -140,7 +140,7 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 	}
 	params.PaginationQueryParams = pageParams
 
-	// 过滤:读取重复传递的 status 参数。
+	// Filtering: Read the repeatedly passed status parameter.
 	if raw := c.QueryArray("status"); len(raw) > 0 {
 		statuses, err := parseTaskStatuses(ctx, raw, isValidBuildTaskStatus, verrors.VegaBackend_BuildTask_InvalidStatus)
 		if err != nil {
@@ -149,7 +149,7 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 		params.Statuses = statuses
 	}
 
-	// 过滤:mode
+	// Filter :mode
 	mode := c.Query("mode")
 	if mode != "" && !isValidBuildTaskMode(mode) {
 		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Mode).

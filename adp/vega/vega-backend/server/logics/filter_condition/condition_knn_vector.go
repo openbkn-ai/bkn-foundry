@@ -29,7 +29,7 @@ func (c *KnnVectorCond) IsSingleValue() bool        { return false }
 func (c *KnnVectorCond) IsFixedLenArrayValue() bool { return false }
 func (c *KnnVectorCond) RequiredValueLen() int      { return -1 }
 
-// knn_vector 条件, 判断字段是否匹配某个向量
+// The knn_vector condition determines whether a field matches a certain vector
 func (c *KnnVectorCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

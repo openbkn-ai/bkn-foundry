@@ -38,7 +38,7 @@ func (c *MariaDBConnector) BuildCountSQL(sql string) string {
 	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", sql)
 }
 
-// ExecuteRawSQL 执行原始SQL查询
+// ExecuteRawSQL executes the original SQL query
 func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("connect failed: %w", err)
@@ -65,7 +65,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 		Entries: make([]map[string]any, 0),
 	}
 
-	// 填充列信息
+	// Fill column information
 	for i, col := range columns {
 		response.Columns[i] = interfaces.ColumnInfo{
 			Name: col,
@@ -73,7 +73,7 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 		}
 	}
 
-	// 读取结果行
+	// Read the result row
 	for rows.Next() {
 		values := make([]any, len(columns))
 		valuePtrs := make([]any, len(columns))
@@ -126,13 +126,13 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		Entries: make([]map[string]any, 0),
 	}
 
-	// 构建SELECT子句
+	// Construct the SELECT clause
 	selectFields := []string{}
 
-	// 添加GROUP BY字段（聚合查询时）
+	// Add the GROUP BY field (when aggregating queries)
 	for _, groupByItem := range params.GroupBy {
 		if field, ok := fieldMap[groupByItem.Property]; ok {
-			// 检查是否需要使用 calendar_interval
+			// Check whether calendar_interval is needed
 			if groupByItem.CalendarInterval != "" {
 				dateFmt := c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
 				selectFields = append(selectFields, dateFmt+" AS "+groupByItem.Property)
@@ -140,7 +140,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 				selectFields = append(selectFields, field.OriginalName)
 			}
 		} else {
-			// 检查是否需要使用 calendar_interval
+			// Check whether calendar_interval is needed
 			if groupByItem.CalendarInterval != "" {
 				dateFmt := c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
 				selectFields = append(selectFields, dateFmt+" AS "+groupByItem.Property)
@@ -150,7 +150,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		}
 	}
 
-	// 添加聚合字段（聚合查询时）
+	// Add aggregated fields (when performing aggregated queries)
 	var aggAlias string
 	if params.Aggregation != nil {
 		aggField := params.Aggregation.Property
@@ -158,7 +158,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 			aggField = field.OriginalName
 		}
 
-		// 确定聚合函数
+		// Determine the aggregation function
 		aggFunc := params.Aggregation.Aggr
 		switch aggFunc {
 		case "count_distinct":
@@ -167,7 +167,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
 		}
 
-		// 确定别名
+		// Determine the alias
 		if params.Aggregation.Alias != "" {
 			aggAlias = params.Aggregation.Alias
 		} else {
@@ -176,34 +176,34 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 
 		selectFields = append(selectFields, aggFunc+" AS "+aggAlias)
 	} else if params.Having != nil && params.Having.Field == "count(*)" {
-		// 当HAVING使用count(*)时，自动添加COUNT(*)聚合
+		// When HAVING uses count(*), COUNT(*) aggregates are automatically added
 		aggAlias = "__value"
 		selectFields = append(selectFields, "COUNT(*) AS "+aggAlias)
 	}
 
-	// 如果不是聚合查询且没有指定GROUP BY，则添加所有字段
+	// If it is not an aggregated query and GROUP BY is not specified, add all fields
 	if len(params.GroupBy) == 0 && params.Aggregation == nil {
 		if len(params.OutputFields) > 0 {
 			for _, outName := range params.OutputFields {
 				if field, ok := fieldMap[outName]; ok {
 					selectFields = append(selectFields, field.OriginalName)
 				} else {
-					// 对于未在Schema中定义的字段，直接使用字段名
+					// For fields not defined in the Schema, use the field names directly
 					selectFields = append(selectFields, outName)
 				}
 			}
 		} else if len(selectFields) == 0 {
-			// 没有指定输出字段，则查询所有字段
+			// If no output field is specified, all fields will be queried
 			for _, prop := range resource.SchemaDefinition {
 				selectFields = append(selectFields, prop.OriginalName)
 			}
 		}
 	} else if len(params.OutputFields) > 0 {
-		// 对于聚合查询或GROUP BY查询，确保output_fields中的字段在selectFields中
+		// For aggregated queries or GROUP BY queries, ensure that the fields in output_fields are in selectFields
 		for _, outName := range params.OutputFields {
 			found := false
 			for _, field := range selectFields {
-				// 检查字段是否已存在（包括别名）
+				// Check whether the field already exists (including aliases)
 				if field == outName || strings.HasSuffix(field, " AS "+outName) {
 					found = true
 					break
@@ -213,27 +213,27 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 				if field, ok := fieldMap[outName]; ok {
 					selectFields = append(selectFields, field.OriginalName)
 				} else {
-					// 对于未在Schema中定义的字段，直接使用字段名
+					// For fields not defined in the Schema, use the field names directly
 					selectFields = append(selectFields, outName)
 				}
 			}
 		}
 	}
 
-	// 构建查询
+	// Build query
 	builder := sq.Select(selectFields...).From(resource.SourceIdentifier)
 
-	// 添加WHERE条件
+	// Add the WHERE condition
 	if condition != nil {
 		builder = builder.Where(condition)
 	}
 
-	// 添加GROUP BY（聚合查询时）
+	// Add GROUP BY (when aggregating queries)
 	if len(params.GroupBy) > 0 {
 		groupByFields := []string{}
 		for _, groupByItem := range params.GroupBy {
 			if field, ok := fieldMap[groupByItem.Property]; ok {
-				// 检查是否需要使用 calendar_interval
+				// Check whether calendar_interval is needed
 				if groupByItem.CalendarInterval != "" {
 					dateFmt := c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
 					groupByFields = append(groupByFields, dateFmt)
@@ -241,7 +241,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 					groupByFields = append(groupByFields, field.OriginalName)
 				}
 			} else {
-				// 检查是否需要使用 calendar_interval
+				// Check whether calendar_interval is needed
 				if groupByItem.CalendarInterval != "" {
 					dateFmt := c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
 					groupByFields = append(groupByFields, dateFmt)
@@ -253,7 +253,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		builder = builder.GroupBy(groupByFields...)
 	}
 
-	// 添加HAVING条件（聚合查询时）
+	// Add a HAVING condition (when aggregating queries)
 	if params.Having != nil && (params.Aggregation != nil || (params.Having.Field == "count(*)")) {
 		havingCond, err := c.buildHavingCondition(params.Having, aggAlias)
 		if err != nil {
@@ -264,7 +264,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		}
 	}
 
-	// 添加ORDER BY
+	// Add ORDER BY
 	if len(params.Sort) > 0 {
 		for _, sortItem := range params.Sort {
 			dir := "ASC"
@@ -272,11 +272,11 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 				dir = "DESC"
 			}
 
-			// 检查是否是 GROUP BY 字段且使用了 calendar_interval
+			// Check if it is the GROUP BY field and if calendar_interval is used
 			sortField := sortItem.Field
 			for _, groupByItem := range params.GroupBy {
 				if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
-					// 使用完整的 date_format 表达式
+					// Use the complete date_format expression
 					if field, ok := fieldMap[groupByItem.Property]; ok {
 						sortField = c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
 					} else {
@@ -290,13 +290,13 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		}
 	}
 
-	// 添加LIMIT和OFFSET
+	// Add LIMIT and OFFSET
 	if params.CursorEncoded == "" {
 		builder = builder.Offset(uint64(params.Offset))
 	}
 	builder = builder.Limit(uint64(params.Limit))
 
-	// 构建SQL并执行
+	// Build SQL and execute it
 	query, args, err := builder.ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
@@ -342,9 +342,9 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		return nil, err
 	}
 
-	// 处理总数（仅明细查询）：独立 COUNT 查询，与 postgresql 连接器对齐。
-	// 此前直接取 len(result.Entries)——即本页行数，超过一页的表 total 永远等于
-	// LIMIT（构建任务进度条显示 "20802 / 1000" 即此 bug）
+	// Total processing (detail query only) : Independent COUNT query, aligned with the postgresql connector.
+	// Previously, directly take len(result.Entries) - that is, the number of rows on this page. For tables with more than one page, total is always equal to
+	// LIMIT (The progress bar of the build task shows "20802/1000", which indicates this bug)
 	if params.NeedTotal && !isAggregate {
 		countBuilder := sq.Select("COUNT(1)").From(resource.SourceIdentifier)
 		if condition != nil {
@@ -366,14 +366,14 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	return result, nil
 }
 
-// buildHavingCondition 构建HAVING条件
+// buildHavingCondition builds the HAVING condition
 func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause, aggAlias string) (string, error) {
-	// 支持 __value 和 count(*) 字段
+	// Support the __value and count(*) fields
 	if having.Field != "__value" && having.Field != "count(*)" {
 		return "", fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
 
-	// 确定HAVING子句中使用的字段表达式
+	// Determine the field expression used in the HAVING clause
 	var fieldExpr string
 	if having.Field == "count(*)" {
 		fieldExpr = "COUNT(*)"
@@ -413,7 +413,7 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 		return "", fmt.Errorf("unsupported HAVING operation: %s", having.Operation)
 	}
 
-	// 格式化HAVING条件的值
+	// Format the value of the HAVING condition
 	var valueStr string
 	switch v := having.Value.(type) {
 	case string:
@@ -426,7 +426,7 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 	return fmt.Sprintf("%s %s %s", fieldExpr, op, valueStr), nil
 }
 
-// formatInValues 格式化IN操作的值列表
+// Format IN Values: Format the list of values for the in operation
 func formatInValues(value any) string {
 	switch v := value.(type) {
 	case []any:
@@ -446,9 +446,9 @@ func formatInValues(value any) string {
 	}
 }
 
-// buildDateFormat 根据 calendar_interval 构建 date_format 表达式
-// 支持 OpenSearch 的 calendar_interval 枚举值：minute, hour, day, week, month, quarter, year
-// 注意：calendar_interval 的有效性已经在 validate_resource_data.go 中的 validateCalendarInterval 方法中验证过
+// buildDateFormat builds the date_format expression based on calendar_interval
+// Support the calendar_interval enumeration values of OpenSearch: minute, hour, day, week, month, quarter, year
+// Note: The validity of calendar_interval has been verified in the validateCalendarInterval method in validate_resource_data.go
 func (c *MariaDBConnector) buildDateFormat(alias, dateField, calendarInterval string) string {
 	var dateFmt string
 	switch calendarInterval {

@@ -28,7 +28,7 @@ func (c *NotEmptyCond) IsSingleValue() bool        { return false }
 func (c *NotEmptyCond) IsFixedLenArrayValue() bool { return false }
 func (c *NotEmptyCond) RequiredValueLen() int      { return -1 }
 
-// not_empty 条件，判断字段是否不为空字符串
+// The not_empty condition determines whether a field is not an empty string
 func (c *NotEmptyCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg, fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 	if cfg.Name == "" {
 		return nil, fmt.Errorf("condition [not_empty] left field is empty")
@@ -38,7 +38,7 @@ func (c *NotEmptyCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg, f
 		return nil, fmt.Errorf("condition [not_empty] left field '%s' not found", cfg.Name)
 	}
 
-	// 只允许字符串类型
+	// Only string types are allowed
 	if !interfaces.DataType_IsString(field.Type) {
 		return nil, fmt.Errorf("condition [not_empty] left field %s is not of string type, but %s", cfg.Name, field.Type)
 	}

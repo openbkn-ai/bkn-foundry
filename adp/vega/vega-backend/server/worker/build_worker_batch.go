@@ -60,11 +60,11 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 	}
 	taskID := buildTaskInfo.ID
 	logger.Infof("Starting batch build task: %s", taskID)
-	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
+	// Asynchronous tasks have no original request context and perform downstream permission checks as the task creator
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
-	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
-	// stopping 出队说明原 worker 已不在，兜底落停。
+	// Tasks that are stopped during the queue are skipped directly to avoid reviving and overwriting the status after leaving the queue.
+	// stopping the queue indicates that the original worker is no longer available, and it will be stopped at the end.
 	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
 		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping ||
 		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
@@ -94,8 +94,8 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 		return nil
 	}
 
-	// executeBuild 创建索引和连接数据源前先确认 Catalog；若排队期间 Catalog
-	// 已被删除，则直接取消任务。
+	// Before executeBuild creates the index and connects to the data source, confirm the Catalog first. If you Catalog during the queue
+	// If it has been deleted, the task will be cancelled directly.
 	catalog, err := bbw.cs.InternalGetByID(ctx, resource.CatalogID, true)
 	if err != nil {
 		if isNotFoundError(err) {
@@ -140,9 +140,9 @@ func batchBuildExecuteType(buildTask *interfaces.BuildTask) string {
 	return interfaces.BuildTaskExecuteTypeIncremental
 }
 
-// advanceCursor 把批读游标推进到本批最后一行的键值。
-// 注意必须按下标写回切片：此前用 `for _, kv := range` 改副本，游标永远停在
-// 第一批末尾，超过一个批次的表会无限重读同一区间（synced_count 膨胀、压垮索引）。
+// advanceCursor advances the batch cursor to the key value of the last line of this batch.
+// Note that the cursor must be pressed to write back to the slice: Previously, when modifying the copy with 'for _, kv := range', the cursor will always remain at
+// At the end of the first batch, tables that exceed one batch will infinitely re-read the same interval (synced_count expands and crushes the index).
 func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[string]any) []interfaces.KeyValue {
 	if len(cursor) == 0 {
 		for _, key := range keys {
@@ -168,8 +168,8 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	lastSyncedMark := buildTaskInfo.SyncedMark
 	if executeType == interfaces.BuildTaskExecuteTypeFull {
 		lastSyncedMark = ""
-		// 全量重跑从头读、向量也整体重做，进度计数器一并清零，
-		// 否则跨运行累计出 synced > total 的显示
+		// All runs are redone from scratch, the vectors are also redone as a whole, and the progress counter is reset to zero at the same time.
+		// Otherwise, the display of synced > total will be accumulated across runs
 		buildTaskInfo.SyncedCount = 0
 		buildTaskInfo.VectorizedCount = 0
 		zero := int64(0)

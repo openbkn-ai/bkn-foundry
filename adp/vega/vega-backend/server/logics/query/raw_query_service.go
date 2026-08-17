@@ -25,6 +25,7 @@ import (
 	"vega-backend/common"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/locale"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
 	opensearchconnector "vega-backend/logics/connector/local/index/opensearch"
@@ -46,7 +47,7 @@ type rawQueryService struct {
 
 const rawQueryTotalCountColumn = "_raw_query_total_count"
 
-// NewRawQueryService 创建SQL查询服务（单例模式）
+// NewRawQueryService creates SQL query services (singleton pattern)
 func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryService {
 	rawQueryCursorSessions.configure(appSetting.QuerySetting.CursorMaxSessions)
 	rqServiceOnce.Do(func() {
@@ -59,12 +60,12 @@ func NewRawQueryService(appSetting *common.AppSetting) interfaces.RawQueryServic
 	return rqService
 }
 
-// Execute 执行SQL查询
+// Execute executes SQL queries
 func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQueryRequest) (resp *interfaces.RawQueryResponse, err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SQLQueryExecute")
 	defer span.End()
 
-	// 收集资源状态告警（deprecated 命中），在每个成功返回路径上附加到响应，
+	// Collect resource status alerts (deprecated hits) and attach them to the response on each successful return path.
 	// 同时落到当前 span 关联的日志里，便于事后审计。
 	var warnings []string
 	defer func() {
@@ -82,10 +83,10 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 		}
 	}()
 
-	// 记录请求参数
+	// Record the request parameters
 	logger.Infof("RawQueryRequest - query_format: %s, paging_mode: %s, %s", req.QueryFormat, req.Paging.Mode, SafeQuerySummary(req.Query))
 
-	// 1. 校验请求
+	// 1. Verify the request
 	if err := rqs.validateRequest(ctx, req); err != nil {
 		otellog.LogError(ctx, "Validate request failed", err)
 		return nil, err
@@ -755,25 +756,24 @@ func rawQueryTotalCount(result *interfaces.RawQueryResponse) (int64, error) {
 	}
 }
 
-// extractResourceIDs 从 FROM/JOIN 表引用中提取所有 {{.resource_id}} 占位符。
+// extractResourceIDs extracts all {{.resource_id}} placeholders from FROM and JOIN table references.
 func (rqs *rawQueryService) extractResourceIDs(ctx context.Context, query any, inputDialect string) ([]string, error) {
 	if queryStr, ok := query.(string); ok {
 		return rawQueryPolicy.ExtractTableResourceIDs(ctx, queryStr, inputDialect)
 	}
 
-	// 如果query是map类型（OpenSearch DSL），返回空数组
-	// OpenSearch查询通过resource_id参数指定索引
+	// OpenSearch DSL queries use a map and identify their index through resource_id.
 	return []string{}, nil
 }
 
-// checkSameDataSource 检查所有resource_id是否来自同一个数据源，
-// 同时校验每个资源的状态。返回 catalog、deprecated 资源的告警列表与错误。
+// checkSameDataSource verifies that all resource IDs belong to one catalog and are queryable.
+// It returns the catalog, warnings for deprecated resources, and any validation error.
 func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs []string) (*interfaces.Catalog, []string, error) {
 	if len(resourceIDs) == 0 {
 		return nil, nil, fmt.Errorf("no resource ids provided")
 	}
 
-	// 获取所有资源
+	// Get all resources
 	resources, err := rqs.rs.GetByIDs(ctx, resourceIDs)
 	if err != nil {
 		return nil, nil, err.(*rest.HTTPError)
@@ -791,23 +791,23 @@ func (rqs *rawQueryService) checkSameDataSource(ctx context.Context, resourceIDs
 		}
 	}
 
-	// 校验每个 resource 的状态：disabled/stale 拒绝，deprecated 仅告警
+	// Disabled or stale resources are rejected; deprecated resources produce warnings.
 	warnings, err := resourcelogic.EnsureResourcesQueryable(ctx, resources)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// 检查是否来自同一个catalog
+	// Verify that every resource belongs to the same catalog.
 	catalogIDs := make(map[string]bool)
 	for _, r := range resources {
 		catalogIDs[r.CatalogID] = true
 	}
 	if len(catalogIDs) > 1 {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusNotImplemented, verrors.VegaBackend_Query_MultiCatalogNotSupported).
-			WithErrorDetails("暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。")
+			WithErrorDetails(locale.ValidationDetail(ctx, "MultiCatalogJoinNotSupported", nil))
 	}
 
-	// 获取catalog
+	// Load the catalog.
 	var catalogID string
 	for id := range catalogIDs {
 		catalogID = id
@@ -837,7 +837,7 @@ func ensureCatalogEnabled(ctx context.Context, catalog *interfaces.Catalog) erro
 	return nil
 }
 
-// replaceResourceIDWithSchemaTable 将resource_id替换为schema.table格式
+// replaceResourceIDWithSchemaTable replaces resource placeholders with quoted source identifiers.
 func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context,
 	sql any, resourceIDs []string, catalog *interfaces.Catalog, inputDialect string) (string, error) {
 
@@ -845,7 +845,7 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 	logger.Infof("Before replace - %s, resource_ids: %v", SafeQuerySummary(replacedSQL), resourceIDs)
 
 	for _, resourceID := range resourceIDs {
-		// 获取资源信息
+		// Load resource metadata.
 		resource, err := rqs.rs.GetByID(ctx, resourceID)
 		if err != nil {
 			return "", err.(*rest.HTTPError)
@@ -855,10 +855,10 @@ func (rqs *rawQueryService) replaceResourceIDWithSchemaTable(ctx context.Context
 				WithErrorDetails(fmt.Sprintf("resource %s not found", resourceID))
 		}
 
-		// 构建schema.table格式, 使用resource.SourceIdentifier
+		// Use the resource source identifier as the table reference.
 		// schemaTable := fmt.Sprintf(`%s.%s`, catalog.Name, resource.SourceIdentifier)
 
-		// 替换{{.resource_id}}和{{resource_id}}为schema.table
+		// Replace both supported placeholder forms with the quoted identifier.
 		placeholder1 := fmt.Sprintf("{{.%s}}", resourceID)
 		placeholder2 := fmt.Sprintf("{{%s}}", resourceID)
 		quotedIdentifier := quotedResourceSourceIdentifier(resource, inputDialect)
@@ -970,10 +970,10 @@ type rawSQLBuildOptions struct {
 	count  bool
 }
 
-// executeSQL 执行 SQL 查询并记录分页模式。
+// executeSQL executes SQL queries and records pagination patterns.
 func (rqs *rawQueryService) executeSQL(ctx context.Context, catalog *interfaces.Catalog, sql string,
 	pagingMode interfaces.PagingMode, buildOptions *rawSQLBuildOptions) (*interfaces.RawQueryResponse, error) {
-	// 创建connector
+	// Create a connector
 	connector, err := rqs.cf.CreateConnectorInstance(ctx, catalog.ConnectorType, catalog.ConnectorCfg)
 	if err != nil {
 		otellog.LogError(ctx, "Create connector failed", err)

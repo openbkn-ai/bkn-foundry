@@ -29,7 +29,7 @@ func (c *BeforeCond) IsSingleValue() bool        { return false }
 func (c *BeforeCond) IsFixedLenArrayValue() bool { return true }
 func (c *BeforeCond) RequiredValueLen() int      { return 2 }
 
-// before 条件，判断字段是否在某个时间之前
+// The "before" condition determines whether a field is before a certain time
 func (c *BeforeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

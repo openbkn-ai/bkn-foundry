@@ -17,7 +17,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-// catalogExtCol 列表/计数在带 extensions JOIN 时为列名加 t_catalog. 前缀，避免歧义
+// catalogExtCol list/count add t_catalog to the column name with extensions JOIN. Prefix, avoid ambiguity
 func catalogExtCol(params interfaces.CatalogsQueryParams, col string) string {
 	if len(params.ExtensionKeys) > 0 {
 		return "t_catalog." + col

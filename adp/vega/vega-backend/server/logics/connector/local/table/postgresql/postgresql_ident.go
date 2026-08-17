@@ -12,7 +12,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-// pgQuoteIdent 双引号转义 PostgreSQL 标识符。
+// pgQuoteIdent double quotes escape PostgreSQL identifiers.
 func pgQuoteIdent(s string) string {
 	if s == "" {
 		return `""`
@@ -20,7 +20,7 @@ func pgQuoteIdent(s string) string {
 	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
-// qualTable 返回 schema.table 形式的双引号限定表名。
+// qualTable returns the table name in the form of schema.table with double quotes.
 func qualTable(res *interfaces.Resource) string {
 	ident := res.SourceIdentifier
 	parts := strings.SplitN(ident, ".", 2)
@@ -30,7 +30,7 @@ func qualTable(res *interfaces.Resource) string {
 	return strings.Join(parts, ".")
 }
 
-// quoteColumnName 列名/别名限定；支持 "alias.col" -> "alias"."col"。
+// quoteColumnName column name/alias qualification; Support "alias.col" -> "alias.col".
 func quoteColumnName(name string) string {
 	if name == "" {
 		return `""`

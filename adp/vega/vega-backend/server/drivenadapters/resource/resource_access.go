@@ -62,10 +62,10 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	// tags 转成 string 的格式
+	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(resource.Tags)
 
-	// 序列化 SourceMetadata, SchemaDefinition, LogicDefinition
+	// Serialize Source Data, Scheme Definition, and LogicDefinition
 	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
 	if resource.SourceMetadata == nil {
 		sourceMetadataBytes = []byte("{}")
@@ -259,7 +259,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// The format of converting tags string to an array
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
 		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
@@ -369,7 +369,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 			return []*interfaces.Resource{}, err
 		}
 
-		// tags string 转成数组的格式
+		// The format of converting tags string to an array
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
 			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
@@ -408,8 +408,8 @@ func (ra *resourceAccess) AttachListExtensions(ctx context.Context, params inter
 
 // GetByIDsBasic retrieves Resources by IDs without fully parsing sourceMetadata, schemaDefinition and logicDefinition.
 // This method is optimized for memory usage when these large fields are not needed.
-// 仅从原始 JSON 中惰性提取规模信息（column_count/row_count），不反序列化完整结构；
-// 计数在 Go 侧完成以兼容多方言数据库（MariaDB/DM8/KDB9 等），不依赖 MySQL JSON 函数。
+// Only lazy extract the scale information (column_count/row_count) from the original JSON, without deserializing the complete structure;
+// Counting is completed on the Go side to be compatible with multi-dialect databases (such as MariaDB/DM8/KDB9, etc.) and does not rely on MySQL JSON functions.
 func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resources by IDs (basic)")
 	defer span.End()
@@ -489,10 +489,10 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 			return []*interfaces.Resource{}, err
 		}
 
-		// tags string 转成数组的格式
+		// The format of converting tags string to an array
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		// 不反序列化sourceMetadata、schemaDefinition和logicDefinition的完整结构，以减少内存占用
-		// 仅惰性提取规模信息：列数（schema 顶层元素数）与源端行数估算（properties.row_count）
+		// Do not deserialize the complete structure of sourceMetadata, schemaDefinition, and logicDefinition to reduce memory usage
+		// Only lazy extraction of scale information: column count (number of top-level schema elements) and source row count estimation (properties.row_count)
 		if schemaDefinition.Valid && schemaDefinition.String != "" {
 			if node, err := sonic.GetFromString(schemaDefinition.String); err == nil && node.Load() == nil {
 				if n, err := node.Len(); err == nil {
@@ -595,7 +595,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// The format of converting tags string to an array
 	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 	if sourceMetadata.Valid && sourceMetadata.String != "" {
 		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
@@ -637,7 +637,7 @@ func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.Resourc
 
 	builder = applyResourceExtensionJoins(builder, params)
 
-	// 排序
+	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(resourceListOrderExpr(params))
 	} else {
@@ -745,7 +745,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	}
 
 	// Pagination is applied in service after permission filtering.
-	// 排序
+	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(resourceListOrderExpr(params))
 	} else {
@@ -802,7 +802,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 			return nil, 0, err
 		}
 
-		// tags string 转成数组的格式
+		// The format of converting tags string to an array
 		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
 		if sourceMetadata.Valid && sourceMetadata.String != "" {
 			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
@@ -838,10 +838,10 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *inte
 
 	span.SetAttributes(attr.Key("resource_id").String(resource.ID))
 
-	// tags 转成 string 的格式
+	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(resource.Tags)
 
-	// 序列化 SourceMetadata, SchemaDefinition, logicDefinition
+	// Serialize Source Data, Scheme Definition, and logicDefinition
 	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
 	if resource.SourceMetadata == nil {
 		sourceMetadataBytes = []byte("{}")
@@ -1185,7 +1185,7 @@ func (ra *resourceAccess) ListAuthResources(ctx context.Context, params interfac
 		builder = builder.Where(sq.Like{"f_name": keyword})
 	}
 
-	// 排序
+	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
 	} else {

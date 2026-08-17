@@ -16,8 +16,8 @@ const (
 	DiscoverTaskStatusCancelled string = "cancelled"
 
 	// DiscoverTask trigger type constants.
-	DiscoverTaskTriggerManual    string = "manual"    // 手动/立即执行
-	DiscoverTaskTriggerScheduled string = "scheduled" // 定时驱动
+	DiscoverTaskTriggerManual    string = "manual"    // Manual/immediate execution
+	DiscoverTaskTriggerScheduled string = "scheduled" // Timed drive
 
 	DiscoverTaskSortCreateTime       string = "create_time"
 	DiscoverTaskSortStartTime        string = "start_time"
@@ -58,9 +58,9 @@ type DiscoverTask struct {
 	Status           string          `json:"status"`   // pending/running/completed/failed/cancelled
 	Progress         int             `json:"progress"` // 0-100
 	Message          string          `json:"message"`
-	StartTime        int64           `json:"start_time,omitempty"`         // 开始执行时间
-	FinishTime       int64           `json:"finish_time,omitempty"`        // 完成时间
-	LastProgressTime int64           `json:"last_progress_time,omitempty"` // 最近一次进度更新时间
+	StartTime        int64           `json:"start_time,omitempty"`         // Start execution time
+	FinishTime       int64           `json:"finish_time,omitempty"`        // Completion time
+	LastProgressTime int64           `json:"last_progress_time,omitempty"` // The latest progress update time
 	Result           *DiscoverResult `json:"result,omitempty"`
 
 	Creator    AccountInfo `json:"creator"`

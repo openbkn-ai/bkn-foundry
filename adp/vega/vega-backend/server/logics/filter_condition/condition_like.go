@@ -29,7 +29,7 @@ func (c *LikeCond) IsSingleValue() bool        { return true }
 func (c *LikeCond) IsFixedLenArrayValue() bool { return false }
 func (c *LikeCond) RequiredValueLen() int      { return -1 }
 
-// like 条件, 判断字段是否匹配某个字符串模式
+// The like condition determines whether a field matches a certain string pattern
 func (c *LikeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

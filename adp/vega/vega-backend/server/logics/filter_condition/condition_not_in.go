@@ -29,7 +29,7 @@ func (c *NotInCond) IsSingleValue() bool        { return false }
 func (c *NotInCond) IsFixedLenArrayValue() bool { return false }
 func (c *NotInCond) RequiredValueLen() int      { return -1 }
 
-// not_in 条件, 判断字段是否不在某个值数组中
+// The not_in condition determines whether a field is not in an array of values
 func (c *NotInCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
@@ -38,7 +38,7 @@ func (c *NotInCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// 如果字段未在Schema中定义，创建一个临时的Property对象
+		// If the field is not defined in the Schema, create a temporary Property object
 		field = &interfaces.Property{
 			Name:         cfg.Name,
 			OriginalName: cfg.Name,

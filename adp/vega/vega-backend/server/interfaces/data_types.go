@@ -7,46 +7,46 @@
 package interfaces
 
 const (
-	// 整数型
+	// Integer type
 	DataType_Integer         = "integer"
 	DataType_UnsignedInteger = "unsigned integer"
 
-	// 浮点型
+	// Floating-point type
 	DataType_Float = "float"
 
-	// 任意精度数
+	// Arbitrary precision number
 	DataType_Decimal = "decimal"
 
-	// 字符串型
+	// String type
 	DataType_String = "string"
 	DataType_Text   = "text"
 
-	// 时间型
+	// Time type
 	DataType_Date      = "date"
 	DataType_Time      = "time"
 	DataType_Datetime  = "datetime"
 	DataType_Timestamp = "timestamp"
 
-	// ip类型
+	// IP address type
 	DataType_Ip = "ip"
 
-	// 布尔型
+	// Boolean type
 	DataType_Boolean = "boolean"
 
-	// 二进制数据类型
+	// Binary data type
 	DataType_Binary = "binary"
 
-	// json类型
+	// json type
 	DataType_Json = "json"
 
-	// 空间类型
+	// Spatial type
 	DataType_Point = "point"
 	DataType_Shape = "shape"
 
-	// 向量类型
+	// Vector type
 	DataType_Vector = "vector"
 
-	// 其他类型
+	// Other types
 	DataType_Other = "other"
 )
 
@@ -95,7 +95,7 @@ func DataType_IsDate(t string) bool {
 	return ok
 }
 
-// DataType_IsBuildKey 判断字段类型是否可作为稳定的构建游标。
+// The DataType_IsBuildKey determines whether the field type can be used as a stable build cursor.
 func DataType_IsBuildKey(t string) bool {
 	_, ok := BUILD_KEY_TYPES[t]
 	return ok

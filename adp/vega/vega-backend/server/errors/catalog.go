@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors Catalog 模块错误码
+// Package errors Catalog module error code
 package errors
 
-// Catalog 错误码
+// Catalog error code
 const (
 	// 400 Bad Request
 	VegaBackend_Catalog_InvalidParameter                            = "VegaBackend.Catalog.InvalidParameter"
@@ -23,7 +23,7 @@ const (
 	// 404 Not Found
 	VegaBackend_Catalog_NotFound = "VegaBackend.Catalog.NotFound"
 
-	// 409 Conflict（命名冲突 / 状态冲突）
+	// 409 Conflict (Naming Conflict/State Conflict)
 	VegaBackend_Catalog_NameExists             = "VegaBackend.Catalog.NameExists"
 	VegaBackend_Catalog_IDExists               = "VegaBackend.Catalog.IDExists"
 	VegaBackend_Catalog_IDMismatch             = "VegaBackend.Catalog.IDMismatch"

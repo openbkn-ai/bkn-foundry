@@ -26,20 +26,20 @@ func convertRawValue(v any) any {
 	return v
 }
 
-// convertValue 将带时区的时间值转换为当前时区,并处理其他类型
+// convertValue converts time values with time zones to the current time zone and handles other types
 func convertValue(v any, colName string, origTypeMap map[string]string) any {
 	if v == nil {
 		return nil
 	}
 
-	// 从 origTypeMap 中获取原始类型信息
+	// Obtain the original type information from origTypeMap
 	origType, ok := origTypeMap[colName]
 	if !ok {
 		return convertRawValue(v)
 	}
 
-	// 只有带时区的时间类型需要转换
-	// PostgreSQL 原始类型: timestamptz, timetz, timestamp with time zone, time with time zone
+	// Only time types with time zones need to be converted
+	// PostgreSQL primitive types: timestamptz, timetz, timestamp with time zone, time with time zone
 	needsConversion := false
 	switch origType {
 	case "timestamptz", "timetz", "timestamp with time zone", "time with time zone":
@@ -50,10 +50,10 @@ func convertValue(v any, colName string, origTypeMap map[string]string) any {
 		return convertRawValue(v)
 	}
 
-	// 处理时间类型
+	// Processing time type
 	switch t := v.(type) {
 	case time.Time:
-		// 转换为本地时区
+		// Convert to the local time zone
 		return t.Local()
 	default:
 		return convertRawValue(v)
@@ -70,7 +70,7 @@ func (c *PostgresqlConnector) BuildCountSQL(sql string) string {
 	return fmt.Sprintf("SELECT COUNT(*) AS _raw_query_total_count FROM (%s) AS _raw_query_total", sql)
 }
 
-// ExecuteRawSQL 执行原始SQL查询
+// ExecuteRawSQL executes the original SQL query
 func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*interfaces.RawQueryResponse, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, fmt.Errorf("connect failed: %w", err)
@@ -97,7 +97,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 		Entries: make([]map[string]any, 0),
 	}
 
-	// 填充列信息
+	// Fill column information
 	for i, col := range columns {
 		response.Columns[i] = interfaces.ColumnInfo{
 			Name: col,
@@ -105,7 +105,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 		}
 	}
 
-	// 读取结果行
+	// Read the result row
 	for rows.Next() {
 		values := make([]any, len(columns))
 		valuePtrs := make([]any, len(columns))
@@ -133,7 +133,7 @@ func (c *PostgresqlConnector) ExecuteRawSQL(ctx context.Context, sql string) (*i
 	return response, nil
 }
 
-// ExecuteQuery 执行单表查询。
+// ExecuteQuery performs single-table queries.
 func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 
@@ -146,7 +146,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		fieldMap[prop.Name] = prop
 	}
 
-	// 提前构建 origTypeMap，只存储列名和原始类型的对应关系
+	// Build the origTypeMap in advance to only store the correspondence between column names and primitive types
 	origTypeMap := map[string]string{}
 	if resource.SourceMetadata != nil {
 		if columnsAny, ok := resource.SourceMetadata["columns"].([]any); ok {
@@ -177,10 +177,10 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 
 	tableRef := qualTable(resource)
 
-	// 构建SELECT子句
+	// Construct the SELECT clause
 	selectFields := []string{}
 
-	// 添加GROUP BY字段（聚合查询时）
+	// Add the GROUP BY field (when aggregating queries)
 	for _, groupByItem := range params.GroupBy {
 		if field, ok := fieldMap[groupByItem.Property]; ok {
 			selectFields = append(selectFields, field.OriginalName)
@@ -189,7 +189,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		}
 	}
 
-	// 添加聚合字段（聚合查询时）
+	// Add aggregated fields (when performing aggregated queries)
 	var aggAlias string
 	if params.Aggregation != nil {
 		aggField := params.Aggregation.Property
@@ -197,7 +197,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			aggField = field.OriginalName
 		}
 
-		// 确定聚合函数
+		// Determine the aggregation function
 		aggFunc := params.Aggregation.Aggr
 		switch aggFunc {
 		case "count_distinct":
@@ -206,7 +206,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
 		}
 
-		// 确定别名
+		// Determine the alias
 		if params.Aggregation.Alias != "" {
 			aggAlias = params.Aggregation.Alias
 		} else {
@@ -216,7 +216,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		selectFields = append(selectFields, aggFunc+" AS "+aggAlias)
 	}
 
-	// 如果不是聚合查询且没有指定GROUP BY，则添加所有字段
+	// If it is not an aggregated query and GROUP BY is not specified, add all fields
 	if len(params.GroupBy) == 0 && params.Aggregation == nil {
 		if len(params.OutputFields) > 0 {
 			for _, field := range params.OutputFields {
@@ -227,22 +227,22 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 				}
 			}
 		} else if len(selectFields) == 0 {
-			// 没有指定输出字段，则查询所有字段
+			// If no output field is specified, all fields will be queried
 			for _, prop := range resource.SchemaDefinition {
 				selectFields = append(selectFields, prop.OriginalName)
 			}
 		}
 	}
 
-	// 构建查询
+	// Build query
 	builder := pgSq.Select(selectFields...).From(tableRef)
 
-	// 添加WHERE条件
+	// Add the WHERE condition
 	if condition != nil {
 		builder = builder.Where(condition)
 	}
 
-	// 添加GROUP BY（聚合查询时）
+	// Add GROUP BY (when aggregating queries)
 	if len(params.GroupBy) > 0 {
 		groupByFields := []string{}
 		for _, groupByItem := range params.GroupBy {
@@ -255,7 +255,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		builder = builder.GroupBy(groupByFields...)
 	}
 
-	// 添加HAVING条件（聚合查询时）
+	// Add a HAVING condition (when aggregating queries)
 	if params.Having != nil && params.Aggregation != nil {
 		havingCond, havingErr := c.buildHavingCondition(params.Having, aggAlias)
 		if havingErr != nil {
@@ -266,7 +266,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		}
 	}
 
-	// 添加ORDER BY
+	// Add ORDER BY
 	if len(params.Sort) > 0 {
 		for _, sortItem := range params.Sort {
 			dir := "ASC"
@@ -277,13 +277,13 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		}
 	}
 
-	// 添加LIMIT和OFFSET
+	// Add LIMIT and OFFSET
 	if params.CursorEncoded == "" {
 		builder = builder.Offset(uint64(params.Offset))
 	}
 	builder = builder.Limit(uint64(params.Limit))
 
-	// 构建SQL并执行
+	// Build SQL and execute it
 	query, args, err := builder.ToSql()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build query: %w", err)
@@ -329,7 +329,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 		return nil, err
 	}
 
-	// 处理总数（仅明细查询）
+	// Total number of processed items (for detailed inquiries only)
 	if params.NeedTotal && !isAggregate {
 		countBuilder := pgSq.Select("COUNT(1)").From(tableRef)
 		if condition != nil {
@@ -351,7 +351,7 @@ func (c *PostgresqlConnector) ExecuteQuery(ctx context.Context, resource *interf
 	return result, nil
 }
 
-// buildHavingCondition 构建HAVING条件
+// buildHavingCondition builds the HAVING condition
 func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClause, aggAlias string) (string, error) {
 	if having.Field != "__value" {
 		return "", fmt.Errorf("HAVING field must be '__value'")
@@ -392,7 +392,7 @@ func (c *PostgresqlConnector) buildHavingCondition(having *interfaces.HavingClau
 	return fmt.Sprintf("%s %s ?", aggAlias, op), nil
 }
 
-// formatInValues 格式化IN操作的值列表
+// Format IN Values: Format the list of values for the in operation
 func formatInValues(value any) string {
 	switch v := value.(type) {
 	case []any:

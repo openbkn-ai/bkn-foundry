@@ -26,12 +26,12 @@ const (
 	idleConnTimeout       = 5 * time.Minute
 )
 
-// Client HTTP 客户端封装，用于与远程 connector 服务通信
+// The Client HTTP client encapsulation is used for communicating with the remote connector service
 type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient 创建新的 HTTP 客户端
+// NewClient creates a new HTTP client
 func NewClient() *Client {
 	transport := &http.Transport{
 		MaxIdleConns:        maxIdleConns,
@@ -47,7 +47,7 @@ func NewClient() *Client {
 	}
 }
 
-// Request 发送 HTTP 请求
+// Request: Send an HTTP request
 func (c *Client) Request(ctx context.Context, method, url string, body any) ([]byte, error) {
 	var reqBody io.Reader
 	if body != nil {
@@ -87,26 +87,26 @@ func (c *Client) Request(ctx context.Context, method, url string, body any) ([]b
 	return respBody, nil
 }
 
-// Get 发送 GET 请求
+// Get sends a GET request
 func (c *Client) Get(ctx context.Context, url string) ([]byte, error) {
 	return c.Request(ctx, http.MethodGet, url, nil)
 }
 
-// Post 发送 POST 请求
+// Post sends a POST request
 func (c *Client) Post(ctx context.Context, url string, body any) ([]byte, error) {
 	return c.Request(ctx, http.MethodPost, url, body)
 }
 
-// Delete 发送 DELETE 请求
+// Delete sends a DELETE request
 func (c *Client) Delete(ctx context.Context, url string) ([]byte, error) {
 	return c.Request(ctx, http.MethodDelete, url, nil)
 }
 
 // ============================================
-// Remote Connector API 请求/响应结构
+// Remote Connector API request/response structure
 // ============================================
 
-// CreateConnectionRequest 创建连接请求
+// CreateConnectionRequest creates a connection request
 type CreateConnectionRequest struct {
 	Type     string         `json:"type"`
 	Host     string         `json:"host"`
@@ -117,14 +117,14 @@ type CreateConnectionRequest struct {
 	Options  map[string]any `json:"options,omitempty"`
 }
 
-// CreateConnectionResponse 创建连接响应
+// CreateConnectionResponse creates a connection response
 type CreateConnectionResponse struct {
 	ConnectionID string `json:"connection_id"`
 	Success      bool   `json:"success"`
 	Message      string `json:"message,omitempty"`
 }
 
-// ColumnMeta 列元数据
+// ColumnMeta column metadata
 type ColumnMeta struct {
 	Name        string `json:"name"`
 	NativeType  string `json:"native_type"`
@@ -133,20 +133,20 @@ type ColumnMeta struct {
 	Description string `json:"description"`
 }
 
-// QueryRequest 查询请求
+// QueryRequest Query request
 type QueryRequest struct {
 	Query string `json:"query"`
 	Args  []any  `json:"args,omitempty"`
 }
 
-// QueryResponse 查询响应
+// QueryResponse Query response
 type QueryResponse struct {
 	Columns []string         `json:"columns"`
 	Rows    []map[string]any `json:"rows"`
 	Total   int64            `json:"total"`
 }
 
-// IndexMetaResponse 索引元数据响应
+// IndexMetaResponse: Index metadata response
 type IndexMetaResponse struct {
 	Name      string               `json:"name"`
 	DocCount  int64                `json:"doc_count"`
@@ -155,33 +155,33 @@ type IndexMetaResponse struct {
 	Settings  map[string]any       `json:"settings"`
 }
 
-// FieldMeta 字段元数据
+// FieldMeta field metadata
 type FieldMeta struct {
 	Type       string `json:"type"`
 	Analyzer   string `json:"analyzer,omitempty"`
 	Searchable bool   `json:"searchable"`
 }
 
-// SearchRequest 搜索请求
+// SearchRequest Search request
 type SearchRequest struct {
 	Query map[string]any `json:"query"`
 	From  int            `json:"from"`
 	Size  int            `json:"size"`
 }
 
-// SearchResponse 搜索响应
+// SearchResponse
 type SearchResponse struct {
 	Hits  []map[string]any `json:"hits"`
 	Total int64            `json:"total"`
 }
 
-// HealthResponse 健康检查响应
+// HealthResponse: Health check response
 type HealthResponse struct {
 	Status  string `json:"status"`
 	Message string `json:"message,omitempty"`
 }
 
-// ConnectorInfoResponse connector 信息响应
+// connector in response Connector information response
 type ConnectorInfoResponse struct {
 	Name         string   `json:"name"`
 	Version      string   `json:"version"`

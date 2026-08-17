@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	oneGiB = 1024 * 1024 * 1024 //1073741824.0 定义1GB的字节数
+	oneGiB = 1024 * 1024 * 1024 //1073741824.0 defines a byte count of 1GB
 )
 
 func GiBToBytes(gib int64) int64 {

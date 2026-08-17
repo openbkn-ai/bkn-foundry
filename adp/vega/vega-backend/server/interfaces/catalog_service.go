@@ -30,7 +30,7 @@ type CatalogService interface {
 	GetDeletionImpact(ctx context.Context, id string) (*CatalogDeletionImpact, error)
 	// CheckExistByID checks if a Catalog exists by ID.
 	CheckExistByID(ctx context.Context, id string) (bool, error)
-	// ListInternalIDs 列出所有系统内部目录的 ID（用于资源权限校验时按 internal_resource 类型分组）。
+	// ListInternalIDs lists the ids of all internal system directories (grouped by internal_resource type for resource permission verification).
 	ListInternalIDs(ctx context.Context) ([]string, error)
 	// CheckExistByName checks if a Catalog exists by name.
 	CheckExistByName(ctx context.Context, name string) (bool, error)

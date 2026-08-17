@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors ConnectorType 模块错误码
+// Package errors ConnectorType module error code
 package errors
 
-// ConnectorType 错误码
+// ConnectorType error code
 const (
 	// 400 Bad Request
 	VegaBackend_ConnectorType_InvalidParameter          = "VegaBackend.ConnectorType.InvalidParameter"
@@ -17,7 +17,7 @@ const (
 	VegaBackend_ConnectorType_InvalidParameter_Category = "VegaBackend.ConnectorType.InvalidParameter.Category"
 	VegaBackend_ConnectorType_InvalidParameter_Endpoint = "VegaBackend.ConnectorType.InvalidParameter.Endpoint"
 
-	// 403 Forbidden（命名带 BadRequest 但实际作为 403 使用，参见 handler 调用点）
+	// 403 Forbidden (Named with BadRequest but actually used as 403, see handler call point)
 	VegaBackend_ConnectorType_BadRequest = "VegaBackend.ConnectorType.BadRequest"
 
 	// 404 Not Found

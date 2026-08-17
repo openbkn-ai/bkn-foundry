@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors Query 模块错误码
+// Package errors Query module error code
 package errors
 
-// Query 错误码
+// Query error code
 const (
 	// 400 Bad Request
 	VegaBackend_Query_InvalidParameter                      = "VegaBackend.Query.InvalidParameter"
@@ -22,10 +22,10 @@ const (
 	VegaBackend_Query_CatalogNotFound  = "VegaBackend.Query.CatalogNotFound"
 	VegaBackend_Query_ResourceNotFound = "VegaBackend.Query.ResourceNotFound"
 
-	// 410 Gone（流式 session 过期）
+	// 410 Gone (Streaming session Expired)
 	VegaBackend_Query_SessionExpired = "VegaBackend.Query.SessionExpired"
 
-	// 429 Too Many Requests（并发与 cursor session 限流）
+	// 429 Too Many Requests (Concurrency and cursor session Rate Limiting)
 	VegaBackend_Query_ConcurrencyLimitExceeded   = "VegaBackend.Query.ConcurrencyLimitExceeded"
 	VegaBackend_Query_CursorSessionLimitExceeded = "VegaBackend.Query.CursorSessionLimitExceeded"
 

@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors Resource 模块错误码
+// Package errors Resource module error code
 package errors
 
-// Resource 错误码
+// Resource error codes.
 const (
 	// 400 Bad Request
 	VegaBackend_Resource_InvalidParameter                = "VegaBackend.Resource.InvalidParameter"
@@ -29,7 +29,7 @@ const (
 	VegaBackend_Resource_NotFound        = "VegaBackend.Resource.NotFound"
 	VegaBackend_Resource_CatalogNotFound = "VegaBackend.Resource.CatalogNotFound"
 
-	// 409 Conflict（命名冲突 / 状态冲突）
+	// 409 Conflict (Naming Conflict/State Conflict)
 	VegaBackend_Resource_NameExists      = "VegaBackend.Resource.NameExists"
 	VegaBackend_Resource_IDExists        = "VegaBackend.Resource.IDExists"
 	VegaBackend_Resource_IsDisabled      = "VegaBackend.Resource.IsDisabled"
@@ -69,7 +69,7 @@ var ResourceErrCodeList = []string{
 	VegaBackend_Resource_NotFound,
 	VegaBackend_Resource_CatalogNotFound,
 
-	// 409 Conflict（命名冲突 / 状态冲突）
+	// 409 Conflict (Naming Conflict/State Conflict)
 	VegaBackend_Resource_NameExists,
 	VegaBackend_Resource_IDExists,
 	VegaBackend_Resource_IsDisabled,

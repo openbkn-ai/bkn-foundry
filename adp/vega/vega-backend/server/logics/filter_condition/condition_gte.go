@@ -30,7 +30,7 @@ func (c *GteCond) IsSingleValue() bool        { return true }
 func (c *GteCond) IsFixedLenArrayValue() bool { return false }
 func (c *GteCond) RequiredValueLen() int      { return -1 }
 
-// gte 条件, 判断字段是否大于等于某个值
+// gte condition, determining whether a field is greater than or equal to a certain value
 func (c *GteCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
@@ -39,7 +39,7 @@ func (c *GteCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// 如果字段未在Schema中定义，创建一个临时的Property对象
+		// If the field is not defined in the Schema, create a temporary Property object
 		field = &interfaces.Property{
 			Name:         cfg.Name,
 			OriginalName: cfg.Name,

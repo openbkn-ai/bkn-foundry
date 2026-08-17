@@ -12,7 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// isNotFoundError 区分父对象已删除和临时服务错误。
+// isNotFoundError distinguishes between a deleted parent object and a temporary service error.
 func isNotFoundError(err error) bool {
 	var httpErr *rest.HTTPError
 	return errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusNotFound

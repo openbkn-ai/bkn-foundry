@@ -17,15 +17,14 @@ import (
 	"vega-backend/interfaces"
 )
 
-// LastDiscoverStatus 写入策略：
-//   - Status 是状态机：受幂等守卫保护，仅在生命周期翻转时写入。
-//   - LastDiscoverStatus 是"最近一次观察"：每次扫描都覆盖，反映本次结果。
-//   - 因此 markDiscover 必须放在状态机守卫之外，避免已 stale 的资源
-//     在持续缺席的扫描中失去 missing 标记。
-//   - new/restored 是一次性事件标签，下次扫描自动让位给 unchanged/updated；
-//     unchanged/updated/missing 是持续观察，每次重写。
-//   - 未来若再加同类"观察"字段，应考虑下沉到独立事件表（PR-B 方向），
-//     而非继续往 Resource 实体塞。
+// LastDiscoverStatus write policy:
+//
+//   - Status is a state machine written only when the lifecycle changes.
+//   - LastDiscoverStatus is the most recent observation and is updated on every scan.
+//   - markDiscover must stay outside state-machine guards so repeated absence scans retain "missing".
+//   - "new" and "restored" are one-off events; the next scan replaces them with "unchanged" or "updated".
+//   - "unchanged", "updated", and "missing" are continuous observations and are rewritten each time.
+//   - Future observation fields should move to a dedicated event table instead of expanding Resource.
 func (dh *DiscoverTaskWorker) markDiscover(ctx context.Context, resourceID string, status string) {
 	if err := dh.rs.UpdateDiscoverStatus(ctx, resourceID, status); err != nil {
 		logger.Errorf("Failed to update last discover status for resource %s: %v", resourceID, err)
@@ -35,7 +34,7 @@ func (dh *DiscoverTaskWorker) markDiscover(ctx context.Context, resourceID strin
 func discoverStatusAfterEnrich(resource *interfaces.Resource, beforeHash string) string {
 	status := interfaces.DiscoverStatusUnchanged
 
-	// 将结构体转换为map，方便序列化后计算hash（按key排序）
+	// Convert the structure to a map to facilitate the calculation of the hash after serialization (sorted by key)
 	data, err := sonic.Marshal(resource.SourceMetadata)
 	if err != nil {
 		return ""

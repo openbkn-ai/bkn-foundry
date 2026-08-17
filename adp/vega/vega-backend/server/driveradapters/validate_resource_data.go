@@ -19,13 +19,13 @@ import (
 	"vega-backend/logics/filter_condition"
 )
 
-// 资源数据查询参数校验
+// Parameter verification for resource data query
 func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
 	if params.Paging.Cursor != "" {
 		return validateResourceDataCursorContinuation(ctx, params)
 	}
 
-	// 校验format是否为 original 或者 flat
+	// Verify whether the format is original or flat
 	if params.Format == "" {
 		params.Format = interfaces.Format_Original
 	} else {
@@ -40,13 +40,13 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 		return err
 	}
 
-	// 校验排序参数
+	// Verify the sorting parameter
 	err = validateSortFields(ctx, params.Sort)
 	if err != nil {
 		return err
 	}
 
-	// 聚合模式下的参数校验：当Aggregation、GroupBy或Having任一参数存在时执行
+	// Parameter verification in Aggregation mode: It is performed when any of the parameters Aggregation, GroupBy, or Having exists
 	if isAggregateQuery(params) {
 		err = validateAggregateParams(ctx, params)
 		if err != nil {
@@ -54,7 +54,7 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 		}
 	}
 
-	// 过滤条件用map接，然后再decode到condCfg中
+	// The filter conditions are connected using a map and then decoded into the condCfg
 	var actualCond *interfaces.FilterCondCfg
 	err = mapstructure.Decode(params.FilterCondition, &actualCond)
 	if err != nil {
@@ -63,7 +63,7 @@ func ValidateResourceDataQueryParams(ctx context.Context, params *interfaces.Res
 	}
 	params.FilterCondCfg = actualCond
 
-	// 校验全局过滤条件：操作符、字段类型和操作符是否匹配
+	// Verify the global filtering conditions: whether the operators, field types, and operators match
 	err = validateFilterCondCfg(ctx, params.FilterCondCfg)
 	if err != nil {
 		return err
@@ -138,9 +138,9 @@ func validateFormat(ctx context.Context, format string) error {
 	return nil
 }
 
-// 分页排序参数校验
+// Pagination sorting parameter verification
 func validatePaginationParams(ctx context.Context, offset, limit int) error {
-	// from + size 查询校验
+	// from + size query verification
 	if offset < 0 {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Offset).
 			WithErrorDetails("When execute From + size query, 'offset' should be >= 0")
@@ -172,12 +172,12 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 		return nil
 	}
 
-	// 判断过滤器是否为空对象 {}
+	// Determine whether the filter is an empty object {}
 	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
 		return nil
 	}
 
-	// 过滤操作符
+	// Filtering operator
 	if cfg.Operation == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionOperation)
 	}
@@ -208,7 +208,7 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 	}
 
 	if condFactory.NeedName() {
-		// 过滤字段名称不能为空
+		// The name of the filter field cannot be empty
 		if cfg.Name == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_NullParameter_FilterConditionName)
 		}
@@ -223,20 +223,20 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 			cfg.ValueFrom = interfaces.ValueFrom_Const
 		}
 		if condFactory.NeedConstValue() {
-			// 过滤字段值不能为空
+			// The value of the filter field cannot be empty
 			if cfg.ValueFrom != interfaces.ValueFrom_Const {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValueFrom)
 			}
 		}
 
 		if condFactory.IsSingleValue() {
-			// 右侧值为单个值
+			// The value on the right is a single value
 			if _, ok := cfg.Value.([]any); ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 					WithErrorDetails(fmt.Sprintf("[%s] operation's value should be a single value", cfg.Operation))
 			}
 		} else if condFactory.IsFixedLenArrayValue() {
-			// 右侧值为数组值
+			// The value on the right is an array value
 			if vals, ok := cfg.Value.([]any); !ok {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 					WithErrorDetails(fmt.Sprintf("[%s] operation's value must be an array", cfg.Operation))
@@ -255,14 +255,14 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 	return nil
 }
 
-// isAggregateQuery 判断是否为聚合查询
+// isAggregateQuery determines whether it is an aggregated query
 func isAggregateQuery(params *interfaces.ResourceDataQueryParams) bool {
-	// 根据聚合相关字段推断
+	// Infer based on the aggregation-related fields
 	return params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil
 }
 
-// validateCalendarInterval 校验 calendar_interval 是否为有效的枚举值
-// 允许的值包括：minute, hour, day, week, month, quarter, year
+// validateCalendarInterval verifies whether calendar_interval is a valid enumeration value
+// The allowed values include: minute, hour, day, week, month, quarter, year
 func validateCalendarInterval(ctx context.Context, calendarInterval string) error {
 	switch calendarInterval {
 	case interfaces.CALENDAR_UNIT_MINUTE,
@@ -279,15 +279,15 @@ func validateCalendarInterval(ctx context.Context, calendarInterval string) erro
 	}
 }
 
-// validateAggregateParams 校验聚合查询参数
+// validateAggregateParams verifies the aggregation query parameters
 func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDataQueryParams) error {
-	// 校验aggregation
+	// Verify aggregation
 	if params.Aggregation != nil {
 		if params.Aggregation.Property == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Aggregation).
 				WithErrorDetails("Aggregation property cannot be empty")
 		}
-		// 校验聚合函数类型
+		// Verify the type of the aggregation function
 		validAggr := map[string]bool{
 			"count": true, "count_distinct": true, "sum": true,
 			"max": true, "min": true, "avg": true,
@@ -298,13 +298,13 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 		}
 	}
 
-	// 校验group_by
+	// Verify group_by
 	for _, groupByItem := range params.GroupBy {
 		if groupByItem.Property == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_GroupBy).
 				WithErrorDetails("GroupBy property cannot be empty")
 		}
-		// 校验calendar_interval
+		// Verify calendar_interval
 		if groupByItem.CalendarInterval != "" {
 			err := validateCalendarInterval(ctx, groupByItem.CalendarInterval)
 			if err != nil {
@@ -313,19 +313,19 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 		}
 	}
 
-	// 校验having
+	// Verify having
 	if params.Having != nil {
-		// having依赖aggregation或count(*)
+		// having depends on aggregation or count(*)
 		if params.Aggregation == nil && params.Having.Field != "count(*)" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails("Having clause requires aggregation or count(*)")
 		}
-		// 校验field字段
+		// Verify the field field
 		if params.Having.Field != "__value" && params.Having.Field != "count(*)" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails("Having field must be '__value' or 'count(*)'")
 		}
-		// 校验operation
+		// Verify operation
 		validOps := map[string]bool{
 			"==": true, "!=": true, ">": true, ">=": true,
 			"<": true, "<=": true, "in": true, "not_in": true,
@@ -335,7 +335,7 @@ func validateAggregateParams(ctx context.Context, params *interfaces.ResourceDat
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails(fmt.Sprintf("Unsupported having operation: %s", params.Having.Operation))
 		}
-		// 校验value
+		// Validate the value.
 		if params.Having.Value == nil {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Having).
 				WithErrorDetails("Having value cannot be empty")

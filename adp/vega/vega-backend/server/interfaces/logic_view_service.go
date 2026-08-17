@@ -17,7 +17,7 @@ const (
 	LogicType_Derived   = "derived"
 	LogicType_Composite = "composite"
 
-	//特征的配置项
+	//Configuration items of features
 	PropertyFeatureType_Keyword  = "keyword"
 	PropertyFeatureType_Fulltext = "fulltext"
 	PropertyFeatureType_Vector   = "vector"
@@ -28,17 +28,17 @@ const (
 	LogicDefinitionNodeType_Sql      = "sql"
 	LogicDefinitionNodeType_Output   = "output"
 
-	// join的类型
+	// The type of join
 	JoinType_Inner = "inner"
 	JoinType_Left  = "left"
 	JoinType_Right = "right"
 	// JoinType_FullOuter = "full outer"
 
-	// union的类型
+	// The type of union
 	UnionType_All      = "all"
 	UnionType_Distinct = "distinct"
 
-	// MaxRecursionDepth 逻辑视图最大嵌套深度，防止循环引用导致栈溢出
+	// MaxRecursionDepth is the maximum nested depth of the logical view to prevent stack overflow caused by circular references
 	MaxRecursionDepth = 10
 )
 
@@ -75,7 +75,7 @@ type LogicView struct {
 	RefResources   map[string]*Resource `json:"ref_resources,omitempty" mapstructure:"-"`
 }
 
-// LogicDefinitionNode 表示图中的节点
+// LogicDefinitionNode represents the nodes in the graph
 type LogicDefinitionNode struct {
 	ID           string          `json:"id"`
 	Name         string          `json:"name"`
@@ -85,7 +85,7 @@ type LogicDefinitionNode struct {
 	OutputFields []*ViewProperty `json:"output_fields"`
 }
 
-// 节点类型为resource的节点配置
+// Node configuration with the node type of resource
 type ResourceNodeCfg struct {
 	ResourceID string         `json:"resource_id" mapstructure:"resource_id"`
 	Filters    *FilterCondCfg `json:"filters,omitempty" mapstructure:"filters"`
@@ -93,21 +93,21 @@ type ResourceNodeCfg struct {
 	Resource   *Resource      `json:"resource,omitempty" mapstructure:"resource"`
 }
 
-// 节点类型为join的节点配置
+// Node configuration with the node type "join"
 type JoinNodeCfg struct {
 	JoinType string         `json:"join_type" mapstructure:"join_type"`
 	JoinOn   []*JoinOn      `json:"join_on" mapstructure:"join_on"`
 	Filters  *FilterCondCfg `json:"filters,omitempty" mapstructure:"filters"`
 }
 
-// join on 配置
+// JoinOn configures a join predicate.
 type JoinOn struct {
-	LeftField  string `json:"left_field" mapstructure:"left_field"`   //传递 name
-	RightField string `json:"right_field" mapstructure:"right_field"` //传递 name
+	LeftField  string `json:"left_field" mapstructure:"left_field"`   // Pass the field name.
+	RightField string `json:"right_field" mapstructure:"right_field"` // Pass the field name.
 	Operator   string `json:"operator" mapstructure:"operator"`
 }
 
-// 节点类型为union的节点配置
+// Node configuration with the node type of union
 type UnionNodeCfg struct {
 	UnionType string         `json:"union_type" mapstructure:"union_type"`
 	Filters   *FilterCondCfg `json:"filters,omitempty" mapstructure:"filters"`
@@ -117,36 +117,36 @@ type SQLNodeCfg struct {
 	SQL string `json:"sql" mapstructure:"sql"`
 }
 
-// OutputFieldRef 表示 Union 对齐模式中 from 数组的元素
+// OutputFieldRef represents the elements of the from array in the Union alignment mode
 type OutputFieldRef struct {
 	From     string `json:"from"`
 	FromNode string `json:"from_node"`
 }
 
-// 逻辑视图字段
+// Logical view field
 type ViewProperty struct {
 	Property
-	From     string            `json:"from,omitempty"`      // Join 映射模式：源字段名 (当 from 为 string 时)
-	FromNode string            `json:"from_node,omitempty"` // Join 映射模式：源节点ID
-	FromList []*OutputFieldRef `json:"-"`                   // Union 对齐模式：多源对齐数组 (当 from 为 array 时)
+	From     string            `json:"from,omitempty"`      // Join mapping mode: Source field name (when from is string)
+	FromNode string            `json:"from_node,omitempty"` // Join mapping mode: Source node ID
+	FromList []*OutputFieldRef `json:"-"`                   // Union alignment mode: Multi-source aligned array (when from is array)
 }
 
-// UnmarshalJSON 自定义反序列化，处理 output_fields 的 5 种形态
+// UnmarshalJSON custom deserialization handles five forms of output_fields
 func (v *ViewProperty) UnmarshalJSON(data []byte) error {
-	// 1. 探测是否为纯字符串（通配符模式 "*" 或 投影模式 "field_a"）
+	// 1. Detect whether it is a pure string (wildcard mode "*" or projection mode "field_a")
 	var s string
 	if err := sonic.Unmarshal(data, &s); err == nil {
 		v.Name = s
 		return nil
 	}
 
-	// 2. 探测是否为对象
+	// 2. Detect whether it is an object
 	var raw map[string]sonic.NoCopyRawMessage
 	if err := sonic.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	// 解码基类 Property 的字段 (Name, Type, DisplayName, OriginalName, Description, Features)
+	// Decode the fields of the base class Property (Name, Type, DisplayName, OriginalName, Description, Features)
 	type PropertyAlias Property
 	var propAlias PropertyAlias
 	if err := sonic.Unmarshal(data, &propAlias); err != nil {
@@ -154,19 +154,19 @@ func (v *ViewProperty) UnmarshalJSON(data []byte) error {
 	}
 	v.Property = Property(propAlias)
 
-	// 解码 from_node
+	// Decode from_node
 	if rawFromNode, ok := raw["from_node"]; ok {
 		_ = sonic.Unmarshal(rawFromNode, &v.FromNode)
 	}
 
-	// 解码 from: 可能是 string (映射模式) 或 array (对齐模式)
+	// Decoding from: It could be string (mapping mode) or array (alignment mode)
 	if rawFrom, ok := raw["from"]; ok {
-		// 尝试 string
+		// Try string
 		var fromStr string
 		if err := sonic.Unmarshal(rawFrom, &fromStr); err == nil {
 			v.From = fromStr
 		} else {
-			// 尝试 array
+			// Try array
 			var fromList []*OutputFieldRef
 			if err := sonic.Unmarshal(rawFrom, &fromList); err == nil {
 				v.FromList = fromList
@@ -177,19 +177,19 @@ func (v *ViewProperty) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON 自定义序列化，为了精简输出并符合 5 种形态
+// MarshalJSON custom serialization, to simplify output and conform to five forms
 func (v *ViewProperty) MarshalJSON() ([]byte, error) {
-	// 如果只有 Name 且没有其他元数据或映射信息，序列化为纯字符串 (形态 1 & 2)
-	// 判断条件：Name 非空，且 Type, From, FromNode, FromList, DisplayName 等其他关键字段均为空
+	// If there is only the Name and no other metadata or mapping information, serialize it as a pure string (form 1 & 2)
+	// Judgment condition: The Name is non-empty, and other key fields such as Type, From, FromNode, FromList, and DisplayName are all empty
 	if v.Name != "" && v.Type == "" && v.From == "" && v.FromNode == "" &&
 		len(v.FromList) == 0 && v.DisplayName == "" && v.OriginalName == "" &&
 		v.Description == "" && len(v.Features) == 0 {
 		return sonic.Marshal(v.Name)
 	}
 
-	// 否则序列化为对象 (形态 3, 4, 5)
+	// Otherwise, serialize it as an object (form 3, 4, 5)
 	type Alias ViewProperty
-	// 使用辅助结构体处理 from 字段的多态输出
+	// Use an auxiliary structure to handle the polymorphic output of the from field
 	tmp := struct {
 		*Alias
 		From any `json:"from,omitempty"`

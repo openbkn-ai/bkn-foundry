@@ -58,7 +58,7 @@ func (cts *connectorTypeService) Register(ctx context.Context, req *interfaces.C
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Register connector type")
 	defer span.End()
 
-	// 判断userid是否有创建业务知识网络的权限（策略决策）
+	// Determine whether the userid has the permission to create a business knowledge network (policy decision)
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   interfaces.RESOURCE_ID_ALL,
@@ -118,7 +118,7 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_ConnectorType_NotFound)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
+	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again
 	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{ct.Type},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
@@ -127,7 +127,7 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 	}
 
 	if resrc, exist := matchResoucesMap[ct.Type]; exist {
-		ct.Operations = resrc.Operations // 用户当前有权限的操作
+		ct.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 	} else {
 		return nil, rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
@@ -150,13 +150,13 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 			WithErrorDetails(err.Error())
 	}
 
-	// 处理资源id
+	// Handle resource id
 	types := make([]string, 0)
 	for _, m := range connectorTypesArr {
 		types = append(types, m.Type)
 	}
 
-	// 根据权限过滤有查看权限的对象，过滤后的数组的总长度就是总数，无需再请求总数
+	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again
 	matchResoucesMap, err := cts.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, types,
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, interfaces.COMMON_OPERATIONS)
 	if err != nil {
@@ -166,27 +166,27 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 
 	connectorTypes := make([]*interfaces.ConnectorType, 0)
 	for _, c := range connectorTypesArr {
-		// 只留下有权限的模型
+		// Only keep the models with permission
 		if resrc, exist := matchResoucesMap[c.Type]; exist {
 			c.Available = cts.cf.IsConnectorAvailable(c.Type)
 			if params.Available != nil && c.Available != *params.Available {
 				continue
 			}
-			c.Operations = resrc.Operations // 用户当前有权限的操作
+			c.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 			connectorTypes = append(connectorTypes, c)
 		}
 	}
 	total := int64(len(connectorTypes))
 
-	// limit = -1,则返回所有
+	// If limit = -1, all will be returned
 	if params.Limit != -1 {
-		// 分页
-		// 检查起始位置是否越界
+		// Pagination
+		// Check whether the starting position is out of bounds
 		if params.Offset < 0 || params.Offset >= len(connectorTypes) {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.ConnectorType{}, total, nil
 		}
-		// 计算结束位置
+		// Calculate the end position
 		end := params.Offset + params.Limit
 		if end > len(connectorTypes) {
 			end = len(connectorTypes)
@@ -293,7 +293,7 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 	}
 	nameModified := req.Name != ct.Name
 
-	// 判断userid是否有创建业务知识网络的权限（策略决策）
+	// Determine whether the userid has the permission to create a business knowledge network (policy decision)
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   ct.Type,
@@ -347,7 +347,7 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 			WithErrorDetails(err.Error())
 	}
 
-	// 请求更新资源名称的接口，更新资源的名称
+	// Request the interface to update the resource name, update the resource name
 	if nameModified {
 		err = cts.ps.UpdateResource(ctx, interfaces.PermissionResource{
 			ID:   resolved.Type,
@@ -368,7 +368,7 @@ func (cts *connectorTypeService) DeleteByType(ctx context.Context, tp string) er
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete connector type")
 	defer span.End()
 
-	// 判断userid是否有删除权限
+	// Determine whether the userid has the permission to be deleted
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   tp,
@@ -385,7 +385,7 @@ func (cts *connectorTypeService) DeleteByType(ctx context.Context, tp string) er
 
 	cts.cf.DeleteConnector(tp)
 
-	//  清除资源策略
+	//  Clearing resource strategy
 	err = cts.ps.DeleteResources(ctx, interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE, []string{tp})
 	if err != nil {
 		return err
@@ -400,7 +400,7 @@ func (cts *connectorTypeService) SetEnabled(ctx context.Context, tp string, enab
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Set enabled connector type")
 	defer span.End()
 
-	// 判断userid是否有修改权限
+	// Determine whether the userid has the permission to be modified
 	err := cts.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
 		ID:   tp,

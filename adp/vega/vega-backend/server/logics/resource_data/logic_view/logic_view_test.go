@@ -249,10 +249,10 @@ func TestQueryAnalysisString(t *testing.T) {
 			HasCase:      true,
 		}).String()
 
-		assert.Contains(t, got, "查询字段 (3 个)")
+		assert.Contains(t, got, "Query fields (3)")
 		assert.Contains(t, got, "count(*) AS total")
-		assert.Contains(t, got, "包含UNION: true")
-		assert.Contains(t, got, "包含CASE表达式: true")
+		assert.Contains(t, got, "Contains UNION: true")
+		assert.Contains(t, got, "Contains CASE expressions: true")
 	})
 }
 

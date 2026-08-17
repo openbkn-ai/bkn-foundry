@@ -29,7 +29,7 @@ func (c *NotContainCond) IsSingleValue() bool        { return false }
 func (c *NotContainCond) IsFixedLenArrayValue() bool { return false }
 func (c *NotContainCond) RequiredValueLen() int      { return -1 }
 
-// 不包含 not_contain，左侧属性值为数组，右侧值为数组，组内的值都应在属性值外
+// It does not contain not_contain. The left property value is an array, and the right property value is an array. All values within the group should be outside the property value
 func (c *NotContainCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

@@ -13,23 +13,23 @@ import (
 )
 
 const (
-	// poll 阻塞时间
+	// poll blocking time
 	POLL_TIMEOUT_MS = 100
-	// 生产者生产消息阻塞的时间
+	// The time when the producer blocks the production of messages
 	PRODUCE_FLUSH_TIMEOUT_MS = 100
 
-	// 设置为 5, 平衡吞吐量和顺序性
+	// Set it to 5 to balance throughput and sequentiality
 	MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION = 5
 
-	// 限制topic最大长度: 249-len("<tenant>.mdl.dr.<clusterID>.customer."),tenant最长10位, kafka本身限制长度为249个字符,clusterID为22个字符
+	// The maximum length of the topic is limited to 249-len("<tenant>.mdl.dr.<clusterID>.customer."). The maximum length of the tenant is 10 characters. kafka itself limits the length to 249 characters, and the clusterID to 22 characters
 	SRC_TOPIC_MAX_LENGTH = 200
 
-	// 允许的最大消息大小(byte)
+	// The maximum allowed message size (byte)
 	MAX_MESSAGE_BYTES = 20971520
 
-	// kafka消息留存时间, 8小时
+	// The retention time of kafka messages is 8 hours
 	RETENTION_MS = "28800000"
-	// kafka消息单个分区的留存大小，100M
+	// The retention size of a single kafka message partition is 100M
 	RETENTION_BYTES = "104857600"
 )
 

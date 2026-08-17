@@ -29,7 +29,7 @@ func (c *ContainCond) IsSingleValue() bool        { return false }
 func (c *ContainCond) IsFixedLenArrayValue() bool { return false }
 func (c *ContainCond) RequiredValueLen() int      { return -1 }
 
-// 包含 contain，左侧属性值为数组，右侧值为数组，组内的值都应在属性值内
+// Containing contain, the left property value is an array, and the right property value is also an array. All values within the group should be within the property value
 func (c *ContainCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

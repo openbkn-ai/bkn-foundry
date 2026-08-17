@@ -40,13 +40,13 @@ func (c *MultiMatchCond) IsSingleValue() bool        { return true }
 func (c *MultiMatchCond) IsFixedLenArrayValue() bool { return false }
 func (c *MultiMatchCond) RequiredValueLen() int      { return -1 }
 
-// multi_match 条件, 判断多个字段是否匹配某个规则
-// 支持全部字段 *
+// The multi_match condition determines whether multiple fields match a certain rule
+// Support all fields *
 func (c *MultiMatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
-	// 从cfg的 ReaminCfg 中获取 fields，这是属于 multi_match的fields字段，是个字符串数组，
-	// 如果想要全部字段匹配，可不填或者填 ["*"], 不支持填字符串 *， 需要一个数组
+	// Obtain the fields from the ReaminCfg of the cfg. This is the fields field belonging to multi_match, which is an array of strings.
+	// If you want all fields to match, you can either leave it blank or fill in ["*"]. String * is not supported. An array is required
 	var mFields []*interfaces.Property
 	cfgFields, ok := cfg.RemainCfg["fields"].([]any)
 	if !ok {
@@ -59,7 +59,7 @@ func (c *MultiMatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 			mFields = append(mFields, field)
 		}
 	} else {
-		// 字段数组里的需要是个字符串数组
+		// The field array needs to be a string array
 		for _, cfgField := range cfgFields {
 			fieldName, ok := cfgField.(string)
 			if !ok {
@@ -73,7 +73,7 @@ func (c *MultiMatchCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		}
 	}
 
-	// 校验match_type的有效性, match_type可以为空
+	// Verify the validity of the match_type. The match_type can be empty
 	matchType := ""
 	if val, exist := cfg.RemainCfg["match_type"]; exist && val != "" {
 		mtype, ok := val.(string)

@@ -54,18 +54,18 @@ type mgrService struct {
 func (server *mgrService) start() {
 	logger.Info("Server Starting")
 
-	// 创建 gin.engine 并注册 API
+	// Create gin.engine and register the API
 	engine := gin.New()
 
 	server.restHandler.RegisterPublic(engine)
 	logger.Info("Server Register API Success")
 
-	// 监听中断信号（SIGINT、SIGTERM）
+	// Listen for interrupt signals (SIGINT, SIGTERM)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	// 在收到信号的时候，会自动触发 ctx 的 Done ，这个 stop 是不再捕获注册的信号的意思，算是一种释放资源。
+	// When a signal is received, the "Done" of ctx will be automatically triggered. This "stop" means no longer capturing the registered signal, which can be regarded as a form of resource release.
 	defer stop()
 
-	// 初始化 http 服务
+	// Initialize the http service
 	s := &http.Server{
 		Addr:           ":" + strconv.Itoa(server.appSetting.ServerSetting.HttpPort),
 		Handler:        engine,
@@ -74,7 +74,7 @@ func (server *mgrService) start() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	// 启动 http 服务
+	// Start the http service
 	go func() {
 		err := s.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
@@ -86,11 +86,11 @@ func (server *mgrService) start() {
 
 	<-ctx.Done()
 
-	// 设置系统最后处理时间
+	// Set the last processing time of the system
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// 停止 http 服务
+	// Stop the http service
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
 		logger.Fatalf("Server Shutdown:%v", err)
@@ -104,15 +104,15 @@ func (server *mgrService) start() {
 func main() {
 	logger.Info("Server Initializing")
 
-	// 初始化服务配置
+	// Initialize the service configuration
 	appSetting := common.NewSetting()
 	logger.Info("Server Init Setting Success")
 
-	// 设置错误码语言
+	// Set the error code language
 	rest.SetLang(appSetting.ServerSetting.Language)
 	logger.Info("Server Set Language Success")
 
-	// 设置 gin 运行模式
+	// Set the running mode of gin
 	gin.SetMode(appSetting.ServerSetting.RunMode)
 	logger.Infof("Server RunMode: %s", appSetting.ServerSetting.RunMode)
 
@@ -123,11 +123,11 @@ func main() {
 		logger.Fatalf("Failed to initialize OpenTelemetry provider: %v", err)
 	}
 
-	// 初始化数据库连接
+	// Initialize the database connection
 	db := libdb.NewDB(&appSetting.DBSetting)
 	logics.SetDB(db)
 
-	// Set顺序按字母升序排序
+	// The Set order is sorted in ascending alphabetical order
 	if common.GetAuthEnabled() {
 		logics.SetAuthAccess(auth.NewHydraAuthAccess(appSetting))
 		logics.SetPermissionAccess(permission.MaybeShadow(permission.NewPermissionAccess(appSetting)))
@@ -146,18 +146,18 @@ func main() {
 	logics.SetBknAgentAccess(bkn_agent.NewBknAgentAccess(appSetting))
 	logics.SetSemanticUnderstandingTaskAccess(semantic_understanding_task.NewSemanticUnderstandingTaskAccess(appSetting))
 
-	// 初始化 Connector Factory 并注册内置的 Local Connector Builder
+	// Initialize the Connector Factory and register the built-in Local Connector Builder
 	factory.GetFactory(appSetting)
 	logger.Info("VEGA Manager Init Connector Factory Success")
 
-	// 初始化并启动统一的 TaskWorkerManger，处理所有类型的任务
+	// Initialize and start a unified TaskWorkermanager to handle all types of tasks
 	taskWorkerMgr := worker.NewTaskWorkerManager(appSetting)
 	if err := taskWorkerMgr.Start(context.Background()); err != nil {
 		logger.Fatalf("Failed to start task workers: %v", err)
 	}
 	logger.Info("VEGA Manager Init Task Worker Success")
 
-	// 初始化并启动调度器
+	// Initialize and start the scheduler
 	dts := logicsDiscoverTask.NewDiscoverTaskService(appSetting)
 	dss := logicsDiscoverSchedule.NewDiscoverScheduleService(appSetting, dts)
 	dsw := worker.NewDiscoverScheduleWorker(appSetting, dss)
@@ -172,7 +172,7 @@ func main() {
 	}
 	logger.Info("VEGA Manager Init Catalog Health Check Worker Success")
 
-	// 创建并启动服务
+	// Create and start the service
 	server := &mgrService{
 		appSetting:    appSetting,
 		otelProviders: otelProviders,

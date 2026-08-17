@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors 服务错误码
+// Package errors service error code
 package errors
 
 import (
@@ -13,7 +13,7 @@ import (
 	"vega-backend/locale"
 )
 
-// 公共错误码
+// Public Error Code
 const (
 	// 400 Bad Request
 	VegaBackend_InvalidParameter_Name                     = "VegaBackend.InvalidParameter.Name"

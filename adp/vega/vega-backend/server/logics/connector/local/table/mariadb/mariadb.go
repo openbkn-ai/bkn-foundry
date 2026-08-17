@@ -48,11 +48,11 @@ var (
 )
 
 const (
-	// DATABASE_NAME_MAX_LENGTH MariaDB 数据库名最大长度
+	// DATABASE_NAME_MAX_LENGTH the maximum length of the MariaDB database name
 	DATABASE_NAME_MAX_LENGTH = 64
-	// PORT_MIN 有效端口最小值
+	// The minimum valid port value of PORT_MIN
 	PORT_MIN = 1
-	// PORT_MAX 有效端口最大值
+	// PORT_MAX is the maximum value of the valid port
 	PORT_MAX = 65535
 )
 
@@ -66,7 +66,7 @@ type MariaDBConnector struct {
 	db        *sql.DB
 }
 
-// NewMariaDBConnector 创建 MariaDB connector 构建器
+// NewMariaDBConnector creates the MariaDB connector builder
 func NewMariaDBConnector() interfaces.TableConnector {
 	return &MariaDBConnector{}
 }
@@ -109,17 +109,17 @@ func (c *MariaDBConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns the field configuration for MariaDB connector.
 func (c *MariaDBConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":      {Name: "主机地址", Type: "string", Description: "数据库服务器主机地址", Required: true, Encrypted: false},
-		"port":      {Name: "端口号", Type: "integer", Description: "数据库服务器端口", Required: true, Encrypted: false},
-		"username":  {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-		"password":  {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-		"databases": {Name: "数据库列表", Type: "array", Description: "数据库名称列表（可选，为空则连接实例级别）", Required: false, Encrypted: false},
-		"options":   {Name: "连接参数", Type: "object", Description: "连接参数（如 charset, timeout 等）", Required: false, Encrypted: false},
+		"host":      {Name: "Host", Type: "string", Description: "Database server host", Required: true, Encrypted: false},
+		"port":      {Name: "Port", Type: "integer", Description: "Database server port", Required: true, Encrypted: false},
+		"username":  {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+		"password":  {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+		"databases": {Name: "Databases", Type: "array", Description: "Optional database names; when empty, connect at the instance level", Required: false, Encrypted: false},
+		"options":   {Name: "Connection options", Type: "object", Description: "Connection options, such as charset and timeout", Required: false, Encrypted: false},
 	}
 }
 
 // New creates a new MariaDB connector.
-// Databases 为可选字段，不指定时连接到实例级别。
+// Databases is an optional field. When not specified, it connects to the instance level.
 func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	var mCfg mariadbConfig
 	if err := mapstructure.Decode(cfg, &mCfg); err != nil {
@@ -130,18 +130,18 @@ func (c *MariaDBConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Conne
 		return nil, fmt.Errorf("mariadb connector config is incomplete")
 	}
 
-	// 验证端口号范围
+	// Verify the range of port numbers
 	if mCfg.Port < PORT_MIN || mCfg.Port > PORT_MAX {
 		return nil, fmt.Errorf("port %d is out of valid range (%d-%d)", mCfg.Port, PORT_MIN, PORT_MAX)
 	}
 
 	seen := make(map[string]bool)
 	for _, db := range mCfg.Databases {
-		// 验证 databases 名称长度（MariaDB 数据库名最大 64 字符）
+		// Verify the length of the databases name (the maximum MariaDB database name is 64 characters)
 		if len(db) > DATABASE_NAME_MAX_LENGTH {
 			return nil, fmt.Errorf("database name '%s' exceeds maximum length of %d characters", db, DATABASE_NAME_MAX_LENGTH)
 		}
-		// 检查数组中是否存在重复元素
+		// Check whether there are duplicate elements in the array
 		if seen[db] {
 			return nil, fmt.Errorf("duplicate element found in 'databases': %s", db)
 		}
@@ -171,7 +171,7 @@ func (c *MariaDBConnector) connectionString() string {
 }
 
 // Connect establishes connection to MariaDB database.
-// 如果 Config.Database 为空，则连接到实例级别（不指定数据库）。
+// If Config.Database is empty, connect to the instance level (without specifying the database).
 func (c *MariaDBConnector) Connect(ctx context.Context) error {
 	if c.connected {
 		return nil
@@ -219,7 +219,7 @@ func (c *MariaDBConnector) TestConnection(ctx context.Context) error {
 		return err
 	}
 
-	// 如果配置了 databases 列表，验证这些数据库是否存在
+	// If the databases list is configured, verify whether these databases exist
 	if len(c.config.Databases) > 0 {
 		if err := c.validateDatabases(ctx); err != nil {
 			return err
@@ -229,9 +229,9 @@ func (c *MariaDBConnector) TestConnection(ctx context.Context) error {
 	return nil
 }
 
-// validateDatabases 验证配置的数据库是否存在
+// validateDatabases verifies whether the configured database exists
 func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
-	// 获取所有数据库/schema 列表；MariaDB 中 database 与 schema 等价。
+	// Obtain the list of all databases/schemas; In MariaDB, database and schema are equivalent.
 	rows, err := c.db.QueryContext(ctx,
 		"SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
 	if err != nil {
@@ -251,7 +251,7 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 		return fmt.Errorf("failed to iterate databases: %w", err)
 	}
 
-	// 检查配置的数据库是否都存在
+	// Check whether all the configured databases exist
 	var notFoundDBs []string
 	for _, db := range c.config.Databases {
 		if !existingDBs[db] {

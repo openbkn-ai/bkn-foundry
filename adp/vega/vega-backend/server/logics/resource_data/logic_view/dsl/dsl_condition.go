@@ -496,7 +496,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionContain(ctx context.Contex
 	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return nil, fmt.Errorf("condition [contain] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
-	// 文本包含查询必须用 match /match_phrase
+	// The text contains queries that must use match /match_phrase
 	values := cond.Value
 	should := make([]map[string]any, len(values))
 	for i, v := range values {
@@ -640,7 +640,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionMatch(ctx context.Context,
 
 	value := cond.Cfg.Value
 
-	// 如果是全部字段匹配
+	// If all fields match
 	if len(cond.Fields) > 1 {
 		should := make([]map[string]any, 0, len(cond.Fields))
 		for _, field := range cond.Fields {
@@ -657,7 +657,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionMatch(ctx context.Context,
 			},
 		}, nil
 	} else if len(cond.Fields) == 1 {
-		// 单个字段匹配
+		// Single field matching
 		field := cond.Fields[0]
 		return map[string]any{
 			"match": map[string]any{
@@ -679,7 +679,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionMatchPhrase(ctx context.Co
 
 	value := cond.Cfg.Value
 
-	// 如果是全部字段匹配
+	// If all fields match
 	if len(cond.Fields) > 1 {
 		should := make([]map[string]any, 0, len(cond.Fields))
 		for _, field := range cond.Fields {
@@ -696,7 +696,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionMatchPhrase(ctx context.Co
 			},
 		}, nil
 	} else if len(cond.Fields) == 1 {
-		// 单个字段匹配
+		// Single field matching
 		field := cond.Fields[0]
 		return map[string]any{
 			"match_phrase": map[string]any{
@@ -1039,24 +1039,24 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionKnnVector(ctx context.Cont
 
 	value := cond.Cfg.Value
 
-	// 构建 knn 查询
+	// Build a knn query
 	knnQuery := map[string]any{
 		cond.FilterFieldName: map[string]any{
 			"vector": value,
 		},
 	}
 
-	// 添加 limit_key 和 limit_value
+	// Add limit_key and limit_value
 	if limitKey, ok := cond.Cfg.RemainCfg["limit_key"].(string); ok && limitKey != "" {
 		if limitValue, ok := cond.Cfg.RemainCfg["limit_value"]; ok {
 			knnQuery[cond.FilterFieldName].(map[string]any)[limitKey] = limitValue
 		}
 	} else {
-		// 使用默认值
+		// Use the default value
 		knnQuery[cond.FilterFieldName].(map[string]any)["k"] = 10
 	}
 
-	// 添加子条件
+	// Add sub-conditions
 	if len(cond.SubConds) > 0 {
 		filterQueries := make([]map[string]any, 0, len(cond.SubConds))
 		for _, subCond := range cond.SubConds {
@@ -1082,7 +1082,7 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionKnnVector(ctx context.Cont
 	}, nil
 }
 
-// replaceLikeWildcards，把 like 的通配符替换成正则表达式里的字符
+// replaceLikeWildcards, replace the wildcard of like with the character in the regular expression
 func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
 	if input == "" {
 		return input
@@ -1096,23 +1096,23 @@ func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
 		r := runes[i]
 
 		if escaped {
-			// 转义字符后的字符
+			// The character after the escape character
 			switch r {
 			case '%', '_', '\\':
 				result.WriteRune(r)
 			default:
-				// 如果转义了非特殊字符，保留转义符和字符
+				// If non-special characters are escaped, retain the escape character and the characters
 				result.WriteRune('\\')
 				result.WriteRune(r)
 			}
 			escaped = false
 		} else if r == '\\' {
-			// 遇到转义符，检查是否是最后一个字符
+			// When encountering an escape character, check if it is the last character
 			if i == len(runes)-1 {
-				// 转义符在末尾，直接输出
+				// The escape character is at the end and is output directly
 				result.WriteRune(r)
 			} else {
-				// 标记转义状态，但不立即输出转义符
+				// Mark the escape status but do not immediately output the escape character
 				escaped = true
 			}
 		} else if r == '%' {
@@ -1124,7 +1124,7 @@ func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
 		}
 	}
 
-	// 处理以转义符结尾的情况
+	// Handle cases ending with an escape character
 	if escaped {
 		result.WriteRune('\\')
 	}
@@ -1132,7 +1132,7 @@ func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
 	return result.String()
 }
 
-// getKeywordSuffix text 类型在部分查询场景（如 eq/in）下，需使用 keyword 类型的子字段，返回关键字后缀，否则返回空字符串
+// in some query scenarios (such as eq/in), the getKeywordSuffix text type needs to use a subfield of the keyword type to return the keyword suffix; otherwise, it returns an empty string
 func (c *logicViewDSLGenerator) getKeywordSuffix(fieldName string, fieldsMap map[string]*interfaces.Property) (string, error) {
 	for _, prop := range fieldsMap {
 		if prop.OriginalName == fieldName && prop.Type == interfaces.DataType_Text {

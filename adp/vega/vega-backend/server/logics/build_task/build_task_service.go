@@ -46,7 +46,7 @@ type buildTaskService struct {
 	appSetting *common.AppSetting
 	bta        interfaces.BuildTaskAccess
 	cs         interfaces.CatalogService
-	lim        interfaces.LocalIndexManager // 删任务时 drop 其本地索引；测试注入 mock
+	lim        interfaces.LocalIndexManager // When deleting a task, drop its local index. Test Injection mock
 	mfs        interfaces.ModelFactoryService
 	rs         interfaces.ResourceService
 	ums        interfaces.UserMgmtService
@@ -399,9 +399,9 @@ func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embedd
 	if embeddingModel == "" {
 		return "", modelDimensions, nil
 	}
-	// embedding_model 统一归一化为模型 ID 存储：传入是模型名则解析为 ID 并补全维度；
-	// 传入已是模型 ID 时 GetModelByName 按名查不到（err != nil），此时若已带维度则原样保留为 ID。
-	// 既解析不到又没维度则无法建向量索引，按错误处理。
+	// The embedding_model is uniformly normalized and stored as a model ID: if the model name is passed in, it is parsed as an ID and the dimensions are completed.
+	// When the model ID is already passed in, GetModelByName cannot be found by name (err!) = nil), at this time, if a dimension is already included, it is retained as ID as it is.
+	// If a vector index cannot be created and there is neither a resolution nor a dimension, it will be treated as an error.
 	if model, err := bts.mfs.GetModelByName(ctx, embeddingModel); err == nil {
 		embeddingModel = model.ModelID
 		if modelDimensions == 0 {
@@ -510,8 +510,8 @@ func (bts *buildTaskService) InternalMarkCompleted(ctx context.Context, tx *sql.
 	return bts.bta.MarkCompleted(ctx, tx, id, time.Now().UnixMilli())
 }
 
-// populateBuildTaskReferences 批量补齐任务关联的资源与目录展示字段。它只查询当前
-// 返回的任务所引用的实体，避免任务列表由前端触发全量资源/目录加载。
+// PopulateBuildTaskReferences batch completion task related resources and show directory field. It only queries the current situation
+// The entity referenced by the returned task should be avoided to prevent the task list from being triggered by the front end to load the full resource/directory.
 func (bts *buildTaskService) populateBuildTaskReferences(ctx context.Context, buildTasks []*interfaces.BuildTask) error {
 	if len(buildTasks) == 0 {
 		return nil
@@ -621,9 +621,9 @@ func (bts *buildTaskService) InternalGetStatus(ctx context.Context, id string) (
 	return bts.bta.GetStatus(ctx, id)
 }
 
-// computeIndexHealth 按当前计数派生各索引健康度（不落库）。embedding 与 fulltext
-// 相互独立：fulltext 随同步即时生效，建了即 ok；embedding 要等向量写满才算 ok。
-// 仅在终态给出 ok/partial/failed，进行中统一 building，避免把中途进度误报成失败。
+// computeIndexHealth derives the health of each index based on the current count (without being recorded in the database). embedding and fulltext
+// Independent of each other: fulltext takes effect immediately upon synchronization, and it's done once created. embedding is not considered ok until the vector is filled up.
+// Only give ok/partial/failed in the final state, and uniformly build during progress to avoid mistakenly reporting the progress as a failure in the middle.
 func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
 	h := &interfaces.IndexHealth{Embedding: "none", Fulltext: "none"}
 	if hasFulltextIndexConfig(bt) {
@@ -635,7 +635,7 @@ func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
 	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusPending:
 		h.Embedding = "building"
 	case bt.SyncedCount == 0:
-		// 无数据可向量化，空索引视为可用
+		// No data can be vectorized, and an empty index is considered available
 		h.Embedding = "ok"
 	case bt.VectorizedCount >= bt.SyncedCount:
 		h.Embedding = "ok"
@@ -723,7 +723,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
-	// failed 也允许重启：否则失败任务成死胡同，只能删除重建
+	// Failed tasks may also be restarted; otherwise they become dead ends that must be deleted and rebuilt.
 	if buildTask.Status != interfaces.BuildTaskStatusStopped &&
 		buildTask.Status != interfaces.BuildTaskStatusFailed {
 		span.SetStatus(codes.Error, "Invalid state transition for start")
@@ -847,9 +847,9 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 			WithErrorDetails(fmt.Sprintf("cannot stop task in status: %s", buildTask.Status))
 	}
 
-	// running → stopping：通知 worker 在批间检查点退出。
-	// pending → stopped：排队中尚无 worker 观察 stopping，直接落停；
-	// 出队时 worker 检查到 stopped 即跳过，不会复活执行。
+	// running → stopping: Notifies the worker to exit at the inter-batch checkpoint.
+	// pending → stopped: If there are no workers in the queue to observe stopping, stop directly.
+	// When dequeuing, if the worker detects "stopped", it will skip and will not be revived for execution.
 	var updated bool
 	if buildTask.Status == interfaces.BuildTaskStatusPending {
 		updated, err = bts.bta.MarkStopped(ctx, taskID, time.Now().UnixMilli())
@@ -970,7 +970,7 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 	deleteIDs := make([]string, 0, len(toDelete))
 	for _, bt := range toDelete {
 		// 先 drop 索引（尽力，失败仅记日志），再删任务行——与删资源/删 catalog 的级联
-		// 语义一致，避免 UI 单任务删除留下孤儿索引（#66 只覆盖了资源/目录两条路径）。
+		// Semantic consistency is maintained to prevent the deletion of a single UI task from leaving an orphan index (#66 only covers the two paths of resources and directories).
 		idx := interfaces.BuildIndexName(bt.ResourceID, bt.ID)
 		if err := bts.lim.DeleteIndex(ctx, idx); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Drop index %s for build task %s failed", idx, bt.ID), err)

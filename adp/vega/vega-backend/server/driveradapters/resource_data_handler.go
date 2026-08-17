@@ -46,13 +46,13 @@ func (r *restHandler) PostResourceDataByEx(c *gin.Context) {
 // PostResourceDataByIn handles POST /api/vega-backend/in/v1/resources/:id/data (Internal).
 func (r *restHandler) PostResourceDataByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
 	r.postResourceData(c, visitor, true)
 }
 
 // postResourceData dispatches POST /resources/:id/data to the right branch based on
-// X-HTTP-Method-Override header. s2sInternal 为 true 时（仅 /in/ 内网端点），
-// 内部目录资源跳过 per-account view_detail 校验。
+// When X-HTTP-Method-Override header.s2sInternal is true (only for /in/ internal network endpoints),
+// Skip the per-account view_detail check for internal directory resources.
 func (r *restHandler) postResourceData(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -259,12 +259,12 @@ func (r *restHandler) PutResourceDataByEx(c *gin.Context) {
 // PutResourceDataByIn handles PUT /api/vega-backend/in/v1/resources/:id/data (Internal).
 func (r *restHandler) PutResourceDataByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
 	r.putResourceData(c, visitor, true)
 }
 
-// putResourceData 批量 upsert 文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
-// 内部目录资源跳过 per-account view_detail 校验。
+// putResourceData batch upsert documents. When s2sInternal is true (only for /in/ internal network endpoints),
+// Skip the per-account view_detail check for internal directory resources.
 func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -342,12 +342,12 @@ func (r *restHandler) GetResourceDataDocByEx(c *gin.Context) {
 // GetResourceDataDocByIn handles GET /api/vega-backend/in/v1/resources/:id/data/:doc_id (Internal).
 func (r *restHandler) GetResourceDataDocByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
 	r.getResourceDataDoc(c, visitor, true)
 }
 
-// getResourceDataDoc 读取单个文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
-// 内部目录资源跳过 per-account view_detail 校验。
+// getResourceDataDoc reads a single document. When s2sInternal is true (only for /in/ internal network endpoints),
+// Skip the per-account view_detail check for internal directory resources.
 func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -399,12 +399,12 @@ func (r *restHandler) PutResourceDataDocByEx(c *gin.Context) {
 // PutResourceDataDocByIn handles PUT /api/vega-backend/in/v1/resources/:id/data/:doc_id (Internal).
 func (r *restHandler) PutResourceDataDocByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
 	r.putResourceDataDoc(c, visitor, true)
 }
 
-// putResourceDataDoc 更新单个文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
-// 内部目录资源跳过 per-account view_detail 校验。
+// putResourceDataDoc updates a single document. When s2sInternal is true (only for /in/ internal network endpoints),
+// Skip the per-account view_detail check for internal directory resources.
 func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -468,12 +468,12 @@ func (r *restHandler) DeleteResourceDataByEx(c *gin.Context) {
 // DeleteResourceDataByIn handles DELETE /api/vega-backend/in/v1/resources/:id/data/:doc_ids (Internal).
 func (r *restHandler) DeleteResourceDataByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	// 内网 /in/ 为集群内 S2S 边界：标记 S2S，使内部基础设施资源默认放行 per-account 鉴权。
+	// The internal network /in/ is the S2S boundary within the cluster: mark S2S to allow per-account authentication for internal infrastructure resources by default.
 	r.deleteResourceData(c, visitor, true)
 }
 
-// deleteResourceData 按 ID 批量删除文档。s2sInternal 为 true 时（仅 /in/ 内网端点），
-// 内部目录资源跳过 per-account view_detail 校验。
+// deleteResourceData deletes documents in batches by ID. When s2sInternal is true (only for /in/ internal network endpoints),
+// Skip the per-account view_detail check for internal directory resources.
 func (r *restHandler) deleteResourceData(c *gin.Context, visitor hydra.Visitor, s2sInternal bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()

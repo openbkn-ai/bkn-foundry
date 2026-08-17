@@ -646,7 +646,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionBetween(ctx context.Context,
 		return nil, fmt.Errorf("between condition requires exactly 2 values")
 	}
 
-	// 检查字段是否为时间类型，如果是则转换long类型值为时间戳
+	// Check if the field is of time type. If it is, convert the long type value to a timestamp
 	fieldType := cond.Lfield.Type
 	isDateType := interfaces.DataType_IsDate(fieldType)
 
@@ -662,7 +662,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionBetween(ctx context.Context,
 		return sq.And{lower, upper}, nil
 	}
 
-	// 非时间类型字段，直接使用参数化查询
+	// For non-time type fields, parameterized queries can be directly used
 	return sq.And{
 		sq.GtOrEq{quoteColumnName(cond.Lfield.OriginalName): values[0]},
 		sq.LtOrEq{quoteColumnName(cond.Lfield.OriginalName): values[1]},
@@ -802,7 +802,7 @@ func (c *PostgresqlConnector) ConvertFilterConditionCurrent(ctx context.Context,
 	return sq.Expr(fmt.Sprintf("date_trunc('%s', %s::timestamptz) = date_trunc('%s', CURRENT_TIMESTAMP)", trunc, col, trunc)), nil
 }
 
-// pgIntervalUnit 将 MySQL 风格 INTERVAL 单位映射为 PostgreSQL interval 乘法用的英文单数单位名。
+// pgIntervalUnit maps the MysqL-style INTERVAL unit to the English singular unit name used for PostgreSQL interval multiplication.
 func pgIntervalUnit(mysqlStyle string) (string, error) {
 	u := strings.ToUpper(strings.TrimSpace(mysqlStyle))
 	switch u {

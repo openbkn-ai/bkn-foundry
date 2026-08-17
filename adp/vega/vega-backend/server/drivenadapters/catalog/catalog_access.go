@@ -62,7 +62,7 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	// tags 转成 string 的格式
+	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(catalog.Tags)
 
 	// Serialize connector config
@@ -215,7 +215,7 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// The format of converting tags string to an array
 	catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 	// Deserialize connector config
@@ -324,7 +324,7 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 			return []*interfaces.Catalog{}, err
 		}
 
-		// tags string 转成数组的格式
+		// The format of converting tags string to an array
 		catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		if connectorConfigStr != "" {
@@ -440,7 +440,7 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		return nil, err
 	}
 
-	// tags string 转成数组的格式
+	// The format of converting tags string to an array
 	catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 	// Deserialize connector config
@@ -499,7 +499,7 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 
 	builder = applyCatalogExtensionJoins(builder, params)
 
-	// 排序
+	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(catalogListOrderExpr(params))
 	} else {
@@ -542,7 +542,7 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 	return ids, nil
 }
 
-// ListInternalIDs 列出所有系统内部目录的 ID（用于权限校验时按 internal_catalog 类型分组）。
+// ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
 func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal catalog IDs")
 	defer span.End()
@@ -651,7 +651,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	}
 
 	// Pagination is applied in service after permission filtering.
-	// 排序
+	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(catalogListOrderExpr(params))
 	} else {
@@ -708,7 +708,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 			return nil, 0, err
 		}
 
-		// tags string 转成数组的格式
+		// The format of converting tags string to an array
 		catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
 
 		if connectorConfigStr != "" {
@@ -753,7 +753,7 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 		"f_id",
 		"f_name",
 	).From(CATALOG_TABLE_NAME).
-		// 系统内部目录按 internal_catalog 类型授权，不进入 catalog 类型的授权资源清单
+		// The internal system directory is authorized by the internal_catalog type and does not enter the list of authorized resources of the catalog type
 		Where(sq.Eq{"f_internal": false})
 
 	if params.ID != "" {
@@ -765,7 +765,7 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 		builder = builder.Where(sq.Like{"f_name": keyword})
 	}
 
-	// 排序
+	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
 	} else {
@@ -818,7 +818,7 @@ func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interf
 
 	span.SetAttributes(attr.Key("catalog_id").String(catalog.ID))
 
-	// tags 转成 string 的格式
+	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(catalog.Tags)
 
 	connectorConfigBytes, err := sonic.Marshal(catalog.ConnectorCfg)

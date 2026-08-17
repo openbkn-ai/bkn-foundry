@@ -29,7 +29,7 @@ func (c *BetweenCond) IsSingleValue() bool        { return false }
 func (c *BetweenCond) IsFixedLenArrayValue() bool { return true }
 func (c *BetweenCond) RequiredValueLen() int      { return 2 }
 
-// between 条件，判断字段是否在某个区间内, 区间包含左右边界
+// The between condition determines whether a field is within a certain interval, which includes left and right boundaries
 func (c *BetweenCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
@@ -38,15 +38,15 @@ func (c *BetweenCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// 如果字段未在Schema中定义，创建一个临时的Property对象
-		// 默认设置为datetime类型，以支持时间戳转换
+		// If the field is not defined in the Schema, create a temporary Property object
+		// The default setting is the datetime type to support timestamp conversion
 		field = &interfaces.Property{
 			Name:         cfg.Name,
 			OriginalName: cfg.Name,
 			Type:         interfaces.DataType_Datetime,
 		}
 	}
-	// 对于未在Schema中定义的字段，跳过类型检查
+	// For fields not defined in the Schema, skip type checking
 	if ok && !interfaces.DataType_IsDate(field.Type) && !interfaces.DataType_IsNumber(field.Type) {
 		return nil, fmt.Errorf("condition [between] left field is not a date or number field: %s:%s", cfg.Name, field.Type)
 	}

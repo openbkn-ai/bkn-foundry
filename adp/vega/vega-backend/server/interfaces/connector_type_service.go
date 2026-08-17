@@ -8,26 +8,26 @@ package interfaces
 
 import "context"
 
-// ConnectorTypeService 定义 connector 类型业务逻辑接口
+// The ConnectorTypeService defines the connector type business logic interface
 //
 //go:generate mockgen -source ../interfaces/connector_type_service.go -destination ../interfaces/mock/mock_connector_type_service.go
 type ConnectorTypeService interface {
-	// Register 注册 connector 类型
+	// Register registers the connector type
 	Register(ctx context.Context, ct *ConnectorTypeReq) error
-	// Update 更新 connector 类型
+	// Update updates the connector type
 	Update(ctx context.Context, ct *ConnectorType, req *ConnectorTypeReq) error
-	// Delete 删除 connector 类型
+	// Delete deletes the connector type
 	DeleteByType(ctx context.Context, tp string) error
-	// GetByType 根据类型获取 connector 类型
+	// GetByType obtains the connector type based on the type
 	GetByType(ctx context.Context, tp string) (*ConnectorType, error)
-	// List 列出 connector 类型
+	// List the connector types
 	List(ctx context.Context, params ConnectorTypesQueryParams) ([]*ConnectorType, int64, error)
 	// ListAuthResources lists connector type auth resources with filters.
 	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
-	// CheckExistByType 检查 connector 类型是否存在
+	// CheckExistByType checks whether the connector type exists
 	CheckExistByType(ctx context.Context, tp string) (bool, error)
-	// CheckExistByName 检查 connector 类型名称是否存在
+	// CheckExistByName checks whether the connector type name exists
 	CheckExistByName(ctx context.Context, name string) (bool, error)
-	// SetEnabled 启用/禁用 connector 类型
+	// SetEnabled enables/disables the connector type
 	SetEnabled(ctx context.Context, tp string, enabled bool) error
 }

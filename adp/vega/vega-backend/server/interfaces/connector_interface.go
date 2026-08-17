@@ -10,7 +10,7 @@ import "context"
 
 //go:generate mockgen -source ../interfaces/connector_interface.go -destination ../interfaces/mock/mock_connector_interface.go
 
-// Connector 定义基础连接器接口
+// The Connector defines the basic connector interface
 type Connector interface {
 	GetType() string
 	GetName() string
@@ -20,9 +20,9 @@ type Connector interface {
 	GetEnabled() bool
 	SetEnabled(bool)
 
-	// GetSensitiveFields 返回该 connector 的敏感字段列表（如 password）
+	// GetSensitiveFields returns a list of sensitive fields for this connector (such as password)
 	GetSensitiveFields() []string
-	// GetFieldConfig 返回该 connector 的字段配置定义（兼容 JSON Schema properties）
+	// GetFieldConfig returns the field configuration definition of this connector (compatible with JSON Schema properties)
 	GetFieldConfig() map[string]ConnectorFieldConfig
 
 	New(cfg ConnectorConfig) (Connector, error)
@@ -35,7 +35,7 @@ type Connector interface {
 	GetMetadata(ctx context.Context) (map[string]any, error)
 }
 
-// LocalConnectorBuilder 本地 connector 构建函数
+// LocalConnectorBuilder is a local connector builder function
 type LocalConnectorBuilder func(cfg *ConnectorConfig) (Connector, error)
 
 // TableConnector defines the interface for relational database connectors.
@@ -43,13 +43,13 @@ type LocalConnectorBuilder func(cfg *ConnectorConfig) (Connector, error)
 type TableConnector interface {
 	Connector
 
-	// MapType 将源端原生类型映射为 VEGA 统一类型；不识别一律返回 Other
+	// MapType maps the native types at the source end to VEGA unified types. If not recognized, always return "Other"
 	MapType(nativeType string) string
 
 	ListTables(ctx context.Context) ([]*TableMeta, error)
 	GetTableMeta(ctx context.Context, table *TableMeta) error
 
-	// ExecuteQuery 执行单表查询语句
+	// ExecuteQuery executes a single-table query statement
 	ExecuteQuery(ctx context.Context, resource *Resource,
 		params *ResourceDataQueryParams) (*QueryResult, error)
 	// BuildPagedSQL wraps a validated read-only SQL statement with the
@@ -58,7 +58,7 @@ type TableConnector interface {
 	// BuildCountSQL wraps a validated read-only SQL statement with the
 	// connector-specific total-count syntax.
 	BuildCountSQL(sql string) string
-	// ExecuteRawSQL 执行统一查询链路已校验的只读 SQL。
+	// ExecuteRawSQL executes read-only SQL that has already passed unified query validation.
 	ExecuteRawSQL(ctx context.Context, sql string) (*RawQueryResponse, error)
 }
 
@@ -96,7 +96,7 @@ type MetricConnector interface {
 type IndexConnector interface {
 	Connector
 
-	// MapType 将源端原生类型映射为 VEGA 统一类型；不识别一律返回 Other
+	// MapType maps the native types at the source end to VEGA unified types. If not recognized, always return "Other"
 	MapType(nativeType string) string
 
 	ListIndexes(ctx context.Context) ([]*IndexMeta, error)

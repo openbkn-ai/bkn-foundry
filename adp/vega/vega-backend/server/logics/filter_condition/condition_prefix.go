@@ -29,7 +29,7 @@ func (c *PrefixCond) IsSingleValue() bool        { return true }
 func (c *PrefixCond) IsFixedLenArrayValue() bool { return false }
 func (c *PrefixCond) RequiredValueLen() int      { return -1 }
 
-// prefix 条件, 判断字段是否以某个前缀开头
+// The prefix condition determines whether a field starts with a certain prefix
 func (c *PrefixCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

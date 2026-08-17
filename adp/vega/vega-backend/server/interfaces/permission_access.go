@@ -11,24 +11,24 @@ import (
 )
 
 const (
-	// 访问者类型
+	// Visitor type
 	ACCESSOR_TYPE_USER = "user"
 	ACCESSOR_TYPE_APP  = "app"
 
-	// 创建时无资源id，用 * 表示
+	// When creating, there is no resource id, which is indicated by *
 	RESOURCE_ID_ALL = "*"
 
-	// 资源类型
+	// Resource type
 	AUTH_RESOURCE_TYPE_CATALOG        = "catalog"
 	AUTH_RESOURCE_TYPE_RESOURCE       = "resource"
 	AUTH_RESOURCE_TYPE_CONNECTOR_TYPE = "connector_type"
 
-	// 内部资源类型：系统内部 catalog 及其下资源按独立类型注册，
-	// 业务角色的 catalog:*/resource:* 通配授权匹配不到，仅超级管理员（* 通配）可见
+	// Internal resource type: The system's internal catalog and its affiliated resources are registered as independent types.
+	// catalog of business roles :*/resource:* Wildcard authorization does not match, only visible to the super administrator (* wildcard)
 	AUTH_RESOURCE_TYPE_INTERNAL_CATALOG  = "internal_catalog"
 	AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE = "internal_resource"
 
-	// 资源操作类型
+	// Resource operation type
 	OPERATION_TYPE_VIEW_DETAIL = "view_detail"
 	OPERATION_TYPE_CREATE      = "create"
 	OPERATION_TYPE_MODIFY      = "modify"
@@ -36,13 +36,13 @@ const (
 	OPERATION_TYPE_AUTHORIZE   = "authorize"
 	OPERATION_TYPE_TASK_MANAGE = "task_manage"
 
-	// OPERATION_TYPE_QUERY_DATA 是「能取这张表的数据」，与 view_detail（只看结构）
-	// 分开。OPERATION_TYPE_RESOURCE_MANAGE 是数据目录上的「管理目录下的数据表」。
-	// 两者都在权限词表里（#801），这里补上常量供判定使用。
+	// OPERATION_TYPE_QUERY_DATA is "the data that can be retrieved from this table", and view_detail (only looking at the structure)
+	// Separate. OPERATION_TYPE_RESOURCE_MANAGE is the "data Table under the Management Directory" on the data directory.
+	// Both are in the permission vocabulary (#801), and a constant is added here for determination.
 	OPERATION_TYPE_QUERY_DATA      = "query_data"
 	OPERATION_TYPE_RESOURCE_MANAGE = "resource_manage"
 
-	// 更新资源名称的topic
+	// Update the topic of the resource name
 	AUTHORIZATION_RESOURCE_NAME_MODIFY = "authorization.resource.name.modify"
 )
 
@@ -57,7 +57,7 @@ var (
 	}
 )
 
-// 检查权限
+// Check permissions
 type PermissionCheck struct {
 	Accessor   PermissionAccessor `json:"accessor"`
 	Resource   PermissionResource `json:"resource"`
@@ -65,25 +65,25 @@ type PermissionCheck struct {
 	Method     string             `json:"method"`
 }
 
-// 检查权限结果
+// Check the permission result
 type PermissionCheckResult struct {
 	Result bool `json:"result"`
 }
 
-// 访问者信息
+// Visitor Information
 type PermissionAccessor struct {
-	Type string `json:"type,omitempty"` // 分 user: 实名， app: 应用账户
-	ID   string `json:"id,omitempty"`   // 用户ID
+	Type string `json:"type,omitempty"` // Separate user: real name, app: application account
+	ID   string `json:"id,omitempty"`   // User ID
 }
 
-// 资源信息
+// Resource information
 type PermissionResource struct {
-	Type string `json:"type,omitempty"` // 资源类型
-	ID   string `json:"id,omitempty"`   // 资源ID
-	Name string `json:"name,omitempty"` // 资源名称
+	Type string `json:"type,omitempty"` // Resource type
+	ID   string `json:"id,omitempty"`   // Resource ID
+	Name string `json:"name,omitempty"` // Resource name
 }
 
-// 过滤/删除
+// Filter/Delete
 type PermissionResourcesFilter struct {
 	Accessor       PermissionAccessor   `json:"accessor,omitempty"`
 	Resources      []PermissionResource `json:"resources,omitempty"`
@@ -92,7 +92,7 @@ type PermissionResourcesFilter struct {
 	Method         string               `json:"method,omitempty"`
 }
 
-// 设置权限
+// Set permissions
 type PermissionPolicy struct {
 	Accessor   PermissionAccessor  `json:"accessor"`
 	Resource   PermissionResource  `json:"resource"`

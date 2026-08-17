@@ -30,7 +30,7 @@ func (c *LtCond) IsSingleValue() bool        { return true }
 func (c *LtCond) IsFixedLenArrayValue() bool { return false }
 func (c *LtCond) RequiredValueLen() int      { return -1 }
 
-// lt 条件, 判断字段是否小于某个值
+// The lt condition determines whether a field is less than a certain value
 func (c *LtCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
@@ -39,7 +39,7 @@ func (c *LtCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	field, ok := fieldsMap[cfg.Name]
 	if !ok {
-		// 如果字段未在Schema中定义，创建一个临时的Property对象
+		// If the field is not defined in the Schema, create a temporary Property object
 		field = &interfaces.Property{
 			Name:         cfg.Name,
 			OriginalName: cfg.Name,

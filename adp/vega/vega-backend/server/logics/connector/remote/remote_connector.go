@@ -14,17 +14,17 @@ import (
 )
 
 // ============================================
-// RemoteConnector 基础远程连接器
+// RemoteConnector is a basic remote connector
 // ============================================
 
-// RemoteConnector 实现基础的远程连接器代理
+// RemoteConnector implements the basic remote connector agent
 type RemoteConnector struct {
 	enabled  bool
 	connType *interfaces.ConnectorType
 	config   interfaces.ConnectorConfig
 }
 
-// NewRemoteConnector 创建基础远程连接器
+// NewRemoteConnector creates basic remote connectors
 func NewRemoteConnector(ct *interfaces.ConnectorType) *RemoteConnector {
 	return &RemoteConnector{
 		enabled:  ct.Enabled,
@@ -32,27 +32,27 @@ func NewRemoteConnector(ct *interfaces.ConnectorType) *RemoteConnector {
 	}
 }
 
-// GetType 返回连接器类型
+// GetType returns the connector type
 func (r *RemoteConnector) GetType() string {
 	return r.connType.Type
 }
 
-// GetName 返回连接器名称
+// GetName returns the connector name
 func (r *RemoteConnector) GetName() string {
 	return r.connType.Name
 }
 
-// GetMode 返回连接器模式
+// GetMode returns the connector mode
 func (r *RemoteConnector) GetMode() string {
 	return r.connType.Mode
 }
 
-// GetCategory 返回连接器类别
+// GetCategory returns the connector category
 func (r *RemoteConnector) GetCategory() string {
 	return r.connType.Category
 }
 
-// GetEnabled 返回连接器是否启用
+// GetEnabled returns whether the connector is enabled
 func (r *RemoteConnector) GetEnabled() bool {
 	return r.enabled
 }
@@ -68,12 +68,12 @@ func (rc *RemoteConnector) GetSensitiveFields() []string {
 }
 
 // GetFieldConfig returns the field configuration for this remote connector.
-// 从 ConnectorType 中获取字段配置
+// Obtain the field configuration from ConnectorType
 func (rc *RemoteConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return rc.connType.FieldConfig
 }
 
-// New 创建新的连接器实例
+// New creates a connector instance.
 func (rc *RemoteConnector) New(cfg interfaces.ConnectorConfig) (interfaces.Connector, error) {
 	return &RemoteConnector{
 		enabled:  rc.enabled,

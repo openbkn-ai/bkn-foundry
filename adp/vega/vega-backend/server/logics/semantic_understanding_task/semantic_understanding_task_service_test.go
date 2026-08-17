@@ -383,7 +383,7 @@ func TestLimitSemanticUnderstandingSampleRows(t *testing.T) {
 		assert.False(t, truncated)
 		expectedText := strings.Repeat("测", interfaces.MaxSemanticUnderstandingSampleValueRunes-1) + "…"
 		assert.Equal(t, expectedText, rows[0]["text"])
-		assert.Equal(t, "【二进制内容已省略，原始长度 3 字节】", rows[0]["binary"])
+		assert.Equal(t, "[binary content omitted; original length: 3 bytes]", rows[0]["binary"])
 		nested := rows[0]["nested"].(map[string]any)
 		assert.Equal(t, expectedText, nested["text"])
 		assert.Equal(t, []any{expectedText}, nested["values"])

@@ -4,12 +4,11 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package extensions 提供实体级 / 字段级 extensions 校验（Issue #382 方案 B）
+// Package extensions validates entity-level and property-level extensions.
 package extensions
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -17,6 +16,7 @@ import (
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/locale"
 )
 
 const (
@@ -28,11 +28,11 @@ const (
 	ReservedKeyPrefix         = "vega_"
 )
 
-// ValidateEntityExtensionsMap 校验根级 extensions：扁平 string→string、条数与长度、保留前缀。
+// ValidateEntityExtensionsMap validates root extensions, including quotas, lengths, and reserved keys.
 func ValidateEntityExtensionsMap(ctx context.Context, m map[string]string) error {
 	if len(m) > MaxEntityExtensionPairs {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_QuotaExceeded).
-			WithErrorDetails(fmt.Sprintf("extensions 最多 %d 条", MaxEntityExtensionPairs))
+			WithErrorDetails(locale.ValidationDetail(ctx, "EntityExtensionsQuota", map[string]interface{}{"Limit": MaxEntityExtensionPairs}))
 	}
 	for k, v := range m {
 		if err := validateOnePair(ctx, k, v); err != nil {
@@ -42,11 +42,11 @@ func ValidateEntityExtensionsMap(ctx context.Context, m map[string]string) error
 	return nil
 }
 
-// ValidatePropertyExtensionsMap 校验 Property.extensions（配额略紧）。
+// ValidatePropertyExtensionsMap validates property extensions with the property quota.
 func ValidatePropertyExtensionsMap(ctx context.Context, m map[string]string) error {
 	if len(m) > MaxPropertyExtensionPairs {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_PropertyQuotaExceeded).
-			WithErrorDetails(fmt.Sprintf("单字段 extensions 最多 %d 条", MaxPropertyExtensionPairs))
+			WithErrorDetails(locale.ValidationDetail(ctx, "PropertyExtensionsQuota", map[string]interface{}{"Limit": MaxPropertyExtensionPairs}))
 	}
 	for k, v := range m {
 		if err := validateOnePair(ctx, k, v); err != nil {
@@ -56,7 +56,7 @@ func ValidatePropertyExtensionsMap(ctx context.Context, m map[string]string) err
 	return nil
 }
 
-// ValidateSchemaPropertiesExtensions 校验 schema_definition 中各 Property 的 extensions。
+// ValidateSchemaPropertiesExtensions validates extensions on schema properties.
 func ValidateSchemaPropertiesExtensions(ctx context.Context, props []*interfaces.Property) error {
 	for _, p := range props {
 		if p == nil || len(p.Extensions) == 0 {
@@ -72,40 +72,40 @@ func ValidateSchemaPropertiesExtensions(ctx context.Context, props []*interfaces
 func validateOnePair(ctx context.Context, k, v string) error {
 	if k == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_InvalidFormat).
-			WithErrorDetails("extensions 的 key 不能为空")
+			WithErrorDetails(locale.ValidationDetail(ctx, "ExtensionKeyRequired", nil))
 	}
 	if len(k) > MaxExtensionKeyLen {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_InvalidFormat).
-			WithErrorDetails(fmt.Sprintf("extensions key 长度不能超过 %d", MaxExtensionKeyLen))
+			WithErrorDetails(locale.ValidationDetail(ctx, "ExtensionKeyLength", map[string]interface{}{"Limit": MaxExtensionKeyLen}))
 	}
 	if strings.HasPrefix(strings.ToLower(k), ReservedKeyPrefix) {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_ReservedKey).
-			WithErrorDetails("extensions key 不能使用保留前缀 vega_")
+			WithErrorDetails(locale.ValidationDetail(ctx, "ExtensionReservedKey", nil))
 	}
 	if len(v) > MaxExtensionValueLen {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_InvalidFormat).
-			WithErrorDetails(fmt.Sprintf("extensions value 长度不能超过 %d", MaxExtensionValueLen))
+			WithErrorDetails(locale.ValidationDetail(ctx, "ExtensionValueLength", map[string]interface{}{"Limit": MaxExtensionValueLen}))
 	}
 	return nil
 }
 
-// ValidateExtensionQueryPairs 校验列表筛选 extension_key / extension_value 成对且数量上限。
+// ValidateExtensionQueryPairs validates paired extension filters and their quota.
 func ValidateExtensionQueryPairs(ctx context.Context, keys, values []string) error {
 	if len(keys) == 0 && len(values) == 0 {
 		return nil
 	}
 	if len(keys) != len(values) {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_MismatchedQueryPairs).
-			WithErrorDetails("extension_key 与 extension_value 必须成对且数量一致")
+			WithErrorDetails(locale.ValidationDetail(ctx, "ExtensionQueryPairs", nil))
 	}
 	if len(keys) > MaxExtensionFilterPairs {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_TooManyFilterPairs).
-			WithErrorDetails(fmt.Sprintf("扩展筛选条件最多 %d 组", MaxExtensionFilterPairs))
+			WithErrorDetails(locale.ValidationDetail(ctx, "ExtensionFilterPairs", map[string]interface{}{"Limit": MaxExtensionFilterPairs}))
 	}
 	for i := range keys {
 		if keys[i] == "" || values[i] == "" {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Extensions_MismatchedQueryPairs).
-				WithErrorDetails("extension_key 与 extension_value 不能为空")
+				WithErrorDetails(locale.ValidationDetail(ctx, "ExtensionQueryValuesRequired", nil))
 		}
 	}
 	return nil

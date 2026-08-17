@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors Dataset 模块错误码
+// Package errors Dataset module error code
 package errors
 
-// Dataset 错误码（当前全部为 400 Bad Request：schema/字段定义校验）
+// Dataset error code (currently all are 400 Bad Request: schema/ Field definition validation)
 const (
 	// 400 Bad Request
 	VegaBackend_Dataset_InvalidParameter_SchemaDefinition  = "VegaBackend.Dataset.InvalidParameter.SchemaDefinition"

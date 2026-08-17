@@ -129,13 +129,13 @@ func (c *OracleConnector) GetSensitiveFields() []string {
 // GetFieldConfig returns the field configuration for Oracle connector.
 func (c *OracleConnector) GetFieldConfig() map[string]interfaces.ConnectorFieldConfig {
 	return map[string]interfaces.ConnectorFieldConfig{
-		"host":         {Name: "主机地址", Type: "string", Description: "Oracle 服务器主机地址", Required: true, Encrypted: false},
-		"port":         {Name: "端口号", Type: "integer", Description: "Oracle 服务器端口", Required: true, Encrypted: false},
-		"service_name": {Name: "服务名", Type: "string", Description: "Oracle 服务名", Required: true, Encrypted: false},
-		"username":     {Name: "用户名", Type: "string", Description: "数据库用户名", Required: true, Encrypted: false},
-		"password":     {Name: "密码", Type: "string", Description: "数据库密码", Required: true, Encrypted: true},
-		"schemas":      {Name: "模式列表", Type: "array", Description: "模式名称列表（可选，为空则连接实例级别）", Required: false, Encrypted: false},
-		"options":      {Name: "连接参数", Type: "object", Description: "连接参数", Required: false, Encrypted: false},
+		"host":         {Name: "Host", Type: "string", Description: "Oracle server host", Required: true, Encrypted: false},
+		"port":         {Name: "Port", Type: "integer", Description: "Oracle server port", Required: true, Encrypted: false},
+		"service_name": {Name: "Service name", Type: "string", Description: "Oracle service name", Required: true, Encrypted: false},
+		"username":     {Name: "Username", Type: "string", Description: "Database username", Required: true, Encrypted: false},
+		"password":     {Name: "Password", Type: "string", Description: "Database password", Required: true, Encrypted: true},
+		"schemas":      {Name: "Schemas", Type: "array", Description: "Optional schema names; when empty, connect at the instance level", Required: false, Encrypted: false},
+		"options":      {Name: "Connection options", Type: "object", Description: "Connection options", Required: false, Encrypted: false},
 	}
 }
 
@@ -356,7 +356,7 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 		placeholders := make([]string, len(c.config.Schemas))
 		//args = make([]interface{}, len(c.config.Schemas))
 		for i, schema := range c.config.Schemas {
-			// 使用字符串格式化添加单引号
+			// Add single quotes using string formatting
 			placeholders[i] = fmt.Sprintf("'%s'", strings.ToUpper(schema))
 		}
 		query = fmt.Sprintf("%s AND OWNER IN (%s)", baseQuery, strings.Join(placeholders, ", "))
@@ -370,7 +370,7 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 	} else {
 		// Exclude system schemas
 		//builder = builder.Where(sq.NotEq{"OWNER": SYSTEM_SCHEMAS})
-		// 如果没有指定schemas，排除系统schemas
+		// If no schemas are specified, exclude system schemas
 		query = baseQuery
 		//args = []interface{}{}
 	}

@@ -62,14 +62,14 @@ type Catalog struct {
 
 	Type    string `json:"type"`
 	Enabled bool   `json:"enabled"`
-	// Internal 系统内部目录：在权限服务按 internal_catalog 类型注册，仅超级管理员可见
+	// Internal system internal directory: Register in the permission service as internal_catalog type, visible only to super administrators
 	Internal bool `json:"internal"`
 
 	ConnectorType string          `json:"connector_type"`
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 	Metadata      map[string]any  `json:"metadata"`
 
-	// Extensions 业务域外扁平 KV（t_entity_extension）；列表默认省略，详情或非省略时返回
+	// Extensions business out-of-domain flat KV (t_entity_extension); The list is omitted by default. Details or non-omission are returned
 	Extensions map[string]string `json:"extensions,omitempty"`
 
 	CatalogHealthCheckStatus
@@ -99,7 +99,7 @@ type CatalogsQueryParams struct {
 	ConnectorType     string
 	Enabled           *bool
 	HealthCheckStatus string
-	// ExtensionKeys / ExtensionValues 成对等长，多对 AND（列表筛选）
+	// ExtensionKeys/ExtensionValues pairs of equal length, multiple pairs of AND (list filtering)
 	ExtensionKeys        []string
 	ExtensionValues      []string
 	IncludeExtensions    bool
@@ -116,14 +116,14 @@ type CatalogRequest struct {
 	ConnectorType string          `json:"connector_type"`
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 
-	// Internal 仅创建时生效，创建后不可变更（Update 忽略该字段）；
-	// 需要 internal_catalog 类型的 create 权限（默认仅超级管理员/系统 S2S 身份）
+	// Internal only takes effect during creation and cannot be changed by updates.
+	// The create permission of type internal_catalog is required (by default, only for the super administrator/system S2S identity).
 	Internal bool `json:"internal,omitempty"`
 
-	// Extensions 根对象出现该键（含 null 需客户端避免）时整包替换；指针为 nil 表示请求体未携带该字段
+	// When this key appears in the Extensions root object (including null, which needs to be avoided by the client), replace the entire package. A pointer of nil indicates that the request body does not carry this field
 	Extensions *map[string]string `json:"extensions,omitempty"`
 
-	// HealthCheckSchedule 仅在创建物理目录时生效；nil 时创建 inherit 模式的默认 Schedule。
+	// HealthCheckSchedule only takes effect when the physical directory is created; Create the default Schedule of the inherit mode when nil.
 	HealthCheckSchedule *CatalogHealthCheckScheduleRequest `json:"health_check_schedule,omitempty"`
 }
 

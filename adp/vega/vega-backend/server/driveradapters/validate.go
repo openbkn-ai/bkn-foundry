@@ -26,7 +26,7 @@ func validateID(ctx context.Context, ID string) error {
 		return nil
 	}
 
-	// 非内置视图校验逻辑视图 id，只包含小写英文字母和数字和下划线(_)和连字符(-)，且不能以下划线开头，不能超过40个字符
+	// Non-built-in view verification logical view id, which only contains lowercase English letters, numbers, underscores (_), and hyphens (-), and cannot start with an underscore and cannot exceed 40 characters
 	re := regexp2.MustCompile(interfaces.RegexPattern_NonBuiltin_ID, regexp2.RE2)
 	match, err := re.MatchString(ID)
 	if err != nil || !match {
@@ -39,7 +39,7 @@ func validateID(ctx context.Context, ID string) error {
 	return nil
 }
 
-// 名称合法性校验
+// Name legitimacy verification
 func validateName(ctx context.Context, name string) error {
 	if name == "" {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Name)
@@ -53,7 +53,7 @@ func validateName(ctx context.Context, name string) error {
 	return nil
 }
 
-// tags 的合法性校验
+// The legitimacy verification of tags
 func ValidateTags(ctx context.Context, Tags []string) error {
 	if len(Tags) > interfaces.TAGS_MAX_NUMBER {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Tag).
@@ -69,9 +69,9 @@ func ValidateTags(ctx context.Context, Tags []string) error {
 	return nil
 }
 
-// 数据标签名称合法性校验
+// Verification of the legitimacy of data tag names
 func validateTag(ctx context.Context, tag string) error {
-	// 去除tag的左右空格
+	// Remove the left and right Spaces of the tag
 	tag = strings.Trim(tag, " ")
 
 	if tag == "" {
@@ -92,7 +92,7 @@ func validateTag(ctx context.Context, tag string) error {
 	return nil
 }
 
-// 备注合法性校验
+// Note Legality verification
 func validateDescription(ctx context.Context, description string) error {
 	if utf8.RuneCountInString(description) > interfaces.DESCRIPTION_MAX_LENGTH {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_Description).
@@ -101,7 +101,7 @@ func validateDescription(ctx context.Context, description string) error {
 	return nil
 }
 
-// 分页参数合法性校验
+// Validity verification of pagination parameters
 func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, direction string,
 	supportedSortTypes map[string]string) (interfaces.PaginationQueryParams, error) {
 	pageParams := interfaces.PaginationQueryParams{}
@@ -151,8 +151,8 @@ func validatePaginationQueryParams(ctx context.Context, offset, limit, sort, dir
 	}, nil
 }
 
-// parseTaskStatuses 校验并规范化 query 中重复传递的 status 参数。
-// 多个状态使用 status=pending&status=running，重复值按首次出现顺序去重。
+// parseTaskStatuses verifies and normalizes the status parameter repeatedly passed in the query.
+// For multiple states, use status=pending&status=running. Duplicate values are removed in the order of their first occurrence.
 func parseTaskStatuses(ctx context.Context, values []string, isValid func(string) bool, errorCode string) ([]string, error) {
 	statuses := make([]string, 0, len(values))
 	seen := make(map[string]struct{}, len(values))
@@ -171,7 +171,7 @@ func parseTaskStatuses(ctx context.Context, values []string, isValid func(string
 	return statuses, nil
 }
 
-// ConnectorConfig 合法性校验
+// ConnectorConfig legitimacy verification
 func validateConnectorConfig(ctx context.Context, cfg interfaces.ConnectorConfig) error {
 	// Check for duplicate elements in databases
 	if dbValue, exists := cfg["databases"]; exists {
@@ -194,7 +194,7 @@ func validateConnectorConfig(ctx context.Context, cfg interfaces.ConnectorConfig
 	return nil
 }
 
-// 检查数组中是否存在重复元素
+// Check whether there are duplicate elements in the array
 func checkDuplicateElements(ctx context.Context, arr []any, fieldName string) error {
 	seen := make(map[string]bool)
 	for _, item := range arr {

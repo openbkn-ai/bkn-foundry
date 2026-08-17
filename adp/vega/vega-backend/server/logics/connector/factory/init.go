@@ -14,7 +14,7 @@ import (
 	"vega-backend/logics/connector/local/table/postgresql"
 )
 
-// initLocalConnectors 初始化本地 connector
+// initLocalConnectors initializes the local connector
 func (cf *connectorFactory) initLocalConnectors() {
 	cf.mu.Lock()
 	defer cf.mu.Unlock()

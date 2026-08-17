@@ -246,7 +246,7 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 	}
 	params.OutputFields = outputFields
 
-	// 合并资源和查询的 FilterCondCfg, 需要判断下是否为nil
+	// To merge the FilterCondCfg of resources and queries, it is necessary to determine whether it is nil
 	var mergedFilterCond *interfaces.FilterCondCfg
 	if fromResourceFilterCond != nil && params.FilterCondCfg != nil {
 		mergedFilterCond = &interfaces.FilterCondCfg{
@@ -267,7 +267,7 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 	}
 	params.ActualFilterCond = actualFilterCond
 
-	// 交给 executePhysicalQuery 处理 SQL push-down
+	// Hand over the Execution PhysicalQuery to handle the SQL push-down
 	return lvs.executePhysicalQuery(ctx, catalog, fromResource, params)
 }
 
@@ -298,7 +298,7 @@ func (lvs *logicViewService) queryCompositeLogicView(ctx context.Context, view *
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Query composite logic view")
 	defer span.End()
 
-	// input resource 的 category 决定生成 SQL 还是 DSL
+	// The category of the input resource determines whether to generate SQL or DSL
 	isDSL := false
 	catalogMap := map[string]struct{}{}
 	refResources := make(map[string]*interfaces.Resource, 0)
@@ -347,7 +347,7 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Query composite view data")
 	defer span.End()
 
-	// 获取索引列表, 视图 ID 到索引列表的映射
+	// Obtain the index list, the mapping from the view ID to the index list
 	_, indices, viewIndicesMap, err := lvs.getIndicesByView(view)
 	if err != nil {
 		otellog.LogError(ctx, "Get indices failed", err)
@@ -355,7 +355,7 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 			rest.PublicError_InternalServerError).WithErrorDetails(err.Error())
 	}
 
-	// 如果索引列表为空，则返回空数据, 不需要下面拼接dsl
+	// If the index list is empty, return empty data and there is no need to concatenate the dsl below
 	if len(indices) == 0 {
 		span.SetStatus(codes.Ok, "No indices found")
 		return &interfaces.ResourceDataQueryResult{Paging: &interfaces.PagingResponse{}}, nil
@@ -370,7 +370,7 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 	}
 
 	if view.IsSingleSource {
-		// dsl 转为 map
+		// dsl to map
 		dslBytes, err := sonic.Marshal(dsl)
 		if err != nil {
 			otellog.LogError(ctx, "Marshal DSL failed", err)
@@ -418,13 +418,13 @@ func (lvs *logicViewService) executeCompositeViewByDSL(ctx context.Context, view
 	}
 }
 
-// 从视图获取索引列表, 返回 catalogName， viewIndicesMap（视图id到索引列表的映射）
+// Obtain the index list from the view and return catalogName, viewIndicesMap (the mapping from view id to index list)
 func (lvs *logicViewService) getIndicesByView(view *interfaces.LogicView) (string, []string, map[string][]string, error) {
 	var catalog string
 	catalogMap := map[string]struct{}{}
 	indices := []string{}
 	viewIndicesMap := map[string][]string{}
-	// 判断多个 view node 的 catalog 是否一致
+	// Determine whether the catalogs of multiple view nodes are consistent
 	for _, ref := range view.RefResources {
 		sourceIdentifier := strings.Split(ref.SourceIdentifier, ".")
 		indices = append(indices, sourceIdentifier[len(sourceIdentifier)-1])
@@ -445,7 +445,7 @@ func (lvs *logicViewService) getIndicesByView(view *interfaces.LogicView) (strin
 
 func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view *interfaces.LogicView,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
-	// 理想状态：从生成器直接获取 SQL 构建器
+	// Ideal state: Obtain the SQL builder directly from the generator
 	ldGenerator := lvsql.NewlogicDefinitionSQLGenerator(view)
 	builder, err := ldGenerator.NewQueryBuilder(ctx, view)
 	if err != nil {
@@ -454,7 +454,7 @@ func (lvs *logicViewService) executeCompositeViewBySQL(ctx context.Context, view
 			WithErrorDetails(fmt.Sprintf("failed to initialize query builder: %v", err))
 	}
 
-	// 统一应用查询参数（过滤、排序、分页）
+	// Uniformly apply query parameters (filtering, sorting, pagination)
 	queryParams := withoutPagingLimit(params)
 	if err := builder.ApplyParams(ctx, &queryParams, view); err != nil {
 		otellog.LogError(ctx, "Apply query parameters failed", err)
@@ -595,15 +595,15 @@ func (lvs *logicViewService) executeTableQuery(ctx context.Context, catalog *int
 	return result.Entries, result.Total, nil
 }
 
-// FieldInfo 表示SQL查询输出的字段信息
+// FieldInfo represents the field information output by the SQL query
 type FieldInfo struct {
-	Name      string `json:"name"`       // 字段名或表达式
-	Alias     string `json:"alias"`      // 字段别名（如果没有别名为空）
-	IsStar    bool   `json:"is_star"`    // 是否是*通配符
-	IsComplex bool   `json:"is_complex"` // 是否是复杂表达式（函数、CASE等）
+	Name      string `json:"name"`       // Field name or expression.
+	Alias     string `json:"alias"`      // Field alias, empty when no alias is present.
+	IsStar    bool   `json:"is_star"`    // Whether the field is a wildcard.
+	IsComplex bool   `json:"is_complex"` // Whether the field is a complex expression, such as a function or CASE.
 }
 
-// QueryAnalysis 表示SQL查询的分析结果
+// QueryAnalysis represents the analysis results of SQL queries
 type QueryAnalysis struct {
 	Fields       []FieldInfo `json:"fields"`
 	HasStar      bool        `json:"has_star"`
@@ -615,13 +615,13 @@ type QueryAnalysis struct {
 	Error        error       `json:"error,omitempty"`
 }
 
-// String 返回分析结果的字符串表示
+// String returns the string representation of the analysis result
 func (q *QueryAnalysis) String() string {
 	if q.Error != nil {
-		return fmt.Sprintf("分析错误: %v", q.Error)
+		return fmt.Sprintf("Analysis error: %v", q.Error)
 	}
 
-	result := fmt.Sprintf("查询字段 (%d 个):\n", len(q.Fields))
+	result := fmt.Sprintf("Query fields (%d):\n", len(q.Fields))
 	for i, field := range q.Fields {
 		fieldDesc := field.Name
 		if field.Alias != "" {
@@ -633,62 +633,62 @@ func (q *QueryAnalysis) String() string {
 		result += fmt.Sprintf("  %d. %s\n", i+1, fieldDesc)
 	}
 
-	result += "\n查询特征:\n"
-	result += fmt.Sprintf("  - 包含UNION: %t\n", q.HasUnion)
-	result += fmt.Sprintf("  - 包含JOIN: %t\n", q.HasJoin)
-	result += fmt.Sprintf("  - 包含聚合函数: %t\n", q.HasAggregate)
-	result += fmt.Sprintf("  - 包含子查询: %t\n", q.HasSubquery)
-	result += fmt.Sprintf("  - 包含CASE表达式: %t\n", q.HasCase)
+	result += "\nQuery features:\n"
+	result += fmt.Sprintf("  - Contains UNION: %t\n", q.HasUnion)
+	result += fmt.Sprintf("  - Contains JOIN: %t\n", q.HasJoin)
+	result += fmt.Sprintf("  - Contains aggregate functions: %t\n", q.HasAggregate)
+	result += fmt.Sprintf("  - Contains subqueries: %t\n", q.HasSubquery)
+	result += fmt.Sprintf("  - Contains CASE expressions: %t\n", q.HasCase)
 
 	return result
 }
 
-// SQLFieldParser SQL字段解析器
+// SQLFieldParser SQL field parser
 type SQLFieldParser struct {
 	listener *sqlFieldListener
 }
 
-// NewSQLFieldParser 创建新的SQL字段解析器
+// NewSQLFieldParser creates a new SQL field parser
 func NewSQLFieldParser() *SQLFieldParser {
 	return &SQLFieldParser{
 		listener: newSqlFieldListener(),
 	}
 }
 
-// Parse 解析SQL语句并返回字段分析结果
+// Parse parses SQL statements and returns the results of field analysis
 func (p *SQLFieldParser) Parse(sql string) *QueryAnalysis {
-	// 创建输入流
+	// Create an input stream
 	input := antlr.NewInputStream(sql)
 
-	// 创建词法分析器
+	// Create a lexical analyzer
 	lexer := parsing.NewSqlBaseLexer(input)
 
-	// 创建令牌流
+	// Create a token stream
 	stream := antlr.NewCommonTokenStream(lexer, antlr.TokenDefaultChannel)
 
-	// 创建语法分析器
+	// Create a parser
 	parser := parsing.NewSqlBaseParser(stream)
 
-	// 添加错误监听器
+	// Add an error listener
 	parser.RemoveErrorListeners()
 	errorListener := newErrorListener()
 	parser.AddErrorListener(errorListener)
 
-	// 构建解析树 - 根据实际语法规则调整起始规则
-	tree := parser.Query() // 或者可能是 parser.Query() 或 parser.Statement()
+	// Build the parsing tree - Adjust the starting rule according to the actual grammar rules
+	tree := parser.Query()
 
-	// 遍历解析树
+	// Traverse the parse tree
 	antlr.ParseTreeWalkerDefault.Walk(p.listener, tree)
 
 	analysis := p.listener.getAnalysis()
 	if errorListener.hasErrors() {
-		analysis.Error = fmt.Errorf("SQL语法错误: %s", strings.Join(errorListener.getErrors(), "; "))
+		analysis.Error = fmt.Errorf("SQL syntax error: %s", strings.Join(errorListener.getErrors(), "; "))
 	}
 
 	return analysis
 }
 
-// sqlFieldListener 自定义字段解析监听器
+// sqlFieldListener Custom field parsing listener
 type sqlFieldListener struct {
 	*parsing.BaseSqlBaseListener
 	analysis          *QueryAnalysis
@@ -697,7 +697,7 @@ type sqlFieldListener struct {
 	currentField      *FieldInfo
 }
 
-// newSqlFieldListener 创建新的字段监听器
+// newSqlFieldListener creates a new field listener
 func newSqlFieldListener() *sqlFieldListener {
 	return &sqlFieldListener{
 		analysis: &QueryAnalysis{
@@ -708,42 +708,42 @@ func newSqlFieldListener() *sqlFieldListener {
 	}
 }
 
-// getAnalysis 获取分析结果
+// getAnalysis to obtain the analysis results
 func (l *sqlFieldListener) getAnalysis() *QueryAnalysis {
 	return l.analysis
 }
 
-// EnterQuery 进入查询
+// Enter the query with EnterQuery
 func (l *sqlFieldListener) EnterQuery(ctx *parsing.QueryContext) {
 	l.currentQueryLevel++
 }
 
-// ExitQuery 退出查询
+// ExitQuery exits the query
 func (l *sqlFieldListener) ExitQuery(ctx *parsing.QueryContext) {
 	l.currentQueryLevel--
 }
 
-// EnterQuerySpecification 进入查询规范（SELECT语句）
+// Enter the query specification (SELECT statement)
 func (l *sqlFieldListener) EnterQuerySpecification(ctx *parsing.QuerySpecificationContext) {
 	l.inSelectClause = true
 }
 
-// ExitQuerySpecification 退出查询规范（SELECT语句）
+// Exitquery Specification ExitQuerySpecification (SELECT statement)
 func (l *sqlFieldListener) ExitQuerySpecification(ctx *parsing.QuerySpecificationContext) {
 	l.inSelectClause = false
 }
 
-// EnterSelectSingle 处理SELECT单个字段
+// EnterSelectSingle handles the selection of a single field
 func (l *sqlFieldListener) EnterSelectSingle(ctx *parsing.SelectSingleContext) {
 	if !l.inSelectClause || l.currentQueryLevel > 1 {
-		// 只处理最外层的SELECT字段
+		// Only process the outermost SELECT field
 		return
 	}
 
-	// 获取选择项的文本
+	// Get the text of the options
 	itemText := l.getText(ctx)
 
-	// 创建字段信息
+	// Create field information
 	l.currentField = &FieldInfo{
 		Name:      itemText,
 		IsStar:    l.isStarExpression(itemText),
@@ -754,45 +754,45 @@ func (l *sqlFieldListener) EnterSelectSingle(ctx *parsing.SelectSingleContext) {
 		l.analysis.HasStar = true
 	}
 
-	// 检查是否有别名
+	// Check if there is an alias
 	if alias := l.extractAlias(ctx); alias != "" {
 		l.currentField.Alias = alias
 		l.currentField.Name = strings.TrimSuffix(l.currentField.Name, " AS "+alias)
 		l.currentField.Name = strings.TrimSuffix(l.currentField.Name, " "+alias)
 	}
 
-	// 添加到分析结果
+	// Add to the analysis results
 	l.analysis.Fields = append(l.analysis.Fields, *l.currentField)
 	l.currentField = nil
 }
 
-// isStarExpression 检查是否是*通配符
+// The isStarExpression checks if it is a * wildcard
 func (l *sqlFieldListener) isStarExpression(expr string) bool {
 	return strings.TrimSpace(expr) == "*"
 }
 
-// isComplexExpression 检查是否是复杂表达式
+// isComplexExpression reports whether an expression is complex.
 func (l *sqlFieldListener) isComplexExpression(expr string) bool {
 	trimmed := strings.ToUpper(strings.TrimSpace(expr))
 
-	// 检查函数调用
+	// Check the function call
 	if strings.Contains(trimmed, "(") && strings.Contains(trimmed, ")") {
 		return true
 	}
 
-	// 检查CASE表达式
+	// Check the CASE expression
 	if strings.HasPrefix(trimmed, "CASE") {
 		l.analysis.HasCase = true
 		return true
 	}
 
-	// 检查聚合函数
+	// Check the aggregation function
 	if l.isAggregateFunction(trimmed) {
 		l.analysis.HasAggregate = true
 		return true
 	}
 
-	// 检查算术表达式
+	// Check arithmetic expressions
 	if strings.ContainsAny(trimmed, "+-*/%") {
 		return true
 	}
@@ -800,7 +800,7 @@ func (l *sqlFieldListener) isComplexExpression(expr string) bool {
 	return false
 }
 
-// isAggregateFunction 检查是否是聚合函数
+// The isAggregateFunction checks whether it is an aggregation function
 func (l *sqlFieldListener) isAggregateFunction(expr string) bool {
 	upperExpr := strings.ToUpper(expr)
 	aggregateFuncs := []string{
@@ -816,10 +816,10 @@ func (l *sqlFieldListener) isAggregateFunction(expr string) bool {
 	return false
 }
 
-// extractAlias 提取字段别名
+// extractAlias extracts field aliases
 func (l *sqlFieldListener) extractAlias(ctx antlr.ParserRuleContext) string {
-	// 根据实际的语法规则提取别名
-	// 这里是一个通用实现，您可能需要根据您的g4语法调整
+	// Extract aliases based on actual grammar rules
+	// Here is a general implementation. You may need to adjust it according to your g4 syntax
 
 	children := ctx.GetChildren()
 	for _, child := range children {
@@ -827,18 +827,18 @@ func (l *sqlFieldListener) extractAlias(ctx antlr.ParserRuleContext) string {
 			text := terminal.GetText()
 			upperText := strings.ToUpper(text)
 			if upperText == "AS" {
-				// 找到AS关键字，下一个兄弟节点应该是别名
+				// Find the keyword "AS", and the next sibling node should be an alias
 				return l.getNextSiblingText(child)
 			}
 		}
 	}
 
-	// 如果没有AS关键字，检查最后一个子节点是否可能是别名
-	// 这需要根据具体语法规则调整
+	// If there is no "AS" keyword, check whether the last child node might be an alias
+	// This needs to be adjusted according to specific grammar rules
 	return ""
 }
 
-// getNextSiblingText 获取下一个兄弟节点的文本
+// getNextSiblingText gets the text of the next sibling node
 func (l *sqlFieldListener) getNextSiblingText(node antlr.Tree) string {
 	parent := getParent(node)
 	if parent == nil {
@@ -858,7 +858,7 @@ func (l *sqlFieldListener) getNextSiblingText(node antlr.Tree) string {
 	return ""
 }
 
-// getParent 获取节点的父节点
+// getParent gets the parent node of the node
 func getParent(node antlr.Tree) antlr.Tree {
 	if node == nil {
 		return nil
@@ -874,7 +874,7 @@ func getParent(node antlr.Tree) antlr.Tree {
 	}
 }
 
-// getText 安全获取节点的文本内容
+// getText securely acquires the text content of nodes
 func (l *sqlFieldListener) getText(node antlr.Tree) string {
 	if node == nil {
 		return ""
@@ -890,37 +890,37 @@ func (l *sqlFieldListener) getText(node antlr.Tree) string {
 	}
 }
 
-// EnterSetOperation 处理UNION操作
+// EnterSetOperation handles UNION operations
 func (l *sqlFieldListener) EnterSetOperation(ctx *parsing.SetOperationContext) {
 	l.analysis.HasUnion = true
 }
 
-// EnterJoinRelation 处理JOIN关系
+// EnterJoinRelation handles the JOIN relationship
 func (l *sqlFieldListener) EnterJoinRelation(ctx *parsing.JoinRelationContext) {
 	l.analysis.HasJoin = true
 }
 
-// EnterSubquery 处理子查询
+// EnterSubquery handles subqueries
 func (l *sqlFieldListener) EnterSubquery(ctx *parsing.SubqueryContext) {
 	if l.currentQueryLevel > 0 {
 		l.analysis.HasSubquery = true
 	}
 }
 
-// errorListener 自定义错误监听器
+// errorListener Custom error listener
 type errorListener struct {
 	*antlr.DefaultErrorListener
 	errors []string
 }
 
-// newErrorListener 创建错误监听器
+// newErrorListener creates an error listener
 func newErrorListener() *errorListener {
 	return &errorListener{
 		errors: make([]string, 0),
 	}
 }
 
-// SyntaxError 处理语法错误
+// SyntaxError handles syntax errors
 func (l *errorListener) SyntaxError(
 	recognizer antlr.Recognizer,
 	offendingSymbol interface{},
@@ -928,21 +928,21 @@ func (l *errorListener) SyntaxError(
 	msg string,
 	e antlr.RecognitionException,
 ) {
-	errorMsg := fmt.Sprintf("第%d行第%d列: %s", line, column, msg)
+	errorMsg := fmt.Sprintf("line %d, column %d: %s", line, column, msg)
 	l.errors = append(l.errors, errorMsg)
 }
 
-// hasErrors 检查是否有错误
+// hasErrors checks for errors
 func (l *errorListener) hasErrors() bool {
 	return len(l.errors) > 0
 }
 
-// getErrors 获取所有错误
+// getErrors gets all errors
 func (l *errorListener) getErrors() []string {
 	return l.errors
 }
 
-// GetFieldNames 获取所有字段名称（优先使用别名，没有别名使用字段名）
+// GetFieldNames gets all field names (aliases are preferred; if there are no aliases, field names are used)
 func (q *QueryAnalysis) GetFieldNames() []string {
 	names := make([]string, len(q.Fields))
 	for i, field := range q.Fields {
@@ -957,7 +957,7 @@ func (q *QueryAnalysis) GetFieldNames() []string {
 	return names
 }
 
-// HasComplexFields 检查是否包含复杂字段
+// HasComplexFields checks whether complex fields are included
 func (q *QueryAnalysis) HasComplexFields() bool {
 	for _, field := range q.Fields {
 		if field.IsComplex {
@@ -967,7 +967,7 @@ func (q *QueryAnalysis) HasComplexFields() bool {
 	return false
 }
 
-// GetSimpleFieldNames 获取简单字段名称（排除复杂表达式和*）
+// GetSimpleFieldNames gets simple field names (excluding complex expressions and *)
 func (q *QueryAnalysis) GetSimpleFieldNames() []string {
 	var names []string
 	for _, field := range q.Fields {
@@ -982,11 +982,11 @@ func (q *QueryAnalysis) GetSimpleFieldNames() []string {
 	return names
 }
 
-// FormatAsJSON 将解析结果格式化为 JSON
+// FormatAsJSON formats the parsing result into JSON
 func (info *QueryAnalysis) FormatAsJSON() string {
 	jsonData, err := sonic.MarshalIndent(info, "", "  ")
 	if err != nil {
-		return fmt.Sprintf(`{"error": "JSON 格式化失败: %v"}`, err)
+		return fmt.Sprintf(`{"error": "JSON formatting failed: %v"}`, err)
 	}
 	return string(jsonData)
 }

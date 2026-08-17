@@ -11,26 +11,26 @@ import (
 	"fmt"
 )
 
-// 查询通道。同一个算子在不同通道上能力不同：全文与向量算子只有索引通道有实现，
-// 表通道（SQL）没有，也不可能有。
+// Query channel. The same operator has different capabilities on different channels: The full-text and vector operators are only implemented on the index channel
+// Table channel (SQL) does not exist and cannot exist.
 const (
 	QueryChannelSQL        = "sql"
 	QueryChannelOpenSearch = "opensearch"
 	QueryChannelFileset    = "fileset"
 )
 
-// UnsupportedOperationError 表示某个过滤算子在当前查询通道上没有实现。
+// UnsupportedOperationError said a filter operator is not implemented in the current query channel.
 //
-// 这是请求侧的问题而不是服务故障：调用方换一个算子、或者给资源建索引就能解决。
-// 之所以要一个具名类型而不是裸 error，是因为错误要跨好几层才到调用方，中间每层
-// 都需要判断「这是参数错误」还是「下游真的挂了」——前者 400 且可自纠，后者 500。
-// 裸 fmt.Errorf 到了上层就只剩一句话，只能一律当成内部错误。
+// This is a problem on the request side rather than a service failure: the caller can solve it by changing the operator or creating an index for the resource.
+// The reason for using a named type instead of a naked error is that the error has to cross several layers before reaching the caller, with each layer in between
+// Both need to determine whether "this is a parameter error" or "the downstream has really gone down" - the former is 400 and can self-correct, while the latter is 500.
+// A bare fmt.Errorf loses its public error code at higher layers and is treated as an internal error.
 type UnsupportedOperationError struct {
-	Operation string // 请求里写的算子名
-	Channel   string // 实际执行的查询通道
+	Operation string // The operator name written in the request
+	Channel   string // The actual query channel being executed
 }
 
-// NewUnsupportedOperationError 构造一个算子不支持错误。
+// NewUnsupportedOperationError structure does not support an operator error.
 func NewUnsupportedOperationError(operation, channel string) *UnsupportedOperationError {
 	return &UnsupportedOperationError{Operation: operation, Channel: channel}
 }
@@ -46,8 +46,8 @@ func (e *UnsupportedOperationError) Error() string {
 	return msg
 }
 
-// hint 给出可执行的下一步。最常见的情形是在没有本地索引的表资源上发全文/向量
-// 检索——只说「不支持」会让调用方以为这个能力不存在，而实际上建个索引就有了。
+// hint provides an executable next step. The most common situation is to publish the full text/vector on table resources without local indexes
+// Retrieval - Simply saying "not supported" will make the caller think that this capability does not exist, while in fact, creating an index will make it available.
 func (e *UnsupportedOperationError) hint() string {
 	if e.Channel != QueryChannelSQL {
 		return ""
@@ -62,7 +62,7 @@ func (e *UnsupportedOperationError) hint() string {
 	return ""
 }
 
-// AsUnsupportedOperationError 从错误链里取出 UnsupportedOperationError。
+// Extracted UnsupportedOperationError AsUnsupportedOperationError chain from wrong.
 func AsUnsupportedOperationError(err error) (*UnsupportedOperationError, bool) {
 	var target *UnsupportedOperationError
 	if errors.As(err, &target) {
@@ -71,8 +71,8 @@ func AsUnsupportedOperationError(err error) (*UnsupportedOperationError, bool) {
 	return nil, false
 }
 
-// IsFulltextOperation 判断是否全文检索算子。全文能力只存在于索引里，因此这些
-// 算子能不能用，取决于资源有没有本地索引，而不取决于字段类型。
+// The IsFulltextOperation determines whether it is a full-text search operator. The full-text capability only exists in the index, so these
+// Whether an operator can be used depends on whether the resource has a local index, rather than on the field type.
 func IsFulltextOperation(operation string) bool {
 	switch operation {
 	case OperationMatch, OperationMatchPhrase, OperationMultiMatch:

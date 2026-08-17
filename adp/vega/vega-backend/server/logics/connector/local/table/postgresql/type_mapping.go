@@ -12,9 +12,9 @@ import (
 	"vega-backend/interfaces"
 )
 
-// TypeMapping 将 PostgreSQL udt_name / 常见 data_type 映射到 VEGA 类型。
+// TypeMapping maps PostgreSQL udt_name/common data_type to VEGA types.
 var TypeMapping = map[string]string{
-	// 整数
+	// Integer
 	"int2":        interfaces.DataType_Integer,
 	"int4":        interfaces.DataType_Integer,
 	"int8":        interfaces.DataType_Integer,
@@ -28,7 +28,7 @@ var TypeMapping = map[string]string{
 	"integer":     interfaces.DataType_Integer,
 	"bigint":      interfaces.DataType_Integer,
 
-	// 浮点
+	// Floating-point
 	"float4":           interfaces.DataType_Float,
 	"float8":           interfaces.DataType_Float,
 	"double precision": interfaces.DataType_Float,
@@ -39,7 +39,7 @@ var TypeMapping = map[string]string{
 	"numeric": interfaces.DataType_Decimal,
 	"decimal": interfaces.DataType_Decimal,
 
-	// 字符串
+	// String types.
 	"varchar":           interfaces.DataType_String,
 	"bpchar":            interfaces.DataType_String,
 	"name":              interfaces.DataType_String,
@@ -51,10 +51,10 @@ var TypeMapping = map[string]string{
 	"inet":              interfaces.DataType_Ip,
 	"cidr":              interfaces.DataType_Ip,
 
-	// 文本
+	// Text
 	"text": interfaces.DataType_Text,
 
-	// 日期时间
+	// Date and Time
 	"date":                        interfaces.DataType_Date,
 	"time":                        interfaces.DataType_Time,
 	"timetz":                      interfaces.DataType_Time,
@@ -66,11 +66,11 @@ var TypeMapping = map[string]string{
 	"timestamp without time zone": interfaces.DataType_Timestamp,
 	"timestamp with time zone":    interfaces.DataType_Timestamp,
 
-	// 布尔
+	// Bull
 	"bool":    interfaces.DataType_Boolean,
 	"boolean": interfaces.DataType_Boolean,
 
-	// 二进制
+	// Binary
 	"bytea": interfaces.DataType_Binary,
 
 	// JSON
@@ -78,7 +78,7 @@ var TypeMapping = map[string]string{
 	"jsonb": interfaces.DataType_Json,
 }
 
-// MapType 根据 information_schema 的 data_type 映射到 VEGA 类型。
+// MapType maps to VEGA type based on data_type of information_schema.
 func (c *PostgresqlConnector) MapType(dataType string) string {
 	d := strings.ToLower(strings.TrimSpace(dataType))
 	if vegaType, ok := TypeMapping[d]; ok {

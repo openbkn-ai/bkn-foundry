@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors DiscoverTask 模块错误码
+// Package errors DiscoverTask module error code
 package errors
 
-// DiscoverTask 相关错误码
+// Error codes related to DiscoverTask
 const (
 	// 400 Bad Request
 	VegaBackend_DiscoverTask_InvalidStatus = "VegaBackend.DiscoverTask.InvalidStatus"

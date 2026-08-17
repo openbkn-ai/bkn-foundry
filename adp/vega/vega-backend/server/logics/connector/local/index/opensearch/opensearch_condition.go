@@ -152,10 +152,10 @@ func (c *OpenSearchConnector) ConvertFilterConditionWithOpr(condition interfaces
 	}
 }
 
-// fulltextFieldName 返回全文检索（match/match_phrase/multi_match）应命中的字段名。
-// string 字段的全文能力挂在 text 子字段上（见 applyFulltextFeature），必须用
-// `字段名.<子字段名>` 命中分词子字段，否则会落到 keyword 主字段做精确匹配；
-// text 字段主字段本身即全文，用裸字段名。
+// fulltextFieldName returns the field name that should be hit in the full-text search (match/match_phrase/multi_match).
+// The full-text capability of the string field is attached to the text subfield (see applyFulltextFeature) and must be used
+// 'Field name.< Subfield name >' hits the word segmentation subfield; otherwise, it will fall to the keyword main field for exact matching.
+// The main field of the text field itself is the full text, so use a bare field name.
 func fulltextFieldName(prop *interfaces.Property) string {
 	if prop == nil {
 		return ""
@@ -513,7 +513,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionContain(condition interfaces
 	if cond.Cfg.ValueFrom != interfaces.ValueFrom_Const {
 		return nil, fmt.Errorf("condition [contain] only supports ValueFrom_Const, got %s", cond.Cfg.ValueFrom)
 	}
-	// 文本包含查询必须用 match /match_phrase
+	// The text contains queries that must use match /match_phrase
 	values := cond.Value
 	should := make([]map[string]any, len(values))
 	for i, v := range values {
@@ -657,7 +657,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatch(condition interfaces.F
 
 	value := cond.Cfg.Value
 
-	// 如果是全部字段匹配
+	// If all fields match
 	if len(cond.Fields) > 1 {
 		should := make([]map[string]any, 0, len(cond.Fields))
 		for _, field := range cond.Fields {
@@ -674,7 +674,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatch(condition interfaces.F
 			},
 		}, nil
 	} else if len(cond.Fields) == 1 {
-		// 单个字段匹配
+		// Single field matching
 		field := cond.Fields[0]
 		return map[string]any{
 			"match": map[string]any{
@@ -696,7 +696,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatchPhrase(condition interf
 
 	value := cond.Cfg.Value
 
-	// 如果是全部字段匹配
+	// If all fields match
 	if len(cond.Fields) > 1 {
 		should := make([]map[string]any, 0, len(cond.Fields))
 		for _, field := range cond.Fields {
@@ -713,7 +713,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionMatchPhrase(condition interf
 			},
 		}, nil
 	} else if len(cond.Fields) == 1 {
-		// 单个字段匹配
+		// Single field matching
 		field := cond.Fields[0]
 		return map[string]any{
 			"match_phrase": map[string]any{
@@ -1056,24 +1056,24 @@ func (c *OpenSearchConnector) ConvertFilterConditionKnnVector(condition interfac
 
 	value := cond.Cfg.Value
 
-	// 构建 knn 查询
+	// Build a knn query
 	knnQuery := map[string]any{
 		cond.FilterFieldName: map[string]any{
 			"vector": value,
 		},
 	}
 
-	// 添加 limit_key 和 limit_value
+	// Add limit_key and limit_value
 	if limitKey, ok := cond.Cfg.RemainCfg["limit_key"].(string); ok && limitKey != "" {
 		if limitValue, ok := cond.Cfg.RemainCfg["limit_value"]; ok {
 			knnQuery[cond.FilterFieldName].(map[string]any)[limitKey] = limitValue
 		}
 	} else {
-		// 使用默认值
+		// Use the default value
 		knnQuery[cond.FilterFieldName].(map[string]any)["k"] = 10
 	}
 
-	// 添加子条件
+	// Add sub-conditions
 	if len(cond.SubConds) > 0 {
 		filterQueries := make([]map[string]any, 0, len(cond.SubConds))
 		for _, subCond := range cond.SubConds {
@@ -1099,7 +1099,7 @@ func (c *OpenSearchConnector) ConvertFilterConditionKnnVector(condition interfac
 	}, nil
 }
 
-// replaceLikeWildcards，把 like 的通配符替换成正则表达式里的字符
+// replaceLikeWildcards, replace the wildcard of like with the character in the regular expression
 func (c *OpenSearchConnector) replaceLikeWildcards(input string) string {
 	if input == "" {
 		return input
@@ -1113,23 +1113,23 @@ func (c *OpenSearchConnector) replaceLikeWildcards(input string) string {
 		r := runes[i]
 
 		if escaped {
-			// 转义字符后的字符
+			// The character after the escape character
 			switch r {
 			case '%', '_', '\\':
 				result.WriteRune(r)
 			default:
-				// 如果转义了非特殊字符，保留转义符和字符
+				// If non-special characters are escaped, retain the escape character and the characters
 				result.WriteRune('\\')
 				result.WriteRune(r)
 			}
 			escaped = false
 		} else if r == '\\' {
-			// 遇到转义符，检查是否是最后一个字符
+			// When encountering an escape character, check if it is the last character
 			if i == len(runes)-1 {
-				// 转义符在末尾，直接输出
+				// The escape character is at the end and is output directly
 				result.WriteRune(r)
 			} else {
-				// 标记转义状态，但不立即输出转义符
+				// Mark the escape status but do not immediately output the escape character
 				escaped = true
 			}
 		} else if r == '%' {
@@ -1141,7 +1141,7 @@ func (c *OpenSearchConnector) replaceLikeWildcards(input string) string {
 		}
 	}
 
-	// 处理以转义符结尾的情况
+	// Handle cases ending with an escape character
 	if escaped {
 		result.WriteRune('\\')
 	}
@@ -1149,7 +1149,7 @@ func (c *OpenSearchConnector) replaceLikeWildcards(input string) string {
 	return result.String()
 }
 
-// getKeywordSuffix text 类型在部分查询场景（如 eq/in）下，需使用 keyword 类型的子字段，返回关键字后缀，否则返回空字符串
+// in some query scenarios (such as eq/in), the getKeywordSuffix text type needs to use a subfield of the keyword type to return the keyword suffix; otherwise, it returns an empty string
 func (c *OpenSearchConnector) getKeywordSuffix(fieldName string, schemaDefinition []*interfaces.Property) (string, error) {
 	for _, prop := range schemaDefinition {
 		if prop.OriginalName == fieldName && prop.Type == interfaces.DataType_Text {

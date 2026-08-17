@@ -14,7 +14,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-// 将过滤条件拼接到 dsl 请求的 query 部分
+// Concatenate the filter conditions to the query section of the dsl request
 func NewFilterCondition(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 
@@ -22,7 +22,7 @@ func NewFilterCondition(ctx context.Context, cfg *interfaces.FilterCondCfg,
 		return nil, nil
 	}
 
-	// 判断过滤器是否为空对象 {}
+	// Determine whether the filter is an empty object {}
 	if cfg.Name == "" && cfg.Operation == "" && len(cfg.SubConds) == 0 && cfg.ValueFrom == "" && cfg.Value == nil {
 		return nil, nil
 	}

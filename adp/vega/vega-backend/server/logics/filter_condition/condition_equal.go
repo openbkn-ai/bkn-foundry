@@ -30,7 +30,7 @@ func (c *EqualCond) IsSingleValue() bool        { return true }
 func (c *EqualCond) IsFixedLenArrayValue() bool { return false }
 func (c *EqualCond) RequiredValueLen() int      { return -1 }
 
-// eq 条件，判断字段是否等于右侧值
+// eq condition, determine whether the field is equal to the value on the right
 func (c *EqualCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

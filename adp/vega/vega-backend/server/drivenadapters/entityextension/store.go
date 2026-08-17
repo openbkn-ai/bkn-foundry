@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package entityextension 读写 t_entity_extension（Issue #382 方案 B）
+// Package entityextension reads and writes t_entity_extension (Issue #382 Option B)
 package entityextension
 
 import (
@@ -23,7 +23,7 @@ import (
 
 const tableName = "t_entity_extension"
 
-// 与 t_entity_extension.f_entity_kind 一致，区分 catalog / resource，避免同字符串 id 扩展行主键冲突
+// Consistent with t_entity_extension.f_entity_kind, distinguish catalog/resource to avoid conflicts with the primary key of the string id extension line
 const (
 	KindCatalog  = "catalog"
 	KindResource = "resource"
@@ -34,12 +34,12 @@ var (
 	st        *Store
 )
 
-// Store 实体级 extensions 行存储
+// Store physical-level extensions row storage
 type Store struct {
 	db *sql.DB
 }
 
-// NewStore 单例，与 catalog/resource access 共用同一 DB 连接池
+// The NewStore singleton shares the same DB connection pool with catalog/resource access
 func NewStore(appSetting *common.AppSetting) *Store {
 	storeOnce.Do(func() {
 		st = &Store{db: libdb.NewDB(&appSetting.DBSetting)}
@@ -47,7 +47,7 @@ func NewStore(appSetting *common.AppSetting) *Store {
 	return st
 }
 
-// Replace 在调用方事务内整包替换某实体下的全部 KV（空 map 表示删除全部行）
+// Replace replaces all KV under a certain entity in the entire package within the caller's transaction (an empty map indicates the deletion of all rows)
 func (s *Store) Replace(ctx context.Context, tx *sql.Tx, kind string, entityID string, kv map[string]string) error {
 	if tx == nil {
 		return fmt.Errorf("transaction is required")
@@ -88,7 +88,7 @@ func (s *Store) deleteByEntityID(ctx context.Context, tx *sql.Tx, kind string, e
 	return err
 }
 
-// DeleteByEntityIDs 删除多个实体下的全部扩展行（用于批量删 catalog/resource）
+// DeleteByEntityIDs deletes all extended rows under multiple entities (used for batch deletion of catalogs/resources)
 func (s *Store) DeleteByEntityIDs(ctx context.Context, tx *sql.Tx, kind string, entityIDs []string) error {
 	if len(entityIDs) == 0 {
 		return nil
@@ -108,7 +108,7 @@ func (s *Store) DeleteByEntityIDs(ctx context.Context, tx *sql.Tx, kind string, 
 	return err
 }
 
-// GetByEntityID 读取单实体 KV，无行时返回空 map（非 nil）
+// GetByEntityID reads a single entity KV and returns an empty map (not nil) when there are no lines.
 func (s *Store) GetByEntityID(ctx context.Context, kind string, entityID string) (map[string]string, error) {
 	q, args, err := sq.Select("f_key", "f_value").From(tableName).
 		Where(sq.Eq{"f_entity_kind": kind, "f_entity_id": entityID}).
@@ -133,7 +133,7 @@ func (s *Store) GetByEntityID(ctx context.Context, kind string, entityID string)
 	return out, rows.Err()
 }
 
-// GetByEntityIDs 批量读取，返回 entityID -> kv
+// GetByEntityIDs batch reads and returns entityID -> kv
 func (s *Store) GetByEntityIDs(ctx context.Context, kind string, entityIDs []string) (map[string]map[string]string, error) {
 	res := make(map[string]map[string]string)
 	if len(entityIDs) == 0 {
@@ -167,7 +167,7 @@ func (s *Store) GetByEntityIDs(ctx context.Context, kind string, entityIDs []str
 	return res, nil
 }
 
-// ApplyJoinsForCatalog 为 FROM t_catalog 的查询追加 INNER JOIN 以实现多对 AND 扩展筛选
+// ApplyJoinsForCatalog appends INNER joins for queries FROM t_catalog to implement multi-pair AND extended filtering
 func ApplyJoinsForCatalog(builder sq.SelectBuilder, keys, values []string) sq.SelectBuilder {
 	for i := range keys {
 		alias := fmt.Sprintf("vex%d", i)
@@ -180,7 +180,7 @@ func ApplyJoinsForCatalog(builder sq.SelectBuilder, keys, values []string) sq.Se
 	return builder
 }
 
-// ApplyJoinsForResource 为 FROM t_resource 的查询追加扩展筛选
+// ApplyJoinsForResource appends extended filters for queries FROM t_resource
 func ApplyJoinsForResource(builder sq.SelectBuilder, keys, values []string) sq.SelectBuilder {
 	for i := range keys {
 		alias := fmt.Sprintf("vex%d", i)
@@ -193,7 +193,7 @@ func ApplyJoinsForResource(builder sq.SelectBuilder, keys, values []string) sq.S
 	return builder
 }
 
-// FilterKeys 若 keysCSV 非空，仅保留列出的 key（用于 include_extension_keys）
+// If keysCSV is not empty, FilterKeys will only retain the listed keys (for include_extension_keys).
 func FilterKeys(in map[string]string, keysCSV string) map[string]string {
 	if keysCSV == "" || len(in) == 0 {
 		return in

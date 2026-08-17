@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors LogicView 模块错误码
+// Package errors LogicView module error code
 package errors
 
-// LogicView 错误码（当前全部为 400 Bad Request：join/字段定义校验）
+// LogicView error code (currently all 400 Bad Request: join/ field definition check)
 const (
 	// 400 Bad Request
 	VegaBackend_LogicView_InvalidParameter_JoinType          = "VegaBackend.LogicView.InvalidParameter.JoinType"

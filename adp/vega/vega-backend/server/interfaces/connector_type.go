@@ -7,18 +7,18 @@
 package interfaces
 
 const (
-	ConnectorModeLocal  string = "local"  // 内置在 vega-backend 进程内运行
-	ConnectorModeRemote string = "remote" // 作为独立服务运行，通过 HTTP 调用
+	ConnectorModeLocal  string = "local"  // It runs built-in within the vega-backend process
+	ConnectorModeRemote string = "remote" // It runs as an independent service and is invoked via HTTP
 )
 
 const (
-	ConnectorCategoryTable   string = "table"   // 关系型数据库
-	ConnectorCategoryIndex   string = "index"   // 搜索引擎
-	ConnectorCategoryTopic   string = "topic"   // 消息队列
-	ConnectorCategoryFile    string = "file"    // 文件
-	ConnectorCategoryFileset string = "fileset" // 文件集
-	ConnectorCategoryMetric  string = "metric"  // 时序数据库
-	ConnectorCategoryAPI     string = "api"     // API 服务
+	ConnectorCategoryTable   string = "table"   // Relational database
+	ConnectorCategoryIndex   string = "index"   // Search engine
+	ConnectorCategoryTopic   string = "topic"   // Message queue
+	ConnectorCategoryFile    string = "file"    // "File
+	ConnectorCategoryFileset string = "fileset" // File set
+	ConnectorCategoryMetric  string = "metric"  // Time series database
+	ConnectorCategoryAPI     string = "api"     // API service
 )
 
 var (
@@ -27,7 +27,7 @@ var (
 	}
 )
 
-// 连接器类型常量定义
+// Connector type constant definition
 const (
 	ConnectorTypeMySQL      string = "mysql"
 	ConnectorTypeMariaDB    string = "mariadb"
@@ -38,8 +38,8 @@ const (
 	ConnectorTypeAnyShare   string = "anyshare"
 )
 
-// 当前统一查询接口支持的连接器类型列表
-// 注意：系统支持更多连接器类型，但当前统一查询接口仅支持以下类型
+// The list of connector types supported by the current unified query interface
+// Note: The system supports more connector types, but the current unified query interface only supports the following types
 var SupportedConnectorTypesForQuery = map[string]bool{
 	ConnectorTypeMySQL:      true,
 	ConnectorTypeMariaDB:    true,
@@ -48,8 +48,8 @@ var SupportedConnectorTypesForQuery = map[string]bool{
 	ConnectorTypeOpenSearch: true,
 }
 
-// GetSupportedConnectorTypesForQuery 返回当前统一查询接口支持的连接器类型列表
-// 注意：系统支持更多连接器类型，但当前统一查询接口仅支持以下类型
+// Support GetSupportedConnectorTypesForQuery returns the current unified query interface connector type list
+// Note: The system supports more connector types, but the current unified query interface only supports the following types
 func GetSupportedConnectorTypesForQuery() []string {
 	return []string{
 		ConnectorTypeMySQL,
@@ -60,58 +60,58 @@ func GetSupportedConnectorTypesForQuery() []string {
 	}
 }
 
-// IsConnectorTypeSupportedForQuery 检查给定的连接器类型是否被当前统一查询接口支持
-// 注意：系统支持更多连接器类型，但当前统一查询接口仅支持部分类型
+// IsConnectorTypeSupportedForQuery check whether a given connector type supported by the current unified query interface
+// Note: The system supports more connector types, but the current unified query interface only supports some types
 func IsConnectorTypeSupportedForQuery(connectorType string) bool {
 	return SupportedConnectorTypesForQuery[connectorType]
 }
 
-// ConnectorFieldConfig 定义连接器配置字段的元数据（兼容 JSON Schema properties）
+// ConnectorFieldConfig defines the metadata of the connector configuration field (compatible with JSON Schema properties)
 type ConnectorFieldConfig struct {
-	Name        string `json:"name"`        // 字段显示名
-	Type        string `json:"type"`        // 字段类型: string, integer, number, boolean, object, array
-	Description string `json:"description"` // 字段描述
-	Required    bool   `json:"required"`    // 是否必填
-	Encrypted   bool   `json:"encrypted"`   // 是否需要加密存储（自定义扩展）
+	Name        string `json:"name"`        // Field display name
+	Type        string `json:"type"`        // Field types: string, integer, number, boolean, object, array
+	Description string `json:"description"` // Field description
+	Required    bool   `json:"required"`    // Whether required
+	Encrypted   bool   `json:"encrypted"`   // Is encrypted storage required (custom extension)
 }
 
-// ConnectorType 表示一个已注册的 connector 类型
+// ConnectorType represents a registered connector type.
 type ConnectorType struct {
 	Type        string                          `json:"type"`
 	Name        string                          `json:"name"`         // mysql, postgresql, kafka...
-	Tags        []string                        `json:"tags"`         // 标签
-	Description string                          `json:"description"`  // 类型描述
+	Tags        []string                        `json:"tags"`         // Tag
+	Description string                          `json:"description"`  // Type description
 	Mode        string                          `json:"mode"`         // local | remote
 	Category    string                          `json:"category"`     // table | index | topic | file | fileset | metric | api
-	Endpoint    string                          `json:"endpoint"`     // 仅 remote 模式，远程服务地址
-	FieldConfig map[string]ConnectorFieldConfig `json:"field_config"` // 字段配置（兼容 JSON Schema properties）
-	Enabled     bool                            `json:"enabled"`      // 是否启用
+	Endpoint    string                          `json:"endpoint"`     // Only remote mode, remote service address
+	FieldConfig map[string]ConnectorFieldConfig `json:"field_config"` // Field configuration (compatible with JSON Schema properties)
+	Enabled     bool                            `json:"enabled"`      // Whether to enable
 
-	Available bool `json:"available"` // 当前二进制是否包含该连接器实现
+	Available bool `json:"available"` // Whether the current binary contains the implementation of this connector
 
 	Operations []string `json:"operations"`
 }
 
-// ConnectorTypesQueryParams 查询参数
+// ConnectorTypesQueryParams query parameters
 type ConnectorTypesQueryParams struct {
 	PaginationQueryParams
-	Name      string `json:"name"`      // 按名称模糊筛选
-	Tag       string `json:"tag"`       // 按标签筛选
-	Mode      string `json:"mode"`      // 按模式筛选
-	Category  string `json:"category"`  // 按分类筛选
-	Enabled   *bool  `json:"enabled"`   // 按启用状态筛选
-	Available *bool  `json:"available"` // 按当前二进制可用状态筛选
+	Name      string `json:"name"`      // Fuzzy filtering by name
+	Tag       string `json:"tag"`       // Filter by label
+	Mode      string `json:"mode"`      // Filter by pattern
+	Category  string `json:"category"`  // Filter by category
+	Enabled   *bool  `json:"enabled"`   // Filter by enabled status
+	Available *bool  `json:"available"` // Filter by the current binary available state
 }
 
-// ConnectorTypeReq 表示创建/更新 connector 类型的请求
+// ConnectorTypeReq indicates a request to create or update the connector type
 type ConnectorTypeReq struct {
 	Type        string                          `json:"type"`
 	Name        string                          `json:"name"`         // mysql, postgresql, kafka...
-	Tags        []string                        `json:"tags"`         // 标签
-	Description string                          `json:"description"`  // 类型描述
+	Tags        []string                        `json:"tags"`         // Tag
+	Description string                          `json:"description"`  // Type description
 	Mode        string                          `json:"mode"`         // local | remote
 	Category    string                          `json:"category"`     // table | index | topic | file | fileset | metric | api
-	Endpoint    string                          `json:"endpoint"`     // 仅 remote 模式，远程服务地址
-	FieldConfig map[string]ConnectorFieldConfig `json:"field_config"` // 字段配置（兼容 JSON Schema properties）
-	Enabled     bool                            `json:"enabled"`      // 是否启用
+	Endpoint    string                          `json:"endpoint"`     // Only remote mode, remote service address
+	FieldConfig map[string]ConnectorFieldConfig `json:"field_config"` // Field configuration (compatible with JSON Schema properties)
+	Enabled     bool                            `json:"enabled"`      // Whether to enable
 }

@@ -21,41 +21,43 @@ import (
 )
 
 // GetMetadata returns the metadata for the catalog.
-// GetMetadata 方法用于获取OpenSearch的元数据信息
-// 参数:
-//   - ctx: 上下文，用于控制请求的超时和取消
+// The GetMetadata method is used to obtain the metadata information of OpenSearch
+// Parameter
 //
-// 返回值:
-//   - map[string]any: 包含OpenSearch元数据的键值对映射
-//   - error: 如果操作过程中发生错误，返回相应的错误信息
+//	-ctx: Context, used to control the timeout and cancellation of requests
+//
+// Return value:
+//
+//	-map [string]any: A key-value pair mapping containing OpenSearch metadata
+//	-error: If an error occurs during the operation, return the corresponding error message
 func (c *OpenSearchConnector) GetMetadata(ctx context.Context) (map[string]any, error) {
-	// 检查客户端是否已初始化连接
+	// Check whether the client has initialized the connection
 	if c.client == nil {
 		return nil, fmt.Errorf("connector not connected")
 	}
 
-	// 创建OpenSearch信息请求
+	// Create an OpenSearch information request
 	req := opensearchapi.InfoRequest{}
-	// 发送请求到OpenSearch服务器
+	// Send a request to the OpenSearch server
 	resp, err := req.Do(ctx, c.client)
 	if err != nil {
 		return nil, err
 	}
-	// 确保响应体被关闭，以释放资源
+	// Make sure the response body is closed to release resources
 	defer func() { _ = resp.Body.Close() }()
-	// 检查响应是否包含错误
+	// Check if the response contains any errors
 	if resp.IsError() {
 		return nil, fmt.Errorf("get metadata failed: %s", resp.String())
 	}
 
-	// 用于存储解析后的元数据信息
+	// It is used to store the metadata information after parsing
 	var info map[string]any
-	// 将响应体中的JSON数据解码到info变量中
+	// Decode the JSON data in the response body into the info variable
 	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return nil, err
 	}
 
-	// 返回解析后的元数据信息
+	// Return the parsed metadata information
 	return info, nil
 }
 
@@ -109,20 +111,22 @@ func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.In
 }
 
 // GetIndexMeta retrieves index metadata (mappings, settings).
-// GetIndexMeta 获取指定索引的元数据信息，包括映射和设置
-// 参数:
-//   - ctx: 上下文信息，用于控制请求的超时和取消
-//   - index: 指向接口 IndexMeta 的指针，用于存储获取到的元数据
+// GetIndexMeta obtains the metadata information of the specified index, including mapping and Settings
+// Parameter
 //
-// 返回值:
-//   - error: 如果操作过程中发生错误，则返回错误信息
+//	-ctx: Context information, used to control the timeout and cancellation of requests
+//	-index: A pointer to the interface IndexMeta, used to store the obtained metadata
+//
+// Return value:
+//
+//	-error: If an error occurs during the operation, return an error message
 func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interfaces.IndexMeta) error {
-	// 首先确保连接器已连接到 OpenSearch 服务
+	// First, make sure the connector is connected to the OpenSearch service
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	// 检查索引的属性映射是否为空，如果为空则初始化一个空的 map
+	// Check if the attribute mapping of the index is empty. If it is empty, initialize an empty map
 	if index.Properties == nil {
 		index.Properties = make(map[string]any)
 	}
@@ -182,13 +186,13 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// 映射结构定义
+	// Mapping structure definition
 	var dataMapping map[string]struct {
 		Mappings struct {
 			Properties map[string]Property `json:"properties"`
 		} `json:"mappings"`
 	}
-	// 解析 JSON
+	// Parse JSON
 	err = sonic.Unmarshal(bodyBytes, &dataMapping)
 	if err != nil {
 		panic(err)
@@ -202,34 +206,34 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 	return nil
 }
 
-// Property 定义完整的字段属性
+// Property defines the complete set of field properties.
 type Property struct {
 	Type       string              `json:"type"`
-	Properties map[string]Property `json:"properties"` // object 嵌套
-	Fields     map[string]Property `json:"fields"`     // multi-fields 子字段
-	// 使用 map[string]any 存储所有其他动态属性
+	Properties map[string]Property `json:"properties"` // Nested object properties.
+	Fields     map[string]Property `json:"fields"`     // multi-fields subfields
+	// Use map[string]any to store all other dynamic attributes
 	Attributes map[string]any `json:"-"`
 }
 
-// UnmarshalJSON 自定义反序列化方法
+// UnmarshalJSON custom deserialization method
 func (p *Property) UnmarshalJSON(data []byte) error {
-	// 解析所有字段到一个临时的 map
+	// Parse all fields to a temporary map
 	var raw map[string]any
 	if err := sonic.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	// 初始化 Attributes
+	// Initialize Attributes
 	if p.Attributes == nil {
 		p.Attributes = make(map[string]any)
 	}
 
-	// 处理 type 字段
+	// Handle the "type" field
 	if typeVal, ok := raw["type"]; ok {
 		p.Type = fmt.Sprintf("%v", typeVal)
 	}
 
-	// 将除 type、properties、fields 之外的所有字段复制到 Attributes
+	// Copy all fields except type, properties, and Fields to Attributes
 	for key, value := range raw {
 		switch key {
 		case "properties", "fields":
@@ -238,7 +242,7 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 			p.Attributes[key] = value
 		}
 	}
-	// 处理 properties 字段（递归解析）
+	// Handle the properties field (recursive parsing)
 	if propsVal, ok := raw["properties"].(map[string]any); ok {
 		p.Properties = make(map[string]Property)
 		for propName, propValue := range propsVal {
@@ -249,7 +253,7 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	// 处理 fields 字段（递归解析）
+	// Handle the fields field (recursive parsing)
 	if fieldsVal, ok := raw["fields"].(map[string]any); ok {
 		p.Fields = make(map[string]Property)
 		for fieldName, fieldValue := range fieldsVal {
@@ -264,15 +268,15 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// 递归解析字段：object 嵌套扁平化为点号路径并直接产出 IndexFieldMeta；
-// multi-fields 子字段按字母序挂到所在父字段的 SubFields 上；无 type 的非 object 字段静默跳过。
+// Recursively parse the field: Flatten the nested object into a dot path and directly produce the IndexFieldMeta;
+// multi-fields SubFields are attached to the subfields of their parent fields in alphabetical order. Silently skip non-Object fields without type.
 func parseProperties(parentPath string, props map[string]Property, out map[string]interfaces.IndexFieldMeta) {
 	for name, prop := range props {
 		currentPath := name
 		if parentPath != "" {
 			currentPath = parentPath + "." + name
 		}
-		// 非 object 且有 type 的字段才落到结果
+		// Only fields that are not object but have a type will result
 		if prop.Type != "object" && prop.Type != "" {
 			out[currentPath] = interfaces.IndexFieldMeta{
 				Name:       currentPath,
@@ -282,15 +286,15 @@ func parseProperties(parentPath string, props map[string]Property, out map[strin
 				SubFields:  collectSubFields(prop),
 			}
 		}
-		// 递归解析 object 嵌套字段
+		// Recursively parse nested fields of object
 		if len(prop.Properties) > 0 {
 			parseProperties(currentPath, prop.Properties, out)
 		}
 	}
 }
 
-// collectSubFields 将 multi-fields 子字段按 Name 字母序提取为 IndexSubFieldMeta 切片。
-// type 从 Attributes 剥离塞入 Type 字段。
+// collectSubFields extracts the multi-fields subfields in alphabetical order of Name into IndexSubfield meta slices.
+// type is stripped from Attributes and inserted into the Type field.
 func collectSubFields(p Property) []interfaces.IndexSubFieldMeta {
 	if len(p.Fields) == 0 {
 		return nil

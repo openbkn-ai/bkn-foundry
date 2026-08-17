@@ -268,6 +268,18 @@ ErrorLink = ""
 Description = "扩展筛选条件组数超过上限"
 Solution = "请减少筛选组数"
 ErrorLink = ""
+
+[VegaBackend.Validation.Detail]
+EntityExtensionsQuota = "extensions 最多 {{.Limit}} 条"
+PropertyExtensionsQuota = "单字段 extensions 最多 {{.Limit}} 条"
+ExtensionKeyRequired = "extensions 的 key 不能为空"
+ExtensionKeyLength = "extensions key 长度不能超过 {{.Limit}}"
+ExtensionReservedKey = "extensions key 不能使用保留前缀 vega_"
+ExtensionValueLength = "extensions value 长度不能超过 {{.Limit}}"
+ExtensionQueryPairs = "extension_key 与 extension_value 必须成对且数量一致"
+ExtensionFilterPairs = "扩展筛选条件最多 {{.Limit}} 组"
+ExtensionQueryValuesRequired = "extension_key 与 extension_value 不能为空"
+MultiCatalogJoinNotSupported = "暂不支持多数据源 JOIN，计划使用 Trino/DuckDB 实现。"
 [VegaBackend.OperationAudit.InvalidRange]
 Description = "操作审计查询时间范围无效。"
 Solution = "请提供不超过 30 天的有效 RFC3339 时间范围。"

@@ -42,7 +42,7 @@ func NewKafkaAccess(appSetting *common.AppSetting) interfaces.KafkaAccess {
 	return kAccess
 }
 
-// getSASLMechanism 根据配置获取 SASL 机制
+// The getSASLMechanism acquires the SASL mechanism based on the configuration
 func (ka *kafkaAccess) getSASLMechanism() sasl.Mechanism {
 	switch ka.appSetting.MQSetting.Auth.Mechanism {
 	case "PLAIN":
@@ -81,14 +81,14 @@ func (ka *kafkaAccess) getSASLMechanism() sasl.Mechanism {
 	}
 }
 
-// getSASLDialer 创建 Dialer，根据配置决定是否使用 SASL 认证
+// getSASLDialer creates a Dialer and decides whether to use SASL authentication based on the configuration
 func (ka *kafkaAccess) getSASLDialer() *kafka.Dialer {
 	dialer := &kafka.Dialer{
 		Timeout:   10 * time.Second,
 		DualStack: true,
 	}
 
-	// 只有当认证信息存在时才使用 SASL 认证
+	// SASL authentication is only used when the authentication information exists
 	if ka.appSetting.MQSetting.Auth.Username != "" && ka.appSetting.MQSetting.Auth.Password != "" {
 		mechanism := ka.getSASLMechanism()
 		dialer.SASLMechanism = mechanism
@@ -97,12 +97,12 @@ func (ka *kafkaAccess) getSASLDialer() *kafka.Dialer {
 	return dialer
 }
 
-// getBrokerAddress 获取 broker 地址
+// Get the broker address with getBrokerAddress
 func (ka *kafkaAccess) getBrokerAddress() string {
 	return fmt.Sprintf("%s:%d", ka.appSetting.MQSetting.MQHost, ka.appSetting.MQSetting.MQPort)
 }
 
-// NewReader 创建消费者
+// NewReader creates consumers
 func (ka *kafkaAccess) NewReader(ctx context.Context, topic string, groupID string) (*kafka.Reader, error) {
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     []string{ka.getBrokerAddress()},
@@ -111,14 +111,14 @@ func (ka *kafkaAccess) NewReader(ctx context.Context, topic string, groupID stri
 		Dialer:      ka.getSASLDialer(),
 		MaxBytes:    interfaces.MAX_MESSAGE_BYTES,
 		StartOffset: kafka.FirstOffset,
-		// 不设置 CommitInterval，使用手动提交
+		// Do not set the CommitInterval and use manual commit
 	})
 
 	logger.Debugf("Created reader for topic %s with groupID %s on cluster %s", topic, groupID, ka.appSetting.MQSetting.MQHost)
 	return r, nil
 }
 
-// CloseReader 关闭消费者
+// CloseReader closes consumers
 func (ka *kafkaAccess) CloseReader(r *kafka.Reader) {
 	if r != nil {
 		if err := r.Close(); err != nil {
@@ -127,7 +127,7 @@ func (ka *kafkaAccess) CloseReader(r *kafka.Reader) {
 	}
 }
 
-// NewWriter 创建生产者
+// NewWriter creates producers
 func (ka *kafkaAccess) NewWriter(ctx context.Context, topic string) (*kafka.Writer, error) {
 	w := &kafka.Writer{
 		Addr:         kafka.TCP(ka.getBrokerAddress()),
@@ -139,7 +139,7 @@ func (ka *kafkaAccess) NewWriter(ctx context.Context, topic string) (*kafka.Writ
 		RequiredAcks: kafka.RequireAll,
 	}
 
-	// 只有当认证信息存在时才使用 SASL 认证
+	// SASL authentication is only used when the authentication information exists
 	if ka.appSetting.MQSetting.Auth.Username != "" && ka.appSetting.MQSetting.Auth.Password != "" {
 		mechanism := ka.getSASLMechanism()
 		w.Transport = &kafka.Transport{
@@ -151,7 +151,7 @@ func (ka *kafkaAccess) NewWriter(ctx context.Context, topic string) (*kafka.Writ
 	return w, nil
 }
 
-// CloseWriter 关闭生产者
+// CloseWriter closes the producer
 func (ka *kafkaAccess) CloseWriter(w *kafka.Writer) {
 	if w != nil {
 		if err := w.Close(); err != nil {
@@ -160,7 +160,7 @@ func (ka *kafkaAccess) CloseWriter(w *kafka.Writer) {
 	}
 }
 
-// WriteMessages 发送消息
+// WriteMessages sends messages
 func (ka *kafkaAccess) WriteMessages(ctx context.Context, w *kafka.Writer, msgs ...kafka.Message) error {
 	if len(msgs) == 0 {
 		return nil
@@ -178,7 +178,7 @@ func (ka *kafkaAccess) WriteMessages(ctx context.Context, w *kafka.Writer, msgs 
 	return nil
 }
 
-// ReadMessage 消费消息
+// ReadMessage consumes the message
 func (ka *kafkaAccess) ReadMessage(ctx context.Context, r *kafka.Reader) (kafka.Message, error) {
 	msg, err := r.ReadMessage(ctx)
 	if err != nil {
@@ -187,7 +187,7 @@ func (ka *kafkaAccess) ReadMessage(ctx context.Context, r *kafka.Reader) (kafka.
 	return msg, nil
 }
 
-// CommitMessages 手动提交位移
+// CommitMessages manually commits the shift
 func (ka *kafkaAccess) CommitMessages(ctx context.Context, r *kafka.Reader, msgs ...kafka.Message) error {
 	if err := r.CommitMessages(ctx, msgs...); err != nil {
 		logger.Errorf("Failed to commit messages: %v", err)
@@ -197,10 +197,10 @@ func (ka *kafkaAccess) CommitMessages(ctx context.Context, r *kafka.Reader, msgs
 	return nil
 }
 
-// CreateTopic 创建 topic
+// CreateTopic: Create a topic
 func (ka *kafkaAccess) CreateTopic(ctx context.Context, topicName string) error {
 	logger.Infof("Creating topic %s", topicName)
-	// 使用带 SASL 认证的连接
+	// Use a connection with SASL certification
 	dialer := ka.getSASLDialer()
 	conn, err := dialer.DialContext(ctx, "tcp", ka.getBrokerAddress())
 	if err != nil {
@@ -232,7 +232,7 @@ func (ka *kafkaAccess) CreateTopic(ctx context.Context, topicName string) error 
 
 	err = controllerConn.CreateTopics(topicConfigs...)
 	if err != nil {
-		// 忽略 topic 已存在的错误
+		// Ignore the existing errors in the topic
 		if err.Error() == "Topic with this name already exists" {
 			logger.Infof("Topic %s already exists", topicName)
 			return nil

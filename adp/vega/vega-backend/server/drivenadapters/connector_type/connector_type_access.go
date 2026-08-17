@@ -110,7 +110,7 @@ func (cta *connectorTypeAccess) Create(ctx context.Context, ct *interfaces.Conne
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))
 
-	// tags 转成 string 的格式
+	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(ct.Tags)
 
 	// Serialize FieldConfig to JSON
@@ -256,7 +256,7 @@ func (cta *connectorTypeAccess) List(ctx context.Context, params interfaces.Conn
 	}
 
 	// Pagination is applied in service after permission filtering.
-	// 排序
+	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(fmt.Sprintf("%s %s", params.Sort, params.Direction))
 	} else {
@@ -361,7 +361,7 @@ func (cta *connectorTypeAccess) Update(ctx context.Context, ct *interfaces.Conne
 
 	span.SetAttributes(attr.Key("connector_type").String(ct.Type))
 
-	// tags 转成 string 的格式
+	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(ct.Tags)
 
 	// Serialize FieldConfig to JSON

@@ -20,7 +20,7 @@ import (
 	"vega-backend/interfaces"
 )
 
-// ExtractTablesResult 存储表提取结果
+// ExtractTablesResult stores the extraction results of the table
 type ExtractTablesResult struct {
 	Tables  []*Table `json:"tables"`
 	SQL     string   `json:"sql"`
@@ -34,7 +34,7 @@ type Table struct {
 	Name    string `json:"name"`
 }
 
-// SQLParseResult 存储SQL解析结果
+// SQLParseResult stores the results of SQL parsing
 type SQLParseResult struct {
 	AST     interface{} `json:"ast"`
 	SQL     string      `json:"sql"`
@@ -42,7 +42,7 @@ type SQLParseResult struct {
 	Error   string      `json:"error"`
 }
 
-// ExtractTables 从SQL中提取所有表名
+// ExtractTables extracts all table names from SQL
 func ExtractTables(sql string, dialect string) (*ExtractTablesResult, error) {
 	cmd := exec.Command("python3", "-c", `
 import sys
@@ -95,7 +95,7 @@ except Exception as e:
 	return &result, nil
 }
 
-// MapDataSourceTypeToDialect 将数据源类型映射到sqlglot方言
+// MapDataSourceTypeToDialect mapped to the data source type sqlglot dialect
 func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 	switch strings.ToLower(dataSourceType) {
 	case interfaces.ConnectorTypeMySQL:
@@ -103,7 +103,7 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 	case "postgres", interfaces.ConnectorTypePostgreSQL:
 		return "postgres", nil
 	case "maria", interfaces.ConnectorTypeMariaDB:
-		return "mysql", nil // MariaDB使用mysql方言
+		return "mysql", nil // MariaDB uses the mysql dialect
 	case "tsql", interfaces.ConnectorTypeSQLServer:
 		return "tsql", nil
 	default:
@@ -112,10 +112,10 @@ func MapDataSourceTypeToDialect(dataSourceType string) (string, error) {
 	}
 }
 
-// TranspileSQL 将SQL从一种方言转换为另一种方言
+// TranspileSQL converts SQL from one dialect to another
 func TranspileSQL(ctx context.Context, sql string, fromDialect string, dataSourceType string) (*SQLParseResult, error) {
 
-	// 映射数据源类型到sqlglot方言
+	// Map the data source type to the sqlglot dialect
 	toDialect, err := MapDataSourceTypeToDialect(dataSourceType)
 	if err != nil {
 		logger.Errorf("MapDataSourceTypeToDialect failed, %s", err.Error())

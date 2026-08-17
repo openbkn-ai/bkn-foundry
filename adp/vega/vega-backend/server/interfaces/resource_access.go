@@ -21,7 +21,7 @@ type ResourceAccess interface {
 	GetByID(ctx context.Context, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
-	// AttachListExtensions 按列表查询参数加载根级 extensions（供 List 在 GetByIDsBasic 之后调用）。
+	// AttachListExtensions loads root-level extensions based on the List query parameters (for the list to call after GetByIDsBasic).
 	AttachListExtensions(ctx context.Context, params ResourcesQueryParams, resources []*Resource) error
 	// GetByIDsBasic retrieves Resources by IDs without parsing sourceMetadata, schemaDefinition and logicDefinition.
 	GetByIDsBasic(ctx context.Context, ids []string) ([]*Resource, error)

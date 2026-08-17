@@ -32,7 +32,7 @@ func (c *RegexCond) IsSingleValue() bool        { return true }
 func (c *RegexCond) IsFixedLenArrayValue() bool { return false }
 func (c *RegexCond) RequiredValueLen() int      { return -1 }
 
-// regex 条件, 判断字段是否匹配某个正则表达式
+// The regex condition determines whether a field matches a certain regular expression
 func (c *RegexCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

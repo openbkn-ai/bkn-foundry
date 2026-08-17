@@ -132,8 +132,8 @@ func (chcw *CatalogHealthCheckWorker) runSchedule(ctx context.Context, schedule 
 		}
 	}
 
-	// 创建任务前先推进数据库中的运行时间。任务创建失败时跳过本次触发，且服务停机期间
-	// 错过的历史周期不会在恢复后逐次补跑。
+	// Advance the running time in the database before creating a task. Skip this trigger when the task creation fails and during the service downtime
+	// Missed historical cycles will not be made up for one by one after recovery.
 	nextRun := cronSchedule.Next(now)
 	if err := chcw.chcsa.UpdateRunMetadata(ctx, schedule.CatalogID,
 		schedule.UpdateTime, now.UnixMilli(), nextRun.UnixMilli(),

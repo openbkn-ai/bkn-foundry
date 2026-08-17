@@ -28,7 +28,7 @@ func (c *FalseCond) IsSingleValue() bool        { return false }
 func (c *FalseCond) IsFixedLenArrayValue() bool { return false }
 func (c *FalseCond) RequiredValueLen() int      { return -1 }
 
-// false 条件，判断字段是否为 false
+// The false condition determines whether the field is false
 func (c *FalseCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	fieldsMap map[string]*interfaces.Property) (interfaces.FilterCondition, error) {
 

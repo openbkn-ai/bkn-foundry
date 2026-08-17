@@ -4,10 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors BuildTask 模块错误码
+// Package errors BuildTask module error code
 package errors
 
-// BuildTask 相关错误码
+// Buildtask-related error codes
 const (
 	// 400 Bad Request
 	VegaBackend_BuildTask_Exist                                    = "VegaBackend.BuildTask.Exist"

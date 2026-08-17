@@ -160,7 +160,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 			} `json:"total"`
 			Hits []struct {
 				Source map[string]any `json:"_source"`
-				Sort   []any          `json:"sort"` // 添加sort字段
+				Sort   []any          `json:"sort"` // Add the "sort" field
 			} `json:"hits"`
 		} `json:"hits"`
 		Aggregations map[string]any `json:"aggregations"`
@@ -191,10 +191,10 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 		}, nil
 	}
 
-	// 获取索引的mapping信息以确定字段类型
+	// Obtain the mapping information of the index to determine the field type
 	fieldTypeMap := make(map[string]string)
 	if err := c.fetchMappingsForQuery(ctx, index, fieldTypeMap); err != nil {
-		// 如果获取mapping失败，使用默认的string类型
+		// If obtaining the mapping fails, use the default string type
 		logger.Warnf("failed to fetch index mappings, using default string type: %v", err)
 	}
 
@@ -202,7 +202,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 	firstHit := searchResp.Hits.Hits[0].Source
 	columns := make([]interfaces.ColumnInfo, 0, len(firstHit))
 	for fieldName := range firstHit {
-		fieldType := "string" // 默认类型
+		fieldType := "string" // Default type
 		if mappedType, ok := fieldTypeMap[fieldName]; ok {
 			fieldType = mappedType
 		}
@@ -218,18 +218,18 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 		entries = append(entries, hit.Source)
 	}
 
-	// 构建响应
-	// total_count设置为OpenSearch返回的总数据量
+	// Build response
+	// total_count is set to the total amount of data returned by OpenSearch
 	response := &interfaces.RawQueryResponse{
 		Columns:    columns,
 		Entries:    entries,
 		TotalCount: &totalCount,
 	}
 
-	// 如果有结果，检查是否需要返回search_after
+	// If there is a result, check whether search_after needs to be returned
 	if len(searchResp.Hits.Hits) > 0 {
 		lastHit := searchResp.Hits.Hits[len(searchResp.Hits.Hits)-1]
-		// 如果最后一条记录有sort值，将其作为search_after返回
+		// If the last record has a sort value, return it as search_after
 		if len(lastHit.Sort) > 0 {
 			response.SearchAfter = lastHit.Sort
 		}
@@ -238,7 +238,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 	return response, nil
 }
 
-// fetchMappingsForQuery 获取索引的mapping信息并构建字段类型映射
+// fetchMappingsForQuery retrieves the mapping information of the index and builds the field type mapping
 func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexName string, fieldTypeMap map[string]string) error {
 	req := opensearchapi.IndicesGetMappingRequest{
 		Index: []string{indexName},
@@ -258,7 +258,7 @@ func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexNa
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// 解析 JSON
+	// Parse JSON
 	var dataMapping map[string]struct {
 		Mappings struct {
 			Properties map[string]Property `json:"properties"`
@@ -268,7 +268,7 @@ func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexNa
 		return fmt.Errorf("failed to unmarshal mappings: %w", err)
 	}
 
-	// 解析字段并构建字段类型映射
+	// Parse the fields and construct field type mappings
 	fields := make(map[string]interfaces.IndexFieldMeta)
 	if idxData, ok := dataMapping[indexName]; ok {
 		parseProperties("", idxData.Mappings.Properties, fields)
@@ -281,15 +281,16 @@ func (c *OpenSearchConnector) fetchMappingsForQuery(ctx context.Context, indexNa
 }
 
 // ExecuteQuery executes a query on the OpenSearch index.
-// ExecuteQuery 执行OpenSearch查询并返回结果
-// 参数:
-//   - ctx: 上下文信息
-//   - resource: 资源信息，包含索引名称等
-//   - params: 查询参数，包括输出字段、排序、分页等
+// ExecuteQuery executes OpenSearch queries and returns results
+// Parameter
 //
-// 返回值:
-//   - *interfaces.QueryResult: 查询结果，包含行数据和总数
-//   - error: 错误信息
+//	-ctx: Context information
+//	-resource: Resource information, including index names, etc
+//	-params: Query parameters, including output fields, sorting, pagination, etc
+//
+// Return value:
+//   - *interfaces.QueryResult: Query result, including row data and total number
+//     -error: Error message
 func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 
@@ -302,17 +303,17 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		return nil, fmt.Errorf("index name is empty in resource")
 	}
 
-	// 聚合查询：当Aggregation、GroupBy或Having任一参数存在时执行
+	// Aggregation query: Executed when any of the parameters Aggregation, GroupBy, or Having exists
 	if params.Aggregation != nil || len(params.GroupBy) > 0 || params.Having != nil {
-		// 构建OpenSearch聚合查询
+		// Build OpenSearch aggregated queries
 		query := map[string]any{
-			"size": 0, // 聚合查询不需要返回文档
+			"size": 0, // Aggregation queries do not need to return documents
 		}
 		if params.NeedTotal {
 			query["track_total_hits"] = true
 		}
 
-		// 处理过滤条件
+		// Handle the filtration conditions
 		if params.ActualFilterCond != nil {
 			filterQuery, err := c.ConvertFilterCondition(params.ActualFilterCond, resource.SchemaDefinition)
 			if err != nil {
@@ -327,10 +328,10 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 		}
 
-		// 构建聚合查询
+		// Build an aggregated query
 		aggs := map[string]any{}
 
-		// 确定聚合函数和别名
+		// Determine the aggregation function and alias
 		var aggAlias string
 		var metricBody map[string]any
 		if params.Aggregation != nil {
@@ -383,7 +384,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 		}
 
-		// 分组：自内向外嵌套 terms / date_histogram；度量与 HAVING 挂在最内层桶下。
+		// Grouping: Nested terms/date_histogram from the inside out; The metric and HAVING are placed under the innermost bucket.
 		if len(params.GroupBy) > 0 {
 			leafAggs := make(map[string]any)
 			if metricBody != nil {
@@ -422,7 +423,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			for k, v := range innerNode {
 				aggs[k] = v
 			}
-			// 对每一层 terms 应用 sort 映射到的 order（第二维度排序写在内层 terms 上）
+			// Apply the order mapped to sort to each layer of terms (the second-dimensional sort is written on the inner layer terms)
 			for _, v := range aggs {
 				if node, ok := v.(map[string]any); ok {
 					c.applyTermsOrderToGroupAggNode(node, params, aggAlias)
@@ -432,10 +433,10 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			aggs[aggAlias] = metricBody
 		}
 
-		// 将聚合添加到查询
+		// Add the aggregation to the query
 		query["aggs"] = aggs
 
-		// 序列化查询
+		// Serialized query
 		queryJSON, err := sonic.Marshal(query)
 		if err != nil {
 			return nil, fmt.Errorf("failed to serialize aggregate query: %w", err)
@@ -443,7 +444,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 		logger.Debugf("Executing OpenSearch aggregate query")
 
-		// 执行搜索请求
+		// Execute the search request
 		req := opensearchapi.SearchRequest{
 			Index: []string{indexName},
 			Body:  bytes.NewReader(queryJSON),
@@ -466,13 +467,13 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}
 		logger.Debugf("OpenSearch aggregate response: %s", string(bodyBytes))
 
-		// 解析响应
+		// Parsing response
 		var result map[string]any
 		if err := sonic.Unmarshal(bodyBytes, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode aggregate search result: %w", err)
 		}
 
-		// 提取文档总数
+		// Extract the total number of documents
 		var totalCount int64
 		if hits, ok := result["hits"].(map[string]any); ok {
 			if totalMap, ok := hits["total"].(map[string]any); ok {
@@ -484,7 +485,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}
 		}
 
-		// 提取聚合结果
+		// Extract the aggregation results
 		aggregations, ok := result["aggregations"].(map[string]any)
 		if !ok {
 			return &interfaces.QueryResult{
@@ -493,7 +494,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 			}, nil
 		}
 
-		// 处理分组聚合结果（支持多层 group_by 嵌套桶展平）
+		// Handle group aggregation results (support multi-level group_by nested bucket flattening)
 		var rows []map[string]any
 		if len(params.GroupBy) > 0 {
 			groupByAggName := "group_by_" + params.GroupBy[0].Property
@@ -501,7 +502,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 				rows = c.flattenNestedGroupByRows(groupByAgg, params, aggAlias)
 			}
 		} else {
-			// 没有分组，只有聚合
+			// There is no grouping, only aggregation
 			if params.Aggregation != nil {
 				row := make(map[string]any)
 				if aggResult, ok := aggregations[aggAlias].(map[string]any); ok {
@@ -519,7 +520,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		}, nil
 	}
 
-	// 明细查询
+	// Detailed inquiry
 	// Build the OpenSearch query
 	query := map[string]any{
 		"query": map[string]any{
@@ -674,7 +675,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 	}, nil
 }
 
-// nestedTermsSize 为嵌套 group_by 中每一层 terms 设置 size：最内层用 limit 控制「每个父桶下」的行数，外层用较大上限以展开组合。
+// nestedTermsSize sets the size for each layer of terms in the nested group_by: the innermost layer uses limit to control the number of rows "under each parent bucket", and the outer layer uses a larger upper limit to expand the combination.
 func nestedTermsSize(levelIndex, numLevels, limit int) int {
 	if numLevels <= 1 {
 		if limit > 0 {
@@ -701,8 +702,8 @@ func nestedTermsSize(levelIndex, numLevels, limit int) int {
 	return outer
 }
 
-// applyTermsOrderToGroupAggNode 递归为子树中每个 terms 桶写入 order（多维度时第二维 sort 落在内层 terms）。
-// 按度量排序仅在该 terms 的直接子 aggs 中包含度量名时生效，避免外层 terms 引用嵌套过深的子聚合导致 DSL 非法。
+// ApplyTermsOrderToGroupAggNode recursive terms for each subtree of barrel written order (dimensional layer 2 d sort to fall, when the terms).
+// Sorting by metric only takes effect when the direct sub-aggs of that term contain the metric name, avoiding the illegal DSL caused by the outer terms referring to deeply nested sub-aggregations.
 func (c *OpenSearchConnector) applyTermsOrderToGroupAggNode(node map[string]any, params *interfaces.ResourceDataQueryParams, aggAlias string) {
 	if terms, ok := node["terms"].(map[string]any); ok {
 		field, _ := terms["field"].(string)
@@ -755,7 +756,7 @@ func (c *OpenSearchConnector) mergeMetricIntoRowFromBucket(bucket map[string]any
 	}
 }
 
-// collectGroupByRowsFromBucket 自外层桶递归展开为多行（每行包含各维度键与可选度量）。
+// CollectGroupByRowsFromBucket since the outer barrel recursive on multiple lines (each row contains the dimension key and optional metrics).
 func (c *OpenSearchConnector) collectGroupByRowsFromBucket(bucket map[string]any, level int, params *interfaces.ResourceDataQueryParams, aggAlias string, rowSoFar map[string]any) []map[string]any {
 	if level < 0 || level >= len(params.GroupBy) {
 		return nil
@@ -779,7 +780,7 @@ func (c *OpenSearchConnector) collectGroupByRowsFromBucket(bucket map[string]any
 	}
 
 	nextName := "group_by_" + params.GroupBy[level+1].Property
-	// OpenSearch bucket 的子聚合结果直接平铺在 bucket 下，而不是挂在 bucket["aggs"] 中。
+	// The sub-aggregation results of OpenSearch Buckets are directly tiled under the buckets instead of being hung in bucket["aggs"].
 	childAgg, ok := bucket[nextName].(map[string]any)
 	if !ok {
 		return []map[string]any{row}
@@ -799,7 +800,7 @@ func (c *OpenSearchConnector) collectGroupByRowsFromBucket(bucket map[string]any
 	return out
 }
 
-// flattenNestedGroupByRows 读取最外层 group_by 聚合并展平为结果行，最后按 limit 截断。
+// read the outermost group_by aggregation and flatten it into result rows, and then truncate it by limit.
 func (c *OpenSearchConnector) flattenNestedGroupByRows(rootAgg map[string]any, params *interfaces.ResourceDataQueryParams, aggAlias string) []map[string]any {
 	buckets, ok := rootAgg["buckets"].([]any)
 	if !ok {
@@ -819,9 +820,9 @@ func (c *OpenSearchConnector) flattenNestedGroupByRows(rootAgg map[string]any, p
 	return rows
 }
 
-// buildHavingBucketSelector 构建HAVING条件的bucket_selector聚合
+// BuildHavingBucketSelector building HAVING bucket_selector polymerization conditions
 func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.HavingClause, aggAlias string) map[string]any {
-	// OpenSearch使用bucket_selector聚合实现HAVING
+	// OpenSearch implements HAVING using the bucket_selector aggregation
 	script := ""
 	switch having.Operation {
 	case "==":
@@ -866,7 +867,7 @@ func (c *OpenSearchConnector) buildHavingBucketSelector(having *interfaces.Havin
 	}
 }
 
-// formatInValuesForScript 格式化IN操作的值列表为Painless脚本格式
+// formatInValuesForScript formats the list of values for IN operations into Painless script format
 func formatInValuesForScript(values []any) string {
 	if len(values) == 0 {
 		return "[]"
@@ -885,12 +886,13 @@ func formatInValuesForScript(values []any) string {
 	return fmt.Sprintf("[%s]", strings.Join(strValues, ", "))
 }
 
-// applyFulltextFeature 给字段挂全文检索能力。
-//   - string 字段：主字段保持 keyword（精确匹配/排序/聚合语义不变），
-//     额外加一个 text 子字段做分词全文检索；查询侧用 `字段名.<子字段名>` 命中。
-//   - text 字段：主字段本身即 text（已全文），仅把 analyzer 设到主字段。
+// applyFulltextFeature to enable full-text search capabilities for fields.
 //
-// analyzer 等参数从 feature.Config 注入；无 config 时走 OpenSearch 默认分词器。
+//	The -string field: The main field retains the keyword (exact match/sort/aggregate semantics unchanged).
+//	  Add an extra "text" subfield for word segmentation full-text search; The query side hits with 'field name.< Subfield name >'.
+//	The -text field: The main field itself is text (full text), and only set analyzer to the main field.
+//
+// Parameters such as analyzer are injected from feature-.config; When there is no config, use the default word segmenter of OpenSearch.
 func applyFulltextFeature(fieldProps map[string]any, columnType string, feature interfaces.PropertyFeature) {
 	switch columnType {
 	case interfaces.DataType_String:
@@ -909,14 +911,14 @@ func applyFulltextFeature(fieldProps map[string]any, columnType string, feature 
 		}
 		fields[subName] = sub
 	case interfaces.DataType_Text:
-		// 主字段已是 text（分词），把 analyzer 等直接设在主字段上
+		// The main field is already text (word segmentation). Set analyzer and others directly on the main field
 		for k, v := range feature.Config {
 			fieldProps[k] = v
 		}
 	}
 }
 
-// buildFieldMappings 构建字段映射
+// build field mapping
 func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.Property) (map[string]any, bool, error) {
 	properties := map[string]any{}
 	hasVectorField := false
@@ -950,23 +952,23 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 		case interfaces.DataType_Other:
 			return nil, false, fmt.Errorf("unsupported schema field %q: type %s (original_type: %s)", prop.Name, prop.Type, prop.OriginalType)
 		default:
-			// 保持 fieldType 不变
+			// Keep the fieldType unchanged
 		}
 
-		// 创建字段属性映射
+		// Create field attribute mappings
 		fieldProps := map[string]any{
 			"type": fieldType,
 		}
 
-		// 为decimal类型添加scaling_factor参数
+		// Add the scaling_factor parameter to the decimal type
 		if prop.Type == interfaces.DataType_Decimal {
-			fieldProps["scaling_factor"] = 1000000000000000000.0 // 18位小数
+			fieldProps["scaling_factor"] = 1000000000000000000.0 // 18 decimal places
 		}
 
-		// 处理字段特性
+		// Handle field characteristics
 		if prop.Features != nil {
 			for _, feature := range prop.Features {
-				// fulltext 不依赖 config（可无 analyzer 走默认分词器），单独处理
+				// fulltext does not rely on config (it can use the default tokenizer without analyzer) and is processed independently
 				if feature.FeatureType == interfaces.PropertyFeatureType_Fulltext {
 					applyFulltextFeature(fieldProps, prop.Type, feature)
 					continue
@@ -978,7 +980,7 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 						for k, v := range feature.Config {
 							if prop.Type == interfaces.DataType_Text {
 								if !fieldsAdded {
-									// 添加子字段
+									// Add subfields
 									fieldProps["fields"] = map[string]any{
 										feature.FeatureName: map[string]any{
 											"type": "keyword",
@@ -986,14 +988,14 @@ func (c *OpenSearchConnector) buildFieldMappings(schemaDefinition []*interfaces.
 									}
 									fieldsAdded = true
 								}
-								// 添加到子字段属性中
+								// Add to the subfield attribute
 								if fields, ok := fieldProps["fields"].(map[string]any); ok {
 									if subField, ok := fields[feature.FeatureName].(map[string]any); ok {
 										subField[k] = v
 									}
 								}
 							} else {
-								// 直接添加到字段属性中
+								// Add it directly to the field attribute
 								fieldProps[k] = v
 							}
 						}

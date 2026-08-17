@@ -22,7 +22,7 @@ type tableDiscoverItem struct {
 }
 
 // discoverTableResources discovers table resources from a table connector.
-// 分步执行：1. 获取表名列表 2. 创建/更新 Resource 3. 逐个补齐详细元数据
+// Step-by-step execution: 1. Obtain the list of table names 2. Create/update Resource 3. Complete the detailed metadata one by one
 func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
 	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, connector interfaces.Connector,
 	progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
@@ -32,7 +32,7 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
 		return nil, fmt.Errorf("connector does not support table discover")
 	}
 
-	// Step 1: 获取表名列表
+	// Step 1: Obtain the list of names
 	sourceTables, err := tableConnector.ListTables(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tables: %w", err)
@@ -44,14 +44,14 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
 	}
 	logger.Infof("Discovered %d tables from source", len(sourceTables))
 
-	// Step 2: 获取现有 Resources
+	// Step 2: Obtain the existing Resources
 	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
 	logger.Infof("Loaded %d existing resources for table discovery", len(existingResources))
 
-	// Step 3: 对比并创建/更新 Resource（基础信息）
+	// Step 3: Compare and create/update Resources (basic information)
 	result, items, err := dtw.reconcileTableResources(ctx, task, catalog, sourceTables, existingResources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
@@ -63,7 +63,7 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
 	}
 	logger.Infof("Reconciled %d table resources", len(items))
 
-	// Step 4: 逐个补齐详细元数据:元数据采集就是补充每一个table的元数据信息
+	// Step 4: Complete the detailed metadata one by one: Metadata collection is to supplement the metadata information of each table
 	if err := dtw.enrichTableMetadata(ctx, task, tableConnector, items, result, progress); err != nil {
 		return nil, fmt.Errorf("failed to enrich table metadata: %w", err)
 	}
@@ -80,27 +80,29 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
 	return result, nil
 }
 
-// enrichTableMetadata 为表元数据添加详细信息
-// 参数:
-//   - ctx: 上下文信息，用于控制请求的超时和取消
-//   - tableConnector: 表连接器，用于获取表的元数据
-//   - items: 表发现项目列表，包含表元数据和资源信息
+// add details to the table metadata
+// Parameter
 //
-// 返回值:
-//   - error: 如果在处理过程中发生错误，则返回错误信息
+//	-ctx: Context information, used to control the timeout and cancellation of requests
+//	-tableConnector: A table connector used to obtain the metadata of a table
+//	-items: List of table discovery items, including table metadata and resource information
+//
+// Return value:
+//
+//	-error: If an error occurs during processing, return an error message
 func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *interfaces.DiscoverTask,
 	tableConnector interfaces.TableConnector, items []tableDiscoverItem, result *interfaces.DiscoverResult,
 	progress *discoverTaskReconcileProgress) error {
 
 	progress.SetMetadataTotal(len(items))
 
-	// 遍历所有表发现项目
+	// Traverse all tables to discover items
 	for _, item := range items {
-		table := item.tableMeta   // 获取表元数据
-		resource := item.resource // 获取资源信息
+		table := item.tableMeta   // Obtain the table metadata
+		resource := item.resource // Obtain resource information
 		beforeHash := sourceSnapshotHash(resource)
 
-		// 获取详细元数据
+		// Obtain detailed metadata
 		err := tableConnector.GetTableMeta(ctx, table)
 		if err != nil {
 			logger.Warnf("Failed to get metadata for table %s: %v", table.Name, err)
@@ -120,7 +122,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 			continue
 		}
 
-		// 填充 Resource 元数据 ：schema_definition 字段
+		// Fill in the Resource metadata: schema_definition field
 		resource.Schema = table.Schema
 		existingProperties := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
 		for _, property := range resource.SchemaDefinition {
@@ -141,15 +143,15 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 				OriginalDescription: column.Description,
 			}
 			if existing, ok := existingProperties[column.Name]; ok {
-				// display_name、description 与 features 均可由用户或语义理解维护，
-				// 探查仅刷新源端物理元数据，不能覆盖这些业务元数据。
+				// display_name, description and features can all be maintained by users or semantic understanding.
+				// Probing only refreshes the physical metadata at the source end and cannot overwrite these business metadata.
 				property.DisplayName = existing.DisplayName
 				property.Description = existing.Description
 				property.Features = existing.Features
 			}
 			resource.SchemaDefinition = append(resource.SchemaDefinition, property)
 		}
-		// 填充 Resource 元数据 ：source_metadata 字段
+		// Fill in the Resource metadata: source_metadata field
 		sourceMetadata := make(map[string]any)
 		if resource.SourceMetadata != nil {
 			sourceMetadata = resource.SourceMetadata
@@ -180,7 +182,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 			updateDiscoverResultForEnrichStatus(result, discoverStatus)
 		}
 
-		// 更新 Resource
+		// Update Resource
 		resource.LastDiscoverStatus = discoverStatus
 		resource.StatusMessage = ""
 		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
@@ -209,10 +211,10 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 		CatalogID: catalog.ID,
 	}
 
-	// 用于返回的 Discover Items
+	// Used for returning Discover Items
 	var items []tableDiscoverItem
 
-	// 构建现有资源的 map（按 SourceIdentifier 索引）
+	// Build a map of the existing resources (indexed by SourceIdentifier)
 	existingMap := make(map[string]*interfaces.Resource)
 	for _, r := range existingResources {
 		if r.Category != interfaces.ResourceCategoryTable {
@@ -221,22 +223,22 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 		existingMap[r.SourceIdentifier] = r
 	}
 
-	// 构建源端表的 map
+	// Build the map of the source table
 	sourceMap := make(map[string]*interfaces.TableMeta)
 	for _, t := range sourceTables {
 		sourceIdentifier := dtw.buildSourceIdentifier(t)
 		sourceMap[sourceIdentifier] = t
 	}
-	// 处理新增和保持的资源
+	// Handle newly added and retained resources
 	for _, table := range sourceTables {
 		sourceIdentifier := dtw.buildSourceIdentifier(table)
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
-			// 已存在，检查状态
+			// Existing. Check the status
 			if actions != nil && actions.Refresh {
 				markAfterEnrich := true
 				if resource.Status == interfaces.ResourceStatusStale {
-					// 之前标记为 stale，现在重新激活
+					// Previously marked as stale, now reactivated
 					if err := dtw.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
 						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
 					} else {
@@ -254,7 +256,7 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 				})
 			}
 		} else {
-			// 新增资源 - 只在策略允许 create 时处理
+			// New resources - Only processed when the policy allows create
 			if actions != nil && actions.Create {
 				resource, err := dtw.createResource(ctx, catalog, table, sourceIdentifier)
 				if err != nil {
@@ -272,7 +274,7 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 		}
 	}
 
-	// 处理已删除的资源（标记为 stale） - 只在策略允许 mark_stale 时处理
+	// Handle deleted resources (marked as stale) - only handle when the policy allows mark_stale
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
 			if _, ok := sourceMap[sourceIdentifier]; !ok {

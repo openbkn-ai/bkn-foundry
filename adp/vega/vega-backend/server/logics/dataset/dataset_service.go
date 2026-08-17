@@ -50,7 +50,7 @@ func (ds *datasetService) Create(ctx context.Context, res *interfaces.Resource) 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset")
 	defer span.End()
 
-	// 调用本地索引存储创建 dataset 索引，索引名称为 resource id
+	// Call the local index store to create the dataset index, and the index name is resource id
 	err := ds.lim.CreateIndex(ctx, res.ID, res.SchemaDefinition)
 	if err != nil {
 		otellog.LogError(ctx, "Create dataset index failed", err)
@@ -67,7 +67,7 @@ func (ds *datasetService) Update(ctx context.Context, res *interfaces.Resource) 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update dataset")
 	defer span.End()
 
-	// 调用本地索引存储更新 dataset 索引，保留历史索引名规则：<res.source_identifier>-<id>
+	// Call the local index store to update the dataset index and retain the rule for historical index names: <res.source_identifier>-<id>
 	if err := ds.lim.UpdateIndex(ctx, fmt.Sprintf("%s-%s", res.SourceIdentifier, res.ID), res.SchemaDefinition); err != nil {
 		span.SetStatus(codes.Error, "Update dataset failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
@@ -119,12 +119,12 @@ func (ds *datasetService) CheckExist(ctx context.Context, id string) (bool, erro
 	return exist, nil
 }
 
-// ListDocuments 列出 dataset 中的文档
+// ListDocuments lists the documents in the dataset
 func (ds *datasetService) ListDocuments(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) ([]map[string]any, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List dataset documents")
 	defer span.End()
 
-	// 调用本地索引存储列出文档
+	// Call the local index store to list the documents
 	documents, total, err := ds.lim.ListDocuments(ctx, indexName, res, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List dataset documents failed")
@@ -136,12 +136,12 @@ func (ds *datasetService) ListDocuments(ctx context.Context, indexName string, r
 	return documents, total, nil
 }
 
-// CreateDocuments 批量创建 dataset 文档
+// CreateDocuments to batch create dataset documents
 func (ds *datasetService) CreateDocuments(ctx context.Context, id string, documents []map[string]any) ([]string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Create dataset documents")
 	defer span.End()
 
-	// 调用本地索引存储批量创建文档
+	// Call the local index store to create documents in batches
 	docIDs, err := ds.lim.CreateDocuments(ctx, id, documents)
 	if err != nil {
 		span.SetStatus(codes.Error, "Create dataset documents failed")
@@ -153,12 +153,12 @@ func (ds *datasetService) CreateDocuments(ctx context.Context, id string, docume
 	return docIDs, nil
 }
 
-// GetDocument 获取 dataset 文档
+// GetDocument retrieves the dataset document
 func (ds *datasetService) GetDocument(ctx context.Context, id string, docID string) (map[string]any, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get dataset document")
 	defer span.End()
 
-	// 调用本地索引存储获取文档
+	// Call the local index store to obtain the document
 	document, err := ds.lim.GetDocument(ctx, id, docID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get dataset document failed")
@@ -170,12 +170,12 @@ func (ds *datasetService) GetDocument(ctx context.Context, id string, docID stri
 	return document, nil
 }
 
-// DeleteDocument 删除 dataset 文档
+// DeleteDocument deletes the dataset document
 func (ds *datasetService) DeleteDocument(ctx context.Context, id string, docID string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset document")
 	defer span.End()
 
-	// 调用本地索引存储删除文档
+	// Call the local index store to delete the document
 	if err := ds.lim.DeleteDocument(ctx, id, docID); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset document failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
@@ -186,12 +186,12 @@ func (ds *datasetService) DeleteDocument(ctx context.Context, id string, docID s
 	return nil
 }
 
-// UpsertDocuments 批量更新 dataset 文档
+// UpsertDocuments batch updates dataset documents
 func (ds *datasetService) UpsertDocuments(ctx context.Context, id string, updateRequests []map[string]any) ([]string, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update dataset documents")
 	defer span.End()
 
-	// 调用本地索引存储批量更新文档
+	// Call the local index store to update documents in batches
 	docIDs, err := ds.lim.UpsertDocuments(ctx, id, updateRequests)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update dataset documents failed")
@@ -202,12 +202,12 @@ func (ds *datasetService) UpsertDocuments(ctx context.Context, id string, update
 	return docIDs, nil
 }
 
-// DeleteDocuments 批量删除 dataset 文档
+// DeleteDocuments to batch delete dataset documents
 func (ds *datasetService) DeleteDocuments(ctx context.Context, id string, docIDs string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents")
 	defer span.End()
 
-	// 调用本地索引存储批量删除文档
+	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocuments(ctx, id, docIDs); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
@@ -218,12 +218,12 @@ func (ds *datasetService) DeleteDocuments(ctx context.Context, id string, docIDs
 	return nil
 }
 
-// DeleteDocumentsByQuery 批量删除 dataset 文档
+// DeleteDocumentsByQuery for batch deletion of dataset documents
 func (ds *datasetService) DeleteDocumentsByQuery(ctx context.Context, indexName string, res *interfaces.Resource, params *interfaces.ResourceDataQueryParams) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Delete dataset documents by query")
 	defer span.End()
 
-	// 调用本地索引存储批量删除文档
+	// Call the local index store to batch delete documents
 	if err := ds.lim.DeleteDocumentsByQuery(ctx, indexName, res, params); err != nil {
 		span.SetStatus(codes.Error, "Delete dataset documents failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).

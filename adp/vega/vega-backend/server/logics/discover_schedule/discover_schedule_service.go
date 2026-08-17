@@ -62,11 +62,11 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
 }
 
 /**
- * 创建定时发现任务服务
- * @param ctx context.Context 上下文信息，用于传递请求范围的数据和取消信号
- * @param req *interfaces.DiscoverSchedule 定时发现任务请求结构体
- * @return string 返回创建的任务ID
- * @return error 返回操作过程中可能发生的错误
+ * Create a timed discovery task service
+ * @param ctx Context.context Context information is used to pass the data of the request scope and the cancellation signal
+ * @ param the req * interfaces in DiscoverSchedule regularly find task request structure
+ * @return string returns the created task ID
+ * @return error returns errors that may occur during the operation process
  */
 func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.DiscoverScheduleRequest) (string, error) {
 	// 使用OpenTelemetry追踪请求执行过程
@@ -169,7 +169,7 @@ func (dss *discoverScheduleService) List(ctx context.Context, params interfaces.
 	return schedules, total, nil
 }
 
-// populateDiscoverScheduleReferences 批量补齐当前页调度关联目录的展示名称。
+// PopulateDiscoverScheduleReferences batch scheduling, filling the page link directory name.
 func (dss *discoverScheduleService) populateDiscoverScheduleReferences(ctx context.Context, schedules []*interfaces.DiscoverSchedule) error {
 	catalogIDs := make([]string, 0, len(schedules))
 	seen := make(map[string]struct{}, len(schedules))
@@ -280,8 +280,8 @@ func (dss *discoverScheduleService) Enable(ctx context.Context, id string) error
 	return nil
 }
 
-// calculateScheduleNextRun 计算符合未来 startTime 限制的下一次 cron 触发时间。
-// 向前偏移一纳秒，确保恰好位于 startTime 的 cron 时间点仍可被选中。
+// calculateScheduleNextRun calculates the next cron trigger time that meets the future startTime limit.
+// Offset forward by one nanosecond to ensure that the cron time point exactly at startTime can still be selected.
 func calculateScheduleNextRun(cronExpr string, now time.Time, startTime int64) (time.Time, error) {
 	cronSchedule, err := common.ParseHourlyCronExpr(cronExpr)
 	if err != nil {
@@ -308,14 +308,14 @@ func (dss *discoverScheduleService) Disable(ctx context.Context, id string) erro
 	return nil
 }
 
-// ExecuteSchedule 是一个执行计划发现任务的方法
-// 它接收一个上下文和一个计划发现任务作为参数，返回一个错误
+// ExecuteSchedule is a method for executing plan discovery tasks
+// It takes a context and a planned discovery task as parameters and returns an error
 func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
 	// 使用追踪器创建一个新的span，用于监控和追踪请求的执行过程
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.ExecuteSchedule")
 	defer span.End() // 确保在函数返回时结束span
 
-	// 检查DiscoverTaskService是否已设置
+	// Check whether the DiscoverTaskService has been set up
 	if dss.dts == nil {
 		otellog.LogError(ctx, "DiscoverTaskService not set", nil)
 		return fmt.Errorf("DiscoverTaskService not set")
@@ -333,7 +333,7 @@ func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedul
 
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
 
-	// 检查是否有正在执行的相同任务
+	// Check if there are any identical tasks currently being executed
 	_, tasks, err := dss.dts.List(ctx, interfaces.DiscoverTaskQueryParams{
 		CatalogID:   schedule.CatalogID,
 		Statuses:    []string{interfaces.DiscoverTaskStatusRunning},

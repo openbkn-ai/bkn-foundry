@@ -19,6 +19,7 @@ import (
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
+	"vega-backend/locale"
 )
 
 func TestValidateEntityExtensionsMap(t *testing.T) {
@@ -135,6 +136,30 @@ func TestValidateExtensionQueryPairs(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			assertHTTPError(t, ValidateExtensionQueryPairs(ctx, tc.keys, tc.values), http.StatusBadRequest, tc.code)
+		})
+	}
+}
+
+func TestValidateExtensionQueryPairsLocalizesDetails(t *testing.T) {
+	locale.Register()
+
+	tests := []struct {
+		name     string
+		language rest.Language
+		detail   string
+	}{
+		{name: "English", language: rest.AmericanEnglish, detail: "extension_key and extension_value must be paired and have equal counts"},
+		{name: "Chinese", language: rest.SimplifiedChinese, detail: "extension_key 与 extension_value 必须成对且数量一致"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := rest.WithLanguage(context.Background(), test.language)
+			err := ValidateExtensionQueryPairs(ctx, []string{"owner"}, nil)
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, verrors.VegaBackend_Extensions_MismatchedQueryPairs, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, test.detail, httpErr.BaseError.ErrorDetails)
 		})
 	}
 }

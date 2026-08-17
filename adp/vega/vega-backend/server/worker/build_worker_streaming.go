@@ -78,11 +78,11 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	}
 	taskID := buildTaskInfo.ID
 	logger.Infof("Starting streaming build task: %s", taskID)
-	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
+	// Asynchronous tasks have no original request context and perform downstream permission checks as the task creator
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
-	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
-	// stopping 出队说明原 worker 已不在，兜底落停。
+	// Tasks that are stopped during the queue are skipped directly to avoid reviving and overwriting the status after leaving the queue.
+	// stopping the queue indicates that the original worker is no longer available, and it will be stopped at the end.
 	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
 		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping ||
 		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
@@ -289,13 +289,13 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			return ctx.Err()
 		default:
 			// Read message from Kafka
-			// 创建带超时的上下文，避免ReadMessage一直阻塞
+			// Create a context with a timeout to prevent ReadMessage from constantly blocking
 			timeoutCtx, cancel := context.WithTimeout(ctx, retryInterval)
 			msg, err := sbw.kafkaAccess.ReadMessage(timeoutCtx, reader)
 			cancel()
 			if err != nil {
 				if errors.Is(err, context.DeadlineExceeded) {
-					// 超时，检查是否需要更新任务状态
+					// If it times out, check if the task status needs to be updated
 					if syncedCount > buildTaskInfo.SyncedCount && time.Since(lastUpdateTime) > retryInterval {
 						progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
 						_, _ = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
@@ -308,7 +308,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				}
 				continue
 			}
-			// 打印消息的基本信息和内容
+			// Print the basic information and content of the message
 			//logger.Debugf("Received message: key=%s, value=%s", string(msg.Key), string(msg.Value))
 
 			// Parse Kafka message to extract data
@@ -405,7 +405,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 func (sbw *streamingBuildWorker) createKafkaConnector(ctx context.Context, catalog *interfaces.Catalog, _ *interfaces.Resource, database string, sourceIdentifier string) error {
 	// get connector
 	kafkaConnectSetting := sbw.appSetting.KafkaConnectSetting
-	// connector name 和 catalog 绑定，catalog 下多个 resource 公有一个 connector，各自订阅自己的表的 topic
+	// The connector name is bound to the catalog. Under the catalog, multiple resources share one connector, each subscribing to the topic of its own table
 	connectorName := fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID)
 	connectorUrl := fmt.Sprintf("%s://%s:%d/connectors", kafkaConnectSetting.Protocol, kafkaConnectSetting.Host, kafkaConnectSetting.Port)
 
@@ -491,13 +491,15 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 			"database.port":     catalog.ConnectorCfg["port"],
 			"database.user":     catalog.ConnectorCfg["username"],
 			"database.password": catalog.ConnectorCfg["password"],
-			//"column.include.list":   ?,
+			// "column.include.list": ?,
 			"schema.history.internal.kafka.bootstrap.servers": fmt.Sprintf("%s:%d", mqSetting.MQHost, mqSetting.MQPort),
 			"schema.history.internal.kafka.topic":             fmt.Sprintf("%s-schema-changes", interfaces.BUILD_PREFIX),
 			"include.schema.changes":                          "true",
 			"topic.prefix":                                    fmt.Sprintf("%s-%s", interfaces.BUILD_PREFIX, catalog.ID),
-			//"table.include.list":                              sourceIdentifier, // 同-catalog下多resource构建，公用一个connector，但是如果加了table.include.list，其他resource就没有全量快照，除非一开始就设置到table.include.list中
-			//"snapshot.mode":                                   "when_needed",
+			// "table.include.list": sourceIdentifier,
+			// Do not set table.include.list for a catalog-level shared connector: resources added later
+			// would otherwise miss their initial full snapshot.
+			// "snapshot.mode": "when_needed",
 		},
 	}
 
@@ -519,7 +521,7 @@ func (sbw *streamingBuildWorker) buildConnectorConfig(connectorName string, cata
 		//connectorBody["config"].(map[string]any)["schema.history.internal.store.only.captured.tables.ddl"] = true
 	case interfaces.ConnectorTypePostgreSQL:
 		connectorBody["config"].(map[string]any)["database.dbname"] = database
-		//connectorBody["config"].(map[string]any)["schema.include.list"] = "public" //一般用不上，table.include.list包含schema信息
+		//connectorBody["config"].(map[string]any)["schema.include.list"] = "public" // It is generally not used. table.include.list contains schema information
 		connectorBody["config"].(map[string]any)["plugin.name"] = "pgoutput"
 	}
 
@@ -572,7 +574,7 @@ func streamingDatabase(catalog *interfaces.Catalog) (string, error) {
 	}
 }
 
-// handleUpdateOperation 处理更新操作
+// handleUpdateOperation handles update operations
 func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyMap, after map[string]any, indexName string, buildTaskInfo *interfaces.BuildTask, writer *kafka.Writer) error {
 	primaryKeyValues := getPrimaryKeyValue(keyMap)
 	if primaryKeyValues == nil {
@@ -608,7 +610,7 @@ func (sbw *streamingBuildWorker) handleUpdateOperation(ctx context.Context, keyM
 	return nil
 }
 
-// handleDeleteOperation 处理删除操作
+// handleDeleteOperation handles deletion operations
 func (sbw *streamingBuildWorker) handleDeleteOperation(ctx context.Context, keyMap map[string]any, indexName string) error {
 	primaryKeyValues := getPrimaryKeyValue(keyMap)
 	if primaryKeyValues == nil {
@@ -638,11 +640,11 @@ func (sbw *streamingBuildWorker) checkConnectorNeedToStop(ctx context.Context, c
 	return true, nil
 }
 
-// getPrimaryKeyValue 获取主键值
+// getPrimaryKeyValue gets the primary key value
 func getPrimaryKeyValue(keyMap map[string]any) []interfaces.KeyValue {
 	keySize := len(keyMap)
 	primaryKeyValues := make([]interfaces.KeyValue, 0, keySize)
-	// 检查keyMap是否包含payload字段
+	// Check whether the keyMap contains the payload field
 	keyData := keyMap
 	if payload, ok := keyMap["payload"].(map[string]any); ok {
 		keyData = payload
