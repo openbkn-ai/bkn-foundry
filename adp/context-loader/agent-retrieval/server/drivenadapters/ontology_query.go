@@ -108,7 +108,33 @@ func expandFilters(req *interfaces.QueryObjectInstancesReq) {
 	req.Filters = nil
 }
 
+// rejectNilSortEntries turns a null element in `sort` into a 400 here instead of
+// letting it become a panic downstream.
+//
+// A JSON `"sort": [null]` binds to []*SortSpec{nil} and is forwarded verbatim, and
+// ontology-query dereferences the element without a nil guard in two places —
+// driveradapters/validate.go (validateObjectSearchRequest reads sp.Field) and
+// logics/common.go (BuildDslQuery reads sp.Field/sp.Direction). So external input
+// crashes the downstream service rather than earning a 400.
+//
+// This is not the "validate half of it here" mistake the SortSpec comment warns
+// about: whether a field belongs to an object type is downstream's knowledge, but a
+// nil element is malformed structure that can produce no downstream verdict at all.
+func rejectNilSortEntries(ctx context.Context, req *interfaces.QueryObjectInstancesReq) error {
+	for i, sp := range req.Sort {
+		if sp == nil {
+			return infraErr.DefaultHTTPError(ctx, http.StatusBadRequest,
+				fmt.Sprintf("sort[%d] 不能为 null，每个排序项都必须带 field 与 direction", i))
+		}
+	}
+	return nil
+}
+
 func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *interfaces.QueryObjectInstancesReq) (resp *interfaces.QueryObjectInstancesResp, err error) {
+	if err = rejectNilSortEntries(ctx, req); err != nil {
+		return nil, err
+	}
+
 	// Expand the flat `filters` sugar into a nested condition before forwarding.
 	expandFilters(req)
 

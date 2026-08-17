@@ -57,9 +57,12 @@ type QueryObjectInstancesReq struct {
 	IgnoringStoreCache bool `json:"-" form:"ignoring_store_cache"`
 }
 
-// SortSpec 是单个排序字段。与下游 interfaces.SortParams 同形，direction 取 asc / desc，
-// 合法性由下游 validateObjectSearchRequest 校验并回 400（此处不重复校验：字段是否存在于
-// 对象类只有下游知道，在这里只做一半校验反而会让两侧规则漂移）。
+// SortSpec 是单个排序字段。与下游 interfaces.SortParams 同形，direction 取 asc / desc。
+//
+// field 与 direction 的**取值**合法性由下游 validateObjectSearchRequest 校验并回 400——
+// 字段是否存在于对象类只有下游知道，在这里做一半校验只会让两侧规则漂移。
+// 但**结构性** nil 元素必须在本层拦（见 rejectNilSortEntries）：下游 validate.go 与
+// logics/common.go 都直接取 sp.Field，nil 元素不会换来 400 而是空指针 panic。
 type SortSpec struct {
 	Field     string `json:"field"`
 	Direction string `json:"direction"`
@@ -78,10 +81,17 @@ type QueryObjectInstancesResp struct {
 	Data          []any          `json:"datas"`                 // List of object instances
 	ObjectConcept map[string]any `json:"object_type,omitempty"` // Object type definition，由 req.include_type_info 控制是否返回
 	// TotalCount 满足过滤条件的实例总数，不受 limit 限制。
-	// 不带 omitempty：driven adapter 对下游固定开启 need_total，这个值恒有意义，
-	// 而「字段缺失」与「总数为 0」在调用方看来无法区分——零命中是有效结论，
-	// 不该长得像服务没回。
-	TotalCount int64 `json:"total_count"`
+	//
+	// 指针 + omitempty，三态：
+	//   有值且 > 0 —— 真实总数
+	//   有值且 = 0 —— 真实零命中（omitempty 对指针只吞 nil，不吞 0）
+	//   字段缺失   —— 下游没算，不是零命中
+	//
+	// 第三态是必须留的：driven adapter 虽然固定开 need_total，但下游
+	// （ontology-query logics/common.go 的 BuildDslQuery）在 search_after 非空时
+	// 会强制 NeedTotal=false，即游标翻页第二页起根本不计算总数。此时若按值类型
+	// 序列化成 0，就是拿「未计算」冒充「零命中」，而且会和非空 datas 自相矛盾。
+	TotalCount *int64 `json:"total_count,omitempty"`
 	// SearchAfter 下一页游标：非空时把它作为下次请求的 search_after 传入以取下一页；为空表示无更多数据。
 	SearchAfter []any `json:"search_after,omitempty"`
 }

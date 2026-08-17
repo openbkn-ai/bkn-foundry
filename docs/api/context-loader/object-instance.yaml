@@ -74,8 +74,14 @@ paths:
         `field` 是否属于该对象类由 ontology-query 校验，非法字段或非法 `direction`
         返回 400 并透传原因。
 
-        **总数**：响应的 `total_count` 恒定返回，无需请求方开启，值为满足过滤条件的
-        实例总数，不受 `limit` 限制。判断「一共多少条」读它即可，不必翻页累加。
+        **总数**：响应的 `total_count` 为满足过滤条件的实例总数，不受 `limit` 限制，
+        无需请求方开启。判断「一共多少条」读它即可，不必翻页累加。三态要分清：
+
+        - 有值且大于 0：真实总数。
+        - 值为 `0`：真实零命中（字段存在）。
+        - **字段缺失**：本次没有计算总数，不能推断为 0。用 `search_after` 翻页时
+          第二页起即如此（下游在游标非空时强制关闭总数计算）。要总数就回到不带
+          `search_after` 的首次查询。
       parameters:
         - name: kn_id
           in: query
@@ -468,8 +474,9 @@ components:
           type: integer
           format: int64
           description: |
-            满足过滤条件的实例总数，不受 `limit` 限制。恒定返回（服务端对下游固定
-            开启 `need_total`），零命中时为 `0` 而非缺失。
+            满足过滤条件的实例总数，不受 `limit` 限制。零命中时为 `0`（字段存在）。
+            字段缺失表示本次未计算总数——`search_after` 翻页第二页起如此——
+            不可推断为 0。
         search_after:
           type: array
           items: {}

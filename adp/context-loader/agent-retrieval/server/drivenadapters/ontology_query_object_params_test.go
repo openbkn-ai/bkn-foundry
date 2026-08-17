@@ -7,12 +7,15 @@ package drivenadapters
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"net/url"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
 	"go.uber.org/mock/gomock"
 
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
@@ -56,13 +59,50 @@ func TestQueryObjectInstances_AlwaysAsksForTotal(t *testing.T) {
 	})
 }
 
-// total_count 必须连 0 一起序列化。带 omitempty 的话零命中与「服务端没回」在调用方
-// 看来长得一模一样，而零命中是有效结论，不该缺失。
-func TestQueryObjectInstancesResp_SerializesZeroTotal(t *testing.T) {
-	convey.Convey("零命中时 total_count 仍出现且为 0", t, func() {
-		out, err := json.Marshal(&interfaces.QueryObjectInstancesResp{Data: []any{}})
+// total_count 是三态，两个方向都得钉住：
+//   - 真零命中必须序列化成 0（指针上的 omitempty 只吞 nil，不吞 0），否则调用方看到
+//     字段缺失，把有效结论当成服务没回；
+//   - 下游没算总数时必须缺失（游标翻页第二页起，下游强制 NeedTotal=false），否则
+//     0 就是伪造的零命中，还会和非空 datas 自相矛盾。
+func TestQueryObjectInstancesResp_TotalCountIsThreeState(t *testing.T) {
+	convey.Convey("零命中序列化成 0", t, func() {
+		zero := int64(0)
+		out, err := json.Marshal(&interfaces.QueryObjectInstancesResp{Data: []any{}, TotalCount: &zero})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(string(out), convey.ShouldContainSubstring, `"total_count":0`)
+	})
+
+	convey.Convey("下游未返回总数时字段缺失，不伪造 0", t, func() {
+		out, err := json.Marshal(&interfaces.QueryObjectInstancesResp{
+			Data: []any{map[string]any{"id": "inst_1"}},
+		})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(string(out), convey.ShouldNotContainSubstring, "total_count")
+	})
+}
+
+// "sort":[null] 绑成 []*SortSpec{nil}。下游 validate.go 与 logics/common.go 都直接取
+// sp.Field，转发过去换来的是空指针 panic 而不是 400，所以结构性 nil 必须在本层拦掉。
+func TestQueryObjectInstances_RejectsNilSortEntry(t *testing.T) {
+	convey.Convey("sort 里的 null 元素回 400 且不发请求", t, func() {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		client, mockHTTP := newObjectQueryClient(t, ctrl)
+		// 不 EXPECT Post：请求必须在本层就被拦下，一个字节都不该发给下游。
+		_ = mockHTTP
+
+		req := &interfaces.QueryObjectInstancesReq{
+			KnID: "kn1", OtID: "ot1", Limit: 10,
+			Sort: []*interfaces.SortSpec{{Field: "created_at", Direction: "desc"}, nil},
+		}
+		resp, err := client.QueryObjectInstances(context.Background(), req)
+		convey.So(resp, convey.ShouldBeNil)
+		convey.So(err, convey.ShouldNotBeNil)
+
+		var he *infraErr.HTTPError
+		convey.So(errors.As(err, &he), convey.ShouldBeTrue)
+		convey.So(he.HTTPCode, convey.ShouldEqual, http.StatusBadRequest)
 	})
 }
 

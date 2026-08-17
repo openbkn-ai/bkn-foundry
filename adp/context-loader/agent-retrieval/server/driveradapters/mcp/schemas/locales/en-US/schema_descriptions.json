@@ -138,7 +138,7 @@
     "input_schema.properties.offset.description": "Legacy offset. Prefer search_after when available.",
     "input_schema.properties.properties.description": "Optional selected property names to return.",
     "output_schema.properties.datas.description": "Object instances returned by the query.",
-    "output_schema.properties.total_count.description": "Total number of instances matching the filter, independent of limit. Always returned, and 0 on no match rather than absent - read it instead of accumulating page sizes.",
+    "output_schema.properties.total_count.description": "Total number of instances matching the filter, independent of limit. Read it instead of accumulating page sizes. No match is 0, present rather than absent. An absent field means the server did not compute a total for this call - which is what happens from the second page onward when paging with search_after - so do not read absence as 0; go back to the first query without search_after if you need the total.",
     "output_schema.properties.search_after.description": "Cursor for the next page."
   },
   "run_sql": {

@@ -1315,10 +1315,12 @@ func queryObjectTruncated(req *interfaces.QueryObjectInstancesReq, resp *interfa
 	if len(resp.SearchAfter) > 0 {
 		return true
 	}
-	if req == nil || resp.TotalCount <= 0 {
+	// TotalCount 缺失表示下游没算总数（游标翻页第二页起如此），不是零命中；
+	// 这条路上游已被 SearchAfter 分支接走，这里只需不把 nil 当 0。
+	if req == nil || resp.TotalCount == nil || *resp.TotalCount <= 0 {
 		return false
 	}
-	return int64(req.Offset+len(resp.Data)) < resp.TotalCount
+	return int64(req.Offset+len(resp.Data)) < *resp.TotalCount
 }
 
 func queryObjectKnID(req *interfaces.QueryObjectInstancesReq) string {
