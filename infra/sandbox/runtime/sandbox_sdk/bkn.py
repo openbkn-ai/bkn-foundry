@@ -24,14 +24,18 @@ _bkn_tools.py 与本模块一同随镜像发布，沙箱因此不依赖网络就
 __toolkit_version__（内容哈希），CI 重新生成并比对，改了 schema 不重新生成
 就红。运行时也能自查，见 check_against_server()。
 
-【为什么凭据只认 event，不读环境变量】
-沙箱会话是池化复用的，环境变量会把上一个调用方的值留在容器里。task_id 这类
-追踪标记漏了无伤大雅（Context.from_env 正是这么做的），但令牌漏了是凭据泄露。
-所以本模块只从 event 取 token，取不到就直接报错，不做任何回退。
+【凭据与会话上下文从哪来】
+默认走进程级环境变量（BKN_TOKEN / BKN_CONVERSATION_ID / BKN_INTERACTION_ID），
+由执行工厂按请求里的 bkn_token 等字段注入。这样用户代码里看不到它们——event 是
+业务入参，凭据混在里面既污染参数命名空间，也逼着每个想调 BKN 的人知道该往 event
+里塞什么。
 
-MCP 地址是另一回事：它是部署配置而非密钥，因此允许 event 缺省时回退到沙箱级
-环境变量，由控制面注入一次即可。注意定义虽已烤进镜像，调用仍要回访 MCP，
-地址少不了。
+安全性与放 event 等价：executor 为每次执行现组一份环境再 --setenv 进 bwrap，
+随进程消亡。**注意区分建会话时的 env_vars**，那个是容器级的、会跨调用方存活，
+所以这里 event 优先于 env：万一某个池化容器上留着旧令牌，调用方显式传的那份得赢。
+
+MCP 地址是部署配置而非密钥，允许回退到 BKN_SANDBOX_MCP_URL，由控制面注入一次即可。
+定义虽已烤进镜像，调用仍要回访 MCP，地址少不了。
 """
 
 from __future__ import annotations
@@ -43,6 +47,19 @@ from typing import Any, Optional
 
 # MCP 地址的部署级兜底。集群内地址，沙箱用不了浏览器侧的网关地址。
 _MCP_URL_ENV = "BKN_SANDBOX_MCP_URL"
+
+# 调用方身份与会话上下文，由执行工厂按请求里的 bkn_token / bkn_conversation_id /
+# bkn_interaction_id 转成本次执行的进程级环境变量。
+#
+# 走 env 而不是 event，是为了让用户代码里看不到它们：event 是业务入参，凭据混在
+# 里面既污染参数命名空间，也逼着每个想调 BKN 的人知道该往 event 里塞什么。
+#
+# 安全性与放在 event 里等价：executor 为每次执行现组一份环境再 --setenv 进 bwrap，
+# 随进程消亡。要与建会话时的 env_vars 区分——那个是容器级的，会跨调用方存活，
+# 所以下面 event 优先于 env：万一某个池化容器上留着旧令牌，调用方显式传的那份得赢。
+_TOKEN_ENV = "BKN_TOKEN"
+_CONVERSATION_ENV = "BKN_CONVERSATION_ID"
+_INTERACTION_ENV = "BKN_INTERACTION_ID"
 
 # 取工具包用的地址由 MCP 地址推导：/mcp/ 与 /mcp/ptc/toolkit 同源。
 _TOOLKIT_SUFFIX = "ptc/toolkit"
@@ -85,14 +102,30 @@ def _mcp_url() -> str:
 
 
 def _token() -> str:
+    # event 优先：它是本次调用显式带来的，而环境变量理论上可能来自建会话时的
+    # 容器级配置（那份会跨调用方存活）。
     token = str(_RUNTIME.get("token") or "").strip()
     if not token:
+        token = os.environ.get(_TOKEN_ENV, "").strip()
+    if not token:
         raise BKNNotConfigured(
-            "没有调用方令牌：请在 event 里传 token。"
-            "本模块不从环境变量取令牌——沙箱会话池化复用，env 会把上一个调用方的值"
-            "留在容器里。"
+            "没有调用方令牌：调用执行接口时传 bkn_token（推荐），或在 event 里传 token。"
         )
     return token
+
+
+def _business_context() -> dict:
+    """本次调用的会话上下文，随每次 BKN 调用带给服务端，操作因此挂得到同一次交互。"""
+    context = dict(_RUNTIME.get("bkn") or {})
+    for key, env_name in (
+        ("conversation_id", _CONVERSATION_ENV),
+        ("interaction_id", _INTERACTION_ENV),
+    ):
+        if not str(context.get(key) or "").strip():
+            value = os.environ.get(env_name, "").strip()
+            if value:
+                context[key] = value
+    return context
 
 
 def _fetch_toolkit() -> dict:
@@ -131,7 +164,7 @@ def _impl():
     configured = dict(_RUNTIME)
     configured["mcp"] = _mcp_url()
     configured["token"] = _token()
-    configured.setdefault("bkn", {})
+    configured["bkn"] = _business_context()
     module._configure(configured)
 
     _VERSION = getattr(module, "__toolkit_version__", None)
@@ -155,7 +188,7 @@ def __dir__() -> list:
 
 
 def available() -> bool:
-    """本次执行能否调用 BKN。用于在纯计算路径上做条件分支。"""
+    """本次执行能否调用 BKN。用于在纯计算路径上做条件分支。"""  # noqa: D401
     try:
         _mcp_url()
         _token()

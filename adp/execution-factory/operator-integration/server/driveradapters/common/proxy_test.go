@@ -62,3 +62,35 @@ func TestNewFunctionExecuteResp(t *testing.T) {
 		So(got.ErrorMessage, ShouldBeEmpty)
 	})
 }
+
+// bkn_token 是真凭据，与 user_id 那几个「仅作追踪标记」的字段不同，必须确实转成
+// 进程级环境变量——沙箱侧的 sandbox_sdk.bkn 只从这里取，漏了就是「配了不生效」。
+func TestBuildFunctionExecutionEnvCarriesBKNContext(t *testing.T) {
+	env := buildFunctionExecutionEnv(&interfaces.FunctionProxyExecuteCodeReq{
+		BKNToken:          "tok",
+		BKNConversationID: "conv_1",
+		BKNInteractionID:  "int_1",
+		UserID:            "u1",
+	})
+
+	if env["BKN_TOKEN"] != "tok" {
+		t.Fatalf("BKN_TOKEN 未注入: %v", env["BKN_TOKEN"])
+	}
+	if env["BKN_CONVERSATION_ID"] != "conv_1" || env["BKN_INTERACTION_ID"] != "int_1" {
+		t.Fatalf("会话上下文未注入: %v", env)
+	}
+	// 追踪标记照旧走小写键，两套命名不要混。
+	if env["user_id"] != "u1" {
+		t.Fatalf("追踪标记丢了: %v", env)
+	}
+}
+
+// 不传就不该凭空出现空值——空字符串会让沙箱侧误以为"配了但是空的"。
+func TestBuildFunctionExecutionEnvOmitsAbsentBKNContext(t *testing.T) {
+	env := buildFunctionExecutionEnv(&interfaces.FunctionProxyExecuteCodeReq{})
+	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+		if _, ok := env[key]; ok {
+			t.Fatalf("%s 不该出现: %v", key, env)
+		}
+	}
+}

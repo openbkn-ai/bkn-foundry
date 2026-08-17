@@ -47,24 +47,61 @@ def fake_surface(monkeypatch):
     return calls
 
 
-def test_credentials_never_come_from_environment(monkeypatch):
-    """令牌只认 event。
-
-    沙箱会话池化复用，环境变量会把上一个调用方的值留在容器里。task_id 那类追踪
-    标记漏了无伤大雅（Context.from_env 正是这么做的），令牌漏了是凭据泄露。
-    所以这里必须报错，而不是回退到 env。
-    """
+def test_credentials_come_from_process_env(monkeypatch):
+    """默认路径：用户代码里没有 token，执行工厂把它注入成进程级环境变量。"""
     monkeypatch.setenv(
         "BKN_SANDBOX_MCP_URL", "http://agent-retrieval:30779/api/x/v1/mcp/"
     )
-    monkeypatch.setenv("token", "leaked-from-previous-caller")
-    monkeypatch.setenv("BKN_TOKEN", "leaked-from-previous-caller")
+    monkeypatch.setenv("BKN_TOKEN", "tok-from-env")
 
-    bkn.configure_runtime({})           # event 里没有 token
+    bkn.configure_runtime({})           # event 里什么都没有
+    assert bkn.available() is True
+    assert bkn._token() == "tok-from-env"
+
+
+def test_event_credentials_win_over_environment(monkeypatch):
+    """event 优先于 env。
+
+    执行请求的 env 是每次现组的、随进程消亡；但建会话时的 env_vars 是容器级的，
+    会跨调用方存活。万一某个池化容器上留着旧令牌，调用方显式传的那份必须赢。
+    """
+    monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
+    monkeypatch.setenv("BKN_TOKEN", "stale-from-pooled-container")
+
+    bkn.configure_runtime({"token": "fresh-from-caller", "mcp": "http://svc/mcp/"})
+    assert bkn._token() == "fresh-from-caller"
+
+
+def test_missing_credentials_report_both_ways_in(monkeypatch):
+    monkeypatch.setenv(
+        "BKN_SANDBOX_MCP_URL", "http://agent-retrieval:30779/api/x/v1/mcp/"
+    )
+    monkeypatch.delenv("BKN_TOKEN", raising=False)
+
+    bkn.configure_runtime({})
     assert bkn.available() is False
     with pytest.raises(bkn.BKNNotConfigured) as excinfo:
         bkn._token()
-    assert "环境变量" in str(excinfo.value)
+    assert "bkn_token" in str(excinfo.value)
+
+
+def test_business_context_falls_back_to_process_env(monkeypatch, fake_surface):
+    """会话上下文同样不必写进用户代码。"""
+    monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
+    monkeypatch.setenv("BKN_TOKEN", "tok")
+    monkeypatch.setenv("BKN_CONVERSATION_ID", "conv_env")
+    monkeypatch.setenv("BKN_INTERACTION_ID", "int_env")
+
+    bkn.configure_runtime({"mcp": "http://svc/mcp/"})
+    seen = bkn.whoami()["bkn"]
+    assert seen == {"conversation_id": "conv_env", "interaction_id": "int_env"}
+
+    # 同样是 event 优先。
+    bkn.configure_runtime({
+        "mcp": "http://svc/mcp/",
+        "bkn": {"conversation_id": "conv_event", "interaction_id": "int_event"},
+    })
+    assert bkn.whoami()["bkn"]["conversation_id"] == "conv_event"
 
 
 def test_mcp_url_may_fall_back_to_deployment_env(monkeypatch):
