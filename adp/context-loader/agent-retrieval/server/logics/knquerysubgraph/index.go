@@ -21,6 +21,7 @@ import (
 // KnQuerySubgraphService 子图查询服务
 type KnQuerySubgraphService interface {
 	QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error)
+	ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (resp *interfaces.ExploreSubgraphResp, err error)
 }
 
 type knQuerySubgraphService struct {
@@ -51,6 +52,15 @@ func (s *knQuerySubgraphService) QueryInstanceSubgraph(ctx context.Context, req 
 	resp, err = s.OntologyQuery.QueryInstanceSubgraph(ctx, req)
 	if err == nil {
 		bkntrace.EmitQueryInstanceSubgraphEvents(ctx, s.Logger, req, resp)
+	}
+	return
+}
+
+// ExploreSubgraph 起点探索式子图查询
+func (s *knQuerySubgraphService) ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (resp *interfaces.ExploreSubgraphResp, err error) {
+	resp, err = s.OntologyQuery.ExploreSubgraph(ctx, req)
+	if err == nil {
+		bkntrace.EmitExploreSubgraphEvents(ctx, s.Logger, req, resp)
 	}
 	return
 }

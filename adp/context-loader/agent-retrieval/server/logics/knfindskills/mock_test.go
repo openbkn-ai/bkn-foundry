@@ -114,6 +114,10 @@ func (m *testOntologyQuery) QueryInstanceSubgraph(ctx context.Context, req *inte
 	return &interfaces.QueryInstanceSubgraphResp{}, nil
 }
 
+func (m *testOntologyQuery) ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (*interfaces.ExploreSubgraphResp, error) {
+	return nil, nil
+}
+
 func (m *testOntologyQuery) QueryLogicProperties(ctx context.Context, req *interfaces.QueryLogicPropertiesReq) (*interfaces.QueryLogicPropertiesResp, error) {
 	return nil, nil
 }

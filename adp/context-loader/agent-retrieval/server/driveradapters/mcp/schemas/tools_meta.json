@@ -47,6 +47,14 @@
     "order": 220,
     "description": "沿关系路径拉取实例子图，支持多跳关系查询。"
   },
+  "explore_subgraph": {
+    "name": "explore_subgraph",
+    "title": "子图探索",
+    "group": "query",
+    "group_title": "实例查询",
+    "order": 225,
+    "description": "从一个起点对象类出发，按方向与跳数探索关联子图，不需要预先知道路径。"
+  },
   "get_logic_properties_values": {
     "name": "get_logic_properties_values",
     "title": "逻辑属性计算",

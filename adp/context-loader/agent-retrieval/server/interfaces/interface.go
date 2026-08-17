@@ -23,8 +23,10 @@ func (r ResourceDeployType) String() string {
 
 // IKnQuerySubgraphService Subgraph query service interface
 type IKnQuerySubgraphService interface {
-	// QueryInstanceSubgraph Query object subgraph
+	// QueryInstanceSubgraph Query object subgraph along caller-supplied type paths
 	QueryInstanceSubgraph(ctx context.Context, req *QueryInstanceSubgraphReq) (resp *QueryInstanceSubgraphResp, err error)
+	// ExploreSubgraph Explore an object subgraph from a source object type
+	ExploreSubgraph(ctx context.Context, req *ExploreSubgraphReq) (resp *ExploreSubgraphResp, err error)
 }
 
 // IKnSearchService kn_search service interface

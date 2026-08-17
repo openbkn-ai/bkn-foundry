@@ -56,6 +56,21 @@ func (mr *MockDrivenOntologyQueryMockRecorder) ExecuteActions(ctx, req any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteActions", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).ExecuteActions), ctx, req)
 }
 
+// ExploreSubgraph mocks base method.
+func (m *MockDrivenOntologyQuery) ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (*interfaces.ExploreSubgraphResp, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExploreSubgraph", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ExploreSubgraphResp)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExploreSubgraph indicates an expected call of ExploreSubgraph.
+func (mr *MockDrivenOntologyQueryMockRecorder) ExploreSubgraph(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExploreSubgraph", reflect.TypeOf((*MockDrivenOntologyQuery)(nil).ExploreSubgraph), ctx, req)
+}
+
 // GetActionExecution mocks base method.
 func (m *MockDrivenOntologyQuery) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
 	m.ctrl.T.Helper()

@@ -70,6 +70,10 @@ func (s *stubOntologyQuery) QueryInstanceSubgraph(_ context.Context, _ *interfac
 	return nil, nil
 }
 
+func (s *stubOntologyQuery) ExploreSubgraph(_ context.Context, _ *interfaces.ExploreSubgraphReq) (*interfaces.ExploreSubgraphResp, error) {
+	return nil, nil
+}
+
 type stubMCPKnSearchService struct {
 	knSearchResp *interfaces.KnSearchResp
 	knSearchErr  error

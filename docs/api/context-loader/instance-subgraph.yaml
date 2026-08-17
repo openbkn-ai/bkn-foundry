@@ -3,11 +3,21 @@ openapi: 3.0.3
 info:
   title: 实例子图查询
   description: |
-    沿关系路径查询对象子图。给定一条或多条「对象类 → 关系类 → 对象类 …」的路径模板，
-    返回每条路径下命中的对象集合与它们之间的边。
+    跨对象类展开关联，两个入口按**是否已知拓扑**分工：
+
+    - `query_instance_subgraph`：**已知路径**。给一条或多条「对象类 → 关系类 →
+      对象类 …」的路径模板，按模板批量取数，可逐节点加过滤与排序。
+    - `explore_subgraph`：**未知拓扑**。只给起点对象类、方向与最大跳数，路径由引擎
+      散出来。「这张订单牵连到什么」这类问题走这条。
+
+    两者打的是同一个下游端点，区别只在查询模式，返回体元素同型：路径模板模式返回
+    `entries` 数组（每条路径一个子图），探索模式返回单个子图。
+
+    **不要为了用 `query_instance_subgraph` 去先枚举关系类再拼路径**——那是把探索硬凑
+    成取数，跳数一多就是组合爆炸，而且容易漏路径。
 
     与 [object-instance.yaml](object-instance.yaml) 的分工：那边是单个对象类的平面
-    查询，这边是跨对象类的关联展开。路径模板里的对象类 ID 与关系类 ID 从
+    查询，这边是跨对象类的关联展开。对象类 ID 与关系类 ID 从
     [schema-search.yaml](schema-search.yaml) 的 `search_schema` 或
     [kn-explore.yaml](kn-explore.yaml) 的 `get_kn_detail` 取。
 
@@ -135,6 +145,127 @@ paths:
               schema:
                 $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
 
+  /kn/explore_subgraph:
+    post:
+      tags:
+        - Subgraph
+      summary: 从起点探索关联子图
+      operationId: exploreSubgraph
+      x-contract-probe:
+        readonly: true
+        order: 4
+        query:
+          kn_id: '{cl_kn_id}'
+        body:
+          source_object_type_id: '{cl_rt_src}'
+          direction: bidirectional
+          path_length: 1
+          limit: 2
+      description: |
+        不需要预先知道拓扑：给起点对象类、方向与最大跳数，引擎沿概念定义的关系散开，
+        返回命中的对象与它们之间的路径。
+
+        **分页与排序只切起点**：`limit` / `sort` / `offset` / `search_after` 全部作用于
+        **起点对象类**的实例集合，不是路径条数、也不是返回对象总数。`limit: 10` 的含义
+        是「从至多 10 个起点出发」，每个起点散出多少条路径由拓扑决定。
+
+        **`path_length` 取 1-3**，超出返回 400（下游硬限制）。路径数随跳数快速增长，
+        先从 1-2 起步，不够再加。
+
+        **`condition` 只过滤起点**，不约束路径上的其他对象类。要约束中间节点就说明
+        路径其实是已知的，改用 `query_instance_subgraph` 逐节点加条件。
+
+        **`isolated_objects` 是有效结论不是失败**：它明确回答了「这些起点在给定方向与
+        跳数内没有关联」。不要因为它有值就重试或改问法。
+
+        **取主键**：与 `query_instance_subgraph` 一致，对象主键在 `_instance_identity`
+        里，可直接喂给 [action.yaml](action.yaml) 或
+        [logic-property.yaml](logic-property.yaml)。
+      parameters:
+        - name: kn_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: 知识网络 ID。
+        - name: include_logic_params
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+          description: 是否返回逻辑属性的计算参数。默认 false。
+        - $ref: '#/components/parameters/ResponseFormat'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExploreSubgraphRequest'
+            examples:
+              两跳双向探索:
+                summary: 从延期订单出发，两跳内看牵连到什么
+                value:
+                  source_object_type_id: ot_purchase_order
+                  direction: bidirectional
+                  path_length: 2
+                  condition:
+                    field: status
+                    operation: '=='
+                    value: delayed
+                    value_from: const
+                  limit: 10
+              限定概念分组并保留残缺路径:
+                value:
+                  source_object_type_id: ot_supplier
+                  direction: forward
+                  path_length: 3
+                  concept_groups:
+                    - cg_supply_chain
+                  include_incomplete_path: true
+                  sort:
+                    - field: risk_score
+                      direction: desc
+                  limit: 5
+      responses:
+        '200':
+          description: 探索出的子图
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObjectSubGraphResponse'
+            application/toon:
+              schema:
+                type: string
+                description: TOON 编码的同一结构（`response_format=toon` 时）。
+        '400':
+          description: |
+            参数错误：缺 `source_object_type_id` / `direction`，`direction` 不是
+            forward / backward / bidirectional，`path_length` 超过 3，`sort` 元素为
+            null 或方向非法，起点条件不合法。
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '401':
+          description: 凭据缺失或无效
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '404':
+          description: 知识网络或起点对象类不存在
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+        '500':
+          description: 服务内部错误，或下游依赖故障
+          content:
+            application/json:
+              schema:
+                $ref: '../_shared/errors.yaml#/components/schemas/ErrorAgentRetrieval'
+
 components:
   securitySchemes:
     OAuth2:
@@ -233,6 +364,81 @@ components:
           type: string
           description: 该边在路径中的终点对象类 ID。
 
+    ExploreSubgraphRequest:
+      type: object
+      description: 起点探索式子图查询请求体。
+      required:
+        - source_object_type_id
+        - direction
+        - path_length
+      properties:
+        source_object_type_id:
+          type: string
+          description: 探索起点的对象类 ID。
+        direction:
+          type: string
+          enum: [forward, backward, bidirectional]
+          description: |
+            探索方向。`forward` 沿关系定义的出边，`backward` 沿入边，
+            `bidirectional` 两个方向都走。不确定关系怎么建模时用 `bidirectional`。
+        path_length:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: 最大跳数，取 1-3。超出返回 400。
+        condition:
+          $ref: '#/components/schemas/Condition'
+          description: |
+            **仅作用于起点对象类**的过滤条件，不约束路径上的其他节点。
+            结构与 `query_object_instance` 的 `condition` 一致。
+        concept_groups:
+          type: array
+          items:
+            type: string
+          description: 概念分组 ID，把探索范围限定在这些分组内的概念上。不传则不限。
+        include_incomplete_path:
+          type: boolean
+          default: false
+          description: |
+            是否返回残缺路径——已走过至少一条边、但未走满 `path_length` 就无路可走
+            的那些。默认只返回完整路径。零边路径任何情况下都不返回。
+        limit:
+          type: integer
+          default: 10
+          minimum: 1
+          maximum: 10000
+          description: |
+            **起点对象类**的实例数量上限，不是路径条数上限。
+        sort:
+          type: array
+          items:
+            $ref: '#/components/schemas/SortSpec'
+          description: |
+            **起点对象类**的排序，按数组顺序依次比较。与 `limit` 配合决定「从哪些
+            起点出发」，不影响路径本身的顺序。元素不可为 `null`。
+        offset:
+          type: integer
+          description: 起点对象类的偏移翻页。与 `search_after` 互斥。
+        search_after:
+          type: array
+          items: {}
+          description: 起点对象类的游标翻页。与 `offset` 互斥。
+
+    SortSpec:
+      type: object
+      description: 单个排序字段。
+      required:
+        - field
+        - direction
+      properties:
+        field:
+          type: string
+          description: 排序字段，必须是起点对象类的属性名。
+        direction:
+          type: string
+          enum: [asc, desc]
+          description: 排序方向。
+
     PathEntries:
       type: object
       required:
@@ -253,8 +459,15 @@ components:
           additionalProperties:
             $ref: '#/components/schemas/ObjectInfoInSubgraph'
           description: |
-            子图中的对象，以对象唯一标识（`对象类ID-主键生成的对象ID`）为 key、
-            对象详情为 value 的 map。
+            子图中**参与了关系**的对象，以对象唯一标识（`对象类ID-主键生成的对象ID`）
+            为 key、对象详情为 value 的 map。
+        isolated_objects:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ObjectInfoInSubgraph'
+          description: |
+            没有建立任何关系的孤立对象。**这是有效结论不是空结果**——它明确回答了
+            「这些对象在给定方向与跳数内没有关联」，不要据此重试或改问法。
         relation_paths:
           type: array
           items:
@@ -270,13 +483,20 @@ components:
         total_count:
           type: integer
           description: |
-            起点对象类的命中总数。本字段由下游 ontology-query 决定是否返回，
-            0.1.3 实测的路径查询未返回，不要当作必有字段。
+            **起点对象类**的命中总数，与路径条数、返回对象数都无关。
+
+            两个入口行为不同：
+
+            - `explore_subgraph`：零命中时为 `0`（字段存在）；字段缺失表示本次未计算
+              总数——用 `search_after` 翻页时第二页起如此——不可推断为 0。
+            - `query_instance_subgraph`：由下游决定是否返回，0.1.3 实测未返回，
+              不要当作必有字段。
         search_after:
           type: array
           items: {}
           description: |
-            起点对象的翻页游标。同样由下游决定是否返回，0.1.3 实测未返回。
+            起点对象的翻页游标。`query_instance_subgraph` 上由下游决定是否返回，
+            0.1.3 实测未返回。
 
     ObjectInfoInSubgraph:
       type: object

@@ -27,6 +27,11 @@
     "group_title": "Instance Queries",
     "description": "Fetch instance subgraphs by following relation paths across object types. Use this when the question needs related objects around one or more seed instances."
   },
+  "explore_subgraph": {
+    "title": "Explore Subgraph",
+    "group_title": "Instance Queries",
+    "description": "Explore what an object type connects to by giving a source, a direction and a hop count, without knowing the path in advance. Use this when the topology is unknown; use query_instance_subgraph when you can already name the path."
+  },
   "get_logic_properties_values": {
     "title": "Compute Logic Properties",
     "group_title": "Instance Queries",

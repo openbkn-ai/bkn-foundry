@@ -196,6 +196,10 @@ func (m *mockOntologyQuery) QueryInstanceSubgraph(ctx context.Context, req *inte
 	return nil, nil
 }
 
+func (m *mockOntologyQuery) ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (resp *interfaces.ExploreSubgraphResp, err error) {
+	return nil, nil
+}
+
 // mockRerankClient 模拟 DrivenMFModelAPIClient 接口
 type mockRerankClient struct {
 	mu          sync.Mutex

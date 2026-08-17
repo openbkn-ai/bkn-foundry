@@ -42,6 +42,7 @@ var communityTools = []string{
 	// 知识网络工具
 	"describe_resource",
 	"execute_action",
+	"explore_subgraph",
 	"find_skills",
 	"get_action_execution",
 	"get_action_info",

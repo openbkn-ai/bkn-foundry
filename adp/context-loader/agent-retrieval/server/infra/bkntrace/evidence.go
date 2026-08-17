@@ -294,6 +294,13 @@ func EmitQueryInstanceSubgraphEvents(ctx context.Context, logger interfaces.Logg
 	return submitAndReturnFirstEventID(ctx, logger, req, BuildQueryInstanceSubgraphEvents(ctx, req, resp))
 }
 
+func EmitExploreSubgraphEvents(ctx context.Context, logger interfaces.Logger, req *interfaces.ExploreSubgraphReq, resp *interfaces.ExploreSubgraphResp) string {
+	if !EvidenceEnabled() {
+		return ""
+	}
+	return submitAndReturnFirstEventID(ctx, logger, req, BuildExploreSubgraphEvents(ctx, req, resp))
+}
+
 func EmitRunSQLEvents(ctx context.Context, logger interfaces.Logger, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) string {
 	if !EvidenceEnabled() {
 		return ""
@@ -416,6 +423,19 @@ func BuildQueryInstanceSubgraphEvents(ctx context.Context, req *interfaces.Query
 	}
 	refs, refsTruncated := subgraphEvidenceRefs(req, resp)
 	return buildRetrievalEvents(ec, "context.query_instance_subgraph", querySubgraphPathHash(req), len(refs), refsTruncated, refs)
+}
+
+func BuildExploreSubgraphEvents(ctx context.Context, req *interfaces.ExploreSubgraphReq, resp *interfaces.ExploreSubgraphResp) []Event {
+	ec, ok := contextFromRequest(ctx, nil)
+	if !ok {
+		return nil
+	}
+	refs, refsTruncated := exploreSubgraphEvidenceRefs(req, resp)
+	candidateCount := 0
+	if resp != nil {
+		candidateCount = len(resp.Objects) + len(resp.IsolatedObjects)
+	}
+	return buildRetrievalEvents(ec, "context.explore_subgraph", exploreSubgraphHash(req), candidateCount, refsTruncated, refs)
 }
 
 func BuildRunSQLEvents(ctx context.Context, sql string, resourceIDs []string, resp *interfaces.VegaRawQueryResp) []Event {
@@ -1432,6 +1452,69 @@ func isRelationContainerKey(key string) bool {
 	default:
 		return false
 	}
+}
+
+// exploreSubgraphEvidenceRefs 从**响应**取证据引用，而不是像路径模板模式那样从请求取。
+// 探索模式的请求里只有一个起点对象类，命中哪些对象类与关系类是引擎跑完才知道的，
+// 照着请求提取等于只记一个起点，证据链就废了。
+func exploreSubgraphEvidenceRefs(req *interfaces.ExploreSubgraphReq, resp *interfaces.ExploreSubgraphResp) ([]map[string]any, bool) {
+	if req == nil || resp == nil {
+		return nil, false
+	}
+	knID := strings.TrimSpace(req.KnID)
+	refs := make([]map[string]any, 0)
+	if knID == "" {
+		return refs, false
+	}
+	seen := make(map[string]struct{})
+	truncated := false
+
+	collectObjects := func(objects map[string]any) {
+		for _, value := range objects {
+			if truncated {
+				return
+			}
+			item, ok := value.(map[string]any)
+			if !ok {
+				continue
+			}
+			if id := firstString(item, "object_type_id"); id != "" &&
+				!appendEvidenceRef(&refs, seen, controlledRef("object:"+knID+":"+id, "object")) {
+				truncated = true
+				return
+			}
+		}
+	}
+	collectObjects(resp.Objects)
+	collectObjects(resp.IsolatedObjects)
+
+	if !truncated {
+		walkSubgraphValue(resp.RelationPaths, func(item map[string]any) bool {
+			if id := firstString(item, "relation_type_id"); id != "" &&
+				!appendEvidenceRef(&refs, seen, controlledRef("relation:"+knID+":"+id, "relation")) {
+				truncated = true
+				return false
+			}
+			return true
+		})
+	}
+	return refs, truncated
+}
+
+// exploreSubgraphHash 摘要的是「这次探索问的是什么」——起点、方向、跳数、起点过滤与
+// 概念分组。分页字段不进摘要：翻页不改变问题本身。
+func exploreSubgraphHash(req *interfaces.ExploreSubgraphReq) string {
+	if req == nil {
+		return HashValue(nil)
+	}
+	return HashValue(map[string]any{
+		"source_object_type_id":   req.SourceObjectTypeID,
+		"direction":               req.Direction,
+		"path_length":             req.PathLength,
+		"concept_groups":          req.ConceptGroups,
+		"condition":               req.Cond,
+		"include_incomplete_path": req.IncludeIncompletePath,
+	})
 }
 
 func querySubgraphPathHash(req *interfaces.QueryInstanceSubgraphReq) string {

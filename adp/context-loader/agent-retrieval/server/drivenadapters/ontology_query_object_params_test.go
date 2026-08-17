@@ -27,6 +27,9 @@ func newObjectQueryClient(t *testing.T, ctrl *gomock.Controller) (*ontologyQuery
 	mockLogger := mocks.NewMockLogger(ctrl)
 	mockLogger.EXPECT().WithContext(gomock.Any()).Return(mockLogger).AnyTimes()
 	mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
+	mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).AnyTimes()
+	mockLogger.EXPECT().Debugf(gomock.Any(), gomock.Any()).AnyTimes()
+	mockLogger.EXPECT().Errorf(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes()
 	mockHTTP := mocks.NewMockHTTPClient(ctrl)
 
 	return &ontologyQueryClient{
