@@ -61,7 +61,8 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"wildcard": map[string]any{"name": `*a\*b\?c*`}},
 		},
 		{
-			// 存量视图定义里的老写法：标记后索引侧仍按通配符正则渲染，结果与改动前一致
+			// Legacy spelling from a stored view definition: once marked, the index path still
+			// renders it as a wildcard regexp, so the rows match what the query returned before
 			name: "legacy like keeps the wildcard regexp",
 			cfg:  osLegacyCfg("name", filter_condition.OperationLike, "%a_c%"),
 			want: map[string]any{"regexp": map[string]any{"name": ".*a.c.*"}},
@@ -353,7 +354,7 @@ func TestFulltextFieldName(t *testing.T) {
 	})
 }
 
-// osLegacyCfg 构造一条被标记为老写法的 like/not_like（值里 % 当通配符）
+// osLegacyCfg builds a like/not_like marked as legacy, i.e. one using % as a wildcard
 func osLegacyCfg(name string, op string, value any) *interfaces.FilterCondCfg {
 	cfg := osConstCfg(name, op, value)
 	cfg.LegacyLikeWildcards = true

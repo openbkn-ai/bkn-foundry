@@ -607,8 +607,9 @@ func mustSQLCondition(t *testing.T, cfg *interfaces.FilterCondCfg, fields map[st
 	return cond
 }
 
-// 存量 composite 视图的节点过滤条件也存在视图定义里，调用方改不了。新的 like 契约不能
-// 让这类视图升级后恒定查询失败——按老行为（% 当字面量）改写，而不是报错。
+// Node filter conditions of an existing composite view also live in the view definition, out
+// of the caller's reach. The new like contract must not make those views fail every query after
+// an upgrade — they keep their pre-change behaviour instead of erroring.
 func TestBuildFilterSQLKeepsLegacyLikeWildcards(t *testing.T) {
 	generator := NewlogicDefinitionSQLGenerator(testSQLView())
 	fields := testSQLConditionFieldMap()
@@ -630,7 +631,7 @@ func TestBuildFilterSQLKeepsLegacyLikeWildcards(t *testing.T) {
 		sqlText, sqlArgs, err := sqlizer.ToSql()
 		require.NoError(t, err)
 		assert.Equal(t, "`name` LIKE ?", sqlText)
-		// 与改动前一致：% 落成字面量
+		// Same as before this change: % lands as a literal
 		assert.Equal(t, []any{`%\%abc\%%`}, sqlArgs)
 	})
 
@@ -650,7 +651,7 @@ func TestBuildFilterSQLKeepsLegacyLikeWildcards(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.True(t, filters.SubConds[0].LegacyLikeWildcards)
-		// 值不动，交给连接器按自己改动前的语义翻译
+		// The value is untouched; each connector translates it with its own pre-change semantics
 		assert.Equal(t, "a%", filters.SubConds[0].Value)
 	})
 }

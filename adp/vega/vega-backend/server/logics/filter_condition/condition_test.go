@@ -359,8 +359,9 @@ func TestLikeCond(t *testing.T) {
 			t.Errorf("expected value 'ali', got '%s'", like.Value)
 		}
 	})
-	// like 的值是字面子串。调用方按 SQL 习惯传 "%ali%" 时，SQL 连接器会把 % 转义成
-	// 字面量，查询恒返回空集且不报错——必须在入口就说清楚。
+	// The value of a like is a literal substring. When a caller writes "%ali%" out of SQL habit
+	// the SQL connectors escape the % into a literal and the query returns nothing, without an
+	// error — which is why this has to be said at the entry point.
 	t.Run("like cond rejects SQL wildcards", func(t *testing.T) {
 		cfg := constCfg("name", "like", "%ali%")
 		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
@@ -412,7 +413,8 @@ func TestParseLikeValue(t *testing.T) {
 		{name: "backslash before a plain char is kept", value: `a\nb`, want: `a\nb`},
 		{name: "trailing backslash is kept", value: `ab\`, want: `ab\`},
 		{name: "leading and trailing percent rejected", value: "%Indirect%", errContain: "literal substring"},
-		// _ 在改动前每条路上都是字面量，拒它是误伤：带下划线的检索词太常见
+		// _ was literal on every path before this change, so rejecting it is collateral damage:
+		// search terms containing an underscore are far too common
 		{name: "bare underscore is a literal", value: "object_type", want: "object_type"},
 	}
 
@@ -708,8 +710,9 @@ func advancedFieldsMap() map[string]*interfaces.Property {
 	return fields
 }
 
-// 视图定义里存着的老写法不能因为新契约而查废：标记为老写法后，由各连接器按它自己
-// 改动前的语义渲染（SQL 侧字面量、索引侧通配符正则），而不是每次查询都 400。
+// A legacy spelling stored in a view definition must not stop working under the new contract:
+// once marked, each connector renders it with its own pre-change semantics — a literal on the
+// SQL side, a wildcard regexp on the index side — instead of returning 400 on every query.
 func TestMarkLegacyLikeWildcards(t *testing.T) {
 	t.Run("marks an unescaped percent without touching the value", func(t *testing.T) {
 		cfg := constCfg("name", "like", "%ali%")
@@ -718,7 +721,8 @@ func TestMarkLegacyLikeWildcards(t *testing.T) {
 
 		assert.Equal(t, 1, marked)
 		assert.True(t, cfg.LegacyLikeWildcards)
-		// 值保持原样：翻译交给连接器，这里统一改写会丢掉索引侧的通配符语义
+		// The value is left alone: translation belongs to the connectors, and rewriting it here
+		// uniformly would throw away the wildcard semantics the index path had
 		assert.Equal(t, "%ali%", cfg.Value)
 
 		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())

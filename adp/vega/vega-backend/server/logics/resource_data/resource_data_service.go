@@ -167,8 +167,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 	}
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap)
 	if err != nil {
-		// 过滤条件是调用方传进来的：字段不存在、值类型不对、算子用法不合法都属于请求错误，
-		// 报 500 会把「你传错了」说成「服务坏了」，调用方只能去猜。
+		// The condition came from the caller: a missing field, a wrong value type or a misused
+		// operator are all request errors, and a 500 would say the service is broken when the
+		// request is what needs fixing.
 		otellog.LogError(ctx, "Create filter condition failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 			WithErrorDetails(err.Error())

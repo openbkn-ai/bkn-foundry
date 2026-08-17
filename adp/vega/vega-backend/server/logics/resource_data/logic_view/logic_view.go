@@ -195,9 +195,10 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 			WithErrorDetails(fmt.Sprintf("failed to decode resource node config: %v", err))
 	}
 	fromResourceFilterCond := nodeCfg.Filters
-	// 视图定义里存着的过滤条件是服务端数据，调用方改不了。新的 like 契约拒绝未转义的 %，
-	// 直接套到存量定义上会让一次升级把视图查废，因此这里按老行为（当字面量）改写并告警，
-	// 只有调用方传进来的条件才硬拒。
+	// Filter conditions stored in the view definition are server-side data the caller cannot
+	// edit. Applying the new like contract to them would let one upgrade break an existing view,
+	// so they keep their pre-change behaviour and only get a warning; conditions the caller sent
+	// are still rejected.
 	if marked := filter_condition.MarkLegacyLikeWildcards(fromResourceFilterCond); marked > 0 {
 		otellog.LogWarn(ctx, fmt.Sprintf(
 			"View %s has %d stored like/not_like condition(s) using '%%' as a wildcard; kept on the pre-change behaviour of this backend. "+
@@ -268,8 +269,10 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 		mergedFilterCond = params.FilterCondCfg
 	}
 
-	// 两半条件的归属不同，状态码必须分开映射：视图定义里存的那半出错是服务端配置问题，
-	// 报 400 会让调用方去查自己根本没传的东西，也会把该修的视图定义盖掉。
+	// The two halves have different owners, so the status code has to follow the source: a
+	// failure in the half stored in the view definition is a server-side configuration problem,
+	// and reporting 400 sends the caller hunting through parameters they never supplied while
+	// hiding the view definition that actually needs fixing.
 	if fromResourceFilterCond != nil {
 		if _, err := filter_condition.NewFilterCondition(ctx, fromResourceFilterCond, fieldMap); err != nil {
 			otellog.LogError(ctx, "Create filter condition from view definition failed", err)
@@ -279,8 +282,9 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 	}
 	if params.FilterCondCfg != nil {
 		if _, err := filter_condition.NewFilterCondition(ctx, params.FilterCondCfg, fieldMap); err != nil {
-			// 调用方传进来的：字段不存在、值类型不对、算子用法不合法都属于请求错误，
-			// 报 500 会把「你传错了」说成「服务坏了」，调用方只能去猜。
+			// Sent by the caller: a missing field, a wrong value type or a misused operator are
+			// all request errors, and a 500 would say the service is broken when the request is
+			// what needs fixing.
 			otellog.LogError(ctx, "Create filter condition failed", err)
 			return nil, 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InvalidParameter).
 				WithErrorDetails(err.Error())
@@ -289,7 +293,7 @@ func (lvs *logicViewService) queryDerivedLogicView(ctx context.Context, view *in
 
 	actualFilterCond, err := filter_condition.NewFilterCondition(ctx, mergedFilterCond, fieldMap)
 	if err != nil {
-		// 两半都单独校验过了，合并后还失败只能是服务端自己的问题
+		// Both halves validated on their own, so a failure here can only be server-side
 		otellog.LogError(ctx, "Create merged filter condition failed", err)
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError).
 			WithErrorDetails(err.Error())

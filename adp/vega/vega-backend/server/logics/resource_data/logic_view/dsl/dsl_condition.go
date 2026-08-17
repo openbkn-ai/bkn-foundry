@@ -1112,9 +1112,10 @@ func (c *logicViewDSLGenerator) likeContainsPattern(input string) string {
 	return "*" + escaped.String() + "*"
 }
 
-// legacyLikeWildcardRegexp 还原改动前索引路径对 like 老写法的处理：% -> .*、_ -> .，
-// 反斜杠转义保留。只在条件被标记为老写法时用（见 filter_condition.MarkLegacyLikeWildcards），
-// 存量视图定义因此结果不变；新写法走 likeContainsPattern 的字面子串语义。
+// legacyLikeWildcardRegexp reproduces how the index path handled a like value before this
+// change: % -> .*, _ -> ., backslash escapes preserved. It is used only for conditions marked
+// as legacy (see filter_condition.MarkLegacyLikeWildcards), so stored view definitions return
+// the same rows as before; new values go through likeContainsPattern's literal semantics.
 func (c *logicViewDSLGenerator) legacyLikeWildcardRegexp(input string) string {
 	if input == "" {
 		return input
@@ -1158,7 +1159,7 @@ func (c *logicViewDSLGenerator) legacyLikeWildcardRegexp(input string) string {
 	return result.String()
 }
 
-// getKeywordSuffix text 类型在部分查询场景（如 eq/in）下，需使用 keyword 类型的子字段，返回关键字后缀，否则返回空字符串
+// in some query scenarios (such as eq/in), the getKeywordSuffix text type needs to use a subfield of the keyword type to return the keyword suffix; otherwise, it returns an empty string
 func (c *logicViewDSLGenerator) getKeywordSuffix(fieldName string, fieldsMap map[string]*interfaces.Property) (string, error) {
 	for _, prop := range fieldsMap {
 		if prop.OriginalName == fieldName && prop.Type == interfaces.DataType_Text {

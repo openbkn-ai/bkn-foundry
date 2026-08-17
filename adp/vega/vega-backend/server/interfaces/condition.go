@@ -34,9 +34,11 @@ type FilterCondCfg struct {
 
 	RemainCfg map[string]any `mapstructure:",remain"`
 
-	// LegacyLikeWildcards 标记这条 like/not_like 来自视图定义里存的老写法（值里用 % 当
-	// 通配符）。置位后按各后端改动前的语义渲染：SQL 侧把 % 转义成字面量，索引侧翻译成
-	// 正则通配符。仅由服务端在读取存量定义时设置，不走线也不接受调用方传入。
+	// LegacyLikeWildcards marks a like/not_like that came from a view definition written before
+	// the literal-substring contract, i.e. one using % as a wildcard. When set, each backend
+	// renders the value the way it did before that change: the SQL family escapes % into a
+	// literal, the index path translates it back into a wildcard regexp. Set only by the server
+	// when it reads a stored definition — it is not on the wire and cannot be sent by a caller.
 	LegacyLikeWildcards bool `json:"-" mapstructure:"-"`
 }
 

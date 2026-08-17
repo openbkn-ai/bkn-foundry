@@ -225,9 +225,10 @@ func (g *logicViewSQLGenerator) buildFilterSQL(ctx context.Context, filters *int
 		return nil, nil, nil
 	}
 
-	// filters 来自视图定义里存的节点配置（resource / join / union 三种节点都走这里），
-	// 是服务端数据、调用方改不了。新的 like 契约拒绝未转义的 %，直接套到存量定义上会让
-	// 一次升级把视图查废，因此按老行为（当字面量）改写并告警。
+	// filters comes from the node config stored in the view definition — resource, join and
+	// union nodes all land here — which is server-side data the caller cannot edit. Applying
+	// the new like contract to it would let one upgrade break an existing view, so those
+	// conditions keep their pre-change behaviour and only get a warning.
 	if marked := filter_condition.MarkLegacyLikeWildcards(filters); marked > 0 {
 		logger.Warnf("%d stored like/not_like condition(s) in this logic view use '%%' as a wildcard; "+
 			"kept on the pre-change behaviour of this backend. Escape it as '\\%%' or switch the condition to [regex] in the view definition.",

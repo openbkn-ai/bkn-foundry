@@ -288,8 +288,9 @@ func TestLogicViewDSLConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"wildcard": map[string]any{"title.keyword": "*a_b*"}},
 		},
 		{
-			// 存量视图定义里的老写法：DSL 侧仍按通配符正则渲染，结果与改动前一致。
-			// 这条路此前没有测试，而它恰好是行为与 SQL 侧不一致的那一半。
+			// Legacy spelling from a stored view definition: the DSL side still renders it as a
+			// wildcard regexp, matching what it returned before. This path had no test, and it is
+			// precisely the half whose behaviour differs from the SQL side.
 			name: "legacy like keeps the wildcard regexp",
 			cfg:  dslLegacyCfg("title", filter_condition.OperationLike, `a\_%`),
 			want: map[string]any{"regexp": map[string]any{"title.keyword": "a_.*"}},
@@ -595,7 +596,7 @@ func mustDSLCondition(t *testing.T, cfg *interfaces.FilterCondCfg, fields map[st
 	return cond
 }
 
-// dslLegacyCfg 构造一条被标记为老写法的 like/not_like（值里 % 当通配符）
+// dslLegacyCfg builds a like/not_like marked as legacy, i.e. one using % as a wildcard
 func dslLegacyCfg(name string, op string, value any) *interfaces.FilterCondCfg {
 	cfg := dslConditionCfg(name, op, interfaces.ValueFrom_Const, value)
 	cfg.LegacyLikeWildcards = true
