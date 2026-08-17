@@ -52,6 +52,7 @@ func validateStorageID(storageID string) error {
 		return &StorageValidationError{
 			Code:   errors.InvalidParam.Code,
 			Params: map[string]interface{}{"Parameter": "storage_id"},
+			Err:    err,
 		}
 	}
 	return nil
@@ -62,6 +63,7 @@ func validateObjectKey(objectKey string) error {
 		return &StorageValidationError{
 			Code:   errors.InvalidParam.Code,
 			Params: map[string]interface{}{"Parameter": "object_key"},
+			Err:    err,
 		}
 	}
 	return nil

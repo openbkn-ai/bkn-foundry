@@ -1,6 +1,7 @@
 package response
 
 import (
+	stderrors "errors"
 	"net/http"
 
 	"oss-gateway/locale"
@@ -59,18 +60,21 @@ func ErrorWithCode(c *gin.Context, code *errors.ErrorCode, templateData map[stri
 
 // BadRequest writes the generic invalid-request contract without exposing
 // parser or validator diagnostics as public response text.
-func BadRequest(c *gin.Context, _ string) {
+func BadRequest(c *gin.Context, diagnostic string) {
+	recordDiagnostic(c, diagnostic)
 	ErrorWithCode(c, &errors.BadRequest, nil, "")
 }
 
 // NotFound writes the generic missing-resource contract.
-func NotFound(c *gin.Context, _ string) {
+func NotFound(c *gin.Context, diagnostic string) {
+	recordDiagnostic(c, diagnostic)
 	ErrorWithCode(c, &errors.NotFound, nil, "")
 }
 
 // InternalError writes a localized public error without exposing internal
 // implementation details to clients.
-func InternalError(c *gin.Context, _ string) {
+func InternalError(c *gin.Context, diagnostic string) {
+	recordDiagnostic(c, diagnostic)
 	ErrorWithCode(c, &errors.InternalError, nil, "")
 }
 
@@ -139,4 +143,11 @@ func localize(c *gin.Context, code *errors.ErrorCode, templateData map[string]in
 		Description: locale.Translate(ctx, code.MessageID+".Description", templateData),
 		Solution:    locale.Translate(ctx, code.MessageID+".Solution", templateData),
 	}
+}
+
+func recordDiagnostic(c *gin.Context, diagnostic string) {
+	if diagnostic == "" {
+		return
+	}
+	_ = c.Error(stderrors.New(diagnostic)).SetType(gin.ErrorTypePrivate)
 }

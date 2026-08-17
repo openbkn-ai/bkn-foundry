@@ -21,10 +21,18 @@ import (
 type StorageValidationError struct {
 	Code   string
 	Params map[string]interface{}
+	Err    error
 }
 
 func (e *StorageValidationError) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("storage validation failed: code=%s: %v", e.Code, e.Err)
+	}
 	return fmt.Sprintf("storage validation failed: code=%s", e.Code)
+}
+
+func (e *StorageValidationError) Unwrap() error {
+	return e.Err
 }
 
 type StorageService interface {

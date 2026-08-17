@@ -2,6 +2,7 @@ package service
 
 import (
 	stderrors "errors"
+	"strings"
 	"testing"
 
 	apperrors "oss-gateway/pkg/errors"
@@ -36,6 +37,15 @@ func TestURLValidationErrorsUseStableClientParameters(t *testing.T) {
 			}
 			if got := validationErr.Params["Parameter"]; got != tt.parameter {
 				t.Fatalf("expected parameter %q, got %q", tt.parameter, got)
+			}
+			if validationErr.Err == nil {
+				t.Fatal("expected the underlying validation diagnostic to be retained")
+			}
+			if !stderrors.Is(validationErr, validationErr.Err) {
+				t.Fatal("expected the underlying validation diagnostic to be unwrapped")
+			}
+			if !strings.Contains(validationErr.Error(), validationErr.Err.Error()) {
+				t.Fatalf("expected error text to retain diagnostic %q, got %q", validationErr.Err, validationErr)
 			}
 		})
 	}
