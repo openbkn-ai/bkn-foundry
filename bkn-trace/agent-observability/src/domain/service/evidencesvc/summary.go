@@ -272,7 +272,12 @@ func assignInteractionRoundNumbers(entries []evidencevo.InteractionListSummary) 
 			return left.StartedAt < right.StartedAt
 		})
 		for number, index := range indexes {
-			entries[index].RoundNumber = number + 1
+			// A managed Interaction has a persisted ordinal assigned at creation.
+			// Keep it authoritative; timestamps only provide a legacy fallback for
+			// projections that predate the managed lifecycle.
+			if entries[index].RoundNumber == 0 {
+				entries[index].RoundNumber = number + 1
+			}
 		}
 	}
 }
@@ -755,6 +760,7 @@ func (s *Service) applyCanonicalInteractionState(ctx context.Context, entries []
 				&entries[index].DurationMS,
 				interaction,
 			)
+			entries[index].RoundNumber = int(interaction.Ordinal)
 			applyCanonicalPartialReasons(&entries[index].PartialReasons, tx, interaction)
 		}
 		return nil

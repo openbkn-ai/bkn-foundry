@@ -1045,6 +1045,19 @@ func TestListInteractionsKeepsChronologicalRoundNumbersWhileReturningNewestFirst
 	}
 }
 
+func TestAssignInteractionRoundNumbersPreservesCanonicalOrdinal(t *testing.T) {
+	entries := []evidencevo.InteractionListSummary{
+		{InteractionID: "interaction_latest", ConversationID: "conversation_rounds", StartedAt: "2026-07-27T08:20:00Z", RoundNumber: 3},
+		{InteractionID: "interaction_first", ConversationID: "conversation_rounds", StartedAt: "2026-07-27T08:00:00Z", RoundNumber: 1},
+	}
+
+	assignInteractionRoundNumbers(entries)
+
+	if entries[0].RoundNumber != 3 || entries[1].RoundNumber != 1 {
+		t.Fatalf("canonical interaction ordinals must not be overwritten: %+v", entries)
+	}
+}
+
 func TestRequestAndTraceSummarySupportMultipleTracesAndReverseLookup(t *testing.T) {
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_multi", "trace_multi_a", "2026-07-26T08:00:00Z", "多阶段问题", "最终结果", "agent-a", "bd_demo", "acct_demo")
