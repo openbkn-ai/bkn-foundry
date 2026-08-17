@@ -9,6 +9,7 @@ package condition
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	dtype "bkn-backend/interfaces/data_type"
 )
@@ -33,20 +34,23 @@ func NewLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*ViewFi
 	if !ok {
 		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
 	}
+	literal, err := ParseLikeValue(OperationLike, val)
+	if err != nil {
+		return nil, err
+	}
 
 	return &LikeCond{
 		mCfg:             cfg,
-		mValue:           val,
+		mValue:           literal,
 		mFilterFieldName: getFilterFieldName(cfg.Field, fieldsMap, false),
 	}, nil
 }
 
 func (cond *LikeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, words []string) ([]*VectorResp, error)) (string, error) {
-	valPattern := fmt.Sprintf(".*%s.*", cond.mValue)
-	v := fmt.Sprintf("%q", valPattern)
+	v := fmt.Sprintf("%q", LikeContainsPattern(cond.mValue))
 	dslStr := fmt.Sprintf(`
 					{
-						"regexp": {
+						"wildcard": {
 							"%s": %v
 						}
 					}`, cond.mFilterFieldName, v)
@@ -55,24 +59,81 @@ func (cond *LikeCond) Convert(ctx context.Context, vectorizer func(ctx context.C
 }
 
 func (cond *LikeCond) Convert2SQL(ctx context.Context) (string, error) {
-	v := cond.mCfg.Value
-	vStr, ok := v.(string)
-	if ok {
-		v = Special.Replace(fmt.Sprintf("%v", vStr))
-	}
-
-	vStr = fmt.Sprintf("%v", v)
-	sqlStr := fmt.Sprintf(`"%s" LIKE '%s'`, cond.mFilterFieldName, vStr)
+	sqlStr := fmt.Sprintf(`"%s" LIKE '%s'`, cond.mFilterFieldName, "%"+Special.Replace(cond.mValue)+"%")
 
 	return sqlStr, nil
 }
 
 // convertLikeCondToDatasetFilterCondition converts LikeCond to dataset filter condition format
 func convertLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, error) {
+	// 这条路不构造 LikeCond，值直接透传给 vega，因此契约校验要在这里也做一次：
+	// 报错带上对象类属性名，比等 vega 报资源字段名更好定位。
+	val, ok := cfg.Value.(string)
+	if !ok {
+		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
+	}
+	if _, err := ParseLikeValue(OperationLike, val); err != nil {
+		return nil, fmt.Errorf("property '%s': %w", cfg.Field, err)
+	}
+
 	return map[string]any{
 		"field":      cfg.Field,
 		"operation":  "like",
+		// 透传原值（转义未解开）：vega 会再解析一次，提前解开会把字面量 % 当成通配符
 		"value":      cfg.Value,
 		"value_from": "const",
 	}, nil
+}
+
+// ParseLikeValue 校验并解析 like / not_like 的值，返回要匹配的字面子串。
+//
+// like 的契约是「子串包含」，不是 SQL LIKE 模式。此前各条路对 % 的处理并不一致——DSL
+// 路径把值原样塞进 .*value.* 正则，SQL 路径连两端的 % 都不补，而下游 vega 的 SQL 连接器
+// 又会把 % 转义成字面量，于是 "%foo%" 这种 SQL 写法在任何一条路上都恒返回空集且不报错。
+// 因此未转义的 % 显式报错，指向 regex；要匹配字面量写 \%。
+//
+// _ 不在拒绝之列：改动前每条路都把它当字面量（Special.Replace 转义成 \_，DSL 的 .* 正则
+// 里也不是元字符），不存在 % 那种「静默空集」，而检索词里带下划线极常见。
+// 与 vega 的 filter_condition.ParseLikeValue 同一套规则。
+func ParseLikeValue(operation, value string) (string, error) {
+	var literal strings.Builder
+	escaped := false
+
+	for _, r := range value {
+		switch {
+		case escaped:
+			// 只有 % _ \ 有转义意义，其余保留反斜杠本身
+			if r != '%' && r != '_' && r != '\\' {
+				literal.WriteRune('\\')
+			}
+			literal.WriteRune(r)
+			escaped = false
+		case r == '\\':
+			escaped = true
+		case r == '%':
+			return "", fmt.Errorf(
+				"condition [%s] value is matched as a literal substring, so the wildcard '%%' is not supported; "+
+					"use operation [regex] for pattern matching, or escape it as '\\%%' to match the character itself",
+				operation)
+		default:
+			literal.WriteRune(r)
+		}
+	}
+	if escaped {
+		literal.WriteRune('\\')
+	}
+
+	return literal.String(), nil
+}
+
+// LikeContainsPattern 把字面子串转成 OpenSearch 的 wildcard 模式，只需转义 * ? \。
+func LikeContainsPattern(literal string) string {
+	var escaped strings.Builder
+	for _, r := range literal {
+		if r == '*' || r == '?' || r == '\\' {
+			escaped.WriteRune('\\')
+		}
+		escaped.WriteRune(r)
+	}
+	return "*" + escaped.String() + "*"
 }

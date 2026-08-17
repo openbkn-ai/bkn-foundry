@@ -165,9 +165,9 @@ func TestLikeCond_Convert(t *testing.T) {
 			dsl, err := likeCond.Convert(ctx, vectorizer)
 			So(err, ShouldBeNil)
 			So(dsl, ShouldNotBeEmpty)
-			So(dsl, ShouldContainSubstring, "regexp")
+			So(dsl, ShouldContainSubstring, "wildcard")
 			So(dsl, ShouldContainSubstring, "field1")
-			So(dsl, ShouldContainSubstring, ".*test.*")
+			So(dsl, ShouldContainSubstring, "*test*")
 		})
 	})
 }
@@ -203,23 +203,109 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 			So(sql, ShouldContainSubstring, "test")
 		})
 
-		Convey("special characters should be escaped", func() {
+		Convey("escaped wildcards stay literal in the SQL pattern", func() {
 			cfg := &CondCfg{
 				Operation: OperationLike,
 				Field:     "field1",
 				NameField: fieldsMap["field1"],
 				ValueOptCfg: ValueOptCfg{
 					ValueFrom: ValueFrom_Const,
-					Value:     "test'%_\\",
+					Value:     `test'\%\_`,
 				},
 			}
-			cond, _ := NewLikeCond(ctx, cfg, fieldsMap)
+			cond, err := NewLikeCond(ctx, cfg, fieldsMap)
+			So(err, ShouldBeNil)
 			likeCond := cond.(*LikeCond)
 
 			sql, err := likeCond.Convert2SQL(ctx)
 			So(err, ShouldBeNil)
-			So(sql, ShouldNotBeEmpty)
-			So(sql, ShouldContainSubstring, "LIKE")
+			// 两端的 % 是 contains 语义补上的，值里的 % _ 被转义成字面量
+			So(sql, ShouldEqual, `"field1" LIKE '%test\'\%\_%'`)
+		})
+
+		Convey("unescaped SQL wildcards are rejected", func() {
+			cfg := &CondCfg{
+				Operation: OperationLike,
+				Field:     "field1",
+				NameField: fieldsMap["field1"],
+				ValueOptCfg: ValueOptCfg{
+					ValueFrom: ValueFrom_Const,
+					Value:     "%test%",
+				},
+			}
+			_, err := NewLikeCond(ctx, cfg, fieldsMap)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "literal substring")
+		})
+	})
+}
+
+func TestParseLikeValue(t *testing.T) {
+	Convey("Test ParseLikeValue", t, func() {
+		Convey("plain substring passes through", func() {
+			literal, err := ParseLikeValue(OperationLike, "Indirect")
+			So(err, ShouldBeNil)
+			So(literal, ShouldEqual, "Indirect")
+		})
+
+		Convey("cjk substring passes through", func() {
+			literal, err := ParseLikeValue(OperationLike, "吹塑风管")
+			So(err, ShouldBeNil)
+			So(literal, ShouldEqual, "吹塑风管")
+		})
+
+		// _ 在改动前每条路上都是字面量，拒它是误伤：带下划线的检索词太常见
+		Convey("bare underscore stays a literal", func() {
+			literal, err := ParseLikeValue(OperationLike, "object_type")
+			So(err, ShouldBeNil)
+			So(literal, ShouldEqual, "object_type")
+		})
+
+		Convey("escaped wildcards become literals", func() {
+			literal, err := ParseLikeValue(OperationLike, `50\%`)
+			So(err, ShouldBeNil)
+			So(literal, ShouldEqual, "50%")
+
+			literal, err = ParseLikeValue(OperationLike, `a\_b`)
+			So(err, ShouldBeNil)
+			So(literal, ShouldEqual, "a_b")
+		})
+
+		Convey("unescaped wildcards are rejected with a usable message", func() {
+			_, err := ParseLikeValue(OperationLike, "%Indirect%")
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "literal substring")
+			So(err.Error(), ShouldContainSubstring, "[regex]")
+
+			_, err = ParseLikeValue(OperationNotLike, "b%")
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+// query_object_instance 走的是 dataset filter 这条路，不构造 LikeCond，所以契约校验
+// 必须在转换函数里也生效，否则 "%foo%" 会一路透传到 vega 才被拦。
+func TestConvertLikeCondToDatasetFilterCondition(t *testing.T) {
+	Convey("Test convertLikeCondToDatasetFilterCondition", t, func() {
+		Convey("passes the raw value through so vega can parse the escapes", func() {
+			got, err := convertLikeCondToDatasetFilterCondition(&CondCfg{
+				Field:       "title",
+				ValueOptCfg: ValueOptCfg{ValueFrom: ValueFrom_Const, Value: `50\%`},
+			})
+			So(err, ShouldBeNil)
+			So(got["field"], ShouldEqual, "title")
+			So(got["operation"], ShouldEqual, "like")
+			So(got["value"], ShouldEqual, `50\%`)
+		})
+
+		Convey("rejects SQL wildcards and names the property", func() {
+			_, err := convertLikeCondToDatasetFilterCondition(&CondCfg{
+				Field:       "title",
+				ValueOptCfg: ValueOptCfg{ValueFrom: ValueFrom_Const, Value: "%Indirect%"},
+			})
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "property 'title'")
+			So(err.Error(), ShouldContainSubstring, "literal substring")
 		})
 	})
 }
