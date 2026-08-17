@@ -226,6 +226,26 @@ func TestBuildConversationSummaryUsesFirstCoherentInteractionAndHidesChildCallEr
 	}
 }
 
+func TestBuildConversationSummarySkipsUnavailableFirstInteractionPreview(t *testing.T) {
+	summary := buildConversationSummary("conversation_supply", []evidencevo.RequestSummary{
+		{
+			RequestID: "req_first", InteractionID: "interaction_first",
+			StartedAt: "2026-08-07T08:00:00Z", CompletedAt: "2026-08-07T08:00:01Z",
+			Status: "completed", EvidenceCompleteness: "partial",
+		},
+		{
+			RequestID: "req_second", InteractionID: "interaction_second",
+			StartedAt: "2026-08-07T08:02:00Z", CompletedAt: "2026-08-07T08:02:01Z",
+			Status: "completed", EvidenceCompleteness: "complete",
+			InteractionQuestion: "后续问题", InteractionResult: "后续结果",
+		},
+	})
+
+	if summary.QuestionPreview != "后续问题" || summary.ResultPreview != "后续结果" {
+		t.Fatalf("conversation preview must skip an unavailable first interaction: %+v", summary)
+	}
+}
+
 func TestListConversationsFiltersAfterApplyingCanonicalSessionStatus(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequest(

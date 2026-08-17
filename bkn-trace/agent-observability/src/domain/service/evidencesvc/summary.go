@@ -241,6 +241,12 @@ func firstConversationInteractionPreview(requests []evidencevo.RequestSummary) (
 	var question, result, firstAt, firstID string
 	for interactionID, interactionRequests := range byInteraction {
 		summary, _ := aggregateRequestGroup(interactionRequests)
+		// A list preview must remain a usable question/result pair. If the
+		// earliest interaction lost either artifact, prefer the next complete
+		// interaction; aggregateRequestGroup remains the all-incomplete fallback.
+		if summary.QuestionPreview == "" || summary.ResultPreview == "" {
+			continue
+		}
 		at := firstPresentSummary(summary.StartedAt, summary.CompletedAt)
 		if firstID == "" || summaryTimeAfter(firstAt, at) || (at == firstAt && interactionID < firstID) {
 			question, result, firstAt, firstID = summary.QuestionPreview, summary.ResultPreview, at, interactionID
