@@ -90,7 +90,6 @@ func TestBuildTaskWorkerLimitsBatchConcurrency(t *testing.T) {
 		streamingWorkerCount: 0,
 		batchQueue:           queue,
 		streamingQueue:       make(chan string, 1),
-		embeddingQueue:       make(chan string, 2),
 		inFlight:             inFlight,
 	}
 	taskService.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Times(3).
@@ -118,7 +117,6 @@ func TestBuildTaskWorkerLimitsStreamingConcurrency(t *testing.T) {
 		streamingWorkerCount: 2,
 		batchQueue:           make(chan string, 1),
 		streamingQueue:       queue,
-		embeddingQueue:       make(chan string, 2),
 		inFlight:             inFlight,
 	}
 	taskService.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Times(3).

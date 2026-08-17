@@ -118,7 +118,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 }
 
 // ExecuteRawQuery executes a raw OpenSearch DSL query on the specified index.
-func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*interfaces.RawQueryResponse, error) {
 	aggregationPlan, err := compileRawAggregationPlan(query)
 	if err != nil {
 		return nil, err
@@ -137,7 +137,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 
 	// Create search request
 	req := opensearchapi.SearchRequest{
-		Index: []string{index},
+		Index: []string{indexName},
 		Body:  strings.NewReader(string(queryJSON)),
 	}
 
@@ -193,7 +193,7 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, index string,
 
 	// 获取索引的mapping信息以确定字段类型
 	fieldTypeMap := make(map[string]string)
-	if err := c.fetchMappingsForQuery(ctx, index, fieldTypeMap); err != nil {
+	if err := c.fetchMappingsForQuery(ctx, indexName, fieldTypeMap); err != nil {
 		// 如果获取mapping失败，使用默认的string类型
 		logger.Warnf("failed to fetch index mappings, using default string type: %v", err)
 	}

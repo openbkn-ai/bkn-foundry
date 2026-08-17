@@ -58,7 +58,6 @@ type BuildTask struct {
 	ExecuteType      string                `json:"execute_type,omitempty"` // batch 执行类型：incremental/full；streaming 不适用
 	TotalCount       int64                 `json:"total_count"`            // 总数
 	SyncedCount      int64                 `json:"synced_count"`           // 已同步数
-	VectorizedCount  int64                 `json:"vectorized_count"`       // 已做向量数
 	SyncedMark       string                `json:"synced_mark"`            // 同步标记
 	ErrorMsg         string                `json:"error_msg,omitempty"`
 	FailureDetail    string                `json:"failure_detail,omitempty"` // 构建完成但部分文档向量化失败的明细，区别于 error_msg 的整任务硬失败
@@ -72,47 +71,37 @@ type BuildTask struct {
 	// 以下关联字段仅用于响应展示，不落库；由 service 按当前任务集合批量补齐。
 	ResourceName string `json:"resource_name,omitempty"`
 	CatalogName  string `json:"catalog_name,omitempty"`
-
-	// IndexHealth 为响应时计算的派生状态，**不落库**：让消费方无需自己推断
-	// "completed 其实是失败"。service 层在返回前填充。
-	IndexHealth *IndexHealth `json:"index_health,omitempty"`
 }
 
 // BuildTaskSummary is the lightweight representation returned by list APIs.
 // Index configuration snapshots and detailed partial-failure diagnostics are
 // available from GetByID.
 type BuildTaskSummary struct {
-	ID               string       `json:"id"`
-	ResourceID       string       `json:"resource_id"`
-	ResourceName     string       `json:"resource_name,omitempty"`
-	CatalogID        string       `json:"catalog_id"`
-	CatalogName      string       `json:"catalog_name,omitempty"`
-	Status           string       `json:"status"`
-	Mode             string       `json:"mode"`
-	ExecuteType      string       `json:"execute_type,omitempty"`
-	TotalCount       int64        `json:"total_count"`
-	SyncedCount      int64        `json:"synced_count"`
-	VectorizedCount  int64        `json:"vectorized_count"`
-	SyncedMark       string       `json:"synced_mark"`
-	ErrorMsg         string       `json:"error_msg,omitempty"`
-	Creator          AccountInfo  `json:"creator"`
-	CreateTime       int64        `json:"create_time"`
-	StartTime        int64        `json:"start_time,omitempty"`
-	FinishTime       int64        `json:"finish_time,omitempty"`
-	LastProgressTime int64        `json:"last_progress_time,omitempty"`
-	IndexHealth      *IndexHealth `json:"index_health,omitempty"`
-
-	// IndexConfig is loaded only to derive IndexHealth and is never serialized.
-	IndexConfig *BuildTaskIndexConfig `json:"-"`
+	ID               string      `json:"id"`
+	ResourceID       string      `json:"resource_id"`
+	ResourceName     string      `json:"resource_name,omitempty"`
+	CatalogID        string      `json:"catalog_id"`
+	CatalogName      string      `json:"catalog_name,omitempty"`
+	Status           string      `json:"status"`
+	Mode             string      `json:"mode"`
+	ExecuteType      string      `json:"execute_type,omitempty"`
+	TotalCount       int64       `json:"total_count"`
+	SyncedCount      int64       `json:"synced_count"`
+	SyncedMark       string      `json:"synced_mark"`
+	ErrorMsg         string      `json:"error_msg,omitempty"`
+	Creator          AccountInfo `json:"creator"`
+	CreateTime       int64       `json:"create_time"`
+	StartTime        int64       `json:"start_time,omitempty"`
+	FinishTime       int64       `json:"finish_time,omitempty"`
+	LastProgressTime int64       `json:"last_progress_time,omitempty"`
 }
 
 // BuildTaskProgress describes persisted execution progress without changing task status.
 type BuildTaskProgress struct {
-	TotalCount      *int64
-	SyncedCount     *int64
-	VectorizedCount *int64
-	SyncedMark      *string
-	FailureDetail   *string
+	TotalCount    *int64
+	SyncedCount   *int64
+	SyncedMark    *string
+	FailureDetail *string
 }
 
 type BuildTaskIndexConfig struct {
@@ -121,28 +110,12 @@ type BuildTaskIndexConfig struct {
 }
 
 type BuildTaskFieldIndexFeature struct {
-	Vector   *BuildTaskEmbeddingConfig `json:"vector,omitempty"`
-	Fulltext *BuildTaskFulltextConfig  `json:"fulltext,omitempty"`
-}
-
-type BuildTaskEmbeddingConfig struct {
-	ModelID    string `json:"model_id"`
-	Dimensions int    `json:"dimensions"`
+	Vector   *SmallModel              `json:"vector,omitempty"`
+	Fulltext *BuildTaskFulltextConfig `json:"fulltext,omitempty"`
 }
 
 type BuildTaskFulltextConfig struct {
 	Analyzer string `json:"analyzer,omitempty"`
-}
-
-// IndexHealth 拆分各索引的健康度。status=completed 只代表 sync 完成 + fulltext 生效，
-// 不代表 embedding 索引可用——本结构把两者分开，整体可用性看 Usable。
-type IndexHealth struct {
-	// none(未建) | building(进行中) | ok | partial(部分文档缺向量) | failed(全部缺向量)
-	Embedding string `json:"embedding"`
-	// none(未建) | ok（全文随同步即时生效，建了即 ok）
-	Fulltext string `json:"fulltext"`
-	// embedding 索引是否完全可用（none 或 ok 为 true；partial/failed/building 为 false）
-	Usable bool `json:"usable"`
 }
 
 // CreateBuildTaskRequest represents the request to create a build task.
@@ -167,8 +140,8 @@ type BuildTasksQueryParams struct {
 }
 
 type KeyValue struct {
-	Key   string
-	Value any
+	Key   string `json:"key"`
+	Value any    `json:"value"`
 }
 
 // BuildIndexName 返回构建任务对应的 OpenSearch 索引名。索引名 = 前缀-资源ID-任务ID，

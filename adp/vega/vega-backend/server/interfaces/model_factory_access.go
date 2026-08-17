@@ -14,7 +14,7 @@ import (
 //
 //go:generate mockgen -source ../interfaces/model_factory_access.go -destination ../interfaces/mock/mock_model_factory_access.go
 type ModelFactoryAccess interface {
-	GetModelByName(ctx context.Context, modelName string) (*SmallModel, error)
+	GetModelByID(ctx context.Context, modelID string) (*SmallModel, error)
 
-	GetVector(ctx context.Context, modelName string, words []string) ([]*VectorResp, error)
+	GetVector(ctx context.Context, modelID string, words []string) ([]*VectorResp, error)
 }

@@ -9,47 +9,43 @@ package worker
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
-	"github.com/segmentio/kafka-go"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
-	"vega-backend/logics"
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/filter_condition"
 	"vega-backend/logics/local_index"
+	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/resource"
 )
 
 // batchBuildWorker handles build tasks.
 type batchBuildWorker struct {
-	appSetting  *common.AppSetting
-	bts         interfaces.BuildTaskService
-	cf          interfaces.ConnectorFactory
-	cs          interfaces.CatalogService
-	kafkaAccess interfaces.KafkaAccess
-	lim         interfaces.LocalIndexManager
-	rs          interfaces.ResourceService
-
-	embeddingQueue chan<- string
+	appSetting *common.AppSetting
+	bts        interfaces.BuildTaskService
+	cf         interfaces.ConnectorFactory
+	cs         interfaces.CatalogService
+	lim        interfaces.LocalIndexManager
+	mfs        interfaces.ModelFactoryService
+	rs         interfaces.ResourceService
 }
 
 // NewBatchBuildWorker creates a new build worker.
 func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	rs := resource.NewResourceService(appSetting)
 	return &batchBuildWorker{
-		appSetting:  appSetting,
-		bts:         build_task.NewBuildTaskService(appSetting, rs),
-		cf:          factory.GetFactory(appSetting),
-		rs:          rs,
-		cs:          catalog.NewCatalogService(appSetting),
-		lim:         local_index.NewLocalIndexManager(appSetting),
-		kafkaAccess: logics.KA,
+		appSetting: appSetting,
+		bts:        build_task.NewBuildTaskService(appSetting, rs),
+		cf:         factory.GetFactory(appSetting),
+		rs:         rs,
+		cs:         catalog.NewCatalogService(appSetting),
+		lim:        local_index.NewLocalIndexManager(appSetting),
+		mfs:        model_factory.NewModelFactoryService(appSetting),
 	}
 }
 
@@ -63,19 +59,6 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 	// 异步任务无原始请求上下文，以任务创建者身份执行下游权限检查
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
-	// 排队期间被停止的任务直接跳过，避免出队后复活覆写状态。
-	// stopping 出队说明原 worker 已不在，兜底落停。
-	if buildTaskInfo.Status == interfaces.BuildTaskStatusStopped ||
-		buildTaskInfo.Status == interfaces.BuildTaskStatusStopping ||
-		buildTaskInfo.Status == interfaces.BuildTaskStatusCancelled {
-		logger.Infof("Task %s is %s, skip execution", taskID, buildTaskInfo.Status)
-		if buildTaskInfo.Status == interfaces.BuildTaskStatusStopping {
-			if _, err := bbw.bts.InternalMarkStopped(ctx, taskID); err != nil {
-				return fmt.Errorf("update build task status failed: %w", err)
-			}
-		}
-		return nil
-	}
 	resourceID := buildTaskInfo.ResourceID
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
@@ -109,9 +92,8 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 		err = fmt.Errorf("catalog is disabled")
 	}
 
-	executeType := batchBuildExecuteType(buildTaskInfo)
 	if err == nil {
-		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo, executeType)
+		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo)
 	}
 	if err != nil {
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
@@ -140,25 +122,31 @@ func batchBuildExecuteType(buildTask *interfaces.BuildTask) string {
 	return interfaces.BuildTaskExecuteTypeIncremental
 }
 
-// advanceCursor 把批读游标推进到本批最后一行的键值。
-// 注意必须按下标写回切片：此前用 `for _, kv := range` 改副本，游标永远停在
-// 第一批末尾，超过一个批次的表会无限重读同一区间（synced_count 膨胀、压垮索引）。
-func advanceCursor(cursor []interfaces.KeyValue, keys []string, lastItem map[string]any) []interfaces.KeyValue {
-	if len(cursor) == 0 {
-		for _, key := range keys {
-			cursor = append(cursor, interfaces.KeyValue{Key: key, Value: lastItem[key]})
+func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) *interfaces.FilterCondCfg {
+	branches := make([]*interfaces.FilterCondCfg, 0, len(keys))
+	for i, key := range keys {
+		subConditions := make([]*interfaces.FilterCondCfg, 0, i+1)
+		for j := 0; j < i; j++ {
+			subConditions = append(subConditions, &interfaces.FilterCondCfg{
+				Name:        keys[j],
+				Operation:   "==",
+				ValueOptCfg: interfaces.ValueOptCfg{Value: keyValues[j].Value, ValueFrom: interfaces.ValueFrom_Const},
+			})
 		}
-		return cursor
+		subConditions = append(subConditions, &interfaces.FilterCondCfg{
+			Name:        key,
+			Operation:   "gt",
+			ValueOptCfg: interfaces.ValueOptCfg{Value: keyValues[i].Value, ValueFrom: interfaces.ValueFrom_Const},
+		})
+		branches = append(branches, &interfaces.FilterCondCfg{Operation: "and", SubConds: subConditions})
 	}
-	for i := range cursor {
-		cursor[i].Value = lastItem[cursor[i].Key]
-	}
-	return cursor
+	return &interfaces.FilterCondCfg{Operation: "or", SubConds: branches}
 }
 
 // executeBuild executes the build logic
 func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog,
-	resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask, executeType string) error {
+	resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask) error {
+	executeType := batchBuildExecuteType(buildTaskInfo)
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
 	err := createManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
 	if err != nil {
@@ -171,35 +159,30 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		// 全量重跑从头读、向量也整体重做，进度计数器一并清零，
 		// 否则跨运行累计出 synced > total 的显示
 		buildTaskInfo.SyncedCount = 0
-		buildTaskInfo.VectorizedCount = 0
 		zero := int64(0)
 		emptyMark := ""
 		progress := interfaces.BuildTaskProgress{
-			SyncedCount:     &zero,
-			VectorizedCount: &zero,
-			SyncedMark:      &emptyMark,
+			SyncedCount: &zero,
+			SyncedMark:  &emptyMark,
 		}
 		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}
 	}
 
-	batchFields := buildTaskBuildKeyFields(buildTaskInfo)
-	keys := batchFields
-	sort.Strings(keys)
+	keys := buildTaskBuildKeyFields(buildTaskInfo)
 	var lastBatchKeyValues []interfaces.KeyValue
 	if lastSyncedMark != "" {
-		// syncMark format : {"filed1_name":field1_value,"filed2_name":field2_value}
-		var syncedMark map[string]interface{}
-		if err := sonic.Unmarshal([]byte(lastSyncedMark), &syncedMark); err != nil {
+		if err := sonic.Unmarshal([]byte(lastSyncedMark), &lastBatchKeyValues); err != nil {
 			return fmt.Errorf("failed to unmarshal synced mark: %w", err)
 		}
-		// Extract field names from synced mark
-		for _, key := range keys {
-			lastBatchKeyValues = append(lastBatchKeyValues, interfaces.KeyValue{
-				Key:   key,
-				Value: syncedMark[key],
-			})
+		if len(lastBatchKeyValues) != len(keys) {
+			return fmt.Errorf("invalid synced mark: expected %d key values, got %d", len(keys), len(lastBatchKeyValues))
+		}
+		for i, key := range keys {
+			if lastBatchKeyValues[i].Key != key {
+				return fmt.Errorf("invalid synced mark: expected key %q at position %d, got %q", key, i, lastBatchKeyValues[i].Key)
+			}
 		}
 	}
 
@@ -222,37 +205,15 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	}
 
 	// Build sort fields
-	sortFields := make([]*interfaces.SortField, len(batchFields))
-	for i, field := range batchFields {
+	sortFields := make([]*interfaces.SortField, len(keys))
+	for i, field := range keys {
 		sortFields[i] = &interfaces.SortField{
 			Field: field,
 		}
 	}
 
 	hasEmbedding := buildTaskHasEmbedding(buildTaskInfo)
-	var writer *kafka.Writer
-	if hasEmbedding {
-		topic := getEmbeddingTopic(resource.ID, buildTaskInfo.ID)
-		// Create Kafka writer
-		writer, err = bbw.kafkaAccess.NewWriter(ctx, topic)
-		if err != nil {
-			return fmt.Errorf("failed to create Kafka writer: %w", err)
-		}
-
-		err = bbw.kafkaAccess.CreateTopic(ctx, topic)
-		if err != nil {
-			return fmt.Errorf("failed to create Kafka topic: %w", err)
-		}
-		defer bbw.kafkaAccess.CloseWriter(writer)
-	}
-	// Start the embedding phase only after all batch prerequisites are ready,
-	// so an early batch failure cannot leave a competing phase running.
-	if hasEmbedding {
-		if err := sendEmbeddingTask(ctx, bbw.embeddingQueue, buildTaskInfo.ID); err != nil {
-			return fmt.Errorf("send embedding task failed: %w", err)
-		}
-		logger.Infof("Embedding task sent for task %s", buildTaskInfo.ID)
-	}
+	pipeline := &embeddingPipeline{mfs: bbw.mfs}
 
 	syncedCount := buildTaskInfo.SyncedCount
 	for {
@@ -293,19 +254,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 		// Add filter condition for batch fields if we have last values
 		if len(lastBatchKeyValues) > 0 {
-			// Build AND condition for multiple batch fields
-			subConditions := make([]*interfaces.FilterCondCfg, len(batchFields))
-			for i, field := range batchFields {
-				subConditions[i] = &interfaces.FilterCondCfg{
-					Name:        field,
-					Operation:   "gt",
-					ValueOptCfg: interfaces.ValueOptCfg{Value: lastBatchKeyValues[i].Value, ValueFrom: interfaces.ValueFrom_Const},
-				}
-			}
-			params.FilterCondCfg = &interfaces.FilterCondCfg{
-				Operation: "and",
-				SubConds:  subConditions,
-			}
+			params.FilterCondCfg = buildBatchCursorFilter(keys, lastBatchKeyValues)
 
 			// Convert FilterCondCfg to ActualFilterCond
 			fieldMap := map[string]*interfaces.Property{}
@@ -331,26 +280,35 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 		if readRows > 0 {
 			// Update lastBatchKeyValues with the last values in this batch
-			newSyncedMark := map[string]any{}
 			lastItem := result.Entries[readRows-1]
-			lastBatchKeyValues = advanceCursor(lastBatchKeyValues, keys, lastItem)
-			for _, field := range batchFields {
-				newSyncedMark[field] = lastItem[field]
-			}
-
-			// Convert documents to upsert format
-			upsertRequests := make([]map[string]any, 0, readRows)
-			for _, doc := range result.Entries {
-				docID := getNewDocID(lastBatchKeyValues, doc)
-				if docID == "" {
-					return fmt.Errorf("build document ID: no build key values found in source row")
-				}
-				upsertRequests = append(upsertRequests, map[string]any{"id": docID, "document": doc})
-			}
-
-			docIDs, err := bbw.lim.UpsertDocuments(ctx, indexName, upsertRequests)
+			lastBatchKeyValues, err = extractKeyValues(keys, lastItem)
 			if err != nil {
-				return fmt.Errorf("create documents failed: %w", err)
+				return fmt.Errorf("extract cursor key values: %w", err)
+			}
+			indexDocuments := make(map[string]map[string]any, readRows)
+			for _, doc := range result.Entries {
+				keyValues, err := extractKeyValues(keys, doc)
+				if err != nil {
+					return err
+				}
+				docID, err := generateDocumentID(keyValues)
+				if err != nil {
+					return err
+				}
+				if _, exists := indexDocuments[docID]; exists {
+					return fmt.Errorf("build document ID: duplicate build key values %q", docID)
+				}
+				indexDocuments[docID] = doc
+			}
+
+			if hasEmbedding {
+				if err := pipeline.enrich(ctx, indexDocuments, buildTaskEmbeddingConfig(buildTaskInfo)); err != nil {
+					return fmt.Errorf("vectorize batch: %w", err)
+				}
+			}
+			_, err = bbw.lim.IndexDocuments(ctx, indexName, indexDocuments)
+			if err != nil {
+				return fmt.Errorf("index documents failed: %w", err)
 			}
 
 			syncedCount += int64(readRows)
@@ -361,8 +319,8 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				totalCount := int64(totalRows)
 				progress.TotalCount = &totalCount
 			}
-			if len(newSyncedMark) > 0 {
-				syncedMarkStr, err := sonic.MarshalString(newSyncedMark)
+			if len(lastBatchKeyValues) > 0 {
+				syncedMarkStr, err := sonic.MarshalString(lastBatchKeyValues)
 				if err != nil {
 					return fmt.Errorf("failed to marshal synced mark: %w", err)
 				} else {
@@ -373,32 +331,15 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}
-
-			// Send document IDs to Kafka for embedding
-			if len(docIDs) > 0 && hasEmbedding {
-				err = sendEmbeddingMessage(ctx, writer, bbw.kafkaAccess, docIDs)
-				if err != nil {
-					return err
-				}
-			}
 		}
 
 		if readRows < batchSize {
-			if hasEmbedding {
-				// sync complete, push a empty document to trigger embedding
-				err = sendEmbeddingMessage(ctx, writer, bbw.kafkaAccess, []string{interfaces.EmptyDocumentID})
-				if err != nil {
-					return err
-				}
-			}
 			break
 		}
 	}
 
-	if !hasEmbedding {
-		if err := completeBuildTaskWithoutEmbedding(ctx, resource, bbw.rs, bbw.bts, buildTaskInfo.ID, indexName); err != nil {
-			return fmt.Errorf("complete build task without embedding: %w", err)
-		}
+	if err := completeBuildTaskWithoutEmbedding(ctx, resource, bbw.rs, bbw.bts, buildTaskInfo.ID, indexName); err != nil {
+		return fmt.Errorf("complete build task: %w", err)
 	}
 
 	return nil

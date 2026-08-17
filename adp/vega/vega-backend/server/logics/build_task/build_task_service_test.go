@@ -501,7 +501,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 
 		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidExecuteType)
 	})
-	t.Run("normalizes model name to id", func(t *testing.T) {
+	t.Run("caches default embedding SmallModel by model ID", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
@@ -516,7 +516,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
 					BuildKeyFields:          []string{"id"},
-					DefaultEmbeddingModel:   "text-embedding-v4",
+					DefaultEmbeddingModel:   "2064382281006583808",
 					DefaultFulltextAnalyzer: "ik_max_word",
 				},
 				SchemaDefinition: []*interfaces.Property{
@@ -545,7 +545,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				}
 				return nil, nil
 			})
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "2064382281006583808").
 			Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
 		var captured *interfaces.BuildTask
@@ -564,8 +564,9 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		require.NotNil(t, captured.IndexConfig)
 		assert.Equal(t, interfaces.BuildTaskExecuteTypeFull, captured.ExecuteType)
 		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
-		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["family_name"].Vector)
-		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["given_name"].Vector)
+		expectedModel := &interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}
+		assert.Equal(t, expectedModel, captured.IndexConfig.Features["family_name"].Vector)
+		assert.Equal(t, expectedModel, captured.IndexConfig.Features["given_name"].Vector)
 		assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["family_name"].Fulltext)
 	})
 	t.Run("snapshot unaffected by resource mutation", func(t *testing.T) {
@@ -582,7 +583,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Category:  interfaces.ResourceCategoryTable,
 			IndexConfig: &interfaces.ResourceIndexConfig{
 				BuildKeyFields:          []string{"id"},
-				DefaultEmbeddingModel:   "text-embedding-v4",
+				DefaultEmbeddingModel:   "2064382281006583808",
 				DefaultFulltextAnalyzer: "ik_max_word",
 			},
 			SchemaDefinition: []*interfaces.Property{
@@ -600,7 +601,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "2064382281006583808").
 			Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
 		var captured *interfaces.BuildTask
@@ -623,7 +624,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		resource.SchemaDefinition[0].Features = nil
 
 		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
-		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["family_name"].Vector)
+		assert.Equal(t, &interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, captured.IndexConfig.Features["family_name"].Vector)
 		assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["family_name"].Fulltext)
 	})
 	t.Run("uses feature embedding model override", func(t *testing.T) {
@@ -641,7 +642,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
 					BuildKeyFields:        []string{"id"},
-					DefaultEmbeddingModel: "default-model",
+					DefaultEmbeddingModel: "default-model-id",
 				},
 				SchemaDefinition: []*interfaces.Property{
 					{Name: "id", Type: interfaces.DataType_Integer},
@@ -651,7 +652,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 							{
 								FeatureType: interfaces.PropertyFeatureType_Vector,
 								RefProperty: "family_name",
-								Config:      map[string]any{"embedding_model": "text-embedding-v4"},
+								Config:      map[string]any{"embedding_model": "2064382281006583808"},
 							},
 						},
 					},
@@ -666,7 +667,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				}
 				return nil, nil
 			})
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "text-embedding-v4").
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "2064382281006583808").
 			Return(&interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, nil)
 
 		var captured *interfaces.BuildTask
@@ -683,7 +684,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, captured)
 		require.NotNil(t, captured.IndexConfig)
-		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "2064382281006583808", Dimensions: 1024}, captured.IndexConfig.Features["family_name"].Vector)
+		assert.Equal(t, &interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, captured.IndexConfig.Features["family_name"].Vector)
 	})
 	t.Run("keeps per field analyzer and embedding model overrides", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -710,7 +711,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 						Features: []interfaces.PropertyFeature{
 							{
 								FeatureType: interfaces.PropertyFeatureType_Vector,
-								Config:      map[string]any{"embedding_model": "model-a"},
+								Config:      map[string]any{"embedding_model": "model-a-id"},
 							},
 							{
 								FeatureType: interfaces.PropertyFeatureType_Fulltext,
@@ -723,7 +724,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 						Features: []interfaces.PropertyFeature{
 							{
 								FeatureType: interfaces.PropertyFeatureType_Vector,
-								Config:      map[string]any{"embedding_model": "model-b"},
+								Config:      map[string]any{"embedding_model": "model-b-id"},
 							},
 							{
 								FeatureType: interfaces.PropertyFeatureType_Fulltext,
@@ -736,9 +737,9 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "model-a").
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "model-a-id").
 			Return(&interfaces.SmallModel{ModelID: "model-a-id", ModelName: "model-a", EmbeddingDim: 768}, nil)
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "model-b").
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "model-b-id").
 			Return(&interfaces.SmallModel{ModelID: "model-b-id", ModelName: "model-b", EmbeddingDim: 1024}, nil)
 
 		var captured *interfaces.BuildTask
@@ -757,8 +758,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		require.NotNil(t, captured)
 		require.NotNil(t, captured.IndexConfig)
 		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
-		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "model-a-id", Dimensions: 768}, captured.IndexConfig.Features["title"].Vector)
-		assert.Equal(t, &interfaces.BuildTaskEmbeddingConfig{ModelID: "model-b-id", Dimensions: 1024}, captured.IndexConfig.Features["body"].Vector)
+		assert.Equal(t, &interfaces.SmallModel{ModelID: "model-a-id", ModelName: "model-a", EmbeddingDim: 768}, captured.IndexConfig.Features["title"].Vector)
+		assert.Equal(t, &interfaces.SmallModel{ModelID: "model-b-id", ModelName: "model-b", EmbeddingDim: 1024}, captured.IndexConfig.Features["body"].Vector)
 		assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["title"].Fulltext)
 		assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "standard"}, captured.IndexConfig.Features["body"].Fulltext)
 	})
@@ -777,7 +778,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				Category:  interfaces.ResourceCategoryTable,
 				IndexConfig: &interfaces.ResourceIndexConfig{
 					BuildKeyFields:        []string{"id"},
-					DefaultEmbeddingModel: "bogus-model",
+					DefaultEmbeddingModel: "bogus-model-id",
 				},
 				SchemaDefinition: []*interfaces.Property{
 					{Name: "id", Type: interfaces.DataType_Integer},
@@ -798,7 +799,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				}
 				return nil, nil
 			})
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "bogus-model").
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "bogus-model-id").
 			Return(nil, fmt.Errorf("model not found"))
 
 		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{
@@ -1226,68 +1227,6 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 }
 
 // running → stopping，pending → stopped。stopping/stopped 任务不可再 stop。
-func TestComputeIndexHealth(t *testing.T) {
-	cases := []struct {
-		name          string
-		bt            interfaces.BuildTask
-		wantEmbedding string
-		wantFulltext  string
-		wantUsable    bool
-	}{
-		{
-			name:          "embedding all failed (completed but vectorized=0) -> failed, fulltext ok, unusable",
-			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: buildTaskIndexConfig(true, true), SyncedCount: 6, VectorizedCount: 0},
-			wantEmbedding: "failed", wantFulltext: "ok", wantUsable: false,
-		},
-		{
-			name:          "embedding partial -> partial, unusable",
-			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: buildTaskIndexConfig(true, false), SyncedCount: 6, VectorizedCount: 4},
-			wantEmbedding: "partial", wantFulltext: "none", wantUsable: false,
-		},
-		{
-			name:          "embedding full -> ok, usable",
-			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: buildTaskIndexConfig(true, false), SyncedCount: 6, VectorizedCount: 6},
-			wantEmbedding: "ok", wantFulltext: "none", wantUsable: true,
-		},
-		{
-			name:          "no embedding requested -> none, usable",
-			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: buildTaskIndexConfig(false, true), SyncedCount: 6},
-			wantEmbedding: "none", wantFulltext: "ok", wantUsable: true,
-		},
-		{
-			name:          "running -> building, not usable yet",
-			bt:            interfaces.BuildTask{Status: "running", IndexConfig: buildTaskIndexConfig(true, false), SyncedCount: 6, VectorizedCount: 2},
-			wantEmbedding: "building", wantFulltext: "none", wantUsable: false,
-		},
-		{
-			name:          "empty table -> ok, usable",
-			bt:            interfaces.BuildTask{Status: "completed", IndexConfig: buildTaskIndexConfig(true, false), SyncedCount: 0, VectorizedCount: 0},
-			wantEmbedding: "ok", wantFulltext: "none", wantUsable: true,
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			h := computeIndexHealth(&c.bt)
-			assert.Equal(t, c.wantEmbedding, h.Embedding)
-			assert.Equal(t, c.wantFulltext, h.Fulltext)
-			assert.Equal(t, c.wantUsable, h.Usable)
-		})
-	}
-}
-
-func buildTaskIndexConfig(vector bool, fulltext bool) *interfaces.BuildTaskIndexConfig {
-	feature := interfaces.BuildTaskFieldIndexFeature{}
-	if vector {
-		feature.Vector = &interfaces.BuildTaskEmbeddingConfig{ModelID: "m1", Dimensions: 1024}
-	}
-	if fulltext {
-		feature.Fulltext = &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}
-	}
-	return &interfaces.BuildTaskIndexConfig{
-		Features: map[string]interfaces.BuildTaskFieldIndexFeature{"name": feature},
-	}
-}
-
 func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 	t.Run("drops index and row", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

@@ -39,37 +39,44 @@ func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactor
 		mfAccess = &modelFactoryAccess{
 			appSetting:   appSetting,
 			httpClient:   common.NewHTTPClient(),
-			mfManagerUrl: appSetting.MfModelManagerUrl,
-			mfAPIUrl:     appSetting.MfModelApiUrl,
+			mfManagerUrl: appSetting.ModelFactoryManagerUrl,
+			mfAPIUrl:     appSetting.ModelFactoryAPIUrl,
 		}
 	})
 
 	return mfAccess
 }
 
-func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName string) (*interfaces.SmallModel, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetModelByName")
+func (mfa *modelFactoryAccess) GetModelByID(ctx context.Context, modelID string) (*interfaces.SmallModel, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetModelByID")
 	defer span.End()
 
-	httpUrl := fmt.Sprintf("%s/api/private/mf-model-manager/v1/small-model/get_by_name?model_name=%s", mfa.mfManagerUrl, modelName)
+	// 构建请求URL
+	httpUrl := fmt.Sprintf("%s/small-model/get?model_id=%s", mfa.mfManagerUrl, modelID)
+
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	}
+	// 设置请求头
 	headers := common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
-		"Content-Type": "application/json",
-	}, "model_factory.list", 1)
+		"Content-Type":                      "application/json",
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
+	}, "model_factory.get", 1)
 
 	// 发送GET请求获取模型
 	respCode, result, err := mfa.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
-	logger.Debugf("get [%s] finished, response code is [%d], result is [%s], error is [%v]", httpUrl, respCode, result, err)
+	logger.Debugf("GetModelByID finished, response code is [%d], result is [%s], error is [%v]", respCode, result, err)
 
 	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get model by id failed")
 		logger.Errorf("Get model request failed: %v", err)
 		return nil, fmt.Errorf("get model request failed: %w", err)
 	}
 
-	if respCode == http.StatusNotFound {
-		logger.Warnf("Get model request failed with status code: %d, %s", respCode, result)
-		return nil, fmt.Errorf("model not found: %s", modelName)
-	}
 	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		logger.Errorf("Get model request failed with status code: %d, %s", respCode, result)
 		return nil, fmt.Errorf("get model request failed with status code: %d, %s", respCode, result)
 	}
@@ -77,61 +84,68 @@ func (mfa *modelFactoryAccess) GetModelByName(ctx context.Context, modelName str
 	// 解析响应数据
 	smallModel := interfaces.SmallModel{}
 	if err := sonic.Unmarshal(result, &smallModel); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal model response failed")
 		logger.Errorf("Unmarshal model response failed: %v", err)
 		return nil, fmt.Errorf("unmarshal model response failed: %w", err)
 	}
 
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return &smallModel, nil
 }
 
 func (mfa *modelFactoryAccess) GetVector(ctx context.Context, modelID string, words []string) ([]*interfaces.VectorResp, error) {
-
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "GetVector")
 	defer span.End()
 
-	if len(words) == 0 {
-		return []*interfaces.VectorResp{}, nil
-	}
+	// 构建请求URL
+	httpUrl := fmt.Sprintf("%s/small-model/embeddings", mfa.mfAPIUrl)
 
-	if modelID == "" {
-		return nil, fmt.Errorf("model id cannot be empty")
+	accountInfo := interfaces.AccountInfo{}
+	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
+		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
-
-	httpUrl := fmt.Sprintf("%s/api/private/mf-model-api/v1/small-model/embeddings", mfa.mfAPIUrl)
+	// 设置请求头
 	headers := common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
-		"Content-Type": "application/json",
+		"Content-Type":                      "application/json",
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}, "model_factory.get", 1)
 
-	// 调用方传入的是已归一化的模型 id，必须发 model_id 字段。
-	// mf-model-api 的 embeddings 解析：model 字段只按 model_name 查、model_id 字段才按 id 查。
-	// 之前把 id 塞进 model（名字）字段 → 按 name 查不到 → ModelFactory.ExternalSmallModel.Used.NameNotExist
-	// （偶尔“成功”只是撞上 model_id 查询写下的同名缓存 key，并非真解析成功）。
 	requestBody := map[string]any{
 		"model":    "",
 		"model_id": modelID,
 		"input":    words,
 	}
 
+	// 发送POST请求获取向量
 	respCode, result, err := mfa.httpClient.PostNoUnmarshal(ctx, httpUrl, headers, requestBody)
 
+	logger.Debugf("GetVector finished, batch_size=[%d], response code is [%d], %v", len(words), respCode, err)
+
 	if err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http get vector failed")
 		logger.Errorf("Get vector request failed: %v", err)
 		return nil, fmt.Errorf("get vector request failed: %w", err)
 	}
 
 	if respCode != http.StatusOK {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
 		logger.Errorf("Get vector request failed with status code: %d, %s", respCode, result)
 		return nil, fmt.Errorf("get vector request failed with status code: %d, %s", respCode, result)
 	}
 
+	// 解析响应数据
 	var response struct {
 		Data []*interfaces.VectorResp `json:"data"`
 	}
 
 	if err := sonic.Unmarshal(result, &response); err != nil {
+		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal vector response failed")
 		logger.Errorf("Unmarshal vector response failed: %v", err)
 		return nil, fmt.Errorf("unmarshal vector response failed: %w", err)
 	}
+	logger.Debugf("vectorized result length is [%d]", len(response.Data))
 
+	oteltrace.AddHttpAttrs4Ok(span, respCode)
 	return response.Data, nil
 }

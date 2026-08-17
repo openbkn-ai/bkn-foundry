@@ -32,13 +32,14 @@ type LocalIndexManager interface {
 	CreateIndex(ctx context.Context, indexName string, schema []*Property) error
 	UpdateIndex(ctx context.Context, indexName string, schema []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error
-	CheckExist(ctx context.Context, indexName string) (bool, error)
+	CheckIndexExist(ctx context.Context, indexName string) (bool, error)
 	ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error)
 	GetIndexCapabilities(ctx context.Context) (*IndexCapabilities, error)
 
 	ListDocuments(ctx context.Context, indexName string, res *Resource, params *ResourceDataQueryParams) ([]map[string]any, int64, error)
 	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)
 	CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error)
+	IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error)
 	UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error)
 	DeleteDocument(ctx context.Context, indexName string, docID string) error
 	DeleteDocuments(ctx context.Context, indexName string, docIDs string) error

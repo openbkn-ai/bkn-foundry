@@ -48,17 +48,24 @@ func (rds *resourceDataService) resolveVectorConditions(ctx context.Context,
 	if err != nil {
 		return err
 	}
-	model, err := rds.embeddingModelForIndex(ctx, resource, cfg.Name)
+	modelID, err := rds.embeddingModelForIndex(ctx, resource, cfg.Name)
 	if err != nil {
 		return err
+	}
+	model, err := rds.mfs.GetModelByID(ctx, modelID)
+	if err != nil {
+		return fmt.Errorf("condition [knn_vector] load model %q failed: %w", modelID, err)
+	}
+	if model == nil || model.ModelID == "" {
+		return fmt.Errorf("condition [knn_vector] model %q is unavailable", modelID)
 	}
 
 	vectors, err := rds.mfs.GetVector(ctx, model, []string{text})
 	if err != nil {
-		return fmt.Errorf("condition [knn_vector] vectorize %q with model %q failed: %w", text, model, err)
+		return fmt.Errorf("condition [knn_vector] vectorize %q with model %q failed: %w", text, modelID, err)
 	}
 	if len(vectors) == 0 || vectors[0] == nil {
-		return fmt.Errorf("condition [knn_vector] model %q returned no vector for %q", model, text)
+		return fmt.Errorf("condition [knn_vector] model %q returned no vector for %q", modelID, text)
 	}
 
 	cfg.Name = field

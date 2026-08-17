@@ -54,14 +54,14 @@ func TestDatasetServiceIndexLifecycle(t *testing.T) {
 
 	t.Run("delete skips missing index", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CheckExist(gomock.Any(), "dataset-1").Return(false, nil)
+		lim.EXPECT().CheckIndexExist(gomock.Any(), "dataset-1").Return(false, nil)
 
 		require.NoError(t, ds.Delete(ctx, "dataset-1"))
 	})
 
 	t.Run("delete existing index", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CheckExist(gomock.Any(), "dataset-1").Return(true, nil)
+		lim.EXPECT().CheckIndexExist(gomock.Any(), "dataset-1").Return(true, nil)
 		lim.EXPECT().DeleteIndex(gomock.Any(), "dataset-1").Return(nil)
 
 		require.NoError(t, ds.Delete(ctx, "dataset-1"))
@@ -69,7 +69,7 @@ func TestDatasetServiceIndexLifecycle(t *testing.T) {
 
 	t.Run("check exist wraps error", func(t *testing.T) {
 		ds, lim := newDatasetServiceMock(t)
-		lim.EXPECT().CheckExist(gomock.Any(), "dataset-1").Return(false, errors.New("check failed"))
+		lim.EXPECT().CheckIndexExist(gomock.Any(), "dataset-1").Return(false, errors.New("check failed"))
 
 		got, err := ds.CheckExist(ctx, "dataset-1")
 

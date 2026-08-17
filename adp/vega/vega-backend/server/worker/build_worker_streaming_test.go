@@ -128,6 +128,65 @@ func TestStreamingDatabase(t *testing.T) {
 	})
 }
 
+func TestGetKafkaKeyValuesUsesConfiguredDocumentIDFields(t *testing.T) {
+	values, err := getKafkaKeyValues([]string{"id", "payload"}, map[string]any{
+		"id":      1,
+		"payload": map[string]any{"region": "cn"},
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, []interfaces.KeyValue{
+		{Key: "id", Value: 1},
+		{Key: "payload", Value: map[string]any{"region": "cn"}},
+	}, values)
+}
+
+func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	worker := &streamingBuildWorker{lim: lim}
+	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{BuildKeyFields: []string{"id"}}}
+	oldID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 1}})
+	require.NoError(t, err)
+	newID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
+	require.NoError(t, err)
+
+	gomock.InOrder(
+		lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{newID: {"id": 2, "title": "updated"}}).Return([]string{newID}, nil),
+		lim.EXPECT().DeleteDocument(gomock.Any(), "index-1", oldID).Return(nil),
+	)
+
+	require.NoError(t, worker.handleUpdateOperation(
+		context.Background(),
+		map[string]any{"id": 1},
+		map[string]any{"id": 2, "title": "updated"},
+		"index-1",
+		buildTask,
+		&embeddingPipeline{},
+	))
+}
+
+func TestHandleUpdateOperationKeepsOldDocumentWhenReplacementWriteFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	lim := vmock.NewMockLocalIndexManager(ctrl)
+	worker := &streamingBuildWorker{lim: lim}
+	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{BuildKeyFields: []string{"id"}}}
+	newID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
+	require.NoError(t, err)
+
+	lim.EXPECT().IndexDocuments(gomock.Any(), "index-1", map[string]map[string]any{newID: {"id": 2}}).Return(nil, errors.New("write failed"))
+
+	err = worker.handleUpdateOperation(
+		context.Background(),
+		map[string]any{"id": 1},
+		map[string]any{"id": 2},
+		"index-1",
+		buildTask,
+		&embeddingPipeline{},
+	)
+	require.ErrorContains(t, err, "write failed")
+}
+
 func TestBuildConnectorConfigUsesCaptureDatabase(t *testing.T) {
 	worker := &streamingBuildWorker{appSetting: &common.AppSetting{}}
 

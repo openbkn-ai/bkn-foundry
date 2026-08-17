@@ -105,19 +105,23 @@ type IndexConnector interface {
 	// ExecuteQuery executes a query on the index
 	ExecuteQuery(ctx context.Context, indexName string, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
 	ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*QueryResult, error)
-	ExecuteRawQuery(ctx context.Context, index string, query map[string]any) (*RawQueryResponse, error)
-	// for dataset
-	Create(ctx context.Context, name string, schemaDefinition []*Property) error
-	Update(ctx context.Context, name string, schemaDefinition []*Property) error
-	Delete(ctx context.Context, name string) error
-	CheckExist(ctx context.Context, name string) (bool, error)
+	ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*RawQueryResponse, error)
+
+	// for index
+	CreateIndex(ctx context.Context, indexName string, schemaDefinition []*Property) error
+	UpdateIndex(ctx context.Context, indexName string, schemaDefinition []*Property) error
+	DeleteIndex(ctx context.Context, indexName string) error
+	CheckIndexExist(ctx context.Context, indexName string) (bool, error)
 	ValidateAnalyzer(ctx context.Context, analyzer string) (bool, error)
-	CreateDocuments(ctx context.Context, name string, documents []map[string]any) ([]string, error)
-	GetDocument(ctx context.Context, name string, docID string) (map[string]any, error)
-	DeleteDocument(ctx context.Context, name string, docID string) error
-	UpsertDocuments(ctx context.Context, name string, updateRequests []map[string]any) ([]string, error)
-	DeleteDocuments(ctx context.Context, name string, docIDs string) error
-	DeleteDocumentsByQuery(ctx context.Context, name string, params *ResourceDataQueryParams, schemaDefinition []*Property) error
+
+	// for document
+	CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error)
+	IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error)
+	GetDocument(ctx context.Context, indexName string, docID string) (map[string]any, error)
+	DeleteDocument(ctx context.Context, indexName string, docID string) error
+	UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error)
+	DeleteDocuments(ctx context.Context, indexName string, docIDs string) error
+	DeleteDocumentsByQuery(ctx context.Context, indexName string, params *ResourceDataQueryParams, schemaDefinition []*Property) error
 }
 
 // APIConnector defines the interface for REST/GraphQL API connectors.

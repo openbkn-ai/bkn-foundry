@@ -1492,19 +1492,19 @@ func (m *MockIndexConnector) EXPECT() *MockIndexConnectorMockRecorder {
 	return m.recorder
 }
 
-// CheckExist mocks base method.
-func (m *MockIndexConnector) CheckExist(ctx context.Context, name string) (bool, error) {
+// CheckIndexExist mocks base method.
+func (m *MockIndexConnector) CheckIndexExist(ctx context.Context, indexName string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckExist", ctx, name)
+	ret := m.ctrl.Call(m, "CheckIndexExist", ctx, indexName)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// CheckExist indicates an expected call of CheckExist.
-func (mr *MockIndexConnectorMockRecorder) CheckExist(ctx, name any) *gomock.Call {
+// CheckIndexExist indicates an expected call of CheckIndexExist.
+func (mr *MockIndexConnectorMockRecorder) CheckIndexExist(ctx, indexName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExist", reflect.TypeOf((*MockIndexConnector)(nil).CheckExist), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckIndexExist", reflect.TypeOf((*MockIndexConnector)(nil).CheckIndexExist), ctx, indexName)
 }
 
 // Close mocks base method.
@@ -1535,89 +1535,89 @@ func (mr *MockIndexConnectorMockRecorder) Connect(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Connect", reflect.TypeOf((*MockIndexConnector)(nil).Connect), ctx)
 }
 
-// Create mocks base method.
-func (m *MockIndexConnector) Create(ctx context.Context, name string, schemaDefinition []*interfaces.Property) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, name, schemaDefinition)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Create indicates an expected call of Create.
-func (mr *MockIndexConnectorMockRecorder) Create(ctx, name, schemaDefinition any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockIndexConnector)(nil).Create), ctx, name, schemaDefinition)
-}
-
 // CreateDocuments mocks base method.
-func (m *MockIndexConnector) CreateDocuments(ctx context.Context, name string, documents []map[string]any) ([]string, error) {
+func (m *MockIndexConnector) CreateDocuments(ctx context.Context, indexName string, documents []map[string]any) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateDocuments", ctx, name, documents)
+	ret := m.ctrl.Call(m, "CreateDocuments", ctx, indexName, documents)
 	ret0, _ := ret[0].([]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateDocuments indicates an expected call of CreateDocuments.
-func (mr *MockIndexConnectorMockRecorder) CreateDocuments(ctx, name, documents any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) CreateDocuments(ctx, indexName, documents any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDocuments", reflect.TypeOf((*MockIndexConnector)(nil).CreateDocuments), ctx, name, documents)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateDocuments", reflect.TypeOf((*MockIndexConnector)(nil).CreateDocuments), ctx, indexName, documents)
 }
 
-// Delete mocks base method.
-func (m *MockIndexConnector) Delete(ctx context.Context, name string) error {
+// CreateIndex mocks base method.
+func (m *MockIndexConnector) CreateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, name)
+	ret := m.ctrl.Call(m, "CreateIndex", ctx, indexName, schemaDefinition)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Delete indicates an expected call of Delete.
-func (mr *MockIndexConnectorMockRecorder) Delete(ctx, name any) *gomock.Call {
+// CreateIndex indicates an expected call of CreateIndex.
+func (mr *MockIndexConnectorMockRecorder) CreateIndex(ctx, indexName, schemaDefinition any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockIndexConnector)(nil).Delete), ctx, name)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateIndex", reflect.TypeOf((*MockIndexConnector)(nil).CreateIndex), ctx, indexName, schemaDefinition)
 }
 
 // DeleteDocument mocks base method.
-func (m *MockIndexConnector) DeleteDocument(ctx context.Context, name, docID string) error {
+func (m *MockIndexConnector) DeleteDocument(ctx context.Context, indexName, docID string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDocument", ctx, name, docID)
+	ret := m.ctrl.Call(m, "DeleteDocument", ctx, indexName, docID)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteDocument indicates an expected call of DeleteDocument.
-func (mr *MockIndexConnectorMockRecorder) DeleteDocument(ctx, name, docID any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) DeleteDocument(ctx, indexName, docID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocument", reflect.TypeOf((*MockIndexConnector)(nil).DeleteDocument), ctx, name, docID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocument", reflect.TypeOf((*MockIndexConnector)(nil).DeleteDocument), ctx, indexName, docID)
 }
 
 // DeleteDocuments mocks base method.
-func (m *MockIndexConnector) DeleteDocuments(ctx context.Context, name, docIDs string) error {
+func (m *MockIndexConnector) DeleteDocuments(ctx context.Context, indexName, docIDs string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDocuments", ctx, name, docIDs)
+	ret := m.ctrl.Call(m, "DeleteDocuments", ctx, indexName, docIDs)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteDocuments indicates an expected call of DeleteDocuments.
-func (mr *MockIndexConnectorMockRecorder) DeleteDocuments(ctx, name, docIDs any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) DeleteDocuments(ctx, indexName, docIDs any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocuments", reflect.TypeOf((*MockIndexConnector)(nil).DeleteDocuments), ctx, name, docIDs)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocuments", reflect.TypeOf((*MockIndexConnector)(nil).DeleteDocuments), ctx, indexName, docIDs)
 }
 
 // DeleteDocumentsByQuery mocks base method.
-func (m *MockIndexConnector) DeleteDocumentsByQuery(ctx context.Context, name string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
+func (m *MockIndexConnector) DeleteDocumentsByQuery(ctx context.Context, indexName string, params *interfaces.ResourceDataQueryParams, schemaDefinition []*interfaces.Property) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteDocumentsByQuery", ctx, name, params, schemaDefinition)
+	ret := m.ctrl.Call(m, "DeleteDocumentsByQuery", ctx, indexName, params, schemaDefinition)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteDocumentsByQuery indicates an expected call of DeleteDocumentsByQuery.
-func (mr *MockIndexConnectorMockRecorder) DeleteDocumentsByQuery(ctx, name, params, schemaDefinition any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) DeleteDocumentsByQuery(ctx, indexName, params, schemaDefinition any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocumentsByQuery", reflect.TypeOf((*MockIndexConnector)(nil).DeleteDocumentsByQuery), ctx, name, params, schemaDefinition)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDocumentsByQuery", reflect.TypeOf((*MockIndexConnector)(nil).DeleteDocumentsByQuery), ctx, indexName, params, schemaDefinition)
+}
+
+// DeleteIndex mocks base method.
+func (m *MockIndexConnector) DeleteIndex(ctx context.Context, indexName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteIndex", ctx, indexName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteIndex indicates an expected call of DeleteIndex.
+func (mr *MockIndexConnectorMockRecorder) DeleteIndex(ctx, indexName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteIndex", reflect.TypeOf((*MockIndexConnector)(nil).DeleteIndex), ctx, indexName)
 }
 
 // ExecuteQuery mocks base method.
@@ -1651,18 +1651,18 @@ func (mr *MockIndexConnectorMockRecorder) ExecuteQueryWithDsl(ctx, resourceName,
 }
 
 // ExecuteRawQuery mocks base method.
-func (m *MockIndexConnector) ExecuteRawQuery(ctx context.Context, index string, query map[string]any) (*interfaces.RawQueryResponse, error) {
+func (m *MockIndexConnector) ExecuteRawQuery(ctx context.Context, indexName string, query map[string]any) (*interfaces.RawQueryResponse, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteRawQuery", ctx, index, query)
+	ret := m.ctrl.Call(m, "ExecuteRawQuery", ctx, indexName, query)
 	ret0, _ := ret[0].(*interfaces.RawQueryResponse)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ExecuteRawQuery indicates an expected call of ExecuteRawQuery.
-func (mr *MockIndexConnectorMockRecorder) ExecuteRawQuery(ctx, index, query any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) ExecuteRawQuery(ctx, indexName, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteRawQuery", reflect.TypeOf((*MockIndexConnector)(nil).ExecuteRawQuery), ctx, index, query)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteRawQuery", reflect.TypeOf((*MockIndexConnector)(nil).ExecuteRawQuery), ctx, indexName, query)
 }
 
 // GetCategory mocks base method.
@@ -1680,18 +1680,18 @@ func (mr *MockIndexConnectorMockRecorder) GetCategory() *gomock.Call {
 }
 
 // GetDocument mocks base method.
-func (m *MockIndexConnector) GetDocument(ctx context.Context, name, docID string) (map[string]any, error) {
+func (m *MockIndexConnector) GetDocument(ctx context.Context, indexName, docID string) (map[string]any, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDocument", ctx, name, docID)
+	ret := m.ctrl.Call(m, "GetDocument", ctx, indexName, docID)
 	ret0, _ := ret[0].(map[string]any)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetDocument indicates an expected call of GetDocument.
-func (mr *MockIndexConnectorMockRecorder) GetDocument(ctx, name, docID any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) GetDocument(ctx, indexName, docID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockIndexConnector)(nil).GetDocument), ctx, name, docID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDocument", reflect.TypeOf((*MockIndexConnector)(nil).GetDocument), ctx, indexName, docID)
 }
 
 // GetEnabled mocks base method.
@@ -1807,6 +1807,21 @@ func (mr *MockIndexConnectorMockRecorder) GetType() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetType", reflect.TypeOf((*MockIndexConnector)(nil).GetType))
 }
 
+// IndexDocuments mocks base method.
+func (m *MockIndexConnector) IndexDocuments(ctx context.Context, indexName string, documents map[string]map[string]any) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IndexDocuments", ctx, indexName, documents)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// IndexDocuments indicates an expected call of IndexDocuments.
+func (mr *MockIndexConnectorMockRecorder) IndexDocuments(ctx, indexName, documents any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IndexDocuments", reflect.TypeOf((*MockIndexConnector)(nil).IndexDocuments), ctx, indexName, documents)
+}
+
 // ListIndexes mocks base method.
 func (m *MockIndexConnector) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
 	m.ctrl.T.Helper()
@@ -1891,33 +1906,33 @@ func (mr *MockIndexConnectorMockRecorder) TestConnection(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestConnection", reflect.TypeOf((*MockIndexConnector)(nil).TestConnection), ctx)
 }
 
-// Update mocks base method.
-func (m *MockIndexConnector) Update(ctx context.Context, name string, schemaDefinition []*interfaces.Property) error {
+// UpdateIndex mocks base method.
+func (m *MockIndexConnector) UpdateIndex(ctx context.Context, indexName string, schemaDefinition []*interfaces.Property) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, name, schemaDefinition)
+	ret := m.ctrl.Call(m, "UpdateIndex", ctx, indexName, schemaDefinition)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Update indicates an expected call of Update.
-func (mr *MockIndexConnectorMockRecorder) Update(ctx, name, schemaDefinition any) *gomock.Call {
+// UpdateIndex indicates an expected call of UpdateIndex.
+func (mr *MockIndexConnectorMockRecorder) UpdateIndex(ctx, indexName, schemaDefinition any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockIndexConnector)(nil).Update), ctx, name, schemaDefinition)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateIndex", reflect.TypeOf((*MockIndexConnector)(nil).UpdateIndex), ctx, indexName, schemaDefinition)
 }
 
 // UpsertDocuments mocks base method.
-func (m *MockIndexConnector) UpsertDocuments(ctx context.Context, name string, updateRequests []map[string]any) ([]string, error) {
+func (m *MockIndexConnector) UpsertDocuments(ctx context.Context, indexName string, updateRequests []map[string]any) ([]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertDocuments", ctx, name, updateRequests)
+	ret := m.ctrl.Call(m, "UpsertDocuments", ctx, indexName, updateRequests)
 	ret0, _ := ret[0].([]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpsertDocuments indicates an expected call of UpsertDocuments.
-func (mr *MockIndexConnectorMockRecorder) UpsertDocuments(ctx, name, updateRequests any) *gomock.Call {
+func (mr *MockIndexConnectorMockRecorder) UpsertDocuments(ctx, indexName, updateRequests any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertDocuments", reflect.TypeOf((*MockIndexConnector)(nil).UpsertDocuments), ctx, name, updateRequests)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertDocuments", reflect.TypeOf((*MockIndexConnector)(nil).UpsertDocuments), ctx, indexName, updateRequests)
 }
 
 // ValidateAnalyzer mocks base method.

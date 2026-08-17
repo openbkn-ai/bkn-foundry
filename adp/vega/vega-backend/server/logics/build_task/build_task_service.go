@@ -327,7 +327,7 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 		defaultFulltextAnalyzer = resource.IndexConfig.DefaultFulltextAnalyzer
 	}
 
-	embeddingModelCache := map[string]interfaces.BuildTaskEmbeddingConfig{}
+	embeddingModelCache := map[string]*interfaces.SmallModel{}
 
 	for _, prop := range resource.SchemaDefinition {
 		if prop == nil {
@@ -340,24 +340,31 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 			}
 			switch feature.FeatureType {
 			case interfaces.PropertyFeatureType_Vector:
-				model := stringConfigValue(feature.Config, "embedding_model")
-				if model == "" {
-					model = defaultEmbeddingModel
+				modelID := stringConfigValue(feature.Config, "embedding_model")
+				if modelID == "" {
+					modelID = defaultEmbeddingModel
 				}
-				embeddingConfig, ok := embeddingModelCache[model]
+				if modelID == "" {
+					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel).
+						WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", fieldName))
+				}
+				model, ok := embeddingModelCache[modelID]
 				if !ok {
-					normalizedModel, modelDimensions, err := bts.normalizeEmbeddingModel(ctx, model, fieldName, 0)
+					var err error
+					model, err = bts.mfs.GetModelByID(ctx, modelID)
 					if err != nil {
-						return err
+						return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+							WithErrorDetails(err.Error())
 					}
-					embeddingConfig = interfaces.BuildTaskEmbeddingConfig{
-						ModelID:    normalizedModel,
-						Dimensions: modelDimensions,
+					if model == nil || model.ModelID == "" {
+						return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
+							WithErrorDetails(fmt.Sprintf("model %q is unavailable", modelID))
 					}
-					embeddingModelCache[model] = embeddingConfig
+					embeddingModelCache[modelID] = model
 				}
+				embeddingModel := *model
 				fieldConfig := buildTask.IndexConfig.Features[fieldName]
-				fieldConfig.Vector = &embeddingConfig
+				fieldConfig.Vector = &embeddingModel
 				buildTask.IndexConfig.Features[fieldName] = fieldConfig
 			case interfaces.PropertyFeatureType_Fulltext:
 				analyzer := stringConfigValue(feature.Config, "analyzer")
@@ -391,29 +398,6 @@ func stringConfigValue(config map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
-func (bts *buildTaskService) normalizeEmbeddingModel(ctx context.Context, embeddingModel string, embeddingFields string, modelDimensions int) (string, int, error) {
-	if embeddingModel == "" && embeddingFields != "" {
-		return "", 0, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel).
-			WithErrorDetails(fmt.Sprintf("embedding model is required for vector field %q; set config.embedding_model or index_config.default_embedding_model", embeddingFields))
-	}
-	if embeddingModel == "" {
-		return "", modelDimensions, nil
-	}
-	// embedding_model 统一归一化为模型 ID 存储：传入是模型名则解析为 ID 并补全维度；
-	// 传入已是模型 ID 时 GetModelByName 按名查不到（err != nil），此时若已带维度则原样保留为 ID。
-	// 既解析不到又没维度则无法建向量索引，按错误处理。
-	if model, err := bts.mfs.GetModelByName(ctx, embeddingModel); err == nil {
-		embeddingModel = model.ModelID
-		if modelDimensions == 0 {
-			modelDimensions = model.EmbeddingDim
-		}
-	} else if modelDimensions == 0 {
-		return "", 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_CreateFailed).
-			WithErrorDetails(err.Error())
-	}
-	return embeddingModel, modelDimensions, nil
-}
-
 // GetByID retrieves a build task by ID.
 func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interfaces.BuildTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get build task")
@@ -440,7 +424,6 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 		logger.Warnf("Failed to populate build task account names: %v", err)
 	}
 
-	buildTask.IndexHealth = computeIndexHealth(buildTask)
 	span.SetStatus(codes.Ok, "")
 	return buildTask, nil
 }
@@ -621,57 +604,6 @@ func (bts *buildTaskService) InternalGetStatus(ctx context.Context, id string) (
 	return bts.bta.GetStatus(ctx, id)
 }
 
-// computeIndexHealth 按当前计数派生各索引健康度（不落库）。embedding 与 fulltext
-// 相互独立：fulltext 随同步即时生效，建了即 ok；embedding 要等向量写满才算 ok。
-// 仅在终态给出 ok/partial/failed，进行中统一 building，避免把中途进度误报成失败。
-func computeIndexHealth(bt *interfaces.BuildTask) *interfaces.IndexHealth {
-	h := &interfaces.IndexHealth{Embedding: "none", Fulltext: "none"}
-	if hasFulltextIndexConfig(bt) {
-		h.Fulltext = "ok"
-	}
-	switch {
-	case !hasEmbeddingIndexConfig(bt):
-		h.Embedding = "none"
-	case bt.Status == interfaces.BuildTaskStatusRunning || bt.Status == interfaces.BuildTaskStatusPending:
-		h.Embedding = "building"
-	case bt.SyncedCount == 0:
-		// 无数据可向量化，空索引视为可用
-		h.Embedding = "ok"
-	case bt.VectorizedCount >= bt.SyncedCount:
-		h.Embedding = "ok"
-	case bt.VectorizedCount == 0:
-		h.Embedding = "failed"
-	default:
-		h.Embedding = "partial"
-	}
-	h.Usable = h.Embedding == "none" || h.Embedding == "ok"
-	return h
-}
-
-func hasEmbeddingIndexConfig(bt *interfaces.BuildTask) bool {
-	if bt == nil || bt.IndexConfig == nil {
-		return false
-	}
-	for _, feature := range bt.IndexConfig.Features {
-		if feature.Vector != nil {
-			return true
-		}
-	}
-	return false
-}
-
-func hasFulltextIndexConfig(bt *interfaces.BuildTask) bool {
-	if bt == nil || bt.IndexConfig == nil {
-		return false
-	}
-	for _, feature := range bt.IndexConfig.Features {
-		if feature.Fulltext != nil {
-			return true
-		}
-	}
-	return false
-}
-
 // List retrieves build tasks with filters and pagination.
 func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
@@ -691,12 +623,6 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	accountInfos := make([]*interfaces.AccountInfo, 0, len(buildTasks))
 	for _, bt := range buildTasks {
 		accountInfos = append(accountInfos, &bt.Creator)
-		bt.IndexHealth = computeIndexHealth(&interfaces.BuildTask{
-			Status:          bt.Status,
-			SyncedCount:     bt.SyncedCount,
-			VectorizedCount: bt.VectorizedCount,
-			IndexConfig:     bt.IndexConfig,
-		})
 	}
 	if err := bts.ums.GetAccountNames(ctx, accountInfos); err != nil {
 		span.RecordError(err)

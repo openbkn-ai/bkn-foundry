@@ -7,6 +7,7 @@ package worker
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -59,6 +60,54 @@ func TestUpdateResourceIndexName(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, "old-index", resource.LocalIndexName)
 	})
+}
+
+func TestGenerateDocumentID(t *testing.T) {
+	keys := []interfaces.KeyValue{{Key: "tenant_id", Value: "tenant-1"}, {Key: "id", Value: 42}}
+
+	docID, err := generateDocumentID(keys)
+	require.NoError(t, err)
+	assert.Len(t, docID, 64)
+
+	sameDocID, err := generateDocumentID(keys)
+	require.NoError(t, err)
+	assert.Equal(t, docID, sameDocID)
+
+	reorderedDocID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 42}, {Key: "tenant_id", Value: "tenant-1"}})
+	require.NoError(t, err)
+	assert.NotEqual(t, docID, reorderedDocID)
+
+	documentKeys, err := extractKeyValues([]string{"tenant_id", "id"}, map[string]any{"tenant_id": "tenant-2", "id": 99})
+	require.NoError(t, err)
+	docID, err = generateDocumentID(documentKeys)
+	require.NoError(t, err)
+	assert.Len(t, docID, 64)
+
+	first, err := generateDocumentID([]interfaces.KeyValue{{Key: "tenant_id", Value: "a-b"}, {Key: "id", Value: "c"}})
+	require.NoError(t, err)
+	second, err := generateDocumentID([]interfaces.KeyValue{{Key: "tenant_id", Value: "a"}, {Key: "id", Value: "b-c"}})
+	require.NoError(t, err)
+	assert.NotEqual(t, first, second)
+
+	_, err = extractKeyValues([]string{"tenant_id", "id"}, map[string]any{"tenant_id": "tenant-2"})
+	require.ErrorContains(t, err, `build key field "id" is missing`)
+}
+
+func TestKeyValueJSONUsesOrderedCursorFormat(t *testing.T) {
+	mark, err := json.Marshal([]interfaces.KeyValue{
+		{Key: "id", Value: 42},
+		{Key: "tenant_id", Value: "tenant-1"},
+	})
+	require.NoError(t, err)
+	assert.JSONEq(t, `[{"key":"id","value":42},{"key":"tenant_id","value":"tenant-1"}]`, string(mark))
+
+	var restored []interfaces.KeyValue
+	require.NoError(t, json.Unmarshal(mark, &restored))
+	require.Len(t, restored, 2)
+	assert.Equal(t, "id", restored[0].Key)
+	assert.Equal(t, float64(42), restored[0].Value)
+	assert.Equal(t, "tenant_id", restored[1].Key)
+	assert.Equal(t, "tenant-1", restored[1].Value)
 }
 
 func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {

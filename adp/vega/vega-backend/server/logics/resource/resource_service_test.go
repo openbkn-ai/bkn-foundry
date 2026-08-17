@@ -79,8 +79,8 @@ func expectResourceServiceTransaction(t *testing.T, rs *resourceService, commit 
 	})
 }
 
-func TestValidateSingleFeatureTypePerPropertyRejectsKeywordDuplicates(t *testing.T) {
-	err := validateSingleFeatureTypePerProperty(context.Background(), []*interfaces.Property{{
+func TestValidateSchemaDefinitionRejectsDuplicateFeatureTypes(t *testing.T) {
+	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{
 		Name: "code",
 		Features: []interfaces.PropertyFeature{
 			{FeatureType: interfaces.PropertyFeatureType_Keyword},
@@ -543,6 +543,13 @@ func requireResourceHTTPError(t *testing.T, err error, wantCode string) *rest.HT
 	return httpErr
 }
 
+func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
+	err := validateSchemaDefinition(context.Background(), []*interfaces.Property{{Name: "id"}, nil})
+
+	httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+	assert.Contains(t, httpErr.BaseError.ErrorDetails, "cannot contain null fields")
+}
+
 func TestResourceServiceCreate(t *testing.T) {
 	t.Run("rolls back resource and extensions when extension replacement fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
@@ -663,14 +670,14 @@ func TestResourceServiceCreate(t *testing.T) {
 			t.Fatal("expected error")
 		}
 	})
-	t.Run("create rejects missing feature embedding model", func(t *testing.T) {
+	t.Run("create rejects missing feature embedding model ID", func(t *testing.T) {
 		rs, _, mockPS, _, _, mockCS, _ := newTestService(t)
 		ctrl := gomock.NewController(t)
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), "cat1").Return(true, nil)
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "missing-model").Return(nil, fmt.Errorf("model not found"))
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "missing-model-id").Return(nil, fmt.Errorf("model not found"))
 
 		_, err := rs.Create(context.Background(), &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
@@ -684,7 +691,7 @@ func TestResourceServiceCreate(t *testing.T) {
 						{
 							FeatureType: interfaces.PropertyFeatureType_Vector,
 							RefProperty: "title",
-							Config:      map[string]any{"embedding_model": "missing-model"},
+							Config:      map[string]any{"embedding_model": "missing-model-id"},
 						},
 					},
 				},
@@ -1190,14 +1197,14 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	t.Run("update rejects missing default embedding model", func(t *testing.T) {
+	t.Run("update rejects missing default embedding model ID", func(t *testing.T) {
 		rs, _, mockPS, _, _, _, mockBTA := newTestService(t)
 		ctrl := gomock.NewController(t)
 		mockMFS := vmock.NewMockModelFactoryService(ctrl)
 		rs.mfs = mockMFS
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-		mockMFS.EXPECT().GetModelByName(gomock.Any(), "missing-model").Return(nil, fmt.Errorf("model not found"))
+		mockMFS.EXPECT().GetModelByID(gomock.Any(), "missing-model-id").Return(nil, fmt.Errorf("model not found"))
 
 		err := rs.Update(context.Background(), &interfaces.Resource{
 			ID:               "r1",
@@ -1219,7 +1226,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				DefaultEmbeddingModel: "missing-model",
+				DefaultEmbeddingModel: "missing-model-id",
 			},
 		})
 

@@ -5,6 +5,7 @@
 package opensearch
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -12,6 +13,16 @@ import (
 
 	"vega-backend/interfaces"
 )
+
+func TestIndexDocumentsRequiresDocumentID(t *testing.T) {
+	c := &OpenSearchConnector{}
+
+	_, err := c.IndexDocuments(context.Background(), "index-1", map[string]map[string]any{
+		"": {"title": "document without ID"},
+	})
+
+	require.ErrorContains(t, err, "id is required")
+}
 
 func TestBuildFieldMappingsStringFulltextAddsTextSubfield(t *testing.T) {
 	t.Run("string fulltext creates text subfield", func(t *testing.T) {
