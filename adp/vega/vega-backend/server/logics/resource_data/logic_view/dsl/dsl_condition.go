@@ -447,10 +447,17 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionLike(ctx context.Context, 
 		return nil, err
 	}
 
-	vStr := c.replaceLikeWildcards(cond.Value)
+	if cond.LegacyWildcards {
+		return map[string]any{
+			"regexp": map[string]any{
+				fieldName + keyword: c.legacyLikeWildcardRegexp(cond.Value),
+			},
+		}, nil
+	}
+
 	return map[string]any{
-		"regexp": map[string]any{
-			fieldName + keyword: vStr,
+		"wildcard": map[string]any{
+			fieldName + keyword: c.likeContainsPattern(cond.Value),
 		},
 	}, nil
 }
@@ -473,14 +480,22 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionNotLike(ctx context.Contex
 		return nil, err
 	}
 
-	vStr := c.replaceLikeWildcards(cond.Value)
+	inner := map[string]any{
+		"wildcard": map[string]any{
+			fieldName + keyword: c.likeContainsPattern(cond.Value),
+		},
+	}
+	if cond.LegacyWildcards {
+		inner = map[string]any{
+			"regexp": map[string]any{
+				fieldName + keyword: c.legacyLikeWildcardRegexp(cond.Value),
+			},
+		}
+	}
+
 	return map[string]any{
 		"bool": map[string]any{
-			"must_not": map[string]any{
-				"regexp": map[string]any{
-					fieldName + keyword: vStr,
-				},
-			},
+			"must_not": inner,
 		},
 	}, nil
 }
@@ -1082,8 +1097,25 @@ func (c *logicViewDSLGenerator) ConvertFilterConditionKnnVector(ctx context.Cont
 	}, nil
 }
 
-// replaceLikeWildcards，把 like 的通配符替换成正则表达式里的字符
-func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
+// likeContainsPattern 把 like / not_like 的字面子串转成 OpenSearch 的 wildcard 模式。
+//
+// like 的契约是子串包含，值里的 % 与 _ 已在 filter_condition.ParseLikeValue 拦下，
+// 到这里的都是要原样匹配的字面量，因此只需转义 wildcard 自己的元字符 * ? \ 后两端补 *。
+func (c *logicViewDSLGenerator) likeContainsPattern(input string) string {
+	var escaped strings.Builder
+	for _, r := range input {
+		if r == '*' || r == '?' || r == '\\' {
+			escaped.WriteRune('\\')
+		}
+		escaped.WriteRune(r)
+	}
+	return "*" + escaped.String() + "*"
+}
+
+// legacyLikeWildcardRegexp 还原改动前索引路径对 like 老写法的处理：% -> .*、_ -> .，
+// 反斜杠转义保留。只在条件被标记为老写法时用（见 filter_condition.MarkLegacyLikeWildcards），
+// 存量视图定义因此结果不变；新写法走 likeContainsPattern 的字面子串语义。
+func (c *logicViewDSLGenerator) legacyLikeWildcardRegexp(input string) string {
 	if input == "" {
 		return input
 	}
@@ -1096,23 +1128,18 @@ func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
 		r := runes[i]
 
 		if escaped {
-			// 转义字符后的字符
 			switch r {
 			case '%', '_', '\\':
 				result.WriteRune(r)
 			default:
-				// 如果转义了非特殊字符，保留转义符和字符
 				result.WriteRune('\\')
 				result.WriteRune(r)
 			}
 			escaped = false
 		} else if r == '\\' {
-			// 遇到转义符，检查是否是最后一个字符
 			if i == len(runes)-1 {
-				// 转义符在末尾，直接输出
 				result.WriteRune(r)
 			} else {
-				// 标记转义状态，但不立即输出转义符
 				escaped = true
 			}
 		} else if r == '%' {
@@ -1124,7 +1151,6 @@ func (c *logicViewDSLGenerator) replaceLikeWildcards(input string) string {
 		}
 	}
 
-	// 处理以转义符结尾的情况
 	if escaped {
 		result.WriteRune('\\')
 	}

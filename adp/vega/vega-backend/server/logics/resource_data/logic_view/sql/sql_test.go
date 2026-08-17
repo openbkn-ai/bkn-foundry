@@ -360,7 +360,7 @@ func TestLogicViewSQLConvertFilterCondition(t *testing.T) {
 			Operation: filter_condition.OperationLike,
 			ValueOptCfg: interfaces.ValueOptCfg{
 				ValueFrom: interfaces.ValueFrom_Const,
-				Value:     "a_%'b",
+				Value:     `a\_\%'b`,
 			},
 		}, fields)
 
@@ -386,7 +386,7 @@ func TestLogicViewSQLConvertFilterCondition(t *testing.T) {
 		{name: "gte field", cfg: sqlConditionCfg("age", filter_condition.OperationGte, interfaces.ValueFrom_Field, "score"), wantSQL: "`age` >= `score`"},
 		{name: "in const slice", cfg: sqlConditionCfg("name", filter_condition.OperationIn, interfaces.ValueFrom_Const, []any{"alice", "bob"}), wantSQL: "`name` IN (?,?)", wantArg: []any{"alice", "bob"}},
 		{name: "not in const slice", cfg: sqlConditionCfg("name", filter_condition.OperationNotIn, interfaces.ValueFrom_Const, []any{"alice", "bob"}), wantSQL: "`name` NOT IN (?,?)", wantArg: []any{"alice", "bob"}},
-		{name: "not like escapes special chars", cfg: sqlConditionCfg("name", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, "a_%"), wantSQL: "`name` NOT LIKE ?", wantArg: []any{`%a\_\%%`}},
+		{name: "not like escapes special chars", cfg: sqlConditionCfg("name", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, `a\_\%`), wantSQL: "`name` NOT LIKE ?", wantArg: []any{`%a\_\%%`}},
 		{name: "contain values", cfg: sqlConditionCfg("tags", filter_condition.OperationContain, interfaces.ValueFrom_Const, []any{"core", "pii"}), wantSQL: "(FIND_IN_SET(?, `tags`) > 0 AND FIND_IN_SET(?, `tags`) > 0)", wantArg: []any{"core", "pii"}},
 		{name: "not contain values", cfg: sqlConditionCfg("tags", filter_condition.OperationNotContain, interfaces.ValueFrom_Const, []any{"core", "pii"}), wantSQL: "(FIND_IN_SET(?, `tags`) = 0 OR FIND_IN_SET(?, `tags`) = 0)", wantArg: []any{"core", "pii"}},
 		{name: "range values", cfg: sqlConditionCfg("age", filter_condition.OperationRange, interfaces.ValueFrom_Const, []any{18, 30}), wantSQL: "(`age` >= ? AND `age` <= ?)", wantArg: []any{18, 30}},
@@ -605,4 +605,52 @@ func mustSQLCondition(t *testing.T, cfg *interfaces.FilterCondCfg, fields map[st
 	cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
 	require.NoError(t, err)
 	return cond
+}
+
+// 存量 composite 视图的节点过滤条件也存在视图定义里，调用方改不了。新的 like 契约不能
+// 让这类视图升级后恒定查询失败——按老行为（% 当字面量）改写，而不是报错。
+func TestBuildFilterSQLKeepsLegacyLikeWildcards(t *testing.T) {
+	generator := NewlogicDefinitionSQLGenerator(testSQLView())
+	fields := testSQLConditionFieldMap()
+
+	t.Run("stored like with unescaped wildcards still builds", func(t *testing.T) {
+		filters := &interfaces.FilterCondCfg{
+			Name:      "name",
+			Operation: filter_condition.OperationLike,
+			ValueOptCfg: interfaces.ValueOptCfg{
+				ValueFrom: interfaces.ValueFrom_Const,
+				Value:     "%abc%",
+			},
+		}
+
+		sqlizer, _, err := generator.buildFilterSQL(context.Background(), filters, fields)
+
+		require.NoError(t, err)
+		require.NotNil(t, sqlizer)
+		sqlText, sqlArgs, err := sqlizer.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t, "`name` LIKE ?", sqlText)
+		// 与改动前一致：% 落成字面量
+		assert.Equal(t, []any{`%\%abc\%%`}, sqlArgs)
+	})
+
+	t.Run("stored condition tree is marked in place", func(t *testing.T) {
+		filters := &interfaces.FilterCondCfg{
+			Operation: filter_condition.OperationAnd,
+			SubConds: []*interfaces.FilterCondCfg{
+				{
+					Name:        "name",
+					Operation:   filter_condition.OperationLike,
+					ValueOptCfg: interfaces.ValueOptCfg{ValueFrom: interfaces.ValueFrom_Const, Value: "a%"},
+				},
+			},
+		}
+
+		_, _, err := generator.buildFilterSQL(context.Background(), filters, fields)
+
+		require.NoError(t, err)
+		assert.True(t, filters.SubConds[0].LegacyLikeWildcards)
+		// 值不动，交给连接器按自己改动前的语义翻译
+		assert.Equal(t, "a%", filters.SubConds[0].Value)
+	})
 }

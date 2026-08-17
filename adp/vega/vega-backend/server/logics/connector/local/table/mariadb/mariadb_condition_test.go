@@ -322,7 +322,8 @@ func TestMariaDBConnectorConvertFilterConditionLike(t *testing.T) {
 	})
 	t.Run("convert like special chars", func(t *testing.T) {
 		c := &MariaDBConnector{}
-		cond := mustNewCond(t, "name", "like", "100%")
+		// 值里的 % 要匹配字面量，调用方须转义；未转义的 % 在 NewFilterCondition 就被拒绝
+		cond := mustNewCond(t, "name", "like", `100\%`)
 		_, args := toSQL(t, c, cond)
 		argStr, ok := args[0].(string)
 		if !ok {

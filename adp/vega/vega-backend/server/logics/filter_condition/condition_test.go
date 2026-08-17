@@ -349,15 +349,30 @@ func TestInCond(t *testing.T) {
 
 func TestLikeCond(t *testing.T) {
 	t.Run("like cond valid", func(t *testing.T) {
-		cfg := constCfg("name", "like", "ali%")
+		cfg := constCfg("name", "like", "ali")
 		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		like := cond.(*LikeCond)
-		if like.Value != "ali%" {
-			t.Errorf("expected value 'ali%%', got '%s'", like.Value)
+		if like.Value != "ali" {
+			t.Errorf("expected value 'ali', got '%s'", like.Value)
 		}
+	})
+	// like 的值是字面子串。调用方按 SQL 习惯传 "%ali%" 时，SQL 连接器会把 % 转义成
+	// 字面量，查询恒返回空集且不报错——必须在入口就说清楚。
+	t.Run("like cond rejects SQL wildcards", func(t *testing.T) {
+		cfg := constCfg("name", "like", "%ali%")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "literal substring")
+		assert.Contains(t, err.Error(), "[regex]")
+	})
+	t.Run("not_like cond rejects SQL wildcards", func(t *testing.T) {
+		cfg := constCfg("name", "not_like", "ali%")
+		_, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "literal substring")
 	})
 	t.Run("like cond non string field", func(t *testing.T) {
 		cfg := constCfg("age", "like", "test")
@@ -379,6 +394,41 @@ func TestLikeCond(t *testing.T) {
 			t.Errorf("unexpected error: %v", err)
 		}
 	})
+}
+
+func TestParseLikeValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		value      string
+		want       string
+		errContain string
+	}{
+		{name: "plain substring", value: "Indirect", want: "Indirect"},
+		{name: "empty value", value: "", want: ""},
+		{name: "cjk substring", value: "吹塑风管", want: "吹塑风管"},
+		{name: "escaped percent is a literal", value: `50\%`, want: "50%"},
+		{name: "escaped underscore is a literal", value: `a\_b`, want: "a_b"},
+		{name: "escaped backslash is a literal", value: `a\\b`, want: `a\b`},
+		{name: "backslash before a plain char is kept", value: `a\nb`, want: `a\nb`},
+		{name: "trailing backslash is kept", value: `ab\`, want: `ab\`},
+		{name: "leading and trailing percent rejected", value: "%Indirect%", errContain: "literal substring"},
+		// _ 在改动前每条路上都是字面量，拒它是误伤：带下划线的检索词太常见
+		{name: "bare underscore is a literal", value: "object_type", want: "object_type"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := ParseLikeValue(OperationLike, tt.value)
+
+			if tt.errContain != "" {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), tt.errContain)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }
 
 func TestRangeCond(t *testing.T) {
@@ -656,4 +706,56 @@ func advancedFieldsMap() map[string]*interfaces.Property {
 	fields := testFieldsMap()
 	fields["embedding"] = &interfaces.Property{Name: "embedding", Type: interfaces.DataType_Vector}
 	return fields
+}
+
+// 视图定义里存着的老写法不能因为新契约而查废：标记为老写法后，由各连接器按它自己
+// 改动前的语义渲染（SQL 侧字面量、索引侧通配符正则），而不是每次查询都 400。
+func TestMarkLegacyLikeWildcards(t *testing.T) {
+	t.Run("marks an unescaped percent without touching the value", func(t *testing.T) {
+		cfg := constCfg("name", "like", "%ali%")
+
+		marked := MarkLegacyLikeWildcards(cfg)
+
+		assert.Equal(t, 1, marked)
+		assert.True(t, cfg.LegacyLikeWildcards)
+		// 值保持原样：翻译交给连接器，这里统一改写会丢掉索引侧的通配符语义
+		assert.Equal(t, "%ali%", cfg.Value)
+
+		cond, err := NewFilterCondition(context.Background(), cfg, testFieldsMap())
+		require.NoError(t, err)
+		like := cond.(*LikeCond)
+		assert.True(t, like.LegacyWildcards)
+		assert.Equal(t, "%ali%", like.Value)
+	})
+
+	t.Run("leaves already valid values untouched", func(t *testing.T) {
+		cfg := constCfg("name", "like", `object_type\%`)
+
+		marked := MarkLegacyLikeWildcards(cfg)
+
+		assert.Equal(t, 0, marked)
+		assert.False(t, cfg.LegacyLikeWildcards)
+	})
+
+	t.Run("walks nested conditions and skips other operations", func(t *testing.T) {
+		cfg := &interfaces.FilterCondCfg{
+			Operation: OperationAnd,
+			SubConds: []*interfaces.FilterCondCfg{
+				constCfg("name", "like", "%a"),
+				constCfg("name", "not_like", "b%"),
+				constCfg("name", "==", "100%"),
+			},
+		}
+
+		marked := MarkLegacyLikeWildcards(cfg)
+
+		assert.Equal(t, 2, marked)
+		assert.True(t, cfg.SubConds[0].LegacyLikeWildcards)
+		assert.True(t, cfg.SubConds[1].LegacyLikeWildcards)
+		assert.False(t, cfg.SubConds[2].LegacyLikeWildcards)
+	})
+
+	t.Run("tolerates a nil condition", func(t *testing.T) {
+		assert.Equal(t, 0, MarkLegacyLikeWildcards(nil))
+	})
 }

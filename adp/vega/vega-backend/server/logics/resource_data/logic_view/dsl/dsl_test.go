@@ -283,14 +283,26 @@ func TestLogicViewDSLConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"terms": map[string]any{"title.keyword": []any{"a", "b"}}}}},
 		},
 		{
-			name: "like converts wildcards to regexp",
-			cfg:  dslConditionCfg("title", filter_condition.OperationLike, interfaces.ValueFrom_Const, `a\_%`),
+			name: "like matches an escaped underscore literally",
+			cfg:  dslConditionCfg("title", filter_condition.OperationLike, interfaces.ValueFrom_Const, `a\_b`),
+			want: map[string]any{"wildcard": map[string]any{"title.keyword": "*a_b*"}},
+		},
+		{
+			// 存量视图定义里的老写法：DSL 侧仍按通配符正则渲染，结果与改动前一致。
+			// 这条路此前没有测试，而它恰好是行为与 SQL 侧不一致的那一半。
+			name: "legacy like keeps the wildcard regexp",
+			cfg:  dslLegacyCfg("title", filter_condition.OperationLike, `a\_%`),
 			want: map[string]any{"regexp": map[string]any{"title.keyword": "a_.*"}},
 		},
 		{
-			name: "not like",
-			cfg:  dslConditionCfg("title", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, `a%`),
+			name: "legacy not like keeps the wildcard regexp",
+			cfg:  dslLegacyCfg("title", filter_condition.OperationNotLike, `a%`),
 			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"regexp": map[string]any{"title.keyword": "a.*"}}}},
+		},
+		{
+			name: "not like",
+			cfg:  dslConditionCfg("title", filter_condition.OperationNotLike, interfaces.ValueFrom_Const, `ab`),
+			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"wildcard": map[string]any{"title.keyword": "*ab*"}}}},
 		},
 		{
 			name: "contain",
@@ -581,4 +593,11 @@ func mustDSLCondition(t *testing.T, cfg *interfaces.FilterCondCfg, fields map[st
 	cond, err := filter_condition.NewFilterCondition(context.Background(), cfg, fields)
 	require.NoError(t, err)
 	return cond
+}
+
+// dslLegacyCfg 构造一条被标记为老写法的 like/not_like（值里 % 当通配符）
+func dslLegacyCfg(name string, op string, value any) *interfaces.FilterCondCfg {
+	cfg := dslConditionCfg(name, op, interfaces.ValueFrom_Const, value)
+	cfg.LegacyLikeWildcards = true
+	return cfg
 }

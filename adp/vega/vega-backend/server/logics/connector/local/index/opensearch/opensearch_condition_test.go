@@ -51,9 +51,30 @@ func TestOpenSearchConnectorConvertFilterCondition(t *testing.T) {
 			want: map[string]any{"terms": map[string]any{"name": []any{"alice", "bob"}}},
 		},
 		{
-			name: "like converts SQL wildcards to regexp",
-			cfg:  osConstCfg("name", filter_condition.OperationLike, "a_%"),
-			want: map[string]any{"regexp": map[string]any{"name": "a..*"}},
+			name: "like matches the value as a literal substring",
+			cfg:  osConstCfg("name", filter_condition.OperationLike, "ali"),
+			want: map[string]any{"wildcard": map[string]any{"name": "*ali*"}},
+		},
+		{
+			name: "like escapes wildcard metacharacters in the value",
+			cfg:  osConstCfg("name", filter_condition.OperationLike, `a*b?c`),
+			want: map[string]any{"wildcard": map[string]any{"name": `*a\*b\?c*`}},
+		},
+		{
+			// 存量视图定义里的老写法：标记后索引侧仍按通配符正则渲染，结果与改动前一致
+			name: "legacy like keeps the wildcard regexp",
+			cfg:  osLegacyCfg("name", filter_condition.OperationLike, "%a_c%"),
+			want: map[string]any{"regexp": map[string]any{"name": ".*a.c.*"}},
+		},
+		{
+			name: "legacy not_like keeps the wildcard regexp",
+			cfg:  osLegacyCfg("name", filter_condition.OperationNotLike, "a%"),
+			want: map[string]any{"bool": map[string]any{"must_not": map[string]any{"regexp": map[string]any{"name": "a.*"}}}},
+		},
+		{
+			name: "like treats an escaped percent as a literal character",
+			cfg:  osConstCfg("name", filter_condition.OperationLike, `50\%`),
+			want: map[string]any{"wildcard": map[string]any{"name": "*50%*"}},
 		},
 		{
 			name: "range uses inclusive bounds",
@@ -330,4 +351,11 @@ func TestFulltextFieldName(t *testing.T) {
 
 		assert.Equal(t, "code", fulltextFieldName(prop))
 	})
+}
+
+// osLegacyCfg 构造一条被标记为老写法的 like/not_like（值里 % 当通配符）
+func osLegacyCfg(name string, op string, value any) *interfaces.FilterCondCfg {
+	cfg := osConstCfg(name, op, value)
+	cfg.LegacyLikeWildcards = true
+	return cfg
 }
