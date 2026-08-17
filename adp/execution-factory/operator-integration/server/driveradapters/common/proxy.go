@@ -114,6 +114,10 @@ func executionEnvKeys() []string {
 	return []string{
 		"source", "task_id", "capability_id", "capability_name",
 		"function_version_id", "user_id", "user_name",
+		// BKN 身份与会话上下文。必须列在这里：newExecutionEnv 靠这份清单把每个键
+		// 预置成空串，从而做到「每次执行下发全套」。漏一个，池化会话里上一个调用方
+		// 的令牌就会留给下一个——而令牌漏的不是标记，是身份。
+		"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID",
 	}
 }
 
@@ -198,15 +202,11 @@ func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[
 	}
 	// BKN 上下文。键名大写并加前缀，与 user_id 那几个追踪标记区分开——那些注释里
 	// 明写「仅作追踪标记，不参与鉴权」，而 bkn_token 是真凭据，不该混进同一命名风格。
-	if req.BKNToken != "" {
-		env["BKN_TOKEN"] = req.BKNToken
-	}
-	if req.BKNConversationID != "" {
-		env["BKN_CONVERSATION_ID"] = req.BKNConversationID
-	}
-	if req.BKNInteractionID != "" {
-		env["BKN_INTERACTION_ID"] = req.BKNInteractionID
-	}
+	// 无条件赋值，不传就是空串：这三个键已在 executionEnvKeys 里预置，条件写入会让
+	// 未传的那次留下上一个调用方的值。空串在沙箱侧等同于未配置。
+	env["BKN_TOKEN"] = req.BKNToken
+	env["BKN_CONVERSATION_ID"] = req.BKNConversationID
+	env["BKN_INTERACTION_ID"] = req.BKNInteractionID
 	return env
 }
 

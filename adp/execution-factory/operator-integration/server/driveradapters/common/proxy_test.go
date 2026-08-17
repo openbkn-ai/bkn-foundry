@@ -85,12 +85,42 @@ func TestBuildFunctionExecutionEnvCarriesBKNContext(t *testing.T) {
 	}
 }
 
-// 不传就不该凭空出现空值——空字符串会让沙箱侧误以为"配了但是空的"。
-func TestBuildFunctionExecutionEnvOmitsAbsentBKNContext(t *testing.T) {
+// 不传时必须显式下发空串，而不是让键缺席。
+//
+// 会话是池化复用的：调用方 A 带 bkn_token 触发建槽，令牌随之落进容器级 env；随后
+// 调用方 B 复用同一会话且不传令牌，若本次 env 里没有 BKN_TOKEN 这个键，合并后留下的
+// 就是 A 的令牌，B 的代码便以 A 的身份访问 BKN。这也是 executionEnvKeys 那份清单
+// 存在的理由——「每次执行下发全套、未知置空」。
+func TestBuildFunctionExecutionEnvClearsAbsentBKNContext(t *testing.T) {
 	env := buildFunctionExecutionEnv(&interfaces.FunctionProxyExecuteCodeReq{})
 	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
-		if _, ok := env[key]; ok {
-			t.Fatalf("%s 不该出现: %v", key, env)
+		value, ok := env[key]
+		if !ok {
+			t.Fatalf("%s 必须在场（缺席会让上一个调用方的值留下）: %v", key, env)
+		}
+		if value != "" {
+			t.Fatalf("%s 未传时应为空串，得到 %v", key, value)
+		}
+	}
+}
+
+// 三个键必须列进 executionEnvKeys：newExecutionEnv 靠它预置空值，漏登记就等于
+// 回到条件写入，串号照旧。
+func TestExecutionEnvKeysCoverBKNContext(t *testing.T) {
+	keys := map[string]bool{}
+	for _, k := range executionEnvKeys() {
+		keys[k] = true
+	}
+	for _, want := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+		if !keys[want] {
+			t.Fatalf("%s 未登记进 executionEnvKeys", want)
+		}
+	}
+	// 推导 schema 也会执行用户代码，同样要覆盖全套。
+	inferred := inferSchemaExecutionEnv()
+	for _, want := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+		if value, ok := inferred[want]; !ok || value != "" {
+			t.Fatalf("inferSchemaExecutionEnv 未覆盖 %s: %v", want, inferred)
 		}
 	}
 }
