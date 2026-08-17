@@ -133,6 +133,11 @@ func quoteColumnName(name string) string {
 	return "`" + strings.ReplaceAll(strings.TrimSpace(name), "`", "``") + "`"
 }
 
+// qualTable 将资源的源端标识转为反引号限定的表名；支持 "db.table" -> "`db`.`table`"
+func qualTable(sourceIdentifier string) string {
+	return quoteColumnName(sourceIdentifier)
+}
+
 func (c *MariaDBConnector) ConvertFilterCondition(ctx context.Context, condition interfaces.FilterCondition,
 	fieldsMap map[string]*interfaces.Property) (sq.Sqlizer, error) {
 

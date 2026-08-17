@@ -101,6 +101,168 @@ func (c *MariaDBConnector) ExecuteRawSQL(ctx context.Context, sql string) (*inte
 	return response, nil
 }
 
+// buildSelectBuilder 组装明细/聚合查询的 SELECT 语句。
+//
+// 所有标识符（表名、列名、别名）都必须经 quoteColumnName / qualTable 加反引号：
+// 源表里出现 SQL 保留字做列名（如 `key`）时，裸拼会在执行期报 1064，而建表、
+// catalog discover、bkn push 全都不碰查询语句，错误一路拖到查询才暴露。
+func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
+	params *interfaces.ResourceDataQueryParams, fieldMap map[string]*interfaces.Property,
+	condition sq.Sqlizer) (sq.SelectBuilder, error) {
+
+	// 源字段名：属性名找不到、或属性没带 original_name 时，按原样当列名用。
+	// 构建任务补出来的向量字段就只有 Name 没有 OriginalName（appendTaskEmbeddingVectorFields），
+	// 不兜底会拼出空标识符。
+	originalName := func(property string) string {
+		if field, ok := fieldMap[property]; ok && field.OriginalName != "" {
+			return field.OriginalName
+		}
+		return property
+	}
+
+	// 构建SELECT子句
+	selectFields := []string{}
+	// 已选中的输出名（列名或别名），用于 output_fields 去重
+	selected := map[string]struct{}{}
+
+	// 添加GROUP BY字段（聚合查询时）
+	for _, groupByItem := range params.GroupBy {
+		column := originalName(groupByItem.Property)
+		// 检查是否需要使用 calendar_interval
+		if groupByItem.CalendarInterval != "" {
+			dateFmt := c.buildDateFormat(groupByItem.Property, quoteColumnName(column), groupByItem.CalendarInterval)
+			selectFields = append(selectFields, dateFmt+" AS "+quoteColumnName(groupByItem.Property))
+			selected[groupByItem.Property] = struct{}{}
+		} else {
+			selectFields = append(selectFields, quoteColumnName(column))
+			selected[groupByItem.Property] = struct{}{}
+		}
+	}
+
+	// 添加聚合字段（聚合查询时）
+	var aggAlias string
+	if params.Aggregation != nil {
+		aggField := quoteColumnName(originalName(params.Aggregation.Property))
+
+		// 确定聚合函数
+		aggFunc := params.Aggregation.Aggr
+		switch aggFunc {
+		case "count_distinct":
+			aggFunc = "COUNT(DISTINCT " + aggField + ")"
+		default:
+			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
+		}
+
+		// 确定别名
+		if params.Aggregation.Alias != "" {
+			aggAlias = params.Aggregation.Alias
+		} else {
+			aggAlias = "__value"
+		}
+
+		selectFields = append(selectFields, aggFunc+" AS "+quoteColumnName(aggAlias))
+		selected[aggAlias] = struct{}{}
+	} else if params.Having != nil && params.Having.Field == "count(*)" {
+		// 当HAVING使用count(*)时，自动添加COUNT(*)聚合
+		aggAlias = "__value"
+		selectFields = append(selectFields, "COUNT(*) AS "+quoteColumnName(aggAlias))
+		selected[aggAlias] = struct{}{}
+	}
+
+	// 如果不是聚合查询且没有指定GROUP BY，则添加所有字段
+	if len(params.GroupBy) == 0 && params.Aggregation == nil {
+		if len(params.OutputFields) > 0 {
+			for _, outName := range params.OutputFields {
+				selectFields = append(selectFields, quoteColumnName(originalName(outName)))
+			}
+		} else if len(selectFields) == 0 {
+			// 没有指定输出字段，则查询所有字段。这里同样要走 originalName 的兜底，
+			// 否则 original_name 为空的属性会拼出空标识符，整条 SQL 报错。
+			for _, prop := range resource.SchemaDefinition {
+				selectFields = append(selectFields, quoteColumnName(originalName(prop.Name)))
+			}
+		}
+	} else if len(params.OutputFields) > 0 {
+		// 对于聚合查询或GROUP BY查询，确保output_fields中的字段在selectFields中
+		for _, outName := range params.OutputFields {
+			if _, found := selected[outName]; found {
+				continue
+			}
+			selectFields = append(selectFields, quoteColumnName(originalName(outName)))
+			selected[outName] = struct{}{}
+		}
+	}
+
+	// 构建查询
+	builder := sq.Select(selectFields...).From(qualTable(resource.SourceIdentifier))
+
+	// 添加WHERE条件
+	if condition != nil {
+		builder = builder.Where(condition)
+	}
+
+	// 添加GROUP BY（聚合查询时）
+	if len(params.GroupBy) > 0 {
+		groupByFields := []string{}
+		for _, groupByItem := range params.GroupBy {
+			column := quoteColumnName(originalName(groupByItem.Property))
+			// 检查是否需要使用 calendar_interval
+			if groupByItem.CalendarInterval != "" {
+				groupByFields = append(groupByFields,
+					c.buildDateFormat(groupByItem.Property, column, groupByItem.CalendarInterval))
+			} else {
+				groupByFields = append(groupByFields, column)
+			}
+		}
+		builder = builder.GroupBy(groupByFields...)
+	}
+
+	// 添加HAVING条件（聚合查询时）
+	if params.Having != nil && (params.Aggregation != nil || (params.Having.Field == "count(*)")) {
+		havingCond, err := c.buildHavingCondition(params.Having, aggAlias)
+		if err != nil {
+			return builder, fmt.Errorf("failed to build HAVING condition: %w", err)
+		}
+		if havingCond != "" {
+			builder = builder.Having(havingCond)
+		}
+	}
+
+	// 添加ORDER BY
+	for _, sortItem := range params.Sort {
+		dir := "ASC"
+		if sortItem.Direction == interfaces.DESC_DIRECTION {
+			dir = "DESC"
+		}
+
+		// 排序字段先按 SELECT 里的别名认：别名与某个属性同名时，调用方指的是聚合结果，
+		// 再去 schema 解析会拿到那个属性的源列，MariaDB 默认 sql_mode 不含
+		// ONLY_FULL_GROUP_BY，不报错而是按任意行的值排序，错得无声无息。
+		sortField := quoteColumnName(originalName(sortItem.Field))
+		if aggAlias != "" && sortItem.Field == aggAlias {
+			sortField = quoteColumnName(aggAlias)
+		}
+
+		// 检查是否是 GROUP BY 字段且使用了 calendar_interval
+		for _, groupByItem := range params.GroupBy {
+			if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
+				// 使用完整的 date_format 表达式
+				sortField = c.buildDateFormat(groupByItem.Property,
+					quoteColumnName(originalName(groupByItem.Property)), groupByItem.CalendarInterval)
+				break
+			}
+		}
+
+		builder = builder.OrderBy(sortField + " " + dir)
+	}
+
+	// 添加LIMIT和OFFSET
+	if params.CursorEncoded == "" {
+		builder = builder.Offset(uint64(params.Offset))
+	}
+	return builder.Limit(uint64(params.Limit)), nil
+}
+
 func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 
@@ -126,175 +288,10 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 		Entries: make([]map[string]any, 0),
 	}
 
-	// 构建SELECT子句
-	selectFields := []string{}
-
-	// 添加GROUP BY字段（聚合查询时）
-	for _, groupByItem := range params.GroupBy {
-		if field, ok := fieldMap[groupByItem.Property]; ok {
-			// 检查是否需要使用 calendar_interval
-			if groupByItem.CalendarInterval != "" {
-				dateFmt := c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
-				selectFields = append(selectFields, dateFmt+" AS "+groupByItem.Property)
-			} else {
-				selectFields = append(selectFields, field.OriginalName)
-			}
-		} else {
-			// 检查是否需要使用 calendar_interval
-			if groupByItem.CalendarInterval != "" {
-				dateFmt := c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
-				selectFields = append(selectFields, dateFmt+" AS "+groupByItem.Property)
-			} else {
-				selectFields = append(selectFields, groupByItem.Property)
-			}
-		}
+	builder, err := c.buildSelectBuilder(resource, params, fieldMap, condition)
+	if err != nil {
+		return nil, err
 	}
-
-	// 添加聚合字段（聚合查询时）
-	var aggAlias string
-	if params.Aggregation != nil {
-		aggField := params.Aggregation.Property
-		if field, ok := fieldMap[aggField]; ok {
-			aggField = field.OriginalName
-		}
-
-		// 确定聚合函数
-		aggFunc := params.Aggregation.Aggr
-		switch aggFunc {
-		case "count_distinct":
-			aggFunc = "COUNT(DISTINCT " + aggField + ")"
-		default:
-			aggFunc = strings.ToUpper(aggFunc) + "(" + aggField + ")"
-		}
-
-		// 确定别名
-		if params.Aggregation.Alias != "" {
-			aggAlias = params.Aggregation.Alias
-		} else {
-			aggAlias = "__value"
-		}
-
-		selectFields = append(selectFields, aggFunc+" AS "+aggAlias)
-	} else if params.Having != nil && params.Having.Field == "count(*)" {
-		// 当HAVING使用count(*)时，自动添加COUNT(*)聚合
-		aggAlias = "__value"
-		selectFields = append(selectFields, "COUNT(*) AS "+aggAlias)
-	}
-
-	// 如果不是聚合查询且没有指定GROUP BY，则添加所有字段
-	if len(params.GroupBy) == 0 && params.Aggregation == nil {
-		if len(params.OutputFields) > 0 {
-			for _, outName := range params.OutputFields {
-				if field, ok := fieldMap[outName]; ok {
-					selectFields = append(selectFields, field.OriginalName)
-				} else {
-					// 对于未在Schema中定义的字段，直接使用字段名
-					selectFields = append(selectFields, outName)
-				}
-			}
-		} else if len(selectFields) == 0 {
-			// 没有指定输出字段，则查询所有字段
-			for _, prop := range resource.SchemaDefinition {
-				selectFields = append(selectFields, prop.OriginalName)
-			}
-		}
-	} else if len(params.OutputFields) > 0 {
-		// 对于聚合查询或GROUP BY查询，确保output_fields中的字段在selectFields中
-		for _, outName := range params.OutputFields {
-			found := false
-			for _, field := range selectFields {
-				// 检查字段是否已存在（包括别名）
-				if field == outName || strings.HasSuffix(field, " AS "+outName) {
-					found = true
-					break
-				}
-			}
-			if !found {
-				if field, ok := fieldMap[outName]; ok {
-					selectFields = append(selectFields, field.OriginalName)
-				} else {
-					// 对于未在Schema中定义的字段，直接使用字段名
-					selectFields = append(selectFields, outName)
-				}
-			}
-		}
-	}
-
-	// 构建查询
-	builder := sq.Select(selectFields...).From(resource.SourceIdentifier)
-
-	// 添加WHERE条件
-	if condition != nil {
-		builder = builder.Where(condition)
-	}
-
-	// 添加GROUP BY（聚合查询时）
-	if len(params.GroupBy) > 0 {
-		groupByFields := []string{}
-		for _, groupByItem := range params.GroupBy {
-			if field, ok := fieldMap[groupByItem.Property]; ok {
-				// 检查是否需要使用 calendar_interval
-				if groupByItem.CalendarInterval != "" {
-					dateFmt := c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
-					groupByFields = append(groupByFields, dateFmt)
-				} else {
-					groupByFields = append(groupByFields, field.OriginalName)
-				}
-			} else {
-				// 检查是否需要使用 calendar_interval
-				if groupByItem.CalendarInterval != "" {
-					dateFmt := c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
-					groupByFields = append(groupByFields, dateFmt)
-				} else {
-					groupByFields = append(groupByFields, groupByItem.Property)
-				}
-			}
-		}
-		builder = builder.GroupBy(groupByFields...)
-	}
-
-	// 添加HAVING条件（聚合查询时）
-	if params.Having != nil && (params.Aggregation != nil || (params.Having.Field == "count(*)")) {
-		havingCond, err := c.buildHavingCondition(params.Having, aggAlias)
-		if err != nil {
-			return nil, fmt.Errorf("failed to build HAVING condition: %w", err)
-		}
-		if havingCond != "" {
-			builder = builder.Having(havingCond)
-		}
-	}
-
-	// 添加ORDER BY
-	if len(params.Sort) > 0 {
-		for _, sortItem := range params.Sort {
-			dir := "ASC"
-			if sortItem.Direction == interfaces.DESC_DIRECTION {
-				dir = "DESC"
-			}
-
-			// 检查是否是 GROUP BY 字段且使用了 calendar_interval
-			sortField := sortItem.Field
-			for _, groupByItem := range params.GroupBy {
-				if groupByItem.Property == sortItem.Field && groupByItem.CalendarInterval != "" {
-					// 使用完整的 date_format 表达式
-					if field, ok := fieldMap[groupByItem.Property]; ok {
-						sortField = c.buildDateFormat(groupByItem.Property, field.OriginalName, groupByItem.CalendarInterval)
-					} else {
-						sortField = c.buildDateFormat(groupByItem.Property, groupByItem.Property, groupByItem.CalendarInterval)
-					}
-					break
-				}
-			}
-
-			builder = builder.OrderBy(sortField + " " + dir)
-		}
-	}
-
-	// 添加LIMIT和OFFSET
-	if params.CursorEncoded == "" {
-		builder = builder.Offset(uint64(params.Offset))
-	}
-	builder = builder.Limit(uint64(params.Limit))
 
 	// 构建SQL并执行
 	query, args, err := builder.ToSql()
@@ -346,7 +343,7 @@ func (c *MariaDBConnector) ExecuteQuery(ctx context.Context, resource *interface
 	// 此前直接取 len(result.Entries)——即本页行数，超过一页的表 total 永远等于
 	// LIMIT（构建任务进度条显示 "20802 / 1000" 即此 bug）
 	if params.NeedTotal && !isAggregate {
-		countBuilder := sq.Select("COUNT(1)").From(resource.SourceIdentifier)
+		countBuilder := sq.Select("COUNT(1)").From(qualTable(resource.SourceIdentifier))
 		if condition != nil {
 			countBuilder = countBuilder.Where(condition)
 		}
@@ -373,12 +370,13 @@ func (c *MariaDBConnector) buildHavingCondition(having *interfaces.HavingClause,
 		return "", fmt.Errorf("HAVING field must be '__value' or 'count(*)'")
 	}
 
-	// 确定HAVING子句中使用的字段表达式
+	// 确定HAVING子句中使用的字段表达式。别名来自请求体且不受校验，取到保留字时
+	// SELECT 侧已加反引号，这里不加就会出现 SELECT 通过而 HAVING 报 1064。
 	var fieldExpr string
 	if having.Field == "count(*)" {
 		fieldExpr = "COUNT(*)"
 	} else {
-		fieldExpr = aggAlias
+		fieldExpr = quoteColumnName(aggAlias)
 	}
 
 	var op string
