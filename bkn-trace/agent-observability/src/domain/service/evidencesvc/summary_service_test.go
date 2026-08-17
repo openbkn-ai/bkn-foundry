@@ -195,7 +195,7 @@ func TestListConversationsSumsCompletedInteractionDurations(t *testing.T) {
 	}
 }
 
-func TestBuildConversationSummaryUsesLatestCoherentInteractionAndHidesChildCallError(t *testing.T) {
+func TestBuildConversationSummaryUsesFirstCoherentInteractionAndHidesChildCallError(t *testing.T) {
 
 	summary := buildConversationSummary("conversation_supply", []evidencevo.RequestSummary{
 		{
@@ -217,9 +217,9 @@ func TestBuildConversationSummaryUsesLatestCoherentInteractionAndHidesChildCallE
 		},
 	})
 
-	if summary.QuestionPreview != "迄今为止有多少销售订单？" ||
-		summary.ResultPreview != "共有 1441 张销售订单。" {
-		t.Fatalf("conversation must show one coherent latest interaction: %+v", summary)
+	if summary.QuestionPreview != "6月份有哪些需求预测单？" ||
+		summary.ResultPreview != "6月份需求总量为 11594。" {
+		t.Fatalf("conversation must show its first interaction as one coherent pair: %+v", summary)
 	}
 	if summary.ErrorSummary != "" {
 		t.Fatalf("a recoverable child call error must remain at request level: %+v", summary)
@@ -1022,6 +1022,26 @@ func TestBusinessProvenanceConversationAndInteractionListsUseStablePagination(t 
 	secondInteractions, err := service.ListInteractions(context.Background(), options)
 	if err != nil || len(secondInteractions.Entries) != 1 || secondInteractions.Entries[0].InteractionID != "interaction_old" || secondInteractions.NextCursor != nil {
 		t.Fatalf("unexpected second interaction page: %+v err=%v", secondInteractions, err)
+	}
+}
+
+func TestListInteractionsKeepsChronologicalRoundNumbersWhileReturningNewestFirst(t *testing.T) {
+	store := evidencestore.New()
+	seedBusinessProvenanceRequest(t, store, "req_first", "trace_first", "conversation_rounds", "interaction_first", "2026-07-27T08:00:00Z", "第一轮问题", "第一轮结果", "acct_demo")
+	seedBusinessProvenanceRequest(t, store, "req_second", "trace_second", "conversation_rounds", "interaction_second", "2026-07-27T08:10:00Z", "第二轮问题", "第二轮结果", "acct_demo")
+	seedBusinessProvenanceRequest(t, store, "req_third", "trace_third", "conversation_rounds", "interaction_third", "2026-07-27T08:20:00Z", "第三轮问题", "第三轮结果", "acct_demo")
+	service := NewWithProjectionSource(store, store)
+
+	page, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), ConversationID: "conversation_rounds", Limit: 20,
+	})
+	if err != nil || len(page.Entries) != 3 {
+		t.Fatalf("list interactions: page=%+v err=%v", page, err)
+	}
+	if page.Entries[0].InteractionID != "interaction_third" || page.Entries[0].RoundNumber != 3 ||
+		page.Entries[1].InteractionID != "interaction_second" || page.Entries[1].RoundNumber != 2 ||
+		page.Entries[2].InteractionID != "interaction_first" || page.Entries[2].RoundNumber != 1 {
+		t.Fatalf("newest-first entries must retain chronological round numbers: %+v", page.Entries)
 	}
 }
 

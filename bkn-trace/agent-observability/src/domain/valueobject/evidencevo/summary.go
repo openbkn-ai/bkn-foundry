@@ -146,6 +146,7 @@ type ConversationSummary struct {
 type InteractionListSummary struct {
 	InteractionID          string   `json:"interaction_id"`
 	ConversationID         string   `json:"conversation_id,omitempty"`
+	RoundNumber            int      `json:"round_number,omitempty"`
 	StartedAt              string   `json:"started_at,omitempty"`
 	CompletedAt            string   `json:"completed_at,omitempty"`
 	Initiator              string   `json:"initiator,omitempty"`

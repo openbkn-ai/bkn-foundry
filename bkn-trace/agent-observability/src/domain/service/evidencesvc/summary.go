@@ -160,6 +160,10 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 	childOptions := options
 	childOptions.Status = ""
 	childOptions.EvidenceCompleteness = ""
+	// Build the complete conversation before applying the interaction-level
+	// keyword filter so a round number always reflects its place in the
+	// conversation, rather than its place in the filtered result.
+	childOptions.Keyword = ""
 	for _, request := range requests {
 		if request.InteractionID != "" && matchesRequestFilters(request, childOptions) {
 			grouped[request.InteractionID] = append(grouped[request.InteractionID], request)
@@ -176,6 +180,7 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 	if err := s.applyCanonicalInteractionState(ctx, entries); err != nil {
 		return evidencevo.InteractionSummaryPage{}, err
 	}
+	assignInteractionRoundNumbers(entries)
 	entries = filterInteractionSummaries(entries, options)
 	sort.Slice(entries, func(i, j int) bool {
 		if entries[i].StartedAt == entries[j].StartedAt {
@@ -209,7 +214,7 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 
 func buildConversationSummary(conversationID string, requests []evidencevo.RequestSummary) evidencevo.ConversationSummary {
 	base, interactionCount := aggregateRequestGroup(requests)
-	questionPreview, resultPreview := latestConversationInteractionPreview(requests)
+	questionPreview, resultPreview := firstConversationInteractionPreview(requests)
 	return evidencevo.ConversationSummary{
 		ConversationID: conversationID,
 		StartedAt:      base.StartedAt, CompletedAt: base.CompletedAt,
@@ -225,7 +230,7 @@ func buildConversationSummary(conversationID string, requests []evidencevo.Reque
 
 // A conversation is a sequence of interactions. Its list preview must describe
 // one interaction, rather than combining an earlier question with a later result.
-func latestConversationInteractionPreview(requests []evidencevo.RequestSummary) (string, string) {
+func firstConversationInteractionPreview(requests []evidencevo.RequestSummary) (string, string) {
 	byInteraction := map[string][]evidencevo.RequestSummary{}
 	for _, request := range requests {
 		if request.InteractionID != "" {
@@ -233,22 +238,43 @@ func latestConversationInteractionPreview(requests []evidencevo.RequestSummary) 
 		}
 	}
 
-	var question, result, latestAt, latestID string
+	var question, result, firstAt, firstID string
 	for interactionID, interactionRequests := range byInteraction {
 		summary, _ := aggregateRequestGroup(interactionRequests)
-		if summary.QuestionPreview == "" || summary.ResultPreview == "" {
-			continue
-		}
-		at := firstPresentSummary(summary.CompletedAt, summary.StartedAt)
-		if question == "" || summaryTimeAfter(at, latestAt) || (at == latestAt && interactionID > latestID) {
-			question, result, latestAt, latestID = summary.QuestionPreview, summary.ResultPreview, at, interactionID
+		at := firstPresentSummary(summary.StartedAt, summary.CompletedAt)
+		if firstID == "" || summaryTimeAfter(firstAt, at) || (at == firstAt && interactionID < firstID) {
+			question, result, firstAt, firstID = summary.QuestionPreview, summary.ResultPreview, at, interactionID
 		}
 	}
-	if question != "" {
+	if firstID != "" {
 		return question, result
 	}
 	base, _ := aggregateRequestGroup(requests)
 	return base.QuestionPreview, base.ResultPreview
+}
+
+// assignInteractionRoundNumbers preserves chronological meaning independently
+// from the list's reverse-chronological display order.
+func assignInteractionRoundNumbers(entries []evidencevo.InteractionListSummary) {
+	byConversation := map[string][]int{}
+	for index := range entries {
+		conversationID := entries[index].ConversationID
+		if conversationID != "" {
+			byConversation[conversationID] = append(byConversation[conversationID], index)
+		}
+	}
+	for _, indexes := range byConversation {
+		sort.Slice(indexes, func(i, j int) bool {
+			left, right := entries[indexes[i]], entries[indexes[j]]
+			if left.StartedAt == right.StartedAt {
+				return left.InteractionID < right.InteractionID
+			}
+			return left.StartedAt < right.StartedAt
+		})
+		for number, index := range indexes {
+			entries[index].RoundNumber = number + 1
+		}
+	}
 }
 
 func buildInteractionListSummary(interactionID string, requests []evidencevo.RequestSummary) evidencevo.InteractionListSummary {
