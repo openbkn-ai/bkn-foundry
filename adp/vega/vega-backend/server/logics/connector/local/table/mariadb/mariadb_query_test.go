@@ -210,6 +210,31 @@ func TestBuildSelectBuilderQuotesIdentifiers(t *testing.T) {
 			sql)
 	})
 
+	// 默认查全字段这条路也要走兜底，否则 original_name 为空的属性会拼出空标识符
+	t.Run("select all falls back for a property without original_name", func(t *testing.T) {
+		schemaless := &interfaces.Resource{
+			SourceIdentifier: "yanfeng_kb.fact",
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", OriginalName: "id", Type: interfaces.DataType_String},
+				{Name: "content_vector", Type: interfaces.DataType_Vector},
+			},
+		}
+		schemalessFields := map[string]*interfaces.Property{}
+		for _, prop := range schemaless.SchemaDefinition {
+			schemalessFields[prop.Name] = prop
+		}
+
+		builder, err := connector.buildSelectBuilder(schemaless,
+			&interfaces.ResourceDataQueryParams{Limit: 10}, schemalessFields, nil)
+		require.NoError(t, err)
+
+		sql, _, err := builder.ToSql()
+		require.NoError(t, err)
+		assert.Equal(t,
+			"SELECT `id`, `content_vector` FROM `yanfeng_kb`.`fact` LIMIT 10 OFFSET 0",
+			sql)
+	})
+
 	t.Run("aggregation quotes the aggregated column, group by and alias", func(t *testing.T) {
 		builder, err := connector.buildSelectBuilder(resource, &interfaces.ResourceDataQueryParams{
 			GroupBy:     []*interfaces.GroupByItem{{Property: "key"}},

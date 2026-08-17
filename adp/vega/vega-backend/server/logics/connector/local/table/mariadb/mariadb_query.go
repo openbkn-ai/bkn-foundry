@@ -178,9 +178,11 @@ func (c *MariaDBConnector) buildSelectBuilder(resource *interfaces.Resource,
 				selectFields = append(selectFields, quoteColumnName(originalName(outName)))
 			}
 		} else if len(selectFields) == 0 {
-			// No output fields specified, so query them all
+			// No output fields specified, so query them all. This branch needs the
+			// originalName fallback too, or a property with an empty original_name
+			// renders as an empty identifier and breaks the statement.
 			for _, prop := range resource.SchemaDefinition {
-				selectFields = append(selectFields, quoteColumnName(prop.OriginalName))
+				selectFields = append(selectFields, quoteColumnName(originalName(prop.Name)))
 			}
 		}
 	} else if len(params.OutputFields) > 0 {
