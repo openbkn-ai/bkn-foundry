@@ -310,6 +310,12 @@ exec python -m executor.interfaces.http.rest
         # 基础环境变量
         env_vars = dict(config.env_vars)
 
+        # sandbox_sdk.bkn 的 MCP 地址，与 k8s_scheduler 同一处配置。部署级常量，
+        # 注入一次即可；调用方在 event 里传 mcp 时以 event 为准。
+        bkn_mcp_url = get_settings().bkn_sandbox_mcp_url.strip()
+        if bkn_mcp_url:
+            env_vars.setdefault("BKN_SANDBOX_MCP_URL", bkn_mcp_url)
+
         # 基础容器配置
         container_config = {
             "Image": config.image,

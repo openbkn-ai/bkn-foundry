@@ -439,6 +439,16 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
         env_args: dict[str, str] = {
             "PYTHONPATH": self._build_pythonpath(os.environ.get("PYTHONPATH")),
         }
+        # --clearenv 之后镜像上的环境变量一个都不剩，得像 PYTHONPATH 那样显式带进去。
+        # sandbox_sdk.bkn 拿不到它时会报「请由控制面设置环境变量 BKN_SANDBOX_MCP_URL」
+        # ——而运维恰恰已经设了，只是被 bwrap 挡在了外面。
+        #
+        # 只有这一个需要在这里透传：它由控制面设在**容器**上，本次执行的 env 里没有。
+        # BKN_TOKEN 那些是随每次执行下发的，已经在上面的 execution.context.env_vars
+        # 里，不必也不该从容器环境去捞——容器级的值会跨调用方存活。
+        bkn_mcp_url = os.environ.get("BKN_SANDBOX_MCP_URL", "").strip()
+        if bkn_mcp_url:
+            env_args["BKN_SANDBOX_MCP_URL"] = bkn_mcp_url
         if execution.context.event:
             env_args["EVENT_JSON"] = json.dumps(execution.context.event)
         if execution.context.env_vars:
