@@ -4,7 +4,10 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -22,7 +25,10 @@
         "minItems": 1,
         "items": {
           "type": "object",
-          "required": ["object_types", "relation_types"],
+          "required": [
+            "object_types",
+            "relation_types"
+          ],
           "properties": {
             "object_types": {
               "type": "array",
@@ -30,7 +36,11 @@
               "minItems": 2,
               "items": {
                 "type": "object",
-                "required": ["id", "condition", "limit"],
+                "required": [
+                  "id",
+                  "condition",
+                  "limit"
+                ],
                 "properties": {
                   "id": {
                     "type": "string",
@@ -39,35 +49,80 @@
                   "condition": {
                     "type": "object",
                     "description": "过滤条件。operation 必填；value_from 仅支持 const，且必须与 value 同时出现。若无过滤条件，可用 operation=and 且 sub_conditions=[]",
-                    "required": ["operation"],
+                    "required": [
+                      "operation"
+                    ],
                     "properties": {
-                      "field": { "type": "string", "description": "字段名（对象类属性）" },
+                      "field": {
+                        "type": "string",
+                        "description": "字段名（对象类属性）"
+                      },
                       "operation": {
                         "type": "string",
                         "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤",
-                        "enum": ["and", "or", "==", "!=", ">", ">=", "<", "<=", "in", "not_in", "like", "not_like", "range", "out_range", "regex", "exist", "not_exist", "match"]
+                        "enum": [
+                          "and",
+                          "or",
+                          "==",
+                          "!=",
+                          ">",
+                          ">=",
+                          "<",
+                          "<=",
+                          "in",
+                          "not_in",
+                          "like",
+                          "not_like",
+                          "range",
+                          "out_range",
+                          "regex",
+                          "exist",
+                          "not_exist",
+                          "match"
+                        ]
                       },
                       "sub_conditions": {
                         "type": "array",
                         "description": "子条件数组，用于 and/or",
-                        "items": { "type": "object" }
+                        "items": {
+                          "type": "object"
+                        }
                       },
                       "value_from": {
                         "type": "string",
-                        "enum": ["const"],
+                        "enum": [
+                          "const"
+                        ],
                         "description": "值来源，仅支持 const"
                       },
                       "value": {
                         "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range 用 [min, max]（两元素同类型，两端都闭）；out_range 同样用 [min, max]，排除这个闭区间；regex 用正则字符串；exist/not_exist 不传 value",
                         "oneOf": [
-                          { "type": "string" },
-                          { "type": "number" },
-                          { "type": "boolean" },
-                          { "type": "array", "items": { "oneOf": [
-                            { "type": "string" },
-                            { "type": "number" },
-                            { "type": "boolean" }
-                          ]}}
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "oneOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "number"
+                                },
+                                {
+                                  "type": "boolean"
+                                }
+                              ]
+                            }
+                          }
                         ]
                       }
                     },
@@ -78,10 +133,23 @@
                     "description": "排序字段（可选）",
                     "items": {
                       "type": "object",
-                      "required": ["field", "direction"],
+                      "required": [
+                        "field",
+                        "direction"
+                      ],
                       "properties": {
-                        "field": { "type": "string", "description": "排序字段" },
-                        "direction": { "type": "string", "enum": ["desc", "asc"], "description": "排序方向" }
+                        "field": {
+                          "type": "string",
+                          "description": "排序字段"
+                        },
+                        "direction": {
+                          "type": "string",
+                          "enum": [
+                            "desc",
+                            "asc"
+                          ],
+                          "description": "排序方向"
+                        }
                       },
                       "additionalProperties": false
                     }
@@ -100,11 +168,24 @@
               "minItems": 1,
               "items": {
                 "type": "object",
-                "required": ["relation_type_id", "source_object_type_id", "target_object_type_id"],
+                "required": [
+                  "relation_type_id",
+                  "source_object_type_id",
+                  "target_object_type_id"
+                ],
                 "properties": {
-                  "relation_type_id": { "type": "string", "description": "关系类 id（rt_id）" },
-                  "source_object_type_id": { "type": "string", "description": "起点对象类 id" },
-                  "target_object_type_id": { "type": "string", "description": "终点对象类 id" }
+                  "relation_type_id": {
+                    "type": "string",
+                    "description": "关系类 id（rt_id）"
+                  },
+                  "source_object_type_id": {
+                    "type": "string",
+                    "description": "起点对象类 id"
+                  },
+                  "target_object_type_id": {
+                    "type": "string",
+                    "description": "终点对象类 id"
+                  }
                 },
                 "additionalProperties": false
               }
@@ -118,7 +199,10 @@
         }
       }
     },
-    "required": ["kn_id", "relation_type_paths"]
+    "required": [
+      "kn_id",
+      "relation_type_paths"
+    ]
   },
   "output_schema": {
     "type": "object",
@@ -128,7 +212,23 @@
         "description": "路径子图返回体数组（每条路径对应一个子图响应）",
         "items": {
           "type": "object",
-          "additionalProperties": true
+          "properties": {
+            "_display": {
+              "type": "string",
+              "description": "给人看的展示名，由服务端按对象类的展示字段挑出。"
+            },
+            "_instance_id": {
+              "type": "string",
+              "description": "实例全局唯一 ID，可直接用于 query_instance_subgraph。"
+            },
+            "_instance_identity": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "构成该实例主键的字段值"
+            }
+          },
+          "additionalProperties": true,
+          "description": "其余键即该对象类的属性名，随对象类而变——先看 get_object_types / search_schema 的 data_properties，不要凭字段语义猜。"
         }
       }
     }

@@ -11,10 +11,18 @@ _configure(event) injects credentials and lifecycle context before execution.
 import json
 import os
 import pathlib
+import sys
 import urllib.request
 
 _CFG = {}
 _SESSION = {}
+
+# 最近几次调用返回值的形状。脚本抛异常时随 traceback 一并打出——代码模式下调用方
+# 必须先写出取值路径再执行，猜错时 traceback 只说 "NoneType is not iterable"，不说
+# 真实结构，于是整整一轮被用来 print 原始数据找字段名，而那又把数据灌回了上下文，
+# 正好抵消代码模式省上下文的意义。这里只记形状不记值。
+_SHAPES = []
+_SHAPE_LIMIT = 6
 
 # /workspace is shared by all calls. Create and enter a conversation-specific
 # subdirectory so scripts can use relative paths without crossing sessions.
@@ -31,6 +39,7 @@ class ToolError(RuntimeError):
 
 def _configure(event):
     """Inject MCP endpoint, credentials, and lifecycle context; prepare workdir."""
+    _install_shape_hook()
     global WORKDIR
     _CFG.update(event)
     _SESSION.clear()
@@ -108,7 +117,64 @@ def _call(tool, args):
     if result.get("isError") or result.get("is_error"):
         raise ToolError(tool + ": " + text)
     try:
-        return json.loads(text)
+        value = json.loads(text)
     except json.JSONDecodeError:
         # Return non-JSON representations, such as response_format=toon, unchanged.
         return text
+    _remember_shape(tool, value)
+    return value
+
+
+def _describe(value, depth=0):
+    """把一个值压成形状描述。只留键名与条数，不留值。
+
+    深到 3 层：顶层 dict -> 数组 -> 元素 dict 的键名。字段名多半就在最后那层
+    （nodes[].object_type_name、object_types[].concept_name），折在前面就白记了。
+    """
+    if isinstance(value, dict):
+        if depth >= 3:
+            return "{%d 键}" % len(value)
+        inner = ", ".join(
+            "%s: %s" % (k, _describe(v, depth + 1)) for k, v in list(value.items())[:12]
+        )
+        more = ", …共 %d 键" % len(value) if len(value) > 12 else ""
+        return "{" + inner + more + "}"
+    if isinstance(value, list):
+        if not value:
+            return "[]"
+        return "[%d × %s]" % (len(value), _describe(value[0], depth + 1))
+    return type(value).__name__
+
+
+def _remember_shape(tool, value):
+    _SHAPES.append((tool, _describe(value)))
+    del _SHAPES[:-_SHAPE_LIMIT]
+
+
+def _shape_report():
+    """给失败的执行附上最近几次调用的返回结构。"""
+    if not _SHAPES:
+        return ""
+    lines = ["", "[最近的返回结构——按这个改，不必再跑一轮把数据打出来找字段名]"]
+    lines += ["  %s -> %s" % (tool, shape) for tool, shape in _SHAPES]
+    return "\n".join(lines)
+
+
+def _install_shape_hook():
+    """脚本抛出未捕获异常时，在 traceback 之后补一段返回结构。
+
+    装在 stub 里而不是调用方的包装里：包装规则目前有三处实现（服务端 /mcp/ptc、
+    studio、以及将来的 SDK），装在这里三条路一起生效，且它们一行都不用改。
+    """
+    if getattr(sys, "_bkn_shape_hook", False):
+        return
+    previous = sys.excepthook
+
+    def hook(kind, value, tb):
+        previous(kind, value, tb)
+        report = _shape_report()
+        if report:
+            sys.stderr.write(report + "\n")
+
+    sys.excepthook = hook
+    sys._bkn_shape_hook = True

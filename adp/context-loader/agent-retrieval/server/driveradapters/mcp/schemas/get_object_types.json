@@ -4,7 +4,10 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -14,24 +17,71 @@
       },
       "ids": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "description": "要展开的对象类 id（取自 get_kn_detail summary 的 object_types[].id，也接受 name）。支持多个，一次批量取回。"
       }
     },
-    "required": ["kn_id", "ids"]
+    "required": [
+      "kn_id",
+      "ids"
+    ]
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "kn_id": { "type": "string", "description": "知识网络 ID" },
+      "kn_id": {
+        "type": "string",
+        "description": "知识网络 ID"
+      },
       "object_types": {
         "type": "array",
-        "items": { "type": "object", "additionalProperties": true },
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "对象类 ID。注意 search_schema 同类返回里叫 concept_id。"
+            },
+            "name": {
+              "type": "string",
+              "description": "对象类名。同上，search_schema 那边叫 concept_name。"
+            },
+            "comment": {
+              "type": "string",
+              "description": "说明"
+            },
+            "data_source": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "绑定的数据资源 {type, id, name}"
+            },
+            "data_properties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "description": "数据属性 [{name, type, condition_operations}]"
+            },
+            "primary_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "主键属性名"
+            }
+          },
+          "additionalProperties": true
+        },
         "description": "对象类完整定义（含 data_properties 的 mapped_field / condition_operations、logic_properties 的 data_source / parameters）。其中 condition_operations 只列索引带来的算子（match / multi_match / knn），比较算子按属性 type 自行判断，详见 query_object_instance 的 condition 说明。related_metrics 为该对象类 scope 下的全部指标（id/name/comment/unit/metric_type/analysis_dimensions/time_dimension），含未绑逻辑属性的：实例级且已绑逻辑属性用 get_logic_properties_values 算，其余把 id 传给 query_metric 算。"
       },
       "missing": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "description": "请求了但未匹配到的 id"
       }
     }

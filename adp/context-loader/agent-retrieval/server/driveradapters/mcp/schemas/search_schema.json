@@ -87,6 +87,33 @@
         "description": "对象类型列表",
         "items": {
           "type": "object",
+          "properties": {
+            "concept_id": {
+              "type": "string",
+              "description": "对象类 / 关系类 ID。注意本工具的 action_types 用的是 id 而非 concept_id。"
+            },
+            "concept_name": {
+              "type": "string",
+              "description": "名称。同上，action_types 那一项叫 name。"
+            },
+            "comment": {
+              "type": "string",
+              "description": "说明文字，通常含该类的属性表。"
+            },
+            "data_source": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "绑定的数据资源 {type, id, name}；id 可作为 run_sql 的 {{.<resource_id>}} 占位符。"
+            },
+            "data_properties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "description": "数据属性 [{name, type, condition_operations}]；condition_operations 决定该属性能否用 match / knn 过滤。"
+            }
+          },
           "additionalProperties": true
         }
       },
@@ -95,6 +122,24 @@
         "description": "关系类型列表",
         "items": {
           "type": "object",
+          "properties": {
+            "concept_id": {
+              "type": "string",
+              "description": "关系类 ID"
+            },
+            "concept_name": {
+              "type": "string",
+              "description": "关系名"
+            },
+            "source_object_type_id": {
+              "type": "string",
+              "description": "起点对象类 ID"
+            },
+            "target_object_type_id": {
+              "type": "string",
+              "description": "终点对象类 ID"
+            }
+          },
           "additionalProperties": true
         }
       },
@@ -103,6 +148,28 @@
         "description": "动作类型列表",
         "items": {
           "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "行动类 ID。注意与同一响应里 object_types 的 concept_id 命名不一致。"
+            },
+            "name": {
+              "type": "string",
+              "description": "行动名。同上，与 object_types 的 concept_name 不一致。"
+            },
+            "object_type_id": {
+              "type": "string",
+              "description": "所属对象类 ID"
+            },
+            "object_type_name": {
+              "type": "string",
+              "description": "所属对象类名"
+            },
+            "comment": {
+              "type": "string",
+              "description": "说明"
+            }
+          },
           "additionalProperties": true
         }
       },
@@ -111,6 +178,16 @@
         "description": "指标类型列表",
         "items": {
           "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "指标 ID，可传给 query_metric"
+            },
+            "name": {
+              "type": "string",
+              "description": "指标名"
+            }
+          },
           "additionalProperties": true
         }
       }

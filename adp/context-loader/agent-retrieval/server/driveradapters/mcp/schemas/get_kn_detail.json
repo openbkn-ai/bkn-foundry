@@ -4,7 +4,10 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -14,23 +17,156 @@
       },
       "detail_level": {
         "type": "string",
-        "enum": ["summary", "full"],
+        "enum": [
+          "summary",
+          "full"
+        ],
         "default": "summary",
         "description": "详情级别。summary（默认）：对象类/关系类/行动类骨架 + 每个属性仅 name+type（扁平同构，TOON 渲染成紧凑表格），不含 display_name/comment/字段映射/查询算子/映射规则，足够理解 schema 与规划查询；需要某对象完整字段映射（含 comment）改调 get_object_types，要关系 mapping_rules 改调 get_relation_types。full：一次返回全量（体积大，慎用）。"
       }
     },
-    "required": ["kn_id"]
+    "required": [
+      "kn_id"
+    ]
   },
   "output_schema": {
     "type": "object",
     "properties": {
-      "id": { "type": "string", "description": "知识网络 ID" },
-      "name": { "type": "string", "description": "知识网络名称" },
-      "comment": { "type": "string", "description": "描述" },
-      "concept_groups": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "概念组" },
-      "object_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细" },
-      "relation_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "关系类型" },
-      "action_types": { "type": "array", "items": { "type": "object", "additionalProperties": true }, "description": "行动类型" }
+      "id": {
+        "type": "string",
+        "description": "知识网络 ID"
+      },
+      "name": {
+        "type": "string",
+        "description": "知识网络名称"
+      },
+      "comment": {
+        "type": "string",
+        "description": "描述"
+      },
+      "concept_groups": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "概念分组 ID，可传给 search_instance 的 concept_groups"
+            },
+            "name": {
+              "type": "string",
+              "description": "分组名"
+            },
+            "object_type_ids": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "组内对象类 ID"
+            }
+          },
+          "additionalProperties": true
+        },
+        "description": "概念组"
+      },
+      "object_types": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "对象类 ID。注意 search_schema 同类返回里叫 concept_id。"
+            },
+            "name": {
+              "type": "string",
+              "description": "对象类名。同上，search_schema 那边叫 concept_name。"
+            },
+            "comment": {
+              "type": "string",
+              "description": "说明"
+            },
+            "data_source": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "绑定的数据资源 {type, id, name}"
+            },
+            "data_properties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "description": "数据属性 [{name, type, condition_operations}]"
+            },
+            "primary_keys": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "主键属性名"
+            }
+          },
+          "additionalProperties": true
+        },
+        "description": "对象类型（含 data_source 等）。related_metric_count 为该对象类下已建模指标数，>0 时可用 get_object_types 下钻拿 related_metrics 明细"
+      },
+      "relation_types": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "关系类 ID"
+            },
+            "name": {
+              "type": "string",
+              "description": "关系名"
+            },
+            "comment": {
+              "type": "string",
+              "description": "说明"
+            },
+            "source_object_type_id": {
+              "type": "string",
+              "description": "起点对象类 ID"
+            },
+            "target_object_type_id": {
+              "type": "string",
+              "description": "终点对象类 ID"
+            }
+          },
+          "additionalProperties": true
+        },
+        "description": "关系类型"
+      },
+      "action_types": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "行动类 ID"
+            },
+            "name": {
+              "type": "string",
+              "description": "行动名"
+            },
+            "comment": {
+              "type": "string",
+              "description": "说明"
+            },
+            "object_type_id": {
+              "type": "string",
+              "description": "所属对象类 ID"
+            }
+          },
+          "additionalProperties": true
+        },
+        "description": "行动类型"
+      }
     }
   }
 }

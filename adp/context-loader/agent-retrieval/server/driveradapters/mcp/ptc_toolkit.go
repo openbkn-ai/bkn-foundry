@@ -196,6 +196,15 @@ func ptcSignature(tool MCPToolInfo) string {
 
 // ptcReturnKeys 渲染返回值顶层键。键名在各工具间并不统一（列表类有的叫 entries、
 // 有的叫 datas），模型无从推断——不写出来首次调用就会因 KeyError 失败。
+// ptcReturnKeys 渲染返回结构，数组键再往下展开一层元素字段。
+//
+// 只写顶层键是不够的。代码模式下调用方必须**先写出取值路径再执行**，取不到就得
+// 多花一轮把原始结构打出来找字段名——实测中 search_schema 的 object_types 因此被
+// 当成有 name 字段（实际是 concept_name），一整轮浪费在探查上，而探查本身又要把
+// 原始数据 print 回上下文，正好抵消了代码模式省上下文的意义。
+//
+// 只展开一层：再深就把签名清单撑成 schema 全文了，而第二层往下可以在脚本里
+// help() 或直接看值。
 func ptcReturnKeys(tool MCPToolInfo) string {
 	var schema struct {
 		Properties map[string]json.RawMessage `json:"properties"`
@@ -206,12 +215,45 @@ func ptcReturnKeys(tool MCPToolInfo) string {
 	if len(schema.Properties) == 0 {
 		return "dict"
 	}
+
 	names := make([]string, 0, len(schema.Properties))
 	for name := range schema.Properties {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	return "{" + strings.Join(names, ", ") + "}"
+
+	rendered := make([]string, 0, len(names))
+	for _, name := range names {
+		if inner := ptcItemKeys(schema.Properties[name]); inner != "" {
+			rendered = append(rendered, name+"["+inner+"]")
+			continue
+		}
+		rendered = append(rendered, name)
+	}
+	return "{" + strings.Join(rendered, ", ") + "}"
+}
+
+// ptcItemKeys 取数组元素的字段名。非数组、或元素没声明字段时返回空串，
+// 调用方按普通键渲染。
+func ptcItemKeys(raw json.RawMessage) string {
+	var field struct {
+		Type  string `json:"type"`
+		Items struct {
+			Properties map[string]json.RawMessage `json:"properties"`
+		} `json:"items"`
+	}
+	if json.Unmarshal(raw, &field) != nil || field.Type != "array" {
+		return ""
+	}
+	if len(field.Items.Properties) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(field.Items.Properties))
+	for name := range field.Items.Properties {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return strings.Join(names, " ")
 }
 
 func ptcUsableTools(info *MCPInfo) []MCPToolInfo {

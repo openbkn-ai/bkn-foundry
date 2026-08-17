@@ -4,7 +4,10 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -17,7 +20,9 @@
         "description": "查询超时（秒），范围 1-3600，默认 60。可选。"
       }
     },
-    "required": ["sql"]
+    "required": [
+      "sql"
+    ]
   },
   "output_schema": {
     "type": "object",
@@ -28,8 +33,12 @@
         "items": {
           "type": "object",
           "properties": {
-            "name": { "type": "string" },
-            "type": { "type": "string" }
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            }
           },
           "additionalProperties": true
         }
@@ -37,12 +46,36 @@
       "entries": {
         "type": "array",
         "description": "结果行",
-        "items": { "type": "object", "additionalProperties": true }
+        "items": {
+          "type": "object",
+          "properties": {
+            "_display": {
+              "type": "string",
+              "description": "给人看的展示名，由服务端按对象类的展示字段挑出。"
+            },
+            "_instance_id": {
+              "type": "string",
+              "description": "实例全局唯一 ID，可直接用于 query_instance_subgraph。"
+            },
+            "_instance_identity": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "构成该实例主键的字段值"
+            }
+          },
+          "additionalProperties": true,
+          "description": "其余键即该对象类的属性名，随对象类而变——先看 get_object_types / search_schema 的 data_properties，不要凭字段语义猜。"
+        }
       },
-      "total_count": { "type": "integer", "description": "返回行数" },
+      "total_count": {
+        "type": "integer",
+        "description": "返回行数"
+      },
       "warnings": {
         "type": "array",
-        "items": { "type": "string" },
+        "items": {
+          "type": "string"
+        },
         "description": "非致命告警（如资源已弃用）"
       }
     }

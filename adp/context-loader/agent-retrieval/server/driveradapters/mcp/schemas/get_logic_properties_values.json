@@ -4,7 +4,10 @@
     "properties": {
       "response_format": {
         "type": "string",
-        "enum": ["json", "toon"],
+        "enum": [
+          "json",
+          "toon"
+        ],
         "default": "toon",
         "description": "文本格式：json 或 toon，默认 toon"
       },
@@ -31,7 +34,9 @@
       "properties": {
         "type": "array",
         "description": "逻辑属性名列表（metric/operator）。必须为 Schema 中存在的逻辑属性",
-        "items": { "type": "string" }
+        "items": {
+          "type": "string"
+        }
       },
       "additional_context": {
         "type": "string",
@@ -42,7 +47,13 @@
         "description": "可选。覆盖动态参数生成所用大模型；为空走系统默认大模型。仅供测试/验证指定模型。"
       }
     },
-    "required": ["kn_id", "ot_id", "query", "_instance_identities", "properties"]
+    "required": [
+      "kn_id",
+      "ot_id",
+      "query",
+      "_instance_identities",
+      "properties"
+    ]
   },
   "output_schema": {
     "type": "object",
@@ -52,7 +63,23 @@
         "description": "逻辑属性结果列表",
         "items": {
           "type": "object",
-          "additionalProperties": true
+          "properties": {
+            "_display": {
+              "type": "string",
+              "description": "给人看的展示名，由服务端按对象类的展示字段挑出。"
+            },
+            "_instance_id": {
+              "type": "string",
+              "description": "实例全局唯一 ID，可直接用于 query_instance_subgraph。"
+            },
+            "_instance_identity": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "构成该实例主键的字段值"
+            }
+          },
+          "additionalProperties": true,
+          "description": "其余键即该对象类的属性名，随对象类而变——先看 get_object_types / search_schema 的 data_properties，不要凭字段语义猜。"
         }
       }
     }

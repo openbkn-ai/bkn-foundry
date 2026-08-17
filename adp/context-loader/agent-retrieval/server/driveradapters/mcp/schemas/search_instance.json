@@ -91,6 +91,33 @@
         "description": "读懂 nodes 所需的对象类精简定义，**只含真正出了实例的那些对象类**，不是召回扫过的全部。include_object_types=false 时不返回。",
         "items": {
           "type": "object",
+          "properties": {
+            "concept_id": {
+              "type": "string",
+              "description": "对象类 / 关系类 ID。注意本工具的 action_types 用的是 id 而非 concept_id。"
+            },
+            "concept_name": {
+              "type": "string",
+              "description": "名称。同上，action_types 那一项叫 name。"
+            },
+            "comment": {
+              "type": "string",
+              "description": "说明文字，通常含该类的属性表。"
+            },
+            "data_source": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "绑定的数据资源 {type, id, name}；id 可作为 run_sql 的 {{.<resource_id>}} 占位符。"
+            },
+            "data_properties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "description": "数据属性 [{name, type, condition_operations}]；condition_operations 决定该属性能否用 match / knn 过滤。"
+            }
+          },
           "additionalProperties": true
         }
       },
