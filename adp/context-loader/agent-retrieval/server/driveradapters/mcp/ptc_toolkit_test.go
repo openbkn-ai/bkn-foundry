@@ -527,3 +527,47 @@ func TestInlineToolsKeepAssemblyIdentical(t *testing.T) {
 		}
 	}
 }
+
+// 描述文本里的反斜杠是普通字面量（like 契约要写 \% 表示转义过的百分号），
+// 直接贴进 """...""" 会变成 Python 的非法转义序列（3.12 起是 SyntaxWarning）；
+// 描述里出现 """ 则会直接截断 docstring，把整份 stub 弄坏。
+func TestEscapePyDocstring(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{`写 \% 匹配百分号`, `写 \\% 匹配百分号`},
+		{`没有反斜杠`, `没有反斜杠`},
+		{`引号 """ 收尾`, `引号 \"\"\" 收尾`},
+		{`\\`, `\\\\`},
+	}
+	for _, c := range cases {
+		if got := escapePyDocstring(c.in); got != c.want {
+			t.Errorf("escapePyDocstring(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// 渲染出来的 stub 必须是合法 Python：描述里任何反斜杠都得转义过，
+// 不能留下 \% 这种会触发 SyntaxWarning 的裸序列。
+func TestRenderPTCStubEscapesBackslashes(t *testing.T) {
+	toolkit, err := BuildPTCToolkitForLocale("http://example.invalid", 30779, "zh-CN")
+	if err != nil {
+		t.Fatalf("BuildPTCToolkitForLocale: %v", err)
+	}
+	for _, line := range strings.Split(toolkit.Stub, "\n") {
+		for i := 0; i < len(line)-1; i++ {
+			if line[i] != '\\' {
+				continue
+			}
+			switch line[i+1] {
+			case '\\', 'n', 't', 'r', '"', '\'':
+				if line[i+1] == '\\' {
+					i++ // 成对的反斜杠，跳过后一个
+				}
+			default:
+				t.Errorf("stub 里有裸转义序列 \\%c: %s", line[i+1], line)
+			}
+		}
+	}
+}

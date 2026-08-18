@@ -413,16 +413,27 @@ func renderPTCDigestForLocale(locale *mcpLocaleBundle, tools []MCPToolInfo, with
 	return b.String()
 }
 
+// escapePyDocstring makes schema text safe to paste into a `"""..."""` literal.
+//
+// The text comes from the tool schemas, where a backslash is ordinary prose - the like
+// contract writes `\%` to mean an escaped percent sign. Pasted verbatim it becomes an
+// invalid Python escape sequence, which is a SyntaxWarning from 3.12 on, and a literal
+// `"""` in a description would end the docstring and break the whole stub.
+func escapePyDocstring(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	return strings.ReplaceAll(s, `"""`, `\"\"\"`)
+}
+
 func renderPTCStub(tools []MCPToolInfo) string {
 	var b strings.Builder
 	b.WriteString(mustReadMCPStaticResource("ptc_stub.py"))
 	for _, t := range tools {
 		params := ptcParams(t.InputSchema)
 		fmt.Fprintf(&b, "\n\ndef %s -> dict:\n", ptcSignature(t))
-		b.WriteString(`    """` + strings.TrimSpace(t.Description) + "\n")
+		b.WriteString(`    """` + escapePyDocstring(strings.TrimSpace(t.Description)) + "\n")
 		for _, p := range params {
 			if p.desc != "" {
-				fmt.Fprintf(&b, "\n    %s: %s\n", p.name, strings.TrimSpace(p.desc))
+				fmt.Fprintf(&b, "\n    %s: %s\n", p.name, escapePyDocstring(strings.TrimSpace(p.desc)))
 			}
 		}
 		b.WriteString(`    """` + "\n")
