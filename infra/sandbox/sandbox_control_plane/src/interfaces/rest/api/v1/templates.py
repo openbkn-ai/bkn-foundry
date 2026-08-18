@@ -1,7 +1,7 @@
 """
-模板 REST API 路由
+Template REST API routes
 
-定义模板相关的 HTTP 端点。
+Defines the HTTP endpoints for templates.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -24,17 +24,17 @@ async def create_template(
     request: CreateTemplateRequest, service: TemplateService = Depends(get_template_service_db)
 ):
     """
-    创建模板
+    Create a template
 
-    - **id**: 模板 ID
-    - **name**: 模板名称
-    - **image_url**: 镜像 URL
-    - **runtime_type**: 运行时类型 (python3.11, nodejs20, java17, go1.21)
-    - **default_cpu_cores**: 默认 CPU 核心数
-    - **default_memory_mb**: 默认内存（MB）
-    - **default_disk_mb**: 默认磁盘（MB）
-    - **default_timeout_sec**: 默认超时时间（秒）
-    - **default_env_vars**: 默认环境变量
+    - **id**: template id
+    - **name**: template name
+    - **image_url**: image URL
+    - **runtime_type**: runtime type (python3.11, nodejs20, java17, go1.21)
+    - **default_cpu_cores**: default CPU cores
+    - **default_memory_mb**: default memory in MB
+    - **default_disk_mb**: default disk in MB
+    - **default_timeout_sec**: default timeout in seconds
+    - **default_env_vars**: default environment variables
     """
     command = CreateTemplateCommand(
         template_id=request.id,
@@ -56,7 +56,7 @@ async def create_template(
 async def list_templates(
     limit: int = 50, offset: int = 0, service: TemplateService = Depends(get_template_service_db)
 ):
-    """列出所有模板"""
+    """List every template"""
     templates = await service.list_templates(limit=limit, offset=offset)
     return [_map_dto_to_response(t) for t in templates]
 
@@ -65,7 +65,7 @@ async def list_templates(
 async def get_template(
     template_id: str, service: TemplateService = Depends(get_template_service_db)
 ):
-    """获取模板详情"""
+    """Get the template details"""
     query = GetTemplateQuery(template_id=template_id)
     template_dto = await service.get_template(query)
     return _map_dto_to_response(template_dto)
@@ -77,7 +77,7 @@ async def update_template(
     request: UpdateTemplateRequest,
     service: TemplateService = Depends(get_template_service_db),
 ):
-    """更新模板"""
+    """Update the template"""
     command = UpdateTemplateCommand(
         template_id=template_id,
         name=request.name,
@@ -97,13 +97,13 @@ async def update_template(
 async def delete_template(
     template_id: str, service: TemplateService = Depends(get_template_service_db)
 ):
-    """删除模板"""
+    """Delete the template"""
     await service.delete_template(template_id)
     return {"message": "Template deleted successfully"}
 
 
 def _map_dto_to_response(dto: TemplateDTO) -> TemplateResponse:
-    """将 TemplateDTO 映射为 TemplateResponse"""
+    """Map a TemplateDTO onto a TemplateResponse"""
     return TemplateResponse(
         id=dto.id,
         name=dto.name,

@@ -1,8 +1,8 @@
 """
-模板 ORM 模型
+Template ORM model
 
-SQLAlchemy 模型定义，用于数据库持久化。
-按照数据表命名规范: t_{module}_{entity}, f_{field_name}
+The SQLAlchemy model used for persistence.
+Naming convention: t_{module}_{entity} for tables, f_{field_name} for columns.
 """
 
 from datetime import datetime
@@ -17,9 +17,9 @@ from src.infrastructure.persistence.database import Base
 
 class TemplateModel(Base):
     """
-    模板 ORM 模型 - t_sandbox_template
+    Template ORM model, t_sandbox_template
 
-    这是基础设施层的实现细节，映射到数据库表。
+    An infrastructure-layer detail that maps onto the database table.
     """
 
     __tablename__ = "t_sandbox_template"
@@ -70,13 +70,13 @@ class TemplateModel(Base):
     )
 
     def to_entity(self):
-        """转换为领域实体"""
+        """Convert to the domain entity"""
         from src.domain.entities.template import Template
         from src.domain.value_objects.resource_limit import ResourceLimit
 
-        # 将数据库中的数字转换为带单位的格式
+        # Turn the stored numbers back into values with units
         def format_resource(value):
-            """将数字转换为带单位的格式"""
+            """Turn a number into a value with a unit"""
             if isinstance(value, (int, float)):
                 return f"{int(value)}Mi"
             return str(value)
@@ -101,22 +101,22 @@ class TemplateModel(Base):
 
     @classmethod
     def from_entity(cls, template):
-        """从领域实体创建 ORM 模型"""
+        """Build the ORM model from the domain entity"""
         import re
 
         def parse_mb_value(value: str) -> int:
-            """解析资源值（将 '512Mi', '1Gi' 等转换为 MB）"""
+            """Parse a resource value, turning '512Mi' or '1Gi' into MB"""
             if not value:
-                return 512  # 默认值
+                return 512  # default
 
-            # 提取数字部分
+            # Take the numeric part
             numeric_str = re.sub(r"[^0-9.]", "", value)
             if not numeric_str:
                 return 512
 
             numeric = float(numeric_str)
 
-            # 根据单位转换
+            # Convert by unit
             if "Gi" in value or "GB" in value or "G" in value:
                 return int(numeric * 1024)
             elif "Mi" in value or "MB" in value or "M" in value:
@@ -124,7 +124,7 @@ class TemplateModel(Base):
             elif "Ki" in value or "KB" in value or "K" in value:
                 return int(numeric / 1024)
             else:
-                # 如果没有单位，假设是 MB
+                # Without a unit, assume MB
                 return int(numeric)
 
         import json
@@ -161,7 +161,7 @@ class TemplateModel(Base):
         )
 
     def _parse_json(self, value: str):
-        """安全解析 JSON 字符串"""
+        """Parse a JSON string safely"""
         if not value or value.strip() == "":
             return None
         try:
@@ -172,7 +172,7 @@ class TemplateModel(Base):
             return None
 
     def _millis_to_datetime(self, millis: int):
-        """将毫秒时间戳转换为 datetime"""
+        """Turn a millisecond timestamp into a datetime"""
         if not millis or millis == 0:
             return None
         try:

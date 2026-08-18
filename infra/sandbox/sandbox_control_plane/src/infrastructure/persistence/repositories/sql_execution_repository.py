@@ -1,8 +1,8 @@
 """
-执行仓储实现
+Execution repository implementation
 
-使用 SQLAlchemy 实现执行仓储接口。
-按照数据表命名规范使用 f_ 前缀字段名。
+Implements the execution repository interface with SQLAlchemy.
+Column names carry the f_ prefix, following the table naming convention.
 """
 
 import time
@@ -18,23 +18,23 @@ from src.infrastructure.persistence.models.execution_model import ExecutionModel
 
 class SqlExecutionRepository(IExecutionRepository):
     """
-    执行仓储实现
+    Execution repository implementation
 
-    这是基础设施层的 Adapter，实现领域层定义的 Port。
+    The infrastructure-layer adapter for the port the domain layer defines.
     """
 
     def __init__(self, session: AsyncSession):
         self._session = session
 
     async def save(self, execution: Execution) -> None:
-        """保存执行记录"""
+        """Save the execution record"""
         import json
 
         model = await self._session.get(ExecutionModel, execution.id)
         now_ms = int(time.time() * 1000)
 
         if model:
-            # 更新现有记录
+            # Update the existing row
             model.f_session_id = execution.session_id
             model.f_code = execution.code
             model.f_language = execution.language
@@ -56,7 +56,7 @@ class SqlExecutionRepository(IExecutionRepository):
             )
             model.f_updated_at = now_ms
         else:
-            # 创建新记录
+            # Insert a new row
             model = ExecutionModel.from_entity(execution)
             self._session.add(model)
 
@@ -67,7 +67,7 @@ class SqlExecutionRepository(IExecutionRepository):
         await self._session.commit()
 
     async def find_by_id(self, execution_id: str) -> Optional[Execution]:
-        """根据 ID 查找执行记录"""
+        """Find an execution record by id"""
         # Use a fresh query to avoid stale data from session cache
         # This is important for the sync execution polling loop
         stmt = select(ExecutionModel).where(ExecutionModel.f_id == execution_id)
@@ -76,7 +76,7 @@ class SqlExecutionRepository(IExecutionRepository):
         return model.to_entity() if model else None
 
     async def find_by_session_id(self, session_id: str, limit: int = 100) -> List[Execution]:
-        """根据会话 ID 查找执行记录"""
+        """Find the execution records of a session"""
         stmt = (
             select(ExecutionModel)
             .where(ExecutionModel.f_session_id == session_id)
@@ -87,36 +87,36 @@ class SqlExecutionRepository(IExecutionRepository):
         return [model.to_entity() for model in result.scalars().all()]
 
     async def find_by_status(self, status: str, limit: int = 100) -> List[Execution]:
-        """根据状态查找执行记录"""
+        """Find execution records by status"""
         stmt = select(ExecutionModel).where(ExecutionModel.f_status == status).limit(limit)
         result = await self._session.execute(stmt)
         return [model.to_entity() for model in result.scalars().all()]
 
     async def find_crashed_executions(self, max_retry_count: int) -> List[Execution]:
-        """查找可重试的崩溃执行"""
-        # 注意：retry_count 字段不在数据库模型中，这里返回空列表
-        # 如需支持，需要添加 f_retry_count 字段到 ExecutionModel
+        """Find the crashed executions that may be retried"""
+        # retry_count is not on the database model, so this returns an empty list.
+        # Supporting it needs an f_retry_count column on ExecutionModel.
         return []
 
     async def find_heartbeat_timeouts(self, timeout_threshold: datetime) -> List[Execution]:
-        """查找心跳超时的执行"""
-        # 注意：last_heartbeat_at 字段不在数据库模型中
+        """Find the executions whose heartbeat timed out"""
+        # last_heartbeat_at is not on the database model
         return []
 
     async def delete(self, execution_id: str) -> None:
-        """删除执行记录"""
+        """Delete the execution record"""
         stmt = delete(ExecutionModel).where(ExecutionModel.f_id == execution_id)
         await self._session.execute(stmt)
         await self._session.flush()
 
     async def delete_by_session_id(self, session_id: str) -> None:
-        """删除会话的所有执行记录"""
+        """Delete every execution record of a session"""
         stmt = delete(ExecutionModel).where(ExecutionModel.f_session_id == session_id)
         await self._session.execute(stmt)
         await self._session.flush()
 
     async def count_by_status(self, status: str) -> int:
-        """统计指定状态的执行数量"""
+        """Count the executions in a status"""
         stmt = (
             select(func.count())
             .select_from(ExecutionModel)

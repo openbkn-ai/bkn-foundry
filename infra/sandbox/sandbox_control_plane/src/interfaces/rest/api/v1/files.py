@@ -1,7 +1,7 @@
 """
-文件操作 REST API 路由
+File operation REST API routes
 
-定义文件上传下载相关的 HTTP 端点。
+Defines the HTTP endpoints for uploading and downloading files.
 """
 
 import fastapi
@@ -22,18 +22,18 @@ router = APIRouter(prefix="/sessions/{session_id}/files", tags=["files"])
 async def list_files(
     session_id: str,
     path: Optional[str] = Query(
-        None, description="指定目录路径（相对于 workspace 根目录），不指定则列出所有文件"
+        None, description="A directory, relative to the workspace root. Without it every file is listed."
     ),
-    limit: int = Query(1000, ge=1, le=10000, description="最大返回文件数"),
+    limit: int = Query(1000, ge=1, le=10000, description="How many files to return at most"),
     service: FileService = Depends(get_file_service_db),
 ):
     """
-    列出 session 下的文件
+    List the files of a session
 
-    返回该 session workspace 中的文件列表，支持指定目录路径
+    Returns the files in that session workspace, optionally under one directory.
 
-    - **path**: 可选，指定目录路径（如 "src/" 或 "src/utils"），不指定则列出所有文件
-    - **limit**: 最大返回文件数 (1-10000)
+    - **path**: optional directory, such as "src/" or "src/utils"; without it every file is listed
+    - **limit**: how many files to return, 1-10000
     """
     try:
         files = await service.list_files(session_id=session_id, path=path, limit=limit)
@@ -48,19 +48,19 @@ async def list_files(
 async def upload_file(
     session_id: str,
     path: str,
-    extract: bool = Query(False, description="是否将上传内容按 ZIP 压缩包自动解压到目标目录"),
-    overwrite: bool = Query(False, description="解压时是否覆盖已存在文件"),
+    extract: bool = Query(False, description="Whether to treat the upload as a ZIP and extract it into the target directory"),
+    overwrite: bool = Query(False, description="Whether extraction overwrites existing files"),
     file: UploadFile = File(...),
     service: FileService = Depends(get_file_service_db),
 ):
     """
-    上传文件到会话工作区
+    Upload a file into the session workspace
 
-    - **path**: 文件在工作区中的路径
-    - **file**: 要上传的文件（最大 100MB）
+    - **path**: where the file goes in the workspace
+    - **file**: the file to upload, 100MB at most
     """
     try:
-        # 验证文件大小
+        # Validate the file size
         settings = get_settings()
         content = await file.read()
         max_upload_bytes = settings.max_upload_file_size_mb * 1024 * 1024
@@ -119,9 +119,9 @@ async def download_file(
     session_id: str, file_path: str, service: FileService = Depends(get_file_service_db)
 ):
     """
-    从会话工作区下载文件
+    Download a file from the session workspace
 
-    - **file_path**: 文件在工作区中的路径
+    - **file_path**: where the file lives in the workspace
     """
     try:
         file_data = await service.download_file(session_id=session_id, path=file_path)

@@ -1,7 +1,7 @@
 """
-数据库种子数据初始化
+Database seed data
 
-提供统一的种子数据初始化逻辑，可以在应用启动或独立脚本中调用。
+The shared seeding logic, callable at application start-up or from a standalone script.
 """
 
 from sqlalchemy import select
@@ -20,16 +20,16 @@ logger = get_logger(__name__)
 
 async def seed_runtime_nodes(force: bool = False) -> int:
     """
-    初始化默认运行时节点
+    Create the default runtime nodes
 
     Args:
-        force: 如果为 True，即使节点已存在也会重新创建
+        force: when True, recreate the nodes even if they exist
 
     Returns:
-        创建的节点数量
+        How many nodes were created
     """
     async with db_manager.get_session() as session:
-        # 检查是否已存在节点
+        # Check whether nodes already exist
         result = await session.execute(select(RuntimeNodeModel))
         existing_nodes = result.scalars().all()
 
@@ -39,14 +39,14 @@ async def seed_runtime_nodes(force: bool = False) -> int:
             )
             return 0
 
-        # 如果 force=True，删除现有节点
+        # With force=True, delete the existing nodes
         if existing_nodes and force:
             for node in existing_nodes:
                 await session.delete(node)
             await session.flush()
             logger.info("Deleted existing runtime nodes", count=len(existing_nodes))
 
-        # 创建默认节点
+        # Create the default nodes
         default_nodes = get_default_runtime_nodes()
         for node in default_nodes:
             session.add(node)
@@ -58,31 +58,31 @@ async def seed_runtime_nodes(force: bool = False) -> int:
 
 async def seed_templates(force: bool = False) -> int:
     """
-    初始化默认模板
+    Create the default templates
 
     Args:
-        force: 如果为 True，即使模板已存在也会重新创建
+        force: when True, recreate the templates even if they exist
 
     Returns:
-        创建或更新的模板数量
+        How many templates were created or updated
     """
     async with db_manager.get_session() as session:
-        # 获取默认模板定义
+        # Read the default template definitions
         default_templates = get_default_templates()
         default_template_map = {t.f_id: t for t in default_templates}
 
-        # 检查已存在的模板
+        # Check which templates already exist
         result = await session.execute(select(TemplateModel))
         existing_templates = result.scalars().all()
         existing_template_map = {t.f_id: t for t in existing_templates}
 
         if existing_templates and not force:
-            # 更新已存在模板的镜像地址
+            # Update the image of an existing template
             updated_count = 0
             for template_id, default_template in default_template_map.items():
                 if template_id in existing_template_map:
                     existing_template = existing_template_map[template_id]
-                    # 更新镜像地址和其他可能变化的字段
+                    # Update the image and the other fields that can change
                     if existing_template.f_image_url != default_template.f_image_url:
                         old_image_url = existing_template.f_image_url
                         existing_template.f_image_url = default_template.f_image_url
@@ -94,7 +94,7 @@ async def seed_templates(force: bool = False) -> int:
                             new_image=default_template.f_image_url,
                         )
 
-            # 创建新模板（默认模板中有但数据库中没有的）
+            # Create the templates that are in the defaults but not in the database
             created_count = 0
             for template_id, default_template in default_template_map.items():
                 if template_id not in existing_template_map:
@@ -105,14 +105,14 @@ async def seed_templates(force: bool = False) -> int:
             logger.info("Templates synced", updated=updated_count, created=created_count)
             return updated_count + created_count
 
-        # 如果 force=True，删除现有模板并重新创建
+        # With force=True, delete the existing templates and recreate them
         if existing_templates and force:
             for template in existing_templates:
                 await session.delete(template)
             await session.flush()
             logger.info("Deleted existing templates", count=len(existing_templates))
 
-        # 创建默认模板
+        # Create the default templates
         for template in default_templates:
             logger.info(
                 "Creating template with image URL",
@@ -128,13 +128,13 @@ async def seed_templates(force: bool = False) -> int:
 
 async def seed_default_data(force: bool = False) -> dict:
     """
-    初始化所有默认数据
+    Create all the default data
 
     Args:
-        force: 如果为 True，即使数据已存在也会重新创建
+        force: when True, recreate the data even if it exists
 
     Returns:
-        包含创建项数量的字典
+        A dict holding how many of each were created
     """
     logger.info("Starting default data seeding", force=force)
 

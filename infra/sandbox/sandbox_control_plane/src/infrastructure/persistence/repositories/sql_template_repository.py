@@ -1,8 +1,8 @@
 """
-模板仓储实现
+Template repository implementation
 
-使用 SQLAlchemy 实现模板仓储接口。
-按照数据表命名规范使用 f_ 前缀字段名。
+Implements the template repository interface with SQLAlchemy.
+Column names carry the f_ prefix, following the table naming convention.
 """
 
 import re
@@ -20,32 +20,32 @@ from src.infrastructure.persistence.models.template_model import TemplateModel
 
 class SqlTemplateRepository(ITemplateRepository):
     """
-    模板仓储实现
+    Template repository implementation
 
-    这是基础设施层的 Adapter，实现领域层定义的 Port。
+    The infrastructure-layer adapter for the port the domain layer defines.
     """
 
     def __init__(self, session: AsyncSession):
         self._session = session
 
     async def save(self, template: Template) -> None:
-        """保存模板"""
+        """Save the template"""
         model = await self._session.get(TemplateModel, template.id)
         now_ms = int(time.time() * 1000)
 
         def parse_mb_value(value: str) -> int:
-            """解析资源值（将 '512Mi', '1Gi' 等转换为 MB）"""
+            """Parse a resource value, turning '512Mi' or '1Gi' into MB"""
             if not value:
-                return 512  # 默认值
+                return 512  # default
 
-            # 提取数字部分
+            # Take the numeric part
             numeric_str = re.sub(r"[^0-9.]", "", value)
             if not numeric_str:
                 return 512
 
             numeric = float(numeric_str)
 
-            # 根据单位转换
+            # Convert by unit
             if "Gi" in value or "GB" in value or "G" in value:
                 return int(numeric * 1024)
             elif "Mi" in value or "MB" in value or "M" in value:
@@ -53,11 +53,11 @@ class SqlTemplateRepository(ITemplateRepository):
             elif "Ki" in value or "KB" in value or "K" in value:
                 return int(numeric / 1024)
             else:
-                # 如果没有单位，假设是 MB
+                # Without a unit, assume MB
                 return int(numeric)
 
         if model:
-            # 更新现有记录
+            # Update the existing row
             model.f_name = template.name
             model.f_description = ""
             model.f_image_url = template.image
@@ -79,49 +79,49 @@ class SqlTemplateRepository(ITemplateRepository):
             )
             model.f_updated_at = now_ms
         else:
-            # 创建新记录
+            # Insert a new row
             model = TemplateModel.from_entity(template)
             self._session.add(model)
 
         await self._session.flush()
 
     async def find_by_id(self, template_id: str) -> Template | None:
-        """根据 ID 查找模板"""
+        """Find a template by id"""
         model = await self._session.get(TemplateModel, template_id)
         return model.to_entity() if model else None
 
     async def find_by_name(self, name: str) -> Template | None:
-        """根据名称查找模板"""
+        """Find a template by name"""
         stmt = select(TemplateModel).where(TemplateModel.f_name == name)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         return model.to_entity() if model else None
 
     async def find_all(self, offset: int = 0, limit: int = 100) -> List[Template]:
-        """查找所有模板"""
+        """Find every template"""
         stmt = select(TemplateModel).offset(offset).limit(limit).order_by(TemplateModel.f_name)
         result = await self._session.execute(stmt)
         return [model.to_entity() for model in result.scalars().all()]
 
     async def delete(self, template_id: str) -> None:
-        """删除模板"""
+        """Delete the template"""
         stmt = delete(TemplateModel).where(TemplateModel.f_id == template_id)
         await self._session.execute(stmt)
         await self._session.flush()
 
     async def exists(self, template_id: str) -> bool:
-        """检查模板是否存在"""
+        """Check whether the template exists"""
         model = await self._session.get(TemplateModel, template_id)
         return model is not None
 
     async def exists_by_name(self, name: str) -> bool:
-        """检查名称是否存在"""
+        """Check whether the name exists"""
         stmt = select(func.count()).select_from(TemplateModel).where(TemplateModel.f_name == name)
         result = await self._session.execute(stmt)
         return (result.scalar() or 0) > 0
 
     async def count(self) -> int:
-        """统计模板数量"""
+        """Count the templates"""
         stmt = select(func.count()).select_from(TemplateModel)
         result = await self._session.execute(stmt)
         return result.scalar() or 0

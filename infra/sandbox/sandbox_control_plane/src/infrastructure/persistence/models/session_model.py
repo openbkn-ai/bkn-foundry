@@ -1,8 +1,8 @@
 """
-会话 ORM 模型
+Session ORM model
 
-SQLAlchemy 模型定义，用于数据库持久化。
-按照数据表命名规范: t_{module}_{entity}, f_{field_name}
+The SQLAlchemy model used for persistence.
+Naming convention: t_{module}_{entity} for tables, f_{field_name} for columns.
 """
 
 from datetime import datetime
@@ -17,10 +17,10 @@ from src.shared.utils.dependencies import DEFAULT_PYTHON_PACKAGE_INDEX_URL
 
 class SessionModel(Base):
     """
-    会话 ORM 模型 - t_sandbox_session
+    Session ORM model, t_sandbox_session
 
-    这是基础设施层的实现细节，映射到数据库表。
-    按照照数据表命名规范实现。
+    An infrastructure-layer detail that maps onto the database table,
+    following the table naming convention.
     """
 
     __tablename__ = "t_sandbox_session"
@@ -90,7 +90,7 @@ class SessionModel(Base):
     )
 
     def to_entity(self):
-        """转换为领域实体"""
+        """Convert to the domain entity"""
         from src.domain.entities.session import Session, InstalledDependency
         from src.domain.value_objects.resource_limit import ResourceLimit
         from src.domain.value_objects.execution_status import SessionStatus
@@ -116,7 +116,7 @@ class SessionModel(Base):
             updated_at=self._millis_to_datetime(self.f_updated_at) or datetime.now(),
             completed_at=self._millis_to_datetime(self.f_completed_at),
             last_activity_at=self._millis_to_datetime(self.f_last_activity_at) or datetime.now(),
-            # 依赖安装字段
+            # Dependency installation columns
             python_package_index_url=self.f_python_package_index_url
             or DEFAULT_PYTHON_PACKAGE_INDEX_URL,
             requested_dependencies=self._parse_json(self.f_requested_dependencies) or [],
@@ -130,7 +130,7 @@ class SessionModel(Base):
             ),
         )
 
-        # 转换 installed_dependencies JSON 为 InstalledDependency 对象列表
+        # Turn the installed_dependencies JSON into InstalledDependency objects
         if self.f_installed_dependencies:
             try:
                 import json
@@ -157,10 +157,10 @@ class SessionModel(Base):
 
     @classmethod
     def from_entity(cls, session):
-        """从领域实体创建 ORM 模型"""
+        """Build the ORM model from the domain entity"""
         import json
 
-        # 转换 installed_dependencies 对象列表为 JSON
+        # Turn the InstalledDependency objects into JSON
         installed_dependencies_json = ""
         if session.installed_dependencies:
             try:
@@ -203,7 +203,7 @@ class SessionModel(Base):
                 if session.last_activity_at
                 else now_ms
             ),
-            # 依赖安装字段
+            # Dependency installation columns
             f_requested_dependencies=(
                 json.dumps(session.requested_dependencies, ensure_ascii=False)
                 if session.requested_dependencies
@@ -222,7 +222,7 @@ class SessionModel(Base):
                 if session.dependency_install_completed_at
                 else 0
             ),
-            # 审计字段
+            # Audit columns
             f_created_at=(
                 int(session.created_at.timestamp() * 1000) if session.created_at else now_ms
             ),
@@ -236,7 +236,7 @@ class SessionModel(Base):
         )
 
     def _parse_json(self, value: str):
-        """安全解析 JSON 字符串"""
+        """Parse a JSON string safely"""
         if not value or value.strip() == "":
             return None
         try:
@@ -247,7 +247,7 @@ class SessionModel(Base):
             return None
 
     def _millis_to_datetime(self, millis: int):
-        """将毫秒时间戳转换为 datetime"""
+        """Turn a millisecond timestamp into a datetime"""
         if not millis or millis == 0:
             return None
         try:

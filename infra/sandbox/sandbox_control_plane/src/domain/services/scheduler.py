@@ -1,7 +1,7 @@
 """
-调度器领域服务接口
+Scheduler domain service interface
 
-定义调度器的抽象接口，负责选择最优运行时节点。
+The scheduler abstraction: picking the best runtime node.
 """
 
 from abc import ABC, abstractmethod
@@ -16,11 +16,11 @@ if TYPE_CHECKING:
 
 @dataclass
 class RuntimeNode:
-    """运行时节点值对象"""
+    """Runtime node value object"""
 
     id: str
     type: str  # "docker" or "kubernetes"
-    url: str  # 节点 API 地址
+    url: str  # node API address
     status: str  # "healthy", "unhealthy", "draining"
     cpu_usage: float  # 0.0 - 1.0
     mem_usage: float  # 0.0 - 1.0
@@ -29,21 +29,21 @@ class RuntimeNode:
     cached_templates: List[str]
 
     def is_healthy(self) -> bool:
-        """是否健康"""
+        """Whether it is healthy"""
         return self.status == "healthy"
 
     def get_load_ratio(self) -> float:
-        """获取负载比率 (会话数/最大会话数)"""
+        """The load ratio: sessions divided by maximum sessions"""
         return self.session_count / self.max_sessions if self.max_sessions > 0 else 1.0
 
     def has_template(self, template_id: str) -> bool:
-        """是否已缓存指定模板"""
+        """Whether it has the template cached"""
         return template_id in self.cached_templates
 
 
 @dataclass
 class ScheduleRequest:
-    """调度请求"""
+    """Scheduling request"""
 
     template_id: str
     resource_limit: ResourceLimit
@@ -52,35 +52,35 @@ class ScheduleRequest:
 
 class IScheduler(ABC):
     """
-    调度器接口
+    Scheduler interface
 
-    这是领域层定义的 Port，由基础设施层实现 Adapter。
+    The port the domain layer defines; the infrastructure layer supplies the adapter.
     """
 
     @abstractmethod
     async def schedule(self, request: ScheduleRequest) -> RuntimeNode:
         """
-        调度会话到最优节点
+        Schedule the session onto the best node
 
-        调度策略：
-        1. 优先考虑模板亲和性（镜像已缓存）
-        2. 使用负载均衡选择健康节点
+        The policy:
+        1. Prefer template affinity, meaning the image is already cached
+        2. Otherwise load-balance across the healthy nodes
         """
         pass
 
     @abstractmethod
     async def get_node(self, node_id: str) -> Optional[RuntimeNode]:
-        """获取指定节点"""
+        """Get one node"""
         pass
 
     @abstractmethod
     async def get_healthy_nodes(self) -> List[RuntimeNode]:
-        """获取所有健康节点"""
+        """Get every healthy node"""
         pass
 
     @abstractmethod
     async def mark_node_unhealthy(self, node_id: str) -> None:
-        """标记节点为不健康"""
+        """Mark a node unhealthy"""
         pass
 
     @abstractmethod
@@ -91,18 +91,18 @@ class IScheduler(ABC):
         execution_request: "ExecutionRequest",
     ) -> str:
         """
-        提交执行请求到容器内的执行器
+        Submit an execution request to the executor inside the container
 
         Args:
-            session_id: 会话 ID
-            container_id: 容器 ID
-            execution_request: 执行请求
+            session_id: session id
+            container_id: container id
+            execution_request: the execution request
 
         Returns:
-            execution_id: 执行任务 ID
+            execution_id: execution task id
 
         Raises:
-            ConnectionError: 无法连接到执行器
-            TimeoutError: 执行器响应超时
+            ConnectionError: the executor is unreachable
+            TimeoutError: the executor did not answer in time
         """
         pass

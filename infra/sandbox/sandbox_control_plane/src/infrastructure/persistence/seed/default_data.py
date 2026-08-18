@@ -1,9 +1,9 @@
 """
-默认数据定义
+Default data definitions
 
-定义在不同环境中使用的默认运行时节点和模板。
-所有默认数据的集中定义，方便维护和修改。
-按照数据表命名规范使用 f_ 前缀字段名。
+The default runtime nodes and templates used across environments.
+Keeping every default in one place makes them easier to maintain.
+Column names carry the f_ prefix, following the table naming convention.
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE_REPOSITORY = "sandbox-template-multi-langu
 
 def get_project_version() -> str:
     """
-    获取项目版本号。
+    Read the project version.
 
-    优先读取 PROJECT_VERSION/TEMPLATE_IMAGE_TAG 环境变量；未设置时读取仓库根目录 VERSION 文件。
+    PROJECT_VERSION and TEMPLATE_IMAGE_TAG win; without them the VERSION file at the repository root applies.
     """
     env_version = os.getenv("TEMPLATE_IMAGE_TAG") or os.getenv("PROJECT_VERSION")
     if env_version:
@@ -57,7 +57,7 @@ def get_project_version() -> str:
 
 
 def build_template_image_url(repository: str) -> str:
-    """根据项目版本生成默认 SWR 模板镜像 URL。"""
+    """Build the default SWR template image URL from the project version."""
     registry = os.getenv("DEFAULT_TEMPLATE_IMAGE_REGISTRY") or DEFAULT_TEMPLATE_IMAGE_REGISTRY
     image_name = f"{registry.rstrip('/')}/{repository.lstrip('/')}" if registry else repository
     return f"{image_name}:{get_project_version()}"
@@ -65,12 +65,12 @@ def build_template_image_url(repository: str) -> str:
 
 def get_default_template_image_url() -> str:
     """
-    获取默认模板镜像 URL
+    Get the default template image URL
 
-    从环境变量 DEFAULT_TEMPLATE_IMAGE 读取，如果未设置则使用 VERSION 文件生成默认 SWR 镜像地址。
+    Read from DEFAULT_TEMPLATE_IMAGE; without it, build the default SWR address from the VERSION file.
 
     Returns:
-        模板镜像 URL
+        The template image URL
     """
     repository = os.getenv(
         "DEFAULT_TEMPLATE_IMAGE_REPOSITORY",
@@ -85,9 +85,9 @@ def get_default_template_image_url() -> str:
 
 def get_multi_language_template_image_url() -> str:
     """
-    获取多语言复合模板镜像 URL。
+    Get the multi-language composite template image URL.
 
-    从环境变量 DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE 读取，如果未设置则使用 VERSION 文件生成默认 SWR 镜像地址。
+    Read from DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE; without it, build the default SWR address from the VERSION file.
     """
     image_url = os.getenv(
         "DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE"
@@ -106,10 +106,10 @@ def get_multi_language_template_image_url() -> str:
 
 def get_default_runtime_nodes() -> list[RuntimeNodeModel]:
     """
-    获取默认运行时节点列表
+    Get the default runtime nodes
 
     Returns:
-        默认运行时节点列表
+        The default runtime nodes
     """
     from src.infrastructure.persistence.models.runtime_node_model import RuntimeNodeModel
 
@@ -131,7 +131,7 @@ def get_default_runtime_nodes() -> list[RuntimeNodeModel]:
             f_cached_images="[]",
             f_labels='{"environment": "development", "type": "default"}',
             f_last_heartbeat_at=now_ms,
-            # 审计字段
+            # Audit columns
             f_created_at=now_ms,
             f_created_by="system",
             f_updated_at=now_ms,
@@ -144,10 +144,10 @@ def get_default_runtime_nodes() -> list[RuntimeNodeModel]:
 
 def get_default_templates() -> list[TemplateModel]:
     """
-    获取默认模板列表
+    Get the default templates
 
     Returns:
-        默认模板列表
+        The default templates
     """
     import json
 
@@ -170,7 +170,7 @@ def get_default_templates() -> list[TemplateModel]:
             f_pre_installed_packages="[]",
             f_default_env_vars="",
             f_security_context="",
-            # 审计字段
+            # Audit columns
             f_created_at=now_ms,
             f_created_by="system",
             f_updated_at=now_ms,
@@ -193,7 +193,7 @@ def get_default_templates() -> list[TemplateModel]:
             f_pre_installed_packages=json.dumps(["python", "go", "bash"]),
             f_default_env_vars="",
             f_security_context="",
-            # 审计字段
+            # Audit columns
             f_created_at=now_ms,
             f_created_by="system",
             f_updated_at=now_ms,
