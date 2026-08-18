@@ -65,10 +65,10 @@ func tryLoadToolSchemas(locale *mcpLocaleBundle, toolKey string) (input, output 
 	return locale.OverlaySchemas(toolKey, wrapper.InputSchema, wrapper.OutputSchema)
 }
 
-// BuildMCPInfo builds the MCP self-description with the process default locale.
-// New request-facing callers should use BuildMCPInfoForLocale.
+// BuildMCPInfo builds the MCP self-description in the baseline locale.
+// Request-facing callers use BuildMCPInfoForLocale.
 func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
-	return BuildMCPInfoForLocale(endpoint, mcpLocaleFromEnv())
+	return BuildMCPInfoForLocale(endpoint, defaultMCPLocale)
 }
 
 // BuildMCPInfoForLocale builds the MCP self-description using the requested

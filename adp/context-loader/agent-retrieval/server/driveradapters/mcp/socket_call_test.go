@@ -151,16 +151,12 @@ func TestInfoAndToolsListAgreeOnEnterpriseSchemas(t *testing.T) {
 }
 
 func TestInfoAndToolsListAgreeOnEveryToolInTheDefaultLocale(t *testing.T) {
-	// Pin locale. The core tools on the tools/list side will go through the locale overlay.
-	// (schema_descriptions.json of locale.go), the /mcp/info side always reads the embedded copy,
-	// So "both sides are literally equal" only holds true in the default locale where the overlay is empty. If not nailed,
-	// mcpLocaleFromEnv can read LANG - it is not available on CI runner, so it is green today, on the development machine.
-	// LANG=en_US.UTF-8 is the norm and will be red on a core tool that has nothing to do with this change.
-	//
-	// "/mcp/info is blind to the locale" itself is a gap that existed before this PR (even the Description.
-	// Take the default tools_meta.json, and the external documentation says that it will be localized with the deployment language), it is worth opening follow-up separately;
-	// Let’s first write down its boundaries clearly, lest this comment become the only place where it is remembered in the repo.
-	t.Setenv("MCP_LOCALE", "zh-CN")
+	// On the tools/list side the core tools pass through the locale overlay
+	// (schema_descriptions.json in locale.go), while /mcp/info always reads the
+	// embedded baseline, so "identical on both sides" holds only in the baseline
+	// locale — which is what both request-less paths now use. This test needed a
+	// t.Setenv("MCP_LOCALE", ...) before, because the locale came from LANG and
+	// an English development shell rendered a different answer than CI.
 	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
 	mcptool.Register(extraTool("probe_context", "probe_context"))
 	mcptool.Decorate(toolKeySearchSchema, searchSchemaDecorator())

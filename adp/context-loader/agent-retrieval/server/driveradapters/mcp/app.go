@@ -134,7 +134,7 @@ func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 // from mcptool instead (Extras / DecoratorFor / Allowed), and
 // TestInfoAndToolsListAgree… pins the two answers together.
 func newMCPServer(lifecycleClient *bkntrace.LifecycleClient) (*server.MCPServer, *toolBuilder) {
-	return newMCPServerForLocale(lifecycleClient, mcpLocaleFromEnv())
+	return newMCPServerForLocale(lifecycleClient, defaultMCPLocale)
 }
 
 func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale string) (*server.MCPServer, *toolBuilder) {

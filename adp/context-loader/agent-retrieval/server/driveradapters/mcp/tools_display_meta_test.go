@@ -19,9 +19,9 @@ import (
 func TestToolsListCarriesDisplayMetadata(t *testing.T) {
 	noExtensions(t)
 
-	// Get the expected value according to the current locale of the process, instead of the Hengdu Chinese benchmark file: on the local development machine.
-	// LANG=en_US is the norm. Hard-coding the benchmark file will make this assertion falsely red.
-	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
+	// Expectations come from the baseline bundle, the same one assembledTools
+	// registers with. Neither side reads the process environment any more.
+	locale := loadMCPLocaleBundle(defaultMCPLocale)
 	for _, tool := range assembledTools(t) {
 		raw, err := json.Marshal(tool)
 		if err != nil {
@@ -155,8 +155,6 @@ func TestMCPInfoDisplayMetadataMatchesToolsList(t *testing.T) {
 // If a path is missed, it will be red.
 func TestEveryRegistrationPathHonoursTheLocale(t *testing.T) {
 	noExtensions(t)
-	t.Setenv("MCP_LOCALE", "en-US")
-
 	raw, err := schemasFS.ReadFile("schemas/locales/en-US/tools_meta.json")
 	if err != nil {
 		t.Fatalf("read localized tool metadata: %v", err)
@@ -166,7 +164,7 @@ func TestEveryRegistrationPathHonoursTheLocale(t *testing.T) {
 		t.Fatalf("decode localized tool metadata: %v", err)
 	}
 
-	for _, tool := range assembledTools(t) {
+	for _, tool := range assembledToolsForLocale(t, "en-US") {
 		want, ok := localized[tool.Name]
 		if !ok {
 			t.Errorf("tool %q has no en-US entry", tool.Name)
@@ -184,14 +182,12 @@ func TestEveryRegistrationPathHonoursTheLocale(t *testing.T) {
 // and applies the same locale as tools/list.
 func TestMCPInfoAgreesWithToolsListUnderANonDefaultLocale(t *testing.T) {
 	noExtensions(t)
-	t.Setenv("MCP_LOCALE", "en-US")
-
 	info, err := BuildMCPInfoForLocale("https://example.invalid/mcp", "en-US")
 	if err != nil {
 		t.Fatalf("BuildMCPInfo: %v", err)
 	}
 	listed := map[string]mcp.Tool{}
-	for _, tool := range assembledTools(t) {
+	for _, tool := range assembledToolsForLocale(t, "en-US") {
 		listed[tool.Name] = tool
 	}
 	if len(info.Tools) != len(listed) {
@@ -221,7 +217,12 @@ func TestMCPInfoAgreesWithToolsListUnderANonDefaultLocale(t *testing.T) {
 // assembledTools returns the tools a client would see from tools/list.
 func assembledTools(t *testing.T) []mcp.Tool {
 	t.Helper()
-	srv, b := newMCPServer(nil)
+	return assembledToolsForLocale(t, defaultMCPLocale)
+}
+
+func assembledToolsForLocale(t *testing.T, locale string) []mcp.Tool {
+	t.Helper()
+	srv, b := newMCPServerForLocale(nil, locale)
 
 	all := make([]mcp.Tool, 0, len(srv.ListTools()))
 	for _, st := range srv.ListTools() {

@@ -11,7 +11,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"os"
 	"strings"
 	"sync"
 )
@@ -145,15 +144,6 @@ func stripMCPResourceLicenseHeader(content string) string {
 		return content
 	}
 	return strings.TrimLeft(content[end+2:], "\r\n")
-}
-
-func mcpLocaleFromEnv() string {
-	for _, key := range []string{"MCP_LOCALE", "X_LOCALE", "LANGUAGE", "LC_ALL", "LANG"} {
-		if value := strings.TrimSpace(os.Getenv(key)); value != "" {
-			return value
-		}
-	}
-	return defaultMCPLocale
 }
 
 func normalizeMCPLocale(locale string) string {

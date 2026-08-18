@@ -454,7 +454,7 @@ func renderPTCStub(tools []MCPToolInfo) string {
 // BuildPTCToolkit renders the PTC toolkit. endpoint is consistent with BuildMCPInfo (self-describing only),
 // port is the listening port of this service and is used to derive the sandbox return address.
 func BuildPTCToolkit(endpoint string, port int) (*PTCToolkit, error) {
-	return BuildPTCToolkitForLocale(endpoint, port, mcpLocaleFromEnv())
+	return BuildPTCToolkitForLocale(endpoint, port, defaultMCPLocale)
 }
 
 // BuildPTCToolkitForLocale renders the PTC toolkit from the effective locale.

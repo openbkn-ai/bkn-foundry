@@ -81,7 +81,7 @@ func newPTCMCPServer(
 	executor interfaces.DrivenOperatorIntegration,
 	servicePort int,
 ) (*server.MCPServer, error) {
-	return newPTCMCPServerForLocale(lifecycleClient, executor, servicePort, mcpLocaleFromEnv())
+	return newPTCMCPServerForLocale(lifecycleClient, executor, servicePort, defaultMCPLocale)
 }
 
 func newPTCMCPServerForLocale(

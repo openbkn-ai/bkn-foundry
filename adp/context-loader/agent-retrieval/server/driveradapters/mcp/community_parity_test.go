@@ -97,7 +97,7 @@ func TestCommunityToolSchemasUnchanged(t *testing.T) {
 
 	// With nothing registered the decorator path is the identity, byte for
 	// byte, or the community binary is shipping a schema the socket touched.
-	bundle := loadMCPLocaleBundle(mcpLocaleFromEnv())
+	bundle := loadMCPLocaleBundle(defaultMCPLocale)
 	srv, _ := newMCPServer(nil)
 	for _, key := range communityTools {
 		if _, isLifecycle := lifecycleToolNames[key]; isLifecycle {
@@ -158,7 +158,7 @@ func TestCommunityMCPInfoSchemasComeFromEmbeddedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BuildMCPInfo: %v", err)
 	}
-	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
+	locale := loadMCPLocaleBundle(defaultMCPLocale)
 	for _, tool := range info.Tools {
 		want, _ := tryLoadToolSchemas(locale, tool.Name)
 		if len(want) == 0 {
