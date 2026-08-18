@@ -59,6 +59,10 @@ var communityTools = []string{
 	"query_metric",
 	"query_object_instance",
 	"read_skill_file",
+	// 代码执行工具：与业务工具并列在同一个面上，模型按任务性质自选。
+	// 不受 MCP_EXECUTE_SKILL_ENABLED 约束，所以它们进基线而 execute_skill 不进。
+	"run_code",
+	"run_shell",
 	"run_sql",
 	"search_instance",
 	"search_schema",

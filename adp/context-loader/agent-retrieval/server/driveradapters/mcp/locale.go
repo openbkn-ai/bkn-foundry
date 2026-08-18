@@ -256,6 +256,11 @@ func (b *mcpLocaleBundle) ToolMeta(toolKey string) ToolMeta {
 }
 
 func (b *mcpLocaleBundle) ToolSchemas(toolKey string) (input, output json.RawMessage) {
+	// PTC 工具的 schema 按 locale 分文件存放，本身已是本地化的，走不了下面那条
+	// 「读基准再叠加覆盖」的路——从基准读会让 en-US 拿到中文那份。
+	if input, output, ok := ptcToolSchemas(b, toolKey); ok {
+		return input, output
+	}
 	input, output = loadToolSchemas(toolKey)
 	return b.OverlaySchemas(toolKey, input, output)
 }

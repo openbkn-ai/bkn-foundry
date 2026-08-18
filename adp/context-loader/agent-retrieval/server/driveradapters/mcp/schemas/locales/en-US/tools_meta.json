@@ -121,5 +121,13 @@
     "title": "Execute Skill",
     "group_title": "Skills",
     "description": "Run a skill's entry command inside the sandbox and return exit_code / stdout / stderr. entry_shell must come from the entry declared in SKILL.md — read it with get_skill_content first."
+  },
+  "run_code": {
+    "title": "Run Code",
+    "group_title": "Code Execution"
+  },
+  "run_shell": {
+    "title": "Run Command",
+    "group_title": "Code Execution"
   }
 }

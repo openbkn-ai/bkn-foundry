@@ -79,6 +79,42 @@ var ptcSkipTools = map[string]bool{
 	"bkn_finish_interaction": true,
 }
 
+// ptcToolSchemas 取 run_code / run_shell 的入参与出参声明。
+//
+// 读的是 PTC 自己那份 locale 资源，而不是在 schemas/ 下另放一份：同一个 schema
+// 存两处，改一处忘另一处时没有任何东西会报错，模型拿到的声明就和执行侧对不上。
+// 返回的入参已经带上 bkn_context：run_code 确实要这个参数，而 offerBKNContext
+// 正是业务工具那条路加它的方式，共用同一个函数才能保证两者逐字一致。
+func ptcToolSchemas(locale *mcpLocaleBundle, toolKey string) (json.RawMessage, json.RawMessage, bool) {
+	var inputResource string
+	switch toolKey {
+	case toolKeyRunCode:
+		inputResource = "ptc_run_code_schema.json"
+	case toolKeyRunShell:
+		inputResource = "ptc_run_shell_schema.json"
+	default:
+		return nil, nil, false
+	}
+	return offerBKNContext(json.RawMessage(locale.PTCResource(inputResource))),
+		json.RawMessage(locale.PTCResource("ptc_output_schema.json")), true
+}
+
+// ptcInlineDescriptions 渲染并进业务工具面时 PTC 工具的描述，按工具 key 返回。
+//
+// tools 是当前这一版的工具全表（含 PTC 工具自己，由 ptcUsableTools 剔除）。
+// /mcp 的 tools/list 与 /mcp/info 都从这里取，两处才不会各说一套。
+func ptcInlineDescriptions(locale *mcpLocaleBundle, tools []MCPToolInfo) map[string]string {
+	usable := ptcUsableTools(&MCPInfo{Tools: tools})
+	return map[string]string{
+		toolKeyRunCode:  renderPTCDigestForLocale(locale, usable, false),
+		toolKeyRunShell: locale.PTCResource("ptc_run_shell_description.txt"),
+	}
+}
+
+// PTC 工具在 digest 里不能列出自己：那份清单是给沙箱内的脚本看的可调函数表，
+// 把 run_code 写进去等于告诉模型可以在代码里再开一层沙箱。
+var ptcSelfTools = map[string]bool{toolKeyRunCode: true, toolKeyRunShell: true}
+
 // bkn_context 是会话生命周期管道，由 stub 的 _call 自动注入，不该出现在签名里。
 var ptcPlumbingParams = map[string]bool{"bkn_context": true}
 
@@ -277,7 +313,7 @@ func ptcToolNames(tools []MCPToolInfo) string {
 func ptcUsableTools(info *MCPInfo) []MCPToolInfo {
 	tools := make([]MCPToolInfo, 0, len(info.Tools))
 	for _, t := range info.Tools {
-		if t.Name == "" || ptcSkipTools[t.Name] {
+		if t.Name == "" || ptcSkipTools[t.Name] || ptcSelfTools[t.Name] {
 			continue
 		}
 		tools = append(tools, t)
@@ -419,31 +455,23 @@ func BuildPTCToolkitForLocale(endpoint string, port int, locale string) (*PTCToo
 	return buildPTCToolkitFromLocale(ptcUsableTools(info), port, loadMCPLocaleBundle(locale))
 }
 
-// InlinePTCTools 返回可以并进业务工具面的 PTC 工具（run_code / run_shell）。
+// InlinePTCToolkit 渲染可以并进业务工具面的 PTC 工具包（run_code / run_shell）。
 //
 // 与 BuildPTCToolkit 的差别只在 run_code 的描述：那份签名清单被省掉了，因为并列时
 // 那些工具的完整 schema 就在同一个工具面上，再渲染一遍 Python 签名是重复。
 // 实测两种渲染 8852 vs 约 3800 字符。
 //
 // 其余部分（stub、沙箱回访地址、组装方式）完全一致——两条路最终拼出的脚本相同。
-func InlinePTCTools(port int, locale string) ([]PTCTool, error) {
+//
+// 返回整个工具包而不只是工具表：执行侧还要 Stub 与 SandboxMCPURL 才能拼脚本。
+// 走的是同一条构建路径而非事后改描述，因此 Version 覆盖的是这一版的实际内容，
+// 不会出现两份不同的 digest 顶着同一个哈希。
+func InlinePTCToolkit(port int, locale string) (*PTCToolkit, error) {
 	info, err := BuildMCPInfoForLocale("", locale)
 	if err != nil {
 		return nil, err
 	}
-	bundle := loadMCPLocaleBundle(locale)
-	kit, err := buildPTCToolkitFromLocale(ptcUsableTools(info), port, bundle)
-	if err != nil {
-		return nil, err
-	}
-	inline := make([]PTCTool, 0, len(kit.Tools))
-	for _, tool := range kit.Tools {
-		if tool.Name == toolKeyRunCode {
-			tool.Description = renderPTCDigestForLocale(bundle, ptcUsableTools(info), false)
-		}
-		inline = append(inline, tool)
-	}
-	return inline, nil
+	return buildPTCToolkitVariant(ptcUsableTools(info), port, loadMCPLocaleBundle(locale), false)
 }
 
 // buildPTCToolkitFrom 从已筛好的工具目录渲染工具包。与 BuildPTCToolkit 分开，
@@ -453,7 +481,16 @@ func buildPTCToolkitFrom(tools []MCPToolInfo, port int) (*PTCToolkit, error) {
 }
 
 func buildPTCToolkitFromLocale(tools []MCPToolInfo, port int, locale *mcpLocaleBundle) (*PTCToolkit, error) {
-	digest := renderPTCDigestForLocale(locale, tools, true)
+	return buildPTCToolkitVariant(tools, port, locale, true)
+}
+
+// buildPTCToolkitVariant 是两种 digest 渲染共用的构建路径。withSignatures 决定
+// run_code 的描述里带不带函数签名清单：独立端点上没有别的工具可参照，必须带；
+// 并进业务工具面时那些 schema 就在旁边，只留函数名。
+func buildPTCToolkitVariant(
+	tools []MCPToolInfo, port int, locale *mcpLocaleBundle, withSignatures bool,
+) (*PTCToolkit, error) {
+	digest := renderPTCDigestForLocale(locale, tools, withSignatures)
 	stub := renderPTCStub(tools)
 	exposed := []PTCTool{
 		{

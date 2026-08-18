@@ -198,5 +198,19 @@
     "group_title": "技能",
     "order": 550,
     "description": "在沙箱内执行技能的入口命令，返回 exit_code / stdout / stderr。entry_shell 必须取自 SKILL.md 声明的入口，先用 get_skill_content 读清楚再调。"
+  },
+  "run_code": {
+    "name": "run_code",
+    "title": "运行代码",
+    "group": "execution",
+    "group_title": "代码执行",
+    "order": 610
+  },
+  "run_shell": {
+    "name": "run_shell",
+    "title": "运行命令",
+    "group": "execution",
+    "group_title": "代码执行",
+    "order": 620
   }
 }

@@ -48,6 +48,9 @@ func tryLoadToolSchemas(locale *mcpLocaleBundle, toolKey string) (input, output 
 	if input, output, ok := lifecycleToolSchemas(toolKey); ok {
 		return locale.OverlaySchemas(toolKey, input, output)
 	}
+	if input, output, ok := ptcToolSchemas(locale, toolKey); ok {
+		return input, output
+	}
 	data, err := schemasFS.ReadFile(fmt.Sprintf("schemas/%s.json", toolKey))
 	if err != nil {
 		return nil, nil
@@ -132,6 +135,23 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 			OutputSchema: t.Output,
 		}})
 	}
+	// PTC 工具的描述必须与 tools/list 同源。run_code 那份是按当前工具表渲染出来
+	// 的函数清单，静态文件里存不下；两处各写一份的话，照 /mcp/info 集成的人会
+	// 拿到一份和模型看到的不一样的说明。
+	//
+	// 这里能直接渲染而不必回头调 InlinePTCToolkit：可调函数表就是刚组装好的
+	// all，而 ptcUsableTools 已经把 PTC 工具自己排除了，不存在递归。
+	catalogue := make([]MCPToolInfo, 0, len(all))
+	for _, e := range all {
+		catalogue = append(catalogue, e.info)
+	}
+	descriptions := ptcInlineDescriptions(locale, catalogue)
+	for i := range all {
+		if text, ok := descriptions[all[i].key]; ok {
+			all[i].info.Description = text
+		}
+	}
+
 	// 按工具 key 排，不是按对外 name 排。目前 tools_meta.json 与 locales/en-US
 	// 里 name 恒等于 key，两种排法结果一样——但那是巧合，locale 里改个 name
 	// 社区侧的顺序就跟着变了。

@@ -24,9 +24,18 @@ import (
 
 // PTC is the dedicated MCP endpoint for programmatic tool calling.
 //
-// Unlike /mcp, which exposes individual business tools, this endpoint exposes
-// only run_code, run_shell, and lifecycle tools. They must not coexist on one
-// endpoint because models otherwise choose the individual tools and bypass PTC.
+// It exposes only run_code, run_shell, and the lifecycle tools. That is a
+// narrower surface than /mcp, which since registerInlinePTCTools carries the
+// execution tools alongside the business tools.
+//
+// This endpoint predates that and was originally justified by the belief that
+// the two surfaces must not coexist, because a model given both would pick the
+// individual tools and bypass PTC. Measurement disproved it — see the comment
+// on registerInlinePTCTools — so what it is good for now is a client that
+// deliberately wants code mode only: a small fixed tool list regardless of how
+// many business tools this service grows, and a run_code description that
+// carries the full Python signatures, since here there is no other tool on the
+// surface to read a schema from.
 //
 // Execution occurs server-side with the caller's token, allowing any MCP client
 // to use PTC without implementing toolkit retrieval and execution-factory calls.

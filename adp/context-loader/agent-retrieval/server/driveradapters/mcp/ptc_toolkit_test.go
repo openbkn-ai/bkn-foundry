@@ -485,7 +485,7 @@ func TestInlineDigestNameOrderIsStable(t *testing.T) {
 // 两条路拼出的脚本必须一致：stub、沙箱回访地址、组装方式都不因描述精简而变，
 // 否则同一段代码在两个端点上会有不同行为。
 func TestInlineToolsKeepAssemblyIdentical(t *testing.T) {
-	inline, err := InlinePTCTools(30779, defaultMCPLocale)
+	inlineKit, err := InlinePTCToolkit(30779, defaultMCPLocale)
 	if err != nil {
 		t.Skipf("需要内嵌工具元数据: %v", err)
 	}
@@ -493,6 +493,7 @@ func TestInlineToolsKeepAssemblyIdentical(t *testing.T) {
 	if err != nil {
 		t.Skipf("需要内嵌工具元数据: %v", err)
 	}
+	inline := inlineKit.Tools
 
 	byName := map[string]PTCTool{}
 	for _, tool := range kit.Tools {

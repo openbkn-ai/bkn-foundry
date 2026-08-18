@@ -74,6 +74,11 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 	if input, output, ok := lifecycleToolSchemas(toolKey); ok {
 		return input, output
 	}
+	// PTC 工具在 schemas/ 下没有文件，声明存在 PTC 自己那份 locale 资源里。
+	// 基准 locale 就够：需要本地化的调用方走 mcpLocaleBundle.ToolSchemas。
+	if input, output, ok := ptcToolSchemas(loadMCPLocaleBundle(defaultMCPLocale), toolKey); ok {
+		return input, output
+	}
 	path := fmt.Sprintf("schemas/%s.json", toolKey)
 	data, err := schemasFS.ReadFile(path)
 	if err != nil {

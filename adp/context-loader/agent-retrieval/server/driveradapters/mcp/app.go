@@ -10,6 +10,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -259,7 +260,45 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	)
 	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
 	b.attach(mcpServer)
+	registerInlinePTCTools(mcpServer, localeBundle, locale)
 	return mcpServer, b
+}
+
+// registerInlinePTCTools 把 run_code / run_shell 并进业务工具面。
+//
+// 为什么并在一起，而不是只留 /mcp/ptc 那个独立端点：实测同一道检索型问题，只给
+// 业务工具是 9 次调用 258k token，只给 run_code 是 8 次 108k，两者都给是 3 次
+// 96k。模型按任务性质自选——检索走工具，跨表编排走代码。此前独立端点的注释断言
+// 「并列会让模型退化成逐个调工具」，那个判断是错的：检索型问题上业务工具本来就
+// 更合适，选它不是退化。
+//
+// 并列还补上了代码模式「先定后见」的短板：模型可以先用 search_schema 看到真实的
+// 返回结构，再照着写代码，不必凭 digest 猜字段名。
+//
+// 不受 EXECUTE_SKILL_ENABLED 约束，与 /mcp/ptc 端点一致，理由见
+// rest_public_handler.go 上的说明。
+//
+// 装配失败只记日志：内嵌工具元数据读不出来时，不该连累其余二十来个业务工具。
+func registerInlinePTCTools(mcpServer *server.MCPServer, localeBundle *mcpLocaleBundle, locale string) {
+	toolkit, err := InlinePTCToolkit(defaultPTCServicePort, locale)
+	if err != nil {
+		log.Printf("WARN: inline PTC tools unavailable: %v; /mcp exposes business tools only", err)
+		return
+	}
+	executor := drivenadapters.NewOperatorIntegrationClient()
+	for _, tool := range toolkit.Tools {
+		// schema 与展示元数据都走业务工具那条路：/mcp/info 读的是同两个来源，
+		// 两处各拼一份的话它们迟早会不一致，而 /mcp/info 的用途正是让人不握手
+		// 就看清工具面。描述是唯一的例外——工具面上给模型看的是按当前工具表
+		// 动态渲染的 digest，tools_meta.json 里那句静态说明只够 /mcp/info 用。
+		meta := localeBundle.ToolMeta(tool.Name)
+		meta.Description = tool.Description
+		input, output := tryLoadToolSchemas(localeBundle, tool.Name)
+		mcpServer.AddTool(
+			newToolWithSchemas(meta, input, output),
+			handlePTCExecuteForLocale(executor, toolkit, tool, localeBundle),
+		)
+	}
 }
 
 // Prefix for this service's own `_meta` keys on a tool.
