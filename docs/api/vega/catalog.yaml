@@ -1046,7 +1046,7 @@ components:
           type: integer
           format: int64
         health_check_result:
-          description: 检查详情；连接失败时保留经过敏感配置值脱敏和长度限制的连接器错误信息
+          description: 检查详情；通过连接测试接口探测失败时，保留经过敏感配置值脱敏和长度限制的连接器错误信息。创建或更新时指定 `allow_unhealthy=true` 而连接失败，仍记录固定文案 `Connection test failed.`。
           type: string
     TestConnectionResult:
       description: 连接测试结果

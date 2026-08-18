@@ -604,7 +604,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 			"username": "reporter",
 			"password": "secret-password",
 		}
-		connectorError := "dial tcp db.example.com:3306: i/o timeout"
+		connectorError := "dial tcp db.example.com:3306: i/o timeout using password secret-password"
+		redactedError := "dial tcp db.example.com:3306: i/o timeout using password ******"
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
@@ -619,7 +620,7 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ string, status interfaces.CatalogHealthCheckStatus) error {
-				assert.Equal(t, connectorError, status.HealthCheckResult)
+				assert.Equal(t, redactedError, status.HealthCheckResult)
 				return nil
 			},
 		)
@@ -635,7 +636,8 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
-		assert.Equal(t, connectorError, result.HealthCheckResult)
+		assert.Equal(t, redactedError, result.HealthCheckResult)
+		assert.NotContains(t, result.HealthCheckResult, "secret-password")
 	})
 
 	t.Run("does not expose connector initialization error during preflight", func(t *testing.T) {
