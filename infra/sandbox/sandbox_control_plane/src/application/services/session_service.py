@@ -1,7 +1,7 @@
 """
-会话应用服务
+Session application service
 
-编排会话相关的用例。
+Orchestrates the session use cases.
 """
 
 from typing import Callable, List, Optional
@@ -50,9 +50,9 @@ logger = get_logger(__name__)
 
 class SessionService:
     """
-    会话应用服务
+    Session application service
 
-    编排会话创建、执行、终止等用例。
+    Orchestrates creating, executing, and terminating a session.
     """
 
     def __init__(
@@ -75,16 +75,16 @@ class SessionService:
 
     async def create_session(self, command: CreateSessionCommand) -> SessionDTO:
         """
-        创建会话用例
+        Create-session use case
 
-        流程：
-        1. 验证模板存在
-        2. 生成会话 ID
-        3. 调用调度器选择运行时节点
-        4. 创建会话实体
-        5. 保存到仓储
-        6. 创建 Docker 容器
-        7. 更新会话状态为 running
+        Steps:
+        1. Verify the template exists
+        2. Generate the session id
+        3. Ask the scheduler to pick a runtime node
+        4. Build the session entity
+        5. Persist it
+        6. Create the Docker container
+        7. Move the session to running
         """
         if not command.template_id:
             settings = get_settings()
@@ -96,12 +96,12 @@ class SessionService:
             has_dependencies=len(command.dependencies or []) > 0,
         )
 
-        # 1. 验证模板
+        # 1. Verify the template
         template = await self._validate_template(command.template_id)
 
-        # 2. 处理会话 ID（手动指定或自动生成）
+        # 2. Resolve the session id, given or generated
         if command.id:
-            # 手动指定 ID，检查冲突
+            # A given id: check for a collision
             session_id = command.id
             existing_session = await self._session_repo.find_by_id(session_id)
             if existing_session:
@@ -113,14 +113,14 @@ class SessionService:
                 raise ConflictError(f"Session ID already exists: {session_id}")
             logger.debug("Using manually specified session ID", session_id=session_id)
         else:
-            # 自动生成会话 ID
+            # Generate the session id
             session_id = self._generate_session_id()
             logger.debug("Generated session ID", session_id=session_id)
 
-        # 3. 调用调度器
+        # 3. Call the scheduler
         runtime_node = await self._schedule_session(command, session_id)
 
-        # 4. 创建会话实体
+        # 4. Build the session entity
         session = self._create_session_entity(
             session_id=session_id,
             command=command,
@@ -128,11 +128,11 @@ class SessionService:
             runtime_node=runtime_node,
         )
 
-        # 5. 保存到仓储
+        # 5. Persist it
         await self._session_repo.save(session)
         logger.debug("Session saved to repository", session_id=session_id)
 
-        # 6. 创建容器
+        # 6. Create the container
         container_id = await self._create_container_for_session(
             session=session,
             template=template,
@@ -159,7 +159,7 @@ class SessionService:
         return SessionDTO.from_entity(session)
 
     async def _validate_template(self, template_id: str) -> Template:
-        """验证模板存在"""
+        """Verify the template exists"""
         from src.domain.entities.template import Template
 
         template = await self._template_repo.find_by_id(template_id)
@@ -173,7 +173,7 @@ class SessionService:
     async def _schedule_session(
         self, command: CreateSessionCommand, session_id: str
     ) -> RuntimeNode:
-        """调度会话到运行时节点"""
+        """Schedule the session onto a runtime node"""
         schedule_request = ScheduleRequest(
             template_id=command.template_id,
             resource_limit=command.resource_limit or ResourceLimit.default(),
@@ -196,7 +196,7 @@ class SessionService:
         template,
         runtime_node: RuntimeNode,
     ) -> Session:
-        """创建会话实体"""
+        """Build the session entity"""
         from src.domain.entities.template import Template
 
         runtime_type = self._infer_runtime_type(template.image)
@@ -229,7 +229,7 @@ class SessionService:
         command: CreateSessionCommand,
         runtime_node: RuntimeNode,
     ) -> Optional[str]:
-        """为会话创建容器"""
+        """Create the container for a session"""
         from src.domain.entities.template import Template
 
         container_id = None
@@ -295,7 +295,7 @@ class SessionService:
         container_id: Optional[str],
         error: Exception,
     ) -> None:
-        """处理容器创建失败"""
+        """Handle a failed container creation"""
         logger.exception(
             "Container creation failed, starting cleanup",
             session_id=session.id,
@@ -304,7 +304,7 @@ class SessionService:
             error=str(error),
         )
 
-        # 清理已创建的容器
+        # Clean up the container that was created
         if container_id and hasattr(self._scheduler, "destroy_container"):
             try:
                 logger.info("Attempting to clean up failed container", container_id=container_id)
@@ -317,7 +317,7 @@ class SessionService:
                     cleanup_error=str(cleanup_error),
                 )
 
-        # 标记会话为失败状态
+        # Mark the session failed
         session.status = SessionStatus.FAILED
         if session.has_dependencies():
             session.set_dependencies_failed(str(error))
@@ -332,7 +332,7 @@ class SessionService:
         raise ValidationError(message("Sandbox.Session.ContainerCreateFailed", error=error))
 
     async def get_session(self, query: GetSessionQuery) -> SessionDTO:
-        """获取会话用例"""
+        """Get-session use case"""
         session = await self._session_repo.find_by_id(query.session_id)
         if not session:
             raise NotFoundError(message("Sandbox.Session.NotFound", session_id=query.session_id))
@@ -343,7 +343,7 @@ class SessionService:
         self,
         command: InstallSessionDependenciesCommand,
     ) -> SessionDTO:
-        """增量安装会话依赖。"""
+        """Install session dependencies incrementally."""
         session = await self._session_repo.find_by_id(command.session_id)
         if not session:
             raise NotFoundError(message("Sandbox.Session.NotFound", session_id=command.session_id))
@@ -368,7 +368,7 @@ class SessionService:
         session_id: str,
         sync_mode: str = "replace",
     ) -> SessionDTO:
-        """同步指定 session 的依赖配置。"""
+        """Sync the dependency configuration of one session."""
         session = await self._session_repo.find_by_id(session_id)
         if not session:
             raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
@@ -382,33 +382,33 @@ class SessionService:
         offset: int = 0,
     ) -> dict:
         """
-        列出会话用例
+        List-sessions use case
 
         Args:
-            status: 会话状态筛选（可选）
-            template_id: 模板 ID 筛选（可选）
-            limit: 返回数量限制（1-200，默认 50）
-            offset: 偏移量（用于分页）
+            status: filter by session status, optional
+            template_id: filter by template id, optional
+            limit: how many to return, 1-200, default 50
+            offset: offset, for paging
 
         Returns:
-            包含 items, total, limit, offset, has_more 的字典
+            A dict holding items, total, limit, offset, and has_more
         """
-        # 验证 limit 范围
+        # Validate the limit range
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
 
-        # 获取会话列表
+        # Read the session list
         sessions = await self._session_repo.find_sessions(
             status=status, template_id=template_id, limit=limit, offset=offset
         )
 
-        # 获取总数
+        # Read the total
         total = await self._session_repo.count_sessions(status=status, template_id=template_id)
 
-        # 转换为 DTO
+        # Convert to DTOs
         items = [SessionDTO.from_entity(s) for s in sessions]
 
-        # 计算是否有更多数据
+        # Work out whether more remain
         has_more = (offset + len(items)) < total
 
         return {
@@ -421,14 +421,14 @@ class SessionService:
 
     async def terminate_session(self, session_id: str) -> SessionDTO:
         """
-        终止会话用例（软终止，保留记录）
+        Terminate-session use case: a soft stop that keeps the record
 
-        流程：
-        1. 查找会话
-        2. 验证状态
-        3. 销毁 Docker 容器（如果调度器支持）
-        4. 清理 S3 文件（如果配置了存储服务）
-        5. 更新会话状态
+        Steps:
+        1. Find the session
+        2. Validate its status
+        3. Destroy the Docker container, when the scheduler supports it
+        4. Clean up the S3 files, when a storage service is configured
+        5. Update the session status
         """
         logger.info("Terminating session", session_id=session_id)
 
@@ -450,13 +450,13 @@ class SessionService:
             status=session.status.value,
         )
 
-        # 销毁容器
+        # Destroy the container
         await self._destroy_container(session)
 
-        # 清理 S3 文件
+        # Clean up the S3 files
         await self._cleanup_storage(session)
 
-        # 更新会话状态
+        # Update the session status
         session.mark_as_terminated()
         await self._session_repo.save(session)
 
@@ -470,12 +470,12 @@ class SessionService:
 
     async def delete_session(self, session_id: str) -> None:
         """
-        删除会话用例（硬删除，级联删除执行记录）
+        Delete-session use case: a hard delete that cascades to the execution records
 
-        流程：
-        1. 查找会话
-        2. 执行清理（销毁容器 + 删除 S3）
-        3. 级联删除数据库记录
+        Steps:
+        1. Find the session
+        2. Clean up: destroy the container and delete from S3
+        3. Cascade-delete the database records
         """
         logger.info("Deleting session", session_id=session_id)
 
@@ -491,19 +491,19 @@ class SessionService:
             status=session.status.value,
         )
 
-        # 销毁容器
+        # Destroy the container
         await self._destroy_container(session)
 
-        # 清理 S3 文件
+        # Clean up the S3 files
         await self._cleanup_storage(session)
 
-        # 级联删除数据库记录（session + executions）
+        # Cascade-delete the database records: session plus executions
         await self._session_repo.delete(session_id)
 
         logger.info("Session deleted successfully", session_id=session_id)
 
     async def _destroy_container(self, session: Session) -> None:
-        """销毁会话的容器"""
+        """Destroy the container of a session"""
         if not session.container_id or not hasattr(self._scheduler, "destroy_container"):
             return
 
@@ -526,7 +526,7 @@ class SessionService:
             )
 
     async def _cleanup_storage(self, session: Session) -> None:
-        """清理会话的存储文件"""
+        """Clean up the stored files of a session"""
         if not self._storage_service or not session.workspace_path.startswith("s3://"):
             return
 
@@ -553,14 +553,14 @@ class SessionService:
 
     async def execute_code(self, command: ExecuteCodeCommand) -> ExecutionDTO:
         """
-        执行代码用例
+        Execute-code use case
 
-        流程：
-        1. 验证会话存在且运行中
-        2. 生成执行 ID
-        3. 创建执行实体
-        4. 保存到仓储
-        5. 提交到执行器
+        Steps:
+        1. Verify the session exists and is running
+        2. Generate the execution id
+        3. Build the execution entity
+        4. Persist it
+        5. Submit it to the executor
         """
         logger.info(
             "Executing code",
@@ -569,7 +569,7 @@ class SessionService:
             code_length=len(command.code),
         )
 
-        # 1. 验证会话
+        # 1. Verify the session
         session = await self._session_repo.find_by_id(command.session_id)
         if not session:
             logger.error(
@@ -592,7 +592,7 @@ class SessionService:
             container_id=session.container_id,
         )
 
-        # 2. 生成执行 ID
+        # 2. Generate the execution id
         execution_id = self._generate_execution_id()
 
         logger.debug(
@@ -601,7 +601,7 @@ class SessionService:
             session_id=command.session_id,
         )
 
-        # 3. 创建执行实体
+        # 3. Build the execution entity
         from src.domain.value_objects.execution_status import ExecutionState
 
         execution = Execution(
@@ -614,17 +614,17 @@ class SessionService:
             state=ExecutionState(status=ExecutionStatus.PENDING),
         )
 
-        # 4. 保存到仓储
+        # 4. Persist it
         await self._execution_repo.save(execution)
         logger.debug(
             "Execution saved to repository",
             execution_id=execution_id,
         )
 
-        # 4.5. 提交事务，确保执行记录在执行器回调之前可见
+        # 4.5. Commit, so the execution record is visible before the executor calls back
         await self._execution_repo.commit()
 
-        # 5. 提交到执行器
+        # 5. Submit to the executor
         if not session.container_id:
             logger.error(
                 "Session has no container",
@@ -632,14 +632,15 @@ class SessionService:
             )
             raise ValidationError(message("Sandbox.Session.NoContainer", session_id=command.session_id))
 
-        # 构建执行请求
+        # Build the execution request
         execution_request = ExecutionRequest(
             code=command.code,
             language=command.language,
             event=command.event_data or {},
             timeout=command.timeout or 300,
-            # 会话创建时的值打底，本次执行下发的覆盖它。
-            # 池化会话里留着上一个调用方的身份，不覆盖就会被当前函数读到。
+            # The value from session creation is the floor; what this execution sends overrides it.
+            # A pooled session still holds the previous caller's identity, and without
+            # the override the current function would read that.
             env_vars={**(session.env_vars or {}), **(command.env_vars or {})},
             execution_id=execution_id,
             session_id=session.id,
@@ -654,7 +655,7 @@ class SessionService:
             timeout=execution_request.timeout,
         )
 
-        # 通过调度器提交到执行器
+        # Submit to the executor through the scheduler
         await self._scheduler.execute(
             session_id=session.id,
             container_id=session.container_id,
@@ -670,7 +671,7 @@ class SessionService:
         return ExecutionDTO.from_entity(execution)
 
     async def get_execution(self, query: GetExecutionQuery) -> ExecutionDTO:
-        """获取执行详情用例"""
+        """Get-execution use case"""
         execution = await self._execution_repo.find_by_id(query.execution_id)
         if not execution:
             raise NotFoundError(message("Sandbox.Execution.NotFound", execution_id=query.execution_id))
@@ -680,7 +681,7 @@ class SessionService:
     async def list_executions(
         self, session_id: str, limit: int = 50, offset: int = 0
     ) -> List[ExecutionDTO]:
-        """列出会话的所有执行用例"""
+        """List-executions-of-a-session use case"""
         executions = await self._execution_repo.find_by_session_id(
             session_id=session_id, limit=limit
         )
@@ -691,9 +692,9 @@ class SessionService:
         self, idle_threshold_minutes: int = 30, max_lifetime_hours: int = 6
     ) -> int:
         """
-        清理空闲会话用例
+        Clean-up-idle-sessions use case
 
-        定时任务调用，清理空闲或过期的会话。
+        Called by the scheduled task to reclaim idle or expired sessions.
         """
         idle_threshold = datetime.now() - timedelta(minutes=idle_threshold_minutes)
         max_lifetime = datetime.now() - timedelta(hours=max_lifetime_hours)
@@ -711,11 +712,11 @@ class SessionService:
         return cleaned_count
 
     async def _cleanup_session(self, session: Session) -> bool:
-        """清理单个会话"""
+        """Clean up one session"""
         if not session.is_active():
             return False
 
-        # 销毁容器
+        # Destroy the container
         if session.container_id and hasattr(self._scheduler, "destroy_container"):
             try:
                 await self._scheduler.destroy_container(container_id=session.container_id)
@@ -737,7 +738,7 @@ class SessionService:
         sync_mode: str,
         executor_timeout: int | None = None,
     ) -> SessionDTO:
-        """同步 session 依赖配置到 executor。"""
+        """Sync the session dependency configuration to the executor."""
         if not session.is_active():
             raise ValidationError(message("Sandbox.Session.NotActive", session_id=session.id))
         if not session.container_id:
@@ -802,7 +803,7 @@ class SessionService:
         install_timeout: int,
         dependency_count: int,
     ) -> None:
-        """调度首次依赖安装后台任务。"""
+        """Schedule the background task for the first dependency install."""
         if self._initial_dependency_sync_scheduler is None:
             logger.warning(
                 "Initial dependency sync scheduler is not configured",
@@ -820,13 +821,13 @@ class SessionService:
         self._initial_dependency_sync_scheduler(session_id, install_timeout)
 
     def _generate_session_id(self) -> str:
-        """生成会话 ID"""
+        """Generate the session id"""
         timestamp = datetime.now().strftime("%Y%m%d")
         unique = uuid.uuid4().hex[:8]
         return f"sess_{timestamp}_{unique}"
 
     def _infer_runtime_type(self, image: str) -> str:
-        """从镜像名称推断运行时类型"""
+        """Infer the runtime type from the image name"""
         image_lower = image.lower()
         if "python" in image_lower or "python3" in image_lower:
             return "python3.11"
@@ -837,11 +838,11 @@ class SessionService:
         elif "go" in image_lower or "golang" in image_lower:
             return "go1.21"
         else:
-            # 默认使用 Python
+            # Default to Python
             return "python3.11"
 
     def _generate_execution_id(self) -> str:
-        """生成执行 ID"""
+        """Generate the execution id"""
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         unique = uuid.uuid4().hex[:8]
         return f"exec_{timestamp}_{unique}"

@@ -1,7 +1,7 @@
 """
-REST API 请求模式
+REST API request schemas
 
-定义 FastAPI 的请求 Pydantic 模型。
+Defines the Pydantic request models FastAPI uses.
 """
 
 import re
@@ -12,42 +12,42 @@ from typing import Literal, Optional, Dict, List
 
 class DependencySpec(BaseModel):
     """
-    依赖包规范
+    Dependency package specification
 
-    用于指定会话创建时需要安装的 Python 包。
-    按照 sandbox-design-v2.1.md 章节 5.3.1 设计。
+    Names a Python package to install when a session is created.
+    Follows section 5.3.1 of sandbox-design-v2.1.md.
     """
 
-    name: str = Field(..., min_length=1, max_length=100, description="包名称")
-    version: Optional[str] = Field(None, description="版本约束 (如: ==2.31.0, >=1.0)")
+    name: str = Field(..., min_length=1, max_length=100, description="Package name")
+    version: Optional[str] = Field(None, description="Version constraint, such as ==2.31.0 or >=1.0")
 
     @field_validator("name")
     @classmethod
     def validate_package_name(cls, v: str) -> str:
         """
-        验证包名格式
+        Validate the package name format
 
-        禁止：
-        - 路径穿越字符 (..)
-        - 绝对路径 (/)
+        Rejects:
+        - path traversal (..)
+        - an absolute path (/)
         - URL (://)
-        - 非法字符（仅允许字母、数字、._-）
-        - 版本号混合在包名中 (如 pandas2.3.3 应该是 name="pandas", version="==2.3.3")
+        - illegal characters; only letters, digits, and ._- are allowed
+        - a version mixed into the name, such as pandas2.3.3, which should be name="pandas", version="==2.3.3"
         """
-        # 禁止路径穿越
+        # Reject path traversal
         if ".." in v or v.startswith("/"):
             raise ValueError("Package name cannot contain path traversal characters")
-        # 禁止 URL
+        # Reject a URL
         if "://" in v:
             raise ValueError("Package name cannot contain URL")
-        # PyPI 包名规范：仅允许字母、数字、._-
+        # PyPI naming rules: letters, digits, and ._- only
         if not re.match(r"^[a-zA-Z0-9._-]+$", v):
             raise ValueError("Invalid package name format")
 
-        # 检测常见的版本号混合错误（如 pandas2.3.3, numpy1.24.0）
-        # 模式：字母开头 + 数字 + 点 + 数字（可能是版本号）
+        # Catch the common mistake of a version glued onto the name (pandas2.3.3, numpy1.24.0).
+        # The pattern is: letter, then digit, dot, digit, which looks like a version.
         if re.match(r"^[a-zA-Z]+[0-9]+\.[0-9]", v):
-            # 提取包名和版本号用于错误提示
+            # Split out the name and version for the error message
             package_name = re.sub(r"[0-9]+\.[0-9].*", "", v)
             version_num = re.sub(r"^[a-zA-Z]+", "", v)
             raise ValueError(
@@ -60,20 +60,20 @@ class DependencySpec(BaseModel):
 
     def to_pip_spec(self) -> str:
         """
-        转换为 pip 安装规范
+        Convert to a pip requirement specifier
 
-        自动为没有操作符的版本号添加 == 前缀。
-        例如：version="2.3.3" 会被转换为 "==2.3.3"
+        A version with no operator gets == in front.
+        For example version="2.3.3" becomes "==2.3.3".
 
         Returns:
-            pip 包规范字符串，如 "requests==2.31.0" 或 "pandas"
+            The pip specifier, such as "requests==2.31.0" or "pandas"
         """
         if self.version:
-            # 检查 version 是否以操作符开头
-            # pip 支持的操作符: ==, >=, <=, >, <, ~=, !=, ~, =
+            # Check whether the version already starts with an operator.
+            # pip accepts: ==, >=, <=, >, <, ~=, !=, ~, =
             version_operators = ("==", ">=", "<=", ">", "<", "~=", "!=", "~", "=")
             if not self.version.startswith(version_operators):
-                # 如果没有操作符，默认添加 ==
+                # Without an operator, default to ==
                 return f"{self.name}=={self.version}"
             return f"{self.name}{self.version}"
         return self.name
@@ -81,46 +81,47 @@ class DependencySpec(BaseModel):
 
 class CreateSessionRequest(BaseModel):
     """
-    创建会话请求
+    Create-session request
 
-    按照 sandbox-design-v2.1.md 章节 5.3.1 设计，扩展支持依赖安装。
+    Follows section 5.3.1 of sandbox-design-v2.1.md, extended for dependency installation.
     """
 
     id: Optional[str] = Field(
-        None, min_length=1, max_length=64, description="会话 ID（可选，手动指定时需确保唯一性）"
+        None, min_length=1, max_length=64, description="Session id. Optional; when given it has to be unique."
     )
     template_id: Optional[str] = Field(
-        None, min_length=1, max_length=64, description="模板 ID；未传时使用默认模板配置"
+        None, min_length=1, max_length=64, description="Template id. Without it the default template configuration applies."
     )
-    timeout: int = Field(300, ge=1, le=3600, description="超时时间（秒）")
-    cpu: str = Field("1", description="CPU 核心数")
-    memory: str = Field("512Mi", description="内存限制")
-    disk: str = Field("1Gi", description="磁盘限制")
-    env_vars: Dict[str, str] = Field(default_factory=dict, description="环境变量")
-    event: Optional[Dict] = Field(None, description="事件数据")
+    timeout: int = Field(300, ge=1, le=3600, description="Timeout in seconds")
+    cpu: str = Field("1", description="CPU cores")
+    memory: str = Field("512Mi", description="Memory limit")
+    disk: str = Field("1Gi", description="Disk limit")
+    env_vars: Dict[str, str] = Field(default_factory=dict, description="Environment variables")
+    event: Optional[Dict] = Field(None, description="Event payload")
 
-    # 依赖安装相关字段（新增）
+    # Dependency installation fields
     dependencies: List[DependencySpec] = Field(
-        default_factory=list, max_length=50, description="会话级依赖包列表"
+        default_factory=list, max_length=50, description="Session-level dependency packages"
     )
-    install_timeout: int = Field(300, ge=30, le=1800, description="依赖安装超时时间（秒）")
-    fail_on_dependency_error: bool = Field(True, description="依赖安装失败时是否终止会话创建")
+    install_timeout: int = Field(300, ge=30, le=1800, description="Dependency install timeout in seconds")
+    fail_on_dependency_error: bool = Field(True, description="Whether a failed dependency install aborts session creation")
     allow_version_conflicts: bool = Field(
-        False, description="是否允许版本冲突（Template 预装包 vs 用户请求包）"
+        False, description="Whether a version conflict is allowed between the template preinstall and the requested package"
     )
     python_package_index_url: Optional[str] = Field(
-        None, max_length=512, description="Python 软件包仓库地址，默认 https://pypi.org/simple/"
+        None, max_length=512, description="Python package index URL, https://pypi.org/simple/ by default"
     )
 
     @field_validator("id", "template_id")
     @classmethod
     def validate_identifier(cls, v: Optional[str]) -> Optional[str]:
         """
-        会话 ID / 模板 ID 只允许字母、数字、下划线、连字符。
+        A session id or template id may hold only letters, digits, underscores, and hyphens.
 
-        安全关键：id 会经 workspace_path 落入以 root 运行的 s3fs 挂载脚本
-        （k8s/docker scheduler）。放行 shell 元字符会造成 root 命令注入，放行
-        '/'、'..' 会造成前缀逃逸、绕过会话间隔离。此处严格白名单从入口拦住。
+        Security critical: the id travels through workspace_path into the s3fs mount script
+        that runs as root (the k8s and docker schedulers). Allowing a shell metacharacter
+        would be root command injection, and allowing '/' or '..' would escape the prefix
+        and break the isolation between sessions. A strict allowlist stops both at the entrance.
         """
         if v is None:
             return v
@@ -141,26 +142,26 @@ class CreateSessionRequest(BaseModel):
 
 
 class ExecuteCodeRequest(BaseModel):
-    """执行代码请求"""
+    """Execute-code request"""
 
     code: str = Field(
         ...,
         min_length=1,
         max_length=102400,
-        description="要执行的代码。language=python 时需符合 AWS Lambda handler 格式；language=shell 时表示 shell 脚本内容。",
+        description="The code to run. With language=python it has to match the AWS Lambda handler shape; with language=shell it is the shell script body.",
     )
-    language: Literal["python", "javascript", "shell"] = Field(..., description="编程语言")
-    timeout: int = Field(30, ge=1, le=3600, description="执行超时（秒）")
-    event: Optional[Dict] = Field(None, description="事件数据")
+    language: Literal["python", "javascript", "shell"] = Field(..., description="Programming language")
+    timeout: int = Field(30, ge=1, le=3600, description="Execution timeout in seconds")
+    event: Optional[Dict] = Field(None, description="Event payload")
     env_vars: Dict[str, str] = Field(
         default_factory=dict,
         description=(
-            "本次执行的环境变量，覆盖会话创建时的同名值。"
-            "会话是池化复用的，调用方身份这类随执行变化的信息必须每次下发。"
+            "Environment variables for this execution, overriding the values set when the session was created. "
+            "Sessions are pooled and reused, so anything that varies per execution, such as the caller identity, has to be sent every time."
         ),
     )
     working_directory: Optional[str] = Field(
-        None, description="可选执行目录，相对于 workspace 根目录；未传时默认使用 workspace 根目录。"
+        None, description="Optional working directory, relative to the workspace root. Without it the workspace root is used."
     )
 
     @field_validator("working_directory")
@@ -214,56 +215,56 @@ class ExecuteCodeRequest(BaseModel):
 
 
 class TerminateSessionRequest(BaseModel):
-    """终止会话请求"""
+    """Terminate-session request"""
 
-    reason: Optional[str] = Field(None, description="终止原因")
+    reason: Optional[str] = Field(None, description="Reason for terminating")
 
 
 class InstallSessionDependenciesRequest(BaseModel):
-    """增量安装 Python 依赖请求。"""
+    """Incremental Python dependency install request."""
 
     python_package_index_url: Optional[str] = Field(
         None,
         max_length=512,
-        description="Python 软件包仓库地址；未传则沿用当前 session 配置",
+        description="Python package index URL. Without it the current session setting applies.",
     )
     dependencies: List[DependencySpec] = Field(
         ...,
         min_length=1,
         max_length=50,
-        description="本次增量安装的依赖列表",
+        description="Dependencies to install in this batch",
     )
     install_timeout: int = Field(
         300,
         ge=30,
         le=1800,
-        description="本次依赖安装超时时间（秒）",
+        description="Timeout in seconds for this dependency install",
     )
 
 
 class CreateTemplateRequest(BaseModel):
-    """创建模板请求"""
+    """Create-template request"""
 
-    id: str = Field(..., min_length=1, max_length=64, description="模板 ID")
-    name: str = Field(..., min_length=1, max_length=255, description="模板名称")
-    image_url: str = Field(..., min_length=1, max_length=512, description="镜像 URL")
+    id: str = Field(..., min_length=1, max_length=64, description="Template id")
+    name: str = Field(..., min_length=1, max_length=255, description="Template name")
+    image_url: str = Field(..., min_length=1, max_length=512, description="Image URL")
     runtime_type: Literal["python3.11", "nodejs20", "java17", "go1.21"] = Field(
-        ..., description="运行时类型"
+        ..., description="Runtime type"
     )
-    default_cpu_cores: float = Field(0.5, ge=0.1, le=4.0, description="默认 CPU 核心数")
-    default_memory_mb: int = Field(512, ge=128, le=8192, description="默认内存（MB）")
-    default_disk_mb: int = Field(1024, ge=256, le=51200, description="默认磁盘（MB）")
-    default_timeout: int = Field(300, ge=60, le=3600, description="默认超时（秒）")
-    default_env_vars: Optional[Dict[str, str]] = Field(None, description="默认环境变量")
+    default_cpu_cores: float = Field(0.5, ge=0.1, le=4.0, description="Default CPU cores")
+    default_memory_mb: int = Field(512, ge=128, le=8192, description="Default memory in MB")
+    default_disk_mb: int = Field(1024, ge=256, le=51200, description="Default disk in MB")
+    default_timeout: int = Field(300, ge=60, le=3600, description="Default timeout in seconds")
+    default_env_vars: Optional[Dict[str, str]] = Field(None, description="Default environment variables")
 
 
 class UpdateTemplateRequest(BaseModel):
-    """更新模板请求"""
+    """Update-template request"""
 
-    name: Optional[str] = Field(None, min_length=1, max_length=255, description="模板名称")
-    image_url: Optional[str] = Field(None, min_length=1, max_length=512, description="镜像 URL")
-    default_cpu_cores: Optional[float] = Field(None, ge=0.1, le=4.0, description="默认 CPU 核心数")
-    default_memory_mb: Optional[int] = Field(None, ge=128, le=8192, description="默认内存（MB）")
-    default_disk_mb: Optional[int] = Field(None, ge=256, le=51200, description="默认磁盘（MB）")
-    default_timeout: Optional[int] = Field(None, ge=60, le=3600, description="默认超时（秒）")
-    default_env_vars: Optional[Dict[str, str]] = Field(None, description="默认环境变量")
+    name: Optional[str] = Field(None, min_length=1, max_length=255, description="Template name")
+    image_url: Optional[str] = Field(None, min_length=1, max_length=512, description="Image URL")
+    default_cpu_cores: Optional[float] = Field(None, ge=0.1, le=4.0, description="Default CPU cores")
+    default_memory_mb: Optional[int] = Field(None, ge=128, le=8192, description="Default memory in MB")
+    default_disk_mb: Optional[int] = Field(None, ge=256, le=51200, description="Default disk in MB")
+    default_timeout: Optional[int] = Field(None, ge=60, le=3600, description="Default timeout in seconds")
+    default_env_vars: Optional[Dict[str, str]] = Field(None, description="Default environment variables")

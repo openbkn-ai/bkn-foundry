@@ -1,7 +1,7 @@
 """
-依赖注入配置
+Dependency injection wiring
 
-配置和提供应用所需的所有依赖项。
+Configures and provides everything the application depends on.
 """
 
 import asyncio
@@ -46,9 +46,9 @@ logger.info(f"Runtime environment: {'Kubernetes' if IS_IN_KUBERNETES else 'Local
 
 
 def _get_docker_url() -> str:
-    """获取 Docker socket URL"""
+    """Get the Docker socket URL"""
     settings = get_settings()
-    # 确保 docker_host 有正确的协议前缀
+    # Make sure docker_host carries the right scheme prefix
     docker_host = settings.docker_host
     if not docker_host.startswith("unix://") and not docker_host.startswith("tcp://"):
         docker_host = f"unix://{docker_host}"
@@ -58,7 +58,7 @@ def _get_docker_url() -> str:
 
 # Mock implementations for development
 class MockSessionRepository(ISessionRepository):
-    """Mock 会话仓储（用于开发测试）"""
+    """Mock session repository, for development and testing"""
 
     def __init__(self):
         self._sessions = {}
@@ -136,7 +136,7 @@ class MockSessionRepository(ISessionRepository):
 
 
 class MockExecutionRepository(IExecutionRepository):
-    """Mock 执行仓储（用于开发测试）"""
+    """Mock execution repository, for development and testing"""
 
     def __init__(self):
         self._executions = {}
@@ -177,14 +177,14 @@ class MockExecutionRepository(IExecutionRepository):
 
 
 class MockTemplateRepository(ITemplateRepository):
-    """Mock 模板仓储（用于开发测试）"""
+    """Mock template repository, for development and testing"""
 
     def __init__(self):
         from datetime import datetime
         from src.domain.entities.template import Template
         from src.domain.value_objects.resource_limit import ResourceLimit
 
-        # 默认模板
+        # Default template
         self._templates = {
             "python-basic": Template(
                 id="python-basic",
@@ -238,10 +238,10 @@ class MockTemplateRepository(ITemplateRepository):
 
 
 class MockScheduler(IScheduler):
-    """Mock 调度器（用于开发测试）"""
+    """Mock scheduler, for development and testing"""
 
     async def schedule(self, request):
-        # 返回一个 mock 运行时节点
+        # Return a mock runtime node
         return RuntimeNode(
             id="node-1",
             type="docker",
@@ -269,7 +269,7 @@ class MockScheduler(IScheduler):
         container_id: str,
         execution_request: ExecutionRequest,
     ) -> str:
-        """Mock 执行方法"""
+        """Mock execute method"""
         return execution_request.execution_id or "mock_execution_id"
 
     async def get_executor_url(self, container_id: str) -> str:
@@ -277,7 +277,7 @@ class MockScheduler(IScheduler):
 
 
 class MockRuntimeNodeRepository:
-    """Mock 运行时节点仓储（用于开发测试）"""
+    """Mock runtime node repository, for development and testing"""
 
     class _NodeModel:
         def __init__(self, id, type, url, status, **kwargs):
@@ -307,7 +307,7 @@ class MockRuntimeNodeRepository:
             )
 
     def __init__(self):
-        # 默认有一个 Docker 节点
+        # One Docker node by default
         self._nodes = {
             "docker-local": self._NodeModel(
                 id="docker-local",
@@ -350,7 +350,7 @@ class MockRuntimeNodeRepository:
 
 
 class MockStorageService(IStorageService):
-    """Mock 存储服务（用于开发测试）"""
+    """Mock storage service, for development and testing"""
 
     async def upload_file(
         self, s3_path: str, content: bytes, content_type: str = "application/octet-stream"
@@ -385,47 +385,48 @@ _scheduler_singleton = None
 
 
 def initialize_dependencies(app: FastAPI):
-    """初始化所有依赖项并存储到应用状态中"""
+    """Initialize every dependency and store it on the application state"""
 
-    # 注意：数据库管理器的初始化现在是异步的，需要在 lifespan 中调用
-    # 这里不再同步调用 initialize()
+    # Initializing the database manager is asynchronous now and belongs in the
+    # lifespan, so initialize() is no longer called synchronously here.
     settings = get_settings()
 
-    # 创建仓储实例（根据配置选择 Mock 或 SQL）
+    # Create the repositories, Mock or SQL depending on the configuration
     if USE_SQL_REPOSITORIES:
-        # SQL 模式：仓储在请求时通过 Depends() 注入
-        # 存储仓储工厂函数引用到 app.state
+        # SQL mode: repositories are injected per request through Depends()
+        # Keep the repository factory references on app.state
         app.state.get_session_repository = get_session_repository
         app.state.get_execution_repository = get_execution_repository
         app.state.get_template_repository = get_template_repository
 
-        # SessionService 也需要动态创建
+        # SessionService also has to be built dynamically
         app.state.get_session_service = get_session_service_db
         app.state.get_template_service = get_template_service_db
         app.state.get_file_service = get_file_service_db
 
-        # 对于向后兼容，也设置仓储实例（用于可能直接访问的情况）
-        app.state.session_repo = None  # 使用工厂函数
+        # For backward compatibility, also set the repository attributes, in case
+        # something reaches for them directly.
+        app.state.session_repo = None  # the factory function is used instead
         app.state.execution_repo = None
         app.state.template_repo = None
 
-        # 服务也使用工厂函数
+        # The services use factory functions too
         app.state.session_service = None
         app.state.template_service = None
         app.state.file_service = None
     else:
-        # Mock 模式：直接创建实例
+        # Mock mode: build the instances directly
         session_repo = MockSessionRepository()
         execution_repo = MockExecutionRepository()
         template_repo = MockTemplateRepository()
 
-        # 创建领域服务实例
+        # Create the domain services
         storage_service = MockStorageService()
 
-        # 创建 Mock 调度器
+        # Create the mock scheduler
         scheduler = MockScheduler()
 
-        # 创建应用服务实例
+        # Create the application services
         session_service = SessionService(
             session_repo=session_repo,
             execution_repo=execution_repo,
@@ -444,25 +445,25 @@ def initialize_dependencies(app: FastAPI):
             max_extracted_total_size_mb=settings.max_extracted_total_size_mb,
         )
 
-        # 存储到应用状态
+        # Store on the application state
         app.state.session_service = session_service
         app.state.template_service = template_service
         app.state.file_service = file_service
 
-        # 也存储仓储（可能需要）
+        # Store the repositories as well, in case they are needed
         app.state.session_repo = session_repo
         app.state.execution_repo = execution_repo
         app.state.template_repo = template_repo
 
-    # 创建容器调度器（模块级单例）
+    # Create the container scheduler as a module-level singleton
     global _container_scheduler_singleton, _scheduler_singleton
 
     if USE_MOCK_SCHEDULER:
-        # Mock 模式：不创建真实调度器
+        # Mock mode: do not build a real scheduler
         _container_scheduler_singleton = None
         _scheduler_singleton = MockScheduler()
     elif IS_IN_KUBERNETES:
-        # Kubernetes 环境：使用 K8s 调度器
+        # Kubernetes: use the K8s scheduler
         from src.infrastructure.container_scheduler.k8s_scheduler import K8sScheduler
 
         settings = get_settings()
@@ -472,36 +473,36 @@ def initialize_dependencies(app: FastAPI):
         )
         logger.info(f"Initialized K8s scheduler with namespace: {settings.kubernetes_namespace}")
 
-        # 调度器服务延迟初始化
+        # The scheduler service initializes lazily
         _scheduler_singleton = None
     else:
-        # 本地开发环境：使用 Docker 调度器
+        # Local development: use the Docker scheduler
         from src.infrastructure.container_scheduler.docker_scheduler import DockerScheduler
 
         _container_scheduler_singleton = DockerScheduler(docker_url=_get_docker_url())
         logger.info(f"Initialized Docker scheduler with URL: {_get_docker_url()}")
 
-        # 调度器服务延迟初始化
+        # The scheduler service initializes lazily
         _scheduler_singleton = None
 
 
 async def cleanup_dependencies(app: FastAPI):
-    """清理依赖项"""
+    """Clean up the dependencies"""
     await db_manager.close()
 
 
 def get_session_service(app: FastAPI) -> SessionService:
-    """获取会话服务"""
+    """Get the session service"""
     return app.state.session_service
 
 
 def get_template_service(app: FastAPI) -> TemplateService:
-    """获取模板服务"""
+    """Get the template service"""
     return app.state.template_service
 
 
 def get_file_service(app: FastAPI) -> FileService:
-    """获取文件服务"""
+    """Get the file service"""
     return app.state.file_service
 
 
@@ -511,13 +512,13 @@ def get_file_service(app: FastAPI) -> FileService:
 
 
 async def get_db_session():
-    """获取数据库会话（FastAPI 依赖）"""
+    """Get the database session, as a FastAPI dependency"""
     async with db_manager.get_session() as session:
         yield session
 
 
 def get_execution_repository(session=Depends(get_db_session)) -> IExecutionRepository:
-    """获取执行仓储（SQL 或 Mock）"""
+    """Get the execution repository, SQL or Mock"""
     if USE_SQL_REPOSITORIES:
         from src.infrastructure.persistence.repositories.sql_execution_repository import (
             SqlExecutionRepository,
@@ -531,7 +532,7 @@ def get_session_repository(
     session=Depends(get_db_session),
     execution_repo: IExecutionRepository = Depends(get_execution_repository),
 ) -> ISessionRepository:
-    """获取会话仓储（SQL 或 Mock）"""
+    """Get the session repository, SQL or Mock"""
     if USE_SQL_REPOSITORIES:
         from src.infrastructure.persistence.repositories.sql_session_repository import (
             SqlSessionRepository,
@@ -542,7 +543,7 @@ def get_session_repository(
 
 
 def get_template_repository(session=Depends(get_db_session)) -> ITemplateRepository:
-    """获取模板仓储（SQL 或 Mock）"""
+    """Get the template repository, SQL or Mock"""
     if USE_SQL_REPOSITORIES:
         from src.infrastructure.persistence.repositories.sql_template_repository import (
             SqlTemplateRepository,
@@ -553,16 +554,16 @@ def get_template_repository(session=Depends(get_db_session)) -> ITemplateReposit
 
 
 def get_scheduler() -> IScheduler:
-    """获取调度器（Mock、Docker 或 K8s）"""
+    """Get the scheduler: Mock, Docker, or K8s"""
     if USE_MOCK_SCHEDULER:
         return MockScheduler()
 
-    # 实际使用时需要通过 session-scoped 依赖获取
+    # In real use this has to come from a session-scoped dependency
     return MockScheduler()
 
 
 def get_runtime_node_repository(session=Depends(get_db_session)):
-    """获取运行时节点仓储（SQL 或 Mock）"""
+    """Get the runtime node repository, SQL or Mock"""
     if USE_SQL_REPOSITORIES:
         from src.infrastructure.persistence.repositories.sql_runtime_node_repository import (
             SqlRuntimeNodeRepository,
@@ -573,7 +574,7 @@ def get_runtime_node_repository(session=Depends(get_db_session)):
 
 
 def get_container_scheduler():
-    """获取容器调度器"""
+    """Get the container scheduler"""
     from src.infrastructure.container_scheduler.docker_scheduler import DockerScheduler
 
     return DockerScheduler(docker_url=_get_docker_url())
@@ -583,7 +584,7 @@ def get_docker_scheduler_service(
     runtime_node_repo=Depends(get_runtime_node_repository),
     template_repo=Depends(get_template_repository),
 ) -> IScheduler:
-    """获取调度服务（Docker 或 K8s）"""
+    """Get the scheduler service, Docker or K8s"""
     return _create_scheduler_service(
         runtime_node_repo=runtime_node_repo,
         template_repo=template_repo,
@@ -595,25 +596,25 @@ def _create_scheduler_service(
     template_repo,
     executor_timeout: float = 30.0,
 ) -> IScheduler:
-    """创建调度服务实例。"""
+    """Create the scheduler service instance."""
     if USE_MOCK_SCHEDULER:
         return MockScheduler()
 
-    # 使用模块级单例
+    # Use the module-level singleton
     container_scheduler = _container_scheduler_singleton
 
-    # 创建 ExecutorClient 实例
+    # Create the ExecutorClient
     executor_client = ExecutorClient(
         timeout=executor_timeout,
         max_retries=3,
         retry_delay=0.5,
     )
 
-    # 为每个请求创建新的调度服务实例
+    # Build a fresh scheduler service per request
     settings = get_settings()
 
     if IS_IN_KUBERNETES:
-        # K8s 环境：使用 K8sSchedulerService
+        # K8s: use K8sSchedulerService
         from src.infrastructure.schedulers.k8s_scheduler_service import K8sSchedulerService
 
         # Build CONTROL_PLANE_URL based on kubernetes_namespace
@@ -632,7 +633,7 @@ def _create_scheduler_service(
             disable_bwrap=settings.disable_bwrap,
         )
     else:
-        # 本地环境：使用 DockerSchedulerService
+        # Local: use DockerSchedulerService
         from src.infrastructure.schedulers.docker_scheduler_service import DockerSchedulerService
 
         return DockerSchedulerService(
@@ -652,11 +653,11 @@ _storage_service_singleton = None
 
 def get_storage_service():
     """
-    获取存储服务（S3 或 Mock）
+    Get the storage service, S3 or Mock
 
-    架构说明：
-    - Control Plane 通过 S3 API 将文件写入 MinIO 的 /sessions/{session_id}/ 路径
-    - Executor Pod 在启动脚本中挂载 s3fs，将 S3 bucket 的 session 子目录挂载到 /workspace
+    How it fits together:
+    - The control plane writes files into MinIO under /sessions/{session_id}/ via the S3 API
+    - The executor Pod mounts s3fs in its start script, mapping that session subdirectory to /workspace
     """
     global _storage_service_singleton
 
@@ -665,7 +666,7 @@ def get_storage_service():
 
     settings = get_settings()
 
-    # 直接使用 S3
+    # Use S3 directly
     if settings.s3_access_key_id:
         from src.infrastructure.storage.s3_storage import S3Storage
 
@@ -673,14 +674,14 @@ def get_storage_service():
         logger.info(f"Using S3 storage: endpoint={settings.s3_endpoint_url}")
         return _storage_service_singleton
 
-    # 降级到 Mock
+    # Fall back to the mock
     logger.warning("No storage backend configured, using MockStorageService")
     _storage_service_singleton = MockStorageService()
     return _storage_service_singleton
 
 
 def get_executor_client() -> ExecutorClient:
-    """获取 ExecutorClient。"""
+    """Get the ExecutorClient."""
     return ExecutorClient(
         timeout=30.0,
         max_retries=3,
@@ -696,7 +697,7 @@ def get_session_service_db(
     storage_service=Depends(get_storage_service),
     executor_client: ExecutorClient = Depends(get_executor_client),
 ) -> SessionService:
-    """获取会话服务（使用数据库仓储和 Docker 调度器）"""
+    """Get the session service, backed by the database repositories and the Docker scheduler"""
     return SessionService(
         session_repo=session_repo,
         execution_repo=execution_repo,
@@ -709,7 +710,7 @@ def get_session_service_db(
 
 
 def get_initial_dependency_sync_scheduler():
-    """获取首次依赖同步后台调度器。"""
+    """Get the background scheduler for the first dependency sync."""
 
     def schedule(session_id: str, install_timeout: int) -> None:
         async def _run() -> None:
@@ -731,7 +732,7 @@ def get_initial_dependency_sync_scheduler():
 
 
 async def _run_initial_dependency_sync(session_id: str, install_timeout: int) -> None:
-    """执行首次依赖同步后台任务。"""
+    """Run the background task for the first dependency sync."""
     deadline = time.monotonic() + install_timeout
     poll_interval = 1.0
     last_status = "unknown"
@@ -836,7 +837,7 @@ async def _run_initial_dependency_sync(session_id: str, install_timeout: int) ->
 
 
 async def _mark_initial_dependency_sync_failed(session_id: str, error: str) -> None:
-    """兜底回写首次依赖同步失败状态。"""
+    """Last-resort write-back of a failed first dependency sync."""
     async with db_manager.get_session() as session:
         from src.infrastructure.persistence.repositories.sql_execution_repository import (
             SqlExecutionRepository,
@@ -862,7 +863,7 @@ async def _mark_initial_dependency_sync_failed(session_id: str, error: str) -> N
 def get_template_service_db(
     template_repo: ITemplateRepository = Depends(get_template_repository),
 ) -> TemplateService:
-    """获取模板服务（使用数据库仓储）"""
+    """Get the template service, backed by the database repositories"""
     return TemplateService(template_repo=template_repo)
 
 
@@ -870,7 +871,7 @@ def get_file_service_db(
     session_repo: ISessionRepository = Depends(get_session_repository),
     storage_service=Depends(get_storage_service),
 ) -> FileService:
-    """获取文件服务（使用数据库仓储）"""
+    """Get the file service, backed by the database repositories"""
     settings = get_settings()
     return FileService(
         session_repo=session_repo,
@@ -889,9 +890,9 @@ _state_sync_service_singleton = None
 
 def _create_direct_session_repository(db_mgr):
     """
-    创建直接使用数据库的会话仓储
+    Create a session repository that goes straight to the database
 
-    用于状态同步服务，避免仓储层开销。
+    Used by the state sync service, to skip the repository-layer overhead.
     """
     from src.infrastructure.persistence.models.session_model import SessionModel
     from src.domain.entities.session import Session, SessionStatus
@@ -899,13 +900,13 @@ def _create_direct_session_repository(db_mgr):
     from sqlalchemy import select
 
     class DirectSessionRepository:
-        """直接使用数据库的仓储，用于状态同步"""
+        """A repository that goes straight to the database, for state sync"""
 
         def __init__(self, db_mgr):
             self._db_mgr = db_mgr
 
         async def find_by_status(self, status: str, limit: int = 100):
-            """直接查询数据库"""
+            """Query the database directly"""
             result = []
             async with self._db_mgr.get_session() as session:
                 stmt = select(SessionModel).filter(SessionModel.f_status == status).limit(limit)
@@ -937,7 +938,7 @@ def _create_direct_session_repository(db_mgr):
             return result
 
         async def find_by_id(self, session_id: str):
-            """通过 ID 查找"""
+            """Find by id"""
             async with self._db_mgr.get_session() as session:
                 model = await session.get(SessionModel, session_id)
                 if model:
@@ -966,13 +967,13 @@ def _create_direct_session_repository(db_mgr):
                 return None
 
         async def save(self, session):
-            """保存 session"""
+            """Save the session"""
             import time
 
             async with self._db_mgr.get_session() as db:
                 model = await db.get(SessionModel, session.id)
                 if model:
-                    # 处理 status 可能是枚举或字符串的情况
+                    # status may be an enum or a string
                     if hasattr(session.status, "value"):
                         model.f_status = session.status.value
                     else:
@@ -1018,9 +1019,9 @@ def _create_direct_session_repository(db_mgr):
 
 def _create_direct_execution_repository(db_mgr):
     """
-    创建直接使用数据库的执行仓储。
+    Create an execution repository that goes straight to the database.
 
-    用于状态同步服务在 takeover 场景回写中断 execution 状态。
+    Used by the state sync service to write back an interrupted execution during a takeover.
     """
     from src.infrastructure.persistence.models.execution_model import ExecutionModel
     from src.domain.value_objects.execution_status import ExecutionStatus
@@ -1061,7 +1062,7 @@ def _create_direct_execution_repository(db_mgr):
                 await session.commit()
 
         async def commit(self):
-            """Direct repository 每次 save 已提交，保留兼容空实现。"""
+            """A direct repository commits on every save; this stays as a compatible no-op."""
             return None
 
     return DirectExecutionRepository(db_mgr)
@@ -1069,9 +1070,9 @@ def _create_direct_execution_repository(db_mgr):
 
 def _create_direct_template_repository(db_mgr):
     """
-    创建直接使用数据库的模板仓储。
+    Create a template repository that goes straight to the database.
 
-    用于状态同步服务恢复 session 时解析真实模板镜像。
+    Used by the state sync service to resolve the real template image while recovering a session.
     """
     from src.infrastructure.persistence.models.template_model import TemplateModel
 
@@ -1088,7 +1089,7 @@ def _create_direct_template_repository(db_mgr):
 
 
 def _create_scheduler_for_state_sync(container_scheduler, template_repo=None):
-    """为状态同步服务创建调度器"""
+    """Create the scheduler for the state sync service"""
     settings = get_settings()
 
     if USE_MOCK_SCHEDULER:
@@ -1113,16 +1114,16 @@ def _create_scheduler_for_state_sync(container_scheduler, template_repo=None):
             disable_bwrap=settings.disable_bwrap,
         )
 
-    # 本地 Docker 环境
+    # Local Docker
     return MockScheduler()
 
 
 def get_state_sync_service():
     """
-    获取状态同步服务（共享单例）
+    Get the state sync service as a shared singleton
 
-    此服务在启动时调用，需要使用已初始化的单例。
-    使用 SQL 数据库直接查询，不依赖仓储模式。
+    Called at start-up, so it has to use the already initialized singleton.
+    Queries the SQL database directly rather than going through the repository pattern.
     """
     global _scheduler_singleton
     from src.application.services.state_sync_service import StateSyncService
@@ -1130,7 +1131,7 @@ def get_state_sync_service():
     settings = get_settings()
     container_scheduler = _container_scheduler_singleton
 
-    # 创建会话仓储
+    # Create the session repository
     if USE_SQL_REPOSITORIES:
         session_repo = _create_direct_session_repository(db_manager)
         execution_repo = _create_direct_execution_repository(db_manager)
@@ -1140,7 +1141,7 @@ def get_state_sync_service():
         execution_repo = MockExecutionRepository()
         template_repo = MockTemplateRepository()
 
-    # 创建或复用调度器
+    # Create or reuse the scheduler
     scheduler = _scheduler_singleton
     if scheduler is None:
         scheduler = _create_scheduler_for_state_sync(
