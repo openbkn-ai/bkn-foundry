@@ -257,3 +257,132 @@ def test_downstream_headers_carry_the_frozen_locale():
     for module in (skills, toolbox):
         source = open(module.__file__, encoding="utf-8").read()
         assert "locale.internal_request_headers(" in source, module.__name__
+
+
+# --- Claims that were reasoned about but never exercised --------------------
+
+
+def _probe_app():
+    """Mount the real middleware on a throwaway app.
+
+    The routes cannot be added to the shipped app: test_contract.py compares the
+    exported OpenAPI against it, so an extra path would fail the frozen spec.
+    Registering the same middleware function keeps the code path real.
+    """
+    from fastapi import FastAPI
+
+    from app import main
+
+    probe = FastAPI()
+    probe.middleware("http")(main.bkn_trace_context_middleware)
+    return probe
+
+
+def test_sse_generator_still_sees_the_frozen_locale():
+    """The SSE body is consumed after the middleware's finally has reset the
+    ContextVar, so the stream would silently fall back to the default if the
+    value did not travel into the generator's context."""
+    from fastapi.responses import StreamingResponse
+
+    from app.core.graph import _stream_error
+
+    probe = _probe_app()
+
+    @probe.get("/api/bkn-agent/v1/probe/stream")
+    async def _stream():
+        async def events():
+            yield f"locale={locale.get_effective_locale()}\n"
+            yield f"detail={_stream_error('BknAgent.Chat.Timeout', timeout=30)['detail']}\n"
+
+        return StreamingResponse(events(), media_type="text/event-stream")
+
+    streaming = TestClient(probe)
+    english = streaming.get(
+        "/api/bkn-agent/v1/probe/stream", headers={"Accept-Language": "en-US"}
+    )
+    chinese = streaming.get(
+        "/api/bkn-agent/v1/probe/stream", headers={"Accept-Language": "zh-CN"}
+    )
+
+    assert "locale=en-US" in english.text
+    assert "detail=Exceeded 30s." in english.text
+    assert "locale=zh-CN" in chinese.text
+    assert CHINESE.search(chinese.text)
+    # A stream may carry a localized error event, so it declares its language.
+    assert english.headers["Content-Language"] == "en-US"
+
+
+def test_success_response_is_not_labelled_with_a_language():
+    probe = _probe_app()
+
+    @probe.get("/api/bkn-agent/v1/probe/ok")
+    async def _ok():
+        return {"status": "ok"}
+
+    response = TestClient(probe).get(
+        "/api/bkn-agent/v1/probe/ok", headers={"Accept-Language": "en-US"}
+    )
+    assert response.status_code == 200
+    assert "Content-Language" not in response.headers
+    assert "private" in response.headers["Cache-Control"]
+
+
+def test_non_business_path_gets_neither_header():
+    probe = _probe_app()
+
+    @probe.get("/other/path")
+    async def _other():
+        return {"status": "ok"}
+
+    response = TestClient(probe).get("/other/path", headers={"Accept-Language": "en-US"})
+    assert "Content-Language" not in response.headers
+    assert "Cache-Control" not in response.headers
+
+
+def test_toolbox_list_forwards_the_frozen_locale_downstream():
+    """The wiring guard elsewhere in this file only greps the source; this runs
+    the real call path and reads the headers that actually go out."""
+    import asyncio
+    import json as json_module
+
+    from app.core import toolbox
+
+    captured = {}
+
+    class _Resp:
+        status = 200
+
+        async def text(self):
+            return json_module.dumps({"tools": [], "has_next": False})
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    class _Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get(self, url, params=None, headers=None):
+            captured.update(headers or {})
+            return _Resp()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    original = toolbox.aiohttp.ClientSession
+    toolbox.aiohttp.ClientSession = _Session
+    token = locale.set_effective_locale(locale.ENGLISH_LOCALE)
+    try:
+        asyncio.run(toolbox._list_tools("box-1", "acct", "user"))
+    finally:
+        locale.reset_effective_locale(token)
+        toolbox.aiohttp.ClientSession = original
+
+    assert captured["Accept-Language"] == "en-US"
+    assert captured["x-account-id"] == "acct"
