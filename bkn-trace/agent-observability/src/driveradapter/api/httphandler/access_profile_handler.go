@@ -20,14 +20,14 @@ import (
 // @Router /access-profile [get]
 func (h *EvidenceHandler) GetAccessProfile(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	if !h.authorizeQueryGateway(w, r) {
 		return
 	}
 	if h.authorizationScopeResolver == nil {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{
 			Code: "ACCESS_PROFILE_NOT_CONFIGURED", Message: "current access profile resolution is not configured",
 		})
 		return
@@ -37,7 +37,7 @@ func (h *EvidenceHandler) GetAccessProfile(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	profile := *scope.AccessProfile
-	writeJSON(w, http.StatusOK, accessProfileResponse(profile))
+	writeJSON(w, r, http.StatusOK, accessProfileResponse(profile))
 }
 
 func accessProfileResponse(profile evidencevo.AccessProfile) rdto.AccessProfileResponse {

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 
+	observabilitylocale "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/locale"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/tracesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/oteltracevo"
@@ -64,40 +65,40 @@ func (h *TraceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Reques
 // @Router /traces/{trace_id} [get]
 func (h *TraceHandler) GetTechnicalTraceDetail(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported",
 		})
 		return
 	}
 	traceID := traceIDFromDetailPath(r.URL.Path)
 	if traceID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "trace_id is required"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "trace_id is required"})
 		return
 	}
 	if h.traceSummaries == nil || h.operations == nil {
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "TRACE_DETAIL_UNAVAILABLE", Message: "typed trace detail is not configured"})
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "TRACE_DETAIL_UNAVAILABLE", Message: "typed trace detail is not configured"})
 		return
 	}
 	scope, ok := trustedQueryScopeFromContext(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{Code: "UNAUTHORIZED", Message: "trusted trace query scope is required"})
+		writeJSON(w, r, http.StatusUnauthorized, rdto.ErrorResponse{Code: "UNAUTHORIZED", Message: "trusted trace query scope is required"})
 		return
 	}
 	scope.View = evidencevo.AccessViewTechnical
 	executions, err := h.operations.ListOperationExecutionsByTraceIDScoped(r.Context(), scope, traceID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query operation facts"})
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query operation facts"})
 		return
 	}
 	page, err := h.traceSummaries.ListTraceExecutions(r.Context(), evidencevo.SummaryQueryOptions{
 		TraceID: traceID, Scope: scope, Limit: 1,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace summary"})
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace summary"})
 		return
 	}
 	if len(page.Entries) == 0 && len(executions) == 0 {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
 		return
 	}
 	summary := evidencevo.TraceSummary{TraceID: traceID, Status: "unknown"}
@@ -109,14 +110,14 @@ func (h *TraceHandler) GetTechnicalTraceDetail(w http.ResponseWriter, r *http.Re
 	}
 	graph, found, err := h.traceQueryService.GetTraceGraphByTraceID(r.Context(), traceID)
 	if err != nil {
-		writeJSON(w, http.StatusGatewayTimeout, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace spans"})
+		writeJSON(w, r, http.StatusGatewayTimeout, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query trace spans"})
 		return
 	}
 	var graphPointer *oteltracevo.TraceGraphResponse
 	if found {
 		graphPointer = &graph
 	}
-	writeJSON(w, http.StatusOK, tracesvc.BuildTechnicalTraceDetail(summary, graphPointer, executions))
+	writeJSON(w, r, http.StatusOK, tracesvc.BuildTechnicalTraceDetail(summary, graphPointer, executions))
 }
 
 func traceIDFromDetailPath(path string) string {
@@ -131,7 +132,7 @@ func traceIDFromDetailPath(path string) string {
 	return strings.TrimSpace(traceID)
 }
 
-func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
+func writeJSON(w http.ResponseWriter, r *http.Request, statusCode int, payload any) {
 	traceID := ensureWriterTraceID(w)
 	if response, ok := payload.(rdto.ErrorResponse); ok {
 		if response.ErrorCode == "" {
@@ -143,7 +144,51 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
 		response.TraceID = traceID
 		payload = response
 	}
+	if observabilitylocale.IsNegotiated(r.Context()) {
+		if localizedPayload, localized := localizeErrorPayload(r.Context(), payload); localized {
+			payload = localizedPayload
+			observabilitylocale.MarkLocalizedResponse(w, r.Context())
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func localizeErrorPayload(ctx context.Context, payload any) (any, bool) {
+	switch response := payload.(type) {
+	case rdto.ErrorResponse:
+		response.Message = observabilitylocale.Translate(ctx, response.Message)
+		response.Details = localizeErrorDetails(ctx, response.Details)
+		return response, true
+	case lifecycleErrorEnvelope:
+		response.Error.Message = observabilitylocale.Translate(ctx, response.Error.Message)
+		return response, true
+	case observabilityErrorEnvelope:
+		response.Error.Message = observabilitylocale.Translate(ctx, response.Error.Message)
+		return response, true
+	default:
+		return payload, false
+	}
+}
+
+func localizeErrorDetails(ctx context.Context, details any) any {
+	switch validationErrors := details.(type) {
+	case evidencevo.ValidationErrors:
+		localized := make(evidencevo.ValidationErrors, len(validationErrors))
+		copy(localized, validationErrors)
+		for index := range localized {
+			localized[index].Message = observabilitylocale.Translate(ctx, localized[index].Message)
+		}
+		return localized
+	case []evidencevo.ValidationError:
+		localized := make([]evidencevo.ValidationError, len(validationErrors))
+		copy(localized, validationErrors)
+		for index := range localized {
+			localized[index].Message = observabilitylocale.Translate(ctx, localized[index].Message)
+		}
+		return localized
+	default:
+		return details
+	}
 }

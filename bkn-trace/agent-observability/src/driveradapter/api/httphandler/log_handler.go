@@ -92,7 +92,7 @@ func (handler *LogHandler) ListLogs(w http.ResponseWriter, r *http.Request) {
 	requestID := optionalString(query.RequestID)
 	currentTraceID := optionalString(query.TraceID)
 	relatedTraceIDs := uniqueTraceIDs(result.Records)
-	writeJSON(w, http.StatusOK, rdto.LogListResponse{
+	writeJSON(w, r, http.StatusOK, rdto.LogListResponse{
 		Data: rdto.NewOperationAuditRecords(result.Records), NextCursor: nextCursor, Partial: result.Partial,
 		Count: rdto.LogCount{Value: &count, Accuracy: accuracy}, SourceStatus: result.SourceStatus,
 		Pagination: rdto.PageMetadata{Page: result.Page, PageSize: result.PageSize},
@@ -122,7 +122,7 @@ func (handler *LogHandler) GetLog(w http.ResponseWriter, r *http.Request) {
 		writeLogServiceError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rdto.LogDetailResponse{
+	writeJSON(w, r, http.StatusOK, rdto.LogDetailResponse{
 		Data:            rdto.NewOperationAuditRecord(record),
 		FieldProjection: rdto.LogFieldProjection{PolicyRevision: "operation-audit-1.0", RedactedFields: []string{}},
 		RequestTraceContext: rdto.RequestTraceContext{
@@ -143,7 +143,7 @@ func (handler *LogHandler) ListLogSources(w http.ResponseWriter, r *http.Request
 		writeLogServiceError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rdto.LogSourcesResponse{Data: data})
+	writeJSON(w, r, http.StatusOK, rdto.LogSourcesResponse{Data: data})
 }
 
 func (handler *LogHandler) ListLogPolicies(w http.ResponseWriter, r *http.Request) {
@@ -156,7 +156,7 @@ func (handler *LogHandler) ListLogPolicies(w http.ResponseWriter, r *http.Reques
 		writeLogServiceError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, rdto.LogPoliciesResponse{Data: data})
+	writeJSON(w, r, http.StatusOK, rdto.LogPoliciesResponse{Data: data})
 }
 
 func (handler *LogHandler) authorizedProfile(w http.ResponseWriter, r *http.Request) (evidencevo.AccessProfile, bool) {
@@ -197,7 +197,7 @@ func writeLogServiceError(w http.ResponseWriter, r *http.Request, err error) {
 
 func writeObservabilityError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	retryable := status == http.StatusServiceUnavailable || status == http.StatusInternalServerError
-	writeJSON(w, status, observabilityErrorEnvelope{Error: observabilityError{
+	writeJSON(w, r, status, observabilityErrorEnvelope{Error: observabilityError{
 		Code: code, Message: message, Retryable: retryable, RequestID: requestIDFromRequest(r),
 	}})
 }

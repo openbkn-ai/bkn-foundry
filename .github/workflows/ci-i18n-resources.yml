@@ -12,6 +12,7 @@ on:
       - 'adp/**/locale/**/*.toml'
       - 'adp/**/server/infra/localize/locales/**'
       - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
+      - 'bkn-trace/agent-observability/locale/**'
       - 'infra/**/app/commons/i18n/**'
       - 'tools/check_i18n_catalogs.py'
       - 'tools/test_check_i18n_catalogs.py'
@@ -22,6 +23,7 @@ on:
       - 'adp/**/locale/**/*.toml'
       - 'adp/**/server/infra/localize/locales/**'
       - 'adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas/**'
+      - 'bkn-trace/agent-observability/locale/**'
       - 'infra/**/app/commons/i18n/**'
       - 'tools/check_i18n_catalogs.py'
       - 'tools/test_check_i18n_catalogs.py'
@@ -49,6 +51,10 @@ jobs:
       - name: Validate Go locale catalogs
         working-directory: comm-go
         run: go test ./i18n
+
+      - name: Validate Agent Observability locale catalogs
+        working-directory: bkn-trace/agent-observability
+        run: go test ./locale
 
       - uses: actions/setup-python@v5
         with:

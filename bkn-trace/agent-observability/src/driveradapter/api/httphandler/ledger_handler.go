@@ -119,7 +119,7 @@ func (h *LedgerHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 				status = http.StatusConflict
 				action = "inspect_event_conflict"
 			}
-			writeJSON(w, status, lifecycleErrorEnvelope{Error: lifecycleError{
+			writeJSON(w, r, status, lifecycleErrorEnvelope{Error: lifecycleError{
 				Code: string(domainErr.Code), Message: domainErr.Message,
 				RequiredAction: action, RequestID: requestIDFromRequest(r),
 			}})
@@ -128,7 +128,7 @@ func (h *LedgerHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 		writeLifecycleError(w, r, http.StatusInternalServerError, "internal_error", "evidence event was not durably committed")
 		return
 	}
-	writeJSON(w, http.StatusAccepted, ack)
+	writeJSON(w, r, http.StatusAccepted, ack)
 }
 
 func (h *LedgerHandler) authorize(w http.ResponseWriter, r *http.Request) bool {

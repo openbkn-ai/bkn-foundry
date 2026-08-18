@@ -14,7 +14,7 @@ import (
 func (h *EvidenceHandler) ListBusinessProvenanceConversations(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	options, ok := h.summaryQueryOptionsFromRequest(w, r)
@@ -23,16 +23,16 @@ func (h *EvidenceHandler) ListBusinessProvenanceConversations(w http.ResponseWri
 	}
 	page, err := h.evidenceService.ListConversations(r.Context(), options)
 	if err != nil {
-		writeSummaryQueryError(w, err)
+		writeSummaryQueryError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	writeJSON(w, r, http.StatusOK, page)
 }
 
 func (h *EvidenceHandler) ListBusinessProvenanceInteractions(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	options, ok := h.summaryQueryOptionsFromRequest(w, r)
@@ -41,16 +41,16 @@ func (h *EvidenceHandler) ListBusinessProvenanceInteractions(w http.ResponseWrit
 	}
 	page, err := h.evidenceService.ListInteractions(r.Context(), options)
 	if err != nil {
-		writeSummaryQueryError(w, err)
+		writeSummaryQueryError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	writeJSON(w, r, http.StatusOK, page)
 }
 
 func (h *EvidenceHandler) ListRequests(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	options, ok := h.summaryQueryOptionsFromRequest(w, r)
@@ -59,21 +59,21 @@ func (h *EvidenceHandler) ListRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	page, err := h.evidenceService.ListRequests(r.Context(), options)
 	if err != nil {
-		writeSummaryQueryError(w, err)
+		writeSummaryQueryError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	writeJSON(w, r, http.StatusOK, page)
 }
 
 func (h *EvidenceHandler) GetRequestSummary(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "")
 	if requestID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "request_id is required"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "request_id is required"})
 		return
 	}
 	options, ok := h.summaryQueryOptionsFromRequest(w, r)
@@ -82,25 +82,25 @@ func (h *EvidenceHandler) GetRequestSummary(w http.ResponseWriter, r *http.Reque
 	}
 	summary, found, err := h.evidenceService.GetRequestSummary(r.Context(), requestID, options.Scope)
 	if err != nil {
-		writeSummaryQueryError(w, err)
+		writeSummaryQueryError(w, r, err)
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "request not found"})
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "request not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, summary)
+	writeJSON(w, r, http.StatusOK, summary)
 }
 
 func (h *EvidenceHandler) GetInteractionSummary(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	interactionID := interactionIDFromSummaryPath(r.URL.Path)
 	if interactionID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "interaction_id is required"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "interaction_id is required"})
 		return
 	}
 	options, ok := h.summaryQueryOptionsFromRequest(w, r)
@@ -109,25 +109,25 @@ func (h *EvidenceHandler) GetInteractionSummary(w http.ResponseWriter, r *http.R
 	}
 	summary, found, err := h.evidenceService.GetInteractionSummary(r.Context(), interactionID, options.Scope)
 	if err != nil {
-		writeSummaryQueryError(w, err)
+		writeSummaryQueryError(w, r, err)
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "interaction not found"})
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "interaction not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, summary)
+	writeJSON(w, r, http.StatusOK, summary)
 }
 
 func (h *EvidenceHandler) ListRequestTraces(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "traces")
 	if requestID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "request_id is required"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "request_id is required"})
 		return
 	}
 	options, ok := h.summaryQueryOptionsFromRequest(w, r)
@@ -136,10 +136,10 @@ func (h *EvidenceHandler) ListRequestTraces(w http.ResponseWriter, r *http.Reque
 	}
 	page, err := h.evidenceService.ListRequestTraces(r.Context(), requestID, options)
 	if err != nil {
-		writeSummaryQueryError(w, err)
+		writeSummaryQueryError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	writeJSON(w, r, http.StatusOK, page)
 }
 
 func requestIDFromBusinessProvenancePath(path, suffix string) string {

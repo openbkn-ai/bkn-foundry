@@ -40,7 +40,7 @@ func (handler *ArchiveHandler) Overview(kind observabilityvo.ArchiveKind) http.H
 		} else {
 			response.Storage.Status = "unavailable"
 		}
-		writeJSON(w, http.StatusOK, response)
+		writeJSON(w, r, http.StatusOK, response)
 	}
 }
 func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.HandlerFunc {
@@ -66,7 +66,7 @@ func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.Han
 			}
 			return
 		}
-		writeJSON(w, http.StatusCreated, rdto.NewArchiveJob(job))
+		writeJSON(w, r, http.StatusCreated, rdto.NewArchiveJob(job))
 	}
 }
 
@@ -88,7 +88,7 @@ func (handler *ArchiveHandler) ListOrCreate(kind observabilityvo.ArchiveKind) ht
 		for _, job := range jobs {
 			response = append(response, rdto.NewArchiveJob(job))
 		}
-		writeJSON(w, http.StatusOK, response)
+		writeJSON(w, r, http.StatusOK, response)
 	}
 }
 func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +116,7 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 			writeObservabilityError(w, r, http.StatusNotFound, "archive_job_not_found", "archive job was not found")
 			return
 		}
-		writeJSON(w, http.StatusOK, rdto.NewArchiveJob(job))
+		writeJSON(w, r, http.StatusOK, rdto.NewArchiveJob(job))
 		return
 	}
 	job, err := handler.service.RetryCleanup(r.Context(), parts[0], profile.TenantID)
@@ -124,7 +124,7 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 		writeObservabilityError(w, r, http.StatusBadRequest, "archive_retry_failed", "archive cleanup cannot be retried")
 		return
 	}
-	writeJSON(w, http.StatusOK, rdto.NewArchiveJob(job))
+	writeJSON(w, r, http.StatusOK, rdto.NewArchiveJob(job))
 }
 
 func (handler *ArchiveHandler) download(w http.ResponseWriter, r *http.Request, jobID, tenantID string) {
