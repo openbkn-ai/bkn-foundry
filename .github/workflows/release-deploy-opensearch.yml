@@ -11,7 +11,10 @@ on:
   push:
     branches: ['**']
     paths:
-      - 'deploy/images/opensearch/**'
+      # The Dockerfile, not the whole directory: the README lives there too, and
+      # a doc edit that publishes a new image tag only makes the tag pinned in
+      # deploy/scripts/lib/common.sh look stale against a byte-identical build.
+      - 'deploy/images/opensearch/Dockerfile'
       - '.github/workflows/release-deploy-opensearch.yml'
       - '.github/workflows/reusable-build.yml'
   workflow_dispatch:
