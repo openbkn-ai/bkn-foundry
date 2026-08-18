@@ -147,7 +147,7 @@ func project(entry accessLog, tenantID string) observabilityvo.LogRecord {
 	if outcome == "failure" {
 		severityNumber, severityText = 17, "ERROR"
 	}
-	actorName := firstNonEmpty(entry.ActorNameSnapshot, entry.ActorID, "未识别用户")
+	actorName := firstNonEmpty(entry.ActorNameSnapshot, entry.ActorID, "Unknown user")
 	targetID := firstNonEmpty(entry.ActorID, entry.ActorNameSnapshot)
 	return observabilityvo.LogRecord{
 		EventID: entry.ID, EventTime: entry.CreatedAt, RecordedAt: entry.CreatedAt,

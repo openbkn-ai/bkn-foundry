@@ -292,7 +292,7 @@ func (h *SessionHandler) EnsureCurrentConversation(w http.ResponseWriter, r *htt
 		writeSessionDomainError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusCreated, conversation)
+	writeJSON(w, r, http.StatusCreated, conversation)
 }
 
 func (h *SessionHandler) handleConversationSubresource(w http.ResponseWriter, r *http.Request) {
@@ -504,7 +504,7 @@ func (h *SessionHandler) GetInteractionBusinessGraph(w http.ResponseWriter, r *h
 		writeLifecycleError(w, r, http.StatusInternalServerError, "internal_error", "business graph query failed")
 		return
 	}
-	writeJSON(w, http.StatusOK, interactionBusinessGraphResponse{
+	writeJSON(w, r, http.StatusOK, interactionBusinessGraphResponse{
 		InteractionID: view.Interaction.ID, ConversationID: view.Interaction.ConversationID,
 		ExecutionStatus: view.Interaction.ExecutionStatus, EvidenceStatus: view.Interaction.EvidenceStatus,
 		Revision: view.Revision, Assembly: view.Assembly,
@@ -650,7 +650,7 @@ func (h *SessionHandler) writeLifecycleResult(w http.ResponseWriter, r *http.Req
 		writeSessionDomainError(w, r, err)
 		return
 	}
-	writeJSON(w, status, value)
+	writeJSON(w, r, status, value)
 }
 
 func splitLifecyclePath(path string) []string {
@@ -722,7 +722,7 @@ func writeSessionDomainError(w http.ResponseWriter, r *http.Request, err error) 
 		return
 	}
 	status, action, retryable := lifecycleErrorContract(domainErr.Code)
-	writeJSON(w, status, lifecycleErrorEnvelope{Error: lifecycleError{
+	writeJSON(w, r, status, lifecycleErrorEnvelope{Error: lifecycleError{
 		Code: string(domainErr.Code), Message: domainErr.Message,
 		CurrentStatus: domainErr.CurrentStatus, CurrentInteractionID: domainErr.CurrentInteractionID,
 		Retryable:      retryable,
@@ -732,7 +732,7 @@ func writeSessionDomainError(w http.ResponseWriter, r *http.Request, err error) 
 
 func writeLifecycleError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	_, action, retryable := lifecycleErrorContract(sessionsvc.ErrorCode(code))
-	writeJSON(w, status, lifecycleErrorEnvelope{Error: lifecycleError{
+	writeJSON(w, r, status, lifecycleErrorEnvelope{Error: lifecycleError{
 		Code: code, Message: message, Retryable: retryable,
 		RequiredAction: action, RequestID: requestIDFromRequest(r),
 	}})

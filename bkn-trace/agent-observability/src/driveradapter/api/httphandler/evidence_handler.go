@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	observabilitylocale "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/locale"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/evidencesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/rdto"
@@ -91,6 +92,7 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 	if queryHTTPClient == nil {
 		queryHTTPClient = &http.Client{Timeout: 3 * time.Second}
 	}
+	queryHTTPClient = observabilitylocale.WrapHTTPClient(queryHTTPClient)
 	return &EvidenceHandler{
 		evidenceService:            evidenceService,
 		ingestToken:                strings.TrimSpace(config.IngestToken),
@@ -116,7 +118,7 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 // @Failure 500 {object} rdto.ErrorResponse
 func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only POST is supported",
 		})
@@ -128,14 +130,14 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxEvidenceBodyBytes))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "failed to read request body",
 		})
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "evidence event body is required",
 		})
@@ -144,14 +146,14 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 
 	response, validationErrors, err := h.evidenceService.Ingest(r.Context(), body)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "INGEST_FAILED",
 			Message: "failed to ingest evidence events",
 		})
 		return
 	}
 	if len(validationErrors) > 0 {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    validationErrors[0].Code,
 			Message: validationErrors[0].Message,
 			Details: validationErrors,
@@ -159,7 +161,7 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	writeJSON(w, http.StatusAccepted, response)
+	writeJSON(w, r, http.StatusAccepted, response)
 }
 
 // IngestEvidenceArtifact godoc
@@ -179,7 +181,7 @@ func (h *EvidenceHandler) IngestEvidenceEvents(w http.ResponseWriter, r *http.Re
 func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodPost {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only POST is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only POST is supported"})
 		return
 	}
 	if !h.authorizeEvidenceIngest(w, r) {
@@ -187,16 +189,16 @@ func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxEvidenceBodyBytes))
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "failed to read request body"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "failed to read request body"})
 		return
 	}
 	if len(body) == 0 {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "evidence artifact body is required"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "evidence artifact body is required"})
 		return
 	}
 	response, validationErrors, err := h.evidenceService.IngestArtifact(r.Context(), body)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "INGEST_FAILED", Message: "failed to ingest evidence artifact"})
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "INGEST_FAILED", Message: "failed to ingest evidence artifact"})
 		return
 	}
 	if len(validationErrors) > 0 {
@@ -204,7 +206,7 @@ func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.
 		if validationErrors[0].Code == "BKN_TRACE_ARTIFACT_ID_CONFLICT" {
 			status = http.StatusConflict
 		}
-		writeJSON(w, status, rdto.ErrorResponse{
+		writeJSON(w, r, status, rdto.ErrorResponse{
 			Code: validationErrors[0].Code, Message: validationErrors[0].Message, Details: validationErrors,
 		})
 		return
@@ -213,7 +215,7 @@ func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.
 	if response.Created {
 		status = http.StatusCreated
 	}
-	writeJSON(w, status, response)
+	writeJSON(w, r, status, response)
 }
 
 // GetEvidenceArtifact godoc
@@ -232,12 +234,12 @@ func (h *EvidenceHandler) IngestEvidenceArtifact(w http.ResponseWriter, r *http.
 func (h *EvidenceHandler) GetEvidenceArtifact(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	artifactID := artifactIDFromPath(r.URL.Path)
 	if artifactID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "artifact_id is required"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "artifact_id is required"})
 		return
 	}
 	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
@@ -248,14 +250,14 @@ func (h *EvidenceHandler) GetEvidenceArtifact(w http.ResponseWriter, r *http.Req
 		r.Context(), artifactID, strings.TrimSpace(r.URL.Query().Get("interaction_id")), options.Scope,
 	)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query evidence artifact"})
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query evidence artifact"})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "evidence artifact not found"})
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "evidence artifact not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, artifact)
+	writeJSON(w, r, http.StatusOK, artifact)
 }
 
 func artifactIDFromPath(path string) string {
@@ -285,7 +287,7 @@ func artifactIDFromPath(path string) string {
 // Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only GET is supported",
 		})
@@ -294,7 +296,7 @@ func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *ht
 
 	traceID := traceIDFromEvidenceChainPath(r.URL.Path)
 	if traceID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "trace_id is required",
 		})
@@ -308,21 +310,21 @@ func (h *EvidenceHandler) GetEvidenceChainByTraceID(w http.ResponseWriter, r *ht
 
 	response, found, err := h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID, options)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
 			Message: "failed to query evidence chain",
 		})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "evidence chain not found",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Request) {
@@ -338,7 +340,7 @@ func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Req
 		h.GetSnapshotPreviewByTraceID(w, r)
 		return
 	}
-	writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+	writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 		Code:    "NOT_FOUND",
 		Message: "trace subresource not found",
 	})
@@ -359,7 +361,7 @@ func (h *EvidenceHandler) GetTraceSubresource(w http.ResponseWriter, r *http.Req
 // Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only GET is supported",
 		})
@@ -368,7 +370,7 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 
 	traceID := traceIDFromBusinessGraphPath(r.URL.Path)
 	if traceID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "trace_id is required",
 		})
@@ -382,21 +384,21 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 
 	response, found, err := h.evidenceService.GetBusinessGraphByTraceID(r.Context(), traceID, options)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
 			Message: "failed to query business graph",
 		})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "business graph not found",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 // GetEvidenceChainByRequestID godoc
@@ -414,7 +416,7 @@ func (h *EvidenceHandler) GetBusinessGraphByTraceID(w http.ResponseWriter, r *ht
 // Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only GET is supported",
 		})
@@ -423,7 +425,7 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 
 	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "evidence-chain")
 	if requestID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "request_id is required",
 		})
@@ -437,21 +439,21 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 
 	response, found, err := h.evidenceService.GetEvidenceChainByRequestID(r.Context(), requestID, options)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
 			Message: "failed to query evidence chain",
 		})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "evidence chain not found",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 // GetSnapshotPreviewByTraceID godoc
@@ -469,7 +471,7 @@ func (h *EvidenceHandler) GetEvidenceChainByRequestID(w http.ResponseWriter, r *
 // Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only GET is supported",
 		})
@@ -478,7 +480,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *
 
 	traceID := traceIDFromSnapshotPreviewPath(r.URL.Path)
 	if traceID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "trace_id is required",
 		})
@@ -492,21 +494,21 @@ func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *
 
 	response, found, err := h.evidenceService.GetSnapshotPreviewByTraceID(r.Context(), traceID, options)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
 			Message: "failed to query snapshot preview",
 		})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "snapshot preview not found",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 // GetSnapshotPreviewByRequestID godoc
@@ -524,7 +526,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByTraceID(w http.ResponseWriter, r *
 // Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only GET is supported",
 		})
@@ -533,7 +535,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r
 
 	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "snapshot-preview")
 	if requestID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "request_id is required",
 		})
@@ -547,21 +549,21 @@ func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r
 
 	response, found, err := h.evidenceService.GetSnapshotPreviewByRequestID(r.Context(), requestID, options)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
 			Message: "failed to query snapshot preview",
 		})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "snapshot preview not found",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 // GetBusinessGraphByRequestID godoc
@@ -579,7 +581,7 @@ func (h *EvidenceHandler) GetSnapshotPreviewByRequestID(w http.ResponseWriter, r
 // Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only GET is supported",
 		})
@@ -588,7 +590,7 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 
 	requestID := requestIDFromBusinessProvenancePath(r.URL.Path, "business-graph")
 	if requestID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "request_id is required",
 		})
@@ -602,21 +604,21 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 
 	response, found, err := h.evidenceService.GetBusinessGraphByRequestID(r.Context(), requestID, options)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
 			Message: "failed to query business graph",
 		})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "business graph not found",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 // GetEvidenceNode godoc
@@ -636,7 +638,7 @@ func (h *EvidenceHandler) GetBusinessGraphByRequestID(w http.ResponseWriter, r *
 // Legacy public business-provenance route removed in 0.1.4.
 func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{
 			Code:    "METHOD_NOT_ALLOWED",
 			Message: "only GET is supported",
 		})
@@ -645,7 +647,7 @@ func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request
 
 	nodeID := evidenceNodeIDFromPath(r.URL.Path)
 	if nodeID == "" {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "node_id is required",
 		})
@@ -660,7 +662,7 @@ func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request
 	traceID := strings.TrimSpace(r.URL.Query().Get("trace_id"))
 	requestID := strings.TrimSpace(r.URL.Query().Get("request_id"))
 	if (traceID == "" && requestID == "") || (traceID != "" && requestID != "") {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "exactly one of trace_id or request_id is required",
 		})
@@ -678,21 +680,21 @@ func (h *EvidenceHandler) GetEvidenceNode(w http.ResponseWriter, r *http.Request
 		response, found, err = h.evidenceService.GetEvidenceNodeByRequestID(r.Context(), requestID, nodeID, options)
 	}
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{
 			Code:    "QUERY_FAILED",
 			Message: "failed to query evidence node",
 		})
 		return
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{
 			Code:    "NOT_FOUND",
 			Message: "evidence node not found",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, response)
+	writeJSON(w, r, http.StatusOK, response)
 }
 
 func traceIDFromEvidenceChainPath(path string) string {
@@ -725,7 +727,7 @@ func (h *EvidenceHandler) evidenceQueryOptionsFromRequest(w http.ResponseWriter,
 	}
 	limit, err := strconv.Atoi(rawLimit)
 	if err != nil || limit <= 0 || limit > evidencesvc.MaxEvidenceQueryLimit {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{
 			Code:    "INVALID_ARGUMENT",
 			Message: "limit must be an integer between 1 and 1000",
 		})
@@ -969,7 +971,7 @@ func writeQueryAuthorizationError(w http.ResponseWriter, r *http.Request, status
 		writeObservabilityError(w, r, status, strings.ToLower(code), message)
 		return
 	}
-	writeJSON(w, status, rdto.ErrorResponse{Code: code, Message: message})
+	writeJSON(w, r, status, rdto.ErrorResponse{Code: code, Message: message})
 }
 
 func normalizedOAuthAccountType(response hydraIntrospectionResponse) string {
@@ -992,7 +994,7 @@ func (h *EvidenceHandler) AuthorizeTechnicalTraceQuery(w http.ResponseWriter, r 
 	traceID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), suffix)
 	traceID = strings.Trim(traceID, "/")
 	if traceID == "" || strings.Contains(traceID, "/") {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "trace_id is required"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "trace_id is required"})
 		return false
 	}
 	options, ok := h.evidenceQueryOptionsFromRequest(w, r)
@@ -1001,7 +1003,7 @@ func (h *EvidenceHandler) AuthorizeTechnicalTraceQuery(w http.ResponseWriter, r 
 	}
 	_, found, err := h.evidenceService.GetEvidenceChainByTraceID(r.Context(), traceID, options)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to authorize trace query"})
+		writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to authorize trace query"})
 		return false
 	}
 	if !found {
@@ -1011,13 +1013,13 @@ func (h *EvidenceHandler) AuthorizeTechnicalTraceQuery(w http.ResponseWriter, r 
 			Limit:   1,
 		})
 		if listErr != nil {
-			writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to authorize trace query"})
+			writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to authorize trace query"})
 			return false
 		}
 		found = len(page.Entries) > 0
 	}
 	if !found {
-		writeJSON(w, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
+		writeJSON(w, r, http.StatusNotFound, rdto.ErrorResponse{Code: "NOT_FOUND", Message: "trace not found"})
 		return false
 	}
 	return true
@@ -1048,7 +1050,7 @@ func (h *EvidenceHandler) authorizeEvidenceIngest(w http.ResponseWriter, r *http
 		if h.allowUnauthenticatedIngest {
 			return true
 		}
-		writeJSON(w, http.StatusServiceUnavailable, rdto.ErrorResponse{
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{
 			Code:    "INGEST_AUTH_NOT_CONFIGURED",
 			Message: "evidence ingest authentication is not configured",
 		})
@@ -1065,7 +1067,7 @@ func (h *EvidenceHandler) authorizeEvidenceIngest(w http.ResponseWriter, r *http
 		}
 	}
 
-	writeJSON(w, http.StatusUnauthorized, rdto.ErrorResponse{
+	writeJSON(w, r, http.StatusUnauthorized, rdto.ErrorResponse{
 		Code:    "UNAUTHORIZED",
 		Message: "evidence ingest authentication is required",
 	})

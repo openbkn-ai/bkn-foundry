@@ -740,10 +740,13 @@ func validateArtifactRoleAgainstTraces(
 					continue
 				}
 				if !evidencevo.ArtifactTypeMatchesRole(artifact.ArtifactType, role) {
-					validationErrors = append(validationErrors, evidencevo.NewValidationError(
+					message := "artifact_type does not match event link role " + event.EventType + "." + role.Field
+					validationErrors = append(validationErrors, evidencevo.NewTemplatedValidationError(
 						"BKN_TRACE_ARTIFACT_TYPE_MISMATCH",
 						"$.artifact_type",
-						"artifact_type does not match event link role "+event.EventType+"."+role.Field,
+						"artifact_type does not match event link role",
+						message,
+						map[string]any{"EventType": event.EventType, "RoleField": role.Field},
 					))
 				}
 			}

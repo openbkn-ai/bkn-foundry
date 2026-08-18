@@ -340,6 +340,9 @@ type ValidationError struct {
 	Code    string `json:"code"`
 	Path    string `json:"path"`
 	Message string `json:"message"`
+
+	messageID   string
+	messageData map[string]any
 }
 
 type ValidationErrors []ValidationError
@@ -590,4 +593,24 @@ type IngestResponse struct {
 
 func NewValidationError(code, path, message string) ValidationError {
 	return ValidationError{Code: code, Path: path, Message: message}
+}
+
+// NewTemplatedValidationError preserves the rendered English message while
+// retaining a stable localization key and runtime template data internally.
+func NewTemplatedValidationError(
+	code, path, messageID, message string,
+	messageData map[string]any,
+) ValidationError {
+	return ValidationError{
+		Code: code, Path: path, Message: message,
+		messageID: messageID, messageData: messageData,
+	}
+}
+
+// LocalizableMessage returns the stable localization input for this error.
+func (e ValidationError) LocalizableMessage() (string, map[string]any) {
+	if e.messageID == "" {
+		return e.Message, nil
+	}
+	return e.messageID, e.messageData
 }

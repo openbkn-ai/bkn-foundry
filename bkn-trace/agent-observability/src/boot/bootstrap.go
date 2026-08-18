@@ -12,6 +12,7 @@ import (
 	"time"
 
 	docs "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/docs/swagger"
+	observabilitylocale "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/locale"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/conf"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/archivesvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/assemblysvc"
@@ -74,7 +75,12 @@ type App struct {
 const APIBasePath = "/api/agent-observability/v1"
 const ObservabilityAPIBasePath = "/api/observability/v1"
 
+func localizedHTTPClient(timeout time.Duration) *http.Client {
+	return observabilitylocale.WrapHTTPClient(&http.Client{Timeout: timeout})
+}
+
 func NewApp() (*App, error) {
+	observabilitylocale.Register()
 	httpServerConfig := conf.NewHTTPServerConfig()
 	openSearchConfig := conf.NewOpenSearchConfig()
 	evidenceConfig := conf.NewEvidenceConfig()
@@ -99,7 +105,7 @@ func NewApp() (*App, error) {
 	}
 	var resolver ibusinessresolver.BusinessResolverPort
 	if resolverConfig.Enabled {
-		resolver = businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout})
+		resolver = businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, localizedHTTPClient(resolverConfig.Timeout))
 	}
 	coreConfig := conf.NewCoreConfig()
 	metrics := coremetrics.New()
@@ -138,7 +144,7 @@ func NewApp() (*App, error) {
 	accessScopeConfig := conf.NewAccessScopeConfig()
 	accessScopeResolver := bknsafeaccess.New(
 		accessScopeConfig.BKNBaseURL,
-		&http.Client{Timeout: accessScopeConfig.Timeout},
+		localizedHTTPClient(accessScopeConfig.Timeout),
 	)
 	evidenceHandler := httphandler.NewEvidenceHandlerWithAuthorizationScopeResolver(evidenceService, accessScopeResolver)
 	logOptions := logsvc.Options{
@@ -152,15 +158,15 @@ func NewApp() (*App, error) {
 	}
 	logSources := []logsvc.Source{
 		opensearchlogaccess.New(openSearchClient, openSearchConfig.LogIndex),
-		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
-		bknsafeuseraccess.New(accessScopeConfig.BKNBaseURL, &http.Client{Timeout: accessScopeConfig.Timeout}),
+		bknsafeaudit.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
+		bknsafeuseraccess.New(accessScopeConfig.BKNBaseURL, localizedHTTPClient(accessScopeConfig.Timeout)),
 		logsvc.NewNotIntegratedSource("bkn-safe-security", []string{
 			observabilityvo.CategoryAuditSecurity,
 		}, []string{"BKN Safe Authorization"}),
-		bknbackendaudit.New(resolverConfig.BKNBaseURL, &http.Client{Timeout: resolverConfig.Timeout}),
-		vegaaudit.New(resolverConfig.VegaBaseURL, &http.Client{Timeout: resolverConfig.Timeout}),
-		executionfactoryaudit.New(resolverConfig.ExecutionFactoryURL, &http.Client{Timeout: resolverConfig.Timeout}),
-		modelmanageraudit.New(resolverConfig.ModelManagerURL, &http.Client{Timeout: resolverConfig.Timeout}),
+		bknbackendaudit.New(resolverConfig.BKNBaseURL, localizedHTTPClient(resolverConfig.Timeout)),
+		vegaaudit.New(resolverConfig.VegaBaseURL, localizedHTTPClient(resolverConfig.Timeout)),
+		executionfactoryaudit.New(resolverConfig.ExecutionFactoryURL, localizedHTTPClient(resolverConfig.Timeout)),
+		modelmanageraudit.New(resolverConfig.ModelManagerURL, localizedHTTPClient(resolverConfig.Timeout)),
 	}
 	if coreConfig.ProjectionEnabled {
 		logSources = append(logSources, opensearchconversationaudit.New(openSearchClient, coreConfig.ProjectionIndex))
@@ -516,9 +522,19 @@ func newAppWithArchive(
 	}
 	httphandler.RegisterSessionRoutes(internalMux, APIBasePath, sessionHandler, lifecycle)
 
+	publicHandler := observabilitylocale.PrivateNoCacheForPrefixes(
+		observabilitylocale.LanguageMiddleware(mux),
+		APIBasePath,
+		ObservabilityAPIBasePath,
+	)
+	internalHandler := observabilitylocale.PrivateNoCacheForPrefixes(
+		observabilitylocale.LanguageMiddleware(internalMux),
+		APIBasePath,
+	)
+
 	return &App{
-		server:         httpserver.New(httpServerConfig.Address, mux),
-		internalServer: httpserver.New(httpServerConfig.InternalAddress, internalMux),
+		server:         httpserver.New(httpServerConfig.Address, publicHandler),
+		internalServer: httpserver.New(httpServerConfig.InternalAddress, internalHandler),
 	}
 }
 

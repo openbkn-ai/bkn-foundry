@@ -40,7 +40,7 @@ const maxSummaryQueryPage = 100
 func (h *EvidenceHandler) ListTraceExecutions(w http.ResponseWriter, r *http.Request) {
 	ensureResponseTraceID(w, r)
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
+		writeJSON(w, r, http.StatusMethodNotAllowed, rdto.ErrorResponse{Code: "METHOD_NOT_ALLOWED", Message: "only GET is supported"})
 		return
 	}
 	options, ok := h.summaryQueryOptionsFromRequest(w, r)
@@ -50,10 +50,10 @@ func (h *EvidenceHandler) ListTraceExecutions(w http.ResponseWriter, r *http.Req
 	options.Scope.View = evidencevo.AccessViewTechnical
 	page, err := h.evidenceService.ListTraceExecutions(r.Context(), options)
 	if err != nil {
-		writeSummaryQueryError(w, err)
+		writeSummaryQueryError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	writeJSON(w, r, http.StatusOK, page)
 }
 
 func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, r *http.Request) (evidencevo.SummaryQueryOptions, bool) {
@@ -82,7 +82,7 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 	if rawPage := strings.TrimSpace(r.URL.Query().Get("page")); rawPage != "" {
 		page, err := strconv.Atoi(rawPage)
 		if err != nil || page <= 0 || page > maxSummaryQueryPage {
-			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page must be an integer between 1 and 100"})
+			writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page must be an integer between 1 and 100"})
 			return evidencevo.SummaryQueryOptions{}, false
 		}
 		options.Page = page
@@ -90,7 +90,7 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 	if rawPageSize := strings.TrimSpace(r.URL.Query().Get("page_size")); rawPageSize != "" {
 		pageSize, err := strconv.Atoi(rawPageSize)
 		if err != nil || pageSize <= 0 || pageSize > evidencesvc.MaxSummaryQueryLimit {
-			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page_size must be an integer between 1 and 200"})
+			writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "page_size must be an integer between 1 and 200"})
 			return evidencevo.SummaryQueryOptions{}, false
 		}
 		options.Limit = pageSize
@@ -98,7 +98,7 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 	if rawLimit := strings.TrimSpace(r.URL.Query().Get("limit")); rawLimit != "" {
 		limit, err := strconv.Atoi(rawLimit)
 		if err != nil || limit <= 0 || limit > evidencesvc.MaxSummaryQueryLimit {
-			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "limit must be an integer between 1 and 200"})
+			writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "limit must be an integer between 1 and 200"})
 			return evidencevo.SummaryQueryOptions{}, false
 		}
 		options.Limit = limit
@@ -116,22 +116,22 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 		}
 		parsed, err := time.Parse(time.RFC3339Nano, value)
 		if err != nil {
-			writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: item.name + " must be an RFC3339 timestamp"})
+			writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: item.name + " must be an RFC3339 timestamp"})
 			return evidencevo.SummaryQueryOptions{}, false
 		}
 		*item.target = parsed
 	}
 	if !options.From.IsZero() && !options.To.IsZero() && options.To.Before(options.From) {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "to must not be before from"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "to must not be before from"})
 		return evidencevo.SummaryQueryOptions{}, false
 	}
 	return options, true
 }
 
-func writeSummaryQueryError(w http.ResponseWriter, err error) {
+func writeSummaryQueryError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, evidencesvc.ErrSummaryCursorInvalid) {
-		writeJSON(w, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "cursor is invalid"})
+		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "cursor is invalid"})
 		return
 	}
-	writeJSON(w, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query execution summaries"})
+	writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query execution summaries"})
 }

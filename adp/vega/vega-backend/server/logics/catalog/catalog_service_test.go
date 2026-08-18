@@ -553,6 +553,93 @@ func TestCatalogServiceCreate(t *testing.T) {
 }
 
 func TestCatalogServiceTestConnection(t *testing.T) {
+	t.Run("returns connector details while redacting sensitive config during preflight", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		config := interfaces.ConnectorConfig{
+			"host":      "db.example.com",
+			"port":      3306,
+			"username":  "reporter",
+			"password":  "secret-password",
+			"databases": []string{"sales"},
+		}
+		connectorError := "dial tcp db.example.com:3306: access denied for reporter on sales with password secret-password"
+
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return([]string{"password"})
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", config).Return(connector, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(connectorError))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			ps:         ps,
+			cf:         connectorFactory,
+		}
+		result, err := cs.TestConnectionConfig(context.Background(), &interfaces.CatalogConnectionTestRequest{
+			ConnectorType: "mariadb",
+			ConnectorCfg:  config,
+		})
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
+		assert.Equal(t,
+			"dial tcp db.example.com:3306: access denied for reporter on sales with password ******",
+			result.HealthCheckResult,
+		)
+		assert.NotContains(t, result.HealthCheckResult, "secret-password")
+	})
+	t.Run("returns connector details for a saved catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ca := mock_interfaces.NewMockCatalogAccess(ctrl)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		config := interfaces.ConnectorConfig{
+			"host":     "db.example.com",
+			"port":     3306,
+			"username": "reporter",
+			"password": "secret-password",
+		}
+		connectorError := "dial tcp db.example.com:3306: i/o timeout using password secret-password"
+		redactedError := "dial tcp db.example.com:3306: i/o timeout using password ******"
+
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		ca.EXPECT().GetByID(gomock.Any(), "catalog-1").Return(&interfaces.Catalog{
+			ID:            "catalog-1",
+			Type:          interfaces.CatalogTypePhysical,
+			ConnectorType: "mariadb",
+			ConnectorCfg:  config,
+		}, nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return([]string{"password"})
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", config).Return(connector, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New(connectorError))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		ca.EXPECT().UpdateHealthCheckStatus(gomock.Any(), "catalog-1", gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ string, status interfaces.CatalogHealthCheckStatus) error {
+				assert.Equal(t, redactedError, status.HealthCheckResult)
+				return nil
+			},
+		)
+
+		cs := &catalogService{
+			appSetting: &common.AppSetting{},
+			ca:         ca,
+			ps:         ps,
+			cf:         connectorFactory,
+		}
+		result, err := cs.TestConnection(context.Background(), "catalog-1")
+
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
+		assert.Equal(t, redactedError, result.HealthCheckResult)
+		assert.NotContains(t, result.HealthCheckResult, "secret-password")
+	})
+
 	t.Run("does not expose connector initialization error during preflight", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -705,6 +792,27 @@ func TestCatalogServiceTestConnection(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, result.HealthCheckStatus)
+	})
+}
+
+func TestSanitizeConnectionError(t *testing.T) {
+	t.Run("redacts literal and URL-encoded sensitive values", func(t *testing.T) {
+		config := interfaces.ConnectorConfig{"password": "p@ss word"}
+		err := errors.New("password=p@ss word dsn-password=p%40ss%20word")
+
+		result := sanitizeConnectionError(err, config, []string{"password"})
+
+		assert.Equal(t, "password=****** dsn-password=******", result)
+	})
+
+	t.Run("flattens and limits an untrusted connector response", func(t *testing.T) {
+		err := errors.New("first line\r\n" + strings.Repeat("x", maximumConnectionTestResultLength+10))
+
+		result := sanitizeConnectionError(err, nil, nil)
+
+		assert.NotContains(t, result, "\n")
+		assert.LessOrEqual(t, len([]rune(result)), maximumConnectionTestResultLength)
+		assert.True(t, strings.HasSuffix(result, "..."))
 	})
 }
 
