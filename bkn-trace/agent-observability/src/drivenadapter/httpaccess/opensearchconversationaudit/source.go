@@ -160,7 +160,7 @@ func projectConversation(conversation sessionvo.Conversation) observabilityvo.Lo
 		SchemaVersion: "1.0", LogID: sourceID + ":" + eventID, SourceID: sourceID, SourceLogID: eventID,
 		Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created",
 		EventTimestamp: conversation.CreatedAt, ObservedTimestamp: conversation.CreatedAt,
-		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "发起 Agent 业务会话",
+		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "Started an Agent business conversation",
 		ServiceName: "bkn-trace-core", Environment: "unknown", TenantID: conversation.Owner.TenantID,
 		BusinessDomain: conversation.Owner.BusinessDomainID, ActorID: conversation.Owner.EffectiveSubjectID,
 		EffectiveSubjectID: conversation.Owner.EffectiveSubjectID,

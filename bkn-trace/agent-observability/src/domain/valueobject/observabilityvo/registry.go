@@ -2,7 +2,7 @@ package observabilityvo
 
 import "sort"
 
-// Code generated from OpenBKN 日志事件注册表.json OpenBKN-0.1.4-R1.
+// Code generated from the OpenBKN log event registry (OpenBKN-0.1.4-R1).
 // Source SHA-256: 695ac993967e3a9ed49dd638d8a014fa34e1ee3d7d3535b163793ad224e12f10.
 // Do not add extension events here without updating the governed registry first.
 var registeredEventCategories = map[string]string{

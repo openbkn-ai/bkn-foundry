@@ -58,6 +58,7 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 		record.ConversationID != "conv-a" || record.ActorID != "user-a" || record.ApplicationID != "app-a" ||
 		record.ActorNameSnapshot != "供应链管理员" || record.TargetNameSnapshot != "供应链分析助手" ||
 		record.AuthMethod != "api_key" || record.RequestID != "req-create-a" ||
+		record.SafeSummary != "Started an Agent business conversation" ||
 		record.Attributes["business_context"] != "managed" || record.Attributes["agent_name"] != "供应链分析助手" {
 		t.Fatalf("conversation audit projection lost source facts: %+v", record)
 	}

@@ -47,3 +47,18 @@ func TestSearchProjectsBKNsafeUserAccessFacts(t *testing.T) {
 		t.Fatalf("access fact projection is incomplete: %+v", record)
 	}
 }
+
+func TestProjectUsesEnglishUnknownActorFallback(t *testing.T) {
+	record := project(accessLog{
+		ID:        "access-missing-actor",
+		Action:    "login",
+		Outcome:   "success",
+		CreatedAt: time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC),
+	}, "tenant-a")
+
+	if record.ActorNameSnapshot != "Unknown user" ||
+		record.TargetNameSnapshot != "Unknown user" ||
+		record.SafeSummary != "login Unknown user success" {
+		t.Fatalf("unknown actor fallback is not consistently English: %+v", record)
+	}
+}
