@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -46,6 +47,7 @@ const (
 	defaultConnectionTestTimeout           = 30 * time.Second
 	connectorInitializationFailedResult    = "Connector initialization failed."
 	connectionTestFailedResult             = "Connection test failed."
+	maximumConnectionTestResultLength      = 2048
 	catalogDeletedTaskMessage              = "catalog deleted"
 )
 
@@ -1221,7 +1223,7 @@ func (cs *catalogService) testCatalogConnection(
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 	}
-	result, err := cs.probeConnection(ctx, catalog.ConnectorType, interfaces.ConnectorConfig(config))
+	result, err := cs.probeConnection(ctx, catalog.ConnectorType, interfaces.ConnectorConfig(config), sensitiveFields)
 	if err != nil {
 		return nil, err
 	}
@@ -1253,11 +1255,11 @@ func (cs *catalogService) TestConnectionConfig(ctx context.Context,
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			verrors.VegaBackend_Catalog_InvalidParameter_SensitiveFieldNotEncrypted).WithErrorDetails(err.Error())
 	}
-	return cs.probeConnection(ctx, req.ConnectorType, interfaces.ConnectorConfig(decryptedConfig))
+	return cs.probeConnection(ctx, req.ConnectorType, interfaces.ConnectorConfig(decryptedConfig), sensitiveFields)
 }
 
 func (cs *catalogService) probeConnection(ctx context.Context, connectorType string,
-	config interfaces.ConnectorConfig) (*interfaces.CatalogHealthCheckStatus, error) {
+	config interfaces.ConnectorConfig, sensitiveFields []string) (*interfaces.CatalogHealthCheckStatus, error) {
 	connector, err := cs.cf.CreateConnectorInstance(ctx, connectorType, config)
 	if err != nil {
 		otellog.LogError(ctx, "Failed to create connector", err)
@@ -1272,12 +1274,46 @@ func (cs *catalogService) probeConnection(ctx context.Context, connectorType str
 	if err := cs.testConnectorConnection(ctx, connector); err != nil {
 		otellog.LogError(ctx, "Failed to test connection to data source", err)
 		result.HealthCheckStatus = interfaces.CatalogHealthStatusUnhealthy
-		result.HealthCheckResult = connectionTestFailedResult
+		result.HealthCheckResult = sanitizeConnectionError(err, config, sensitiveFields)
 		return result, nil
 	}
 	result.HealthCheckStatus = interfaces.CatalogHealthStatusHealthy
 	result.HealthCheckResult = "Connection test succeeded."
 	return result, nil
+}
+
+func sanitizeConnectionError(err error, config interfaces.ConnectorConfig, sensitiveFields []string) string {
+	if err == nil {
+		return ""
+	}
+
+	result := err.Error()
+	for _, field := range sensitiveFields {
+		value, ok := config[field].(string)
+		if !ok || value == "" {
+			continue
+		}
+		for _, variant := range []string{
+			value,
+			url.QueryEscape(value),
+			strings.ReplaceAll(url.QueryEscape(value), "+", "%20"),
+			url.PathEscape(value),
+		} {
+			if variant != "" {
+				result = strings.ReplaceAll(result, variant, "******")
+			}
+		}
+	}
+
+	result = strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(result))
+	if result == "" {
+		return connectionTestFailedResult
+	}
+	runes := []rune(result)
+	if len(runes) > maximumConnectionTestResultLength {
+		result = string(runes[:maximumConnectionTestResultLength-3]) + "..."
+	}
+	return result
 }
 
 func (cs *catalogService) testConnectorConnection(ctx context.Context, connector interfaces.Connector) error {

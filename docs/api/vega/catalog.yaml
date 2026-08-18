@@ -451,6 +451,9 @@ paths:
         - 连通 → 200 `{ success: true, message }`
         - 连不通 → 200 `{ success: false, message }`
         - 非 2xx 仅用于请求、鉴权、参数校验或服务内部错误。
+
+        失败时 `message` 保留连接器返回的诊断详情（例如主机、端口、用户名、数据库名和驱动错误），
+        但会替换连接器声明的密码、token 等敏感配置值，并限制异常超长的远端响应。
       requestBody:
         required: true
         content:
@@ -519,6 +522,9 @@ paths:
         - 连通 → 200 `{ success: true, message }`
         - 连不通 → 200 `{ success: false, message }`
         - 非 2xx 仅用于"请求 / 鉴权 / 服务内部"问题，与目标连通性无关。
+
+        失败时 `message` 保留连接器返回的诊断详情（例如主机、端口、用户名、数据库名和驱动错误），
+        但会替换连接器声明的密码、token 等敏感配置值，并限制异常超长的远端响应。
       responses:
         "200":
           description: 探测完成（成功或失败均返回，业务结果看 `success` 字段）
@@ -1040,7 +1046,7 @@ components:
           type: integer
           format: int64
         health_check_result:
-          description: 检查详情 / 错误信息
+          description: 检查详情；连接失败时保留经过敏感配置值脱敏和长度限制的连接器错误信息
           type: string
     TestConnectionResult:
       description: 连接测试结果
@@ -1052,5 +1058,5 @@ components:
           description: 是否连通
           type: boolean
         message:
-          description: 详情（失败时为错误信息）
+          description: 详情；失败时为经过敏感配置值脱敏和长度限制的连接器错误信息
           type: string
