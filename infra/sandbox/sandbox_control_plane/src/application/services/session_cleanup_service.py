@@ -1,7 +1,7 @@
 """
-会话清理服务
+Session cleanup service
 
-负责定期清理空闲会话和过期会话，自动销毁关联的容器和删除关联的文件。
+Periodically reclaims idle and expired sessions, destroying the container and deleting the files that belong to them.
 """
 
 import logging
@@ -19,17 +19,17 @@ logger = logging.getLogger(__name__)
 
 class SessionCleanupService:
     """
-    会话清理服务
+    Session cleanup service
 
-    职责：
-    1. 定期扫描空闲会话（基于 last_activity_at 字段）
-    2. 自动终止超时会话并销毁容器
-    3. 定期扫描 FAILED/TIMEOUT 状态的孤立会话
-    4. 清理会话关联的 S3 文件
+    Responsibilities:
+    1. Periodically scan for idle sessions, using the last_activity_at field
+    2. Terminate timed-out sessions and destroy their containers
+    3. Periodically scan for orphaned sessions left in FAILED or TIMEOUT
+    4. Delete the S3 files that belong to a session
 
-    清理策略：
-    - 空闲超时：30 分钟无活动（可配置，设为 -1 表示禁用空闲清理）
-    - 最大生命周期：6 小时强制清理（可配置，设为 -1 表示禁用生命周期清理）
+    The policy:
+    - Idle timeout: 30 minutes without activity, configurable, -1 disables idle cleanup
+    - Maximum lifetime: forced cleanup after 6 hours, configurable, -1 disables it
     """
 
     def __init__(
@@ -41,14 +41,14 @@ class SessionCleanupService:
         storage_service: Optional[IStorageService] = None,
     ):
         """
-        初始化会话清理服务
+        Initialize the session cleanup service
 
         Args:
-            session_repo: 会话仓储
-            scheduler: 调度器（用于销毁容器）
-            idle_timeout_minutes: 空闲超时时间（分钟），-1 表示无限期（不清理空闲会话）
-            max_lifetime_hours: 最大生命周期（小时），-1 表示无限期
-            storage_service: 存储服务（可选，用于清理 S3 文件）
+            session_repo: session repository
+            scheduler: scheduler, used to destroy containers
+            idle_timeout_minutes: idle timeout in minutes; -1 means never, disabling idle cleanup
+            max_lifetime_hours: maximum lifetime in hours; -1 means never
+            storage_service: storage service, optional, used to delete S3 files
         """
         self._session_repo = session_repo
         self._scheduler = scheduler
@@ -62,18 +62,18 @@ class SessionCleanupService:
 
     async def cleanup_idle_sessions(self) -> Dict[str, int]:
         """
-        清理空闲会话
+        Clean up idle sessions
 
-        清理策略：
-        - 空闲超过阈值的会话自动销毁容器（如果 idle_timeout_minutes != -1）
-        - 创建超过最大生命周期的会话强制销毁（如果 max_lifetime_hours != -1）
+        The policy:
+        - A session idle beyond the threshold has its container destroyed, when idle_timeout_minutes != -1
+        - A session older than the maximum lifetime is destroyed, when max_lifetime_hours != -1
 
         Returns:
-            dict: 清理统计信息
-                - total_checked: 检查的会话数
-                - idle_cleaned: 空闲清理的会话数
-                - expired_cleaned: 过期清理的会话数
-                - errors: 错误列表
+            dict: the cleanup statistics
+                - total_checked: how many sessions were examined
+                - idle_cleaned: how many were reclaimed as idle
+                - expired_cleaned: how many were reclaimed as expired
+                - errors: the error list
         """
         stats = {"total_checked": 0, "idle_cleaned": 0, "expired_cleaned": 0, "errors": []}
 
@@ -82,7 +82,7 @@ class SessionCleanupService:
             idle_threshold = now - self._idle_timeout if self._idle_timeout else None
             max_lifetime_threshold = now - self._max_lifetime if self._max_lifetime else None
 
-            # 查询所有活跃会话
+            # Query every active session
             active_sessions = await self._session_repo.find_by_status("running")
             stats["total_checked"] = len(active_sessions)
 
@@ -93,7 +93,7 @@ class SessionCleanupService:
 
             for session in active_sessions:
                 try:
-                    # 检查是否超过最大生命周期（如果启用）
+                    # Check the maximum lifetime, when that is enabled
                     if (
                         max_lifetime_threshold
                         and session.created_at
@@ -107,8 +107,8 @@ class SessionCleanupService:
                         stats["expired_cleaned"] += 1
                         continue
 
-                    # 检查是否空闲超时（如果启用）
-                    # 使用 last_activity_at，如果不存在则使用 created_at
+                    # Check the idle timeout, when that is enabled.
+                    # Use last_activity_at, falling back to created_at.
                     if idle_threshold:
                         last_activity = session.last_activity_at or session.created_at
                         if last_activity and last_activity < idle_threshold:
@@ -141,15 +141,15 @@ class SessionCleanupService:
 
     async def cleanup_orphaned_sessions(self) -> Dict[str, int]:
         """
-        清理孤立会话（FAILED/TIMEOUT 状态但仍有关联容器的会话）
+        Clean up orphaned sessions: left in FAILED or TIMEOUT while still holding a container
 
         Returns:
-            dict: 清理统计信息
+            dict: the cleanup statistics
         """
         stats = {"total_checked": 0, "cleaned": 0, "errors": []}
 
         try:
-            # 查询失败和超时的会话
+            # Query the failed and timed-out sessions
             failed_sessions = await self._session_repo.find_by_status("failed")
             timeout_sessions = await self._session_repo.find_by_status("timeout")
             orphaned = failed_sessions + timeout_sessions
@@ -157,7 +157,7 @@ class SessionCleanupService:
             stats["total_checked"] = len(orphaned)
 
             for session in orphaned:
-                # 只清理有 container_id 的会话
+                # Only those that still hold a container_id
                 if session.container_id:
                     try:
                         await self._cleanup_session(
@@ -186,14 +186,14 @@ class SessionCleanupService:
 
     async def cleanup_session_files(self, session: Session, reason: str) -> int:
         """
-        删除会话关联的所有文件
+        Delete every file that belongs to a session
 
         Args:
-            session: 要清理的会话
-            reason: 清理原因
+            session: the session to clean up
+            reason: why it is being cleaned up
 
         Returns:
-            删除的文件数量
+            How many files were deleted
         """
         if not self._storage_service:
             logger.debug(
@@ -211,16 +211,16 @@ class SessionCleanupService:
         )
 
         try:
-            # 从 workspace_path 提取 bucket 和 prefix
-            # workspace_path 格式: s3://bucket/sessions/{session_id}/
+            # Pull the bucket and prefix out of workspace_path,
+            # which is formatted as s3://bucket/sessions/{session_id}/
             parsed = urlparse(session.workspace_path)
-            bucket = parsed.netloc  # 存储桶名称
+            bucket = parsed.netloc  # bucket name
 
-            # 构建删除前缀（包含存储桶路径）
-            # 例如: s3://sandbox-workspace/sessions/sess_abc123/
+            # Build the delete prefix, including the bucket path,
+            # for example s3://sandbox-workspace/sessions/sess_abc123/
             delete_prefix = session.workspace_path.rstrip("/")
 
-            # 删除所有带该前缀的文件
+            # Delete everything under that prefix
             deleted_count = await self._storage_service.delete_prefix(delete_prefix)
 
             logger.info(
@@ -236,12 +236,12 @@ class SessionCleanupService:
 
     async def _cleanup_session(self, session: Session, reason: str, detail: str) -> None:
         """
-        清理会话并销毁容器
+        Clean up the session and destroy its container
 
         Args:
-            session: 要清理的会话
-            reason: 清理原因
-            detail: 详细信息
+            session: the session to clean up
+            reason: why it is being cleaned up
+            detail: further detail
         """
         logger.info(
             f"Cleaning up session {session.id}: "
@@ -250,21 +250,21 @@ class SessionCleanupService:
             f"container_id={session.container_id}"
         )
 
-        # 销毁容器（如果调度器支持且容器存在）
+        # Destroy the container, when the scheduler supports it and one exists
         if session.container_id and hasattr(self._scheduler, "destroy_container"):
             try:
                 await self._scheduler.destroy_container(container_id=session.container_id)
                 logger.info(f"Destroyed container {session.container_id} for session {session.id}")
             except Exception as e:
-                # 记录错误但不中断流程
+                # Record the error but keep going
                 logger.warning(
                     f"Failed to destroy container {session.container_id} for session {session.id}: {e}"
                 )
 
-        # 删除 S3 文件（如果配置了存储服务）
+        # Delete the S3 files, when a storage service is configured
         await self.cleanup_session_files(session, reason)
 
-        # 标记会话为已终止
+        # Mark the session terminated
         session.mark_as_terminated()
         await self._session_repo.save(session)
 
@@ -272,13 +272,13 @@ class SessionCleanupService:
 
     async def cleanup_by_ids(self, session_ids: list[str]) -> Dict[str, int]:
         """
-        按会话 ID 列表清理会话
+        Clean up the sessions named by a list of ids
 
         Args:
-            session_ids: 要清理的会话 ID 列表
+            session_ids: the session ids to clean up
 
         Returns:
-            dict: 清理统计信息
+            dict: the cleanup statistics
         """
         stats = {"total": len(session_ids), "cleaned": 0, "not_found": 0, "errors": []}
 

@@ -1,7 +1,7 @@
 """
-S3 存储实现
+S3 storage implementation
 
-使用 boto3 实现 S3 兼容的对象存储，支持 AWS S3 和 MinIO。
+S3-compatible object storage through boto3, for both AWS S3 and MinIO.
 """
 
 import asyncio
@@ -21,31 +21,31 @@ logger = logging.getLogger(__name__)
 
 class S3Storage(IStorageService):
     """
-    S3 兼容的存储实现
+    S3-compatible storage implementation
 
-    支持：
+    Supports:
     - AWS S3
-    - MinIO（用于本地开发）
-    - 任何 S3 兼容的存储（例如：Wasabi、DigitalOcean Spaces）
+    - MinIO, for local development
+    - any S3-compatible storage, such as Wasabi or DigitalOcean Spaces
     """
 
     def __init__(self):
         """
-        初始化 S3 客户端
+        Initialize the S3 client
 
-        从 settings 中读取 S3 配置：
-        - s3_endpoint_url: S3 端点 URL（MinIO 使用）
-        - s3_access_key_id: 访问密钥 ID
-        - s3_secret_access_key: 密钥
-        - s3_region: 区域
-        - s3_bucket: 存储桶名称
+        Reads the S3 configuration from settings:
+        - s3_endpoint_url: S3 endpoint URL, used by MinIO
+        - s3_access_key_id: access key id
+        - s3_secret_access_key: secret key
+        - s3_region: region
+        - s3_bucket: bucket name
         """
         settings = get_settings()
 
-        # 初始化 S3 客户端
+        # Initialize the S3 client
         self._client = boto3.client(
             "s3",
-            endpoint_url=settings.s3_endpoint_url or None,  # AWS S3 不需要 endpoint_url
+            endpoint_url=settings.s3_endpoint_url or None,  # AWS S3 needs no endpoint_url
             aws_access_key_id=settings.s3_access_key_id,
             aws_secret_access_key=settings.s3_secret_access_key,
             region_name=settings.s3_region,
@@ -54,38 +54,38 @@ class S3Storage(IStorageService):
 
     async def initialize(self) -> None:
         """
-        异步初始化，确保 bucket 存在
+        Initialize asynchronously, making sure the bucket exists
 
-        在 control-plane 启动时调用此方法来确保 S3 bucket 已创建。
+        Called while the control plane starts, to ensure the S3 bucket is created.
         """
         try:
             await self._ensure_bucket_exists()
             logger.info(f"S3 storage initialized successfully (bucket: {self._bucket})")
         except Exception as e:
             logger.error(f"Failed to initialize S3 storage: {e}")
-            # 不抛出异常，允许系统在 MinIO 不可用时继续运行
-            # 文件操作会失败，但不会阻止控制平面启动
+            # Do not raise: the system keeps running when MinIO is unavailable.
+            # File operations will fail, but the control plane still starts.
 
     def _parse_s3_path(self, s3_path: str) -> tuple[str, str]:
         """
-        解析 S3 路径，返回 bucket 和 key
+        Parse an S3 path into bucket and key
 
-        支持两种格式：
+        Two formats are accepted:
         1. s3://bucket/key
-        2. bucket/key (相对路径)
+        2. bucket/key, a relative path
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
 
         Returns:
-            (bucket, key) 元组
+            A (bucket, key) tuple
         """
         if s3_path.startswith("s3://"):
             parsed = urlparse(s3_path)
             bucket = parsed.netloc
             key = parsed.path.lstrip("/")
         else:
-            # 相对路径，使用默认 bucket
+            # A relative path: use the default bucket
             bucket = self._bucket
             key = s3_path.lstrip("/")
 
@@ -93,28 +93,28 @@ class S3Storage(IStorageService):
 
     def _build_s3_path(self, bucket: str, key: str) -> str:
         """
-        构建 S3 路径
+        Build an S3 path
 
         Args:
-            bucket: 存储桶名称
-            key: 对象键
+            bucket: bucket name
+            key: object key
 
         Returns:
-            S3 路径（s3://bucket/key 格式）
+            The S3 path, in s3://bucket/key form
         """
         return f"s3://{bucket}/{key}"
 
     async def _ensure_bucket_exists(self) -> None:
-        """确保存储桶存在，不存在则创建"""
+        """Make sure the bucket exists, creating it when it does not"""
         try:
             await asyncio.to_thread(self._client.head_bucket, Bucket=self._bucket)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "404":
-                # 存储桶不存在，创建它
+                # The bucket does not exist, so create it
                 try:
                     if self._client.meta.region_name == "us-east-1":
-                        # us-east-1 不需要 LocationConstraint
+                        # us-east-1 needs no LocationConstraint
                         await asyncio.to_thread(self._client.create_bucket, Bucket=self._bucket)
                     else:
                         await asyncio.to_thread(
@@ -136,24 +136,24 @@ class S3Storage(IStorageService):
         self, s3_path: str, content: bytes, content_type: str = "application/octet-stream"
     ) -> None:
         """
-        上传文件
+        Upload a file
 
         Args:
-            s3_path: S3 对象路径
-            content: 文件内容
-            content_type: MIME 类型
+            s3_path: S3 object path
+            content: file content
+            content_type: MIME type
         """
         await self._ensure_bucket_exists()
 
         bucket, key = self._parse_s3_path(s3_path)
 
-        # 根据内容大小选择上传方式
+        # Pick the upload method by size
         content_size = len(content)
 
-        if content_size > 5 * 1024 * 1024:  # 大于 5MB 使用分片上传
+        if content_size > 5 * 1024 * 1024:  # over 5MB, use a multipart upload
             from boto3.s3.transfer import TransferConfig
 
-            # 先写入临时文件
+            # Write to a temporary file first
             import tempfile
 
             with tempfile.NamedTemporaryFile(delete=False) as tmp_file:
@@ -173,7 +173,7 @@ class S3Storage(IStorageService):
             finally:
                 os.unlink(tmp_file_path)
         else:
-            # 小文件直接上传
+            # Upload a small file directly
             await asyncio.to_thread(
                 self._client.put_object,
                 Bucket=bucket,
@@ -182,33 +182,33 @@ class S3Storage(IStorageService):
                 ContentType=content_type,
             )
 
-        # 清理可能存在的目录标记 (s3fs 兼容性修复)
-        # 当上传 test/test_data.csv 时，S3 可能会创建 test/ 目录标记
-        # 这会导致 s3fs 将 test 显示为文件而非目录
+        # Remove the directory marker if one appeared, an s3fs compatibility fix.
+        # Uploading test/test_data.csv can make S3 create a test/ directory marker,
+        # which makes s3fs show test as a file rather than a directory.
         if "/" in key:
             dir_marker = key.rsplit("/", 1)[0] + "/"
             try:
                 await asyncio.to_thread(self._client.head_object, Bucket=bucket, Key=dir_marker)
-                # 目录标记存在，删除它
+                # The marker exists, so delete it
                 await asyncio.to_thread(self._client.delete_object, Bucket=bucket, Key=dir_marker)
                 logger.debug(f"Removed S3 directory marker for s3fs compatibility: {dir_marker}")
             except ClientError as e:
                 error_code = e.response.get("Error", {}).get("Code")
                 if error_code == "404":
-                    # 目录标记不存在，无需处理
+                    # No marker, nothing to do
                     pass
 
         logger.debug(f"Uploaded file to {s3_path}, size={content_size}")
 
     async def download_file(self, s3_path: str) -> bytes:
         """
-        下载文件
+        Download a file
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
 
         Returns:
-            文件内容
+            The file content
         """
         bucket, key = self._parse_s3_path(s3_path)
 
@@ -221,13 +221,13 @@ class S3Storage(IStorageService):
 
     async def file_exists(self, s3_path: str) -> bool:
         """
-        检查文件是否存在
+        Check whether a file exists
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
 
         Returns:
-            是否存在
+            Whether it exists
         """
         bucket, key = self._parse_s3_path(s3_path)
 
@@ -243,13 +243,13 @@ class S3Storage(IStorageService):
 
     async def get_file_info(self, s3_path: str) -> dict:
         """
-        获取文件信息
+        Get the file metadata
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
 
         Returns:
-            文件信息字典，包含 size, content_type, last_modified 等
+            A dict holding size, content_type, last_modified, and more
         """
         bucket, key = self._parse_s3_path(s3_path)
 
@@ -264,14 +264,14 @@ class S3Storage(IStorageService):
 
     async def generate_presigned_url(self, s3_path: str, expiration_seconds: int = 3600) -> str:
         """
-        生成预签名 URL
+        Generate a presigned URL
 
         Args:
-            s3_path: S3 对象路径
-            expiration_seconds: 过期时间（秒）
+            s3_path: S3 object path
+            expiration_seconds: expiry in seconds
 
         Returns:
-            预签名 URL
+            The presigned URL
         """
         bucket, key = self._parse_s3_path(s3_path)
 
@@ -288,10 +288,10 @@ class S3Storage(IStorageService):
 
     async def delete_file(self, s3_path: str) -> None:
         """
-        删除文件
+        Delete a file
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
         """
         bucket, key = self._parse_s3_path(s3_path)
 
@@ -301,38 +301,38 @@ class S3Storage(IStorageService):
 
     async def delete_prefix(self, prefix: str) -> int:
         """
-        删除指定前缀的所有文件（用于会话清理）
+        Delete every file under a prefix, used when cleaning up a session
 
         Args:
-            prefix: S3 路径前缀（例如: "sessions/sess_abc123/" 或 "s3://bucket/sessions/sess_abc123/"）
+            prefix: S3 path prefix, such as "sessions/sess_abc123/" or "s3://bucket/sessions/sess_abc123/"
 
         Returns:
-            删除的文件数量
+            How many files were deleted
         """
         deleted_count = 0
         bucket = self._bucket
 
-        # 如果 prefix 包含 bucket，提取出来
+        # Pull the bucket out when the prefix carries one
         if prefix.startswith("s3://"):
             parsed = urlparse(prefix)
             bucket = parsed.netloc
             prefix = parsed.path.lstrip("/")
 
-        # 使用 asyncio.to_thread 执行同步的列表和删除操作
+        # Run the synchronous list and delete through asyncio.to_thread
         def _delete_all_files():
-            """同步函数，执行批量删除"""
+            """Synchronous helper that performs the bulk delete"""
             count = 0
             paginator = self._client.get_paginator("list_objects_v2")
             delete_chunks = []
 
             try:
-                # 直接迭代 paginator（同步操作）
+                # Iterate the paginator directly, which is synchronous
                 for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
                     if "Contents" in page:
                         for obj in page["Contents"]:
                             delete_chunks.append({"Key": obj["Key"]})
 
-                        # 当累积到 1000 个对象时删除
+                # Delete once 1000 objects have accumulated
                         if len(delete_chunks) >= 1000:
                             self._client.delete_objects(
                                 Bucket=bucket, Delete={"Objects": delete_chunks}
@@ -340,7 +340,7 @@ class S3Storage(IStorageService):
                             count += len(delete_chunks)
                             delete_chunks = []
 
-                # 删除剩余的对象
+                # Delete whatever is left
                 if delete_chunks:
                     self._client.delete_objects(Bucket=bucket, Delete={"Objects": delete_chunks})
                     count += len(delete_chunks)
@@ -349,7 +349,7 @@ class S3Storage(IStorageService):
                 logger.error(f"Error deleting files with prefix {prefix}: {e}")
             return count
 
-        # 在线程池中执行同步操作
+        # Run the synchronous work in a thread pool
         deleted_count = await asyncio.to_thread(_delete_all_files)
 
         logger.info(f"Deleted {deleted_count} files with prefix {prefix} (bucket: {bucket})")
@@ -358,30 +358,30 @@ class S3Storage(IStorageService):
 
     async def list_files(self, prefix: str, limit: int = 1000) -> list:
         """
-        列出文件
+        List files
 
         Args:
-            prefix: S3 路径前缀
-            limit: 最大返回数量
+            prefix: S3 path prefix
+            limit: how many to return at most
 
         Returns:
-            文件列表，每个文件包含 key, size, last_modified
+            The file list, each entry holding key, size, and last_modified
         """
         bucket = self._bucket
 
-        # 如果 prefix 包含 bucket，提取出来
+        # Pull the bucket out when the prefix carries one
         if prefix.startswith("s3://"):
             parsed = urlparse(prefix)
             bucket = parsed.netloc
             prefix = parsed.path.lstrip("/")
 
         def _list_all_files():
-            """同步函数，执行列表操作"""
+            """Synchronous helper that performs the listing"""
             files = []
             paginator = self._client.get_paginator("list_objects_v2")
 
             try:
-                # 直接迭代 paginator（同步操作）
+                # Iterate the paginator directly, which is synchronous
                 for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
                     if "Contents" in page:
                         for obj in page["Contents"]:
@@ -401,7 +401,7 @@ class S3Storage(IStorageService):
                 logger.error(f"Error listing objects with prefix {prefix}: {e}")
             return files
 
-        # 在线程池中执行同步操作
+        # Run the synchronous work in a thread pool
         files = await asyncio.to_thread(_list_all_files)
 
         return files

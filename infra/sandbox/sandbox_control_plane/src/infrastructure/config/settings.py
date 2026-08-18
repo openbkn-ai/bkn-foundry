@@ -1,7 +1,7 @@
 """
-应用配置
+Application configuration
 
-使用 Pydantic Settings 管理应用配置。
+Manages the application configuration with Pydantic Settings.
 """
 
 from functools import lru_cache
@@ -12,7 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    """应用配置类"""
+    """Application configuration"""
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -21,49 +21,49 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ============== 应用配置 ==============
+    # ============== Application ==============
     app_name: str = Field(default="Sandbox Control Plane")
     app_version: str = Field(default="2.1.0")
     environment: str = Field(default="development")
     debug: bool = Field(default=False)
 
-    # ============== 服务器配置 ==============
+    # ============== Server ==============
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
     workers: int = Field(default=4)
 
-    # ============== 数据库配置 ==============
+    # ============== Database ==============
     database_url: str = Field(default="mysql+aiomysql://sandbox:password@localhost:3308/openbkn")
     db_pool_size: int = Field(default=20)
     db_max_overflow: int = Field(default=40)
     db_pool_recycle: int = Field(default=3600)
 
-    # ============== RDS 数据库配置（从 depServices.rds 注入） ==============
-    # 这些字段优先于 database_url，如果设置了则使用这些值构建数据库连接
-    db_type: str | None = Field(default=None)  # 数据库类型，如 MYSQL, POSTGRESQL
-    db_host: str | None = Field(default=None)  # 主库主机
-    db_port: int | None = Field(default=None)  # 主库端口
-    db_host_read: str | None = Field(default=None)  # 从库主机（读写分离）
-    db_port_read: int | None = Field(default=None)  # 从库端口
-    db_user: str | None = Field(default=None)  # 数据库用户
-    db_password: str | None = Field(default=None)  # 数据库密码
-    db_database: str | None = Field(default=None)  # 数据库名
-    db_max_connections: int | None = Field(default=None)  # 最大连接数
-    db_max_read_connections: int | None = Field(default=None)  # 最大读连接数
-    db_charset: str | None = Field(default=None)  # 字符集
-    db_timeout: int | None = Field(default=None)  # 连接超时
-    db_read_timeout: int | None = Field(default=None)  # 读超时
-    db_write_timeout: int | None = Field(default=None)  # 写超时
+    # ============== RDS database, injected from depServices.rds ==============
+    # These take precedence over database_url: when set, the connection is built from them.
+    db_type: str | None = Field(default=None)  # database type, such as MYSQL or POSTGRESQL
+    db_host: str | None = Field(default=None)  # primary host
+    db_port: int | None = Field(default=None)  # primary port
+    db_host_read: str | None = Field(default=None)  # replica host, for read/write splitting
+    db_port_read: int | None = Field(default=None)  # replica port
+    db_user: str | None = Field(default=None)  # database user
+    db_password: str | None = Field(default=None)  # database password
+    db_database: str | None = Field(default=None)  # database name
+    db_max_connections: int | None = Field(default=None)  # maximum connections
+    db_max_read_connections: int | None = Field(default=None)  # maximum read connections
+    db_charset: str | None = Field(default=None)  # charset
+    db_timeout: int | None = Field(default=None)  # connect timeout
+    db_read_timeout: int | None = Field(default=None)  # read timeout
+    db_write_timeout: int | None = Field(default=None)  # write timeout
 
     @computed_field
     @property
     def effective_database_url(self) -> str:
         """
-        计算有效的数据库 URL
+        Resolve the effective database URL
 
-        优先使用 RDS 环境变量构建数据库连接，如果未设置则使用 database_url
+        The RDS environment variables win; database_url applies when they are unset.
         """
-        # 如果所有必需的 RDS 字段都已设置，则使用 RDS 配置
+        # Use the RDS configuration once every required field is set
         if all(
             [
                 self.db_type,
@@ -74,15 +74,15 @@ class Settings(BaseSettings):
                 self.db_database,
             ]
         ):
-            # 构建 aiomysql 连接 URL
-            # 格式: mysql+aiomysql://user:password@host:port/database
+            # Build the aiomysql connection URL,
+            # formatted as mysql+aiomysql://user:password@host:port/database
             user = quote_plus(self.db_user)
             password = quote_plus(self.db_password)
             host = self.db_host
             port = self.db_port
             database = self.db_database
 
-            # 添加连接参数
+            # Append the connection parameters
             params = []
             if self.db_charset:
                 params.append(f"charset={self.db_charset}")
@@ -93,27 +93,27 @@ class Settings(BaseSettings):
 
             return url
 
-        # 否则使用默认的 database_url
+        # Otherwise fall back to database_url
         return self.database_url
 
-    # ============== S3 配置 ==============
+    # ============== S3 ==============
     s3_bucket: str = Field(default="sandbox-workspace")
     s3_region: str = Field(default="us-east-1")
     s3_access_key_id: str = Field(default="")
     s3_secret_access_key: str = Field(default="")
     s3_endpoint_url: str = Field(default="")
 
-    # ============== Docker 配置 ==============
+    # ============== Docker ==============
     docker_host: str = Field(default="unix:///var/run/docker.sock")
     docker_tls_verify: bool = Field(default=False)
     docker_cert_path: str = Field(default="")
 
-    # ============== Kubernetes 配置 ==============
+    # ============== Kubernetes ==============
     kubernetes_namespace: str = Field(default="sandbox-runtime")
     executor_image_pull_policy: str = Field(default="IfNotPresent")
     executor_image_pull_secrets: str = Field(default="")
 
-    # ============== 执行配置 ==============
+    # ============== Execution ==============
     default_timeout: int = Field(default=300)
     max_timeout: int = Field(default=3600)
     default_cpu: str = Field(default="1")
@@ -124,48 +124,49 @@ class Settings(BaseSettings):
     max_upload_file_size_mb: int = Field(default=100, ge=1)
     max_extracted_file_count: int = Field(default=10000, ge=1)
     max_extracted_total_size_mb: int = Field(default=512, ge=1)
-    disable_bwrap: bool = Field(default=False)  # 禁用 Bubblewrap（本地开发环境）
-    # sandbox_sdk.bkn 回访 BKN 用的集群内 MCP 地址。它是部署配置而非密钥，因此由
-    # 控制面注入一次，不必每个调用方都在 event 里传。留空则要求调用方自己传 mcp。
-    # 令牌走的是另一条路：只认 event，绝不落环境变量——会话池化复用，env 会把上一个
-    # 调用方的凭据留在容器里。
+    disable_bwrap: bool = Field(default=False)  # turn Bubblewrap off, for local development
+    # The in-cluster MCP address sandbox_sdk.bkn calls back into BKN with. It is deployment
+    # configuration rather than a secret, so the control plane injects it once and no caller
+    # has to pass it in the event. Left empty, callers must pass mcp themselves.
+    # The token takes the other path: event only, never an environment variable — sessions are
+    # pooled and reused, and env would leave the previous caller's credential in the container.
     bkn_sandbox_mcp_url: str = Field(default="")
     control_plane_url: str | None = Field(
         default=None
     )  # Control Plane URL for executor callback (None = auto-generate from namespace)
 
-    # ============== 清理配置 ==============
+    # ============== Cleanup ==============
     idle_threshold_minutes: int = Field(
-        default=-1, ge=-1, description="空闲超时时间（分钟），-1 表示无限期（不清理空闲会话）"
+        default=-1, ge=-1, description="Idle timeout in minutes; -1 means never, disabling idle cleanup"
     )
     max_lifetime_hours: int = Field(
-        default=-1, ge=-1, description="最大生命周期（小时），-1 表示无限期"
+        default=-1, ge=-1, description="Maximum lifetime in hours; -1 means never"
     )
     cleanup_interval_seconds: int = Field(default=300, ge=1)
     creating_timeout_seconds: int = Field(
         default=300,
         ge=30,
-        description="会话创建超时时间（秒），超过此时间的 creating 状态会话将被标记为 failed",
+        description="Session creation timeout in seconds; a session left in creating past this is marked failed",
     )
 
-    # ============== 重试配置 ==============
+    # ============== Retry ==============
     max_retry_attempts: int = Field(default=3)
     retry_backoff_base: float = Field(default=1.0)
     retry_backoff_factor: float = Field(default=2.0)
     max_retry_backoff: float = Field(default=10.0)
 
-    # ============== 预热池配置 ==============
+    # ============== Warm pool ==============
     warm_pool_enabled: bool = Field(default=True)
     warm_pool_default_size: int = Field(default=10)
     warm_pool_min_size: int = Field(default=5)
     warm_pool_max_idle_time: int = Field(default=300)
 
-    # ============== 健康检查配置 ==============
+    # ============== Health check ==============
     health_check_interval_seconds: int = Field(default=10)
     heartbeat_interval_seconds: int = Field(default=5)
     heartbeat_timeout_seconds: int = Field(default=15)
 
-    # ============== 日志配置 ==============
+    # ============== Logging ==============
     log_level: str = Field(default="INFO")
     log_format: str = Field(default="text")  # json, text (default: text for human-readable)
 
@@ -185,16 +186,16 @@ class Settings(BaseSettings):
             raise ValueError(f"log_format must be one of {allowed}")
         return v
 
-    # ============== 监控配置 ==============
+    # ============== Monitoring ==============
     metrics_enabled: bool = Field(default=True)
     metrics_port: int = Field(default=9090)
 
-    # ============== 安全配置 ==============
+    # ============== Security ==============
     secret_key: str = Field(default="change-this-in-production")
     allowed_hosts: list[str] = Field(default=["*"])
     cors_origins: list[str] = Field(default=["http://localhost:3000"])
 
-    # ============== 限流配置 ==============
+    # ============== Rate limiting ==============
     rate_limit_enabled: bool = Field(default=True)
     rate_limit_per_minute: int = Field(default=60)
 
@@ -210,8 +211,8 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     """
-    获取配置单例
+    Get the configuration singleton
 
-    使用 lru_cache 确保配置只加载一次。
+    lru_cache makes sure it loads only once.
     """
     return Settings()

@@ -1,7 +1,7 @@
 """
-Docker 调度服务
+Docker scheduling service
 
-实现调度策略，选择最优节点并创建容器。
+Implements the scheduling policy: pick the best node and create the container.
 """
 
 from typing import List, Optional
@@ -26,13 +26,13 @@ logger = get_logger(__name__)
 
 class DockerSchedulerService(IScheduler):
     """
-    Docker 调度服务
+    Docker scheduling service
 
-    实现调度策略：
-    1. 优先选择有模板亲和性的节点（镜像已缓存）
-    2. 选择负载最低的健康节点
+    The scheduling policy:
+    1. Prefer a node with template affinity, meaning the image is already cached
+    2. Otherwise pick the healthy node with the lowest load
 
-    容器从创建时就绑定到会话，生命周期完全跟随会话。
+    A container is bound to its session from creation and lives exactly as long as it.
     """
 
     def __init__(
@@ -55,11 +55,11 @@ class DockerSchedulerService(IScheduler):
 
     async def schedule(self, request: ScheduleRequest) -> RuntimeNode:
         """
-        调度会话到最优节点
+        Schedule the session onto the best node
 
-        调度策略：
-        1. 检查是否有已缓存该模板的节点（模板亲和性）
-        2. 选择负载最低的健康节点
+        The policy:
+        1. Look for a node that already cached this template, which is template affinity
+        2. Otherwise pick the healthy node with the lowest load
         """
         logger.info(
             "Starting node selection",
@@ -69,7 +69,7 @@ class DockerSchedulerService(IScheduler):
             memory_limit=request.resource_limit.memory,
         )
 
-        # 1. 获取所有健康节点
+        # 1. Read every healthy node
         healthy_nodes = await self.get_healthy_nodes()
         logger.debug(
             "Found healthy nodes",
@@ -81,7 +81,7 @@ class DockerSchedulerService(IScheduler):
             logger.error("No healthy runtime nodes available")
             raise RuntimeError("No healthy runtime nodes available")
 
-        # 2. 按模板亲和性排序
+        # 2. Sort by template affinity
         affinity_nodes = [node for node in healthy_nodes if node.has_template(request.template_id)]
 
         logger.debug(
@@ -92,7 +92,7 @@ class DockerSchedulerService(IScheduler):
         )
 
         if affinity_nodes:
-            # 选择亲和节点中负载最低的
+            # Among the affine nodes, take the least loaded
             selected = self._select_least_loaded(affinity_nodes)
             logger.info(
                 "Selected affinity node",
@@ -104,7 +104,7 @@ class DockerSchedulerService(IScheduler):
             )
             return selected
 
-        # 3. 使用负载均衡选择节点
+        # 3. Fall back to load balancing
         selected = self._select_least_loaded(healthy_nodes)
         logger.info(
             "Selected node by load balancing",
@@ -117,29 +117,29 @@ class DockerSchedulerService(IScheduler):
         return selected
 
     async def get_node(self, node_id: str) -> Optional[RuntimeNode]:
-        """获取指定节点"""
+        """Get one node"""
         node_model = await self._runtime_node_repo.find_by_id(node_id)
         if not node_model:
             return None
         return node_model.to_runtime_node()
 
     async def get_healthy_nodes(self) -> List[RuntimeNode]:
-        """获取所有健康节点"""
+        """Get every healthy node"""
         nodes = await self._runtime_node_repo.find_by_status("online")
         return [node.to_runtime_node() for node in nodes]
 
     async def mark_node_unhealthy(self, node_id: str) -> None:
-        """标记节点为不健康"""
+        """Mark a node unhealthy"""
         await self._runtime_node_repo.update_status(node_id, "offline")
         logger.warning("Marked node as unhealthy", node_id=node_id)
 
     def _select_least_loaded(self, nodes: List[RuntimeNode]) -> RuntimeNode:
         """
-        从节点列表中选择负载最低的节点
+        Pick the least loaded node from a list
 
-        选择逻辑：
-        1. 负载比率最低
-        2. 如果比率相同，选择会话数最少的
+        How it chooses:
+        1. Lowest load ratio
+        2. On a tie, the fewest sessions
         """
         return min(nodes, key=lambda n: (n.get_load_ratio(), n.session_count))
 
@@ -155,22 +155,22 @@ class DockerSchedulerService(IScheduler):
         dependencies: list = None,
     ) -> str:
         """
-        为会话创建容器（同步）
+        Create the container for a session, synchronously
 
-        容器从创建时就绑定到会话。
+        The container is bound to the session from creation.
 
         Args:
-            session_id: 会话 ID
-            template_id: 模板 ID
-            image: 容器镜像
-            resource_limit: 资源限制
-            env_vars: 环境变量
-            workspace_path: 工作空间路径
-            node_id: 目标节点 ID
-            dependencies: Python 依赖列表（pip 规范）[新增]
+            session_id: session id
+            template_id: template id
+            image: container image
+            resource_limit: resource limits
+            env_vars: environment variables
+            workspace_path: workspace path
+            node_id: target node id
+            dependencies: Python dependencies as pip specifiers
 
         Returns:
-            容器ID（使用容器名称作为 ID）
+            The container id, which is the container name
         """
         import json
 
@@ -184,7 +184,7 @@ class DockerSchedulerService(IScheduler):
             dependencies=dependencies,
         )
 
-        # 获取节点信息
+        # Read the node
         node = await self.get_node(node_id)
         if not node:
             logger.error("Node not found", node_id=node_id, session_id=session_id)
@@ -197,8 +197,8 @@ class DockerSchedulerService(IScheduler):
             node_status=node.status,
         )
 
-        # 创建容器配置
-        # dependencies_json 传递给 docker_scheduler.py 用于动态生成 entrypoint 脚本
+        # Build the container configuration.
+        # dependencies_json goes to docker_scheduler.py, which generates the entrypoint script from it.
         dependencies_json = json.dumps(dependencies) if dependencies else ""
 
         container_name = f"sandbox-{session_id}"
@@ -221,7 +221,7 @@ class DockerSchedulerService(IScheduler):
                 "session_id": session_id,
                 "template_id": template_id,
                 "managed_by": "sandbox-control-plane",
-                "dependencies": dependencies_json,  # 传递给 docker_scheduler.py
+                "dependencies": dependencies_json,  # passed through to docker_scheduler.py
             },
         )
 
@@ -236,7 +236,7 @@ class DockerSchedulerService(IScheduler):
             env_vars_count=len(config.env_vars),
         )
 
-        # 同步创建容器（等待完成）
+        # Create the container synchronously and wait for it
         try:
             logger.info(
                 "Creating container",
@@ -264,7 +264,7 @@ class DockerSchedulerService(IScheduler):
                 node_id=node.id,
             )
 
-            # 获取容器状态确认
+            # Read the container status to confirm
             try:
                 container_info = await self._container_scheduler.get_container_status(
                     container_name
@@ -285,7 +285,7 @@ class DockerSchedulerService(IScheduler):
                     error=str(status_error),
                 )
 
-            # 使用容器名称作为 ID（用于执行器通信）
+            # Use the container name as the id, for executor traffic
             return container_name
 
         except Exception as e:
@@ -300,9 +300,9 @@ class DockerSchedulerService(IScheduler):
 
     async def destroy_container(self, container_id: str, timeout: int = 10) -> None:
         """
-        销毁容器
+        Destroy the container
 
-        容器始终被销毁，不再有释放到预热池的逻辑。
+        A container is always destroyed; nothing is released back into a warm pool.
         """
         try:
             await self._container_scheduler.stop_container(container_id, timeout=timeout)
@@ -317,7 +317,7 @@ class DockerSchedulerService(IScheduler):
             raise
 
     async def get_container_info(self, container_id: str):
-        """获取容器信息"""
+        """Get the container information"""
         return await self._container_scheduler.get_container_status(container_id)
 
     async def execute(
@@ -327,28 +327,28 @@ class DockerSchedulerService(IScheduler):
         execution_request: ExecutionRequest,
     ) -> str:
         """
-        提交执行请求到容器内的执行器
+        Submit an execution request to the executor inside the container
 
-        通过 HTTP 与运行在容器内的 sandbox-executor 通信。
+        Talks over HTTP to the sandbox-executor running in the container.
 
         Args:
-            session_id: 会话 ID
-            container_id: 容器 ID
-            execution_request: 执行请求
+            session_id: session id
+            container_id: container id
+            execution_request: the execution request
 
         Returns:
-            execution_id: 执行任务 ID
+            execution_id: execution task id
 
         Raises:
-            ConnectionError: 无法连接到执行器
-            TimeoutError: 执行器响应超时
+            ConnectionError: the executor is unreachable
+            TimeoutError: the executor did not answer in time
         """
-        # 获取容器信息以构建执行器 URL
+        # Read the container information to build the executor URL
         container_info = await self._container_scheduler.get_container_status(container_id)
 
-        # 构建执行器 URL
-        # 使用容器名称在 Docker 内部网络中进行通信
-        # 容器名称格式: sandbox-{session_id}
+        # Build the executor URL.
+        # The container name addresses it inside the Docker network,
+        # in the form sandbox-{session_id}.
         container_name = container_info.name
         executor_url = self._build_executor_url(container_name)
 
@@ -359,7 +359,7 @@ class DockerSchedulerService(IScheduler):
             container_id=container_id,
         )
 
-        # 使用执行器客户端提交请求
+        # Submit through the executor client
         try:
             execution_id = await self._executor_client.submit_execution(
                 executor_url=executor_url,
@@ -390,7 +390,7 @@ class DockerSchedulerService(IScheduler):
             raise
 
     async def get_executor_url(self, container_id: str) -> str:
-        """根据容器 ID 获取 executor URL。"""
+        """Resolve the executor URL from a container id."""
         return self._build_executor_url(container_id)
 
     def _build_executor_url(self, container_name: str) -> str:

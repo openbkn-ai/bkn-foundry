@@ -1,7 +1,7 @@
 """
-后台任务管理器
+Background task manager
 
-管理周期性后台任务的启动和停止，支持优雅关闭。
+Starts and stops periodic background tasks, with graceful shutdown.
 """
 
 import asyncio
@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 
 class BackgroundTask:
     """
-    后台任务
+    Background task
 
-    表示一个周期性运行的后台任务。
+    One task that runs periodically.
     """
 
     def __init__(
@@ -27,13 +27,13 @@ class BackgroundTask:
         initial_delay_seconds: int = 0,
     ):
         """
-        初始化后台任务
+        Initialize the background task
 
         Args:
-            name: 任务名称
-            func: 异步函数，任务的实际执行逻辑
-            interval_seconds: 执行间隔（秒）
-            initial_delay_seconds: 首次执行前的延迟（秒）
+            name: task name
+            func: the async function the task runs
+            interval_seconds: how often to run, in seconds
+            initial_delay_seconds: how long to wait before the first run, in seconds
         """
         self.name = name
         self.func = func
@@ -45,9 +45,9 @@ class BackgroundTask:
 
     async def start(self) -> None:
         """
-        启动后台任务
+        Start the background task
 
-        如果任务已在运行，则不执行任何操作。
+        Does nothing when the task is already running.
         """
         if self._running:
             logger.warning(f"Task {self.name} is already running")
@@ -60,9 +60,9 @@ class BackgroundTask:
 
     async def stop(self) -> None:
         """
-        停止后台任务
+        Stop the background task
 
-        等待任务完成当前执行后停止，最多等待 30 秒。
+        Waits up to 30 seconds for the current run to finish.
         """
         if not self._running:
             return
@@ -79,23 +79,23 @@ class BackgroundTask:
 
     async def _run(self) -> None:
         """
-        任务运行循环
+        The task loop
 
-        执行流程：
-        1. 等待初始延迟（如果配置）
-        2. 循环执行：
-           - 执行任务函数
-           - 等待间隔或停止事件
+        What it does:
+        1. Wait out the initial delay, when one is configured
+        2. Then loop:
+           - run the task function
+           - wait for the interval, or for the stop event
         """
         try:
-            # 初始延迟
+            # Initial delay
             if self.initial_delay_seconds > 0:
                 await asyncio.sleep(self.initial_delay_seconds)
 
-            # 任务循环
+            # The task loop
             while not self._stop_event.is_set():
                 try:
-                    # 执行任务函数
+                    # Run the task function
                     await self.func()
                 except Exception as e:
                     logger.error(
@@ -103,16 +103,16 @@ class BackgroundTask:
                         exc_info=True,
                     )
 
-                # 等待间隔或停止事件
+                # Wait for the interval, or for the stop event
                 try:
                     await asyncio.wait_for(
                         self._stop_event.wait(),
                         timeout=self.interval_seconds,
                     )
-                    # 如果 wait_for 完成，说明停止事件被设置
+                    # wait_for completing means the stop event was set
                     break
                 except asyncio.TimeoutError:
-                    # 超时，继续循环
+                    # Timed out, so keep looping
                     continue
 
         except asyncio.CancelledError:
@@ -125,15 +125,15 @@ class BackgroundTask:
 
     @property
     def is_running(self) -> bool:
-        """检查任务是否正在运行"""
+        """Check whether the task is running"""
         return self._running and self._task is not None and not self._task.done()
 
 
 class BackgroundTaskManager:
     """
-    后台任务管理器
+    Background task manager
 
-    管理多个后台任务的启动和停止。
+    Starts and stops several background tasks.
     """
 
     def __init__(self):
@@ -148,13 +148,13 @@ class BackgroundTaskManager:
         initial_delay_seconds: int = 0,
     ) -> None:
         """
-        注册一个新的后台任务
+        Register a new background task
 
         Args:
-            name: 任务名称
-            func: 异步函数，任务的实际执行逻辑
-            interval_seconds: 执行间隔（秒）
-            initial_delay_seconds: 首次执行前的延迟（秒）
+            name: task name
+            func: the async function the task runs
+            interval_seconds: how often to run, in seconds
+            initial_delay_seconds: how long to wait before the first run, in seconds
         """
         task = BackgroundTask(
             name=name,
@@ -170,9 +170,9 @@ class BackgroundTaskManager:
 
     async def start_all(self) -> None:
         """
-        启动所有已注册的后台任务
+        Start every registered background task
 
-        如果任务已在运行，则不执行任何操作。
+        Does nothing for a task that is already running.
         """
         if self._running:
             logger.warning("Background tasks already running")
@@ -187,16 +187,16 @@ class BackgroundTaskManager:
 
     async def stop_all(self) -> None:
         """
-        停止所有正在运行的后台任务
+        Stop every running background task
 
-        等待所有任务完成当前执行后停止，最多等待 30 秒。
+        Waits up to 30 seconds for the current runs to finish.
         """
         if not self._running:
             return
 
         self._running = False
 
-        # 并行停止所有任务
+        # Stop them in parallel
         tasks_to_stop = [task.stop() for task in self._tasks]
         await asyncio.gather(*tasks_to_stop, return_exceptions=True)
 
@@ -205,13 +205,13 @@ class BackgroundTaskManager:
     @asynccontextmanager
     async def lifecycle(self):
         """
-        任务生命周期上下文管理器
+        Task lifecycle context manager
 
-        用法：
+        Usage:
             async with task_manager.lifecycle():
-                # 任务正在运行
+                # the tasks are running
                 pass
-            # 任务已停止
+            # the tasks have stopped
         """
         await self.start_all()
         try:
@@ -221,19 +221,19 @@ class BackgroundTaskManager:
 
     @property
     def running(self) -> bool:
-        """检查管理器是否正在运行"""
+        """Check whether the manager is running"""
         return self._running
 
     @property
     def task_count(self) -> int:
-        """获取已注册的任务数量"""
+        """How many tasks are registered"""
         return len(self._tasks)
 
     def get_task_status(self) -> dict:
         """
-        获取所有任务的状态
+        Get the status of every task
 
         Returns:
-            dict: 任务名称到运行状态的映射
+            dict: task name to whether it is running
         """
         return {task.name: task.is_running for task in self._tasks}
