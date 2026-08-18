@@ -51,14 +51,14 @@ func TestVegaBackendClient(t *testing.T) {
 		})
 
 		Convey("gets catalog from entries response", func() {
-			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/kweaver_execution_factory_catalog", gomock.Nil(), headers).
-				Return(http.StatusOK, []byte(`{"entries":[{"id":"kweaver_execution_factory_catalog","name":"kweaver_execution_factory_catalog","enabled":false}]}`), nil)
+			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", gomock.Nil(), headers).
+				Return(http.StatusOK, []byte(`{"entries":[{"id":"bkn_execution_factory_catalog","name":"bkn_execution_factory_catalog","enabled":false}]}`), nil)
 
-			resp, err := client.GetCatalogByID(ctx, "kweaver_execution_factory_catalog")
+			resp, err := client.GetCatalogByID(ctx, "bkn_execution_factory_catalog")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
-			So(resp.ID, ShouldEqual, "kweaver_execution_factory_catalog")
-			So(resp.Name, ShouldEqual, "kweaver_execution_factory_catalog")
+			So(resp.ID, ShouldEqual, "bkn_execution_factory_catalog")
+			So(resp.Name, ShouldEqual, "bkn_execution_factory_catalog")
 			So(resp.Enabled, ShouldBeFalse)
 		})
 
@@ -80,25 +80,25 @@ func TestVegaBackendClient(t *testing.T) {
 			So(resp, ShouldBeNil)
 		})
 
-		Convey("renames catalog in place via PUT", func() {
+		Convey("updates catalog in place via PUT", func() {
 			req := &interfaces.VegaCatalogRequest{
-				ID:       "kweaver_execution_factory_catalog",
+				ID:       "bkn_execution_factory_catalog",
 				Name:     "bkn_execution_factory_catalog",
 				Tags:     []string{"execution-factory", "索引"},
 				Internal: true,
 				Enabled:  true,
 			}
-			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/kweaver_execution_factory_catalog", headers, req).
+			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", headers, req).
 				Return(http.StatusNoContent, []byte{}, nil)
 
 			So(client.UpdateCatalog(ctx, req), ShouldBeNil)
 		})
 
 		Convey("enables catalog", func() {
-			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/kweaver_execution_factory_catalog/enable", headers, nil).
+			httpClient.EXPECT().PostNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog/enable", headers, nil).
 				Return(http.StatusNoContent, []byte{}, nil)
 
-			So(client.EnableCatalog(ctx, "kweaver_execution_factory_catalog"), ShouldBeNil)
+			So(client.EnableCatalog(ctx, "bkn_execution_factory_catalog"), ShouldBeNil)
 		})
 
 		Convey("gets resource from entries response", func() {

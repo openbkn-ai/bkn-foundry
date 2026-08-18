@@ -20,11 +20,6 @@ const (
 	executionFactorySkillDataset  = "bkn_execution_factory_skill_dataset"
 	executionFactoryDatasetDesc   = "执行工厂的Skill索引数据集"
 	executionFactoryDatasetStatus = "active"
-	// legacy* 是 kweaver 品牌期建的内置目录/数据集 ID(issue #372)。
-	// 存量环境沿用旧 ID：ID 是索引数据的落点，换 ID 等于重建索引，
-	// 因此只把「展示名」迁到新品牌名，ID 保持不动、不产生两套目录。
-	legacyExecutionFactoryCatalogID    = "kweaver_execution_factory_catalog"
-	legacyExecutionFactorySkillDataset = "kweaver_execution_factory_skill_dataset"
 	// internalCatalogTag 让内置目录自带「内置」语义标签。Studio 目前不读后端的
 	// internal 字段，靠 metadata/tag/名称前缀启发式判定内置目录，该 tag 命中它的
 	// 内置标签集合 —— 前端零改就能正确显示「内置」并收起管理操作。
@@ -48,8 +43,7 @@ type skillIndexSync struct {
 	logger       interfaces.Logger
 	mu           sync.RWMutex
 	initialized  bool
-	// datasetID 为本进程实际使用的数据集 ID：新装是 bkn_*，存量环境解析到
-	// legacy 的 kweaver_*；空值表示尚未解析，取新装默认值。
+	// datasetID 为本进程实际使用的数据集 ID；空值表示尚未解析，取默认值。
 	datasetID string
 	// embeddingModelName 该系统 skill dataset 建时锁定的 embedding 模型名(系统默认快照)，
 	// 受 mu 保护；upsert 读回它生成向量，而非每次重取当前默认。
@@ -165,10 +159,6 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 }
 
 // ensureCatalog 解析并保证内置目录存在，返回本进程实际使用的目录 ID。
-//
-// 新装取 bkn_execution_factory_catalog；存量环境(kweaver 品牌期建的目录)沿用旧
-// ID，只把展示名迁到新品牌名 —— 换 ID 会新建一套目录并让已建索引失联，
-// 见 issue #372。
 func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 	catalog, err := s.vegaClient.GetCatalogByID(ctx, executionFactoryCatalogID)
 	if err != nil {
@@ -176,18 +166,6 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if catalog == nil {
-		legacy, err := s.vegaClient.GetCatalogByID(ctx, legacyExecutionFactoryCatalogID)
-		if err != nil {
-			s.logger.WithContext(ctx).Errorf("get legacy catalog failed, catalog_id=%s, err=%v", legacyExecutionFactoryCatalogID, err)
-			return "", err
-		}
-		if legacy != nil {
-			s.logger.WithContext(ctx).Infof("adopting legacy catalog, catalog_id=%s", legacy.ID)
-			if err := s.reconcileCatalog(ctx, legacy); err != nil {
-				return "", err
-			}
-			return legacy.ID, nil
-		}
 		s.logger.WithContext(ctx).Infof("catalog not found, creating catalog, catalog_id=%s", executionFactoryCatalogID)
 		_, err = s.vegaClient.CreateCatalog(ctx, &interfaces.VegaCatalogRequest{
 			ID:          executionFactoryCatalogID,
@@ -289,8 +267,8 @@ func appendInternalTag(tags []string) []string {
 	return append(append([]string{}, tags...), internalCatalogTag)
 }
 
-// resolveDataset 解析本进程使用的 skill dataset：新装取 bkn_*，存量环境沿用
-// kweaver_* 旧 ID(只迁展示名)。返回的 resource 为 nil 表示两者都不存在，需新建。
+// resolveDataset 解析本进程使用的 skill dataset。返回的 resource 为 nil 表示
+// 它还不存在，需新建。
 func (s *skillIndexSync) resolveDataset(ctx context.Context) (string, *interfaces.VegaResource, error) {
 	resource, err := s.vegaClient.GetResourceByID(ctx, executionFactorySkillDataset)
 	if err != nil {
@@ -299,19 +277,6 @@ func (s *skillIndexSync) resolveDataset(ctx context.Context) (string, *interface
 	}
 	if resource != nil {
 		return resource.ID, resource, nil
-	}
-	legacy, err := s.vegaClient.GetResourceByID(ctx, legacyExecutionFactorySkillDataset)
-	if err != nil {
-		s.logger.WithContext(ctx).Errorf("get legacy resource failed, resource_id=%s, err=%v", legacyExecutionFactorySkillDataset, err)
-		return "", nil, err
-	}
-	if legacy != nil {
-		// 只收养、不改名：vega 的 Update 无条件对「已存的」schema 跑模型校验，而所有
-		// 存量 dataset 的 _vector 都没有 embedding_model(快照机制之前建的)，vega 回退
-		// 到常量 "embedding" 并因该模型未注册而 400 —— 改名请求对这批 dataset 必然
-		// 失败(VM 实测)。dataset 藏在内置目录下、仅超管可见，旧显示名无碍。
-		s.logger.WithContext(ctx).Infof("adopting legacy skill dataset, resource_id=%s", legacy.ID)
-		return legacy.ID, legacy, nil
 	}
 	return executionFactorySkillDataset, nil, nil
 }
