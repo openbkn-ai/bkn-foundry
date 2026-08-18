@@ -557,6 +557,50 @@ func (t *transaction) ListOperationCallFactsByTraceID(traceID string) []sessionv
 	return result
 }
 
+func (t *transaction) ListOperationCallFactsByTraceIDs(traceIDs []string) []sessionvo.OperationCallFact {
+	if t.err != nil {
+		return nil
+	}
+	uniqueTraceIDs := make([]string, 0, len(traceIDs))
+	seen := make(map[string]struct{}, len(traceIDs))
+	for _, traceID := range traceIDs {
+		if traceID == "" {
+			continue
+		}
+		if _, found := seen[traceID]; found {
+			continue
+		}
+		seen[traceID] = struct{}{}
+		uniqueTraceIDs = append(uniqueTraceIDs, traceID)
+	}
+	if len(uniqueTraceIDs) == 0 {
+		return []sessionvo.OperationCallFact{}
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(uniqueTraceIDs)), ",")
+	args := make([]any, len(uniqueTraceIDs))
+	for index, traceID := range uniqueTraceIDs {
+		args[index] = traceID
+	}
+	rows, err := t.tx.QueryContext(t.ctx, operationCallFactSelect+`
+		WHERE trace_id IN (`+placeholders+`) ORDER BY trace_id, started_at, operation_id, attempt_no`, args...)
+	if err != nil {
+		t.err = err
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	result := make([]sessionvo.OperationCallFact, 0)
+	for rows.Next() {
+		value, found := t.scanOperationCallFact(rows)
+		if !found {
+			return nil
+		}
+		result = append(result, value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
 func (t *transaction) SaveOperationCallFact(fact sessionvo.OperationCallFact) {
 	if t.err != nil {
 		return

@@ -1566,6 +1566,50 @@ func TestListTraceExecutionsUsesOperationSourceModuleForRootService(t *testing.T
 	}
 }
 
+func TestListTraceExecutionsAppliesOperationSourceModulesAcrossTracePage(t *testing.T) {
+	evidenceStore := evidencestore.New()
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_trace_source_a", "trace_source_a", "conversation_trace_source_a", "interaction_trace_source_a",
+		"2026-08-10T09:00:00Z", "查询库存", "库存 1756", "acct_demo",
+	)
+	seedBusinessProvenanceRequest(
+		t, evidenceStore, "req_trace_source_b", "trace_source_b", "conversation_trace_source_b", "interaction_trace_source_b",
+		"2026-08-10T09:01:00Z", "查询物料", "物料 26 条", "acct_demo",
+	)
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveOperationCallFact(sessionvo.OperationCallFact{
+			OperationID: "op_trace_source_a", Attempt: 1, TraceID: "trace_source_a",
+			ToolName: "run_sql", SourceModule: "context-loader",
+			StartedAt: time.Date(2026, 8, 10, 9, 0, 0, 0, time.UTC),
+		})
+		tx.SaveOperationCallFact(sessionvo.OperationCallFact{
+			OperationID: "op_trace_source_b", Attempt: 1, TraceID: "trace_source_b",
+			ToolName: "query_object_instance", SourceModule: "openbkn-sdk",
+			StartedAt: time.Date(2026, 8, 10, 9, 1, 0, 0, time.UTC),
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed operation facts: %v", err)
+	}
+	service := New(evidenceStore, WithProjectionSource(evidenceStore), WithSessionStore(sessions))
+
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+	if err != nil || len(page.Entries) != 2 {
+		t.Fatalf("list trace executions: page=%+v err=%v", page, err)
+	}
+	rootServiceByTraceID := make(map[string]string, len(page.Entries))
+	for _, entry := range page.Entries {
+		rootServiceByTraceID[entry.TraceID] = entry.RootService
+	}
+	if rootServiceByTraceID["trace_source_a"] != "context-loader" ||
+		rootServiceByTraceID["trace_source_b"] != "openbkn-sdk" {
+		t.Fatalf("trace root services = %+v", rootServiceByTraceID)
+	}
+}
+
 func TestExactRequestAndTracePropagateArtifactQueryTruncation(t *testing.T) {
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_artifact_cap", "trace_artifact_cap", "2026-07-26T09:00:00Z", "问题", "结果", "agent-a", "bd_demo", "acct_demo")

@@ -240,6 +240,38 @@ func (tx memoryTransaction) ListOperationCallFactsByTraceID(traceID string) []se
 	return result
 }
 
+func (tx memoryTransaction) ListOperationCallFactsByTraceIDs(traceIDs []string) []sessionvo.OperationCallFact {
+	requested := make(map[string]struct{}, len(traceIDs))
+	for _, traceID := range traceIDs {
+		if traceID != "" {
+			requested[traceID] = struct{}{}
+		}
+	}
+	if len(requested) == 0 {
+		return []sessionvo.OperationCallFact{}
+	}
+
+	result := make([]sessionvo.OperationCallFact, 0)
+	for _, fact := range tx.s.operationCalls {
+		if _, found := requested[fact.TraceID]; found {
+			result = append(result, fact)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].TraceID != result[j].TraceID {
+			return result[i].TraceID < result[j].TraceID
+		}
+		if result[i].StartedAt.Equal(result[j].StartedAt) {
+			if result[i].OperationID == result[j].OperationID {
+				return result[i].Attempt < result[j].Attempt
+			}
+			return result[i].OperationID < result[j].OperationID
+		}
+		return result[i].StartedAt.Before(result[j].StartedAt)
+	})
+	return result
+}
+
 func sortOperationCallFacts(result []sessionvo.OperationCallFact) {
 	sort.Slice(result, func(i, j int) bool {
 		if result[i].StartedAt.Equal(result[j].StartedAt) {
