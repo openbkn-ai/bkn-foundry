@@ -1,7 +1,7 @@
 """
-会话实体
+Session entity
 
-表示一个沙箱会话，是聚合根。
+One sandbox session; this is the aggregate root.
 """
 
 from dataclasses import dataclass, field
@@ -21,26 +21,26 @@ from src.shared.utils.dependencies import (
 @dataclass
 class InstalledDependency:
     """
-    已安装的依赖
+    An installed dependency
 
-    用于跟踪会话中实际安装的依赖包信息。
-    按照 sandbox-design-v2.1.md 章节 5.6 设计。
+    Tracks a package that is actually installed in the session.
+    Follows section 5.6 of sandbox-design-v2.1.md.
     """
 
     name: str
     version: str
-    install_location: str  # 如 "/workspace/.venv/"
+    install_location: str  # such as "/workspace/.venv/"
     install_time: datetime
-    is_from_template: bool  # 是否来自 Template 预装包
+    is_from_template: bool  # whether it came preinstalled with the template
 
 
 @dataclass
 class Session:
     """
-    会话实体
+    Session entity
 
-    聚合根，负责管理会话的生命周期和相关的执行记录。
-    扩展支持依赖安装功能，按照 sandbox-design-v2.1.md 章节 5.6 设计。
+    The aggregate root: owns the session lifecycle and its execution records.
+    Extended for dependency installation, following section 5.6 of sandbox-design-v2.1.md.
     """
 
     id: str
@@ -53,14 +53,14 @@ class Session:
     container_id: str | None = None
     pod_name: str | None = None
     env_vars: dict = field(default_factory=dict)
-    timeout: int = 300  # 默认 5 分钟
+    timeout: int = 300  # 5 minutes by default
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
     completed_at: datetime | None = None
     last_activity_at: datetime = field(default_factory=datetime.now)
     _executions: List[Execution] = field(default_factory=list)
 
-    # 依赖安装相关字段（新增）
+    # Dependency installation fields
     requested_dependencies: List[str] = field(default_factory=list)
     installed_dependencies: List[InstalledDependency] = field(default_factory=list)
     dependency_install_status: str = "pending"  # pending/installing/completed/failed
@@ -70,7 +70,7 @@ class Session:
     dependency_install_completed_at: datetime | None = None
 
     def __post_init__(self):
-        """初始化后验证"""
+        """Validate after construction"""
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
         if not self.workspace_path:
@@ -79,10 +79,10 @@ class Session:
             self.python_package_index_url
         )
 
-    # ============== 领域行为 ==============
+    # ============== Domain behaviour ==============
 
     def mark_as_running(self, runtime_node: str, container_id: str) -> None:
-        """标记会话为运行中"""
+        """Mark the session running"""
         if self.status != SessionStatus.CREATING:
             raise ValueError(f"Cannot mark session as running from status: {self.status}")
 
@@ -92,7 +92,7 @@ class Session:
         self.updated_at = datetime.now()
 
     def mark_as_completed(self) -> None:
-        """标记会话为已完成"""
+        """Mark the session completed"""
         if self.status != SessionStatus.RUNNING:
             raise ValueError(f"Cannot mark session as completed from status: {self.status}")
 
@@ -101,7 +101,7 @@ class Session:
         self.updated_at = datetime.now()
 
     def mark_as_failed(self) -> None:
-        """标记会话为失败"""
+        """Mark the session failed"""
         if self.status not in {SessionStatus.CREATING, SessionStatus.RUNNING}:
             raise ValueError(f"Cannot mark session as failed from status: {self.status}")
 
@@ -110,68 +110,68 @@ class Session:
         self.updated_at = datetime.now()
 
     def mark_as_terminated(self) -> None:
-        """终止会话"""
+        """Terminate the session"""
         if self.status == SessionStatus.TERMINATED:
-            return  # 已经是终止状态
+            return  # already in a terminal state
 
         self.status = SessionStatus.TERMINATED
         self.completed_at = datetime.now()
         self.updated_at = datetime.now()
 
     def update_last_activity(self) -> None:
-        """更新最后活动时间"""
+        """Update the last activity time"""
         self.last_activity_at = datetime.now()
         self.updated_at = datetime.now()
 
-    # ============== 领域查询 ==============
+    # ============== Domain queries ==============
 
     def is_active(self) -> bool:
-        """是否为活跃状态"""
+        """Whether it is active"""
         return self.status in {SessionStatus.CREATING, SessionStatus.RUNNING}
 
     def is_terminated(self) -> bool:
-        """是否已终止"""
+        """Whether it has terminated"""
         return self.status == SessionStatus.TERMINATED
 
     def is_idle(self, threshold_minutes: int = 30) -> bool:
-        """是否空闲（超过阈值时间未活动）"""
+        """Whether it is idle, meaning inactive past the threshold"""
         if not self.is_active():
             return False
         idle_time = datetime.now() - self.last_activity_at
         return idle_time > timedelta(minutes=threshold_minutes)
 
     def is_expired(self, max_hours: int = 6) -> bool:
-        """是否过期（创建超过最大时间）"""
+        """Whether it has expired, meaning older than the maximum lifetime"""
         age = datetime.now() - self.created_at
         return age > timedelta(hours=max_hours)
 
     def should_cleanup(self, idle_threshold_minutes: int = 30, max_lifetime_hours: int = 6) -> bool:
-        """是否应该清理"""
+        """Whether it should be cleaned up"""
         return self.is_idle(idle_threshold_minutes) or self.is_expired(max_lifetime_hours)
 
-    # ============== 执行管理 ==============
+    # ============== Execution management ==============
 
     def add_execution(self, execution: Execution) -> None:
-        """添加执行记录"""
+        """Add an execution record"""
         if execution.session_id != self.id:
             raise ValueError("Execution does not belong to this session")
         self._executions.append(execution)
         self.update_last_activity()
 
     def get_executions(self) -> List[Execution]:
-        """获取所有执行记录"""
+        """Get every execution record"""
         return list(self._executions)
 
     def get_running_executions(self) -> List[Execution]:
-        """获取正在运行的执行"""
+        """Get the running executions"""
         return [e for e in self._executions if e.is_running()]
 
-    # ============== 依赖管理 ==============
+    # ============== Dependency management ==============
 
     def replace_requested_dependencies(
         self, index_url: Optional[str], dependencies: List[str]
     ) -> None:
-        """全量替换目标依赖配置。"""
+        """Replace the target dependency configuration wholesale."""
         self.python_package_index_url = normalize_python_package_index_url(index_url)
         self.requested_dependencies = list(dependencies)
         self.updated_at = datetime.now()
@@ -179,7 +179,7 @@ class Session:
     def merge_requested_dependencies(
         self, index_url: Optional[str], dependencies: List[str]
     ) -> None:
-        """增量合并目标依赖配置。"""
+        """Merge into the target dependency configuration."""
         self.python_package_index_url = normalize_python_package_index_url(
             index_url or self.python_package_index_url
         )
@@ -190,11 +190,11 @@ class Session:
         self.updated_at = datetime.now()
 
     def set_dependencies_installing(self) -> None:
-        """兼容旧接口，标记依赖安装中。"""
+        """Legacy interface: mark the dependency install as in progress."""
         self.mark_dependency_installing()
 
     def mark_dependency_installing(self, started_at: datetime | None = None) -> None:
-        """标记依赖安装中。"""
+        """Mark the dependency install as in progress."""
         self.dependency_install_status = "installing"
         self.dependency_install_started_at = started_at or datetime.now()
         self.dependency_install_completed_at = None
@@ -202,7 +202,7 @@ class Session:
         self.updated_at = datetime.now()
 
     def set_dependencies_completed(self, installed: List[InstalledDependency]) -> None:
-        """兼容旧接口，标记依赖安装完成。"""
+        """Legacy interface: mark the dependency install as finished."""
         self.mark_dependency_install_completed(installed)
 
     def mark_dependency_install_completed(
@@ -210,7 +210,7 @@ class Session:
         installed: List[InstalledDependency],
         completed_at: datetime | None = None,
     ) -> None:
-        """标记依赖安装完成。"""
+        """Mark the dependency install as finished."""
         self.dependency_install_status = "completed"
         self.installed_dependencies = installed
         self.dependency_install_error = None
@@ -218,7 +218,7 @@ class Session:
         self.updated_at = datetime.now()
 
     def set_dependencies_failed(self, error: str) -> None:
-        """兼容旧接口，标记依赖安装失败。"""
+        """Legacy interface: mark the dependency install as failed."""
         self.mark_dependency_install_failed(error)
 
     def mark_dependency_install_failed(
@@ -226,20 +226,20 @@ class Session:
         error: str,
         completed_at: datetime | None = None,
     ) -> None:
-        """标记依赖安装失败。"""
+        """Mark the dependency install as failed."""
         self.dependency_install_status = "failed"
         self.dependency_install_error = error
         self.dependency_install_completed_at = completed_at or datetime.now()
         self.updated_at = datetime.now()
 
     def has_dependencies(self) -> bool:
-        """是否有依赖需要安装"""
+        """Whether any dependency still has to be installed"""
         return len(self.requested_dependencies) > 0
 
     def is_dependency_install_pending(self) -> bool:
-        """依赖是否正在安装或待安装"""
+        """Whether a dependency install is pending or running"""
         return self.dependency_install_status in ("pending", "installing")
 
     def is_dependency_install_successful(self) -> bool:
-        """依赖是否安装成功"""
+        """Whether the dependency install succeeded"""
         return self.dependency_install_status == "completed"

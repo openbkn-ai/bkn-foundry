@@ -1,7 +1,7 @@
 """
-Kubernetes 调度服务
+Kubernetes scheduling service
 
-实现调度策略，使用 Kubernetes API 创建 Pod。
+Implements the scheduling policy, creating Pods through the Kubernetes API.
 """
 
 import logging
@@ -27,12 +27,12 @@ logger = logging.getLogger(__name__)
 
 class K8sSchedulerService(IScheduler):
     """
-    Kubernetes 调度服务
+    Kubernetes scheduling service
 
-    使用 Kubernetes API 创建和管理 Pod：
-    1. 不需要节点选择逻辑（K8s 调度器自动处理）
-    2. 创建 Pod 而不是容器
-    3. Pod 生命周期跟随会话
+    Creates and manages Pods through the Kubernetes API:
+    1. No node selection of its own; the K8s scheduler handles that
+    2. Creates a Pod rather than a container
+    3. The Pod lives exactly as long as the session
     """
 
     def __init__(
@@ -42,7 +42,7 @@ class K8sSchedulerService(IScheduler):
         executor_client: Optional[ExecutorClient] = None,
         executor_port: int = 8080,
         control_plane_url: str = "http://sandbox-control-plane.sandbox-system.svc.cluster.local:8000",
-        disable_bwrap: bool = True,  # K8s 环境默认禁用 bwrap
+        disable_bwrap: bool = True,  # bwrap is off by default under K8s
     ):
         self._container_scheduler = container_scheduler
         self._template_repo = template_repo
@@ -52,7 +52,7 @@ class K8sSchedulerService(IScheduler):
         self._disable_bwrap = disable_bwrap
         self._owner_context = self._load_owner_context()
 
-        # K8s 集群作为单个逻辑节点
+        # The K8s cluster counts as one logical node
         self._cluster_node = RuntimeNode(
             id="k8s-cluster",
             type="kubernetes",
@@ -66,7 +66,7 @@ class K8sSchedulerService(IScheduler):
         )
 
     def _load_owner_context(self) -> ControlPlaneOwnerContext:
-        """加载当前 control plane Pod 的 owner 上下文。"""
+        """Load the owner context of the current control plane Pod."""
         pod_name = os.getenv("POD_NAME", "").strip()
         pod_uid = os.getenv("POD_UID", "").strip()
         if not pod_name or not pod_uid:
@@ -81,27 +81,27 @@ class K8sSchedulerService(IScheduler):
 
     async def schedule(self, request: ScheduleRequest) -> RuntimeNode:
         """
-        调度会话到 K8s 集群
+        Schedule the session onto the K8s cluster
 
-        在 K8s 环境中，调度决策由 Kubernetes 调度器处理。
-        我们只返回一个表示 K8s 集群的虚拟节点。
+        Under K8s the scheduling decision belongs to the Kubernetes scheduler,
+        so this returns a single virtual node standing for the cluster.
         """
         logger.info(f"Scheduling session to K8s cluster: template={request.template_id}")
         return self._cluster_node
 
     async def get_node(self, node_id: str) -> Optional[RuntimeNode]:
-        """获取指定节点"""
+        """Get one node"""
         if node_id == "k8s-cluster":
             return self._cluster_node
         return None
 
     async def get_healthy_nodes(self) -> List[RuntimeNode]:
-        """获取所有健康节点"""
+        """Get every healthy node"""
         return [self._cluster_node]
 
     async def mark_node_unhealthy(self, node_id: str) -> None:
-        """标记节点为不健康"""
-        # K8s 环境下不需要此操作
+        """Mark a node unhealthy"""
+        # Not needed under K8s
         logger.warning(f"mark_node_unhealthy called in K8s environment: {node_id}")
 
     async def create_container_for_session(
@@ -116,32 +116,32 @@ class K8sSchedulerService(IScheduler):
         dependencies: list = None,
     ) -> str:
         """
-        为会话创建 Pod
+        Create the Pod for a session
 
         Args:
-            session_id: 会话 ID
-            template_id: 模板 ID
-            image: 容器镜像
-            resource_limit: 资源限制
-            env_vars: 环境变量
-            workspace_path: 工作空间路径
-            node_id: 目标节点 ID（K8s 环境下忽略）
-            dependencies: Python 依赖列表
+            session_id: session id
+            template_id: template id
+            image: container image
+            resource_limit: resource limits
+            env_vars: environment variables
+            workspace_path: workspace path
+            node_id: target node id, ignored under K8s
+            dependencies: Python dependencies
 
         Returns:
-            Pod 名称
+            The Pod name
         """
         import json
 
-        # 获取模板信息
+        # Read the template
         template = await self._template_repo.find_by_id(template_id)
         if not template:
             raise RuntimeError(f"Template not found: {template_id}")
 
-        # 创建容器配置
+        # Build the container configuration
         dependencies_json = json.dumps(dependencies) if dependencies else ""
 
-        # Debug: 打印使用的 CONTROL_PLANE_URL
+        # Debug: log the CONTROL_PLANE_URL in use
         logger.info(f"Creating executor pod with CONTROL_PLANE_URL: {self._control_plane_url}")
 
         config = ContainerConfig(
@@ -167,7 +167,7 @@ class K8sSchedulerService(IScheduler):
             owner_context=self._owner_context,
         )
 
-        # 创建 Pod
+        # Create the Pod
         try:
             pod_name = await self._container_scheduler.create_container(config)
             logger.info(f"Created Pod {pod_name} for session {session_id}")
@@ -179,7 +179,7 @@ class K8sSchedulerService(IScheduler):
 
     async def destroy_container(self, container_id: str, timeout: int = 10) -> None:
         """
-        销毁 Pod
+        Destroy the Pod
         """
         try:
             await self._container_scheduler.stop_container(container_id, timeout=timeout)
@@ -190,7 +190,7 @@ class K8sSchedulerService(IScheduler):
             raise
 
     async def get_container_info(self, container_id: str):
-        """获取 Pod 信息"""
+        """Get the Pod information"""
         return await self._container_scheduler.get_container_status(container_id)
 
     async def execute(
@@ -200,23 +200,23 @@ class K8sSchedulerService(IScheduler):
         execution_request: ExecutionRequest,
     ) -> str:
         """
-        提交执行请求到 Pod 内的执行器
+        Submit an execution request to the executor inside the Pod
 
         Args:
-            session_id: 会话 ID
-            container_id: Pod 名称
-            execution_request: 执行请求
+            session_id: session id
+            container_id: Pod name
+            execution_request: the execution request
 
         Returns:
-            execution_id: 执行任务 ID
+            execution_id: execution task id
         """
-        # 从 K8s API 获取 Pod IP
+        # Read the Pod IP from the K8s API
         executor_url = await self.get_executor_url(container_id)
         logger.info(
             f"Submitting execution to executor: {executor_url}, session_id={session_id}, pod_name={container_id}"
         )
 
-        # 使用执行器客户端提交请求
+        # Submit through the executor client
         try:
             execution_id = await self._executor_client.submit_execution(
                 executor_url=executor_url,
@@ -241,7 +241,7 @@ class K8sSchedulerService(IScheduler):
             raise
 
     async def get_executor_url(self, container_id: str) -> str:
-        """根据 Pod 名称获取 executor URL。"""
+        """Resolve the executor URL from a Pod name."""
         import asyncio
 
         pod_name = container_id

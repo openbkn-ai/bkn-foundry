@@ -1,8 +1,8 @@
 """
-会话仓储实现
+Session repository implementation
 
-使用 SQLAlchemy 实现会话仓储接口。
-按照数据表命名规范使用 f_ 前缀字段名。
+Implements the session repository interface with SQLAlchemy.
+Column names carry the f_ prefix, following the table naming convention.
 """
 
 import time
@@ -18,9 +18,9 @@ from src.infrastructure.persistence.models.session_model import SessionModel
 
 class SqlSessionRepository(ISessionRepository):
     """
-    会话仓储实现
+    Session repository implementation
 
-    这是基础设施层的 Adapter，实现领域层定义的 Port。
+    The infrastructure-layer adapter for the port the domain layer defines.
     """
 
     def __init__(self, session: AsyncSession, execution_repo=None):
@@ -28,14 +28,14 @@ class SqlSessionRepository(ISessionRepository):
         self._execution_repo = execution_repo
 
     async def save(self, session: Session) -> None:
-        """保存会话"""
+        """Save the session"""
         import json
 
         model = await self._session.get(SessionModel, session.id)
         now_ms = int(time.time() * 1000)
 
         if model:
-            # 更新现有记录
+            # Update the existing row
             model.f_template_id = session.template_id
             model.f_status = (
                 session.status.value if hasattr(session.status, "value") else session.status
@@ -63,7 +63,7 @@ class SqlSessionRepository(ISessionRepository):
                 int(session.completed_at.timestamp() * 1000) if session.completed_at else 0
             )
 
-            # 依赖安装字段
+            # Dependency installation columns
             model.f_requested_dependencies = (
                 json.dumps(session.requested_dependencies, ensure_ascii=False)
                 if session.requested_dependencies
@@ -94,38 +94,38 @@ class SqlSessionRepository(ISessionRepository):
                 else 0
             )
         else:
-            # 创建新记录
+            # Insert a new row
             model = SessionModel.from_entity(session)
             self._session.add(model)
 
         await self._session.flush()
 
     async def find_by_id(self, session_id: str) -> Optional[Session]:
-        """根据 ID 查找会话"""
+        """Find a session by id"""
         model = await self._session.get(SessionModel, session_id)
         return model.to_entity() if model else None
 
     async def find_by_container_id(self, container_id: str) -> Optional[Session]:
-        """根据容器 ID 查找会话"""
+        """Find a session by container id"""
         stmt = select(SessionModel).where(SessionModel.f_container_id == container_id)
         result = await self._session.execute(stmt)
         model = result.scalar_one_or_none()
         return model.to_entity() if model else None
 
     async def find_by_status(self, status: str, limit: int = 100) -> List[Session]:
-        """根据状态查找会话"""
+        """Find sessions by status"""
         stmt = select(SessionModel).where(SessionModel.f_status == status).limit(limit)
         result = await self._session.execute(stmt)
         return [model.to_entity() for model in result.scalars().all()]
 
     async def find_by_template(self, template_id: str) -> List[Session]:
-        """根据模板 ID 查找会话"""
+        """Find sessions by template id"""
         stmt = select(SessionModel).where(SessionModel.f_template_id == template_id)
         result = await self._session.execute(stmt)
         return [model.to_entity() for model in result.scalars().all()]
 
     async def find_idle_sessions(self, idle_threshold: datetime) -> List[Session]:
-        """查找空闲会话"""
+        """Find the idle sessions"""
         threshold_ms = int(idle_threshold.timestamp() * 1000)
         stmt = select(SessionModel).where(
             SessionModel.f_status.in_(["creating", "running"]),
@@ -135,7 +135,7 @@ class SqlSessionRepository(ISessionRepository):
         return [model.to_entity() for model in result.scalars().all()]
 
     async def find_expired_sessions(self, created_before: datetime) -> List[Session]:
-        """查找过期会话"""
+        """Find the expired sessions"""
         before_ms = int(created_before.timestamp() * 1000)
         stmt = (
             select(SessionModel)
@@ -147,31 +147,31 @@ class SqlSessionRepository(ISessionRepository):
 
     async def delete(self, session_id: str) -> None:
         """
-        删除会话及其所有执行记录（级联删除）
+        Delete the session and every execution record it owns, cascading
 
-        先删除关联的 execution 记录，再删除 session 记录。
+        The execution rows go first, then the session row.
         """
-        # 1. 先删除关联的 execution 记录（级联删除）
+        # 1. Delete the execution rows first, the cascade
         if self._execution_repo:
             await self._execution_repo.delete_by_session_id(session_id)
-        # 2. 再删除 session 记录
+        # 2. Then delete the session row
         stmt = delete(SessionModel).where(SessionModel.f_id == session_id)
         await self._session.execute(stmt)
         await self._session.flush()
 
     async def exists(self, session_id: str) -> bool:
-        """检查会话是否存在"""
+        """Check whether the session exists"""
         model = await self._session.get(SessionModel, session_id)
         return model is not None
 
     async def count_by_status(self, status: str) -> int:
-        """统计指定状态的会话数量"""
+        """Count the sessions in a status"""
         stmt = select(func.count()).select_from(SessionModel).where(SessionModel.f_status == status)
         result = await self._session.execute(stmt)
         return result.scalar() or 0
 
     async def count_by_node(self, runtime_node: str) -> int:
-        """统计指定节点的会话数量"""
+        """Count the sessions on a node"""
         stmt = (
             select(func.count())
             .select_from(SessionModel)
@@ -189,31 +189,31 @@ class SqlSessionRepository(ISessionRepository):
         offset: int = 0,
     ) -> List[Session]:
         """
-        查找会话列表（支持筛选和分页）
+        Find sessions, with filtering and paging
 
         Args:
-            status: 会话状态筛选（可选）
-            template_id: 模板 ID 筛选（可选）
-            limit: 返回数量限制（1-200，默认 50）
-            offset: 偏移量（用于分页）
+            status: filter by session status, optional
+            template_id: filter by template id, optional
+            limit: how many to return, 1-200, default 50
+            offset: offset, for paging
 
         Returns:
-            会话列表
+            The session list
         """
-        # 验证 limit 范围
+        # Validate the limit range
         limit = max(1, min(limit, 200))
         offset = max(0, offset)
 
-        # 构建查询
+        # Build the query
         stmt = select(SessionModel)
 
-        # 添加筛选条件
+        # Apply the filters
         if status:
             stmt = stmt.where(SessionModel.f_status == status)
         if template_id:
             stmt = stmt.where(SessionModel.f_template_id == template_id)
 
-        # 排序和分页
+        # Order and page
         stmt = stmt.order_by(SessionModel.f_created_at.desc()).limit(limit).offset(offset)
 
         result = await self._session.execute(stmt)
@@ -223,18 +223,18 @@ class SqlSessionRepository(ISessionRepository):
         self, status: Optional[str] = None, template_id: Optional[str] = None
     ) -> int:
         """
-        统计会话数量（支持筛选）
+        Count the sessions, with filtering
 
         Args:
-            status: 会话状态筛选（可选）
-            template_id: 模板 ID 筛选（可选）
+            status: filter by session status, optional
+            template_id: filter by template id, optional
 
         Returns:
-            会话总数
+            The total
         """
         stmt = select(func.count()).select_from(SessionModel)
 
-        # 添加筛选条件
+        # Apply the filters
         if status:
             stmt = stmt.where(SessionModel.f_status == status)
         if template_id:

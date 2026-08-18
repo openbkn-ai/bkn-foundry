@@ -1,7 +1,7 @@
 """
-文件应用服务
+File application service
 
-编排文件上传下载相关的用例。
+Orchestrates the file upload and download use cases.
 """
 
 import io
@@ -21,9 +21,9 @@ from src.shared.i18n import message
 
 class FileService:
     """
-    文件应用服务
+    File application service
 
-    编排文件上传、下载等用例。
+    Orchestrates uploading and downloading files.
     """
 
     def __init__(
@@ -46,13 +46,13 @@ class FileService:
         content_type: str = "application/octet-stream",
     ) -> str:
         """
-        上传文件用例
+        Upload-file use case
 
-        流程：
-        1. 验证会话存在且运行中
-        2. 验证路径格式
-        3. 上传到存储
-        4. 返回文件路径
+        Steps:
+        1. Verify the session exists and is running
+        2. Validate the path
+        3. Upload to storage
+        4. Return the file path
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
@@ -78,9 +78,9 @@ class FileService:
         overwrite: bool = False,
     ) -> Dict[str, Any]:
         """
-        上传 ZIP 并解压到会话工作区。
+        Upload a ZIP and extract it into the session workspace.
 
-        返回解压统计结果。
+        Returns the extraction statistics.
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
@@ -151,12 +151,12 @@ class FileService:
 
     async def download_file(self, session_id: str, path: str) -> Dict:
         """
-        下载文件用例
+        Download-file use case
 
-        流程：
-        1. 验证会话存在
-        2. 验证文件存在
-        3. 返回文件内容或预签名 URL
+        Steps:
+        1. Verify the session exists
+        2. Verify the file exists
+        3. Return the content, or a presigned URL
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
@@ -170,7 +170,7 @@ class FileService:
         file_info = await self._storage_service.get_file_info(s3_path)
         file_size = file_info["size"]
 
-        # 小文件（<10MB）直接返回内容，大文件返回预签名 URL
+        # Return the content directly under 10MB; hand back a presigned URL above it
         SMALL_FILE_THRESHOLD = 10 * 1024 * 1024  # 10MB
 
         if file_size < SMALL_FILE_THRESHOLD:
@@ -191,31 +191,31 @@ class FileService:
         self, session_id: str, path: str = None, limit: int = 1000
     ) -> List[Dict[str, Any]]:
         """
-        列出 session 下的文件
+        List the files of a session
 
         Args:
             session_id: Session ID
-            path: 可选，指定目录路径（相对于 workspace 根目录）
-            limit: 最大返回文件数
+            path: optional directory, relative to the workspace root
+            limit: how many files to return at most
 
         Returns:
-            文件列表，每个文件包含 name, size, modified_time, container_path 等
+            The file list, each entry holding name, size, modified_time, container_path, and more
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
             raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
 
-        # 解析 workspace_path，提取 S3 key 前缀
-        # workspace_path 格式: s3://bucket/sessions/{session_id}/
-        # S3 key 格式: sessions/{session_id}/...
+        # Parse workspace_path to get the S3 key prefix.
+        # workspace_path is s3://bucket/sessions/{session_id}/
+        # and an S3 key is sessions/{session_id}/...
         parsed = urlparse(session.workspace_path)
-        s3_key_prefix = parsed.path.lstrip("/")  # 去掉开头的 /，得到 "sessions/{session_id}/"
+        s3_key_prefix = parsed.path.lstrip("/")  # drop the leading /, leaving "sessions/{session_id}/"
 
-        # 构建 S3 查询前缀
+        # Build the S3 query prefix
         if path:
             normalized_path = path.strip().strip("/")
             if normalized_path:
-                # 确保 s3_key_prefix 以 / 结尾
+                # Make sure s3_key_prefix ends with /
                 base = s3_key_prefix.rstrip("/")
                 prefix = f"{base}/{normalized_path}"
             else:
@@ -230,19 +230,19 @@ class FileService:
         for file in files:
             key = file["key"]
 
-            # 提取相对于 session workspace 的路径
-            # key 格式: sessions/{session_id}/conversation-1231/uploads/temparea/test.csv
-            # s3_key_prefix 格式: sessions/{session_id}/
+            # Work out the path relative to the session workspace.
+            # A key looks like sessions/{session_id}/conversation-1231/uploads/temparea/test.csv
+            # and s3_key_prefix looks like sessions/{session_id}/
             if key.startswith(s3_key_prefix):
                 relative_path = key[len(s3_key_prefix) :].lstrip("/")
             else:
                 relative_path = key.lstrip("/")
 
-            # 过滤掉空路径（目录本身）和以斜杠结尾的目录标记
+            # Drop the empty path, which is the directory itself, and the trailing-slash directory markers
             if not relative_path or relative_path.endswith("/"):
                 continue
 
-            # 容器内挂载路径: /workspace/{relative_path}
+            # The in-container mount path is /workspace/{relative_path}
             container_path = f"/workspace/{relative_path}"
 
             result.append(

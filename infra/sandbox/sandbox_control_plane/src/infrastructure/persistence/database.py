@@ -1,7 +1,7 @@
 """
-数据库连接管理
+Database connection management
 
-配置和管理 SQLAlchemy 异步引擎和会话。
+Configures and manages the SQLAlchemy async engine and sessions.
 """
 
 from contextlib import asynccontextmanager
@@ -25,7 +25,7 @@ from src.infrastructure.logging import get_logger
 
 
 class Base(DeclarativeBase):
-    """SQLAlchemy 基类"""
+    """SQLAlchemy declarative base"""
 
     pass
 
@@ -46,9 +46,9 @@ from src.infrastructure.persistence.models.runtime_node_model import RuntimeNode
 
 class DatabaseManager:
     """
-    数据库管理器
+    Database manager
 
-    负责创建和管理数据库连接。
+    Creates and manages the database connections.
     """
 
     def __init__(self):
@@ -56,12 +56,12 @@ class DatabaseManager:
         self._session_factory: async_sessionmaker[AsyncSession] | None = None
 
     def _get_managed_sandbox_table_names(self) -> set[str]:
-        """返回 control plane 自己管理的沙箱表名白名单。"""
+        """The allowlist of sandbox tables this control plane owns."""
         return set(Base.metadata.tables.keys())
 
     @dataclass(frozen=True)
     class _DatabaseConnectionInfo:
-        """数据库连接信息。"""
+        """Database connection details."""
 
         user: str | None
         password: str | None
@@ -70,7 +70,7 @@ class DatabaseManager:
         database: str
 
     def _get_database_connection_info(self) -> _DatabaseConnectionInfo:
-        """从配置中解析数据库连接信息。"""
+        """Resolve the connection details from the configuration."""
         parsed = urlparse(self._get_runtime_database_url())
         configured_database = parsed.path.lstrip("/")
 
@@ -83,7 +83,7 @@ class DatabaseManager:
         )
 
     def _get_runtime_database_url(self) -> str:
-        """返回运行期使用的数据库 URL，并将旧库名规范化到新库名。"""
+        """Return the database URL used at runtime, normalizing the old name to the new one."""
         settings = get_settings()
         parsed = urlparse(settings.effective_database_url)
         database_name = parsed.path.lstrip("/")
@@ -94,7 +94,7 @@ class DatabaseManager:
         return urlunparse(normalized)
 
     async def _create_server_pool(self) -> aiomysql.Pool:
-        """创建连接到 MySQL 服务端的连接池。"""
+        """Create the connection pool to the MySQL server."""
         connection_info = self._get_database_connection_info()
         return await aiomysql.create_pool(
             host=connection_info.host,
@@ -109,9 +109,9 @@ class DatabaseManager:
 
     async def upgrade_legacy_database_name(self) -> None:
         """
-        启动时迁移旧数据库名到新数据库名。
+        Migrate the old database name to the new one at start-up.
 
-        当前支持将旧库 `adp` 升级为 `openbkn`。
+        Currently this upgrades the old `adp` database to `openbkn`.
         """
         connection_info = self._get_database_connection_info()
         target_database = connection_info.database
@@ -201,7 +201,7 @@ class DatabaseManager:
             await pool.wait_closed()
 
     async def _schema_exists(self, cursor, schema_name: str) -> bool:
-        """检查 schema 是否存在。"""
+        """Check whether the schema exists."""
         await cursor.execute(
             """
             SELECT COUNT(*)
@@ -214,7 +214,7 @@ class DatabaseManager:
         return bool(result and result[0])
 
     async def _list_tables(self, cursor, schema_name: str) -> list[str]:
-        """列出 schema 下的所有基础表。"""
+        """List every base table in the schema."""
         await cursor.execute(
             """
             SELECT TABLE_NAME
@@ -230,10 +230,10 @@ class DatabaseManager:
 
     async def ensure_database_exists(self) -> None:
         """
-        确保数据库存在，如果不存在则创建
+        Make sure the database exists, creating it when it does not
 
-        使用原始连接（不通过 SQLAlchemy）来创建数据库，
-        因为 SQLAlchemy 需要数据库已存在才能创建引擎。
+        Uses a raw connection rather than SQLAlchemy, because SQLAlchemy needs the
+        database to exist before it can build an engine.
         """
         connection_info = self._get_database_connection_info()
         db_name = connection_info.database
@@ -242,11 +242,11 @@ class DatabaseManager:
         try:
             async with pool.acquire() as conn:
                 async with conn.cursor() as cursor:
-                    # 检查数据库是否存在
+                    # Check whether the database exists
                     result = await self._schema_exists(cursor, db_name)
 
                     if not result:
-                        # 数据库不存在，创建它
+                        # It does not, so create it
                         await cursor.execute(
                             f"CREATE DATABASE `{db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
                         )
@@ -258,11 +258,11 @@ class DatabaseManager:
             await pool.wait_closed()
 
     async def initialize(self) -> None:
-        """初始化数据库引擎（确保数据库存在）"""
-        # 先确保数据库存在
+        """Initialize the database engine, making sure the database exists"""
+        # Make sure the database exists first
         await self.ensure_database_exists()
 
-        # 然后创建引擎
+        # Then build the engine
         settings = get_settings()
         self._engine = create_async_engine(
             self._get_runtime_database_url(),
@@ -278,7 +278,7 @@ class DatabaseManager:
         )
 
     async def create_tables(self) -> None:
-        """创建所有数据库表"""
+        """Create every database table"""
         if self._engine is None:
             raise RuntimeError("DatabaseManager not initialized. Call initialize() first.")
 
@@ -287,9 +287,9 @@ class DatabaseManager:
 
     async def run_startup_schema_migrations(self) -> None:
         """
-        启动时执行幂等 schema 升级。
+        Run an idempotent schema upgrade at start-up.
 
-        当前用于兼容旧库缺失 `f_python_package_index_url` 字段的场景。
+        Currently this covers an older database missing the `f_python_package_index_url` column.
         """
         if self._engine is None:
             raise RuntimeError("DatabaseManager not initialized. Call initialize() first.")
@@ -347,7 +347,7 @@ class DatabaseManager:
             )
 
     async def _mariadb_table_exists(self, conn, table_name: str) -> bool:
-        """检查 MariaDB 表是否存在。"""
+        """Check whether a MariaDB table exists."""
         result = await conn.execute(
             text("""
                 SELECT COUNT(*)
@@ -360,7 +360,7 @@ class DatabaseManager:
         return bool(result.scalar())
 
     async def _mariadb_column_exists(self, conn, table_name: str, column_name: str) -> bool:
-        """检查 MariaDB 列是否存在。"""
+        """Check whether a MariaDB column exists."""
         result = await conn.execute(
             text("""
                 SELECT COUNT(*)
@@ -377,15 +377,15 @@ class DatabaseManager:
         self, create_tables: bool = False, seed_data: bool = False, force_seed: bool = False
     ) -> dict:
         """
-        初始化数据库并可选地创建表和种子数据
+        Initialize the database, optionally creating the tables and the seed data
 
         Args:
-            create_tables: 是否创建数据库表
-            seed_data: 是否初始化种子数据
-            force_seed: 是否强制重新创建种子数据
+            create_tables: whether to create the database tables
+            seed_data: whether to insert the seed data
+            force_seed: whether to recreate the seed data
 
         Returns:
-            包含初始化结果的字典
+            A dict holding the initialization result
         """
         result = {"tables_created": False, "seeded": False, "seed_stats": {}}
 
@@ -405,11 +405,11 @@ class DatabaseManager:
     @asynccontextmanager
     async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
         """
-        获取数据库会话（上下文管理器）
+        Get a database session, as a context manager
 
-        用法:
+        Usage:
             async with db_manager.get_session() as session:
-                # 使用 session
+                # use the session
         """
         if self._session_factory is None:
             raise RuntimeError("DatabaseManager not initialized. Call initialize() first.")
@@ -423,10 +423,10 @@ class DatabaseManager:
                 raise
 
     async def close(self) -> None:
-        """关闭数据库连接"""
+        """Close the database connections"""
         if self._engine:
             await self._engine.dispose()
 
 
-# 全局数据库管理器实例
+# The global database manager instance
 db_manager = DatabaseManager()

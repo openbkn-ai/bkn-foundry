@@ -1,8 +1,8 @@
 """
-内部 API 路由
+Internal API routes
 
-定义由 Executor 调用的内部 API 端点。
-这些端点仅在容器网络内可访问。
+The endpoints the executor calls.
+They are reachable only from inside the container network.
 """
 
 import logging
@@ -32,9 +32,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/internal", tags=["internal"])
 
 
-# 根据模式选择依赖注入函数
-# SQL 模式：使用 get_execution_repository（带 Depends() 注入数据库会话）
-# Mock 模式：使用从 app.state 获取仓储的函数
+# Pick the dependency injection functions by mode.
+# SQL mode: get_execution_repository, which injects the database session through Depends().
+# Mock mode: functions that read the repositories off app.state.
 if USE_SQL_REPOSITORIES:
     _get_execution_repository = get_sql_execution_repository
     _get_session_repository = get_sql_session_repository
@@ -56,17 +56,17 @@ async def handle_container_ready(
     session_repo=Depends(_get_session_repository),
 ):
     """
-    处理容器就绪事件
+    Handle the container-ready event
 
-    由 Executor 在启动完成后调用，通知控制平面容器已就绪。
-    更新对应的会话状态为 RUNNING。
+    The executor calls this once it has started, telling the control plane the container is ready.
+    Moves the matching session to RUNNING.
     """
     logger.info(f"Container ready event received: container_id={request.container_id}")
 
-    # 查找对应的会话
+    # Find the session
     session = await session_repo.find_by_container_id(request.container_id)
     if session:
-        # 更新会话状态为 RUNNING
+        # Move the session to RUNNING
         from src.domain.value_objects.execution_status import SessionStatus
 
         session.status = SessionStatus.RUNNING
@@ -82,9 +82,9 @@ async def handle_container_ready(
 @router.post("/containers/exited")
 async def handle_container_exited():
     """
-    处理容器退出事件
+    Handle the container-exit event
 
-    由 Executor 在关闭前调用，通知控制平面容器即将退出。
+    The executor calls this before shutting down, telling the control plane the container is about to exit.
     """
     logger.info("Container exited event received")
     # Currently just acknowledge - future: update container status in database
@@ -94,9 +94,9 @@ async def handle_container_exited():
 @router.post("/executions/{execution_id}/heartbeat")
 async def handle_execution_heartbeat(execution_id: str):
     """
-    处理执行心跳
+    Handle an execution heartbeat
 
-    由 Executor 在执行过程中定期调用，保持执行活跃状态。
+    The executor calls this periodically while running, keeping the execution marked active.
     """
     logger.debug(f"Heartbeat received for execution {execution_id}")
     # Currently just acknowledge - future: update last_heartbeat timestamp
@@ -114,21 +114,21 @@ async def report_execution_result(
     execution_repo: IExecutionRepository = Depends(_get_execution_repository),
 ):
     """
-    上报执行结果
+    Report an execution result
 
-    由 Executor 在执行完成后调用，上报执行结果到控制平面。
+    The executor calls this once execution finishes, reporting the result to the control plane.
 
-    ## 状态映射
+    ## Status mapping
     - API: `"success"` → Domain: `ExecutionStatus.COMPLETED`
     - API: `"failed"` → Domain: `ExecutionStatus.FAILED`
     - API: `"timeout"` → Domain: `ExecutionStatus.TIMEOUT`
     - API: `"crashed"` → Domain: `ExecutionStatus.CRASHED`
 
-    ## 幂等性
-    - 如果执行记录已经是终态，返回 200（重复上报）
-    - 如果是首次上报，更新后返回 201
+    ## Idempotency
+    - When the execution record is already terminal, answer 200; this is a repeat report
+    - On the first report, update and answer 201
     """
-    # 1. 查找执行记录
+    # 1. Find the execution record
     execution = await execution_repo.find_by_id(execution_id)
     if not execution:
         raise HTTPException(
@@ -136,12 +136,12 @@ async def report_execution_result(
             detail=message("Sandbox.Execution.NotFound", execution_id=execution_id),
         )
 
-    # 2. 检查是否已经是终态（幂等性）
+    # 2. Check whether it is already terminal, for idempotency
     if execution.is_terminal():
         logger.info(f"Execution {execution_id} already in terminal state: {execution.state.status}")
         return InternalAPIResponse(message="Result already recorded")
 
-    # 3. 映射 API 状态到域状态
+    # 3. Map the API status onto the domain status
     status_map: Dict[str, ExecutionStatus] = {
         "success": ExecutionStatus.COMPLETED,
         "failed": ExecutionStatus.FAILED,
@@ -156,16 +156,16 @@ async def report_execution_result(
             detail=message("Sandbox.Execution.InvalidStatus", status=report.status),
         )
 
-    # 4. 自动转换 PENDING → RUNNING（如果需要）
-    # 根据领域规则，必须是 PENDING → RUNNING → COMPLETED/FAILED/TIMEOUT/CRASHED
-    # 但 executor 报告结果时可能已经完成了，所以自动处理这个转换
+    # 4. Move PENDING to RUNNING automatically when needed.
+    # The domain rule is PENDING -> RUNNING -> COMPLETED/FAILED/TIMEOUT/CRASHED,
+    # but the executor may report a finished result, so that step happens here.
     if execution.state.status == ExecutionStatus.PENDING:
         execution.mark_running()
 
-    # 5. 根据状态更新执行实体
+    # 5. Update the execution entity for the reported status
     try:
         if domain_status == ExecutionStatus.COMPLETED:
-            # 转换 artifacts 字符串列表为 Artifact 对象
+            # Turn the artifact strings into Artifact objects
             now = datetime.now()
             artifact_objects = [
                 Artifact(
@@ -174,7 +174,7 @@ async def report_execution_result(
                 for path in report.artifacts
             ]
 
-            # 转换 metrics
+            # Convert the metrics
             metrics_dict = None
             if report.metrics:
                 metrics_dict = {
@@ -196,7 +196,7 @@ async def report_execution_result(
             )
 
         elif domain_status == ExecutionStatus.FAILED:
-            # 使用 stderr 作为错误消息，同时保存 stdout 和 stderr
+            # Use stderr as the error message, keeping both stdout and stderr
             error_message = report.stderr if report.stderr else "Execution failed"
             execution.mark_failed(
                 error_message=error_message,
@@ -211,10 +211,10 @@ async def report_execution_result(
         elif domain_status == ExecutionStatus.CRASHED:
             execution.mark_crashed()
 
-        # 6. 保存到仓储
+        # 6. Persist
         await execution_repo.save(execution)
 
-        # 6.5. 提交事务，确保其他请求可以立即看到更新后的执行状态
+        # 6.5. Commit, so other requests see the updated execution status at once
         await execution_repo.commit()
 
         logger.info(
@@ -222,14 +222,14 @@ async def report_execution_result(
             f"exit_code={report.exit_code}"
         )
 
-        # 6. 返回 201 表示首次创建
+        # 6. Answer 201 for the first report
         return JSONResponse(
             status_code=status.HTTP_201_CREATED,
             content={"message": "Result recorded successfully"},
         )
 
     except ValueError as e:
-        # 状态转换错误（例如从未完成状态直接尝试标记为完成）
+        # An invalid status transition, such as marking a never-finished execution complete
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=message("Sandbox.State.Conflict", error=str(e)),

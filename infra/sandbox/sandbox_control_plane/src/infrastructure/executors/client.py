@@ -1,7 +1,7 @@
 """
-执行器 HTTP 客户端
+Executor HTTP client
 
-用于与沙箱容器内的执行器进行 HTTP 通信。
+Talks over HTTP to the executor inside a sandbox container.
 """
 
 import asyncio
@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 
 class ExecutorClient:
     """
-    执行器 HTTP 客户端
+    Executor HTTP client
 
-    通过 HTTP 与运行在容器内的 sandbox-executor 通信。
+    Talks over HTTP to the sandbox-executor running in the container.
     """
 
     def __init__(
@@ -42,12 +42,12 @@ class ExecutorClient:
         retry_delay: float = 0.5,
     ):
         """
-        初始化执行器客户端
+        Initialize the executor client
 
         Args:
-            timeout: 请求超时时间（秒）
-            max_retries: 最大重试次数
-            retry_delay: 重试延迟（秒）
+            timeout: request timeout in seconds
+            max_retries: how many times to retry
+            retry_delay: delay between retries, in seconds
         """
         self._timeout = timeout
         self._max_retries = max_retries
@@ -55,17 +55,17 @@ class ExecutorClient:
         self._client: Optional[httpx.AsyncClient] = None
 
     async def __aenter__(self):
-        """进入上下文管理器"""
+        """Enter the context manager"""
         self._client = httpx.AsyncClient(timeout=self._timeout)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """退出上下文管理器"""
+        """Leave the context manager"""
         if self._client:
             await self._client.aclose()
 
     def _get_client(self) -> httpx.AsyncClient:
-        """获取 HTTP 客户端实例"""
+        """Get the HTTP client"""
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=self._timeout)
         return self._client
@@ -83,27 +83,27 @@ class ExecutorClient:
         working_directory: str | None = None,
     ) -> str:
         """
-        提交执行请求到执行器
+        Submit an execution request to the executor
 
         Args:
-            executor_url: 执行器 URL (e.g., "http://container-name:8080")
-            execution_id: 执行 ID
-            session_id: 会话 ID
-            code: 要执行的代码
-            language: 编程语言
-            event: 事件数据
-            timeout: 超时时间（秒）
-            env_vars: 环境变量
-            working_directory: 可选执行目录，相对于 workspace 根目录
+            executor_url: executor URL, such as "http://container-name:8080"
+            execution_id: execution id
+            session_id: session id
+            code: the code to run
+            language: programming language
+            event: event payload
+            timeout: timeout in seconds
+            env_vars: environment variables
+            working_directory: optional working directory, relative to the workspace root
 
         Returns:
-            execution_id: 执行任务 ID
+            execution_id: execution task id
 
         Raises:
-            ExecutorConnectionError: 无法连接到执行器
-            ExecutorTimeoutError: 执行器响应超时
-            ExecutorValidationError: 请求验证失败
-            ExecutorResponseError: 执行器返回错误
+            ExecutorConnectionError: the executor is unreachable
+            ExecutorTimeoutError: the executor did not answer in time
+            ExecutorValidationError: the request failed validation
+            ExecutorResponseError: the executor returned an error
         """
         client = self._get_client()
         url = f"{executor_url}/execute"
@@ -185,17 +185,17 @@ class ExecutorClient:
 
     async def health_check(self, executor_url: str) -> ExecutorHealthResponse:
         """
-        检查执行器健康状态
+        Check the executor health
 
         Args:
-            executor_url: 执行器 URL
+            executor_url: executor URL
 
         Returns:
-            健康状态响应
+            The health response
 
         Raises:
-            ExecutorConnectionError: 无法连接到执行器
-            ExecutorUnavailableError: 执行器不健康
+            ExecutorConnectionError: the executor is unreachable
+            ExecutorUnavailableError: the executor is unhealthy
         """
         client = self._get_client()
         url = f"{executor_url}/health"
@@ -223,7 +223,7 @@ class ExecutorClient:
         sync_mode: str,
         executor_timeout: float | None = None,
     ) -> ExecutorSyncSessionConfigResponse:
-        """同步会话依赖配置到 executor。"""
+        """Sync the session dependency configuration to the executor."""
         client = self._get_client()
         url = f"{executor_url}/internal/session-config/sync"
         effective_timeout = executor_timeout or self._timeout
@@ -259,7 +259,7 @@ class ExecutorClient:
         raise ExecutorResponseError(executor_url, response.status_code, response.text)
 
     async def close(self) -> None:
-        """关闭客户端"""
+        """Close the client"""
         if self._client:
             await self._client.aclose()
             self._client = None
