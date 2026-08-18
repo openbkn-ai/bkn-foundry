@@ -2,7 +2,7 @@
 
 [中文](README.zh.md) | English
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE-APACHE.txt)
+[![License](https://img.shields.io/badge/license-Apache%202.0%20%2F%20OpenBKN-blue.svg)](../LICENSE)
 
 ## Platform Definition
 
@@ -106,4 +106,4 @@ We welcome contributions! Please see our [Contributing Guide](../rules/CONTRIBUT
 
 ## License
 
-ADP files are licensed under the Apache License 2.0. See [LICENSE-APACHE.txt](../LICENSE-APACHE.txt), and the repository root [LICENSE](../LICENSE) for the overall licensing model.
+ADP is licensed per file. Files derived from the upstream project are under the Apache License 2.0 ([LICENSE-APACHE.txt](../LICENSE-APACHE.txt)); files newly authored by OpenBKN are under the OpenBKN License ([LICENSE-OPENBKN.txt](../LICENSE-OPENBKN.txt)). Each file's header states which one applies — see the repository root [LICENSE](../LICENSE) and [NOTICE](../NOTICE).

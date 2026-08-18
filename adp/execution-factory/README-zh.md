@@ -11,7 +11,7 @@ BKN Foundry 平台包括 ADP、Decision Agent、AI Store 等关键子系统。
 ## 📚 快速链接
 
 - 🤝 [贡献指南](../../rules/CONTRIBUTING.zh.md) - 项目贡献指南
-- 📄 [许可证](../../LICENSE-APACHE.txt) - Apache License 2.0
+- 📄 [许可证](../../LICENSE) - 按文件分别授权：OpenBKN License，上游衍生文件为 Apache License 2.0
 - 🐛 [报告 Bug](https://github.com/openbkn-ai/bkn-foundry/issues) - 报告问题或 Bug
 - 💡 [功能建议](https://github.com/openbkn-ai/bkn-foundry/issues) - 提出新功能建议
 
@@ -72,4 +72,4 @@ go build -o operator-integration server/main.go
 
 ## 许可证
 
-[Apache-2.0](../../LICENSE-APACHE.txt)
+按文件分别授权：由 OpenBKN 新增的文件采用 [OpenBKN License](../../LICENSE-OPENBKN.txt)，源自上游项目的文件采用 [Apache License 2.0](../../LICENSE-APACHE.txt)。具体适用哪一种以文件头为准，另见根目录 [LICENSE](../../LICENSE) 与 [NOTICE](../../NOTICE)。

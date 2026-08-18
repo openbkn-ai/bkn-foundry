@@ -11,7 +11,7 @@ The BKN Foundry platform includes key subsystems such as ADP, Decision Agent, an
 ## 📚 Quick Links
 
 - 🤝 [Contributing Guide](../../rules/CONTRIBUTING.md) - Guidelines for contributing to the project
-- 📄 [License](../../LICENSE-APACHE.txt) - Apache License 2.0
+- 📄 [License](../../LICENSE) - Licensed per file: OpenBKN License, or Apache License 2.0 for upstream-derived files
 - 🐛 [Report Bug](https://github.com/openbkn-ai/bkn-foundry/issues) - Report issues or bugs
 - 💡 [Feature Request](https://github.com/openbkn-ai/bkn-foundry/issues) - Propose new features
 
@@ -72,4 +72,4 @@ Pull Requests and Issues are welcome!
 
 ## License
 
-[Apache-2.0](../../LICENSE-APACHE.txt)
+Licensed per file. Files newly authored by OpenBKN are under the [OpenBKN License](../../LICENSE-OPENBKN.txt); upstream-derived files are under the [Apache License 2.0](../../LICENSE-APACHE.txt). Each file's header states which one applies — see the repository root [LICENSE](../../LICENSE) and [NOTICE](../../NOTICE).

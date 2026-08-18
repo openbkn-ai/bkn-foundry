@@ -2,7 +2,7 @@
 
 [中文](README.zh.md) | [English](README.md)
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE-APACHE.txt)
+[![License](https://img.shields.io/badge/license-Apache%202.0%20%2F%20OpenBKN-blue.svg)](../LICENSE)
 
 ## 平台定义
 
@@ -106,4 +106,4 @@ VEGA 为异构数据源提供统一的 SQL 接口，将应用程序与底层数�
 
 ## 许可证
 
-ADP 相关文件采用 Apache License 2.0 许可证，详见 [LICENSE-APACHE.txt](../LICENSE-APACHE.txt)；仓库整体的多许可证模型见根目录 [LICENSE](../LICENSE)。
+ADP 按文件分别授权：源自上游项目的文件采用 Apache License 2.0（[LICENSE-APACHE.txt](../LICENSE-APACHE.txt)），由 OpenBKN 新增的文件采用 OpenBKN License（[LICENSE-OPENBKN.txt](../LICENSE-OPENBKN.txt)）。具体适用哪一种以文件头为准，另见根目录 [LICENSE](../LICENSE) 与 [NOTICE](../NOTICE)。
