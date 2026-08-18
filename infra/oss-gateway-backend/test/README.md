@@ -1,118 +1,125 @@
-# OSS Gateway 测试说明
+# OSS Gateway Test Guide
 
-## 测试结构
+## Test Structure
 
-测试文件位于 `test/` 目录下，组织结构如下：
+Test files are located under the `test/` directory and are organized as follows:
 
 ```
 test/
-├── handler/          # Handler层测试
+├── handler/          # Handler-layer tests
 │   ├── storage_test.go
 │   ├── upload_test.go
 │   ├── download_test.go
 │   ├── head_test.go
 │   ├── delete_test.go
 │   └── health_test.go
-└── pkg/             # 工具包测试
+└── pkg/             # Utility package tests
     ├── crypto_test.go
     ├── response_test.go
     └── utils_test.go
 ```
 
-## 运行测试
+## Running Tests
 
-### 运行所有测试
+### Run all tests
+
 ```bash
 make test
 ```
 
-或
+or:
 
 ```bash
 go test ./test/... -v
 ```
 
-### 运行测试并生成覆盖率报告
+### Run tests and generate a coverage report
+
 ```bash
 make test-coverage
 ```
 
-或
+or:
 
 ```bash
 go test ./test/handler/... ./test/pkg/... -v -coverprofile=coverage.out -coverpkg=./internal/...,./pkg/...
 ```
 
-### 查看HTML格式的覆盖率报告
+### View the HTML coverage report
+
 ```bash
 go tool cover -html=coverage.out
 ```
 
-## 测试覆盖范围
+## Test Coverage Scope
 
-### Handler层测试 (test/handler/)
-- **storage_test.go**: 存储配置管理接口测试
-  - 创建、更新、删除、查询存储配置
-  - 存储连接检查
-  - 参数验证和错误处理
+### Handler-layer tests (test/handler/)
 
-- **upload_test.go**: 上传接口测试
-  - 单文件上传URL获取
-  - 分片上传初始化
-  - 分片上传URL获取
-  - 完成分片上传
+- **storage_test.go**: Storage configuration management API tests
+  - Create, update, delete, and query storage configurations
+  - Storage connection checks
+  - Parameter validation and error handling
 
-- **download_test.go**: 下载接口测试
-  - 下载URL获取
-  - 自定义文件名
-  - 内网访问
+- **upload_test.go**: Upload API tests
+  - Single-file upload URL retrieval
+  - Multipart upload initialization
+  - Multipart upload URL retrieval
+  - Multipart upload completion
 
-- **head_test.go**: 元数据查询测试
-  - 单个对象元数据URL获取
-  - 批量对象元数据URL获取
+- **download_test.go**: Download API tests
+  - Download URL retrieval
+  - Custom file names
+  - Internal-network access
 
-- **delete_test.go**: 删除接口测试
-  - 删除URL获取
-  - URL编码处理
+- **head_test.go**: Metadata query tests
+  - Single-object metadata URL retrieval
+  - Batch object metadata URL retrieval
 
-- **health_test.go**: 健康检查测试
-  - 存活检查
-  - 就绪检查
+- **delete_test.go**: Delete API tests
+  - Delete URL retrieval
+  - URL encoding handling
 
-### 工具包测试 (test/pkg/)
-- **crypto_test.go**: AES加密解密测试
-  - 密钥验证
-  - 加密解密功能
-  - 大数据处理
-  - 错误处理
+- **health_test.go**: Health-check tests
+  - Liveness checks
+  - Readiness checks
 
-- **response_test.go**: 响应格式测试
-  - 成功响应
-  - 错误响应
-  - 各种错误码
+### Utility package tests (test/pkg/)
 
-- **utils_test.go**: 工具函数测试
-  - ID生成
-  - Endpoint解析
-  - 参数验证
+- **crypto_test.go**: AES encryption/decryption tests
+  - Key validation
+  - Encryption and decryption functionality
+  - Large-data handling
+  - Error handling
 
-## 测试覆盖率
+- **response_test.go**: Response-format tests
+  - Success responses
+  - Error responses
+  - Various error codes
 
-当前测试覆盖率已达到 **50%以上**，主要覆盖：
-- Handler层的所有HTTP接口
-- 核心工具包函数
-- 错误处理逻辑
+- **utils_test.go**: Utility function tests
+  - ID generation
+  - Endpoint parsing
+  - Parameter validation
 
-## 添加新测试
+## Test Coverage
 
-1. 在相应目录下创建 `*_test.go` 文件
-2. 使用 `testify` 框架编写测试用例
-3. Mock外部依赖（数据库、Redis、OSS适配器等）
-4. 运行测试验证功能
+Current test coverage is above **50%**, mainly covering:
 
-## 依赖
+- All HTTP APIs in the handler layer
+- Core utility package functions
+- Error-handling logic
 
-测试框架使用：
-- `github.com/stretchr/testify` - 断言和Mock
-- `net/http/httptest` - HTTP测试
-- `github.com/gin-gonic/gin` - Gin框架测试模式
+## Adding New Tests
+
+1. Create a `*_test.go` file under the appropriate directory.
+2. Write test cases with the `testify` framework.
+3. Mock external dependencies such as databases, Redis, and OSS adapters.
+4. Run tests to verify the functionality.
+
+## Dependencies
+
+The test framework uses:
+
+- `github.com/stretchr/testify` - Assertions and mocks
+- `net/http/httptest` - HTTP tests
+- `github.com/gin-gonic/gin` - Gin framework test mode

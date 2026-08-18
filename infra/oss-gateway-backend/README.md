@@ -81,11 +81,11 @@ go run main.go server
 
 ## Configuration
 
-配置方式优先级：**环境变量 > local.go > 默认值**
+Configuration precedence: **environment variables > local.go > defaults**.
 
-### 方式 1：修改本地配置文件（推荐用于开发）
+### Method 1: Modify the local configuration file, recommended for development
 
-编辑 `internal/config/local.go` 文件中的 `GetLocalConfig()` 函数：
+Edit the `GetLocalConfig()` function in `internal/config/local.go`:
 
 ```go
 func GetLocalConfig() *LocalConfig {
@@ -93,20 +93,20 @@ func GetLocalConfig() *LocalConfig {
         RedisClusterMode: "standalone",
         RedisHost:        "localhost",
         RedisPort:        "6379",
-        // ... 修改其他配置
+        // ... modify other configuration
     }
 }
 ```
 
-### 方式 2：使用环境变量
+### Method 2: Use environment variables
 
-复制 `.env.example` 为 `.env.debug` 并修改：
+Copy `.env.example` to `.env.debug` and modify it:
 
 ```bash
 cp .env.example .env.debug
 ```
 
-### 方式 3：直接设置环境变量
+### Method 3: Set environment variables directly
 
 ```bash
 export REDISCLUSTERMODE=standalone
@@ -115,50 +115,56 @@ export REDISPORT=6379
 go run main.go server
 ```
 
-### 📋 完整配置说明
+### Complete Configuration Reference
 
-详见 [环境变量配置文档](./ENVIRONMENT_VARIABLES.md)，包含：
-- Redis 三种模式配置（单机/主从/哨兵）
-- K8s ConfigMap/Secret 示例
-- 与 Python 项目的环境变量兼容性说明
+See the [environment variable configuration document](./ENVIRONMENT_VARIABLES.md), which covers:
 
-### 主要配置项
+- Redis configuration for three modes: standalone, master-slave, and sentinel
+- K8s ConfigMap/Secret examples
+- Environment-variable compatibility with Python projects
+
+### Main Configuration Items
 
 #### Server Configuration
 - `PORT`: Server port (default: 8080)
 - `NAME`: Service name (default: oss-gateway)
 
 #### Database Configuration
-- `RDSHOST`: 数据库地址
-- `RDSPORT`: 数据库端口
-- `RDSUSER`: 数据库用户名
-- `RDSPASS`: 数据库密码
-- `RDSDBNAME`: 数据库名称
+- `RDSHOST`: Database address
+- `RDSPORT`: Database port
+- `RDSUSER`: Database username
+- `RDSPASS`: Database password
+- `RDSDBNAME`: Database name
 - `DB_TYPE`: Database type (MYSQL, DM8, KDB9)
 
-#### Redis Configuration（环境变量命名与 Python 项目统一）
+#### Redis Configuration, with environment-variable names aligned with Python projects
 
-**模式选择：**
-- `REDISCLUSTERMODE`: Redis 模式 (standalone/master-slave/sentinel)
+**Mode selection:**
 
-**单机模式 (standalone):**
-- `REDISHOST`: Redis 地址
-- `REDISPORT`: Redis 端口
-- `REDISUSER`: Redis 用户名（可选）
-- `REDISPASS`: Redis 密码（可选）
-- `REDIS_DB`: Redis 数据库编号
+- `REDISCLUSTERMODE`: Redis mode (standalone/master-slave/sentinel)
 
-**主从模式 (master-slave):**
-- `REDISREADHOST`, `REDISREADPORT`, `REDISREADUSER`, `REDISREADPASS`: 读节点配置
-- `REDISWRITEHOST`, `REDISWRITEPORT`, `REDISWRITEUSER`, `REDISWRITEPASS`: 写节点配置
+**Standalone mode:**
 
-**哨兵模式 (sentinel):**
-- `REDIS_SENTINEL_ADDRS`: 哨兵地址列表（逗号分隔）
-- `SENTINELMASTER`: 主节点名称
-- `SENTINELUSER`: 哨兵用户名（可选）
-- `SENTINELPASS`: 哨兵密码（可选）
+- `REDISHOST`: Redis address
+- `REDISPORT`: Redis port
+- `REDISUSER`: Redis username, optional
+- `REDISPASS`: Redis password, optional
+- `REDIS_DB`: Redis database index
 
-> **注意**: 数据库和 Redis 环境变量命名已与 `mf-model-api` Python 项目保持一致，方便 K8s 统一管理。
+**Master-slave mode:**
+
+- `REDISREADHOST`, `REDISREADPORT`, `REDISREADUSER`, `REDISREADPASS`: Read-node configuration
+- `REDISWRITEHOST`, `REDISWRITEPORT`, `REDISWRITEUSER`, `REDISWRITEPASS`: Write-node configuration
+
+**Sentinel mode:**
+
+- `REDIS_SENTINEL_ADDRS`: Comma-separated sentinel address list
+- `SENTINELMASTER`: Master node name
+- `SENTINELUSER`: Sentinel username, optional
+- `SENTINELPASS`: Sentinel password, optional
+
+> **Note**: Database and Redis environment-variable names are aligned with the `mf-model-api` Python project for
+> unified K8s management.
 
 #### OSS Configuration
 - `OSS_DEFAULT_VALID_SECONDS`: Default URL expiration time (default: 3600)
@@ -169,25 +175,25 @@ go run main.go server
 
 For production multi-instance deployment with Redis:
 
-1. **Redis 支持三种模式**：
-   - **单机模式 (standalone)**: 适用于开发和小规模生产
-   - **主从模式 (master-slave)**: 支持读写分离
-   - **哨兵模式 (sentinel)**: 高可用自动故障转移
+1. **Redis supports three modes**:
+   - **Standalone mode**: suitable for development and small-scale production
+   - **Master-slave mode**: supports read/write splitting
+   - **Sentinel mode**: supports high availability and automatic failover
 
-2. **配置 Redis 连接**（环境变量命名与 Python 项目统一）:
+2. **Configure the Redis connection**, with environment-variable names aligned with Python projects:
    ```bash
-   # 单机模式
+   # Standalone mode
    REDISCLUSTERMODE=standalone
    REDISHOST=your-redis-host
    REDISPORT=6379
    REDISPASS=your-redis-password
    
-   # 主从模式
+   # Master-slave mode
    REDISCLUSTERMODE=master-slave
    REDISREADHOST=redis-slave-host
    REDISWRITEHOST=redis-master-host
    
-   # 哨兵模式
+   # Sentinel mode
    REDISCLUSTERMODE=sentinel
    REDIS_SENTINEL_ADDRS=sentinel1:26379,sentinel2:26379
    SENTINELMASTER=mymaster
@@ -196,8 +202,8 @@ For production multi-instance deployment with Redis:
 3. All instances share the same Redis and database
 4. Cache hit rate >95% for high-concurrency scenarios
 
-详细配置说明见 [ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md)  
-缓存架构说明见 [REDIS_CACHE_ARCHITECTURE.md](./REDIS_CACHE_ARCHITECTURE.md)
+For detailed configuration, see [ENVIRONMENT_VARIABLES.md](./ENVIRONMENT_VARIABLES.md).  
+For the cache architecture, see [REDIS_CACHE_ARCHITECTURE.md](./REDIS_CACHE_ARCHITECTURE.md).
 
 ## API Documentation
 

@@ -1,69 +1,75 @@
-# 依赖
-1.	该服务负责大模型和小模型api调用，和mf-model-manager使用同一个基础镜像和数据库
+# Dependencies
 
-## OpenAI 兼容面的错误契约
+1. This service handles large-model and small-model API calls. It shares the same base image and database with `mf-model-manager`.
 
-`/v1/chat/completions`（公开路由与 S2S `private` 路由）对外声明为 OpenAI 兼容，
-调用方（`@ai-sdk/openai-compatible`、`openai-python`、LangChain）解析响应时用的是
-`union(chunkSchema, errorSchema)`：要么顶层有 `choices`，要么顶层有 `error`。
-因此该路由上**所有失败出口**——SSE 帧与 JSON body——都必须是：
+## Error Contract for the OpenAI-Compatible Surface
+
+`/v1/chat/completions`, including the public route and the S2S `private` route, is declared as OpenAI-compatible.
+Callers such as `@ai-sdk/openai-compatible`, `openai-python`, and LangChain parse responses with
+`union(chunkSchema, errorSchema)`: either the top level contains `choices`, or the top level contains `error`.
+Therefore, every failure exit on this route, including SSE frames and JSON bodies, must use this shape:
 
 ```json
 {"error": {"message": "...", "type": "...", "param": null, "code": "..."}}
 ```
 
-规则：
+Rules:
 
-- **不套 envelope。** 模型工厂自家的 `{code, description, detail, solution, link}`
-  两边都不匹配，客户端会抛 `TypeValidationError` 并把原始 body 冒给终端用户（#620）。
-- **上游已合规就原样透传。** 上游返回的 `{"error": {...}}` 直接带下去，不要
-  JSON 字符串化后塞进别的字段——那会逼调用方 `JSON.parse` 两次。
-- **状态码跟随上游语义，但依赖侧的鉴权码不透传。** 描述「调用方这次请求本身有
-  问题」的 4xx（400/408/413/422/429）透传；上游 401/403/404 描述的是本服务与
-  模型厂商之间的认证结果，透出去会被调用方读成自己的凭据/权限失效（本服务自己
-  的 403 表示「无该模型 execute 权限」），一律收敛成 `502`，真实原因留在
-  `error.type` 里。5xx 收敛成 `503`，连不上是 `502`；限流/不可用带
-  `Retry-After`。映射与判定集中在 `app/utils/openai_error.py`。
-- **不外泄未知形态的上游 body。** 已知字段（`error.message` / `message` /
-  `detail` / …）都没命中时给固定文案，原文只落日志——供应商 5xx 常回显整个请求、
-  内部 trace id 和网关节点名。内部异常同理，`str(e)` 不进 `error.message`。
-- **流式先发错误帧再断流。** SSE 已开流后才出错的，发一帧
-  `data: {"error": {...}}` 然后结束，不要把错误塞在 chunk 的位置上。
-  注意：`EventSourceResponse` 的响应头在生成器执行前就已刷出，
-  所以流式场景的 HTTP 状态码恒为 200，错误只能靠错误帧表达。
-- **瞬态错误先重试。** 上游 429/502/503/504 走退避重试（`sleep_before_retry`），
-  重试用完才报错；4xx 参数类错误不重试。
+- **Do not wrap with an envelope.** Model Factory's own `{code, description, detail, solution, link}`
+  shape matches neither side. Clients throw `TypeValidationError` and expose the raw body to end users (#620).
+- **Pass through compliant upstream errors as-is.** If the upstream returns `{"error": {...}}`, forward it directly.
+  Do not stringify the JSON and put it into another field, because that forces callers to run `JSON.parse` twice.
+- **Status codes follow upstream semantics, but dependency-side auth codes are not passed through.** Pass through
+  4xx codes that describe a problem with the caller's current request itself, namely 400/408/413/422/429.
+  Upstream 401/403/404 describe authentication between this service and the model provider. Passing them through
+  would make callers interpret the result as their own credential or permission failure. This service's own 403
+  means "no execute permission for this model"; dependency-side 401/403/404 are collapsed to `502`, with the real
+  cause preserved in `error.type`. 5xx errors are collapsed to `503`, connection failures are `502`, and rate
+  limiting or unavailability carries `Retry-After`. Mapping and classification are centralized in
+  `app/utils/openai_error.py`.
+- **Do not leak unknown upstream body shapes.** When none of the known fields, such as `error.message`, `message`,
+  or `detail`, match, return fixed wording and write the original text only to logs. Provider 5xx responses often
+  echo the full request, internal trace IDs, and gateway node names. Internal exceptions follow the same rule:
+  `str(e)` must not enter `error.message`.
+- **For streaming, send an error frame before closing the stream.** If an error occurs after the SSE stream has
+  started, send one `data: {"error": {...}}` frame and then terminate. Do not place the error where a chunk should
+  be. Note that `EventSourceResponse` flushes response headers before the generator runs, so streaming HTTP status
+  is always 200 and errors can only be expressed by error frames.
+- **Retry transient errors first.** Upstream 429/502/503/504 use backoff retries through `sleep_before_retry`;
+  report the error only after retries are exhausted. 4xx parameter errors are not retried.
 
-兼容面覆盖到**框架层**：请求体在 pydantic 就被打回的那类走 FastAPI 的
-`RequestValidationError` 处理器，同样按路径转成 OpenAI 错误体（`app/routers/__init__.py`
-的 `_is_openai_compat`）。该处理器是全服务共用的——小模型、模型管理等端点不是
-兼容面，继续用 envelope，改这里千万别一刀切。
+The compatibility surface also covers the framework layer. Request bodies rejected by pydantic use FastAPI's
+`RequestValidationError` handler and are converted by path into OpenAI error bodies in `_is_openai_compat` inside
+`app/routers/__init__.py`. That handler is shared by the whole service. Small-model and model-management endpoints
+are not compatibility surfaces and must continue to use the envelope shape, so do not apply this conversion globally.
 
-内部 envelope（参数校验、权限、配额等）经
-`llm_controller.envelope_error_response()` 翻成上述形状后再出门，原 `code`
-落到 OpenAI 的 `code` 字段，机器可读的身份不丢。
+Internal envelopes, including parameter validation, permission, and quota errors, are converted by
+`llm_controller.envelope_error_response()` into the shape above before leaving the service. The original `code`
+lands in OpenAI's `code` field, preserving the machine-readable identity.
 
-回归测试见 `app/test/test_openai_error.py` 与 `app/test/test_llm_error_contract.py`。
+Regression tests are in `app/test/test_openai_error.py` and `app/test/test_llm_error_contract.py`.
 
-## 日志纪律
+## Logging Discipline
 
-调第三方模型时，请求头带的是**供应商 api_key**，请求体带的是**用户的完整对话
-内容**。这两样整体拼进日志就顺着采集链路离开了本服务，而日志的读权限模型跟凭据
-管理、业务数据管理都不是一套（#636）。
+When calling third-party models, request headers carry the provider `api_key`, and the request body carries the
+user's full conversation content. If both are written into logs as-is, they leave this service through the log
+collection pipeline, whose read-permission model is separate from credential management and business-data
+management (#636).
 
-往日志里放请求上下文一律经 `app/utils/log_redact.py`：
+All request context written to logs must go through `app/utils/log_redact.py`:
 
-- `safe_headers(headers)` —— `Authorization` / `api-key` / `Cookie` 等只留掩码
-  （保留 `Bearer` 方案前缀与前 4 位，够认出是哪把 key，不够拿去用），其余原样
-- `request_digest(params)` —— 请求体压成 model / stream / 消息条数 / 字符数 /
-  role 序列 / 采样参数，**不含任何 `content`**
-- `messages_digest(messages)` —— 只有 messages 在手时的简写
-- `safe_url(url)` —— 只留 scheme+host+path，query 一律抹掉（百度 oauth 把
-  `client_secret` 拼在 query 里，`OtherClient.api_url` 又是管理员自由填的）
+- `safe_headers(headers)` masks `Authorization`, `api-key`, `Cookie`, and similar fields. It preserves the `Bearer`
+  scheme prefix and the first four characters, which is enough to identify which key was used but not enough to use
+  the key. Other headers are preserved as-is.
+- `request_digest(params)` compresses the request body into model, stream, message count, character count, role
+  sequence, and sampling parameters. It contains no `content`.
+- `messages_digest(messages)` is the shorthand used when only `messages` is available.
+- `safe_url(url)` keeps only scheme, host, and path, and removes the entire query. Baidu OAuth puts
+  `client_secret` in the query string, and `OtherClient.api_url` is freely configured by administrators.
 
-**成功路径同样适用**：原来 `BaiduTianchenClient` 每次调用都会把完整 `messages`
-以 INFO 落盘一次，比出错才触发的那几处流得更狠，一并换成摘要了。
+**Successful paths follow the same rule.** `BaiduTianchenClient` previously logged full `messages` at INFO on every
+call, which leaked more aggressively than the error-only paths. It now logs only the digest.
 
-要复现问题用摘要里的 model 与参数，配合调用方自己的 trace，不要靠日志回放用户
-原文。回归见 `app/test/test_log_redact.py`（含一条断言直接扫源码，防止泄露点
-被重新写回来）。
+To reproduce issues, use the model and parameters in the digest together with the caller's own trace. Do not replay
+the user's original text from logs. See `app/test/test_log_redact.py` for regression coverage, including a source
+scan assertion that prevents leak points from being reintroduced.

@@ -1,28 +1,37 @@
-# mf-model-api BKN Trace 接入合同
+# mf-model-api BKN Trace Integration Contract
 
-> 状态：BKN Trace 2.1 生产者实施基线
-> 更新时间：2026-07-25
-> 权威依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
+> Status: BKN Trace 2.1 producer implementation baseline
+> Updated: 2026-07-25
+> Authoritative source: `bkn-docs/docs/foundry/bkn-trace/registry/%E6%A0%B8%E5%BF%83%E4%B8%9A%E5%8A%A1%E4%BA%8B%E4%BB%B6%E6%B3%A8%E5%86%8C%E8%A1%A8.md`
 
-## 一、模块责任
+## 1. Module Responsibility
 
-- 模块名与观测服务：`mf-model-api`。
-- OpenAI、Claude、Baidu、Baidu Tianchen 和其他实际模型分支统一记录 `model.call.observed`，覆盖普通与流式响应。
-- 本模块只记录模型调用事实，不替 Agent/AI 应用创建结论、证据引用或业务引用。
-- 成功构造模型事实后，通过响应头 `bkn-evidence-event-id` 返回稳定事件 ID；同时将请求中安全校验且实际进入模型上下文的 `bkn-candidate-source-event-ids` 作为 `bkn-adopted-source-event-ids` 回执，供上层创建结论时绑定来源。
+- Module name and observability service: `mf-model-api`.
+- OpenAI, Claude, Baidu, Baidu Tianchen, and other actual model branches uniformly record `model.call.observed`,
+  covering both non-streaming and streaming responses.
+- This module records only model-call facts. It does not create conclusions, evidence references, or business
+  references on behalf of Agents or AI applications.
+- After successfully building the model-call fact, the service returns a stable event ID through the
+  `bkn-evidence-event-id` response header. It also returns the request's safely validated
+  `bkn-candidate-source-event-ids` that actually entered the model context as `bkn-adopted-source-event-ids`, so
+  upper layers can bind sources when creating conclusions.
 
-## 二、上下文与重放
+## 2. Context and Replay
 
-上游必须传入合法 trace/request，以及 `bkn-interaction-id`、`bkn-operation-id`、`bkn-causation-event-id` 和 `bkn-event-observed-at`；`bkn-attempt` 默认 `1`。
+Upstream callers must pass a valid trace/request together with `bkn-interaction-id`, `bkn-operation-id`,
+`bkn-causation-event-id`, and `bkn-event-observed-at`. `bkn-attempt` defaults to `1`.
 
-- `bkn-event-observed-at` 是首次业务调用创建的 UTC RFC3339Nano 时间，重试和跨进程重放必须复用。
-- 缺少任一业务因果字段或可靠 observed time 时不创建业务事实，只保留技术日志/trace。
-- `event_id = evt_ + sha256(trace_id|operation_id|event_type|attempt)` 的完整 64 位十六进制结果。
-- 不能仅复用 operation 并用当前时间重建事件；生产者不持久化 envelope，这种重启场景明确不受支持。
+- `bkn-event-observed-at` is the UTC RFC3339Nano time created by the first business call. Retries and cross-process
+  replay must reuse it.
+- If any business-causality field or reliable observed time is missing, do not create a business fact; keep only
+  technical logs/traces.
+- `event_id = evt_ + sha256(trace_id|operation_id|event_type|attempt)` uses the full 64-character hexadecimal hash.
+- Do not rebuild an event by reusing only `operation` with the current time. The producer does not persist envelopes,
+  so that restart scenario is explicitly unsupported.
 
-## 三、事件与敏感边界
+## 3. Events and Sensitive Boundaries
 
-payload 精确允许：
+The payload allows exactly:
 
 ```text
 model_name
@@ -32,26 +41,32 @@ input_token_count
 output_token_count
 prompt_hash
 output_hash
-error_category（错误时）
-error_hash（错误时）
+error_category (on error)
+error_hash (on error)
 ```
 
-完整 prompt/messages、模型输出、工具 schema/参数/结果、供应商错误、PII、API key、Authorization 和 Cookie 均不得进入事件、普通日志或 span。成功与失败仅记录哈希、计数和安全枚举。
+Full prompts/messages, model output, tool schemas/parameters/results, provider errors, PII, API keys,
+Authorization, and Cookies must not enter events, normal logs, or spans. Successes and failures record only hashes,
+counts, and safe enums.
 
-## 四、可靠性
+## 4. Reliability
 
-- ingest HTTP 非 2xx 视为失败，最多尝试三次。
-- 异步任务保留强引用；最终失败记录 warning，模型业务响应保持失败开放。
-- 当前没有持久 outbox，进程退出可能丢失未提交事件；完整可靠重放由调用方保存并复用 envelope 后主动重试。
+- Non-2xx ingest HTTP responses are treated as failures and retried up to three times.
+- Asynchronous tasks keep strong references. Final failures are recorded as warnings, and model business responses
+  remain fail-open.
+- There is currently no persistent outbox, so unsubmitted events may be lost when the process exits. Fully reliable
+  replay is the caller's responsibility: the caller must save and reuse the envelope, then retry actively.
 
-## 五、验收
+## 5. Acceptance
 
-- fixture：`fixtures/bkn-trace/phase2/mf_model_call_l2_positive.json`。
-- Given 任一实际模型 provider，When 普通或流式调用结束，Then 使用同一 producer 合同产出成功或失败事实。
-- Given 相同完整 envelope 重放，Then event ID 和 observed time 不变。
-- Given 缺少 `bkn-event-observed-at`，When 模型结束，Then 不产生会冲突的新事件。
-- Given 非 2xx ingest，When 上报，Then 重试三次并记录最终失败。
+- Fixture: `fixtures/bkn-trace/phase2/mf_model_call_l2_positive.json`.
+- Given any actual model provider, when a non-streaming or streaming call finishes, then the same producer contract
+  emits a success or failure fact.
+- Given replay with the same complete envelope, then the event ID and observed time are unchanged.
+- Given a missing `bkn-event-observed-at`, when the model call finishes, then no conflicting new event is produced.
+- Given non-2xx ingest, when reporting, then the service retries three times and records the final failure.
 
-## 六、已知限制
+## 6. Known Limitations
 
-模型模块不保存 prompt/output 快照，也没有持久 outbox；结论绑定、业务语义解析和快照由上层 Agent/AI 应用与 BKN Trace 核心负责。
+The model module does not store prompt/output snapshots and has no persistent outbox. Conclusion binding, business
+semantic parsing, and snapshots are owned by upper-layer Agents/AI applications and BKN Trace core.
