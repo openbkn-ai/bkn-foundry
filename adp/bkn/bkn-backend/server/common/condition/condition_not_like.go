@@ -72,7 +72,8 @@ func (cond *NotLikeCond) Convert2SQL(ctx context.Context) (string, error) {
 
 // convertNotLikeCondToDatasetFilterCondition converts NotLikeCond to dataset filter condition format
 func convertNotLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, error) {
-	// 同 like：这条路不构造 NotLikeCond，值直接透传给 vega，契约校验要在这里也做一次
+	// As with like: this path never builds a NotLikeCond and forwards the value straight to vega,
+	// so the contract has to be checked here as well
 	val, ok := cfg.Value.(string)
 	if !ok {
 		return nil, fmt.Errorf("condition [not_like] right value is not a string value: %v", cfg.Value)

@@ -219,7 +219,8 @@ func TestLikeCond_Convert2SQL(t *testing.T) {
 
 			sql, err := likeCond.Convert2SQL(ctx)
 			So(err, ShouldBeNil)
-			// 两端的 % 是 contains 语义补上的，值里的 % _ 被转义成字面量
+			// The outer % pair comes from the contains semantics; the % and _ inside the value
+			// are escaped into literals
 			So(sql, ShouldEqual, `"field1" LIKE '%test\'\%\_%'`)
 		})
 
@@ -254,7 +255,8 @@ func TestParseLikeValue(t *testing.T) {
 			So(literal, ShouldEqual, "吹塑风管")
 		})
 
-		// _ 在改动前每条路上都是字面量，拒它是误伤：带下划线的检索词太常见
+		// _ was literal on every path before this change, so rejecting it is collateral damage:
+		// search terms containing an underscore are common
 		Convey("bare underscore stays a literal", func() {
 			literal, err := ParseLikeValue(OperationLike, "object_type")
 			So(err, ShouldBeNil)
@@ -283,8 +285,9 @@ func TestParseLikeValue(t *testing.T) {
 	})
 }
 
-// query_object_instance 走的是 dataset filter 这条路，不构造 LikeCond，所以契约校验
-// 必须在转换函数里也生效，否则 "%foo%" 会一路透传到 vega 才被拦。
+// query_object_instance takes the dataset filter path, which never builds a LikeCond, so the
+// contract check has to live in the converter too — otherwise "%foo%" travels all the way to
+// vega before anything stops it.
 func TestConvertLikeCondToDatasetFilterCondition(t *testing.T) {
 	Convey("Test convertLikeCondToDatasetFilterCondition", t, func() {
 		Convey("passes the raw value through so vega can parse the escapes", func() {

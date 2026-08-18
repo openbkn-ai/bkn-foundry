@@ -66,8 +66,9 @@ func (cond *LikeCond) Convert2SQL(ctx context.Context) (string, error) {
 
 // convertLikeCondToDatasetFilterCondition converts LikeCond to dataset filter condition format
 func convertLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, error) {
-	// 这条路不构造 LikeCond，值直接透传给 vega，因此契约校验要在这里也做一次：
-	// 报错带上对象类属性名，比等 vega 报资源字段名更好定位。
+	// This path never builds a LikeCond and forwards the value straight to vega, so the contract
+	// has to be checked here as well: naming the object type property beats waiting for vega to
+	// report a resource field name the caller never mentioned.
 	val, ok := cfg.Value.(string)
 	if !ok {
 		return nil, fmt.Errorf("condition [like] right value is not a string value: %v", cfg.Value)
@@ -79,22 +80,25 @@ func convertLikeCondToDatasetFilterCondition(cfg *CondCfg) (map[string]any, erro
 	return map[string]any{
 		"field":      cfg.Field,
 		"operation":  "like",
-		// 透传原值（转义未解开）：vega 会再解析一次，提前解开会把字面量 % 当成通配符
+		// Forward the value with its escapes intact: vega parses it again, and unescaping early
+		// would turn a literal % into a wildcard
 		"value":      cfg.Value,
 		"value_from": "const",
 	}, nil
 }
 
-// ParseLikeValue 校验并解析 like / not_like 的值，返回要匹配的字面子串。
+// ParseLikeValue validates a like / not_like value and returns the literal substring to match.
 //
-// like 的契约是「子串包含」，不是 SQL LIKE 模式。此前各条路对 % 的处理并不一致——DSL
-// 路径把值原样塞进 .*value.* 正则，SQL 路径连两端的 % 都不补，而下游 vega 的 SQL 连接器
-// 又会把 % 转义成字面量，于是 "%foo%" 这种 SQL 写法在任何一条路上都恒返回空集且不报错。
-// 因此未转义的 % 显式报错，指向 regex；要匹配字面量写 \%。
+// like matches a literal substring; it is not a SQL LIKE pattern. The paths used to disagree
+// about %: the DSL builder dropped the raw value into a .*value.* regexp, the SQL builder did
+// not wrap the value at all, and vega's SQL connectors downstream escaped % into a literal — so
+// a SQL-style "%foo%" returned an empty set on every path without ever raising an error. An
+// unescaped % is therefore rejected and pointed at regex; write \% to match the character.
 //
-// _ 不在拒绝之列：改动前每条路都把它当字面量（Special.Replace 转义成 \_，DSL 的 .* 正则
-// 里也不是元字符），不存在 % 那种「静默空集」，而检索词里带下划线极常见。
-// 与 vega 的 filter_condition.ParseLikeValue 同一套规则。
+// _ is not rejected: every path already treated it literally (Special.Replace escapes it to \_,
+// and it is not a metacharacter inside the DSL .* regexp), so it never had the silent-empty-set
+// failure that justifies rejecting %, and underscores in search terms are common.
+// Same rules as filter_condition.ParseLikeValue in vega.
 func ParseLikeValue(operation, value string) (string, error) {
 	var literal strings.Builder
 	escaped := false
@@ -102,7 +106,7 @@ func ParseLikeValue(operation, value string) (string, error) {
 	for _, r := range value {
 		switch {
 		case escaped:
-			// 只有 % _ \ 有转义意义，其余保留反斜杠本身
+			// Only % _ \ carry an escape meaning; anything else keeps the backslash
 			if r != '%' && r != '_' && r != '\\' {
 				literal.WriteRune('\\')
 			}
@@ -126,7 +130,7 @@ func ParseLikeValue(operation, value string) (string, error) {
 	return literal.String(), nil
 }
 
-// LikeContainsPattern 把字面子串转成 OpenSearch 的 wildcard 模式，只需转义 * ? \。
+// LikeContainsPattern turns a literal substring into an OpenSearch wildcard pattern; only * ? \ need escaping.
 func LikeContainsPattern(literal string) string {
 	var escaped strings.Builder
 	for _, r := range literal {
