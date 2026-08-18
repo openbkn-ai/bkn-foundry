@@ -514,7 +514,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	}}, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
-		span.SetStatus(codes.Error, "创建资源失败")
+		span.SetStatus(codes.Error, "failed to create resource")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_CreateResourcesFailed).
 			WithErrorDetails(err.Error())
@@ -1281,8 +1281,9 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	if req.SchemaDefinition == nil {
 		return indexConfigChanged, nil
 	}
-	// 库里的存量 schema 可能带自引用 ref_property（迁移前平台自己写的形状），请求侧已在
-	// 入口抹平。两侧都归一化后再比，否则一次没改 schema 的普通编辑会被判成 build 相关变更。
+	// A stored legacy schema can contain a self-referencing ref_property written by the platform before
+	// migration. The request was normalized at ingress; normalize both sides before comparison so an
+	// ordinary edit without schema changes is not classified as a build-related change.
 	NormalizeSelfReferencingFeatures(resource.SchemaDefinition)
 	schemaChanged, err := validateMutableSchemaUpdate(
 		ctx,

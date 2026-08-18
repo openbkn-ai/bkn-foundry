@@ -169,15 +169,15 @@ func (dsa *discoverScheduleAccess) Disable(ctx context.Context, id string) error
 
 /**
  * Create a scheduled discovery task
- * @param ctx 上下文信息，用于追踪和传递请求范围的数据
+ * @param ctx context used for tracing and carrying request-scoped data
  * @param schedule regularly discovers the pointer of the task structure, which contains all the information of the task
  * @return error execution result: nil for success and error message for failure
  */
 func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
-	// 使用OpenTelemetry追踪函数执行过程，创建一个客户端类型的span
+	// Trace the function with OpenTelemetry by creating a client span.
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Insert into t_discover_schedule")
-	defer span.End() // 确保span在函数结束时结束
-	// 设置span的属性，包含数据库URL和类型信息
+	defer span.End() // End the span when the function returns.
+	// Attach the database URL and type information to the span.
 	span.SetAttributes(
 		attr.Key("db_url").String(libdb.GetDBUrl()),
 		attr.Key("db_type").String(libdb.GetDBType()))

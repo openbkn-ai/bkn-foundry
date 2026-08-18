@@ -26,16 +26,16 @@ func IsFeatureSupported(propertyType string, featureType string) bool {
 	}
 }
 
-// NormalizeSelfReferencingFeatures 抹平字段特征里指向属性自身的 ref_property。
+// NormalizeSelfReferencingFeatures removes ref_property values that point to their own property.
 //
-// ref_property 的语义是「特征挂在 A 属性上、但作用于 B 字段」，指向字段自身是无意义的
-// 冗余写法：能力派生在 ref_property 为空时本来就落回属性自身（见 bkn-backend 的
-// VegaResourceIndexCaps），两种写法同解。
+// ref_property means that a feature attached to property A acts on field B. Pointing it back to A
+// is redundant: capability derivation already falls back to the property itself when ref_property
+// is empty (see VegaResourceIndexCaps in bkn-backend), so both forms are equivalent.
 //
-// 历史上平台自己写入的存量资源正是这个形状，因此必须就地抹平而不是报错。抹平要同时作用在
-// 请求侧与库里读出来的 schema 上：只归一化一侧的话，两侧 Features 不再 DeepEqual，
-// 资源更新会被 validateMutableSchemaUpdate 判成 build 相关变更，进而清空 LocalIndexName，
-// 让一次普通编辑把已建好的索引废掉。
+// The platform historically persisted legacy resources in this form, so normalize them instead of
+// rejecting them. Apply normalization to both request and stored schemas; normalizing only one side
+// makes their Features unequal, causing validateMutableSchemaUpdate to classify an ordinary edit as
+// a build-related change, clear LocalIndexName, and invalidate an existing index.
 func NormalizeSelfReferencingFeatures(props []*interfaces.Property) {
 	for _, prop := range props {
 		if prop == nil {

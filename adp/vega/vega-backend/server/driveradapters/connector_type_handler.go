@@ -85,11 +85,11 @@ func (r *restHandler) ListConnectorTypes(c *gin.Context) {
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
 
-		// 记录异常日志
+		// Log the error.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), nil)
 
-		// 设置 trace 的错误信息的 attributes
+		// Attach error details to the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -149,7 +149,7 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 	}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Attach the relevant API attributes to the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.ConnectorTypeReq
@@ -191,7 +191,7 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 		return
 	}
 
-	// 成功创建记录审计日志
+	// Record the successful creation in the audit log.
 	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
 		interfaces.GenerateConnectorTypeAuditObject(req.Type, req.Name), "")
 

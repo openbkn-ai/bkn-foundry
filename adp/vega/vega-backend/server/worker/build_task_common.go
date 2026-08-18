@@ -170,10 +170,10 @@ func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces
 		schema = schemaDefinition
 	}
 
-	// 从没被 PUT 过的存量资源，库里仍是自引用形状。不抹平的话：dataset 类目会撞上「不许带
-	// ref_property」，text 字段上的 keyword 自引用还会撞上 ref 类型校验（keyword 要求
-	// string），构建任务直接建不起来——正是这个 PR 要解的「索引重建不了」。
-	// 只作用在上面那份深拷贝上，资源行本身不动，等下一次更新自愈。
+	// Legacy resources that have never been updated still contain self-references. Without normalization,
+	// dataset resources violate the ref_property restriction and keyword self-references on text fields
+	// fail ref type validation (keyword requires string), preventing build task creation. Apply this only
+	// to the deep copy above; leave the resource row unchanged so its next update can repair it.
 	resourcelogic.NormalizeSelfReferencingFeatures(schema)
 
 	if err := validateBuildTaskSchemaFeatures(resource.Category, schema); err != nil {

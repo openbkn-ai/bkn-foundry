@@ -1114,10 +1114,10 @@ func (c *OpenSearchConnector) ConvertFilterConditionKnnVector(condition interfac
 	}, nil
 }
 
-// likeContainsPattern 把 like / not_like 的字面子串转成 OpenSearch 的 wildcard 模式。
+// likeContainsPattern converts a literal like/not_like substring into an OpenSearch wildcard pattern.
 //
-// like 的契约是子串包含，值里的 % 与 _ 已在 filter_condition.ParseLikeValue 拦下，
-// 到这里的都是要原样匹配的字面量，因此只需转义 wildcard 自己的元字符 * ? \ 后两端补 *。
+// The like contract uses substring containment. ParseLikeValue has already handled % and _,
+// so the value is matched literally here; escape the wildcard metacharacters * ? \ and wrap it in *.
 func (c *OpenSearchConnector) likeContainsPattern(input string) string {
 	var escaped strings.Builder
 	for _, r := range input {

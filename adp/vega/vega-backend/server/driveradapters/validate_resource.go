@@ -59,10 +59,11 @@ func validateResourceRequestSchema(ctx context.Context, req *interfaces.Resource
 		}
 		return validateSchemaProperties(ctx, req.SchemaDefinition, false)
 	default:
-		// 只有原始资源支持 ref_property，也只有它们的存量数据里会有自引用形状，因此归一化
-		// 只在这一支做：dataset 的 ref_property 在 #837 之前就是 400，放宽它属于本次回归
-		// 之外的行为变更。库里读出来的 schema 由 logics 层做同样的归一化，两侧必须一致，
-		// 否则更新会被判成 build 相关变更而清空 LocalIndexName。
+		// Only raw resources support ref_property, and only their legacy data can contain
+		// self-references. Normalize this branch alone: dataset ref_property already returned
+		// 400 before #837, so relaxing it would be unrelated behavior change. The logics layer
+		// performs the same normalization on stored schemas; both sides must match or an update
+		// is treated as a build-related change and clears LocalIndexName.
 		resourcelogic.NormalizeSelfReferencingFeatures(req.SchemaDefinition)
 		return validateSchemaProperties(ctx, req.SchemaDefinition, true)
 	}

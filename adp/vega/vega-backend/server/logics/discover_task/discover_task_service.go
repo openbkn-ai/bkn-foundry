@@ -83,9 +83,9 @@ func (dts *discoverTaskService) RequestDispatch() {
 //	-string: The task ID created
 //	-error: Error message, which returns an error if the creation fails
 func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.CreateDiscoverTaskRequest) (string, error) {
-	// 使用分布式追踪系统创建一个span，用于追踪服务调用
+	// Create a distributed tracing span for the service call.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.Create")
-	defer span.End() // 确保span在函数结束时结束
+	defer span.End() // End the span when the function returns.
 
 	// Get account info from context
 	accountInfo := interfaces.AccountInfo{}

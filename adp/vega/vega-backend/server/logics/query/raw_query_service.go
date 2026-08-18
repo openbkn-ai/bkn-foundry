@@ -66,7 +66,7 @@ func (rqs *rawQueryService) Execute(ctx context.Context, req *interfaces.RawQuer
 	defer span.End()
 
 	// Collect resource status alerts (deprecated hits) and attach them to the response on each successful return path.
-	// 同时落到当前 span 关联的日志里，便于事后审计。
+	// Also write this to the log associated with the current span for later auditing.
 	var warnings []string
 	defer func() {
 		if resp != nil && resp.Paging == nil {

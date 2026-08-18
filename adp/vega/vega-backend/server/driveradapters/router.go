@@ -322,7 +322,7 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 }
 
 // LanguageMiddleware resolves Accept-Language once and stores it in request context.
-// 注册顺序必须在 TracingMiddleware 之后，这样 language ctx 叠加在 trace ctx 上。
+// Register this after TracingMiddleware so that the language context wraps the trace context.
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
 	return rest.LanguageMiddleware()
 }
@@ -336,7 +336,7 @@ func (r *restHandler) TraceContextMiddleware() gin.HandlerFunc {
 	}
 }
 
-// gin中间件 访问日志
+// Gin middleware for access logging.
 func (r *restHandler) AccessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		beginTime := time.Now()

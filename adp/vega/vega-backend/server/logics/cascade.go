@@ -21,7 +21,8 @@ import (
 // The filter must set either ResourceID for one resource or CatalogID for every resource in a catalog.
 // If a matching task is running or stopping, HasRunningExecution is returned and nothing is deleted.
 //
-// 索引 drop 失败仅记日志、不阻断（与既有"索引删除失败不影响资源删除"语义一致）；
+// A failed index drop is logged but does not block deletion, preserving the existing
+// "index deletion failure does not affect resource deletion" behavior.
 // Errors are returned only when task-row deletion fails. This helper lives in logics because both the
 // resource and catalog services use it, while logics/build_task already depends on logics/catalog.
 func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess, lim interfaces.LocalIndexManager, filter interfaces.BuildTasksQueryParams) error {

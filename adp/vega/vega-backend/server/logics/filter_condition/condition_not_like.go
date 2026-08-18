@@ -17,7 +17,7 @@ type NotLikeCond struct {
 	Cfg    *interfaces.FilterCondCfg
 	Lfield *interfaces.Property
 	Value  string
-	// LegacyWildcards 含义同 LikeCond
+	// LegacyWildcards has the same meaning as in LikeCond.
 	LegacyWildcards bool
 }
 

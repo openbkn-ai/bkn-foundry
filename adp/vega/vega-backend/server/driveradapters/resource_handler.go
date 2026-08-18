@@ -227,7 +227,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 		return
 	}
 
-	// 成功创建记录审计日志
+	// Record the successful creation in the audit log.
 	audit.NewInfoLog(audit.OPERATION, audit.CREATE, audit.TransforOperator(visitor),
 		interfaces.GenerateResourceAuditObject(resource.ID, req.Name), "")
 

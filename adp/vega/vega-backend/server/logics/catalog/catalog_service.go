@@ -323,7 +323,7 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	}}, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
-		span.SetStatus(codes.Error, "创建目录资源失败")
+		span.SetStatus(codes.Error, "failed to create catalog resource")
 		return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_CreateResourcesFailed).
 			WithErrorDetails(err.Error())

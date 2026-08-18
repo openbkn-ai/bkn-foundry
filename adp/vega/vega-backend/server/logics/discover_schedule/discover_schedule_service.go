@@ -69,7 +69,7 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
  * @return error returns errors that may occur during the operation process
  */
 func (dss *discoverScheduleService) Create(ctx context.Context, req *interfaces.DiscoverScheduleRequest) (string, error) {
-	// 使用OpenTelemetry追踪请求执行过程
+	// Trace request execution with OpenTelemetry.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.Create")
 	defer span.End()
 
@@ -311,9 +311,9 @@ func (dss *discoverScheduleService) Disable(ctx context.Context, id string) erro
 // ExecuteSchedule is a method for executing plan discovery tasks
 // It takes a context and a planned discovery task as parameters and returns an error
 func (dss *discoverScheduleService) ExecuteSchedule(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
-	// 使用追踪器创建一个新的span，用于监控和追踪请求的执行过程
+	// Create a span to monitor and trace request execution.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.ExecuteSchedule")
-	defer span.End() // 确保在函数返回时结束span
+	defer span.End() // End the span when the function returns.
 
 	// Check whether the DiscoverTaskService has been set up
 	if dss.dts == nil {
