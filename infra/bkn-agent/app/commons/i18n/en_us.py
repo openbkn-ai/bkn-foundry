@@ -216,6 +216,26 @@ error_messages = {
         "detail": "The agent data does not satisfy the current validation rules.",
         "solution": "Fix the agent first (PUT /agents/{id} with a valid configuration), then export.",
     },
+    "BknAgent.Impex.OwnedByAnotherAccount": {
+        "detail_template": "Agent {agent_id} belongs to {owner} and cannot be overwritten by an import.",
+        "detail": "The agent belongs to another account and cannot be overwritten by an import.",
+    },
+    "BknAgent.Impex.AgentNameTaken": {
+        "detail_template": "The agent name \u201c{agent_name}\u201d is already taken by {holder_id}.",
+        "detail": "The agent name is already taken.",
+    },
+    "BknAgent.Impex.PromptNameTaken": {
+        "detail_template": "The prompt name \u201c{prompt_name}\u201d is already taken by {holder_id}.",
+        "detail": "The prompt name is already taken.",
+    },
+    "BknAgent.Tool.EnumHint": {
+        "detail_template": " (allowed values: {values})",
+        "detail": "",
+    },
+    "BknAgent.Impex.MissingAgentReference": {
+        "detail_template": "Agent {agent_name} references sub-agent {ref_id}, which is neither in the package nor in the target environment.",
+        "detail": "A referenced sub-agent is neither in the package nor in the target environment.",
+    },
     "BknAgent.ParamError.FormatError": {
         "code": "BknAgent.ParamError.FormatError",
         "description": "Invalid request parameters.",

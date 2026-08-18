@@ -9,10 +9,13 @@ _memory_saver = MemorySaver()
 
 @asynccontextmanager
 async def open_checkpointer():
-    """checkpointer 后端：mysql（共享 openbkn 库）| memory（开发用，重启即丢）。
+    """Checkpointer backend: mysql (the shared openbkn database) or memory (for
+    development, discarded on restart).
 
-    表结构统一由 migrations/bkn-agent/ 建（core-data-migrator 执行），
-    运行时不做 DDL；CHECKPOINTER_ALLOW_RUNTIME_DDL=true 仅供开发环境首启。
+    The tables are created solely by migrations/bkn-agent/, executed by
+    core-data-migrator; no DDL runs at runtime.
+    CHECKPOINTER_ALLOW_RUNTIME_DDL=true exists only for the first start of a
+    development environment.
     """
     if config.CHECKPOINTER_BACKEND == "memory":
         yield _memory_saver
@@ -21,12 +24,14 @@ async def open_checkpointer():
     import aiomysql
     from langgraph.checkpoint.mysql.aio import AIOMySQLSaver
 
-    # 不走 AIOMySQLSaver.from_conn_string：它丢弃 charset/collation，会话落到
-    # server 默认（MariaDB 11 = utf8mb4_uca1400_ai_ci），与库表 utf8mb4_unicode_ci
-    # 比较时报 1267 Illegal mix of collations。saver 的 SELECT 里 json_table(...
-    # CHARACTER SET utf8mb4) 不带 COLLATE，取的是 server 端 charset 默认 collation，
-    # 光 SET NAMES 管不住——用 character_set_collations（MariaDB 11.2+）把本会话
-    # utf8mb4 的默认 collation 一并钉成 utf8mb4_unicode_ci。
+    # Not AIOMySQLSaver.from_conn_string: it drops charset/collation, so the
+    # session falls back to the server default (MariaDB 11 =
+    # utf8mb4_uca1400_ai_ci) and comparing that against the table's
+    # utf8mb4_unicode_ci raises 1267 Illegal mix of collations. The saver's
+    # SELECT uses json_table(... CHARACTER SET utf8mb4) without COLLATE, which
+    # picks the server-side default collation for that charset, and SET NAMES
+    # alone does not cover it. character_set_collations (MariaDB 11.2+) pins the
+    # session default for utf8mb4 to utf8mb4_unicode_ci as well.
     async with aiomysql.connect(
         host=config.RDS_HOST,
         port=config.RDS_PORT,

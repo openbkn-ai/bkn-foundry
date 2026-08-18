@@ -16,10 +16,11 @@ logger = logging.getLogger("bkn-agent.tools")
 
 
 def _context_loader_allowed_tools(tool_refs: list[dict]) -> set[str] | None:
-    """合并 Context Loader 引用的白名单。
+    """Merge the allowlists of the Context Loader references.
 
-    旧 agent 未声明 allowed_tools 时保持全量装载；全部引用都显式声明时取并集。
-    这样新增只读 agent 能精确收窄，而不会改变现有 agent 的运行语义。
+    An older agent that declares no allowed_tools keeps loading everything; when
+    every reference declares one, the union applies. A new read-only agent can
+    therefore narrow precisely without changing how existing agents behave.
     """
     allow_list: set[str] = set()
     for ref in tool_refs:
@@ -39,8 +40,9 @@ async def _trace_mcp_call(request, handler):
 
 
 def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) -> dict[str, dict]:
-    """agent.tools 中 type=mcp 的显式外部 MCP 端点。平台内置工具不走这里
-    （统一从执行工厂 toolbox 装载，见 load_tools）。"""
+    """Explicit external MCP endpoints, the type=mcp entries of agent.tools.
+    Built-in platform tools do not come through here; they all load from an
+    execution-factory toolbox, see load_tools."""
     headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
     conns: dict[str, dict] = {}
     for i, ref in enumerate(tool_refs):
@@ -55,8 +57,9 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
                 "headers": headers,
             }
         elif kind in ("agent", "toolbox", "context_loader"):
-            # agent-as-tool 见 _agent_tool；toolbox 见 _toolbox_tools；
-            # context_loader 见 app/core/context_loader.py（端点来自配置，且要先握手）
+            # agent-as-tool: see _agent_tool. toolbox: see _toolbox_tools.
+            # context_loader: see app/core/context_loader.py, whose endpoint
+            # comes from configuration and needs a handshake first.
             continue
         else:
             raise bad_request("BknAgent.ToolRef.UnknownType", ref=str(ref))
@@ -66,11 +69,14 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
 async def _toolbox_tools(
     tool_refs: list[dict], account_id: str, account_type: str
 ) -> list[StructuredTool]:
-    """执行工厂 toolbox 装载：只装 agent.tools 中 type=toolbox 的显式引用（失败报错）。
+    """Load execution-factory toolboxes: only the explicit type=toolbox entries
+    of agent.tools, and a failure is an error.
 
-    没有隐式挂载的默认 box——agent.tools 就是工具全集，零声明即零工具。
-    「用到才加载」在机制上不成立：工具调用要求候选工具在请求发出前全部声明，
-    模型只能从该列表里选，所以收敛只能由定义方在装载前做。
+    There is no implicitly mounted default box. agent.tools is the complete tool
+    set, so declaring nothing means having no tools. "Load it when it is needed"
+    cannot work mechanically: tool calling requires every candidate tool to be
+    declared before the request goes out and the model may only choose from that
+    list, so narrowing has to happen at definition time, before loading.
     """
     box_ids: list[str] = []
     for ref in tool_refs:
@@ -88,8 +94,9 @@ async def _toolbox_tools(
 async def _agent_tool(
     ref: dict, account_id: str, account_type: str, depth: int, parent_thread_id: str | None
 ) -> StructuredTool:
-    """把 mode=task 的 agent 包装成工具（agent-as-tool）。执行与 /run 同路径，
-    task 落库带 parent_thread_id，保证子任务同样可监控。"""
+    """Wrap a mode=task agent as a tool (agent-as-tool). Execution follows the
+    same path as /run, and the persisted task carries parent_thread_id so a
+    sub-task stays just as observable."""
     from app import dao
     from app.core import runner
     from app.db import SessionLocal
@@ -99,8 +106,9 @@ async def _agent_tool(
         raise bad_request("BknAgent.ToolRef.AgentIdMissing", ref=str(ref))
     async with SessionLocal() as session:
         sub_agent = await dao.get_agent(session, agent_id)
-    # 与 /run（mode=task）、/invoke（published）同门：否则 draft/chat 型 agent 经
-    # 工具引用就能被无状态执行，绕过 API 其余入口一致的语义
+    # Same door as /run (mode=task) and /invoke (published): otherwise a draft
+    # or chat agent could be executed statelessly through a tool reference,
+    # bypassing the semantics every other API entry point enforces.
     if not sub_agent or sub_agent.status != "published":
         raise bad_request("BknAgent.ToolRef.AgentUnavailable", agent_id=agent_id)
     if sub_agent.mode != "task":
@@ -156,7 +164,7 @@ def _derive_agent_tool_name(ref: dict, agent_name: str, agent_id: str) -> str:
     runs, and agent-as-tool is a core capability with a wide blast radius. Run
     the explicit (AgentToolRef.name) or derived name through the same sanitizer
     the toolbox tools use: it strips illegal chars, truncates to 64, and falls
-    back to `tool_{agent_id前缀}` when nothing usable survives. Semantics are
+    back to `tool_{agent_id prefix}` when nothing usable survives. Semantics are
     carried by the description instead.
     """
     raw_name = ref.get("name") or f"agent_{agent_name}"
@@ -171,13 +179,14 @@ def _read_skill_file_tool(account_id: str, account_type: str) -> StructuredTool:
         url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/skills/{sid}/files/read"
         headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-            # 字段名是 rel_path，执行工厂侧 validate:"required"；发过 path 会 400
+            # The field is rel_path, marked validate:"required" on the execution factory
+            # side; sending path instead answers 400.
             async with session.post(url, json={"rel_path": path}, headers=headers) as resp:
                 if resp.status != 200:
                     detail = (await resp.text())[:200]
                     return f"read_skill_file failed: HTTP {resp.status} {detail}"
                 meta = await resp.json()
-            # 与 load_skills 同样两跳：发布态只回 presigned URL，不回正文
+            # Two hops, as in load_skills: the published surface returns a presigned URL, not the body
             async with session.get(meta["url"]) as resp:
                 if resp.status != 200:
                     return f"read_skill_file failed: 对象存储 HTTP {resp.status}"
@@ -196,17 +205,21 @@ async def load_tools(
 ) -> list[Any]:
     tools: list[Any] = await _toolbox_tools(tool_refs, account_id, account_type)
     if context_loader.wanted(tool_refs):
-        # 只用调用方（runner / graph）已经开好的会话，这里绝不自己开。
+        # Only use the session the caller (runner or graph) already opened; never
+        # open one here.
         #
-        # 原先这里是 `current_session() or await open_session()`，想兜住直接调
-        # load_tools 的场景。实测证明那是个泄漏源：主路握手失败时它会再开一个
-        # 交互，而 graph 的 finally 只关自己持有的 cl_session（此时是 None），
-        # 兜底开的那个永远关不掉。服务端一个 conversation 只允许一个 active
-        # 交互，于是每轮泄一个、下一轮必被 interaction_in_progress 挡掉，
-        # 一条 thread 从第二轮起就再也拿不到工具。
+        # This used to read `current_session() or await open_session()`, meant to
+        # cover callers that invoke load_tools directly. In practice that leaked:
+        # when the main handshake failed it opened a second interaction, while
+        # the finally block in graph closes only the cl_session it holds (None at
+        # that point), so the fallback interaction could never be closed. The
+        # server allows one active interaction per conversation, so every turn
+        # leaked one and the next turn was blocked by interaction_in_progress —
+        # from its second turn onward a thread could never obtain tools again.
         #
-        # 没开出会话就没有工具——open_session 已经打过 warning，失败留在看得见
-        # 的地方，比静默开一个关不掉的交互好。
+        # No session means no tools. open_session already logged a warning, and
+        # leaving the failure where it can be seen beats silently opening an
+        # interaction nobody can close.
         session = context_loader.current_session()
         if session is not None:
             tools.extend(session.tools(_context_loader_allowed_tools(tool_refs)))
@@ -218,14 +231,18 @@ async def load_tools(
         if ref.get("type") == "agent":
             tools.append(await _agent_tool(ref, account_id, account_type, depth, parent_thread_id))
 
-    # 内置 read_skill_file 从不单独把图撑出 tools 节点：它要么随已有工具搭车，
-    # 要么在声明了技能（它唯一的读取对象）时才挂。零工具零技能的 agent 若只为它
-    # 长出一个 tools 节点，模型仍可能空转一轮工具调用——这正是 #447 的形状。
+    # The built-in read_skill_file never grows a tools node on its own: it either
+    # rides along with existing tools or mounts once skills are declared, which
+    # are the only thing it can read. If an agent with no tools and no skills
+    # grew a tools node just for it, the model could still burn a turn on an
+    # empty tool call — exactly the shape of #447.
     mount_skill_reader = bool(tools) or bool(skill_ids)
 
-    # 名字冲突去重（保留先到：toolbox > mcp > agent）。
-    # 挂载时 read_skill_file 预占名字：它是技能加载的一等能力（设计不变量），
-    # 不能被同名的用户工具挤掉——反过来挤掉那个用户工具并告警。
+    # Deduplicate name collisions, first one wins: toolbox > mcp > agent.
+    # When mounted, read_skill_file claims its name up front: it is a first-class
+    # part of skill loading and a design invariant, so a user tool of the same
+    # name must not displace it — the user tool is dropped instead, with a
+    # warning.
     builtin = _read_skill_file_tool(account_id, account_type) if mount_skill_reader else None
     seen: set[str] = {builtin.name} if builtin else set()
     deduped: list[Any] = []
@@ -322,15 +339,16 @@ def apply_tool_call_cap(
     account_id: str = "",
     account_type: str = "",
 ) -> list[Any]:
-    """执行 AgentLimits.max_tool_calls：整轮工具调用次数用尽后，工具改为返回
-    提示串（模型据此收敛作答），而非静默无视上限。None = 不限。"""
+    """Enforce AgentLimits.max_tool_calls. Once the turn's tool-call budget is
+    spent, the tools return a notice string the model can converge on, rather
+    than the limit being silently ignored. None means unlimited."""
     if max_tool_calls is None:
         return tools
     budget = {"left": max(max_tool_calls, 0), "exhausted_emitted": False}
     capped: list[Any] = []
     for t in tools:
         inner = getattr(t, "coroutine", None)
-        if inner is None:  # 同步工具（当前不产生）保持原样
+        if inner is None:  # A synchronous tool (none are produced today) is left as it is
             capped.append(t)
             continue
 
@@ -346,8 +364,11 @@ def apply_tool_call_cap(
                         tool_name=__tool_name,
                     )
                     await evidence.submit_events([event] if event else [], account_id, account_type)
-                # 措辞要斩钉截铁：只说「请直接作答」时模型会继续试探性重试，
-                # 白烧若干轮（VM 实测空转 9 轮才收敛）
+                # The wording has to be categorical: with a mere "just answer"
+                # the model keeps probing with retries and burns turns (observed
+                # on the VM: nine empty turns before it converged).
+                # This notice is model-facing and intentionally stays as it
+                # is; see the note in core/skills.py and #826.
                 return (
                     f"tool call budget exhausted: 已用完本次执行的工具调用配额"
                     f"（max_tool_calls={max_tool_calls}）。禁止再调用任何工具——"

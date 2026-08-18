@@ -18,7 +18,7 @@ async def get_thread(
     session: AsyncSession = Depends(get_session),
 ):
     row = await dao.get_thread_row(session, thread_id)
-    if not row or row.f_account_id != account.account_id:  # 非 owner 与不存在同响应
+    if not row or row.f_account_id != account.account_id:  # A non-owner answers exactly like a missing thread.
         raise not_found("thread", thread_id)
     return ThreadOut(
         thread_id=row.f_thread_id,

@@ -5,8 +5,10 @@ import aiohttp
 from app.config import config
 from app.errors import err
 
-# 键含调用方身份（见 load_skills 内注释），基数=账户数×技能数，值是整段技能正文；
-# 必须有上界+过期清理，否则历史账户与技能正文常驻内存永不释放。
+# The key includes the caller identity (see the note inside load_skills), so the
+# cardinality is accounts x skills and each value is a whole skill body. It needs
+# both a bound and expiry sweeping, otherwise retired accounts and their skill
+# bodies stay resident forever.
 _CACHE_MAX = 1024
 _cache: dict[tuple[str, str, str], tuple[float, str]] = {}
 
@@ -16,20 +18,22 @@ def _cache_put(key: tuple[str, str, str], now: float, content: str) -> None:
         ttl = config.SKILL_CACHE_TTL_S
         for k in [k for k, (ts, _) in _cache.items() if now - ts >= ttl]:
             del _cache[k]
-        while len(_cache) >= _CACHE_MAX:  # 清完过期仍满：逐出最旧，保证有界
+        while len(_cache) >= _CACHE_MAX:  # Still full after sweeping expiries: evict the oldest to stay bounded
             del _cache[min(_cache, key=lambda k: _cache[k][0])]
     _cache[key] = (now, content)
 
 
 def normalize_skill_id(capability_id: str) -> str:
-    """capabilities-lab 的 capability id 形如 `skill:<uuid>`，执行工厂要裸 uuid。
-    两种都收，历史配置里存的带前缀 id 不至于失效。"""
+    """A capabilities-lab capability id looks like `skill:<uuid>` while the
+    execution factory wants the bare uuid. Accept both, so a prefixed id stored
+    by an older configuration keeps working."""
     return capability_id[6:] if capability_id.startswith("skill:") else capability_id
 
 
 def strip_frontmatter(text: str) -> str:
-    """发布态返回原始 SKILL.md（含 YAML frontmatter），注入前剥掉：
-    name/description 是给市场检索用的，进 system prompt 只是噪声。"""
+    """The published surface returns the raw SKILL.md including YAML
+    frontmatter, which is stripped before injection: name and description exist
+    for marketplace search and are only noise inside a system prompt."""
     if not text.startswith("---"):
         return text.strip()
     end = text.find("\n---", 3)
@@ -37,10 +41,14 @@ def strip_frontmatter(text: str) -> str:
 
 
 async def _fetch_skill_content(session: aiohttp.ClientSession, capability_id: str, headers: dict) -> str:
-    """从执行工厂取已发布技能正文，与 toolbox 同门（见 core/toolbox.py）。
+    """Fetch a published skill body from the execution factory, through the same
+    door as toolbox; see core/toolbox.py.
 
-    走发布态而非管理态：管理态是草稿面，改技能会立刻改变线上 agent 行为，
-    发布流程就失去意义。代价是两跳——发布态只回 presigned URL 不回正文。
+    It uses the published surface rather than the management one: the management
+    surface is the draft view, where editing a skill would change live agent
+    behaviour immediately and make the publishing flow pointless. The cost is two
+    hops, because the published surface returns a presigned URL rather than the
+    body.
     """
     skill_id = normalize_skill_id(capability_id)
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/skills/{skill_id}/content"
@@ -51,14 +59,21 @@ async def _fetch_skill_content(session: aiohttp.ClientSession, capability_id: st
             raise err(502, "BknAgent.Skill.FetchFailed", status=resp.status, skill_id=skill_id)
         meta = await resp.json()
 
-    # 第二跳：presigned URL 指向集群内 MinIO，不带业务身份，不能透传 headers
+    # Second hop: the presigned URL points at in-cluster MinIO and carries no
+    # business identity, so the headers must not be forwarded.
     async with session.get(meta["url"]) as resp:
         if resp.status != 200:
             raise err(502, "BknAgent.Skill.ContentFetchFailed", status=resp.status, skill_id=skill_id)
         body = strip_frontmatter(await resp.text())
 
-    # 附属文件清单必须进上下文：模型据此知道有哪些文件可读、以及 read_skill_file
-    # 要传的 skill_id —— 否则渐进式加载对模型不可见，等于没有。
+    # The attachment listing has to reach the context: it is how the model
+    # learns which files it may read and which skill_id read_skill_file needs.
+    # Without it progressive loading is invisible to the model, which is the
+    # same as not having it.
+    # The scaffolding text below is model-facing and intentionally stays as it
+    # is. What language the agent thinks and answers in is an open platform
+    # design question (#826, "Agent / LLM output language"); switching it would
+    # change model behaviour, not the API contract.
     others = [f["rel_path"] for f in (meta.get("files") or []) if f["rel_path"].upper() != "SKILL.MD"]
     header = f"## 技能 {skill_id}\n"
     if others:
@@ -72,8 +87,10 @@ async def _fetch_skill_content(session: aiohttp.ClientSession, capability_id: st
 
 
 async def load_skills(capability_ids: list[str], account_id: str, account_type: str) -> str:
-    """拉取 SKILL 正文注入 system prompt。渐进式：大体积资源不进上下文，
-    模型经 read_skill_file 工具按需读取（见 tools.py）。缓存 TTL 内热更新。"""
+    """Fetch skill bodies and inject them into the system prompt. Loading is
+    progressive: bulky resources stay out of the context and the model reads them
+    on demand through the read_skill_file tool (see tools.py). Updates propagate
+    within the cache TTL."""
     if not capability_ids:
         return ""
     headers = {"x-account-id": account_id, "x-account-type": account_type}
@@ -81,8 +98,10 @@ async def load_skills(capability_ids: list[str], account_id: str, account_type: 
     now = time.monotonic()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
         for cid in dict.fromkeys(capability_ids):
-            # 缓存键含调用方身份：执行工厂可能按账户授权私有技能，只按
-            # skill_id 缓存会让 TTL 窗口内 B 拿到 A 的私有正文且不重发 B 身份。
+            # The cache key includes the caller identity: the execution factory
+            # may authorize private skills per account, and keying on skill_id
+            # alone would hand B the private body fetched for A inside the TTL
+            # window, without ever re-checking B's identity.
             key = (account_type, account_id, cid)
             cached = _cache.get(key)
             if cached and now - cached[0] < config.SKILL_CACHE_TTL_S:

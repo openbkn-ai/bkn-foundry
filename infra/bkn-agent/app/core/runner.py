@@ -18,7 +18,9 @@ from app.models import AgentOut
 
 MAX_AGENT_DEPTH = 3
 
-# 进程内后台任务引用，防 GC；崩溃恢复语义（重启后 pending/running 任务标 failed）随 M6 落定
+# In-process references to background tasks, held to keep them from being
+# garbage collected. Crash-recovery semantics (pending/running tasks marked
+# failed after a restart) were settled with M6.
 _background: set[asyncio.Task] = set()
 
 
@@ -35,13 +37,17 @@ async def run_agent_once(
     task_id: Optional[str] = None,
 ) -> str:
     if evidence.has_interaction():
-        # 父轮已经开着交互——agent-as-tool 走的就是这条。证据链沿用父轮的 id，
-        # 但 Context Loader 会话不一定有：父 agent 没声明 context_loader 时，
-        # current_session() 是 None，子 agent 就会带着零个 CL 工具作答，
-        # 而且因为 open_session 根本没被调用，连那条 warning 都不会出现。
+        # The parent turn already has an interaction open; agent-as-tool takes
+        # this path. The evidence chain reuses the parent id, but a Context
+        # Loader session may not exist: when the parent agent declares no
+        # context_loader, current_session() is None and the sub-agent would
+        # answer with zero CL tools — and because open_session was never called,
+        # not even the warning appears.
         #
-        # 所以这里补一次「谁开谁关」：能继承就继承（不重复握手，也不去关别人
-        # 开的会话），继承不到又确实要用，就自己开、自己关。
+        # So this restores "whoever opens it closes it": inherit when possible
+        # (no second handshake, and never close someone else's session), and
+        # when there is nothing to inherit but the tools are genuinely needed,
+        # open one here and close it here.
         inherited = context_loader.current_session()
         own = None
         own_token = None
@@ -71,20 +77,22 @@ async def run_agent_once(
         finally:
             if own_token is not None:
                 context_loader.reset_current(own_token)
-            # 只关自己开的那个；继承来的归开它的人关
+            # Only close the session opened here; an inherited one belongs to its opener
             await context_loader.close_session(
                 own,
                 outcome="completed" if sub_answer is not None else "failed",
                 answer=sub_answer,
-                reason=sub_failure or (None if sub_answer is not None else "子 agent 未产出回复"),
+                reason=sub_failure or (None if sub_answer is not None else "the sub-agent produced no reply"),
             )
-    # Context Loader 的会话要在 begin_interaction 之前开：它领到的 interaction_id
-    # 同时是证据链这一轮的 id，两边共用一对，trace 才不会裂。
+    # The Context Loader session must open before begin_interaction: the
+    # interaction_id it receives is also the id of this evidence-chain turn, and
+    # only sharing one pair keeps the trace from splitting.
     cl_session = None
     cl_token = None
     if context_loader.wanted(agent.tools):
-        # 不传 host_conversation_key：/run 与 /invoke 是一次性执行，每次本就该
-        # 各自成一个 conversation。多轮连续性只有 chat 有（graph.py 传 thread_id）。
+        # No host_conversation_key: /run and /invoke are one-shot executions and
+        # each should form its own conversation. Only chat has multi-turn
+        # continuity, where graph.py passes thread_id.
         cl_session = await context_loader.open_session(message, agent_name=agent.name)
         cl_token = context_loader.set_current(cl_session)
     token = evidence.begin_interaction(
@@ -117,13 +125,14 @@ async def run_agent_once(
         raise
     finally:
         evidence.end_interaction(token)
-        # outcome=completed 的时候 answer 是必填的（不带会被 closure_manifest_invalid
-        # 拒掉），所以本轮答案要一路带到这里，不能在 finally 里凭空补。
+        # answer is mandatory when outcome=completed — omitting it is rejected
+        # as closure_manifest_invalid — so this turn's answer has to be carried
+        # all the way here and cannot be conjured up in a finally block.
         await context_loader.close_session(
             cl_session,
             outcome="completed" if answer is not None else "failed",
             answer=answer,
-            reason=failure or (None if answer is not None else "本轮未产出回复"),
+            reason=failure or (None if answer is not None else "this turn produced no reply"),
         )
         if cl_token is not None:
             context_loader.reset_current(cl_token)
@@ -141,15 +150,17 @@ async def _run_agent_once_core(
     response_format: Optional[dict[str, Any]] = None,
     task_id: Optional[str] = None,
 ) -> str:
-    """一次性无状态执行：单次 graph run，无 checkpointer。被 /run 与 agent-as-tool 共用。
+    """One-shot stateless execution: a single graph run with no checkpointer,
+    shared by /run and agent-as-tool.
 
-    response_format（JSON Schema）非空时走结构化输出：工具循环后再做一次结构化调用，
-    返回序列化后的 JSON 字符串；否则返回最后一条 AI 文本回复。
+    A non-empty response_format (a JSON Schema) selects structured output: after
+    the tool loop it makes one more structured call and returns the serialized
+    JSON string. Otherwise it returns the last AI text reply.
     """
     if depth > MAX_AGENT_DEPTH:
         raise err(409, "BknAgent.Task.DepthExceeded", limit=MAX_AGENT_DEPTH)
 
-    from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools  # 延迟导入破 tools↔runner 环
+    from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools  # Imported late to break the tools <-> runner cycle
 
     async with SessionLocal() as session:
         system_prompt, prompt_source, prompt_version = await resolve_prompt(
@@ -190,7 +201,8 @@ async def _run_agent_once_core(
                 {"recursion_limit": max_turns * 2 + 1},
             )
             if response_format:
-                # 工具循环跑完后单独抽结构化：原生优先，模型不支持则提示词降级
+                # Extract the structure separately once the tool loop is done:
+                # native support first, prompt-based degradation otherwise.
                 struct_model = build_chat_model(agent.model, streaming=False, max_output_tokens=max_out)
                 obj, validation_path = await structured_extract_with_path(
                     struct_model, result["messages"], response_format, system_prompt
@@ -227,11 +239,13 @@ async def _run_agent_once_core(
                 result_messages=result["messages"],
             )
             return output
-    raise RuntimeError("graph 结束但没有产出 AI 回复")
+    raise RuntimeError("the graph finished without producing an AI reply")
 
 
 async def execute_task(task_id: str, agent: AgentOut, req_input: dict, account_id: str, account_type: str) -> None:
-    """执行到终态并落库（succeeded 必须等于结果可用）。/run 后台跑，/invoke 同步等。"""
+    """Run to a terminal state and persist it, where succeeded must mean the
+    result is actually usable. /run executes this in the background while
+    /invoke waits for it synchronously."""
     async with SessionLocal() as session:
         await dao.set_task_status(session, task_id, "running")
     try:
@@ -248,9 +262,9 @@ async def execute_task(task_id: str, agent: AgentOut, req_input: dict, account_i
             task_id=task_id,
         )
         async with SessionLocal() as session:
-            # succeeded 必须等于结果可用（vega build-task 教训）
+            # succeeded must mean the result is usable (the vega build-task lesson)
             await dao.set_task_status(session, task_id, "succeeded", output=output)
-    except Exception as e:  # 失败必须落 failure_detail，不静默吞错
+    except Exception as e:  # A failure must persist failure_detail; never swallow the error
         detail = getattr(e, "detail", None)
         detail_text = str(detail) if detail else f"{type(e).__name__}: {e}"
         async with SessionLocal() as session:

@@ -21,11 +21,14 @@ from app.commons.i18n import build_error_content
 from app.errors import err, not_found
 from app.models import AgentOut, ChatRequest, ThreadMessage
 
-# thread 级串行化（单副本内）：忙碌集合而非锁表。
-# 用集合是因为策略是「忙则 409」不是排队：占位必须与检查在同一同步块里完成，
-# 否则 setup 阶段的多个 await 之间会有竞态窗口，两个请求双双通过检查再排队执行，
-# 交错写同一份 checkpoint；用完 discard，也不会像锁表那样按 thread_id 无限增长。
-# 多副本的跨副本串行化仍待定（会话粘滞或 DB 锁）。
+# Thread-level serialization within one replica: a busy set rather than a lock
+# table. A set fits because the policy is "busy means 409", not queueing: the
+# claim has to happen in the same synchronous block as the check, otherwise the
+# awaits during setup open a race window where two requests both pass the check,
+# then queue up and interleave writes into the same checkpoint. Entries are
+# discarded after use, so unlike a lock table it does not grow without bound per
+# thread_id. Cross-replica serialization is still undecided: session stickiness
+# or a database lock.
 logger = logging.getLogger("bkn-agent.chat")
 
 _busy_threads: set[str] = set()
@@ -57,15 +60,16 @@ async def stream_chat(
     thread_id = req.thread_id or str(uuid.uuid4())
     if thread_id in _busy_threads:
         raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
-    _busy_threads.add(thread_id)  # 检查与占位之间不能有 await，否则并发请求双双通过
+    _busy_threads.add(thread_id)  # No await may sit between the check and the claim, or concurrent requests both pass
 
-    # 在 try 之前绑定：setup 早期抛异常时 except 分支也要能安全引用
+    # Bound before the try so the except branch can reference it safely when
+    # setup raises early.
     cl_session = None
 
     try:
         thread_row = await dao.get_thread_row(session, thread_id)
         if thread_row:
-            if thread_row.f_account_id != account_id:  # 不泄露存在性，与查不到同响应
+            if thread_row.f_account_id != account_id:  # Do not disclose existence; answer exactly like a missing thread
                 raise not_found("thread", thread_id)
             if thread_row.f_agent_id != agent.agent_id:
                 raise err(
@@ -81,30 +85,36 @@ async def stream_chat(
         )
         skill_ids = list(dict.fromkeys([*agent.skills, *req.skills]))
         system_prompt += await load_skills(skill_ids, account_id, account_type)
-        # 与 runner 同序：Context Loader 会话先开，它领到的 interaction_id 同时是
-        # 证据链这一轮的 id。load_tools 会复用这个已开的会话，不重复握手。
+        # Same order as the runner: the Context Loader session opens first, and
+        # the interaction_id it receives is also the id of this evidence-chain
+        # turn. load_tools reuses that open session rather than handshaking
+        # again.
         if context_loader.wanted(agent.tools):
-            # thread_id 当会话锚：同一 thread 的多轮归进同一个 conversation
+            # thread_id anchors the session, so every turn of one thread lands
+            # in the same conversation.
             cl_session = await context_loader.open_session(
                 req.message, agent_name=agent.name, host_conversation_key=thread_id
             )
             if cl_session is not None:
-                # 只在真开出会话时置位。ContextVar 的作用域就只有 load_tools
-                # 这一段——tools.py 靠它拿会话——所以设与复位都收在这里，
-                # 且必须在同一个 context 里成对出现。
+                # Set only when a session was really opened.
                 #
-                # 早先是在 _events() 的 finally 里复位的：那是个异步生成器，跑在
-                # 复制出来的独立 context，token 跨 context 复位直接抛
-                # ValueError: Token was created in a different Context，
-                # 而且它抛在 finally 开头，把后面的兜底收尾一并废掉。
-                # 设了就不复位。
+                # An earlier version reset this in the finally of _events(). That
+                # is an async generator running in its own copied context, and
+                # resetting the token across contexts raises
+                # ValueError: Token was created in a different Context — thrown
+                # at the top of the finally, which also wiped out the cleanup
+                # that followed. So it is set and never reset.
                 #
-                # 上一版把它收窄到只活过 load_tools，结果 agent-as-tool 的子 agent
-                # 在执行期 current_session() 恒为 None，带着零个 CL 工具作答，
-                # 而且不报错不告警。ContextVar 的作用域是整轮，不是装载那一段。
+                # The version before that narrowed its lifetime to load_tools
+                # only, and as a result the sub-agent of an agent-as-tool saw
+                # current_session() as None throughout execution and answered
+                # with zero CL tools, silently and without a warning. The scope
+                # of this ContextVar is the whole turn, not just the loading
+                # phase.
                 #
-                # 不复位是安全的：它活在这个请求自己的 context 里，随请求消亡；
-                # 而跨 context 复位（生成器 / aclose 任务）必抛 ValueError。
+                # Not resetting is safe: it lives in this request's own context
+                # and dies with the request, whereas a cross-context reset (from
+                # the generator or an aclose task) always raises ValueError.
                 context_loader.set_current(cl_session)
         tools = await load_tools(
             agent.tools,
@@ -135,19 +145,22 @@ async def stream_chat(
             account_type,
         )
     except BaseException:
-        _busy_threads.discard(thread_id)  # setup 失败必须放位，否则该 thread 永久 409
-        # setup 阶段抛异常时 _events() 根本没被构造，它的 finally 也就永远不会跑。
-        # 握手若已经成功，那次交互会永久停在 active——而且是确定性的：同一个请求
-        # 每重试一次就再泄一个。这里补收尾。
+        _busy_threads.discard(thread_id)  # A failed setup must release the claim, or the thread answers 409 forever
+        # When setup raises, _events() was never constructed, so its finally can
+        # never run. If the handshake had already succeeded, that interaction
+        # would stay active forever — deterministically so: every retry of the
+        # same request leaks one more. This performs the cleanup instead.
         #
-        # 收尾自身再出错不能改写原始异常：调用方要看到的是 setup 为什么失败，
-        # 不是收尾为什么失败。
+        # A failure inside the cleanup must not rewrite the original exception:
+        # the caller needs to see why setup failed, not why cleanup did.
         try:
             await context_loader.close_session(
-                cl_session, outcome="failed", reason="会话建立阶段失败，本轮未开始"
+                cl_session, outcome="failed", reason="session setup failed; this turn never started"
             )
-        except BaseException as close_err:  # noqa: BLE001 - 收尾失败不得掩盖原始异常
-            logger.warning("[ContextLoader] setup 失败后的收尾也失败了：%s", close_err)
+        except BaseException as close_err:  # noqa: BLE001 - a failed cleanup must not mask the original exception
+            logger.warning(
+                "[ContextLoader] cleanup after a failed setup also failed: %s", close_err
+            )
         raise
 
     span_attrs = {
@@ -161,11 +174,12 @@ async def stream_chat(
 
     async def _events() -> AsyncIterator[str]:
         answer_parts: list[str] = []
-        # 收尾要报的终态。_completed 只在真正走到 done 时置位；结构化输出那条
-        # 路的答案不在 answer_parts 里，单独记进 _final_answer。
+        # The terminal state the cleanup reports. _completed is set only when the
+        # run actually reaches done, and the answer on the structured-output path
+        # is not in answer_parts, so it is recorded separately in _final_answer.
         _completed = False
         _final_answer: str | None = None
-        _failure_reason: str | None = "本轮未产出回复（异常或客户端断连）"
+        _failure_reason: str | None = "this turn produced no reply (an exception or a client disconnect)"
         tool_names: list[str] = []
         interaction_token = evidence.begin_interaction(
             req.message,
@@ -212,7 +226,8 @@ async def stream_chat(
                                                 "tool_call", {"name": tc["name"]}
                                             )
                             if req.response_format:
-                                # 工具循环后单独抽结构化（原生优先→提示词降级），受同一 timeout 约束
+                                # Extract the structure separately after the tool loop (native first,
+                                # then the prompt fallback), under the same timeout.
                                 state = await graph.aget_state(cfg)
                                 struct_model = build_chat_model(
                                     agent.model,
@@ -258,14 +273,21 @@ async def stream_chat(
                                     tool_names=tool_names,
                                 )
                         _completed = True
-                        # 在 yield done 之前收尾，不能留给 finally。
+                        # Clean up before yielding done; it cannot be left to the
+                        # finally.
                         #
-                        # SSE 的 finally 挂在异步生成器的终结上：客户端收完就断，
-                        # 驱动生成器的任务被取消，生成器停在 yield 上，finally 要等
-                        # GC 触发 aclose 才跑——甚至可能不跑。VM 三轮实测的表现是
-                        # 第一轮开的交互一直 active，第二、三轮全被
-                        # interaction_in_progress 挡掉。跨服务状态的释放不能依赖
-                        # 生成器终结时机。close_session 是幂等的，finally 那次是兜底。
+                        # For SSE the finally hangs off the finalization of an
+                        # async generator: the client disconnects as soon as it
+                        # has read everything, the driving task is cancelled, the
+                        # generator stays parked on a yield, and the finally only
+                        # runs once GC triggers aclose — if it runs at all. Over
+                        # three turns on the VM the observable result was that the
+                        # interaction opened in turn one stayed active and turns
+                        # two and three were both blocked by
+                        # interaction_in_progress. Releasing cross-service state
+                        # must not depend on when a generator is finalized.
+                        # close_session is idempotent, so the one in the finally
+                        # is only a backstop.
                         _answer_now = (
                             _final_answer if _final_answer is not None else "".join(answer_parts)
                         )
@@ -276,31 +298,42 @@ async def stream_chat(
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
                         yield _sse("error", _stream_error("BknAgent.Chat.Timeout", timeout=timeout_s))
-                    except Exception as e:  # 错误必须显式送到流上，不静默吞
+                    except Exception as e:  # Errors must be sent explicitly onto the stream, never swallowed
                         yield _sse("error", _stream_error("BknAgent.Chat.Failed", detail=str(e)))
         except (
             Exception
-        ) as e:  # 组装阶段（checkpointer/graph 建立）异常也要送 error，不裸断流
+        ) as e:  # An assembly-stage failure (building the checkpointer or graph) must also
+            # emit error rather than cutting the stream bare.
             yield _sse("error", _stream_error("BknAgent.Chat.Failed", detail=str(e)))
-        finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
-            # 放位是 finally 的第一条，前面不许有任何会抛的语句。
+        finally:  # A normal end, a client disconnect (GeneratorExit), and an exception all release the claim
+            # Releasing the claim is the first statement of the finally; nothing
+            # that can raise may precede it.
             #
-            # 排在它前面的每一条都是地雷：close_session 只 catch Exception，
-            # 挡不住断连的 CancelledError 与 MCP TaskGroup 的 BaseExceptionGroup；
-            # evidence.end_interaction 是 ContextVar 复位，而这段 finally 可能由
-            # GC 触发的 aclose 任务驱动——那是另一个 context，复位必抛 ValueError。
-            # 任何一个抛出来，thread 就永久停在 409 Thread.Busy 直到进程重启。
+            # Everything that could sit in front of it is a mine. close_session
+            # catches only Exception, so it stops neither the CancelledError of a
+            # disconnect nor the BaseExceptionGroup of an MCP TaskGroup.
+            # evidence.end_interaction resets a ContextVar, while this finally may
+            # be driven by a GC-triggered aclose task — a different context, where
+            # the reset always raises ValueError. If either one raises, the thread
+            # stays stuck on 409 Thread.Busy until the process restarts.
             _busy_threads.discard(thread_id)
             try:
                 evidence.end_interaction(interaction_token)
-            except ValueError as e:  # 跨 context 复位；证据链这一轮已经落完
-                logger.warning("[Chat] 证据链交互复位失败（跨 context）：%s", e)
-            # ContextVar 不在这里复位：本函数体可能跑在别的 context 里。
-            # 它随请求 context 消亡，不需要显式复位。
-            # completed 必须带 answer（不带会被 closure_manifest_invalid 拒）。
-            # 用显式的成功标记而不是「答案非空」：结构化输出那条路走 structured
-            # 事件、answer_parts 是空的，按空判会把成功的一轮误报成 failed；
-            # 反过来流了一半再超时，答案非空却不是完成。
+            except ValueError as e:  # A cross-context reset; this evidence-chain turn is already persisted
+                logger.warning(
+                    "[Chat] resetting the evidence interaction failed "
+                    "(across contexts): %s", e
+                )
+            # The ContextVar is not reset here, because this function body may
+            # run in a different context. It dies with the request context, so no
+            # explicit reset is needed.
+            # completed must carry an answer; without one it is rejected as
+            # closure_manifest_invalid. Success is tracked by an explicit flag
+            # rather than by "the answer is non-empty": the structured-output path
+            # goes through the structured event and leaves answer_parts empty, so
+            # an emptiness test would report a successful turn as failed — and
+            # conversely, a stream that timed out halfway has a non-empty answer
+            # without having completed.
             _answer = _final_answer if _final_answer is not None else "".join(answer_parts)
             _ok = _completed and bool(_answer)
             await context_loader.close_session(
@@ -387,7 +420,8 @@ def _text(content) -> str:
 
 
 async def read_thread_messages(thread_id: str) -> list[ThreadMessage]:
-    """会话历史直读 checkpointer 最新 checkpoint；归属校验在路由层。"""
+    """Thread history reads the latest checkpointer checkpoint directly; the
+    ownership check lives in the router layer."""
     async with open_checkpointer() as checkpointer:
         tup = await checkpointer.aget_tuple({"configurable": {"thread_id": thread_id}})
     if not tup:

@@ -5,6 +5,7 @@ from typing import Optional
 from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.commons.i18n import localized_message
 from app.models import (
     AgentOut,
     AgentRow,
@@ -44,7 +45,7 @@ def _to_out(row: AgentRow) -> AgentOut:
 async def create_agent(session: AsyncSession, spec: AgentSpec, account_id: str) -> AgentOut:
     now = _now_ms()
     row = AgentRow(
-        f_agent_id=spec.agent_id or str(uuid.uuid4()),  # 预设 id 优先，否则生成
+        f_agent_id=spec.agent_id or str(uuid.uuid4()),  # A preset id wins, otherwise generate one
         f_name=spec.name,
         f_mode=spec.mode,
         f_prompt_id=spec.prompt_id,
@@ -111,7 +112,8 @@ async def get_thread_row(session: AsyncSession, thread_id: str) -> Optional[Thre
 
 
 async def touch_thread(session: AsyncSession, thread_id: str, agent_id: str, account_id: str) -> ThreadRow:
-    """新 thread 记归属；老 thread 刷 update_time。归属校验在调用方（fail-closed）。"""
+    """Record ownership for a new thread and refresh update_time for an existing
+    one. The ownership check lives in the caller and fails closed."""
     now = _now_ms()
     row = await session.get(ThreadRow, thread_id)
     if row:
@@ -169,8 +171,10 @@ async def create_task(
 async def get_task(
     session: AsyncSession, task_id: str, account_id: Optional[str] = None
 ) -> Optional[TaskOut]:
-    """account_id 给定时做归属过滤（非 owner 与不存在同响应，thread 同款 fail-closed）。
-    内部调用（runner 回写、/invoke 自查）不传，按 task_id 直取。"""
+    """When account_id is given, filter by ownership: a non-owner answers exactly
+    like a missing task, failing closed the same way threads do. Internal callers
+    — the runner writing back, /invoke checking its own task — omit it and read
+    straight by task_id."""
     row = await session.get(TaskRow, task_id)
     if not row:
         return None
@@ -199,13 +203,16 @@ async def set_task_status(
 
 
 async def recover_stale_tasks(session: AsyncSession) -> int:
-    """启动时兜底：进程内 asyncio 任务不跨重启存活，落库仍为 pending/running 的
-    任务在上次进程里已丢失，全部标 failed，避免 GET /tasks 永久悬挂在非终态。
-    返回被回收的数量。
+    """Startup safety net. In-process asyncio tasks do not survive a restart, so
+    any task still stored as pending or running was lost with the previous
+    process; mark them all failed to keep GET /tasks from hanging forever in a
+    non-terminal state. Returns how many were reclaimed.
 
-    **前提：单副本**（chart replicaCount=1 + maxSurge=0，滚动无重叠）。无条件回收全表
-    pending/running 只在单副本下安全；多副本会误杀别的副本活跃任务，需任务租约/owner
-    才能放开（见 values.yaml 副本约束说明）。"""
+    **Assumes a single replica** (chart replicaCount=1 with maxSurge=0, so
+    rollouts never overlap). Unconditionally reclaiming every pending/running row
+    is safe only with one replica; with several it would kill tasks another
+    replica is actively running, which needs task leases or an owner column
+    before it can be relaxed. See the replica constraint note in values.yaml."""
     now = _now_ms()
     result = await session.execute(
         update(TaskRow)
@@ -223,7 +230,8 @@ async def recover_stale_tasks(session: AsyncSession) -> int:
 async def get_default_prompt(
     session: AsyncSession, prompt_id: str
 ) -> Optional[tuple[str, Optional[dict], int]]:
-    """agent 默认层：t_agent_prompt.current_version 对应版本正文。"""
+    """The agent default layer: the body of the version named by
+    t_agent_prompt.current_version."""
     head = await session.get(PromptRow, prompt_id)
     if not head:
         return None
@@ -262,7 +270,7 @@ async def delete_prompt_override(session: AsyncSession, agent_id: str, account_i
     return result.rowcount > 0
 
 
-# ---- prompt 管理面（版本化，只增不改） ----
+# ---- Prompt management surface: versioned, append-only ----
 
 
 async def _prompt_out(session: AsyncSession, head: PromptRow):
@@ -289,7 +297,7 @@ async def create_prompt(
     prompt_id: Optional[str] = None,
 ):
     now = _now_ms()
-    prompt_id = prompt_id or str(uuid.uuid4())  # 预设 id 优先，否则生成
+    prompt_id = prompt_id or str(uuid.uuid4())  # A preset id wins, otherwise generate one
     session.add(
         PromptRow(
             f_prompt_id=prompt_id, f_name=name, f_current_version=1, f_update_user=account_id, f_update_time=now
@@ -386,7 +394,8 @@ async def list_prompt_versions(session: AsyncSession, prompt_id: str):
 
 
 async def rollback_prompt(session: AsyncSession, prompt_id: str, version: int, account_id: str):
-    """回滚 = current_version 指回旧版本；版本行只增不改。"""
+    """A rollback repoints current_version at an older version; version rows are
+    append-only and never edited."""
     head = await session.get(PromptRow, prompt_id)
     if not head:
         return None
@@ -400,7 +409,7 @@ async def rollback_prompt(session: AsyncSession, prompt_id: str, version: int, a
     return await _prompt_out(session, head)
 
 
-# ---------- 导入导出（impex）：保留原 id upsert，name 撞车报错 ----------
+# ---------- Import and export (impex): upsert under the original id; a name collision is an error ----------
 
 
 async def check_import_conflict(
@@ -411,30 +420,43 @@ async def check_import_conflict(
     prompt_name: Optional[str],
     account_id: str = "",
 ) -> Optional[str]:
-    """只读预检：返回冲突原因，无冲突返回 None。
+    """Read-only pre-check: returns the conflict reason, or None when there is
+    none.
 
-    导入必须先检后写：prompt 与 agent 分别 commit，若写到一半才发现 agent 名撞车，
-    rollback 已经回不了 prompt 的提交——那条 agent 报 failed，但 prompt 新版本已
-    对线上生效。预检把两个名字冲突一次查完。
+    An import must check before it writes. Prompt and agent used to commit
+    separately, so discovering an agent name collision halfway through left no
+    way back: a rollback could not undo the prompt commit, that agent reported
+    failed, and the new prompt version was already live. This pre-check resolves
+    both name conflicts in one pass.
 
-    归属也在这里检：导入按 agent_id upsert，命中他人已有的 agent 会覆盖其定义
-    （工具、提示词、模型全部改写），与直接 PUT 是同一类越权，只是换了入口。放在
-    预检里而不是抛 403，是为了保持导入的按条语义——一条归属不符只让该条 failed，
-    不中断整批。创建者未知的存量数据放行，与写接口的取舍一致。
+    Ownership is checked here too. An import upserts by agent_id, so hitting
+    somebody else's existing agent would overwrite its definition — tools,
+    prompt, and model all rewritten — which is the same class of privilege
+    violation as a direct PUT, only through another door. It lives in the
+    pre-check rather than raising 403 to preserve the per-item semantics of an
+    import: one ownership mismatch fails that item without interrupting the
+    batch. Legacy rows with an unknown creator are allowed through, matching the
+    trade-off the write endpoints already make.
     """
     if account_id:
         existing = await session.get(AgentRow, agent_id)
         if existing:
             owner = (existing.f_create_user or "").strip()
             if owner and owner != account_id:
-                return f"agent {agent_id} 属于 {owner}，不能通过导入覆盖他人 agent"
+                return localized_message(
+                    "BknAgent.Impex.OwnedByAnotherAccount", agent_id=agent_id, owner=owner
+                )
     dup_agent = (
         await session.execute(
             select(AgentRow).where(AgentRow.f_name == agent_name, AgentRow.f_agent_id != agent_id)
         )
     ).scalar_one_or_none()
     if dup_agent:
-        return f"agent 名「{agent_name}」已被 {dup_agent.f_agent_id} 占用"
+        return localized_message(
+            "BknAgent.Impex.AgentNameTaken",
+            agent_name=agent_name,
+            holder_id=dup_agent.f_agent_id,
+        )
     if prompt_id and prompt_name:
         dup_prompt = (
             await session.execute(
@@ -444,22 +466,33 @@ async def check_import_conflict(
             )
         ).scalar_one_or_none()
         if dup_prompt:
-            return f"prompt 名「{prompt_name}」已被 {dup_prompt.f_prompt_id} 占用"
+            return localized_message(
+                "BknAgent.Impex.PromptNameTaken",
+                prompt_name=prompt_name,
+                holder_id=dup_prompt.f_prompt_id,
+            )
     return None
 
 
 async def upsert_agent_with_id(
     session: AsyncSession, agent_id: str, spec: AgentSpec, account_id: str, commit: bool = True
 ) -> tuple[AgentOut, str]:
-    """按 agent_id upsert（导入语义：幂等，重复导入=同步更新）。
-    返回 (agent, "created"|"updated")。同名不同 id 抛 ValueError。"""
+    """Upsert by agent_id, which is the import semantic: idempotent, so a
+    repeated import is a sync. Returns (agent, "created"|"updated") and raises
+    ValueError when the same name arrives under a different id."""
     dup = (
         await session.execute(
             select(AgentRow).where(AgentRow.f_name == spec.name, AgentRow.f_agent_id != agent_id)
         )
     ).scalar_one_or_none()
     if dup:
-        raise ValueError(f"agent 名「{spec.name}」已被 {dup.f_agent_id} 占用")
+        raise ValueError(
+            localized_message(
+                "BknAgent.Impex.AgentNameTaken",
+                agent_name=spec.name,
+                holder_id=dup.f_agent_id,
+            )
+        )
     now = _now_ms()
     row = await session.get(AgentRow, agent_id)
     action = "updated" if row else "created"
@@ -493,16 +526,22 @@ async def upsert_prompt_with_id(
     account_id: str,
     commit: bool = True,
 ) -> str:
-    """按 prompt_id upsert。已存在且内容有变 → 发布新版本（目标环境自己长版本
-    历史）；无变化 no-op。返回 "created"|"version_published"|"unchanged"。
-    同名不同 id 抛 ValueError。"""
+    """Upsert by prompt_id. When the prompt exists and its content changed, a new
+    version is published so the target environment grows its own version history;
+    unchanged content is a no-op. Returns "created", "version_published", or
+    "unchanged", and raises ValueError when the same name arrives under a
+    different id."""
     dup = (
         await session.execute(
             select(PromptRow).where(PromptRow.f_name == name, PromptRow.f_prompt_id != prompt_id)
         )
     ).scalar_one_or_none()
     if dup:
-        raise ValueError(f"prompt 名「{name}」已被 {dup.f_prompt_id} 占用")
+        raise ValueError(
+            localized_message(
+                "BknAgent.Impex.PromptNameTaken", prompt_name=name, holder_id=dup.f_prompt_id
+            )
+        )
     head = await session.get(PromptRow, prompt_id)
     if not head:
         now = _now_ms()

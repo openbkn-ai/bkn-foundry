@@ -1,10 +1,15 @@
-"""agent 定义导入导出（环境迁移/备份/内置 agent 预置分发）。
+"""Import and export of agent definitions: environment migration, backup, and
+distribution of preset built-in agents.
 
-语义（Owner 拍板 2026-07-13）：导出=agent 定义+绑定 prompt 当前生效版本（不含
-会话/任务/按人 override）；导入=保留原 id upsert（幂等，重复导入=同步更新），
-同名不同 id 记 failed 不中断其他条目；prompt 内容有变发布新版本。
-跨环境引用（toolbox box_id / 外部 mcp url 执行期才校验）不阻塞导入，agent
-互调引用缺失记 warning。
+Semantics, decided by the Owner on 2026-07-13. Export covers the agent
+definition plus the currently effective version of the bound prompt; it
+excludes threads, tasks, and per-user overrides. Import upserts under the
+original id, so it is idempotent and a repeated import is a sync. A name
+collision under a different id is recorded as failed without interrupting the
+other entries, and changed prompt content publishes a new version.
+Cross-environment references (a toolbox box_id or an external mcp url, both
+validated only at execution time) do not block an import, and a missing
+agent-to-agent reference is recorded as a warning.
 """
 
 import time
@@ -16,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import dao
 from app.auth import Account, get_account
+from app.commons.i18n import localized_message
 from app.db import get_session
 from app.errors import bad_request, not_found
 from app.models import (
@@ -51,10 +57,12 @@ async def export_agents(
                     prompt_id=p.prompt_id, name=p.name, content=p.content, vars_schema=p.vars_schema
                 )
         try:
-            # 出库数据回填写入模型会复验（union 工具引用/name 字符集）——存量脏数据
-            # 在这里报单条明确错误，不落 500。
+            # Feeding stored rows back through the write model re-validates
+            # them (the tool reference union, the name charset). Legacy dirty
+            # data therefore produces one explicit per-item error here instead
+            # of a 500.
             spec = AgentSpec(**agent.model_dump(include=AgentSpec.model_fields.keys()))
-        except (ValidationError, ValueError) as e:  # pydantic 校验错 + 显式 ValueError
+        except (ValidationError, ValueError) as e:  # pydantic validation errors plus explicit ValueError
             raise bad_request("BknAgent.Impex.DirtyAgent", agent_id=agent.agent_id, error=str(e)[:300])
         items.append(
             AgentExportItem(agent_id=agent.agent_id, spec=spec, prompt=prompt)
@@ -74,8 +82,10 @@ async def import_agents(
 
     for item in req.package.items:
         prompt_action = "none"
-        # 先检后写：prompt 与 agent 分两次 commit，写到一半再发现冲突就回不去了
-        # （rollback 撤不掉已提交的 prompt 新版本，线上 agent 会静默换词）
+        # Check before writing: prompt and agent used to commit separately, so
+        # discovering a conflict halfway left no way back (a rollback cannot
+        # undo an already committed new prompt version, and a live agent would
+        # silently change its wording).
         conflict = await dao.check_import_conflict(
             session,
             item.agent_id,
@@ -92,8 +102,10 @@ async def import_agents(
             )
             continue
         try:
-            # 单事务：prompt 与 agent 都 flush（commit=False），末尾一起 commit。
-            # 任一步失败整体 rollback——不再出现「prompt 新版本已生效但 agent 导入失败」的半写。
+            # One transaction: prompt and agent both flush with commit=False
+            # and commit together at the end. Any failure rolls the whole thing
+            # back, so the half-written state where a new prompt version is live
+            # but the agent import failed can no longer occur.
             if item.prompt:
                 prompt_action = await dao.upsert_prompt_with_id(
                     session,
@@ -108,14 +120,14 @@ async def import_agents(
                 session, item.agent_id, item.spec, account.account_id, commit=False
             )
             await session.commit()
-        except (ValueError, IntegrityError) as e:  # 并发占名：ValueError 预检 / IntegrityError 唯一键兜底
-            await session.rollback()  # 未提交，prompt 也一并撤销，不留半写
+        except (ValueError, IntegrityError) as e:  # Concurrent name claim: ValueError from the pre-check, IntegrityError from the unique key
+            await session.rollback()  # Nothing was committed, so the prompt is withdrawn too; no half-write remains
             results.append(
                 ImportItemResult(
                     agent_id=item.agent_id,
                     name=item.spec.name,
                     action="failed",
-                    prompt_action="none",  # 整体回滚，prompt 未生效
+                    prompt_action="none",  # Rolled back as a whole; the prompt never took effect
                     error=str(e),
                 )
             )
@@ -130,7 +142,11 @@ async def import_agents(
                 ref_id = ref.get("agent_id") or ""
                 if ref_id not in package_ids and not await dao.get_agent(session, ref_id):
                     warnings.append(
-                        f"agent {item.spec.name} 引用的子 agent {ref_id} 不在包内也不在目标环境"
+                        localized_message(
+                            "BknAgent.Impex.MissingAgentReference",
+                            agent_name=item.spec.name,
+                            ref_id=ref_id,
+                        )
                     )
 
     return ImportResult(results=results, warnings=warnings)

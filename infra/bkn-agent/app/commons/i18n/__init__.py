@@ -73,6 +73,15 @@ def build_error_content(
     }
 
 
+def localized_message(message_key: str, /, **params) -> str:
+    """Render one standalone message (a warning, not an error envelope).
+
+    Import warnings travel in the response body as plain strings, so they need
+    the same catalog treatment as errors without carrying a public error code.
+    """
+    return build_error_content(message_key, **params)["detail"]
+
+
 def _render(message: Dict[str, Any], field: str, params: Dict[str, Any], message_key: str) -> str:
     """Format a *_template field, falling back to the plain field on any gap."""
     plain = message.get(field, "")

@@ -13,11 +13,15 @@ class _StrictDict(dict):
 
 
 def _fill(template: str, prompt_vars: dict[str, Any], vars_schema: Optional[dict]) -> str:
-    """只有声明了变量（vars_schema）或本次传了 prompt_vars 才做模板渲染。
+    """Render the template only when variables are declared (vars_schema) or
+    prompt_vars were supplied for this call.
 
-    否则原样返回：提示词里写 JSON 输出示例（`{"answer": ...}`）是常态，无条件跑
-    format_map 会把大括号当变量——KeyError 变成误导性的「变量缺失」400，落单的
-    `}` 直接 ValueError 冒成 500。不渲染的提示词就该原样喂给模型。
+    Otherwise return it verbatim. Writing a JSON output example such as
+    `{"answer": ...}` inside a prompt is normal, and running format_map
+    unconditionally would read those braces as variables: a KeyError turns into
+    a misleading "missing variable" 400, and a stray `}` raises ValueError and
+    surfaces as a 500. A prompt that declares nothing should reach the model
+    exactly as written.
     """
     schema = vars_schema or {}
     declared = bool(schema.get("required") or schema.get("properties"))
@@ -32,7 +36,7 @@ def _fill(template: str, prompt_vars: dict[str, Any], vars_schema: Optional[dict
         return template.format_map(_StrictDict(prompt_vars))
     except KeyError as e:
         raise bad_request("BknAgent.Prompt.VarsUndeclared", variable=e)
-    except (ValueError, IndexError) as e:  # 大括号不成对/位置参数等模板语法错
+    except (ValueError, IndexError) as e:  # Unbalanced braces, positional fields, and similar template syntax errors.
         raise bad_request("BknAgent.Prompt.TemplateSyntax", error=str(e))
 
 
@@ -43,9 +47,10 @@ async def resolve_prompt(
     request_override: Optional[str],
     prompt_vars: dict[str, Any],
 ) -> tuple[str, str, Optional[int]]:
-    """三层解析：请求级 > 调用方级覆写 > agent 默认版本。三层共用 vars_schema。
-    prompt_id 失效必须报明确错误，不回退内置默认词。
-    返回 (正文, 来源层级, 默认层版本号)。"""
+    """Resolve across three layers: request level > caller override > the agent
+    default version. All three share one vars_schema. An invalid prompt_id must
+    raise an explicit error instead of falling back to a built-in default.
+    Returns (body, source layer, version of the default layer)."""
     schema = agent.prompt_vars_schema
     if request_override:
         return _fill(request_override, prompt_vars, schema), "request", None

@@ -77,8 +77,10 @@ def configure_openinference_redaction() -> None:
 
 
 def setup_otel(app) -> None:
-    """OTel GenAI 链路：openinference LangChain instrumentation（不自研埋点层）
-    + FastAPI 入口 span，OTLP HTTP 导出到平台 otelcol-contrib。失败降级为不埋点，不影响服务。"""
+    """OTel GenAI pipeline: openinference LangChain instrumentation (no in-house
+    tracing layer) plus a FastAPI entry span, exported over OTLP HTTP to the
+    platform otelcol-contrib. On failure it degrades to no tracing at all and
+    the service keeps running."""
     global _tracer
     if os.getenv("OTEL_ENABLED", "true").lower() != "true":
         return
@@ -342,7 +344,8 @@ def _normalized_attributes(attributes: dict) -> dict:
 
 
 def span(name: str, attributes: dict):
-    """业务外层 span（agent.chat / agent.task），挂 agent_id/thread_id/task_id 等属性。"""
+    """Outer business span (agent.chat / agent.task) carrying attributes such as
+    agent_id, thread_id, and task_id."""
     if _tracer is None:
         from contextlib import nullcontext
 

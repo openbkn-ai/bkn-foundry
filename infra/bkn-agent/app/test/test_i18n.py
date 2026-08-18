@@ -80,8 +80,10 @@ def test_catalogs_share_keys_codes_and_fields():
     assert set(zh_cn.resource_names) == set(en_us.resource_names)
     for key, message in zh_cn.error_messages.items():
         translated = en_us.error_messages[key]
-        assert message["code"] == translated["code"], key
         assert set(message) == set(translated), key
+        # A standalone message (an import warning) carries no public code.
+        if "code" in message:
+            assert message["code"] == translated["code"], key
 
 
 def test_english_catalog_has_no_chinese():

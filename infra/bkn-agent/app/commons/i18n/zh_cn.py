@@ -224,6 +224,26 @@ error_messages = {
         "detail": "agent 数据不符合当前校验规则",
         "solution": "先修复该 agent（PUT /agents/{id} 更新为合法配置）再导出。",
     },
+    "BknAgent.Impex.OwnedByAnotherAccount": {
+        "detail_template": "agent {agent_id} 属于 {owner}，不能通过导入覆盖他人 agent",
+        "detail": "该 agent 属于其他账户，不能通过导入覆盖",
+    },
+    "BknAgent.Impex.AgentNameTaken": {
+        "detail_template": "agent 名「{agent_name}」已被 {holder_id} 占用",
+        "detail": "该 agent 名已被占用",
+    },
+    "BknAgent.Impex.PromptNameTaken": {
+        "detail_template": "prompt 名「{prompt_name}」已被 {holder_id} 占用",
+        "detail": "该 prompt 名已被占用",
+    },
+    "BknAgent.Tool.EnumHint": {
+        "detail_template": "（可选值：{values}）",
+        "detail": "",
+    },
+    "BknAgent.Impex.MissingAgentReference": {
+        "detail_template": "agent {agent_name} 引用的子 agent {ref_id} 不在包内也不在目标环境",
+        "detail": "被引用的子 agent 不在包内也不在目标环境",
+    },
     "BknAgent.ParamError.FormatError": {
         "code": "BknAgent.ParamError.FormatError",
         "description": "参数错误",

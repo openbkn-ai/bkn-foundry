@@ -10,37 +10,45 @@ class Config:
     HOST = _env("BKN_AGENT_HOST", "0.0.0.0")
     PORT = int(_env("BKN_AGENT_PORT", "30800"))
 
-    # 共享 openbkn 库（平台 RDS* 约定）
+    # The shared openbkn database, following the platform RDS* convention.
     RDS_HOST = _env("RDSHOST", "127.0.0.1")
     RDS_PORT = int(_env("RDSPORT", "3306"))
     RDS_DBNAME = _env("RDSDBNAME", "openbkn")
     RDS_USER = _env("RDSUSER", "root")
     RDS_PASS = _env("RDSPASS", "password")
 
-    # 模型面：mf-model-api 集群内私有路由（OpenAI 兼容）。model 为空 → 系统默认模型。
+    # Model surface: the in-cluster private route of mf-model-api, OpenAI
+    # compatible. An empty model means the system default model.
     MF_MODEL_API_PRIVATE_BASE = _env(
         "MF_MODEL_API_PRIVATE_BASE",
         "http://mf-model-api:9898/api/private/mf-model-api/v1",
     )
     DEFAULT_MODEL = _env("BKN_AGENT_DEFAULT_MODEL", "")
 
-    # 算子工厂（operator-integration）：工具面与技能面统一走这里的 internal-v1
-    # （#322 把技能面从 capabilities-lab 收敛过来）
+    # Operator factory (operator-integration): both the tool surface and the
+    # skill surface go through its internal-v1 route (#322 moved the skill
+    # surface over from capabilities-lab).
     OPERATOR_INTEGRATION_BASE = _env("OPERATOR_INTEGRATION_BASE", "http://agent-operator-integration:9000/api/agent-operator-integration")
 
-    # Context Loader MCP 面。ToolRef type=context_loader 由此装载，不需要在 agent
-    # 定义里写死 URL（写死会让定义不能跨环境搬）。
+    # The Context Loader MCP surface. A ToolRef with type=context_loader loads
+    # from here, so no URL has to be hard-coded in the agent definition; a
+    # hard-coded one would stop the definition from moving between
+    # environments.
     #
-    # 这是 Context Loader 的**公开面**：它挂 middlewareIntrospectVerify，只认真实
-    # 令牌（OAuth access token 或 bak_ AppKey），不吃 /in 那套 x-account-id 头部身份。
-    # 所以调用方必须透传最终用户的令牌，这条路才成立。
+    # This is the *public* surface of Context Loader: it runs
+    # middlewareIntrospectVerify and accepts only a real credential (an OAuth
+    # access token or a bak_ AppKey), not the /in style x-account-id header
+    # identity. The caller must therefore forward the end user's token for this
+    # path to work at all.
     CONTEXT_LOADER_MCP_URL = _env(
         "CONTEXT_LOADER_MCP_URL",
         "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/",
     )
-    # 凭据只走调用方透传的令牌（见 auth.caller_token）。刻意不设服务凭据兜底：
-    # 用服务 AppKey 顶上去会让 Context Loader 看到签发人而非真实调用者，
-    # per-user 授权当场塌缩。没令牌就不挂 CL 工具。
+    # The only credential is the token forwarded by the caller; see
+    # auth.caller_token. There is deliberately no service-credential fallback:
+    # standing in with a service AppKey would show Context Loader the issuer
+    # instead of the real caller and collapse per-user authorization on the
+    # spot. Without a token the CL tools are simply not loaded.
     CONTEXT_LOADER_MCP_TIMEOUT_S = float(_env("CONTEXT_LOADER_MCP_TIMEOUT_S", "30"))
 
     # BKN Trace phase-two evidence ingestion. Empty URL = construct evidence facts
@@ -60,11 +68,12 @@ class Config:
 
     # checkpointer: memory | mysql
     CHECKPOINTER_BACKEND = _env("CHECKPOINTER_BACKEND", "mysql")
-    # 建表统一走 migrations/bkn-agent/（core-data-migrator）。仅开发环境
-    # 允许 saver 运行时自建表。
+    # Tables are created solely by migrations/bkn-agent/, run by
+    # core-data-migrator. Only a development environment lets the saver create
+    # its own tables at runtime.
     CHECKPOINTER_ALLOW_RUNTIME_DDL = _env("CHECKPOINTER_ALLOW_RUNTIME_DDL", "false").lower() == "true"
 
-    # 执行限额默认值（agent.limits 可覆盖）
+    # Default execution limits; agent.limits may override them.
     DEFAULT_MAX_TURNS = int(_env("BKN_AGENT_MAX_TURNS", "25"))
     DEFAULT_TIMEOUT_S = int(_env("BKN_AGENT_TIMEOUT_S", "300"))
 

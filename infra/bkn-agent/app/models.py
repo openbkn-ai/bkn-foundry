@@ -88,16 +88,21 @@ class TaskRow(Base):
 
 # ---- API schemas ----
 
-# 工具引用：discriminated union（按 type 分派），创建边界即校验类型/长度——
-# 否则 {"url":123} 之类会建成功、到 MCP 客户端/工厂请求/工具注册阶段才炸。
-# extra="allow" 保留调用方附加字段；校验通过后统一转回 dict（见 AgentSpec 的
-# model_validator）——执行链（tools.py 的 ref.get）与入库 JSON 列继续吃 dict，
-# 出库 AgentOut.tools 覆写为裸 dict 不校验（存量脏数据不阻断列表/同步）。
+# Tool references form a discriminated union dispatched on type, validated for
+# type and length at the creation boundary. Without that, something like
+# {"url":123} would be created successfully and only blow up later, in the MCP
+# client, a factory request, or tool registration. extra="allow" preserves extra
+# caller fields; once validated everything converts back to dict (see the
+# model_validator on AgentSpec), because the execution chain (ref.get in
+# tools.py) and the stored JSON column keep consuming dicts. On the way out,
+# AgentOut.tools is overridden to a bare dict with no validation, so legacy
+# dirty data does not block listing or syncing.
 
 
 class _ToolRefBase(BaseModel):
     model_config = {"extra": "allow"}
-    # 工具展示名/说明（可选）：agent-as-tool 与 mcp 连接名会用到
+    # Optional display name and description, used by agent-as-tool and as the
+    # mcp connection name.
     name: Optional[str] = Field(default=None, max_length=100)
     description: Optional[str] = Field(default=None, max_length=500)
 
@@ -127,9 +132,10 @@ class ContextLoaderToolRef(_ToolRefBase):
     """
 
     type: Literal["context_loader"]
-    # 未声明时保留既有「装载 Context Loader 全部业务工具」行为。需要只读诊断的
-    # agent 则必须显式列出允许的 MCP 工具名，避免在 prompt 约束之外仍拿到 run_sql
-    # 或执行类工具。
+    # When undeclared, the existing behaviour of loading every Context Loader
+    # business tool is preserved. An agent meant for read-only diagnosis must
+    # list the permitted MCP tool names explicitly, so it cannot still receive
+    # run_sql or execution-class tools beyond what the prompt constrains.
     allowed_tools: Optional[list[str]] = Field(
         default=None,
         max_length=100,
@@ -147,24 +153,32 @@ class AgentLimits(BaseModel):
     max_turns: Optional[int] = Field(default=None, ge=1, le=200)
     max_tool_calls: Optional[int] = Field(default=None, ge=0, le=500)
     timeout_s: Optional[int] = Field(default=None, ge=1, le=3600)
-    # 单次模型调用的输出 token 上限。不设则用 provider 默认（常见 ~4096，长 JSON 会被
-    # 截断——大输入场景配大此值）。透传 OpenAI 兼容 max_tokens，最终受模型自身上限约束。
-    # 下限 10 对齐 mf-model-api（logics.py max_tokens: conint(ge=10)）——收 1..9 会让
-    # agent 建成功但每次执行必被下游 400。
+    # Output token cap for a single model call. Unset means the provider default,
+    # commonly around 4096, which truncates long JSON — raise it for large-input
+    # scenarios. It is passed through as the OpenAI-compatible max_tokens and is
+    # ultimately bounded by the model's own limit. The lower bound of 10 matches
+    # mf-model-api (logics.py max_tokens: conint(ge=10)): accepting 1..9 would
+    # let the agent be created while every execution failed downstream with 400.
     max_output_tokens: Optional[int] = Field(default=None, ge=10, le=65536)
 
 
-_ID_PATTERN = r"^[0-9A-Za-z_.-]+$"  # 预设 id 允许字母数字下划线点连字符（跨环境稳定引用用）
+_ID_PATTERN = r"^[0-9A-Za-z_.-]+$"  # A preset id allows letters, digits, underscore, dot, and hyphen, for stable cross-environment references
 
 
 class AgentSpec(BaseModel):
-    # 预设 id（可选）：创建时指定，便于模块用固定 id 跨环境引用；不传则服务端生成 uuid。
-    # 已存在则创建冲突（不覆盖，跨环境同步用 import 的 upsert）。仅创建生效，更新忽略。
+    # Optional preset id, given at creation so a module can reference a fixed id
+    # across environments; without it the server generates a uuid. An existing id
+    # is a creation conflict rather than an overwrite — cross-environment syncing
+    # uses the upsert of import. It applies only on creation and is ignored on
+    # update.
     agent_id: Optional[str] = Field(default=None, min_length=1, max_length=50, pattern=_ID_PATTERN)
-    # 字符集：ASCII 字母数字下划线或汉字（基本区），空格与连字符不收。
-    # 该约束原本是为了对齐算子工厂 toolbox 的工具名校验，自动注册取消后
-    # （见 README「算子工厂注册」）它已是 bkn-agent 自身的约定；保持不放宽，
-    # 放宽属行为变更，要单独评估存量 agent 与导入导出的影响。
+    # Charset: ASCII letters, digits, underscore, or CJK ideographs from the
+    # basic block; spaces and hyphens are rejected. The constraint originally
+    # aligned with the tool-name validation of the operator-factory toolbox, and
+    # since automatic registration was dropped (see "operator factory
+    # registration" in the README) it is bkn-agent's own convention. It stays as
+    # it is: relaxing it is a behaviour change that needs its own assessment of
+    # existing agents and of import/export.
     name: str = Field(min_length=1, max_length=100, pattern=r"^[0-9A-Za-z_一-鿿]+$")
     mode: Literal["chat", "task"] = "chat"
     prompt_id: Optional[str] = None
@@ -177,8 +191,10 @@ class AgentSpec(BaseModel):
 
     @model_validator(mode="after")
     def _tools_to_dicts(self):
-        # 校验（union 分派+类型/长度）在字段解析时已完成；这里统一转回 dict，
-        # 执行链（ref.get）与入库 JSON 列不感知 pydantic 模型。
+        # Validation (union dispatch plus type and length) already happened
+        # during field parsing; this converts everything back to dict, because
+        # the execution chain (ref.get) and the stored JSON column know nothing
+        # about pydantic models.
         self.tools = [
             t.model_dump(exclude_none=True) if isinstance(t, BaseModel) else t
             for t in self.tools
@@ -187,20 +203,25 @@ class AgentSpec(BaseModel):
 
     @field_serializer("tools")
     def _ser_tools(self, v):
-        # 值在 _tools_to_dicts 已是 dict，与 union 注解不符——显式序列化器原样输出，
-        # 避免 pydantic 每次序列化刷 PydanticSerializationUnexpectedValue 警告。
+        # After _tools_to_dicts the values are dicts, which no longer match the
+        # union annotation. An explicit serializer emits them as they are and
+        # keeps pydantic from logging PydanticSerializationUnexpectedValue on
+        # every serialization.
         return v
 
 
 class AgentOut(AgentSpec):
-    # 出库（DB 行 → 输出对象）不复验：升级前的存量脏数据若在这里炸，会连坐
-    # /agents 整页 500、单查无法读取修复。
-    # 写入模型（AgentSpec）严校验，输出模型放行原样数据——
-    # tools 覆写为裸 dict，agent_id/name 去掉 pattern 复验。
+    # The read path (DB row -> output object) does not re-validate: if legacy
+    # dirty data from before an upgrade failed here, it would take the whole
+    # /agents page down with a 500 and make the single-item read unusable for
+    # repair. The write model (AgentSpec) validates strictly while the output
+    # model passes data through as-is — tools is overridden to a bare dict, and
+    # agent_id and name drop their pattern re-validation.
     agent_id: str = Field(min_length=1)
     name: str = Field(min_length=1, max_length=100)
-    # list[Any] 而非 list[dict]：手改 DB 塞进的标量元素也放行（列表/修复通道优先，
-    # 执行时才在 load_tools 报错）
+    # list[Any] rather than list[dict]: a scalar element inserted by hand-editing
+    # the database is let through too, because listing and the repair path come
+    # first; load_tools reports the error at execution time instead.
     tools: list[Any] = Field(default_factory=list)
     create_user: str
     update_user: str
@@ -220,28 +241,34 @@ class AgentDeleted(BaseModel):
 
 
 def _check_json_schema(v: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
-    """response_format 在请求边界即校验为合法 JSON Schema（非法直接 400）。
-    否则非法 schema 会一路进到结构化调用：原生+提示词降级各白费一次模型调用，
-    最后以任务执行失败收场，错误面目全非。"""
+    """Validate response_format as a legal JSON Schema at the request boundary,
+    answering 400 outright when it is not. Otherwise an invalid schema travels
+    all the way into the structured call, wasting one model call on the native
+    path and another on the prompt fallback before the task fails with an error
+    that no longer resembles the cause."""
     if v is None:
         return v
     try:
         validator_for(v).check_schema(v)
     except SchemaError as e:
-        raise ValueError(f"response_format 不是合法 JSON Schema：{e.message}") from e
-    except Exception as e:  # $schema 字段本身畸形等 validator_for 阶段的错
-        raise ValueError(f"response_format 不是合法 JSON Schema：{e}") from e
-    # 根类型必须是 object：执行链假设结果是 mapping（原生路径 dict(r)、降级路径按
-    # {..} 区间抽取），array/标量根会过校验但执行必挂。需要列表就包一层
+        raise ValueError(f"response_format is not a valid JSON Schema: {e.message}") from e
+    except Exception as e:  # Errors from the validator_for stage, such as a malformed $schema field
+        raise ValueError(f"response_format is not a valid JSON Schema: {e}") from e
+    # The root type must be object: the execution chain assumes the result is a
+    # mapping (dict(r) on the native path, extraction between {..} on the
+    # fallback path), so an array or scalar root would pass validation and fail
+    # at execution. Wrap a list in an object property instead.
     # {"type":"object","properties":{"items":{"type":"array",...}}}。
     if v.get("type") != "object":
         raise ValueError(
-            'response_format 根类型必须是 "type":"object"（数组/标量请包进 object 属性）'
+            'the root type of response_format must be "type":"object"; '
+            'wrap an array or scalar in an object property'
         )
     return v
 
 
-# 结构化输出：传 JSON Schema 本体（如 {"type":"object","properties":{...}}）。
+# Structured output: pass the JSON Schema itself, such as
+# {"type":"object","properties":{...}}.
 ResponseFormat = Annotated[Optional[dict[str, Any]], AfterValidator(_check_json_schema)]
 
 
@@ -252,9 +279,11 @@ class ChatRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
-    # 结构化输出：工具循环跑完后再做一次结构化调用，结果经 SSE `structured` 事件
-    # 返回（正文 token 照常流）。依赖底层模型支持（with_structured_output /
-    # function-calling），不支持时提示词降级（见 core/structured.py）。
+    # Structured output: once the tool loop finishes, one more structured call
+    # runs and its result is returned through the SSE `structured` event, while
+    # body tokens keep streaming as usual. It depends on support in the
+    # underlying model (with_structured_output / function calling) and degrades
+    # to the prompt path when that is missing; see core/structured.py.
     response_format: ResponseFormat = None
 
 
@@ -265,7 +294,8 @@ class InvokeRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
-    # 结构化输出：task output 落序列化后的 JSON（见 ChatRequest.response_format）。
+    # Structured output: the task output stores the serialized JSON; see
+    # ChatRequest.response_format.
     response_format: ResponseFormat = None
 
 
@@ -275,12 +305,14 @@ class RunRequest(BaseModel):
     skills: list[str] = Field(default_factory=list)
     prompt_override: Optional[str] = None
     prompt_vars: dict[str, Any] = Field(default_factory=dict)
-    # 结构化输出：task output 落序列化后的 JSON（见 ChatRequest.response_format）。
+    # Structured output: the task output stores the serialized JSON; see
+    # ChatRequest.response_format.
     response_format: ResponseFormat = None
 
 
 class PromptSpec(BaseModel):
-    # 预设 id（可选）：同 AgentSpec.agent_id；不传则服务端生成 uuid，冲突即报错。
+    # Optional preset id, as in AgentSpec.agent_id: without it the server
+    # generates a uuid, and a collision is an error.
     prompt_id: Optional[str] = Field(default=None, min_length=1, max_length=50, pattern=_ID_PATTERN)
     name: str = Field(min_length=1, max_length=100)
     content: str = Field(min_length=1)
@@ -384,7 +416,7 @@ class TaskOut(BaseModel):
     update_time: int
 
 
-# ---------- 导入导出（impex） ----------
+# ---------- Import and export (impex) ----------
 
 
 class PromptExport(BaseModel):
@@ -397,7 +429,7 @@ class PromptExport(BaseModel):
 class AgentExportItem(BaseModel):
     agent_id: str
     spec: AgentSpec
-    prompt: Optional[PromptExport] = None  # 当前生效版本；导入侧内容有变则发布新版本
+    prompt: Optional[PromptExport] = None  # The currently effective version; the import side publishes a new one when the content changed
 
 
 class ExportRequest(BaseModel):

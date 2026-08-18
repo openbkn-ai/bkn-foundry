@@ -108,8 +108,9 @@ class TraceChatOpenAI(ChatOpenAI):
 
 
 def normalize_response_format(rf: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
-    """with_structured_output 底层过 convert_to_openai_function：纯 JSON Schema 若缺
-    name/title 会被判 `Unsupported function`。缺就补个 title，调用方可直接传裸 schema。"""
+    """with_structured_output goes through convert_to_openai_function underneath:
+    a bare JSON Schema without name/title is rejected as `Unsupported function`.
+    Fill in a title when it is missing so callers may pass a bare schema."""
     if isinstance(rf, dict) and "title" not in rf and "name" not in rf:
         return {"title": "StructuredResponse", **rf}
     return rf
@@ -118,14 +119,18 @@ def normalize_response_format(rf: Optional[dict[str, Any]]) -> Optional[dict[str
 def build_chat_model(
     agent_model: str, streaming: bool = True, max_output_tokens: Optional[int] = None
 ) -> ChatOpenAI:
-    """模型一律经 mf-model-api（集群内 /api/private）。model 为空 → 系统默认模型，
-    由 mf-model-api 侧解析，这里不钉模型名。
+    """Every model call goes through mf-model-api (in-cluster /api/private). An
+    empty model means the system default, resolved on the mf-model-api side; no
+    model name is pinned here.
 
-    streaming=False 用于结构化输出：结构化调用是一次性取整个对象，且部分网关在流式
-    结构化时会吐 choices=None 的 chunk 触发 langchain_openai 崩溃，非流式绕开。
+    streaming=False is for structured output: a structured call fetches the whole
+    object at once, and some gateways emit a choices=None chunk while streaming
+    structured results, which crashes langchain_openai. Non-streaming avoids it.
 
-    max_output_tokens（limits.max_output_tokens）透传 OpenAI 兼容 max_tokens：
-    provider 默认输出上限常见 ~4096，长 JSON（如 catalog 语义理解）会被中途截断。"""
+    max_output_tokens (limits.max_output_tokens) is passed through as the
+    OpenAI-compatible max_tokens: a provider default output cap is commonly
+    around 4096, which truncates long JSON such as catalog semantic
+    understanding."""
     kwargs = {"max_tokens": max_output_tokens} if max_output_tokens else {}
     return TraceChatOpenAI(
         base_url=config.MF_MODEL_API_PRIVATE_BASE,

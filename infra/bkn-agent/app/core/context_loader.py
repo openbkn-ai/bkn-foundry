@@ -1,24 +1,34 @@
-"""Context Loader 的 MCP 面装载（ToolRef type=context_loader）。
+"""Loading the Context Loader MCP surface (ToolRef type=context_loader).
 
-与 toolbox 那条路的区别，以及为什么要有这个模块：
+How this differs from the toolbox path, and why this module exists at all:
 
-- Context Loader 的 MCP JSON-RPC 只挂在**公开路由**上，且该路由挂了
-  `middlewareIntrospectVerify`，只认真实令牌（OAuth access token 或 bak_ AppKey）。
-  它不吃 `/in` 那套 `x-account-id` 头部身份。所以这里必须带 Authorization。
-- Context Loader 对所有业务工具有生命周期守卫：`bkn_context`（conversation_id +
-  interaction_id）是**必填入参**，缺了返回 `conversation_required`。
-- 这对 id **不能本地铸**。实测本地铸的 `int_...` 会被 `resource_not_disclosed`
-  拒掉——MCP 侧的 owner tuple 从令牌推导，与自铸 id 对不上。正路是先调
-  `bkn_start_interaction` 领一对真 id，再拿它调业务工具。领到的 id 与令牌身份
-  绑定、不与 MCP 会话绑定，所以一轮对话领一次即可复用。
+- The Context Loader MCP JSON-RPC endpoint is mounted only on the **public**
+  route, and that route runs `middlewareIntrospectVerify`, which accepts a real
+  credential only: an OAuth access token or a bak_ AppKey. It does not honour
+  the `/in` style `x-account-id` header identity, so an Authorization header is
+  mandatory here.
+- Context Loader guards every business tool with a lifecycle check:
+  `bkn_context` (conversation_id plus interaction_id) is a **required**
+  argument, and omitting it returns `conversation_required`.
+- That pair of ids **cannot be minted locally**. In practice a locally minted
+  `int_...` is rejected with `resource_not_disclosed`, because the MCP-side
+  owner tuple is derived from the token and does not match a self-minted id.
+  The correct path is to call `bkn_start_interaction` first for a real pair and
+  then use it for the business tools. The ids it returns are bound to the token
+  identity rather than to the MCP session, so one handshake per turn is enough
+  and the pair can be reused.
 
-凭据只有一个来源：调用方透传的 Authorization（`auth.caller_token()`）。
+There is exactly one source of credentials: the Authorization header forwarded
+by the caller, `auth.caller_token()`.
 
-刻意不留服务凭据兜底。用服务 AppKey 顶上去的话，Context Loader 看到的是该
-AppKey 的签发人而不是真实调用者，per-user 授权当场塌缩成「签发人可见的范围」——
-一个默认关闭但存在的开关，迟早会被人为了「让它跑起来」打开。没令牌就不挂工具，
-并记一条 warning（不静默返回空工具集），失败留在看得见的地方。
-"""
+There is deliberately no service-credential fallback. Standing in with a service
+AppKey would show Context Loader the issuer of that AppKey rather than the real
+caller, collapsing per-user authorization into "whatever the issuer can see" —
+a switch that is off by default but exists, and sooner or later somebody flips
+it to "make it work". Without a token no tools are mounted, and a warning is
+logged rather than an empty tool set returned silently, so the failure stays
+where it can be seen."""
+
 import logging
 from contextvars import ContextVar
 from typing import Any, Optional
@@ -32,15 +42,16 @@ from app.config import config
 
 logger = logging.getLogger("bkn-agent.context-loader")
 
-# 生命周期工具本身不是业务工具，不需要 bkn_context，也不该暴露给模型 ——
-# 模型不该自己决定何时开一轮交互。
+# The lifecycle tools are not business tools: they need no bkn_context and must
+# not be exposed to the model, which should not decide when a turn begins.
 _LIFECYCLE_TOOLS = {"bkn_start_interaction", "bkn_finish_interaction"}
 
 _CONNECTION_NAME = "context_loader"
 
-# 本轮执行的会话。load_tools 装载时设置，runner / graph 取里面的真 id 交给
-# evidence.begin_interaction，让证据链与 Context Loader 用同一对 id ——
-# 否则一轮对话在 trace 里会裂成两条。
+# The session for this execution. load_tools sets it while loading, and the
+# runner or graph takes the real ids out of it for evidence.begin_interaction so
+# the evidence chain and Context Loader share one pair of ids; otherwise a
+# single conversation splits into two traces.
 _current: ContextVar[Optional["ContextLoaderSession"]] = ContextVar(
     "bkn_agent_context_loader_session", default=None
 )
@@ -63,13 +74,14 @@ def wanted(tool_refs: list[dict]) -> bool:
 
 
 def _credential() -> Optional[str]:
-    """当前调用方透传的 Authorization 头原文；没有则 None。"""
+    """The raw Authorization header forwarded by the current caller, or None."""
     return caller_token()
 
 
-# 服务端据此把多轮归到同一个 managed conversation；不给就每轮新铸一个，
-# 一段多轮对话会被存成 N 个各含一次交互的独立会话，且事后无法合并。
-# 见 adp/context-loader/.../mcp/host_lifecycle_hints.go:22。
+# The server groups turns into one managed conversation by this key. Without it
+# every turn mints a new one, so a multi-turn conversation is stored as N
+# separate sessions holding one interaction each, and they cannot be merged
+# afterwards. See adp/context-loader/.../mcp/host_lifecycle_hints.go:22.
 _HOST_CONVERSATION_KEY_HEADER = "X-OpenBKN-Host-Conversation-Key"
 
 
@@ -92,16 +104,18 @@ def _client(
 
 
 class ContextLoaderSession:
-    """一轮 agent 执行期间对 Context Loader 的一次会话。
+    """One Context Loader session for the span of a single agent execution.
 
-    持有真 id 与已装载的工具。`bkn_context` 由本类在调用时注入，不进模型可见的
-    参数表——什么时候算一轮交互是运行时的事，不是模型该决策的事。
+    It holds the real ids and the loaded tools. `bkn_context` is injected by this
+    class at call time and never enters the model-visible parameter table: what
+    counts as one interaction is a runtime concern, not the model's decision.
     """
 
     def __init__(self, conversation_id: str, interaction_id: str):
         self.conversation_id = conversation_id
         self.interaction_id = interaction_id
-        # 收尾在正常路径上提前做一次、finally 再兜一次，必须幂等
+        # Cleanup runs once early on the normal path and again in the finally,
+        # so it has to be idempotent.
         self.closed = False
         self._tools: list[Any] = []
         self._finish: Any = None
@@ -114,17 +128,20 @@ class ContextLoaderSession:
         }
 
     def tools(self, allowed_tools: set[str] | None = None) -> list[Any]:
-        """返回会话工具；白名单仅收窄，不改变生命周期与上下文注入。"""
+        """Return the session tools. An allowlist only narrows the set; it changes
+        neither the lifecycle nor the context injection."""
         if allowed_tools is None:
             return self._tools
         return [tool for tool in self._tools if getattr(tool, "name", None) in allowed_tools]
 
 
 def _strip_bkn_context(tool: Any) -> None:
-    """把 bkn_context 从模型可见的入参表里摘掉（含 required 列表）。
+    """Strip bkn_context out of the model-visible parameter table, including the
+    required list.
 
-    MCP 侧把它声明为 required，照原样透给模型会让模型去编造 id；实际值由
-    ContextLoaderSession 在调用时注入。
+    The MCP side declares it required, and passing that through unchanged invites
+    the model to invent ids; the real value is injected by ContextLoaderSession
+    at call time.
     """
     schema = getattr(tool, "args_schema", None)
     if not isinstance(schema, dict):
@@ -138,7 +155,8 @@ def _strip_bkn_context(tool: Any) -> None:
 
 
 def _bind_context(tool: Any, session: ContextLoaderSession) -> Any:
-    """包一层：调用时补上 bkn_context 再转给原工具。"""
+    """A thin wrapper that fills in bkn_context before delegating to the original
+    tool."""
     inner = getattr(tool, "coroutine", None)
     if inner is None:
         return tool
@@ -163,20 +181,26 @@ async def open_session(
     agent_name: str | None = None,
     host_conversation_key: str | None = None,
 ) -> Optional[ContextLoaderSession]:
-    """握手并装载工具。凭据缺失或握手失败返回 None（调用方决定是否致命）。
+    """Handshake and load the tools. Returns None when the credential is missing
+    or the handshake fails, and the caller decides whether that is fatal.
 
-    question 是 bkn_start_interaction 的必填项，语义是「这一轮用户问了什么」，
-    传本轮真实输入而不是空串——生命周期服务按它归档这一轮。
+    question is required by bkn_start_interaction and means "what the user asked
+    this turn", so pass the real input rather than an empty string: the lifecycle
+    service archives the turn under it.
 
-    host_conversation_key 是多轮连续性的锚：chat 传 thread_id，服务端据此把
-    同一 thread 的各轮归到同一个 conversation。不传就每轮新铸一个，一段五轮
-    对话会被存成五个互不相干的单轮会话，且是持久化数据、事后补不回来。
+    host_conversation_key anchors multi-turn continuity. chat passes thread_id,
+    and the server groups the turns of one thread into a single conversation.
+    Without it every turn mints a new one, so a five-turn conversation is stored
+    as five unrelated single-turn sessions — persisted data that cannot be
+    repaired afterwards.
     """
     authorization = _credential()
     if not authorization:
         logger.warning(
-            "[ContextLoader] 调用方未透传 Authorization，跳过 context_loader 工具装载。"
-            "Context Loader 的 MCP 面只认真实令牌，调用 bkn-agent 时需带上最终用户的令牌"
+            "[ContextLoader] the caller forwarded no Authorization header; "
+            "skipping context_loader tool loading. The Context Loader MCP surface "
+            "accepts real credentials only, so a call to bkn-agent must carry the "
+            "end user's token"
         )
         return None
 
@@ -184,30 +208,42 @@ async def open_session(
     try:
         tools = await client.get_tools()
     except Exception as e:
-        # ExceptionGroup 的 str() 只有 "unhandled errors in a TaskGroup"，真因全在
-        # 子异常里。VM 上第一次排查就卡在这条日志上（真因是 401），所以摊开打。
+        # str() on an ExceptionGroup yields only "unhandled errors in a
+        # TaskGroup" while the real cause sits in the sub-exceptions. The first
+        # investigation on the VM stalled on exactly this log line (the real
+        # cause was a 401), so unpack it.
         detail = "; ".join(f"{type(x).__name__}: {x}" for x in getattr(e, "exceptions", ()) or ()) or f"{type(e).__name__}: {e}"
-        logger.warning("[ContextLoader] 连接 MCP 面失败，跳过工具装载：%s", detail)
+        logger.warning(
+            "[ContextLoader] connecting to the MCP surface failed; "
+            "skipping tool loading: %s", detail
+        )
         return None
 
     by_name = {getattr(t, "name", ""): t for t in tools}
     start = by_name.get("bkn_start_interaction")
     if start is None:
-        logger.warning("[ContextLoader] MCP 面未暴露 bkn_start_interaction，跳过工具装载")
+        logger.warning(
+            "[ContextLoader] the MCP surface does not expose "
+            "bkn_start_interaction; skipping tool loading"
+        )
         return None
 
     try:
-        args = {"question": question or "(未提供)"}
+        args = {"question": question or "(not provided)"}
         if agent_name:
             args["agent_name"] = agent_name[:128]
         raw = await start.coroutine(**args)
     except Exception as e:
-        logger.warning("[ContextLoader] bkn_start_interaction 失败，跳过工具装载：%s", e)
+        logger.warning(
+            "[ContextLoader] bkn_start_interaction failed; skipping tool loading: %s", e
+        )
         return None
 
     ids = _parse_ids(raw)
     if not ids:
-        logger.warning("[ContextLoader] bkn_start_interaction 未返回可用 id：%r", raw)
+        logger.warning(
+            "[ContextLoader] bkn_start_interaction returned no usable id: %r", raw
+        )
         return None
 
     session = ContextLoaderSession(ids[0], ids[1])
@@ -218,7 +254,7 @@ async def open_session(
         if name not in _LIFECYCLE_TOOLS
     ]
     logger.info(
-        "[ContextLoader] 会话就绪：%d 个工具，interaction %s",
+        "[ContextLoader] session ready: %d tool(s), interaction %s",
         len(session._tools),
         session.interaction_id,
     )
@@ -226,17 +262,21 @@ async def open_session(
 
 
 def _parse_ids(raw: Any) -> Optional[tuple[str, str]]:
-    """从 bkn_start_interaction 的返回里取出 (conversation_id, interaction_id)。
+    """Pull (conversation_id, interaction_id) out of the bkn_start_interaction
+    result.
 
-    langchain-mcp-adapters 的实际返回形状（VM 实测）是个二元组：
+    The shape langchain-mcp-adapters actually returns, as measured on the VM, is
+    a two-tuple:
 
         ([{"type": "text", "text": "<json>", "id": ...}],
          {"structured_content": {"conversation_id": ..., "interaction_id": ...}})
 
-    早先这里只认 dict 和裸 JSON 串，撞上真实形状直接返回 None —— 握手其实成功了，
-    id 也拿到了，却被判成「未返回可用 id」而跳过整个工具装载。这里按「先找
-    structured_content，再退回文本块里的 JSON」两级解析，并保留 dict / 裸串两种
-    简单形状。
+    An earlier version accepted only a dict or a bare JSON string and returned
+    None as soon as it met the real shape: the handshake had actually succeeded
+    and the ids had arrived, yet it was judged as "returned no usable id" and the
+    whole tool loading was skipped. Parsing now happens in two stages — look for
+    structured_content first, then fall back to JSON inside the text blocks —
+    while still accepting the two simple shapes, a dict and a bare string.
     """
     for candidate in _id_candidates(raw):
         cid = candidate.get("conversation_id")
@@ -247,7 +287,8 @@ def _parse_ids(raw: Any) -> Optional[tuple[str, str]]:
 
 
 def _id_candidates(raw: Any):
-    """把可能藏着 id 的字典逐个吐出来，从最可信的来源开始。"""
+    """Yield every dict that might hide the ids, most trustworthy source
+    first."""
     import json
 
     seen: list[Any] = []
@@ -262,7 +303,8 @@ def _id_candidates(raw: Any):
                 pass
             return
         if isinstance(node, dict):
-            # structured_content / structuredContent 是 MCP 的结构化输出，优先
+            # structured_content / structuredContent is the MCP structured
+            # output, so it wins.
             for key in ("structured_content", "structuredContent"):
                 if isinstance(node.get(key), dict):
                     seen.append(node[key])
@@ -278,10 +320,11 @@ def _id_candidates(raw: Any):
     return [c for c in seen if isinstance(c, dict)]
 
 
-# bkn_finish_interaction 的 outcome 枚举（取自 MCP 面 input_schema）。
-# 早先这里传的是 "succeeded"——不在枚举里，连同把 id 塞进 bkn_context 而不是
-# interaction_id，导致每一轮收尾都被 resource_not_disclosed 拒掉，交互全挂在
-# active 上没人关。
+# The outcome enum of bkn_finish_interaction, taken from the MCP input_schema.
+# An earlier version passed "succeeded", which is not in the enum, and also put
+# the id into bkn_context instead of interaction_id. Together those had every
+# cleanup rejected with resource_not_disclosed, leaving all interactions stuck
+# in active with nobody closing them.
 _OUTCOMES = {"completed", "failed", "cancelled", "handed_off"}
 
 
@@ -292,8 +335,9 @@ async def close_session(
     answer: str | None = None,
     reason: str | None = None,
 ) -> None:
-    """收尾 bkn_finish_interaction。失败只告警：一轮已经跑完，不该因为收尾失败
-    把成功的结果翻成失败。"""
+    """Close the turn with bkn_finish_interaction. A failure only warns: the turn
+    has already run, and a failed cleanup must not turn a successful result into
+    a failed one."""
     if session is None or session._finish is None or session.closed:
         return
     session.closed = True
@@ -304,8 +348,9 @@ async def close_session(
         "outcome": outcome,
     }
     if answer:
-        # 归档的答案是持久化数据，截断必须留痕，否则存档与用户实际收到的
-        # 内容会静默不一致。
+        # The archived answer is persisted data, so truncation has to leave a
+        # mark; otherwise the archive and what the user actually received differ
+        # silently.
         args["answer"] = (
             answer if len(answer) <= 4000 else answer[:4000] + "…[truncated by bkn-agent]"
         )
@@ -315,7 +360,7 @@ async def close_session(
         await session._finish.coroutine(**args)
     except Exception as e:
         logger.warning(
-            "[ContextLoader] bkn_finish_interaction 失败（interaction %s）：%s",
+            "[ContextLoader] bkn_finish_interaction failed (interaction %s): %s",
             session.interaction_id,
             e,
         )

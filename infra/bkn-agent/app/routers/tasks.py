@@ -38,7 +38,7 @@ async def invoke(
     }
     task = await dao.create_task(session, agent.agent_id, task_input, account.account_id)
     await runner.execute_task(task.task_id, agent, task_input, account.account_id, account.account_type)
-    session.expire_all()  # 终态由 runner 在独立 session 写入，绕过本 session 缓存
+    session.expire_all()  # The runner writes the terminal state in its own session, so bypass this cache.
     return await dao.get_task(session, task.task_id)
 
 
@@ -73,6 +73,6 @@ async def get_task(
     session: AsyncSession = Depends(get_session),
 ):
     task = await dao.get_task(session, task_id, account_id=account.account_id)
-    if not task:  # 非 owner 与不存在同响应，不泄露存在性
+    if not task:  # A non-owner answers like a missing task; existence is not disclosed.
         raise not_found("task", task_id)
     return task

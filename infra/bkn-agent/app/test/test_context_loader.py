@@ -62,7 +62,7 @@ def test_no_credential_skips_and_warns(monkeypatch, caplog):
     try:
         with caplog.at_level("WARNING"):
             assert asyncio.run(context_loader.open_session()) is None
-        assert "未透传 Authorization" in caplog.text  # 不静默
+        assert "no Authorization header" in caplog.text  # never silent
     finally:
         auth._caller_token.reset(token)
 

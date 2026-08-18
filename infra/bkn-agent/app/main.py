@@ -19,8 +19,9 @@ logger = logging.getLogger("bkn-agent")
 API_PREFIX = "/api/bkn-agent/v1"
 VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip()
 
-# 契约冻结在 docs/api/bkn-agent.yaml（#212）；改 API 先改 spec，再跑
-# scripts/export_openapi.py 重新导出——test_contract.py 强制两者一致。
+# The contract is frozen in docs/api/bkn-agent.yaml (#212). Change the spec
+# first, then re-export with scripts/export_openapi.py; test_contract.py
+# enforces that the two agree.
 _ERRORS = {
     "4XX": {
         "model": ErrorEnvelope,
@@ -33,8 +34,9 @@ _ERRORS = {
 
 
 async def _recover_stale_tasks() -> None:
-    """启动兜底：把上次进程遗留的 pending/running 任务标 failed（见 dao.recover_stale_tasks）。
-    DB 不可用时只告警不阻断启动。"""
+    """Startup safety net: mark tasks the previous process left in pending or
+    running as failed; see dao.recover_stale_tasks. If the database is
+    unavailable this only warns and never blocks startup."""
     from app import dao
     from app.db import SessionLocal
 
@@ -42,9 +44,14 @@ async def _recover_stale_tasks() -> None:
         async with SessionLocal() as session:
             n = await dao.recover_stale_tasks(session)
         if n:
-            logger.warning("[BknAgent] 启动回收 %s 个悬挂任务（重启中断→failed）", n)
+            logger.warning(
+                "[BknAgent] recovered %s dangling task(s) at startup "
+                "(interrupted by a restart, marked failed)", n
+            )
     except Exception as e:
-        logger.warning("[BknAgent] 启动回收悬挂任务失败（不阻断启动）：%s", e)
+        logger.warning(
+            "[BknAgent] recovering dangling tasks failed; startup continues: %s", e
+        )
 
 
 @asynccontextmanager
@@ -88,10 +95,13 @@ async def bkn_trace_context_middleware(request: Request, call_next):
     ctx = observability.build_context(request.headers)
     request.state.bkn_trace_context = ctx
     token = observability.set_context(ctx)
-    # 令牌在这里收，不在 get_account 里收：FastAPI 把 **同步** 依赖丢进线程池跑，
-    # 在那里 set 的 ContextVar 回不到请求协程，caller_token() 永远是 None
-    # （VM 实测踩到：工具没挂，模型改口编了个工具调用当答案）。中间件与端点同
-    # 上下文链，这里 set 才可见。顺带覆盖不走 get_account 的路由。
+    # The token is captured here rather than in get_account: FastAPI runs a
+    # *synchronous* dependency in a thread pool, a ContextVar set there never
+    # returns to the request coroutine, and caller_token() would always be None
+    # (observed on the VM: no tools were loaded and the model invented a tool
+    # call as its answer). The middleware shares a context chain with the
+    # endpoint, so setting it here is visible, and it also covers routes that
+    # do not go through get_account.
     auth_token = auth.set_caller_token(request.headers.get("authorization"))
     # Freeze the locale here for the same reason the caller token is frozen
     # here: this is the outermost point that shares a context with both the
@@ -141,10 +151,12 @@ async def validation_handler(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """业务错误（err()/not_found/bad_request 抛的 HTTPException）契约是**顶层扁平**
-    ErrorEnvelope。Starlette 默认会包成 {"detail": ...}，与 docs/api/bkn-agent.yaml
-    漂移、SDK 解析错位——这里直接把 detail 作为 body 返回。非 dict 的 detail
-    （如 404/405 路由默认串）补齐成封套。"""
+    """A business error — the HTTPException raised by err/not_found/bad_request
+    — is contractually a *flat top-level* ErrorEnvelope. Starlette would wrap it
+    as {"detail": ...}, which drifts from docs/api/bkn-agent.yaml and misaligns
+    SDK parsing, so the detail is returned as the body directly. A non-dict
+    detail, such as the default 404/405 routing string, is completed into an
+    envelope."""
     detail = exc.detail
     if isinstance(detail, dict) and "code" in detail:
         content = observability.enrich_error(detail)
@@ -164,11 +176,13 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 @app.exception_handler(Exception)
 async def unhandled_handler(request: Request, exc: Exception):
-    """任何未预期异常也走平台错误封套。
+    """Any unexpected exception also returns the platform error envelope.
 
-    /chat 的组装阶段（工具装载、下游连接）会抛非 HTTPException（如显式 toolbox
-    引用拉取失败的 RuntimeError），没有这层兜底就是裸 text/plain 500，破坏冻结
-    契约里「4XX/5XX 一律 ErrorEnvelope」的约定，SDK 侧解析直接崩。
+    The assembly stage of /chat — tool loading, downstream connections — raises
+    non-HTTPException errors, such as the RuntimeError from a failed explicit
+    toolbox reference fetch. Without this fallback those would surface as a bare
+    text/plain 500, breaking the frozen contract that every 4XX/5XX is an
+    ErrorEnvelope and crashing SDK-side parsing.
     """
     logger.exception("[BknAgent] unhandled error on %s %s", request.method, request.url.path)
     ctx = observability.context_from_request(request)

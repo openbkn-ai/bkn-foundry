@@ -1,10 +1,15 @@
-"""结构化输出：原生优先 + 提示词强制 JSON 降级。
+"""Structured output: native first, with a prompt-forced JSON fallback.
 
-对话/一次性的工具循环跑完后，从会话消息里抽出符合 JSON Schema 的对象：
-1. 原生：model.with_structured_output(schema)（解码级约束，最强，需模型支持）。
-2. 降级：原生报错（模型不支持，如思考模式 qwen 拒 tool_choice=required）时，
-   拼 schema 进提示词让模型只输出 JSON，jsonschema 校验，不合法喂回重试一次。
-降级不保证一定成，但对任何能对话的模型都可用。
+Once the chat or one-shot tool loop has finished, extract an object matching the
+JSON Schema from the conversation messages:
+1. Native: model.with_structured_output(schema). This is a decoding-level
+   constraint, the strongest option, and requires model support.
+2. Fallback: when the native path errors because the model does not support it
+   — a thinking-mode qwen rejects tool_choice=required, for instance — the
+   schema is folded into the prompt so the model emits JSON only, the result is
+   validated with jsonschema, and an invalid one is fed back for a single retry.
+The fallback is not guaranteed to succeed, but it works with any model that can
+hold a conversation.
 """
 import json
 import logging
@@ -23,7 +28,8 @@ _FENCE = re.compile(r"^\s*```(?:json)?\s*|\s*```\s*$", re.IGNORECASE)
 
 
 def _extract_json(text: str) -> Any:
-    """从模型文本里抠 JSON：剥 markdown 围栏，再取首个 { 到末个 } 之间。"""
+    """Dig the JSON out of model text: strip the markdown fence, then take
+    everything between the first { and the last }."""
     t = _FENCE.sub("", text.strip())
     start, end = t.find("{"), t.rfind("}")
     if start != -1 and end != -1 and end > start:
@@ -32,15 +38,19 @@ def _extract_json(text: str) -> Any:
 
 
 def _with_system_prompt(messages: list, system_prompt: str | None) -> list:
-    """把 agent 的系统提示词补回抽取调用的消息头。
+    """Put the agent system prompt back at the head of the extraction messages.
 
-    langchain 1.x 的 create_agent(system_prompt=...) 只在模型请求时注入，不落进
-    graph state——实测 result["messages"] 只有 [HumanMessage, AIMessage]。抽取是
-    另起的一次模型调用，若不补，它看到的就只有「原始输入 + 上一轮回答」，agent
-    的领域约束一条都不在场。对语义理解这类任务，最省力的填法就是把输入里的技术
-    字段名原样抄进 display_name（#556）。
+    create_agent(system_prompt=...) in langchain 1.x injects the prompt only when
+    it calls the model; it never lands in graph state, and in practice
+    result["messages"] holds just [HumanMessage, AIMessage]. Extraction is a
+    separate model call, so without this it would see only the original input
+    plus the previous answer, with none of the agent's domain constraints
+    present. For a task such as semantic understanding, the laziest way to fill
+    the schema is then to copy the technical field names straight into
+    display_name (#556).
 
-    state 里已带 SystemMessage 时不重复补（未来 langgraph 若改行为，这里自适应）。
+    When the state already carries a SystemMessage nothing is prepended, so this
+    adapts if langgraph changes that behaviour later.
     """
     if not system_prompt:
         return list(messages)
@@ -52,7 +62,8 @@ def _with_system_prompt(messages: list, system_prompt: str | None) -> list:
 async def structured_extract(
     model, messages: list, schema: dict, system_prompt: str | None = None
 ) -> dict:
-    """从 messages 抽出符合 schema 的对象。model 应为非流式（见 build_chat_model）。"""
+    """Extract an object matching the schema from messages. The model should be
+    non-streaming; see build_chat_model."""
     obj, _ = await structured_extract_with_path(model, messages, schema, system_prompt)
     return obj
 
@@ -60,14 +71,17 @@ async def structured_extract(
 async def structured_extract_with_path(
     model, messages: list, schema: dict, system_prompt: str | None = None
 ) -> tuple[dict, str]:
-    """返回结构化对象及 validation path：native 或 fallback。
+    """Return the structured object together with its validation path, native or
+    fallback.
 
-    system_prompt 为 agent 本轮生效的系统提示词（含技能段），抽取调用必须带上，
-    否则模型在无约束状态下填 schema，见 _with_system_prompt。
+    system_prompt is the system prompt in effect for this turn, skill sections
+    included. The extraction call must carry it, otherwise the model fills the
+    schema with no constraints at all; see _with_system_prompt.
     """
-    # 对话 Agent 通常已经按系统提示词在最后一条消息中给出目标 JSON。
-    # 先复用并校验这份结果，避免为了相同内容再调用一次模型；仅当它不符合
-    # schema 时，才进入原生结构化与提示词降级路径。
+    # A chat agent has usually already produced the target JSON in its last
+    # message, as the system prompt asked. Reuse and validate that result first
+    # to avoid calling the model again for the same content; only when it does
+    # not match the schema do the native and prompt-fallback paths run.
     for message in reversed(messages):
         if not isinstance(message, AIMessage) or not isinstance(message.content, str):
             continue
@@ -80,37 +94,53 @@ async def structured_extract_with_path(
             break
 
     messages = _with_system_prompt(messages, system_prompt)
-    # 1. 原生
+    # 1. Native
     try:
         norm = normalize_response_format(schema)
         r = await model.with_structured_output(norm).ainvoke(messages)
         obj = r.model_dump() if hasattr(r, "model_dump") else dict(r)
-        # 原生也校验：with_structured_output 未启 strict，可能缺 required/类型不符；
-        # 不合法则不当成功返回，落到下面提示词降级重试。
+        # Validate the native result too: with_structured_output does not run in
+        # strict mode, so a required field may be missing or a type may not
+        # match. An invalid result is not returned as a success; it falls through
+        # to the prompt fallback below.
         _jsonschema_validate(obj, schema)
-        # path 只进 bkn-trace evidence 的话，trace 摄取一坏（曾遇 503
-        # INGEST_AUTH_NOT_CONFIGURED）就彻底查不到走的哪条路。本地留一行：
-        # 排「结构化结果质量不对」时，先要知道是原生还是降级、提示词在不在场。
-        # 用 warning 而非 info：main.py 直接 uvicorn.run，没配 log_config，
-        # 全仓也没有 basicConfig/dictConfig——root 停在 WARNING 且 handlers 为空，
-        # 应用侧 logger.info 会被整条丢弃（Pod 实测 3000 行日志里 [Toolbox] 零命中）。
-        # 每次带 response_format 的调用才一条，量可控。
+        # If the path only reached bkn-trace evidence, one broken trace ingest
+        # (a 503 INGEST_AUTH_NOT_CONFIGURED happened once) would make it
+        # impossible to tell which path ran. Keep a local line: when
+        # investigating "the structured result is poor", the first thing to know
+        # is whether it came from the native or the fallback path, and whether
+        # the prompt was present.
+        # warning rather than info: main.py calls uvicorn.run directly with no
+        # log_config, and the repository configures no basicConfig or
+        # dictConfig, so root stays at WARNING with no handlers and an
+        # application-side logger.info is dropped entirely (measured in a Pod:
+        # zero [Toolbox] hits across 3000 log lines). This is one line per call
+        # that carries response_format, so the volume stays manageable.
         logger.warning(
             "[Structured] path=native system_prompt=%s", bool(system_prompt)
         )
         return obj, "native"
     except SchemaError:
-        # schema 本体非法：请求边界已用 check_schema 拦（models.py ResponseFormat），
-        # 这里兜底。降级路径同样必炸，直接抛出，不白费模型调用。
+        # The schema itself is invalid. The request boundary already rejects
+        # that with check_schema (models.py ResponseFormat) and this is the
+        # backstop. The fallback path would fail just as surely, so raise
+        # immediately instead of wasting a model call.
         raise
-    except Exception as e:  # 模型不支持结构化或原生结果不合法 → 降级
-        logger.warning("[Structured] 原生结构化失败/不合法，降级到提示词模式：%s", e)
+    except Exception as e:  # The model does not support structured output, or the native result was invalid
+        logger.warning(
+            "[Structured] native structured output failed or was invalid; "
+            "falling back to prompt mode: %s", e
+        )
 
-    # 2. 提示词强制 JSON + 校验 + 重试一次
-    # 「本次调用不提供任何工具」是必要的一句：system_prompt 里可能含技能段，
-    # 而 load_skills 注入的正文固定写着「需要时调用 read_skill_file 按需读取」。
-    # 抽取用的是没 bind 任何工具的裸模型，模型若照着去要工具就会回一句自然语言
-    # 而不是 JSON，白烧一次重试；两次都这样整个任务 failed。
+    # 2. Prompt-forced JSON, validated, with a single retry
+    # Stating that no tools are available for this call is necessary: the
+    # system_prompt may contain skill sections, and the body load_skills injects
+    # always says to call read_skill_file when needed. Extraction uses a bare
+    # model with no tools bound, so a model that follows that instruction answers
+    # in natural language instead of JSON and burns the single retry; if it does
+    # so twice the whole task fails.
+    # This instruction is model-facing and intentionally stays as it is; see the
+    # note in core/skills.py and #826 ("Agent / LLM output language").
     instr = (
         "请只输出一个 JSON 对象，严格符合下面的 JSON Schema。"
         "本次调用不提供任何工具，请仅基于以上对话内容作答，不要请求调用工具。"
@@ -137,4 +167,7 @@ async def structured_extract_with_path(
                 ("assistant", text),
                 ("user", f"上面的输出不合法（{e}）。请重新只输出严格符合 schema 的 JSON。"),
             ]
-    raise RuntimeError(f"结构化输出失败：原生不支持且提示词降级仍不合法（{last_err}）")
+    raise RuntimeError(
+        "structured output failed: not supported natively and the prompt "
+        f"fallback was still invalid ({last_err})"
+    )

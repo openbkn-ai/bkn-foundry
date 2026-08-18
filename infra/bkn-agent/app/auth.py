@@ -7,28 +7,33 @@ from app.errors import err
 
 _ALLOWED_TYPES = {"user", "app"}
 
-# 调用方原样带来的 Authorization 头。
+# The caller's Authorization header, forwarded verbatim.
 #
-# 存在这里而不是穿进每层函数签名：从路由到 runner 到工具装载有十几处
-# (account_id, account_type) 位置参数，再加一个会把整条链全改一遍；而
-# ContextVar 在 asyncio.create_task 时会随上下文复制，/run 的后台任务同样拿得到。
+# It lives here instead of being threaded through every signature: there are a
+# dozen (account_id, account_type) positional parameters between the routers,
+# the runner, and tool loading, and one more would rewrite the whole chain.
+# A ContextVar is also copied into the context of an asyncio.create_task, so
+# the background task behind /run still sees it.
 #
-# 谁用它：Context Loader 的 MCP 面只认真实令牌（公开面挂 introspect），
-# 不吃 /in 那套头部身份，所以 type=context_loader 工具靠这个透传的令牌调用，
-# 保住 per-user 授权。见 app/core/context_loader.py。
+# Who reads it: the Context Loader MCP surface accepts only a real token (the
+# public surface runs introspect) and does not honour the /in header identity,
+# so a type=context_loader tool calls with this forwarded token and keeps
+# per-user authorization intact. See app/core/context_loader.py.
 _caller_token: ContextVar[str | None] = ContextVar("bkn_agent_caller_token", default=None)
 
 
 def caller_token() -> str | None:
-    """当前请求透传进来的 Authorization 头原文（含 Bearer 前缀），没有则 None。"""
+    """The raw Authorization header of the current request, Bearer prefix
+    included, or None when the caller sent none."""
     return _caller_token.get()
 
 
 def set_caller_token(value: str | None):
-    """由 HTTP 中间件调用（见 app/main.py）。
+    """Called from the HTTP middleware; see app/main.py.
 
-    刻意不放在 get_account 里：那是个同步依赖，FastAPI 会丢进线程池执行，
-    在线程池里 set 的 ContextVar 回不到请求协程，读出来永远是 None。
+    Deliberately not done inside get_account: that is a synchronous dependency,
+    which FastAPI runs in a thread pool, and a ContextVar set in that pool never
+    travels back to the request coroutine, so the value would always read None.
     """
     return _caller_token.set(value or None)
 
@@ -44,10 +49,13 @@ class Account:
 
 
 def get_account(request: Request) -> Account:
-    """/in 约定：网关信任请求头，鉴权押下游。空账户 fail-closed（本服务仅内部）。
+    """The /in convention: the gateway trusts the headers and authorization is
+    enforced downstream. An empty account fails closed, since this service is
+    internal only.
 
-    Authorization 不在这里收——见 set_caller_token 的说明，同步依赖跑在线程池里，
-    ContextVar 传不回来。收在 app/main.py 的中间件。
+    Authorization is not captured here. See the note on set_caller_token: a
+    synchronous dependency runs in a thread pool and the ContextVar cannot
+    travel back, so the middleware in app/main.py captures it instead.
     """
     account_id = (request.headers.get("x-account-id") or "").strip()
     account_type = (request.headers.get("x-account-type") or "").strip()

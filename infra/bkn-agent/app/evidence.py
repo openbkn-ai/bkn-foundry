@@ -258,15 +258,18 @@ def begin_interaction(
     conversation_id: str | None = None,
     interaction_id: str | None = None,
 ):
-    """开一轮交互。
+    """Open one interaction.
 
-    interaction_id 传入时用传入的，否则本地铸一个。传入的来源是 Context Loader
-    的 bkn_start_interaction —— 那条路上的 id 必须是生命周期服务发的（本地铸的会被
-    MCP 面按 owner tuple 拒掉），同时也让证据链与 Context Loader 落在同一轮交互上，
-    不至于一次对话在 trace 里裂成两条。
+    A supplied interaction_id wins, otherwise one is minted locally. A supplied
+    id comes from Context Loader's bkn_start_interaction: on that path the id
+    must be issued by the lifecycle service, because the MCP surface rejects a
+    locally minted one by its owner tuple. It also keeps the evidence chain and
+    Context Loader on the same interaction, so one conversation does not split
+    into two traces.
 
-    没挂 Context Loader 工具的 agent 仍走本地铸：为了拿一个服务端 id 就让每次执行
-    都依赖生命周期服务，会把一个可选能力变成硬依赖。
+    An agent without Context Loader tools still mints locally: making every
+    execution depend on the lifecycle service just to obtain a server-side id
+    would turn an optional capability into a hard dependency.
     """
     ctx = observability.current_context()
     if not ctx:

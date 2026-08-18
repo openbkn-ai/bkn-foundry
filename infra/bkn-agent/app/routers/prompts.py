@@ -99,7 +99,7 @@ async def rollback(
     return result
 
 
-# ---- 调用方覆写（按 account 隔离，fail-closed 由 get_account 保证） ----
+# ---- Caller overrides: isolated per account; get_account keeps this fail-closed. ----
 
 
 @router.get("/agents/{agent_id}/prompt", response_model=EffectivePromptOut)
