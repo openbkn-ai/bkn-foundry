@@ -147,13 +147,7 @@ async def _run_agent_once_core(
     返回序列化后的 JSON 字符串；否则返回最后一条 AI 文本回复。
     """
     if depth > MAX_AGENT_DEPTH:
-        raise err(
-            409,
-            "Task.DepthExceeded",
-            "agent 互调层级超限",
-            f"执行栈深度超过 {MAX_AGENT_DEPTH}（疑似循环互调）",
-            "检查 agent-as-tool 引用链是否成环。",
-        )
+        raise err(409, "BknAgent.Task.DepthExceeded", limit=MAX_AGENT_DEPTH)
 
     from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools  # 延迟导入破 tools↔runner 环
 

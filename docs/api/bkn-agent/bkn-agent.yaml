@@ -23,7 +23,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AgentOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -59,7 +61,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AgentList'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -85,7 +89,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AgentOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -116,7 +122,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AgentOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -141,7 +149,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/AgentDeleted'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -160,9 +170,13 @@ paths:
         required: true
       responses:
         '200':
-          description: 'SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content})
-            与 tool_call({name}) 交替；传了 response_format 时 done 前多一个 structured({content:
-            符合 schema 的对象}) 事件；正常收尾 done({thread_id})；失败以 error({code, detail}) 收尾（错误不静默）。'
+          description: 'SSE event stream: meta({thread_id, agent_id}) comes first;
+            within the answer turn token({content}) and tool_call({name}) interleave;
+            when response_format is set, one structured({content: object matching
+            the schema}) event precedes done; a normal stream ends with done({thread_id});
+            a failed one ends with error({code, detail}) — failures are never silent.
+            The human-readable error text follows the request Accept-Language; code
+            stays stable.'
           content:
             application/json:
               schema: {}
@@ -170,7 +184,9 @@ paths:
               schema:
                 type: string
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -180,12 +196,18 @@ paths:
       tags:
       - BknAgent
       summary: Invoke
-      description: '同步一次性执行，等到终态才返回。
+      description: 'Run once synchronously and return only when the task reaches a
+        terminal state.
 
 
-        仅 published agent 可调（draft 与不存在同响应）；chat/task 模式均可，
+        Only a published agent may be called; a draft answers exactly like a missing
 
-        执行为无状态单轮，不落 thread。任务记录照常落库可监控。'
+        one. Both chat and task modes are accepted. Execution is a single stateless
+
+        turn and no thread is persisted, while the task record is still stored so
+        the
+
+        run stays observable.'
       operationId: invoke_api_bkn_agent_v1_invoke__agent_id__post
       parameters:
       - name: agent_id
@@ -208,7 +230,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -233,7 +257,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -259,7 +285,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/TaskOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -284,7 +312,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromptOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -320,7 +350,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromptList'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -346,7 +378,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromptOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -355,7 +389,8 @@ paths:
       tags:
       - BknAgent
       summary: Publish Version
-      description: 发布新版本：写入 t_agent_prompt_version 并推进 current_version，立即全局生效。
+      description: 'Publish a new version: write t_agent_prompt_version, advance current_version,
+        take effect globally at once.'
       operationId: publish_version_api_bkn_agent_v1_prompts__prompt_id__put
       parameters:
       - name: prompt_id
@@ -378,7 +413,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromptOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -404,7 +441,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromptVersionList'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -436,7 +475,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/PromptOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -462,7 +503,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/EffectivePromptOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -493,7 +536,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/OverrideState'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -518,7 +563,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/OverrideDeleted'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -544,7 +591,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ThreadOut'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -569,7 +618,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExportPackage'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -594,7 +645,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ImportResult'
         4XX:
-          description: 平台错误封套（400 参数/401 身份/404 不存在/409 冲突）
+          description: Platform error envelope (400 parameters / 401 identity / 404
+            not found / 409 conflict). The human-readable fields follow the request
+            Accept-Language; code stays stable.
           content:
             application/json:
               schema:
@@ -933,18 +986,25 @@ components:
             maxItems: 100
           - type: 'null'
           title: Allowed Tools
-          description: 可装载的 Context Loader MCP 工具名白名单；未声明表示不限制。
+          description: Allowlist of Context Loader MCP tool names this agent may load;
+            omit it to allow all.
       additionalProperties: true
       type: object
       required:
       - type
       title: ContextLoaderToolRef
-      description: 'Context Loader 的知识网络检索工具，经其 MCP 面装载。
+      description: 'Context Loader knowledge-network retrieval tools, loaded over
+        its MCP surface.
 
 
-        刻意不带 url：端点来自 CONTEXT_LOADER_MCP_URL，agent 定义因此可以跨环境
+        Deliberately carries no url: the endpoint comes from CONTEXT_LOADER_MCP_URL,
 
-        导入导出而不带环境地址（type=mcp 写死 url 就不行）。'
+        so an agent definition can be exported and imported across environments
+
+        without embedding an environment address, which a type=mcp reference with
+        a
+
+        hard-coded url cannot do.'
     EffectivePromptOut:
       properties:
         source:
@@ -1000,7 +1060,7 @@ components:
       - solution
       - trace_id
       title: ErrorEnvelope
-      description: 平台统一错误封套（所有非 2xx 响应）。
+      description: Platform error envelope, used by every non-2xx response.
     ExportPackage:
       properties:
         format:
@@ -1122,7 +1182,7 @@ components:
       required:
       - message
       title: InvokeRequest
-      description: 同步一次性执行（agent_id 在路径上）。
+      description: Synchronous one-shot execution; agent_id is taken from the path.
     McpToolRef:
       properties:
         name:

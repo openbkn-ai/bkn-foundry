@@ -33,10 +33,7 @@ async def create_prompt(
             session, spec.name, spec.content, spec.vars_schema, account.account_id, prompt_id=spec.prompt_id
         )
     except IntegrityError:
-        raise bad_request(
-            "Conflict", "提示词名称或 id 已存在",
-            f"name={spec.name} id={spec.prompt_id}", "换一个 name，或换/去掉预设 prompt_id。",
-        )
+        raise bad_request("BknAgent.Prompt.Conflict", name=spec.name, prompt_id=spec.prompt_id)
 
 
 @router.get("/prompts", response_model=PromptList)
@@ -69,7 +66,7 @@ async def publish_version(
     account: Account = Depends(get_account),
     session: AsyncSession = Depends(get_session),
 ):
-    """发布新版本：写入 t_agent_prompt_version 并推进 current_version，立即全局生效。"""
+    """Publish a new version: write t_agent_prompt_version, advance current_version, take effect globally at once."""
     prompt = await dao.publish_prompt_version(session, prompt_id, body.content, body.vars_schema, account.account_id)
     if prompt is None:
         raise not_found("prompt", prompt_id)
@@ -98,7 +95,7 @@ async def rollback(
     if result is None:
         raise not_found("prompt", prompt_id)
     if result is False:
-        raise bad_request("Version", "目标版本不存在", f"prompt {prompt_id} 无版本 {body.version}")
+        raise bad_request("BknAgent.Prompt.VersionMissing", prompt_id=prompt_id, version=body.version)
     return result
 
 
@@ -118,7 +115,7 @@ async def get_effective_prompt(
     if override is not None:
         return EffectivePromptOut(source="override", content=override)
     if not agent.prompt_id:
-        raise not_found("agent 默认提示词", agent_id)
+        raise not_found("agent_default_prompt", agent_id)
     prompt = await dao.get_prompt(session, agent.prompt_id)
     if not prompt:
         raise not_found("prompt", agent.prompt_id)
@@ -147,5 +144,5 @@ async def delete_override(
     session: AsyncSession = Depends(get_session),
 ):
     if not await dao.delete_prompt_override(session, agent_id, account.account_id):
-        raise not_found("覆写", f"{agent_id}/{account.account_id}")
+        raise not_found("prompt_override", f"{agent_id}/{account.account_id}")
     return {"deleted": True, "fallback": "default"}

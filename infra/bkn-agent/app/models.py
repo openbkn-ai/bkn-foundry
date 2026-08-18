@@ -118,10 +118,12 @@ class AgentToolRef(_ToolRefBase):
 
 
 class ContextLoaderToolRef(_ToolRefBase):
-    """Context Loader 的知识网络检索工具，经其 MCP 面装载。
+    """Context Loader knowledge-network retrieval tools, loaded over its MCP surface.
 
-    刻意不带 url：端点来自 CONTEXT_LOADER_MCP_URL，agent 定义因此可以跨环境
-    导入导出而不带环境地址（type=mcp 写死 url 就不行）。
+    Deliberately carries no url: the endpoint comes from CONTEXT_LOADER_MCP_URL,
+    so an agent definition can be exported and imported across environments
+    without embedding an environment address, which a type=mcp reference with a
+    hard-coded url cannot do.
     """
 
     type: Literal["context_loader"]
@@ -131,7 +133,7 @@ class ContextLoaderToolRef(_ToolRefBase):
     allowed_tools: Optional[list[str]] = Field(
         default=None,
         max_length=100,
-        description="可装载的 Context Loader MCP 工具名白名单；未声明表示不限制。",
+        description="Allowlist of Context Loader MCP tool names this agent may load; omit it to allow all.",
     )
 
 
@@ -257,7 +259,7 @@ class ChatRequest(BaseModel):
 
 
 class InvokeRequest(BaseModel):
-    """同步一次性执行（agent_id 在路径上）。"""
+    """Synchronous one-shot execution; agent_id is taken from the path."""
 
     message: str = Field(min_length=1)
     skills: list[str] = Field(default_factory=list)
@@ -339,7 +341,7 @@ class OverrideDeleted(BaseModel):
 
 
 class ErrorEnvelope(BaseModel):
-    """平台统一错误封套（所有非 2xx 响应）。"""
+    """Platform error envelope, used by every non-2xx response."""
 
     code: str
     description: str

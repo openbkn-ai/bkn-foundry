@@ -13,10 +13,12 @@ router = APIRouter()
 
 
 _SSE_DOC = (
-    "SSE 事件流：meta({thread_id, agent_id}) 先行；正文轮内 token({content}) 与 "
-    "tool_call({name}) 交替；传了 response_format 时 done 前多一个 "
-    "structured({content: 符合 schema 的对象}) 事件；正常收尾 done({thread_id})；"
-    "失败以 error({code, detail}) 收尾（错误不静默）。"
+    "SSE event stream: meta({thread_id, agent_id}) comes first; within the answer "
+    "turn token({content}) and tool_call({name}) interleave; when response_format "
+    "is set, one structured({content: object matching the schema}) event precedes "
+    "done; a normal stream ends with done({thread_id}); a failed one ends with "
+    "error({code, detail}) — failures are never silent. The human-readable error "
+    "text follows the request Accept-Language; code stays stable."
 )
 
 
@@ -33,7 +35,7 @@ async def chat(
     if not agent:
         raise not_found("agent", req.agent_id)
     if agent.mode != "chat":
-        raise bad_request("Mode", "该 agent 不是对话模式", f"agent {req.agent_id} mode={agent.mode}", "task agent 走 /run（M3）。")
+        raise bad_request("BknAgent.Chat.ModeMismatch", agent_id=req.agent_id, mode=agent.mode)
 
     events = await stream_chat(session, agent, req, account.account_id, account.account_type)
     return StreamingResponse(

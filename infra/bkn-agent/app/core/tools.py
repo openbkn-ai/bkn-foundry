@@ -48,7 +48,7 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
         if kind == "mcp":
             url = ref.get("url")
             if not url:
-                raise bad_request("ToolRef", "mcp 工具缺 url", str(ref))
+                raise bad_request("BknAgent.ToolRef.McpUrlMissing", ref=str(ref))
             conns[ref.get("name") or f"mcp-{i}"] = {
                 "transport": "streamable_http",
                 "url": url,
@@ -59,7 +59,7 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
             # context_loader 见 app/core/context_loader.py（端点来自配置，且要先握手）
             continue
         else:
-            raise bad_request("ToolRef", "未知工具类型", str(ref))
+            raise bad_request("BknAgent.ToolRef.UnknownType", ref=str(ref))
     return conns
 
 
@@ -77,7 +77,7 @@ async def _toolbox_tools(
         if ref.get("type") == "toolbox":
             box_id = ref.get("box_id")
             if not box_id:
-                raise bad_request("ToolRef", "toolbox 工具缺 box_id", str(ref))
+                raise bad_request("BknAgent.ToolRef.BoxIdMissing", ref=str(ref))
             box_ids.append(box_id)
     tools: list[StructuredTool] = []
     for box_id in dict.fromkeys(box_ids):
@@ -96,22 +96,15 @@ async def _agent_tool(
 
     agent_id = ref.get("agent_id")
     if not agent_id:
-        raise bad_request("ToolRef", "agent 工具缺 agent_id", str(ref))
+        raise bad_request("BknAgent.ToolRef.AgentIdMissing", ref=str(ref))
     async with SessionLocal() as session:
         sub_agent = await dao.get_agent(session, agent_id)
     # 与 /run（mode=task）、/invoke（published）同门：否则 draft/chat 型 agent 经
     # 工具引用就能被无状态执行，绕过 API 其余入口一致的语义
     if not sub_agent or sub_agent.status != "published":
-        raise bad_request(
-            "ToolRef", "agent 工具引用不可用", f"agent {agent_id} 不存在或未发布", "先发布被引用的 agent。"
-        )
+        raise bad_request("BknAgent.ToolRef.AgentUnavailable", agent_id=agent_id)
     if sub_agent.mode != "task":
-        raise bad_request(
-            "ToolRef",
-            "agent 工具只能引用一次性 agent",
-            f"agent {agent_id} mode={sub_agent.mode}",
-            "agent-as-tool 走 /run 同款一次性执行路径，被引用方须 mode=task。",
-        )
+        raise bad_request("BknAgent.ToolRef.AgentNotTask", agent_id=agent_id, mode=sub_agent.mode)
 
     async def call_sub_agent(message: str) -> str:
         """调用子 agent 完成一次性任务，返回其最终回复。"""

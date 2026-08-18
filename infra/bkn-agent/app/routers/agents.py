@@ -29,9 +29,10 @@ async def _load_owned_agent(session: AsyncSession, agent_id: str, account: Accou
     owner = (agent.create_user or "").strip()
     if owner and owner != account.account_id:
         raise forbidden(
-            "无权操作他人 agent",
-            f"agent {agent_id} 属于 {owner}，调用方为 {account.account_id}",
-            "只有创建者可修改或删除该 agent。",
+            "BknAgent.Agent.Forbidden",
+            agent_id=agent_id,
+            owner=owner,
+            caller=account.account_id,
         )
     return agent
 
@@ -45,10 +46,7 @@ async def create_agent(
     try:
         agent = await dao.create_agent(session, spec, account.account_id)
     except IntegrityError:
-        raise bad_request(
-            "Conflict", "agent 名称或 id 已存在",
-            f"name={spec.name} id={spec.agent_id}", "换一个 name，或换/去掉预设 agent_id。",
-        )
+        raise bad_request("BknAgent.Agent.Conflict", name=spec.name, agent_id=spec.agent_id)
     return agent
 
 
@@ -86,7 +84,7 @@ async def update_agent(
     try:
         agent = await dao.update_agent(session, agent_id, spec, account.account_id)
     except IntegrityError:
-        raise bad_request("Conflict", "agent 名称已存在", f"name={spec.name}", "换一个 name。")
+        raise bad_request("BknAgent.Agent.NameConflict", name=spec.name)
     if not agent:
         raise not_found("agent", agent_id)
     return agent

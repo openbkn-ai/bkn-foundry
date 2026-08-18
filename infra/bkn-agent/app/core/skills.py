@@ -46,31 +46,15 @@ async def _fetch_skill_content(session: aiohttp.ClientSession, capability_id: st
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/skills/{skill_id}/content"
     async with session.get(url, headers=headers) as resp:
         if resp.status == 404:
-            raise err(
-                400,
-                "Skill.NotFound",
-                "技能不存在",
-                f"技能 {skill_id} 在执行工厂中不存在或未发布",
-                "请检查 skill_id，技能失效时不会被静默跳过。",
-            )
+            raise err(400, "BknAgent.Skill.NotFound", skill_id=skill_id)
         if resp.status != 200:
-            raise err(
-                502,
-                "Skill.FetchFailed",
-                "技能拉取失败",
-                f"执行工厂返回 {resp.status}（技能 {skill_id}）",
-            )
+            raise err(502, "BknAgent.Skill.FetchFailed", status=resp.status, skill_id=skill_id)
         meta = await resp.json()
 
     # 第二跳：presigned URL 指向集群内 MinIO，不带业务身份，不能透传 headers
     async with session.get(meta["url"]) as resp:
         if resp.status != 200:
-            raise err(
-                502,
-                "Skill.FetchFailed",
-                "技能正文拉取失败",
-                f"对象存储返回 {resp.status}（技能 {skill_id}）",
-            )
+            raise err(502, "BknAgent.Skill.ContentFetchFailed", status=resp.status, skill_id=skill_id)
         body = strip_frontmatter(await resp.text())
 
     # 附属文件清单必须进上下文：模型据此知道有哪些文件可读、以及 read_skill_file

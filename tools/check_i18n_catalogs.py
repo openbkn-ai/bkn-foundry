@@ -28,6 +28,11 @@ PYTHON_CATALOGS = (
         REPOSITORY_ROOT / "infra/mf-model-manager/app/commons/i18n/zh_cn.py",
         REPOSITORY_ROOT / "infra/mf-model-manager/app/commons/i18n/en_us.py",
     ),
+    (
+        "bkn-agent",
+        REPOSITORY_ROOT / "infra/bkn-agent/app/commons/i18n/zh_cn.py",
+        REPOSITORY_ROOT / "infra/bkn-agent/app/commons/i18n/en_us.py",
+    ),
 )
 JSON_CATALOGS = (
     (

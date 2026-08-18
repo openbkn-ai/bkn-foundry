@@ -9,6 +9,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.models import ErrorEnvelope
 from app import auth, evidence, observability
+from app.commons import locale
+from app.commons.i18n import build_error_content
 from app.observability import setup_otel
 from app.routers import agents, chat, impex, prompts, tasks, threads
 
@@ -19,7 +21,15 @@ VERSION = (Path(__file__).resolve().parent.parent / "VERSION").read_text().strip
 
 # 契约冻结在 docs/api/bkn-agent.yaml（#212）；改 API 先改 spec，再跑
 # scripts/export_openapi.py 重新导出——test_contract.py 强制两者一致。
-_ERRORS = {"4XX": {"model": ErrorEnvelope, "description": "平台错误封套（400 参数/401 身份/404 不存在/409 冲突）"}}
+_ERRORS = {
+    "4XX": {
+        "model": ErrorEnvelope,
+        "description": (
+            "Platform error envelope (400 parameters / 401 identity / 404 not found / 409 conflict). "
+            "The human-readable fields follow the request Accept-Language; code stays stable."
+        ),
+    }
+}
 
 
 async def _recover_stale_tasks() -> None:
@@ -56,6 +66,23 @@ app.include_router(threads.router, prefix=API_PREFIX, tags=["BknAgent"], respons
 app.include_router(impex.router, prefix=API_PREFIX, tags=["BknAgent"], responses=_ERRORS)
 
 
+def _apply_language_headers(response, path: str, effective_locale: str) -> None:
+    """Declare the response language only where the body actually carries it.
+
+    Error envelopes and the SSE stream (its error events are localized) get
+    Content-Language; a purely machine-readable success body does not. Business
+    API responses are authenticated, so they also stay out of shared caches.
+    """
+    if not locale.is_business_api_path(path):
+        return
+    response.headers["Cache-Control"] = locale.merge_cache_control(
+        response.headers.get("Cache-Control", "")
+    )
+    is_stream = response.headers.get("content-type", "").startswith("text/event-stream")
+    if response.status_code >= 400 or is_stream:
+        response.headers["Content-Language"] = effective_locale
+
+
 @app.middleware("http")
 async def bkn_trace_context_middleware(request: Request, call_next):
     ctx = observability.build_context(request.headers)
@@ -66,11 +93,20 @@ async def bkn_trace_context_middleware(request: Request, call_next):
     # （VM 实测踩到：工具没挂，模型改口编了个工具调用当答案）。中间件与端点同
     # 上下文链，这里 set 才可见。顺带覆盖不走 get_account 的路由。
     auth_token = auth.set_caller_token(request.headers.get("authorization"))
+    # Freeze the locale here for the same reason the caller token is frozen
+    # here: this is the outermost point that shares a context with both the
+    # endpoint and the exception handlers that render the error envelope.
+    effective_locale = locale.resolve_accept_language(
+        request.headers.get(locale.ACCEPT_LANGUAGE_HEADER)
+    )
+    locale_token = locale.set_effective_locale(effective_locale)
     try:
         response = await call_next(request)
     finally:
+        locale.reset_effective_locale(locale_token)
         auth.reset_caller_token(auth_token)
         observability.reset_context(token)
+    _apply_language_headers(response, request.url.path, effective_locale)
     for key, value in {
         observability.TRACE_ID_HEADER: ctx.trace_id,
         observability.REQUEST_ID_HEADER: ctx.request_id,
@@ -91,16 +127,14 @@ async def validation_handler(request: Request, exc: RequestValidationError):
     detail = "; ".join(
         f"{'.'.join(str(p) for p in e['loc'][1:])}: {e['msg']}" for e in exc.errors()
     )
+    content = build_error_content("BknAgent.ParamError.FormatError")
+    # The field-level detail is machine text produced by pydantic; it names
+    # request fields and is not translated.
+    content["detail"] = detail
+    content["trace_id"] = observability.current_trace_id()
     return JSONResponse(
         status_code=400,
-        content={
-            "code": "BknAgent.ParamError.FormatError",
-            "description": "参数错误",
-            "detail": detail,
-            "solution": "请检查请求体格式。",
-            "link": "",
-            "trace_id": observability.current_trace_id(),
-        },
+        content=content,
         headers=observability.response_headers(),
     )
 
@@ -115,14 +149,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if isinstance(detail, dict) and "code" in detail:
         content = observability.enrich_error(detail)
     else:
-        content = {
-            "code": f"BknAgent.Http.{exc.status_code}",
-            "description": str(detail) if detail else "请求错误",
-            "detail": str(detail) if detail else "",
-            "solution": "",
-            "link": "",
-            "trace_id": observability.current_trace_id(),
-        }
+        content = build_error_content(
+            "BknAgent.Http.Unexpected", code=f"BknAgent.Http.{exc.status_code}"
+        )
+        # Starlette's own reason phrase ("Not Found") is framework machine text,
+        # so it stays in detail while description carries the localized message.
+        if detail:
+            content["detail"] = str(detail)
+        content["trace_id"] = observability.current_trace_id()
     headers = dict(getattr(exc, "headers", None) or {})
     headers.update(observability.response_headers())
     return JSONResponse(status_code=exc.status_code, content=content, headers=headers)
@@ -138,15 +172,13 @@ async def unhandled_handler(request: Request, exc: Exception):
     """
     logger.exception("[BknAgent] unhandled error on %s %s", request.method, request.url.path)
     ctx = observability.context_from_request(request)
+    content = build_error_content("BknAgent.Internal.Unexpected")
+    # The exception type and message are internal diagnostics, kept in English
+    # so they stay greppable against the logs; they are not a translated field.
+    content["detail"] = f"{type(exc).__name__}: {exc}"
+    content["trace_id"] = observability.current_trace_id(ctx)
     return JSONResponse(
         status_code=500,
-        content={
-            "code": "BknAgent.Internal.Unexpected",
-            "description": "服务内部错误",
-            "detail": f"{type(exc).__name__}: {exc}",
-            "solution": "查看 bkn-agent 日志与 trace_id 定位；下游不可用时稍后重试。",
-            "link": "",
-            "trace_id": observability.current_trace_id(ctx),
-        },
+        content=content,
         headers=observability.response_headers(ctx),
     )

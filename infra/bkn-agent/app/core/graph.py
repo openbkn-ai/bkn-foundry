@@ -17,6 +17,7 @@ from app.core.structured import structured_extract_with_path
 from app.core.prompt import resolve_prompt
 from app.core.skills import load_skills
 from app.core.tools import apply_tool_call_cap, instrument_tool_calls, load_tools
+from app.commons.i18n import build_error_content
 from app.errors import err, not_found
 from app.models import AgentOut, ChatRequest, ThreadMessage
 
@@ -34,6 +35,18 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def _stream_error(message_key: str, detail: str | None = None, **params) -> dict:
+    """Build one SSE error event in the locale frozen for this request.
+
+    The stream is opened inside the request context, so the generator still
+    reads the same effective locale after the middleware has returned. ``code``
+    stays the machine contract; ``detail`` may carry raw upstream text, which is
+    left untranslated on purpose.
+    """
+    content = build_error_content(message_key, **params)
+    return {"code": content["code"], "detail": detail if detail is not None else content["detail"]}
+
+
 async def stream_chat(
     session: AsyncSession,
     agent: AgentOut,
@@ -43,13 +56,7 @@ async def stream_chat(
 ) -> AsyncIterator[str]:
     thread_id = req.thread_id or str(uuid.uuid4())
     if thread_id in _busy_threads:
-        raise err(
-            409,
-            "Thread.Busy",
-            "会话正在处理中",
-            f"thread {thread_id} 有未完成的 /chat 请求",
-            "等待当前轮结束后重试。",
-        )
+        raise err(409, "BknAgent.Thread.Busy", thread_id=thread_id)
     _busy_threads.add(thread_id)  # 检查与占位之间不能有 await，否则并发请求双双通过
 
     # 在 try 之前绑定：setup 早期抛异常时 except 分支也要能安全引用
@@ -63,10 +70,9 @@ async def stream_chat(
             if thread_row.f_agent_id != agent.agent_id:
                 raise err(
                     400,
-                    "Thread.AgentMismatch",
-                    "thread 归属其他 agent",
-                    f"thread {thread_id} 建立于 agent {thread_row.f_agent_id}",
-                    "同一 thread 只能续接创建它的 agent；换 agent 请开新 thread。",
+                    "BknAgent.Thread.AgentMismatch",
+                    thread_id=thread_id,
+                    owner_agent_id=thread_row.f_agent_id,
                 )
         await dao.touch_thread(session, thread_id, agent.agent_id, account_id)
 
@@ -269,21 +275,13 @@ async def stream_chat(
                             )
                         yield _sse("done", {"thread_id": thread_id})
                     except TimeoutError:
-                        yield _sse(
-                            "error",
-                            {
-                                "code": "BknAgent.Chat.Timeout",
-                                "detail": f"超过 {timeout_s}s",
-                            },
-                        )
+                        yield _sse("error", _stream_error("BknAgent.Chat.Timeout", timeout=timeout_s))
                     except Exception as e:  # 错误必须显式送到流上，不静默吞
-                        yield _sse(
-                            "error", {"code": "BknAgent.Chat.Failed", "detail": str(e)}
-                        )
+                        yield _sse("error", _stream_error("BknAgent.Chat.Failed", detail=str(e)))
         except (
             Exception
         ) as e:  # 组装阶段（checkpointer/graph 建立）异常也要送 error，不裸断流
-            yield _sse("error", {"code": "BknAgent.Chat.Failed", "detail": str(e)})
+            yield _sse("error", _stream_error("BknAgent.Chat.Failed", detail=str(e)))
         finally:  # 正常结束、客户端断连（GeneratorExit）、异常，都要放位
             # 放位是 finally 的第一条，前面不许有任何会抛的语句。
             #

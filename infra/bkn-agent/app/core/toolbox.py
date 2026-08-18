@@ -342,18 +342,18 @@ async def _list_tools(box_id: str, account_id: str, account_type: str) -> list[d
                         body = await resp.text()
                         if 400 <= resp.status < 500:
                             raise bad_request(
-                                "ToolRef.BoxUnavailable",
-                                "引用的工具箱不可用",
-                                f"toolbox {box_id}: HTTP {resp.status} {body[:300]}",
-                                "检查 agent.tools 里的 box_id 是否存在、当前账户是否有权访问。",
+                                "BknAgent.ToolRef.BoxUnavailable",
+                                box_id=box_id,
+                                status=resp.status,
+                                body=body[:300],
                             )
                         if resp.status != 200:
                             raise err(
                                 502,
-                                "Toolbox.Upstream",
-                                "算子工厂不可用",
-                                f"toolbox {box_id} list failed: HTTP {resp.status} {body[:300]}",
-                                "稍后重试；持续失败检查 operator-integration。",
+                                "BknAgent.Toolbox.ListFailed",
+                                box_id=box_id,
+                                status=resp.status,
+                                body=body[:300],
                             )
                         data = json.loads(body)
                     infos.extend(data.get("tools") or [])
@@ -363,13 +363,7 @@ async def _list_tools(box_id: str, account_id: str, account_type: str) -> list[d
     except HTTPException:
         raise
     except Exception as e:  # 连接失败/超时/响应体畸形
-        raise err(
-            502,
-            "Toolbox.Upstream",
-            "算子工厂不可用",
-            f"toolbox {box_id} list failed: {type(e).__name__}: {e}",
-            "稍后重试；持续失败检查 operator-integration 与网络。",
-        )
+        raise err(502, "BknAgent.Toolbox.Upstream", box_id=box_id, error_type=type(e).__name__, error=e)
 
 
 async def load_toolbox_tools(box_id: str, account_id: str, account_type: str) -> list[StructuredTool]:
