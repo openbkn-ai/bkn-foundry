@@ -1,7 +1,7 @@
 # contract test 冻结夹具
 
 `introspect/*.json` 是 hydra `/admin/oauth2/introspect` 响应的冻结 golden，由
-`introspect_contract_test.go` 在运行时读取，喂给真实的 `kweaver-go-lib/hydra`
+`introspect_contract_test.go` 在运行时读取，喂给真实的 `bkn-comm-go/hydra`
 客户端，断言其解析不 panic（lib 用无 nil 检查的类型断言，缺字段会 panic）。
 
 | fixture | 主体 | 关键约束 |

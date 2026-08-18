@@ -1,12 +1,10 @@
 // Contract tests for bkn-safe (code: safe) — the ISF replacement auth service.
 //
 // These tests pin the hardest external contract: the token-introspect response
-// must parse through the real kweaver-go-lib hydra client without panicking.
+// must parse through the real bkn-comm-go hydra client without panicking.
 //
-// Pinned to v1.0.5 — the exact kweaver-go-lib that adp services run — built
-// on the gvm go1.25.6 toolchain (v1.0.5 requires go >= 1.25). The DA client
-// (rest.Hydra @v1.0.2) shares the same introspect parse logic, so this one
-// golden set proves all three.
+// Pinned to github.com/openbkn-ai/bkn-comm-go v0.0.4, the module the
+// introspect parser lives in, and built on the gvm go1.25.6 toolchain.
 module bkn-safe/contract
 
 go 1.25.0

@@ -25,7 +25,7 @@ const (
 
 // ExtClaims builds the introspect `ext` object hydra surfaces from
 // session.access_token. For a human (user) login all five fields must be
-// present or the kweaver-go-lib introspect parser panics (unchecked type
+// present or the bkn-comm-go introspect parser panics (unchecked type
 // assertions) — see the contract freeze §1.
 func ExtClaims(u *model.User, loginIP, clientType string) map[string]any {
 	if clientType == "" {

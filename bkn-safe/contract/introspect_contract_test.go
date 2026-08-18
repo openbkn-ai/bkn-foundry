@@ -5,7 +5,7 @@
 // Package contract holds executable freeze tests for the ISF replacement.
 //
 // introspect_contract_test.go proves that the frozen hydra introspect golden
-// responses (testdata/introspect/*.json) parse through the REAL kweaver-go-lib
+// responses (testdata/introspect/*.json) parse through the REAL bkn-comm-go
 // hydra client into the expected TokenIntrospectInfo.
 //
 // Why this matters: the lib's Introspect() parses with unchecked type

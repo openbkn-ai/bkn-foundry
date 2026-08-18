@@ -102,7 +102,7 @@ curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/
 - **OpenAPI 版本**：3.0.3。
 - **认证**：`Authorization: Bearer <token>`，OAuth access token 或用户自助签发的 AppKey（`bak_` 前缀）。
 - **权限**：函数执行要求算子的 `execute` 权限，AI 生成要求 `create` 权限，返回 403 时先查角色授权。
-- **错误信封**：本服务**不用** `kweaver-go-lib/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorCompact`](../_shared/errors.yaml)（与 context-loader 同源同形）。
+- **错误信封**：本服务**不用** `comm-go/rest.BaseError`，字段是 `code` / `description` / `solution` / `link` / `details`，引 [`_shared/errors.yaml#/components/schemas/ErrorCompact`](../_shared/errors.yaml)（与 context-loader 同源同形）。
 - **内部接口**：`/api/agent-operator-integration/internal-v1` 是内部面，另有 `POST /function/exec/{version}`（按已注册的函数版本执行，`timeout` 单位毫秒）等端点，**本文档不收录**。
 - **能力面**：`/api/capabilities-lab/v1` 是合并进本服务的另一套路由（原 capabilities-lab 独立服务），也挂在 Ingress 上，路径与语义都与 `v1` 不同，**本文档暂不收录**。
 - **`*_time` 一律是纳秒**：算子 / MCP / 工具箱 / Skill 的 `*_time` 字段都由 `time.Now().UnixNano()` 生成，形如 `1784880971306127803`；按毫秒解析会得到 1970 年附近的日期。例外是沙箱观测面，它的 `created_at` / `last_used_at` / `checked_at` 是 RFC3339 字符串——两种记法看字段后缀区分（`*_time` 是纳秒整数，`*_at` 是字符串）。

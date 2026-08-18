@@ -1,12 +1,13 @@
 # 共享错误响应体 —— 单一来源
 #
-# `Error` 由 kweaver-go-lib/rest.BaseError JSON 序列化得到，vega / bkn / dataflow /
+# `Error` 由 comm-go/rest.BaseError JSON 序列化得到，vega / bkn / dataflow /
 # execution-factory / bkn-safe 走这套信封。各模块 YAML 用
 #   $ref: '../_shared/errors.yaml#/components/schemas/Error'
 # 引用，不再各自内嵌。
 #
 # 注意：adp 下的 context-loader（agent-retrieval）与 execution-factory
-#       （agent-operator-integration）没有用 kweaver-go-lib，各自带了一份同源的
+#       （agent-operator-integration）不用 comm-go/rest.BaseError 这套信封（两者
+#       仍从 comm-go/rest 取本地化辅助），各自带了一份同源的
 #       infra/errors.HTTPError，字段名与 rest.BaseError 不同（code/description/
 #       solution/link/details），见下方 ErrorCompact——不改成 BaseError 是因为其
 #       调用方（MCP 客户端、Studio）已按现字段名解析。
@@ -19,7 +20,7 @@ components:
   schemas:
     Error:
       description: |
-        统一错误响应体。由 `kweaver-go-lib/rest.BaseError` JSON 序列化得到。
+        统一错误响应体。由 `comm-go/rest.BaseError` JSON 序列化得到。
       type: object
       required:
         - error_code

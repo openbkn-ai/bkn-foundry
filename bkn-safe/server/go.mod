@@ -2,7 +2,8 @@
 // Three responsibilities: authentication (hydra login/consent/device provider),
 // authorization (Casbin), user management (directory + LDAP). hydra issues the
 // tokens; bkn-safe is NOT a token engine. DB via openbkn-rds driver (xinchuang
-// transparent at the database/sql level) + GORM. Zero kweaver-go-lib.
+// transparent at the database/sql level) + GORM. That driver registration
+// is the only thing bkn-safe pulls from bkn-comm-go.
 module github.com/openbkn-ai/bkn-foundry/bkn-safe/server
 
 go 1.25.0
