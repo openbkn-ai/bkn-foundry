@@ -49,6 +49,7 @@ try/except 包住并 print 出关键中间信息。
 就写在这段脚本里，不要为它单开一轮：
 
 ```python
+import subprocess
 print(subprocess.run("wc -l rows.jsonl", shell=True, capture_output=True, text=True).stdout)
 ```
 
