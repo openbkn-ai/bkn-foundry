@@ -1320,6 +1320,35 @@ func TestListRequestsReportsBoundedProjectionTruncationAndPushdownQuery(t *testi
 	}
 }
 
+func TestListInteractionsPushesExactInteractionIDToProjection(t *testing.T) {
+	trace := evidencevo.NormalizedTrace{
+		TraceID: "trace_interaction_target", RequestID: "req_interaction_target",
+		ConversationID: "conversation_target",
+		TenantID:       "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		Events: []evidencevo.EvidenceEvent{{
+			EventID: "event_interaction_target", EventType: "agent.interaction.started",
+			ObservedAt: "2026-07-26T09:00:00Z", RequestID: "req_interaction_target",
+			TraceID: "trace_interaction_target", InteractionID: "interaction_target",
+			OperationName: "agent.run", Payload: map[string]any{"agent_id": "agent-target"},
+		}},
+	}
+	source := &capturingProjectionSource{result: iprojectionsource.Result{
+		Traces: []evidencevo.NormalizedTrace{trace},
+	}}
+	service := NewWithProjectionSource(evidencestore.New(), source)
+
+	page, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), InteractionID: "interaction_target", Limit: 20,
+	})
+
+	if err != nil || page.Total != 1 || len(page.Entries) != 1 {
+		t.Fatalf("interaction lookup failed: page=%+v err=%v", page, err)
+	}
+	if len(source.queries) != 1 || source.queries[0].InteractionID != "interaction_target" {
+		t.Fatalf("exact interaction ID must be pushed to projection: %+v", source.queries)
+	}
+}
+
 func TestExactRequestSummaryAndTraceLookupDoNotCallListProjection(t *testing.T) {
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_exact", "trace_exact", "2026-07-26T09:00:00Z", "精确问题", "精确结果", "agent-exact", "bd_demo", "acct_demo")

@@ -1366,7 +1366,9 @@ func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo
 	}
 	result, err := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
 		Scope: options.Scope, From: options.From, To: options.To,
-		BusinessDomain: options.BusinessDomain, Status: options.Status, Limit: MaxSummaryScanEntries,
+		BusinessDomain: options.BusinessDomain, Status: options.Status,
+		TraceID: options.TraceID, InteractionID: options.InteractionID,
+		Limit: MaxSummaryScanEntries,
 	})
 	if err != nil {
 		return nil, nil, summaryLoadMetadata{}, err
