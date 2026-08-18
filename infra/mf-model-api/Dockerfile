@@ -1,12 +1,12 @@
-# 基于镜像基础（公网重建版，推 GHCR；可经 build-arg 覆盖）
+# Base image, rebuilt from public sources and pushed to GHCR; override with a build argument if needed.
 ARG BASE_IMAGE=ghcr.io/openbkn-ai/model-factory-base:v2
 FROM ${BASE_IMAGE}
-# 设置代码文件夹工作目录 /app
+# Set the application working directory to /app.
 WORKDIR /app
-# 复制当前代码文件到容器中 /app
+# Copy the current source tree into /app.
 ADD . /app
 
-# 端口
+# Port.
 EXPOSE 9898
 # CMD
 #CMD ["python3", "/app/main.py"]

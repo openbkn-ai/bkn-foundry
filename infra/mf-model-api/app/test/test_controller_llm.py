@@ -1,4 +1,4 @@
-"""测试 llm_controller 模块"""
+"""Tests for test_controller_llm."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import json
@@ -7,11 +7,11 @@ from app.controller.llm_controller import used_model_openai
 
 
 class TestUsedModelOpenai:
-    """测试used_model_openai函数"""
+    """Tests for test used model openai."""
 
     @pytest.fixture
     def valid_request(self):
-        """有效请求数据"""
+        """Test valid request."""
         return {
             "model": "test_model",
             "model_id": "",
@@ -32,7 +32,7 @@ class TestUsedModelOpenai:
 
     @pytest.fixture
     def mock_model_data(self):
-        """Mock模型数据"""
+        """Test mock model data."""
         return [{
             "f_model_id": "123456789012345678",
             "f_model_name": "test_model",
@@ -45,9 +45,9 @@ class TestUsedModelOpenai:
 
     @pytest.mark.asyncio
     async def test_stream_parameter_type_error(self, valid_request):
-        """测试stream参数类型错误"""
+        """Test test stream parameter type error."""
         request = valid_request.copy()
-        request["stream"] = "invalid"  # 应该是bool
+        request["stream"] = "invalid"  # Should be bool.
         
         with patch('app.controller.llm_controller.get_redis_util', new_callable=AsyncMock):
             result = await used_model_openai(request, "user1", "zh", "test")
@@ -56,7 +56,7 @@ class TestUsedModelOpenai:
 
     @pytest.mark.asyncio
     async def test_missing_model_and_id(self, valid_request):
-        """测试缺少model和model_id"""
+        """Test test missing model and id."""
         request = valid_request.copy()
         request["model"] = ""
         request["model_id"] = ""
@@ -73,7 +73,7 @@ class TestUsedModelOpenai:
 
     @pytest.mark.asyncio
     async def test_missing_named_model_returns_not_found(self, valid_request):
-        """模型名称不存在时返回 HTTP 404，并保留业务错误码。"""
+        """Test test missing named model returns not found."""
         mock_redis = AsyncMock()
         mock_redis.get_str = AsyncMock(return_value=None)
 
@@ -89,9 +89,9 @@ class TestUsedModelOpenai:
 
     @pytest.mark.asyncio
     async def test_max_tokens_exceeds_limit(self, valid_request, mock_model_data):
-        """测试max_tokens超过限制"""
+        """Test test max tokens exceeds limit."""
         request = valid_request.copy()
-        request["max_tokens"] = 10000000  # 超过限制
+        request["max_tokens"] = 10000000  # Exceeds the limit.
         
         mock_redis = AsyncMock()
         mock_redis.get_str = AsyncMock(return_value=json.dumps(mock_model_data))
@@ -107,7 +107,7 @@ class TestUsedModelOpenai:
 
     @pytest.mark.asyncio
     async def test_quota_check_no_space(self, valid_request, mock_model_data):
-        """测试配额不足"""
+        """Test test quota check no space."""
         request = valid_request.copy()
         quota_model_data = mock_model_data.copy()
         quota_model_data[0]["f_quota"] = True
@@ -129,7 +129,7 @@ class TestUsedModelOpenai:
 
     @pytest.mark.asyncio
     async def test_openai_model_success(self, valid_request, mock_model_data):
-        """测试OpenAI模型成功调用"""
+        """Test test openai model success."""
         request = valid_request.copy()
         
         mock_redis = AsyncMock()
@@ -155,18 +155,18 @@ class TestUsedModelOpenai:
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Claude客户端在llm_utils模块中，需要更复杂的mock")
     async def test_claude_model(self, valid_request):
-        """测试Claude模型"""
+        """Test test claude model."""
         pass
 
     @pytest.mark.asyncio
     @pytest.mark.skip(reason="Baidu客户端在llm_utils模块中，需要更复杂的mock")
     async def test_baidu_model(self, valid_request):
-        """测试Baidu模型"""
+        """Test test baidu model."""
         pass
 
     @pytest.mark.asyncio
     async def test_stream_mode(self, valid_request, mock_model_data):
-        """测试流式返回模式"""
+        """Test test stream mode."""
         request = valid_request.copy()
         request["stream"] = True
         
@@ -183,5 +183,5 @@ class TestUsedModelOpenai:
                     mock_client.return_value = mock_client_instance
                     
                     result = await used_model_openai(request, "user1", "zh", "test")
-                    # 流式返回应该是EventSourceResponse
+                    # Streaming responses should be EventSourceResponse.
                     assert result is not None

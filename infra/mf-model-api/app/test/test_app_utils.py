@@ -1,4 +1,4 @@
-"""测试 app_utils 模块"""
+"""Tests for test_app_utils."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from fastapi import FastAPI
@@ -15,10 +15,10 @@ from app.core.config import base_config
 
 
 class TestConfInit:
-    """测试conf_init函数"""
+    """Tests for test conf init."""
 
     def test_conf_init_production(self):
-        """测试生产环境配置"""
+        """Test test conf init production."""
         app = FastAPI()
         with patch.dict('os.environ', {'ENVIRONMENT': 'production'}):
             with patch('app.utils.app_utils.sys_log.info') as mock_log:
@@ -29,16 +29,16 @@ class TestConfInit:
                 mock_log.assert_called()
 
     def test_conf_init_development(self):
-        """测试开发环境配置"""
+        """Test test conf init development."""
         app = FastAPI()
         with patch.dict('os.environ', {'ENVIRONMENT': 'development'}):
             with patch('app.utils.app_utils.sys_log.info') as mock_log:
                 conf_init(app)
-                # 开发环境不应该修改docs和debug
+                # The development environment should not modify docs or debug.
                 mock_log.assert_called()
 
     def test_conf_init_default(self):
-        """测试默认环境配置"""
+        """Test test conf init default."""
         app = FastAPI()
         with patch.dict('os.environ', {}, clear=True):
             with patch('app.utils.app_utils.sys_log.info'):
@@ -46,11 +46,11 @@ class TestConfInit:
 
 
 class TestStartEvent:
-    """测试start_event函数"""
+    """Tests for test start event."""
 
     @pytest.mark.asyncio
     async def test_start_event_success(self):
-        """测试成功启动"""
+        """Test test start event success."""
         with patch('app.utils.app_utils.write_log', new_callable=AsyncMock) as mock_log:
             with patch('app.utils.app_utils.get_redis_util', new_callable=AsyncMock) as mock_redis:
                 with patch('app.utils.app_utils.init_observability') as mock_obs:
@@ -62,7 +62,7 @@ class TestStartEvent:
 
     @pytest.mark.asyncio
     async def test_start_event_redis_error(self):
-        """测试Redis连接失败"""
+        """Test test start event redis error."""
         with patch('app.utils.app_utils.write_log', new_callable=AsyncMock):
             with patch('app.utils.app_utils.get_redis_util', new_callable=AsyncMock) as mock_redis:
                 mock_redis.side_effect = Exception("Redis connection error")
@@ -71,11 +71,11 @@ class TestStartEvent:
 
 
 class TestShutdownEvent:
-    """测试shutdown_event函数"""
+    """Tests for test shutdown event."""
 
     @pytest.mark.asyncio
     async def test_shutdown_event(self):
-        """测试关闭事件"""
+        """Test test shutdown event."""
         with patch('app.utils.app_utils.write_log', new_callable=AsyncMock) as mock_log:
             with patch('app.utils.app_utils.shutdown_observability') as mock_obs:
                 await shutdown_event()
@@ -84,19 +84,17 @@ class TestShutdownEvent:
 
 
 class TestAuthMiddleware:
-    """测试auth_middleware函数"""
+    """Tests for test auth middleware."""
 
     @pytest.fixture(autouse=True)
     def enable_auth(self):
-        """开启鉴权：中间件的 token 校验分支仅在 AUTH_ENABLED=true 时触发。
-        默认 false 时走匿名放行分支直接返回 200，401 断言无从命中。
-        health/private 端点按 path 前置 bypass，不受影响。"""
+        """Enable auth: the middleware token-validation branch only runs when AUTH_ENABLED=true. The default false value follows the anonymous allow branch and returns 200 directly, so 401 assertions cannot be hit. health/private endpoints bypass by path before auth and are unaffected."""
         with patch.object(base_config, "AUTH_ENABLED", True):
             yield
 
     @pytest.fixture
     def mock_request(self):
-        """创建mock request"""
+        """Test mock request."""
         request = Mock()
         request.url = Mock()
         request.headers = {}
@@ -105,28 +103,28 @@ class TestAuthMiddleware:
 
     @pytest.fixture
     def mock_call_next(self):
-        """创建mock call_next"""
+        """Test mock call next."""
         async def call_next(request):
             return JSONResponse(content={"status": "ok"})
         return call_next
 
     @pytest.mark.asyncio
     async def test_health_endpoint_bypass(self, mock_request, mock_call_next):
-        """测试健康检查端点绕过认证"""
+        """Test test health endpoint bypass."""
         mock_request.url.path = "/api/v1/health"
         response = await auth_middleware(mock_request, mock_call_next)
         assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_private_endpoint_bypass(self, mock_request, mock_call_next):
-        """测试私有端点绕过认证"""
+        """Test test private endpoint bypass."""
         mock_request.url.path = "/api/private/test"
         response = await auth_middleware(mock_request, mock_call_next)
         assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_missing_authorization(self, mock_request, mock_call_next):
-        """测试缺少Authorization头"""
+        """Test test missing authorization."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {}
         response = await auth_middleware(mock_request, mock_call_next)
@@ -134,7 +132,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_invalid_authorization_format(self, mock_request, mock_call_next):
-        """测试无效的Authorization格式"""
+        """Test test invalid authorization format."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Invalid token"}
         response = await auth_middleware(mock_request, mock_call_next)
@@ -142,7 +140,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_valid_token(self, mock_request, mock_call_next):
-        """测试有效token"""
+        """Test test valid token."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Bearer valid_token"}
         
@@ -165,12 +163,12 @@ class TestAuthMiddleware:
         
         with patch('app.utils.app_utils.aiohttp.ClientSession', return_value=mock_session_cm):
             response = await auth_middleware(mock_request, mock_call_next)
-            # 验证通过后应该调用call_next
+            # call_next should be called after validation succeeds.
             assert response.status_code == 200
 
     @pytest.mark.asyncio
     async def test_inactive_token(self, mock_request, mock_call_next):
-        """测试无效token"""
+        """Test test inactive token."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Bearer invalid_token"}
         
@@ -197,7 +195,7 @@ class TestAuthMiddleware:
 
     @staticmethod
     def _mock_session(status, body):
-        """构造 aiohttp.ClientSession mock,返回 (session_cm, session)"""
+        """Test mock session."""
         mock_response = AsyncMock()
         mock_response.status = status
         mock_response.text = AsyncMock(return_value=body)
@@ -216,7 +214,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_appkey_valid_user(self, mock_request, mock_call_next):
-        """测试有效 bak_ AppKey:走 bkn-safe introspect,注入 user 身份头"""
+        """Test test appkey valid user."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
 
@@ -235,7 +233,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_appkey_valid_app_account(self, mock_request, mock_call_next):
-        """测试应用账户的 AppKey:account_type=app 映射为 app 角色"""
+        """Test test appkey valid app account."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
 
@@ -249,7 +247,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_appkey_inactive(self, mock_request, mock_call_next):
-        """测试无效/过期 AppKey:bkn-safe 返回 active=false → 401"""
+        """Test test appkey inactive."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
 
@@ -261,7 +259,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_appkey_without_bkn_safe_url(self, mock_request, mock_call_next):
-        """测试 BKN_SAFE_URL 未配置:bak_ key 一律 401(fail-closed),不打 hydra"""
+        """Test test appkey without bkn safe url."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
 
@@ -273,7 +271,7 @@ class TestAuthMiddleware:
 
     @pytest.mark.asyncio
     async def test_appkey_service_error(self, mock_request, mock_call_next):
-        """测试 bkn-safe 服务异常:非 200 → 400 BknSafeServiceError"""
+        """Test test appkey service error."""
         mock_request.url.path = "/api/v1/test"
         mock_request.headers = {"Authorization": "Bearer bak_kid_secret"}
 
@@ -285,11 +283,11 @@ class TestAuthMiddleware:
 
 
 class TestRequestSizeMiddleware:
-    """测试RequestSizeMiddleware类"""
+    """Tests for test request size middleware."""
 
     @pytest.mark.asyncio
     async def test_request_within_size_limit(self):
-        """测试请求大小在限制内"""
+        """Test test request within size limit."""
         middleware = RequestSizeMiddleware(app=Mock())
         request = Mock()
         request.headers = {'content-length': '1000'}
@@ -302,7 +300,7 @@ class TestRequestSizeMiddleware:
 
     @pytest.mark.asyncio
     async def test_request_exceeds_size_limit(self):
-        """测试请求大小超过限制"""
+        """Test test request exceeds size limit."""
         middleware = RequestSizeMiddleware(app=Mock())
         request = Mock()
         request.headers = {'content-length': str(11 * 1024 * 1024)}  # 11MB
@@ -315,7 +313,7 @@ class TestRequestSizeMiddleware:
 
     @pytest.mark.asyncio
     async def test_request_no_content_length(self):
-        """测试没有content-length头"""
+        """Test test request no content length."""
         middleware = RequestSizeMiddleware(app=Mock())
         request = Mock()
         request.headers = {}
@@ -328,10 +326,10 @@ class TestRequestSizeMiddleware:
 
 
 class TestCreateApp:
-    """测试create_app函数"""
+    """Tests for test create app."""
 
     def test_create_app_returns_fastapi(self):
-        """测试create_app返回FastAPI实例"""
+        """Test test create app returns fastapi."""
         with patch('app.utils.app_utils.log_init'):
             with patch('app.utils.app_utils.conf_init'):
                 with patch('app.utils.app_utils.router_init'):
@@ -339,7 +337,7 @@ class TestCreateApp:
                     assert isinstance(app, FastAPI)
 
     def test_create_app_has_title(self):
-        """测试应用有标题"""
+        """Test test create app has title."""
         with patch('app.utils.app_utils.log_init'):
             with patch('app.utils.app_utils.conf_init'):
                 with patch('app.utils.app_utils.router_init'):
@@ -347,7 +345,7 @@ class TestCreateApp:
                     assert app.title == "My API"
 
     def test_create_app_has_version(self):
-        """测试应用有版本"""
+        """Test test create app has version."""
         with patch('app.utils.app_utils.log_init'):
             with patch('app.utils.app_utils.conf_init'):
                 with patch('app.utils.app_utils.router_init'):
@@ -355,16 +353,16 @@ class TestCreateApp:
                     assert app.version == "1.0.0"
 
     def test_create_app_has_startup_event(self):
-        """测试应用有启动事件"""
+        """Test test create app has startup event."""
         with patch('app.utils.app_utils.log_init'):
             with patch('app.utils.app_utils.conf_init'):
                 with patch('app.utils.app_utils.router_init'):
                     app = create_app()
-                    # FastAPI应该有on_startup配置
+                    # FastAPI should have on_startup configuration.
                     assert hasattr(app, 'router')
 
     def test_create_app_initializes_components(self):
-        """测试应用初始化各组件"""
+        """Test test create app initializes components."""
         with patch('app.utils.app_utils.log_init') as mock_log:
             with patch('app.utils.app_utils.conf_init') as mock_conf:
                 with patch('app.utils.app_utils.router_init') as mock_router:

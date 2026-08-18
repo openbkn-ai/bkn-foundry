@@ -1,4 +1,4 @@
-"""测试计量后端选择与 metering_producer 双后端行为"""
+"""Tests for test_metering_backend."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -7,7 +7,7 @@ from app.utils import metering_producer
 
 
 class TestResolveMeteringBackend:
-    """resolve_metering_backend 环境组合矩阵"""
+    """Tests for test resolve metering backend."""
 
     def test_explicit_kafka(self, monkeypatch):
         monkeypatch.setattr(BaseConfig, 'METERINGBACKEND', 'kafka')
@@ -41,7 +41,7 @@ class TestResolveMeteringBackend:
 
 
 class TestMeteringProducerRedis:
-    """redis 后端生产路径"""
+    """Tests for test metering producer redis."""
 
     @pytest.mark.asyncio
     async def test_xadd_called_with_stream_and_maxlen(self, monkeypatch):
@@ -62,7 +62,7 @@ class TestMeteringProducerRedis:
 
     @pytest.mark.asyncio
     async def test_xadd_failure_returns_false(self, monkeypatch):
-        """redis 异常时丢弃消息返回 False，不向上抛"""
+        """Test test xadd failure returns false."""
         monkeypatch.setattr(metering_producer, '_backend', 'redis')
         mock_conn = MagicMock()
         mock_conn.xadd = AsyncMock(side_effect=Exception("redis down"))
@@ -71,7 +71,7 @@ class TestMeteringProducerRedis:
             ok = await metering_producer.produce_metering_record(b'{"a":1}')
 
         assert ok is False
-        # 连接被置空，下次重建
+        # The connection is cleared and rebuilt next time.
         assert metering_producer._redis_conn is None
 
     @pytest.mark.asyncio
@@ -88,7 +88,7 @@ class TestMeteringProducerRedis:
 
 
 class TestMeteringProducerKafka:
-    """kafka 后端生产路径（委托现有 kafka_client）"""
+    """Tests for test metering producer kafka."""
 
     @pytest.mark.asyncio
     async def test_delegates_to_kafka_client(self, monkeypatch):
@@ -103,7 +103,7 @@ class TestMeteringProducerKafka:
 
     @pytest.mark.asyncio
     async def test_kafka_client_none_returns_false(self, monkeypatch):
-        """后端为 kafka 但客户端未初始化时降级丢弃"""
+        """Test test kafka client none returns false."""
         monkeypatch.setattr(metering_producer, '_backend', 'kafka')
         with patch('app.mydb.ConnectUtil.kafka_client', None):
             ok = await metering_producer.produce_metering_record(b'v')

@@ -19,8 +19,8 @@ service:
 
 ingress:
   enabled: true
-  # 基于路径（Path）的路由分发
-  # 不配置 host，通过不同的 path 前缀区分服务
+  # Path-based routing.
+  # Do not configure host; use different path prefixes to distinguish services.
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: "500M"
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
@@ -125,15 +125,16 @@ resources:
     cpu: 4
     memory: 8Gi
 auth:
-  # 是否开启权限控制。false=关闭（所有接口放行，不过滤数据）；true=开启（走完整鉴权与资源权限逻辑）
+  # Whether to enable permission control. false=disabled (all APIs are allowed and data is not filtered);
+  # true=enabled (full authentication and resource-permission logic is used).
   enabled: "true"
 
 observability:
     logEnabled: "false"
     traceEnabled: "false"
     metricEnabled: "false"
-    # 同 mf-model-manager: AR 后端下线后 http exporter 没目标 service，
-    # default 走 console (stdlib logging) 防止后台日志线程卡在 getaddrinfo。
+    # Same as mf-model-manager: after the AR backend was removed, the HTTP exporter has no target service.
+    # Default to console (stdlib logging) to prevent the background log thread from blocking in getaddrinfo.
     logExporter: "console"
     traceProvider: "console"
     metricProvider: "console"
@@ -146,7 +147,8 @@ observability:
     httpMetricFeedIngesterUrl: "http://feed-ingester-service:13031/api/feed_ingester/v1/jobs/dip-o11y-metric/events"
     grpcTraceFeedIngesterUrl: "feed-ingester-service:30013"
     grpcTraceJobId: "dip-o11y-trace-grpc"
-# 计量传输后端：默认 redis（Redis 是全系统必装组件，计量开箱即用）；
-# 大规模部署可显式切 kafka；auto=按是否注入 KAFKAHOST 自动判定
+# Metering transport backend: default to redis because Redis is installed system-wide,
+# so metering works out of the box. Large deployments can explicitly switch to kafka;
+# auto selects based on whether KAFKAHOST is injected.
 metering:
   backend: "redis"

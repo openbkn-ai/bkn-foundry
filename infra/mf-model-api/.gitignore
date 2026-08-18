@@ -7,6 +7,6 @@
 .idea
 *.pyc
 *.log
-# 豁免 app/logs 模块目录（被根 .gitignore 的 logs/ 规则误拦截）
+# Exempt the app/logs module directory, which is unintentionally blocked by the root logs/ rule.
 !app/logs/
 !app/logs/*.py

@@ -8,7 +8,7 @@ from app.commons.errors import *
 from app.dao.llm_model_dao import llm_model_dao
 
 
-# 新增模型参数校验
+# Validate parameters for adding a model.
 
 
 async def llm_add_verify(schema_para, userId):
@@ -111,7 +111,7 @@ async def llm_add_verify(schema_para, userId):
         return LLMAdd2Error
 
 
-# 测试模型参数校验
+# Validate parameters for testing a model.
 def llm_test_verify(model_param):
     key_list = ["model_series", "model_config", "model_type"]
     for k in key_list:
@@ -155,7 +155,7 @@ def llm_test_verify(model_param):
         return LLMTestError
 
 
-# 编辑模型校验
+# Validate model edit parameters.
 def llm_edit_verify(model_para):
     key_list = ["model_config", "model_series", "model_name", "model_id", "max_model_len", "model_type"]
     for k in key_list:
@@ -181,7 +181,7 @@ def llm_edit_verify(model_para):
         return LLMEditError
 
 
-# 大模型列表校验
+# Validate large-model list parameters.
 def llm_source_verify(order, page, size, rule, series, name, model_type):
     if not re.search(r'^[1-9]\d*$', page):
         LLMSourceError['description'] = "page 参数不符合规范"
@@ -252,7 +252,7 @@ def verify_icon_color_config_metric(s):
         return False
 
 
-# 检查字段是否不含表情等字符，是否不超过指定长度
+# Check that the field contains no emoji-like characters and does not exceed the specified length.
 def verify_text_field(s, max_len):
     if not isinstance(s, str):
         return False
@@ -266,7 +266,7 @@ def verify_text_field(s, max_len):
 def verify_id(s):
     if not isinstance(s, str):
         return False
-    # 只能有数字
+    # Digits only.
     if not re.match(r'^[0-9]{18}$', s) and not re.match(r'^[0-9]{19}$', s):
         return False
     return True
@@ -334,7 +334,7 @@ def prompt_llm_source_verify(types):
         return PromptLLMSourceError
 
 
-# 获取提示词模板校验
+# Validate prompt-template query parameters.
 def prompt_template_verify(prompt_name, prompt_type):
     if not re.search(r'^[=~!@#$&%^*()_+`{}\-\[\];:,.\\?<>\'"|/！￥…·（）—。【 】‘“’”：；、《》？，a-zA-Z0-9\u4e00-\u9fa5]{,50}$|^$',
                      prompt_name):
@@ -347,7 +347,7 @@ def prompt_template_verify(prompt_name, prompt_type):
         return PromptLLMSourceError
 
 
-# 查看提示词校验
+# Validate prompt lookup.
 async def check_prompt_verify(prompt_id):
     prompt_id_list = [cell["f_prompt_id"] for cell in prompt_dao.get_all_data_from_prompt_list()]
     if prompt_id not in prompt_id_list:
@@ -356,17 +356,17 @@ async def check_prompt_verify(prompt_id):
         return {'res': []}
 
 
-# 调用大模型校验对prompt_id 单独校验
+# Validate prompt_id separately before invoking a large model.
 async def used_prompt_id_verify(prompt_service_id):
     prompt_service_id_list = prompt_dao.get_all_prompt_service_id()
-    # prompt不存在校验
+    # Validate that the prompt exists.
     if prompt_service_id not in prompt_service_id_list:
         PromptUsed['description'] = "prompt_service_id 参数不符合规范"
         PromptUsed['detail'] = "当前参数仅支持数据库中已有 prompt_service_id"
         return PromptUsed
 
 
-# 新建提示词项目参数校验
+# Validate parameters for creating a prompt item.
 async def item_add_verify(model_para):
     if "prompt_item_name" not in model_para:
         PromptItemAddError1['description'] = "参数错误"
@@ -385,7 +385,7 @@ async def item_add_verify(model_para):
         return [500, PromptItemAddError2]
 
 
-# 编辑提示词项目参数校验
+# Validate parameters for editing a prompt item.
 async def item_edit_verify(model_para):
     if "prompt_item_id" not in model_para or "prompt_item_name" not in model_para:
         PromptItemEditError1['description'] = "参数错误"
@@ -416,7 +416,7 @@ async def item_edit_verify(model_para):
         return [500, PromptItemEditError2]
 
 
-# 新建提示词分类参数校验
+# Validate parameters for creating a prompt category.
 async def type_add_verify(model_para):
     if "prompt_item_id" not in model_para or "prompt_item_type" not in model_para:
         PromptTypeAddError1['description'] = "参数错误"
@@ -442,7 +442,7 @@ async def type_add_verify(model_para):
         return [500, PromptTypeAddError2]
 
 
-# 编辑提示词分类参数校验
+# Validate parameters for editing a prompt category.
 async def type_edit_verify(model_para):
     if "prompt_item_type" not in model_para or "prompt_item_type_id" not in model_para:
         PromptTypeEditError1['description'] = "参数错误"
@@ -458,10 +458,10 @@ async def type_edit_verify(model_para):
         PromptTypeEditError1['description'] = "prompt_item_type_id参数不符合规范"
         PromptTypeEditError1['detail'] = "提示词项目不存在"
         return [400, PromptTypeEditError1]
-    item_id = info[0]["f_prompt_item_id"]  # 所属项目id
-    # type_name_list = [ids.f_prompt_item_type for ids in await PromptItemList.filter(f_prompt_item_id=item_id)] #项目下所有分类
+    item_id = info[0]["f_prompt_item_id"]  # Owning item ID.
+    # type_name_list = [ids.f_prompt_item_type for ids in await PromptItemList.filter(f_prompt_item_id=item_id)] # All categories under the item.
     type_id_list = [ids["f_prompt_item_type_id"] for ids in
-                    prompt_dao.get_all_info_from_prompt_item_list_by_item_id(item_id)]  # 项目下所有分类id
+                    prompt_dao.get_all_info_from_prompt_item_list_by_item_id(item_id)]  # IDs of all categories under the item.
     if model_para['prompt_item_type_id'] not in type_id_list or info[0]["f_item_is_delete"] == 1:
         PromptTypeEditError1['description'] = "prompt_item_type_id参数不符合规范"
         PromptTypeEditError1['detail'] = "提示词项目分类不存在"
@@ -482,7 +482,7 @@ async def type_edit_verify(model_para):
     #     return [400, PromptTypeEditError1]
 
 
-# 新增提示词
+# Add a prompt.
 async def prompt_add_verify(para):
     if "prompt_item_id" not in para or "prompt_item_type_id" not in para or "prompt_name" not in para or "prompt_type" not in para or "model_id" not in para or "icon" not in para or "model_para" not in para or "messages" not in para:
         PromptAddError1['description'] = "参数错误"
@@ -630,7 +630,7 @@ async def prompt_add_verify(para):
             return [400, PromptAddError1]
 
 
-# 提示词名称编辑
+# Edit the prompt name.
 async def prompt_name_verify(model_para):
     if "prompt_id" not in model_para or "prompt_name" not in model_para or "model_id" not in model_para or "icon" not in model_para:
         PromptNameEditError1['description'] = "参数错误"
@@ -681,7 +681,7 @@ async def prompt_name_verify(model_para):
 
 
 
-# 提示词编辑
+# Edit a prompt.
 async def prompt_edit_verify(para):
     if "prompt_id" not in para or "model_para" not in para or "messages" not in para or "model_id" not in para:
         PromptEditError1['description'] = "参数错误"
@@ -788,7 +788,7 @@ async def prompt_edit_verify(para):
             return [400, PromptEditError1]
 
 
-# 提示词管理编辑提示词
+# Edit a prompt through prompt management.
 async def prompt_template_edit_verify(para):
     if "prompt_id" not in para or "prompt_name" not in para or "messages" not in para or "variables" not in para or\
             "icon" not in para or "prompt_item_type_id" not in para or "prompt_item_id" not in para:
@@ -796,7 +796,7 @@ async def prompt_template_edit_verify(para):
         PromptTemplateEditError1['detail'] = "传入参数名称或数量错误"
         return [400, PromptTemplateEditError1]
 
-    # 校验prompt_id
+    # Validate prompt_id.
     prompt_id = para["prompt_id"]
     if not isinstance(prompt_id, str) or prompt_id == "":
         PromptTemplateEditError1['description'] = "参数错误"
@@ -809,7 +809,7 @@ async def prompt_template_edit_verify(para):
         PromptTemplateEditError1['detail'] = "提示词不存在"
         return [400, PromptTemplateEditError1]
 
-    # 校验variables
+    # Validate variables.
     if not isinstance(para["variables"], list):
         PromptTemplateEditError1['description'] = "variables参数不符合规范"
         PromptTemplateEditError1['detail'] = "当前参数必须为list类型"
@@ -842,7 +842,7 @@ async def prompt_template_edit_verify(para):
                     PromptEditError1['detail'] = "当前参数仅支持数字"
                     return [400, PromptEditError1]
 
-    # 校验prompt_name
+    # Validate prompt_name.
     if not isinstance(para["prompt_name"], str):
         PromptTemplateEditError1['description'] = "prompt_name参数不符合规范"
         PromptTemplateEditError1['detail'] = "当前参数必须为字符串类型"
@@ -877,7 +877,7 @@ async def prompt_template_edit_verify(para):
         PromptTemplateEditError1['detail'] = "颜色配置错误"
         return [400, PromptTemplateEditError1]
 
-    # 校验prompt_desc
+    # Validate prompt_desc.
     if not isinstance(para["prompt_desc"], str):
         PromptTemplateEditError1['description'] = "prompt_desc参数不符合规范"
         PromptTemplateEditError1['detail'] = "当前参数必须为字符串类型"
@@ -906,7 +906,7 @@ async def prompt_template_edit_verify(para):
         return [400, PromptTemplateEditError1]
 
 
-# 提示词发布
+# Publish a prompt.
 async def prompt_deploy_verify(model_para):
     if "prompt_id" not in model_para:
         PromptDeployError1['description'] = "参数错误"
@@ -924,7 +924,7 @@ async def prompt_deploy_verify(model_para):
     #     return [400, PromptDeployError1]
 
 
-# 提示词取消发布
+# Unpublish a prompt.
 async def prompt_undeploy_verify(model_para):
     if "prompt_id" not in model_para:
         PromptUndeployError1['description'] = "参数错误"
@@ -942,7 +942,7 @@ async def prompt_undeploy_verify(model_para):
         return [400, PromptUndeployError1]
 
 
-# 提示词运行
+# Run a prompt.
 async def prompt_run_verify(para):
     if "model_id" not in para or "model_para" not in para:
         PromptRunError1['description'] = "参数错误"
@@ -964,17 +964,17 @@ async def prompt_run_verify(para):
     #     PromptRunError1['detail'] = "messages为空或超上限"
     #     return [400, PromptRunError1]
 
-    for var in para["variables"]:  # variables prompt里面的变量，inputs是输入的变量
+    for var in para["variables"]:  # variables are prompt variables; inputs are input variables.
         var_name = var['var_name']
-        # 变量为必填字段，但是输入中没有当前变量
+        # The variable is required but missing from inputs.
         if not var['optional'] and var_name not in para["inputs"].keys():
             PromptRunError1['description'] = "提示词变量输入异常"
             PromptRunError1['detail'] = "必填项{}缺失".format(var_name)
             return [500, PromptRunError1]
-        # 变量为必填或非必填字段，输入中存在当前变量
+        # The variable exists in inputs, whether required or optional.
         if var_name in para["inputs"].keys():
             var_value = para["inputs"][var_name]
-            # 校验 <文本型> 变量
+            # Validate a text variable.
             if var['field_type'] == 'text':
                 if type(var_value) is not str:
                     PromptRunError1['description'] = "提示词变量输入异常"
@@ -984,7 +984,7 @@ async def prompt_run_verify(para):
                     PromptRunError1['description'] = "提示词变量输入异常"
                     PromptRunError1['detail'] = f"字段{var_name}长度最大值为{var['max_len']}"
                     return [500, PromptRunError1]
-            # 校验 <数值型> 变量
+            # Validate a numeric variable.
             if var['field_type'] == 'number':
                 if var['value_type'] == 'i' and type(var_value) is not int:
                     PromptRunError1['description'] = "提示词变量输入异常"
@@ -1005,7 +1005,7 @@ async def prompt_run_verify(para):
                         PromptRunError1['description'] = "提示词变量输入异常"
                         PromptRunError1['detail'] = f"字段{var_name}的取值范围为{var['range']}"
                         return [500, PromptRunError1]
-            # 校验 <下拉型> 变量
+            # Validate a selector variable.
             if var['field_type'] == 'selector':
                 if var_value not in var['options']:
                     PromptRunError1['description'] = "提示词变量输入异常"
@@ -1211,7 +1211,7 @@ async def completion_prompt_verify(prompt_id, inputs):
         return PromptConpletionError1
     info = prompt_dao.get_prompt_by_id(prompt_id)
     messages = info[0]["f_messages"]
-    var = re.findall(r'\{\{(.*?)\}\}', messages)  # 提示词中的变量
+    var = re.findall(r'\{\{(.*?)\}\}', messages)  # Variables in the prompt.
     inputs_key = inputs.keys()
     if set(var) != set(inputs_key):
         PromptConpletionError1['description'] = "提示词变量输入异常"
@@ -1219,7 +1219,7 @@ async def completion_prompt_verify(prompt_id, inputs):
         return PromptConpletionError1
 
 
-# 查看代码
+# View code.
 async def prompt_code_verify(model_id, prompt_id):
     ids_list = [ids["f_model_id"] for ids in llm_model_dao.get_all_model_list()]
     is_delete = llm_model_dao.get_data_from_model_list_by_id(model_id)
@@ -1236,7 +1236,7 @@ async def prompt_code_verify(model_id, prompt_id):
             return PromptCodeError1
 
 
-# 删除功能
+# Delete operation.
 async def prompt_delete_verify(delete_id):
     if len(delete_id.items()) != 1:
         PromptDeleteError1['description'] = "参数错误"
@@ -1272,7 +1272,7 @@ async def prompt_delete_verify(delete_id):
             return [500, PromptDeleteError1]
 
 
-# 提示词移动校验
+# Validate prompt move parameters.
 async def prompt_move_verify(move_param):
     key_list = list(move_param.keys())
     if 'prompt_id' not in key_list:
@@ -1368,7 +1368,7 @@ def verify_icon_color_config_metric(s):
     else:
         return False
 
-# 检查字段是否不含表情等字符，是否不超过指定长度
+# Check that the field contains no emoji-like characters and does not exceed the specified length.
 def verify_text_field(s, max_len):
     if not isinstance(s, str):
         return False
@@ -1381,7 +1381,7 @@ def verify_text_field(s, max_len):
 def verify_id(s):
     if not isinstance(s, str):
         return False
-    # 只能有数字
+    # Digits only.
     if not re.match(r'^[0-9]{18}$', s) and not re.match(r'^[0-9]{19}$', s):
         return False
     return True

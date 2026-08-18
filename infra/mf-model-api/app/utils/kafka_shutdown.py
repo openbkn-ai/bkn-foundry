@@ -1,5 +1,5 @@
 """
-Kafka异步生产者优雅关闭工具
+Graceful-shutdown utility for the asynchronous Kafka producer.
 """
 import atexit
 import signal
@@ -9,9 +9,9 @@ from app.logs.stand_log import StandLogger
 
 
 def graceful_shutdown():
-    """优雅关闭Kafka异步生产者"""
+    """Gracefully shut down the asynchronous Kafka producer."""
     if kafka_client is None:
-        # 计量后端非 kafka，无需关闭
+        # No shutdown is needed when the metering backend is not Kafka.
         return
     try:
         StandLogger.info("开始优雅关闭Kafka异步生产者...")
@@ -22,23 +22,23 @@ def graceful_shutdown():
 
 
 def signal_handler(signum, frame):
-    """信号处理器"""
+    """Signal handler."""
     StandLogger.info(f"收到信号 {signum}，开始优雅关闭...")
     graceful_shutdown()
     sys.exit(0)
 
 
 def register_shutdown_handlers():
-    """注册关闭处理器"""
-    # 注册程序退出时的清理函数
+    """Register shutdown handlers."""
+    # Register the cleanup function for process exit.
     atexit.register(graceful_shutdown)
     
-    # 注册信号处理器
+    # Register signal handlers.
     signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
-    signal.signal(signal.SIGTERM, signal_handler)  # 终止信号
+    signal.signal(signal.SIGTERM, signal_handler)  # Termination signal.
     
     StandLogger.info("Kafka优雅关闭处理器已注册")
 
 
-# 自动注册关闭处理器
+# Automatically register shutdown handlers.
 register_shutdown_handlers()

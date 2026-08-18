@@ -3,7 +3,7 @@ import uvicorn
 from app.utils.app_utils import create_app
 from app.core.config import base_config
 from app.logs.stand_log import StandLogger
-# 导入Kafka优雅关闭处理器
+# Import the Kafka graceful-shutdown handler.
 import app.utils.kafka_shutdown
 
 

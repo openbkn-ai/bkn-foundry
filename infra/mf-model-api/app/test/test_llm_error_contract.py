@@ -1,9 +1,4 @@
-"""#620 回归：/v1/chat/completions 失败出口必须是 OpenAI 错误契约。
-
-客户端（@ai-sdk/openai-compatible、openai-python、LangChain）按
-union(chunkSchema, errorSchema) 解析，模型工厂 envelope 两边都不匹配，
-会把整段 zod 报错糊到用户脸上。
-"""
+"""Tests for test_llm_error_contract."""
 import json
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -19,7 +14,7 @@ BUSY_BODY = ('{"error":{"message":"Service is too busy. We advise users to tempo
 
 
 def _mock_session(status, body):
-    """构造 aiohttp.ClientSession mock，返回 (session_cm, session)"""
+    """Test mock session."""
     response = AsyncMock()
     response.status = status
     response.text = AsyncMock(return_value=body)
@@ -73,7 +68,7 @@ class TestStreamErrorFrame:
 
     @pytest.mark.asyncio
     async def test_upstream_busy_yields_openai_error_frame(self):
-        """上游 503 忙：发合规错误帧，不发 envelope"""
+        """Test test upstream busy yields openai error frame."""
         session_cm, session = _mock_session(503, BUSY_BODY)
         with patch.object(llm_utils.aiohttp, 'ClientSession', return_value=session_cm), \
                 patch.object(llm_utils, 'add_llm_model_call_log', new_callable=AsyncMock), \
@@ -85,7 +80,7 @@ class TestStreamErrorFrame:
         body = json.loads(chunks[0])
         assert body["error"]["message"].startswith("Service is too busy.")
         assert body["error"]["type"] == "service_unavailable_error"
-        # 老形态的痕迹一个都不能剩
+        # No traces of the old shape should remain.
         assert "code" not in body or body["code"] != "ModelFactory.ModelController.Model.Error"
         assert "description" not in body
         assert "solution" not in body
@@ -93,7 +88,7 @@ class TestStreamErrorFrame:
 
     @pytest.mark.asyncio
     async def test_retryable_status_retries_then_gives_up(self):
-        """429/503 这类瞬态错误先退避重试，重试用完才报错"""
+        """Test test retryable status retries then gives up."""
         session_cm, session = _mock_session(429, '{"code":50508,"message":"System is too busy now."}')
         with patch.object(llm_utils.aiohttp, 'ClientSession', return_value=session_cm), \
                 patch.object(llm_utils, 'add_llm_model_call_log', new_callable=AsyncMock), \
@@ -109,7 +104,7 @@ class TestStreamErrorFrame:
 
     @pytest.mark.asyncio
     async def test_client_error_status_does_not_retry(self):
-        """4xx 参数类错误重试没有意义，一次就报"""
+        """Test test client error status does not retry."""
         session_cm, session = _mock_session(400, '{"error":{"message":"bad model"}}')
         with patch.object(llm_utils.aiohttp, 'ClientSession', return_value=session_cm), \
                 patch.object(llm_utils, 'add_llm_model_call_log', new_callable=AsyncMock), \
@@ -125,7 +120,7 @@ class TestStreamErrorFrame:
 class TestTraceStream:
     @pytest.mark.asyncio
     async def test_error_frame_marks_trace_failed(self):
-        """错误帧终止的流不能记成 success"""
+        """Test test error frame marks trace failed."""
         client = Mock()
         client._emit_bkn_trace_evidence = Mock()
 

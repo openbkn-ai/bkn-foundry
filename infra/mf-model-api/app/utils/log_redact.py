@@ -1,12 +1,13 @@
-"""日志脱敏：排障需要的是「打了哪个 url、哪个模型、多大的请求」，不是凭据本身，
-也不是用户问了什么。
+"""Log redaction: troubleshooting needs the target URL, model, and request size, not credentials
+or the user's question.
 
-调用第三方模型时，请求头里带的是**供应商 api_key**，请求体里带的是**用户的完整
-对话内容**。这两样一旦整体拼进 error 日志，就顺着日志采集链路离开了本服务——而
-日志的读权限模型跟凭据管理、业务数据管理都不是一套（#636）。
+When calling third-party models, request headers contain the provider api_key, and the request body contains the
+user's full conversation content. If both are written into error logs as-is, they leave this service through the log
+collection pipeline, whose read-permission model is separate from credential management and business-data
+management (#636).
 
-所以往日志里放请求上下文时，一律经这里过一道：
-``safe_headers()`` 给头脱敏，``request_digest()`` 把请求体压成不含内容的摘要。
+Therefore, request context written to logs must pass through this module:
+``safe_headers()`` redacts headers, and ``request_digest()`` compresses the request body into a content-free digest.
 """
 
 _SENSITIVE_HEADERS = (
@@ -14,12 +15,12 @@ _SENSITIVE_HEADERS = (
     "secret-key", "x-secret-key", "cookie", "proxy-authorization",
 )
 
-# 掩码保留的前缀长度：够认出「是哪一把 key」，不够拿去用
+# Prefix length retained by masking: enough to identify which key it is, not enough to use it.
 _KEEP_PREFIX = 4
 
 
 def mask_secret(value, keep=_KEEP_PREFIX):
-    """凭据掩码。保留可辨识的头部，其余抹掉，并保留 Bearer 之类的方案前缀。"""
+    """Mask credentials while preserving identifiable prefixes and schemes such as Bearer."""
     if not isinstance(value, str) or not value:
         return "***"
     scheme, _, rest = value.partition(" ")
@@ -31,7 +32,7 @@ def mask_secret(value, keep=_KEEP_PREFIX):
 
 
 def safe_headers(headers):
-    """请求头脱敏副本。敏感项只留掩码，其余原样——排障还得看 Content-Type。"""
+    """Return a redacted header copy. Sensitive values are masked, while other headers remain unchanged."""
     if not isinstance(headers, dict):
         return {}
     return {
@@ -41,11 +42,11 @@ def safe_headers(headers):
 
 
 def safe_url(url):
-    """URL 脱敏：只留 scheme+host+path，query 一律抹掉。
+    """Redact a URL by keeping only scheme, host, and path, and removing the entire query.
 
-    本服务里 URL 拼凭据是有先例的（百度 oauth 的 `client_id`/`client_secret`、
-    `?access_token=`），而 `OtherClient.api_url` 是管理员在 f_model_config 里自由
-    填的，无法假设里面没有 key。排障要的是「打的哪个 host、哪个 path」。
+    This service has precedent for credentials in URLs, such as Baidu OAuth `client_id`/`client_secret` and
+    `?access_token=`. `OtherClient.api_url` is freely entered by administrators in f_model_config, so it cannot be
+    assumed to contain no key. Troubleshooting needs the target host and path.
     """
     if not isinstance(url, str) or not url:
         return ""
@@ -64,10 +65,10 @@ def _message_chars(messages):
 
 
 def request_digest(params):
-    """请求体摘要：够定位问题，不含任何用户内容。
+    """Build a request-body digest that is enough for troubleshooting and contains no user content.
 
-    刻意不收 ``messages`` 里的 ``content``——那是客户的业务数据。要复现问题用
-    这里的 model / 参数 / 规模，配合调用方自己的 trace 即可。
+    Deliberately exclude ``content`` from ``messages`` because it is customer business data. To reproduce an issue,
+    use the model, parameters, and size here together with the caller's own trace.
     """
     if not isinstance(params, dict):
         return {}
@@ -92,5 +93,5 @@ def request_digest(params):
 
 
 def messages_digest(messages):
-    """只有 messages 在手时的摘要（controller 侧的异常分支用）。"""
+    """Build a digest when only messages are available, used by controller-side exception paths."""
     return request_digest({"messages": messages})

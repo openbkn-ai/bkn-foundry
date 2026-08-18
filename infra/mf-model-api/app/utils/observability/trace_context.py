@@ -8,7 +8,7 @@ from opentelemetry.trace import SpanKind, Tracer, Status, StatusCode
 from contextlib import contextmanager, asynccontextmanager
 from typing import Optional, Any, AsyncGenerator, Generator
 
-# 原 AnyRobot tracer 已移除，改用 OTel 默认 tracer（无 provider 时为 no-op）
+# The AnyRobot tracer was removed; use OTel's default no-op tracer when no provider exists.
 tracer = trace.get_tracer(__name__)
 
 
@@ -28,7 +28,7 @@ class TraceContext:
         status_code_on_exception: StatusCode = StatusCode.ERROR,
         success_status_code: Optional[StatusCode] = StatusCode.OK
     ) -> Generator[trace.Span, None, None]:
-        """同步上下文管理器"""
+        """Synchronous span context manager."""
         with self.tracer.start_as_current_span(
             name,
             kind=kind,
@@ -57,7 +57,7 @@ class TraceContext:
         success_status_code: Optional[StatusCode] = StatusCode.OK
     ) -> AsyncGenerator[trace.Span, None]:
         name = name or self.__class__.__name__
-        """异步上下文管理器"""
+        """Asynchronous span context manager."""
         with self.tracer.start_as_current_span(
             name,
             kind=kind,

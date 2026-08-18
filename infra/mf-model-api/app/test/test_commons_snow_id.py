@@ -1,20 +1,20 @@
-"""测试 snow_id 模块"""
+"""Tests for test_commons_snow_id."""
 import pytest
 from app.commons.snow_id import IdWorker, snow_id, worker, SEQUENCE_MASK
 
 
 class TestIdWorker:
-    """测试IdWorker类"""
+    """Tests for test id worker."""
 
     def test_init_valid_params(self):
-        """测试有效参数初始化"""
+        """Test test init valid params."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1, sequence=0)
         assert id_worker.datacenter_id == 1
         assert id_worker.worker_id == 1
         assert id_worker.sequence == 0
 
     def test_init_invalid_worker_id(self):
-        """测试无效的worker_id"""
+        """Test test init invalid worker id."""
         with pytest.raises(ValueError, match="worker_id is out of range"):
             IdWorker(datacenter_id=1, worker_id=32, sequence=0)
         
@@ -22,7 +22,7 @@ class TestIdWorker:
             IdWorker(datacenter_id=1, worker_id=-1, sequence=0)
 
     def test_init_invalid_datacenter_id(self):
-        """测试无效的datacenter_id"""
+        """Test test init invalid datacenter id."""
         with pytest.raises(ValueError, match="datacenter_id is out of range"):
             IdWorker(datacenter_id=32, worker_id=1, sequence=0)
         
@@ -30,21 +30,21 @@ class TestIdWorker:
             IdWorker(datacenter_id=-1, worker_id=1, sequence=0)
 
     def test_gen_timestamp(self):
-        """测试生成时间戳"""
+        """Test test gen timestamp."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1)
         timestamp = id_worker._gen_timestamp()
         assert isinstance(timestamp, int)
         assert timestamp > 0
 
     def test_get_id_single(self):
-        """测试生成单个ID"""
+        """Test test get id single."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1)
         id1 = id_worker.get_id()
         assert isinstance(id1, int)
         assert id1 > 0
 
     def test_get_id_unique(self):
-        """测试生成的ID唯一性"""
+        """Test test get id unique."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1)
         ids = set()
         for _ in range(1000):
@@ -52,71 +52,71 @@ class TestIdWorker:
         assert len(ids) == 1000
 
     def test_get_id_sequence_increment(self):
-        """测试同一毫秒内序列号递增"""
+        """Test test get id sequence increment."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1)
-        # 在同一时间戳内生成多个ID
+        # Generate multiple IDs within the same timestamp.
         id1 = id_worker.get_id()
         id2 = id_worker.get_id()
-        # ID应该递增
+        # IDs should be increasing.
         assert id2 > id1
 
     def test_get_id_sequence_reset(self):
-        """测试序列号重置"""
+        """Test test get id sequence reset."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1)
-        # 生成足够多的ID以触发序列号重置
+        # Generate enough IDs to trigger sequence reset.
         for _ in range(SEQUENCE_MASK + 1):
             id_worker.get_id()
-        # 序列号应该被重置
+        # The sequence should be reset.
         assert id_worker.sequence >= 0
 
     def test_til_next_millis(self):
-        """测试等待下一毫秒"""
+        """Test test til next millis."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1)
         last_timestamp = id_worker._gen_timestamp()
         next_timestamp = id_worker._til_next_millis(last_timestamp)
         assert next_timestamp > last_timestamp
 
     def test_clock_backwards(self):
-        """测试时钟回拨异常"""
+        """Test test clock backwards."""
         id_worker = IdWorker(datacenter_id=1, worker_id=1)
-        # 先生成一个ID
+        # Generate one ID first.
         id_worker.get_id()
-        # 模拟时钟回拨
+        # Simulate clock rollback.
         id_worker.last_timestamp = id_worker._gen_timestamp() + 10000
         with pytest.raises(Exception):
             id_worker.get_id()
 
 
 class TestSnowIdFunction:
-    """测试snow_id函数"""
+    """Tests for test snow id function."""
 
     def test_snow_id_returns_int(self):
-        """测试snow_id返回整数"""
+        """Test test snow id returns int."""
         result = snow_id()
         assert isinstance(result, int)
         assert result > 0
 
     def test_snow_id_unique(self):
-        """测试snow_id生成唯一ID"""
+        """Test test snow id unique."""
         import time
         ids = set()
         for _ in range(100):
             ids.add(snow_id())
-            # 添加微小延迟确保序列号递增
+            # Add a small delay to ensure the sequence increments.
             time.sleep(0.0001)
         assert len(ids) == 100
 
 
 class TestWorkerGlobal:
-    """测试全局worker对象"""
+    """Tests for test worker global."""
 
     def test_worker_exists(self):
-        """测试全局worker对象存在"""
+        """Test test worker exists."""
         assert worker is not None
         assert isinstance(worker, IdWorker)
 
     def test_worker_generates_id(self):
-        """测试全局worker可以生成ID"""
+        """Test test worker generates id."""
         id1 = worker.get_id()
         assert isinstance(id1, int)
         assert id1 > 0

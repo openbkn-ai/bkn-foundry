@@ -1,144 +1,160 @@
-# MF-Model-API 测试文档
+# MF-Model-API Test Documentation
 
-## 概述
-本测试套件为 mf-model-api 项目提供全面的单元测试，目标覆盖率至少75%。
+## Overview
 
-## 测试结构
+This test suite provides comprehensive unit tests for the `mf-model-api` project, with a target coverage of at least 75%.
+
+## Test Structure
 
 ```
 app/test/
-├── __init__.py                     # 测试包初始化
-├── conftest.py                     # pytest配置和公共fixtures
-├── test_commons_response.py        # 测试response模块
-├── test_commons_snow_id.py         # 测试snow_id模块
-├── test_core_config.py             # 测试配置模块
-├── test_dao_llm_model_dao.py       # 测试DAO层
-├── test_utils_str_util.py          # 测试字符串工具
-├── test_utils_comment_utils.py     # 测试日志工具
-├── test_utils_param_verify.py      # 测试参数验证
-├── test_restful_api.py             # 测试RESTful API文档生成
-├── test_controller_llm.py          # 测试LLM控制器
-├── test_routers.py                 # 测试路由
-├── test_app_utils.py               # 测试应用工具
-└── README.md                       # 本文件
+├── __init__.py                     # Test package initialization
+├── conftest.py                     # pytest configuration and shared fixtures
+├── test_commons_response.py        # Tests for the response module
+├── test_commons_snow_id.py         # Tests for the snow_id module
+├── test_core_config.py             # Tests for the configuration module
+├── test_dao_llm_model_dao.py       # Tests for the DAO layer
+├── test_utils_str_util.py          # Tests for string utilities
+├── test_utils_comment_utils.py     # Tests for logging utilities
+├── test_utils_param_verify.py      # Tests for parameter validation
+├── test_restful_api.py             # Tests for RESTful API document generation
+├── test_controller_llm.py          # Tests for the LLM controller
+├── test_routers.py                 # Tests for routers
+├── test_app_utils.py               # Tests for application utilities
+└── README.md                       # This file
 ```
 
-## 安装依赖
+## Installing Dependencies
 
 ```bash
 pip install -r requirements-test.txt
 ```
 
-## 运行测试
+## Running Tests
 
-### 运行所有测试
+### Run all tests
+
 ```bash
 pytest
 ```
 
-### 运行特定模块测试
+### Run tests for a specific module
+
 ```bash
 pytest app/test/test_commons_snow_id.py
 ```
 
-### 生成覆盖率报告
+### Generate a coverage report
+
 ```bash
 pytest --cov=app --cov-report=html --cov-report=term-missing
 ```
 
-### 查看HTML覆盖率报告
+### View the HTML coverage report
+
 ```bash
-# 在浏览器中打开
+# Open in a browser
 htmlcov/index.html
 ```
 
-## 测试覆盖的模块
+## Covered Modules
 
-### Commons 模块
-- ✅ `response.py` - 响应处理函数
-- ✅ `snow_id.py` - 雪花ID生成器
-- ✅ `restful_api.py` - RESTful API文档生成
+### Commons Module
 
-### Utils 模块
-- ✅ `str_util.py` - 字符串工具函数
-- ✅ `comment_utils.py` - 日志工具函数
-- ✅ `param_verify_utils.py` - 参数验证函数
-- ✅ `app_utils.py` - 应用工具函数
+- ✅ `response.py` - Response handling functions
+- ✅ `snow_id.py` - Snowflake ID generator
+- ✅ `restful_api.py` - RESTful API document generation
 
-### Core 模块
-- ✅ `config.py` - 配置管理
+### Utils Module
 
-### DAO 模块
-- ✅ `llm_model_dao.py` - LLM模型数据访问
+- ✅ `str_util.py` - String utility functions
+- ✅ `comment_utils.py` - Logging utility functions
+- ✅ `param_verify_utils.py` - Parameter validation functions
+- ✅ `app_utils.py` - Application utility functions
 
-### Controller 模块
-- ✅ `llm_controller.py` - LLM控制器逻辑
+### Core Module
 
-### Routers 模块
-- ✅ `llm_router.py` - LLM路由
+- ✅ `config.py` - Configuration management
 
-## 测试覆盖率目标
+### DAO Module
 
-- **整体覆盖率**: ≥ 75%
-- **关键模块覆盖率**: ≥ 80%
+- ✅ `llm_model_dao.py` - LLM model data access
+
+### Controller Module
+
+- ✅ `llm_controller.py` - LLM controller logic
+
+### Routers Module
+
+- ✅ `llm_router.py` - LLM routes
+
+## Test Coverage Targets
+
+- **Overall coverage**: ≥ 75%
+- **Critical module coverage**: ≥ 80%
   - Commons: ≥ 80%
   - Utils: ≥ 80%
   - Controller: ≥ 75%
 
-## 测试类型
+## Test Types
 
-### 单元测试
-测试单个函数或类的功能，使用Mock隔离依赖。
+### Unit Tests
 
-### 集成测试
-测试多个模块间的交互。
+Test individual functions or classes and isolate dependencies with mocks.
 
-### 异步测试
-使用 `pytest-asyncio` 测试异步函数。
+### Integration Tests
 
-## 常见问题
+Test interactions between multiple modules.
 
-### Q: 如何Mock数据库连接？
-A: 使用 `conftest.py` 中的 `mock_db_connection` fixture。
+### Asynchronous Tests
 
-### Q: 如何Mock Redis？
-A: 使用 `conftest.py` 中的 `mock_redis` fixture。
+Use `pytest-asyncio` to test asynchronous functions.
 
-### Q: 如何测试异步函数？
-A: 使用 `@pytest.mark.asyncio` 装饰器。
+## FAQ
 
-## Mock策略
+### Q: How do I mock database connections?
 
-1. **数据库**: 使用Mock对象模拟数据库连接和游标
-2. **Redis**: 使用AsyncMock模拟Redis操作
-3. **HTTP请求**: 使用aioresponses或patch aiohttp.ClientSession
-4. **环境变量**: 使用patch.dict模拟环境变量
+A: Use the `mock_db_connection` fixture in `conftest.py`.
 
-## 持续集成
+### Q: How do I mock Redis?
 
-测试可以集成到CI/CD流程中：
+A: Use the `mock_redis` fixture in `conftest.py`.
+
+### Q: How do I test asynchronous functions?
+
+A: Use the `@pytest.mark.asyncio` decorator.
+
+## Mocking Strategy
+
+1. **Database**: Use mock objects for database connections and cursors.
+2. **Redis**: Use `AsyncMock` for Redis operations.
+3. **HTTP requests**: Use `aioresponses` or patch `aiohttp.ClientSession`.
+4. **Environment variables**: Use `patch.dict` to mock environment variables.
+
+## Continuous Integration
+
+Tests can be integrated into the CI/CD process:
 
 ```yaml
-# 示例 .github/workflows/test.yml
+# Example .github/workflows/test.yml
 - name: Run tests
   run: |
     pip install -r requirements-test.txt
     pytest --cov=app --cov-report=xml
-    
+
 - name: Upload coverage
   uses: codecov/codecov-action@v3
   with:
     file: ./coverage.xml
 ```
 
-## 贡献指南
+## Contribution Guidelines
 
-1. 新功能必须包含相应的测试
-2. 测试覆盖率不应低于75%
-3. 所有测试必须通过才能合并
-4. 遵循现有的测试命名和结构规范
+1. New features must include corresponding tests.
+2. Test coverage must not fall below 75%.
+3. All tests must pass before merge.
+4. Follow the existing test naming and structure conventions.
 
-## 联系方式
+## Contact
 
-如有问题，请联系开发团队。
-
+Contact the development team if you have questions.

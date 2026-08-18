@@ -1,12 +1,4 @@
-"""#637：OpenAI 兼容面上的框架层校验错误也要走 OpenAI 错误体。
-
-`/chat/completions` 的控制器错误在 #620 已经统一成 `{"error": {...}}`，但请求体
-在 pydantic 层就被打回的那类走的是 `RequestValidationError` 处理器，之前仍返回
-模型工厂 envelope——同一个端点两种契约，对接方得写两套解析。
-
-同时这个处理器是**全服务共用**的：小模型、模型管理等端点不是兼容面，必须保持
-envelope 不变，一刀切会破掉它们的对外契约。
-"""
+"""#637: framework-layer validation errors on the OpenAI-compatible surface must also use OpenAI error bodies. Controller errors for `/chat/completions` were already unified to `{"error": {...}}` in #620, but request bodies rejected by pydantic go through the `RequestValidationError` handler and previously still returned the Model Factory envelope. That gave one endpoint two contracts and forced integrations to implement two parsers. The handler is shared across the whole service: small-model and model-management endpoints are not compatibility surfaces and must keep their envelope unchanged; a global conversion would break their public contracts."""
 import json
 
 import pytest
@@ -36,7 +28,7 @@ CHAT_PATHS = [
 class TestOpenAICompatFace:
     @pytest.mark.parametrize("path", CHAT_PATHS)
     def test_type_error_returns_openai_shape(self, client, path):
-        """stream 传字符串：pydantic 打回，公开面与 S2S 面都要是 OpenAI 形状"""
+        """Test test type error returns openai shape."""
         response = client.post(path, json={
             "model": "x", "stream": "yes",
             "messages": [{"role": "user", "content": "hi"}]})
@@ -58,13 +50,13 @@ class TestOpenAICompatFace:
         assert "messages" in body["error"]["message"]
 
     def test_business_code_survives_in_error_code(self, client):
-        """业务码不能丢，只是从顶层挪进 error.code"""
+        """Test test business code survives in error code."""
         response = client.post(CHAT_PATHS[0], json={"model": "x"})
         assert _body(response)["error"]["code"] == \
             "ModelFactory.Router.ParamError.ParamMissing"
 
     def test_no_envelope_fields_leak(self, client):
-        """solution / link 只对模型工厂控制台有意义，不进兼容面"""
+        """Test test no envelope fields leak."""
         raw = client.post(CHAT_PATHS[0], json={
             "model": "x", "stream": "yes",
             "messages": [{"role": "user", "content": "hi"}]}).content.decode()
@@ -73,7 +65,7 @@ class TestOpenAICompatFace:
 
 
 class TestOtherEndpointsUnchanged:
-    """处理器全服务共用，非兼容面必须原样保留 envelope"""
+    """Tests for test other endpoints unchanged."""
 
     OTHER_PATHS = [
         "/api/mf-model-api/v1/small-model/embeddings",

@@ -1,4 +1,4 @@
-"""测试 utils/common.py 模块"""
+"""Tests for test_utils_common."""
 import pytest
 import os
 from unittest.mock import Mock, patch
@@ -15,18 +15,18 @@ from app.utils.common import (
 
 
 class TestCommonFunctions:
-    """测试common模块的公共函数"""
+    """Tests for test common functions."""
 
     def test_get_caller_info(self):
-        """测试获取调用者信息"""
+        """Test test get caller info."""
         filename, lineno = GetCallerInfo()
-        # 验证返回值类型
+        # Verify the return value type.
         assert isinstance(filename, str)
         assert isinstance(lineno, int)
         assert lineno > 0
 
     def test_is_in_pod_true(self):
-        """测试在Pod环境中"""
+        """Test test is in pod true."""
         with patch.dict(os.environ, {
             'KUBERNETES_SERVICE_HOST': 'localhost',
             'KUBERNETES_SERVICE_PORT': '8080'
@@ -34,12 +34,12 @@ class TestCommonFunctions:
             assert IsInPod() is True
 
     def test_is_in_pod_false(self):
-        """测试不在Pod环境中"""
+        """Test test is in pod false."""
         with patch.dict(os.environ, {}, clear=True):
             assert IsInPod() is False
 
     def test_is_in_pod_partial_env(self):
-        """测试只有部分环境变量时"""
+        """Test test is in pod partial env."""
         with patch.dict(os.environ, {'KUBERNETES_SERVICE_HOST': 'localhost'}, clear=True):
             assert IsInPod() is False
 
@@ -47,13 +47,13 @@ class TestCommonFunctions:
             assert IsInPod() is False
 
     def test_failure_threshold_get_default(self):
-        """测试获取默认失败阈值"""
+        """Test test failure threshold get default."""
         threshold = GetFailureThreshold()
         assert isinstance(threshold, int)
         assert threshold >= 0
 
     def test_failure_threshold_set_and_get(self):
-        """测试设置和获取失败阈值"""
+        """Test test failure threshold set and get."""
         original = GetFailureThreshold()
         try:
             SetFailureThreshold(20)
@@ -62,17 +62,17 @@ class TestCommonFunctions:
             SetFailureThreshold(5)
             assert GetFailureThreshold() == 5
         finally:
-            # 恢复原始值
+            # Restore the original value.
             SetFailureThreshold(original)
 
     def test_recovery_timeout_get_default(self):
-        """测试获取默认恢复超时"""
+        """Test test recovery timeout get default."""
         timeout = GetRecoveryTimeout()
         assert isinstance(timeout, int)
         assert timeout >= 0
 
     def test_recovery_timeout_set_and_get(self):
-        """测试设置和获取恢复超时"""
+        """Test test recovery timeout set and get."""
         original = GetRecoveryTimeout()
         try:
             SetRecoveryTimeout(10)
@@ -81,12 +81,12 @@ class TestCommonFunctions:
             SetRecoveryTimeout(30)
             assert GetRecoveryTimeout() == 30
         finally:
-            # 恢复原始值
+            # Restore the original value.
             SetRecoveryTimeout(original)
 
     @pytest.mark.asyncio
     async def test_get_user_info_all_headers(self):
-        """测试从请求中获取用户信息 - 所有header都存在"""
+        """Test test get user info all headers."""
         request = Mock()
         request.headers = {
             'x-account-id': 'user123',
@@ -103,19 +103,19 @@ class TestCommonFunctions:
 
     @pytest.mark.asyncio
     async def test_get_user_info_missing_headers(self):
-        """测试从请求中获取用户信息 - 缺少header"""
+        """Test test get user info missing headers."""
         request = Mock()
         request.headers = {}
 
         userId, language, role = await get_user_info(request)
 
         assert userId == ""
-        assert language == "zh-CN"  # 默认值
+        assert language == "zh-CN"  # Default value.
         assert role == ""
 
     @pytest.mark.asyncio
     async def test_get_user_info_partial_headers(self):
-        """测试从请求中获取用户信息 - 部分header"""
+        """Test test get user info partial headers."""
         request = Mock()
         request.headers = {
             'x-account-id': 'user456'
@@ -124,12 +124,12 @@ class TestCommonFunctions:
         userId, language, role = await get_user_info(request)
 
         assert userId == 'user456'
-        assert language == "zh-CN"  # 默认值
+        assert language == "zh-CN"  # Default value.
         assert role == ""
 
     @pytest.mark.asyncio
     async def test_validate_required_params_all_present(self):
-        """测试参数验证 - 所有必需参数都存在"""
+        """Test test validate required params all present."""
         params_dict = {
             'name': 'test',
             'age': 25,
@@ -143,7 +143,7 @@ class TestCommonFunctions:
 
     @pytest.mark.asyncio
     async def test_validate_required_params_some_missing(self):
-        """测试参数验证 - 部分参数缺失"""
+        """Test test validate required params some missing."""
         params_dict = {
             'name': 'test'
         }
@@ -155,7 +155,7 @@ class TestCommonFunctions:
 
     @pytest.mark.asyncio
     async def test_validate_required_params_all_missing(self):
-        """测试参数验证 - 所有参数都缺失"""
+        """Test test validate required params all missing."""
         params_dict = {}
         required_params = ['name', 'age', 'email']
 
@@ -165,7 +165,7 @@ class TestCommonFunctions:
 
     @pytest.mark.asyncio
     async def test_validate_required_params_empty_required(self):
-        """测试参数验证 - 没有必需参数"""
+        """Test test validate required params empty required."""
         params_dict = {
             'name': 'test',
             'age': 25
@@ -178,7 +178,7 @@ class TestCommonFunctions:
 
     @pytest.mark.asyncio
     async def test_get_user_info_with_kwargs(self):
-        """测试get_user_info接受额外参数"""
+        """Test test get user info with kwargs."""
         request = Mock()
         request.headers = {
             'x-account-id': 'user789',
@@ -186,7 +186,7 @@ class TestCommonFunctions:
             'accept-language': 'zh-CN'
         }
 
-        # 测试传入额外的kwargs不会导致错误
+        # Test that passing extra kwargs does not cause errors.
         userId, language, role = await get_user_info(request, extra_param="test")
 
         assert userId == 'user789'

@@ -83,8 +83,8 @@ async def trace_model_stream(client, stream, messages, params):
     try:
         async for chunk in stream:
             terminal = _is_terminal_model_chunk(chunk)
-            # 错误帧一出，流就在这儿断了，收尾时不能再记 success。
-            # '"error"' 预过滤：正常 chunk 不用为此付一次 json.loads
+            # Once an error frame is emitted, the stream stops here; finalization must not record success.
+            # Pre-filter with '"error"' so normal chunks do not pay for json.loads.
             if '"error"' in str(chunk) and openai_error.is_error_frame(chunk):
                 failed = True
             if not terminal:

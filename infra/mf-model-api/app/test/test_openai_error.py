@@ -1,7 +1,4 @@
-"""OpenAI 兼容面错误契约（#620）
-
-/v1/chat/completions 上的失败必须是 {"error": {...}}，客户端才认得。
-"""
+"""Tests for test_openai_error."""
 import json
 
 import pytest
@@ -10,7 +7,7 @@ from app.commons.locale import reset_effective_locale, set_effective_locale
 from app.utils import openai_error
 
 
-# #620 现场抓到的两种上游错误壳
+# Two upstream error envelopes captured from the #620 incident.
 UPSTREAM_FLAT = '{"code":50508,"message":"System is too busy now. Please try again later.","data":null}'
 UPSTREAM_OPENAI = ('{"error":{"message":"Service is too busy. We advise users to temporarily '
                    'switch to alternative LLM API service providers.","type":"service_unavailable_error",'
@@ -20,21 +17,21 @@ ZH_CONNECTION_FAILED = "无法连接到模型服务。"
 
 class TestFromUpstream:
     def test_flat_code_message(self):
-        """扁平 {code, message}：message 提到 error.message，code 保留"""
+        """Test test flat code message."""
         body = openai_error.from_upstream(UPSTREAM_FLAT, 503)
         assert body["error"]["message"] == "System is too busy now. Please try again later."
         assert body["error"]["code"] == 50508
         assert body["error"]["type"] == "service_unavailable_error"
 
     def test_openai_shape_passthrough(self):
-        """上游已经合规就原样透传，不再套壳、不再二次编码"""
+        """Test test openai shape passthrough."""
         body = openai_error.from_upstream(UPSTREAM_OPENAI, 503)
         assert body["error"]["message"].startswith("Service is too busy.")
         assert body["error"]["type"] == "service_unavailable_error"
         assert body["error"]["code"] == "service_unavailable_error"
 
     def test_no_double_encoding(self):
-        """message 必须是句人话，不能是 JSON 字符串套 JSON"""
+        """Test test no double encoding."""
         for payload in (UPSTREAM_FLAT, UPSTREAM_OPENAI):
             message = openai_error.from_upstream(payload, 503)["error"]["message"]
             with pytest.raises(ValueError):
@@ -58,7 +55,7 @@ class TestFromUpstream:
         assert body["error"]["message"] == "The model service could not be reached."
 
     def test_unknown_dict_shape_does_not_leak_whole_body(self):
-        """形态未知的 body 常带回显请求/内部 trace id/网关节点名，不整段外泄"""
+        """Test test unknown dict shape does not leak whole body."""
         body = openai_error.from_upstream(
             {"trace_id": "abc", "node": "gw-internal-3",
              "request": {"api_key": "sk-secret"}}, 500)
@@ -85,7 +82,7 @@ class TestFromUpstream:
         assert body["error"]["message"] == "boom"
 
     def test_shape_is_complete(self):
-        """四个字段一个都不能少，errorSchema 才过得去"""
+        """Test test shape is complete."""
         body = openai_error.from_upstream(UPSTREAM_FLAT, 429)
         assert set(body) == {"error"}
         assert set(body["error"]) == {"message", "type", "param", "code"}
@@ -103,8 +100,7 @@ class TestStatusMapping:
 
     @pytest.mark.parametrize("upstream", [401, 403, 404])
     def test_dependency_auth_status_never_leaks(self, upstream):
-        """上游 401/403/404 说的是「本服务 ↔ 模型厂商」，透传会被调用方读成
-        自己的凭据/权限问题（本服务自己的 403 是「无该模型 execute 权限」）"""
+        """Test test dependency auth status never leaks."""
         assert openai_error.http_status_for(upstream) == 502
 
     @pytest.mark.parametrize("upstream,expected_type", [
@@ -113,12 +109,12 @@ class TestStatusMapping:
         (404, "not_found_error"),
     ])
     def test_real_cause_survives_in_error_type(self, upstream, expected_type):
-        """状态码收敛了，真实原因仍留给排障的人"""
+        """Test test real cause survives in error type."""
         body = openai_error.from_upstream("nope", upstream)
         assert body["error"]["type"] == expected_type
 
     def test_busy_is_never_200(self):
-        """#620 的核心：上游忙不能对外报成功"""
+        """Test test busy is never 200."""
         assert openai_error.http_status_for(503) != 200
         assert openai_error.http_status_for(429) != 200
 
@@ -141,7 +137,7 @@ class TestStatusMapping:
 
 class TestPrivateKeys:
     def test_round_trip_and_cleanup(self):
-        """私有键只在进程内传状态码，出门前必须 pop 干净"""
+        """Test test round trip and cleanup."""
         body = openai_error.with_http_status(
             openai_error.build_error("busy"), 429, retry_after=7)
         assert openai_error.pop_http_status(body) == 429
@@ -153,19 +149,18 @@ class TestPrivateKeys:
         (401, False), (403, False), (404, False), (400, False),
     ])
     def test_retry_after_only_when_waiting_helps(self, upstream, expect_header):
-        """上游 401/403/404 收敛成 502 后不能再带 Retry-After——换供应商 key
-        才能好的事，叫客户端退避重试是误导（VM 实测发现）"""
+        """Test test retry after only when waiting helps."""
         body = openai_error.with_http_status(
             openai_error.build_error("x"), upstream, retry_after=7)
         assert (openai_error.pop_retry_after(body) == 7) is expect_header
 
     def test_public_copy_strips_private_keys(self):
-        """evidence 会持久化，私有传参不能跟着落库"""
+        """Test test public copy strips private keys."""
         body = openai_error.with_http_status(
             openai_error.build_error("busy"), 429, retry_after=5)
         public = openai_error.public_copy(body)
         assert set(public) == {"error"}
-        # 原对象不动，HTTP 出口那份仍拿得到状态码
+        # Keep the private body intact until the caller consumes the HTTP status.
         assert openai_error.pop_http_status(body) == 429
 
     def test_defaults_when_absent(self):
@@ -209,7 +204,7 @@ class TestFrames:
         assert json.loads(frame)["error"]["message"] == "busy"
 
     def test_frame_has_no_legacy_prefix(self):
-        """老代码发的是 '--error--{...}'，不是合法 JSON，客户端直接崩"""
+        """Test test frame has no legacy prefix."""
         frame = openai_error.error_frame(openai_error.build_error("busy"))
         assert not frame.startswith("--error--")
 
@@ -225,7 +220,7 @@ class TestFrames:
         assert openai_error.is_error_frame(chunk) is expected
 
     def test_legacy_envelope_is_not_an_error_frame(self):
-        """老 envelope 顶层没有 error，正是它骗过客户端 union 的原因"""
+        """Test test legacy envelope is not an error frame."""
         legacy = json.dumps({
             "code": "ModelFactory.ModelController.Model.Error",
             "description": UPSTREAM_FLAT,

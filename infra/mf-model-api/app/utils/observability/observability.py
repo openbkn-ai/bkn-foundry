@@ -7,7 +7,7 @@ from app.utils.observability.observability_trace import init_trace_provider
 
 def init_observability(server_info: ServerInfo, setting: ObservabilitySetting):
 
-    """初始化可观测性组件"""
+    """Initialize the observability components."""
     if setting.log.log_enabled:
         init_log_provider(server_info, setting.log)
 
@@ -20,5 +20,5 @@ def init_observability(server_info: ServerInfo, setting: ObservabilitySetting):
 
 
 def shutdown_observability() -> None:
-    """关闭可观测性组件"""
+    """Shut down the observability components."""
     shutdown_log_provider()

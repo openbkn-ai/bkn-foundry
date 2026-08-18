@@ -1,4 +1,4 @@
-"""测试 core config 模块"""
+"""Tests for test_core_config."""
 import pytest
 import os
 from unittest.mock import patch
@@ -6,80 +6,80 @@ from app.core.config import BaseConfig, base_config, server_info, observability_
 
 
 class TestBaseConfig:
-    """测试BaseConfig类"""
+    """Tests for test base config."""
 
     def test_default_values(self):
-        """测试默认值"""
+        """Test test default values."""
         config = BaseConfig()
         assert config.DEBUGDEFAULT is False
         assert config.PORTDEFAULT == 9898
         assert config.DIPHOSTDEFAULT == "10.4.134.253"
 
     def test_redis_defaults(self):
-        """测试Redis默认配置"""
+        """Test test redis defaults."""
         config = BaseConfig()
         assert config.REDISPORTDEFAULT == 6379
         assert config.REDISCLUSTERMODEDEFAULT == "master-slave"
 
     def test_rds_defaults(self):
-        """测试RDS默认配置"""
+        """Test test rds defaults."""
         config = BaseConfig()
         assert config.RDSPORTDEFAULT == 3330
         assert config.RDSDBNAMEDEFAULT == 'openbkn'
         assert config.RDSUSERDEFAULT == 'root'
 
     def test_oauth_defaults(self):
-        """测试OAuth默认配置"""
+        """Test test oauth defaults."""
         config = BaseConfig()
         assert config.OAUTHADMINPORTDEFAULT == 4445
 
     def test_kafka_defaults(self):
-        """测试Kafka默认配置"""
+        """Test test kafka defaults."""
         config = BaseConfig()
         assert config.KAFKAPORTDEFAULT == 9097
         assert config.KAFKAUSERDEFAULT == "anyrobot"
 
     def test_port_from_env(self):
-        """测试APP_PORT属性存在"""
+        """Test test port from env."""
         config = BaseConfig()
         assert hasattr(config, 'APP_PORT')
         assert isinstance(config.APP_PORT, int)
 
     def test_debug_from_env(self):
-        """测试DEBUG属性存在"""
+        """Test test debug from env."""
         config = BaseConfig()
         assert hasattr(config, 'DEBUG')
         assert isinstance(config.DEBUG, bool)
 
     def test_rdshost_from_env(self):
-        """测试RDSHOST属性存在"""
+        """Test test rdshost from env."""
         config = BaseConfig()
         assert hasattr(config, 'RDSHOST')
         assert isinstance(config.RDSHOST, str)
 
     def test_redisport_from_env(self):
-        """测试REDISPORT属性存在"""
+        """Test test redisport from env."""
         config = BaseConfig()
         assert hasattr(config, 'REDISPORT')
         assert config.REDISPORT > 0
 
     def test_kafkahost_from_env(self):
-        """测试KAFKAHOST属性存在"""
+        """Test test kafkahost from env."""
         config = BaseConfig()
         assert hasattr(config, 'KAFKAHOST')
         assert isinstance(config.KAFKAHOST, str)
 
 
 class TestBaseConfigInstance:
-    """测试base_config实例"""
+    """Tests for test base config instance."""
 
     def test_base_config_exists(self):
-        """测试base_config实例存在"""
+        """Test test base config exists."""
         assert base_config is not None
         assert isinstance(base_config, BaseConfig)
 
     def test_base_config_has_attributes(self):
-        """测试base_config具有必需的属性"""
+        """Test test base config has attributes."""
         assert hasattr(base_config, 'PORTDEFAULT')
         assert hasattr(base_config, 'RDSHOST')
         assert hasattr(base_config, 'REDISHOST')
@@ -87,39 +87,39 @@ class TestBaseConfigInstance:
 
 
 class TestServerInfo:
-    """测试server_info配置"""
+    """Tests for test server info."""
 
     def test_server_info_exists(self):
-        """测试server_info存在"""
+        """Test test server info exists."""
         assert server_info is not None
 
     def test_server_info_attributes(self):
-        """测试server_info属性"""
+        """Test test server info attributes."""
         assert hasattr(server_info, 'server_name')
         assert hasattr(server_info, 'server_version')
         assert hasattr(server_info, 'language')
         assert hasattr(server_info, 'python_version')
 
     def test_server_info_values(self):
-        """测试server_info值"""
+        """Test test server info values."""
         assert server_info.server_name == "agent-executor"
         assert server_info.server_version == "1.0.0"
         assert server_info.language == "python"
 
 
 class TestObservabilityConfig:
-    """测试observability_config配置"""
+    """Tests for test observability config."""
 
     def test_observability_config_exists(self):
-        """测试observability_config存在"""
+        """Test test observability config exists."""
         assert observability_config is not None
 
     def test_observability_config_has_log(self):
-        """测试observability_config具有log配置"""
+        """Test test observability config has log."""
         assert hasattr(observability_config, 'log')
 
     def test_log_settings(self):
-        """测试日志设置"""
+        """Test test log settings."""
         log_config = observability_config.log
         assert hasattr(log_config, 'log_enabled')
         assert hasattr(log_config, 'log_exporter')
@@ -127,7 +127,7 @@ class TestObservabilityConfig:
 
     @patch.dict(os.environ, {'LOG_ENABLED': 'true'})
     def test_log_enabled_from_env(self):
-        """测试从环境变量启用日志"""
+        """Test test log enabled from env."""
         from app.core.config import ObservabilitySetting, LogSetting
         config = ObservabilitySetting(
             log=LogSetting(
@@ -142,20 +142,20 @@ class TestObservabilityConfig:
 
 
 class TestAiohttpTimeout:
-    """测试aiohttp timeout配置"""
+    """Tests for test aiohttp timeout."""
 
     def test_aiohttp_timeout_exists(self):
-        """测试aiohttp_timeout存在"""
+        """Test test aiohttp timeout exists."""
         config = BaseConfig()
         assert hasattr(config, 'aiohttp_timeout')
 
     def test_aiohttp_timeout_total(self):
-        """测试total timeout"""
+        """Test test aiohttp timeout total."""
         config = BaseConfig()
         assert config.aiohttp_timeout.total == 1800
 
     def test_aiohttp_timeout_sock_connect(self):
-        """测试sock_connect timeout"""
+        """Test test aiohttp timeout sock connect."""
         config = BaseConfig()
         assert config.aiohttp_timeout.sock_connect == 30
 

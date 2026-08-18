@@ -12,26 +12,26 @@ from fastapi import Request
 from app.utils.common import GetCallerInfo, IsInPod
 
 '''
-标准日志StandLog类
-原 AnyRobot(AR) SamplerLogger 已移除，统一走标准库 logging（控制台 + 文件）。
+Standard StandLog logger.
+The original AnyRobot (AR) SamplerLogger has been removed; standard logging is used for console and file output.
 '''
 
 SYSTEM_LOG = "SystemLog"
 BUSINESS_LOG = "BusinessLog"
 
-CREATE = "create"  # 新建
-DELETE = "delete"  # 删除
-DOWNLOAD = "download"  # 下载
-UPDATE = "update"  # 修改
-UPLOAD = "upload"  # 上传
-LOGIN = "login"  # 登录
+CREATE = "create"  # Create.
+DELETE = "delete"  # Delete.
+DOWNLOAD = "download"  # Download.
+UPDATE = "update"  # Update.
+UPLOAD = "upload"  # Upload.
+LOGIN = "login"  # Login.
 
 
 class Logger(object):
     _info_logger = None
 
     def stand_log_shutdown(self):
-        # AR SamplerLogger 已移除，无需关闭
+        # AR SamplerLogger has been removed, so there is nothing to close.
         pass
 
     def __init__(self):
@@ -40,13 +40,13 @@ class Logger(object):
             self._info_logger = logging.getLogger(__name__)
             self._info_logger.setLevel(logging.DEBUG)
 
-            # 先添加控制台输出，确保即使文件句柄失败也能输出到控制台
+            # Add console output first so logs still reach the console if file handling fails.
             console_handler = logging.StreamHandler()
             console_handler.setFormatter(logging.Formatter(fmt="%(asctime)s %(filename)s %(levelname)s %(message)s"))
             console_handler.setLevel(logging.DEBUG)
             self._info_logger.addHandler(console_handler)
 
-            # 文件日志，路径可配置，失败不影响控制台
+            # File logging is configurable; failure must not affect console logging.
             try:
                 default_log_file = (
                     os.path.join(os.environ.get("TEMP", os.getcwd()), "mf_model_factory.log")
@@ -66,7 +66,7 @@ class Logger(object):
             print("-----------------------------------stad_log init errors :", e)
 
     def __need_print(self, etype):
-        # 在pod中运行时，需要判断是否打印系统日志
+        # When running in a pod, decide whether system logs should be printed.
         if IsInPod():
             if etype == SYSTEM_LOG:
                 need_print = os.getenv("ENABLE_SYSTEM_LOG", "false")
@@ -86,11 +86,11 @@ class Logger(object):
         self._info_logger.error(f"{caller_filename}:{caller_lineno} " + str(log_info))
 
     def info_log(self, body):
-        """ INFO级别的日志打印（不遵循标准规则，特殊的系统日志） """
+        """Print INFO-level logs for special system logs that do not follow the standard rules."""
         self.info(str(body))
 
     def debug_log(self, body):
-        """ DEBUG级别的日志打印（不遵循标准规则，特殊的系统日志） """
+        """Print DEBUG-level logs for special system logs that do not follow the standard rules."""
         if self.__need_print(SYSTEM_LOG):
             caller_filename, caller_lineno = GetCallerInfo()
             self._info_logger.debug(f"{caller_filename}:{caller_lineno} " + str(body))
@@ -98,10 +98,10 @@ class Logger(object):
 
 def get_error_log(message, caller_frame, caller_traceback=""):
     """
-        获取待打印的错误日志
-        @message:实际内容(字符串类型)
-        @caller_frame:调用者上下文（请使用sys._getframe()）
-        @caller_traceback:调用者当前堆栈信息（请使用traceback.format_exc()，调用位置不在except Exception：下，请不要传参）
+        Build the error log payload to print.
+        @message: actual content as a string.
+        @caller_frame: caller context; use sys._getframe().
+        @caller_traceback: caller stack; use traceback.format_exc(). Do not pass it outside an exception handler.
     """
     log_info = {}
     log_info["message"] = message
@@ -114,13 +114,15 @@ def get_error_log(message, caller_frame, caller_traceback=""):
 def get_operation_log(request: Request, operation: str, object_id, target_object: dict, description: str,
                       object_type: str = "kg") -> dict:
     """
-        获取待打印的用户行为日志
-        @user_name: 用户名
-        @operation: 操作类型(CREATE, DELETE, DOWNLOAD, UPDATE, UPLOAD, LOGIN)
-        @object_id: 操作对象id（也可以是一个列表）
-        @target_object: 操作结果对象，类型为dict
-        @description: 行为描述（传参只应包括具体动作，例如：修改了知识图谱{id=3}，结果为{name:"知识图谱2"}）
-        @object_type: 操作对象类型(知识网络:kn, 知识图谱:kg, 数据源:ds, 词库:lexicon, 函数:function, 本体:otl)
+        Build the user operation log payload to print.
+        @user_name: user name.
+        @operation: operation type (CREATE, DELETE, DOWNLOAD, UPDATE, UPLOAD, LOGIN).
+        @object_id: target object ID; may also be a list.
+        @target_object: operation result object as a dict.
+        @description: behavior description. Only pass the concrete action, for example:
+            updated knowledge graph {id=3}, result is {name:"Knowledge Graph 2"}.
+        @object_type: target object type (knowledge network: kn, knowledge graph: kg,
+            data source: ds, lexicon: lexicon, function: function, ontology: otl).
     """
     user_id = request.headers.get("userId")
     user_name = request.headers.get("username")

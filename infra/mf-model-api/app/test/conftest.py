@@ -1,13 +1,13 @@
-"""测试配置和公共fixture"""
+"""Tests for conftest."""
 import sys
 import os
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 
-# 添加项目根目录到sys.path
+# Add the project root directory to sys.path.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-# Mock私有依赖模块（在导入项目代码之前）
-# Mock tlogging —— AR 相关已从代码移除；保留注释以便将来恢复
+# Mock private dependency modules before importing project code.
+# Mock tlogging. AR-related code has been removed; keep this comment for possible future restoration.
 # tlogging_mock = MagicMock()
 # tlogging_mock.SamplerLogger = MagicMock()
 # sys.modules['tlogging'] = tlogging_mock
@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 rdsdriver_mock = MagicMock()
 sys.modules['rdsdriver'] = rdsdriver_mock
 
-# Mock opentelemetry相关模块
+# Mock OpenTelemetry-related modules.
 opentelemetry_mock = MagicMock()
 sys.modules['opentelemetry'] = opentelemetry_mock
 sys.modules['opentelemetry.trace'] = MagicMock()
@@ -33,13 +33,13 @@ sys.modules['opentelemetry.exporter.otlp.proto.grpc.trace_exporter'] = MagicMock
 sys.modules['opentelemetry.instrumentation'] = MagicMock()
 sys.modules['opentelemetry.instrumentation.fastapi'] = MagicMock()
 
-# Mock arrow (日期时间库)
+# Mock arrow, the date/time library.
 arrow_mock = MagicMock()
 arrow_mock.now = MagicMock(return_value=MagicMock())
 arrow_mock.get = MagicMock(return_value=MagicMock())
 sys.modules['arrow'] = arrow_mock
 
-# Mock dbutilsx (私有数据库连接池)
+# Mock dbutilsx, the private database connection pool.
 dbutilsx_mock = MagicMock()
 dbutilsx_mock.pooled_db = MagicMock()
 dbutilsx_mock.pooled_db.PooledDB = MagicMock()
@@ -47,7 +47,7 @@ dbutilsx_mock.pooled_db.PooledDBInfo = MagicMock()
 sys.modules['dbutilsx'] = dbutilsx_mock
 sys.modules['dbutilsx.pooled_db'] = dbutilsx_mock.pooled_db
 
-# Mock exporter (私有日志导出器) —— AR 相关已从代码移除；保留注释以便将来恢复
+# Mock exporter, the private log exporter. AR-related code has been removed; keep this comment for possible future restoration.
 # exporter_mock = MagicMock()
 # sys.modules['exporter'] = exporter_mock
 # sys.modules['exporter.resource'] = MagicMock()
@@ -60,13 +60,13 @@ sys.modules['dbutilsx.pooled_db'] = dbutilsx_mock.pooled_db
 # sys.modules['exporter.public.client'] = MagicMock()
 # sys.modules['exporter.public.public'] = MagicMock()
 
-# Mock llmadapter (私有LLM适配器)
+# Mock llmadapter, the private LLM adapter.
 llmadapter_mock = MagicMock()
 sys.modules['llmadapter'] = llmadapter_mock
 sys.modules['llmadapter.llms'] = MagicMock()
 sys.modules['llmadapter.llms.llm_factory'] = MagicMock()
 sys.modules['llmadapter.schema'] = MagicMock()
-# Mock常用的Message类
+# Mock the commonly used Message class.
 llmadapter_mock.schema.HumanMessage = MagicMock
 llmadapter_mock.schema.AIMessage = MagicMock
 
@@ -76,16 +76,16 @@ func_timeout_mock.func_timeout = MagicMock(side_effect=lambda timeout, func, arg
 func_timeout_mock.FunctionTimedOut = Exception
 sys.modules['func_timeout'] = func_timeout_mock
 
-# Mock tiktoken (用于token计数)
+# Mock tiktoken, used for token counting.
 tiktoken_mock = MagicMock()
 tiktoken_mock.get_encoding = MagicMock(return_value=MagicMock())
-# Mock encoding对象的encode方法
+# Mock the encode method on the encoding object.
 mock_encoding = MagicMock()
-mock_encoding.encode = MagicMock(return_value=[1, 2, 3, 4, 5])  # 返回假的token列表
+mock_encoding.encode = MagicMock(return_value=[1, 2, 3, 4, 5])  # Return a fake token list.
 tiktoken_mock.get_encoding.return_value = mock_encoding
 sys.modules['tiktoken'] = tiktoken_mock
 
-# Mock confluent_kafka (Kafka客户端)
+# Mock confluent_kafka, the Kafka client.
 confluent_kafka_mock = MagicMock()
 # Mock Producer
 mock_producer = MagicMock()
@@ -99,7 +99,7 @@ mock_consumer.subscribe = MagicMock()
 mock_consumer.poll = MagicMock(return_value=None)
 mock_consumer.close = MagicMock()
 confluent_kafka_mock.Consumer = MagicMock(return_value=mock_consumer)
-# Mock Admin相关
+# Mock Admin-related classes.
 confluent_kafka_admin_mock = MagicMock()
 confluent_kafka_admin_mock.AdminClient = MagicMock()
 confluent_kafka_admin_mock.NewTopic = MagicMock()
@@ -113,7 +113,7 @@ from typing import Dict, Any
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """创建事件循环"""
+    """Test event loop."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
     loop.close()
@@ -121,7 +121,7 @@ def event_loop():
 
 @pytest.fixture
 def mock_redis():
-    """Mock Redis连接"""
+    """Test mock redis."""
     redis_mock = AsyncMock()
     redis_mock.get_str = AsyncMock(return_value=None)
     redis_mock.set_str = AsyncMock(return_value=True)
@@ -131,7 +131,7 @@ def mock_redis():
 
 @pytest.fixture
 def mock_db_connection():
-    """Mock数据库连接"""
+    """Test mock db connection."""
     connection = Mock()
     cursor = Mock()
     cursor.execute = Mock()
@@ -142,13 +142,13 @@ def mock_db_connection():
 
 @pytest.fixture
 def mock_user_info():
-    """Mock用户信息"""
+    """Test mock user info."""
     return "test_user_id", "zh", "user"
 
 
 @pytest.fixture
 def mock_llm_model_data():
-    """Mock LLM模型数据"""
+    """Test mock llm model data."""
     return [{
         "f_model_id": "123456789012345678",
         "f_model_name": "test_model",
@@ -168,7 +168,7 @@ def mock_llm_model_data():
 
 @pytest.fixture
 def mock_small_model_data():
-    """Mock 小模型数据"""
+    """Test mock small model data."""
     return [{
         "f_model_id": "123456789012345679",
         "f_model_name": "test_embedding",
@@ -185,7 +185,7 @@ def mock_small_model_data():
 
 @pytest.fixture
 def mock_request():
-    """Mock FastAPI Request对象"""
+    """Test mock request."""
     request = Mock()
     request.headers = {
         "Authorization": "Bearer test_token",
@@ -200,7 +200,7 @@ def mock_request():
 
 @pytest.fixture
 def mock_aiohttp_response():
-    """Mock aiohttp响应"""
+    """Test mock aiohttp response."""
     response = AsyncMock()
     response.status = 200
     response.text = AsyncMock(return_value='{"active": true, "sub": "user123", "client_id": "user123"}')
@@ -209,7 +209,7 @@ def mock_aiohttp_response():
 
 @pytest.fixture(autouse=True)
 def reset_mocks():
-    """每个测试后重置所有Mock"""
+    """Test reset mocks."""
     yield
-    # 测试后清理工作
+    # Cleanup after tests.
 

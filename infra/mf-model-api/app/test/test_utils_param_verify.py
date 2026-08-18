@@ -1,4 +1,4 @@
-"""测试 param_verify_utils 模块"""
+"""Tests for test_utils_param_verify."""
 import pytest
 from app.utils.param_verify_utils import (
     verify_icon_color_config,
@@ -11,10 +11,10 @@ from app.utils.param_verify_utils import (
 
 
 class TestVerifyIconColorConfig:
-    """测试verify_icon_color_config函数"""
+    """Tests for test verify icon color config."""
 
     def test_valid_colors(self):
-        """测试有效颜色"""
+        """Test test valid colors."""
         valid_colors = [
             "icon-color-pz-019688",
             "icon-color-pz-F759AB",
@@ -31,12 +31,12 @@ class TestVerifyIconColorConfig:
             assert verify_icon_color_config(color) is True
 
     def test_invalid_colors(self):
-        """测试无效颜色"""
+        """Test test invalid colors."""
         invalid_colors = [
             "icon-color-pz-FFFFFF",
             "invalid-color",
             "",
-            "icon-color-zbk-FF8501",  # 错误的前缀
+            "icon-color-zbk-FF8501",  # Wrong prefix.
             "icon-color-pz-"
         ]
         for color in invalid_colors:
@@ -44,10 +44,10 @@ class TestVerifyIconColorConfig:
 
 
 class TestVerifyIconColorConfigMetric:
-    """测试verify_icon_color_config_metric函数"""
+    """Tests for test verify icon color config metric."""
 
     def test_valid_metric_colors(self):
-        """测试有效的指标颜色"""
+        """Test test valid metric colors."""
         valid_colors = [
             "icon-color-zbk-FF8501",
             "icon-color-zbk-13C2C2",
@@ -64,12 +64,12 @@ class TestVerifyIconColorConfigMetric:
             assert verify_icon_color_config_metric(color) is True
 
     def test_invalid_metric_colors(self):
-        """测试无效的指标颜色"""
+        """Test test invalid metric colors."""
         invalid_colors = [
             "icon-color-zbk-FFFFFF",
             "invalid-color",
             "",
-            "icon-color-pz-FF8501",  # 错误的前缀
+            "icon-color-pz-FF8501",  # Wrong prefix.
             "icon-color-zbk-"
         ]
         for color in invalid_colors:
@@ -77,24 +77,24 @@ class TestVerifyIconColorConfigMetric:
 
 
 class TestVerifyTextField:
-    """测试verify_text_field函数"""
+    """Tests for test verify text field."""
 
     def test_valid_text_within_limit(self):
-        """测试有效文本在长度限制内"""
+        """Test test valid text within limit."""
         assert verify_text_field("测试文本", 10) is True
         assert verify_text_field("test", 100) is True
         assert verify_text_field("", 10) is True
 
     def test_valid_text_exact_limit(self):
-        """测试有效文本正好在长度限制"""
+        """Test test valid text exact limit."""
         assert verify_text_field("a" * 50, 50) is True
 
     def test_text_exceeds_limit(self):
-        """测试文本超过长度限制"""
+        """Test test text exceeds limit."""
         assert verify_text_field("a" * 101, 100) is False
 
     def test_valid_characters(self):
-        """测试有效字符"""
+        """Test test valid characters."""
         valid_strings = [
             "hello123",
             "你好世界",
@@ -106,82 +106,82 @@ class TestVerifyTextField:
             assert verify_text_field(s, 100) is True
 
     def test_invalid_type(self):
-        """测试无效类型"""
+        """Test test invalid type."""
         assert verify_text_field(123, 10) is False
         assert verify_text_field(None, 10) is False
         assert verify_text_field([], 10) is False
 
     def test_special_characters(self):
-        """测试特殊字符"""
+        """Test test special characters."""
         assert verify_text_field("测试-文本_123", 50) is True
         assert verify_text_field("test/path", 50) is True
 
 
 class TestVerifyId:
-    """测试verify_id函数"""
+    """Tests for test verify id."""
 
     def test_valid_18_digit_id(self):
-        """测试有效的18位ID"""
+        """Test test valid 18 digit id."""
         assert verify_id("123456789012345678") is True
 
     def test_valid_19_digit_id(self):
-        """测试有效的19位ID"""
+        """Test test valid 19 digit id."""
         assert verify_id("1234567890123456789") is True
 
     def test_invalid_length(self):
-        """测试无效长度"""
+        """Test test invalid length."""
         assert verify_id("12345") is False
-        assert verify_id("12345678901234567") is False  # 17位
-        assert verify_id("12345678901234567890") is False  # 20位
+        assert verify_id("12345678901234567") is False  # 17 digits.
+        assert verify_id("12345678901234567890") is False  # 20 digits.
 
     def test_invalid_characters(self):
-        """测试无效字符"""
+        """Test test invalid characters."""
         assert verify_id("12345678901234567a") is False
         assert verify_id("123456789012345-78") is False
         assert verify_id("123456789012345 78") is False
 
     def test_invalid_type(self):
-        """测试无效类型"""
+        """Test test invalid type."""
         assert verify_id(123456789012345678) is False
         assert verify_id(None) is False
         assert verify_id([]) is False
 
 
 class TestIncludeDatasetId:
-    """测试include_dataset_id函数"""
+    """Tests for test include dataset id."""
 
     def test_dataset_id_found(self):
-        """测试找到数据集ID"""
+        """Test test dataset id found."""
         dataset_version_id_list = ["123/v1", "456/v2", "789/v3"]
         assert include_dataset_id(dataset_version_id_list, "123") is True
         assert include_dataset_id(dataset_version_id_list, "456") is True
 
     def test_dataset_id_not_found(self):
-        """测试未找到数据集ID"""
+        """Test test dataset id not found."""
         dataset_version_id_list = ["123/v1", "456/v2"]
         assert include_dataset_id(dataset_version_id_list, "999") is False
 
     def test_empty_list(self):
-        """测试空列表"""
+        """Test test empty list."""
         assert include_dataset_id([], "123") is False
 
     def test_invalid_format(self):
-        """测试无效格式"""
+        """Test test invalid format."""
         dataset_version_id_list = ["invalid", "no-slash"]
         result = include_dataset_id(dataset_version_id_list, "123")
         assert result is False
 
     def test_exception_handling(self):
-        """测试异常处理"""
-        # 传入非列表
+        """Test test exception handling."""
+        # Pass a non-list.
         assert include_dataset_id("not a list", "123") is False
 
 
 class TestLlmSourceVerify:
-    """测试llm_source_verify函数"""
+    """Tests for test llm source verify."""
 
     def test_valid_parameters(self):
-        """测试有效参数"""
+        """Test test valid parameters."""
         result = llm_source_verify(
             order="desc",
             page="1",
@@ -191,27 +191,27 @@ class TestLlmSourceVerify:
             name="test_model",
             model_type="llm"
         )
-        assert result is False  # 验证通过返回False
+        assert result is False  # Validation success returns False.
 
     def test_invalid_page(self):
-        """测试无效的page"""
+        """Test test invalid page."""
         result = llm_source_verify(
             order="desc",
-            page="0",  # 无效
+            page="0",  # Invalid.
             size="10",
             rule="update_time",
             series="openai",
             name="",
             model_type=""
         )
-        assert result is not False  # 应该返回错误
+        assert result is not False  # Should return an error.
 
     def test_invalid_size(self):
-        """测试无效的size"""
+        """Test test invalid size."""
         result = llm_source_verify(
             order="desc",
             page="1",
-            size="abc",  # 无效
+            size="abc",  # Invalid.
             rule="update_time",
             series="openai",
             name="",
@@ -220,9 +220,9 @@ class TestLlmSourceVerify:
         assert result is not False
 
     def test_invalid_order(self):
-        """测试无效的order"""
+        """Test test invalid order."""
         result = llm_source_verify(
-            order="invalid",  # 无效
+            order="invalid",  # Invalid.
             page="1",
             size="10",
             rule="update_time",
@@ -233,12 +233,12 @@ class TestLlmSourceVerify:
         assert result is not False
 
     def test_invalid_rule(self):
-        """测试无效的rule"""
+        """Test test invalid rule."""
         result = llm_source_verify(
             order="desc",
             page="1",
             size="10",
-            rule="invalid",  # 无效
+            rule="invalid",  # Invalid.
             series="openai",
             name="",
             model_type=""
@@ -246,20 +246,20 @@ class TestLlmSourceVerify:
         assert result is not False
 
     def test_empty_series(self):
-        """测试空series"""
+        """Test test empty series."""
         result = llm_source_verify(
             order="desc",
             page="1",
             size="10",
             rule="update_time",
-            series="",  # 无效
+            series="",  # Invalid.
             name="",
             model_type=""
         )
         assert result is not False
 
     def test_invalid_model_type(self):
-        """测试无效的model_type"""
+        """Test test invalid model type."""
         result = llm_source_verify(
             order="desc",
             page="1",
@@ -267,12 +267,12 @@ class TestLlmSourceVerify:
             rule="update_time",
             series="openai",
             name="",
-            model_type="invalid"  # 无效
+            model_type="invalid"  # Invalid.
         )
         assert result is not False
 
     def test_valid_model_types(self):
-        """测试有效的model_type"""
+        """Test test valid model types."""
         for model_type in ["llm", "rlm", "vu", ""]:
             result = llm_source_verify(
                 order="desc",
@@ -283,12 +283,12 @@ class TestLlmSourceVerify:
                 name="",
                 model_type=model_type
             )
-            # 空字符串是有效的
+            # An empty string is valid.
             if model_type == "":
                 assert result is False
 
     def test_name_with_special_characters(self):
-        """测试带特殊字符的名称"""
+        """Test test name with special characters."""
         result = llm_source_verify(
             order="desc",
             page="1",
@@ -298,6 +298,6 @@ class TestLlmSourceVerify:
             name="测试模型123!@#",
             model_type=""
         )
-        # 应该验证通过
+        # Should pass validation.
         assert result is False
 

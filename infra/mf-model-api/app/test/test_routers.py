@@ -10,56 +10,56 @@ from app.routers.llm_router import llm_route, health_route
 
 
 class TestHealthRoutes:
-    """测试健康检查路由"""
+    """Tests for test health routes."""
 
     @pytest.fixture
     def app(self):
-        """创建测试应用"""
+        """Test app."""
         app = FastAPI()
         app.include_router(health_route)
         return app
 
     @pytest.fixture
     def client(self, app):
-        """创建测试客户端"""
+        """Test client."""
         return TestClient(app)
 
     def test_health_ready(self, client):
-        """测试ready端点"""
+        """Test test health ready."""
         response = client.get("/health/ready")
         assert response.status_code == 200
         assert response.json() == {"res": 0}
 
     def test_health_alive(self, client):
-        """测试alive端点"""
+        """Test test health alive."""
         response = client.get("/health/alive")
         assert response.status_code == 200
         assert response.json() == {"res": 0}
 
 
 class TestLLMRoutes:
-    """测试LLM路由"""
+    """Tests for test llmroutes."""
 
     @pytest.fixture
     def app(self):
-        """创建测试应用"""
+        """Test app."""
         app = FastAPI()
         app.include_router(llm_route)
         return app
 
     @pytest.fixture
     def client(self, app):
-        """创建测试客户端"""
+        """Test client."""
         return TestClient(app)
 
     def test_chat_completions_endpoint_exists(self, client):
-        """测试chat/completions端点存在"""
-        # 由于需要认证,应该返回401或422
+        """Test test chat completions endpoint exists."""
+        # Because authentication is required, it should return 401 or 422.
         response = client.post("/chat/completions")
         assert response.status_code in [401, 422]
 
     def test_chat_completions_with_valid_request(self, client):
-        """测试有效请求的chat/completions"""
+        """Test test chat completions with valid request."""
         from fastapi.responses import JSONResponse
         
         request_data = {
@@ -99,31 +99,31 @@ class TestLLMRoutes:
                 mock_get_user.return_value = ("user123", "zh", "user")
                 mock_used_model.return_value = JSONResponse(status_code=200, content=mock_response)
                 
-                # 验证路由能正确处理请求
+                # Verify the route handles requests correctly.
                 response = client.post("/chat/completions", json=request_data)
                 assert response.status_code == 200
                 assert "choices" in response.json()
 
 
 class TestRouterIntegration:
-    """路由集成测试"""
+    """Tests for test router integration."""
 
     def test_llm_route_has_prefix(self):
-        """测试llm路由有正确的前缀"""
-        # 这个测试验证路由对象存在
+        """Test test llm route has prefix."""
+        # This test verifies that the route object exists.
         assert llm_route is not None
 
     def test_health_route_exists(self):
-        """测试健康检查路由存在"""
+        """Test test health route exists."""
         assert health_route is not None
 
 
 class TestAPIDocumentation:
-    """测试API文档"""
+    """Tests for test apidocumentation."""
 
     @pytest.fixture
     def app_with_docs(self):
-        """创建带文档的应用"""
+        """Test app with docs."""
         app = FastAPI()
         app.include_router(llm_route)
         app.include_router(health_route)
@@ -131,11 +131,11 @@ class TestAPIDocumentation:
 
     @pytest.fixture
     def client(self, app_with_docs):
-        """创建测试客户端"""
+        """Test client."""
         return TestClient(app_with_docs)
 
     def test_openapi_schema_exists(self, client):
-        """测试OpenAPI schema存在"""
+        """Test test openapi schema exists."""
         response = client.get("/openapi.json")
         assert response.status_code == 200
         schema = response.json()
@@ -143,11 +143,11 @@ class TestAPIDocumentation:
         assert "paths" in schema
 
     def test_health_endpoints_in_schema(self, client):
-        """测试健康检查端点在schema中"""
+        """Test test health endpoints in schema."""
         response = client.get("/openapi.json")
         schema = response.json()
-        # 健康检查端点通常标记为不在schema中
-        # 这里只验证schema有效
+        # Health-check endpoints are usually excluded from the schema.
+        # Only verify that the schema is valid here.
         assert "paths" in schema
 
     def test_public_chat_schema_descriptions_are_english(self, client):
