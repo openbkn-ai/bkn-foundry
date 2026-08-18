@@ -76,7 +76,6 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 				ID:                 "resource-1",
 				Category:           interfaces.ResourceCategoryFileset,
 				LastDiscoverStatus: interfaces.DiscoverStatusError,
-				StatusMessage:      "discover metadata failed: syntax error at or near LATERAL",
 			},
 			wantError:   true,
 			wantDetails: "resource metadata discovery failed; refresh the resource schema before querying",
@@ -135,9 +134,23 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 			assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 			assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
 			assert.Equal(t, test.wantDetails, httpErr.BaseError.ErrorDetails)
-			assert.NotContains(t, httpErr.BaseError.ErrorDetails, "LATERAL")
 		})
 	}
+}
+
+func TestEnsureResourceQueryableDoesNotExposeStatusMessage(t *testing.T) {
+	resource := &interfaces.Resource{
+		ID:                 "resource-1",
+		Category:           interfaces.ResourceCategoryFileset,
+		LastDiscoverStatus: interfaces.DiscoverStatusError,
+		StatusMessage:      "discover metadata failed: syntax error at or near LATERAL",
+	}
+
+	_, err := resourcelogic.EnsureResourceQueryable(context.Background(), resource)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.NotContains(t, httpErr.BaseError.ErrorDetails, resource.StatusMessage)
+	assert.NotContains(t, httpErr.BaseError.ErrorDetails, "syntax error at or near LATERAL")
 }
 
 func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *testing.T) {

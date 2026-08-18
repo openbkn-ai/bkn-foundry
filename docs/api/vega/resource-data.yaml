@@ -285,6 +285,8 @@ components:
         - `status=stale`：`VegaBackend.Resource.NotQueryable`
         - `last_discover_status=missing`：`VegaBackend.Resource.MetadataUnavailable`
         - 其他状态下 `schema_definition` 为空：`VegaBackend.Resource.MetadataUnavailable`
+        - `POST /resources/{id}/data` 的 `Override: GET` 分支中，Resource 状态和元数据均
+          可查询但所属 Catalog 已禁用：`VegaBackend.Catalog.IsDisabled`
 
         因此同时满足多个条件时，以列表中靠前的条件为准。元数据不可用时，调用方应
         重新探查并刷新资源字段；`missing` 资源还需要先恢复源端对象。
