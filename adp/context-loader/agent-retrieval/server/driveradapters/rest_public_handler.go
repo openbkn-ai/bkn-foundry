@@ -184,11 +184,10 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 	case strings.HasPrefix(path, ptcPathPrefix):
 		// When the global gate is disabled, make this endpoint indistinguishable
 		// from one that was never deployed.
-		if !ptcExecutionEnabled() {
-			c.Status(http.StatusNotFound)
-			return
-		}
-		// A configured but unassembled endpoint is a visible service failure.
+		// PTC 不受 EXECUTE_SKILL_ENABLED 约束，端点常开。这是明确的产品决策：
+		// 该开关按语义是技能执行的闸，而 run_code / run_shell 是另一种能力，
+		// 共用一个开关会让想开技能执行的人被迫连任意代码执行一起开，反之亦然。
+		// 代价是本部署没有关闭 PTC 的手段——沙箱侧的隔离因此成为必答项而非可选项。
 		if r.PTCMCPHandler == nil {
 			sharedrest.MarkLocalizedCacheableResponse(c)
 			infrarest.ReplyError(c, infraerrors.NewHTTPError(
@@ -258,23 +257,11 @@ func requestScheme(req *http.Request) string {
 	return scheme
 }
 
-// ptcExecutionEnabled reports whether this deployment permits tool-surface commands.
-//
-// PTC's run_code and run_shell execute arbitrary Python and shell, which is
-// broader than executing a registered skill entry point. Both must therefore
-// use the same deployment-level gate.
-func ptcExecutionEnabled() bool {
-	return logicsSkills.ExecuteEnabled()
-}
-
 // newPTCMCPHandlerOrNil assembles the PTC MCP endpoint and returns nil on failure.
 //
 // PTC depends on embedded tool metadata. A failure must not prevent the main
 // MCP surface or REST APIs from starting; the PTC route reports a visible 503.
 func newPTCMCPHandlerOrNil(logger interfaces.Logger) http.Handler {
-	if !ptcExecutionEnabled() {
-		return nil
-	}
 	handler, err := mcp.NewPTCMCPHandler()
 	if err != nil {
 		if logger != nil {

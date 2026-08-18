@@ -440,6 +440,48 @@ func TestInlineDigestDropsSignatureList(t *testing.T) {
 	}
 }
 
+// 名字要列出来，但只列名字。
+//
+// 「哪些工具能在脚本里调」不该靠推断——条件注册的工具存在与否、有没有漏掉某一个，
+// 列出来才没有歧义；而参数与返回值就在工具面的 schema 里，再渲一遍是重复。
+// 实测这份名单约 430 字符，完整签名清单是 4897。
+func TestInlineDigestListsNamesOnly(t *testing.T) {
+	locale := loadMCPLocaleBundle(defaultMCPLocale)
+	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
+	inline := renderPTCDigestForLocale(locale, tools, false)
+
+	for _, name := range []string{"list_knowledge_networks", "query_object_instance", "run_sql"} {
+		if !strings.Contains(inline, name) {
+			t.Fatalf("缺少函数名 %s:\n%s", name, inline)
+		}
+	}
+	// 生命周期工具由调用方按轮次接管，不该出现在脚本可调清单里。
+	if strings.Contains(inline, "bkn_start_interaction") {
+		t.Fatalf("生命周期工具不该列入:\n%s", inline)
+	}
+	// 有名字但不能有签名。
+	if strings.Contains(inline, ") -> {") || strings.Contains(inline, "kn_id: str") {
+		t.Fatalf("只该列名字，不该带签名:\n%s", inline)
+	}
+	// 名单与后一节之间要留空行，否则 ## 标题被粘进同一段，markdown 不成立。
+	if !strings.Contains(inline, "\n\n## ") {
+		t.Fatalf("名单与后续小节之间缺空行:\n%s", inline)
+	}
+}
+
+// 名字按字典序渲染：Version 是内容哈希，顺序抖动会让客户端每次都以为工具面变了。
+func TestInlineDigestNameOrderIsStable(t *testing.T) {
+	locale := loadMCPLocaleBundle(defaultMCPLocale)
+	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
+	if renderPTCDigestForLocale(locale, tools, false) != renderPTCDigestForLocale(locale, tools, false) {
+		t.Fatal("并入版渲染不稳定")
+	}
+	if !strings.Contains(renderPTCDigestForLocale(locale, tools, false),
+		"list_knowledge_networks, query_object_instance, run_sql") {
+		t.Fatal("函数名未按字典序排列")
+	}
+}
+
 // 两条路拼出的脚本必须一致：stub、沙箱回访地址、组装方式都不因描述精简而变，
 // 否则同一段代码在两个端点上会有不同行为。
 func TestInlineToolsKeepAssemblyIdentical(t *testing.T) {

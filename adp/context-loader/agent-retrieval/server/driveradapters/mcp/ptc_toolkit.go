@@ -261,6 +261,19 @@ func ptcItemKeys(raw json.RawMessage) string {
 	return strings.Join(names, " ")
 }
 
+// ptcToolNames 把工具名排成一行，供不带签名的那版 digest 使用。
+// 排序保证渲染可重复——Version 是内容哈希，顺序抖动会让客户端每次都以为工具面变了。
+func ptcToolNames(tools []MCPToolInfo) string {
+	names := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		if tool.Name != "" {
+			names = append(names, tool.Name)
+		}
+	}
+	sort.Strings(names)
+	return strings.Join(names, ", ")
+}
+
 func ptcUsableTools(info *MCPInfo) []MCPToolInfo {
 	tools := make([]MCPToolInfo, 0, len(info.Tools))
 	for _, t := range info.Tools {
@@ -324,6 +337,17 @@ func renderPTCDigestForLocale(locale *mcpLocaleBundle, tools []MCPToolInfo, with
 	var b strings.Builder
 	if !withSignatures {
 		b.WriteString(locale.PTCResource("ptc_digest_prefix_inline.txt"))
+		// 只列名字，不列签名。参数与返回值让调用方去读工具面上的 schema——那份就在
+		// 眼前，重复渲染是浪费；但「哪些工具能在脚本里调」不该靠推断：条件注册的工具
+		// （execute_skill）存在与否、有没有漏掉某一个，列出来才没有歧义。
+		// 实测 21 个名字约 300 字符，而完整签名清单是 4897。
+		if names := ptcToolNames(tools); names != "" {
+			b.WriteString("\n")
+			b.WriteString(locale.PTCResource("ptc_digest_names_lead.txt"))
+			b.WriteString(names)
+			// 多一个换行：紧邻的 suffix 以 ## 标题开头，粘在同一段里 markdown 不成立。
+			b.WriteString("\n\n")
+		}
 		b.WriteString(locale.PTCResource("ptc_digest_suffix.txt"))
 		return b.String()
 	}
@@ -415,7 +439,7 @@ func InlinePTCTools(port int, locale string) ([]PTCTool, error) {
 	inline := make([]PTCTool, 0, len(kit.Tools))
 	for _, tool := range kit.Tools {
 		if tool.Name == toolKeyRunCode {
-			tool.Description = renderPTCDigestForLocale(bundle, nil, false)
+			tool.Description = renderPTCDigestForLocale(bundle, ptcUsableTools(info), false)
 		}
 		inline = append(inline, tool)
 	}
