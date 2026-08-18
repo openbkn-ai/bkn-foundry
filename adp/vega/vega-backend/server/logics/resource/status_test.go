@@ -30,11 +30,11 @@ func TestEnsureResourceQueryable(t *testing.T) {
 		{name: "nil resource passes", resource: nil},
 		{
 			name:     "active passes silently",
-			resource: &interfaces.Resource{ID: "r1", Status: interfaces.ResourceStatusActive},
+			resource: &interfaces.Resource{ID: "r1", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		},
 		{
 			name:     "deprecated warns",
-			resource: &interfaces.Resource{ID: "r1", Name: "n1", Status: interfaces.ResourceStatusDeprecated},
+			resource: &interfaces.Resource{ID: "r1", Name: "n1", Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 			wantWarn: true,
 		},
 		{
@@ -50,8 +50,30 @@ func TestEnsureResourceQueryable(t *testing.T) {
 			wantErrCode: verrors.VegaBackend_Resource_NotQueryable,
 		},
 		{
+			name: "stale takes precedence over missing",
+			resource: &interfaces.Resource{
+				ID:                 "r1",
+				Status:             interfaces.ResourceStatusStale,
+				LastDiscoverStatus: interfaces.DiscoverStatusMissing,
+				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
+			},
+			wantErr:     true,
+			wantErrCode: verrors.VegaBackend_Resource_NotQueryable,
+		},
+		{
+			name: "disabled takes precedence over missing",
+			resource: &interfaces.Resource{
+				ID:                 "r1",
+				Status:             interfaces.ResourceStatusDisabled,
+				LastDiscoverStatus: interfaces.DiscoverStatusMissing,
+				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
+			},
+			wantErr:     true,
+			wantErrCode: verrors.VegaBackend_Resource_NotQueryable,
+		},
+		{
 			name:     "unknown status passes (forward compat)",
-			resource: &interfaces.Resource{ID: "r1", Status: "unknown_future_status"},
+			resource: &interfaces.Resource{ID: "r1", Status: "unknown_future_status", SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		},
 	}
 
@@ -92,8 +114,8 @@ func TestEnsureResourcesQueryable(t *testing.T) {
 
 	t.Run("all active produces no warnings", func(t *testing.T) {
 		ws, err := EnsureResourcesQueryable(ctx, []*interfaces.Resource{
-			{ID: "a", Status: interfaces.ResourceStatusActive},
-			{ID: "b", Status: interfaces.ResourceStatusActive},
+			{ID: "a", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "b", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -105,8 +127,8 @@ func TestEnsureResourcesQueryable(t *testing.T) {
 
 	t.Run("mixed active + deprecated returns deprecated warning", func(t *testing.T) {
 		ws, err := EnsureResourcesQueryable(ctx, []*interfaces.Resource{
-			{ID: "a", Status: interfaces.ResourceStatusActive},
-			{ID: "b", Name: "n", Status: interfaces.ResourceStatusDeprecated},
+			{ID: "a", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "b", Name: "n", Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

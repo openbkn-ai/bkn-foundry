@@ -45,10 +45,11 @@ func setupResourceDataHandlerTest(
 
 func sampleDatasetResource() *interfaces.Resource {
 	return &interfaces.Resource{
-		ID:       "res-1",
-		Name:     "dataset",
-		Category: interfaces.ResourceCategoryDataset,
-		Status:   interfaces.ResourceStatusActive,
+		ID:               "res-1",
+		Name:             "dataset",
+		Category:         interfaces.ResourceCategoryDataset,
+		Status:           interfaces.ResourceStatusActive,
+		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}
 }
 
@@ -284,6 +285,38 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "document missing not found")
+	})
+
+	t.Run("rejects document query when resource metadata is unavailable", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.SchemaDefinition = nil
+		resource.LastDiscoverStatus = interfaces.DiscoverStatusError
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/doc-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.MetadataUnavailable")
+	})
+
+	t.Run("rejects document query when resource is missing with retained metadata", func(t *testing.T) {
+		engine, rs, _, _ := setupResourceDataHandlerTest(t)
+		resource := sampleDatasetResource()
+		resource.Status = interfaces.ResourceStatusStale
+		resource.LastDiscoverStatus = interfaces.DiscoverStatusMissing
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/doc-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.MetadataUnavailable")
 	})
 }
 

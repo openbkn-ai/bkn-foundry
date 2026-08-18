@@ -21,6 +21,7 @@ import (
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 	"vega-backend/logics/filter_condition"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 func TestResourceDataServicePrepareOutputFieldsParams(t *testing.T) {
@@ -60,6 +61,103 @@ func TestResourceDataServicePrepareOutputFieldsParams(t *testing.T) {
 		expected := []string{"name", "_score"}
 		assert.Equal(t, expected, params.OutputFields)
 	})
+}
+
+func TestEnsureResourceQueryableMetadata(t *testing.T) {
+	tests := []struct {
+		name        string
+		resource    *interfaces.Resource
+		wantError   bool
+		wantDetails string
+	}{
+		{
+			name: "rejects empty schema after discover failure for any resource category",
+			resource: &interfaces.Resource{
+				ID:                 "resource-1",
+				Category:           interfaces.ResourceCategoryFileset,
+				LastDiscoverStatus: interfaces.DiscoverStatusError,
+				StatusMessage:      "discover metadata failed: syntax error at or near LATERAL",
+			},
+			wantError:   true,
+			wantDetails: "resource metadata discovery failed; refresh the resource schema before querying",
+		},
+		{
+			name: "rejects empty schema after a successful discovery observation",
+			resource: &interfaces.Resource{
+				ID:                 "fileset-1",
+				Category:           interfaces.ResourceCategoryFileset,
+				LastDiscoverStatus: interfaces.DiscoverStatusUnchanged,
+			},
+			wantError:   true,
+			wantDetails: "resource schema definition is empty; refresh the resource schema before querying",
+		},
+		{
+			name: "allows last known schema after discover failure",
+			resource: &interfaces.Resource{
+				ID:                 "resource-1",
+				Category:           interfaces.ResourceCategoryTable,
+				LastDiscoverStatus: interfaces.DiscoverStatusError,
+				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
+			},
+		},
+		{
+			name: "rejects a missing resource even when its previous schema remains",
+			resource: &interfaces.Resource{
+				ID:                 "resource-1",
+				Category:           interfaces.ResourceCategoryDataset,
+				LastDiscoverStatus: interfaces.DiscoverStatusMissing,
+				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
+			},
+			wantError:   true,
+			wantDetails: "resource is missing from its source; run discovery and restore the source resource before querying",
+		},
+		{
+			name: "allows restored resource metadata",
+			resource: &interfaces.Resource{
+				ID:                 "resource-1",
+				Category:           interfaces.ResourceCategoryDataset,
+				LastDiscoverStatus: interfaces.DiscoverStatusRestored,
+				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := resourcelogic.EnsureResourceQueryable(context.Background(), test.resource)
+			if !test.wantError {
+				require.NoError(t, err)
+				return
+			}
+
+			var httpErr *rest.HTTPError
+			require.ErrorAs(t, err, &httpErr)
+			assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+			assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
+			assert.Equal(t, test.wantDetails, httpErr.BaseError.ErrorDetails)
+			assert.NotContains(t, httpErr.BaseError.ErrorDetails, "LATERAL")
+		})
+	}
+}
+
+func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *testing.T) {
+	resource := &interfaces.Resource{
+		ID:                 "resource-1",
+		Category:           interfaces.ResourceCategoryFileset,
+		LastDiscoverStatus: interfaces.DiscoverStatusError,
+	}
+
+	for _, params := range []*interfaces.ResourceDataQueryParams{
+		{},
+		{Paging: interfaces.PagingRequest{Cursor: "existing-cursor"}},
+	} {
+		_, err := (&resourceDataService{}).QueryWithPaging(context.Background(), resource, params)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
+	}
 }
 
 func TestResourceDataServiceQuery(t *testing.T) {
@@ -192,8 +290,9 @@ func TestResourceDataServiceQuery(t *testing.T) {
 func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
 	rds := &resourceDataService{}
 	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{
-		ID:       "index-1",
-		Category: interfaces.ResourceCategoryIndex,
+		ID:               "index-1",
+		Category:         interfaces.ResourceCategoryIndex,
+		SchemaDefinition: []*interfaces.Property{{Name: "category"}},
 	}, &interfaces.ResourceDataQueryParams{
 		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 10},
 		Sort:   []*interfaces.SortField{{Field: "timestamp", Direction: "desc"}},
@@ -231,7 +330,12 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
 	rds := &resourceDataService{cs: mockCS, ds: mockDS}
-	resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset}
+	resource := &interfaces.Resource{
+		ID:               "dataset-1",
+		CatalogID:        "catalog-1",
+		Category:         interfaces.ResourceCategoryDataset,
+		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+	}
 	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
@@ -251,7 +355,12 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
 	rds := &resourceDataService{cs: mockCS, ds: mockDS}
-	resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset}
+	resource := &interfaces.Resource{
+		ID:               "dataset-1",
+		CatalogID:        "catalog-1",
+		Category:         interfaces.ResourceCategoryDataset,
+		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+	}
 	mockCS.EXPECT().GetByID(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
 		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 	mockDS.EXPECT().ListDocuments(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().
@@ -272,7 +381,12 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockDS := mock_interfaces.NewMockDatasetService(ctrl)
 	rds := &resourceDataService{cs: mockCS, ds: mockDS}
-	resource := &interfaces.Resource{ID: "dataset-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset}
+	resource := &interfaces.Resource{
+		ID:               "dataset-1",
+		CatalogID:        "catalog-1",
+		Category:         interfaces.ResourceCategoryDataset,
+		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
+	}
 	params := &interfaces.ResourceDataQueryParams{
 		Paging: interfaces.PagingRequest{Mode: interfaces.PagingModeCursor, Limit: 1},
 		Sort:   []*interfaces.SortField{{Field: "id", Direction: "asc"}},

@@ -363,6 +363,16 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	if !ok {
 		return
 	}
+	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if warning != "" {
+		otellog.LogWarn(ctx, "Query hit deprecated resource: "+warning)
+	}
 
 	docID := c.Param("doc_id")
 	doc, err := r.ds.GetDocument(ctx, resource.ID, docID)

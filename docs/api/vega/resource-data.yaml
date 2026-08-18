@@ -100,6 +100,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "406":
           $ref: "#/components/responses/NotAcceptable"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
@@ -195,6 +197,8 @@ paths:
 
         文档不存在返回 404 `VegaBackend.Resource.NotFound`（与 resource 不存在共用同一
         errcode；靠 `error_details: "document {doc_id} not found"` 区分）。
+
+        Resource 当前不可查询时返回 409，状态优先级和 errcode 与列表查询一致。
       responses:
         "200":
           description: ok
@@ -208,6 +212,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
@@ -268,6 +274,20 @@ components:
       description: |
         Resource 或文档不存在。errcode `VegaBackend.Resource.NotFound`；
         通过 `error_details` 字符串区分是 resource 还是 document 找不到。
+      content:
+        application/json:
+          schema:
+            $ref: "../_shared/errors.yaml#/components/schemas/Error"
+    Conflict:
+      description: |
+        Resource 当前无法查询，按以下优先级返回 errcode：
+        - `status=disabled`：`VegaBackend.Resource.NotQueryable`
+        - `status=stale`：`VegaBackend.Resource.NotQueryable`
+        - `last_discover_status=missing`：`VegaBackend.Resource.MetadataUnavailable`
+        - 其他状态下 `schema_definition` 为空：`VegaBackend.Resource.MetadataUnavailable`
+
+        因此同时满足多个条件时，以列表中靠前的条件为准。元数据不可用时，调用方应
+        重新探查并刷新资源字段；`missing` 资源还需要先恢复源端对象。
       content:
         application/json:
           schema:

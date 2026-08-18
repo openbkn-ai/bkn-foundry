@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -76,13 +77,33 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
 
+	t.Run("source resource with unavailable metadata", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockRS := vmock.NewMockResourceService(ctrl)
+		svc := &logicViewService{rs: mockRS}
+		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
+			ID:                 "source-1",
+			Status:             interfaces.ResourceStatusActive,
+			LastDiscoverStatus: interfaces.DiscoverStatusError,
+		}, nil)
+
+		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
+	})
+
 	t.Run("disabled source catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := vmock.NewMockResourceService(ctrl)
 		mockCS := vmock.NewMockCatalogService(ctrl)
 		svc := &logicViewService{rs: mockRS, cs: mockCS}
 		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
-			ID: "source-1", CatalogID: "catalog-1", Status: interfaces.ResourceStatusActive,
+			ID:               "source-1",
+			CatalogID:        "catalog-1",
+			Status:           interfaces.ResourceStatusActive,
+			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
 
@@ -93,16 +114,40 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 	})
 }
 
+func TestQueryCompositeLogicViewRejectsUnavailableSourceMetadata(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	mockRS := vmock.NewMockResourceService(ctrl)
+	svc := &logicViewService{rs: mockRS}
+	view := &interfaces.LogicView{Resource: interfaces.Resource{LogicDefinition: []*interfaces.LogicDefinitionNode{{
+		Type:   interfaces.LogicDefinitionNodeType_Resource,
+		Config: map[string]any{"resource_id": "source-1"},
+	}}}}
+	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
+		ID:                 "source-1",
+		Status:             interfaces.ResourceStatusActive,
+		LastDiscoverStatus: interfaces.DiscoverStatusError,
+	}, nil)
+
+	result, err := svc.queryCompositeLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
+
+	assert.Nil(t, result)
+	var httpErr *rest.HTTPError
+	require.ErrorAs(t, err, &httpErr)
+	assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	assert.Equal(t, verrors.VegaBackend_Resource_MetadataUnavailable, httpErr.BaseError.ErrorCode)
+}
+
 func TestDerivedIndexCursorRequiresSort(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	mockRS := vmock.NewMockResourceService(ctrl)
 	mockCS := vmock.NewMockCatalogService(ctrl)
 	svc := &logicViewService{rs: mockRS, cs: mockCS}
 	source := &interfaces.Resource{
-		ID:        "source-1",
-		CatalogID: "catalog-1",
-		Category:  interfaces.ResourceCategoryIndex,
-		Status:    interfaces.ResourceStatusActive,
+		ID:               "source-1",
+		CatalogID:        "catalog-1",
+		Category:         interfaces.ResourceCategoryIndex,
+		Status:           interfaces.ResourceStatusActive,
+		SchemaDefinition: []*interfaces.Property{{Name: "timestamp"}},
 	}
 	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
@@ -133,10 +178,11 @@ func TestDerivedIndexRejectsFirstPageWindowOverflow(t *testing.T) {
 	mockCS := vmock.NewMockCatalogService(ctrl)
 	svc := &logicViewService{rs: mockRS, cs: mockCS}
 	source := &interfaces.Resource{
-		ID:        "source-1",
-		CatalogID: "catalog-1",
-		Category:  interfaces.ResourceCategoryIndex,
-		Status:    interfaces.ResourceStatusActive,
+		ID:               "source-1",
+		CatalogID:        "catalog-1",
+		Category:         interfaces.ResourceCategoryIndex,
+		Status:           interfaces.ResourceStatusActive,
+		SchemaDefinition: []*interfaces.Property{{Name: "timestamp"}},
 	}
 	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).

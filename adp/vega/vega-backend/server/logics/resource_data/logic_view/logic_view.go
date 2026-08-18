@@ -356,6 +356,9 @@ func (lvs *logicViewService) queryCompositeLogicView(ctx context.Context, view *
 				otellog.LogError(ctx, "Source resource not found", httpErr)
 				return nil, httpErr
 			}
+			if _, err := resource.EnsureResourceQueryable(ctx, fromResource); err != nil {
+				return nil, err
+			}
 			refResources[nodeCfg.ResourceID] = fromResource
 
 			if fromResource.Category == interfaces.ResourceCategoryIndex {

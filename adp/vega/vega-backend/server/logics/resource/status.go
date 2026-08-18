@@ -17,11 +17,14 @@ import (
 	"vega-backend/interfaces"
 )
 
-// EnsureResourceQueryable validates that a resource is in a queryable status.
+// EnsureResourceQueryable validates that a resource is in a queryable state and has usable metadata.
 //
-//	active     → pass, no warning
-//	deprecated → pass, return non-empty warning string
-//	disabled / stale → return 409 HTTPError (VegaBackend.Resource.NotQueryable)
+//	disabled             → return 409 HTTPError (VegaBackend.Resource.NotQueryable)
+//	stale                → return 409 HTTPError (VegaBackend.Resource.NotQueryable)
+//	missing              → return 409 HTTPError (VegaBackend.Resource.MetadataUnavailable)
+//	empty schema         → return 409 HTTPError (VegaBackend.Resource.MetadataUnavailable)
+//	deprecated           → pass, return non-empty warning string
+//	active / other state → pass, no warning
 //
 // Unknown statuses are treated as queryable to avoid blocking legitimate
 // traffic when new statuses are introduced.
@@ -29,15 +32,30 @@ func EnsureResourceQueryable(ctx context.Context, r *interfaces.Resource) (strin
 	if r == nil {
 		return "", nil
 	}
-	switch r.Status {
-	case interfaces.ResourceStatusDisabled, interfaces.ResourceStatusStale:
+	if r.Status == interfaces.ResourceStatusDisabled {
 		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).
 			WithErrorDetails(fmt.Sprintf("resource %s is %s and cannot be queried", r.ID, r.Status))
-	case interfaces.ResourceStatusDeprecated:
-		return fmt.Sprintf("resource %s (%s) is deprecated", r.ID, r.Name), nil
-	default:
-		return "", nil
 	}
+	if r.Status == interfaces.ResourceStatusStale {
+		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).
+			WithErrorDetails(fmt.Sprintf("resource %s is %s and cannot be queried", r.ID, r.Status))
+	}
+	if r.LastDiscoverStatus == interfaces.DiscoverStatusMissing {
+		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_MetadataUnavailable).
+			WithErrorDetails("resource is missing from its source; run discovery and restore the source resource before querying")
+	}
+	if len(r.SchemaDefinition) == 0 {
+		details := "resource schema definition is empty; refresh the resource schema before querying"
+		if r.LastDiscoverStatus == interfaces.DiscoverStatusError {
+			details = "resource metadata discovery failed; refresh the resource schema before querying"
+		}
+		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_MetadataUnavailable).
+			WithErrorDetails(details)
+	}
+	if r.Status == interfaces.ResourceStatusDeprecated {
+		return fmt.Sprintf("resource %s (%s) is deprecated", r.ID, r.Name), nil
+	}
+	return "", nil
 }
 
 // EnsureResourcesQueryable applies EnsureResourceQueryable across a slice and

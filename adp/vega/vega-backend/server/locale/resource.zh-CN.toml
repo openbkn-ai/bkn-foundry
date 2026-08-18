@@ -83,6 +83,11 @@ Description = "数据资源当前状态不支持查询"
 Solution = "仅 active/deprecated 状态可查询；请先启用资源或刷新 schema"
 ErrorLink = ""
 
+[VegaBackend.Resource.MetadataUnavailable]
+Description = "数据资源元数据不可用"
+Solution = "请重新探查并刷新资源字段；若源端资源已消失，请先恢复后再查询"
+ErrorLink = ""
+
 [VegaBackend.Resource.InternalError]
 Description = "数据资源内部错误"
 Solution = "请联系管理员"

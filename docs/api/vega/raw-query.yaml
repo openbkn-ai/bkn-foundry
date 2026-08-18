@@ -143,7 +143,15 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Conflict:
-      description: Catalog 被禁用、资源不可查询或 cursor 指向的 Catalog 已变化。
+      description: |
+        请求当前无法执行。常见 errcode：
+        - `VegaBackend.Catalog.IsDisabled`：Catalog 已禁用
+        - `VegaBackend.Resource.NotQueryable`：Resource 为 `disabled` 或 `stale`
+        - `VegaBackend.Resource.MetadataUnavailable`：其他可查询状态下 Resource 的 `last_discover_status=missing`，或 `schema_definition` 为空
+        - `VegaBackend.Query.CursorResourceChanged`：cursor 绑定的 Resource 或 Resource 版本已变化
+        - `VegaBackend.Query.ExecuteFailed`：cursor 指向的 Catalog 已变化
+
+        Resource 条件同时出现时，判断优先级为 `disabled`、`stale`、`missing`、空 schema。
       content:
         application/json:
           schema:

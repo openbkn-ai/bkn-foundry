@@ -26,7 +26,7 @@ import (
 	"vega-backend/logics/model_factory"
 	querylogic "vega-backend/logics/query"
 	"vega-backend/logics/rate"
-	"vega-backend/logics/resource"
+	resourcelogic "vega-backend/logics/resource"
 	"vega-backend/logics/resource_data/logic_view"
 )
 
@@ -57,7 +57,7 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 			ds:         dataset.NewDatasetService(appSetting),
 			lim:        local_index.NewLocalIndexManager(appSetting),
 			cs:         catalog.NewCatalogService(appSetting),
-			rs:         resource.NewResourceService(appSetting),
+			rs:         resourcelogic.NewResourceService(appSetting),
 			lvs:        logic_view.NewLogicViewService(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
 			bta:        logics.BTA,
@@ -283,6 +283,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 // QueryWithPaging is the sole public resource-data query entrypoint.
 func (rds *resourceDataService) QueryWithPaging(ctx context.Context, resource *interfaces.Resource,
 	params *interfaces.ResourceDataQueryParams) (*interfaces.ResourceDataQueryResult, error) {
+	if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
+		return nil, err
+	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return rds.lvs.QueryWithPaging(ctx, resource, params)
 	}
