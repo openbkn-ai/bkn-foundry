@@ -1,7 +1,7 @@
 """
-文件制品值对象
+File artifact value object
 
-定义执行生成的文件元数据。
+The metadata of a file an execution produced.
 """
 
 from dataclasses import dataclass
@@ -11,37 +11,37 @@ from enum import Enum
 
 
 class ArtifactType(str, Enum):
-    """制品类型"""
+    """Artifact type"""
 
-    ARTIFACT = "artifact"  # 用户生成的文件
-    LOG = "log"  # 日志文件
-    OUTPUT = "output"  # 标准输出文件
+    ARTIFACT = "artifact"  # a file the user generated
+    LOG = "log"  # a log file
+    OUTPUT = "output"  # a standard output file
 
 
 @dataclass(frozen=True)
 class Artifact:
-    """文件制品值对象（不可变）"""
+    """File artifact value object, immutable"""
 
-    path: str  # 相对于 workspace 的路径
-    size: int  # 文件大小（字节）
-    mime_type: str  # MIME 类型
+    path: str  # path relative to the workspace
+    size: int  # file size in bytes
+    mime_type: str  # MIME type
     type: ArtifactType
     created_at: datetime
-    checksum: str | None = None  # SHA256 校验和
+    checksum: str | None = None  # SHA256 checksum
 
     def __post_init__(self):
-        """验证制品数据"""
+        """Validate the artifact"""
         if self.size < 0:
             raise ValueError("size cannot be negative")
         if not self.path:
             raise ValueError("path cannot be empty")
 
     def is_log(self) -> bool:
-        """是否为日志文件"""
+        """Whether it is a log file"""
         return self.type == ArtifactType.LOG
 
     def is_output(self) -> bool:
-        """是否为输出文件"""
+        """Whether it is an output file"""
         return self.type == ArtifactType.OUTPUT
 
     @classmethod
@@ -53,7 +53,7 @@ class Artifact:
         type: Literal["artifact", "log", "output"] = "artifact",
         checksum: str | None = None,
     ) -> "Artifact":
-        """工厂方法：创建制品"""
+        """Factory method: build an artifact"""
         return cls(
             path=path,
             size=size,

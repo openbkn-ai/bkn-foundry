@@ -1,7 +1,7 @@
 """
-执行状态值对象
+Execution status value objects
 
-定义执行和会话的所有可能状态。
+Every state a session or an execution can be in.
 """
 
 from enum import Enum
@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 
 class SessionStatus(str, Enum):
-    """会话状态枚举"""
+    """Session status"""
 
     CREATING = "creating"
     RUNNING = "running"
@@ -20,7 +20,7 @@ class SessionStatus(str, Enum):
 
 
 class ExecutionStatus(str, Enum):
-    """执行状态枚举"""
+    """Execution status"""
 
     PENDING = "pending"
     RUNNING = "running"
@@ -32,14 +32,14 @@ class ExecutionStatus(str, Enum):
 
 @dataclass(frozen=True)
 class ExecutionState:
-    """执行状态值对象（不可变）"""
+    """Execution status value object, immutable"""
 
     status: ExecutionStatus
     exit_code: int | None = None
     error_message: str | None = None
 
     def is_terminal(self) -> bool:
-        """是否为终态（不可再变更）"""
+        """Whether it is terminal and can no longer change"""
         return self.status in {
             ExecutionStatus.COMPLETED,
             ExecutionStatus.FAILED,
@@ -47,5 +47,5 @@ class ExecutionState:
         }
 
     def can_retry(self) -> bool:
-        """是否可以重试"""
+        """Whether it may be retried"""
         return self.status == ExecutionStatus.CRASHED

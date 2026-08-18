@@ -1,7 +1,7 @@
 """
-API v1 路由包
+API v1 route package
 
-包含所有 v1 版本的 API 路由。
+Holds every v1 API route.
 """
 
 from src.interfaces.rest.api.v1 import sessions

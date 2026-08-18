@@ -1,18 +1,18 @@
 """
-执行器相关错误
+Executor errors
 
-定义与执行器通信时可能出现的错误。
+The errors that can arise while talking to the executor.
 """
 
 
 class ExecutorError(Exception):
-    """执行器错误基类"""
+    """Base executor error"""
 
     pass
 
 
 class ExecutorConnectionError(ExecutorError):
-    """无法连接到执行器"""
+    """The executor is unreachable"""
 
     def __init__(self, executor_url: str, reason: str = ""):
         self.executor_url = executor_url
@@ -21,7 +21,7 @@ class ExecutorConnectionError(ExecutorError):
 
 
 class ExecutorTimeoutError(ExecutorError):
-    """执行器响应超时"""
+    """The executor did not answer in time"""
 
     def __init__(self, executor_url: str, timeout: float):
         self.executor_url = executor_url
@@ -30,7 +30,7 @@ class ExecutorTimeoutError(ExecutorError):
 
 
 class ExecutorUnavailableError(ExecutorError):
-    """执行器不可用（ unhealthy）"""
+    """The executor is unavailable, meaning unhealthy"""
 
     def __init__(self, executor_url: str, status: str = ""):
         self.executor_url = executor_url
@@ -39,7 +39,7 @@ class ExecutorUnavailableError(ExecutorError):
 
 
 class ExecutorResponseError(ExecutorError):
-    """执行器返回错误响应"""
+    """The executor returned an error response"""
 
     def __init__(self, executor_url: str, status_code: int, message: str = ""):
         self.executor_url = executor_url
@@ -49,7 +49,7 @@ class ExecutorResponseError(ExecutorError):
 
 
 class ExecutorValidationError(ExecutorError):
-    """执行器请求验证失败"""
+    """The executor request failed validation"""
 
     def __init__(self, executor_url: str, validation_errors: list):
         self.executor_url = executor_url

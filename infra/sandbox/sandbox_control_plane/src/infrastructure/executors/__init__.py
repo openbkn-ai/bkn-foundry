@@ -1,7 +1,7 @@
 """
-执行器客户端模块
+Executor client module
 
-提供与沙箱容器内执行器进行 HTTP 通信的客户端。
+The HTTP client for the executor inside a sandbox container.
 """
 
 from src.infrastructure.executors.client import ExecutorClient

@@ -1,8 +1,8 @@
 """
-执行 ORM 模型
+Execution ORM model
 
-SQLAlchemy 模型定义，用于数据库持久化。
-按照数据表命名规范: t_{module}_{entity}, f_{field_name}
+The SQLAlchemy model used for persistence.
+Naming convention: t_{module}_{entity} for tables, f_{field_name} for columns.
 """
 
 from datetime import datetime
@@ -16,10 +16,10 @@ from src.infrastructure.persistence.database import Base
 
 class ExecutionModel(Base):
     """
-    执行 ORM 模型 - t_sandbox_execution
+    Execution ORM model, t_sandbox_execution
 
-    这是基础设施层的实现细节，映射到数据库表。
-    按照数据表命名规范实现。
+    An infrastructure-layer detail that maps onto the database table,
+    following the table naming convention.
     """
 
     __tablename__ = "t_sandbox_execution"
@@ -68,7 +68,7 @@ class ExecutionModel(Base):
     )
 
     def to_entity(self):
-        """转换为领域实体"""
+        """Convert to the domain entity"""
         from src.domain.entities.execution import Execution
         from src.domain.value_objects.execution_status import ExecutionStatus, ExecutionState
 
@@ -98,7 +98,7 @@ class ExecutionModel(Base):
 
     @classmethod
     def from_entity(cls, execution):
-        """从领域实体创建 ORM 模型"""
+        """Build the ORM model from the domain entity"""
         import json
 
         now_ms = int(datetime.now().timestamp() * 1000)
@@ -130,7 +130,7 @@ class ExecutionModel(Base):
             f_completed_at=(
                 int(execution.completed_at.timestamp() * 1000) if execution.completed_at else 0
             ),
-            # 审计字段
+            # Audit columns
             f_created_at=(
                 int(execution.created_at.timestamp() * 1000) if execution.created_at else now_ms
             ),
@@ -142,7 +142,7 @@ class ExecutionModel(Base):
         )
 
     def _parse_json(self, value: str):
-        """安全解析 JSON 字符串"""
+        """Parse a JSON string safely"""
         if not value or value.strip() == "":
             return None
         try:
@@ -153,7 +153,7 @@ class ExecutionModel(Base):
             return None
 
     def _millis_to_datetime(self, millis: int):
-        """将毫秒时间戳转换为 datetime"""
+        """Turn a millisecond timestamp into a datetime"""
         if not millis or millis == 0:
             return None
         try:

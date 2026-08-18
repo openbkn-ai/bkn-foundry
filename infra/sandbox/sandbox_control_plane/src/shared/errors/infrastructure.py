@@ -1,14 +1,14 @@
 """
-基础设施错误
+Infrastructure errors
 
-定义基础设施层的错误类型。
+The error types of the infrastructure layer.
 """
 
 from typing import Optional
 
 
 class InfrastructureError(Exception):
-    """基础设施错误基类"""
+    """Base infrastructure error"""
 
     def __init__(self, message: str, original_error: Optional[Exception] = None):
         self.message = message
@@ -17,42 +17,42 @@ class InfrastructureError(Exception):
 
 
 class DatabaseError(InfrastructureError):
-    """数据库错误"""
+    """Database error"""
 
     pass
 
 
 class ConnectionError(InfrastructureError):
-    """连接错误"""
+    """Connection error"""
 
     pass
 
 
 class StorageError(InfrastructureError):
-    """存储错误"""
+    """Storage error"""
 
     pass
 
 
 class HTTPClientError(InfrastructureError):
-    """HTTP 客户端错误"""
+    """HTTP client error"""
 
     pass
 
 
 class ContainerError(InfrastructureError):
-    """容器错误"""
+    """Container error"""
 
     pass
 
 
 class KubernetesError(InfrastructureError):
-    """Kubernetes 错误"""
+    """Kubernetes error"""
 
     pass
 
 
 class MessagingError(InfrastructureError):
-    """消息队列错误"""
+    """Message queue error"""
 
     pass

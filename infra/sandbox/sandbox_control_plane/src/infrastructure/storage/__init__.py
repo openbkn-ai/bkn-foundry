@@ -1,7 +1,7 @@
 """
-存储模块
+Storage module
 
-提供 S3 兼容的对象存储实现（AWS S3、MinIO）
+The S3-compatible object storage implementation, for AWS S3 and MinIO.
 """
 
 from .s3_storage import S3Storage

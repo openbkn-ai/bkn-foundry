@@ -1,7 +1,7 @@
 """
-模板仓储接口
+Template repository interface
 
-定义模板持久化的抽象接口（Port）。
+The port for template persistence.
 """
 
 from abc import ABC, abstractmethod
@@ -12,47 +12,47 @@ from src.domain.entities.template import Template
 
 class ITemplateRepository(ABC):
     """
-    模板仓储接口
+    Template repository interface
 
-    这是领域层定义的 Port，由基础设施层实现 Adapter。
+    The port the domain layer defines; the infrastructure layer supplies the adapter.
     """
 
     @abstractmethod
     async def save(self, template: Template) -> None:
-        """保存模板（创建或更新）"""
+        """Save the template, creating or updating it"""
         pass
 
     @abstractmethod
     async def find_by_id(self, template_id: str) -> Optional[Template]:
-        """根据 ID 查找模板"""
+        """Find a template by id"""
         pass
 
     @abstractmethod
     async def find_by_name(self, name: str) -> Optional[Template]:
-        """根据名称查找模板"""
+        """Find a template by name"""
         pass
 
     @abstractmethod
     async def find_all(self, offset: int = 0, limit: int = 100) -> List[Template]:
-        """查找所有模板"""
+        """Find every template"""
         pass
 
     @abstractmethod
     async def delete(self, template_id: str) -> None:
-        """删除模板"""
+        """Delete the template"""
         pass
 
     @abstractmethod
     async def exists(self, template_id: str) -> bool:
-        """检查模板是否存在"""
+        """Check whether the template exists"""
         pass
 
     @abstractmethod
     async def exists_by_name(self, name: str) -> bool:
-        """检查模板名称是否存在"""
+        """Check whether the template name exists"""
         pass
 
     @abstractmethod
     async def count(self) -> int:
-        """统计模板总数"""
+        """Count the templates"""
         pass

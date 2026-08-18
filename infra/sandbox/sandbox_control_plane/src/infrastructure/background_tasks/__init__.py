@@ -1,7 +1,7 @@
 """
-后台任务管理
+Background task management
 
-提供后台任务的启动、停止和生命周期管理。
+Starting, stopping, and managing the lifecycle of background tasks.
 """
 
 from src.infrastructure.background_tasks.task_manager import (

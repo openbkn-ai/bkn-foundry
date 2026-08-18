@@ -1,7 +1,7 @@
 """
-健康检查 REST API 路由
+Health check REST API routes
 
-定义健康检查和系统监控相关的 HTTP 端点。
+Defines the HTTP endpoints for health checks and system monitoring.
 """
 
 from fastapi import APIRouter, Depends
@@ -13,12 +13,12 @@ from src.interfaces.rest.schemas.response import HealthResponse
 
 router = APIRouter(prefix="/health", tags=["health"])
 
-# 应用启动时间
+# When the application started
 _start_time = time.time()
 
 
 class SystemStatus(BaseModel):
-    """系统状态"""
+    """System status"""
 
     status: str
     version: str
@@ -28,9 +28,9 @@ class SystemStatus(BaseModel):
 @router.get("", response_model=HealthResponse)
 async def health_check() -> HealthResponse:
     """
-    健康检查端点
+    Health check endpoint
 
-    返回系统状态和运行时间。
+    Returns the system status and uptime.
     """
     return HealthResponse(status="healthy", version="2.1.0", uptime=time.time() - _start_time)
 
@@ -38,14 +38,14 @@ async def health_check() -> HealthResponse:
 @router.get("/detailed")
 async def detailed_health_check() -> dict:
     """
-    详细健康检查
+    Detailed health check
 
-    返回系统状态和依赖项健康状态。
+    Returns the system status and the health of its dependencies.
     """
-    # TODO: 实现依赖项健康检查
-    # - 数据库连接
-    # - S3 存储
-    # - 运行时节点
+    # TODO: check the dependencies
+    # - database connection
+    # - S3 storage
+    # - runtime nodes
     return {
         "status": "healthy",
         "version": "2.1.0",
@@ -57,9 +57,9 @@ async def detailed_health_check() -> dict:
 @router.post("/sync")
 async def trigger_state_sync() -> dict:
     """
-    手动触发状态同步
+    Trigger a state sync by hand
 
-    立即执行一次状态同步和健康检查，用于调试和手动恢复。
+    Runs one state sync and health check immediately, for debugging and manual recovery.
     """
     from src.infrastructure.dependencies import get_state_sync_service
 

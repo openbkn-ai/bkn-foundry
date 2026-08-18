@@ -1,7 +1,7 @@
 """
-仓储工厂
+Repository factory
 
-提供数据库会话感知的仓储实例。
+Provides repository instances bound to a database session.
 """
 
 from contextlib import asynccontextmanager
@@ -23,21 +23,21 @@ from src.domain.repositories.template_repository import ITemplateRepository
 
 class RepositoryFactory:
     """
-    仓储工厂
+    Repository factory
 
-    负责创建仓储实例，并注入数据库会话。
+    Builds the repositories and injects the database session.
     """
 
     @staticmethod
     @asynccontextmanager
     async def get_repositories() -> AsyncGenerator[dict[str, object], None]:
         """
-        获取所有仓储实例（上下文管理器）
+        Get every repository, as a context manager
 
-        用法:
+        Usage:
             async with RepositoryFactory.get_repositories() as repos:
                 session_repo = repos["session_repo"]
-                # 使用仓储
+                # use the repositories
         """
         async with db_manager.get_session() as session:
             yield {
@@ -48,15 +48,15 @@ class RepositoryFactory:
 
     @staticmethod
     def create_session_repository(session) -> ISessionRepository:
-        """创建会话仓储"""
+        """Build the session repository"""
         return SqlSessionRepository(session)
 
     @staticmethod
     def create_execution_repository(session) -> IExecutionRepository:
-        """创建执行仓储"""
+        """Build the execution repository"""
         return SqlExecutionRepository(session)
 
     @staticmethod
     def create_template_repository(session) -> ITemplateRepository:
-        """创建模板仓储"""
+        """Build the template repository"""
         return SqlTemplateRepository(session)

@@ -1,7 +1,7 @@
 """
-数据库种子数据模块
+Database seed data module
 
-提供默认数据定义和初始化逻辑。
+The default data definitions and the seeding logic.
 """
 
 from src.infrastructure.persistence.seed.default_data import (

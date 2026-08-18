@@ -1,8 +1,8 @@
 """
-时间戳辅助工具
+Timestamp helpers
 
-用于在 BIGINT 毫秒时间戳和 datetime 对象之间进行转换。
-按照数据表命名规范，时间戳字段使用 BIGINT 存储毫秒级时间戳。
+Converts between BIGINT millisecond timestamps and datetime objects.
+Per the table naming convention, timestamp columns store milliseconds as BIGINT.
 """
 
 import time
@@ -12,13 +12,13 @@ from typing import Optional
 
 def datetime_to_millis(dt: Optional[datetime]) -> int:
     """
-    将 datetime 对象转换为毫秒时间戳
+    Turn a datetime into a millisecond timestamp
 
     Args:
-        dt: datetime 对象，如果为 None 则返回当前时间的毫秒时间戳
+        dt: the datetime; None means the current time
 
     Returns:
-        毫秒时间戳
+        The millisecond timestamp
     """
     if dt is None:
         return int(time.time() * 1000)
@@ -27,13 +27,13 @@ def datetime_to_millis(dt: Optional[datetime]) -> int:
 
 def millis_to_datetime(millis: Optional[int]) -> Optional[datetime]:
     """
-    将毫秒时间戳转换为 datetime 对象
+    Turn a millisecond timestamp into a datetime
 
     Args:
-        millis: 毫秒时间戳，如果为 None 或 0 则返回 None
+        millis: the millisecond timestamp; None or 0 returns None
 
     Returns:
-        datetime 对象，如果输入无效则返回 None
+        The datetime, or None when the input is invalid
     """
     if not millis or millis == 0:
         return None
@@ -45,19 +45,19 @@ def millis_to_datetime(millis: Optional[int]) -> Optional[datetime]:
 
 def current_millis() -> int:
     """
-    获取当前时间的毫秒时间戳
+    The current time as a millisecond timestamp
 
     Returns:
-        当前时间的毫秒时间戳
+        The current millisecond timestamp
     """
     return int(time.time() * 1000)
 
 
 def current_datetime() -> datetime:
     """
-    获取当前时间的 datetime 对象
+    The current time as a datetime
 
     Returns:
-        当前时间的 datetime 对象
+        The current datetime
     """
     return datetime.now()

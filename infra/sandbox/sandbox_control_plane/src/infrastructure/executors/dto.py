@@ -1,7 +1,7 @@
 """
-执行器 API 数据传输对象
+Executor API data transfer objects
 
-定义与执行器 HTTP API 通信时使用的请求和响应模型。
+The request and response models used when talking to the executor HTTP API.
 """
 
 from dataclasses import dataclass
@@ -11,9 +11,9 @@ from pydantic import BaseModel, Field
 
 class ExecutorExecuteRequest(BaseModel):
     """
-    执行器执行请求模型
+    Executor execution request
 
-    对应 executor 的 POST /execute 端点。
+    Matches the executor POST /execute endpoint.
     """
 
     execution_id: str = Field(..., description="Unique execution identifier")
@@ -47,9 +47,9 @@ class ExecutorExecuteRequest(BaseModel):
 
 class ExecutorExecuteResponse(BaseModel):
     """
-    执行器执行响应模型
+    Executor execution response
 
-    对应 executor 的 POST /execute 响应。
+    Matches the executor POST /execute response.
     """
 
     execution_id: str = Field(..., description="Execution identifier")
@@ -59,9 +59,9 @@ class ExecutorExecuteResponse(BaseModel):
 
 class ExecutorHealthResponse(BaseModel):
     """
-    执行器健康检查响应模型
+    Executor health check response
 
-    对应 executor 的 GET /health 端点。
+    Matches the executor GET /health endpoint.
     """
 
     status: str = Field(..., description="Health status (healthy/unhealthy)")
@@ -71,7 +71,7 @@ class ExecutorHealthResponse(BaseModel):
 
 
 class ExecutorSyncSessionConfigRequest(BaseModel):
-    """Executor 依赖同步请求。"""
+    """Executor dependency sync request."""
 
     session_id: str = Field(..., description="Session identifier")
     language_runtime: str = Field(..., description="Language runtime type")
@@ -81,7 +81,7 @@ class ExecutorSyncSessionConfigRequest(BaseModel):
 
 
 class ExecutorInstalledDependency(BaseModel):
-    """Executor 返回的已安装依赖。"""
+    """An installed dependency the executor reports."""
 
     name: str
     version: str
@@ -91,7 +91,7 @@ class ExecutorInstalledDependency(BaseModel):
 
 
 class ExecutorSyncSessionConfigResponse(BaseModel):
-    """Executor 依赖同步响应。"""
+    """Executor dependency sync response."""
 
     status: str
     installed_dependencies: list[ExecutorInstalledDependency] = Field(default_factory=list)
@@ -103,9 +103,9 @@ class ExecutorSyncSessionConfigResponse(BaseModel):
 @dataclass
 class ExecutorContainerInfo:
     """
-    执行器容器信息
+    Executor container information
 
-    用于构建执行器 URL。
+    Used to build the executor URL.
     """
 
     container_id: str
@@ -114,5 +114,5 @@ class ExecutorContainerInfo:
 
     @property
     def executor_url(self) -> str:
-        """获取执行器 URL"""
+        """Get the executor URL"""
         return f"http://{self.container_name}:{self.executor_port}"

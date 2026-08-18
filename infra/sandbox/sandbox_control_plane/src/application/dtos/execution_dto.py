@@ -1,7 +1,7 @@
 """
-执行数据传输对象
+Execution data transfer objects
 
-用于应用层与接口层之间的数据传输。
+Carries data between the application layer and the interface layer.
 """
 
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ from src.domain.value_objects.artifact import Artifact
 
 @dataclass
 class ArtifactDTO:
-    """文件制品数据传输对象"""
+    """File artifact data transfer object"""
 
     path: str
     size: int
@@ -24,7 +24,7 @@ class ArtifactDTO:
 
     @classmethod
     def from_entity(cls, artifact: Artifact) -> "ArtifactDTO":
-        """从领域实体创建 DTO"""
+        """Build the DTO from the domain entity"""
         return cls(
             path=artifact.path,
             size=artifact.size,
@@ -37,13 +37,13 @@ class ArtifactDTO:
 
 @dataclass
 class ExecutionDTO:
-    """执行数据传输对象"""
+    """Execution data transfer object"""
 
     id: str
     session_id: str
     code: str
     language: str
-    timeout: int  # 超时时间（秒）
+    timeout: int  # timeout in seconds
     status: str
     exit_code: Optional[int] = None
     error_message: Optional[str] = None
@@ -56,11 +56,11 @@ class ExecutionDTO:
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     last_heartbeat_at: Optional[datetime] = None
-    return_value: Optional[dict] = None  # handler 函数返回值
-    metrics: Optional[dict] = None  # 性能指标
+    return_value: Optional[dict] = None  # handler return value
+    metrics: Optional[dict] = None  # performance metrics
 
     def __post_init__(self):
-        """初始化默认值"""
+        """Apply the defaults"""
         if self.artifacts is None:
             self.artifacts = []
         if self.created_at is None:
@@ -68,7 +68,7 @@ class ExecutionDTO:
 
     @classmethod
     def from_entity(cls, execution) -> "ExecutionDTO":
-        """从领域实体创建 DTO"""
+        """Build the DTO from the domain entity"""
         return cls(
             id=execution.id,
             session_id=execution.session_id,

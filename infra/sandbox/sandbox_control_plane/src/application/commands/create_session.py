@@ -1,8 +1,8 @@
 """
-创建会话命令
+Create-session command
 
-定义创建会话的命令对象。
-扩展支持依赖安装，按照 sandbox-design-v2.1.md 章节 5 设计。
+The command object for creating a session.
+Extended for dependency installation, following section 5 of sandbox-design-v2.1.md.
 """
 
 import re
@@ -16,18 +16,18 @@ from src.shared.utils.dependencies import DEFAULT_PYTHON_PACKAGE_INDEX_URL
 @dataclass
 class CreateSessionCommand:
     """
-    创建会话命令
+    Create-session command
 
-    扩展支持 Python 依赖安装功能。
+    Extended to support installing Python dependencies.
     """
 
     template_id: Optional[str] = None
     timeout: int = 300
     resource_limit: ResourceLimit | None = None
     env_vars: Dict[str, str] | None = None
-    id: Optional[str] = None  # 手动指定会话 ID（可选）
+    id: Optional[str] = None  # session id, optionally given by the caller
 
-    # 依赖安装相关字段（新增）
+    # Dependency installation fields
     dependencies: List[str] = field(default_factory=list)
     install_timeout: int = 300
     fail_on_dependency_error: bool = True
@@ -35,25 +35,27 @@ class CreateSessionCommand:
     python_package_index_url: str = DEFAULT_PYTHON_PACKAGE_INDEX_URL
 
     def __post_init__(self):
-        """初始化后验证"""
+        """Validate after construction"""
         if self.timeout <= 0:
             raise ValueError("timeout must be positive")
 
-        # 安全关键：id / template_id 会经 workspace_path 落入以 root 运行的 s3fs
-        # 挂载脚本（k8s/docker scheduler）。严格白名单兜底，防 shell 命令注入与
-        # 前缀逃逸；request schema 已在入口校验，此处覆盖不经 schema 的调用路径。
+        # Security critical: id and template_id travel through workspace_path into the
+        # s3fs mount script that runs as root (the k8s and docker schedulers). The strict
+        # allowlist is the backstop against shell command injection and prefix escape; the
+        # request schema already validates at the entrance, and this covers the call paths
+        # that bypass the schema.
         for _name, _val in (("id", self.id), ("template_id", self.template_id)):
             if _val is not None and not re.match(r"^[A-Za-z0-9_-]+$", _val):
                 raise ValueError(
                     f"{_name} may only contain letters, digits, '_' and '-'"
                 )
 
-        # 设置默认值
+        # Apply the defaults
         if self.resource_limit is None:
             self.resource_limit = ResourceLimit.default()
         if self.env_vars is None:
             self.env_vars = {}
 
-        # 验证安装超时
+        # Validate the install timeout
         if self.install_timeout < 30 or self.install_timeout > 1800:
             raise ValueError("install_timeout must be between 30 and 1800 seconds")

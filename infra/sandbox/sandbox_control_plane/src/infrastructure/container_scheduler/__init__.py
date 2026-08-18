@@ -1,7 +1,7 @@
 """
-容器调度器包
+Container scheduler package
 
-提供 Docker 和 Kubernetes 容器调度能力。
+Docker and Kubernetes container scheduling.
 """
 
 from src.infrastructure.container_scheduler.base import IContainerScheduler

@@ -1,7 +1,7 @@
 """
-模板 DTO
+Template DTO
 
-定义模板数据传输对象。
+The template data transfer object.
 """
 
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ from src.domain.entities.template import Template
 
 @dataclass
 class TemplateDTO:
-    """模板数据传输对象"""
+    """Template data transfer object"""
 
     id: str
     name: str
@@ -30,7 +30,7 @@ class TemplateDTO:
 
     @classmethod
     def from_entity(cls, template: Template) -> "TemplateDTO":
-        """从领域实体创建 DTO"""
+        """Build the DTO from the domain entity"""
         import re
 
         def parse_resource(value: str | None, default: int, resource_type: str) -> int:
@@ -74,7 +74,7 @@ class TemplateDTO:
         )
 
     def to_dict(self) -> dict:
-        """转换为字典"""
+        """Convert to a dict"""
         return {
             "id": self.id,
             "name": self.name,

@@ -1,7 +1,7 @@
 """
-会话数据传输对象
+Session data transfer object
 
-用于应用层与接口层之间的数据传输。
+Carries data between the application layer and the interface layer.
 """
 
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ from src.shared.utils.dependencies import parse_pip_spec
 
 @dataclass
 class SessionDTO:
-    """会话数据传输对象"""
+    """Session data transfer object"""
 
     id: str
     template_id: str
@@ -40,7 +40,7 @@ class SessionDTO:
     last_activity_at: datetime = None
 
     def __post_init__(self):
-        """初始化默认值"""
+        """Apply the defaults"""
         if self.env_vars is None:
             self.env_vars = {}
         if self.created_at is None:
@@ -56,7 +56,7 @@ class SessionDTO:
 
     @classmethod
     def from_entity(cls, session) -> "SessionDTO":
-        """从领域实体创建 DTO"""
+        """Build the DTO from the domain entity"""
         return cls(
             id=session.id,
             template_id=session.template_id,

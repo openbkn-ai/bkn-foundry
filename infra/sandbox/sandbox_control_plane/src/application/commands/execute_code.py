@@ -1,7 +1,7 @@
 """
-执行代码命令
+Execute-code command
 
-定义执行代码的命令对象。
+The command object for executing code.
 """
 
 from dataclasses import dataclass
@@ -12,7 +12,7 @@ from typing import Literal, Optional
 
 @dataclass
 class ExecuteCodeCommand:
-    """执行代码命令"""
+    """Execute-code command"""
 
     session_id: str
     code: str
@@ -25,7 +25,7 @@ class ExecuteCodeCommand:
     working_directory: Optional[str] = None
 
     def __post_init__(self):
-        """初始化后验证"""
+        """Validate after construction"""
         if not self.code:
             raise ValueError("code cannot be empty")
         if self.timeout <= 0:

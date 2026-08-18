@@ -1,7 +1,7 @@
 """
-获取模板查询
+Get-template query
 
-定义获取模板详情的查询 DTO。
+The query DTO for reading the template details.
 """
 
 from dataclasses import dataclass
@@ -9,6 +9,6 @@ from dataclasses import dataclass
 
 @dataclass
 class GetTemplateQuery:
-    """获取模板查询"""
+    """Get-template query"""
 
     template_id: str

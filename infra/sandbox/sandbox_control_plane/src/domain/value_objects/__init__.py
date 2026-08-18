@@ -1,7 +1,7 @@
 """
-值对象模块
+Value object package
 
-包含所有领域值对象。
+Holds every domain value object.
 """
 
 from src.domain.value_objects.execution_request import ExecutionRequest

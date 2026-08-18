@@ -1,5 +1,5 @@
 """
-Domain Layer - 领域层
+Domain Layer
 
-核心业务逻辑层，完全独立于任何框架或基础设施。
+The core business logic, entirely independent of any framework or infrastructure.
 """

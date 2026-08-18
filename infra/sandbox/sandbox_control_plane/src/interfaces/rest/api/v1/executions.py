@@ -1,7 +1,7 @@
 """
-执行 REST API 路由
+Execution REST API routes
 
-定义执行相关的 HTTP 端点。
+Defines the HTTP endpoints for executions.
 """
 
 import asyncio
@@ -31,9 +31,9 @@ from src.shared.i18n import message
 router = APIRouter(prefix="/executions", tags=["executions"])
 
 
-# 根据模式选择依赖注入函数
-# SQL 模式：使用 get_session_service_db（带 Depends() 注入仓储）
-# Mock 模式：使用 get_mock_session_service（从 app.state 获取）
+# Pick the dependency injection functions by mode.
+# SQL mode: get_session_service_db, which injects the repositories through Depends().
+# Mock mode: get_mock_session_service, which reads them off app.state.
 _get_session_service = get_session_service_db if USE_SQL_REPOSITORIES else get_mock_session_service
 
 
@@ -48,13 +48,13 @@ async def submit_execution(
     service: SessionService = Depends(_get_session_service),
 ):
     """
-    提交代码执行
+    Submit code for execution
 
-    - **code**: 要执行的代码
-    - **language**: 编程语言 (python, javascript, shell)
-    - **timeout**: 超时时间（秒），默认 30
-    - **event**: 事件数据
-    - **working_directory**: 可选执行目录，相对于 workspace 根目录
+    - **code**: the code to run
+    - **language**: programming language (python, javascript, shell)
+    - **timeout**: timeout in seconds, 30 by default
+    - **event**: event payload
+    - **working_directory**: optional working directory, relative to the workspace root
     """
     command = ExecuteCodeCommand(
         session_id=session_id,
@@ -186,7 +186,7 @@ async def _get_execution_with_fresh_session(execution_id: str) -> ExecutionDTO:
 async def get_execution_status(
     execution_id: str, service: SessionService = Depends(_get_session_service)
 ):
-    """获取执行状态"""
+    """Get the execution status"""
     query = GetExecutionQuery(execution_id=execution_id)
     execution_dto = await service.get_execution(query)
     return _map_dto_to_response(execution_dto)
@@ -196,7 +196,7 @@ async def get_execution_status(
 async def get_execution_result(
     execution_id: str, service: SessionService = Depends(_get_session_service)
 ):
-    """获取执行结果"""
+    """Get the execution result"""
     query = GetExecutionQuery(execution_id=execution_id)
     execution_dto = await service.get_execution(query)
     return _map_dto_to_response(execution_dto)
@@ -209,14 +209,14 @@ async def list_executions(
     offset: int = 0,
     service: SessionService = Depends(_get_session_service),
 ):
-    """列出会话的所有执行"""
+    """List every execution of a session"""
     executions = await service.list_executions(session_id=session_id, limit=limit)
 
     return {"items": executions, "total": len(executions), "limit": limit, "offset": offset}
 
 
 def _map_dto_to_response(dto: ExecutionDTO) -> ExecutionResponse:
-    """将 ExecutionDTO 映射为 ExecutionResponse"""
+    """Map an ExecutionDTO onto an ExecutionResponse"""
     return ExecutionResponse(
         id=dto.id,
         session_id=dto.session_id,

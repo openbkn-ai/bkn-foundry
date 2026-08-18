@@ -1,7 +1,7 @@
 """
-调度器包
+Scheduler package
 
-提供调度服务实现。
+The scheduling service implementations.
 """
 
 from src.infrastructure.schedulers.docker_scheduler_service import DockerSchedulerService

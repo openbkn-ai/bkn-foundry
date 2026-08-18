@@ -1,7 +1,7 @@
 """
-获取执行查询
+Get-execution query
 
-定义获取执行详情的查询 DTO。
+The query DTO for reading the execution details.
 """
 
 from dataclasses import dataclass
@@ -9,6 +9,6 @@ from dataclasses import dataclass
 
 @dataclass
 class GetExecutionQuery:
-    """获取执行查询"""
+    """Get-execution query"""
 
     execution_id: str

@@ -1,7 +1,7 @@
 """
-创建模板命令
+Create-template command
 
-定义创建模板的命令 DTO。
+The command DTO for creating a template.
 """
 
 from dataclasses import dataclass
@@ -10,7 +10,7 @@ from typing import Optional, Dict
 
 @dataclass
 class CreateTemplateCommand:
-    """创建模板命令"""
+    """Create-template command"""
 
     template_id: str
     name: str

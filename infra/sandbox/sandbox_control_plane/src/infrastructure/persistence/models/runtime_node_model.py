@@ -1,8 +1,8 @@
 """
-运行时节点 ORM 模型
+Runtime node ORM model
 
-SQLAlchemy 模型定义，用于数据库持久化。
-按照数据表命名规范: t_{module}_{entity}, f_{field_name}
+The SQLAlchemy model used for persistence.
+Naming convention: t_{module}_{entity} for tables, f_{field_name} for columns.
 """
 
 from datetime import datetime
@@ -17,9 +17,9 @@ from src.infrastructure.persistence.database import Base
 
 class RuntimeNodeModel(Base):
     """
-    运行时节点 ORM 模型 - t_sandbox_runtime_node
+    Runtime node ORM model, t_sandbox_runtime_node
 
-    这是基础设施层的实现细节，映射到数据库表。
+    An infrastructure-layer detail that maps onto the database table.
     """
 
     __tablename__ = "t_sandbox_runtime_node"
@@ -76,10 +76,10 @@ class RuntimeNodeModel(Base):
     )
 
     def to_runtime_node(self):
-        """转换为领域 RuntimeNode 值对象"""
+        """Convert to the domain RuntimeNode value object"""
         from src.domain.services.scheduler import RuntimeNode
 
-        # 计算资源使用率
+        # Work out the resource utilization
         cpu_usage = (
             float(self.f_allocated_cpu_cores) / float(self.f_total_cpu_cores)
             if self.f_total_cpu_cores > 0
@@ -91,7 +91,7 @@ class RuntimeNodeModel(Base):
             else 0.0
         )
 
-        # 将状态映射到 RuntimeNode 的状态
+        # Map the stored status onto the RuntimeNode status
         status_mapping = {
             "online": "healthy",
             "offline": "unhealthy",
@@ -113,7 +113,7 @@ class RuntimeNodeModel(Base):
         )
 
     def _parse_json(self, value: str):
-        """安全解析 JSON 字符串"""
+        """Parse a JSON string safely"""
         if not value or value.strip() == "":
             return None
         try:
@@ -124,7 +124,7 @@ class RuntimeNodeModel(Base):
             return None
 
     def _millis_to_datetime(self, millis: int):
-        """将毫秒时间戳转换为 datetime"""
+        """Turn a millisecond timestamp into a datetime"""
         if not millis or millis == 0:
             return None
         try:

@@ -1,7 +1,7 @@
 """
-更新模板命令
+Update-template command
 
-定义更新模板的命令 DTO。
+The command DTO for updating a template.
 """
 
 from dataclasses import dataclass
@@ -10,7 +10,7 @@ from typing import Optional, Dict
 
 @dataclass
 class UpdateTemplateCommand:
-    """更新模板命令"""
+    """Update-template command"""
 
     template_id: str
     name: Optional[str] = None

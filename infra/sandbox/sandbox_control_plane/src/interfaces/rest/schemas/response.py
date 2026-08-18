@@ -1,7 +1,7 @@
 """
-REST API 响应模式
+REST API response schemas
 
-定义 FastAPI 的响应 Pydantic 模型。
+Defines the Pydantic response models FastAPI uses.
 """
 
 from pydantic import BaseModel, Field
@@ -10,7 +10,7 @@ from datetime import datetime
 
 
 class ResourceLimitResponse(BaseModel):
-    """资源限制响应"""
+    """Resource limit response"""
 
     cpu: str
     memory: str
@@ -19,14 +19,14 @@ class ResourceLimitResponse(BaseModel):
 
 
 class DependencyResponse(BaseModel):
-    """依赖响应。"""
+    """Dependency response."""
 
     name: str
     version: Optional[str] = None
 
 
 class InstalledDependencyResponse(BaseModel):
-    """已安装依赖响应。"""
+    """Installed dependency response."""
 
     name: str
     version: str
@@ -36,7 +36,7 @@ class InstalledDependencyResponse(BaseModel):
 
 
 class SessionResponse(BaseModel):
-    """会话响应"""
+    """Session response"""
 
     id: str
     template_id: str
@@ -64,7 +64,7 @@ class SessionResponse(BaseModel):
 
 
 class SessionListResponse(BaseModel):
-    """会话列表响应"""
+    """Session list response"""
 
     items: List[SessionResponse]
     total: int
@@ -74,7 +74,7 @@ class SessionListResponse(BaseModel):
 
 
 class ArtifactResponse(BaseModel):
-    """文件制品响应"""
+    """File artifact response"""
 
     path: str
     size: int
@@ -85,7 +85,7 @@ class ArtifactResponse(BaseModel):
 
 
 class ExecutionResponse(BaseModel):
-    """执行响应"""
+    """Execution response"""
 
     id: str
     session_id: str
@@ -108,7 +108,7 @@ class ExecutionResponse(BaseModel):
 
 
 class ExecuteCodeResponse(BaseModel):
-    """执行代码响应"""
+    """Execute-code response"""
 
     execution_id: str
     session_id: str
@@ -117,7 +117,7 @@ class ExecuteCodeResponse(BaseModel):
 
 
 class TemplateResponse(BaseModel):
-    """模板响应"""
+    """Template response"""
 
     id: str
     name: str
@@ -134,7 +134,7 @@ class TemplateResponse(BaseModel):
 
 
 class ContainerResponse(BaseModel):
-    """容器响应"""
+    """Container response"""
 
     id: str
     session_id: str
@@ -153,7 +153,7 @@ class ContainerResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
-    """错误响应"""
+    """Error response"""
 
     error: str
     message: str
@@ -161,7 +161,7 @@ class ErrorResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """健康检查响应"""
+    """Health check response"""
 
     status: str = "healthy"
     version: str = "2.1.0"
