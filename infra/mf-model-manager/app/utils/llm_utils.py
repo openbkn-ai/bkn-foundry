@@ -2309,7 +2309,7 @@ async def encode(model_series, text, api_model="", api_key="", secret_key=""):
     #         tokens = tokenizer.encode(text)
     #         return tokens, len(tokens)
     #     except Exception as e:
-    #         StandLogger.error(f"Failed to load tokenizer: {str(e)}")
+    #         StandLogger.error(f"Tokenizer加载失败: {str(e)}")
     #         # Fall back to an approximation.
     #         return [], len(text) // 4
     # elif model_series == "tome":
@@ -2321,7 +2321,7 @@ async def encode(model_series, text, api_model="", api_key="", secret_key=""):
     #         tokens = tokenizer.encode(text)
     #         return tokens, len(tokens)
     #     except Exception as e:
-    #         StandLogger.error(f"Failed to load tokenizer: {str(e)}")
+    #         StandLogger.error(f"Tokenizer加载失败: {str(e)}")
     #         # Fall back to an approximation.
     #         return [], len(text) // 4
     # elif model_series == "baidu":
