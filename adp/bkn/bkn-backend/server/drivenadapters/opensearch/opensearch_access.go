@@ -280,8 +280,8 @@ func (o *openSearchAccess) InsertData(ctx context.Context, indexName string, doc
 // Example:
 //
 //	dataList := []any{
-//	  map[string]any{"id": "doc1", "title": "文档1"},
-//	  map[string]any{"id": "doc2", "title": "文档2"},
+//	  map[string]any{"id": "doc1", "title": "document 1"},
+//	  map[string]any{"id": "doc2", "title": "document 2"},
 //	}
 func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string, dataList []any) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "BulkInsertData")
@@ -382,7 +382,7 @@ func (o *openSearchAccess) BulkInsertData(ctx context.Context, indexName string,
 //
 //	query := map[string]any{
 //	  "query": map[string]any{
-//	    "match": map[string]any{"title": "搜索关键词"},
+//	    "match": map[string]any{"title": "search keyword"},
 //	  },
 //	}
 func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, query any) ([]interfaces.Hit, error) {

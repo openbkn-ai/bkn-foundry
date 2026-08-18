@@ -1,72 +1,72 @@
-# 创建概念索引删除脚本
+# Create the Concept Index Deletion Script
 
-## 概述
+## Overview
 
-创建一个 Python 脚本用于删除 OpenSearch 中的概念索引 `adp-kn_concept`。脚本将放在 `script/` 目录下。
+Create a Python script that deletes the `adp-kn_concept` concept index from OpenSearch. The script is placed under the `script/` directory.
 
-## 实现细节
+## Implementation Details
 
-### 文件结构
+### File Structure
 
-- `script/delete_concept_index.py` - 主脚本文件
+- `script/delete_concept_index.py` - Main script file
 
-### 功能特性
+### Features
 
-1. **OpenSearch 连接**
+1. **OpenSearch connection**
 
-   - 参考 `script/clean_opensearch_index/script.py` 的连接方式
-   - 支持 HTTP/HTTPS 协议
-   - 支持用户名密码认证
-   - 从环境变量或命令行参数读取配置
+   - Follows the connection pattern from `script/clean_opensearch_index/script.py`
+   - Supports HTTP/HTTPS protocols
+   - Supports username/password authentication
+   - Reads configuration from environment variables or command-line arguments
 
-2. **索引删除**
+2. **Index deletion**
 
-   - 删除概念索引 `adp-kn_concept`（定义在 `server/interfaces/common.go` 中的 `KN_CONCEPT_INDEX_NAME`）
-   - 检查索引是否存在后再删除
-   - 显示索引信息（文档数、存储大小）
+   - Deletes the `adp-kn_concept` concept index, which is defined as `KN_CONCEPT_INDEX_NAME` in `server/interfaces/common.go`
+   - Checks whether the index exists before deletion
+   - Displays index information, including document count and storage size
 
-3. **安全特性**
+3. **Safety features**
 
-   - 支持 `--dry-run` 模式，预览操作而不实际删除
-   - 删除前显示索引信息并要求确认（可选）
-   - 详细的日志输出
+   - Supports `--dry-run` mode to preview the operation without deleting the index
+   - Displays index information before deletion and optionally asks for confirmation
+   - Provides detailed log output
 
-4. **配置方式**
+4. **Configuration methods**
 
-   - 环境变量：`OPENSEARCH_HOST`, `OPENSEARCH_PORT`, `OPENSEARCH_PROTOCOL`, `OPENSEARCH_USER`, `OPENSEARCH_PASSWORD`
-   - 命令行参数覆盖环境变量
-   - 默认值：localhost:9200, http 协议
+   - Environment variables: `OPENSEARCH_HOST`, `OPENSEARCH_PORT`, `OPENSEARCH_PROTOCOL`, `OPENSEARCH_USER`, `OPENSEARCH_PASSWORD`
+   - Command-line arguments override environment variables
+   - Defaults: localhost:9200, http protocol
 
-## 环境要求
+## Environment Requirements
 
 - Python 3.10+
-- OpenSearch 集群
+- OpenSearch cluster
 
-## 安装依赖
+## Install Dependencies
 
 ```bash
 pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple opensearch-py
 ```
 
-### 使用示例
+### Usage Examples
 
 ```bash
-# 使用环境变量
+# Use environment variables.
 export OPENSEARCH_HOST=localhost
 export OPENSEARCH_PORT=9200
 export OPENSEARCH_USER=test
 export OPENSEARCH_PASSWORD=testpwd
 python3 script/delete_concept_index.py
 
-# 使用命令行参数
+# Use command-line arguments.
 python3 script/delete_concept_index.py --os-host localhost --os-port 9200 --os-user test --os-password testpwd
 
-# 试运行模式
+# Dry-run mode.
 python3 script/delete_concept_index.py --dry-run
 ```
 
-## 参考文件
+## References
 
-- `script/clean_opensearch_index/script.py` - OpenSearch 连接和索引删除的实现方式
-- `server/interfaces/common.go` - 概念索引名称定义 (`KN_CONCEPT_INDEX_NAME = "adp-kn_concept"`)
-- `server/common/setting.go` - OpenSearch 配置结构
+- `script/clean_opensearch_index/script.py` - OpenSearch connection and index deletion implementation
+- `server/interfaces/common.go` - Concept index name definition (`KN_CONCEPT_INDEX_NAME = "adp-kn_concept"`)
+- `server/common/setting.go` - OpenSearch configuration structure

@@ -37,7 +37,7 @@ COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/bkn-backend
 ADD server/config/bkn-backend-config.yaml /opt/bkn-backend/config/
 ADD server/locale /opt/bkn-backend/locale
 
-# 指定工作目录
+# Set the working directory.
 WORKDIR /opt/bkn-backend/
 
 # Change user
@@ -46,5 +46,5 @@ USER $UID
 # Expose port
 EXPOSE 13014
 
-# 指定启动命令
+# Set the startup command.
 ENTRYPOINT [ "./bkn-backend-server" ]

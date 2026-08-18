@@ -12,19 +12,19 @@ import (
 	"github.com/spf13/viper"
 )
 
-// TestConfig AT测试配置
+// TestConfig is the AT test configuration.
 type TestConfig struct {
 	BKNBackend BKNBackendConfig `mapstructure:"bkn_backend"`
 	MariaDB    MariaDBConfig    `mapstructure:"mariadb"`
 	OpenSearch OpenSearchConfig `mapstructure:"opensearch"`
 }
 
-// BKNBackendConfig BKN Backend服务配置
+// BKNBackendConfig is the BKN Backend service configuration.
 type BKNBackendConfig struct {
-	BaseURL string `mapstructure:"base_url"` // BKN Backend HTTP服务地址
+	BaseURL string `mapstructure:"base_url"` // BKN Backend HTTP service address.
 }
 
-// MariaDBConfig 测试目标MariaDB配置
+// MariaDBConfig is the target MariaDB configuration for tests.
 type MariaDBConfig struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
@@ -33,7 +33,7 @@ type MariaDBConfig struct {
 	Password string `mapstructure:"password"`
 }
 
-// OpenSearchConfig 测试目标OpenSearch配置
+// OpenSearchConfig is the target OpenSearch configuration for tests.
 type OpenSearchConfig struct {
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
@@ -42,26 +42,26 @@ type OpenSearchConfig struct {
 	UseSSL   bool   `mapstructure:"use_ssl"`
 }
 
-// LoadTestConfig 加载测试配置
-// 优先从 testdata/test-config.yaml 读取
-// 支持环境变量覆盖 (BKN_TEST_前缀)
+// LoadTestConfig loads the test configuration.
+// It reads testdata/test-config.yaml first.
+// It supports environment variable overrides with the BKN_TEST_ prefix.
 func LoadTestConfig() (*TestConfig, error) {
 	viper.SetConfigName("test-config")
 	viper.SetConfigType("yaml")
 
-	// 添加多个可能的配置文件路径
-	viper.AddConfigPath("./testdata")                         // 从测试目录运行
-	viper.AddConfigPath("./integration_tests/testdata")       // 从tests目录运行
-	viper.AddConfigPath("./tests/integration_tests/testdata") // 从server目录运行
-	viper.AddConfigPath("../testdata")                        // 从子目录运行
-	viper.AddConfigPath("../../testdata")                     // 从深层子目录运行
-	viper.AddConfigPath("../../../testdata")                  // 从深层子目录运行
+	// Add multiple possible configuration file paths.
+	viper.AddConfigPath("./testdata")                         // Run from the test directory.
+	viper.AddConfigPath("./integration_tests/testdata")       // Run from the tests directory.
+	viper.AddConfigPath("./tests/integration_tests/testdata") // Run from the server directory.
+	viper.AddConfigPath("../testdata")                        // Run from a subdirectory.
+	viper.AddConfigPath("../../testdata")                     // Run from a deeper subdirectory.
+	viper.AddConfigPath("../../../testdata")                  // Run from a deeper subdirectory.
 
-	// 支持环境变量覆盖
+	// Support environment variable overrides.
 	viper.SetEnvPrefix("BKN_TEST")
 	viper.AutomaticEnv()
 
-	// 读取配置文件
+	// Read the configuration file.
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("读取test-config.yaml失败: %w\n提示: 请确保配置文件存在于tests/integration_tests/testdata/目录", err)
 	}
@@ -71,7 +71,7 @@ func LoadTestConfig() (*TestConfig, error) {
 		return nil, fmt.Errorf("解析配置失败: %w", err)
 	}
 
-	// 验证必填字段
+	// Validate required fields.
 	if config.BKNBackend.BaseURL == "" {
 		return nil, fmt.Errorf("配置错误: bkn_backend.base_url 不能为空")
 	}

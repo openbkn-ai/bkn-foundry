@@ -7,8 +7,8 @@
 # See the LICENSE file in the project root for details.
 
 """
-概念索引删除脚本
-功能：连接 OpenSearch 并删除概念索引 adp-kn_concept
+Concept index deletion script.
+Connects to OpenSearch and deletes the adp-kn_concept concept index.
 """
 
 import os
@@ -18,10 +18,10 @@ import argparse
 from typing import Dict, Optional
 from opensearchpy import OpenSearch, RequestsHttpConnection
 
-# 概念索引名称（与 server/interfaces/common.go 中的定义保持一致）
+# Concept index name, kept consistent with the definition in server/interfaces/common.go.
 CONCEPT_INDEX_NAME = "adp-kn_concept"
 
-# 配置日志
+# Configure logging.
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -31,22 +31,22 @@ logger = logging.getLogger(__name__)
 
 
 class ConceptIndexDeleter:
-    """概念索引删除器"""
+    """Concept index deleter."""
 
     def __init__(self, os_config: dict, dry_run: bool = False):
         """
-        初始化删除器
+        Initialize the deleter.
 
         Args:
-            os_config: OpenSearch配置
-            dry_run: 是否为试运行模式（不实际删除）
+            os_config: OpenSearch configuration.
+            dry_run: Whether to run in dry-run mode without deleting the index.
         """
         self.os_config = os_config
         self.dry_run = dry_run
         self.os_client: Optional[OpenSearch] = None
 
     def connect_opensearch(self) -> bool:
-        """连接OpenSearch"""
+        """Connect to OpenSearch."""
         try:
             self.os_client = OpenSearch(
                 hosts=[
@@ -63,7 +63,7 @@ class ConceptIndexDeleter:
                 timeout=30,
             )
 
-            # 测试连接
+            # Test the connection.
             if self.os_client.ping():
                 logger.info("OpenSearch连接成功")
                 return True
@@ -76,27 +76,27 @@ class ConceptIndexDeleter:
 
     def get_index_info(self, index_name: str) -> Optional[Dict[str, any]]:
         """
-        获取索引信息（文档数、存储大小等）
+        Get index information such as document count and storage size.
 
         Args:
-            index_name: 索引名称
+            index_name: Index name.
 
         Returns:
-            索引信息字典，如果索引不存在则返回 None
+            Index information, or None if the index does not exist.
         """
         try:
             if not self.os_client.indices.exists(index=index_name):
                 return None
 
-            # 获取索引统计信息
+            # Get index statistics.
             stats = self.os_client.indices.stats(index=index_name)
             index_stats = stats.get("indices", {}).get(index_name, {})
 
-            # 获取索引设置和映射信息
+            # Get index settings and mapping information.
             settings = self.os_client.indices.get_settings(index=index_name)
             index_settings = settings.get(index_name, {}).get("settings", {})
 
-            # 提取文档数和存储大小
+            # Extract document count and storage size.
             total = index_stats.get("total", {})
             docs_count = total.get("docs", {}).get("count", 0)
             store_size = total.get("store", {}).get("size_in_bytes", 0)
@@ -112,13 +112,13 @@ class ConceptIndexDeleter:
 
     def delete_index(self, index_name: str) -> bool:
         """
-        删除指定的索引
+        Delete the specified index.
 
         Args:
-            index_name: 要删除的索引名称
+            index_name: Name of the index to delete.
 
         Returns:
-            删除成功返回 True，失败返回 False
+            True if deletion succeeds; otherwise False.
         """
         try:
             if not self.os_client.indices.exists(index=index_name):
@@ -141,23 +141,23 @@ class ConceptIndexDeleter:
             return False
 
     def delete_concept_index(self) -> bool:
-        """执行概念索引删除操作"""
+        """Run the concept index deletion operation."""
         logger.info("=" * 60)
         logger.info("开始删除概念索引")
         logger.info(f"索引名称: {CONCEPT_INDEX_NAME}")
         logger.info(f"试运行模式: {'是' if self.dry_run else '否'}")
         logger.info("=" * 60)
 
-        # 连接OpenSearch
+        # Connect to OpenSearch.
         if not self.connect_opensearch():
             return False
 
-        # 检查索引是否存在
+        # Check whether the index exists.
         if not self.os_client.indices.exists(index=CONCEPT_INDEX_NAME):
             logger.warning(f"概念索引 {CONCEPT_INDEX_NAME} 不存在，无需删除")
             return True
 
-        # 获取索引信息
+        # Get index information.
         index_info = self.get_index_info(CONCEPT_INDEX_NAME)
         if index_info:
             logger.info("\n索引信息:")
@@ -169,11 +169,11 @@ class ConceptIndexDeleter:
         else:
             logger.warning("无法获取索引信息，将继续尝试删除")
 
-        # 删除索引
+        # Delete the index.
         logger.info(f"\n开始删除索引 {CONCEPT_INDEX_NAME}...")
         success = self.delete_index(CONCEPT_INDEX_NAME)
 
-        # 输出结果
+        # Output the result.
         logger.info("\n" + "=" * 60)
         if success:
             logger.info("删除操作完成")
@@ -185,13 +185,13 @@ class ConceptIndexDeleter:
 
     def _format_bytes(self, bytes_size: int) -> str:
         """
-        格式化字节大小
+        Format a byte size.
 
         Args:
-            bytes_size: 字节大小
+            bytes_size: Size in bytes.
 
         Returns:
-            格式化后的字符串
+            Formatted string.
         """
         for unit in ["B", "KB", "MB", "GB", "TB"]:
             if bytes_size < 1024.0:
@@ -200,18 +200,18 @@ class ConceptIndexDeleter:
         return f"{bytes_size:.2f} PB"
 
     def close(self):
-        """关闭连接"""
+        """Close the connection."""
         if self.os_client:
-            # OpenSearch 客户端不需要显式关闭
+            # The OpenSearch client does not require an explicit close.
             logger.info("OpenSearch连接已关闭")
 
 
 def load_config_from_env() -> dict:
     """
-    从环境变量加载配置
+    Load configuration from environment variables.
 
     Returns:
-        OpenSearch配置字典
+        OpenSearch configuration dictionary.
     """
     os_config = {
         "host": os.getenv("OPENSEARCH_HOST", "localhost"),
@@ -225,7 +225,7 @@ def load_config_from_env() -> dict:
 
 
 def main():
-    """主函数"""
+    """Main function."""
     parser = argparse.ArgumentParser(
         description="概念索引删除工具 - 删除 OpenSearch 中的概念索引 adp-kn_concept"
     )
@@ -254,10 +254,10 @@ def main():
 
     args = parser.parse_args()
 
-    # 加载配置
+    # Load configuration.
     os_config = load_config_from_env()
 
-    # 命令行参数覆盖环境变量
+    # Command-line arguments override environment variables.
     if args.os_host:
         os_config["host"] = args.os_host
     if args.os_port:
@@ -269,14 +269,14 @@ def main():
     if args.os_protocol:
         os_config["protocol"] = args.os_protocol
 
-    # 验证必需的配置
+    # Validate required configuration.
     if not os_config["password"]:
         logger.error(
             "OpenSearch密码未设置，请设置OPENSEARCH_PASSWORD环境变量或使用--os-password参数"
         )
         sys.exit(1)
 
-    # 创建删除器并执行删除
+    # Create the deleter and execute deletion.
     deleter = ConceptIndexDeleter(os_config=os_config, dry_run=args.dry_run)
 
     try:

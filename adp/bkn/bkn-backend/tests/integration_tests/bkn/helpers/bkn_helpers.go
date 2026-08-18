@@ -28,12 +28,12 @@ func IsValidTar(data []byte) bool {
 	reader := bytes.NewReader(data)
 	tarReader := tar.NewReader(reader)
 
-	// 尝试读取第一个文件头
+	// Try to read the first file header.
 	_, err := tarReader.Next()
 
-	// 如果 err 是 nil，说明至少有一个合法的文件头，认为是有效的 TAR
-	// 如果 err 是 io.EOF，说明是空的 TAR 包（只有结束符），通常也视为有效（取决于业务需求）
-	// 如果 err 是其他错误（如 "archive/tar: invalid tar header"），则不是合法的 TAR
+	// If err is nil, at least one valid file header exists, so treat it as a valid TAR.
+	// If err is io.EOF, it is an empty TAR package with only end markers; this is usually valid, depending on business requirements.
+	// Any other error, such as "archive/tar: invalid tar header", means the TAR is invalid.
 	if err == nil || err == io.EOF {
 		return true
 	}
@@ -42,18 +42,18 @@ func IsValidTar(data []byte) bool {
 	return false
 }
 
-// GenerateUniqueName 生成唯一的测试名称
+// GenerateUniqueName generates a unique test name.
 func GenerateUniqueName(prefix string) string {
 	timestamp := time.Now().UnixNano() / 1000000
 	return fmt.Sprintf("%s-%d", prefix, timestamp)
 }
 
-// BuildStringWithLength 构建指定长度的字符串
+// BuildStringWithLength builds a string with the specified length.
 func BuildStringWithLength(char string, length int) string {
 	return strings.Repeat(char, length)
 }
 
-// DeleteTestKN 删除测试知识网络
+// DeleteTestKN deletes a test knowledge network.
 func DeleteTestKN(client *testutil.HTTPClient, knID string, branch string, t *testing.T) {
 	resp := client.DELETE("/api/bkn-backend/v1/knowledge-networks/" + knID + "?branch=" + branch)
 	if resp.StatusCode != 200 && resp.StatusCode != 204 {
@@ -61,7 +61,7 @@ func DeleteTestKN(client *testutil.HTTPClient, knID string, branch string, t *te
 	}
 }
 
-// CreateTestObjectType 创建测试对象类型
+// CreateTestObjectType creates a test object type.
 func CreateTestObjectType(client *testutil.HTTPClient, knID string, t *testing.T) (otID string) {
 	payload := map[string]any{
 		"name":         GenerateUniqueName("test-ot"),
@@ -92,7 +92,7 @@ func CreateTestObjectType(client *testutil.HTTPClient, knID string, t *testing.T
 	return
 }
 
-// CreateTestRelationType 创建测试关系类型
+// CreateTestRelationType creates a test relation type.
 func CreateTestRelationType(client *testutil.HTTPClient, knID string, sourceOTID, targetOTID string, t *testing.T) (rtID string) {
 	payload := map[string]any{
 		"name":                  GenerateUniqueName("test-rt"),
@@ -112,7 +112,7 @@ func CreateTestRelationType(client *testutil.HTTPClient, knID string, sourceOTID
 	return
 }
 
-// CreateTestActionType 创建测试行动类型
+// CreateTestActionType creates a test action type.
 func CreateTestActionType(client *testutil.HTTPClient, knID string, objectTypeID string, t *testing.T) (atID string) {
 	payload := map[string]any{
 		"name":           GenerateUniqueName("test-at"),
@@ -131,12 +131,12 @@ func CreateTestActionType(client *testutil.HTTPClient, knID string, objectTypeID
 	return
 }
 
-// BuildSimpleBKNTar 构建简单的 BKN tar 包（用于导入测试）
+// BuildSimpleBKNTar builds a simple BKN tar package for import tests.
 func BuildSimpleBKNTar(knID string) ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
-	// 创建 network.bkn 文件
+	// Create the network.bkn file.
 	networkContent := fmt.Sprintf(`---
 type: network
 id: %s
@@ -173,7 +173,7 @@ version: "1.0.0"
 		return nil, err
 	}
 
-	// 创建 object_types/test_object.bkn 文件
+	// Create the object_types/test_object.bkn file.
 	objectContent := `---
 type: object_type
 id: test_object
@@ -216,12 +216,12 @@ version: "1.0.0"
 	return buf.Bytes(), nil
 }
 
-// BuildFullBKNTar 构建完整的 BKN tar 包（包含对象、关系、行动）
+// BuildFullBKNTar builds a complete BKN tar package containing objects, relations, and actions.
 func BuildFullBKNTar(knID string) ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
-	// 创建 network.bkn 文件
+	// Create the network.bkn file.
 	networkContent := fmt.Sprintf(`---
 type: network
 id: %s
@@ -244,7 +244,7 @@ version: "1.0.0"
 		return nil, err
 	}
 
-	// 创建 object_types/customer.bkn 文件
+	// Create the object_types/customer.bkn file.
 	customerContent := `---
 type: object_type
 id: customer
@@ -281,7 +281,7 @@ version: "1.0.0"
 		return nil, err
 	}
 
-	// 创建 object_types/order.bkn 文件
+	// Create the object_types/order.bkn file.
 	orderContent := `---
 type: object_type
 id: order
@@ -318,7 +318,7 @@ version: "1.0.0"
 		return nil, err
 	}
 
-	// 创建 relation_types/customer_order.bkn 文件
+	// Create the relation_types/customer_order.bkn file.
 	relationContent := `---
 type: relation_type
 id: customer_order
@@ -353,7 +353,7 @@ version: "1.0.0"
 		return nil, err
 	}
 
-	// 创建 action_types/create_order.bkn 文件
+	// Create the action_types/create_order.bkn file.
 	actionContent := `---
 type: action_type
 id: create_order
@@ -394,12 +394,12 @@ version: "1.0.0"
 	return buf.Bytes(), nil
 }
 
-// BuildTarWithoutNetworkBKN 构建缺少 network.bkn 的 tar 包（用于负向测试）
+// BuildTarWithoutNetworkBKN builds a tar package without network.bkn for negative tests.
 func BuildTarWithoutNetworkBKN() ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 
-	// 只包含 object_types，不包含 network.bkn
+	// Include only object_types, without network.bkn.
 	objectContent := `---
 type: object_type
 id: orphan_object
@@ -440,9 +440,9 @@ version: "1.0.0"
 	return buf.Bytes(), nil
 }
 
-// CleanupKNs 清理测试知识网络
+// CleanupKNs cleans up test knowledge networks.
 func CleanupKNs(client *testutil.HTTPClient, t *testing.T) {
-	// 查询所有测试知识网络
+	// Query all test knowledge networks.
 	resp := client.GET("/api/bkn-backend/v1/knowledge-networks?offset=0&limit=100")
 	if resp.StatusCode != 200 {
 		t.Logf("查询知识网络列表失败: status=%d", resp.StatusCode)
@@ -468,14 +468,14 @@ func CleanupKNs(client *testutil.HTTPClient, t *testing.T) {
 	}
 }
 
-// BuildTarFromExamplesDir 从 examples 目录构建 tar 包
-// exampleName: 示例目录名称，如 "k8s-network"
+// BuildTarFromExamplesDir builds a tar package from the examples directory.
+// exampleName: example directory name, such as "k8s-network".
 func BuildTarFromExamplesDir(exampleName string) ([]byte, error) {
 	examplesDir := filepath.Join("helpers", "examples", exampleName)
 	return buildTarFromDir(examplesDir)
 }
 
-// buildTarFromDir 从指定目录构建 tar 包
+// buildTarFromDir builds a tar package from the specified directory.
 func buildTarFromDir(dirPath string) ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
@@ -485,21 +485,21 @@ func buildTarFromDir(dirPath string) ([]byte, error) {
 			return err
 		}
 
-		// 跳过目录
+		// Skip directories.
 		if fi.IsDir() {
 			return nil
 		}
 
-		// 计算相对路径（相对于 dirPath）
+		// Calculate the relative path from dirPath.
 		relPath, err := filepath.Rel(dirPath, file)
 		if err != nil {
 			return err
 		}
 
-		// 使用正斜杠作为 tar 包内的路径分隔符
+		// Use forward slashes as path separators inside the tar package.
 		relPath = filepath.ToSlash(relPath)
 
-		// 创建 tar 头
+		// Create the tar header.
 		header := &tar.Header{
 			Name: relPath,
 			Mode: int64(fi.Mode()),
@@ -510,7 +510,7 @@ func buildTarFromDir(dirPath string) ([]byte, error) {
 			return err
 		}
 
-		// 打开文件并写入 tar
+		// Open the file and write it to the tar package.
 		f, err := os.Open(file)
 		if err != nil {
 			return err
@@ -535,12 +535,12 @@ func buildTarFromDir(dirPath string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// GetExampleNames 获取可用的示例名称列表
+// GetExampleNames gets the list of available example names.
 func GetExampleNames() []string {
 	return []string{"k8s-network"}
 }
 
-// VerifyObjectTypesExist 验证对象类型是否存在
+// VerifyObjectTypesExist verifies that object types exist.
 func VerifyObjectTypesExist(client *testutil.HTTPClient, knID string, t *testing.T) []any {
 	resp := client.GET("/api/bkn-backend/v1/knowledge-networks/" + knID + "/object-types?offset=0&limit=100")
 	if resp.StatusCode != 200 {
@@ -553,7 +553,7 @@ func VerifyObjectTypesExist(client *testutil.HTTPClient, knID string, t *testing
 	return entries
 }
 
-// VerifyRelationTypesExist 验证关系类型是否存在
+// VerifyRelationTypesExist verifies that relation types exist.
 func VerifyRelationTypesExist(client *testutil.HTTPClient, knID string, t *testing.T) []any {
 	resp := client.GET("/api/bkn-backend/v1/knowledge-networks/" + knID + "/relation-types?offset=0&limit=100")
 	if resp.StatusCode != 200 {
@@ -566,7 +566,7 @@ func VerifyRelationTypesExist(client *testutil.HTTPClient, knID string, t *testi
 	return entries
 }
 
-// VerifyActionTypesExist 验证行动类型是否存在
+// VerifyActionTypesExist verifies that action types exist.
 func VerifyActionTypesExist(client *testutil.HTTPClient, knID string, t *testing.T) []any {
 	resp := client.GET("/api/bkn-backend/v1/knowledge-networks/" + knID + "/action-types?offset=0&limit=100")
 	if resp.StatusCode != 200 {
@@ -579,7 +579,7 @@ func VerifyActionTypesExist(client *testutil.HTTPClient, knID string, t *testing
 	return entries
 }
 
-// VerifyConceptGroupsExist 验证概念分组是否存在
+// VerifyConceptGroupsExist verifies that concept groups exist.
 func VerifyConceptGroupsExist(client *testutil.HTTPClient, knID string, t *testing.T) []any {
 	resp := client.GET("/api/bkn-backend/v1/knowledge-networks/" + knID + "/concept-groups?offset=0&limit=100")
 	if resp.StatusCode != 200 {
@@ -592,7 +592,7 @@ func VerifyConceptGroupsExist(client *testutil.HTTPClient, knID string, t *testi
 	return entries
 }
 
-// VerifyMetricsCountAtLeast 校验 GET .../metrics 返回条数不少于 minCount（用于 BKN tar 含指标的导入验收）。
+// VerifyMetricsCountAtLeast verifies that GET .../metrics returns at least minCount entries for BKN tar import acceptance with metrics.
 func VerifyMetricsCountAtLeast(client *testutil.HTTPClient, knID string, t *testing.T, minCount int) int {
 	resp := client.GET("/api/bkn-backend/v1/knowledge-networks/" + knID + "/metrics?offset=0&limit=500")
 	if resp.StatusCode != 200 {

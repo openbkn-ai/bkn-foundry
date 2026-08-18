@@ -19,39 +19,39 @@ import (
 	"bkn-backend-tests/testutil"
 )
 
-// TestBKNImportExport BKN导入导出集成测试
-// 测试编号前缀: BKN1xx (Import/Export)
+// TestBKNImportExport runs BKN import/export integration tests.
+// Test ID prefix: BKN1xx (Import/Export).
 func TestBKNImportExport(t *testing.T) {
 
 	Convey("BKN导入导出集成测试 - 初始化", t, func() {
 
-		// 加载测试配置
+		// Load test configuration.
 		config, err := setup.LoadTestConfig()
 		So(err, ShouldBeNil)
 		So(config, ShouldNotBeNil)
 
-		// 创建HTTP客户端
+		// Create the HTTP client.
 		client := testutil.NewHTTPClient(config.BKNBackend.BaseURL)
 
-		// 验证服务可用性
+		// Verify service availability.
 		err = client.CheckHealth()
 		So(err, ShouldBeNil)
 		t.Logf("✓ 集成测试环境就绪，BKN Backend: %s", config.BKNBackend.BaseURL)
 
-		// 清理现有测试知识网络
+		// Clean up existing test knowledge networks.
 		helpers.CleanupKNs(client, t)
 
-		// ========== BKN 导入测试（BKN101-BKN103） ==========
+		// ========== BKN import tests (BKN101-BKN103) ==========
 
 		Convey("BKN101: 导入BKN - 使用 k8s-network 示例", func() {
 
-			// 从 examples 目录构建 tar 包
+			// Build a tar archive from the examples directory.
 			tarData, err := helpers.BuildTarFromExamplesDir("k8s-network")
 			So(err, ShouldBeNil)
 			So(tarData, ShouldNotBeNil)
 			So(len(tarData), ShouldBeGreaterThan, 0)
 
-			// 上传BKN文件
+			// Upload the BKN file.
 			resp := client.POSTMultipart(
 				"/api/bkn-backend/v1/bkns",
 				"file",
@@ -68,7 +68,7 @@ func TestBKNImportExport(t *testing.T) {
 		Convey("BKN102: 导入BKN后验证对象类型、关系类型、行动类型已创建", func() {
 
 			knID := "k8s-network"
-			// 导入BKN（k8s-network 包含 object_types、relation_types、action_types）
+			// Import the BKN; k8s-network contains object_types, relation_types, and action_types.
 			tarData, _ := helpers.BuildTarFromExamplesDir("k8s-network")
 			resp := client.POSTMultipart(
 				"/api/bkn-backend/v1/bkns",
@@ -79,19 +79,19 @@ func TestBKNImportExport(t *testing.T) {
 			)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
-			// 验证对象类型已创建
+			// Verify object types were created.
 			otEntries := helpers.VerifyObjectTypesExist(client, knID, t)
 			So(len(otEntries), ShouldBeGreaterThan, 0)
 
-			// 验证关系类型已创建
+			// Verify relation types were created.
 			rtEntries := helpers.VerifyRelationTypesExist(client, knID, t)
 			So(len(rtEntries), ShouldBeGreaterThan, 0)
 
-			// 验证行动类型已创建
+			// Verify action types were created.
 			atEntries := helpers.VerifyActionTypesExist(client, knID, t)
 			So(len(atEntries), ShouldBeGreaterThan, 0)
 
-			// 验证概念分组已创建
+			// Verify concept groups were created.
 			cgEntries := helpers.VerifyConceptGroupsExist(client, knID, t)
 			So(len(cgEntries), ShouldBeGreaterThan, 0)
 		})
@@ -112,12 +112,12 @@ func TestBKNImportExport(t *testing.T) {
 			So(n, ShouldBeGreaterThanOrEqualTo, 5)
 		})
 
-		// ========== BKN 导出测试（BKN121-BKN122） ==========
+		// ========== BKN export tests (BKN121-BKN122) ==========
 
 		Convey("BKN121: 导出BKN - 基本场景", func() {
 			knID := "k8s-network"
 
-			// 先导入一些数据
+			// Import some data first.
 			tarData, _ := helpers.BuildTarFromExamplesDir("k8s-network")
 			client.POSTMultipart(
 				"/api/bkn-backend/v1/bkns",
@@ -127,7 +127,7 @@ func TestBKNImportExport(t *testing.T) {
 				nil,
 			)
 
-			// 导出BKN
+			// Export the BKN.
 			resp := client.GET("/api/bkn-backend/v1/bkns/" + knID)
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
@@ -139,7 +139,7 @@ func TestBKNImportExport(t *testing.T) {
 		Convey("BKN122: 导出BKN - 验证Content-Disposition包含kn_id", func() {
 			knID := "k8s-network"
 
-			// 先导入数据
+			// Import data first.
 			tarData, _ := helpers.BuildTarFromExamplesDir("k8s-network")
 			client.POSTMultipart(
 				"/api/bkn-backend/v1/bkns",
@@ -153,7 +153,7 @@ func TestBKNImportExport(t *testing.T) {
 
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
-			// 验证 Content-Disposition 头包含文件下载信息
+			// Verify the Content-Disposition header contains file download information.
 			contentDisposition := resp.Headers.Get("Content-Disposition")
 			So(contentDisposition, ShouldNotBeEmpty)
 			So(strings.Contains(contentDisposition, knID), ShouldBeTrue)
@@ -176,11 +176,11 @@ func TestBKNImportExport(t *testing.T) {
 			So(bytes.Contains(resp.RawBody, []byte("pod_running_count")), ShouldBeTrue)
 		})
 
-		// ========== 负向测试（BKN201-BKN220） ==========
+		// ========== Negative tests (BKN201-BKN220) ==========
 
 		Convey("BKN201: 导入无效文件格式", func() {
 
-			// 上传非tar文件
+			// Upload a non-tar file.
 			invalidData := []byte("this is not a tar file")
 			resp := client.POSTMultipart(
 				"/api/bkn-backend/v1/bkns",
@@ -190,21 +190,21 @@ func TestBKNImportExport(t *testing.T) {
 				nil,
 			)
 
-			// 应该返回错误
+			// An error should be returned.
 			So(resp.StatusCode, ShouldBeGreaterThanOrEqualTo, 400)
 		})
 
 		Convey("BKN202: 导出不存在的知识网络", func() {
-			// 尝试导出不存在的KN
+			// Try to export a non-existent KN.
 			resp := client.GET("/api/bkn-backend/v1/bkns/non-existent-kn-id")
 
-			// 应该返回错误
+			// An error should be returned.
 			So(resp.StatusCode, ShouldBeGreaterThanOrEqualTo, 400)
 		})
 
 		Convey("BKN203: 导入空文件", func() {
 
-			// 上传空文件
+			// Upload an empty file.
 			resp := client.POSTMultipart(
 				"/api/bkn-backend/v1/bkns",
 				"file",
@@ -213,13 +213,13 @@ func TestBKNImportExport(t *testing.T) {
 				nil,
 			)
 
-			// 应该返回错误
+			// An error should be returned.
 			So(resp.StatusCode, ShouldBeGreaterThanOrEqualTo, 400)
 		})
 
 		Convey("BKN204: 导入缺少network.bkn的tar包", func() {
 
-			// 构建缺少 network.bkn 的 tar 包
+			// Build a tar archive without network.bkn.
 			tarData, err := helpers.BuildTarWithoutNetworkBKN()
 			So(err, ShouldBeNil)
 
@@ -231,7 +231,7 @@ func TestBKNImportExport(t *testing.T) {
 				nil,
 			)
 
-			// 应该返回错误
+			// An error should be returned.
 			So(resp.StatusCode, ShouldBeGreaterThanOrEqualTo, 400)
 		})
 
@@ -248,12 +248,12 @@ func TestBKNImportExport(t *testing.T) {
 			So(resp.StatusCode, ShouldBeGreaterThanOrEqualTo, 400)
 		})
 
-		// ========== 复杂数据测试（BKN221） ==========
+		// ========== Complex data test (BKN221) ==========
 
 		Convey("BKN221: 导出包含复杂结构的BKN", func() {
 			knID := "k8s-network"
 
-			// 先导入复杂结构（k8s-network 包含对象、关系、行动等）
+			// Import a complex structure first; k8s-network contains objects, relations, actions, and other data.
 			tarData, _ := helpers.BuildTarFromExamplesDir("k8s-network")
 			client.POSTMultipart(
 				"/api/bkn-backend/v1/bkns",
@@ -263,11 +263,11 @@ func TestBKNImportExport(t *testing.T) {
 				nil,
 			)
 
-			// 导出
+			// Export.
 			resp := client.GET("/api/bkn-backend/v1/bkns/" + knID)
 			So(resp.StatusCode, ShouldEqual, http.StatusOK)
 
-			// 验证导出内容包含所有类型
+			// Verify the exported content contains all types.
 			So(bytes.Contains(resp.RawBody, []byte("object_types")), ShouldBeTrue)
 			So(bytes.Contains(resp.RawBody, []byte("relation_types")), ShouldBeTrue)
 			So(bytes.Contains(resp.RawBody, []byte("action_types")), ShouldBeTrue)

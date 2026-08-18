@@ -14,25 +14,25 @@ log:
   maxAge: 100
   maxBackups: 20
   maxSize: 100
-# OTel Collector 配置
+# OTel Collector configuration.
 otel:
-  # 服务名称
+  # Service name.
   service_name: "bkn-backend"
-  # 运行环境
+  # Runtime environment.
   environment: "production"
-  # OTLP 上报端点
+  # OTLP reporting endpoint.
   otlp_endpoint: "otelcol-contrib:4318"
 
-  # Trace 配置
+  # Trace configuration.
   trace:
     enabled: false
-    # 采样率: 0.0 - 1.0
+    # Sampling rate: 0.0 - 1.0.
     sampling_rate: 1.0
 
-  # Log 配置
+  # Log configuration.
   log:
     enabled: false
-    # 日志级别: debug, info, warn, error
+    # Log level: debug, info, warn, error.
     level: "info"
 
 depServices:

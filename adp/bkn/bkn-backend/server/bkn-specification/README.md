@@ -26,25 +26,25 @@ Go SDK for parsing, serializing, loading, and diffing BKN networks.
 ├── tests/
 │   └── integration_test.go
 └── tools/
-    └── regenerate_checksum.go  # 批量重新生成 examples/ 的 CHECKSUM
+    └── regenerate_checksum.go  # Regenerate CHECKSUM files for examples/ in bulk
 ```
 
 ---
 
 ## Usage
 
-### 加载网络
+### Load a Network
 
 ```go
-// 从目录加载（自动发现 network.bkn）
+// Load from a directory, automatically discovering network.bkn.
 net, err := bkn.LoadNetwork("path/to/network-dir")
 
-// 从 tar 加载
+// Load from a tar archive.
 f, _ := os.Open("network.tar")
 net, err := bkn.LoadNetworkFromTar(f)
 ```
 
-### 解析单个文件
+### Parse a Single File
 
 ```go
 content, _ := os.ReadFile("action_types/restart.bkn")
@@ -57,40 +57,40 @@ fmt.Println(at.ID)                          // "restart"
 fmt.Println(at.TriggerCondition.Operation)  // "=="
 ```
 
-### 序列化
+### Serialize
 
 ```go
-// 模型 → BKN 文本
+// Model -> BKN text.
 text := bkn.SerializeActionType(at)
 
-// 网络 → tar
+// Network -> tar.
 var buf bytes.Buffer
 err := bkn.WriteNetworkToTar(net, &buf)
 
-// 目录 → tar 文件
+// Directory -> tar file.
 err := bkn.PackDirToTar("path/to/dir", "output.tar", false)
 ```
 
-### 校验和 & Diff
+### Checksum & Diff
 
 ```go
-// 生成 CHECKSUM 文件
+// Generate a CHECKSUM file.
 checksum, err := bkn.GenerateChecksumFile("path/to/dir")
 
-// 验证 CHECKSUM 文件
+// Verify a CHECKSUM file.
 ok, errs := bkn.VerifyChecksumFile("path/to/dir")
 
-// 从 tar 验证
+// Verify from a tar archive.
 ok, errs := bkn.VerifyChecksumFromTar(tarReader)
 
-// 比较两个 tar 的差异
+// Compare differences between two tar archives.
 result, err := bkn.DiffNetworksFromTar(oldTar, newTar)
 for _, e := range result.Creates() { fmt.Println("create:", e.Key) }
 for _, e := range result.Updates() { fmt.Println("update:", e.Key) }
 for _, e := range result.Deletes() { fmt.Println("delete:", e.Key) }
 ```
 
-### 验证
+### Validate
 
 ```go
 result := bkn.ValidateNetwork(net)
@@ -107,63 +107,63 @@ if !result.OK() {
 
 ### Parser
 
-| 函数 | 说明 |
+| Function | Description |
 |------|------|
-| `ParseFrontmatter(text)` | 解析 YAML frontmatter，返回 `map[string]any` |
-| `ParseNetworkFile(text, sourcePath)` | 解析 network 文件 |
-| `ParseObjectTypeFile(text, sourcePath)` | 解析 object_type 文件 |
-| `ParseRelationTypeFile(text, sourcePath)` | 解析 relation_type 文件 |
-| `ParseActionTypeFile(text, sourcePath)` | 解析 action_type 文件（含 TriggerCondition） |
-| `ParseRiskTypeFile(text, sourcePath)` | 解析 risk_type 文件 |
-| `ParseConceptGroupFile(text, sourcePath)` | 解析 concept_group 文件 |
+| `ParseFrontmatter(text)` | Parses YAML frontmatter and returns `map[string]any` |
+| `ParseNetworkFile(text, sourcePath)` | Parses a network file |
+| `ParseObjectTypeFile(text, sourcePath)` | Parses an object_type file |
+| `ParseRelationTypeFile(text, sourcePath)` | Parses a relation_type file |
+| `ParseActionTypeFile(text, sourcePath)` | Parses an action_type file, including `TriggerCondition` |
+| `ParseRiskTypeFile(text, sourcePath)` | Parses a risk_type file |
+| `ParseConceptGroupFile(text, sourcePath)` | Parses a concept_group file |
 
 ### Loader
 
-| 函数 | 说明 |
+| Function | Description |
 |------|------|
-| `LoadNetwork(rootPath)` | 从目录加载完整网络（自动发现 network.bkn） |
-| `LoadNetworkWithFS(fsys, rootPath)` | 使用自定义 FileSystem 加载网络 |
-| `LoadNetworkFromTar(r)` | 从 tar 流加载网络 |
-| `ExtractTarToMemory(r)` | 将 tar 解压到内存文件系统 |
+| `LoadNetwork(rootPath)` | Loads a complete network from a directory, automatically discovering network.bkn |
+| `LoadNetworkWithFS(fsys, rootPath)` | Loads a network with a custom FileSystem |
+| `LoadNetworkFromTar(r)` | Loads a network from a tar stream |
+| `ExtractTarToMemory(r)` | Extracts a tar archive into an in-memory file system |
 
 ### Serializer
 
-| 函数 | 说明 |
+| Function | Description |
 |------|------|
-| `SerializeBknNetwork(doc)` | 序列化 network frontmatter |
-| `SerializeObjectType(ot)` | 序列化 object_type |
-| `SerializeRelationType(rt)` | 序列化 relation_type |
-| `SerializeActionType(at)` | 序列化 action_type |
-| `SerializeRiskType(rt)` | 序列化 risk_type |
-| `SerializeConceptGroup(cg)` | 序列化 concept_group |
-| `WriteNetworkToTar(doc, w)` | 将完整网络写入 tar 流 |
-| `PackDirToTar(sourceDir, outputPath, gzip)` | 将目录打包为 tar 文件（macOS 自动设置 `COPYFILE_DISABLE=1`） |
+| `SerializeBknNetwork(doc)` | Serializes network frontmatter |
+| `SerializeObjectType(ot)` | Serializes object_type |
+| `SerializeRelationType(rt)` | Serializes relation_type |
+| `SerializeActionType(at)` | Serializes action_type |
+| `SerializeRiskType(rt)` | Serializes risk_type |
+| `SerializeConceptGroup(cg)` | Serializes concept_group |
+| `WriteNetworkToTar(doc, w)` | Writes a complete network to a tar stream |
+| `PackDirToTar(sourceDir, outputPath, gzip)` | Packs a directory into a tar file; on macOS, sets `COPYFILE_DISABLE=1` automatically |
 
 ### Checksum & Diff
 
-| 函数 | 说明 |
+| Function | Description |
 |------|------|
-| `GenerateChecksumFile(root)` | 生成并写入 CHECKSUM 文件 |
-| `VerifyChecksumFile(root)` | 验证目录 CHECKSUM，返回 `(ok, errors)` |
-| `ComputeChecksumFromTar(r)` | 从 tar 计算各条目 checksum |
-| `GenerateChecksumFromTar(r)` | 从 tar 生成 CHECKSUM 内容字符串 |
-| `VerifyChecksumFromTar(r)` | 验证 tar 中的 CHECKSUM，返回 `(ok, errors)` |
-| `DiffNetworks(old, new)` | 比较两个 checksum map，返回 `*DiffResult` |
-| `DiffNetworksFromTar(oldTar, newTar)` | 比较两个 tar 的差异，返回 `*DiffResult` |
-| `ComputeNetworkChecksums(fsys, root)` | 计算网络目录的 checksum map |
+| `GenerateChecksumFile(root)` | Generates and writes a CHECKSUM file |
+| `VerifyChecksumFile(root)` | Verifies the directory CHECKSUM and returns `(ok, errors)` |
+| `ComputeChecksumFromTar(r)` | Computes checksums for tar entries |
+| `GenerateChecksumFromTar(r)` | Generates CHECKSUM content from a tar archive |
+| `VerifyChecksumFromTar(r)` | Verifies the CHECKSUM in a tar archive and returns `(ok, errors)` |
+| `DiffNetworks(old, new)` | Compares two checksum maps and returns `*DiffResult` |
+| `DiffNetworksFromTar(oldTar, newTar)` | Compares differences between two tar archives and returns `*DiffResult` |
+| `ComputeNetworkChecksums(fsys, root)` | Computes the checksum map for a network directory |
 
 ### Validator
 
-| 函数 | 说明 |
+| Function | Description |
 |------|------|
-| `ValidateNetwork(doc)` | 验证网络结构，返回 `*ValidationResult` |
+| `ValidateNetwork(doc)` | Validates the network structure and returns `*ValidationResult` |
 
 ### FileSystem
 
-| 函数 | 说明 |
+| Function | Description |
 |------|------|
-| `NewOSFileSystem()` | 基于 OS 的文件系统实现 |
-| `NewMemoryFileSystem()` | 内存文件系统，用于测试或 tar 解压 |
+| `NewOSFileSystem()` | OS-backed file system implementation |
+| `NewMemoryFileSystem()` | In-memory file system for tests or tar extraction |
 
 ---
 
@@ -171,22 +171,22 @@ if !result.OK() {
 
 ### regenerate_checksum.go
 
-批量重新生成 `examples/` 下所有网络的 CHECKSUM 文件。当 examples 内容发生变更（重命名、修改 .bkn 文件、更新 SKILL.md 等）后需要执行。
+Regenerates CHECKSUM files for all networks under `examples/` in bulk. Run it after example content changes, such as renaming files, modifying .bkn files, or updating SKILL.md.
 
 ```bash
-# 在 sdk/golang/ 目录下运行，传入 examples 父目录
+# Run from sdk/golang/ and pass the examples parent directory.
 go run tools/regenerate_checksum.go ../../examples
 ```
 
 ## Tests
 
 ```bash
-# 单元测试
+# Unit tests.
 go test ./bkn/... -v
 
-# 集成测试（使用 tests/testdata/ 中的真实网络）
+# Integration tests using real networks from tests/testdata/.
 go test ./tests/... -v
 
-# 全部
+# All tests.
 go test ./... -v
 ```

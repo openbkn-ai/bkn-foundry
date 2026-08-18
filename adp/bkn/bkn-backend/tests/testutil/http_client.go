@@ -16,29 +16,29 @@ import (
 	"time"
 )
 
-// HTTPClient 封装HTTP请求的测试客户端
+// HTTPClient wraps HTTP requests for tests.
 type HTTPClient struct {
 	BaseURL string
 	Client  *http.Client
-	Headers map[string]string // 包含X-Account-ID等公共头
+	Headers map[string]string // Common headers such as X-Account-ID.
 }
 
-// HTTPResponse HTTP响应封装
+// HTTPResponse wraps an HTTP response.
 type HTTPResponse struct {
 	StatusCode int
-	Headers    http.Header    // 响应头
-	Body       map[string]any // 成功响应的JSON body
-	Error      *ErrorResponse // 错误响应
-	RawBody    []byte         // 原始响应体
+	Headers    http.Header    // Response headers.
+	Body       map[string]any // Successful response JSON body.
+	Error      *ErrorResponse // Error response.
+	RawBody    []byte         // Raw response body.
 }
 
-// ErrorResponse 错误响应结构
+// ErrorResponse is the error response structure.
 type ErrorResponse struct {
 	ErrorCode    string `json:"error_code"`
 	ErrorDetails string `json:"error_details"`
 }
 
-// NewHTTPClient 创建新的HTTP测试客户端
+// NewHTTPClient creates a new HTTP test client.
 func NewHTTPClient(baseURL string) *HTTPClient {
 	return &HTTPClient{
 		BaseURL: baseURL,
@@ -52,7 +52,7 @@ func NewHTTPClient(baseURL string) *HTTPClient {
 	}
 }
 
-// CheckHealth 检查服务健康状态
+// CheckHealth checks service health.
 func (c *HTTPClient) CheckHealth() error {
 	resp, err := c.Client.Get(c.BaseURL + "/health")
 	if err != nil {
@@ -66,32 +66,32 @@ func (c *HTTPClient) CheckHealth() error {
 	return nil
 }
 
-// POST 发送POST请求
+// POST sends a POST request.
 func (c *HTTPClient) POST(path string, payload any) HTTPResponse {
 	return c.doRequest("POST", path, payload)
 }
 
-// GET 发送GET请求
+// GET sends a GET request.
 func (c *HTTPClient) GET(path string) HTTPResponse {
 	return c.doRequest("GET", path, nil)
 }
 
-// PUT 发送PUT请求
+// PUT sends a PUT request.
 func (c *HTTPClient) PUT(path string, payload any) HTTPResponse {
 	return c.doRequest("PUT", path, payload)
 }
 
-// DELETE 发送DELETE请求
+// DELETE sends a DELETE request.
 func (c *HTTPClient) DELETE(path string) HTTPResponse {
 	return c.doRequest("DELETE", path, nil)
 }
 
-// POSTMultipart 发送 multipart/form-data POST 请求（用于文件上传）
+// POSTMultipart sends a multipart/form-data POST request for file uploads.
 func (c *HTTPClient) POSTMultipart(path string, fileFieldName string, fileContent []byte, fileName string, extraParams map[string]string) HTTPResponse {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 
-	// 添加文件
+	// Add the file.
 	part, err := writer.CreateFormFile(fileFieldName, fileName)
 	if err != nil {
 		return HTTPResponse{
@@ -107,7 +107,7 @@ func (c *HTTPClient) POSTMultipart(path string, fileFieldName string, fileConten
 		}
 	}
 
-	// 添加额外参数
+	// Add extra parameters.
 	for key, val := range extraParams {
 		_ = writer.WriteField(key, val)
 	}
@@ -120,10 +120,10 @@ func (c *HTTPClient) POSTMultipart(path string, fileFieldName string, fileConten
 		}
 	}
 
-	// 构建完整URL
+	// Build the full URL.
 	url := c.BaseURL + path
 
-	// 创建请求
+	// Create the request.
 	req, err := http.NewRequest("POST", url, &body)
 	if err != nil {
 		return HTTPResponse{
@@ -132,13 +132,13 @@ func (c *HTTPClient) POSTMultipart(path string, fileFieldName string, fileConten
 		}
 	}
 
-	// 设置 headers
+	// Set headers.
 	for key, value := range c.Headers {
 		req.Header.Set(key, value)
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	// 发送请求
+	// Send the request.
 	resp, err := c.Client.Do(req)
 	if err != nil {
 		return HTTPResponse{
@@ -148,7 +148,7 @@ func (c *HTTPClient) POSTMultipart(path string, fileFieldName string, fileConten
 	}
 	defer resp.Body.Close()
 
-	// 读取响应体
+	// Read the response body.
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return HTTPResponse{
@@ -157,14 +157,14 @@ func (c *HTTPClient) POSTMultipart(path string, fileFieldName string, fileConten
 		}
 	}
 
-	// 解析响应
+	// Parse the response.
 	result := HTTPResponse{
 		StatusCode: resp.StatusCode,
 		Headers:    resp.Header,
 		RawBody:    respBody,
 	}
 
-	// 尝试解析 JSON
+	// Try to parse JSON.
 	if len(respBody) > 0 {
 		var jsonBody map[string]any
 		if err := json.Unmarshal(respBody, &jsonBody); err == nil {
@@ -175,7 +175,7 @@ func (c *HTTPClient) POSTMultipart(path string, fileFieldName string, fileConten
 	return result
 }
 
-// doRequest 执行HTTP请求的内部方法
+// doRequest executes an HTTP request internally.
 func (c *HTTPClient) doRequest(method, path string, payload any) HTTPResponse {
 	var bodyReader io.Reader
 	if payload != nil {
@@ -189,10 +189,10 @@ func (c *HTTPClient) doRequest(method, path string, payload any) HTTPResponse {
 		bodyReader = bytes.NewBuffer(bodyBytes)
 	}
 
-	// 构建完整URL
+	// Build the full URL.
 	url := c.BaseURL + path
 
-	// 创建请求
+	// Create the request.
 	req, err := http.NewRequest(method, url, bodyReader)
 	if err != nil {
 		return HTTPResponse{
@@ -201,12 +201,12 @@ func (c *HTTPClient) doRequest(method, path string, payload any) HTTPResponse {
 		}
 	}
 
-	// 设置 headers
+	// Set headers.
 	for key, value := range c.Headers {
 		req.Header.Set(key, value)
 	}
 
-	// 发送请求
+	// Send the request.
 	resp, err := c.Client.Do(req)
 	if err != nil {
 		return HTTPResponse{
@@ -216,7 +216,7 @@ func (c *HTTPClient) doRequest(method, path string, payload any) HTTPResponse {
 	}
 	defer resp.Body.Close()
 
-	// 读取响应体
+	// Read the response body.
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return HTTPResponse{
@@ -225,20 +225,20 @@ func (c *HTTPClient) doRequest(method, path string, payload any) HTTPResponse {
 		}
 	}
 
-	// 解析响应
+	// Parse the response.
 	result := HTTPResponse{
 		StatusCode: resp.StatusCode,
 		Headers:    resp.Header,
 		RawBody:    respBody,
 	}
 
-	// 尝试解析 JSON
+	// Try to parse JSON.
 	if len(respBody) > 0 {
 		var jsonBody map[string]any
 		if err := json.Unmarshal(respBody, &jsonBody); err == nil {
 			result.Body = jsonBody
 		} else {
-			// 如果不是 JSON，保留原始内容
+			// If it is not JSON, keep the original content.
 			result.Body = map[string]any{"raw": string(respBody)}
 		}
 	}
