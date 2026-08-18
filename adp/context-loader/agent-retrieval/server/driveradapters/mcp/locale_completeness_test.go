@@ -102,3 +102,35 @@ func TestEnglishCatalogHasNoHanText(t *testing.T) {
 		})
 	})
 }
+
+// TestMCPInfoDeclaresItsLanguage pins the self-description side of the language
+// contract. MCP defines no locale field, so /mcp/info is where an integrator
+// learns that the transport header decides the catalog language — and its config
+// example is the block they copy.
+func TestMCPInfoDeclaresItsLanguage(t *testing.T) {
+	convey.Convey("/mcp/info should state the language it answered in", t, func() {
+		for _, locale := range []string{defaultMCPLocale, "en-US"} {
+			info, err := BuildMCPInfoForLocale("https://example.invalid/mcp", locale)
+			convey.So(err, convey.ShouldBeNil)
+			convey.So(info.Language, convey.ShouldEqual, locale)
+			convey.So(info.SupportedLanguages, convey.ShouldContain, "en-US")
+			convey.So(info.SupportedLanguages, convey.ShouldContain, defaultMCPLocale)
+
+			var example struct {
+				MCPServers map[string]struct {
+					Headers map[string]string `json:"headers"`
+				} `json:"mcpServers"`
+			}
+			convey.So(json.Unmarshal(info.ClientConfigExample, &example), convey.ShouldBeNil)
+			for _, server := range example.MCPServers {
+				convey.So(server.Headers["Accept-Language"], convey.ShouldEqual, locale)
+			}
+		}
+	})
+
+	convey.Convey("an unsupported language should report the fallback it used", t, func() {
+		info, err := BuildMCPInfoForLocale("https://example.invalid/mcp", "kl-KL")
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(info.Language, convey.ShouldEqual, defaultMCPLocale)
+	})
+}

@@ -50,6 +50,8 @@ paths:
         - MCP
       summary: MCP 服务自描述文档
       operationId: getMCPInfo
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       description: |
         一次 GET 拿到端点、协议、鉴权方式、全部工具的名称 / 描述 / 输入输出 schema，
         以及一份可直接用的客户端配置示例。给人看，也给 Agent 自举用。
@@ -86,6 +88,8 @@ paths:
       deprecated: true
       summary: PTC 工具包（旧路径，已弃用）
       operationId: getPTCToolkitLegacy
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       description: |
         **已弃用，改用 `GET /mcp/ptc/toolkit`。** 响应完全相同，仅路径不同。
 
@@ -140,6 +144,8 @@ paths:
         - MCP
       summary: PTC MCP 端点（只有 run_code / run_shell）
       operationId: postPTCMCP
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       description: |
         与 `/mcp` 同为 MCP Streamable HTTP，差别只在工具面：这里**只有四个工具**
 
@@ -213,6 +219,8 @@ paths:
         - MCP
       summary: PTC 工具包（自行实现 PTC 时用）
       operationId: getPTCToolkit
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       description: |
         给不走 `POST /mcp/ptc`、想自己实现 PTC 的客户端（例如自建前端）用：一次返回
         全部素材，客户端自行组装工具并打执行工厂。
@@ -263,6 +271,8 @@ paths:
         - MCP
       summary: PTC MCP 端点自描述文档
       operationId: getPTCMCPInfo
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       description: |
         与 `GET /mcp/info` 同构，只是 `endpoint` 指向 `/mcp/ptc`。给要接 PTC 端点的
         客户端抄连接配置用。
@@ -286,6 +296,8 @@ paths:
         - MCP
       summary: MCP Streamable HTTP 端点
       operationId: mcpStreamableHTTP
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
       description: |
         标准 MCP Streamable HTTP 入口，收发 JSON-RPC 2.0 报文。请求与响应结构由
         MCP 协议定义，本文档不再复述——用现成的 MCP 客户端接入即可，不要手写调用。
@@ -355,6 +367,23 @@ components:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/OAuth2'
     AppKey:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
+
+  parameters:
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      schema:
+        type: string
+      description: |
+        可选的 RFC 9110 语言偏好。服务从支持的 `zh-CN`、`en-US` 中选择工具目录
+        （`title` / `description` / schema 描述）与服务端说明的语言。
+
+        MCP 协议本身不定义语言协商，`initialize` 参数里没有 locale 字段，所以这个
+        传输层请求头是唯一的通道。客户端在 MCP 连接配置的 `headers` 里设置它。
+
+        不传则使用部署配置的服务默认语言，无需客户端参与。**每个请求独立判定**，
+        不与 `Mcp-Session-Id` 绑定。
 
   schemas:
     PTCToolkit:
@@ -456,6 +485,20 @@ components:
         auth:
           type: string
           description: 鉴权说明。
+        language:
+          type: string
+          enum: [zh-CN, en-US]
+          description: |
+            本次响应实际使用的语言，即工具目录（`title` / `description` / schema
+            描述）与服务端说明的语言。由请求的 `Accept-Language` 决定；不传或不支持
+            时为部署配置的服务默认语言。
+          example: zh-CN
+        supported_languages:
+          type: array
+          items:
+            type: string
+          description: 本服务支持的语言标签。
+          example: [zh-CN, en-US]
         tool_count:
           type: integer
           description: 工具数量。
