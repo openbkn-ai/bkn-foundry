@@ -4,7 +4,7 @@ report/
 __pycache__/
 .venv/
 
-# Full Agent AT suite and payloads are synced locally from KWeaver; not tracked here.
+# Full Agent AT suite and payloads are synced locally from the legacy platform; not tracked here.
 testcases/data-operator-hub/
 /conftest.py
 data/

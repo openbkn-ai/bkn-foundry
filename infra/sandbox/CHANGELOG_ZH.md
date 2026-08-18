@@ -56,7 +56,7 @@
 
 - 更新 README、构建文档、项目结构文档、部署说明和多语言 Go 执行设计文档，说明新的镜像分层和 SWR 推送流程
 - 补充集成测试运行模式说明，包括 happy path 冒烟、完整运行、仅运行慢测试，以及排除慢测试的完整运行方式
-- 新增 `deploy/helm/README.md`，说明 Kweaver Core 组件 Chart 与 Sandbox 独立部署 Chart 的区别
+- 新增 `deploy/helm/README.md`，说明 BKN Foundry 组件 Chart 与 Sandbox 独立部署 Chart 的区别
 - 重写 Helm Chart README，使 `deploy/helm/sandbox` 明确说明 Core 组件部署方式，`deploy/helm/sandbox_standalone` 明确说明包含 Web、MariaDB、MinIO 的自包含部署方式
 
 ---
@@ -131,13 +131,6 @@
 *发布于 2026-04-07*
 
 ## [0.3.1]
-
-### 🚀 新功能
-
-- **数据库名称升级处理**
-  - 将 control plane 默认数据库名从 `adp` 调整为 `kweaver`
-  - 新增启动时升级逻辑，可检测旧库 `adp` 并将其中表迁移到 `kweaver`
-  - 将运行期数据库连接统一规范到 `kweaver`，避免服务启动时重新创建旧库
 
 ### 🔧 改进
 

@@ -29,8 +29,8 @@ FROM ${BASE_IMAGE} AS prod
 ARG UID=1001
 ARG GID=1001
 
-RUN groupadd -r -g $GID kweaver \
-    && useradd -r -u $UID -g $GID kweaver \
+RUN groupadd -r -g $GID openbkn \
+    && useradd -r -u $UID -g $GID openbkn \
     && apt-get update \
     && apt-get install -y python3 python3-pip \
     && pip3 install --break-system-packages --index-url https://pypi.org/simple/ "sqlglot==30.14.0" \

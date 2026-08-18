@@ -1,6 +1,6 @@
 # Execution Factory Tests (OpenBKN)
 
-Canonical test location for Execution Factory migrated from KWeaver DIP/Core.
+Canonical test location for Execution Factory, migrated from the legacy upstream platform.
 
 ## Test tiers
 
@@ -8,13 +8,13 @@ Canonical test location for Execution Factory migrated from KWeaver DIP/Core.
 |------|------|------|-----|
 | **L1** | bkn-studio vitest mocks | Every PR | `bkn-studio` `ci-execution-factory.yml` |
 | **L2** | `openbkn-smoke` pytest | Backend up locally / manual | `bkn-foundry` collect-only on PR; live via `workflow_dispatch` |
-| **L3** | Full Agent AT (`data-operator-hub`) | KWeaver platform env | Not in git; sync locally (below) |
+| **L3** | Full Agent AT (`data-operator-hub`) | Legacy platform env (eisoo/Hydra) | Not in git; sync locally (below) |
 
 ```
 adp/execution-factory/
 |-- tests/                          # Agent AT (pytest) -- this directory
 |   |-- testcases/
-|   |   |-- data-operator-hub/      # L3 -- gitignored, sync from KWeaver
+|   |   |-- data-operator-hub/      # L3 -- gitignored, synced locally
 |   |   `-- openbkn-smoke/          # L2 -- tracked in git
 |   |-- config/env.openbkn.example.ini
 |   |-- requirements/ci-smoke.txt   # minimal deps for CI collect
@@ -27,16 +27,16 @@ adp/execution-factory/
 
 ## Sync full Agent AT (L3, local only)
 
-Bulk payloads are **not** in git. Copy from a local KWeaver clone:
+Bulk payloads are **not** in git. Copy from a local clone of the legacy platform:
 
 ```powershell
 cd bkn-foundry/bkn-foundry/adp/execution-factory/tests
-# optional: $env:KEWEAVER_ROOT = "e:\00_code_workspace\keweaver"
+# optional: $env:LEGACY_PLATFORM_ROOT = "<path to the legacy platform clone>"
 .\scripts\sync-agent-at.ps1
 # dry run: .\scripts\sync-agent-at.ps1 -DryRun
 ```
 
-Source: `keweaver/adp/execution-factory/tests` (or `$KEWEAVER_ROOT/adp/execution-factory/tests`).
+Source: `<legacy platform clone>/adp/execution-factory/tests` (or `$LEGACY_PLATFORM_ROOT/adp/execution-factory/tests`).
 
 ## L2 -- OpenBKN backend smoke
 

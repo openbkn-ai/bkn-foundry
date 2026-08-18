@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.txt)
+[![License](https://img.shields.io/badge/license-OpenBKN-blue.svg)](../LICENSE-OPENBKN.txt)
 
 Tracing AI is a verification and observability framework for LLM applications and agent systems. It is built to turn opaque AI execution into inspectable, attributable, and production-ready workflows through end-to-end tracing, structured correlation, and queryable evidence.
 
@@ -180,4 +180,4 @@ GET  /swagger/index.html
 
 ## License
 
-Apache 2.0. See `LICENSE.txt`.
+OpenBKN License. See [LICENSE-OPENBKN.txt](../LICENSE-OPENBKN.txt), and the repository root [LICENSE](../LICENSE) for the overall licensing model.

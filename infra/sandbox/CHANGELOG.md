@@ -56,7 +56,7 @@ All new features and capabilities added in this branch (`feature/803264`) are do
 
 - Updated README, build documentation, project structure docs, deployment notes, and the multi-language Go execution design to describe the new image layering and SWR push workflow
 - Documented integration test run modes for happy-path smoke tests, full runs, slow-only runs, and full runs excluding slow tests
-- Added `deploy/helm/README.md` to explain the difference between the Kweaver Core component chart and the standalone Sandbox chart
+- Added `deploy/helm/README.md` to explain the difference between the BKN Foundry component chart and the standalone Sandbox chart
 - Rewrote the Helm chart READMEs so `deploy/helm/sandbox` documents the Core component deployment and `deploy/helm/sandbox_standalone` documents the self-contained stack with Web, MariaDB, and MinIO
 
 ---
@@ -131,13 +131,6 @@ All new features and capabilities added in this branch (`feature/803264`) are do
 *Released on 2026-04-07*
 
 ## [0.3.1]
-
-### 🚀 New Features
-
-- **Database Name Upgrade Handling**
-  - Changed the control plane default database name from `adp` to `kweaver`
-  - Added startup upgrade handling to detect the legacy `adp` schema and migrate tables into `kweaver`
-  - Normalized runtime database connections to `kweaver` to prevent recreating the legacy database during startup
 
 ### 🔧 Improvements
 

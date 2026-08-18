@@ -1,17 +1,13 @@
 param(
-  [string]$Source = "$env:KEWEAVER_ROOT\adp\execution-factory\tests",
+  [string]$Source = "$env:LEGACY_PLATFORM_ROOT\adp\execution-factory\tests",
   [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 $destRoot = Split-Path -Parent $PSScriptRoot
 
-if (-not $Source) {
-  $Source = "e:\00_code_workspace\keweaver\adp\execution-factory\tests"
-}
-
 if (-not (Test-Path $Source)) {
-  Write-Error "Agent AT source not found: $Source. Set KEWEAVER_ROOT or pass -Source."
+  Write-Error "Agent AT source not found: $Source. Set LEGACY_PLATFORM_ROOT or pass -Source."
 }
 
 $folders = @(

@@ -29,8 +29,8 @@ FROM ${BASE_IMAGE} AS prod
 ARG UID=1001
 ARG GID=1001
 
-RUN groupadd -r -g $GID kweaver \
-    && useradd -r -u $UID -g $GID kweaver
+RUN groupadd -r -g $GID openbkn \
+    && useradd -r -u $UID -g $GID openbkn
 
 COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/bkn-backend
 
