@@ -195,7 +195,7 @@ To push multi-arch base images to Huawei Cloud SWR, install `skopeo` and use Doc
 cd images
 ./build.sh --build-bases --push-swr-bases \
   --swr-registry swr.cn-east-3.myhuaweicloud.com \
-  --swr-namespace kweaver-ai/sandbox \
+  --swr-namespace openbkn-ai/sandbox \
   --swr-creds '<username>:<password>'
 ```
 
@@ -247,8 +247,8 @@ docker-compose -f deploy/docker-compose/docker-compose.yml up -d --force-recreat
 This expands to:
 
 ```text
-swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/sandbox-template-python-basic:<TEMPLATE_IMAGE_TAG>
-swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/sandbox-template-multi-language:<TEMPLATE_IMAGE_TAG>
+swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/sandbox-template-python-basic:<TEMPLATE_IMAGE_TAG>
+swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/sandbox-template-multi-language:<TEMPLATE_IMAGE_TAG>
 ```
 
 You can also override `DEFAULT_TEMPLATE_IMAGE` and `DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE` directly when different repositories or tags are required.

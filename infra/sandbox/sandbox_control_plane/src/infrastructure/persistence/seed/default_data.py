@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-DEFAULT_TEMPLATE_IMAGE_REGISTRY = "swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip"
+DEFAULT_TEMPLATE_IMAGE_REGISTRY = "swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip"
 DEFAULT_PYTHON_BASIC_TEMPLATE_IMAGE_REPOSITORY = "sandbox-template-python-basic"
 DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE_REPOSITORY = "sandbox-template-multi-language"
 

@@ -235,8 +235,8 @@ docker-compose -f deploy/docker-compose/docker-compose.yml up -d --force-recreat
 该配置会展开为：
 
 ```text
-swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/sandbox-template-python-basic:<TEMPLATE_IMAGE_TAG>
-swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/sandbox-template-multi-language:<TEMPLATE_IMAGE_TAG>
+swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/sandbox-template-python-basic:<TEMPLATE_IMAGE_TAG>
+swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/sandbox-template-multi-language:<TEMPLATE_IMAGE_TAG>
 ```
 
 如需使用不同仓库或 tag，也可以直接覆盖 `DEFAULT_TEMPLATE_IMAGE` 和 `DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE`。
