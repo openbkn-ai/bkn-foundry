@@ -48,8 +48,13 @@ func register() {
 // Translate localizes an existing English response message without changing
 // its surrounding machine-readable error contract.
 func Translate(ctx context.Context, message string) string {
+	return TranslateWithData(ctx, message, nil)
+}
+
+// TranslateWithData localizes a message and renders its runtime template data.
+func TranslateWithData(ctx context.Context, message string, data map[string]any) string {
 	Register()
-	return i18n.Translate(sharedrest.GetLanguageByCtx(ctx), messagePrefix+message, nil)
+	return i18n.Translate(sharedrest.GetLanguageByCtx(ctx), messagePrefix+message, data)
 }
 
 // WithLanguage attaches an explicitly negotiated locale. The marker lets

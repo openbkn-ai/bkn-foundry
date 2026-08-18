@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	observabilitylocale "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/locale"
@@ -202,6 +203,66 @@ func TestLocalizedObservabilityErrorPreservesMachineContract(t *testing.T) {
 			if body.Error.Code != baseline.Error.Code || body.Error.Retryable != baseline.Error.Retryable {
 				t.Fatalf("localized observability machine fields changed: baseline=%+v actual=%+v", baseline.Error, body.Error)
 			}
+		})
+	}
+}
+
+func TestLocalizedArtifactRoleMismatchPreservesDynamicValidationDetails(t *testing.T) {
+	store := evidencestore.New()
+	service := evidencesvc.NewWithArtifactStore(store, store)
+	if _, validationErrors, err := service.Ingest(
+		context.Background(),
+		[]byte(validHandlerArtifactEventBatch()),
+	); err != nil || len(validationErrors) > 0 {
+		t.Fatalf("seed artifact-linked trace: validation=%+v err=%v", validationErrors, err)
+	}
+	handler := NewEvidenceHandlerWithSecurityConfig(
+		service,
+		EvidenceHandlerSecurityConfig{AllowUnauthenticatedIngest: true},
+	)
+	serve := localizedTestHandler(http.HandlerFunc(handler.IngestEvidenceArtifact))
+	body := strings.Replace(validHandlerArtifact(), `"artifact_type": "question"`, `"artifact_type": "result"`, 1)
+
+	type responseEnvelope struct {
+		ErrorCode string                      `json:"error_code"`
+		Code      string                      `json:"code"`
+		Message   string                      `json:"message"`
+		Details   evidencevo.ValidationErrors `json:"details"`
+	}
+	for _, test := range []struct {
+		language string
+		message  string
+	}{
+		{
+			language: sharedrest.AmericanEnglish,
+			message:  "artifact_type does not match event link role agent.interaction.started.question_artifact_ref",
+		},
+		{
+			language: sharedrest.SimplifiedChinese,
+			message:  "artifact_type 与事件关联角色 agent.interaction.started.question_artifact_ref 不匹配",
+		},
+	} {
+		t.Run(test.language, func(t *testing.T) {
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/api/agent-observability/v1/evidence/artifacts",
+				strings.NewReader(body),
+			)
+			request.Header.Set(sharedrest.AcceptLanguageHeader, test.language)
+			response := httptest.NewRecorder()
+
+			serve.ServeHTTP(response, request)
+
+			var result responseEnvelope
+			decodeLocalizedResponse(t, response, &result)
+			if response.Code != http.StatusBadRequest ||
+				result.ErrorCode != "BKN_TRACE_ARTIFACT_TYPE_MISMATCH" ||
+				result.Code != result.ErrorCode || result.Message != test.message ||
+				len(result.Details) != 1 || result.Details[0].Code != result.ErrorCode ||
+				result.Details[0].Path != "$.artifact_type" || result.Details[0].Message != test.message {
+				t.Fatalf("unexpected artifact role validation response: status=%d body=%+v", response.Code, result)
+			}
+			assertLocalizedHeaders(t, response, test.language)
 		})
 	}
 }

@@ -158,7 +158,7 @@ func writeJSON(w http.ResponseWriter, r *http.Request, statusCode int, payload a
 func localizeErrorPayload(ctx context.Context, payload any) (any, bool) {
 	switch response := payload.(type) {
 	case rdto.ErrorResponse:
-		response.Message = observabilitylocale.Translate(ctx, response.Message)
+		response.Message = localizeErrorMessage(ctx, response.Message, response.Details)
 		response.Details = localizeErrorDetails(ctx, response.Details)
 		return response, true
 	case lifecycleErrorEnvelope:
@@ -172,23 +172,43 @@ func localizeErrorPayload(ctx context.Context, payload any) (any, bool) {
 	}
 }
 
+func localizeErrorMessage(ctx context.Context, message string, details any) string {
+	switch validationErrors := details.(type) {
+	case evidencevo.ValidationErrors:
+		if len(validationErrors) > 0 && message == validationErrors[0].Message {
+			return localizeValidationError(ctx, validationErrors[0]).Message
+		}
+	case []evidencevo.ValidationError:
+		if len(validationErrors) > 0 && message == validationErrors[0].Message {
+			return localizeValidationError(ctx, validationErrors[0]).Message
+		}
+	}
+	return observabilitylocale.Translate(ctx, message)
+}
+
 func localizeErrorDetails(ctx context.Context, details any) any {
 	switch validationErrors := details.(type) {
 	case evidencevo.ValidationErrors:
 		localized := make(evidencevo.ValidationErrors, len(validationErrors))
 		copy(localized, validationErrors)
 		for index := range localized {
-			localized[index].Message = observabilitylocale.Translate(ctx, localized[index].Message)
+			localized[index] = localizeValidationError(ctx, localized[index])
 		}
 		return localized
 	case []evidencevo.ValidationError:
 		localized := make([]evidencevo.ValidationError, len(validationErrors))
 		copy(localized, validationErrors)
 		for index := range localized {
-			localized[index].Message = observabilitylocale.Translate(ctx, localized[index].Message)
+			localized[index] = localizeValidationError(ctx, localized[index])
 		}
 		return localized
 	default:
 		return details
 	}
+}
+
+func localizeValidationError(ctx context.Context, validationError evidencevo.ValidationError) evidencevo.ValidationError {
+	messageID, messageData := validationError.LocalizableMessage()
+	validationError.Message = observabilitylocale.TranslateWithData(ctx, messageID, messageData)
+	return validationError
 }

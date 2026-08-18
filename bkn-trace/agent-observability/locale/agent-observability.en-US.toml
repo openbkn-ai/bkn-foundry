@@ -24,6 +24,7 @@
 "artifact_id is required" = "artifact_id is required"
 "artifact_id must be 1..128 URL-safe characters without whitespace or slash" = "artifact_id must be 1..128 URL-safe characters without whitespace or slash"
 "artifact_refs contains an empty artifact reference" = "artifact_refs contains an empty artifact reference"
+"artifact_type does not match event link role" = "artifact_type does not match event link role {{.EventType}}.{{.RoleField}}"
 "artifact_type is not supported" = "artifact_type is not supported"
 "as_of must be an RFC3339 timestamp" = "as_of must be an RFC3339 timestamp"
 "attempt action was not found" = "attempt action was not found"

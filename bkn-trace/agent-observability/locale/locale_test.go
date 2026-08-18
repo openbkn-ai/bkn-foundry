@@ -77,6 +77,28 @@ func TestTranslateUsesNegotiatedLanguage(t *testing.T) {
 	}
 }
 
+func TestTranslateWithDataUsesNegotiatedLanguage(t *testing.T) {
+	data := map[string]any{
+		"EventType": "agent.interaction.started",
+		"RoleField": "question_artifact_ref",
+	}
+	english := TranslateWithData(
+		WithLanguage(context.Background(), sharedrest.AmericanEnglish),
+		"artifact_type does not match event link role",
+		data,
+	)
+	chinese := TranslateWithData(
+		WithLanguage(context.Background(), sharedrest.SimplifiedChinese),
+		"artifact_type does not match event link role",
+		data,
+	)
+
+	if english != "artifact_type does not match event link role agent.interaction.started.question_artifact_ref" ||
+		chinese != "artifact_type 与事件关联角色 agent.interaction.started.question_artifact_ref 不匹配" {
+		t.Fatalf("unexpected templated translations: en=%q zh=%q", english, chinese)
+	}
+}
+
 func TestMissingResourcesUseNonFatalFallback(t *testing.T) {
 	Register()
 	i18n.RegisterI18n(t.TempDir(), sharedrest.SimplifiedChinese)
@@ -184,7 +206,7 @@ func userFacingErrorLiterals(t *testing.T, directory string) []string {
 					}
 				case "domainError":
 					index = 1
-				case "NewValidationError":
+				case "NewValidationError", "NewTemplatedValidationError":
 					index = 2
 				case "writeLifecycleError", "writeObservabilityError", "writeQueryAuthorizationError":
 					index = len(value.Args) - 1

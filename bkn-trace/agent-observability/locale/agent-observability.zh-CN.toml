@@ -24,6 +24,7 @@
 "artifact_id is required" = "缺少 artifact_id 参数"
 "artifact_id must be 1..128 URL-safe characters without whitespace or slash" = "artifact_id 必须包含 1 到 128 个 URL 安全字符，且不能包含空白或斜杠"
 "artifact_refs contains an empty artifact reference" = "artifact_refs 包含空的制品引用"
+"artifact_type does not match event link role" = "artifact_type 与事件关联角色 {{.EventType}}.{{.RoleField}} 不匹配"
 "artifact_type is not supported" = "不支持该 artifact_type"
 "as_of must be an RFC3339 timestamp" = "as_of 必须是 RFC3339 时间戳"
 "attempt action was not found" = "未找到尝试操作"
