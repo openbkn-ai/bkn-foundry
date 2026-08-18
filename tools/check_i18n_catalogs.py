@@ -189,6 +189,30 @@ def get_json_path(value: Any, path: str) -> Any:
     return current
 
 
+CJK = re.compile(r"[\u4e00-\u9fff]")
+
+
+def localizable_schema_paths(schema: Any, path: str = "") -> list[str]:
+    """Dotted paths of every description/title in a tool schema that needs a translation.
+
+    A field is listed when the baseline text holds CJK characters: that is text
+    written for the default locale, so an enabled locale has to override it.
+    """
+    found: list[str] = []
+    if isinstance(schema, dict):
+        for key, value in schema.items():
+            child = f"{path}.{key}" if path else key
+            if key in ("description", "title") and isinstance(value, str):
+                if CJK.search(value):
+                    found.append(child)
+            else:
+                found.extend(localizable_schema_paths(value, child))
+    elif isinstance(schema, list):
+        for index, value in enumerate(schema):
+            found.extend(localizable_schema_paths(value, f"{path}[{index}]"))
+    return found
+
+
 def validate_mcp_locale_resources(schemas_directory: Path, locale: str = "en-US") -> list[str]:
     errors: list[str] = []
     locale_directory = schemas_directory / "locales" / locale
@@ -231,6 +255,28 @@ def validate_mcp_locale_resources(schemas_directory: Path, locale: str = "en-US"
         errors.append(f"mcp: {error}")
     if not isinstance(descriptions, dict):
         return errors + ["mcp: schema_descriptions.json must contain an object"]
+    # Reverse direction: a baseline description written in the default locale must
+    # have an override in every enabled locale. Walking only the overlay, as the
+    # loop below does, cannot see a field nobody translated yet.
+    for tool_key in sorted(static_tools):
+        try:
+            schema = load_json_catalog(schemas_directory / f"{tool_key}.json")
+        except ValueError as error:
+            errors.append(f"mcp: {error}")
+            continue
+        overlay = descriptions.get(tool_key)
+        overlay = overlay if isinstance(overlay, dict) else {}
+        untranslated = [
+            path
+            for path in localizable_schema_paths(schema)
+            if not (isinstance(overlay.get(path), str) and overlay[path].strip())
+        ]
+        if untranslated:
+            errors.append(
+                f"mcp: {tool_key} has {len(untranslated)} schema description(s) with no "
+                f"{locale} translation: {', '.join(untranslated)}"
+            )
+
     for tool_key, values in descriptions.items():
         if tool_key not in base_tools:
             errors.append(f"mcp: schema descriptions reference unknown tool {tool_key}")

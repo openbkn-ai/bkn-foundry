@@ -38,7 +38,26 @@
     "output_schema.properties.concept_groups.description": "Concept groups defined in the knowledge network.",
     "output_schema.properties.object_types.description": "Object types in the knowledge network.",
     "output_schema.properties.relation_types.description": "Relation types in the knowledge network.",
-    "output_schema.properties.action_types.description": "Action types in the knowledge network."
+    "output_schema.properties.action_types.description": "Action types in the knowledge network.",
+    "input_schema.properties.detail_level.description": "Level of detail. summary (the default): the object, relation, and action type skeletons plus name+type for every property — flat and uniform, which TOON renders as a compact table. It omits display_name, comment, field mappings, query operators, and mapping rules, and is enough to understand the schema and plan a query. For the complete field mapping of an object, including comment, call get_object_types; for relation mapping_rules, call get_relation_types. full: everything at once, which is large, so use it sparingly.",
+    "output_schema.properties.concept_groups.items.properties.id.description": "Concept group id, accepted by the concept_groups parameter of search_instance",
+    "output_schema.properties.concept_groups.items.properties.name.description": "Group name",
+    "output_schema.properties.concept_groups.items.properties.object_type_ids.description": "Ids of the object types in the group",
+    "output_schema.properties.object_types.items.properties.id.description": "Object type id. Note that the equivalent field in a search_schema response is called concept_id.",
+    "output_schema.properties.object_types.items.properties.name.description": "Object type name. As above, search_schema calls this concept_name.",
+    "output_schema.properties.object_types.items.properties.comment.description": "Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
+    "output_schema.properties.object_types.items.properties.data_source.description": "Bound data resource {type, id, name}. Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
+    "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]. Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
+    "output_schema.properties.object_types.items.properties.primary_keys.description": "Primary key property names. Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
+    "output_schema.properties.relation_types.items.properties.id.description": "Relation type id",
+    "output_schema.properties.relation_types.items.properties.name.description": "Relation name",
+    "output_schema.properties.relation_types.items.properties.comment.description": "Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
+    "output_schema.properties.relation_types.items.properties.source_object_type_id.description": "Source object type id",
+    "output_schema.properties.relation_types.items.properties.target_object_type_id.description": "Target object type id",
+    "output_schema.properties.action_types.items.properties.id.description": "Action type id",
+    "output_schema.properties.action_types.items.properties.name.description": "Action name",
+    "output_schema.properties.action_types.items.properties.comment.description": "Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
+    "output_schema.properties.action_types.items.properties.object_type_id.description": "Id of the object type it belongs to"
   },
   "get_logic_properties_values": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
@@ -49,7 +68,11 @@
     "input_schema.properties.properties.description": "Logic property definitions or identifiers to resolve.",
     "input_schema.properties.additional_context.description": "Optional extra context for resolving ambiguous logic properties.",
     "input_schema.properties.llm_model.description": "Optional LLM model override for property resolution.",
-    "output_schema.properties.datas.description": "Resolved logic property values."
+    "output_schema.properties.datas.description": "Resolved logic property values.",
+    "output_schema.properties.datas.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.datas.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
+    "output_schema.properties.datas.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
+    "output_schema.properties.datas.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
   },
   "list_knowledge_networks": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
@@ -113,7 +136,11 @@
     "input_schema.properties.relation_type_paths.items.properties.relation_types.items.properties.source_object_type_id.description": "Source object type id for the relation.",
     "input_schema.properties.relation_type_paths.items.properties.relation_types.items.properties.target_object_type_id.description": "Target object type id for the relation.",
     "input_schema.properties.relation_type_paths.items.properties.limit.description": "Maximum subgraph results for this path.",
-    "output_schema.properties.entries.description": "Subgraph query results."
+    "output_schema.properties.entries.description": "Subgraph query results.",
+    "output_schema.properties.entries.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.entries.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
+    "output_schema.properties.entries.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
+    "output_schema.properties.entries.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
   },
   "explore_subgraph": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
@@ -166,7 +193,13 @@
     "input_schema.properties.properties.description": "Optional selected property names to return.",
     "output_schema.properties.datas.description": "Object instances returned by the query.",
     "output_schema.properties.total_count.description": "Total number of instances matching the filter, independent of limit. Read it instead of accumulating page sizes. No match is 0, present rather than absent. An absent field means the server did not compute a total for this call - which is what happens from the second page onward when paging with search_after - so do not read absence as 0; go back to the first query without search_after if you need the total.",
-    "output_schema.properties.search_after.description": "Cursor for the next page."
+    "output_schema.properties.search_after.description": "Cursor for the next page.",
+    "input_schema.properties.condition.properties.limit_key.description": "knn only: the key naming the neighbour count, always k. It appears together with limit_value.",
+    "input_schema.properties.condition.properties.limit_value.description": "knn only: how many nearest neighbours to take. The server applies a default when it is omitted.",
+    "output_schema.properties.datas.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.datas.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
+    "output_schema.properties.datas.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
+    "output_schema.properties.datas.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
   },
   "run_sql": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
@@ -175,7 +208,11 @@
     "output_schema.properties.columns.description": "Result columns.",
     "output_schema.properties.entries.description": "Result rows.",
     "output_schema.properties.total_count.description": "Number of returned rows.",
-    "output_schema.properties.warnings.description": "Warnings produced while validating or executing SQL."
+    "output_schema.properties.warnings.description": "Warnings produced while validating or executing SQL.",
+    "output_schema.properties.entries.items.properties._display.description": "Human-readable display name, chosen by the server from the display fields of the object type.",
+    "output_schema.properties.entries.items.properties._instance_id.description": "Globally unique instance id, usable directly with query_instance_subgraph.",
+    "output_schema.properties.entries.items.properties._instance_identity.description": "The field values that form the primary key of this instance",
+    "output_schema.properties.entries.items.description": "Every other key is a property name of that object type and varies with it. Read data_properties from get_object_types or search_schema first; do not guess from the field semantics."
   },
   "search_schema": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
@@ -194,7 +231,23 @@
     "output_schema.properties.object_types.description": "Matched object types.",
     "output_schema.properties.relation_types.description": "Matched relation types.",
     "output_schema.properties.action_types.description": "Matched action types.",
-    "output_schema.properties.metric_types.description": "Matched metric types."
+    "output_schema.properties.metric_types.description": "Matched metric types.",
+    "output_schema.properties.object_types.items.properties.concept_id.description": "Object type or relation type id. Note that action_types in this tool uses id rather than concept_id.",
+    "output_schema.properties.object_types.items.properties.concept_name.description": "Name. As above, the action_types entry calls this name.",
+    "output_schema.properties.object_types.items.properties.comment.description": "Description text, usually including the property table of the type.",
+    "output_schema.properties.object_types.items.properties.data_source.description": "Bound data resource {type, id, name}; the id works as the {{.<resource_id>}} placeholder in run_sql.",
+    "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]; condition_operations decides whether the property can be filtered with match or knn.",
+    "output_schema.properties.relation_types.items.properties.concept_id.description": "Relation type id",
+    "output_schema.properties.relation_types.items.properties.concept_name.description": "Relation name",
+    "output_schema.properties.relation_types.items.properties.source_object_type_id.description": "Source object type id",
+    "output_schema.properties.relation_types.items.properties.target_object_type_id.description": "Target object type id",
+    "output_schema.properties.action_types.items.properties.id.description": "Action type id. Note that this differs from concept_id used by object_types in the same response.",
+    "output_schema.properties.action_types.items.properties.name.description": "Action name. As above, this differs from concept_name used by object_types.",
+    "output_schema.properties.action_types.items.properties.object_type_id.description": "Id of the object type it belongs to",
+    "output_schema.properties.action_types.items.properties.object_type_name.description": "Name of the object type it belongs to",
+    "output_schema.properties.action_types.items.properties.comment.description": "Description",
+    "output_schema.properties.metric_types.items.properties.id.description": "Metric id, accepted by query_metric",
+    "output_schema.properties.metric_types.items.properties.name.description": "Metric name"
   },
   "execute_action": {
     "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
@@ -204,7 +257,8 @@
     "output_schema.properties.execution_id.description": "Execution id, usable to query execution status and results.",
     "output_schema.properties.status.description": "Execution status; usually pending right after submission.",
     "output_schema.properties.message.description": "Submission result message.",
-    "output_schema.properties.created_at.description": "Submission time (Unix milliseconds)."
+    "output_schema.properties.created_at.description": "Submission time (Unix milliseconds).",
+    "input_schema.properties._instance_identities.items.description": "Instance identity object, holding dynamic property key/value pairs"
   },
   "get_action_execution": {
     "input_schema.properties.kn_id.description": "Knowledge network id. Can also be supplied by the X-Kn-ID request header.",
@@ -231,6 +285,127 @@
     "output_schema.properties.total_count.description": "Total number of matching executions.",
     "output_schema.properties.entries.description": "List of execution records (each with id, action_type_id, status, counts, timestamps; action_type_snapshot and other heavy fields are stripped to save tokens).",
     "output_schema.properties.search_after.description": "Pagination cursor; pass this value as search_after in the next request to continue paging.",
-    "input_schema.properties.response_format.description": "Response format: json or toon, default toon (fewer tokens)."
+    "input_schema.properties.response_format.description": "Response format: json or toon, default toon (fewer tokens).",
+    "input_schema.properties.search_after.description": "Cursor paging, optional: pass the search_after value from the previous response verbatim to fetch the next page. It suits deep paging better than offset."
+  },
+  "execute_skill": {
+    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
+    "input_schema.properties.entry_shell.description": "The entry command to run inside the sandbox. It has to be one of the entries declared in SKILL.md; do not assemble an unrelated command. The skill package is already extracted into the working directory and the command runs relative to it.",
+    "input_schema.properties.timeout.description": "Optional. Execution timeout in seconds.",
+    "output_schema.properties.exit_code.description": "Process exit code; 0 means success",
+    "output_schema.properties.stdout.description": "Standard output, truncated when long",
+    "output_schema.properties.stderr.description": "Standard error, truncated when long",
+    "output_schema.properties.truncated.description": "Whether stdout or stderr was truncated",
+    "output_schema.properties.execution_time.description": "Execution duration in milliseconds",
+    "output_schema.properties.work_dir.description": "Working directory inside the sandbox",
+    "output_schema.properties.command.description": "The command that actually ran",
+    "output_schema.properties.mocked.description": "Marks a stub run, used when the sandbox is unavailable"
+  },
+  "get_object_types": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.ids.description": "Object type ids to expand, taken from object_types[].id of the get_kn_detail summary; a name is accepted too. Several may be given and are fetched in one batch.",
+    "output_schema.properties.kn_id.description": "Knowledge network id",
+    "output_schema.properties.object_types.items.properties.id.description": "Object type id. Note that the equivalent field in a search_schema response is called concept_id.",
+    "output_schema.properties.object_types.items.properties.name.description": "Object type name. As above, search_schema calls this concept_name.",
+    "output_schema.properties.object_types.items.properties.comment.description": "Description",
+    "output_schema.properties.object_types.items.properties.data_source.description": "Bound data resource {type, id, name}",
+    "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]",
+    "output_schema.properties.object_types.items.properties.primary_keys.description": "Primary key property names",
+    "output_schema.properties.object_types.description": "The complete object type definitions, including mapped_field and condition_operations of data_properties and data_source and parameters of logic_properties. condition_operations lists only the operators an index provides (match, multi_match, knn); comparison operators follow from the property type, as described under the condition parameter of query_object_instance. related_metrics holds every metric in the scope of that object type (id/name/comment/unit/metric_type/analysis_dimensions/time_dimension), including those with no logic property bound: compute an instance-level metric that has one with get_logic_properties_values, and pass the id of any other to query_metric.",
+    "output_schema.properties.missing.description": "Ids that were requested but matched nothing"
+  },
+  "get_relation_types": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.ids.description": "Relation type ids to expand, taken from relation_types[].id of the get_kn_detail summary; a name is accepted too. Several may be given and are fetched in one batch.",
+    "output_schema.properties.kn_id.description": "Knowledge network id",
+    "output_schema.properties.relation_types.items.properties.id.description": "Relation type id",
+    "output_schema.properties.relation_types.items.properties.name.description": "Relation name",
+    "output_schema.properties.relation_types.items.properties.comment.description": "Description",
+    "output_schema.properties.relation_types.items.properties.source_object_type_id.description": "Source object type id",
+    "output_schema.properties.relation_types.items.properties.target_object_type_id.description": "Target object type id",
+    "output_schema.properties.relation_types.description": "The complete relation type definitions, including mapping_rules and the source and target object names",
+    "output_schema.properties.missing.description": "Ids that were requested but matched nothing"
+  },
+  "get_skill_content": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
+    "output_schema.properties.status.description": "Skill status, such as published",
+    "output_schema.properties.content.description": "The body of SKILL.md: how to use the skill and its entry commands",
+    "output_schema.properties.truncated.description": "Whether the body was truncated for length",
+    "output_schema.properties.files.description": "The files inside the skill package. Fetch the content of one with read_skill_file when you need it; there is no need to read the whole package.",
+    "output_schema.properties.files.items.properties.rel_path.description": "Path relative to the package root; pass this as rel_path to read_skill_file",
+    "output_schema.properties.files.items.properties.size.description": "Size in bytes",
+    "output_schema.properties.message.description": "Further detail, such as a truncation notice"
+  },
+  "list_skills": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.name.description": "Optional. Fuzzy filter by skill name.",
+    "input_schema.properties.category.description": "Optional. Filter by skill category.",
+    "input_schema.properties.page.description": "Optional. Page number, starting at 1. Defaults to 1.",
+    "input_schema.properties.page_size.description": "Optional. Page size. Defaults to 20.",
+    "output_schema.properties.entries.description": "The published skills",
+    "output_schema.properties.entries.items.properties.skill_id.description": "Skill id, for get_skill_content, read_skill_file, and execute_skill",
+    "output_schema.properties.entries.items.properties.name.description": "Skill name",
+    "output_schema.properties.entries.items.properties.description.description": "Skill description",
+    "output_schema.properties.entries.items.properties.version.description": "Published version",
+    "output_schema.properties.entries.items.properties.category.description": "Skill category",
+    "output_schema.properties.total_count.description": "How many skills match the filters",
+    "output_schema.properties.message.description": "Explains an empty result; present only when entries is empty"
+  },
+  "query_metric": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.metric_id.description": "Metric id, taken from related_metrics[].id of a get_object_types response. Do not invent one.",
+    "input_schema.properties.time.description": "Time window. It may be omitted entirely for a metric with no time dimension, meaning related_metrics[].time_dimension is empty. Note that omitting instant is the same as instant=false, a series query, which requires step. Either give both start and end or neither.",
+    "input_schema.properties.time.properties.instant.description": "true takes a single point, the current value; false or omitted takes a series, which requires step.",
+    "input_schema.properties.time.properties.start.description": "Start time, unix seconds",
+    "input_schema.properties.time.properties.end.description": "End time, unix seconds",
+    "input_schema.properties.time.properties.step.description": "Series step, case insensitive. Required for a series query; ignored downstream when instant=true.",
+    "input_schema.properties.condition.description": "Filter conditions, shaped exactly like the condition parameter of query_object_instance (field / operation / value / value_from, nestable with and/or).",
+    "input_schema.properties.analysis_dimensions.description": "Analysis dimensions, which split the result by dimension. The values have to come from related_metrics[].analysis_dimensions.",
+    "input_schema.properties.order_by.description": "Result ordering",
+    "input_schema.properties.having.description": "Filter over the aggregated result",
+    "input_schema.properties.limit.description": "Maximum number of rows to return",
+    "input_schema.properties.fill_null.description": "Whether a step with no data is filled with a null in a ranged series query. Defaults to false. It applies to series queries only and needs both time.start and time.end.",
+    "output_schema.properties.kn_id.description": "Knowledge network id",
+    "output_schema.properties.metric_id.description": "Metric id",
+    "output_schema.properties.datas.description": "Result series grouped by labels. Without analysis_dimensions there is usually one entry and labels is empty.",
+    "output_schema.properties.datas.items.properties.labels.description": "The dimension values of this series",
+    "output_schema.properties.datas.items.properties.times.description": "Time points, unix seconds",
+    "output_schema.properties.datas.items.properties.time_strs.description": "The time points in readable form",
+    "output_schema.properties.datas.items.properties.values.description": "Metric values, one per entry in times",
+    "output_schema.properties.overall_ms.description": "Duration in milliseconds"
+  },
+  "read_skill_file": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.skill_id.description": "Skill id, taken from the skill_id of list_skills or find_skills.",
+    "input_schema.properties.rel_path.description": "Path relative to the skill package root, taken from files[].rel_path of a get_skill_content response. A path outside the package is rejected, ../ included.",
+    "output_schema.properties.content.description": "The file body. A binary file omits this field and returns only a message.",
+    "output_schema.properties.truncated.description": "Whether the body was truncated for length",
+    "output_schema.properties.message.description": "Further detail, such as a binary file with no body returned, or a truncation notice"
+  },
+  "search_instance": {
+    "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
+    "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",
+    "input_schema.properties.query.description": "A natural-language question or keywords. Pass the whole sentence; there is no need to split it into field conditions, because the vector channel takes the sentence and the full-text channel tokenizes it with an analyzer.",
+    "input_schema.properties.concept_groups.description": "Restrict recall to the named BKN concept groups; without it recall runs across the whole knowledge network.",
+    "input_schema.properties.max_object_types.description": "Maximum number of object types that take part in instance recall. Raising it covers more object types, at the cost of one more downstream query per object type.",
+    "input_schema.properties.max_instances_per_type.description": "How many instances to return per object type.",
+    "input_schema.properties.rerank.description": "Whether to semantically rerank the recalled results. Off by default. When on, a cross-encoder judges the relevance of each instance against the query and **reorders the returned results** — it can separate cases such as an amount owed from a repayment, which a rank-fusion score cannot. It costs one more model call, roughly 100 to 400ms, and requires the reranking small model to be registered in the deployment; when that model is unavailable the original order is kept and no error is raised. Turn it on for precision, leave it off for speed.",
+    "input_schema.properties.include_object_types.description": "Whether to include a condensed definition of the object types that were hit, meaning property names and types. Included by default. Turning it off pays off only when you already hold the schema of those object types; otherwise reading the returned instances costs another get_object_types call.",
+    "output_schema.properties.nodes.description": "The instances that were hit, grouped by object type, each group ordered by relevance. There is no global ordering across object types, so do not read the order of appearance as which object type is more relevant.",
+    "output_schema.properties.nodes.items.properties.object_type_id.description": "Id of the object type this instance belongs to, usable directly with get_object_types or query_object_instance.",
+    "output_schema.properties.nodes.items.properties.properties.description": "Instance properties. The field meanings come from the object type definition returned by search_schema or get_object_types.",
+    "output_schema.properties.nodes.items.properties.score.description": "Relevance score of this instance within its own object type. Scores from different object types are not comparable.",
+    "output_schema.properties.nodes.items.properties.rerank_score.description": "The relevance score from the reranking small model. Present only when instance reranking is enabled in the deployment and the model scored this entry. Reranking changes the returned order, not score: once it is on, consume the results in the order given rather than sorting by score yourself.",
+    "output_schema.properties.object_types.description": "The condensed object type definitions needed to read nodes, **covering only the object types that actually produced instances**, not every object type recall scanned. Absent when include_object_types=false.",
+    "output_schema.properties.object_types.items.properties.concept_id.description": "Object type or relation type id. Note that action_types in this tool uses id rather than concept_id.",
+    "output_schema.properties.object_types.items.properties.concept_name.description": "Name. As above, the action_types entry calls this name.",
+    "output_schema.properties.object_types.items.properties.comment.description": "Description text, usually including the property table of the type.",
+    "output_schema.properties.object_types.items.properties.data_source.description": "Bound data resource {type, id, name}; the id works as the {{.<resource_id>}} placeholder in run_sql.",
+    "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]; condition_operations decides whether the property can be filtered with match or knn.",
+    "output_schema.properties.message.description": "Present only when nothing was hit, explaining why the result is empty."
   }
 }
