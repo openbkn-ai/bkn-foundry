@@ -1,0 +1,21 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
+Write Python for the sandbox to execute. **The other tools on this surface are
+already in scope** as functions of the same name — call them directly, no import
+needed. Parameters match each tool's input schema, with two exceptions:
+
+- Do not pass `bkn_context`; the runtime injects it. The schema marks it required,
+  but inside a script it is not.
+- `response_format` is fixed to `json`. Code needs a subscriptable structure, not
+  toon text.
+
+The return value is the object described by each tool's output schema. **Some keys
+may be absent** (`total_count` is missing from filtered queries, for instance), so
+read with `.get()` rather than subscripting. Failures raise `ToolError`.
+
+Only stdout comes back to you — intermediate results stay out of the conversation,
+so filter and aggregate inside the script and print only what you actually need.

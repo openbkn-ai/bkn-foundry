@@ -399,3 +399,83 @@ func TestPTCDigestTeachesPrintingAssumptions(t *testing.T) {
 		t.Fatalf("缺少打印取值范围的示例:\n%s", digest)
 	}
 }
+
+// 并进业务工具面时省掉签名清单：那些工具的完整 schema 就在同一个工具面上，
+// 再渲染一遍 Python 签名是把同一批工具描述两遍。实测清单占整份 digest 的 55%。
+func TestInlineDigestDropsSignatureList(t *testing.T) {
+	locale := loadMCPLocaleBundle(defaultMCPLocale)
+	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
+
+	full := renderPTCDigestForLocale(locale, tools, true)
+	inline := renderPTCDigestForLocale(locale, nil, false)
+
+	if !strings.Contains(full, "## 可用函数") {
+		t.Fatalf("完整版必须带签名清单:\n%s", full)
+	}
+	// 判据是签名行的形状（`name(...) -> {返回键}`），不是函数名本身——共用的规则
+	// 小节里有示例代码，会正常出现 query_object_instance(...) 这样的调用。
+	if strings.Contains(inline, "## 可用函数") || strings.Contains(inline, ") -> {") {
+		t.Fatalf("并入版不该重复渲染签名:\n%s", inline)
+	}
+	if len(inline) >= len(full) {
+		t.Fatalf("并入版应更短: 完整 %d / 并入 %d", len(full), len(inline))
+	}
+
+	// 规则小节两边共用——省的是重复，不是把规矩一起丢了。
+	for _, section := range []string{
+		"## 一段脚本解决整个问题", "## 能下推的聚合一律下推",
+		"## 一次执行同时产出答案与依据", "## 执行 shell 命令", "## 错误处理",
+	} {
+		if !strings.Contains(inline, section) {
+			t.Fatalf("并入版丢了 %s:\n%s", section, inline)
+		}
+	}
+
+	// 这两条靠「参数与 schema 一致」打发不掉：schema 里 bkn_context 是必填，
+	// 而脚本里由运行时注入；response_format 默认 toon，代码要的是 json。
+	for _, must := range []string{"bkn_context", "response_format"} {
+		if !strings.Contains(inline, must) {
+			t.Fatalf("并入版缺少 %s 的说明:\n%s", must, inline)
+		}
+	}
+}
+
+// 两条路拼出的脚本必须一致：stub、沙箱回访地址、组装方式都不因描述精简而变，
+// 否则同一段代码在两个端点上会有不同行为。
+func TestInlineToolsKeepAssemblyIdentical(t *testing.T) {
+	inline, err := InlinePTCTools(30779, defaultMCPLocale)
+	if err != nil {
+		t.Skipf("需要内嵌工具元数据: %v", err)
+	}
+	kit, err := BuildPTCToolkitForLocale("", 30779, defaultMCPLocale)
+	if err != nil {
+		t.Skipf("需要内嵌工具元数据: %v", err)
+	}
+
+	byName := map[string]PTCTool{}
+	for _, tool := range kit.Tools {
+		byName[tool.Name] = tool
+	}
+	if len(inline) != len(kit.Tools) {
+		t.Fatalf("并入版应暴露同样多的工具: %d vs %d", len(inline), len(kit.Tools))
+	}
+	for _, tool := range inline {
+		full, ok := byName[tool.Name]
+		if !ok {
+			t.Fatalf("%s 不在完整工具表里", tool.Name)
+		}
+		if tool.Language != full.Language || tool.Wrap != full.Wrap {
+			t.Fatalf("%s 的组装方式不一致: %+v vs %+v", tool.Name, tool, full)
+		}
+		if string(tool.InputSchema) != string(full.InputSchema) {
+			t.Fatalf("%s 的入参 schema 不一致", tool.Name)
+		}
+		// 只有 run_code 的描述该变短，run_shell 本来就不含签名清单。
+		if tool.Name == toolKeyRunShell && tool.Description != full.Description {
+			t.Fatalf("run_shell 的描述不该变")
+		}
+		if tool.Name == toolKeyRunCode && len(tool.Description) >= len(full.Description) {
+			t.Fatalf("run_code 的描述应更短")
+		}
+	}
+}

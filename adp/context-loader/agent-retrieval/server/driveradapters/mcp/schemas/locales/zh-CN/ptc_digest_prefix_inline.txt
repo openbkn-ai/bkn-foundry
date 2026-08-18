@@ -1,0 +1,18 @@
+/*
+ * Copyright 2026 openbkn.ai
+ *
+ * Licensed under the Apache License, Version 2.0.
+ * See the LICENSE file in the project root for details.
+ */
+写一段 Python 交沙箱执行。**本工具面上的其余工具已在脚本作用域内**，以同名函数直接
+调用即可，无需 import；参数与各自的 input schema 一致，只有两处不同：
+
+- `bkn_context` 不要传，由运行时自动注入——它在 schema 里是必填，但在脚本里不是。
+- `response_format` 固定为 `json`。代码要的是可下标访问的结构，不是 toon 文本。
+
+返回值即各工具 output schema 描述的那个对象。**其中部分键可能不出现**（如
+`total_count` 在带过滤的查询里就没有），一律用 `.get()` 取，不要下标。调用失败抛
+`ToolError`。
+
+只有 stdout 会返回给你——中间结果不进上下文，因此请在脚本内完成过滤与聚合，
+只 print 你真正需要的内容。
