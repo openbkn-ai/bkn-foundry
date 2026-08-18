@@ -51,8 +51,21 @@ GHCR plus the Huawei SWR mirror as
 `opensearch:2.19.4-<branch>.<committime>.sha<short>` (base `2.19.4` = the
 OpenSearch version, not the repo VERSION).
 
-Consumed via `OPENSEARCH_IMAGE_REPOSITORY` / `OPENSEARCH_IMAGE_TAG` (defaults
-in `deploy/scripts/lib/common.sh`).
+Not yet wired into the installer. `deploy/scripts/lib/common.sh` still defaults
+`OPENSEARCH_IMAGE_REPOSITORY` / `OPENSEARCH_IMAGE_TAG` to the stock
+`opensearchproject/opensearch:2.19.4`, so a default install does not pull this
+image yet. Flipping those defaults needs a concrete tag, which only exists once
+this lands on main and CI publishes — so it is a follow-up PR that also updates
+the inline fallback in `deploy/scripts/services/opensearch.sh` and the offline
+image list in `deploy/scripts/sync-k8s-images.sh`.
+
+Until then, opt in per environment:
+
+```bash
+OPENSEARCH_IMAGE_REPOSITORY=opensearch \
+OPENSEARCH_IMAGE_TAG=2.19.4-<branch>.<committime>.sha<short> \
+  ./deploy.sh opensearch install
+```
 
 Local one-off:
 
