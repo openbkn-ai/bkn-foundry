@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -173,77 +172,6 @@ func TestMariaDBConnectorClose(t *testing.T) {
 
 		mock.ExpectClose()
 		require.NoError(t, connector.Close(context.Background()))
-		assert.False(t, connector.connected)
-		assert.Nil(t, connector.db)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
-func TestMariaDBConnectorConnect(t *testing.T) {
-	t.Run("detects supported server compatibility", func(t *testing.T) {
-		db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-		require.NoError(t, err)
-		patches := gomonkey.ApplyFunc(sql.Open, func(driverName, dataSourceName string) (*sql.DB, error) {
-			return db, nil
-		})
-		defer patches.Reset()
-
-		mock.ExpectPing()
-		mock.ExpectQuery(`SELECT VERSION\(\), @@version_comment`).
-			WillReturnRows(sqlmock.NewRows([]string{"VERSION()", "@@version_comment"}).
-				AddRow("5.7.44", "MySQL Community Server"))
-		connector := &MariaDBConnector{config: &mariadbConfig{}}
-
-		require.NoError(t, connector.Connect(context.Background()))
-		assert.True(t, connector.connected)
-		assert.Equal(t, mariadbProductMySQL, connector.compatibility.product)
-		assert.Equal(t, 50744, connector.compatibility.serverVersionNum)
-
-		mock.ExpectClose()
-		require.NoError(t, connector.Close(context.Background()))
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("closes connection for unsupported server", func(t *testing.T) {
-		db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-		require.NoError(t, err)
-		patches := gomonkey.ApplyFunc(sql.Open, func(driverName, dataSourceName string) (*sql.DB, error) {
-			return db, nil
-		})
-		defer patches.Reset()
-
-		mock.ExpectPing()
-		mock.ExpectQuery(`SELECT VERSION\(\), @@version_comment`).
-			WillReturnRows(sqlmock.NewRows([]string{"VERSION()", "@@version_comment"}).
-				AddRow("10.4.34-MariaDB", "MariaDB Server"))
-		mock.ExpectClose()
-		connector := &MariaDBConnector{config: &mariadbConfig{}}
-
-		err = connector.Connect(context.Background())
-
-		require.ErrorContains(t, err, "require MariaDB 10.5+")
-		assert.False(t, connector.connected)
-		assert.Nil(t, connector.db)
-		require.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("closes connection when compatibility detection fails", func(t *testing.T) {
-		db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-		require.NoError(t, err)
-		patches := gomonkey.ApplyFunc(sql.Open, func(driverName, dataSourceName string) (*sql.DB, error) {
-			return db, nil
-		})
-		defer patches.Reset()
-
-		mock.ExpectPing()
-		mock.ExpectQuery(`SELECT VERSION\(\), @@version_comment`).
-			WillReturnError(errors.New("version unavailable"))
-		mock.ExpectClose()
-		connector := &MariaDBConnector{config: &mariadbConfig{}}
-
-		err = connector.Connect(context.Background())
-
-		require.ErrorContains(t, err, "failed to detect MySQL/MariaDB compatibility")
 		assert.False(t, connector.connected)
 		assert.Nil(t, connector.db)
 		require.NoError(t, mock.ExpectationsWereMet())

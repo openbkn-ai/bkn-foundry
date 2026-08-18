@@ -16,86 +16,59 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPostgresqlCompatibility(t *testing.T) {
-	t.Run("supports PostgreSQL 9.2 with legacy metadata queries", func(t *testing.T) {
-		compatibility := postgresqlCompatibility{serverVersionNum: 90204, checked: true}
-
-		require.NoError(t, compatibility.validateMinimum())
-		assert.False(t, compatibility.supportsLateral())
-		assert.False(t, compatibility.supportsWithOrdinality())
-		assert.Equal(t, []string{"r", "v", "f"}, compatibility.tableRelKinds())
-	})
-
-	t.Run("enables LATERAL and materialized views on PostgreSQL 9.3", func(t *testing.T) {
-		compatibility := postgresqlCompatibility{serverVersionNum: 90300, checked: true}
-
-		assert.True(t, compatibility.supportsLateral())
-		assert.False(t, compatibility.supportsWithOrdinality())
-		assert.Equal(t, []string{"r", "v", "f", "m"}, compatibility.tableRelKinds())
-	})
-
-	t.Run("enables WITH ORDINALITY on PostgreSQL 9.4", func(t *testing.T) {
-		compatibility := postgresqlCompatibility{serverVersionNum: 90400, checked: true}
-
-		assert.True(t, compatibility.supportsLateral())
-		assert.True(t, compatibility.supportsWithOrdinality())
-	})
-
-	t.Run("enables partitioned tables on PostgreSQL 10", func(t *testing.T) {
-		compatibility := postgresqlCompatibility{serverVersionNum: 100000, checked: true}
-
-		assert.Equal(t, []string{"r", "v", "f", "m", "p"}, compatibility.tableRelKinds())
-	})
-
-	t.Run("rejects versions before PostgreSQL 9.2", func(t *testing.T) {
-		compatibility := postgresqlCompatibility{serverVersionNum: 90124, checked: true}
-
-		err := compatibility.validateMinimum()
-
-		require.ErrorContains(t, err, "PostgreSQL 9.1.24 is not supported; require PostgreSQL 9.2+")
-	})
-}
-
-func TestFetchPostgresqlCompatibility(t *testing.T) {
-	t.Run("reads server version number", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
-		mock.ExpectQuery(`SHOW server_version_num`).
-			WillReturnRows(sqlmock.NewRows([]string{"server_version_num"}).AddRow("90204"))
-
-		compatibility, err := fetchPostgresqlCompatibility(context.Background(), db)
-
-		require.NoError(t, err)
-		assert.Equal(t, 90204, compatibility.serverVersionNum)
-		assert.True(t, compatibility.checked)
-	})
-
-	t.Run("returns version detection error", func(t *testing.T) {
-		db, mock, err := sqlmock.New()
-		require.NoError(t, err)
-		t.Cleanup(func() { require.NoError(t, mock.ExpectationsWereMet()) })
-		mock.ExpectQuery(`SHOW server_version_num`).WillReturnError(errors.New("version unavailable"))
-
-		_, err = fetchPostgresqlCompatibility(context.Background(), db)
-
-		require.ErrorContains(t, err, "version unavailable")
-	})
-}
-
-func TestPostgresqlVersion(t *testing.T) {
+func TestDetectPostgresqlCompatibility(t *testing.T) {
 	tests := []struct {
-		name             string
-		serverVersionNum int
-		want             string
+		name                string
+		lateralError        error
+		withOrdinalityError error
+		wantLateral         bool
+		wantWithOrdinality  bool
 	}{
-		{name: "legacy version with patch", serverVersionNum: 90204, want: "9.2.4"},
-		{name: "legacy version without patch", serverVersionNum: 90400, want: "9.4"},
-		{name: "modern version", serverVersionNum: 150002, want: "15.2"},
+		{
+			name:               "detects both capabilities",
+			wantLateral:        true,
+			wantWithOrdinality: true,
+		},
+		{
+			name:                "keeps capabilities independent",
+			withOrdinalityError: errors.New("WITH ORDINALITY is unavailable"),
+			wantLateral:         true,
+		},
+		{
+			name:                "disables unsupported capabilities",
+			lateralError:        errors.New("LATERAL is unavailable"),
+			withOrdinalityError: errors.New("WITH ORDINALITY is unavailable"),
+		},
 	}
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assert.Equal(t, test.want, postgresqlVersion(test.serverVersionNum))
+			db, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				mock.ExpectClose()
+				require.NoError(t, db.Close())
+				require.NoError(t, mock.ExpectationsWereMet())
+			})
+
+			lateralExpectation := mock.ExpectQuery(postgresqlLateralProbe)
+			if test.lateralError != nil {
+				lateralExpectation.WillReturnError(test.lateralError)
+			} else {
+				lateralExpectation.WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
+			}
+			ordinalityExpectation := mock.ExpectQuery(postgresqlWithOrdinalityProbe)
+			if test.withOrdinalityError != nil {
+				ordinalityExpectation.WillReturnError(test.withOrdinalityError)
+			} else {
+				ordinalityExpectation.WillReturnRows(sqlmock.NewRows([]string{"ordinal_position"}).AddRow(1))
+			}
+
+			compatibility := detectPostgresqlCompatibility(context.Background(), db)
+
+			assert.Equal(t, test.wantLateral, compatibility.supportsLateral())
+			assert.Equal(t, test.wantWithOrdinality, compatibility.supportsWithOrdinality())
+			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
 }

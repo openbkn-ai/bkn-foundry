@@ -9,74 +9,45 @@ package postgresql
 import (
 	"context"
 	"database/sql"
-	"fmt"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
-const minimumPostgresqlServerVersionNumber = 90200
+const (
+	postgresqlLateralProbe = `SELECT 1
+FROM (SELECT ARRAY[1] AS items) AS base
+JOIN LATERAL generate_subscripts(base.items, 1) AS probe(position) ON true`
+
+	postgresqlWithOrdinalityProbe = `SELECT ordinal_position
+FROM (SELECT ARRAY[1] AS items) AS base
+JOIN LATERAL unnest(base.items) WITH ORDINALITY AS probe(value, ordinal_position) ON true`
+)
 
 type postgresqlCompatibility struct {
-	serverVersionNum int
-	checked          bool
+	lateral        bool
+	withOrdinality bool
 }
 
-func fetchPostgresqlCompatibility(ctx context.Context, db *sql.DB) (postgresqlCompatibility, error) {
+func detectPostgresqlCompatibility(ctx context.Context, db *sql.DB) postgresqlCompatibility {
 	var compatibility postgresqlCompatibility
-	if err := db.QueryRowContext(ctx, "SHOW server_version_num").
-		Scan(&compatibility.serverVersionNum); err != nil {
-		return postgresqlCompatibility{}, err
+	var probeResult int
+	if err := db.QueryRowContext(ctx, postgresqlLateralProbe).Scan(&probeResult); err != nil {
+		logger.Warnf("Failed to detect PostgreSQL LATERAL support, using compatible metadata query: %v", err)
+	} else {
+		compatibility.lateral = true
 	}
-	compatibility.checked = true
-	return compatibility, nil
-}
-
-func (c postgresqlCompatibility) validateMinimum() error {
-	if c.serverVersionNum < minimumPostgresqlServerVersionNumber {
-		return fmt.Errorf(
-			"PostgreSQL %s is not supported; require PostgreSQL 9.2+",
-			postgresqlVersion(c.serverVersionNum),
-		)
+	if err := db.QueryRowContext(ctx, postgresqlWithOrdinalityProbe).Scan(&probeResult); err != nil {
+		logger.Warnf("Failed to detect PostgreSQL WITH ORDINALITY support, using compatible metadata query: %v", err)
+	} else {
+		compatibility.withOrdinality = true
 	}
-	return nil
+	return compatibility
 }
 
 func (c postgresqlCompatibility) supportsLateral() bool {
-	return !c.checked || c.serverVersionNum >= 90300
+	return c.lateral
 }
 
 func (c postgresqlCompatibility) supportsWithOrdinality() bool {
-	return !c.checked || c.serverVersionNum >= 90400
-}
-
-// tableRelKinds returns relation kinds supported by the connected PostgreSQL version:
-//   - r: ordinary table
-//   - v: view
-//   - f: foreign table
-//   - m: materialized view (PostgreSQL 9.3+)
-//   - p: partitioned table (PostgreSQL 10+)
-//
-// An unchecked version keeps all kinds for connectors constructed directly in tests
-// or legacy call paths.
-func (c postgresqlCompatibility) tableRelKinds() []string {
-	relKinds := []string{"r", "v", "f"}
-	if !c.checked || c.serverVersionNum >= 90300 {
-		relKinds = append(relKinds, "m")
-	}
-	if !c.checked || c.serverVersionNum >= 100000 {
-		relKinds = append(relKinds, "p")
-	}
-	return relKinds
-}
-
-func postgresqlVersion(serverVersionNum int) string {
-	major := serverVersionNum / 10000
-	if major >= 10 {
-		return fmt.Sprintf("%d.%d", major, serverVersionNum%10000)
-	}
-
-	minor := (serverVersionNum / 100) % 100
-	patch := serverVersionNum % 100
-	if patch == 0 {
-		return fmt.Sprintf("%d.%d", major, minor)
-	}
-	return fmt.Sprintf("%d.%d.%d", major, minor, patch)
+	return c.withOrdinality
 }

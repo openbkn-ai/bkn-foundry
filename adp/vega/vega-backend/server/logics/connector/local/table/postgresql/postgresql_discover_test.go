@@ -53,9 +53,8 @@ func TestPostgresqlConnectorListTables(t *testing.T) {
 				Database: "appdb",
 				Schemas:  []string{"public", "analytics"},
 			},
-			connected:     true,
-			db:            db,
-			compatibility: postgresqlCompatibility{serverVersionNum: 100000, checked: true},
+			connected: true,
+			db:        db,
 		}
 
 		rows := sqlmock.NewRows([]string{"table_schema", "table_name", "relkind", "description"}).
@@ -104,9 +103,9 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 		config:        &postgresqlConfig{Database: "appdb"},
 		connected:     true,
 		db:            db,
-		compatibility: postgresqlCompatibility{serverVersionNum: 90400, checked: true},
+		compatibility: postgresqlCompatibility{lateral: true, withOrdinality: true},
 	}
-	mock.ExpectQuery("(?s)SELECT a.attname AS column_name.*a.atttypid AS type_oid.*FROM pg_catalog.pg_class.*c\\.relkind IN \\('r', 'v', 'f', 'm'\\)").
+	mock.ExpectQuery("(?s)SELECT a.attname AS column_name.*a.atttypid AS type_oid.*FROM pg_catalog.pg_class.*c\\.relkind IN \\('r', 'v', 'f', 'm', 'p'\\)").
 		WithArgs("public", "orders").
 		WillReturnRows(sqlmock.NewRows([]string{
 			"column_name", "type_oid", "type_kind", "type_name", "type_modifier",
@@ -116,9 +115,10 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 			AddRow("customer_id", 9100, "d", "customer_id_domain", -1, false, nil, "", 2, "").
 			AddRow("code", 1043, "b", "varchar", 68, false, nil, "C", 3, "").
 			AddRow("amount", 1700, "b", "numeric", int64((10<<16)|2)+4, false, nil, "", 4, "").
-			AddRow("occurred_at", 1114, "b", "timestamp", 3, false, nil, "", 5, ""))
-	mock.ExpectQuery(`(?s)WITH RECURSIVE domain_chain.*root\.oid IN \(\$1\).*pg_catalog\.pg_constraint`).
-		WithArgs(int64(9100)).
+			AddRow("occurred_at", 1114, "b", "timestamp", 3, false, nil, "", 5, "").
+			AddRow("legacy_code", 9200, "d", "legacy_code_domain", -1, false, nil, "", 6, ""))
+	mock.ExpectQuery(`(?s)WITH RECURSIVE domain_chain.*root\.oid IN \(\$1, \$2\).*pg_catalog\.pg_constraint`).
+		WithArgs(int64(9100), int64(9200)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"domain_oid", "base_type", "base_typmod", "domain_not_null", "domain_default", "check_constraint",
 		}).
@@ -131,8 +131,8 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	if err := connector.fetchColumns(context.Background(), table); err != nil {
 		t.Fatalf("fetchColumns returned error: %v", err)
 	}
-	if len(table.Columns) != 5 {
-		t.Fatalf("expected 5 columns, got %d", len(table.Columns))
+	if len(table.Columns) != 6 {
+		t.Fatalf("expected 6 columns, got %d", len(table.Columns))
 	}
 	column := table.Columns[0]
 	if column.Name != "id" || column.DefaultValue != "" || column.Description != "" || column.Collation != "" {
@@ -154,6 +154,9 @@ func TestPostgresqlConnectorFetchColumns(t *testing.T) {
 	assert.Equal(t, 10, table.Columns[3].NumPrecision)
 	assert.Equal(t, 2, table.Columns[3].NumScale)
 	assert.Equal(t, 3, table.Columns[4].DatetimePrecision)
+	assert.Equal(t, "legacy_code_domain", table.Columns[5].Type)
+	assert.Empty(t, table.Columns[5].AliasType)
+	assert.True(t, table.Columns[5].Nullable)
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sqlmock expectations were not met: %v", err)
 	}
@@ -211,10 +214,7 @@ func TestPostgresqlConnectorFetchIndexes(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	connector := &PostgresqlConnector{
-		db:            db,
-		compatibility: postgresqlCompatibility{serverVersionNum: 90204, checked: true},
-	}
+	connector := &PostgresqlConnector{db: db}
 	mock.ExpectQuery(`(?s)generate_subscripts.*q\.indkey\[q\.ord\].*ORDER BY q\.index_name, q\.ord`).
 		WithArgs("public", "orders").
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -239,10 +239,7 @@ func TestPostgresqlConnectorFetchForeignKeys(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	connector := &PostgresqlConnector{
-		db:            db,
-		compatibility: postgresqlCompatibility{serverVersionNum: 90204, checked: true},
-	}
+	connector := &PostgresqlConnector{db: db}
 	mock.ExpectQuery(`(?s)generate_subscripts.*q\.conkey\[q\.ord\].*q\.confkey\[q\.ord\].*ORDER BY q\.conname, q\.ord`).
 		WithArgs("public", "orders").
 		WillReturnRows(sqlmock.NewRows([]string{
@@ -261,10 +258,8 @@ func TestPostgresqlConnectorFetchForeignKeys(t *testing.T) {
 }
 
 func TestPostgresqlConnectorMetadataQueryCompatibility(t *testing.T) {
-	t.Run("uses legacy queries on PostgreSQL 9.2", func(t *testing.T) {
-		connector := &PostgresqlConnector{
-			compatibility: postgresqlCompatibility{serverVersionNum: 90204, checked: true},
-		}
+	t.Run("uses legacy queries when capabilities are unavailable", func(t *testing.T) {
+		connector := &PostgresqlConnector{}
 
 		assert.NotContains(t, connector.indexMetadataQuery(), "LATERAL")
 		assert.Contains(t, connector.indexMetadataQuery(), "generate_subscripts")
@@ -272,15 +267,15 @@ func TestPostgresqlConnectorMetadataQueryCompatibility(t *testing.T) {
 		assert.Contains(t, connector.foreignKeyMetadataQuery(), "generate_subscripts")
 	})
 
-	t.Run("uses available modern queries by server version", func(t *testing.T) {
+	t.Run("uses independently detected modern capabilities", func(t *testing.T) {
 		connector := &PostgresqlConnector{
-			compatibility: postgresqlCompatibility{serverVersionNum: 90300, checked: true},
+			compatibility: postgresqlCompatibility{lateral: true},
 		}
 
 		assert.Contains(t, connector.indexMetadataQuery(), "LATERAL")
 		assert.NotContains(t, connector.foreignKeyMetadataQuery(), "WITH ORDINALITY")
 
-		connector.compatibility = postgresqlCompatibility{serverVersionNum: 90400, checked: true}
+		connector.compatibility.withOrdinality = true
 		assert.Contains(t, connector.foreignKeyMetadataQuery(), "WITH ORDINALITY")
 	})
 }

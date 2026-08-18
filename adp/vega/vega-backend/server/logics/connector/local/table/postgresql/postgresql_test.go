@@ -201,62 +201,41 @@ func TestPostgresqlConnectorClose(t *testing.T) {
 	})
 }
 
-func TestPostgresqlConnectorConnectClosesUncheckedConnection(t *testing.T) {
-	tests := []struct {
-		name       string
-		versionRow *sqlmock.Rows
-		versionErr error
-		wantError  string
-	}{
-		{
-			name:       "version detection fails",
-			versionErr: errors.New("version unavailable"),
-			wantError:  "failed to detect PostgreSQL compatibility: version unavailable",
-		},
-		{
-			name:       "server version is unsupported",
-			versionRow: sqlmock.NewRows([]string{"server_version_num"}).AddRow("90124"),
-			wantError:  "PostgreSQL 9.1.24 is not supported; require PostgreSQL 9.2+",
-		},
-	}
+func TestPostgresqlConnectorConnectDetectsCapabilities(t *testing.T) {
+	db, mock, err := sqlmock.New(
+		sqlmock.MonitorPingsOption(true),
+		sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual),
+	)
+	require.NoError(t, err)
+	mock.ExpectPing()
+	mock.ExpectQuery(postgresqlLateralProbe).
+		WillReturnRows(sqlmock.NewRows([]string{"result"}).AddRow(1))
+	mock.ExpectQuery(postgresqlWithOrdinalityProbe).
+		WillReturnError(errors.New("WITH ORDINALITY is unavailable"))
+	patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) {
+		return db, nil
+	})
+	t.Cleanup(patches.Reset)
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
-			require.NoError(t, err)
-			mock.ExpectPing()
-			versionExpectation := mock.ExpectQuery("SHOW server_version_num")
-			if test.versionErr != nil {
-				versionExpectation.WillReturnError(test.versionErr)
-			} else {
-				versionExpectation.WillReturnRows(test.versionRow)
-			}
-			mock.ExpectClose()
+	connector := &PostgresqlConnector{config: &postgresqlConfig{}}
+	require.NoError(t, connector.Connect(context.Background()))
+	assert.True(t, connector.connected)
+	assert.Same(t, db, connector.db)
+	assert.True(t, connector.compatibility.supportsLateral())
+	assert.False(t, connector.compatibility.supportsWithOrdinality())
 
-			patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) {
-				return db, nil
-			})
-			t.Cleanup(patches.Reset)
-
-			connector := &PostgresqlConnector{config: &postgresqlConfig{}}
-			err = connector.Connect(context.Background())
-
-			require.ErrorContains(t, err, test.wantError)
-			assert.False(t, connector.connected)
-			assert.Nil(t, connector.db)
-			assert.False(t, connector.compatibility.checked)
-			require.NoError(t, mock.ExpectationsWereMet())
-		})
-	}
+	mock.ExpectClose()
+	require.NoError(t, connector.Close(context.Background()))
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestPostgresqlConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
 	connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
 	defer cleanup()
 	connector.connected = true
-	connector.compatibility = postgresqlCompatibility{serverVersionNum: 90204, checked: true}
+	connector.compatibility = postgresqlCompatibility{}
 
-	mock.ExpectQuery(`(?s)SELECT c\.relkind::text.*c\.relkind IN \('r', 'v', 'f'\)`).
+	mock.ExpectQuery(`(?s)SELECT c\.relkind::text.*c\.relkind IN \('r', 'v', 'f', 'm', 'p'\)`).
 		WithArgs("public", "deleted_orders").
 		WillReturnError(sql.ErrNoRows)
 
@@ -284,12 +263,9 @@ func newPostgresqlConnectorMock(t *testing.T, schemas []string) (*PostgresqlConn
 	require.NoError(t, err)
 
 	return &PostgresqlConnector{
-			config: &postgresqlConfig{Schemas: schemas},
-			db:     db,
-			compatibility: postgresqlCompatibility{
-				serverVersionNum: 90400,
-				checked:          true,
-			},
+			config:        &postgresqlConfig{Schemas: schemas},
+			db:            db,
+			compatibility: postgresqlCompatibility{lateral: true, withOrdinality: true},
 		}, mock, func() {
 			mock.ExpectClose()
 			require.NoError(t, db.Close())

@@ -187,14 +187,11 @@ func (c *PostgresqlConnector) Connect(ctx context.Context) error {
 		_ = db.Close()
 		return err
 	}
-	compatibility, err := fetchPostgresqlCompatibility(ctx, db)
-	if err != nil {
+
+	compatibility := detectPostgresqlCompatibility(ctx, db)
+	if ctxErr := ctx.Err(); ctxErr != nil {
 		_ = db.Close()
-		return fmt.Errorf("failed to detect PostgreSQL compatibility: %w", err)
-	}
-	if err := compatibility.validateMinimum(); err != nil {
-		_ = db.Close()
-		return err
+		return ctxErr
 	}
 
 	c.db, c.compatibility, c.connected = db, compatibility, true

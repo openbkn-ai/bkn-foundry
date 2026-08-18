@@ -19,6 +19,9 @@ import (
 
 var pgSq = sq.StatementBuilder.PlaceholderFormat(sq.Dollar)
 
+// PostgreSQL 及兼容数据库不支持的 relkind 不会出现在 pg_class 中，固定过滤不会产生版本语法错误。
+var postgresqlTableRelKinds = []string{"r", "v", "f", "m", "p"}
+
 type postgresqlDomainMetadata struct {
 	BaseType        string
 	BaseTypmod      int64
@@ -146,7 +149,7 @@ func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.Tab
 	).From("pg_catalog.pg_class c").
 		Join("pg_catalog.pg_namespace n ON n.oid = c.relnamespace").
 		// relkind: r=ordinary table, p=partitioned table, v=view, m=materialized view, f=foreign table.
-		Where(sq.Eq{"c.relkind": c.compatibility.tableRelKinds()}).
+		Where(sq.Eq{"c.relkind": postgresqlTableRelKinds}).
 		// relpersistence: p=permanent, u=unlogged, t=temporary.
 		Where(sq.NotEq{"c.relpersistence": "t"}).
 		Where(sq.Expr("has_table_privilege(c.oid, ?)", "SELECT")).
@@ -225,7 +228,7 @@ func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interface
 }
 
 func (c *PostgresqlConnector) fetchTableStatus(ctx context.Context, table *interfaces.TableMeta) error {
-	relKinds := "'" + strings.Join(c.compatibility.tableRelKinds(), "', '") + "'"
+	relKinds := "'" + strings.Join(postgresqlTableRelKinds, "', '") + "'"
 	query := fmt.Sprintf(`
 SELECT c.relkind::text,
        obj_description(c.oid, 'pg_class') AS description,
@@ -275,7 +278,7 @@ WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind IN (%s)`, relKinds)
 }
 
 func (c *PostgresqlConnector) fetchColumns(ctx context.Context, table *interfaces.TableMeta) error {
-	relKinds := "'" + strings.Join(c.compatibility.tableRelKinds(), "', '") + "'"
+	relKinds := "'" + strings.Join(postgresqlTableRelKinds, "', '") + "'"
 	query := fmt.Sprintf(`
 SELECT a.attname AS column_name,
        a.atttypid AS type_oid,
@@ -368,17 +371,16 @@ ORDER BY a.attnum`, relKinds)
 		}
 		if raw.typeKind.String == "d" {
 			domain, ok := domains[raw.typeOID.Int64]
-			if !ok {
-				return fmt.Errorf("PostgreSQL domain metadata not found for type OID %d", raw.typeOID.Int64)
+			if ok {
+				column.AliasType = raw.typeName.String
+				column.Type = domain.BaseType
+				column.CheckConstraint = domain.CheckConstraint
+				column.Nullable = column.Nullable && !domain.NotNull
+				if !raw.defaultValue.Valid && domain.DefaultValue.Valid {
+					column.DefaultValue = domain.DefaultValue.String
+				}
+				typeModifier = domain.BaseTypmod
 			}
-			column.AliasType = raw.typeName.String
-			column.Type = domain.BaseType
-			column.CheckConstraint = domain.CheckConstraint
-			column.Nullable = column.Nullable && !domain.NotNull
-			if !raw.defaultValue.Valid && domain.DefaultValue.Valid {
-				column.DefaultValue = domain.DefaultValue.String
-			}
-			typeModifier = domain.BaseTypmod
 		}
 		switch column.Type {
 		case "bpchar", "varchar":

@@ -64,8 +64,6 @@ type MariaDBConnector struct {
 
 	connected bool
 	db        *sql.DB
-
-	compatibility mariadbCompatibility
 }
 
 // NewMariaDBConnector creates the MariaDB connector builder
@@ -188,17 +186,8 @@ func (c *MariaDBConnector) Connect(ctx context.Context) error {
 		_ = db.Close()
 		return err
 	}
-	compatibility, err := fetchMariaDBCompatibility(ctx, db)
-	if err != nil {
-		_ = db.Close()
-		return fmt.Errorf("failed to detect MySQL/MariaDB compatibility: %w", err)
-	}
-	if err := compatibility.validateMinimum(); err != nil {
-		_ = db.Close()
-		return err
-	}
-
-	c.db, c.compatibility, c.connected = db, compatibility, true
+	c.db = db
+	c.connected = true
 
 	return nil
 }
