@@ -16,6 +16,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 # Configure logging FIRST before any other imports
 from src.infrastructure.config.settings import get_settings
 from src.infrastructure.logging import configure_logging, get_logger
+from src.shared import locale
+from src.shared.i18n import message
 
 # Initialize logging with settings
 _settings = get_settings()
@@ -247,6 +249,22 @@ def create_app() -> FastAPI:
     return app
 
 
+def _apply_language_headers(response, path: str, effective_locale: str) -> None:
+    """Declare the response language only where the body actually carries it.
+
+    Error envelopes get Content-Language; a purely machine-readable success body
+    does not. Business API responses are authenticated, so they also stay out of
+    shared caches.
+    """
+    if not locale.is_business_api_path(path):
+        return
+    response.headers["Cache-Control"] = locale.merge_cache_control(
+        response.headers.get("Cache-Control", "")
+    )
+    if response.status_code >= 400:
+        response.headers["Content-Language"] = effective_locale
+
+
 def _register_exception_handlers(app: FastAPI) -> None:
     """注册异常处理器"""
     from src.shared.errors.domain import NotFoundError, ValidationError
@@ -297,14 +315,24 @@ def _register_exception_handlers(app: FastAPI) -> None:
             error=str(exc),
             exc_info=exc,
         )
-        return JSONResponse(
+        # This handler runs in ServerErrorMiddleware, outside the locale
+        # middleware, so the ContextVar has already been reset by the time the
+        # exception reaches here; read the locale off the request scope instead.
+        effective_locale = getattr(request.state, "effective_locale", None) or (
+            locale.resolve_accept_language(request.headers.get(locale.ACCEPT_LANGUAGE_HEADER))
+        )
+        response = JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": "Internal Server Error",
-                "message": "An unexpected error occurred",
+                "message": message("Sandbox.Internal.Unexpected", locale=effective_locale),
+                # The exception text is an internal diagnostic and stays as it is.
                 "detail": str(exc) if app.debug else None,
             },
         )
+        # The exception escaped the locale middleware, so its header pass never ran.
+        _apply_language_headers(response, request.url.path, effective_locale)
+        return response
 
 
 def _register_routes(app: FastAPI) -> None:
@@ -343,6 +371,27 @@ def _register_routes(app: FastAPI) -> None:
 
 def _register_middleware(app: FastAPI) -> None:
     """注册中间件"""
+
+    @app.middleware("http")
+    async def locale_middleware(request: Request, call_next):
+        """Freeze the request locale before anything renders a message.
+
+        The effective locale is also parked on the request scope: the catch-all
+        Exception handler runs in ServerErrorMiddleware, outside this
+        middleware, so by the time it renders a 500 the ContextVar below has
+        already been reset.
+        """
+        effective_locale = locale.resolve_accept_language(
+            request.headers.get(locale.ACCEPT_LANGUAGE_HEADER)
+        )
+        request.state.effective_locale = effective_locale
+        token = locale.set_effective_locale(effective_locale)
+        try:
+            response = await call_next(request)
+        finally:
+            locale.reset_effective_locale(token)
+        _apply_language_headers(response, request.url.path, effective_locale)
+        return response
 
     # Add request logging middleware first (wraps all other middleware)
     from src.interfaces.rest.middleware import RequestLoggingMiddleware

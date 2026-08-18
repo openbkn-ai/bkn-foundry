@@ -26,6 +26,7 @@ from src.infrastructure.dependencies import (
     get_session_service as get_mock_session_service,
 )
 from src.infrastructure.persistence.database import db_manager
+from src.shared.i18n import message
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
@@ -139,7 +140,7 @@ async def execute_code_sync(
         if elapsed >= sync_timeout:
             raise HTTPException(
                 status_code=status.HTTP_408_REQUEST_TIMEOUT,
-                detail=f"Synchronous execution timeout after {sync_timeout}s",
+                detail=message("Sandbox.Execution.SyncTimeout", timeout=sync_timeout),
             )
 
         # Get current status - use a fresh database session for each poll
@@ -177,7 +178,7 @@ async def _get_execution_with_fresh_session(execution_id: str) -> ExecutionDTO:
         if not execution:
             from src.shared.errors.domain import NotFoundError
 
-            raise NotFoundError(f"Execution not found: {execution_id}")
+            raise NotFoundError(message("Sandbox.Execution.NotFound", execution_id=execution_id))
         return ExecutionDTO.from_entity(execution)
 
 

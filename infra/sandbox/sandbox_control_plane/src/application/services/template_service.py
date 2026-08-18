@@ -13,6 +13,7 @@ from src.application.commands.update_template import UpdateTemplateCommand
 from src.application.queries.get_template import GetTemplateQuery
 from src.application.dtos.template_dto import TemplateDTO
 from src.shared.errors.domain import NotFoundError, ValidationError
+from src.shared.i18n import message
 
 
 class TemplateService:
@@ -41,12 +42,12 @@ class TemplateService:
         # 检查 ID 唯一性
         existing_by_id = await self._template_repo.find_by_id(command.template_id)
         if existing_by_id:
-            raise ValidationError(f"Template ID already exists: {command.template_id}")
+            raise ValidationError(message("Sandbox.Template.IdExists", template_id=command.template_id))
 
         # 检查名称唯一性
         existing = await self._template_repo.find_by_name(command.name)
         if existing:
-            raise ValidationError(f"Template name already exists: {command.name}")
+            raise ValidationError(message("Sandbox.Template.NameExists", name=command.name))
 
         from src.domain.value_objects.resource_limit import ResourceLimit
 
@@ -73,7 +74,7 @@ class TemplateService:
         """获取模板用例"""
         template = await self._template_repo.find_by_id(query.template_id)
         if not template:
-            raise NotFoundError(f"Template not found: {query.template_id}")
+            raise NotFoundError(message("Sandbox.Template.NotFound", template_id=query.template_id))
 
         return TemplateDTO.from_entity(template)
 
@@ -95,13 +96,13 @@ class TemplateService:
         """
         template = await self._template_repo.find_by_id(command.template_id)
         if not template:
-            raise NotFoundError(f"Template not found: {command.template_id}")
+            raise NotFoundError(message("Sandbox.Template.NotFound", template_id=command.template_id))
 
         # 验证名称唯一性
         if command.name and command.name != template.name:
             existing = await self._template_repo.find_by_name(command.name)
             if existing and existing.id != template.id:
-                raise ValidationError(f"Template name already exists: {command.name}")
+                raise ValidationError(message("Sandbox.Template.NameExists", name=command.name))
 
         # 更新名称
         if command.name is not None:
@@ -156,6 +157,6 @@ class TemplateService:
         """
         template = await self._template_repo.find_by_id(template_id)
         if not template:
-            raise NotFoundError(f"Template not found: {template_id}")
+            raise NotFoundError(message("Sandbox.Template.NotFound", template_id=template_id))
 
         await self._template_repo.delete(template_id)

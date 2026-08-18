@@ -25,6 +25,7 @@ from src.infrastructure.dependencies import (
     get_execution_repository as get_sql_execution_repository,
     get_session_repository as get_sql_session_repository,
 )
+from src.shared.i18n import message
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ async def report_execution_result(
     if not execution:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Execution not found: {execution_id}",
+            detail=message("Sandbox.Execution.NotFound", execution_id=execution_id),
         )
 
     # 2. 检查是否已经是终态（幂等性）
@@ -152,7 +153,7 @@ async def report_execution_result(
     if not domain_status:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Invalid status: {report.status}",
+            detail=message("Sandbox.Execution.InvalidStatus", status=report.status),
         )
 
     # 4. 自动转换 PENDING → RUNNING（如果需要）
@@ -231,11 +232,11 @@ async def report_execution_result(
         # 状态转换错误（例如从未完成状态直接尝试标记为完成）
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"State conflict: {str(e)}",
+            detail=message("Sandbox.State.Conflict", error=str(e)),
         )
     except Exception as e:
         logger.error(f"Failed to record execution result: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal error: {str(e)}",
+            detail=message("Sandbox.Internal.Error", error=str(e)),
         )

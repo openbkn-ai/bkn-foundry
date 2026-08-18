@@ -39,6 +39,7 @@ from src.infrastructure.executors.errors import (
     ExecutorValidationError,
 )
 from src.infrastructure.logging import get_logger
+from src.shared.i18n import message
 from src.shared.utils.dependencies import (
     DEFAULT_PYTHON_PACKAGE_INDEX_URL,
     normalize_python_package_index_url,
@@ -164,7 +165,7 @@ class SessionService:
         template = await self._template_repo.find_by_id(template_id)
         if not template:
             logger.error("Template not found", template_id=template_id)
-            raise NotFoundError(f"Template not found: {template_id}")
+            raise NotFoundError(message("Sandbox.Template.NotFound", template_id=template_id))
 
         logger.debug("Template validated", template_id=template.id, image=template.image)
         return template
@@ -328,13 +329,13 @@ class SessionService:
             final_status=session.status.value,
             container_id=container_id,
         )
-        raise ValidationError(f"Failed to create container: {error}")
+        raise ValidationError(message("Sandbox.Session.ContainerCreateFailed", error=error))
 
     async def get_session(self, query: GetSessionQuery) -> SessionDTO:
         """获取会话用例"""
         session = await self._session_repo.find_by_id(query.session_id)
         if not session:
-            raise NotFoundError(f"Session not found: {query.session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=query.session_id))
 
         return SessionDTO.from_entity(session)
 
@@ -345,7 +346,7 @@ class SessionService:
         """增量安装会话依赖。"""
         session = await self._session_repo.find_by_id(command.session_id)
         if not session:
-            raise NotFoundError(f"Session not found: {command.session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=command.session_id))
 
         if session.dependency_install_status == "installing":
             raise ConflictError(
@@ -370,7 +371,7 @@ class SessionService:
         """同步指定 session 的依赖配置。"""
         session = await self._session_repo.find_by_id(session_id)
         if not session:
-            raise NotFoundError(f"Session not found: {session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
         return await self._sync_session_dependencies(session, sync_mode=sync_mode)
 
     async def list_sessions(
@@ -434,7 +435,7 @@ class SessionService:
         session = await self._session_repo.find_by_id(session_id)
         if not session:
             logger.warning("Session not found for termination", session_id=session_id)
-            raise NotFoundError(f"Session not found: {session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
 
         if session.is_terminated():
             logger.info(
@@ -481,7 +482,7 @@ class SessionService:
         session = await self._session_repo.find_by_id(session_id)
         if not session:
             logger.warning("Session not found for deletion", session_id=session_id)
-            raise NotFoundError(f"Session not found: {session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
 
         logger.debug(
             "Deleting session",
@@ -575,7 +576,7 @@ class SessionService:
                 "Session not found for execution",
                 session_id=command.session_id,
             )
-            raise NotFoundError(f"Session not found: {command.session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=command.session_id))
 
         if not session.is_active():
             logger.warning(
@@ -583,7 +584,7 @@ class SessionService:
                 session_id=command.session_id,
                 status=session.status.value,
             )
-            raise ValidationError(f"Session is not active: {command.session_id}")
+            raise ValidationError(message("Sandbox.Session.NotActive", session_id=command.session_id))
 
         logger.debug(
             "Session validated for execution",
@@ -629,7 +630,7 @@ class SessionService:
                 "Session has no container",
                 session_id=command.session_id,
             )
-            raise ValidationError(f"Session has no container: {command.session_id}")
+            raise ValidationError(message("Sandbox.Session.NoContainer", session_id=command.session_id))
 
         # 构建执行请求
         execution_request = ExecutionRequest(
@@ -672,7 +673,7 @@ class SessionService:
         """获取执行详情用例"""
         execution = await self._execution_repo.find_by_id(query.execution_id)
         if not execution:
-            raise NotFoundError(f"Execution not found: {query.execution_id}")
+            raise NotFoundError(message("Sandbox.Execution.NotFound", execution_id=query.execution_id))
 
         return ExecutionDTO.from_entity(execution)
 
@@ -738,11 +739,11 @@ class SessionService:
     ) -> SessionDTO:
         """同步 session 依赖配置到 executor。"""
         if not session.is_active():
-            raise ValidationError(f"Session is not active: {session.id}")
+            raise ValidationError(message("Sandbox.Session.NotActive", session_id=session.id))
         if not session.container_id:
-            raise ValidationError(f"Session has no container: {session.id}")
+            raise ValidationError(message("Sandbox.Session.NoContainer", session_id=session.id))
         if not hasattr(self._scheduler, "get_executor_url"):
-            raise ValidationError("Scheduler does not support executor URL discovery")
+            raise ValidationError(message("Sandbox.Scheduler.NoExecutorUrlDiscovery"))
 
         session.mark_dependency_installing()
         await self._session_repo.save(session)

@@ -13,6 +13,7 @@ from src.infrastructure.config.settings import get_settings
 from src.interfaces.rest.schemas.response import ErrorResponse
 from src.infrastructure.dependencies import get_file_service_db
 from src.shared.errors.domain import NotFoundError, ValidationError
+from src.shared.i18n import message
 
 router = APIRouter(prefix="/sessions/{session_id}/files", tags=["files"])
 
@@ -66,7 +67,7 @@ async def upload_file(
         if len(content) > max_upload_bytes:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File size exceeds {settings.max_upload_file_size_mb}MB limit",
+                detail=message("Sandbox.File.SizeExceeded", limit_mb=settings.max_upload_file_size_mb),
             )
 
         if extract:
@@ -75,7 +76,7 @@ async def upload_file(
             if "zip" not in content_type.lower() and not filename.endswith(".zip"):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail="Only ZIP archives are supported when extract=true",
+                    detail=message("Sandbox.File.ZipOnly"),
                 )
 
             result = await service.upload_and_extract_zip(

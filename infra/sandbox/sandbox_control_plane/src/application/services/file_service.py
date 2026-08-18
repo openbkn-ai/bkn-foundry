@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from src.domain.repositories.session_repository import ISessionRepository
 from src.domain.services.storage import IStorageService
 from src.shared.errors.domain import NotFoundError, ValidationError
+from src.shared.i18n import message
 
 
 class FileService:
@@ -55,10 +56,10 @@ class FileService:
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
-            raise NotFoundError(f"Session not found: {session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
 
         if not session.is_active():
-            raise ValidationError(f"Session is not active: {session_id}")
+            raise ValidationError(message("Sandbox.Session.NotActive", session_id=session_id))
 
         normalized_path = self._validate_relative_path(path)
 
@@ -83,17 +84,17 @@ class FileService:
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
-            raise NotFoundError(f"Session not found: {session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
 
         if not session.is_active():
-            raise ValidationError(f"Session is not active: {session_id}")
+            raise ValidationError(message("Sandbox.Session.NotActive", session_id=session_id))
 
         extract_path = self._validate_directory_path(path)
 
         try:
             archive = zipfile.ZipFile(io.BytesIO(content))
         except zipfile.BadZipFile as exc:
-            raise ValidationError("Invalid ZIP archive") from exc
+            raise ValidationError(message("Sandbox.File.InvalidZipArchive")) from exc
 
         with archive:
             entries: list[tuple[zipfile.ZipInfo, str, str]] = []
@@ -107,9 +108,9 @@ class FileService:
                 total_uncompressed_size += zip_info.file_size
 
                 if len(entries) + 1 > self._max_extracted_file_count:
-                    raise ValidationError("ZIP archive contains too many files")
+                    raise ValidationError(message("Sandbox.File.ZipTooManyFiles"))
                 if total_uncompressed_size > self._max_extracted_total_size_bytes:
-                    raise ValidationError("ZIP archive uncompressed size exceeds limit")
+                    raise ValidationError(message("Sandbox.File.ZipUncompressedTooLarge"))
 
                 entries.append(
                     (
@@ -159,12 +160,12 @@ class FileService:
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
-            raise NotFoundError(f"Session not found: {session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
 
         s3_path = f"{session.workspace_path}/{path}"
         file_exists = await self._storage_service.file_exists(s3_path)
         if not file_exists:
-            raise NotFoundError(f"File not found: {path}")
+            raise NotFoundError(message("Sandbox.File.NotFound", path=path))
 
         file_info = await self._storage_service.get_file_info(s3_path)
         file_size = file_info["size"]
@@ -202,7 +203,7 @@ class FileService:
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:
-            raise NotFoundError(f"Session not found: {session_id}")
+            raise NotFoundError(message("Sandbox.Session.NotFound", session_id=session_id))
 
         # 解析 workspace_path，提取 S3 key 前缀
         # workspace_path 格式: s3://bucket/sessions/{session_id}/
@@ -258,23 +259,23 @@ class FileService:
 
     def _validate_relative_path(self, path: str) -> str:
         if not path:
-            raise ValidationError("Invalid file path")
+            raise ValidationError(message("Sandbox.File.InvalidPath"))
 
         stripped = path.strip()
         if not stripped or stripped.startswith("/") or "\\" in stripped:
-            raise ValidationError("Invalid file path")
+            raise ValidationError(message("Sandbox.File.InvalidPath"))
         if re.match(r"^[A-Za-z]:", stripped):
-            raise ValidationError("Invalid file path")
+            raise ValidationError(message("Sandbox.File.InvalidPath"))
 
         normalized = PurePosixPath(stripped).as_posix()
         parts = PurePosixPath(normalized).parts
         if any(part == ".." for part in parts):
-            raise ValidationError("Invalid file path")
+            raise ValidationError(message("Sandbox.File.InvalidPath"))
 
         if normalized.startswith("./"):
             normalized = normalized[2:]
         if not normalized or normalized == ".":
-            raise ValidationError("Invalid file path")
+            raise ValidationError(message("Sandbox.File.InvalidPath"))
         return normalized
 
     def _validate_directory_path(self, path: str) -> str:
@@ -284,17 +285,17 @@ class FileService:
     def _validate_zip_entry_path(self, zip_info: zipfile.ZipInfo) -> str:
         path = zip_info.filename
         if not path:
-            raise ValidationError("Invalid ZIP entry path")
+            raise ValidationError(message("Sandbox.File.InvalidZipEntryPath"))
         if path.startswith("/") or "\\" in path or re.match(r"^[A-Za-z]:", path):
-            raise ValidationError("Invalid ZIP entry path")
+            raise ValidationError(message("Sandbox.File.InvalidZipEntryPath"))
         mode = zip_info.external_attr >> 16
         if stat.S_ISLNK(mode):
-            raise ValidationError("Invalid ZIP entry path")
+            raise ValidationError(message("Sandbox.File.InvalidZipEntryPath"))
 
         normalized = PurePosixPath(path).as_posix()
         parts = PurePosixPath(normalized).parts
         if any(part in ("", ".", "..") for part in parts):
-            raise ValidationError("Invalid ZIP entry path")
+            raise ValidationError(message("Sandbox.File.InvalidZipEntryPath"))
         return normalized
 
     def _join_paths(self, base: str, child: str) -> str:

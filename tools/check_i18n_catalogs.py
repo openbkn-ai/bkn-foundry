@@ -33,6 +33,11 @@ PYTHON_CATALOGS = (
         REPOSITORY_ROOT / "infra/bkn-agent/app/commons/i18n/zh_cn.py",
         REPOSITORY_ROOT / "infra/bkn-agent/app/commons/i18n/en_us.py",
     ),
+    (
+        "sandbox-control-plane",
+        REPOSITORY_ROOT / "infra/sandbox/sandbox_control_plane/src/shared/i18n/zh_cn.py",
+        REPOSITORY_ROOT / "infra/sandbox/sandbox_control_plane/src/shared/i18n/en_us.py",
+    ),
 )
 JSON_CATALOGS = (
     (
