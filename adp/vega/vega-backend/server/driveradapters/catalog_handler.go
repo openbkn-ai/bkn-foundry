@@ -229,8 +229,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 	// Check if name exists
 	exists, err := r.cs.CheckExistByName(ctx, req.Name)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -246,8 +245,7 @@ func (r *restHandler) createCatalog(c *gin.Context, visitor hydra.Visitor) {
 	if req.ID != "" {
 		exists, err := r.cs.CheckExistByID(ctx, req.ID)
 		if err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError).
-				WithErrorDetails(err.Error())
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
@@ -900,8 +898,7 @@ func (r *restHandler) discoverCatalogResources(c *gin.Context, visitor hydra.Vis
 		Strategy:    strategy,
 	})
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Catalog_InternalError).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

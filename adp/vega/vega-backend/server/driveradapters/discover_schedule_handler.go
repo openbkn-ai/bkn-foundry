@@ -91,8 +91,7 @@ func (r *restHandler) createDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 
 	scheduleID, err := r.dss.Create(ctx, &req)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_CreateFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_CreateFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -167,8 +166,7 @@ func (r *restHandler) listDiscoverSchedules(c *gin.Context, visitor hydra.Visito
 
 	entries, total, err := r.dss.List(ctx, params)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -206,8 +204,7 @@ func (r *restHandler) getDiscoverSchedule(c *gin.Context, visitor hydra.Visitor)
 	id := c.Param("id")
 	schedule, err := r.dss.GetByID(ctx, id)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -252,8 +249,7 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 
 	current, err := r.dss.GetByID(ctx, id)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -298,8 +294,7 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 	}
 
 	if err := r.dss.Update(ctx, current, &req); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -342,8 +337,7 @@ func (r *restHandler) deleteDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 
 	current, err := r.dss.GetByID(ctx, id)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -356,8 +350,7 @@ func (r *restHandler) deleteDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 	}
 
 	if err := r.dss.Delete(ctx, id); err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_DeleteFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_DeleteFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -416,8 +409,7 @@ func (r *restHandler) toggleDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 
 	current, err := r.dss.GetByID(ctx, id)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -438,16 +430,14 @@ func (r *restHandler) toggleDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 
 	if enable {
 		if err := r.dss.Enable(ctx, id); err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed).
-				WithErrorDetails(err.Error())
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
 		}
 	} else {
 		if err := r.dss.Disable(ctx, id); err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed).
-				WithErrorDetails(err.Error())
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return

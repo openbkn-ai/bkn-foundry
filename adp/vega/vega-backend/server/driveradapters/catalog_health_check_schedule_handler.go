@@ -12,11 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 
 	"vega-backend/common/visitor"
 	verrors "vega-backend/errors"
@@ -48,13 +46,26 @@ func (r *restHandler) getCatalogHealthCheckSchedule(c *gin.Context, v hydra.Visi
 	catalogID := c.Param("id")
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	if !r.requirePhysicalCatalog(ctx, c, span, catalogID) {
+	catalog, err := r.cs.GetByID(ctx, catalogID, false)
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if catalog.Type != interfaces.CatalogTypePhysical {
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+			WithErrorDetails("health check schedules are only supported for physical catalogs")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
 		return
 	}
 
 	schedule, err := r.hcss.GetByCatalogID(ctx, catalogID)
 	if err != nil {
-		replyCatalogHealthCheckScheduleError(ctx, c, span, err)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
 		return
 	}
 
@@ -97,44 +108,12 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 
 	schedule, err := r.hcss.Update(ctx, catalogID, &req)
 	if err != nil {
-		replyCatalogHealthCheckScheduleError(ctx, c, span, err)
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
 		return
 	}
 
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 	rest.ReplyOK(c, http.StatusOK, schedule)
-}
-
-func (r *restHandler) requirePhysicalCatalog(
-	ctx context.Context, c *gin.Context, span trace.Span, catalogID string,
-) bool {
-	catalog, err := r.cs.GetByID(ctx, catalogID, false)
-	if err != nil {
-		replyCatalogHealthCheckScheduleError(ctx, c, span, err)
-		return false
-	}
-
-	if catalog.Type != interfaces.CatalogTypePhysical {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
-			WithErrorDetails("health check schedules are only supported for physical catalogs")
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return false
-	}
-
-	return true
-}
-
-func replyCatalogHealthCheckScheduleError(
-	ctx context.Context, c *gin.Context, span trace.Span, err error,
-) {
-	httpErr, ok := err.(*rest.HTTPError)
-	if !ok {
-		otellog.LogError(ctx, "Handle catalog health check schedule request failed", err)
-		httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError)
-	}
-
-	oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-	rest.ReplyError(c, httpErr)
 }

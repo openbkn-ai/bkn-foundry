@@ -107,8 +107,7 @@ func (r *restHandler) listDiscoverTasks(c *gin.Context, visitor hydra.Visitor) {
 
 	tasks, total, err := r.dts.List(ctx, params)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -151,8 +150,7 @@ func (r *restHandler) getDiscoverTask(c *gin.Context, visitor hydra.Visitor) {
 
 	task, err := r.dts.GetByID(ctx, taskID)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

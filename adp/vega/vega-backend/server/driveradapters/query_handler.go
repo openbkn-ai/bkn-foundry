@@ -80,13 +80,7 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 	qs := query.NewRawQueryService(r.appSetting)
 	resp, err := qs.Execute(ctx, &req)
 	if err != nil {
-		var httpErr *rest.HTTPError
-		var ok bool
-		if httpErr, ok = err.(*rest.HTTPError); !ok {
-			// If it is not an HTTPError, it is converted to an internal server error
-			httpErr = rest.NewHTTPError(ctx, http.StatusInternalServerError, errors.VegaBackend_Query_ExecuteFailed).
-				WithErrorDetails(err.Error())
-		}
+		httpErr := httpErrorOrInternal(ctx, err, errors.VegaBackend_Query_ExecuteFailed)
 		otellog.LogError(ctx, "Execute raw query failed", httpErr)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

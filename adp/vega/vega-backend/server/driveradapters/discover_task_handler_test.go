@@ -8,16 +8,20 @@ package driveradapters
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -162,6 +166,35 @@ func Test_DiscoverTaskRestHandler_GetDiscoverTask(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "VegaBackend.DiscoverTask.NotFound")
+	})
+
+	t.Run("preserves not found error returned by service", func(t *testing.T) {
+		engine, dts := setup(t)
+		dts.EXPECT().GetByID(gomock.Any(), "missing").Return(nil,
+			fmt.Errorf("get discover task: %w", rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/discover-tasks/missing", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNotFound, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.DiscoverTask.NotFound")
+		assert.NotContains(t, w.Body.String(), "VegaBackend.DiscoverTask.InternalError.GetFailed")
+	})
+
+	t.Run("maps unknown service error to internal error", func(t *testing.T) {
+		engine, dts := setup(t)
+		dts.EXPECT().GetByID(gomock.Any(), "task-1").Return(nil, errors.New("database unavailable"))
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/discover-tasks/task-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.DiscoverTask.InternalError.GetFailed")
+		assert.Contains(t, w.Body.String(), "database unavailable")
 	})
 }
 

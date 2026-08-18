@@ -171,8 +171,7 @@ func (r *restHandler) RegisterConnectorType(c *gin.Context) {
 	// Check if type exists
 	exists, err := r.cts.CheckExistByType(ctx, req.Type)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -352,8 +351,7 @@ func (r *restHandler) DeleteConnectorType(c *gin.Context) {
 
 	ct, err := r.cts.GetByType(ctx, tp)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -412,8 +410,7 @@ func (r *restHandler) setConnectorTypeEnabled(c *gin.Context, value bool, spanNa
 
 	exists, err := r.cts.CheckExistByType(ctx, tp)
 	if err != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError).
-			WithErrorDetails(err.Error())
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_ConnectorType_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

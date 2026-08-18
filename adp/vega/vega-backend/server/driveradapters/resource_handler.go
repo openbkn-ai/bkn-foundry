@@ -186,8 +186,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 	// Check catelog exists
 	csExists, csErr := r.cs.CheckExistByID(ctx, req.CatalogID)
 	if csErr != nil {
-		httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Resource_InternalError).WithErrorDetails(csErr.Error())
+		httpErr := httpErrorOrInternal(ctx, csErr, verrors.VegaBackend_Resource_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -204,8 +203,7 @@ func (r *restHandler) createResource(c *gin.Context, visitor hydra.Visitor) {
 	if req.ID != "" {
 		exists, err := r.rs.CheckExistByID(ctx, req.ID)
 		if err != nil {
-			httpErr := rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Resource_InternalError).WithErrorDetails(err.Error())
+			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
 			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 			rest.ReplyError(c, httpErr)
 			return
