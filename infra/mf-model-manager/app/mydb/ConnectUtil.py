@@ -62,7 +62,7 @@ class RedisClient(object):
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
-                StandLogger.error(f"Redis连接失败 - sentinel模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
+                StandLogger.error(f"Redis connection failed in sentinel mode: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
                 raise Exception(f"connect redis error:{str(e)}")
         elif self.redis_cluster_mode == "master-slave":
             try:
@@ -77,7 +77,7 @@ class RedisClient(object):
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
-                StandLogger.error(f"Redis连接失败 - master-slave模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
+                StandLogger.error(f"Redis connection failed in master-slave mode: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
                 raise Exception(f"connect redis error:{str(e)}")
         try:
             pool = redis_async.ConnectionPool(host=self.redis_ip, port=self.redis_port, db=db,
@@ -87,7 +87,7 @@ class RedisClient(object):
             await redis_con.ping()
             return redis_con
         except Exception as e:
-            StandLogger.error(f"Redis连接失败 - standalone模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
+            StandLogger.error(f"Redis connection failed in standalone mode: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
             raise Exception(f"connect redis error:{str(e)}")
 
     async def connect_redis_async(self, db, model):
@@ -108,7 +108,7 @@ class RedisClient(object):
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
-                StandLogger.error(f"Redis连接失败 - {model}模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
+                StandLogger.error(f"Redis connection failed in {model} mode: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
                 raise Exception(f"connect redis error:{str(e)}")
         elif self.redis_cluster_mode == "master-slave":
             try:
@@ -123,7 +123,7 @@ class RedisClient(object):
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
-                StandLogger.error(f"Redis连接失败 - {model}模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
+                StandLogger.error(f"Redis connection failed in {model} mode: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
                 raise Exception(f"connect redis error:{str(e)}")
         else:
             try:
@@ -133,7 +133,7 @@ class RedisClient(object):
                 await redis_con.ping()
                 return redis_con
             except Exception as e:
-                StandLogger.error(f"Redis连接失败 - standalone模式: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
+                StandLogger.error(f"Redis connection failed in standalone mode: host={self.redis_ip}, port={self.redis_port}, error={str(e)}")
                 raise Exception(f"connect redis error:{str(e)}")
 
 
@@ -153,10 +153,10 @@ class ConnectUtil:
                     cls._redis_client = RedisClient()
                 await instance._init_connection_pools()
                 if instance.read_conn is None or instance.write_conn is None:
-                    StandLogger.error(f"Redis连接创建失败: read_conn={instance.read_conn}, write_conn={instance.write_conn}")
+                    StandLogger.error(f"Redis connection creation failed: read_conn={instance.read_conn}, write_conn={instance.write_conn}")
                     raise Exception("Failed to create the Redis connection")
                 instance._initialized = True
-                StandLogger.info(f"Redis连接池创建成功: read_conn={instance.read_conn}, write_conn={instance.write_conn}")
+                StandLogger.info(f"Redis connection pool created: read_conn={instance.read_conn}, write_conn={instance.write_conn}")
                 cls._instance = instance
             return cls._instance
 
@@ -172,18 +172,18 @@ class ConnectUtil:
         try:
             redis_client = self.__class__._redis_client
             
-            StandLogger.info(f"开始初始化Redis连接池, 模式: {redis_client.redis_cluster_mode}, "
+            StandLogger.info(f"Initializing Redis connection pool, mode: {redis_client.redis_cluster_mode}, "
                            f"host: {redis_client.redis_ip}, port: {redis_client.redis_port}, "
                            f"user: {redis_client.redis_user}")
             
             if redis_client.redis_cluster_mode == "sentinel":
-                StandLogger.info("使用哨兵模式初始化")
+                StandLogger.info("Initializing in sentinel mode")
                 await self._init_sentinel_connection_pools(redis_client)
             elif redis_client.redis_cluster_mode == "master-slave":
-                StandLogger.info("使用主从模式初始化")
+                StandLogger.info("Initializing in master-slave mode")
                 await self._init_master_slave_connection_pools(redis_client)
             else:
-                StandLogger.info(f"使用默认模式初始化 (实际模式: {redis_client.redis_cluster_mode})")
+                StandLogger.info(f"Initializing in default mode (actual mode: {redis_client.redis_cluster_mode})")
                 await self._init_default_connection_pools(redis_client)
             
             if self.read_conn is None:
@@ -191,16 +191,16 @@ class ConnectUtil:
             if self.write_conn is None:
                 raise Exception(f"Failed to create the write connection: write_conn is None")
             
-            StandLogger.info(f"Redis连接池创建成功: read_conn={self.read_conn}, write_conn={self.write_conn}")
+            StandLogger.info(f"Redis connection pool created: read_conn={self.read_conn}, write_conn={self.write_conn}")
             
             await self._warmup_connections()
             
-            StandLogger.info("Redis高性能连接池初始化完成")
+            StandLogger.info("High-performance Redis connection pool initialized")
             
         except Exception as e:
-            StandLogger.error(f"Redis连接池初始化失败: {str(e)}")
+            StandLogger.error(f"Redis connection pool initialization failed: {str(e)}")
             import traceback
-            StandLogger.error(f"详细错误: {traceback.format_exc()}")
+            StandLogger.error(f"Detailed error: {traceback.format_exc()}")
             raise e
 
     async def _init_sentinel_connection_pools(self, redis_client):
@@ -244,10 +244,10 @@ class ConnectUtil:
             self.write_conn = master_redis
             self.read_conn = slave_redis
             
-            StandLogger.info("哨兵模式Redis连接池初始化成功")
+            StandLogger.info("Redis connection pool initialized in sentinel mode")
             
         except Exception as e:
-            StandLogger.error(f"哨兵模式Redis连接池初始化失败: {str(e)}")
+            StandLogger.error(f"Redis connection pool initialization failed in sentinel mode: {str(e)}")
             raise e
 
     async def _init_master_slave_connection_pools(self, redis_client):
@@ -284,16 +284,16 @@ class ConnectUtil:
             self.read_conn = redis_async.StrictRedis(connection_pool=self.__class__._read_pool)
             self.write_conn = redis_async.StrictRedis(connection_pool=self.__class__._write_pool)
             
-            StandLogger.info("主从模式Redis连接池初始化成功")
+            StandLogger.info("Redis connection pool initialized in master-slave mode")
             
         except Exception as e:
-            StandLogger.error(f"主从模式Redis连接池初始化失败: {str(e)}")
+            StandLogger.error(f"Redis connection pool initialization failed in master-slave mode: {str(e)}")
             raise e
 
     async def _init_default_connection_pools(self, redis_client):
         """Initialize the standalone connection pool."""
         try:
-            StandLogger.info(f"创建默认模式连接池: host={redis_client.redis_ip}, "
+            StandLogger.info(f"Creating default-mode connection pool: host={redis_client.redis_ip}, "
                            f"port={redis_client.redis_port}, db={self.db}")
             
             self.__class__._read_pool = redis_async.ConnectionPool(
@@ -313,12 +313,12 @@ class ConnectUtil:
             self.read_conn = redis_async.StrictRedis(connection_pool=self.__class__._read_pool)
             self.write_conn = redis_async.StrictRedis(connection_pool=self.__class__._read_pool)
             
-            StandLogger.info(f"默认模式Redis连接池初始化成功: read_conn={self.read_conn}, write_conn={self.write_conn}")
+            StandLogger.info(f"Default-mode Redis connection pool initialized: read_conn={self.read_conn}, write_conn={self.write_conn}")
             
         except Exception as e:
-            StandLogger.error(f"默认模式Redis连接池初始化失败: {str(e)}")
+            StandLogger.error(f"Default-mode Redis connection pool initialization failed: {str(e)}")
             import traceback
-            StandLogger.error(f"详细错误: {traceback.format_exc()}")
+            StandLogger.error(f"Detailed error: {traceback.format_exc()}")
             raise e
 
     async def _warmup_connections(self):
@@ -338,9 +338,9 @@ class ConnectUtil:
                     for _ in range(min(3, self.__class__._write_pool.max_connections)):
                         await self.write_conn.ping()
                 
-            StandLogger.info("Redis连接池预热完成")
+            StandLogger.info("Redis connection pool warm-up completed")
         except Exception as e:
-            StandLogger.warn(f"Redis连接池预热失败: {str(e)}")
+            StandLogger.warn(f"Redis connection pool warm-up failed: {str(e)}")
 
     async def _check_connection_health(self):
         """Check connection health."""
@@ -352,7 +352,7 @@ class ConnectUtil:
                 self._connection_healthy = True
                 self._last_health_check = current_time
             except Exception as e:
-                StandLogger.warn(f"Redis连接健康检查失败: {str(e)}")
+                StandLogger.warn(f"Redis connection health check failed: {str(e)}")
                 self._connection_healthy = False
         return self._connection_healthy
 
@@ -361,14 +361,14 @@ class ConnectUtil:
         if self._connection_healthy:
             return
             
-        StandLogger.info("开始重新建立Redis连接...")
+        StandLogger.info("Re-establishing Redis connection...")
         old_read_conn = self.read_conn
         old_write_conn = self.write_conn
         
         try:
             await self._init_connection_pools()
             self._connection_healthy = True
-            StandLogger.info("Redis连接重建成功")
+            StandLogger.info("Redis connection re-established")
             
             if old_read_conn:
                 try:
@@ -382,7 +382,7 @@ class ConnectUtil:
                     pass
                     
         except Exception as e:
-            StandLogger.error(f"Redis重连失败: {str(e)}")
+            StandLogger.error(f"Redis reconnection failed: {str(e)}")
             self.read_conn = old_read_conn
             self.write_conn = old_write_conn
             raise e
@@ -505,22 +505,22 @@ class ConnectUtil:
                 )
                 return result
             except asyncio.TimeoutError:
-                StandLogger.warn(f"Redis GET操作超时 (尝试 {i+1}/3): key={key}")
+                StandLogger.warn(f"Redis GET timed out (attempt {i+1}/3): key={key}")
                 if i < 2:
                     self._connection_healthy = False
                     await asyncio.sleep(0.1 * (i + 1))
                     await self._reconnect()
                 else:
-                    StandLogger.error(f"Redis GET操作最终超时: key={key}")
+                    StandLogger.error(f"Redis GET ultimately timed out: key={key}")
                     raise Exception(f"Redis GET timed out: {key}")
             except Exception as e:
-                StandLogger.warn(f"Redis GET操作失败 (尝试 {i+1}/3): {str(e)}")
+                StandLogger.warn(f"Redis GET failed (attempt {i+1}/3): {str(e)}")
                 if i < 2:
                     self._connection_healthy = False
                     await asyncio.sleep(0.1 * (i + 1))  # Incremental backoff.
                     await self._reconnect()
                 else:
-                    StandLogger.error(f"Redis GET操作最终失败: key={key}, error={str(e)}")
+                    StandLogger.error(f"Redis GET ultimately failed: key={key}, error={str(e)}")
                     raise e
 
     async def delete_str(self, key: str | list[str]) -> bool:
@@ -603,9 +603,9 @@ async def get_redis_util():
 
         try:
             redis_util = await ConnectUtil.create()
-            StandLogger.info("Redis连接工厂初始化成功")
+            StandLogger.info("Redis connection factory initialized")
         except Exception as e:
-            StandLogger.error(f"Redis连接工厂初始化失败: {str(e)}")
+            StandLogger.error(f"Redis connection factory initialization failed: {str(e)}")
             raise e
     return redis_util
 
@@ -786,4 +786,4 @@ if resolve_metering_backend() == 'kafka':
     kafka_client = MyKafkaClient()
 else:
     kafka_client = None
-    StandLogger.info("计量后端为 redis，跳过 Kafka 客户端初始化")
+    StandLogger.info("Metering backend is Redis; skipping Kafka client initialization")

@@ -25,7 +25,7 @@ class OSSGateway:
               (self._basicUrl, self._bucketID, key, self._bucketID, name)
         response = requests.get(url, verify=False)
         if response.status_code != 200:
-            StandLogger.error("下载失败")
+            StandLogger.error("Download failed")
             raise Exception("Builder.OssGateway.Download.InternalError")
         res = response.json()
         ossRequestInfo = OSSRequestInfo()

@@ -73,7 +73,7 @@ class QuotaConfigCacheTree:
         self._snapshot_mtime = 0.0
         self._boot_source = "unknown"  # db | snapshot | empty
         self._load_from_snapshot_or_db()
-        StandLogger.info_log("加载大模型配额相关配置成功")
+        StandLogger.info_log("Loaded large-model quota configuration successfully")
         self._redis_channel = "quota_config_change"
         self._redis_hash_key = "quota_config_hash"
         self._redis_cmd_queue: "queue.Queue" = queue.Queue()
@@ -81,7 +81,7 @@ class QuotaConfigCacheTree:
             self._redis_worker_thread = threading.Thread(target=self._run_redis_worker_and_listener, daemon=True)
             self._redis_worker_thread.start()
         except Exception as e:
-            StandLogger.error(f"启动Redis工作线程失败: {e}")
+            StandLogger.error(f"Failed to start Redis worker thread: {e}")
 
     def _load_data(self):
         """Load all model configurations from the database."""
@@ -98,13 +98,13 @@ class QuotaConfigCacheTree:
             if loaded:
                 self._save_snapshot()
                 self._boot_source = "db"
-                StandLogger.info_log(f"配额配置从DB加载，模型ID={self.list_all_model_ids()}")
+                StandLogger.info_log(f"Loaded quota configuration from DB, model IDs={self.list_all_model_ids()}")
             else:
                 self._boot_source = "empty"
-                StandLogger.info_log("DB未返回任何配额配置")
+                StandLogger.info_log("DB returned no quota configuration")
         except Exception as e:
             self._boot_source = "empty"
-            StandLogger.info(f"加载配置数据时出错: {e}")
+            StandLogger.info(f"Error while loading configuration data: {e}")
 
     def _load_from_snapshot_or_db(self) -> None:
         with self._lock:
@@ -118,10 +118,11 @@ class QuotaConfigCacheTree:
                     try:
                         self._load_snapshot()
                         self._boot_source = "snapshot"
-                        StandLogger.info_log(f"配额配置从快照加载，模型ID={self.list_all_model_ids()}")
+                        StandLogger.info_log(
+                            f"Loaded quota configuration from snapshot, model IDs={self.list_all_model_ids()}")
                         return
                     except Exception as e:
-                        StandLogger.error(f"加载快照失败，保持空: {e}")
+                        StandLogger.error(f"Failed to load snapshot; keeping cache empty: {e}")
                 self._root = {}
 
     def _load_snapshot(self) -> None:
@@ -164,7 +165,7 @@ class QuotaConfigCacheTree:
             if current_mtime > self._snapshot_mtime:
                 self._load_snapshot()
         except Exception as e:
-            StandLogger.error(f"检查/加载快照失败: {e}")
+            StandLogger.error(f"Failed to check or load snapshot: {e}")
 
     def _enqueue_cmd(self, cmd: Dict[str, Any]) -> None:
         try:
@@ -182,17 +183,17 @@ class QuotaConfigCacheTree:
                 if redis_util is None:
                     redis_util = await get_redis_util()
             except Exception as e:
-                StandLogger.error(f"初始化Redis单例失败: {e}")
+                StandLogger.error(f"Failed to initialize Redis singleton: {e}")
                 return
 
             try:
                 if self._boot_source == "db":
                     self._enqueue_cmd({"op": "full_reload"})
-                    StandLogger.info_log("以DB为准，已触发全量覆盖写入Redis")
+                    StandLogger.info_log("DB is the source of truth; triggered a full Redis overwrite")
                 else:
                     await self._async_load_all_from_redis_hash()
             except Exception as e:
-                StandLogger.error(f"启动前同步阶段异常: {e}")
+                StandLogger.error(f"Startup synchronization failed: {e}")
 
             await asyncio.gather(
                 self._async_subscribe_loop(),
@@ -226,16 +227,16 @@ class QuotaConfigCacheTree:
                 with self._lock:
                     self._root = new_root
                     self._save_snapshot()
-                StandLogger.info_log(f"已从Redis Hash全量同步{len(new_root)}条配置")
+                StandLogger.info_log(f"Fully synchronized {len(new_root)} configurations from Redis Hash")
         except Exception as e:
-            StandLogger.error(f"异步从Redis Hash全量加载失败: {e}")
+            StandLogger.error(f"Failed to asynchronously load all configurations from Redis Hash: {e}")
 
     async def _async_publish(self, payload: Dict[str, Any]) -> None:
         try:
             global redis_util
             await redis_util.write_conn.publish(self._redis_channel, json.dumps(payload, ensure_ascii=False))
         except Exception as e:
-            StandLogger.error(f"异步发布Redis变更事件失败: {e}")
+            StandLogger.error(f"Failed to asynchronously publish Redis change event: {e}")
 
     async def _async_cmd_loop(self) -> None:
         loop = asyncio.get_running_loop()
@@ -262,7 +263,7 @@ class QuotaConfigCacheTree:
                     await pipe.execute()
                     await self._async_publish({"op": "full_reload"})
             except Exception as e:
-                StandLogger.error(f"Redis命令处理异常: {e}")
+                StandLogger.error(f"Redis command handling failed: {e}")
 
     async def _async_subscribe_loop(self) -> None:
         backoff = 0.5
@@ -302,7 +303,7 @@ class QuotaConfigCacheTree:
                         await self._async_load_all_from_redis_hash()
                 backoff = 0.5
             except Exception as e:
-                StandLogger.error(f"Redis订阅循环异常: {e}")
+                StandLogger.error(f"Redis subscription loop failed: {e}")
                 try:
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 10)

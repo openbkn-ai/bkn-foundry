@@ -49,30 +49,30 @@ class KafkaStreamsProcessor:
             'fetch.max.bytes': 52428800  # Maximum bytes.
         }
 
-        StandLogger.info_log(f"消费者配置: group.id={self.group_id}, auto.offset.reset={offset_reset}")
-        StandLogger.info_log(f"主机名: {hostname}, 进程ID: {pid}")
+        StandLogger.info_log(f"Consumer configuration: group.id={self.group_id}, auto.offset.reset={offset_reset}")
+        StandLogger.info_log(f"Hostname: {hostname}, process ID: {pid}")
 
         self.kafka_client.consumer = Consumer(consumer_config)
         self.kafka_client.consumer.subscribe([self.topic_name])
 
-        StandLogger.info_log(f"消费者已订阅 Topic: {self.topic_name}")
+        StandLogger.info_log(f"Consumer subscribed to topic: {self.topic_name}")
 
     def start_consumer(self):
         """Start the Kafka consumer."""
-        StandLogger.info_log(f"启动Kafka消费者... Topic: {self.topic_name}, Group ID: {self.group_id}")
+        StandLogger.info_log(f"Starting Kafka consumer... Topic: {self.topic_name}, Group ID: {self.group_id}")
 
         try:
-            StandLogger.info_log("正在连接Kafka消费者...")
+            StandLogger.info_log("Connecting Kafka consumer...")
             self._connect_consumer_with_custom_config()
-            StandLogger.info_log("Kafka消费者连接成功")
+            StandLogger.info_log("Kafka consumer connected successfully")
         except Exception as e:
-            StandLogger.error(f"连接Kafka消费者失败: {e}")
+            StandLogger.error(f"Failed to connect Kafka consumer: {e}")
             raise
 
         self.aggregator.start_periodic_flush()
 
         message_count = 0
-        StandLogger.info_log("开始消费Kafka消息...")
+        StandLogger.info_log("Starting Kafka message consumption...")
         while self.running:
             try:
                 batch = self.kafka_client.consume_batch(num_messages=500, timeout=0.2)
@@ -82,11 +82,11 @@ class KafkaStreamsProcessor:
                         # StandLogger.info_log(
                         self._process_message(message)
             except Exception as e:
-                StandLogger.error(f"消费Kafka消息时出错: {e}")
+                StandLogger.error(f"Error while consuming Kafka messages: {e}")
                 import time
                 time.sleep(1)
 
-        StandLogger.info_log("Kafka消费者已停止")
+        StandLogger.info_log("Kafka consumer stopped")
 
     def _process_message(self, message):
         """Process one Kafka message."""
@@ -95,7 +95,7 @@ class KafkaStreamsProcessor:
 
             with self.lock:
                 if message_id in self.processed_messages:
-                    StandLogger.info_log(f"消息已处理过，跳过: {message_id}")
+                    StandLogger.info_log(f"Message already processed; skipping: {message_id}")
                     return
                 self.processed_messages.add(message_id)
 
@@ -107,16 +107,16 @@ class KafkaStreamsProcessor:
                 value = value.decode('utf-8')
 
             data = json.loads(value)
-            StandLogger.info_log(f"接收到消息: {data}")
+            StandLogger.info_log(f"Received message: {data}")
             self.aggregator.add_record(data)
         except json.JSONDecodeError as e:
-            StandLogger.error(f"解析Kafka消息失败: {e}")
+            StandLogger.error(f"Failed to parse Kafka message: {e}")
         except Exception as e:
-            StandLogger.error(f"处理Kafka消息时出错: {e}")
+            StandLogger.error(f"Error while processing Kafka message: {e}")
 
     def stop_consumer(self):
         """Stop the Kafka consumer."""
-        StandLogger.info_log("停止Kafka消费者...")
+        StandLogger.info_log("Stopping Kafka consumer...")
         self.running = False
         self.kafka_client.close_consumer()
         self.aggregator.stop()
@@ -128,14 +128,14 @@ kafka_processor = None
 def start_kafka_streams_processor():
     """Run the Kafka Streams processor."""
     global kafka_processor
-    StandLogger.info_log("开始启动Kafka Streams处理器...")
+    StandLogger.info_log("Starting Kafka Streams processor...")
     if kafka_processor is None:
-        StandLogger.info_log("创建KafkaStreamsProcessor实例...")
+        StandLogger.info_log("Creating KafkaStreamsProcessor instance...")
         kafka_processor = KafkaStreamsProcessor()
-        StandLogger.info_log("KafkaStreamsProcessor实例创建成功")
+        StandLogger.info_log("KafkaStreamsProcessor instance created successfully")
 
-        StandLogger.info_log("开始调用start_consumer()方法...")
+        StandLogger.info_log("Calling start_consumer()...")
         kafka_processor.start_consumer()
-        StandLogger.info_log("Kafka Streams处理器已启动")
+        StandLogger.info_log("Kafka Streams processor started")
     else:
-        StandLogger.info_log("KafkaStreamsProcessor实例已存在，跳过创建")
+        StandLogger.info_log("KafkaStreamsProcessor instance already exists; skipping creation")

@@ -37,7 +37,7 @@ async def produce_metering_record(value: bytes, key: bytes = None) -> bool:
     if _backend == 'kafka':
         from app.mydb.ConnectUtil import kafka_client
         if kafka_client is None:
-            StandLogger.warn("计量后端为 kafka 但客户端未初始化，丢弃计量消息")
+            StandLogger.warn("Metering backend is Kafka but the client is not initialized; dropping metering message")
             return False
         return kafka_client.produce_async(value=value, key=key)
 
@@ -55,5 +55,5 @@ async def produce_metering_record(value: bytes, key: bytes = None) -> bool:
         return True
     except Exception as e:
         _redis_conn = None
-        StandLogger.warn(f"写入计量 Redis Stream 失败，丢弃消息: {e}")
+        StandLogger.warn(f"Failed to write to metering Redis Stream; dropping message: {e}")
         return False

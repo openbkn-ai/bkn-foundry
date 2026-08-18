@@ -7,11 +7,11 @@ sys_log = logging.getLogger('user_manage')
 def log_init():
     sys_log.setLevel(level=logging.DEBUG)
     formatter = logging.Formatter(
-        '进程ID:%(process)d - '
-        '线程ID:%(thread)d- '
-        '日志时间:%(asctime)s - '
-        '日志等级:%(levelname)s - '
-        '日志信息:%(message)s'
+        'Process ID:%(process)d - '
+        'Thread ID:%(thread)d- '
+        'Log time:%(asctime)s - '
+        'Log level:%(levelname)s - '
+        'Message:%(message)s'
     )
     sys_log.handlers.clear()
     file_handler = handlers.TimedRotatingFileHandler('user_app_logs.log', encoding='utf-8', when='W6')
