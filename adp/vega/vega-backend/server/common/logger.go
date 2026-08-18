@@ -17,7 +17,7 @@ const (
 	logFileName = "/opt/vega-backend/logs/vega-backend.log"
 )
 
-// GetLogger returns the logger handle.
+// init initializes the global logger.
 func init() {
 	setting := logger.LogSetting{
 		LogServiceName: version.ServerName,
