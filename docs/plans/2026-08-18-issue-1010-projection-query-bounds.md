@@ -11,7 +11,7 @@ The summary service intentionally caps a bounded projection scan at 2,000 entrie
 
 - `iprojectionsource.Query.Limit` is the receipt candidate budget for one Core projection query.
 - The Core adapter asks for at most `Limit + 1` documents: the single extra document preserves the existing truncation signal without fetching unrelated historical records.
-- Stable sorting, access-scope checks, artifact hydration, public cursors, totals and partial-result semantics remain unchanged.
+- Stable sorting, access-scope checks, artifact hydration, public cursors and totals remain unchanged. The existing partial-result signal remains the same, but its threshold intentionally becomes `Limit + 1` rather than the prior expanded 10,000-document read.
 - No rebuild, schema, API or UI change is included.
 
 ## Steps
@@ -27,5 +27,6 @@ The summary service intentionally caps a bounded projection scan at 2,000 entrie
 - Cursor/search-after summary materialization.
 - Batched canonical MariaDB enrichment.
 - Source timing metrics.
+- Bounding the interaction-expansion follow-up query. It needs a separate contract because one selected interaction may legitimately contain more than the list candidate budget.
 
 Those are separate Issue #1010 increments because they require new projection contracts and cannot safely be mixed with the receipt-query bound correction.
