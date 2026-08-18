@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -61,8 +60,7 @@ const (
 	toolKeyGetSkillContent          = "get_skill_content"
 	toolKeyReadSkillFile            = "read_skill_file"
 	toolKeyExecuteSkill             = "execute_skill"
-	// Keep locale tracking aligned with the bounded lifetime of mcp-go's
-	// in-memory session state.
+	// Bounds the lifetime of mcp-go's in-memory session state.
 	mcpSessionIdleTTL = 30 * time.Minute
 )
 
@@ -83,13 +81,7 @@ func NewMCPHandlerWithLifecycle(lifecycleClient *bkntrace.LifecycleClient) http.
 }
 
 type localizedMCPHandler struct {
-	handlers       map[string]http.Handler
-	sessionLocales sync.Map // Mcp-Session-Id -> mcpSessionLocale
-}
-
-type mcpSessionLocale struct {
-	locale   string
-	lastUsed time.Time
+	handlers map[string]http.Handler
 }
 
 func newLocalizedMCPHandler(lifecycleClient *bkntrace.LifecycleClient) http.Handler {
@@ -116,48 +108,19 @@ func newMCPStreamableHTTPHandler(srv *server.MCPServer, path string) http.Handle
 }
 
 func (h *localizedMCPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	sessionID := r.Header.Get(server.HeaderKeySessionID)
-	now := time.Now()
-	h.cleanupExpiredSessionLocales(now)
-	locale := h.localeForRequest(r, sessionID, now)
+	// Every request carries its own language. An earlier version pinned the
+	// locale to Mcp-Session-Id, guarding against a client that changes language
+	// mid-session — which clients do not do, while the map itself became more
+	// per-replica session state to keep alive (#954).
+	locale := normalizeMCPLocale(string(sharedrest.ResolveLanguage(r.Header.Get(sharedrest.AcceptLanguageHeader))))
 	handler, ok := h.handlers[locale]
 	if !ok {
 		handler = h.handlers[defaultMCPLocale]
 	}
 
-	// All tool handlers read the effective locale from request context. Pin it
-	// to the session value so a later Accept-Language header cannot make tool
-	// results disagree with the session's initialized catalog.
+	// The tool handlers read the effective locale from the request context.
 	r = r.WithContext(common.SetLanguageToCtx(r.Context(), common.Language(locale)))
 	handler.ServeHTTP(w, r)
-	if initializedSessionID := w.Header().Get(server.HeaderKeySessionID); initializedSessionID != "" {
-		h.sessionLocales.Store(initializedSessionID, mcpSessionLocale{locale: locale, lastUsed: now})
-	}
-	if r.Method == http.MethodDelete && sessionID != "" {
-		h.sessionLocales.Delete(sessionID)
-	}
-}
-
-func (h *localizedMCPHandler) localeForRequest(r *http.Request, sessionID string, now time.Time) string {
-	if sessionID != "" {
-		if value, ok := h.sessionLocales.Load(sessionID); ok {
-			session := value.(mcpSessionLocale)
-			session.lastUsed = now
-			h.sessionLocales.Store(sessionID, session)
-			return session.locale
-		}
-	}
-	return normalizeMCPLocale(string(sharedrest.ResolveLanguage(r.Header.Get(sharedrest.AcceptLanguageHeader))))
-}
-
-func (h *localizedMCPHandler) cleanupExpiredSessionLocales(now time.Time) {
-	h.sessionLocales.Range(func(key, value any) bool {
-		session, ok := value.(mcpSessionLocale)
-		if !ok || now.Sub(session.lastUsed) >= mcpSessionIdleTTL {
-			h.sessionLocales.Delete(key)
-		}
-		return true
-	})
 }
 
 // newMCPServer assembles the tool surface. Split out of NewMCPHandler so tests

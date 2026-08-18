@@ -10,7 +10,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/mark3labs/mcp-go/server"
 
@@ -18,38 +17,36 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-func TestLocalizedMCPHandlerPinsLocaleToSession(t *testing.T) {
+func TestLocalizedMCPHandlerFollowsRequestLocale(t *testing.T) {
 	handler := &localizedMCPHandler{
 		handlers: map[string]http.Handler{
-			defaultMCPLocale: markerMCPHandler("zh-session"),
-			"en-US":          markerMCPHandler("en-session"),
+			defaultMCPLocale: markerMCPHandler("zh-handler"),
+			"en-US":          markerMCPHandler("en-handler"),
 		},
 	}
 
-	first := httptest.NewRequest(http.MethodPost, endpointPath, nil)
-	first.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
-	firstRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(firstRecorder, first)
-	if got := firstRecorder.Body.String(); got != "en-session" {
-		t.Fatalf("initialize response = %q, want English handler", got)
-	}
-	if sessionID := firstRecorder.Header().Get(server.HeaderKeySessionID); sessionID != "en-session" {
-		t.Fatalf("Mcp-Session-Id = %q, want en-session", sessionID)
+	english := httptest.NewRequest(http.MethodPost, endpointPath, nil)
+	english.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	englishRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(englishRecorder, english)
+	if got := englishRecorder.Body.String(); got != "en-handler" {
+		t.Fatalf("en-US request = %q, want the English handler", got)
 	}
 
-	followup := httptest.NewRequest(http.MethodPost, endpointPath, nil)
-	followup.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
-	followup.Header.Set(server.HeaderKeySessionID, "en-session")
-	followupRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(followupRecorder, followup)
-	if got := followupRecorder.Body.String(); got != "en-session" {
-		t.Fatalf("follow-up response = %q, want session-pinned English handler", got)
+	// The same session asking in another language gets that language. The
+	// handler holds no session state to contradict the header with.
+	chinese := httptest.NewRequest(http.MethodPost, endpointPath, nil)
+	chinese.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+	chinese.Header.Set(server.HeaderKeySessionID, "en-handler")
+	chineseRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(chineseRecorder, chinese)
+	if got := chineseRecorder.Body.String(); got != "zh-handler" {
+		t.Fatalf("zh-CN request = %q, want the Chinese handler", got)
 	}
 }
 
-func TestLocalizedMCPHandlerPinsRequestContextLocaleToSession(t *testing.T) {
+func TestLocalizedMCPHandlerPutsRequestLocaleInContext(t *testing.T) {
 	localeHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(server.HeaderKeySessionID, "en-session")
 		_, _ = w.Write([]byte(common.GetLanguageFromCtx(r.Context())))
 	})
 	handler := &localizedMCPHandler{
@@ -59,46 +56,37 @@ func TestLocalizedMCPHandlerPinsRequestContextLocaleToSession(t *testing.T) {
 		},
 	}
 
-	initialize := httptest.NewRequest(http.MethodPost, endpointPath, nil)
-	initialize.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
-	handler.ServeHTTP(httptest.NewRecorder(), initialize)
-
-	followup := httptest.NewRequest(http.MethodPost, endpointPath, nil)
-	followup.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
-	followup.Header.Set(server.HeaderKeySessionID, "en-session")
+	request := httptest.NewRequest(http.MethodPost, endpointPath, nil)
+	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	request.Header.Set(server.HeaderKeySessionID, "some-session")
 	response := httptest.NewRecorder()
-	handler.ServeHTTP(response, followup)
+	handler.ServeHTTP(response, request)
 	if got := response.Body.String(); got != "en-US" {
-		t.Fatalf("request context locale = %q, want session-pinned en-US", got)
+		t.Fatalf("request context locale = %q, want en-US", got)
 	}
 }
 
-func TestLocalizedMCPHandlerReleasesAndExpiresSessionLocale(t *testing.T) {
+func TestLocalizedMCPHandlerWithoutHeaderUsesDefaultLocale(t *testing.T) {
 	handler := &localizedMCPHandler{
 		handlers: map[string]http.Handler{
-			defaultMCPLocale: markerMCPHandler("zh-session"),
-			"en-US":          markerMCPHandler("en-session"),
+			defaultMCPLocale: markerMCPHandler("zh-handler"),
+			"en-US":          markerMCPHandler("en-handler"),
 		},
 	}
-	handler.sessionLocales.Store("expired", mcpSessionLocale{
-		locale: "en-US", lastUsed: time.Now().Add(-mcpSessionIdleTTL),
-	})
 
-	request := httptest.NewRequest(http.MethodDelete, endpointPath, nil)
-	request.Header.Set(server.HeaderKeySessionID, "en-session")
+	request := httptest.NewRequest(http.MethodPost, endpointPath, nil)
+	request.Header.Set(server.HeaderKeySessionID, "some-session")
 	response := httptest.NewRecorder()
-	handler.sessionLocales.Store("en-session", mcpSessionLocale{locale: "en-US", lastUsed: time.Now()})
 	handler.ServeHTTP(response, request)
-
-	if _, ok := handler.sessionLocales.Load("en-session"); ok {
-		t.Fatal("DELETE did not release the session locale")
-	}
-	if _, ok := handler.sessionLocales.Load("expired"); ok {
-		t.Fatal("expired session locale was not pruned")
+	if got := response.Body.String(); got != "zh-handler" {
+		t.Fatalf("header-less request = %q, want the service default handler", got)
 	}
 }
 
-func TestMCPInitializeAndToolCatalogUseSessionLocale(t *testing.T) {
+// TestMCPToolCatalogFollowsRequestLocale drives the real handler end to end:
+// initialize in one language, then list tools in another, and check the catalog
+// follows each request rather than whatever the session started with.
+func TestMCPToolCatalogFollowsRequestLocale(t *testing.T) {
 	handler := NewMCPHandlerWithLifecycle(nil)
 
 	initialize := httptest.NewRequest(http.MethodPost, endpointPath, strings.NewReader(`{
@@ -135,22 +123,36 @@ func TestMCPInitializeAndToolCatalogUseSessionLocale(t *testing.T) {
 		t.Fatalf("initialize instructions = %q, want English instructions", initializeResponse.Result.Instructions)
 	}
 
-	toolsList := httptest.NewRequest(http.MethodPost, endpointPath, strings.NewReader(`{
+	englishDescription := searchSchemaDescription(t, handler, sessionID, "en-US")
+	if !strings.HasPrefix(englishDescription, "Explore schema by natural language.") {
+		t.Fatalf("en-US search_schema description = %q, want the English catalog", englishDescription)
+	}
+
+	chineseDescription := searchSchemaDescription(t, handler, sessionID, "zh-CN")
+	if !strings.HasPrefix(chineseDescription, "统一的 Schema 探索入口") {
+		t.Fatalf("zh-CN search_schema description = %q, want the default-locale catalog", chineseDescription)
+	}
+}
+
+func searchSchemaDescription(t *testing.T, handler http.Handler, sessionID, locale string) string {
+	t.Helper()
+
+	request := httptest.NewRequest(http.MethodPost, endpointPath, strings.NewReader(`{
 		"jsonrpc":"2.0",
 		"id":2,
 		"method":"tools/list",
 		"params":{}
 	}`))
-	toolsList.Header.Set("Content-Type", "application/json")
-	toolsList.Header.Set(server.HeaderKeySessionID, sessionID)
-	toolsList.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
-	toolsRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(toolsRecorder, toolsList)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set(server.HeaderKeySessionID, sessionID)
+	request.Header.Set(sharedrest.AcceptLanguageHeader, locale)
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
 
-	if toolsRecorder.Code != http.StatusOK {
-		t.Fatalf("tools/list status = %d, body = %s", toolsRecorder.Code, toolsRecorder.Body.String())
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("tools/list status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
-	var toolsResponse struct {
+	var response struct {
 		Result struct {
 			Tools []struct {
 				Name        string `json:"name"`
@@ -158,23 +160,20 @@ func TestMCPInitializeAndToolCatalogUseSessionLocale(t *testing.T) {
 			} `json:"tools"`
 		} `json:"result"`
 	}
-	if err := json.Unmarshal(toolsRecorder.Body.Bytes(), &toolsResponse); err != nil {
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatalf("decode tools/list response: %v", err)
 	}
-	for _, tool := range toolsResponse.Result.Tools {
+	for _, tool := range response.Result.Tools {
 		if tool.Name == toolKeySearchSchema {
-			if !strings.HasPrefix(tool.Description, "Explore schema by natural language.") {
-				t.Fatalf("search_schema description = %q, want English session-pinned catalog", tool.Description)
-			}
-			return
+			return tool.Description
 		}
 	}
 	t.Fatalf("tools/list did not include %q", toolKeySearchSchema)
+	return ""
 }
 
-func markerMCPHandler(sessionID string) http.Handler {
+func markerMCPHandler(marker string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set(server.HeaderKeySessionID, sessionID)
-		_, _ = w.Write([]byte(sessionID))
+		_, _ = w.Write([]byte(marker))
 	})
 }
