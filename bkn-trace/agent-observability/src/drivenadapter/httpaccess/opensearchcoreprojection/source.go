@@ -116,8 +116,12 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 
 func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Query, applyScopeCandidates bool) ([]receiptDocument, bool, error) {
 	size := maxProjectionDocuments
-	if query.Limit > 0 && query.Limit*20+1 < size {
-		size = query.Limit*20 + 1
+	if query.Limit > 0 && query.Limit < size {
+		// Limit is the projection caller's candidate budget. Fetch one extra
+		// document only to preserve the existing truncation signal; expanding the
+		// budget here defeats bounded summary scans and makes a 2,000-entry request
+		// read 10,000 receipts from OpenSearch.
+		size = query.Limit + 1
 	}
 	must := []map[string]any{{"exists": map[string]any{"field": "receipt_id"}}}
 	for field, value := range map[string]string{

@@ -16,6 +16,40 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 )
 
+func TestSourceLimitsReceiptCandidatesToRequestedLimitPlusLookahead(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var query map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+			t.Fatalf("decode query: %v", err)
+		}
+		if size, ok := query["size"].(float64); !ok || size != 21 {
+			t.Fatalf("receipt candidate query must request limit plus one lookahead, got %#v", query["size"])
+		}
+		_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	source := opensearchcoreprojection.New(
+		opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second),
+		"bkn-trace-core",
+		nil,
+	)
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{
+			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+		},
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if result.Truncated {
+		t.Fatalf("an empty response must not be truncated: %#v", result)
+	}
+}
+
 func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t *testing.T) {
 	t.Parallel()
 
