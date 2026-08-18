@@ -1,14 +1,14 @@
 """
-Kubernetes 容器调度器
+Kubernetes container scheduler
 
-使用官方 Python kubernetes 客户端实现 Pod 的创建和管理。
+Creates and manages Pods through the official Python kubernetes client.
 
-MinIO + s3fs 架构：
-- Control Plane 通过 S3 API 将文件写入 MinIO 的 /sessions/{session_id}/ 路径
-- Executor Pod 在启动脚本中挂载 s3fs，将 S3 bucket 的 session 子目录挂载到 /workspace
-- s3fs 进程和 executor 进程运行在同一容器内
+MinIO + s3fs architecture:
+- The control plane writes files into MinIO under /sessions/{session_id}/ via the S3 API
+- The executor Pod mounts s3fs in its start script, mapping that session subdirectory to /workspace
+- The s3fs process and the executor process run inside the same container
 
-Python 依赖安装：按照 sandbox-design-v2.1.md 章节 5 设计。
+Python dependency installation follows section 5 of sandbox-design-v2.1.md.
 """
 
 import asyncio
@@ -54,13 +54,13 @@ logger = get_logger(__name__)
 
 def s3_prefix_from_path(prefix: str) -> str:
     """
-    从 S3 路径前缀中提取会话 ID
+    Extract the session id from an S3 path prefix
 
     Args:
-        prefix: S3 路径前缀，如 "sessions/test-001/workspace"
+        prefix: S3 path prefix, for example "sessions/test-001/workspace"
 
     Returns:
-        会话 ID，如 "test-001"
+        The session id, for example "test-001"
     """
     parts = prefix.strip("/").split("/")
     if len(parts) >= 2 and parts[0] == "sessions":
@@ -70,9 +70,9 @@ def s3_prefix_from_path(prefix: str) -> str:
 
 class K8sScheduler(IContainerScheduler):
     """
-    Kubernetes 容器调度器
+    Kubernetes container scheduler
 
-    通过 Kubernetes API 管理 Pod 生命周期。
+    Manages the Pod lifecycle through the Kubernetes API.
     """
 
     def __init__(
@@ -83,53 +83,53 @@ class K8sScheduler(IContainerScheduler):
         executor_service_account: str = "sandbox-control-plane",
     ):
         """
-        初始化 K8s 调度器
+        Initialize the K8s scheduler
 
         Args:
-            namespace: Kubernetes 命名空间
-            kube_config_path: kubeconfig 文件路径（可选，用于本地开发）
-            service_account_token: ServiceAccount Token（用于 Pod 内运行）
-            executor_service_account: Executor Pod 使用的 ServiceAccount 名称
+            namespace: Kubernetes namespace
+            kube_config_path: path to a kubeconfig file, optional, for local development
+            service_account_token: ServiceAccount token, used when running inside a Pod
+            executor_service_account: name of the ServiceAccount the executor Pod uses
         """
         self._namespace = namespace
         self._executor_service_account = executor_service_account
 
-        # 加载 Kubernetes 配置
+        # Load the Kubernetes configuration
         if service_account_token:
-            # 在 Pod 内运行，使用 ServiceAccount
+            # Running inside a Pod: use the ServiceAccount
             self._load_incluster_config()
         elif kube_config_path:
-            # 使用指定的 kubeconfig 文件
+            # Use the kubeconfig file that was given
             config.load_kube_config(config_file=kube_config_path)
         else:
-            # 尝试加载默认 kubeconfig
+            # Try the default kubeconfig
             try:
                 config.load_kube_config()
             except Exception:
-                # 如果 kubeconfig 不存在，尝试使用 in-cluster 配置
+                # No kubeconfig: try the in-cluster configuration
                 try:
                     self._load_incluster_config()
                 except Exception:
-                    # 最后尝试使用默认配置（用于本地开发）
+                    # Last resort, the default configuration, for local development
                     from kubernetes.client import Configuration
 
                     Configuration.set_default(Configuration())
 
-        # 创建 API 客户端
+        # Create the API clients
         self._core_v1 = client.CoreV1Api()
         self._initialized = False
 
     def _load_incluster_config(self):
-        """加载 in-cluster 配置"""
+        """Load the in-cluster configuration"""
         config.load_incluster_config()
         logger.info("Loaded in-cluster Kubernetes config")
 
     async def _ensure_connected(self) -> bool:
-        """确保 K8s 连接已建立"""
+        """Make sure the K8s connection is established"""
         if not self._initialized:
             try:
-                # 测试连接 - 使用当前 namespace 的 Pod 列表代替 namespace 列表
-                # 这样只需要 namespace 级别的权限，不需要 cluster 级别的权限
+                # Probe the connection by listing Pods in the current namespace
+                # rather than namespaces, so only namespace-level permissions are needed
                 self._core_v1.list_namespaced_pod(self._namespace, limit=1)
                 self._initialized = True
                 logger.info(f"Connected to Kubernetes cluster, namespace: {self._namespace}")
@@ -139,18 +139,18 @@ class K8sScheduler(IContainerScheduler):
         return self._initialized
 
     async def close(self) -> None:
-        """关闭连接（Kubernetes 客户端是无状态的，无需显式关闭）"""
+        """Close the connection. The Kubernetes client is stateless, so there is nothing to close."""
         self._initialized = False
 
     def _parse_s3_workspace(self, workspace_path: str) -> dict | None:
         """
-        解析 S3 workspace 路径
+        Parse an S3 workspace path
 
         Args:
-            workspace_path: S3 路径，格式: s3://bucket/sessions/{session_id}/
+            workspace_path: S3 path, formatted as s3://bucket/sessions/{session_id}/
 
         Returns:
-            包含 bucket, prefix 的字典，如果不是 S3 路径则返回 None
+            A dict holding bucket and prefix, or None when this is not an S3 path
         """
         if not workspace_path or not workspace_path.startswith("s3://"):
             return None
@@ -162,19 +162,19 @@ class K8sScheduler(IContainerScheduler):
         }
 
     def _build_pod_name(self, session_id: str) -> str:
-        """生成 Pod 名称"""
-        # K8s Pod 名称需要符合 DNS 子域名规则
-        # 只能包含小写字母、数字和 '-'，且开头和结尾必须是字母数字
+        """Generate the Pod name"""
+        # A K8s Pod name has to follow the DNS subdomain rules:
+        # lower-case letters, digits, and '-', starting and ending alphanumeric.
         pod_name = f"sandbox-{session_id.lower()}"
-        # 替换不符合规则的字符
+        # Replace anything that does not fit
         pod_name = "".join(c if c.isalnum() or c == "-" else "-" for c in pod_name)
-        # 确保不以 '-' 开头或结尾
+        # Make sure it neither starts nor ends with '-'
         pod_name = pod_name.strip("-")
-        # 限制长度（K8s Pod 名称最多 253 字符）
+        # Cap the length; a K8s Pod name allows at most 253 characters
         return pod_name[:253]
 
     def _build_owner_references(self, config: ContainerConfig) -> list[V1OwnerReference] | None:
-        """基于 control plane owner 上下文构造 ownerReferences。"""
+        """Build ownerReferences from the control plane owner context."""
         if config.owner_context is None:
             return None
 
@@ -190,7 +190,7 @@ class K8sScheduler(IContainerScheduler):
         ]
 
     async def _read_pod(self, pod_name: str) -> V1Pod | None:
-        """读取指定 Pod，不存在时返回 None。"""
+        """Read one Pod, returning None when it does not exist."""
         try:
             return await asyncio.to_thread(
                 self._core_v1.read_namespaced_pod,
@@ -208,7 +208,7 @@ class K8sScheduler(IContainerScheduler):
         timeout_seconds: float = 30.0,
         poll_interval_seconds: float = 1.0,
     ) -> bool:
-        """等待 Pod 从 API 中彻底删除，避免同名重建时出现 409。"""
+        """Wait until the Pod is gone from the API, so recreating the same name cannot 409."""
         deadline = asyncio.get_running_loop().time() + timeout_seconds
         while asyncio.get_running_loop().time() < deadline:
             existing_pod = await self._read_pod(pod_name)
@@ -218,7 +218,7 @@ class K8sScheduler(IContainerScheduler):
         return False
 
     def _build_image_pull_secrets(self) -> list[V1LocalObjectReference] | None:
-        """构造 executor Pod 使用的 imagePullSecrets。"""
+        """Build the imagePullSecrets the executor Pod uses."""
         settings = get_settings()
         secret_names = [
             secret.strip()
@@ -238,23 +238,23 @@ class K8sScheduler(IContainerScheduler):
         s3_workspace: dict = None,
     ) -> V1Container:
         """
-        构建主 executor 容器
+        Build the main executor container
 
-        如果使用 S3 挂载，启动脚本会先挂载 s3fs，然后启动 executor
+        With an S3 mount, the start script mounts s3fs first and then starts the executor
 
         Args:
-            config: 容器配置
-            use_s3_mount: 是否使用 S3 挂载（通过 s3fs 在容器内挂载）
-            has_dependencies: 是否有依赖包
-            session_id: 会话 ID（用于 S3 子目录挂载）
-            s3_workspace: S3 workspace 配置（包含 bucket, prefix）
+            config: container configuration
+            use_s3_mount: whether to mount S3, through s3fs inside the container
+            has_dependencies: whether there are dependency packages
+            session_id: session id, used for the S3 subdirectory mount
+            s3_workspace: S3 workspace configuration, holding bucket and prefix
 
         Returns:
-            V1Container 对象
+            A V1Container object
         """
         env_vars = [V1EnvVar(name=k, value=v) for k, v in config.env_vars.items()]
 
-        # 添加 S3 相关环境变量
+        # Add the S3 environment variables
         s3_workspace = self._parse_s3_workspace(config.workspace_path)
         if s3_workspace:
             env_vars.extend(
@@ -265,19 +265,19 @@ class K8sScheduler(IContainerScheduler):
                 ]
             )
 
-        # sandbox_sdk.bkn 的 MCP 地址。部署级常量，注入一次即可；调用方在 event 里
-        # 传 mcp 时以 event 为准（见 sandbox_sdk/bkn.py 的 _mcp_url）。
+        # The MCP address for sandbox_sdk.bkn. A deployment-level constant, injected
+        # once; a caller that passes mcp in the event wins (see _mcp_url in sandbox_sdk/bkn.py).
         bkn_mcp_url = get_settings().bkn_sandbox_mcp_url.strip()
         if bkn_mcp_url:
             env_vars.append(V1EnvVar(name="BKN_SANDBOX_MCP_URL", value=bkn_mcp_url))
 
-        # 添加 PYTHONPATH 环境变量以支持依赖导入
+        # Add PYTHONPATH so dependency imports resolve
         if has_dependencies:
-            # 依赖安装到本地 /opt/sandbox-venv
+            # Dependencies are installed locally under /opt/sandbox-venv
             env_vars.append(V1EnvVar(name="PYTHONPATH", value="/opt/sandbox-venv:/app:/workspace"))
             env_vars.append(V1EnvVar(name="SANDBOX_VENV_PATH", value="/opt/sandbox-venv"))
 
-        # 资源限制
+        # Resource limits
         resources = V1ResourceRequirements(
             limits={
                 "cpu": config.cpu_limit,
@@ -292,7 +292,7 @@ class K8sScheduler(IContainerScheduler):
             },
         )
 
-        # 容器端口
+        # Container ports
         ports = [
             V1ContainerPort(
                 container_port=8080,
@@ -301,7 +301,7 @@ class K8sScheduler(IContainerScheduler):
             )
         ]
 
-        # 卷挂载
+        # Volume mounts
         volume_mounts = [
             V1VolumeMount(
                 name="workspace",
@@ -317,42 +317,43 @@ class K8sScheduler(IContainerScheduler):
                 )
             )
 
-        # 安全上下文 - s3fs 需要 privileged 和 root 用户
-        # 注意：privileged=True 时容器必须以 root 运行，以便进行 FUSE 挂载
-        # 需要显式设置 runAsUser=0 来覆盖 Dockerfile 中的 USER 指令
-        # 有依赖时也需要 root 来安装依赖，然后用 gosu 切换到 sandbox 用户
+        # Security context: s3fs needs privileged and the root user.
+        # With privileged=True the container has to run as root to perform the FUSE mount,
+        # so runAsUser=0 is set explicitly to override the USER directive in the Dockerfile.
+        # Dependencies also need root to install, after which gosu drops to the sandbox user.
         needs_root = use_s3_mount or has_dependencies
         security_context = V1SecurityContext(
-            # s3fs 挂载或依赖安装需要 root，最终使用 gosu 切换到 sandbox 用户
+            # An s3fs mount or a dependency install needs root; gosu drops to the sandbox user at the end
             run_as_non_root=not needs_root,
-            run_as_user=0 if needs_root else 1000,  # 0 = root，显式设置以覆盖 Dockerfile USER
+            run_as_user=0 if needs_root else 1000,  # 0 = root, set explicitly to override the Dockerfile USER
             run_as_group=0 if needs_root else 1000,
-            allow_privilege_escalation=use_s3_mount,  # s3fs 需要特权
+            allow_privilege_escalation=use_s3_mount,  # s3fs needs privileges
             capabilities=V1Capabilities(drop=["ALL"]) if not needs_root else None,
             read_only_root_filesystem=False,
-            privileged=use_s3_mount,  # s3fs 需要 privileged 模式
+            privileged=use_s3_mount,  # s3fs needs privileged mode
         )
 
-        # 构建启动命令
+        # Build the start command
         command = None
         if use_s3_mount:
-            # 获取设置
+            # Read the settings
             settings = get_settings()
             minio_url = (
                 settings.s3_endpoint_url or "http://minio.sandbox-system.svc.cluster.local:9000"
             )
             bucket = s3_workspace["bucket"]
 
-            # S3 挂载脚本（先建会话前缀，再只挂本会话前缀到 /workspace，不暴露整个 bucket）
+            # S3 mount script: create the session prefix first, then mount only that prefix on /workspace, never the whole bucket
             s3_prefix = s3_workspace["prefix"].rstrip("/")
             mount_script = f"""#!/bin/sh
 set -e
 
 echo "📂 Preparing S3 workspace {bucket}:/{s3_prefix} (session: {session_id})..."
 
-# 1) 先以 root 临时挂整桶（仅 root 可见、不 allow_other），创建会话前缀后立即卸载。
-#    s3fs 无法挂载不存在的前缀，需先确保前缀对象存在。executor 之后才以 sandbox
-#    用户启动，用户代码永远看不到这个临时挂载点。
+# 1) Briefly mount the whole bucket as root (root-visible only, no allow_other) to create
+#    the session prefix, then unmount immediately. s3fs cannot mount a prefix that does not
+#    exist yet. The executor starts as the sandbox user afterwards, so user code never sees
+#    this temporary mount point.
 mkdir -p /mnt/s3-init
 s3fs {bucket} /mnt/s3-init \\
     -o url={minio_url} \\
@@ -362,9 +363,9 @@ mkdir -p "/mnt/s3-init/{s3_prefix}"
 umount /mnt/s3-init || fusermount -u /mnt/s3-init
 rmdir /mnt/s3-init
 
-# 2) 只把本会话前缀挂到 /workspace。不挂整个 bucket —— 整桶挂载（allow_other）会让
-#    任意会话读写/删除其它会话的数据，是跨会话数据泄露/破坏面；按前缀挂载后代码
-#    只能触及自己的 /workspace。
+# 2) Mount only this session's prefix on /workspace. Mounting the whole bucket with
+#    allow_other would let any session read, write, or delete another session's data, which
+#    is a cross-session leak and corruption surface; per-prefix code reaches only its own /workspace.
 s3fs {bucket}:/{s3_prefix} /workspace \\
     -o url={minio_url} \\
     -o use_path_request_style \\
@@ -373,7 +374,7 @@ s3fs {bucket}:/{s3_prefix} /workspace \\
     -o gid=1000 \\
     -o passwd_file=/etc/s3fs-passwd/s3fs-passwd
 
-# 3) 校验确实挂上了 s3fs，避免静默回落到本地 emptyDir 导致数据不落 MinIO。
+# 3) Verify s3fs really mounted, so a silent fall back to the local emptyDir cannot leave data out of MinIO.
 mount | grep -q "on /workspace type fuse" || {{ echo "❌ s3fs failed to mount /workspace" >&2; exit 1; }}
 
 echo "✅ Session workspace mounted (scoped to {s3_prefix})"
@@ -381,7 +382,7 @@ ls -la /workspace/
 
 """
 
-            # 如果有依赖，安装依赖
+            # Install the dependencies when there are any
             if has_dependencies:
                 dependencies_json = config.labels.get("dependencies", "")
                 dependencies = json.loads(dependencies_json) if dependencies_json else []
@@ -405,17 +406,17 @@ export PYTHONPATH="$VENV_DIR:/app:/workspace"
 export SANDBOX_VENV_PATH="$VENV_DIR"
 """
 
-            # 启动 executor (前台) - 使用 gosu 切换到 sandbox 用户
+            # Start the executor in the foreground, dropping to the sandbox user with gosu
             mount_script += """
 echo "🚀 Starting executor as sandbox user..."
-# 使用 gosu 切换到 sandbox 用户并启动 executor
-# gosu 会正确传递信号，避免进程变成僵尸
+# Drop to the sandbox user with gosu and start the executor.
+# gosu forwards signals correctly, which keeps the process from becoming a zombie.
 exec gosu sandbox python -m executor.interfaces.http.rest
 """
             command = ["sh", "-c", mount_script]
 
         elif has_dependencies:
-            # 依赖由 executor 容器在启动时安装
+            # The executor container installs the dependencies at start-up
             dependencies_json = config.labels.get("dependencies", "")
             dependencies = json.loads(dependencies_json) if dependencies_json else []
             install_script = format_dependency_install_script_for_shell(dependencies)
@@ -426,10 +427,10 @@ echo "📦 Installing dependencies..."
 
 {install_script}
 
-# 修复 venv 目录权限（以 root 安装，需要让 sandbox 用户可读）
+# Fix the venv permissions: it was installed as root and the sandbox user has to read it.
 chown -R sandbox:sandbox /opt/sandbox-venv
 
-# 启动 executor - 使用 gosu 切换到 sandbox 用户
+# Start the executor, dropping to the sandbox user with gosu.
 echo "🚀 Starting executor as sandbox user..."
 exec gosu sandbox python -m executor.interfaces.http.rest
 """
@@ -451,13 +452,13 @@ exec gosu sandbox python -m executor.interfaces.http.rest
 
     async def create_container(self, config: ContainerConfig) -> str:
         """
-        创建 Kubernetes Pod - 使用 s3fs 在 executor 容器内挂载
+        Create a Kubernetes Pod, mounting s3fs inside the executor container
 
-        架构说明：
-        - Control Plane 通过 S3 API 将文件写入 MinIO 的 /sessions/{session_id}/ 路径
-        - Executor Pod 在启动脚本中挂载 s3fs，将 S3 bucket 的 session 子目录挂载到 /workspace
-        - s3fs 进程和 executor 进程运行在同一容器内
-        - 如果有依赖，executor 容器会在启动时安装依赖
+        How it fits together:
+        - The control plane writes files into MinIO under /sessions/{session_id}/ via the S3 API
+        - The executor Pod mounts s3fs in its start script, mapping that session subdirectory to /workspace
+        - The s3fs process and the executor process run inside the same container
+        - When there are dependencies, the executor container installs them at start-up
         """
         await self._ensure_connected()
 
@@ -465,18 +466,18 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         s3_workspace = self._parse_s3_workspace(config.workspace_path)
         use_s3_mount = s3_workspace is not None
 
-        # 检查是否有依赖
+        # Check whether there are dependencies
         dependencies_json = config.labels.get("dependencies", "")
         has_dependencies = bool(dependencies_json)
 
-        # 提取 session_id 仅用于日志记录（挂载使用完整 s3_prefix）
+        # session_id is extracted for logging only; the mount uses the full s3_prefix
         session_id = s3_prefix_from_path(s3_workspace["prefix"]) if s3_workspace else config.name
 
-        # 构建容器列表 - 只有 executor 容器
+        # Build the container list: the executor container only
         containers = []
 
-        # 构建 executor 容器（在启动脚本中挂载 s3fs）
-        # 注意：挂载脚本使用完整的 s3_prefix，而不是 session_id，以避免路径层级问题
+        # Build the executor container, which mounts s3fs in its start script.
+        # The mount script uses the full s3_prefix rather than session_id, to avoid path-depth problems.
         executor_container = self._build_executor_container(
             config=config,
             use_s3_mount=use_s3_mount,
@@ -486,17 +487,17 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         )
         containers.append(executor_container)
 
-        # 构建卷
+        # Build the volumes
         volumes = []
         if use_s3_mount:
-            # 使用 emptyDir 用于 s3fs 挂载
+            # An emptyDir backs the s3fs mount
             volumes.append(
                 V1Volume(
                     name="workspace",
                     empty_dir=V1EmptyDirVolumeSource(),
                 )
             )
-            # 添加 s3fs-passwd secret
+            # Add the s3fs-passwd secret
             volumes.append(
                 V1Volume(
                     name="s3fs-passwd",
@@ -507,7 +508,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                 )
             )
         else:
-            # 本地 workspace：使用 emptyDir
+            # Local workspace: use an emptyDir
             volumes.append(
                 V1Volume(
                     name="workspace",
@@ -515,11 +516,11 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                 )
             )
 
-        # 构建标签（排除 dependencies，因为 K8s labels 有严格格式限制）
-        # dependencies 不能作为 label，因为包含方括号、引号等非法字符
+        # Build the labels, excluding dependencies, because K8s labels have a strict format
+        # and dependencies contains brackets, quotes, and other illegal characters.
         dependencies_value = config.labels.pop("dependencies", None)
         labels = {
-            "app": "sandbox-executor",  # 匹配 sandbox-executor service selector
+            "app": "sandbox-executor",  # matches the sandbox-executor service selector
             "sandbox-session": config.name,
             "sandbox-type": "execution",
         }
@@ -527,7 +528,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
             labels["mount-method"] = "s3fs"
         labels.update(config.labels)
 
-        # 构建 annotations（dependencies 放在这里，没有格式限制）
+        # Build the annotations; dependencies goes here, where the format is unconstrained
         annotations = {
             "sandbox-session-id": config.name,
         }
@@ -536,11 +537,11 @@ exec gosu sandbox python -m executor.interfaces.http.rest
             annotations["control-plane-pod-uid"] = config.owner_context.pod_uid
         if dependencies_value:
             annotations["dependencies"] = dependencies_value
-        # 恢复 dependencies 到 config.labels，避免影响后续调用
+        # Restore dependencies onto config.labels so later calls are unaffected
         if dependencies_value is not None:
             config.labels["dependencies"] = dependencies_value
 
-        # 构建 Pod Spec
+        # Build the Pod spec
         pod = V1Pod(
             metadata=V1ObjectMeta(
                 name=pod_name,
@@ -551,18 +552,18 @@ exec gosu sandbox python -m executor.interfaces.http.rest
             spec=V1PodSpec(
                 containers=containers,
                 volumes=volumes,
-                restart_policy="Always",  # 确保容器退出后自动重启，保持 runtime 可用
+                restart_policy="Always",  # restart the container after it exits, keeping the runtime available
                 host_network=False,
                 termination_grace_period_seconds=30,
                 service_account_name=self._executor_service_account,
                 image_pull_secrets=self._build_image_pull_secrets(),
-                # 使用默认 DNS 策略 (ClusterFirst)，允许 Pod 使用 K8s 集群 DNS
-                # 这对于 executor 与 control plane 通信很重要
+                # Keep the default DNS policy (ClusterFirst) so the Pod uses cluster DNS,
+                # which matters for executor-to-control-plane communication.
             ),
         )
 
         try:
-            # 创建 Pod
+            # Create the Pod
             created_pod = await asyncio.to_thread(
                 self._core_v1.create_namespaced_pod,
                 namespace=self._namespace,
@@ -609,23 +610,23 @@ exec gosu sandbox python -m executor.interfaces.http.rest
 
     async def start_container(self, container_id: str) -> None:
         """
-        启动 Pod
+        Start the Pod
 
-        注意：Kubernetes Pod 创建后会自动启动，此方法为兼容接口保留
+        A Kubernetes Pod starts on its own once created; this method exists for interface compatibility.
         """
         await self._ensure_connected()
-        # K8s Pod 创建后自动启动，无需显式调用
+        # A K8s Pod starts automatically after creation, so there is nothing to call
         logger.debug(f"Pod {container_id} starts automatically after creation")
 
     async def stop_container(self, container_id: str, timeout: int = 30) -> None:
         """
-        停止（删除）Pod
+        Stop, meaning delete, the Pod
 
-        使用 s3fs 方式时，无需清理 PVC，s3fs 挂载在 Pod 删除时自动清理。
+        With s3fs there is no PVC to clean up; the mount goes away with the Pod.
 
         Args:
-            container_id: Pod 名称
-            timeout: 优雅终止超时时间（秒）
+            container_id: Pod name
+            timeout: graceful termination timeout in seconds
         """
         await self._ensure_connected()
 
@@ -646,13 +647,13 @@ exec gosu sandbox python -m executor.interfaces.http.rest
 
     async def remove_container(self, container_id: str, force: bool = False) -> None:
         """
-        删除 Pod
+        Delete the Pod
 
-        使用 s3fs 方式时，无需清理 PVC，s3fs 挂载在 Pod 删除时自动清理。
+        With s3fs there is no PVC to clean up; the mount goes away with the Pod.
 
         Args:
-            container_id: Pod 名称
-            force: 是否强制删除（grace_period_seconds=0）
+            container_id: Pod name
+            force: whether to force the delete with grace_period_seconds=0
         """
         await self._ensure_connected()
 
@@ -672,13 +673,13 @@ exec gosu sandbox python -m executor.interfaces.http.rest
 
     async def get_container_status(self, container_id: str) -> ContainerInfo:
         """
-        获取 Pod 状态
+        Get the Pod status
 
         Args:
-            container_id: Pod 名称
+            container_id: Pod name
 
         Returns:
-            ContainerInfo 对象
+            A ContainerInfo object
         """
         await self._ensure_connected()
         try:
@@ -688,7 +689,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                 namespace=self._namespace,
             )
 
-            # 转换 K8s Pod 状态到 ContainerInfo
+            # Translate the K8s Pod status into ContainerInfo
             phase = pod.status.phase
             if phase == "Running" and pod.status.container_statuses:
                 for container_status in pod.status.container_statuses:
@@ -707,7 +708,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
             )
             started_at = pod.status.start_time.isoformat() if pod.status.start_time else None
 
-            # 获取退出码（如果已终止）
+            # Read the exit code, when it has terminated
             exit_code = None
             if pod.status.container_statuses:
                 for container_status in pod.status.container_statuses:
@@ -715,7 +716,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                         exit_code = container_status.state.terminated.exit_code
                         break
 
-            # 获取镜像名称
+            # Read the image name
             image = ""
             if pod.spec.containers:
                 for container in pod.spec.containers:
@@ -745,13 +746,13 @@ exec gosu sandbox python -m executor.interfaces.http.rest
 
     async def is_container_running(self, container_id: str) -> bool:
         """
-        检查 Pod 是否正在运行
+        Check whether the Pod is running
 
         Args:
-            container_id: Pod 名称
+            container_id: Pod name
 
         Returns:
-            bool: Pod 是否运行中
+            bool: whether the Pod is running
         """
         try:
             container_info = await self.get_container_status(container_id)
@@ -764,7 +765,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         self,
         container_id: str,
     ) -> ContainerOwnershipInfo | None:
-        """读取 Pod 的 ownerReferences 和 takeover 相关 annotations。"""
+        """Read the Pod ownerReferences and the takeover annotations."""
         await self._ensure_connected()
 
         try:
@@ -808,15 +809,15 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         self, container_id: str, tail: int = 100, since: str | None = None
     ) -> str:
         """
-        获取 Pod 日志
+        Get the Pod logs
 
         Args:
-            container_id: Pod 名称
-            tail: 返回最后几行
-            since: 时间戳（可选）
+            container_id: Pod name
+            tail: how many trailing lines to return
+            since: timestamp, optional
 
         Returns:
-            日志字符串
+            The logs as a string
         """
         await self._ensure_connected()
         try:
@@ -826,7 +827,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                 namespace=self._namespace,
                 container="executor",
                 tail_lines=tail,
-                since_seconds=None,  # since_time 需要转换
+                since_seconds=None,  # since_time needs converting
             )
             return logs
         except ApiException as e:
@@ -837,14 +838,14 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         self, container_id: str, timeout: int | None = None
     ) -> ContainerResult:
         """
-        等待 Pod 执行完成
+        Wait for the Pod to finish
 
         Args:
-            container_id: Pod 名称
-            timeout: 超时时间（秒）
+            container_id: Pod name
+            timeout: timeout in seconds
 
         Returns:
-            ContainerResult 对象
+            A ContainerResult object
         """
         await self._ensure_connected()
 
@@ -857,9 +858,9 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                         namespace=self._namespace,
                     )
 
-                    # 检查 Pod 状态
+                    # Check the Pod status
                     if pod.status.phase == "Succeeded":
-                        # 获取日志
+                        # Read the logs
                         logs = await self.get_container_logs(container_id, tail=-1)
                         return ContainerResult(
                             status="completed",
@@ -868,7 +869,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                             exit_code=0,
                         )
                     elif pod.status.phase == "Failed":
-                        # 获取日志
+                        # Read the logs
                         logs = await self.get_container_logs(container_id, tail=-1)
                         return ContainerResult(
                             status="failed",
@@ -877,7 +878,7 @@ exec gosu sandbox python -m executor.interfaces.http.rest
                             exit_code=1,
                         )
 
-                    # 检查容器状态
+                    # Check the container status
                     if pod.status.container_statuses:
                         for container_status in pod.status.container_statuses:
                             if (
@@ -922,10 +923,10 @@ exec gosu sandbox python -m executor.interfaces.http.rest
 
     async def ping(self) -> bool:
         """
-        检查 Kubernetes 连接状态
+        Check the Kubernetes connection
 
         Returns:
-            bool: 连接是否正常
+            bool: whether the connection is healthy
         """
         try:
             await self._ensure_connected()
@@ -940,13 +941,13 @@ exec gosu sandbox python -m executor.interfaces.http.rest
 
     def _parse_memory_to_bytes(self, value: str) -> int:
         """
-        解析内存限制为字节数
+        Parse a memory limit into bytes
 
         Args:
-            value: 如 "512Mi", "1Gi"
+            value: such as "512Mi" or "1Gi"
 
         Returns:
-            字节数
+            The number of bytes
         """
         value = value.strip()
         if value.endswith("Gi") or value.endswith("GB") or value.endswith("G"):
@@ -956,9 +957,9 @@ exec gosu sandbox python -m executor.interfaces.http.rest
         elif value.endswith("Ki") or value.endswith("KB") or value.endswith("K"):
             return int(float(value[:-2]) * 1024)
         else:
-            # 默认为 MB
+            # Default to MB
             return int(float(value) * 1024 * 1024)
 
     def _parse_disk_to_bytes(self, value: str) -> int:
-        """解析磁盘限制为字节数"""
+        """Parse a disk limit into bytes"""
         return self._parse_memory_to_bytes(value)

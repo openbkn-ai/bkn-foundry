@@ -1,12 +1,12 @@
 """
-Docker 容器调度器
+Docker container scheduler
 
-使用 aiodocker 实现 Docker 容器的创建和管理。
+Creates and manages Docker containers through aiodocker.
 
-支持 S3 workspace 挂载：当 workspace_path 以 s3:// 开头时，
-容器会通过 s3fs 将 S3 bucket 挂载到 /workspace 目录。
+Supports an S3 workspace mount: when workspace_path starts with s3://, the
+container mounts the S3 bucket on /workspace through s3fs.
 
-支持 Python 依赖安装：按照 sandbox-design-v2.1.md 章节 5 设计。
+Python dependency installation follows section 5 of sandbox-design-v2.1.md.
 """
 
 import asyncio
@@ -33,17 +33,17 @@ logger = get_logger(__name__)
 
 class DockerScheduler(IContainerScheduler):
     """
-    Docker 容器调度器
+    Docker container scheduler
 
-    通过 Docker socket 或 TCP 连接 Docker daemon，管理容器生命周期。
+    Connects to the Docker daemon over a socket or TCP and manages the container lifecycle.
     """
 
     def __init__(self, docker_url: str = "unix:///var/run/docker.sock"):
         """
-        初始化 Docker 调度器
+        Initialize the Docker scheduler
 
         Args:
-            docker_url: Docker daemon 连接URL
+            docker_url: Docker daemon connection URL
                 - unix:///var/run/docker.sock (Unix socket)
                 - tcp://localhost:2375 (TCP)
         """
@@ -52,7 +52,7 @@ class DockerScheduler(IContainerScheduler):
         self._initialized = False
 
     async def _ensure_docker(self) -> Docker:
-        """确保 Docker 客户端已初始化"""
+        """Make sure the Docker client is initialized"""
         if not self._initialized:
             logger.debug(
                 "Initializing Docker client",
@@ -61,7 +61,7 @@ class DockerScheduler(IContainerScheduler):
             self._docker = Docker(url=self._docker_url)
             self._initialized = True
 
-            # 验证 Docker 连接
+            # Verify the Docker connection
             try:
                 version = await self._docker.version()
                 logger.debug(
@@ -79,13 +79,13 @@ class DockerScheduler(IContainerScheduler):
         return self._docker
 
     async def close(self) -> None:
-        """关闭 Docker 连接"""
+        """Close the Docker connection"""
         if self._docker:
             await self._docker.close()
             self._initialized = False
 
     async def _ensure_image_available(self, docker: Docker, image: str) -> None:
-        """确保 Docker 镜像本地可用；缺失时从远端 registry 拉取。"""
+        """Make sure the image is available locally, pulling from the remote registry when it is not."""
         try:
             await docker.images.inspect(image)
             logger.debug("Docker image already available locally", image=image)
@@ -115,13 +115,13 @@ class DockerScheduler(IContainerScheduler):
 
     def _parse_s3_workspace(self, workspace_path: str) -> dict | None:
         """
-        解析 S3 workspace 路径
+        Parse an S3 workspace path
 
         Args:
-            workspace_path: S3 路径，格式: s3://bucket/sessions/{session_id}/
+            workspace_path: S3 path, formatted as s3://bucket/sessions/{session_id}/
 
         Returns:
-            包含 bucket, prefix 的字典，如果不是 S3 路径则返回 None
+            A dict holding bucket and prefix, or None when this is not an S3 path
         """
         if not workspace_path or not workspace_path.startswith("s3://"):
             return None
@@ -142,24 +142,24 @@ class DockerScheduler(IContainerScheduler):
         dependencies: list[str] | None = None,
     ) -> str:
         """
-        构建容器启动脚本，用于挂载 S3 bucket 并安装依赖
+        Build the container start script that mounts the S3 bucket and installs dependencies
 
         Args:
-            s3_bucket: S3 bucket 名称
-            s3_prefix: S3 路径前缀
-            s3_endpoint_url: S3 端点 URL
-            s3_access_key: S3 访问密钥 ID
-            s3_secret_key: S3 访问密钥
-            dependencies: pip 包规范列表（如 ["requests==2.31.0", "pandas>=2.0"]）
+            s3_bucket: S3 bucket name
+            s3_prefix: S3 path prefix
+            s3_endpoint_url: S3 endpoint URL
+            s3_access_key: S3 access key id
+            s3_secret_key: S3 secret key
+            dependencies: pip requirement specifiers, such as ["requests==2.31.0", "pandas>=2.0"]
 
         Returns:
-            Shell 脚本字符串
+            The shell script as a string
 
-        工作原理:
-        1. 挂载 S3 bucket 到 /mnt/s3-root
-        2. 使用 bind mount 将 session 目录挂载到 /workspace
-        3. 安装依赖到 /workspace/.venv/（如果指定）
-        4. 使用 gosu 切换到 sandbox 用户运行 executor
+        How it works:
+        1. Mount the S3 bucket on /mnt/s3-root
+        2. Bind mount the session directory onto /workspace
+        3. Install dependencies into /workspace/.venv/ when any were given
+        4. Drop to the sandbox user with gosu and run the executor
         """
         path_style_option = "-o use_path_request_style" if s3_endpoint_url else ""
         dependency_install_script = format_dependency_install_script_for_shell(dependencies)
@@ -167,12 +167,13 @@ class DockerScheduler(IContainerScheduler):
         return f"""#!/bin/bash
 set -e
 
-# 创建 s3fs 凭证文件
+# Create the s3fs credential file
 echo "{s3_access_key}:{s3_secret_key}" > /tmp/.passwd-s3fs
 chmod 600 /tmp/.passwd-s3fs
 
-# 1) 先以 root 临时挂整桶（不 allow_other），创建会话前缀后立即卸载。
-#    s3fs 无法挂载不存在的前缀，需先确保前缀对象存在。用户代码看不到此临时挂载点。
+# 1) Briefly mount the whole bucket as root (no allow_other) to create the session prefix,
+#    then unmount immediately. s3fs cannot mount a prefix that does not exist yet, and user
+#    code never sees this temporary mount point.
 mkdir -p /mnt/s3-init
 s3fs {s3_bucket} /mnt/s3-init \\
     -o passwd_file=/tmp/.passwd-s3fs \\
@@ -182,8 +183,9 @@ mkdir -p "/mnt/s3-init/{s3_prefix}"
 umount /mnt/s3-init || fusermount -u /mnt/s3-init
 rmdir /mnt/s3-init
 
-# 2) 只把本会话前缀挂到 /workspace，不挂整个 bucket。整桶挂载会让任意会话读写/删除
-#    其它会话的数据，是跨会话数据泄露/破坏面；按前缀挂载后代码只能触及自己的 /workspace。
+# 2) Mount only this session's prefix on /workspace, never the whole bucket. A whole-bucket
+#    mount would let any session read, write, or delete another session's data, which is a
+#    cross-session leak and corruption surface; per-prefix code reaches only its own /workspace.
 echo "Mounting S3 workspace {s3_bucket}:/{s3_prefix} to /workspace..."
 mkdir -p /workspace
 s3fs {s3_bucket}:/{s3_prefix} /workspace \\
@@ -193,17 +195,17 @@ s3fs {s3_bucket}:/{s3_prefix} /workspace \\
     -o allow_other \\
     -o umask=000
 
-# 3) 校验确实挂上了 s3fs，避免静默回落到本地目录。
+# 3) Verify s3fs really mounted, so it cannot silently fall back to a local directory.
 mount | grep -q "on /workspace type fuse" || {{ echo "s3fs failed to mount /workspace" >&2; exit 1; }}
 echo "Workspace mounted (scoped to {s3_prefix}): $(ls -la /workspace)"
 
-# ========== ✅ 新增：安装依赖 ==========
+# ========== Install dependencies ==========
 {dependency_install_script}
 
-# 6. 使用 gosu 切换到 sandbox 用户运行 executor
-# 通过 bash -c 在 gosu 之后设置环境变量
+# 6. Drop to the sandbox user with gosu and run the executor.
+# The environment variables are set after gosu, through bash -c.
 echo "Starting sandbox executor as sandbox user..."
-# 如果安装了依赖，PYTHONPATH 包含本地 venv 目录
+# When dependencies were installed, PYTHONPATH includes the local venv directory.
 if [ -d "/opt/sandbox-venv" ]; then
     export PYTHONPATH="/opt/sandbox-venv:/app:/workspace"
     export SANDBOX_VENV_PATH="/opt/sandbox-venv"
@@ -220,18 +222,18 @@ exec gosu sandbox bash -c 'export PYTHONPATH=$PYTHONPATH; export SANDBOX_VENV_PA
         dependencies: list[str] | None = None,
     ) -> str:
         """
-        构建依赖安装脚本（非 S3 模式）
+        Build the dependency install script for the non-S3 mode
 
         Args:
-            dependencies: pip 包规范列表（如 ["requests==2.31.0", "pandas>=2.0"]）
+            dependencies: pip requirement specifiers, such as ["requests==2.31.0", "pandas>=2.0"]
 
         Returns:
-            Shell 脚本字符串
+            The shell script as a string
 
-        工作原理:
-        1. 以 sandbox 用户运行
-        2. 安装依赖到 /opt/sandbox-venv/（本地文件系统）
-        3. 启动 executor
+        How it works:
+        1. Run as the sandbox user
+        2. Install dependencies into /opt/sandbox-venv/ on the local filesystem
+        3. Start the executor
         """
         dependency_install_script = format_dependency_install_script_for_shell(dependencies)
 
@@ -240,32 +242,32 @@ set -e
 
 echo "🚀 Starting sandbox executor (non-S3 mode)..."
 
-# ========== 安装依赖 ==========
+# ========== Install dependencies ==========
 {dependency_install_script}
 
-# 启动 executor
+# Start the executor
 echo "🎯 Starting executor daemon..."
 exec python -m executor.interfaces.http.rest
 """
 
     async def create_container(self, config: ContainerConfig) -> str:
         """
-        创建 Docker 容器
+        Create the Docker container
 
-        容器配置：
-        - NetworkMode: sandbox_network (容器网络，用于 executor 通信)
-        - CAP_DROP: ALL (移除所有特权)
-        - CAP_ADD: SYS_ADMIN (仅当使用 S3 workspace 时需要，用于 FUSE 挂载)
-        - SecurityOpt: no-new-privileges (禁止获取新权限)
-        - User: 1000:1000 (非特权用户)
-        - ReadonlyRootfs: false (需要写入工作空间)
+        Container configuration:
+        - NetworkMode: sandbox_network, the container network used for executor traffic
+        - CAP_DROP: ALL, drop every capability
+        - CAP_ADD: SYS_ADMIN, needed only for an S3 workspace, for the FUSE mount
+        - SecurityOpt: no-new-privileges
+        - User: 1000:1000, unprivileged
+        - ReadonlyRootfs: false, the workspace has to be writable
 
-        S3 Workspace 挂载：
-        当 workspace_path 以 s3:// 开头时，容器会通过 s3fs 将 S3 bucket 挂载到 /workspace：
-        - 添加 /dev/fuse 设备（FUSE 需要）
-        - 添加 SYS_ADMIN capability（FUSE 挂载需要）
-        - 创建 entrypoint 脚本，在启动 executor 之前先挂载 S3
-        - 容器启动后自动 cd 到 workspace 子目录
+        S3 workspace mount:
+        When workspace_path starts with s3://, the container mounts the bucket on /workspace via s3fs:
+        - add the /dev/fuse device, which FUSE needs
+        - add the SYS_ADMIN capability, which the FUSE mount needs
+        - create an entrypoint script that mounts S3 before starting the executor
+        - cd into the workspace subdirectory once the container is up
         """
         logger.info(
             "Starting container creation",
@@ -279,7 +281,7 @@ exec python -m executor.interfaces.http.rest
         logger.debug("Docker client obtained")
         await self._ensure_image_available(docker, config.image)
 
-        # 解析资源限制
+        # Parse the resource limits
         cpu_quota = int(float(config.cpu_limit) * 100000)
         memory_bytes = self._parse_memory_to_bytes(config.memory_limit)
 
@@ -291,11 +293,11 @@ exec python -m executor.interfaces.http.rest
             memory_bytes=memory_bytes,
         )
 
-        # 检查是否需要 S3 workspace 挂载
+        # Check whether an S3 workspace mount is needed
         s3_workspace = self._parse_s3_workspace(config.workspace_path)
         use_s3_mount = s3_workspace is not None
 
-        # 检查是否需要安装依赖
+        # Check whether dependencies have to be installed
         dependencies_json = config.labels.get("dependencies", "")
         has_dependencies = bool(dependencies_json)
 
@@ -307,23 +309,24 @@ exec python -m executor.interfaces.http.rest
             dependencies_json=dependencies_json,
         )
 
-        # 基础环境变量
+        # Base environment variables
         env_vars = dict(config.env_vars)
 
-        # sandbox_sdk.bkn 的 MCP 地址，与 k8s_scheduler 同一处配置。部署级常量，
-        # 注入一次即可；调用方在 event 里传 mcp 时以 event 为准。
+        # The MCP address for sandbox_sdk.bkn, configured in the same place as in
+        # k8s_scheduler. A deployment-level constant, injected once; a caller that
+        # passes mcp in the event wins.
         bkn_mcp_url = get_settings().bkn_sandbox_mcp_url.strip()
         if bkn_mcp_url:
             env_vars.setdefault("BKN_SANDBOX_MCP_URL", bkn_mcp_url)
 
-        # 基础容器配置
+        # Base container configuration
         container_config = {
             "Image": config.image,
             "Hostname": config.name,
             "Env": [f"{k}={v}" for k, v in env_vars.items()],
             "HostConfig": {
                 "NetworkMode": config.network_name,
-                # 默认配置，S3 mount 模式会覆盖
+                # Default; the S3 mount mode overrides it
                 "CpuQuota": cpu_quota,
                 "CpuPeriod": 100000,
                 "Memory": memory_bytes,
@@ -341,33 +344,33 @@ exec python -m executor.interfaces.http.rest
             network_mode=config.network_name,
         )
 
-        # 注意：StorageOpt.size 仅在 Linux 的 overlay2 + xfs (pquota) 环境下支持
-        # Mac Docker Desktop 不支持，因此这里不设置 StorageOpt
-        # 生产环境可通过 K8s 的 ephemeral-storage 或 Linux 的磁盘配额来限制磁盘使用
+        # StorageOpt.size only works on Linux with overlay2 + xfs (pquota).
+        # Docker Desktop on Mac does not support it, so StorageOpt is left unset.
+        # In production, cap disk usage through K8s ephemeral-storage or a Linux disk quota.
 
-        # 如果不使用 S3 workspace，保持原有安全配置
-        # 注意: Bubblewrap 需要用户命名空间支持，如果遇到权限错误：
-        # 1. 在宿主机启用: sudo sysctl -w kernel.unprivileged_userns_clone=1
-        # 2. 或者设置环境变量 DISABLE_BWRAP=true 来禁用 bubblewrap
+        # Without an S3 workspace, keep the original security configuration.
+        # Bubblewrap needs user-namespace support; on a permission error either:
+        # 1. enable it on the host: sudo sysctl -w kernel.unprivileged_userns_clone=1
+        # 2. or set DISABLE_BWRAP=true to turn bubblewrap off
         if not use_s3_mount:
             logger.debug("Configuring non-S3 container mode")
 
-            # 从 config.labels 中提取依赖列表
+            # Read the dependency list out of config.labels
             dependencies_json = config.labels.get("dependencies", "")
             dependencies = json.loads(dependencies_json) if dependencies_json else None
 
-            # 添加 PYTHONPATH 环境变量以支持依赖导入
+            # Add PYTHONPATH so dependency imports resolve
             if dependencies:
                 container_config["Env"].append("PYTHONPATH=/opt/sandbox-venv:/workspace")
                 container_config["Env"].append("SANDBOX_VENV_PATH=/opt/sandbox-venv")
 
-                # 为依赖安装添加 tmpfs 空间
+                # Give the dependency install some tmpfs space
                 container_config["HostConfig"]["Tmpfs"] = {
                     "/tmp": "size=512M,mode=1777",
                     "/root/.cache": "size=256M,mode=1777",
                 }
 
-                # 如果有依赖，使用动态 entrypoint 脚本
+                # With dependencies, use the dynamic entrypoint script
                 entrypoint_script = self._build_dependency_install_entrypoint(
                     dependencies=dependencies,
                 )
@@ -381,7 +384,7 @@ exec python -m executor.interfaces.http.rest
 
             container_config["HostConfig"]["CapDrop"] = ["ALL"]
             container_config["HostConfig"]["SecurityOpt"] = ["no-new-privileges"]
-            # 添加 seccomp 配置以允许用户命名空间
+            # Add the seccomp configuration that allows user namespaces
             container_config["HostConfig"]["SecurityOpt"].append("seccomp=default")
             container_config["HostConfig"]["User"] = "1000:1000"
 
@@ -392,24 +395,24 @@ exec python -m executor.interfaces.http.rest
                 user="1000:1000",
             )
 
-        # 如果使用 S3 workspace 挂载，添加必要的配置
+        # With an S3 workspace mount, add what that needs
         if use_s3_mount:
             logger.debug("Configuring S3 mount mode")
 
             settings = get_settings()
 
-            # 新增：从 config.labels 中提取依赖列表
+            # Read the dependency list out of config.labels
             dependencies_json = config.labels.get("dependencies", "")
             dependencies = json.loads(dependencies_json) if dependencies_json else None
 
-            # 以 root 用户启动（覆盖 Dockerfile 中的 USER sandbox）
-            # 这样 entrypoint 脚本可以以 root 执行 s3fs 挂载
+            # Start as root, overriding USER sandbox from the Dockerfile,
+            # so the entrypoint script can run the s3fs mount as root.
             container_config["User"] = "root"
 
-            # 添加 SYS_ADMIN capability（FUSE 需要）
+            # Add the SYS_ADMIN capability, which FUSE needs
             container_config["HostConfig"]["CapAdd"] = ["SYS_ADMIN"]
 
-            # 添加 /dev/fuse 设备
+            # Add the /dev/fuse device
             container_config["HostConfig"]["Devices"] = [
                 {
                     "PathOnHost": "/dev/fuse",
@@ -425,28 +428,28 @@ exec python -m executor.interfaces.http.rest
                 devices_added=1,
             )
 
-            # 添加 tmpfs 用于 s3fs 缓存和依赖安装
+            # Add tmpfs for the s3fs cache and the dependency install
             if dependencies:
-                # 有依赖时需要更大的 tmpfs 空间
+                # Dependencies need more tmpfs space
                 container_config["HostConfig"]["Tmpfs"] = {
-                    "/tmp": "size=512M,mode=1777",  # pip 缓存和临时文件
-                    "/root/.cache": "size=256M,mode=1777",  # pip 缓存
+                    "/tmp": "size=512M,mode=1777",  # pip cache and temporary files
+                    "/root/.cache": "size=256M,mode=1777",  # pip cache
                 }
                 logger.info(
                     "Added tmpfs for dependency installation: /tmp=512M, /root/.cache=256M"
                 )
             else:
-                # 无依赖时使用较小的 tmpfs
+                # Without dependencies a smaller tmpfs is enough
                 container_config["HostConfig"]["Tmpfs"] = {"/tmp": "size=100M,mode=1777"}
 
-            # 添加 S3 相关环境变量
+            # Add the S3 environment variables
             s3_env_vars = {
                 "S3_BUCKET": s3_workspace["bucket"],
                 "S3_PREFIX": s3_workspace["prefix"],
                 "S3_ENDPOINT_URL": settings.s3_endpoint_url or "https://s3.amazonaws.com",
                 "S3_REGION": settings.s3_region,
                 "WORKSPACE_MOUNT_POINT": "/workspace",
-                "WORKSPACE_PATH": "/workspace",  # 告诉 executor 使用本地挂载点
+                "WORKSPACE_PATH": "/workspace",  # tell the executor to use the local mount point
             }
             for k, v in s3_env_vars.items():
                 container_config["Env"].append(f"{k}={v}")
@@ -458,20 +461,20 @@ exec python -m executor.interfaces.http.rest
                 s3_endpoint_url=settings.s3_endpoint_url,
             )
 
-            # 新增：添加 PYTHONPATH 环境变量以支持依赖导入
-            # /app 必须在最前面，以便 executor 模块能被找到
+            # Add PYTHONPATH so dependency imports resolve.
+            # /app has to come first so the executor module is found.
             if dependencies:
                 container_config["Env"].append("PYTHONPATH=/opt/sandbox-venv:/app:/workspace")
                 container_config["Env"].append("SANDBOX_VENV_PATH=/opt/sandbox-venv")
 
-            # 修改：传递依赖列表到 entrypoint 脚本
+            # Pass the dependency list through to the entrypoint script
             entrypoint_script = self._build_s3_mount_entrypoint(
                 s3_bucket=s3_workspace["bucket"],
                 s3_prefix=s3_workspace["prefix"],
                 s3_endpoint_url=settings.s3_endpoint_url or "",
                 s3_access_key=settings.s3_access_key_id,
                 s3_secret_key=settings.s3_secret_access_key,
-                dependencies=dependencies,  # 新增参数
+                dependencies=dependencies,
             )
             container_config["Entrypoint"] = ["/bin/sh", "-c"]
             container_config["Cmd"] = [entrypoint_script]
@@ -525,7 +528,7 @@ exec python -m executor.interfaces.http.rest
             raise
 
     async def start_container(self, container_id: str) -> None:
-        """启动容器"""
+        """Start the container"""
         logger.info("Starting container", container_id=container_id)
 
         docker = await self._ensure_docker()
@@ -541,7 +544,7 @@ exec python -m executor.interfaces.http.rest
                 container_id=container_id,
             )
 
-            # 等待一小段时间后检查容器状态
+            # Wait briefly, then check the container status
             await asyncio.sleep(0.5)
 
             try:
@@ -556,7 +559,7 @@ exec python -m executor.interfaces.http.rest
                     error=info["State"].get("Error"),
                 )
 
-                # 如果容器已经退出，记录日志
+                # Log it when the container has already exited
                 if container_status == "exited":
                     exit_code = info["State"].get("ExitCode", -1)
                     logger.error(
@@ -592,7 +595,7 @@ exec python -m executor.interfaces.http.rest
             raise
 
     async def stop_container(self, container_id: str, timeout: int = 10) -> None:
-        """停止容器"""
+        """Stop the container"""
         docker = await self._ensure_docker()
         try:
             container = docker.containers.container(container_id)
@@ -603,7 +606,7 @@ exec python -m executor.interfaces.http.rest
             raise
 
     async def remove_container(self, container_id: str, force: bool = True) -> None:
-        """删除容器"""
+        """Delete the container"""
         docker = await self._ensure_docker()
         try:
             container = docker.containers.container(container_id)
@@ -613,7 +616,7 @@ exec python -m executor.interfaces.http.rest
             logger.warning(f"Failed to remove container {container_id}: {e}")
 
     async def get_container_status(self, container_id: str) -> ContainerInfo:
-        """获取容器状态"""
+        """Get the container status"""
         docker = await self._ensure_docker()
         try:
             container = docker.containers.container(container_id)
@@ -621,11 +624,11 @@ exec python -m executor.interfaces.http.rest
 
             status = info["State"]["Status"]
             if status == "running":
-                # Docker 可能返回运行中，但实际上是 paused
+                # Docker may report running while the container is actually paused
                 if info["State"].get("Paused", False):
                     status = "paused"
             elif status == "exited":
-                # 可以根据 exit_code 判断是 completed/failed
+                # exit_code tells completed from failed
                 pass
 
             return ContainerInfo(
@@ -645,16 +648,16 @@ exec python -m executor.interfaces.http.rest
 
     async def is_container_running(self, container_id: str) -> bool:
         """
-        检查容器是否正在运行
+        Check whether the container is running
 
-        直接通过 Docker API 查询，不依赖数据库。
-        此方法供 StateSyncService 使用。
+        Queries the Docker API directly, without going through the database.
+        StateSyncService uses this.
 
         Args:
-            container_id: 容器 ID
+            container_id: container id
 
         Returns:
-            bool: 容器是否运行中
+            bool: whether the container is running
         """
         try:
             container_info = await self.get_container_status(container_id)
@@ -666,11 +669,11 @@ exec python -m executor.interfaces.http.rest
     async def get_container_logs(
         self, container_id: str, tail: int = 100, since: str | None = None
     ) -> str:
-        """获取容器日志"""
+        """Get the container logs"""
         docker = await self._ensure_docker()
         try:
             container = docker.containers.container(container_id)
-            # 构建日志参数
+            # Build the log parameters
             params = {"stdout": True, "stderr": True, "tail": tail}
             if since:
                 params["since"] = since
@@ -683,13 +686,13 @@ exec python -m executor.interfaces.http.rest
     async def wait_container(
         self, container_id: str, timeout: int | None = None
     ) -> ContainerResult:
-        """等待容器执行完成"""
+        """Wait for the container to finish"""
         docker = await self._ensure_docker()
         try:
             container = docker.containers.container(container_id)
 
             if timeout:
-                # 使用 asyncio.wait_for 实现超时
+                # asyncio.wait_for provides the timeout
                 result = await asyncio.wait_for(container.wait(), timeout=timeout)
             else:
                 result = await container.wait()
@@ -697,7 +700,7 @@ exec python -m executor.interfaces.http.rest
             exit_code = result["StatusCode"]
             status = "completed" if exit_code == 0 else "failed"
 
-            # 获取日志
+            # Read the logs
             logs = await self.get_container_logs(container_id, tail=-1)
 
             return ContainerResult(
@@ -719,10 +722,10 @@ exec python -m executor.interfaces.http.rest
             raise
 
     async def ping(self) -> bool:
-        """检查 Docker 连接状态"""
+        """Check the Docker connection"""
         try:
             docker = await self._ensure_docker()
-            # 尝试获取 Docker 版本信息来验证连接
+            # Read the Docker version to verify the connection
             version = await docker.version()
             return version is not None
         except Exception as e:
@@ -731,13 +734,13 @@ exec python -m executor.interfaces.http.rest
 
     def _parse_memory_to_bytes(self, value: str) -> int:
         """
-        解析内存限制为字节数
+        Parse a memory limit into bytes
 
         Args:
-            value: 如 "512Mi", "1Gi"
+            value: such as "512Mi" or "1Gi"
 
         Returns:
-            字节数
+            The number of bytes
         """
         value = value.strip()
         if value.endswith("Gi") or value.endswith("GB") or value.endswith("G"):
@@ -747,9 +750,9 @@ exec python -m executor.interfaces.http.rest
         elif value.endswith("Ki") or value.endswith("KB") or value.endswith("K"):
             return int(float(value[:-2]) * 1024)
         else:
-            # 默认为 MB
+            # Default to MB
             return int(float(value) * 1024 * 1024)
 
     def _parse_disk_to_bytes(self, value: str) -> int:
-        """解析磁盘限制为字节数"""
+        """Parse a disk limit into bytes"""
         return self._parse_memory_to_bytes(value)
