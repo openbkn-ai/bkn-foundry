@@ -341,7 +341,6 @@ git push origin feature/my-feature --force-with-lease
 >
 > - 使用 `--force-with-lease` 而不是 `--force`，以避免覆盖其他人的工作。
 > - 确保在 rebase 前你在你的功能分支上。
-> - 如果你想跟踪上游仓库，可以添加：`git remote add upstream https://github.com/kweaver-ai/kweaver-core.git`
 
 ### 8. 推送到你的 Fork
 
@@ -540,7 +539,7 @@ BKN Foundry 是多语言项目，**只需安装你要修改的模块所需的工
 2. **添加上游远程仓库：**
 
    ```bash
-   git remote add upstream https://github.com/kweaver-ai/kweaver-core.git
+   git remote add upstream https://github.com/openbkn-ai/bkn-foundry.git
    ```
 
 3. **进入要修改的模块，按其 README 操作。** 例如：

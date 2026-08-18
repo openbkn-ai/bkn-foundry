@@ -11,11 +11,9 @@
   - 未传概念分组时，现有 `search_schema` 行为保持不变
   - 分组范围内返回关系类和动作类时，会一并补齐其引用的对象类，让调用方拿到完整 Schema 上下文
   - 说明：指标类 Schema 请求会携带同一组概念分组范围，但是否真正按组过滤取决于 BKN metrics 侧支持
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/304
 - 将 ContextLoader 标准工具集内置到服务启动流程
   - ContextLoader 启动时自动同步内置工具集到执行工厂
   - 工具集契约描述统一为 `ContextLoader 标准内置工具集；契约版本: 0.8.0`
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/306
 
 ### 兼容性
 
@@ -33,8 +31,6 @@
 - 新增 `search_schema`，作为 MCP 和 HTTP 调用方的标准 Schema 探索入口
   - 通过一个接口支持对象类、关系类、动作类和指标类 Schema 探索
   - HTTP `search_schema` API 使用请求体中的 `kn_id`
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/189
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/234
 - MCP Schema 探索能力统一收敛到 `search_schema`，减少 Agent 选择工具时的歧义
 
 ### 兼容性

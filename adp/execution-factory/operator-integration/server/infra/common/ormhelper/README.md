@@ -39,15 +39,15 @@
 ### 安装
 
 ```bash
-go get github.com/kweaver-ai/operator-hub/operator-integration/server/infra/common/ormhelper
+go get github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper
 ```
 
 ### 基础使用
 
 ```go
 import (
-    "github.com/kweaver-ai/operator-hub/operator-integration/server/infra/common/ormhelper"
-    "github.com/kweaver-ai/operator-hub/operator-integration/server/infra/logger"
+    "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+    "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 )
 
 // 1. 创建ORM实例
@@ -91,8 +91,8 @@ import (
     "log"
     "time"
 
-    "github.com/kweaver-ai/operator-hub/operator-integration/server/infra/common/ormhelper"
-    "github.com/kweaver-ai/operator-hub/operator-integration/server/infra/logger"
+    "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
+    "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 )
 
 // 定义数据模型

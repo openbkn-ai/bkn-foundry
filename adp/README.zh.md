@@ -2,20 +2,7 @@
 
 [中文](README.zh.md) | [English](README.md)
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.txt)
-
-**[ADP (智能数据平台)](https://github.com/kweaver-ai/adp)** 是 BKN Foundry 生态系统的一部分。如果你喜欢这个项目，请同时也为 **[BKN Foundry](https://github.com/openbkn-ai/bkn-foundry)** 项目点亮星标⭐。
-
-**[BKN Foundry](https://github.com/openbkn-ai/bkn-foundry)** 是一个用于构建、部署和运行决策智能 AI 应用的开源生态系统。该生态系统采用本体作为业务知识网络的核心方法论，以 BKN Foundry 为核心平台，旨在提供弹性、敏捷、可靠的企业级决策智能，进一步释放每个人的生产力。
-
-BKN Foundry 平台包含 ADP 和 AI Store 等关键子系统。
-
-## 📚 快速链接
-
-- 🤝 [贡献指南](../rules/CONTRIBUTING.zh.md) - 项目贡献指引
-- 📄 [许可证](LICENSE.txt) - Apache License 2.0
-- 🐛 [报告 Bug](https://github.com/kweaver-ai/adp/issues) - 报告错误或问题
-- 💡 [请求功能](https://github.com/kweaver-ai/adp/issues) - 建议新功能
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE-APACHE.txt)
 
 ## 平台定义
 
@@ -83,9 +70,8 @@ VEGA 为异构数据源提供统一的 SQL 接口，将应用程序与底层数�
 
 ### 构建与运行设置
 
-1.  **克隆仓库**
+1.  **进入 ADP 目录**
     ```bash
-    git clone https://github.com/kweaver-ai/adp.git
     cd adp
     ```
 
@@ -120,9 +106,4 @@ VEGA 为异构数据源提供统一的 SQL 接口，将应用程序与底层数�
 
 ## 许可证
 
-本项目采用 Apache License 2.0 许可证。详情请参阅 [LICENSE](LICENSE.txt) 文件。
-
-## 支持与联系
-
-- **Issues**: [GitHub Issues](https://github.com/kweaver-ai/adp/issues)
-- **贡献**: [贡献指南](../rules/CONTRIBUTING.zh.md)
+ADP 相关文件采用 Apache License 2.0 许可证，详见 [LICENSE-APACHE.txt](../LICENSE-APACHE.txt)；仓库整体的多许可证模型见根目录 [LICENSE](../LICENSE)。

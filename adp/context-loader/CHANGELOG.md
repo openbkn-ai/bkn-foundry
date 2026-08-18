@@ -11,11 +11,9 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
   - Keep existing `search_schema` behavior unchanged when concept groups are not provided
   - Return referenced object types together with scoped relation and action schemas, so callers receive a complete Schema context
   - Note: metric schema requests carry the same concept group scope, but actual metric filtering depends on BKN metrics support
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/304
 - Embed the ContextLoader standard toolset in the service startup flow
   - Automatically sync the built-in toolset to execution-factory during ContextLoader startup
   - Use `ContextLoader 标准内置工具集；契约版本: 0.8.0` as the toolset contract description
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/306
 
 ### Compatibility
 
@@ -33,8 +31,6 @@ Chinese version: [CHANGELOG.zh-CN.md](CHANGELOG.zh-CN.md)
 - Add `search_schema` as the standard Schema discovery entry for MCP and HTTP callers
   - Support object, relation, action, and metric schema discovery from one interface
   - Use request body `kn_id` for the HTTP `search_schema` API
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/189
-  - issue: https://github.com/kweaver-ai/kweaver-core/issues/234
 - Consolidate MCP Schema discovery around `search_schema` to reduce tool selection ambiguity for agents
 
 ### Compatibility

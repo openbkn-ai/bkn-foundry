@@ -2,20 +2,7 @@
 
 [中文](README.zh.md) | English
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.txt)
-
-**[ADP (AI Data Platform)](https://github.com/kweaver-ai/adp)** is part of the BKN Foundry ecosystem. If you like it, please also star⭐ the **[BKN Foundry](https://github.com/openbkn-ai/bkn-foundry)** project as well.
-
-**[BKN Foundry](https://github.com/openbkn-ai/bkn-foundry)** is an open-source ecosystem for building, deploying, and running decision intelligence AI applications. This ecosystem adopts ontology as the core methodology for business knowledge networks, with BKN Foundry as the core platform, aiming to provide elastic, agile, and reliable enterprise-grade decision intelligence to further unleash everyone's productivity.
-
-The BKN Foundry platform includes key subsystems such as ADP and AI Store.
-
-## 📚 Quick Links
-
-- 🤝 [Contributing](../rules/CONTRIBUTING.md) - Guidelines for contributing to the project
-- 📄 [License](LICENSE.txt) - Apache License 2.0
-- 🐛 [Report Bug](https://github.com/kweaver-ai/adp/issues) - Report a bug or issue
-- 💡 [Request Feature](https://github.com/kweaver-ai/adp/issues) - Suggest a new feature
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](../LICENSE-APACHE.txt)
 
 ## Platform Definition
 
@@ -83,9 +70,8 @@ VEGA provides a unified SQL interface for heterogeneous data sources, decoupling
 
 ### Build & Run Setup
 
-1.  **Clone the Repository**
+1.  **Enter the ADP directory**
     ```bash
-    git clone https://github.com/kweaver-ai/adp.git
     cd adp
     ```
 
@@ -120,9 +106,4 @@ We welcome contributions! Please see our [Contributing Guide](../rules/CONTRIBUT
 
 ## License
 
-This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE.txt) file for details.
-
-## Support & Contact
-
-- **Issues**: [GitHub Issues](https://github.com/kweaver-ai/adp/issues)
-- **Contributing**: [Contributing Guide](../rules/CONTRIBUTING.md)
+ADP files are licensed under the Apache License 2.0. See [LICENSE-APACHE.txt](../LICENSE-APACHE.txt), and the repository root [LICENSE](../LICENSE) for the overall licensing model.

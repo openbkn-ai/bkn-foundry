@@ -10,7 +10,7 @@ curl -i -k -XPOST "https://192.168.124.91/api/agent-operator-integration/v1/oper
 -H "Authorization: Bearer ory_at_Qe9iyXVsca4hQi6vp4tWCXKA7hGuLaxM1lMImL-CFtc.j5mYi45-IOxD-_VAsEhPP1Ktmr8TVRHD4tlBEYMnes8" \
 --data-binary @- <<EOF
 {
-  "data": $(cat /root/go/src/github.com/kweaver-ai/operator-hub/operator-integration/server/tests/file/json/auth.json | jq -Rs .),
+  "data": $(cat server/tests/file/json/auth.json | jq -Rs .),
   "operator_metadata_type": "openapi"
 }
 EOF

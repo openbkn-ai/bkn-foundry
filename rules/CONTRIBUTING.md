@@ -342,7 +342,6 @@ git push origin feature/my-feature --force-with-lease
 >
 > - Use `--force-with-lease` instead of `--force` to avoid overwriting others' work.
 > - Make sure you're on your feature branch before rebasing.
-> - If you prefer to track the upstream repository, you can add it: `git remote add upstream https://github.com/kweaver-ai/kweaver-core.git`
 
 ### 8. Push to Your Fork
 
@@ -545,7 +544,7 @@ Each module's `README.md` / `AGENTS.md` lists the exact prerequisites, build com
 2. **Add upstream remote:**
 
    ```bash
-   git remote add upstream https://github.com/kweaver-ai/kweaver-core.git
+   git remote add upstream https://github.com/openbkn-ai/bkn-foundry.git
    ```
 
 3. **Pick the module you want to work on and follow its README.** For example:

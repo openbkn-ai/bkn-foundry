@@ -2,7 +2,7 @@
 
 本页说明 BKN Foundry 的**环境要求**、**部署步骤**与**安装后检查**。
 
-> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh bkn-foundry install`**；当前 **`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`KWEAVER_SKIP_DATA_SERVICES_BUNDLE=true`**。
+> **平台：** **Linux** 是完整安装（`preflight.sh`、k3s/kubeadm、数据服务等）的**推荐**目标环境。**macOS** 仅适合用 Docker + **kind** 做**本机开发/验证** —— 见 **[`deploy/dev/README.zh.md`](../../deploy/dev/README.zh.md)**（[English](../../deploy/dev/README.md)）与 `deploy/dev/mac.sh`（Mac 上不跑 `preflight.sh`，也与生产环境不对齐）。常见顺序：先起 **Docker Desktop**（或任意提供 Docker API 的引擎），再 **`bash ./dev/mac.sh cluster up`**，然后 **`bash ./dev/mac.sh bkn-foundry install`**；当前 **`bkn-foundry install` 会先执行 `ensure_data_services`**（与单独 **`data-services install`** 一致），除非设置 **`BKN_SKIP_DATA_SERVICES_BUNDLE=true`**。
 
 > 📌 安装通过产品包或源码中的 `deploy/` 目录下的 `deploy.sh` 脚本完成。
 
@@ -32,7 +32,7 @@
 | 工具 | 说明 |
 | --- | --- |
 | **Git** | `deploy.sh` / `preflight.sh` **不会**调用 `git`。只有从 **Git 仓库 clone** 开发/更新时才需要本机装 Git；使用**已解压的产品包**或构建产物时，**安装目标机可以不装 Git**。 |
-| **Node.js** | **22+** 与 **`@openbkn/bkn-sdk`** 的 npm `engines`、`deploy/onboard.sh` 及 preflight 检查一致（环境变量 **`PREFLIGHT_KWEAVER_MIN_NODE_MAJOR`**，默认 **22**）。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
+| **Node.js** | **22+** 与 **`@openbkn/bkn-sdk`** 的 npm `engines`、`deploy/onboard.sh` 及 preflight 检查一致（环境变量 **`PREFLIGHT_OPENBKN_MIN_NODE_MAJOR`**，默认 **22**）。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
 | **Python** **3** | 日常跑 **`preflight` / `deploy.sh` 不强制**要求。若使用 **`deploy/preflight.sh --output=json`**（JSON 输出依赖 **`python3`**），则**必须**安装 Python 3。若目标机 **PATH 上已有 `python3`**，preflight 会检查其版本为 **CPython 3.6+**（与 `deploy/scripts/lib/onboard_*.py` 一致；可用 **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`** 覆盖，默认 **3** / **6**）。部分与 `kubectl` 相关的辅助解析在存在 `python3` 时也会使用。 |
 
 **`deploy/scripts/lib/onboard_*.py`（供 `onboard.sh` 调用）**：实现上约定 **CPython 3.6 起至当前主线 3.x** 可调（兼容 CentOS 7 自带的 **3.6.x**；**3.5 及以下**不适用，因其缺少 f-string 等语法）。不向 **PyYAML 5.1 以后**才有的 `yaml.dump(..., sort_keys=...)` 等参数。维护者或 CI 可执行 **`bash deploy/scripts/lib/preflight_checks_test.sh`**，在存在 **`python3`** 时会对这两个文件做一次 **`py_compile`**；本机若有多个解释器，可 **`EXTRA_PYTHONS="python3.9 python3.12"`** 再跑一遍以覆盖多版本。
@@ -66,7 +66,7 @@ setenforce 0
 | `registry.aliyuncs.com` | Kubernetes 镜像 |
 | `swr.cn-east-3.myhuaweicloud.com` | BKN Foundry 镜像 |
 | `repo.huaweicloud.com` | Helm 二进制 |
-| `kweaver-ai.github.io` | Helm Chart 仓库 |
+| `openbkn-ai.github.io` | Helm Chart 仓库 |
 
 ### 🧰 客户端工具
 
@@ -120,7 +120,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 | `--fix` | 检查 + 应用修复（K8s / sysctl / containerd / Helm / 防火墙 / SELinux / 系统调优 / sysctl 等）；同时按需提示安装 Node 22+ + `openbkn` |
 | `-y` / `--yes` | **全部**修复项自动确认 |
 | `-n` / `--no` | 全部修复项自动拒绝（仅查看风险描述，不改东西） |
-| `--fix-allow=LIST` | 仅自动确认指定修复项（其余跳过），如 `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,kweaver-sdk`（旧名 `k8s-apt-source` 仍可作别名）。可用 `sudo bash deploy/preflight.sh --list-fixes` 查看本机当前可用的全部修复名 |
+| `--fix-allow=LIST` | 仅自动确认指定修复项（其余跳过），如 `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`（旧名 `k8s-apt-source` 仍可作别名）。可用 `sudo bash deploy/preflight.sh --list-fixes` 查看本机当前可用的全部修复名 |
 | `--role=target\|admin\|both` | `target` = 仅 `kubectl`/`helm`；`admin` = `openbkn` / Node / npm；`both`（默认）= 全部 |
 | `--no-recheck` | 修复完不再重新跑一遍完整检查 |
 | `--lenient` | 把「会阻塞 install + `--fix` 能搞定」的 `[FAIL]` 项（sysctl / 内核模块 / containerd / kubectl / helm / swap / apt 源损坏 / 缺 kubeadm 或 containerd 安装候选 / ulimit / inotify / vm.max_map_count / overlay）降回 `[WARN]`。等同 `PREFLIGHT_STRICT=false PREFLIGHT_STRICT_SOURCES=false`。 |

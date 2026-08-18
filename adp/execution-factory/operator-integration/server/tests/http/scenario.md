@@ -41,7 +41,7 @@ curl -i -k -XPOST "http://127.0.0.1:9000/api/agent-operator-integration/internal
 -H "Content-Type: application/json" \
 --data-binary @- <<EOF
 {
-  "data": $(cat /root/go/src/github.com/kweaver-ai/operator-hub/operator-integration/server/tests/file/json/file_decrypt.json | jq -Rs .),
+  "data": $(cat server/tests/file/json/file_decrypt.json | jq -Rs .),
   "operator_metadata_type": "openapi",
   "user_token": "ory_at_lFRsxTWm_AfurRpxjs5ECQg_g0IxQKyUEeBgK2Jl_DA.kOVvmulauj2h4GnF7q5sN9fkq85T__D8QjAlSQlUZdQ",
   "operator_id": "b2d8baf0-e31f-4cac-851d-30ad8c2e4722",
@@ -76,7 +76,7 @@ curl -i -k -XPOST "http://127.0.0.1:9000/api/agent-operator-integration/internal
 -H "Content-Type: application/json" \
 --data-binary @- <<EOF
 {
-  "data": $(cat /root/go/src/github.com/kweaver-ai/operator-hub/operator-integration/server/tests/file/json/file_decrypt.json | jq -Rs .),
+  "data": $(cat server/tests/file/json/file_decrypt.json | jq -Rs .),
   "operator_metadata_type": "openapi",
   "user_token": "ory_at_R7KCiZTDj0rNQaD_D_lVCmtXN54uKF-YggP-qbsmP-I.C3LJUmrQBP0PXmMEdGxQHFgnhepbglfPIOfbnxDc_aE",
   "operator_id": "b2d8baf0-e31f-4cac-851d-30ad8c2e4722",
