@@ -488,7 +488,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --build-multi-base Build stable multi-language runtime base image"
             echo "  --push-swr-bases Push built base images to SWR with skopeo"
             echo "  --swr-registry SWR registry host, e.g. swr.cn-east-3.myhuaweicloud.com"
-            echo "  --swr-namespace SWR namespace path, e.g. openbkn-ai/sandbox"
+            echo "  --swr-namespace SWR namespace path, e.g. openbkn-ai"
             echo "  --swr-creds SWR credentials in username:password format"
             echo "  --swr-dest-tls-verify SWR destination TLS verify flag (default: false)"
             echo "  --swr-python-base-repository SWR repository for Python base (default: sandbox-python-executor-base)"
