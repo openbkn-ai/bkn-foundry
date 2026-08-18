@@ -1,4 +1,4 @@
-"""测试 utils/redis_streams_processor.py：Redis Stream 计量消费端"""
+"""Tests for test_redis_streams_processor."""
 import json
 
 import pytest
@@ -68,7 +68,7 @@ class TestEnsureGroup:
         proc.conn.xgroup_create = AsyncMock(
             side_effect=Exception("BUSYGROUP Consumer Group name already exists"))
 
-        # 不应抛出
+        # Should not raise.
         await proc._ensure_group()
 
     @pytest.mark.asyncio
@@ -90,7 +90,7 @@ class TestAutoclaim:
             b'0-0',
             [
                 (b'1-0', {b'value': b'{"model_id":"m1","user_id":"u1","status":"success"}'}),
-                (b'1-1', None),  # 已被 XTRIM 截断的消息
+                (b'1-1', None),  # Message already truncated by XTRIM.
             ],
         ))
         proc.conn.xack = AsyncMock()
@@ -99,7 +99,7 @@ class TestAutoclaim:
 
         proc.aggregator.add_record.assert_called_once()
         proc.conn.xack.assert_awaited_once()
-        # 只 ACK 有内容的 entry
+        # Only ACK entries that have content.
         assert proc.conn.xack.call_args[0][2:] == (b'1-0',)
 
     @pytest.mark.asyncio
@@ -108,5 +108,5 @@ class TestAutoclaim:
         proc.conn = MagicMock()
         proc.conn.xautoclaim = AsyncMock(side_effect=Exception("ERR unknown command"))
 
-        # 老版本 redis 无 XAUTOCLAIM：只告警，不影响主循环
+        # Older Redis versions have no XAUTOCLAIM: warn only and do not affect the main loop.
         await proc._autoclaim_stale_pending()

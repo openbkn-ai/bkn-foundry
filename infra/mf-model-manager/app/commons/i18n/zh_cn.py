@@ -1,4 +1,4 @@
-# 简体中文
+# Simplified Chinese.
 
 error_messages = {
     "ParamMissing": {

@@ -12,7 +12,7 @@ import json
 
 
 def _msg(content, role):
-    # used_model_openai 直接访问 tool_calls/tool_call_id 键，缺失会 KeyError，需显式补 None
+    # used_model_openai directly accesses tool_calls/tool_call_id keys; missing keys cause KeyError and must be explicitly set to None.
     return {"content": content, "role": role, "tool_calls": None, "tool_call_id": None}
 
 
@@ -29,7 +29,7 @@ class TestUsedModelOpenai(TestCase):
         StandLogger.stand_log_shutdown()
 
     def _redis_mock(self):
-        # get_str 返回 None -> 走 DB 分支；delete_str/set_str 为 async
+        # get_str returns None, so the DB branch is used; delete_str/set_str are async.
         redis_mock = mock.MagicMock()
         redis_mock.get_str = mock.AsyncMock(return_value=None)
         redis_mock.set_str = mock.AsyncMock(return_value=None)
@@ -157,7 +157,7 @@ class TestAddModel(TestCase):
         llm_model_dao.add_data_into_model_list = mock.Mock(return_value=None)
         llm_model_dao.get_model_by_name = mock.Mock(return_value=())
         llm_model_dao.check_model_unique = mock.Mock(return_value=False)
-        # add_model 返回 {"status": "ok", "id": str(model_id)}
+        # add_model returns {"status": "ok", "id": str(model_id)}.
         res = loop.run_until_complete(
             llm_controller.add_model(request, "111", "zh"))
         self.assertEqual(json.loads(res.body)["status"], "ok")
@@ -258,7 +258,7 @@ class TestTestModel(TestCase):
         self.assertEqual(body["solution"], "模型服务认证失败，请检查 API Key、AK/SK 或授权配置")
 
     def test_test_model_fail_unreachable(self):
-        # 非 openai series 走真实 HTTP，连接失败 -> 返回 TestModel.Error
+        # Non-openai series uses real HTTP; connection failure returns TestModel.Error.
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         request = {"model_id": "111"}
@@ -323,7 +323,7 @@ class TestEditModel(TestCase):
         self.assertEqual(json.loads(res.body)["status"], "ok")
 
     def test_edit_model_fail1(self):
-        # model_type 非法 -> llm_edit_verify 返回 LLMEdit.ParameterError
+        # Invalid model_type makes llm_edit_verify return LLMEdit.ParameterError.
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         request = {
@@ -346,7 +346,7 @@ class TestEditModel(TestCase):
         self.assertEqual(json.loads(res.body)["code"], "ModelFactory.ConnectController.LLMEdit.ParameterError")
 
     def test_edit_model_fail2(self):
-        # max_model_len 非法 -> llm_edit_verify 返回 LLMEdit.ParameterError
+        # Invalid max_model_len makes llm_edit_verify return LLMEdit.ParameterError.
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         request = {

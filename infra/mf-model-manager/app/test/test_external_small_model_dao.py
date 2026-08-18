@@ -6,9 +6,7 @@ from app.logs.stand_log import StandLogger
 
 
 def _mock_pool():
-    """构造 connect_execute_*_close_db 装饰器所需的连接链 mock。
-    装饰器内部: PymysqlPool.get_pool() -> pool.connection() -> conn.cursor()。
-    返回 cursor mock 以便单测设置 fetchall。"""
+    """Build the connection-chain mock required by the connect_execute_*_close_db decorators. Internally the decorators call PymysqlPool.get_pool() -> pool.connection() -> conn.cursor(). Return the cursor mock so unit tests can set fetchall."""
     pool = mock.MagicMock()
     conn = mock.MagicMock()
     cursor = mock.MagicMock()
@@ -40,7 +38,7 @@ class TestAddModelInfo(TestCase):
 
     def test_add_model_info_success(self):
         _mock_pool()
-        # connection/cursor 由装饰器注入；公开调用只传 config_info + userId
+        # connection/cursor are injected by the decorator; public calls only pass config_info and userId.
         res = small_model_dao.add_model_info(_config_info(), "user1")
         self.assertEqual(res, None)
 
@@ -97,7 +95,7 @@ class TestGetModelInfoList(TestCase):
 
     def test_get_model_info_list_success(self):
         _mock_pool()
-        # 签名: page, size, order, rule, model_name, model_type, model_series, permission_ids
+        # Signature: page, size, order, rule, model_name, model_type, model_series, permission_ids.
         res = small_model_dao.get_model_info_list(1, 10, "asc", "update_time", "", "embedding", "baidu", [])
         self.assertEqual(res, "test")
 

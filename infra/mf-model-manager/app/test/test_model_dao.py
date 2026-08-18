@@ -22,13 +22,13 @@ class TestGetModelNameById(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_name": "name"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_model_name_by_id("222")
         self.assertEqual("name", res)
 
 
-# get_model_id_by_name函数的测试类
+# get_model_id_by_namefunction test class.
 class TestGetModelIdByName(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -44,13 +44,13 @@ class TestGetModelIdByName(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_model_id_by_name("name")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# get_model_series_by_id函数的测试类
+# get_model_series_by_idfunction test class.
 class TestGetModelSeriesByID(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -66,13 +66,13 @@ class TestGetModelSeriesByID(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_series": "series"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_model_series_by_id("222")
         self.assertEqual("series", res)
 
 
-# get_model_model_from_model_list_by_id函数的测试类
+# get_model_model_from_model_list_by_idfunction test class.
 class TestGetModelModelFromModelListByID(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -88,13 +88,13 @@ class TestGetModelModelFromModelListByID(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_model_model_from_model_list_by_id("222")
         self.assertEqual("222", res)
 
 
-# get_all_model_list函数的测试类
+# get_all_model_listfunction test class.
 class TestGetAllModelList(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -110,13 +110,13 @@ class TestGetAllModelList(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_all_model_list()
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# get_data_from_model_list_by_id函数的测试类
+# get_data_from_model_list_by_idfunction test class.
 class TestGetDataFromModelListByID(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -132,13 +132,13 @@ class TestGetDataFromModelListByID(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_data_from_model_list_by_id("222")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# get_data_from_model_list_by_name函数的测试类
+# get_data_from_model_list_by_namefunction test class.
 class TestGetDataFromModelListByName(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -154,13 +154,13 @@ class TestGetDataFromModelListByName(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_data_from_model_list_by_name("222")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# add_data_into_model_list函数的测试类
+# add_data_into_model_listfunction test class.
 class TestAddDataIntoModelList(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -176,16 +176,16 @@ class TestAddDataIntoModelList(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
-        # 签名: model_id, model_series, model_type, model_name, model, userId,
-        #       model_config, max_model_len, model_parameters, quota (connection/cursor 由装饰器注入)
+        # Signature: model_id, model_series, model_type, model_name, model, userId,.
+        #       model_config, max_model_len, model_parameters, quota (connection/cursor are decorator-injected)
         res = llm_model_dao.add_data_into_model_list("222", "222", "222", "222", "222", "222", "222",
                                                      32, 72, 0)
         self.assertEqual(None, res)
 
 
-# get_data_from_model_list_by_name_fuzzy函数的测试类
+# get_data_from_model_list_by_name_fuzzyfunction test class.
 class TestGetDataFromModelListByNameFuzzy(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -203,15 +203,15 @@ class TestGetDataFromModelListByNameFuzzy(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         user_info.get_admin_user_id = mock.Mock(return_value="12321")
-        # 签名: name, page, size, order, rule, api_model, model_type
+        # Signature: name, page, size, order, rule, api_model, model_type.
         res = llm_model_dao.get_data_from_model_list_by_name_fuzzy("222", 1, 1, "222", "222", "222", "222")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# get_data_from_model_list_by_name_fuzzy_and_series函数的测试类
+# get_data_from_model_list_by_name_fuzzy_and_seriesfunction test class.
 class TestGetDataFromModelListByNameFuzzyAndSeries(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -229,15 +229,15 @@ class TestGetDataFromModelListByNameFuzzyAndSeries(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         user_info.get_admin_user_id = mock.Mock(return_value="12321")
-        # 签名: name, series, page, size, order, rule, api_model, model_type
+        # Signature: name, series, page, size, order, rule, api_model, model_type.
         res = llm_model_dao.get_data_from_model_list_by_name_fuzzy_and_series("222", "222", 1, 1, "222", "222", "222", "222")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# get_all_data_from_model_series函数的测试类
+# get_all_data_from_model_seriesfunction test class.
 class TestGetAllDataFromModelSeries(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -248,7 +248,7 @@ class TestGetAllDataFromModelSeries(TestCase):
 
 
 
-# get_all_data_from_model_param函数的测试类
+# get_all_data_from_model_paramfunction test class.
 class TestGetAllDataFromModelParam(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -264,13 +264,13 @@ class TestGetAllDataFromModelParam(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_all_data_from_model_param()
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# get_data_from_model_param_by_param_id函数的测试类
+# get_data_from_model_param_by_param_idfunction test class.
 class TestGetDataFromModelParamByParamId(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -286,7 +286,7 @@ class TestGetDataFromModelParamByParamId(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_data_from_model_param_by_param_id("222")
         self.assertEqual([{"f_model_id": "222"}], res)
@@ -294,7 +294,7 @@ class TestGetDataFromModelParamByParamId(TestCase):
 
 
 
-# get_model_by_name函数的测试类
+# get_model_by_namefunction test class.
 class TestGetModelByName(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -310,13 +310,13 @@ class TestGetModelByName(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_model_by_name("222")
         self.assertEqual([{"f_model_id": "222"}], res)
 
 
-# check_model_is_exist函数的测试类
+# check_model_is_existfunction test class.
 class TestCheckModelIsExist(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -332,13 +332,13 @@ class TestCheckModelIsExist(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"COUNT(f_model_id)": 0}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.check_model_is_exist("222")
         self.assertEqual(False, res)
 
 
-# check_model_unique函数的测试类
+# check_model_uniquefunction test class.
 class TestCheckModelUnique(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -354,13 +354,13 @@ class TestCheckModelUnique(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"account_id": "111", "f_model_config": '{"api_base": "111"}'}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.check_model_unique("222", "222", "222", None)
         self.assertEqual(False, res)
 
 
-# get_model_default_paras函数的测试类
+# get_model_default_parasfunction test class.
 class TestGetModelDefaultParas(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool
@@ -376,14 +376,14 @@ class TestGetModelDefaultParas(TestCase):
         m3 = mock.MagicMock()
         m3.fetchall.return_value = [{"f_model_id": "222", "f_model_name": "222", "f_model_series": "222", "f_model": "222"}]
         m2.cursor.return_value = m3
-        # 为PymysqlPool.get_pool函数创建mock对象
+        # Create a mock object for PymysqlPool.get_pool.
         PymysqlPool.get_pool = mock.Mock(return_value=m1)
         res = llm_model_dao.get_model_default_paras()
         self.assertEqual({'222': {'model': '222', 'model_name': '222', 'model_series': '222'}}, res)
 
 
-# 注: rename_model / get_api_model_by_model_type 已在小模型可配置化重构中从 llm_model_dao 移除，
-# 对应测试类（TestRenameModel / TestGetApiModelByModelType）随之删除。
+# Note: rename_model / get_api_model_by_model_type were removed from llm_model_dao
+# during the configurable small-model refactor, so the corresponding test classes were removed too.
 
 
 class TestGetOverviewData(TestCase):

@@ -1,4 +1,4 @@
-"""测试 utils/quota_aggregator.py：传输无关的计量聚合与落库"""
+"""Tests for test_quota_aggregator."""
 from unittest.mock import MagicMock, patch
 
 from app.utils.quota_aggregator import QuotaAggregator
@@ -49,14 +49,14 @@ class TestAddRecord:
 
         data = agg.aggregated_data['m1_u1_failed']
         assert data['failed_count'] == 1
-        assert data['total_time'] == 0.0  # 失败请求不计时间
+        assert data['total_time'] == 0.0  # Failed requests do not count time.
         assert data['first_time'] == 0.0
 
     def test_missing_key_fields_skipped(self):
         agg = QuotaAggregator()
         with patch('app.utils.quota_aggregator.quota_config_cache_tree', {}):
             agg.add_record({'model_id': '', 'user_id': 'u1', 'status': 'success'})
-            agg.add_record({'model_id': 'm1', 'user_id': 'u1'})  # 缺 status
+            agg.add_record({'model_id': 'm1', 'user_id': 'u1'})  # Missing status.
 
         assert len(agg.aggregated_data) == 0
 
@@ -75,7 +75,7 @@ class TestAddRecord:
         data = agg.aggregated_data['m1_u1_success']
         assert data['input_tokens'] == 200
         assert data['total_count'] == 2
-        # billing_type!=1: (100+100)*1.0/1000 每条 0.2，两条 0.4
+        # billing_type!=1: (100+100)*1.0/1000 is 0.2 per record, 0.4 for two records.
         assert abs(data['total_price'] - 0.4) < 1e-9
 
 
@@ -97,7 +97,7 @@ class TestProcessAggregatedData:
         agg.model_op_dao.batch_add_model_used_log.assert_called_once()
         batch = agg.model_op_dao.batch_add_model_used_log.call_args[0][0]
         assert len(batch) == 1
-        # 聚合字典已清空，处理标志复位
+        # The aggregation dictionary is cleared and the processing flag is reset.
         assert len(agg.aggregated_data) == 0
         assert agg.is_processing is False
 
@@ -122,6 +122,6 @@ class TestProcessAggregatedData:
                 'total_time': 1.0, 'first_time': 0.1, 'conf_id': 'c1',
             })
 
-        # 不应抛出
+        # Should not raise.
         agg.process_aggregated_data()
         assert agg.is_processing is False

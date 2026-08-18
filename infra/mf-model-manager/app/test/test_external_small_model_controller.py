@@ -188,7 +188,7 @@ class TestEditModel(TestCase):
         }])
         small_model_dao.name_check = mock.Mock(return_value=[])
         small_model_dao.edit_model_info = mock.Mock(return_value=None)
-        # 控制器会 await redis_util.delete_str(...)；用 AsyncMock 避免真实连接
+        # The controller awaits redis_util.delete_str(...); use AsyncMock to avoid a real connection.
         redis_mock = mock.MagicMock()
         redis_mock.delete_str = mock.AsyncMock(return_value=None)
         small_model_controller.redis_util = redis_mock
@@ -223,7 +223,7 @@ class TestGetInfoList(TestCase):
         small_model_dao.get_model_info_total = mock.Mock(return_value=[])
         res = loop.run_until_complete(
             small_model_controller.get_info_list("asc", "update_time", 1, 10, "1", "embedding", "baidu", "1", "user"))
-        # 响应体为 {"count": int, "data": list}
+        # The response body is {"count": int, "data": list}.
         self.assertEqual(isinstance(json.loads(res.body)["data"], list), True)
 
 
@@ -279,12 +279,12 @@ class TestDeleteModel(TestCase):
         small_model_dao.get_model_info_by_ids = mock.Mock(return_value=[{
             "f_model_id": "1", "f_model_name": "m1"}])
         small_model_dao.delete_model_info_by_ids = mock.Mock(return_value=None)
-        # AUTH 关闭时 get_permission_ids 走 get_all_ids -> DB；需 mock 出可删 id 列表
+        # When AUTH is disabled, get_permission_ids uses get_all_ids -> DB; mock deletable IDs.
         small_model_dao.get_all_ids = mock.Mock(return_value=[{"f_model_id": "1"}])
         redis_mock = mock.MagicMock()
         redis_mock.delete_str = mock.AsyncMock(return_value=None)
         small_model_controller.redis_util = redis_mock
-        # 删除接口签名改为 (model_para: dict, userId, language, role)；删的是 id 列表
+        # The delete API signature changed to (model_para: dict, userId, language, role), and deletes an ID list.
         res = loop.run_until_complete(
             small_model_controller.delete_model({"model_ids": ["1"]}, "1", "zh", "user"))
         self.assertEqual(json.loads(res.body)["id"], ["1"])
