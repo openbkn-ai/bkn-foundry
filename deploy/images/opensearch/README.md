@@ -24,8 +24,7 @@ OpenSearch from starting at all. Offline installs cannot use it.
 
 ## Provenance
 
-- Base: `opensearchproject/opensearch:2.19.4` (the tag the deploy scripts
-  already pinned).
+- Base: `opensearchproject/opensearch:2.19.4`.
 - Plugin: `opensearch-analysis-ik-2.19.4.zip` from
   `https://release.infinilabs.com/analysis-ik/stable/`, pinned by SHA-256 in
   the Dockerfile.
@@ -51,19 +50,17 @@ GHCR plus the Huawei SWR mirror as
 `opensearch:2.19.4-<branch>.<committime>.sha<short>` (base `2.19.4` = the
 OpenSearch version, not the repo VERSION).
 
-Not yet wired into the installer. `deploy/scripts/lib/common.sh` still defaults
-`OPENSEARCH_IMAGE_REPOSITORY` / `OPENSEARCH_IMAGE_TAG` to the stock
-`opensearchproject/opensearch:2.19.4`, so a default install does not pull this
-image yet. Flipping those defaults needs a concrete tag, which only exists once
-this lands on main and CI publishes — so it is a follow-up PR that also updates
-the inline fallback in `deploy/scripts/services/opensearch.sh` and the offline
-image list in `deploy/scripts/sync-k8s-images.sh`.
+This image is the installer default. `deploy/scripts/lib/common.sh` pins
+`OPENSEARCH_IMAGE_REPOSITORY=opensearch` and
+`OPENSEARCH_IMAGE_TAG=2.19.4-main.20260818163046.shaaeb5d56`; the offline
+image list in `deploy/scripts/sync-k8s-images.sh` carries the same tag. Publishing
+a rebuild means bumping both, so a cluster always names the exact build it runs.
 
-Until then, opt in per environment:
+Pinning a different image for one environment:
 
 ```bash
 OPENSEARCH_IMAGE_REPOSITORY=opensearch \
-OPENSEARCH_IMAGE_TAG=2.19.4-<branch>.<committime>.sha<short> \
+OPENSEARCH_IMAGE_TAG=<tag> \
   ./deploy.sh opensearch install
 ```
 

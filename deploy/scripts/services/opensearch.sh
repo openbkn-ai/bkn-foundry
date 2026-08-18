@@ -4,7 +4,7 @@ _opensearch_resolve_image_defaults() {
     image_registry="$(resolve_openbkn_image_registry "${OPENSEARCH_IMAGE_REGISTRY:-}")"
     OPENSEARCH_IMAGE_REGISTRY="${image_registry}"
     if [[ -z "${OPENSEARCH_IMAGE}" ]]; then
-        OPENSEARCH_IMAGE="$(compose_image_ref "${image_registry}" "${OPENSEARCH_IMAGE_REPOSITORY:-opensearchproject/opensearch}" "${OPENSEARCH_IMAGE_TAG}")"
+        OPENSEARCH_IMAGE="$(compose_image_ref "${image_registry}" "${OPENSEARCH_IMAGE_REPOSITORY:-opensearch}" "${OPENSEARCH_IMAGE_TAG}")"
     fi
     if [[ -z "${OPENSEARCH_INIT_IMAGE}" ]]; then
         OPENSEARCH_INIT_IMAGE="$(compose_image_ref "${image_registry}" "${OPENSEARCH_INIT_IMAGE_REPOSITORY:-busybox}" "${OPENSEARCH_INIT_IMAGE_TAG}")"

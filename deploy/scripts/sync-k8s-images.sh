@@ -87,7 +87,7 @@ KAFKA_IMAGES=(
 
 # Required images for OpenSearch
 OPENSEARCH_IMAGES=(
-    "openbkn-ai/opensearchproject/opensearch:2.19.4"
+    "openbkn-ai/opensearch:2.19.4-main.20260818163046.shaaeb5d56"
     "openbkn-ai/busybox:1.36.1"
 )
 
@@ -404,7 +404,7 @@ log_info "   curl http://${TARGET_REGISTRY}/v2/openbkn-ai/rancher/local-path-pro
 log_info "   curl http://${TARGET_REGISTRY}/v2/openbkn-ai/mariadb/tags/list"
 log_info "   curl http://${TARGET_REGISTRY}/v2/openbkn-ai/redis/tags/list"
 log_info "   curl http://${TARGET_REGISTRY}/v2/openbkn-ai/bitnami/kafka/tags/list"
-log_info "   curl http://${TARGET_REGISTRY}/v2/openbkn-ai/opensearchproject/opensearch/tags/list"
+log_info "   curl http://${TARGET_REGISTRY}/v2/openbkn-ai/opensearch/tags/list"
 log_info ""
 log_info "2. Deploy Kubernetes in offline mode:"
 log_info "   sudo bash ./deploy.sh --offline k8s install"

@@ -1373,8 +1373,12 @@ OPENSEARCH_NODE_GROUP="${OPENSEARCH_NODE_GROUP:-master}"
 OPENSEARCH_CHART_VERSION="${OPENSEARCH_CHART_VERSION:-2.36.0}"
 OPENSEARCH_CHART_TGZ="${OPENSEARCH_CHART_TGZ:-${SCRIPT_DIR}/charts/opensearch-${OPENSEARCH_CHART_VERSION}.tgz}"
 OPENSEARCH_IMAGE="${OPENSEARCH_IMAGE:-}"
-OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-opensearchproject/opensearch}"
-OPENSEARCH_IMAGE_TAG="${OPENSEARCH_IMAGE_TAG:-2.19.4}"
+# Platform rebuild of opensearchproject/opensearch:2.19.4 with the IK Chinese
+# analyzer baked in (see deploy/images/opensearch). Without it OpenSearch ships
+# no Chinese analyzer and vega-backend's capability probe only ever finds
+# `standard`/`english`. Bump repository and tag together.
+OPENSEARCH_IMAGE_REPOSITORY="${OPENSEARCH_IMAGE_REPOSITORY:-opensearch}"
+OPENSEARCH_IMAGE_TAG="${OPENSEARCH_IMAGE_TAG:-2.19.4-main.20260818163046.shaaeb5d56}"
 # OpenSearch chart uses busybox initContainers (fsgroup-volume/sysctl); use a dedicated SWR mirror by default.
 OPENSEARCH_INIT_IMAGE="${OPENSEARCH_INIT_IMAGE:-}"
 OPENSEARCH_INIT_IMAGE_REPOSITORY="${OPENSEARCH_INIT_IMAGE_REPOSITORY:-busybox}"
