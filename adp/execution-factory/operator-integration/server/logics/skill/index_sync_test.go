@@ -174,6 +174,31 @@ func TestSkillIndexSync(t *testing.T) {
 			So(syncer.isInitialized(), ShouldBeFalse)
 		})
 
+		// 数据集挂在别的目录下时，写入受它自己的父目录管辖，disabled 就得启用。
+		Convey("Init enables the dataset's own catalog when it lives elsewhere", func() {
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
+				Return(&interfaces.VegaCatalog{
+					ID:      executionFactoryCatalogID,
+					Name:    executionFactoryCatalogID,
+					Tags:    []string{internalCatalogTag},
+					Enabled: true,
+				}, nil)
+			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).
+				Return(&interfaces.VegaResource{
+					ID:        executionFactorySkillDataset,
+					Name:      executionFactorySkillDataset,
+					CatalogID: "other_catalog",
+				}, nil)
+			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), "other_catalog").
+				Return(&interfaces.VegaCatalog{ID: "other_catalog", Name: "other_catalog", Enabled: false}, nil)
+			mockVegaClient.EXPECT().EnableCatalog(gomock.Any(), "other_catalog").Return(nil)
+
+			So(syncer.Init(context.Background()), ShouldBeNil)
+			So(syncer.getDatasetID(), ShouldEqual, executionFactorySkillDataset)
+		})
+
 		Convey("Init fails when the dataset points to a missing catalog", func() {
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
 			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
