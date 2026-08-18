@@ -1,8 +1,8 @@
 # Sandbox Core Component Helm Chart
 
-This chart deploys Sandbox as a Kweaver Core component.
+This chart deploys Sandbox as a BKN Foundry component.
 
-Use this chart when Sandbox is installed by, or packaged into, Kweaver Core. It follows the Core component values format and expects shared platform services, especially the database service, to be provided by Core.
+Use this chart when Sandbox is installed by, or packaged into, BKN Foundry. It follows the Core component values format and expects shared platform services, especially the database service, to be provided by Core.
 
 For a self-contained Sandbox deployment with MariaDB and the web console, use `deploy/helm/sandbox_standalone`.
 
@@ -18,7 +18,7 @@ This chart does not deploy `sandbox_web` or MariaDB.
 
 - Kubernetes 1.24+
 - Helm 3.0+
-- Kweaver Core deployment environment
+- BKN Foundry deployment environment
 - Core-provided database service through `depServices.rds`
 
 ## Installing

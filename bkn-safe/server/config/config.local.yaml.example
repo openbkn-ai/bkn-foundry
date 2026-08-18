@@ -16,7 +16,7 @@ db:
   # Remote cluster: kubectl -n resource port-forward svc/mariadb 3307:3306
   host: 127.0.0.1
   port: 3307
-  user: kweaver
+  user: root
   password: "<mariadb-password>"
   name: safe
   # params: "charset=utf8mb4&parseTime=true&loc=Local"

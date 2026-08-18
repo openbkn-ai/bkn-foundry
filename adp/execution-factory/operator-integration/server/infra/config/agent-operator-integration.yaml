@@ -28,31 +28,31 @@ proxy_module:
 
 oauth:
   # 对应hydra服务
-  public_host: "hydra-public.kweaver"
+  public_host: "hydra-public.openbkn"
   public_port: 4444
   public_protocol: "http"
-  admin_host: "hydra-admin.kweaver"
+  admin_host: "hydra-admin.openbkn"
   admin_port: 4445
   admin_protocol: "http"
   admin_prefix: "/admin"
 user_management:
-  private_host: "user-management-private.kweaver"
+  private_host: "user-management-private.openbkn"
   private_port: 30980
   private_protocol: "http"
 authorization:
-  private_host: "authorization-private.kweaver"
+  private_host: "authorization-private.openbkn"
   private_port: 30920
   private_protocol: "http"
 agent-operator-app:
-  private_host: "agent-operator-app.kweaver"
+  private_host: "agent-operator-app.openbkn"
   private_port: 9000
   private_protocol: "http"
 mf-model-api:
-  private_host: "mf-model-api.kweaver"
+  private_host: "mf-model-api.openbkn"
   private_port: 9898
   private_protocol: "http"
 mf-model-manager:
-  private_host: "mf-model-manager.kweaver"
+  private_host: "mf-model-manager.openbkn"
   private_port: 9898
   private_protocol: "http"
 db:
@@ -62,11 +62,11 @@ db:
   max_open_conns: 30
   system_id: ""
 business-system-service:
-  private_host: "business-system-service.kweaver"
+  private_host: "business-system-service.openbkn"
   private_port: 80
   private_protocol: "http"
 sandbox-control-plane:
-  private_host: "sandbox-control-plane.kweaver"
+  private_host: "sandbox-control-plane.openbkn"
   private_port: 8000
   private_protocol: "http"
   template_id: "" # 模板ID
@@ -79,7 +79,7 @@ sandbox-control-plane:
   active_sessions: 1
   max_concurrent_tasks: 100
 vega-backend:
-  private_host: "vega-backend-svc.kweaver"
+  private_host: "vega-backend-svc.openbkn"
   private_port: 13014
   private_protocol: "http"
 
@@ -107,7 +107,7 @@ ai_generation_config:
     presence_penalty: 0.1
 
 oss-gateway-backend:
-  private_host: "oss-gateway-backend.kweaver"
+  private_host: "oss-gateway-backend.openbkn"
   private_port: 8080
   private_protocol: "http"
   storage_id: ""

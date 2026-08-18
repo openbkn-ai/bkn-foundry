@@ -1,19 +1,19 @@
 # Sandbox Helm Charts
 
-`deploy/helm` contains two charts for different deployment scenarios. They are intentionally separate because Kweaver Core component packaging and standalone Sandbox deployment have different ownership boundaries and values formats.
+`deploy/helm` contains two charts for different deployment scenarios. They are intentionally separate because BKN Foundry component packaging and standalone Sandbox deployment have different ownership boundaries and values formats.
 
 ## Chart Comparison
 
 | Chart | Use Case | Includes | Database | Web Console | Values Format |
 |-------|----------|----------|----------|-------------|---------------|
-| `sandbox` | Kweaver Core component deployment | Control Plane, MinIO, RBAC, config, secrets | Uses Core-provided `depServices.rds` | Not included | Follows Kweaver Core component conventions |
+| `sandbox` | BKN Foundry component deployment | Control Plane, MinIO, RBAC, config, secrets | Uses Core-provided `depServices.rds` | Not included | Follows BKN Foundry component conventions |
 | `sandbox_standalone` | Independent Sandbox deployment for development, demos, or non-Core environments | Control Plane, Web Console, MariaDB, MinIO, RBAC, config, secrets | Deploys internal MariaDB by default | Included | Standalone chart values, not constrained by Core |
 
 ## Which Chart Should I Use?
 
-Use `deploy/helm/sandbox` when Sandbox is packaged as a Kweaver Core component. This chart assumes the platform already provides shared infrastructure such as the database service. It should stay compatible with Core deployment conventions.
+Use `deploy/helm/sandbox` when Sandbox is packaged as a BKN Foundry component. This chart assumes the platform already provides shared infrastructure such as the database service. It should stay compatible with Core deployment conventions.
 
-Use `deploy/helm/sandbox_standalone` when you want a self-contained Sandbox stack. This chart is better for local development, feature verification, demos, and environments that do not install Sandbox through Kweaver Core.
+Use `deploy/helm/sandbox_standalone` when you want a self-contained Sandbox stack. This chart is better for local development, feature verification, demos, and environments that do not install Sandbox through BKN Foundry.
 
 ## Default Template Images
 
@@ -41,7 +41,7 @@ When `tag` is set, the chart renders the full `DEFAULT_TEMPLATE_IMAGE` and `DEFA
 
 ## Examples
 
-Render the Kweaver Core component chart:
+Render the BKN Foundry component chart:
 
 ```bash
 helm template sandbox deploy/helm/sandbox

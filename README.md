@@ -16,7 +16,7 @@ OpenBKN is an ontology-driven business knowledge network platform. Through ontol
 
 **BKN Foundry** is the technical foundation of OpenBKN, providing that business knowledge network with unified data access, safe execution, and governance.
 
-**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ Administration](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
+**On this page:** [📚 Quick links](#toc-quick-links) · [🚀 Quick start](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ Administration](#toc-administration) · [🏗️ BKN Foundry](#toc-bkn-foundry) · [📐 BKN Lang](#toc-bkn-lang) · [📊 Benchmarks](#toc-benchmarks)
 
 > **Note:** BKN Foundry is a **backend-only framework** — it does not include a web UI. All interactions are through the CLI, SDK, or API.
 
@@ -121,9 +121,9 @@ openbkn <command> --help         # help for a specific command, e.g. openbkn bkn
 
 For full product documentation, see the [Documentation](help/README.md) ([EN](help/en/README.md) / [中文](help/zh/README.md)).
 
-> **After a full install**, use the `openbkn admin` subcommands to manage users, organizations, roles, models, and audit logs — see [Administration](#toc-kweaver-admin) below.
+> **After a full install**, use the `openbkn admin` subcommands to manage users, organizations, roles, models, and audit logs — see [Administration](#toc-administration) below.
 
-<a id="toc-kweaver-core"></a>
+<a id="toc-bkn-foundry"></a>
 
 ## 🏗️ BKN Foundry
 
@@ -187,7 +187,7 @@ BKN Lang is a Markdown-based business knowledge modeling language, designed for 
 
 ## 🛠️ OpenBKN SDK
 
-<a id="toc-kweaver-core-and-sdk"></a>
+<a id="toc-bkn-foundry-and-sdk"></a>
 
 ### Install the SDK on the client
 
@@ -318,7 +318,7 @@ const results  = await bkn.kn.search("<kn-id>", "What risks exist in the supply 
 
 For streaming and the full resource API (`bkn.kn`, `bkn.context`, `bkn.models`, `bkn.vega`, `bkn.admin`, …), see the [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) repository docs and examples.
 
-<a id="toc-kweaver-admin"></a>
+<a id="toc-administration"></a>
 
 ## 🛡️ Administration
 

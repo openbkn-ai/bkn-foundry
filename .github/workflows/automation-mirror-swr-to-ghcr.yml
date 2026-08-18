@@ -4,7 +4,7 @@ name: automation-mirror-swr-to-ghcr
 # (openbkn-ai), so the default / international GHCR install path can pull them
 # without depending on the SWR (CN) registry.
 #
-# These are openbkn/kweaver REBUILDS, not the vanilla docker.io images — the
+# These are openbkn rebuilds, not the vanilla docker.io images — the
 # same tag on docker.io is a DIFFERENT image. So the source of truth is SWR,
 # NOT docker.io. (That is why the earlier docker.io->GHCR mirror in
 # automation-mirror-swr-images.yml was wrong for these repos and must not be

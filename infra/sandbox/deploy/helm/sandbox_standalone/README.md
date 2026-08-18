@@ -2,9 +2,9 @@
 
 This chart deploys Sandbox as a self-contained application.
 
-Use this chart for development, demos, integration testing, or environments where Sandbox should be deployed independently from Kweaver Core. It owns its supporting services and is not constrained by the Core component values format.
+Use this chart for development, demos, integration testing, or environments where Sandbox should be deployed independently from BKN Foundry. It owns its supporting services and is not constrained by the Core component values format.
 
-For Kweaver Core component packaging, use `deploy/helm/sandbox`.
+For BKN Foundry component packaging, use `deploy/helm/sandbox`.
 
 ## Components
 

@@ -16,7 +16,7 @@ OpenBKN 是一个本体驱动的业务知识网络平台，它通过本体建模
 
 **BKN Foundry** 是 OpenBKN 的技术底座，为上述业务知识网络提供统一的数据接入、安全执行与治理能力。
 
-**本文目录：** [📚 快速链接](#toc-quick-links) · [🚀 快速开始](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ 平台管理](#toc-kweaver-admin) · [🏗️ BKN Foundry](#toc-kweaver-core) · [📐 BKN Lang](#toc-bkn-lang) · [📊 基准测试](#toc-benchmarks)
+**本文目录：** [📚 快速链接](#toc-quick-links) · [🚀 快速开始](#toc-quick-start) · [🛠️ OpenBKN SDK](#toc-bkn-sdk) · [🛡️ 平台管理](#toc-administration) · [🏗️ BKN Foundry](#toc-bkn-foundry) · [📐 BKN Lang](#toc-bkn-lang) · [📊 基准测试](#toc-benchmarks)
 
 > **注意：** BKN Foundry 是**纯后台框架**，不提供 Web 界面。所有交互通过 CLI、SDK 或 API 完成。
 
@@ -124,9 +124,9 @@ openbkn <command> --help         # 查看某命令的帮助，例如 openbkn bkn
 
 完整产品文档参见[文档中心](help/README.md)（[中文](help/zh/README.md) / [EN](help/en/README.md)）。
 
-> **完成全量安装后**，使用 `openbkn admin` 子命令进行用户、组织、角色、模型与审计管理 — 详见下文 [平台管理](#toc-kweaver-admin)。
+> **完成全量安装后**，使用 `openbkn admin` 子命令进行用户、组织、角色、模型与审计管理 — 详见下文 [平台管理](#toc-administration)。
 
-<a id="toc-kweaver-core"></a>
+<a id="toc-bkn-foundry"></a>
 
 ## 🏗️ BKN Foundry
 
@@ -190,7 +190,7 @@ BKN Lang 是基于 Markdown 扩展语法的业务知识建模语言，人机双�
 
 ## 🛠️ OpenBKN SDK
 
-<a id="toc-kweaver-core-and-sdk"></a>
+<a id="toc-bkn-foundry-and-sdk"></a>
 
 ### 在客户端上安装 SDK
 
@@ -321,7 +321,7 @@ const results  = await bkn.kn.search("<kn-id>", "供应链有哪些风险？");
 
 流式对话与完整资源 API（`bkn.kn`、`bkn.context`、`bkn.models`、`bkn.vega`、`bkn.admin` 等）更多用法，请参阅 [bkn-sdk](https://github.com/openbkn-ai/bkn-sdk) 仓库文档与示例。
 
-<a id="toc-kweaver-admin"></a>
+<a id="toc-administration"></a>
 
 ## 🛡️ 平台管理
 
