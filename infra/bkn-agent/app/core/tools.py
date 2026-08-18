@@ -6,6 +6,7 @@ from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app import evidence, observability
+from app.commons import locale
 from app.config import config
 from app.core import context_loader
 from app.core.skills import normalize_skill_id
@@ -35,7 +36,9 @@ def _context_loader_allowed_tools(tool_refs: list[dict]) -> set[str] | None:
 
 async def _trace_mcp_call(request, handler):
     """At the transport boundary, bind the MCP call to the current tool operation."""
-    headers = {**(request.headers or {}), **observability.outbound_headers()}
+    headers = locale.internal_request_headers(
+        {**(request.headers or {}), **observability.outbound_headers()}
+    )
     return await handler(request.override(headers=headers))
 
 
@@ -43,7 +46,9 @@ def _mcp_connections(tool_refs: list[dict], account_id: str, account_type: str) 
     """Explicit external MCP endpoints, the type=mcp entries of agent.tools.
     Built-in platform tools do not come through here; they all load from an
     execution-factory toolbox, see load_tools."""
-    headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
+    headers = locale.internal_request_headers(
+        {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
+    )
     conns: dict[str, dict] = {}
     for i, ref in enumerate(tool_refs):
         kind = ref.get("type")

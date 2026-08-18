@@ -38,6 +38,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from app import observability
 from app.auth import caller_token
+from app.commons import locale
 from app.config import config
 
 logger = logging.getLogger("bkn-agent.context-loader")
@@ -88,7 +89,9 @@ _HOST_CONVERSATION_KEY_HEADER = "X-OpenBKN-Host-Conversation-Key"
 def _client(
     authorization: str, host_conversation_key: Optional[str] = None
 ) -> MultiServerMCPClient:
-    headers = {"Authorization": authorization, **observability.outbound_headers()}
+    headers = locale.internal_request_headers(
+        {"Authorization": authorization, **observability.outbound_headers()}
+    )
     if host_conversation_key:
         headers[_HOST_CONVERSATION_KEY_HEADER] = host_conversation_key
     return MultiServerMCPClient(

@@ -209,3 +209,51 @@ def test_health_is_machine_only_and_gets_no_language_header():
     response = client.get("/api/v1/health", headers={"Accept-Language": "en-US"})
     assert response.status_code == 200
     assert "Content-Language" not in response.headers
+
+def test_unhandled_exception_keeps_the_negotiated_locale():
+    """The catch-all handler runs outside the middleware, where the ContextVar
+    has already been reset; it must still answer in the request's locale."""
+    from app.db import get_session
+
+    async def _boom():
+        raise RuntimeError("downstream is unreachable")
+        yield  # pragma: no cover - never reached
+
+    app.dependency_overrides[get_session] = _boom
+    try:
+        failing = TestClient(app, raise_server_exceptions=False)
+        headers = dict(SVC)
+        headers["Accept-Language"] = "en-US"
+        response = failing.get("/api/bkn-agent/v1/agents/any", headers=headers)
+    finally:
+        app.dependency_overrides.pop(get_session, None)
+
+    assert response.status_code == 500
+    body = response.json()
+    assert body["code"] == "BknAgent.Internal.Unexpected"
+    assert not CHINESE.search(body["description"])
+    assert not CHINESE.search(body["solution"])
+    # The exception path skips the normal header pass, so the handler applies it.
+    assert response.headers["Content-Language"] == "en-US"
+    assert "private" in response.headers["Cache-Control"]
+    # The internal diagnostic stays untranslated.
+    assert body["detail"].startswith("RuntimeError:")
+
+
+def test_downstream_headers_carry_the_frozen_locale():
+    """Every downstream call sends one normalized Accept-Language, never the
+    caller's raw multi-candidate header."""
+    from app.core import skills, toolbox
+
+    token = locale.set_effective_locale(locale.ENGLISH_LOCALE)
+    try:
+        built = locale.internal_request_headers(
+            {"x-account-id": "a", "x-account-type": "user"}
+        )
+    finally:
+        locale.reset_effective_locale(token)
+    assert built["Accept-Language"] == "en-US"
+    # Guard the wiring itself: these modules must go through the helper.
+    for module in (skills, toolbox):
+        source = open(module.__file__, encoding="utf-8").read()
+        assert "locale.internal_request_headers(" in source, module.__name__

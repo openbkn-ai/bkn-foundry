@@ -133,6 +133,8 @@ def test_mcp_interceptor_injects_operation_headers_at_call_time(monkeypatch):
         "bkn-interaction-id": "interaction-1",
         "bkn-operation-id": "operation-1",
         "bkn-causation-event-id": "event-1",
+        # One normalized Accept-Language travels with every downstream call.
+        "Accept-Language": "zh-CN",
     }
 
 

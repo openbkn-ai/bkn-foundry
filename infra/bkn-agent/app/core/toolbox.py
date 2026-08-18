@@ -29,6 +29,7 @@ from langchain_core.tools import StructuredTool
 from pydantic import ConfigDict, Field, create_model
 
 from app import evidence, observability
+from app.commons import locale
 from app.commons.i18n import localized_message
 from app.config import config
 from app.errors import bad_request, err
@@ -176,7 +177,7 @@ async def _execute(
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/tool-box/{box_id}/proxy/{tool_id}"
     identity = {"x-account-id": account_id, "x-account-type": account_type}
     operation_id, parent_event_id = evidence.new_operation()
-    headers = {**identity, **observability.outbound_headers()}
+    headers = locale.internal_request_headers({**identity, **observability.outbound_headers()})
     payload: dict[str, Any] = {"timeout": 60, "header": headers, "body": {}, "query": {}, "path": {}}
     by_field = {p.field: p for p in params}
     fallback = "query" if method.upper() in ("GET", "DELETE") else "body"
@@ -345,7 +346,9 @@ async def _list_tools(box_id: str, account_id: str, account_type: str) -> list[d
     400; a 5xx or a network failure means the downstream is unavailable and maps
     to 502. Both go out as the platform error envelope."""
     url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/tool-box/{box_id}/tools/list"
-    headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
+    headers = locale.internal_request_headers(
+        {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
+    )
     infos: list[dict] = []
     page = 1
     try:

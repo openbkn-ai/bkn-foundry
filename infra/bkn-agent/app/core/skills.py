@@ -2,6 +2,7 @@ import time
 
 import aiohttp
 
+from app.commons import locale
 from app.config import config
 from app.errors import err
 
@@ -93,7 +94,9 @@ async def load_skills(capability_ids: list[str], account_id: str, account_type: 
     within the cache TTL."""
     if not capability_ids:
         return ""
-    headers = {"x-account-id": account_id, "x-account-type": account_type}
+    headers = locale.internal_request_headers(
+        {"x-account-id": account_id, "x-account-type": account_type}
+    )
     parts: list[str] = []
     now = time.monotonic()
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:

@@ -109,6 +109,11 @@ async def bkn_trace_context_middleware(request: Request, call_next):
     effective_locale = locale.resolve_accept_language(
         request.headers.get(locale.ACCEPT_LANGUAGE_HEADER)
     )
+    # Also park it on the request scope. The catch-all Exception handler runs in
+    # ServerErrorMiddleware, which sits *outside* this middleware, so by the time
+    # it renders the 500 the ContextVar below has already been reset; scope state
+    # is the only channel that still carries this request's negotiated locale.
+    request.state.effective_locale = effective_locale
     locale_token = locale.set_effective_locale(effective_locale)
     try:
         response = await call_next(request)
@@ -186,13 +191,19 @@ async def unhandled_handler(request: Request, exc: Exception):
     """
     logger.exception("[BknAgent] unhandled error on %s %s", request.method, request.url.path)
     ctx = observability.context_from_request(request)
-    content = build_error_content("BknAgent.Internal.Unexpected")
+    effective_locale = getattr(request.state, "effective_locale", None) or (
+        locale.resolve_accept_language(request.headers.get(locale.ACCEPT_LANGUAGE_HEADER))
+    )
+    content = build_error_content("BknAgent.Internal.Unexpected", locale=effective_locale)
     # The exception type and message are internal diagnostics, kept in English
     # so they stay greppable against the logs; they are not a translated field.
     content["detail"] = f"{type(exc).__name__}: {exc}"
     content["trace_id"] = observability.current_trace_id(ctx)
-    return JSONResponse(
+    response = JSONResponse(
         status_code=500,
         content=content,
         headers=observability.response_headers(ctx),
     )
+    # The exception escaped this middleware, so the normal header pass never ran.
+    _apply_language_headers(response, request.url.path, effective_locale)
+    return response
