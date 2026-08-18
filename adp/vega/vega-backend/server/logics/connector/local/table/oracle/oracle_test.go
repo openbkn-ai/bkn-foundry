@@ -149,6 +149,23 @@ func TestOracleConnectorListTables(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("rejects null required metadata without exposing scan conversion error", func(t *testing.T) {
+		connector, mock, cleanup := newOracleConnectorMock(t, nil)
+		defer cleanup()
+
+		mock.ExpectQuery("SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE OBJECT_TYPE IN \\('TABLE', 'VIEW', 'MATERIALIZED VIEW'\\)").
+			WillReturnRows(sqlmock.NewRows([]string{"OWNER", "TABLE_NAME", "TABLE_TYPE", "LAST_ANALYZED"}).
+				AddRow("APP", "ORDERS", nil, nil))
+
+		got, err := connector.ListTables(context.Background())
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.ErrorContains(t, err, "required table metadata contains NULL")
+		assert.NotContains(t, err.Error(), "converting NULL to string")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("query error", func(t *testing.T) {
 		connector, mock, cleanup := newOracleConnectorMock(t, nil)
 		defer cleanup()
@@ -162,6 +179,55 @@ func TestOracleConnectorListTables(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.ErrorContains(t, err, "failed to list tables")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestOracleConnectorFetchColumns(t *testing.T) {
+	connector, mock, cleanup := newOracleConnectorMock(t, []string{"APP"})
+	defer cleanup()
+	mock.ExpectQuery("FROM ALL_TAB_COLUMNS C").
+		WithArgs("APP", "ORDERS").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"COLUMN_NAME", "DATA_TYPE", "CHAR_LENGTH", "DATA_PRECISION", "DATA_SCALE", "NULLABLE",
+			"DATA_DEFAULT", "COMMENTS", "CHARACTER_SET_NAME", "COLUMN_ID",
+		}).AddRow("ID", "NUMBER", nil, nil, nil, "N", nil, nil, nil, 1))
+
+	table := &interfaces.TableMeta{Database: "APP", Name: "ORDERS"}
+	require.NoError(t, connector.fetchColumns(context.Background(), table))
+	require.Len(t, table.Columns, 1)
+	assert.Equal(t, "", table.Columns[0].DefaultValue)
+	assert.Equal(t, "", table.Columns[0].Description)
+	assert.Equal(t, "", table.Columns[0].Charset)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOracleConnectorGetMetadata(t *testing.T) {
+	t.Run("returns scan error", func(t *testing.T) {
+		connector, mock, cleanup := newOracleConnectorMock(t, nil)
+		defer cleanup()
+		mock.ExpectQuery("FROM V\\$PARAMETER").
+			WillReturnRows(sqlmock.NewRows([]string{"NAME"}).AddRow("db_name"))
+
+		metadata, err := connector.GetMetadata(context.Background())
+
+		require.Error(t, err)
+		assert.Nil(t, metadata)
+		assert.ErrorContains(t, err, "failed to scan database metadata")
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("rejects null required name", func(t *testing.T) {
+		connector, mock, cleanup := newOracleConnectorMock(t, nil)
+		defer cleanup()
+		mock.ExpectQuery("FROM V\\$PARAMETER").
+			WillReturnRows(sqlmock.NewRows([]string{"NAME", "VALUE"}).AddRow(nil, "OPENBKN"))
+
+		metadata, err := connector.GetMetadata(context.Background())
+
+		require.Error(t, err)
+		assert.Nil(t, metadata)
+		assert.ErrorContains(t, err, "required database metadata contains NULL")
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

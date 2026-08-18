@@ -313,11 +313,14 @@ func (c *OracleConnector) validateSchemas(ctx context.Context) error {
 
 	existingSchemas := make(map[string]bool)
 	for rows.Next() {
-		var schemaName string
+		var schemaName sql.NullString
 		if err := rows.Scan(&schemaName); err != nil {
 			return fmt.Errorf("failed to scan schema name: %w", err)
 		}
-		existingSchemas[strings.ToUpper(schemaName)] = true
+		if !schemaName.Valid {
+			return fmt.Errorf("required schema metadata contains NULL")
+		}
+		existingSchemas[strings.ToUpper(schemaName.String)] = true
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("failed to iterate schemas: %w", err)
@@ -386,9 +389,7 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 
 	var tables []*interfaces.TableMeta
 	for rows.Next() {
-		var schema, name, tableType string
-		//var tableRows sql.NullInt64
-		//var description sql.NullString
+		var schema, name, tableType sql.NullString
 		var lastAnalyzed sql.NullTime
 
 		if err := rows.Scan(
@@ -399,12 +400,15 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan table info: %w", err)
 		}
+		if !schema.Valid || !name.Valid || !tableType.Valid {
+			return nil, fmt.Errorf("required table metadata contains NULL")
+		}
 
 		meta := &interfaces.TableMeta{
-			Name:        name,
-			TableType:   oracleTableType(tableType),
+			Name:        name.String,
+			TableType:   oracleTableType(tableType.String),
 			Description: "",
-			Database:    schema,
+			Database:    schema.String,
 		}
 		// Populate Properties
 		meta.Properties = make(map[string]any)
@@ -493,6 +497,9 @@ func (c *OracleConnector) fetchTableStatus(ctx context.Context, table *interface
 		}
 		return err
 	}
+	if !objectType.Valid {
+		return fmt.Errorf("required table metadata contains NULL")
+	}
 
 	// Initialize Properties map
 	if table.Properties == nil {
@@ -557,6 +564,9 @@ func (c *OracleConnector) fetchColumns(ctx context.Context, table *interfaces.Ta
 		); err != nil {
 			return err
 		}
+		if !name.Valid || !dataType.Valid || !isNullable.Valid || !position.Valid {
+			return fmt.Errorf("required column metadata contains NULL")
+		}
 
 		col := interfaces.TableColumnMeta{
 			Name:        name.String,
@@ -615,16 +625,18 @@ func (c *OracleConnector) fetchIndexes(ctx context.Context, table *interfaces.Ta
 		); err != nil {
 			return err
 		}
+		if !indexName.Valid || !columnName.Valid || !uniqueness.Valid || !position.Valid {
+			return fmt.Errorf("required index metadata contains NULL")
+		}
 
-		name := indexName.String
-		if idx, ok := indexMap[name]; ok {
+		if idx, ok := indexMap[indexName.String]; ok {
 			idx.Columns = append(idx.Columns, columnName.String)
 		} else {
-			indexMap[name] = &interfaces.TableIndexMeta{
-				Name:    name,
+			indexMap[indexName.String] = &interfaces.TableIndexMeta{
+				Name:    indexName.String,
 				Columns: []string{columnName.String},
 				Unique:  uniqueness.String == "UNIQUE",
-				Primary: name == strings.ToUpper(table.Name)+"_PK", // Oracle primary key naming convention
+				Primary: indexName.String == strings.ToUpper(table.Name)+"_PK", // Oracle primary key naming convention
 			}
 		}
 	}
@@ -676,14 +688,16 @@ func (c *OracleConnector) fetchForeignKeys(ctx context.Context, table *interface
 		); err != nil {
 			return err
 		}
+		if !constraintName.Valid || !columnName.Valid || !refTableName.Valid || !refColumnName.Valid {
+			return fmt.Errorf("required foreign key metadata contains NULL")
+		}
 
-		name := constraintName.String
-		if fk, ok := fkMap[name]; ok {
+		if fk, ok := fkMap[constraintName.String]; ok {
 			fk.Columns = append(fk.Columns, columnName.String)
 			fk.RefColumns = append(fk.RefColumns, refColumnName.String)
 		} else {
-			fkMap[name] = &interfaces.TableForeignKeyMeta{
-				Name:       name,
+			fkMap[constraintName.String] = &interfaces.TableForeignKeyMeta{
+				Name:       constraintName.String,
 				Columns:    []string{columnName.String},
 				RefTable:   refTableName.String,
 				RefColumns: []string{refColumnName.String},
@@ -744,10 +758,14 @@ func (c *OracleConnector) GetMetadata(ctx context.Context) (map[string]any, erro
 
 	metadata := make(map[string]any)
 	for rows.Next() {
-		var paramName, paramValue string
-		if err := rows.Scan(&paramName, &paramValue); err == nil {
-			metadata[paramName] = paramValue
+		var paramName, paramValue sql.NullString
+		if err := rows.Scan(&paramName, &paramValue); err != nil {
+			return nil, fmt.Errorf("failed to scan database metadata: %w", err)
 		}
+		if !paramName.Valid {
+			return nil, fmt.Errorf("required database metadata contains NULL")
+		}
+		metadata[paramName.String] = paramValue.String
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -756,18 +774,20 @@ func (c *OracleConnector) GetMetadata(ctx context.Context) (map[string]any, erro
 	// Get version info
 	versionQuery := "SELECT BANNER FROM V$VERSION WHERE BANNER LIKE 'Oracle%'"
 	versionRow := c.db.QueryRowContext(ctx, versionQuery)
-	var version string
+	var version sql.NullString
 	if err := versionRow.Scan(&version); err == nil {
-		metadata["version"] = version
+		if version.Valid {
+			metadata["version"] = version.String
+		}
 	}
 
 	// Get cluster mode (RAC or standalone)
 	// Check if instance count > 1 for RAC
 	racQuery := "SELECT COUNT(*) FROM V$ACTIVE_INSTANCES"
 	racRow := c.db.QueryRowContext(ctx, racQuery)
-	var instanceCount int
+	var instanceCount sql.NullInt64
 	if err := racRow.Scan(&instanceCount); err == nil {
-		if instanceCount > 1 {
+		if instanceCount.Valid && instanceCount.Int64 > 1 {
 			metadata["cluster_mode"] = "rac"
 		} else {
 			metadata["cluster_mode"] = "standalone"

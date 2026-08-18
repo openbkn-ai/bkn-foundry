@@ -27,6 +27,7 @@ type TableMeta struct {
 type TableColumnMeta struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
+	AliasType   string `json:"alias_type,omitempty"`
 	Description string `json:"description"`
 
 	Nullable          bool   `json:"nullable"`
@@ -38,7 +39,8 @@ type TableColumnMeta struct {
 	Charset           string `json:"charset,omitempty"`            // Character set
 	Collation         string `json:"collation,omitempty"`          // Sorting rule
 	OrdinalPosition   int    `json:"ordinal_position"`             // Column position (starting from 1
-	ColumnKey         string `json:"column_key"`                   // Column key
+	CheckConstraint   string `json:"check_constraint,omitempty"`
+	ColumnKey         string `json:"column_key"` // Column key
 }
 
 // TableIndexMeta represents index metadata.

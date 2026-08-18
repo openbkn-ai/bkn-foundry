@@ -62,7 +62,7 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 
 	var tables []*interfaces.TableMeta
 	for rows.Next() {
-		var schema, name, tableType string
+		var schema, name, tableType sql.NullString
 		var engine, collation, description sql.NullString
 		var tableRows, dataLength, indexLength sql.NullInt64
 		var createTime, updateTime sql.NullTime
@@ -82,18 +82,21 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan table info: %w", err)
 		}
+		if !schema.Valid || !name.Valid || !tableType.Valid {
+			return nil, fmt.Errorf("required table metadata contains NULL")
+		}
 
-		tableType = strings.ToLower(tableType)
-		if tableType != "view" {
-			tableType = "table"
+		tableTypeValue := strings.ToLower(tableType.String)
+		if tableTypeValue != "view" {
+			tableTypeValue = "table"
 		}
 
 		meta := &interfaces.TableMeta{
-			Name:        name,
-			TableType:   tableType,
+			Name:        name.String,
+			TableType:   tableTypeValue,
 			Description: description.String,
-			Database:    schema,
-			Schema:      schema,
+			Database:    schema.String,
+			Schema:      schema.String,
 		}
 
 		// Populate Properties
@@ -203,6 +206,9 @@ func (c *MariaDBConnector) fetchTableStatus(ctx context.Context, table *interfac
 		}
 		return err
 	}
+	if !tableType.Valid {
+		return fmt.Errorf("required table metadata contains NULL")
+	}
 
 	table.TableType = strings.ToLower(tableType.String)
 	if table.TableType != "view" {
@@ -301,6 +307,9 @@ func (c *MariaDBConnector) fetchColumns(ctx context.Context, table *interfaces.T
 		); err != nil {
 			return err
 		}
+		if !name.Valid || !columnType.Valid || !isNullable.Valid || !position.Valid {
+			return fmt.Errorf("required column metadata contains NULL")
+		}
 
 		col := interfaces.TableColumnMeta{
 			Name:        name.String,
@@ -370,16 +379,18 @@ func (c *MariaDBConnector) fetchIndexes(ctx context.Context, table *interfaces.T
 		); err != nil {
 			return err
 		}
+		if !indexName.Valid || !columnName.Valid || !nonUnique.Valid || !seqInIndex.Valid {
+			return fmt.Errorf("required index metadata contains NULL")
+		}
 
-		name := indexName.String
-		if idx, ok := indexMap[name]; ok {
+		if idx, ok := indexMap[indexName.String]; ok {
 			idx.Columns = append(idx.Columns, columnName.String)
 		} else {
-			indexMap[name] = &interfaces.TableIndexMeta{
-				Name:    name,
+			indexMap[indexName.String] = &interfaces.TableIndexMeta{
+				Name:    indexName.String,
 				Columns: []string{columnName.String},
 				Unique:  nonUnique.Int64 == 0,
-				Primary: name == "PRIMARY",
+				Primary: indexName.String == "PRIMARY",
 			}
 		}
 	}
@@ -435,14 +446,16 @@ func (c *MariaDBConnector) fetchForeignKeys(ctx context.Context, table *interfac
 		); err != nil {
 			return err
 		}
+		if !constraintName.Valid || !columnName.Valid || !refTableName.Valid || !refColumnName.Valid {
+			return fmt.Errorf("required foreign key metadata contains NULL")
+		}
 
-		name := constraintName.String
-		if fk, ok := fkMap[name]; ok {
+		if fk, ok := fkMap[constraintName.String]; ok {
 			fk.Columns = append(fk.Columns, columnName.String)
 			fk.RefColumns = append(fk.RefColumns, refColumnName.String)
 		} else {
-			fkMap[name] = &interfaces.TableForeignKeyMeta{
-				Name:       name,
+			fkMap[constraintName.String] = &interfaces.TableForeignKeyMeta{
+				Name:       constraintName.String,
 				Columns:    []string{columnName.String},
 				RefTable:   refTableName.String,
 				RefColumns: []string{refColumnName.String},
@@ -510,10 +523,14 @@ func (c *MariaDBConnector) GetMetadata(ctx context.Context) (map[string]any, err
 
 	metadata := make(map[string]any)
 	for rows.Next() {
-		var varName, varValue string
-		if err := rows.Scan(&varName, &varValue); err == nil {
-			metadata[varName] = varValue
+		var varName, varValue sql.NullString
+		if err := rows.Scan(&varName, &varValue); err != nil {
+			return nil, fmt.Errorf("failed to scan database metadata: %w", err)
 		}
+		if !varName.Valid {
+			return nil, fmt.Errorf("required database metadata contains NULL")
+		}
+		metadata[varName.String] = varValue.String
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -555,11 +572,14 @@ func (c *MariaDBConnector) listSchemas(ctx context.Context) ([]string, error) {
 
 	schemas := make([]string, 0)
 	for schemaRows.Next() {
-		var schema string
+		var schema sql.NullString
 		if err := schemaRows.Scan(&schema); err != nil {
 			return nil, fmt.Errorf("scan schema: %w", err)
 		}
-		schemas = append(schemas, schema)
+		if !schema.Valid {
+			return nil, fmt.Errorf("required schema metadata contains NULL")
+		}
+		schemas = append(schemas, schema.String)
 	}
 	if err := schemaRows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate schemas: %w", err)

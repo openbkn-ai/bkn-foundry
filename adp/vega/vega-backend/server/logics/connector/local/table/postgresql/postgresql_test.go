@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/agiledragon/gomonkey/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -200,12 +201,62 @@ func TestPostgresqlConnectorClose(t *testing.T) {
 	})
 }
 
+func TestPostgresqlConnectorConnectClosesUncheckedConnection(t *testing.T) {
+	tests := []struct {
+		name       string
+		versionRow *sqlmock.Rows
+		versionErr error
+		wantError  string
+	}{
+		{
+			name:       "version detection fails",
+			versionErr: errors.New("version unavailable"),
+			wantError:  "failed to detect PostgreSQL compatibility: version unavailable",
+		},
+		{
+			name:       "server version is unsupported",
+			versionRow: sqlmock.NewRows([]string{"server_version_num"}).AddRow("90124"),
+			wantError:  "PostgreSQL 9.1.24 is not supported; require PostgreSQL 9.2+",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New(sqlmock.MonitorPingsOption(true))
+			require.NoError(t, err)
+			mock.ExpectPing()
+			versionExpectation := mock.ExpectQuery("SHOW server_version_num")
+			if test.versionErr != nil {
+				versionExpectation.WillReturnError(test.versionErr)
+			} else {
+				versionExpectation.WillReturnRows(test.versionRow)
+			}
+			mock.ExpectClose()
+
+			patches := gomonkey.ApplyFunc(sql.Open, func(string, string) (*sql.DB, error) {
+				return db, nil
+			})
+			t.Cleanup(patches.Reset)
+
+			connector := &PostgresqlConnector{config: &postgresqlConfig{}}
+			err = connector.Connect(context.Background())
+
+			require.ErrorContains(t, err, test.wantError)
+			assert.False(t, connector.connected)
+			assert.Nil(t, connector.db)
+			assert.False(t, connector.compatibility.checked)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}
+
 func TestPostgresqlConnectorGetTableMetaRejectsMissingTable(t *testing.T) {
 	connector, mock, cleanup := newPostgresqlConnectorMock(t, nil)
 	defer cleanup()
 	connector.connected = true
+	connector.compatibility = postgresqlCompatibility{serverVersionNum: 90204, checked: true}
 
-	mock.ExpectQuery("SELECT c.relkind::text").
+	mock.ExpectQuery(`(?s)SELECT c\.relkind::text.*c\.relkind IN \('r', 'v', 'f'\)`).
 		WithArgs("public", "deleted_orders").
 		WillReturnError(sql.ErrNoRows)
 
@@ -235,6 +286,10 @@ func newPostgresqlConnectorMock(t *testing.T, schemas []string) (*PostgresqlConn
 	return &PostgresqlConnector{
 			config: &postgresqlConfig{Schemas: schemas},
 			db:     db,
+			compatibility: postgresqlCompatibility{
+				serverVersionNum: 90400,
+				checked:          true,
+			},
 		}, mock, func() {
 			mock.ExpectClose()
 			require.NoError(t, db.Close())

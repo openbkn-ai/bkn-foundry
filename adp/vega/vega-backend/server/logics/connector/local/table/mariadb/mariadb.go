@@ -64,6 +64,8 @@ type MariaDBConnector struct {
 
 	connected bool
 	db        *sql.DB
+
+	compatibility mariadbCompatibility
 }
 
 // NewMariaDBConnector creates the MariaDB connector builder
@@ -186,9 +188,17 @@ func (c *MariaDBConnector) Connect(ctx context.Context) error {
 		_ = db.Close()
 		return err
 	}
+	compatibility, err := fetchMariaDBCompatibility(ctx, db)
+	if err != nil {
+		_ = db.Close()
+		return fmt.Errorf("failed to detect MySQL/MariaDB compatibility: %w", err)
+	}
+	if err := compatibility.validateMinimum(); err != nil {
+		_ = db.Close()
+		return err
+	}
 
-	c.db = db
-	c.connected = true
+	c.db, c.compatibility, c.connected = db, compatibility, true
 
 	return nil
 }
@@ -241,11 +251,14 @@ func (c *MariaDBConnector) validateDatabases(ctx context.Context) error {
 
 	existingDBs := make(map[string]bool)
 	for rows.Next() {
-		var dbName string
+		var dbName sql.NullString
 		if err := rows.Scan(&dbName); err != nil {
 			return fmt.Errorf("failed to scan database name: %w", err)
 		}
-		existingDBs[dbName] = true
+		if !dbName.Valid {
+			return fmt.Errorf("required schema metadata contains NULL")
+		}
+		existingDBs[dbName.String] = true
 	}
 	if err := rows.Err(); err != nil {
 		return fmt.Errorf("failed to iterate databases: %w", err)
