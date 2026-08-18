@@ -1,7 +1,7 @@
 """
-内部 API 请求和响应模式
+Internal API request and response schemas
 
-定义 Executor 调用的内部 API 的 Pydantic 模型。
+The Pydantic models for the internal API the executor calls.
 """
 
 from pydantic import BaseModel, Field
@@ -9,52 +9,52 @@ from typing import Optional, Dict, Any, List
 
 
 class ExecutionMetrics(BaseModel):
-    """执行性能指标"""
+    """Execution performance metrics"""
 
-    duration_ms: float = Field(..., description="墙钟耗时（毫秒）")
-    cpu_time_ms: Optional[float] = Field(None, description="CPU 时间（毫秒）")
-    peak_memory_mb: Optional[float] = Field(None, description="内存峰值（MB）")
-    io_read_bytes: Optional[int] = Field(None, description="读取字节数")
-    io_write_bytes: Optional[int] = Field(None, description="写入字节数")
+    duration_ms: float = Field(..., description="Wall-clock duration in milliseconds")
+    cpu_time_ms: Optional[float] = Field(None, description="CPU time in milliseconds")
+    peak_memory_mb: Optional[float] = Field(None, description="Peak memory in MB")
+    io_read_bytes: Optional[int] = Field(None, description="Bytes read")
+    io_write_bytes: Optional[int] = Field(None, description="Bytes written")
 
 
 class ArtifactMetadata(BaseModel):
-    """文件元数据"""
+    """File metadata"""
 
-    path: str = Field(..., description="相对于 workspace 的文件路径")
-    size: int = Field(..., description="文件大小（字节）")
-    mime_type: str = Field(..., description="MIME 类型")
-    type: str = Field(..., description="文件类型: artifact, log, output")
-    checksum: Optional[str] = Field(None, description="SHA256 校验和")
+    path: str = Field(..., description="File path, relative to the workspace")
+    size: int = Field(..., description="File size in bytes")
+    mime_type: str = Field(..., description="MIME type")
+    type: str = Field(..., description="File type: artifact, log, or output")
+    checksum: Optional[str] = Field(None, description="SHA256 checksum")
 
 
 class ExecutionResultReport(BaseModel):
     """
-    执行结果上报请求
+    Execution result report request
 
-    由 Executor 调用，上报执行结果到控制平面。
+    The executor calls this to report a result to the control plane.
     """
 
-    status: str = Field(..., description="执行状态: success, failed, timeout, crashed")
-    stdout: str = Field("", description="标准输出")
-    stderr: str = Field("", description="标准错误")
-    exit_code: int = Field(..., description="进程退出码")
-    execution_time: float = Field(..., description="执行耗时（秒）")
-    return_value: Optional[Any] = Field(None, description="handler 函数返回值")
-    metrics: Optional[ExecutionMetrics] = Field(None, description="性能指标")
-    artifacts: List[str] = Field(default_factory=list, description="生成的文件路径列表")
+    status: str = Field(..., description="Execution status: success, failed, timeout, or crashed")
+    stdout: str = Field("", description="Standard output")
+    stderr: str = Field("", description="Standard error")
+    exit_code: int = Field(..., description="Process exit code")
+    execution_time: float = Field(..., description="Execution duration in seconds")
+    return_value: Optional[Any] = Field(None, description="Return value of the handler function")
+    metrics: Optional[ExecutionMetrics] = Field(None, description="Performance metrics")
+    artifacts: List[str] = Field(default_factory=list, description="Paths of the files that were produced")
 
 
 class InternalAPIResponse(BaseModel):
-    """内部 API 标准响应"""
+    """Standard internal API response"""
 
-    message: str = Field(..., description="响应消息")
+    message: str = Field(..., description="Response message")
 
 
 class ContainerReadyRequest(BaseModel):
-    """容器就绪请求"""
+    """Container-ready request"""
 
-    container_id: str = Field(..., description="容器 ID")
-    pod_name: Optional[str] = Field(None, description="Pod 名称（Kubernetes）")
-    executor_port: int = Field(8080, description="执行器 HTTP API 端口")
-    ready_at: Optional[str] = Field(None, description="就绪时间（ISO 8601）")
+    container_id: str = Field(..., description="Container id")
+    pod_name: Optional[str] = Field(None, description="Pod name, under Kubernetes")
+    executor_port: int = Field(8080, description="Executor HTTP API port")
+    ready_at: Optional[str] = Field(None, description="Ready timestamp, ISO 8601")

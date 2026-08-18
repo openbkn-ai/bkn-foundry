@@ -1,8 +1,9 @@
 """
-会话创建超时检测服务
+Session creation timeout service
 
-负责定期检测处于 creating 状态超过阈值的会话，并将其标记为 failed。
-这解决了 executor 容器初始化失败（如依赖安装失败）导致会话永久处于 creating 状态的问题。
+Periodically finds sessions stuck in creating past a threshold and marks them failed.
+This covers a failed executor container start-up, such as a failed dependency install,
+which would otherwise leave the session in creating forever.
 """
 
 import logging
@@ -17,16 +18,16 @@ logger = logging.getLogger(__name__)
 
 class SessionStuckCreatingService:
     """
-    会话创建超时检测服务
+    Session creation timeout service
 
-    职责：
-    1. 定期扫描处于 "creating" 状态的会话
-    2. 检查创建时间是否超过配置的超时阈值
-    3. 将超时会话标记为 "failed" 状态
+    Responsibilities:
+    1. Periodically scan for sessions in "creating"
+    2. Check whether creation started longer ago than the configured timeout
+    3. Mark a timed-out session "failed"
 
-    检测策略：
-    - 默认超时时间：300 秒（5 分钟，可配置）
-    - 检测间隔：默认与 cleanup_interval_seconds 一致（5 分钟）
+    The policy:
+    - Default timeout: 300 seconds, five minutes, configurable
+    - Scan interval: matches cleanup_interval_seconds by default, five minutes
     """
 
     def __init__(
@@ -35,24 +36,24 @@ class SessionStuckCreatingService:
         creating_timeout_seconds: int = 300,
     ):
         """
-        初始化会话创建超时检测服务
+        Initialize the session creation timeout service
 
         Args:
-            session_repo: 会话仓储
-            creating_timeout_seconds: 创建超时时间（秒），必须 >= 30 秒
+            session_repo: session repository
+            creating_timeout_seconds: creation timeout in seconds, at least 30
         """
         self._session_repo = session_repo
         self._timeout = timedelta(seconds=creating_timeout_seconds)
 
     async def check_and_mark_stuck_sessions(self) -> Dict[str, int]:
         """
-        检测并标记处于 creating 状态超时的会话
+        Find and mark the sessions stuck in creating
 
         Returns:
-            dict: 检测统计信息
-                - total_checked: 检查的会话数
-                - marked_failed: 标记为 failed 的会话数
-                - errors: 错误列表
+            dict: the scan statistics
+                - total_checked: how many sessions were examined
+                - marked_failed: how many were marked failed
+                - errors: the error list
         """
         stats = {"total_checked": 0, "marked_failed": 0, "errors": []}
 
@@ -60,7 +61,7 @@ class SessionStuckCreatingService:
             now = datetime.now()
             timeout_threshold = now - self._timeout
 
-            # 查询所有处于 creating 状态的会话
+            # Query every session in "creating"
             creating_sessions = await self._session_repo.find_by_status(SessionStatus.CREATING)
             stats["total_checked"] = len(creating_sessions)
 
@@ -72,7 +73,7 @@ class SessionStuckCreatingService:
 
             for session in creating_sessions:
                 try:
-                    # 检查是否创建时间超过阈值
+                    # Check whether creation started longer ago than the threshold
                     if session.created_at and session.created_at < timeout_threshold:
                         await self._mark_session_as_failed(
                             session,
@@ -82,7 +83,7 @@ class SessionStuckCreatingService:
                         )
                         stats["marked_failed"] += 1
                     else:
-                        # 记录还未超时的会话（调试用）
+                        # Log the ones still inside the window, for debugging
                         if session.created_at:
                             time_in_creating = (now - session.created_at).total_seconds()
                             logger.debug(
@@ -111,12 +112,12 @@ class SessionStuckCreatingService:
 
     async def _mark_session_as_failed(self, session: Session, reason: str, detail: str) -> None:
         """
-        标记会话为失败状态
+        Mark the session failed
 
         Args:
-            session: 要标记的会话
-            reason: 失败原因
-            detail: 详细信息
+            session: the session to mark
+            reason: why it failed
+            detail: further detail
         """
         logger.warning(
             f"Marking session {session.id} as failed: "
@@ -126,7 +127,7 @@ class SessionStuckCreatingService:
             f"created_at={session.created_at}"
         )
 
-        # 标记会话为失败状态
+        # Mark the session failed
         session.mark_as_failed()
         await self._session_repo.save(session)
 

@@ -1,7 +1,7 @@
 """
-模板应用服务
+Template application service
 
-编排模板相关的用例。
+Orchestrates the template use cases.
 """
 
 from typing import List, Optional
@@ -18,9 +18,9 @@ from src.shared.i18n import message
 
 class TemplateService:
     """
-    模板应用服务
+    Template application service
 
-    编排模板创建、查询、更新、删除等用例。
+    Orchestrates creating, reading, updating, and deleting a template.
     """
 
     def __init__(
@@ -31,20 +31,20 @@ class TemplateService:
 
     async def create_template(self, command: CreateTemplateCommand) -> TemplateDTO:
         """
-        创建模板用例
+        Create-template use case
 
-        流程：
-        1. 验证模板ID唯一性
-        2. 验证模板名称唯一性
-        3. 创建模板实体
-        4. 保存到仓储
+        Steps:
+        1. Check the template id is unique
+        2. Check the template name is unique
+        3. Build the template entity
+        4. Persist it
         """
-        # 检查 ID 唯一性
+        # Check the id is unique
         existing_by_id = await self._template_repo.find_by_id(command.template_id)
         if existing_by_id:
             raise ValidationError(message("Sandbox.Template.IdExists", template_id=command.template_id))
 
-        # 检查名称唯一性
+        # Check the name is unique
         existing = await self._template_repo.find_by_name(command.name)
         if existing:
             raise ValidationError(message("Sandbox.Template.NameExists", name=command.name))
@@ -71,7 +71,7 @@ class TemplateService:
         return TemplateDTO.from_entity(template)
 
     async def get_template(self, query: GetTemplateQuery) -> TemplateDTO:
-        """获取模板用例"""
+        """Get-template use case"""
         template = await self._template_repo.find_by_id(query.template_id)
         if not template:
             raise NotFoundError(message("Sandbox.Template.NotFound", template_id=query.template_id))
@@ -79,40 +79,40 @@ class TemplateService:
         return TemplateDTO.from_entity(template)
 
     async def list_templates(self, limit: int = 50, offset: int = 0) -> List[TemplateDTO]:
-        """列出所有模板"""
+        """List every template"""
         templates = await self._template_repo.find_all(limit=limit, offset=offset)
 
         return [TemplateDTO.from_entity(t) for t in templates]
 
     async def update_template(self, command: UpdateTemplateCommand) -> TemplateDTO:
         """
-        更新模板用例
+        Update-template use case
 
-        流程：
-        1. 查找模板
-        2. 验证名称唯一性（如果更改名称）
-        3. 更新模板字段
-        4. 保存到仓储
+        Steps:
+        1. Find the template
+        2. Check the name is unique, when the name changes
+        3. Update the fields
+        4. Persist it
         """
         template = await self._template_repo.find_by_id(command.template_id)
         if not template:
             raise NotFoundError(message("Sandbox.Template.NotFound", template_id=command.template_id))
 
-        # 验证名称唯一性
+        # Check the name is unique
         if command.name and command.name != template.name:
             existing = await self._template_repo.find_by_name(command.name)
             if existing and existing.id != template.id:
                 raise ValidationError(message("Sandbox.Template.NameExists", name=command.name))
 
-        # 更新名称
+        # Update the name
         if command.name is not None:
             template.update_name(command.name)
 
-        # 更新镜像
+        # Update the image
         if command.image_url is not None:
             template.update_image(command.image_url)
 
-        # 更新资源限制
+        # Update the resource limits
         if any([command.default_cpu_cores, command.default_memory_mb, command.default_disk_mb]):
             from src.domain.value_objects.resource_limit import ResourceLimit
 
@@ -139,7 +139,7 @@ class TemplateService:
                 max_processes=template.default_resources.max_processes,
             )
 
-        # 更新超时时间
+        # Update the timeout
         if command.default_timeout_sec is not None:
             template.update_timeout(command.default_timeout_sec)
 
@@ -148,12 +148,12 @@ class TemplateService:
 
     async def delete_template(self, template_id: str) -> None:
         """
-        删除模板用例
+        Delete-template use case
 
-        流程：
-        1. 查找模板
-        2. 验证无活动会话使用
-        3. 删除模板
+        Steps:
+        1. Find the template
+        2. Check no active session uses it
+        3. Delete it
         """
         template = await self._template_repo.find_by_id(template_id)
         if not template:

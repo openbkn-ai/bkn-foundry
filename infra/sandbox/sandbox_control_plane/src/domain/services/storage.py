@@ -1,7 +1,7 @@
 """
-存储领域服务接口
+Storage domain service interface
 
-定义存储的抽象接口，负责文件存储操作。
+The storage abstraction: everything that touches stored files.
 """
 
 from abc import ABC, abstractmethod
@@ -10,10 +10,10 @@ from typing import Dict, Optional
 
 class IStorageService(ABC):
     """
-    存储服务接口
+    Storage service interface
 
-    这是领域层定义的 Port，由基础设施层实现 Adapter。
-    负责与 S3 兼容的对象存储进行交互。
+    The port the domain layer defines; the infrastructure layer supplies the adapter.
+    Talks to S3-compatible object storage.
     """
 
     @abstractmethod
@@ -21,101 +21,101 @@ class IStorageService(ABC):
         self, s3_path: str, content: bytes, content_type: str = "application/octet-stream"
     ) -> None:
         """
-        上传文件
+        Upload a file
 
         Args:
-            s3_path: S3 对象路径
-            content: 文件内容
-            content_type: MIME 类型
+            s3_path: S3 object path
+            content: file content
+            content_type: MIME type
         """
         pass
 
     @abstractmethod
     async def download_file(self, s3_path: str) -> bytes:
         """
-        下载文件
+        Download a file
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
 
         Returns:
-            文件内容
+            The file content
         """
         pass
 
     @abstractmethod
     async def file_exists(self, s3_path: str) -> bool:
         """
-        检查文件是否存在
+        Check whether a file exists
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
 
         Returns:
-            是否存在
+            Whether it exists
         """
         pass
 
     @abstractmethod
     async def get_file_info(self, s3_path: str) -> Dict:
         """
-        获取文件信息
+        Get the file metadata
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
 
         Returns:
-            文件信息字典，包含 size, content_type, last_modified 等
+            A dict holding size, content_type, last_modified, and more
         """
         pass
 
     @abstractmethod
     async def generate_presigned_url(self, s3_path: str, expiration_seconds: int = 3600) -> str:
         """
-        生成预签名 URL
+        Generate a presigned URL
 
         Args:
-            s3_path: S3 对象路径
-            expiration_seconds: 过期时间（秒）
+            s3_path: S3 object path
+            expiration_seconds: expiry in seconds
 
         Returns:
-            预签名 URL
+            The presigned URL
         """
         pass
 
     @abstractmethod
     async def delete_file(self, s3_path: str) -> None:
         """
-        删除文件
+        Delete a file
 
         Args:
-            s3_path: S3 对象路径
+            s3_path: S3 object path
         """
         pass
 
     @abstractmethod
     async def list_files(self, prefix: str, limit: int = 1000) -> list:
         """
-        列出文件
+        List files
 
         Args:
-            prefix: S3 路径前缀
-            limit: 最大返回数量
+            prefix: S3 path prefix
+            limit: how many to return at most
 
         Returns:
-            文件列表
+            The file list
         """
         pass
 
     @abstractmethod
     async def delete_prefix(self, prefix: str) -> int:
         """
-        删除指定前缀的所有文件（用于会话清理）
+        Delete every file under a prefix, used when cleaning up a session
 
         Args:
-            prefix: S3 路径前缀（例如: "sessions/sess_abc123/"）
+            prefix: S3 path prefix, such as "sessions/sess_abc123/"
 
         Returns:
-            删除的文件数量
+            How many files were deleted
         """
         pass

@@ -1,7 +1,7 @@
 """
-状态同步服务
+State sync service
 
-负责同步 Session 状态与实际容器状态，支持启动时同步和定时健康检查。
+Keeps the session state aligned with the real container state, at start-up and on a health-check timer.
 """
 
 from datetime import datetime
@@ -20,15 +20,15 @@ logger = get_logger(__name__)
 
 class StateSyncService:
     """
-    状态同步服务
+    State sync service
 
-    职责：
-    1. 启动时全量状态同步
-    2. 定时健康检查（通过 Docker/K8s API）
-    3. 状态不一致时更新 Session 表
-    4. 恢复不健康的容器（创建新容器）
+    Responsibilities:
+    1. Full state sync at start-up
+    2. Periodic health checks, through the Docker or K8s API
+    3. Update the session table when the two disagree
+    4. Recover an unhealthy container by creating a new one
 
-    核心原则：Docker/K8s 是容器状态的唯一真实来源，Session 表只保存关联关系。
+    The core principle: Docker or K8s is the single source of truth for container state, and the session table only records the association.
     """
 
     def __init__(
@@ -49,10 +49,10 @@ class StateSyncService:
 
     async def sync_on_startup(self) -> Dict[str, int]:
         """
-        启动时全量同步
+        Full sync at start-up
 
-        查询所有 RUNNING/CREATING 状态的 Session，检查容器实际状态，
-        尝试恢复不健康的容器或标记为失败。
+        Reads every session in RUNNING or CREATING, checks the real container state, and
+        either recovers an unhealthy container or marks the session failed.
         """
         logger.info("Starting state synchronization on startup")
 
@@ -105,7 +105,7 @@ class StateSyncService:
         return stats
 
     def _is_kubernetes_takeover_enabled(self) -> bool:
-        """仅在 K8s 调度路径启用启动接管。"""
+        """Start-up takeover is enabled on the K8s scheduling path only."""
         cluster_node = getattr(self._scheduler, "_cluster_node", None)
         return bool(
             cluster_node is not None and getattr(cluster_node, "type", None) == "kubernetes"
@@ -120,7 +120,7 @@ class StateSyncService:
         return getattr(owner_context, "pod_name", None)
 
     async def _load_active_sessions(self) -> list[Session]:
-        """全量加载 creating/running 会话，避免仓储默认 limit 截断。"""
+        """Load every creating and running session, so the repository default limit cannot truncate."""
         session_repo_cls = type(self._session_repo)
         has_paginated_query = callable(getattr(session_repo_cls, "find_sessions", None))
         if not has_paginated_query:
@@ -148,7 +148,7 @@ class StateSyncService:
         return active_sessions
 
     async def _take_over_session_on_startup(self, session: Session, stats: Dict[str, int]) -> None:
-        """K8s 启动时对 active session 做 executor 接管。"""
+        """Take over the executors of the active sessions when starting under K8s."""
         try:
             if not session.container_id:
                 logger.warning(
@@ -255,7 +255,7 @@ class StateSyncService:
             stats["errors"].append(error_msg)
 
     async def _mark_interrupted_executions(self, session: Session) -> int:
-        """将 takeover 中断的 in-flight execution 标记为 failed。"""
+        """Mark an in-flight execution that a takeover interrupted as failed."""
         if self._execution_repo is None:
             logger.warning(
                 "Execution repository unavailable during startup takeover",
@@ -295,10 +295,10 @@ class StateSyncService:
 
     async def periodic_health_check(self) -> Dict[str, int]:
         """
-        定时健康检查（每 30 秒）
+        Periodic health check, every 30 seconds
 
-        只检查 RUNNING 状态的 Session，减少查询范围。
-        对不健康的容器尝试恢复。
+        Examines only the sessions in RUNNING, which keeps the query narrow,
+        and tries to recover an unhealthy container.
         """
         logger.info("Starting periodic health check")
 
@@ -339,7 +339,7 @@ class StateSyncService:
         return stats
 
     async def _check_and_recover_session(self, session: Session, stats: Dict[str, int]) -> None:
-        """检查单个会话的健康状态并尝试恢复"""
+        """Check the health of one session and try to recover it"""
         try:
             is_running = await self._container_scheduler.is_container_running(session.container_id)
 
@@ -371,9 +371,9 @@ class StateSyncService:
 
     async def _attempt_recovery(self, session: Session) -> bool:
         """
-        尝试恢复 Session
+        Try to recover the session
 
-        策略：创建新容器（不再使用预热池）
+        The strategy is to create a new container; there is no warm pool any more.
         """
         logger.info("Attempting recovery for session", session_id=session.id)
 
@@ -418,7 +418,7 @@ class StateSyncService:
             return False
 
     async def _create_recovery_container(self, session: Session, image: str) -> str:
-        """按当前运行环境重建 session 的 executor。"""
+        """Rebuild the executor of a session for the current runtime environment."""
         if self._is_kubernetes_takeover_enabled() and self._scheduler is not None:
             container_id = await self._scheduler.create_container_for_session(
                 session_id=session.id,
@@ -461,7 +461,7 @@ class StateSyncService:
         return container_id
 
     async def _get_recovery_image(self, session: Session) -> str:
-        """解析恢复容器时应使用的镜像。"""
+        """Resolve the image to use while recovering a container."""
         if self._template_repo is None:
             raise RuntimeError("Template repository is required for session recovery")
 
@@ -478,7 +478,7 @@ class StateSyncService:
         return template.image
 
     def _get_recovery_runtime_node(self) -> str:
-        """根据当前调度环境推导恢复后的运行时节点。"""
+        """Derive the runtime node to recover onto, from the current scheduling environment."""
         if self._scheduler is not None and hasattr(self._scheduler, "_cluster_node"):
             cluster_node = getattr(self._scheduler, "_cluster_node", None)
             if cluster_node is not None and getattr(cluster_node, "id", None):
@@ -487,7 +487,7 @@ class StateSyncService:
 
     async def check_session_health(self, session_id: str) -> Dict[str, any]:
         """
-        检查单个 Session 的健康状态
+        Check the health of one session
         """
         session = await self._session_repo.find_by_id(session_id)
         if not session:

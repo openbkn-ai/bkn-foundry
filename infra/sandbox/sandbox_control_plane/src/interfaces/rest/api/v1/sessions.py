@@ -1,7 +1,7 @@
 """
-会话 REST API 路由
+Session REST API routes
 
-定义会话相关的 HTTP 端点。
+Defines the HTTP endpoints for sessions.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Response
@@ -45,18 +45,18 @@ async def create_session(
     request: CreateSessionRequest, service: SessionService = Depends(get_session_service_db)
 ):
     """
-    创建会话
+    Create a session
 
-    - **template_id**: 模板 ID；未传时使用 DEFAULT_TEMPLATE_ID 配置
-    - **timeout**: 超时时间（秒），默认 300，最大 3600
-    - **cpu**: CPU 核心数，如 "1", "2"
-    - **memory**: 内存限制，如 "512Mi", "1Gi"
-    - **disk**: 磁盘限制，如 "1Gi", "10Gi"
-    - **env_vars**: 环境变量字典
-    - **dependencies**: 会话级依赖包列表（新增）
-    - **install_timeout**: 依赖安装超时时间（秒），默认 300（新增）
-    - **fail_on_dependency_error**: 依赖安装失败时是否终止会话创建（新增）
-    - **allow_version_conflicts**: 是否允许版本冲突（新增）
+    - **template_id**: template id; without it DEFAULT_TEMPLATE_ID applies
+    - **timeout**: timeout in seconds, 300 by default, 3600 at most
+    - **cpu**: CPU cores, such as "1" or "2"
+    - **memory**: memory limit, such as "512Mi" or "1Gi"
+    - **disk**: disk limit, such as "1Gi" or "10Gi"
+    - **env_vars**: environment variables
+    - **dependencies**: session-level dependency packages
+    - **install_timeout**: dependency install timeout in seconds, 300 by default
+    - **fail_on_dependency_error**: whether a failed dependency install aborts session creation
+    - **allow_version_conflicts**: whether a version conflict is allowed
     """
     from src.domain.value_objects.resource_limit import ResourceLimit
 
@@ -96,14 +96,14 @@ async def list_sessions(
     service: SessionService = Depends(get_session_service_db),
 ):
     """
-    列出会话
+    List sessions
 
-    支持按 status 和 template_id 筛选，以及分页。
+    Filters by status and template_id, and pages.
 
-    - **status**: 会话状态筛选（可选），如 "running", "terminated"
-    - **template_id**: 模板 ID 筛选（可选）
-    - **limit**: 返回数量限制（1-200，默认 50）
-    - **offset**: 偏移量（用于分页，默认 0）
+    - **status**: filter by session status, optional, such as "running" or "terminated"
+    - **template_id**: filter by template id, optional
+    - **limit**: how many to return, 1-200, default 50
+    - **offset**: offset, for paging, default 0
     """
     result = await service.list_sessions(
         status=status, template_id=template_id, limit=limit, offset=offset
@@ -120,7 +120,7 @@ async def list_sessions(
 
 @router.get("/{session_id}", response_model=SessionResponse)
 async def get_session(session_id: str, service: SessionService = Depends(get_session_service_db)):
-    """获取会话详情"""
+    """Get the session details"""
     from src.application.queries.get_session import GetSessionQuery
 
     query = GetSessionQuery(session_id=session_id)
@@ -137,7 +137,7 @@ async def install_session_dependencies(
     request: InstallSessionDependenciesRequest,
     service: SessionService = Depends(get_session_service_db),
 ):
-    """增量安装 Python 依赖。"""
+    """Install Python dependencies incrementally."""
     try:
         command = InstallSessionDependenciesCommand(
             session_id=session_id,
@@ -160,13 +160,13 @@ async def terminate_session(
     session_id: str, service: SessionService = Depends(get_session_service_db)
 ):
     """
-    终止会话（软终止，保留记录）
+    Terminate a session: a soft stop that keeps the record
 
-    行为：
-    1. 销毁容器
-    2. 删除 S3 工作区文件
-    3. 更新会话状态为 terminated
-    4. 保留数据库记录
+    What happens:
+    1. The container is destroyed
+    2. The S3 workspace files are deleted
+    3. The session moves to terminated
+    4. The database record is kept
     """
     session_dto = await service.terminate_session(session_id)
     return _map_dto_to_response(session_dto)
@@ -177,19 +177,19 @@ async def delete_session(
     session_id: str, service: SessionService = Depends(get_session_service_db)
 ):
     """
-    删除会话（硬删除，级联删除执行记录）
+    Delete a session: a hard delete that cascades to the execution records
 
-    行为：
-    1. 执行清理（销毁容器 + 删除 S3 文件）
-    2. 硬删除 session 记录
-    3. 级联删除所有关联的 execution 记录
+    What happens:
+    1. Clean up: destroy the container and delete the S3 files
+    2. Hard-delete the session row
+    3. Cascade-delete every execution row that belongs to it
     """
     await service.delete_session(session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _map_dto_to_response(dto: SessionDTO) -> SessionResponse:
-    """将 SessionDTO 映射为 SessionResponse"""
+    """Map a SessionDTO onto a SessionResponse"""
     return SessionResponse(
         id=dto.id,
         template_id=dto.template_id,

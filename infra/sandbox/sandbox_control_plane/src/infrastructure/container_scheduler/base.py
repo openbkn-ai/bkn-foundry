@@ -1,7 +1,7 @@
 """
-容器调度器接口
+Container scheduler interface
 
-定义容器操作的抽象接口。
+The abstraction over container operations.
 """
 
 from abc import ABC, abstractmethod
@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 
 @dataclass(frozen=True)
 class ControlPlaneOwnerContext:
-    """当前 control plane Pod 的 owner 上下文。"""
+    """The owner context of the current control plane Pod."""
 
     pod_name: str
     pod_uid: str
@@ -19,7 +19,7 @@ class ControlPlaneOwnerContext:
 
 @dataclass(frozen=True)
 class ContainerOwnershipInfo:
-    """容器/POD 当前归属信息。"""
+    """Who a container or Pod currently belongs to."""
 
     owner_pod_name: Optional[str]
     owner_pod_uid: Optional[str]
@@ -29,23 +29,23 @@ class ContainerOwnershipInfo:
 
 @dataclass
 class ContainerConfig:
-    """容器配置"""
+    """Container configuration"""
 
     image: str
     name: str
     env_vars: Dict[str, str]
-    cpu_limit: str  # 如 "1", "2"
-    memory_limit: str  # 如 "512Mi", "1Gi"
-    disk_limit: str  # 如 "1Gi", "10Gi"
-    workspace_path: str  # S3路径，如 "s3://bucket/sessions/{session_id}/"
+    cpu_limit: str  # such as "1" or "2"
+    memory_limit: str  # such as "512Mi" or "1Gi"
+    disk_limit: str  # such as "1Gi" or "10Gi"
+    workspace_path: str  # S3 path, such as "s3://bucket/sessions/{session_id}/"
     labels: Dict[str, str]
-    network_name: str = "sandbox_network"  # Docker 网络名称，默认 sandbox_network
+    network_name: str = "sandbox_network"  # Docker network name
     owner_context: Optional[ControlPlaneOwnerContext] = None
 
 
 @dataclass
 class ContainerInfo:
-    """容器信息"""
+    """Container information"""
 
     id: str
     name: str
@@ -60,7 +60,7 @@ class ContainerInfo:
 
 @dataclass
 class ContainerResult:
-    """容器执行结果"""
+    """Container execution result"""
 
     status: str
     stdout: str
@@ -70,53 +70,53 @@ class ContainerResult:
 
 class IContainerScheduler(ABC):
     """
-    容器调度器接口
+    Container scheduler interface
 
-    定义容器生命周期管理操作。
+    Defines the container lifecycle operations.
     """
 
     @abstractmethod
     async def create_container(self, config: ContainerConfig) -> str:
         """
-        创建容器
+        Create the container
 
-        返回容器ID
+        Returns the container id
         """
         pass
 
     @abstractmethod
     async def start_container(self, container_id: str) -> None:
-        """启动容器"""
+        """Start the container"""
         pass
 
     @abstractmethod
     async def stop_container(self, container_id: str, timeout: int = 10) -> None:
-        """停止容器"""
+        """Stop the container"""
         pass
 
     @abstractmethod
     async def remove_container(self, container_id: str, force: bool = True) -> None:
-        """删除容器"""
+        """Delete the container"""
         pass
 
     @abstractmethod
     async def get_container_status(self, container_id: str) -> ContainerInfo:
-        """获取容器状态"""
+        """Get the container status"""
         pass
 
     @abstractmethod
     async def is_container_running(self, container_id: str) -> bool:
         """
-        检查容器是否正在运行
+        Check whether the container is running
 
-        直接通过 Docker API 查询，不依赖数据库。
-        此方法供 StateSyncService 使用。
+        Queries the Docker API directly, without going through the database.
+        StateSyncService uses this.
 
         Args:
-            container_id: 容器 ID
+            container_id: container id
 
         Returns:
-            bool: 容器是否运行中
+            bool: whether the container is running
         """
         pass
 
@@ -124,19 +124,19 @@ class IContainerScheduler(ABC):
     async def get_container_logs(
         self, container_id: str, tail: int = 100, since: Optional[str] = None
     ) -> str:
-        """获取容器日志"""
+        """Get the container logs"""
         pass
 
     @abstractmethod
     async def wait_container(
         self, container_id: str, timeout: Optional[int] = None
     ) -> ContainerResult:
-        """等待容器执行完成"""
+        """Wait for the container to finish"""
         pass
 
     @abstractmethod
     async def ping(self) -> bool:
-        """检查调度器连接状态"""
+        """Check the scheduler connection"""
         pass
 
     async def get_container_ownership(
@@ -144,8 +144,8 @@ class IContainerScheduler(ABC):
         container_id: str,
     ) -> Optional[ContainerOwnershipInfo]:
         """
-        获取容器归属信息。
+        Get who the container belongs to.
 
-        默认返回 None，供不支持 owner 概念的调度器复用。
+        Returns None by default, so a scheduler without an owner concept can reuse this.
         """
         return None

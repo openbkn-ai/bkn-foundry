@@ -1,7 +1,7 @@
 """
-依赖解析工具
+Dependency parsing helpers
 
-用于处理 Python 依赖包的格式转换和解析。
+Converts and parses Python dependency package formats.
 """
 
 import json
@@ -12,7 +12,7 @@ DEFAULT_PYTHON_PACKAGE_INDEX_URL = "https://pypi.org/simple/"
 
 
 def normalize_python_package_index_url(index_url: Optional[str]) -> str:
-    """规范化 Python 包仓库地址。"""
+    """Normalize a Python package index URL."""
     if not index_url:
         return DEFAULT_PYTHON_PACKAGE_INDEX_URL
     return index_url.strip() or DEFAULT_PYTHON_PACKAGE_INDEX_URL
@@ -20,9 +20,9 @@ def normalize_python_package_index_url(index_url: Optional[str]) -> str:
 
 def parse_pip_spec(spec: Union[str, dict]) -> dict[str, Optional[str]]:
     """
-    解析 pip requirement spec。
+    Parse a pip requirement specifier.
 
-    返回:
+    Returns:
         {"name": "requests", "version": "==2.31.0"}
     """
     if isinstance(spec, dict):
@@ -41,7 +41,7 @@ def parse_pip_spec(spec: Union[str, dict]) -> dict[str, Optional[str]]:
 
 
 def merge_pip_specs(existing: List[str], incoming: List[str]) -> List[str]:
-    """按包名合并 pip spec，同名包以后者覆盖前者。"""
+    """Merge pip specifiers by package name; a later entry wins."""
     merged: dict[str, str] = {}
 
     for spec in existing + incoming:
@@ -54,15 +54,15 @@ def merge_pip_specs(existing: List[str], incoming: List[str]) -> List[str]:
 
 def parse_dependencies_to_pip_specs(dependencies: Optional[List[Union[str, dict]]]) -> List[str]:
     """
-    将依赖列表转换为 pip 规范格式
+    Convert a dependency list into pip specifiers
 
     Args:
-        dependencies: 依赖列表，元素可以是字符串或字典
-            - 字符串格式: "requests==2.31.0" 或 "requests"
-            - 字典格式: {"name": "requests", "version": "==2.31.0"}
+        dependencies: the dependencies, each a string or a dict
+            - string form: "requests==2.31.0" or "requests"
+            - dict form: {"name": "requests", "version": "==2.31.0"}
 
     Returns:
-        pip 规范列表，如 ["requests==2.31.0", "pandas>=2.0"]
+        The pip specifiers, such as ["requests==2.31.0", "pandas>=2.0"]
     """
     if not dependencies:
         return []
@@ -83,15 +83,15 @@ def format_dependencies_for_script(
     dependencies: Optional[List[Union[str, dict]]],
 ) -> tuple[str, str]:
     """
-    格式化依赖列表用于 shell 脚本
+    Format the dependency list for a shell script
 
     Args:
-        dependencies: 依赖列表
+        dependencies: the dependencies
 
     Returns:
-        (deps_json, deps_list) 元组
-        - deps_json: JSON 字符串格式的依赖列表
-        - deps_list: 空格分隔的 pip 规范字符串，用于 shell 脚本
+        A (deps_json, deps_list) tuple
+        - deps_json: the dependency list as a JSON string
+        - deps_list: space-separated pip specifiers, for the shell script
     """
     if not dependencies:
         return "", ""
@@ -105,18 +105,18 @@ def format_dependencies_for_script(
 
 def build_dependency_install_script() -> str:
     """
-    构建通用的 Python 依赖安装脚本片段
+    Build the shared Python dependency install script fragment
 
     Returns:
-        Shell 脚本字符串，用于安装依赖到 /opt/sandbox-venv
+        The shell script that installs the dependencies into /opt/sandbox-venv
     """
     return """
-# ========== 安装 Python 依赖 ==========
+# ========== Install the Python dependencies ==========
 echo "📦 Installing dependencies: {deps_json}"
 echo "📦 Pip specs: {pip_specs}"
 
-# 将依赖安装到容器本地文件系统（而非 S3 挂载点）
-# S3 挂载点是网络文件系统，不适合作为 pip 安装目标
+# Install into the container's local filesystem rather than the S3 mount point:
+# the mount point is a network filesystem and is a poor pip target.
 VENV_DIR="/opt/sandbox-venv"
 mkdir -p $VENV_DIR
 mkdir -p /tmp/pip-cache
@@ -132,9 +132,9 @@ if pip3 install \\
     --index-url https://pypi.org/simple/ \\
     {deps_list}; then
     echo "✅ Dependencies installed successfully to $VENV_DIR"
-    # 修改属主为 sandbox 用户（gosu 切换前以 root 安装）
+    # Hand ownership to the sandbox user; the install runs as root, before gosu drops privileges
     chown -R sandbox:sandbox $VENV_DIR
-    # 清理缓存
+    # Clear the cache
     rm -rf /tmp/pip-cache
 else
     echo "❌ Failed to install dependencies"
@@ -147,13 +147,13 @@ def format_dependency_install_script_for_shell(
     dependencies: Optional[List[Union[str, dict]]],
 ) -> str:
     """
-    格式化依赖安装脚本用于 shell 执行
+    Format the dependency install script for shell execution
 
     Args:
-        dependencies: 依赖列表
+        dependencies: the dependencies
 
     Returns:
-        Shell 脚本字符串
+        The shell script as a string
     """
     if not dependencies:
         return ""
@@ -162,11 +162,11 @@ def format_dependency_install_script_for_shell(
     pip_specs_quoted = " ".join(f'"{spec}"' for spec in deps_list.split() if spec)
 
     return f"""
-# ========== 安装 Python 依赖 ==========
+# ========== Install the Python dependencies ==========
 echo "📦 Installing dependencies: {deps_json}"
 echo "📦 Pip specs: {pip_specs_quoted}"
 
-# 将依赖安装到容器本地文件系统
+# Install into the container's local filesystem
 VENV_DIR="/opt/sandbox-venv"
 mkdir -p $VENV_DIR
 mkdir -p /tmp/pip-cache
@@ -182,7 +182,7 @@ if pip3 install \\
     --index-url https://pypi.org/simple/ \\
     {deps_list}; then
     echo "✅ Dependencies installed successfully"
-    # 清理缓存
+    # Clear the cache
     rm -rf /tmp/pip-cache
 else
     echo "❌ Failed to install dependencies"
