@@ -51,7 +51,7 @@ async def vllm_monitor_task():
     # StandLogger.info_log(models)
     model_ids = [line["f_model_id"] for line in models]
     if not model_ids:
-        StandLogger.info_log("No large model is configured; private deployment inference performance probe is not needed")
+        StandLogger.info_log("系统中暂未配置大模型，无需探测私有化部署的推理性能")
         return
     ten_minutes_ago_monitor_data = llm_model_dao.get_ten_minutes_ago_monitor_data(model_ids, ten_minutes_ago_format)
     cache = {}

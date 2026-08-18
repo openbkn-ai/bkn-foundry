@@ -125,7 +125,7 @@ async def test_model(request, userId, language, role):
                 result = await client.test_embedding(texts=texts)
                 embedding_dim_new = len(result["data"][0]["embedding"])
                 if int(embedding_dim) != embedding_dim_new:
-                    StandLogger.warn("The user-provided vector dimension does not match the model; retry after updating it")
+                    StandLogger.warn(f"用户输入的向量维度与模型不一致，请修改后重试")
                     error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
                     error_dict[
                         "detail"] = (f"Embedding dimension mismatch: model={embedding_dim_new}, "
@@ -535,7 +535,7 @@ async def embedding_model_used(request, userId, language, role, func_module, pri
             try:
                 model_info = eval(res)
             except Exception as e:
-                StandLogger.warn(f"Failed to parse cache data: {str(e)}, key={cache_key}, value={res}")
+                StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
                 # Fall back to the database when cached data is invalid.
                 model_info = small_model_dao.get_model_info_by_name(model_name)
                 if len(model_info) == 0:
@@ -610,7 +610,7 @@ async def reranker_model_used(request, userId, language, role, func_module, priv
             try:
                 model_info = eval(res)
             except Exception as e:
-                StandLogger.warn(f"Failed to parse cache data: {str(e)}, key={cache_key}, value={res}")
+                StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
                 # Fall back to the database when cached data is invalid.
                 model_info = small_model_dao.get_model_info_by_name(model_name)
                 if len(model_info) == 0:

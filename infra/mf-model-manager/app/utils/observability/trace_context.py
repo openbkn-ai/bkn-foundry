@@ -57,7 +57,7 @@ class TraceContext:
         success_status_code: Optional[StatusCode] = StatusCode.OK
     ) -> AsyncGenerator[trace.Span, None]:
         name = name or self.__class__.__name__
-        """Asynchronous span context manager."""
+        """异步上下文管理器"""
         with self.tracer.start_as_current_span(
             name,
             kind=kind,

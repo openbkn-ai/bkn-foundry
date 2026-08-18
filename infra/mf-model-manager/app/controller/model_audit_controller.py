@@ -36,4 +36,4 @@ async def add_llm_model_call_log(para: logics.AddModelUsedAudit):
             key=f"{para.model_id}_{para.user_id}_{message_data['conf_id']}".encode('utf-8')  # Include conf_id for diagnostics.
         )
     except Exception as e:
-        StandLogger.error(f"Error while writing token consumption information to the metering queue: {e}")
+        StandLogger.error(f"将token消费信息写入计量队列时出错: {e}")

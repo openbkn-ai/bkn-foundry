@@ -47,7 +47,7 @@ def start_scheduler():
 
 
 async def start_event():
-    await write_log(msg='System startup')
+    await write_log(msg='系统启动')
     # Initialize required infrastructure when the application starts.
     try:
         await get_redis_util()
@@ -59,7 +59,7 @@ async def start_event():
 
 
 async def shutdown_event():
-    await write_log(msg='System shutdown')
+    await write_log(msg='系统关闭')
     # Shut down observability integrations.
     shutdown_observability()
 

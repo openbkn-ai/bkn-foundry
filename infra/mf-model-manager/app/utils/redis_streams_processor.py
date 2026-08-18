@@ -39,10 +39,10 @@ class RedisStreamsProcessor:
     async def _ensure_group(self):
         try:
             await self.conn.xgroup_create(self.stream_name, self.group_id, id='0', mkstream=True)
-            StandLogger.info_log(f"Created consumer group {self.group_id}@{self.stream_name}")
+            StandLogger.info_log(f"创建消费组 {self.group_id}@{self.stream_name}")
         except Exception as e:
             if 'BUSYGROUP' in str(e):
-                StandLogger.info_log(f"Consumer group {self.group_id} already exists")
+                StandLogger.info_log(f"消费组 {self.group_id} 已存在")
             else:
                 raise
 
@@ -52,7 +52,7 @@ class RedisStreamsProcessor:
         if raw is None and isinstance(fields, dict):
             raw = fields.get('value')
         if raw is None:
-            StandLogger.warn(f"Metering message is missing the value field; skipping: {entry_id}")
+            StandLogger.warn(f"计量消息缺少 value 字段，跳过: {entry_id}")
             return
         if isinstance(raw, bytes):
             raw = raw.decode('utf-8')
@@ -60,9 +60,9 @@ class RedisStreamsProcessor:
             data = json.loads(raw)
             self.aggregator.add_record(data)
         except json.JSONDecodeError as e:
-            StandLogger.error(f"Failed to parse metering message: {e}")
+            StandLogger.error(f"解析计量消息失败: {e}")
         except Exception as e:
-            StandLogger.error(f"Error while processing metering message: {e}")
+            StandLogger.error(f"处理计量消息时出错: {e}")
 
     def _consume_entries(self, entries):
         """Process an XREADGROUP batch and return entry IDs to acknowledge."""
@@ -86,7 +86,7 @@ class RedisStreamsProcessor:
                 break
             await self.conn.xack(self.stream_name, self.group_id, *ack_ids)
             last_id = ack_ids[-1]
-            StandLogger.info_log(f"Replayed {len(ack_ids)} unacknowledged metering messages from before restart")
+            StandLogger.info_log(f"重放 {len(ack_ids)} 条重启前未确认的计量消息")
 
     async def _autoclaim_stale_pending(self):
         """Claim pending entries left by failed consumers without stopping the main loop."""
@@ -103,14 +103,14 @@ class RedisStreamsProcessor:
                 ack_ids.append(entry_id)
             if ack_ids:
                 await self.conn.xack(self.stream_name, self.group_id, *ack_ids)
-                StandLogger.info_log(f"Claimed and processed {len(ack_ids)} idle pending metering messages")
+                StandLogger.info_log(f"接管并处理 {len(ack_ids)} 条空闲 pending 计量消息")
         except Exception as e:
-            StandLogger.warn(f"XAUTOCLAIM handling failed; main consumption is unaffected: {e}")
+            StandLogger.warn(f"XAUTOCLAIM 处理失败（不影响主消费）: {e}")
 
     async def start(self):
         """Run the blocking consumer loop until stopped."""
         StandLogger.info_log(
-            f"Starting Redis Stream metering consumer... stream={self.stream_name}, "
+            f"启动 Redis Stream 计量消费者... stream={self.stream_name}, "
             f"group={self.group_id}, consumer={self.consumer_name}")
         await self._connect()
         await self._ensure_group()
@@ -132,19 +132,19 @@ class RedisStreamsProcessor:
                     last_autoclaim = time.monotonic()
                     await self._autoclaim_stale_pending()
             except Exception as e:
-                StandLogger.error(f"Error while consuming Redis Stream messages: {e}")
+                StandLogger.error(f"消费 Redis Stream 消息时出错: {e}")
                 await asyncio.sleep(1)
                 try:
                     await self._connect()
                     await self._ensure_group()
                 except Exception as ce:
-                    StandLogger.error(f"Failed to reconnect Redis: {ce}")
+                    StandLogger.error(f"重连 Redis 失败: {ce}")
 
-        StandLogger.info_log("Redis Stream metering consumer stopped")
+        StandLogger.info_log("Redis Stream 计量消费者已停止")
 
     def stop_consumer(self):
         """Stop the consumer; the main loop exits after the blocking read times out."""
-        StandLogger.info_log("Stopping Redis Stream metering consumer...")
+        StandLogger.info_log("停止 Redis Stream 计量消费者...")
         self.running = False
         self.aggregator.stop()
 
@@ -156,8 +156,8 @@ def start_redis_streams_processor():
     """Run the blocking Redis Stream metering processor."""
     global redis_processor
     if redis_processor is None:
-        StandLogger.info_log("Creating RedisStreamsProcessor instance...")
+        StandLogger.info_log("创建 RedisStreamsProcessor 实例...")
         redis_processor = RedisStreamsProcessor()
         asyncio.run(redis_processor.start())
     else:
-        StandLogger.info_log("RedisStreamsProcessor instance already exists; skipping creation")
+        StandLogger.info_log("RedisStreamsProcessor 实例已存在，跳过创建")

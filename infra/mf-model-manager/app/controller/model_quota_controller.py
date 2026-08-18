@@ -93,7 +93,7 @@ async def edit_model_quota_config(para: logics.EditModelQuota, conf_id: str, use
             StandLogger.error(e.args)
             return JSONResponse(status_code=500, content=ModelFactory_MyPymysqlPool_Connection_ConnectError_Error)
         if not check:
-            StandLogger.error("The model has user quotas; billing_type cannot be changed")
+            StandLogger.error("该模型存在用户配额，不支持修改billing_type")
             error_dict = ModelFactory_BenchmarkController_ModelConfig_UnknownError_Error.copy()
             error_dict["description"] = error_dict["detail"] = error_dict["solution"] = \
                 "billing_type cannot be changed while the model has user quotas"
@@ -168,7 +168,7 @@ async def get_model_quota_config(conf_id, user_id: str):
         res = model_quota_dao.get_model_config(conf_id)
 
         if res == () or res == []:
-            StandLogger.error("Configuration ID does not exist")
+            StandLogger.error("配置id不存在")
             return JSONResponse(status_code=400,
                                 content=ModelFactory_ModelQuotaController_ModelQuotaConfig_ModelConfigNotFound_Error)
         model_config_info = dbaccess.ModelQuotaInfo(
@@ -187,7 +187,7 @@ async def get_model_quota_config(conf_id, user_id: str):
         )
         model_data = llm_model_dao.get_data_from_model_list_by_id(model_config_info.model_id)
         if res == () or res == []:
-            StandLogger.error("Configuration ID does not exist")
+            StandLogger.error("配置id不存在")
             return JSONResponse(status_code=400,
                                 content=ModelFactory_ModelQuotaController_ModelQuotaConfig_ModelConfigNotFound_Error)
         res_dict = model_config_info.dict()
@@ -420,12 +420,12 @@ async def get_user_model_quota_config(conf_id, user_id: str):
             res = model_quota_dao.get_user_model_config(conf_id)
 
             if res == () or res == []:
-                StandLogger.error("Configuration ID does not exist")
+                StandLogger.error("配置id不存在")
                 return JSONResponse(status_code=400,
                                     content=ModelFactory_ModelQuotaController_UserModelQuotaConfig_ModelConfigNotFound_Error)
             model_conf = model_quota_dao.get_model_config(res[0]["f_model_conf"])
             if model_conf == () or model_conf == []:
-                StandLogger.error("Configuration ID does not exist")
+                StandLogger.error("配置id不存在")
                 return JSONResponse(status_code=400,
                                     content=ModelFactory_ModelQuotaController_UserModelQuotaConfig_ModelConfigNotFound_Error)
             model_config_info = dbaccess.ModelUserQuotaInfo(
@@ -720,7 +720,7 @@ async def remain_check(userId, model_id_list):
                     res_list.append(res)
                     continue
                 else:
-                    StandLogger.error("Configuration does not exist")
+                    StandLogger.error("配置不存在")
                     return JSONResponse(status_code=400,
                                         content=ModelFactory_ModelQuotaController_UserModelQuotaConfig_ModelConfigNotFound_Error)
 

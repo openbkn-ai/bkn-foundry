@@ -659,7 +659,7 @@ async def used_model_openai(request, user_id, language, func_module):
             try:
                 model_info = eval(res)
             except Exception as e:
-                StandLogger.warn(f"Failed to parse cache data: {str(e)}, key={cache_key}, value={res}")
+                StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={cache_key}, value={res}")
                 # Fall back to the database when cached data is invalid.
                 model_info = llm_model_dao.get_data_from_model_list_by_name(model_name)
                 if len(model_info) == 0:
@@ -689,7 +689,7 @@ async def used_model_openai(request, user_id, language, func_module):
             try:
                 model_quota_info = eval(res)
             except Exception as e:
-                StandLogger.warn(f"Failed to parse cache data: {str(e)}, key={quota_cache_key}, value={res}")
+                StandLogger.warn(f"解析缓存数据失败: {str(e)}, key={quota_cache_key}, value={res}")
                 # Fall back to the database when cached data is invalid.
                 model_quota_info = llm_model_dao.get_quota_by_user_and_model(user_id, model_id)
                 # Refresh the quota cache.

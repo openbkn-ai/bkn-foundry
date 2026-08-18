@@ -4,20 +4,20 @@
   "version": "1.0.0",
   "configSchema": {
     "title": "mf-model-manager",
-    "description": "Component configuration definition",
+    "description": "组件配置定义",
     "type": "object",
     "properties": {
       "resources": {
         "type": "object",
-        "title": "Container Resource Control",
+        "title": "容器资源控制",
         "properties": {
           "requests": {
             "type": "object",
-            "description": "Minimum resource allocation required by the container",
+            "description": "容器运行需要的最小资源分配",
             "properties": {
               "memory": {
                 "type": "string",
-                "title": "Memory"
+                "title": "内存"
               },
               "cpu": {
                 "type": "string",
@@ -27,11 +27,11 @@
           },
           "limits": {
             "type": "object",
-            "description": "Maximum resource limits for the container",
+            "description": "容器运行最大资源限制",
             "properties": {
               "memory": {
                 "type": "string",
-                "title": "Memory"
+                "title": "内存"
               },
               "cpu": {
                 "type": "string",
@@ -41,31 +41,31 @@
           },
         "text_vector_mapping": {
             "type": "object",
-            "description": "Text vector mapping",
+            "description": "文本向量映射",
             "properties": {
               "content": {
                 "type": "string",
-                "title": "Mapping rule"
+                "title": "映射规则"
               }
             }
           },
         "vlm_vector_mapping": {
             "type": "object",
-            "description": "Multimodal vector mapping",
+            "description": "多模态向量映射",
             "properties": {
               "content": {
                 "type": "string",
-                "title": "Mapping rule"
+                "title": "映射规则"
               }
             }
           },
         "text_reranker_mapping": {
             "type": "object",
-            "description": "Text semantic similarity reranking mapping",
+            "description": "文本语义相似度重排序映射",
             "properties": {
               "content": {
                 "type": "string",
-                "title": "Mapping rule"
+                "title": "映射规则"
               }
             }
           }
@@ -73,17 +73,17 @@
       },
       "observability": {
         "type": "object",
-        "title": "Observability Configuration",
+        "title": "可观测配置",
         "properties": {
             "logEnabled" : {
                 "type": "string",
-                "title": "Whether to report logs to the data platform; only true or false is accepted"
+                "title": "是否将日志上报到数据平台,只接受true或者false"
             }
         }
     },
       "replicaCount": {
         "type": "number",
-        "title": "Service Replica Count"
+        "title": "服务副本数"
       }
     }
   },

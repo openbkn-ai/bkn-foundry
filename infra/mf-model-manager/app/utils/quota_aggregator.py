@@ -55,7 +55,7 @@ class QuotaAggregator:
         status = data.get('status', '')
 
         if not model_id or not user_id or not status:
-            StandLogger.warn(f"Message is missing model_id, user_id, or status: {data}")
+            StandLogger.warn(f"消息缺少model_id或user_id或status: {data}")
             return
 
         key = f"{model_id}_{user_id}_{status}"
@@ -94,21 +94,20 @@ class QuotaAggregator:
     def start_periodic_flush(self):
         """Start the scheduled persistence thread once."""
         if self._timer_thread is None or not self._timer_thread.is_alive():
-            StandLogger.info_log("Starting scheduled data processing task...")
+            StandLogger.info_log("启动定时数据处理任务...")
             self._timer_thread = threading.Thread(target=self._run_periodic_processing, daemon=True)
             self._timer_thread.start()
-            StandLogger.info_log("Scheduled data processing task started")
+            StandLogger.info_log("定时数据处理任务已启动")
         else:
-            StandLogger.info_log("Scheduled data processing task is already running; skipping duplicate start")
+            StandLogger.info_log("定时数据处理任务已在运行，跳过重复启动")
 
     def _run_periodic_processing(self):
         """Run the scheduled data-processing loop."""
-        StandLogger.info_log("Scheduled aggregation task created successfully")
+        StandLogger.info_log("创建定时汇总数据任务成功")
 
         while self.running:
             try:
-                StandLogger.info_log(
-                    f"Scheduled aggregation task will run after {self.flush_interval_seconds} seconds")
+                StandLogger.info_log(f"{self.flush_interval_seconds}秒后开始执行定时汇总任务")
 
                 time.sleep(self.flush_interval_seconds)
 
@@ -117,23 +116,23 @@ class QuotaAggregator:
 
                 self.process_aggregated_data()
             except Exception as e:
-                StandLogger.error(f"Error while periodically processing data: {e}")
+                StandLogger.error(f"定期处理数据时出错: {e}")
                 time.sleep(1)
 
     def process_aggregated_data(self):
         """Persist aggregated usage data."""
         with self.lock:
             if self.is_processing:
-                StandLogger.info_log("Data is already being processed; skipping this run")
+                StandLogger.info_log("数据正在处理中，跳过本次执行")
                 return
             self.is_processing = True
 
         try:
             if not self.aggregated_data:
-                StandLogger.info_log("No aggregated data to process")
+                StandLogger.info_log("没有需要处理的汇总数据")
                 return
 
-            StandLogger.info_log(f"Starting to process {len(self.aggregated_data)} aggregated records")
+            StandLogger.info_log(f"开始处理{len(self.aggregated_data)}条汇总数据")
 
             with self.lock:
                 data_to_process = dict(self.aggregated_data)
@@ -172,15 +171,14 @@ class QuotaAggregator:
                         )
                         batch_data.append(audit_info)
                     except Exception as e:
-                        StandLogger.error(f"Error while creating ModelUsedAuditInfo object: {e}")
+                        StandLogger.error(f"创建ModelUsedAuditInfo对象时出错: {e}")
 
                 if batch_data:
                     try:
                         affected = self.model_op_dao.batch_add_model_used_log(batch_data)
-                        StandLogger.info_log(
-                            f"Successfully batch saved/updated {affected} records, collected {len(batch_data)}")
+                        StandLogger.info_log(f"成功批量保存/更新{affected}条数据, 收集到{len(batch_data)}条")
                     except Exception as e:
-                        StandLogger.error(f"Error while batch saving data to the database: {e}")
+                        StandLogger.error(f"批量保存数据到数据库时出错: {e}")
 
         finally:
             with self.lock:

@@ -12,8 +12,8 @@ from fastapi import Request
 from app.utils.common import GetCallerInfo, IsInPod
 
 '''
-Standard StandLog logger.
-The original AnyRobot (AR) SamplerLogger has been removed; standard logging is used for console and file output.
+标准日志StandLog类
+原 AnyRobot(AR) SamplerLogger 已移除，统一走标准库 logging（控制台 + 文件）。
 '''
 
 SYSTEM_LOG = "SystemLog"
@@ -36,7 +36,7 @@ class Logger(object):
 
     def __init__(self):
         try:
-            print("-----------------------------------INFO-level logging tool initialized-----------------------------------")
+            print("-----------------------------------INFO级别日志输出工具初始化-----------------------------------")
             self._info_logger = logging.getLogger(__name__)
             self._info_logger.setLevel(logging.DEBUG)
 
@@ -143,7 +143,7 @@ def get_operation_log(request: Request, operation: str, object_id, target_object
         "type": object_type
     }
     now_time = arrow.now().format('YYYY-MM-DD HH:mm:ss')
-    description = "User{id=%s,name=%s} on client{ip=%s,type=%s}" % (user_id, user_name, ip, agent_type) + description
+    description = "用户{id=%s,name=%s}在客户端{ip=%s,type=%s}" % (user_id, user_name, ip, agent_type) + description
     operation_log = {
         "operator": operator,
         "operation": operation,

@@ -41,49 +41,49 @@ def _start_kafka_consumer_safely():
     try:
         global kafka_consumer_process
         if kafka_consumer_process is None or kafka_consumer_process.poll() is not None:
-            StandLogger.info_log("Background task: preparing to start the Kafka consumer process")
+            StandLogger.info_log("后台任务：准备启动 Kafka 消费者进程")
             ok = start_kafka_consumer_process()
             if ok:
-                StandLogger.info_log("Background task: Kafka consumer process started successfully")
+                StandLogger.info_log("后台任务：Kafka 消费者进程启动成功")
             else:
-                StandLogger.warn("Background task: Kafka consumer process failed to start; business APIs remain available")
+                StandLogger.warn("后台任务：Kafka 消费者进程启动失败（业务接口不受影响）")
         else:
-            StandLogger.info_log("Background task: Kafka consumer process is already running; skipping startup")
+            StandLogger.info_log("后台任务：检测到 Kafka 消费者进程已在运行，跳过启动")
     except Exception as e:
-        StandLogger.error(f"Background task: error starting Kafka consumer process: {e}")
+        StandLogger.error(f"后台任务：启动 Kafka 消费者进程异常: {e}")
 
 
 @app.on_event("shutdown")
 async def _shutdown_kafka_consumer():
     try:
-        StandLogger.info_log("FastAPI shutdown event: cleaning up the Kafka consumer process")
+        StandLogger.info_log("FastAPI 停止事件：开始清理 Kafka 消费者进程")
         cleanup_processes()
     except Exception as e:
-        StandLogger.error(f"FastAPI shutdown event: error cleaning up Kafka consumer process: {e}")
+        StandLogger.error(f"FastAPI 停止事件：清理 Kafka 消费者进程异常: {e}")
 
 
 def signal_handler(signum, frame):
     """Handle signals by shutting down all processes gracefully."""
-    StandLogger.info_log(f"Received signal {signum}; shutting down all processes...")
+    StandLogger.info_log(f"收到信号 {signum}，开始关闭所有进程...")
     
     # Shut down the Kafka consumer process.
     if kafka_consumer_process and kafka_consumer_process.poll() is None:
-        StandLogger.info_log("Shutting down Kafka consumer process...")
+        StandLogger.info_log("正在关闭 Kafka 消费者进程...")
         kafka_consumer_process.terminate()
         try:
             kafka_consumer_process.wait(timeout=10)  # Wait for up to 10 seconds.
         except subprocess.TimeoutExpired:
-            StandLogger.warn("Kafka consumer process did not stop within 10 seconds; forcing termination")
+            StandLogger.warn("Kafka 消费者进程未能在10秒内关闭，强制终止")
             kafka_consumer_process.kill()
     
-    StandLogger.info_log("All processes have stopped")
+    StandLogger.info_log("所有进程已关闭")
     sys.exit(0)
 
 
 def cleanup_processes():
     """Clean up subprocesses when the application exits."""
     if kafka_consumer_process and kafka_consumer_process.poll() is None:
-        StandLogger.info_log("Cleaning up Kafka consumer process...")
+        StandLogger.info_log("清理 Kafka 消费者进程...")
         kafka_consumer_process.terminate()
 
 
@@ -92,13 +92,13 @@ def start_kafka_consumer_process():
     global kafka_consumer_process
     
     try:
-        print("Starting Kafka consumer subprocess...")  # Console output.
-        StandLogger.info_log("Starting Kafka consumer subprocess...")
+        print("正在启动 Kafka 消费者子进程...")  # Console output.
+        StandLogger.info_log("启动 Kafka 消费者子进程...")
         
         # Build the command.
         script_path = os.path.join(os.path.dirname(__file__), 'kafka_consumer_process.py')
-        print(f"Script path: {script_path}")  # Console output.
-        print(f"Python interpreter: {sys.executable}")  # Console output.
+        print(f"脚本路径: {script_path}")  # Console output.
+        print(f"Python 解释器: {sys.executable}")  # Console output.
         
         # Start an independent Kafka consumer process with subprocess.
         # Do not use PIPE so subprocess output is written directly to the console.
@@ -108,26 +108,26 @@ def start_kafka_consumer_process():
         ], 
         cwd=os.path.dirname(__file__))
         
-        print(f"Kafka consumer process started, PID: {kafka_consumer_process.pid}")  # Console output.
-        StandLogger.info_log(f"Kafka consumer process started, PID: {kafka_consumer_process.pid}")
+        print(f"Kafka 消费者进程已启动，PID: {kafka_consumer_process.pid}")  # Console output.
+        StandLogger.info_log(f"Kafka 消费者进程已启动，PID: {kafka_consumer_process.pid}")
         
         # Check whether the process started successfully.
-        print("Waiting for process startup...")  # Console output.
+        print("等待进程启动...")  # Console output.
         time.sleep(2)  # Allow two seconds for startup.
         
         if kafka_consumer_process.poll() is not None:
             # The process has already exited.
-            print("Process exited; startup may have failed")  # Console output.
-            StandLogger.error("Kafka consumer process failed to start and has exited")
+            print("进程已退出，可能启动失败")  # Console output.
+            StandLogger.error("Kafka 消费者进程启动失败，进程已退出")
             return False
         else:
-            print("Process is still running")  # Console output.
+            print("进程仍在运行")  # Console output.
             
         return True
         
     except Exception as e:
-        print(f"Error starting Kafka consumer process: {e}")  # Console output.
-        StandLogger.error(f"Error starting Kafka consumer process: {e}")
+        print(f"启动 Kafka 消费者进程时出错: {e}")  # Console output.
+        StandLogger.error(f"启动 Kafka 消费者进程时出错: {e}")
         import traceback
         traceback.print_exc()  # Print detailed error information.
         return False
@@ -149,15 +149,15 @@ if __name__ == '__main__':
     atexit.register(cleanup_processes)
     
     # Start the Kafka consumer process.
-    print("Starting Kafka consumer process...")  # Console output.
-    StandLogger.info_log("Preparing to start Kafka consumer process")
+    print("开始启动 Kafka 消费者进程...")  # Console output.
+    StandLogger.info_log("准备启动 Kafka 消费者进程")
     
     if not start_kafka_consumer_process():
-        print("Kafka consumer process failed to start")  # Console output.
-        StandLogger.warn("Kafka consumer process failed to start; continuing to start the API service")
+        print("Kafka 消费者进程启动失败")  # Console output.
+        StandLogger.warn("Kafka 消费者进程启动失败，但继续启动 API 服务")
     else:
-        print("Kafka consumer process started successfully")  # Console output.
-        StandLogger.info_log("Kafka consumer process started successfully")
-    StandLogger.info_log(f"All cached quota models:--- {quota_config_cache_tree.list_all_model_ids()}")
-    StandLogger.info_log("Starting API service")
+        print("Kafka 消费者进程启动成功")  # Console output.
+        StandLogger.info_log("Kafka 消费者进程启动成功")
+    StandLogger.info_log(f"所有缓存的配额模型:--- {quota_config_cache_tree.list_all_model_ids()}")
+    StandLogger.info_log("启动 API 服务")
     uvicorn.run(app='main:app', host='0.0.0.0', port=base_config.PORTDEFAULT, limit_concurrency=500, reload=False)

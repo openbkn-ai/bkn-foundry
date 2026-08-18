@@ -43,21 +43,21 @@ class ModelOpDao():
                           json.dumps(config.price_type), config.total_count, config.failed_count,
                           config.average_total_time, config.average_first_time]
             values.append(value_list)
-        StandLogger.info_log(f"Preparing batch insert: rows={len(values)}")
+        StandLogger.info_log(f"准备批量入库: rows={len(values)}")
         
         try:
             cursor.executemany(sql, values)
             inserted = cursor.rowcount
-            StandLogger.info_log(f"Batch insert completed: affected_rows={inserted}")
+            StandLogger.info_log(f"批量入库完成: affected_rows={inserted}")
         except Exception as e:
-            StandLogger.error(f"Error during batch insert: {e}")
+            StandLogger.error(f"批量入库时出错: {e}")
             inserted = 0
             for value_list in values:
                 try:
                     cursor.execute(sql, value_list)
                     inserted += 1
                 except Exception as single_e:
-                    StandLogger.error(f"Single-row insert failed: {single_e}, data: {value_list}")
+                    StandLogger.error(f"单条插入失败: {single_e}, 数据: {value_list}")
         
         return inserted
 
