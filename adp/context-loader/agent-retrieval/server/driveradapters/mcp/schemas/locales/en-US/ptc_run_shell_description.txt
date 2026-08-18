@@ -6,4 +6,6 @@
  */
 Execute one shell command in the sandbox and return stdout and stderr.
 
-Use this only to inspect the environment or files. Do not use it to retrieve BKN data; access knowledge networks, object types, instances, and SQL through the functions provided by run_code.
+Use this only to inspect the environment or files, usually whatever run_code wrote — both tools share one workspace directory scoped to the conversation.
+
+Do not use it to retrieve BKN data: knowledge networks, object types, instances, and SQL each have their own tool. Call that tool directly.
