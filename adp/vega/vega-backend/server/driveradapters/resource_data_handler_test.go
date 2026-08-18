@@ -303,7 +303,7 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.MetadataUnavailable")
 	})
 
-	t.Run("rejects document query when resource is missing with retained metadata", func(t *testing.T) {
+	t.Run("gives stale lifecycle status precedence over missing discovery status", func(t *testing.T) {
 		engine, rs, _, _ := setupResourceDataHandlerTest(t)
 		resource := sampleDatasetResource()
 		resource.Status = interfaces.ResourceStatusStale
@@ -316,7 +316,7 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
-		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.MetadataUnavailable")
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.NotQueryable")
 	})
 }
 
