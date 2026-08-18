@@ -357,7 +357,7 @@ class OpenAIClientRequest:
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
                     return
                 else:
-                    StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
+                    StandLogger.warn(f"Large model: {self.api_model} connection failed; retrying in 1 second")
                     await asyncio.sleep(1)
             except Exception as e:
                 StandLogger.error(e.args)
@@ -680,7 +680,7 @@ class BaiduTianchenClient:
                     f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                 return
             else:
-                StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
+                StandLogger.warn(f"Large model: {self.api_model} connection failed; retrying in 1 second")
                 await asyncio.sleep(1)
         except Exception as e:
             StandLogger.error(e.args)
@@ -776,7 +776,7 @@ class BaiduTianchenClient:
                         f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
-                    StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
+                    StandLogger.warn(f"Large model: {self.api_model} connection failed; retrying in 1 second")
                     await asyncio.sleep(1)
             except Exception as e:
                 StandLogger.error(e.args)
@@ -1072,7 +1072,7 @@ class BaiduClient:
                         f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
-                    StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
+                    StandLogger.warn(f"Large model: {self.api_model} connection failed; retrying in 1 second")
                     await asyncio.sleep(1)
             except Exception as e:
                 error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
@@ -1188,7 +1188,7 @@ class BaiduClient:
                         f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
-                    StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
+                    StandLogger.warn(f"Large model: {self.api_model} connection failed; retrying in 1 second")
                     await asyncio.sleep(1)
             except Exception as e:
                 error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
@@ -1577,7 +1577,7 @@ class OtherClient:
                             f'"total_tokens":0,"func_module":{func_module},"status":"failed"}}')
                     return
                 else:
-                    StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
+                    StandLogger.warn(f"Large model: {self.api_model} connection failed; retrying in 1 second")
                     await asyncio.sleep(1)
             except Exception as e:
                 StandLogger.error(f"call llmModelError {self.api_model} error params={params},headers={headers},error={e}")
@@ -1736,7 +1736,7 @@ class OtherClient:
                         f"{json.dumps(error_dict, ensure_ascii=False)} model={self.api_model} error={e}")
                     return
                 else:
-                    StandLogger.warn(f"大模型: {self.api_model} 连接失败，1秒后重试")
+                    StandLogger.warn(f"Large model: {self.api_model} connection failed; retrying in 1 second")
                     await asyncio.sleep(1)
             except Exception as e:
                 error_dict = ModelFactory_ModelController_Model_Error_Error.copy()
@@ -2309,7 +2309,7 @@ async def encode(model_series, text, api_model="", api_key="", secret_key=""):
     #         tokens = tokenizer.encode(text)
     #         return tokens, len(tokens)
     #     except Exception as e:
-    #         StandLogger.error(f"Tokenizer加载失败: {str(e)}")
+    #         StandLogger.error(f"Failed to load tokenizer: {str(e)}")
     #         # Fall back to an approximation.
     #         return [], len(text) // 4
     # elif model_series == "tome":
@@ -2321,7 +2321,7 @@ async def encode(model_series, text, api_model="", api_key="", secret_key=""):
     #         tokens = tokenizer.encode(text)
     #         return tokens, len(tokens)
     #     except Exception as e:
-    #         StandLogger.error(f"Tokenizer加载失败: {str(e)}")
+    #         StandLogger.error(f"Failed to load tokenizer: {str(e)}")
     #         # Fall back to an approximation.
     #         return [], len(text) // 4
     # elif model_series == "baidu":

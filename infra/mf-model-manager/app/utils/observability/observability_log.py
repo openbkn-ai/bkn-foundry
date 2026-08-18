@@ -1,10 +1,11 @@
 # -*- coding:utf-8 -*-
 
 """
-可观测性 Log 模块。
+Observability logging module.
 
-原 AnyRobot(AR) log exporter / tlogging.SamplerLogger 已移除，改用标准库
-logging。对外接口（info / error / warn / debug / fatal 等）保持不变。
+The AnyRobot (AR) log exporter and tlogging.SamplerLogger have been removed in
+favor of the standard logging library. Public methods such as info, error, warn,
+debug, and fatal remain unchanged.
 """
 import inspect
 import logging
@@ -15,7 +16,7 @@ from app.utils.observability.observability_setting import LogSetting, ServerInfo
 
 
 class _StdLogger:
-    """SamplerLogger 的 stdlib 替身，保留被调用到的接口（message=/ctx= 等）。"""
+    """Stdlib replacement for SamplerLogger that preserves the used interfaces."""
 
     def __init__(self, name: str = "mf-model"):
         self._log = logging.getLogger(name)
@@ -31,7 +32,7 @@ class _StdLogger:
     def warning(self, message: str = "", ctx=None, **_):
         self._log.warning(message)
 
-    warn = warning  # 兼容旧调用名
+    warn = warning  # Preserve the legacy method name.
 
     def error(self, message: str = "", ctx=None, **_):
         self._log.error(message)
@@ -49,12 +50,12 @@ class _StdLogger:
         return None
 
 
-# 全局 logger
+# Global logger.
 logger: Optional[_StdLogger] = None
 
 
 def get_caller_info() -> str:
-    """获取调用者信息（文件名、行号、函数名）"""
+    """Return the caller's file name, line number, and function name."""
     frame = inspect.stack()[2]
     return f"{frame.filename}:{frame.lineno}:{frame.function}"
 
@@ -88,7 +89,7 @@ def fatal(msg: str, ctx: Optional[context.Context] = None) -> None:
 
 
 def init_log_provider(server_info: ServerInfo, setting: LogSetting) -> None:
-    """初始化日志（AR exporter 已移除，统一走 stdlib logging）。"""
+    """Initialize stdlib logging after removal of the AR exporter."""
     global logger
     logger = _StdLogger(server_info.server_name or "mf-model")
 

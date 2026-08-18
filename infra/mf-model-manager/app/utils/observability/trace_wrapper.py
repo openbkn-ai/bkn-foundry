@@ -7,7 +7,7 @@ from typing import Optional, Callable, AsyncGenerator, Any, Awaitable
 from opentelemetry.trace import SpanKind, Tracer, Status, StatusCode
 from app.utils.common import func_judgment
 
-# 原 AnyRobot tracer 已移除，改用 OTel 默认 tracer（无 provider 时为 no-op）
+# The AnyRobot tracer was removed; use OTel's default no-op tracer when no provider exists.
 tracer = trace.get_tracer(__name__)
 
 
@@ -17,24 +17,24 @@ def internal_span(
     attributes: Optional[dict] = None,
 ) -> Callable:
     """
-    创建一个用于自动生成 OpenTelemetry SpanKind.INTERNAL 类型 span 的注解
+    Create a decorator that automatically generates an OpenTelemetry INTERNAL span.
     
-    参数:
-        name: span 的名称，如果未提供则使用被注解函数的名称
-        attributes: 要添加到 span 的属性字典
-        tracer_provider: 可选的 tracer 提供者实例
+    Args:
+        name: Span name; defaults to the decorated function name.
+        attributes: Attribute dictionary to add to the span.
+        tracer_provider: Optional tracer provider instance.
         
-    返回:
-        包装后的函数
+    Returns:
+        The wrapped function.
     """
     def decorator(func: Callable) -> Callable:
         
-        # 设置 span 名称（如果未提供则使用函数名）
+        # Use the function name when no span name is provided.
         span_name = name or func.__name__
         is_async, is_stream = func_judgment(func)
         # if asyncio.iscoroutinefunction(func):
         if is_async and is_stream:
-            # 异步生成器函数处理
+            # Handle asynchronous generator functions.
             @wraps(func)
             async def async_generator_wrapper(*args, **kwargs) -> AsyncGenerator[Any, Any]:
                 with tracer.start_as_current_span(
@@ -62,7 +62,7 @@ def internal_span(
                         raise
             return async_generator_wrapper
         elif is_async:
-            # 异步函数处理
+            # Handle asynchronous functions.
             @wraps(func)
             async def async_wrapper(*args, **kwargs) -> Awaitable[Any]:
                 with tracer.start_as_current_span(
@@ -89,7 +89,7 @@ def internal_span(
         else:
             @wraps(func)
             def sync_wrapper(*args, **kwargs) -> Any:
-                # 创建 INTERNAL 类型的 span
+                # Create an INTERNAL span.
                 with tracer.start_as_current_span(
                     span_name,
                     kind=SpanKind.INTERNAL,
@@ -99,16 +99,16 @@ def internal_span(
                     try:
                         kwargs["span"] = span
                         print("sync..............")
-                        # 执行被注解的函数
+                        # Execute the decorated function.
                         result = func(*args, **kwargs)
                         span.set_status(Status(StatusCode.OK))
                         return result
                     except Exception as e:
-                        # 记录异常信息
+                        # Record exception details.
                         if span.is_recording():
                             span.set_status(Status(StatusCode.ERROR))
                             span.set_attribute("error", True)
                             span.record_exception(e)
-                        raise  # 重新抛出异常，不影响原有逻辑
+                        raise  # Re-raise the exception without changing existing behavior.
             return sync_wrapper
     return decorator
