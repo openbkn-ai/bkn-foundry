@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	storageConfigPrefix     = "kweaver-core:oss-gateway-backend:storage:config:"
-	storageNamePrefix       = "kweaver-core:oss-gateway-backend:storage:name:"        // storage_name uniqueness index.
-	storageBucketHostPrefix = "kweaver-core:oss-gateway-backend:storage:bucket:host:" // bucket_name and host uniqueness index.
-	storageBucketSitePrefix = "kweaver-core:oss-gateway-backend:storage:bucket:site:" // bucket_name and siteId uniqueness index.
+	storageConfigPrefix     = "openbkn:oss-gateway-backend:storage:config:"
+	storageNamePrefix       = "openbkn:oss-gateway-backend:storage:name:"        // storage_name uniqueness index.
+	storageBucketHostPrefix = "openbkn:oss-gateway-backend:storage:bucket:host:" // bucket_name and host uniqueness index.
+	storageBucketSitePrefix = "openbkn:oss-gateway-backend:storage:bucket:site:" // bucket_name and siteId uniqueness index.
 	storageConfigTTL        = 1 * time.Hour
 )
 
