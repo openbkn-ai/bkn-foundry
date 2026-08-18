@@ -392,8 +392,13 @@ func TestPTCDigestPrefersSQLPushdown(t *testing.T) {
 func TestPTCDigestTeachesPrintingAssumptions(t *testing.T) {
 	digest := ptcTestDigest()
 
-	if !strings.Contains(digest, "## 一次执行同时产出答案与依据") {
-		t.Fatalf("digest 缺少「口径与答案同时打印」小节:\n%s", digest)
+	// 这条规则并进了「一段脚本解决整个问题」——它是那一节的延伸，不像 run_shell
+	// 那样是个独立工具需要自己的标题才被看见。钉规则本身，不钉它住在哪个小节。
+	if !strings.Contains(digest, "对数据口径有误解") {
+		t.Fatalf("digest 缺少「先打印口径」这条规则:\n%s", digest)
+	}
+	if !strings.Contains(digest, `print("口径:"`) {
+		t.Fatalf("digest 缺少口径与答案同时 print 的示例:\n%s", digest)
 	}
 	if !strings.Contains(digest, "DISTINCT") {
 		t.Fatalf("缺少打印取值范围的示例:\n%s", digest)
@@ -424,7 +429,7 @@ func TestInlineDigestDropsSignatureList(t *testing.T) {
 	// 规则小节两边共用——省的是重复，不是把规矩一起丢了。
 	for _, section := range []string{
 		"## 一段脚本解决整个问题", "## 能下推的聚合一律下推",
-		"## 一次执行同时产出答案与依据", "## 执行 shell 命令", "## 错误处理",
+		"## 工作目录与大结果", "## 执行 shell 命令", "## 参数写不准时", "## 错误处理",
 	} {
 		if !strings.Contains(inline, section) {
 			t.Fatalf("并入版丢了 %s:\n%s", section, inline)
