@@ -2,16 +2,21 @@
 #
 # Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-"""HTTP-level regressions for the language contract."""
+"""HTTP-level regressions for the language contract.
+
+These run against the application create_app() actually builds, not a stripped
+down one: the middleware order (request logging outside, GZip inside) and the
+fact that the catch-all handler lives in ServerErrorMiddleware are exactly what
+this contract depends on.
+"""
 
 import re
 from unittest.mock import patch
 
 import pytest
-from fastapi import FastAPI
 from starlette.testclient import TestClient
 
-from src.interfaces.rest.main import _register_exception_handlers, _register_middleware
+from src.interfaces.rest.main import create_app
 from src.shared.errors.domain import NotFoundError
 from src.shared.i18n import message
 
@@ -20,15 +25,8 @@ CHINESE = re.compile(r"[一-鿿]")
 
 @pytest.fixture
 def client():
-    """A minimal app carrying only the pieces under test.
-
-    create_app() reaches for the database and the container runtime, which this
-    regression does not need; the handlers and middleware are registered the
-    same way it registers them.
-    """
-    app = FastAPI()
-    _register_exception_handlers(app)
-    _register_middleware(app)
+    with patch("src.interfaces.rest.main.lifespan"):
+        app = create_app()
 
     @app.get("/api/v1/probe/missing")
     async def _missing():
@@ -38,7 +36,20 @@ def client():
     async def _boom():
         raise RuntimeError("downstream is unreachable")
 
+    @app.get("/api/v1/probe/ok")
+    async def _ok():
+        # Large enough that GZipMiddleware actually compresses it, so the header
+        # pass is exercised against an encoded body.
+        return {"status": "ok", "padding": "x" * 4000}
+
     return TestClient(app, raise_server_exceptions=False)
+
+
+def test_middleware_order_keeps_locale_outside_gzip(client):
+    """Locale must wrap GZip, otherwise the header pass would run before the
+    body is encoded and the 200 case below would not prove anything."""
+    names = [mw.cls.__name__ for mw in client.app.user_middleware]
+    assert names.index("BaseHTTPMiddleware") < names.index("GZipMiddleware")
 
 
 def test_domain_error_follows_the_request_language(client):
@@ -55,8 +66,11 @@ def test_domain_error_follows_the_request_language(client):
 
 
 def test_no_header_keeps_english(client):
+    """A caller that states no preference must keep seeing what it saw before
+    this service learned to negotiate."""
     response = client.get("/api/v1/probe/missing")
     assert response.json()["message"] == "Session not found: s-1"
+    assert response.headers["Content-Language"] == "en-US"
 
 
 def test_error_response_declares_its_language_and_stays_private(client):
@@ -66,10 +80,18 @@ def test_error_response_declares_its_language_and_stays_private(client):
     assert "public" not in response.headers["Cache-Control"]
 
 
+def test_success_response_is_not_labelled_with_a_language(client):
+    """A machine-readable success body carries no localized text, so it gets no
+    Content-Language even though it is compressed and cached privately."""
+    response = client.get("/api/v1/probe/ok", headers={"Accept-Language": "zh-CN"})
+    assert response.status_code == 200
+    assert "Content-Language" not in response.headers
+    assert "private" in response.headers["Cache-Control"]
+
+
 def test_unhandled_exception_keeps_the_negotiated_locale(client):
-    """The catch-all handler runs outside the locale middleware, where the
-    ContextVar has already been reset; it must still answer in the request's
-    language and still declare it."""
+    """The catch-all handler runs in ServerErrorMiddleware, outside the locale
+    middleware, so the ContextVar is already reset by the time it renders."""
     response = client.get("/api/v1/probe/boom", headers={"Accept-Language": "zh-CN"})
 
     assert response.status_code == 500
@@ -85,3 +107,12 @@ def test_unknown_language_falls_back_without_failing(client):
     assert response.status_code == 404
     assert response.json()["message"] == "Session not found: s-1"
     assert response.headers["Content-Language"] == "en-US"
+
+
+def test_non_business_path_gets_neither_header(client):
+    """The contract is scoped to /api/v1/; the docs and schema routes are not
+    authenticated business responses."""
+    response = client.get("/openapi.json", headers={"Accept-Language": "zh-CN"})
+    assert response.status_code == 200
+    assert "Content-Language" not in response.headers
+    assert "Cache-Control" not in response.headers
