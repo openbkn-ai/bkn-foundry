@@ -25,7 +25,7 @@ func TestHealthHandler_Alive_Success(t *testing.T) {
 }
 
 func TestHealthHandler_Ready_AllHealthy(t *testing.T) {
-	// 创建简单的成功响应mock
+	// Create a simple successful response mock.
 	router := setupRouter()
 	router.GET("/health/ready", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{

@@ -18,7 +18,7 @@ func TestGenerateStorageID(t *testing.T) {
 func TestGenerateStorageID_Uniqueness(t *testing.T) {
 	ids := make(map[string]bool)
 
-	// 生成100个ID，应该都是唯一的
+	// Generate 100 IDs; all of them should be unique.
 	for i := 0; i < 100; i++ {
 		id := utils.GenerateStorageID()
 		assert.False(t, ids[id], "Duplicate ID generated: %s", id)
@@ -96,7 +96,7 @@ func TestCalculateExpiresAt(t *testing.T) {
 
 	expiresAt := utils.CalculateExpiresAt(validSeconds)
 
-	// 验证过期时间大约是1小时后
+	// Verify that the expiration time is about one hour from now.
 	duration := expiresAt.Sub(now)
 	assert.InDelta(t, float64(validSeconds), duration.Seconds(), 1.0)
 }
@@ -107,7 +107,7 @@ func TestCalculateExpiresAt_Zero(t *testing.T) {
 
 	expiresAt := utils.CalculateExpiresAt(validSeconds)
 
-	// 过期时间应该约等于当前时间
+	// The expiration time should be approximately equal to the current time.
 	duration := expiresAt.Sub(now)
 	assert.InDelta(t, 0, duration.Seconds(), 1.0)
 }
@@ -118,7 +118,7 @@ func TestCalculateExpiresAt_Negative(t *testing.T) {
 
 	expiresAt := utils.CalculateExpiresAt(validSeconds)
 
-	// 过期时间应该是过去的时间
+	// The expiration time should be in the past.
 	assert.True(t, expiresAt.Before(now))
 }
 
@@ -156,7 +156,7 @@ func TestValidateStorageID_Empty(t *testing.T) {
 }
 
 func TestValidateStorageID_TooLong(t *testing.T) {
-	// 生成一个超过64字符的ID
+	// Generate an ID longer than 64 characters.
 	longID := ""
 	for i := 0; i < 65; i++ {
 		longID += "a"
@@ -168,7 +168,7 @@ func TestValidateStorageID_TooLong(t *testing.T) {
 }
 
 func TestValidateStorageID_ExactlyMaxLength(t *testing.T) {
-	// 生成一个刚好64字符的ID
+	// Generate an ID that is exactly 64 characters long.
 	maxID := ""
 	for i := 0; i < 64; i++ {
 		maxID += "a"
@@ -204,7 +204,7 @@ func TestValidateObjectKey_Empty(t *testing.T) {
 }
 
 func TestValidateObjectKey_TooLong(t *testing.T) {
-	// 生成一个超过512字符的key
+	// Generate a key longer than 512 characters.
 	longKey := ""
 	for i := 0; i < 513; i++ {
 		longKey += "a"
@@ -216,7 +216,7 @@ func TestValidateObjectKey_TooLong(t *testing.T) {
 }
 
 func TestValidateObjectKey_ExactlyMaxLength(t *testing.T) {
-	// 生成一个刚好512字符的key
+	// Generate a key that is exactly 512 characters long.
 	maxKey := ""
 	for i := 0; i < 512; i++ {
 		maxKey += "a"

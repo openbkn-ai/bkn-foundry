@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockURLService 是 URLService 的 mock 实现
+// MockURLService is a mock implementation of URLService.
 type MockURLService struct {
 	mock.Mock
 }
@@ -85,7 +85,7 @@ func (m *MockURLService) GetDeleteURL(ctx context.Context, storageID, objectKey 
 	return args.Get(0).(*adapter.PresignedURL), args.Error(1)
 }
 
-// 补齐 URLService 接口新增的 CleanExpiredTasks 方法（issue #3）
+// Implement the CleanExpiredTasks method added to the URLService interface (issue #3).
 func (m *MockURLService) CleanExpiredTasks(ctx context.Context) error {
 	args := m.Called(ctx)
 	return args.Error(0)

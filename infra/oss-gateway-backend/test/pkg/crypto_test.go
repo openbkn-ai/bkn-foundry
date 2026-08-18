@@ -138,10 +138,10 @@ func TestAESCrypto_EncryptProducesDifferentOutputs(t *testing.T) {
 	encrypted1, _ := aes.Encrypt(plaintext)
 	encrypted2, _ := aes.Encrypt(plaintext)
 
-	// 由于使用随机IV，两次加密结果应该不同
+	// Encryption uses a random IV, so two encryptions should differ.
 	assert.NotEqual(t, encrypted1, encrypted2)
 
-	// 但都应该能正确解密
+	// Both ciphertexts should still decrypt correctly.
 	decrypted1, _ := aes.Decrypt(encrypted1)
 	decrypted2, _ := aes.Decrypt(encrypted2)
 
@@ -160,12 +160,12 @@ func TestAESCrypto_DifferentKeysProduceDifferentOutputs(t *testing.T) {
 	encrypted1, _ := aes1.Encrypt(plaintext)
 	encrypted2, _ := aes2.Encrypt(plaintext)
 
-	// 不同密钥加密结果应该不同
+	// Different keys should produce different ciphertext.
 	assert.NotEqual(t, encrypted1, encrypted2)
 
-	// 用错误的密钥解密应该失败或得到错误结果
+	// Decryption with the wrong key should fail or produce an invalid result.
 	_, err = aes1.Decrypt(encrypted2)
-	// 可能会失败，也可能得到错误的结果
+	// It may fail immediately or decrypt to the wrong plaintext.
 	if err == nil {
 		decrypted, _ := aes1.Decrypt(encrypted2)
 		assert.NotEqual(t, plaintext, decrypted)
@@ -176,7 +176,7 @@ func TestAESCrypto_LargeData(t *testing.T) {
 	aes, err := crypto.NewAESCrypto(testKey)
 	require.NoError(t, err)
 
-	// 生成一个大字符串
+	// Generate a large string.
 	largeText := ""
 	for i := 0; i < 10000; i++ {
 		largeText += "a"

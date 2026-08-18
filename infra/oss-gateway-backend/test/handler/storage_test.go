@@ -17,7 +17,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockStorageService 是 StorageService 的 mock 实现
+// MockStorageService is a mock implementation of StorageService.
 type MockStorageService struct {
 	mock.Mock
 }

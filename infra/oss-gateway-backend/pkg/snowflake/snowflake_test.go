@@ -12,7 +12,7 @@ func TestIDWorker_GetID(t *testing.T) {
 		t.Fatalf("Failed to create worker: %v", err)
 	}
 
-	// 测试生成ID
+	// Test ID generation.
 	id1, err := worker.GetID()
 	if err != nil {
 		t.Fatalf("Failed to generate ID: %v", err)
@@ -23,12 +23,12 @@ func TestIDWorker_GetID(t *testing.T) {
 		t.Fatalf("Failed to generate ID: %v", err)
 	}
 
-	// ID应该递增
+	// IDs should be increasing.
 	if id2 <= id1 {
 		t.Errorf("ID should be incrementing, got id1=%d, id2=%d", id1, id2)
 	}
 
-	// ID应该是19位数字
+	// IDs should be 19-digit numbers.
 	id1Str := fmt.Sprintf("%d", id1)
 	if len(id1Str) != 19 {
 		t.Errorf("ID should be 19 digits, got %d (length=%d)", id1, len(id1Str))
@@ -49,7 +49,7 @@ func TestIDWorker_Concurrent(t *testing.T) {
 	ids := make(chan int64, numGoroutines*numIDsPerGoroutine)
 	done := make(chan bool, numGoroutines)
 
-	// 并发生成ID
+	// Generate IDs concurrently.
 	for i := 0; i < numGoroutines; i++ {
 		go func() {
 			for j := 0; j < numIDsPerGoroutine; j++ {
@@ -64,13 +64,13 @@ func TestIDWorker_Concurrent(t *testing.T) {
 		}()
 	}
 
-	// 等待所有goroutine完成
+	// Wait for all goroutines to finish.
 	for i := 0; i < numGoroutines; i++ {
 		<-done
 	}
 	close(ids)
 
-	// 检查ID唯一性
+	// Check ID uniqueness.
 	idMap := make(map[int64]bool)
 	for id := range ids {
 		if idMap[id] {
@@ -83,19 +83,19 @@ func TestIDWorker_Concurrent(t *testing.T) {
 }
 
 func TestIDWorker_InvalidParams(t *testing.T) {
-	// 测试无效的 workerID
+	// Test an invalid workerID.
 	_, err := NewIDWorker(1, 32)
 	if err == nil {
 		t.Error("Expected error for invalid workerID, got nil")
 	}
 
-	// 测试无效的 datacenterID
+	// Test an invalid datacenterID.
 	_, err = NewIDWorker(32, 1)
 	if err == nil {
 		t.Error("Expected error for invalid datacenterID, got nil")
 	}
 
-	// 测试负数
+	// Test negative values.
 	_, err = NewIDWorker(-1, 1)
 	if err == nil {
 		t.Error("Expected error for negative datacenterID, got nil")
@@ -103,7 +103,7 @@ func TestIDWorker_InvalidParams(t *testing.T) {
 }
 
 func TestGenerateID(t *testing.T) {
-	// 测试默认全局函数
+	// Test the default global function.
 	id, err := GenerateID()
 	if err != nil {
 		t.Fatalf("Failed to generate ID: %v", err)
@@ -128,14 +128,14 @@ func BenchmarkIDWorker_GetID(b *testing.B) {
 func TestIDLength(t *testing.T) {
 	worker, _ := NewIDWorker(1, 1)
 
-	// 生成多个ID并验证长度
+	// Generate multiple IDs and verify their length.
 	for i := 0; i < 1000; i++ {
 		id, err := worker.GetID()
 		if err != nil {
 			t.Fatalf("Failed to generate ID: %v", err)
 		}
 
-		// 转换为字符串检查长度
+		// Convert to a string to check the length.
 		idStr := fmt.Sprintf("%d", id)
 		if len(idStr) != 19 {
 			t.Errorf("ID length should be 19 digits, got %d (length=%d)", id, len(idStr))
@@ -148,7 +148,7 @@ func TestIDLength(t *testing.T) {
 func TestIDWorker_HighFrequency(t *testing.T) {
 	worker, _ := NewIDWorker(1, 1)
 
-	// 高频生成测试
+	// High-frequency generation test.
 	start := time.Now()
 	count := 100000
 
