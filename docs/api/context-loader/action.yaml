@@ -361,10 +361,12 @@ components:
           type: object
           additionalProperties: true
           description: |
-            执行结果的 JSON Schema：行动执行成功后 `result` 字段的形状。来源为工具自身
-            声明的输出契约（OpenAPI 的 2xx 响应、函数工具的 `result` 信封、MCP 的
-            `outputSchema`）。工具未声明输出时**整个字段不出现**——空对象会被读成
-            「该行动没有输出」，而真实语义是「输出形状未知」。
+            执行结果的 JSON Schema：行动执行成功后 `result` 字段的形状，取自工具 2xx
+            响应（优先 200）的 `application/json` schema。响应体原样使用，函数工具的
+            `{stdout, stderr, result, metrics}` 信封也在其内——执行记录存的就是整个响应体。
+
+            工具未声明输出契约时**整个字段不出现**——空对象会被读成「该行动没有输出」，
+            而真实语义是「输出形状未知」。MCP 源的行动目前一律不带该字段。
         api_url:
           type: string
           description: 工具执行代理地址。

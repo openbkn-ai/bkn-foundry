@@ -107,7 +107,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 			Name:            toolDetail.Name,
 			Description:     toolDetail.Description,
 			Parameters:      parameters,
-			OutputSchema:    s.extractToolOutputSchema(ctx, toolDetail.Metadata.APISpec, toolDetail.MetadataType),
+			OutputSchema:    s.extractToolOutputSchema(ctx, toolDetail.Metadata.APISpec),
 			APIURL:          apiURL,
 			FixedParams:     fixedParams,
 			APICallStrategy: interfaces.ResultProcessStrategyKnActionRecall,
@@ -133,12 +133,14 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 				infraErr.LocalizedDetail(ctx, "MCPSchemaConversionFailed"))
 		}
 
-		// 10b. Build KnDynamicTool.
+		// 10b. Build KnDynamicTool. No output schema for MCP sources: an MCP tool's
+		// outputSchema describes structuredContent, while ontology-query derives the stored
+		// result from the content text blocks (see mcpCallToolResult.normalize), so the two
+		// only line up by accident. Forwarding it would describe a shape the result may not have.
 		dynamicTool = interfaces.KnDynamicTool{
 			Name:            toolDetail.Name,
 			Description:     toolDetail.Description,
 			Parameters:      parameters,
-			OutputSchema:    s.extractMCPOutputSchema(ctx, toolDetail.OutputSchema),
 			APIURL:          apiURL,
 			FixedParams:     fixedParams,
 			APICallStrategy: interfaces.ResultProcessStrategyKnActionRecall,

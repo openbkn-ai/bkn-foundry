@@ -27,15 +27,6 @@ const (
 
 	// responseStatusOK is the response status code preferred when deriving the output schema.
 	responseStatusOK = "200"
-
-	// functionResultProperty is the execution envelope key used by function tools.
-	// Execution Factory nests a function's return value under the result property of the
-	// 200 response (see outputsFromResponses in operator-integration); the business payload
-	// sits one level below, so the envelope is stripped and only that payload is kept.
-	functionResultProperty = "result"
-
-	// metadataTypeFunction is the metadata_type value carried by function tools.
-	metadataTypeFunction = "function"
 )
 
 // ==================== Universal Schema reference parser ====================.
@@ -897,12 +888,14 @@ func (s *knActionRecallServiceImpl) resolveMCPSchema(ctx context.Context, schema
 // extractToolOutputSchema derives the shape of the action result from the tool's OpenAPI spec.
 //
 // It takes the application/json schema of a 2xx response (200 first) and expands $ref through
-// the same resolver used for input parameters. For a function tool it strips one more level,
-// the result envelope, because that is where the business payload of a function tool lives.
+// the same resolver used for input parameters. The response body is used as-is, including the
+// {stdout, stderr, result, metrics} envelope of a function tool: ontology-query stores the whole
+// body as the execution result (see ExecuteTool in agent_operator_access.go), so unwrapping the
+// envelope here would describe a level that the result never has.
 //
 // Returns nil when nothing usable is found so the caller omits the field entirely: an empty
 // object reads as "this action returns nothing" when the truth is "the output shape is unknown".
-func (s *knActionRecallServiceImpl) extractToolOutputSchema(ctx context.Context, apiSpec map[string]any, metadataType string) map[string]any {
+func (s *knActionRecallServiceImpl) extractToolOutputSchema(ctx context.Context, apiSpec map[string]any) map[string]any {
 	response := s.pickSuccessResponse(apiSpec)
 	if response == nil {
 		return nil
@@ -926,10 +919,6 @@ func (s *knActionRecallServiceImpl) extractToolOutputSchema(ctx context.Context,
 	if err != nil {
 		s.logger.WithContext(ctx).Warnf("[KnActionRecall#extractToolOutputSchema] Failed to resolve output schema: %v", err)
 		return nil
-	}
-
-	if metadataType == metadataTypeFunction {
-		resolved = s.unwrapFunctionResult(resolved)
 	}
 
 	return s.finalizeOutputSchema(ctx, resolved)
@@ -960,20 +949,6 @@ func (s *knActionRecallServiceImpl) pickSuccessResponse(apiSpec map[string]any) 
 	return fallback
 }
 
-// unwrapFunctionResult strips the result envelope of a function tool, returning the schema
-// unchanged when there is no such envelope.
-func (s *knActionRecallServiceImpl) unwrapFunctionResult(schema map[string]any) map[string]any {
-	props, ok := schema["properties"].(map[string]any)
-	if !ok {
-		return schema
-	}
-	result, ok := props[functionResultProperty].(map[string]any)
-	if !ok {
-		return schema
-	}
-	return result
-}
-
 // finalizeOutputSchema fills in the default type and description, and returns nil when the
 // schema carries no usable shape.
 func (s *knActionRecallServiceImpl) finalizeOutputSchema(ctx context.Context, schema map[string]any) map[string]any {
@@ -1002,19 +977,4 @@ func (s *knActionRecallServiceImpl) finalizeOutputSchema(ctx context.Context, sc
 	}
 
 	return schema
-}
-
-// extractMCPOutputSchema forwards the outputSchema declared by an MCP tool, expanding $ref in place.
-func (s *knActionRecallServiceImpl) extractMCPOutputSchema(ctx context.Context, outputSchema map[string]any) map[string]any {
-	if len(outputSchema) == 0 {
-		return nil
-	}
-
-	resolved, err := s.resolveMCPSchema(ctx, outputSchema)
-	if err != nil {
-		s.logger.WithContext(ctx).Warnf("[KnActionRecall#extractMCPOutputSchema] Failed to resolve MCP output schema: %v", err)
-		return nil
-	}
-
-	return s.finalizeOutputSchema(ctx, resolved)
 }

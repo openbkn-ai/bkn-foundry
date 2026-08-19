@@ -145,10 +145,12 @@ func TestOutputSchema_OpenAPITool_ResolvesRefAndKeepsDescriptions(t *testing.T) 
 	})
 }
 
-// TestOutputSchema_FunctionTool_StripsResultEnvelope verifies that a function tool's business
-// payload is lifted out of the result envelope.
-func TestOutputSchema_FunctionTool_StripsResultEnvelope(t *testing.T) {
-	convey.Convey("TestOutputSchema_FunctionTool_StripsResultEnvelope", t, func() {
+// TestOutputSchema_FunctionTool_KeepsResultEnvelope pins the shape a function action actually
+// produces: ontology-query stores the whole response body as the execution result, so the
+// {stdout, stderr, result, ...} envelope must stay in the schema. Unwrapping it would point the
+// agent at result.quota when the value really sits at result.result.quota.
+func TestOutputSchema_FunctionTool_KeepsResultEnvelope(t *testing.T) {
+	convey.Convey("TestOutputSchema_FunctionTool_KeepsResultEnvelope", t, func() {
 		service, ontologyQuery, operatorIntegration := newOutputSchemaService(t)
 
 		ontologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).Return(toolActionsResponse(), nil)
@@ -160,7 +162,8 @@ func TestOutputSchema_FunctionTool_StripsResultEnvelope(t *testing.T) {
 					"responses": jsonResponses("200", map[string]any{
 						"type": "object",
 						"properties": map[string]any{
-							"code": map[string]any{"type": "integer"},
+							"stdout": map[string]any{"type": "string"},
+							"stderr": map[string]any{"type": "string"},
 							"result": map[string]any{
 								"type": "object",
 								"properties": map[string]any{
@@ -178,9 +181,15 @@ func TestOutputSchema_FunctionTool_StripsResultEnvelope(t *testing.T) {
 
 		props, ok := resp.DynamicTools[0].OutputSchema["properties"].(map[string]any)
 		convey.So(ok, convey.ShouldBeTrue)
-		convey.So(len(props), convey.ShouldEqual, 1)
-		convey.So(props["quota"], convey.ShouldNotBeNil)
-		convey.So(props["code"], convey.ShouldBeNil)
+		convey.So(len(props), convey.ShouldEqual, 3)
+		convey.So(props["stdout"], convey.ShouldNotBeNil)
+		convey.So(props["stderr"], convey.ShouldNotBeNil)
+
+		result, ok := props["result"].(map[string]any)
+		convey.So(ok, convey.ShouldBeTrue)
+		resultProps, ok := result["properties"].(map[string]any)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(resultProps["quota"], convey.ShouldNotBeNil)
 	})
 }
 
@@ -267,57 +276,18 @@ func TestOutputSchema_OmittedWhenUnavailable(t *testing.T) {
 	}
 }
 
-// TestOutputSchema_MCPTool_ForwardsOutputSchema verifies that an MCP tool's outputSchema is
-// forwarded with #/$defs/* references inlined.
-func TestOutputSchema_MCPTool_ForwardsOutputSchema(t *testing.T) {
-	convey.Convey("TestOutputSchema_MCPTool_ForwardsOutputSchema", t, func() {
+// TestOutputSchema_MCPTool_NeverCarriesOutputSchema pins that MCP-sourced actions expose no
+// output schema. An MCP tool's outputSchema describes structuredContent, while the stored result
+// is derived from the content text blocks, so forwarding it would describe a shape the result
+// may not have.
+func TestOutputSchema_MCPTool_NeverCarriesOutputSchema(t *testing.T) {
+	convey.Convey("TestOutputSchema_MCPTool_NeverCarriesOutputSchema", t, func() {
 		service, ontologyQuery, operatorIntegration := newOutputSchemaService(t)
 
 		ontologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).Return(mcpActionsResponse(), nil)
 		operatorIntegration.EXPECT().GetMCPToolDetail(gomock.Any(), gomock.Any()).Return(&interfaces.GetMCPToolDetailResponse{
 			Name:        "issue_voucher",
 			InputSchema: map[string]any{"type": "object", "properties": map[string]any{"unit_price": map[string]any{"type": "number"}}},
-			OutputSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"receipt": map[string]any{"$ref": "#/$defs/Receipt"},
-				},
-				"$defs": map[string]any{
-					"Receipt": map[string]any{
-						"type":       "object",
-						"properties": map[string]any{"recordId": map[string]any{"type": "integer"}},
-					},
-				},
-			},
-		}, nil)
-
-		resp, err := service.GetActionInfo(context.Background(), recallRequest())
-		convey.So(err, convey.ShouldBeNil)
-
-		output := resp.DynamicTools[0].OutputSchema
-		convey.So(output, convey.ShouldNotBeNil)
-		convey.So(output["$defs"], convey.ShouldBeNil)
-
-		props, ok := output["properties"].(map[string]any)
-		convey.So(ok, convey.ShouldBeTrue)
-		receipt, ok := props["receipt"].(map[string]any)
-		convey.So(ok, convey.ShouldBeTrue)
-		receiptProps, ok := receipt["properties"].(map[string]any)
-		convey.So(ok, convey.ShouldBeTrue)
-		convey.So(receiptProps["recordId"], convey.ShouldNotBeNil)
-	})
-}
-
-// TestOutputSchema_MCPTool_AbsentWhenNotDeclared verifies that an MCP tool without an
-// outputSchema leaves the field absent.
-func TestOutputSchema_MCPTool_AbsentWhenNotDeclared(t *testing.T) {
-	convey.Convey("TestOutputSchema_MCPTool_AbsentWhenNotDeclared", t, func() {
-		service, ontologyQuery, operatorIntegration := newOutputSchemaService(t)
-
-		ontologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).Return(mcpActionsResponse(), nil)
-		operatorIntegration.EXPECT().GetMCPToolDetail(gomock.Any(), gomock.Any()).Return(&interfaces.GetMCPToolDetailResponse{
-			Name:        "issue_voucher",
-			InputSchema: map[string]any{"type": "object", "properties": map[string]any{}},
 		}, nil)
 
 		resp, err := service.GetActionInfo(context.Background(), recallRequest())
