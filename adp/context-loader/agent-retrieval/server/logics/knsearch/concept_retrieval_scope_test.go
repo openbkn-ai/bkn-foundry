@@ -163,3 +163,163 @@ func TestSearch_ScopeMatchedNothingExplainsWhy(t *testing.T) {
 		t.Fatalf("message was not rendered from the locale catalog: %q", resp.Message)
 	}
 }
+
+// Endpoint completion fetches every object type a relation points at and is not already in the
+// pool. Scoping before it would have it fetch the excluded object types straight back in, and
+// object selection refills relation endpoints without a limit, so they would reach the response.
+func TestConceptRetrievalByGroups_ExcludedEndpointIsNotRefetched(t *testing.T) {
+	backend := &mockBknBackend{
+		objectTypesResp: &interfaces.ObjectTypeConcepts{Entries: []*interfaces.ObjectType{
+			{ID: "obj_0", Name: "对象类型_0"},
+			{ID: "audit_log", Name: "审计日志"},
+		}},
+		relationTypesResp: &interfaces.RelationTypeConcepts{Entries: []*interfaces.RelationType{
+			{ID: "rel_0", Name: "写入", SourceObjectTypeID: "obj_0", TargetObjectTypeID: "audit_log"},
+		}},
+		actionTypesResp: &interfaces.ActionTypeConcepts{Entries: []*interfaces.ActionType{
+			{ID: "act_0", Name: "归档", ObjectTypeID: "audit_log"},
+		}},
+		// What the pre-fix code would have pulled back in.
+		objectDetailResp: []*interfaces.ObjectType{{ID: "audit_log", Name: "审计日志"}},
+	}
+	cfg := DefaultConceptRetrievalConfig()
+	cfg.ConceptGroups = []string{"g1"}
+	cfg.ExcludeObjectTypes = []string{"audit_log"}
+
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	res, err := svc.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if containsConcept(res.ObjectTypes, "audit_log") {
+		t.Fatalf("excluded object type came back through endpoint completion: %v", conceptIDs(res.ObjectTypes))
+	}
+	if !equalStrings(conceptIDs(res.ObjectTypes), []string{"obj_0"}) {
+		t.Fatalf("expected only obj_0, got %v", conceptIDs(res.ObjectTypes))
+	}
+	if backend.objectDetailCalls != 0 {
+		t.Fatalf("nothing was missing from the pool, yet completion fetched (%d calls)", backend.objectDetailCalls)
+	}
+	if len(res.RelationTypes) != 0 {
+		t.Fatalf("relation pointing at the excluded endpoint survived: %d", len(res.RelationTypes))
+	}
+	if len(res.ActionTypes) != 0 {
+		t.Fatalf("action bound to the excluded object type survived: %d", len(res.ActionTypes))
+	}
+}
+
+// Same invariant on the whole-network path: what the scope removes must not stay referenced by the
+// schema half of the response, which kn_search callers read.
+func TestConceptRetrieval_ScopeDropsDanglingRelationsAndActions(t *testing.T) {
+	detail := createMockNetworkDetail(4, 4, 4)
+	cfg := DefaultConceptRetrievalConfig()
+	cfg.EnableCoarseRecall = boolPtr(false)
+	cfg.TopK = 10
+	cfg.ObjectTypes = []string{"obj_0"}
+
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail}}
+	res, err := svc.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !equalStrings(conceptIDs(res.ObjectTypes), []string{"obj_0"}) {
+		t.Fatalf("expected only obj_0, got %v", conceptIDs(res.ObjectTypes))
+	}
+	for _, relation := range res.RelationTypes {
+		if relation.SourceObjectTypeID != "obj_0" || relation.TargetObjectTypeID != "obj_0" {
+			t.Fatalf("relation %s points outside the scope: %s -> %s",
+				relation.ConceptID, relation.SourceObjectTypeID, relation.TargetObjectTypeID)
+		}
+	}
+	for _, action := range res.ActionTypes {
+		if action.ObjectTypeID != "obj_0" {
+			t.Fatalf("action %s is bound to out-of-scope object type %s", action.ID, action.ObjectTypeID)
+		}
+	}
+}
+
+// A query with no scope must behave exactly as before: same relations, same actions.
+func TestConceptRetrieval_NoScopeLeavesConceptsUntouched(t *testing.T) {
+	detail := createMockNetworkDetail(4, 4, 4)
+	cfg := DefaultConceptRetrievalConfig()
+	cfg.EnableCoarseRecall = boolPtr(false)
+	cfg.TopK = 10
+
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: &mockBknBackend{networkDetail: detail}}
+	res, err := svc.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(res.RelationTypes) != 4 || len(res.ActionTypes) != 4 {
+		t.Fatalf("unscoped query lost concepts: relations=%d actions=%d", len(res.RelationTypes), len(res.ActionTypes))
+	}
+}
+
+// The cross-group shape of the same defect: the excluded object type is not in the group at all,
+// so BKN's typed search never returns it and only the relation reaches out to it. Endpoint
+// completion would fetch it and append it to the pool.
+func TestConceptRetrievalByGroups_ExcludedEndpointOutsideGroupStaysOut(t *testing.T) {
+	backend := &mockBknBackend{
+		objectTypesResp: &interfaces.ObjectTypeConcepts{Entries: []*interfaces.ObjectType{
+			{ID: "obj_0", Name: "对象类型_0"},
+		}},
+		relationTypesResp: &interfaces.RelationTypeConcepts{Entries: []*interfaces.RelationType{
+			{ID: "rel_0", Name: "写入", SourceObjectTypeID: "obj_0", TargetObjectTypeID: "audit_log"},
+		}},
+		actionTypesResp:  &interfaces.ActionTypeConcepts{},
+		objectDetailResp: []*interfaces.ObjectType{{ID: "audit_log", Name: "审计日志"}},
+	}
+	cfg := DefaultConceptRetrievalConfig()
+	cfg.ConceptGroups = []string{"g1"}
+	cfg.ExcludeObjectTypes = []string{"audit_log"}
+
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	res, err := svc.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if containsConcept(res.ObjectTypes, "audit_log") {
+		t.Fatalf("excluded object type was completed back into the pool: %v", conceptIDs(res.ObjectTypes))
+	}
+	// Completion does fetch it -- it runs first, by design, so that a pinned object type living
+	// outside the groups can still be completed in. The scope drops it right after.
+	if backend.objectDetailCalls != 1 {
+		t.Fatalf("expected endpoint completion to run once, got %d calls", backend.objectDetailCalls)
+	}
+	if len(res.RelationTypes) != 0 {
+		t.Fatalf("relation reaching out of scope survived: %d", len(res.RelationTypes))
+	}
+}
+
+// An allow list must not stop endpoint completion from doing its job for object types that are in
+// scope: a relation between two pinned object types still needs both ends present.
+func TestConceptRetrievalByGroups_InScopeEndpointIsStillCompleted(t *testing.T) {
+	backend := &mockBknBackend{
+		objectTypesResp: &interfaces.ObjectTypeConcepts{Entries: []*interfaces.ObjectType{
+			{ID: "obj_0", Name: "对象类型_0"},
+		}},
+		relationTypesResp: &interfaces.RelationTypeConcepts{Entries: []*interfaces.RelationType{
+			{ID: "rel_0", Name: "关联", SourceObjectTypeID: "obj_0", TargetObjectTypeID: "obj_1"},
+		}},
+		actionTypesResp:  &interfaces.ActionTypeConcepts{},
+		objectDetailResp: []*interfaces.ObjectType{{ID: "obj_1", Name: "对象类型_1"}},
+	}
+	cfg := DefaultConceptRetrievalConfig()
+	cfg.ConceptGroups = []string{"g1"}
+	cfg.ObjectTypes = []string{"obj_0", "obj_1"}
+
+	svc := &localSearchImpl{logger: &mockLogger{}, bknBackend: backend}
+	res, err := svc.conceptRetrieval(context.Background(), &interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !containsConcept(res.ObjectTypes, "obj_1") {
+		t.Fatalf("in-scope endpoint was not completed: %v", conceptIDs(res.ObjectTypes))
+	}
+	if len(res.RelationTypes) != 1 {
+		t.Fatalf("relation between two pinned object types was dropped: %d", len(res.RelationTypes))
+	}
+	if len(res.UnmatchedObjectTypes) != 0 {
+		t.Fatalf("an id that only appears as an endpoint was reported unmatched: %v", res.UnmatchedObjectTypes)
+	}
+}

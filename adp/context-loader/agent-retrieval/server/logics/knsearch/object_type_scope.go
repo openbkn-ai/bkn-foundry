@@ -100,6 +100,62 @@ func (s *objectTypeScope) apply(objectTypes []*interfaces.ObjectType) (kept []*i
 	return kept, unmatched
 }
 
+// applyToConcepts drops the relation and action types that point at object types the scope removed.
+//
+// Without it the schema half of the response keeps dangling references: a relation whose endpoint
+// is gone, or an action whose object type can no longer be named (convertActionTypesToLocal leaves
+// ObjectTypeName empty). search_instance discards both lists, but kn_search callers setting the
+// same knobs through retrieval_config read them, and object selection refills relation endpoints
+// without a limit — an out-of-scope endpoint kept here would walk straight back into the pool.
+func (s *objectTypeScope) applyToConcepts(
+	kept []*interfaces.ObjectType,
+	relations []*interfaces.RelationType,
+	actions []*interfaces.ActionType,
+) ([]*interfaces.RelationType, []*interfaces.ActionType) {
+	if s == nil {
+		return relations, actions
+	}
+
+	inScope := make(map[string]struct{}, len(kept))
+	for _, objectType := range kept {
+		if objectType == nil {
+			continue
+		}
+		inScope[normalizeObjectTypeID(objectType.ID)] = struct{}{}
+	}
+	// An empty endpoint id says nothing about scope, so it is not a reason to drop the concept:
+	// only an id naming an object type that is no longer in the pool is.
+	reachable := func(id string) bool {
+		id = normalizeObjectTypeID(id)
+		if id == "" {
+			return true
+		}
+		_, ok := inScope[id]
+		return ok
+	}
+
+	keptRelations := make([]*interfaces.RelationType, 0, len(relations))
+	for _, relation := range relations {
+		if relation == nil {
+			continue
+		}
+		if reachable(relation.SourceObjectTypeID) && reachable(relation.TargetObjectTypeID) {
+			keptRelations = append(keptRelations, relation)
+		}
+	}
+
+	keptActions := make([]*interfaces.ActionType, 0, len(actions))
+	for _, action := range actions {
+		if action == nil {
+			continue
+		}
+		if reachable(action.ObjectTypeID) {
+			keptActions = append(keptActions, action)
+		}
+	}
+	return keptRelations, keptActions
+}
+
 // logScopeOutcome records what the scope did to the candidate pool.
 //
 // The unmatched ids are logged at warn: when only some of them miss, the query still returns rows

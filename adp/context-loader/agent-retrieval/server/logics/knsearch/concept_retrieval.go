@@ -61,6 +61,8 @@ func (s *localSearchImpl) conceptRetrieval(
 	// scope, or a pinned object type ranking below TopK would be cut before the filter runs.
 	scope := newObjectTypeScope(config.ObjectTypes, config.ExcludeObjectTypes)
 	networkDetail.ObjectTypes, unmatchedObjectTypes = scope.apply(networkDetail.ObjectTypes)
+	networkDetail.RelationTypes, networkDetail.ActionTypes = scope.applyToConcepts(
+		networkDetail.ObjectTypes, networkDetail.RelationTypes, networkDetail.ActionTypes)
 	s.logScopeOutcome(ctx, "", scope, networkDetail.ObjectTypes, unmatchedObjectTypes)
 
 	// 2. Rough recall (optional, for large-scale knowledge networks)
@@ -180,18 +182,22 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 		config.ConceptGroups, len(objects), len(relations), len(actions),
 	)
 
-	// Same rule as the whole-network path: scope first, rank and cut afterwards. Filtering
-	// before completeReferencedObjectTypes also keeps that step from pulling an out-of-scope
-	// object type back in as a relation endpoint.
-	scope := newObjectTypeScope(config.ObjectTypes, config.ExcludeObjectTypes)
-	objects, unmatchedObjectTypes := scope.apply(objects)
-	s.logScopeOutcome(ctx, "[Groups]", scope, objects, unmatchedObjectTypes)
-
 	objects, err = s.completeReferencedObjectTypes(ctx, req.KnID, objects, relations, actions)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval][Groups] complete referenced object types failed: %v", err)
 		return nil, err
 	}
+
+	// Scope after endpoint completion, not before. Two reasons pull the same way:
+	//   - completion appends every object type a relation or action points at and is not already
+	//     in the pool, so filtering first would let it fetch the excluded ones straight back in;
+	//   - an object type the caller pinned may sit outside the concept groups and reach the pool
+	//     only through completion, so filtering first would report it as non-existent.
+	// It still runs before ranking and the TopK cut, which is the ordering the scope requires.
+	scope := newObjectTypeScope(config.ObjectTypes, config.ExcludeObjectTypes)
+	objects, unmatchedObjectTypes := scope.apply(objects)
+	relations, actions = scope.applyToConcepts(objects, relations, actions)
+	s.logScopeOutcome(ctx, "[Groups]", scope, objects, unmatchedObjectTypes)
 
 	rankedRelations := s.rankRelationTypes(ctx, req.Query, objects, relations, config.TopK, req.EnableRerank, req.RerankModel)
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
