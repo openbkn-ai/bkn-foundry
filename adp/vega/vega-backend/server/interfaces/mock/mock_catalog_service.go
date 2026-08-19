@@ -41,6 +41,22 @@ func (m *MockCatalogService) EXPECT() *MockCatalogServiceMockRecorder {
 	return m.recorder
 }
 
+// AuthorizedCatalogIDs mocks base method.
+func (m *MockCatalogService) AuthorizedCatalogIDs(ctx context.Context, op string) ([]string, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthorizedCatalogIDs", ctx, op)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// AuthorizedCatalogIDs indicates an expected call of AuthorizedCatalogIDs.
+func (mr *MockCatalogServiceMockRecorder) AuthorizedCatalogIDs(ctx, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizedCatalogIDs", reflect.TypeOf((*MockCatalogService)(nil).AuthorizedCatalogIDs), ctx, op)
+}
+
 // CheckCatalogPermission mocks base method.
 func (m *MockCatalogService) CheckCatalogPermission(ctx context.Context, catalogID, op string) error {
 	m.ctrl.T.Helper()

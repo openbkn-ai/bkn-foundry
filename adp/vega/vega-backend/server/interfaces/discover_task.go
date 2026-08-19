@@ -106,7 +106,10 @@ type DiscoverTaskResultSummary struct {
 // DiscoverTaskQueryParams holds discover task list query parameters.
 type DiscoverTaskQueryParams struct {
 	PaginationQueryParams
-	CatalogID   string   `form:"catalog_id" json:"catalog_id"`
+	CatalogID string `form:"catalog_id" json:"catalog_id"`
+	// CatalogIDs narrows the listing to a set of catalogs. It carries the
+	// authorization filter into the SQL so that the count and the page agree.
+	CatalogIDs  []string `form:"-" json:"-"`
 	ScheduleID  string   `form:"schedule_id" json:"schedule_id"`
 	Statuses    []string `form:"status" json:"status"`
 	Strategy    string   `form:"strategy" json:"strategy"`

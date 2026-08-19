@@ -51,6 +51,12 @@ type CatalogService interface {
 	// services whose objects hang off a catalog rather than a table.
 	CheckCatalogPermission(ctx context.Context, catalogID string, op string) error
 
+	// AuthorizedCatalogIDs lists the catalogs the caller may perform op on.
+	// unrestricted reports a type-wide grant, in which case ids is empty and the
+	// caller must not filter — "sees everything" and "sees nothing" would
+	// otherwise be the same empty slice.
+	AuthorizedCatalogIDs(ctx context.Context, op string) (ids []string, unrestricted bool, err error)
+
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
 	// InternalGetByIDs retrieves Catalogs for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)

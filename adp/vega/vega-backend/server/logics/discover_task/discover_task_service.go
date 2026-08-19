@@ -93,6 +93,13 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 		accountInfo = ai
 	}
 
+	// 探查任务是对目录的写操作（#269）。
+	if err := dts.cs.CheckCatalogPermission(ctx, req.CatalogID,
+		interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return "", err
+	}
+
 	now := time.Now().UnixMilli()
 	task := &interfaces.DiscoverTask{
 		ID:          xid.New().String(),
@@ -135,6 +142,12 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 		span.SetStatus(codes.Error, "Discover task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 	}
+	// 一个探查任务是通过它所属的目录被看见的（#269）。
+	if err := dts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+		interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, err
+	}
 	if err := dts.populateDiscoverTaskReferences(ctx, []*interfaces.DiscoverTask{task}); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task references: %v", err)
@@ -161,6 +174,35 @@ func (dts *discoverTaskService) InternalGetByID(ctx context.Context, id string) 
 func (dts *discoverTaskService) List(ctx context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.List")
 	defer span.End()
+
+	// 过滤下推到 SQL,与构建任务列表同一口径:count 与 list 共用条件,total 才是
+	// 调用方真正能看到的数量（#269 / #472）。
+	visible, unrestricted, err := dts.cs.AuthorizedCatalogIDs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
+		return nil, 0, err
+	}
+	if !unrestricted {
+		if len(visible) == 0 {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.DiscoverTaskSummary{}, 0, nil
+		}
+		if params.CatalogID != "" {
+			allowed := false
+			for _, id := range visible {
+				if id == params.CatalogID {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				span.SetStatus(codes.Ok, "")
+				return []*interfaces.DiscoverTaskSummary{}, 0, nil
+			}
+		} else {
+			params.CatalogIDs = visible
+		}
+	}
 
 	tasks, total, err := dts.dta.List(ctx, params)
 	if err != nil {

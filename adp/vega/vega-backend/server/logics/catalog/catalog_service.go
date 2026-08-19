@@ -350,6 +350,52 @@ func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql
 }
 
 // Get retrieves a Catalog by ID.
+// AuthorizedCatalogIDs answers "which catalogs may I act on", for listings of
+// things that hang off a catalog rather than of catalogs themselves — discover
+// tasks above all.
+//
+// The type-wide grant is probed first and reported as unrestricted: most
+// accounts hold catalog:*, and resolving a concrete id set for them would list
+// every catalog on every page request. Otherwise the whole visible set is
+// resolved in one pass so the caller can push it into the SQL, keeping the count
+// and the page in agreement.
+func (cs *catalogService) AuthorizedCatalogIDs(ctx context.Context, op string) ([]string, bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.AuthorizedCatalogIDs")
+	defer span.End()
+
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{op}); err == nil {
+		return nil, true, nil
+	}
+
+	ids, err := cs.ca.ListIDs(ctx, interfaces.CatalogsQueryParams{})
+	if err != nil {
+		span.SetStatus(codes.Error, "List catalog ids failed")
+		return nil, false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if len(ids) == 0 {
+		return nil, false, nil
+	}
+	internalSet, err := cs.internalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	allowed, err := cs.filterCatalogResources(ctx, ids, internalSet, []string{op}, true)
+	if err != nil {
+		return nil, false, err
+	}
+	out := make([]string, 0, len(allowed))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, false, nil
+}
+
 // CheckCatalogPermission authorizes an operation on one catalog for callers that
 // hold only its id. A missing catalog is reported as forbidden rather than as
 // "not found": the caller has not proven it may see the catalog, and saying
