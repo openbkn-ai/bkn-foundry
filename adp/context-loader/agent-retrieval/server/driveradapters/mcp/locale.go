@@ -195,21 +195,29 @@ func (b *mcpLocaleBundle) PTCResource(name string) string {
 }
 
 func (b *mcpLocaleBundle) PTCHints(toolName string) []string {
+	// Hints are advisory. An unreadable file costs the model a hint; it must not
+	// cost the caller their request.
 	var hints map[string][]string
 	if err := json.Unmarshal([]byte(b.PTCResource("ptc_hints.json")), &hints); err != nil {
-		panic("cannot parse PTC hints: " + err.Error())
+		log.Printf("WARN: cannot parse PTC hints for %s, continuing without them: %v", b.locale, err)
+		return nil
 	}
 	return hints[toolName]
 }
 
 func (b *mcpLocaleBundle) PTCError(key string, params ...any) string {
+	// This renders the text of an error that already happened. A missing or
+	// malformed catalog entry must degrade to something readable rather than
+	// escalate the original error into a panic on the request path.
 	var messages map[string]string
 	if err := json.Unmarshal([]byte(b.PTCResource("ptc_errors.json")), &messages); err != nil {
-		panic("cannot parse PTC errors: " + err.Error())
+		log.Printf("WARN: cannot parse PTC errors for %s: %v", b.locale, err)
+		return key
 	}
 	message, ok := messages[key]
 	if !ok {
-		panic("PTC error message not found: " + key)
+		log.Printf("WARN: PTC error message %q missing from the %s catalog", key, b.locale)
+		return key
 	}
 	return fmt.Sprintf(message, params...)
 }
@@ -281,40 +289,46 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 		return input, output
 	}
 
+	// A broken overlay degrades to the baseline schema. /mcp/info rebuilds this
+	// per request through tryLoadToolSchemas, whose contract is to tolerate bad
+	// resources — panicking here would have broken that promise and turned a
+	// translation defect into a failed request.
+	wrapped, err := marshalToolSchema(input, output)
+	if err != nil {
+		log.Printf("WARN: MCP overlay for %s: cannot wrap base schema, serving baseline: %v", toolKey, err)
+		return input, output
+	}
 	var schema any
-	if err := json.Unmarshal(mustMarshalToolSchema(input, output), &schema); err != nil {
-		panic("invalid base schema for localized overlay: " + err.Error())
+	if err := json.Unmarshal(wrapped, &schema); err != nil {
+		log.Printf("WARN: MCP overlay for %s: base schema is not valid JSON, serving baseline: %v", toolKey, err)
+		return input, output
 	}
 	root, ok := schema.(map[string]any)
 	if !ok {
-		panic("invalid base schema for localized overlay: root is not object")
+		log.Printf("WARN: MCP overlay for %s: base schema root is not an object, serving baseline", toolKey)
+		return input, output
 	}
 	for path, value := range replacements {
 		setNestedString(root, strings.Split(path, "."), value)
 	}
-	wrapper := toolSchemaFile{}
-	if rawInput, err := json.Marshal(root["input_schema"]); err == nil {
-		wrapper.InputSchema = rawInput
-	} else {
-		panic("cannot marshal localized input schema: " + err.Error())
+	rawInput, err := json.Marshal(root["input_schema"])
+	if err != nil {
+		log.Printf("WARN: MCP overlay for %s: cannot marshal localized input schema, serving baseline: %v", toolKey, err)
+		return input, output
 	}
-	if rawOutput, err := json.Marshal(root["output_schema"]); err == nil {
-		wrapper.OutputSchema = rawOutput
-	} else {
-		panic("cannot marshal localized output schema: " + err.Error())
+	rawOutput, err := json.Marshal(root["output_schema"])
+	if err != nil {
+		log.Printf("WARN: MCP overlay for %s: cannot marshal localized output schema, serving baseline: %v", toolKey, err)
+		return input, output
 	}
-	return wrapper.InputSchema, wrapper.OutputSchema
+	return rawInput, rawOutput
 }
 
-func mustMarshalToolSchema(input, output json.RawMessage) []byte {
-	data, err := json.Marshal(toolSchemaFile{
+func marshalToolSchema(input, output json.RawMessage) ([]byte, error) {
+	return json.Marshal(toolSchemaFile{
 		InputSchema:  input,
 		OutputSchema: output,
 	})
-	if err != nil {
-		panic("cannot marshal tool schema wrapper: " + err.Error())
-	}
-	return data
 }
 
 func setNestedString(root map[string]any, path []string, value string) {

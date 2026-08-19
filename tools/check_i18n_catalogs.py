@@ -52,6 +52,7 @@ JSON_CATALOGS = (
     ),
 )
 MCP_SCHEMAS_DIRECTORY = REPOSITORY_ROOT / "adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas"
+DEFAULT_MCP_LOCALE = "zh-CN"
 
 PERCENT_PLACEHOLDER = re.compile(r"(?<!%)%(?:[-+#0 ]*\d*(?:\.\d+)?[bcdeEfFgGosxXqTUv])")
 GO_TEMPLATE_PLACEHOLDER = re.compile(r"{{\s*([^{}]+?)\s*}}")
@@ -305,6 +306,54 @@ def validate_mcp_locale_resources(schemas_directory: Path, locale: str = "en-US"
     return errors
 
 
+def load_json_with_license_header(path: Path) -> Any:
+    """Parse a locale JSON file that may carry a leading /* ... */ license block."""
+    text = path.read_text(encoding="utf-8")
+    if text.lstrip().startswith("/*"):
+        end = text.find("*/")
+        if end != -1:
+            text = text[end + 2:]
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path}: cannot parse JSON catalog: {error}") from error
+
+
+def validate_mcp_ptc_resources(schemas_directory: Path, locale: str = "en-US") -> list[str]:
+    """Every PTC catalog key present in the baseline must exist in each locale.
+
+    PTCError looks a key up at request time. Before this check nothing compared
+    the two files, so a key added to one locale only would surface as a missing
+    message while rendering an error that had already occurred.
+    """
+    errors: list[str] = []
+    for name in ("ptc_errors.json", "ptc_hints.json"):
+        baseline_path = schemas_directory / "locales" / DEFAULT_MCP_LOCALE / name
+        translated_path = schemas_directory / "locales" / locale / name
+        if not baseline_path.exists():
+            errors.append(f"mcp-ptc: {baseline_path} is missing")
+            continue
+        if not translated_path.exists():
+            # A whole missing file falls back to the baseline at runtime.
+            continue
+        try:
+            baseline = load_json_with_license_header(baseline_path)
+            translated = load_json_with_license_header(translated_path)
+        except ValueError as error:
+            errors.append(f"mcp-ptc: {error}")
+            continue
+        if not isinstance(baseline, dict) or not isinstance(translated, dict):
+            errors.append(f"mcp-ptc: {name} must contain an object")
+            continue
+        missing = sorted(set(baseline) - set(translated))
+        unexpected = sorted(set(translated) - set(baseline))
+        if missing:
+            errors.append(f"mcp-ptc: {translated_path} is missing keys: {', '.join(missing)}")
+        if unexpected:
+            errors.append(f"mcp-ptc: {translated_path} has unexpected keys: {', '.join(unexpected)}")
+    return errors
+
+
 def validate_catalog_pair(name: str, baseline_path: Path, translated_path: Path) -> list[str]:
     baseline = load_catalog(baseline_path)
     translated = load_catalog(translated_path)
@@ -356,6 +405,10 @@ def main() -> int:
             errors.append(str(error))
     try:
         errors.extend(validate_mcp_locale_resources(MCP_SCHEMAS_DIRECTORY))
+    except ValueError as error:
+        errors.append(str(error))
+    try:
+        errors.extend(validate_mcp_ptc_resources(MCP_SCHEMAS_DIRECTORY))
     except ValueError as error:
         errors.append(str(error))
     if errors:

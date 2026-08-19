@@ -46,8 +46,10 @@ func TestMCPLocaleBundle(t *testing.T) {
 
 		for toolKey, replacements := range bundle.schemaDescriptions {
 			input, output := bundle.ToolSchemas(toolKey)
+			wrapped, err := marshalToolSchema(input, output)
+			convey.So(err, convey.ShouldBeNil)
 			var schema map[string]any
-			convey.So(json.Unmarshal(mustMarshalToolSchema(input, output), &schema), convey.ShouldBeNil)
+			convey.So(json.Unmarshal(wrapped, &schema), convey.ShouldBeNil)
 
 			for path, expected := range replacements {
 				actual, ok := getNestedString(schema, strings.Split(path, "."))

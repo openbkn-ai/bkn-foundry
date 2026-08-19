@@ -191,8 +191,10 @@ func TestExploreSubgraphSchema_DescriptionsAreLocalized(t *testing.T) {
 		convey.So(len(replacements), convey.ShouldBeGreaterThan, 0)
 
 		input, output := loadToolSchemas("explore_subgraph")
+		wrapped, err := marshalToolSchema(input, output)
+		convey.So(err, convey.ShouldBeNil)
 		var wrapper map[string]any
-		convey.So(json.Unmarshal(mustMarshalToolSchema(input, output), &wrapper), convey.ShouldBeNil)
+		convey.So(json.Unmarshal(wrapped, &wrapper), convey.ShouldBeNil)
 
 		// Each description in the baseline must have a corresponding coverage entry, otherwise the English client will silently fall back to Chinese.
 		for _, path := range collectDescriptionPaths(wrapper, nil) {
