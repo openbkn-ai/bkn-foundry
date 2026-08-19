@@ -42,3 +42,38 @@ func TestListFirstOperationSourceModulesByTraceIDsReturnsEarliestNonEmptyModule(
 		t.Fatalf("unexpected source module for unrequested trace")
 	}
 }
+
+func TestListInteractionPageUsesNewestOrdinalAndReportsHasMore(t *testing.T) {
+	store := New()
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		for ordinal, interactionID := range []string{"first", "second", "third", "fourth"} {
+			tx.SaveInteraction(sessionvo.Interaction{
+				ID:             interactionID,
+				ConversationID: "conversation-page",
+				Ordinal:        uint64(ordinal + 1),
+			})
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed interactions: %v", err)
+	}
+
+	var first, second isessionstore.InteractionPage
+	if err := store.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		first = tx.ListInteractionPage(isessionstore.InteractionPageQuery{
+			ConversationID: "conversation-page", Limit: 2,
+		})
+		second = tx.ListInteractionPage(isessionstore.InteractionPageQuery{
+			ConversationID: "conversation-page", Limit: 2, AfterOrdinal: first.Entries[len(first.Entries)-1].Ordinal,
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("read interaction pages: %v", err)
+	}
+	if first.Total != 4 || !first.HasMore || len(first.Entries) != 2 || first.Entries[0].ID != "fourth" || first.Entries[1].ID != "third" {
+		t.Fatalf("unexpected first page: %+v", first)
+	}
+	if second.Total != 4 || second.HasMore || len(second.Entries) != 2 || second.Entries[0].ID != "second" || second.Entries[1].ID != "first" {
+		t.Fatalf("unexpected final page: %+v", second)
+	}
+}

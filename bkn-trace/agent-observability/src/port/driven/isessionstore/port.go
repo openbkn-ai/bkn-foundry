@@ -21,6 +21,7 @@ type Transaction interface {
 	PeekInteraction(interactionID string) (sessionvo.Interaction, bool)
 	FindInteraction(interactionID string) (sessionvo.Interaction, bool)
 	ListInteractions(conversationID string) []sessionvo.Interaction
+	ListInteractionPage(query InteractionPageQuery) InteractionPage
 	NextInteractionOrdinal(conversationID string) uint64
 	SaveInteraction(interaction sessionvo.Interaction)
 	FindOperationByKey(interactionID, operationKey string) (sessionvo.Operation, bool)
@@ -46,6 +47,22 @@ type Transaction interface {
 	ListAssemblyRevisions(interactionID string) []sessionvo.AssemblyRevision
 	SaveAssemblyRevision(revision sessionvo.AssemblyRevision)
 	AppendProjection(mutation sessionvo.ProjectionMutation)
+}
+
+// InteractionPageQuery keeps conversation-scoped interaction pagination at
+// the lifecycle store. The interaction ordinal is the managed chronological
+// order, while callers present the resulting page newest first.
+type InteractionPageQuery struct {
+	ConversationID string
+	Limit          int
+	Offset         int
+	AfterOrdinal   uint64
+}
+
+type InteractionPage struct {
+	Entries []sessionvo.Interaction
+	Total   int
+	HasMore bool
 }
 
 type Store interface {

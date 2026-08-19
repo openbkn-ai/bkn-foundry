@@ -175,6 +175,33 @@ func (tx memoryTransaction) ListInteractions(conversationID string) []sessionvo.
 	return result
 }
 
+func (tx memoryTransaction) ListInteractionPage(query isessionstore.InteractionPageQuery) isessionstore.InteractionPage {
+	entries := tx.ListInteractions(query.ConversationID)
+	result := make([]sessionvo.Interaction, 0, len(entries))
+	for index := len(entries) - 1; index >= 0; index-- {
+		interaction := entries[index]
+		if query.AfterOrdinal != 0 && interaction.Ordinal >= query.AfterOrdinal {
+			continue
+		}
+		result = append(result, interaction)
+	}
+	page := isessionstore.InteractionPage{Total: len(entries)}
+	start := query.Offset
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(result) || query.Limit <= 0 {
+		return page
+	}
+	end := start + query.Limit
+	if end > len(result) {
+		end = len(result)
+	}
+	page.Entries = append([]sessionvo.Interaction{}, result[start:end]...)
+	page.HasMore = end < len(result)
+	return page
+}
+
 func (tx memoryTransaction) NextInteractionOrdinal(conversationID string) uint64 {
 	var max uint64
 	for _, interaction := range tx.s.interactions {

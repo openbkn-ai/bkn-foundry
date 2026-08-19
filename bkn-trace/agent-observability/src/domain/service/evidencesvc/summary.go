@@ -150,6 +150,9 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 }
 
 func (s *Service) ListInteractions(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.InteractionSummaryPage, error) {
+	if s.canPageCanonicalConversation(options) {
+		return s.listCanonicalConversationInteractions(ctx, options)
+	}
 	loadOptions := options
 	loadOptions.Status = ""
 	requests, _, metadata, err := s.loadExecutionSummaries(ctx, loadOptions)
@@ -210,6 +213,135 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 		page.NextCursor = &next
 	}
 	return page, nil
+}
+
+// Conversation-scoped interaction lists use the managed lifecycle as their
+// paging boundary. Receipt projections enrich only the selected turn page;
+// they must not decide the number or order of a conversation's turns.
+func (s *Service) listCanonicalConversationInteractions(
+	ctx context.Context,
+	options evidencevo.SummaryQueryOptions,
+) (evidencevo.InteractionSummaryPage, error) {
+	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
+	if err != nil {
+		return evidencevo.InteractionSummaryPage{}, err
+	}
+	limit := normalizeSummaryLimit(options.Limit)
+	selection := isessionstore.InteractionPage{}
+	conversation := sessionvo.Conversation{}
+	err = s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		var found bool
+		conversation, found = tx.PeekConversation(options.ConversationID)
+		if !found || !canReadCanonicalConversation(conversation, options.Scope) {
+			return nil
+		}
+		query := isessionstore.InteractionPageQuery{
+			ConversationID: conversation.ID,
+			Limit:          limit,
+		}
+		if hasCursor {
+			after, found := tx.PeekInteraction(cursor.ID)
+			if !found || after.ConversationID != conversation.ID {
+				return ErrSummaryCursorInvalid
+			}
+			query.AfterOrdinal = after.Ordinal
+		} else {
+			query.Offset = summaryOffset(options, 0)
+		}
+		selection = tx.ListInteractionPage(query)
+		return nil
+	})
+	if err != nil {
+		return evidencevo.InteractionSummaryPage{}, err
+	}
+	entries := make([]evidencevo.InteractionListSummary, 0, len(selection.Entries))
+	metadata := summaryLoadMetadata{}
+	for _, interaction := range selection.Entries {
+		canonical := canonicalInteractionListSummary(conversation, interaction)
+		facts, _, factMetadata, loadErr := s.loadExecutionSummaries(ctx, evidencevo.SummaryQueryOptions{
+			Scope: options.Scope, ConversationID: conversation.ID, InteractionID: interaction.ID,
+			Limit: MaxSummaryQueryLimit,
+		})
+		if loadErr != nil {
+			return evidencevo.InteractionSummaryPage{}, loadErr
+		}
+		mergeSummaryLoadMetadata(&metadata, factMetadata)
+		entries = append(entries, mergeCanonicalInteractionFacts(canonical, facts))
+	}
+	if err := s.applyCanonicalInteractionState(ctx, entries); err != nil {
+		return evidencevo.InteractionSummaryPage{}, err
+	}
+	page := evidencevo.InteractionSummaryPage{
+		Entries: append([]evidencevo.InteractionListSummary{}, entries...),
+		Total:   selection.Total, Page: normalizeSummaryPage(options.Page), PageSize: limit,
+		Truncated: metadata.Truncated, Partial: metadata.Truncated,
+		PartialReasons: append([]string{}, metadata.PartialReasons...),
+	}
+	if len(entries) > 0 && selection.HasMore {
+		last := entries[len(entries)-1]
+		next := encodeSummaryCursor(summaryCursor{StartedAt: last.StartedAt, ID: last.InteractionID})
+		page.NextCursor = &next
+	}
+	return page, nil
+}
+
+func (s *Service) canPageCanonicalConversation(options evidencevo.SummaryQueryOptions) bool {
+	if s.sessionStore == nil || strings.TrimSpace(options.ConversationID) == "" {
+		return false
+	}
+	// Filters resolved only from call facts stay on the existing projection
+	// path; this fast path is intentionally limited to the conversation view.
+	return options.InteractionID == "" && options.TraceID == "" && options.Status == "" &&
+		options.AgentOrApp == "" && options.ExcludeAgentOrApp == "" && options.Service == "" &&
+		options.Tool == "" && options.ErrorKeyword == "" && options.BusinessDomain == "" && options.KnowledgeNetwork == "" &&
+		options.EvidenceCompleteness == "" && options.Keyword == "" && options.From.IsZero() && options.To.IsZero()
+}
+
+func canonicalInteractionListSummary(
+	conversation sessionvo.Conversation,
+	interaction sessionvo.Interaction,
+) evidencevo.InteractionListSummary {
+	entry := evidencevo.InteractionListSummary{
+		InteractionID: interaction.ID, ConversationID: conversation.ID,
+		RoundNumber: int(interaction.Ordinal),
+		AgentOrApp:  conversation.AgentName, AgentName: conversation.AgentName,
+		ApplicationPrincipalID: conversation.Owner.ApplicationPrincipalID,
+		EffectiveSubjectID:     conversation.Owner.EffectiveSubjectID,
+		BusinessDomain:         conversation.Owner.BusinessDomainID,
+	}
+	applyInteractionState(
+		&entry.Status, &entry.EvidenceCompleteness, &entry.PartialReasons,
+		&entry.StartedAt, &entry.CompletedAt, &entry.DurationMS, interaction,
+	)
+	return entry
+}
+
+func mergeCanonicalInteractionFacts(
+	canonical evidencevo.InteractionListSummary,
+	requests []evidencevo.RequestSummary,
+) evidencevo.InteractionListSummary {
+	if len(requests) == 0 {
+		return canonical
+	}
+	facts := buildInteractionListSummary(canonical.InteractionID, requests)
+	facts.ConversationID = canonical.ConversationID
+	facts.RoundNumber = canonical.RoundNumber
+	facts.StartedAt, facts.CompletedAt, facts.DurationMS = canonical.StartedAt, canonical.CompletedAt, canonical.DurationMS
+	facts.AgentOrApp, facts.AgentName = canonical.AgentOrApp, canonical.AgentName
+	facts.ApplicationPrincipalID = canonical.ApplicationPrincipalID
+	facts.EffectiveSubjectID, facts.BusinessDomain = canonical.EffectiveSubjectID, canonical.BusinessDomain
+	facts.Status, facts.EvidenceCompleteness = canonical.Status, canonical.EvidenceCompleteness
+	facts.PartialReasons = canonical.PartialReasons
+	return facts
+}
+
+func mergeSummaryLoadMetadata(target *summaryLoadMetadata, source summaryLoadMetadata) {
+	if source.Truncated {
+		target.Truncated = true
+	}
+	for _, reason := range source.PartialReasons {
+		target.PartialReasons = appendUniqueSummaryReason(target.PartialReasons, reason)
+	}
 }
 
 func buildConversationSummary(conversationID string, requests []evidencevo.RequestSummary) evidencevo.ConversationSummary {

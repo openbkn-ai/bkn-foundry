@@ -18,6 +18,7 @@ import (
 type capturingProjectionSource struct {
 	result    iprojectionsource.Result
 	resultFor func(iprojectionsource.Query) iprojectionsource.Result
+	errFor    func(iprojectionsource.Query) error
 	queries   []iprojectionsource.Query
 }
 
@@ -664,6 +665,11 @@ func TestTraceSummaryRootServiceComesFromTraceProducer(t *testing.T) {
 
 func (s *capturingProjectionSource) LoadExecutionProjection(_ context.Context, query iprojectionsource.Query) (iprojectionsource.Result, error) {
 	s.queries = append(s.queries, query)
+	if s.errFor != nil {
+		if err := s.errFor(query); err != nil {
+			return iprojectionsource.Result{}, err
+		}
+	}
 	if s.resultFor != nil {
 		return s.resultFor(query), nil
 	}
@@ -1062,6 +1068,83 @@ func TestListInteractionsKeepsChronologicalRoundNumbersWhileReturningNewestFirst
 		page.Entries[1].InteractionID != "interaction_second" || page.Entries[1].RoundNumber != 2 ||
 		page.Entries[2].InteractionID != "interaction_first" || page.Entries[2].RoundNumber != 1 {
 		t.Fatalf("newest-first entries must retain chronological round numbers: %+v", page.Entries)
+	}
+}
+
+func TestListConversationInteractionsPagesCanonicalTurnsBeforeLoadingFacts(t *testing.T) {
+	sessions := sessionstore.New()
+	owner := sessionvo.Owner{
+		TenantID: "tenant_demo", BusinessDomainID: "bd_demo",
+		ApplicationPrincipalID: "cursor-agent",
+		EffectiveSubjectType:   sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+	}
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_paginated", Owner: owner, Status: sessionvo.ConversationActive,
+			CreatedAt: time.Date(2026, 8, 10, 8, 0, 0, 0, time.UTC),
+			UpdatedAt: time.Date(2026, 8, 10, 8, 2, 0, 0, time.UTC),
+		})
+		for ordinal, interactionID := range []string{"interaction_first", "interaction_second", "interaction_third"} {
+			startedAt := time.Date(2026, 8, 10, 8, ordinal, 0, 0, time.UTC)
+			tx.SaveInteraction(sessionvo.Interaction{
+				ID: interactionID, ConversationID: "conversation_paginated", Ordinal: uint64(ordinal + 1),
+				ExecutionStatus: sessionvo.InteractionCompleted, EvidenceStatus: sessionvo.EvidenceNotApplicable,
+				CreatedAt: startedAt, UpdatedAt: startedAt,
+			})
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("seed canonical interactions: %v", err)
+	}
+
+	source := &capturingProjectionSource{
+		errFor: func(query iprojectionsource.Query) error {
+			if query.InteractionID == "" {
+				return errors.New("interaction facts must be read only after selecting a canonical page")
+			}
+			return nil
+		},
+	}
+	service := New(evidencestore.New(), WithProjectionSource(source), WithSessionStore(sessions))
+	options := evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), ConversationID: "conversation_paginated", Limit: 2,
+	}
+
+	first, err := service.ListInteractions(context.Background(), options)
+	if err != nil {
+		t.Fatalf("list first interaction page: %v", err)
+	}
+	if first.Total != 3 || len(first.Entries) != 2 || first.Entries[0].InteractionID != "interaction_third" ||
+		first.Entries[1].InteractionID != "interaction_second" || first.NextCursor == nil {
+		t.Fatalf("first canonical interaction page = %+v", first)
+	}
+	if len(source.queries) != 2 || source.queries[0].InteractionID == "" || source.queries[1].InteractionID == "" {
+		t.Fatalf("facts must be loaded only for selected interactions: %+v", source.queries)
+	}
+
+	source.queries = nil
+	options.Cursor = *first.NextCursor
+	second, err := service.ListInteractions(context.Background(), options)
+	if err != nil {
+		t.Fatalf("list second interaction page: %v", err)
+	}
+	if second.Total != 3 || len(second.Entries) != 1 || second.Entries[0].InteractionID != "interaction_first" || second.NextCursor != nil {
+		t.Fatalf("second canonical interaction page = %+v", second)
+	}
+	if len(source.queries) != 1 || source.queries[0].InteractionID != "interaction_first" {
+		t.Fatalf("second page must load only its interaction facts: %+v", source.queries)
+	}
+}
+
+func TestCanonicalConversationPagingKeepsFactFiltersOnProjectionPath(t *testing.T) {
+	service := New(evidencestore.New(), WithSessionStore(sessionstore.New()))
+	base := evidencevo.SummaryQueryOptions{ConversationID: "conversation_paginated"}
+	if !service.canPageCanonicalConversation(base) {
+		t.Fatal("unfiltered conversation query must use lifecycle paging")
+	}
+	base.BusinessDomain = "bd_demo"
+	if service.canPageCanonicalConversation(base) {
+		t.Fatal("business-domain filter must stay on the projection query path")
 	}
 }
 

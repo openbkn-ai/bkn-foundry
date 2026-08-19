@@ -18,6 +18,7 @@ import (
 const transactionRetries = 4
 
 const listInteractionsOrderBy = " ORDER BY ordinal_no ASC, interaction_id ASC"
+const listInteractionPageOrderBy = " ORDER BY ordinal_no DESC, interaction_id ASC"
 
 type Store struct {
 	db *sql.DB
@@ -338,6 +339,47 @@ func (t *transaction) ListInteractions(conversationID string) []sessionvo.Intera
 	}
 	t.err = rows.Err()
 	return result
+}
+
+func (t *transaction) ListInteractionPage(query isessionstore.InteractionPageQuery) isessionstore.InteractionPage {
+	page := isessionstore.InteractionPage{}
+	if t.err != nil || query.Limit <= 0 {
+		return page
+	}
+	if err := t.tx.QueryRowContext(t.ctx,
+		"SELECT COUNT(*) FROM bkn_trace_interactions WHERE conversation_id=?", query.ConversationID,
+	).Scan(&page.Total); err != nil {
+		t.err = err
+		return page
+	}
+	where := " WHERE conversation_id=?"
+	args := []any{query.ConversationID}
+	if query.AfterOrdinal != 0 {
+		where += " AND ordinal_no<?"
+		args = append(args, query.AfterOrdinal)
+	}
+	statement := interactionSelect + where + listInteractionPageOrderBy + " LIMIT ? OFFSET ?"
+	args = append(args, query.Limit+1, query.Offset)
+	rows, err := t.tx.QueryContext(t.ctx, statement, args...)
+	if err != nil {
+		t.err = err
+		return page
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		value, scanErr := scanInteractionRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return page
+		}
+		page.Entries = append(page.Entries, value)
+	}
+	t.err = rows.Err()
+	if len(page.Entries) > query.Limit {
+		page.Entries = page.Entries[:query.Limit]
+		page.HasMore = true
+	}
+	return page
 }
 
 func (t *transaction) FindInteraction(interactionID string) (sessionvo.Interaction, bool) {
