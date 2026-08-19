@@ -396,6 +396,92 @@ func TestOpenSearchProjectionSourceStopsAtScanCapAndMarksTruncated(t *testing.T)
 	}
 }
 
+func TestProjectionSourceExpandsConversationArtifactsBySelectedTraceIDs(t *testing.T) {
+	var evidenceQuery, artifactQuery string
+	trace := normalizedTrace()
+	trace.TraceID = "trace-selected"
+	trace.ConversationID = "conversation-selected"
+	document := toDocument(trace, mustTime(t, "2026-08-19T09:00:00Z"))
+	document.Aggregate = true
+	hit, _ := json.Marshal(map[string]any{"hits": map[string]any{"hits": []any{
+		map[string]any{"_id": document.DocumentID, "_source": document, "sort": []any{document.DocumentID}},
+	}}})
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPut && (r.URL.Path == "/bkn-trace-evidence-test" || r.URL.Path == "/bkn-trace-evidence-test-artifacts"):
+			return jsonResponse(`{"acknowledged":true}`), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search":
+			body, _ := io.ReadAll(r.Body)
+			evidenceQuery = string(body)
+			return jsonResponse(string(hit)), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test-artifacts/_search":
+			body, _ := io.ReadAll(r.Body)
+			artifactQuery = string(body)
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			return nil, nil
+		}
+	})
+	store := New(client, "bkn-trace-evidence-test")
+	_, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{
+			TenantID: trace.TenantID, BusinessDomain: trace.BusinessDomain,
+			AccountID: trace.AccountID, AccountType: trace.AccountType,
+		},
+		ConversationIDs: []string{trace.ConversationID}, Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(evidenceQuery, `"bkn.conversation.id":["conversation-selected"]`) {
+		t.Fatalf("evidence query must select the requested conversation: %s", evidenceQuery)
+	}
+	if !strings.Contains(artifactQuery, `"trace_id":["trace-selected"]`) {
+		t.Fatalf("artifact query must use trace IDs resolved from the conversation page: %s", artifactQuery)
+	}
+	if strings.Contains(artifactQuery, "bkn.conversation.id") {
+		t.Fatalf("artifact mapping has no conversation field: %s", artifactQuery)
+	}
+}
+
+func TestProjectionSourceUsesAuthorizedInteractionsWhenConversationEvidenceIsMissing(t *testing.T) {
+	var artifactQuery string
+	client := newFakeOpenSearchClient(func(r *http.Request) (*http.Response, error) {
+		switch {
+		case r.Method == http.MethodPut && (r.URL.Path == "/bkn-trace-evidence-test" || r.URL.Path == "/bkn-trace-evidence-test-artifacts"):
+			return jsonResponse(`{"acknowledged":true}`), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test/_search":
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
+		case r.Method == http.MethodPost && r.URL.Path == "/bkn-trace-evidence-test-artifacts/_search":
+			body, _ := io.ReadAll(r.Body)
+			artifactQuery = string(body)
+			return jsonResponse(`{"hits":{"hits":[]}}`), nil
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+			return nil, nil
+		}
+	})
+	store := New(client, "bkn-trace-evidence-test")
+	_, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{
+			TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+		},
+		ConversationIDs:          []string{"conversation-degraded"},
+		AuthorizedInteractionIDs: []string{"interaction-authorized"},
+		Limit:                    20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(artifactQuery, `"interaction_id":["interaction-authorized"]`) {
+		t.Fatalf("degraded conversation must keep the Core-authorized artifact handoff: %s", artifactQuery)
+	}
+	if strings.Contains(artifactQuery, "bkn.conversation.id") || strings.Contains(artifactQuery, `"trace_id"`) {
+		t.Fatalf("authorized interaction lookup must not add unavailable conversation/trace fields: %s", artifactQuery)
+	}
+}
+
 func TestOwnershipMustSkipsAccountFiltersOnlyForExplicitTechnicalView(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
 		TenantID: "tenant_index", BusinessDomain: "bd_index", AccountActive: true, TenantActive: true,

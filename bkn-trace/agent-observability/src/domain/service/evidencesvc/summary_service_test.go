@@ -24,6 +24,162 @@ type capturingProjectionSource struct {
 
 type fixedTraceStatsSource map[string]int
 
+func pageSummaryTrace(traceID, requestID, at, account, domain string) evidencevo.NormalizedTrace {
+	return evidencevo.NormalizedTrace{
+		TraceID: traceID, RequestID: requestID, TenantID: "tenant_demo", BusinessDomain: domain,
+		AccountID: account, AccountType: "app", SchemaVersion: evidencevo.ArtifactContractVersion,
+		Events: []evidencevo.EvidenceEvent{{
+			EventID: "event-" + traceID, EventType: "agent.interaction.started", TraceID: traceID,
+			RequestID: requestID, ObservedAt: at, EmittedAt: at, OperationName: "agent.run",
+			Payload: map[string]any{"agent_id": "agent-demo"},
+		}},
+	}
+}
+
+type pagingSessionStore struct {
+	*sessionstore.Store
+	tracePage           isessionstore.SummaryIdentityPage
+	conversationPage    isessionstore.SummaryIdentityPage
+	traceQueries        []isessionstore.SummaryPageQuery
+	conversationQueries []isessionstore.SummaryPageQuery
+}
+
+func (store *pagingSessionStore) ListTraceSummaryIdentities(_ context.Context, query isessionstore.SummaryPageQuery) (isessionstore.SummaryIdentityPage, error) {
+	store.traceQueries = append(store.traceQueries, query)
+	return store.tracePage, nil
+}
+
+func (store *pagingSessionStore) ListConversationSummaryIdentities(_ context.Context, query isessionstore.SummaryPageQuery) (isessionstore.SummaryIdentityPage, error) {
+	store.conversationQueries = append(store.conversationQueries, query)
+	return store.conversationPage, nil
+}
+
+func TestListTraceExecutionsLoadsOnlySelectedPageIdentities(t *testing.T) {
+	base := evidencestore.New()
+	store := &pagingSessionStore{Store: sessionstore.New(), tracePage: isessionstore.SummaryIdentityPage{
+		Entries: []isessionstore.SummaryIdentity{{ID: "trace-page", StartedAt: "2026-08-19T09:00:00Z"}}, Total: 101, HasMore: true,
+	}}
+	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace("trace-page", "req-page", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo")}}}
+	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
+	from := time.Date(2026, 8, 19, 8, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 8, 19, 10, 0, 0, 0, time.UTC)
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20})
+	if err != nil {
+		t.Fatalf("list trace page: %v", err)
+	}
+	if page.Total != 101 || len(page.Entries) != 1 || page.Entries[0].TraceID != "trace-page" || page.NextCursor == nil {
+		t.Fatalf("page=%+v", page)
+	}
+	if len(projection.queries) != 1 || len(projection.queries[0].TraceIDs) != 1 || projection.queries[0].TraceIDs[0] != "trace-page" {
+		t.Fatalf("projection queries=%+v", projection.queries)
+	}
+	if !projection.queries[0].From.IsZero() || !projection.queries[0].To.IsZero() {
+		t.Fatalf("page expansion must not filter later facts by the identity time range: %+v", projection.queries[0])
+	}
+	if query := store.traceQueries[0]; !query.From.Equal(from) || !query.To.Equal(to) {
+		t.Fatalf("identity query must own the time filter: %+v", query)
+	}
+	store.tracePage = isessionstore.SummaryIdentityPage{Entries: []isessionstore.SummaryIdentity{{ID: "trace-next", StartedAt: "2026-08-19T08:59:00Z"}}, Total: 101}
+	projection.resultFor = func(query iprojectionsource.Query) iprojectionsource.Result {
+		return iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{pageSummaryTrace(query.TraceIDs[0], "req-next", "2026-08-19T08:59:00Z", "acct_demo", "bd_demo")}}
+	}
+	nextPage, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), From: from, To: to, Limit: 20, Cursor: *page.NextCursor})
+	if err != nil || len(nextPage.Entries) != 1 || nextPage.Entries[0].TraceID != "trace-next" {
+		t.Fatalf("next page=%+v err=%v", nextPage, err)
+	}
+	if query := store.traceQueries[1]; query.AfterStartedAt != "2026-08-19T09:00:00Z" || query.AfterID != "trace-page" {
+		t.Fatalf("cursor query=%+v", query)
+	}
+}
+
+func TestListConversationsLoadsOnlySelectedPageIdentities(t *testing.T) {
+	base := evidencestore.New()
+	store := &pagingSessionStore{Store: sessionstore.New(), conversationPage: isessionstore.SummaryIdentityPage{
+		Entries: []isessionstore.SummaryIdentity{{ID: "conv-page", StartedAt: "2026-08-19T09:00:00Z"}}, Total: 31, HasMore: true,
+	}}
+	trace := pageSummaryTrace("trace-page", "req-page", "2026-08-19T09:00:00Z", "acct_demo", "bd_demo")
+	trace.ConversationID = "conv-page"
+	projection := &capturingProjectionSource{result: iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{trace}}}
+	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
+	page, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20})
+	if err != nil {
+		t.Fatalf("list conversation page: %v", err)
+	}
+	if page.Total != 31 || len(page.Entries) != 1 || page.Entries[0].ConversationID != "conv-page" || page.NextCursor == nil {
+		t.Fatalf("page=%+v", page)
+	}
+	if len(projection.queries) != 1 || len(projection.queries[0].ConversationIDs) != 1 || projection.queries[0].ConversationIDs[0] != "conv-page" {
+		t.Fatalf("projection queries=%+v", projection.queries)
+	}
+	store.conversationPage = isessionstore.SummaryIdentityPage{Entries: []isessionstore.SummaryIdentity{{ID: "conv-next", StartedAt: "2026-08-19T08:59:00Z"}}, Total: 31}
+	projection.resultFor = func(query iprojectionsource.Query) iprojectionsource.Result {
+		value := pageSummaryTrace("trace-next", "req-next", "2026-08-19T08:59:00Z", "acct_demo", "bd_demo")
+		value.ConversationID = query.ConversationIDs[0]
+		return iprojectionsource.Result{Traces: []evidencevo.NormalizedTrace{value}}
+	}
+	nextPage, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{Scope: summaryScope("acct_demo"), Limit: 20, Cursor: *page.NextCursor})
+	if err != nil || len(nextPage.Entries) != 1 || nextPage.Entries[0].ConversationID != "conv-next" {
+		t.Fatalf("next page=%+v err=%v", nextPage, err)
+	}
+	if query := store.conversationQueries[1]; query.Offset != 0 || query.AfterStartedAt != "2026-08-19T09:00:00Z" || query.AfterID != "conv-page" {
+		t.Fatalf("cursor query=%+v", query)
+	}
+}
+
+func TestListTraceExecutionsBoundsProjectionExpansionPerIdentity(t *testing.T) {
+	base := evidencestore.New()
+	store := &pagingSessionStore{Store: sessionstore.New(), tracePage: isessionstore.SummaryIdentityPage{
+		Entries: []isessionstore.SummaryIdentity{
+			{ID: "trace-heavy", StartedAt: "2026-08-19T09:00:00Z"},
+			{ID: "trace-next", StartedAt: "2026-08-19T08:59:00Z"},
+		},
+		Total: 2,
+	}}
+	projection := &capturingProjectionSource{resultFor: func(query iprojectionsource.Query) iprojectionsource.Result {
+		traces := make([]evidencevo.NormalizedTrace, 0, len(query.TraceIDs))
+		for _, traceID := range query.TraceIDs {
+			traces = append(traces, pageSummaryTrace(traceID, "request-"+traceID, "2026-08-19T09:00:00Z", "acct_demo", "bd_demo"))
+		}
+		return iprojectionsource.Result{Traces: traces}
+	}}
+	service := New(base, WithProjectionSource(projection), WithSessionStore(store))
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Entries) != 2 || page.Entries[0].TraceID != "trace-heavy" || page.Entries[1].TraceID != "trace-next" {
+		t.Fatalf("one heavy identity must not starve later page identities: %+v", page)
+	}
+	if len(projection.queries) != 1 {
+		t.Fatalf("projection queries=%+v", projection.queries)
+	}
+	for _, query := range projection.queries {
+		if len(query.TraceIDs) != 2 || query.Limit != 2*maxReceiptsPerSummary {
+			t.Fatalf("the page must use one bounded batch expansion: %+v", query)
+		}
+	}
+}
+
+func TestSummaryIdentityPageDoesNotAdvancePastProjectionLag(t *testing.T) {
+	base := evidencestore.New()
+	store := &pagingSessionStore{Store: sessionstore.New(), tracePage: isessionstore.SummaryIdentityPage{
+		Entries: []isessionstore.SummaryIdentity{{ID: "trace-not-refreshed", StartedAt: "2026-08-19T09:00:00Z"}},
+		Total:   1,
+	}}
+	service := New(base, WithProjectionSource(&capturingProjectionSource{}), WithSessionStore(store))
+	page, err := service.ListTraceExecutions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), Limit: 20,
+	})
+	if !errors.Is(err, ErrSummaryProjectionLag) {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+	if page.NextCursor != nil || len(page.Entries) != 0 {
+		t.Fatalf("projection lag must not return or advance a cursor: %+v", page)
+	}
+}
+
 func (source fixedTraceStatsSource) CountSpansByTraceIDs(_ context.Context, _ []string) (map[string]int, error) {
 	return source, nil
 }
@@ -32,6 +188,28 @@ func TestSummaryOffsetClampsOverflowingPage(t *testing.T) {
 	options := evidencevo.SummaryQueryOptions{Page: int(^uint(0) >> 1), Limit: MaxSummaryQueryLimit}
 	if offset := summaryOffset(options, 10); offset != 10 {
 		t.Fatalf("overflowing page offset = %d, want end of result set", offset)
+	}
+}
+
+func TestSummaryIdentityPageRequiresExactAuthorizationBoundary(t *testing.T) {
+	profile := &evidencevo.AccessProfile{
+		TenantID: "tenant_demo", BusinessDomain: "bd_demo", EffectiveSubjectID: "acct_demo",
+		AccountActive: true, TenantActive: true,
+	}
+	scope := summaryScope("acct_demo")
+	scope.AccessProfile = profile
+	if !canUseSummaryIdentityPage(evidencevo.SummaryQueryOptions{Scope: scope}) {
+		t.Fatal("matching trusted boundary must allow the identity page")
+	}
+	mismatchedProfile := *profile
+	mismatchedProfile.TenantID = "other-tenant"
+	scope.AccessProfile = &mismatchedProfile
+	if canUseSummaryIdentityPage(evidencevo.SummaryQueryOptions{Scope: scope}) {
+		t.Fatal("profile/scope mismatch must fall back before counting identities")
+	}
+	scope.AccessProfile = profile
+	if canUseSummaryIdentityPage(evidencevo.SummaryQueryOptions{Scope: scope, BusinessDomain: "other-domain"}) {
+		t.Fatal("a business-domain filter cannot replace the authorization boundary")
 	}
 }
 
@@ -449,7 +627,7 @@ func TestCanonicalConversationEvidenceReplacesRequestDerivedPartial(t *testing.T
 		duration := int64(0)
 		applyCanonicalConversationEvidenceAndDuration(
 			&completeness, new([]string), &duration, tx,
-			[]evidencevo.RequestSummary{{InteractionID: "interaction_complete"}},
+			[]evidencevo.RequestSummary{{InteractionID: "interaction_complete"}}, nil, nil,
 		)
 		if completeness != "complete" {
 			t.Fatalf("conversation evidence must come from canonical interactions, got %q", completeness)
@@ -475,7 +653,7 @@ func TestCanonicalConversationEvidenceKeepsMissingInteractionPartial(t *testing.
 			[]evidencevo.RequestSummary{
 				{InteractionID: "interaction_complete", EvidenceCompleteness: "partial"},
 				{InteractionID: "interaction_missing", Status: "completed", EvidenceCompleteness: "partial", PartialReasons: []string{"missing_canonical_interaction"}},
-			},
+			}, nil, nil,
 		)
 		if completeness != "partial" || !containsSummaryValue(reasons, "missing_canonical_interaction") {
 			t.Fatalf("missing canonical interaction must remain conservatively partial: completeness=%q reasons=%v", completeness, reasons)
@@ -505,7 +683,7 @@ func TestCanonicalConversationEvidenceNormalizesMissingInteractionContentUnavail
 					EvidenceCompleteness: "content_unavailable",
 					PartialReasons:       []string{"missing_canonical_interaction"},
 				},
-			},
+			}, nil, nil,
 		)
 		if completeness != "partial" || !containsSummaryValue(reasons, "missing_canonical_interaction") {
 			t.Fatalf("request vocabulary must normalize to canonical partial: completeness=%q reasons=%v", completeness, reasons)

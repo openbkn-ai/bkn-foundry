@@ -443,6 +443,47 @@ func (t *transaction) PeekInteraction(interactionID string) (sessionvo.Interacti
 		WHERE interaction_id=?`, interactionID))
 }
 
+func (t *transaction) ListInteractionsByIDs(interactionIDs []string) map[string]sessionvo.Interaction {
+	result := make(map[string]sessionvo.Interaction, len(interactionIDs))
+	if t.err != nil {
+		return result
+	}
+	ids := make([]string, 0, len(interactionIDs))
+	seen := make(map[string]struct{}, len(interactionIDs))
+	for _, id := range interactionIDs {
+		if id != "" {
+			if _, found := seen[id]; !found {
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return result
+	}
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	rows, err := t.tx.QueryContext(t.ctx, interactionSelect+` WHERE interaction_id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		value, scanErr := scanInteractionRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		result[value.ID] = value
+	}
+	t.err = rows.Err()
+	return result
+}
+
 func (t *transaction) NextInteractionOrdinal(conversationID string) uint64 {
 	if t.err != nil {
 		return 0
@@ -526,6 +567,37 @@ func (t *transaction) PeekOperation(operationID string) (sessionvo.Operation, bo
 	}
 	return t.scanOperation(t.tx.QueryRowContext(t.ctx, operationSelect+`
 		WHERE operation_id=?`, operationID))
+}
+
+func (t *transaction) ListOperationsByIDs(operationIDs []string) map[string]sessionvo.Operation {
+	result := make(map[string]sessionvo.Operation, len(operationIDs))
+	if t.err != nil {
+		return result
+	}
+	ids := uniqueStoreIDs(operationIDs)
+	if len(ids) == 0 {
+		return result
+	}
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	rows, err := t.tx.QueryContext(t.ctx, operationSelect+` WHERE operation_id IN (`+storePlaceholders(len(ids))+`)`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		value, scanErr := scanOperationRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		result[value.ID] = value
+	}
+	t.err = rows.Err()
+	return result
 }
 
 func (t *transaction) ListOperations(interactionID string) []sessionvo.Operation {
@@ -1089,6 +1161,67 @@ func (t *transaction) ListAssemblyRevisions(interactionID string) []sessionvo.As
 	}
 	t.err = rows.Err()
 	return result
+}
+
+func (t *transaction) ListAssemblyRevisionsByInteractionIDs(interactionIDs []string) map[string][]sessionvo.AssemblyRevision {
+	result := make(map[string][]sessionvo.AssemblyRevision, len(interactionIDs))
+	if t.err != nil {
+		return result
+	}
+	ids := uniqueStoreIDs(interactionIDs)
+	if len(ids) == 0 {
+		return result
+	}
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	rows, err := t.tx.QueryContext(t.ctx, `
+		SELECT revision_id, revision_no, COALESCE(parent_revision_id, ''), interaction_id,
+			completion_manifest_version, included_receipt_ids, included_event_ids,
+			artifact_manifest_hash, assembly_completeness, COALESCE(partial_reasons, ''),
+			trigger_type, created_at
+		FROM bkn_trace_assembly_revisions
+		WHERE interaction_id IN (`+storePlaceholders(len(ids))+`) ORDER BY interaction_id, revision_no`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var value sessionvo.AssemblyRevision
+		var receipts, events, reasons string
+		if scanErr := rows.Scan(&value.ID, &value.RevisionNo, &value.ParentRevisionID, &value.InteractionID, &value.CompletionManifestVersion, &receipts, &events, &value.ArtifactManifestHash, &value.Completeness, &reasons, &value.Trigger, &value.CreatedAt); scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		unmarshalJSON(receipts, &value.IncludedReceiptIDs)
+		unmarshalJSON(events, &value.IncludedEventIDs)
+		unmarshalJSON(reasons, &value.PartialReasons)
+		result[value.InteractionID] = append(result[value.InteractionID], value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
+func uniqueStoreIDs(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, found := seen[value]; found {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func storePlaceholders(count int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
 }
 
 func (t *transaction) SaveAssemblyRevision(revision sessionvo.AssemblyRevision) {

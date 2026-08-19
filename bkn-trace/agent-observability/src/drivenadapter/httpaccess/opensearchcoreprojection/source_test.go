@@ -50,6 +50,90 @@ func TestSourceLimitsReceiptCandidatesToRequestedLimitPlusLookahead(t *testing.T
 	}
 }
 
+func TestSourcePushesSelectedTraceAndConversationIDs(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		query := string(body)
+		for _, expected := range []string{`"trace_id.keyword":["trace-1","trace-2"]`, `"conversation_id.keyword":["conv-1","conv-2"]`} {
+			if !strings.Contains(query, expected) {
+				t.Fatalf("missing %s in %s", expected, query)
+			}
+		}
+		_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
+	}))
+	t.Cleanup(server.Close)
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", nil)
+	_, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{TenantID: "tenant-1"}, Limit: 20,
+		TraceIDs: []string{"trace-1", "trace-2"}, ConversationIDs: []string{"conv-1", "conv-2"},
+	})
+	if err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+}
+
+func TestSourceCollapsesBatchCandidatesPerSelectedTrace(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		query := string(body)
+		if !strings.Contains(query, `"collapse":{"field":"trace_id.keyword"`) ||
+			!strings.Contains(query, `"size":20`) {
+			t.Fatalf("batch query must reserve an inner receipt budget per trace: %s", query)
+		}
+		_, _ = io.WriteString(w, `{"hits":{"hits":[
+			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":25},"hits":[{"_source":{"receipt_id":"receipt-heavy","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-heavy","conversation_id":"conv-heavy","interaction_id":"interaction-heavy","request_id":"request-heavy","issued_at":"2026-08-19T09:00:00Z"}}]}}}},
+			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":1},"hits":[{"_source":{"receipt_id":"receipt-next","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-next","conversation_id":"conv-next","interaction_id":"interaction-next","request_id":"request-next","issued_at":"2026-08-19T08:59:00Z"}}]}}}}
+		]}}`)
+	}))
+	t.Cleanup(server.Close)
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", nil)
+	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope:    evidencevo.QueryScope{TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user"},
+		TraceIDs: []string{"trace-heavy", "trace-next"}, Limit: 40,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Traces) != 2 || !result.Truncated {
+		t.Fatalf("a heavy trace must not starve the next selected identity: %+v", result)
+	}
+}
+
+func TestSourceLimitsInteractionExpansionToCandidateBudget(t *testing.T) {
+	t.Parallel()
+
+	searches := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		searches++
+		var query map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&query); err != nil {
+			t.Fatalf("decode query: %v", err)
+		}
+		if size, ok := query["size"].(float64); !ok || size != 21 {
+			t.Fatalf("query %d must be bounded by limit plus lookahead, got %#v", searches, query["size"])
+		}
+		if searches == 1 {
+			_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{"receipt_id":"rcpt-1","interaction_id":"int-1","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1"}}}]}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
+	}))
+	t.Cleanup(server.Close)
+
+	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", nil)
+	if _, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
+		Scope: evidencevo.QueryScope{TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user"},
+		Limit: 20,
+	}); err != nil {
+		t.Fatalf("load projection: %v", err)
+	}
+	if searches != 2 {
+		t.Fatalf("expected candidate and bounded interaction expansion queries, got %d", searches)
+	}
+}
+
 func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t *testing.T) {
 	t.Parallel()
 

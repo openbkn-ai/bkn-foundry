@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
@@ -20,6 +21,7 @@ type Transaction interface {
 	FindActiveInteraction(conversationID string) (sessionvo.Interaction, bool)
 	FindInteractionByStartKey(conversationID, idempotencyKey string) (sessionvo.Interaction, bool)
 	PeekInteraction(interactionID string) (sessionvo.Interaction, bool)
+	ListInteractionsByIDs(interactionIDs []string) map[string]sessionvo.Interaction
 	FindInteraction(interactionID string) (sessionvo.Interaction, bool)
 	ListInteractions(conversationID string) []sessionvo.Interaction
 	ListInteractionPage(query InteractionPageQuery) InteractionPage
@@ -27,6 +29,7 @@ type Transaction interface {
 	SaveInteraction(interaction sessionvo.Interaction)
 	FindOperationByKey(interactionID, operationKey string) (sessionvo.Operation, bool)
 	PeekOperation(operationID string) (sessionvo.Operation, bool)
+	ListOperationsByIDs(operationIDs []string) map[string]sessionvo.Operation
 	FindOperation(operationID string) (sessionvo.Operation, bool)
 	ListOperations(interactionID string) []sessionvo.Operation
 	SaveOperation(operation sessionvo.Operation)
@@ -46,6 +49,7 @@ type Transaction interface {
 	ListExpiredActiveInteractions(limit int) []sessionvo.Interaction
 	ListAssemblyDueInteractions(limit int) []sessionvo.Interaction
 	ListAssemblyRevisions(interactionID string) []sessionvo.AssemblyRevision
+	ListAssemblyRevisionsByInteractionIDs(interactionIDs []string) map[string][]sessionvo.AssemblyRevision
 	SaveAssemblyRevision(revision sessionvo.AssemblyRevision)
 	AppendProjection(mutation sessionvo.ProjectionMutation)
 }
@@ -68,4 +72,28 @@ type InteractionPage struct {
 
 type Store interface {
 	WithinTransaction(ctx context.Context, fn func(Transaction) error) error
+}
+
+type SummaryPageQuery struct {
+	Scope          evidencevo.QueryScope
+	From           time.Time
+	To             time.Time
+	BusinessDomain string
+	Limit          int
+	Offset         int
+	AfterStartedAt string
+	AfterID        string
+}
+
+type SummaryIdentity struct{ ID, StartedAt string }
+type SummaryIdentityPage struct {
+	Entries []SummaryIdentity
+	Total   int
+	HasMore bool
+}
+
+type SummaryPageStore interface {
+	Store
+	ListTraceSummaryIdentities(context.Context, SummaryPageQuery) (SummaryIdentityPage, error)
+	ListConversationSummaryIdentities(context.Context, SummaryPageQuery) (SummaryIdentityPage, error)
 }

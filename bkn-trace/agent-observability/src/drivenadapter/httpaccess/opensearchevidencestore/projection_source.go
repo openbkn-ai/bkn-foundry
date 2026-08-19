@@ -21,7 +21,18 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 	if err != nil {
 		return iprojectionsource.Result{}, err
 	}
-	artifacts, artifactTruncated, err := s.listArtifactProjection(ctx, query)
+	artifactQuery := query
+	if len(artifactQuery.AuthorizedInteractionIDs) > 0 {
+		artifactQuery.ConversationIDs = nil
+		artifactQuery.TraceIDs = nil
+	} else if len(artifactQuery.ConversationIDs) > 0 && len(artifactQuery.TraceIDs) == 0 {
+		artifactQuery.TraceIDs = projectionTraceIDs(traces)
+		artifactQuery.ConversationIDs = nil
+		if len(artifactQuery.TraceIDs) == 0 {
+			return iprojectionsource.Result{Traces: traces, Artifacts: []evidencevo.EvidenceArtifact{}, Truncated: evidenceTruncated}, nil
+		}
+	}
+	artifacts, artifactTruncated, err := s.listArtifactProjection(ctx, artifactQuery)
 	if err != nil {
 		return iprojectionsource.Result{}, err
 	}
@@ -79,6 +90,9 @@ func (s *Store) listEvidenceProjectionPage(ctx context.Context, query iprojectio
 		},
 	})
 	must = appendProjectionIdentityFilters(must, query)
+	if len(query.ConversationIDs) > 0 {
+		must = append(must, map[string]any{"terms": map[string]any{"bkn.conversation.id": query.ConversationIDs}})
+	}
 	must = appendEvidenceTimeFilter(must, query)
 	queryBody := map[string]any{
 		"size":  size,
@@ -301,7 +315,26 @@ func appendProjectionIdentityFilters(must []map[string]any, query iprojectionsou
 			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})
 		}
 	}
+	if len(query.TraceIDs) > 0 {
+		must = append(must, map[string]any{"terms": map[string]any{"trace_id": query.TraceIDs}})
+	}
 	return must
+}
+
+func projectionTraceIDs(traces []evidencevo.NormalizedTrace) []string {
+	ids := make([]string, 0, len(traces))
+	seen := make(map[string]struct{}, len(traces))
+	for _, trace := range traces {
+		if trace.TraceID == "" {
+			continue
+		}
+		if _, found := seen[trace.TraceID]; found {
+			continue
+		}
+		seen[trace.TraceID] = struct{}{}
+		ids = append(ids, trace.TraceID)
+	}
+	return ids
 }
 
 func appendEvidenceTimeFilter(must []map[string]any, query iprojectionsource.Query) []map[string]any {

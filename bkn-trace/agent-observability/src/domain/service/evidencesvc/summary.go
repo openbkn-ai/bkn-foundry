@@ -24,7 +24,10 @@ const (
 	maxReceiptsPerSummary    = 20
 )
 
-var ErrSummaryCursorInvalid = errors.New("BKN_TRACE_SUMMARY_CURSOR_INVALID")
+var (
+	ErrSummaryCursorInvalid = errors.New("BKN_TRACE_SUMMARY_CURSOR_INVALID")
+	ErrSummaryProjectionLag = errors.New("BKN_TRACE_SUMMARY_PROJECTION_LAG")
+)
 
 type summaryCursor struct {
 	StartedAt string `json:"started_at"`
@@ -89,6 +92,9 @@ func (s *Service) ListRequests(ctx context.Context, options evidencevo.SummaryQu
 }
 
 func (s *Service) ListConversations(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.ConversationSummaryPage, error) {
+	if page, handled, err := s.listConversationIdentityPage(ctx, options); handled || err != nil {
+		return page, err
+	}
 	loadOptions := options
 	loadOptions.Status = ""
 	requests, _, metadata, err := s.loadExecutionSummaries(ctx, loadOptions)
@@ -704,6 +710,14 @@ func (s *Service) applyCanonicalConversationState(
 			conversationIDs = append(conversationIDs, entry.ConversationID)
 		}
 		conversations := tx.ListConversationsByIDs(conversationIDs)
+		interactionIDs := make([]string, 0)
+		for _, requests := range requestsByConversation {
+			for _, request := range requests {
+				interactionIDs = append(interactionIDs, request.InteractionID)
+			}
+		}
+		interactions := tx.ListInteractionsByIDs(interactionIDs)
+		revisions := tx.ListAssemblyRevisionsByInteractionIDs(interactionIDs)
 		for index := range entries {
 			conversation, found := conversations[entries[index].ConversationID]
 			if !found {
@@ -712,7 +726,7 @@ func (s *Service) applyCanonicalConversationState(
 			applyCanonicalConversationEvidenceAndDuration(
 				&entries[index].EvidenceCompleteness, &entries[index].PartialReasons,
 				&entries[index].DurationMS,
-				tx, requestsByConversation[entries[index].ConversationID],
+				tx, requestsByConversation[entries[index].ConversationID], interactions, revisions,
 			)
 			entries[index].Status = string(conversation.Status)
 			if !conversation.CreatedAt.IsZero() {
@@ -741,6 +755,8 @@ func applyCanonicalConversationEvidenceAndDuration(
 	durationMS *int64,
 	tx isessionstore.Transaction,
 	requests []evidencevo.RequestSummary,
+	interactions map[string]sessionvo.Interaction,
+	revisions map[string][]sessionvo.AssemblyRevision,
 ) {
 	byInteraction := map[string][]evidencevo.RequestSummary{}
 	for _, request := range requests {
@@ -753,7 +769,10 @@ func applyCanonicalConversationEvidenceAndDuration(
 	canonicalCompleteness := ""
 	canonicalReasons := map[string]struct{}{}
 	for interactionID, interactionRequests := range byInteraction {
-		interaction, found := tx.PeekInteraction(interactionID)
+		interaction, found := interactions[interactionID]
+		if !found && interactions == nil {
+			interaction, found = tx.PeekInteraction(interactionID)
+		}
 		if found {
 			canonicalFound = true
 			total += canonicalInteractionDurationMS(interaction)
@@ -762,7 +781,7 @@ func applyCanonicalConversationEvidenceAndDuration(
 				canonicalCompleteness = candidate
 			}
 			if interaction.EvidenceStatus == sessionvo.EvidencePartial || interaction.EvidenceStatus == sessionvo.EvidenceFailed {
-				for _, reason := range latestAssemblyPartialReasons(tx, interactionID) {
+				for _, reason := range latestAssemblyPartialReasonsFromRevisions(revisions[interactionID]) {
 					canonicalReasons[reason] = struct{}{}
 				}
 			}
@@ -785,6 +804,13 @@ func applyCanonicalConversationEvidenceAndDuration(
 		*partialReasons = sortedSummarySet(canonicalReasons)
 	}
 	*durationMS = total
+}
+
+func latestAssemblyPartialReasonsFromRevisions(revisions []sessionvo.AssemblyRevision) []string {
+	if len(revisions) == 0 {
+		return []string{}
+	}
+	return append([]string{}, revisions[len(revisions)-1].PartialReasons...)
 }
 
 func canonicalFallbackEvidenceCompleteness(value string) string {
@@ -976,10 +1002,13 @@ func (s *Service) applyCanonicalRequestIdentity(ctx context.Context, requests []
 	}
 	return s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		conversationIDs := make([]string, 0, len(requests))
+		operationIDs := make([]string, 0, len(requests))
 		for _, request := range requests {
 			conversationIDs = append(conversationIDs, request.ConversationID)
+			operationIDs = append(operationIDs, request.OperationID)
 		}
 		byConversation := tx.ListConversationsByIDs(conversationIDs)
+		byOperation := tx.ListOperationsByIDs(operationIDs)
 		for index := range requests {
 			conversationID := requests[index].ConversationID
 			if conversationID == "" {
@@ -993,7 +1022,7 @@ func (s *Service) applyCanonicalRequestIdentity(ctx context.Context, requests []
 			requests[index].ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
 			requests[index].EffectiveSubjectID = conversation.Owner.EffectiveSubjectID
 			if requests[index].OperationID != "" {
-				operation, operationFound := tx.PeekOperation(requests[index].OperationID)
+				operation, operationFound := byOperation[requests[index].OperationID]
 				if operationFound && operation.AttemptStatus == sessionvo.AttemptFailed && requests[index].ErrorSummary == "" {
 					requests[index].ErrorSummary = "OpenBKN operation failed"
 				}
@@ -1416,6 +1445,9 @@ func (s *Service) ListRequestTraces(ctx context.Context, requestID string, optio
 }
 
 func (s *Service) ListTraceExecutions(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.TraceSummaryPage, error) {
+	if page, handled, err := s.listTraceIdentityPage(ctx, options); handled || err != nil {
+		return page, err
+	}
 	var traces []evidencevo.TraceSummary
 	var metadata summaryLoadMetadata
 	var err error
@@ -1440,6 +1472,172 @@ func (s *Service) ListTraceExecutions(ctx context.Context, options evidencevo.Su
 		page.PartialReasons = append([]string{}, metadata.PartialReasons...)
 	}
 	return page, err
+}
+
+func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.TraceSummaryPage, bool, error) {
+	pageStore, ok := s.sessionStore.(isessionstore.SummaryPageStore)
+	if !ok || s.projectionSource == nil || !canUseSummaryIdentityPage(options) {
+		return evidencevo.TraceSummaryPage{}, false, nil
+	}
+	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
+	if err != nil {
+		return evidencevo.TraceSummaryPage{}, true, err
+	}
+	query := summaryIdentityQuery(options)
+	if hasCursor {
+		query.Offset = 0
+		query.AfterStartedAt, query.AfterID = cursor.StartedAt, cursor.ID
+	}
+	identityPage, err := pageStore.ListTraceSummaryIdentities(ctx, query)
+	if err != nil {
+		return evidencevo.TraceSummaryPage{}, true, err
+	}
+	if len(identityPage.Entries) == 0 {
+		return evidencevo.TraceSummaryPage{Entries: []evidencevo.TraceSummary{}, Total: identityPage.Total, Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit)}, true, nil
+	}
+	ids := summaryIdentityIDs(identityPage.Entries)
+	_, traces, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
+		Scope: options.Scope, BusinessDomain: options.BusinessDomain,
+		TraceIDs: ids, Limit: selectedSummaryCandidateLimit(len(ids)),
+	}, summaryLoadMetadata{})
+	if err != nil {
+		return evidencevo.TraceSummaryPage{}, true, err
+	}
+	byID := make(map[string]evidencevo.TraceSummary, len(traces))
+	for _, trace := range traces {
+		byID[trace.TraceID] = trace
+	}
+	entries := make([]evidencevo.TraceSummary, 0, len(ids))
+	for _, identity := range identityPage.Entries {
+		trace, found := byID[identity.ID]
+		if !found {
+			return evidencevo.TraceSummaryPage{}, true, ErrSummaryProjectionLag
+		}
+		trace.StartedAt = identity.StartedAt
+		entries = append(entries, trace)
+	}
+	page := evidencevo.TraceSummaryPage{Entries: entries, Total: identityPage.Total, Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit), Truncated: metadata.Truncated, Partial: metadata.Truncated, PartialReasons: append([]string{}, metadata.PartialReasons...)}
+	if identityPage.HasMore && len(identityPage.Entries) > 0 {
+		last := identityPage.Entries[len(identityPage.Entries)-1]
+		next := encodeSummaryCursor(summaryCursor{StartedAt: last.StartedAt, ID: last.ID})
+		page.NextCursor = &next
+	}
+	return page, true, nil
+}
+
+func (s *Service) listConversationIdentityPage(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.ConversationSummaryPage, bool, error) {
+	pageStore, ok := s.sessionStore.(isessionstore.SummaryPageStore)
+	if !ok || s.projectionSource == nil || !canUseSummaryIdentityPage(options) {
+		return evidencevo.ConversationSummaryPage{}, false, nil
+	}
+	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
+	if err != nil {
+		return evidencevo.ConversationSummaryPage{}, true, err
+	}
+	query := summaryIdentityQuery(options)
+	if hasCursor {
+		query.Offset = 0
+		query.AfterStartedAt, query.AfterID = cursor.StartedAt, cursor.ID
+	}
+	identityPage, err := pageStore.ListConversationSummaryIdentities(ctx, query)
+	if err != nil {
+		return evidencevo.ConversationSummaryPage{}, true, err
+	}
+	if len(identityPage.Entries) == 0 {
+		return evidencevo.ConversationSummaryPage{Entries: []evidencevo.ConversationSummary{}, Total: identityPage.Total, Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit)}, true, nil
+	}
+	ids := summaryIdentityIDs(identityPage.Entries)
+	requests, _, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
+		Scope: options.Scope, BusinessDomain: options.BusinessDomain,
+		ConversationIDs: ids, Limit: selectedSummaryCandidateLimit(len(ids)),
+	}, summaryLoadMetadata{})
+	if err != nil {
+		return evidencevo.ConversationSummaryPage{}, true, err
+	}
+	selected := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		selected[id] = struct{}{}
+	}
+	grouped := make(map[string][]evidencevo.RequestSummary, len(ids))
+	for _, request := range requests {
+		if _, found := selected[request.ConversationID]; found {
+			grouped[request.ConversationID] = append(grouped[request.ConversationID], request)
+		}
+	}
+	byID := make(map[string]evidencevo.ConversationSummary, len(ids))
+	entriesForCanonical := make([]evidencevo.ConversationSummary, 0, len(ids))
+	for _, identity := range identityPage.Entries {
+		group := grouped[identity.ID]
+		if len(group) == 0 {
+			return evidencevo.ConversationSummaryPage{}, true, ErrSummaryProjectionLag
+		}
+		entriesForCanonical = append(entriesForCanonical, buildConversationSummary(identity.ID, group))
+	}
+	if err := s.applyCanonicalConversationState(ctx, entriesForCanonical, grouped); err != nil {
+		return evidencevo.ConversationSummaryPage{}, true, err
+	}
+	for _, entry := range entriesForCanonical {
+		byID[entry.ConversationID] = entry
+	}
+	entries := make([]evidencevo.ConversationSummary, 0, len(ids))
+	for _, identity := range identityPage.Entries {
+		if entry, found := byID[identity.ID]; found {
+			entries = append(entries, entry)
+		}
+	}
+	page := evidencevo.ConversationSummaryPage{Entries: entries, Total: identityPage.Total, Page: normalizeSummaryPage(options.Page), PageSize: normalizeSummaryLimit(options.Limit), Truncated: metadata.Truncated, Partial: metadata.Truncated, PartialReasons: append([]string{}, metadata.PartialReasons...)}
+	if identityPage.HasMore && len(identityPage.Entries) > 0 {
+		last := identityPage.Entries[len(identityPage.Entries)-1]
+		next := encodeSummaryCursor(summaryCursor{StartedAt: last.StartedAt, ID: last.ID})
+		page.NextCursor = &next
+	}
+	return page, true, nil
+}
+
+func canUseSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {
+	return trustedQueryScope(options.Scope) &&
+		(options.Scope.AccessProfile == nil || options.Scope.AccessProfile.AccountActive && options.Scope.AccessProfile.TenantActive) &&
+		summaryAccessBoundaryMatches(options.Scope) &&
+		(options.BusinessDomain == "" || options.BusinessDomain == options.Scope.BusinessDomain) &&
+		(options.Scope.AccessProfile == nil || !evidencevo.NeedsCrossAccountCandidates(options.Scope) || evidencevo.HasTenantWideTraceAccess(*options.Scope.AccessProfile)) &&
+		options.TraceID == "" && options.ConversationID == "" && options.InteractionID == "" &&
+		options.Status == "" && options.AgentOrApp == "" && options.ExcludeAgentOrApp == "" &&
+		options.Service == "" && options.Tool == "" && options.ErrorKeyword == "" &&
+		options.KnowledgeNetwork == "" && options.EvidenceCompleteness == "" && options.Keyword == ""
+}
+
+func summaryAccessBoundaryMatches(scope evidencevo.QueryScope) bool {
+	if scope.AccessProfile == nil {
+		return true
+	}
+	profile := *scope.AccessProfile
+	return profile.TenantID != "" && scope.TenantID == profile.TenantID &&
+		profile.BusinessDomain != "" && scope.BusinessDomain == profile.BusinessDomain
+}
+
+func summaryIdentityQuery(options evidencevo.SummaryQueryOptions) isessionstore.SummaryPageQuery {
+	return isessionstore.SummaryPageQuery{Scope: options.Scope, From: options.From, To: options.To, BusinessDomain: options.BusinessDomain, Limit: normalizeSummaryLimit(options.Limit), Offset: summaryQueryOffset(options)}
+}
+
+func summaryIdentityIDs(entries []isessionstore.SummaryIdentity) []string {
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.ID != "" {
+			ids = append(ids, entry.ID)
+		}
+	}
+	return ids
+}
+
+func selectedSummaryCandidateLimit(identityCount int) int {
+	if identityCount <= 0 {
+		return 1
+	}
+	limit := identityCount * maxReceiptsPerSummary
+	if limit > MaxSummaryScanEntries {
+		return MaxSummaryScanEntries
+	}
+	return limit
 }
 
 func (s *Service) loadTraceExecutionSummaries(ctx context.Context, traceID string, scope evidencevo.QueryScope) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {
@@ -1545,7 +1743,10 @@ func summaryCandidateLimit(options evidencevo.SummaryQueryOptions) int {
 	limit := normalizeSummaryLimit(options.Limit)
 	page := normalizeSummaryPage(options.Page)
 	if options.Cursor != "" {
-		page = 1
+		// The compatibility path does not push cursors into Projection. Keep its
+		// historical scan window so a cursor never makes previously reachable
+		// entries disappear merely because the ordinary list fast path exists.
+		return MaxSummaryScanEntries
 	}
 	candidates := page*limit*maxReceiptsPerSummary + 1
 	if candidates > MaxSummaryScanEntries {
@@ -1814,7 +2015,10 @@ func decodeSummaryCursor(value string) (summaryCursor, bool, error) {
 		return summaryCursor{}, false, ErrSummaryCursorInvalid
 	}
 	var cursor summaryCursor
-	if err := json.Unmarshal(body, &cursor); err != nil || cursor.ID == "" {
+	if err := json.Unmarshal(body, &cursor); err != nil || cursor.ID == "" || cursor.StartedAt == "" {
+		return summaryCursor{}, false, ErrSummaryCursorInvalid
+	}
+	if _, err := time.Parse(time.RFC3339Nano, cursor.StartedAt); err != nil {
 		return summaryCursor{}, false, ErrSummaryCursorInvalid
 	}
 	return cursor, true, nil
