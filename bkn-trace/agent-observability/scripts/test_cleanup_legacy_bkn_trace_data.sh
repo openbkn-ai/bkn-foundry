@@ -97,6 +97,24 @@ if [[ $missing_index_preview != *"opensearch ss4o_traces-local status=absent"* ]
 fi
 
 : >"$call_log"
+if ! missing_index_confirm=$(env "${common[@]}" PATH="$fake_bin:$PATH" CALL_LOG="$call_log" FAKE_STATE="$fake_state" MISSING_TRACE_INDEX=1 bash "$target" --confirm 2>&1); then
+  echo "confirmed cleanup must skip an explicitly targeted OpenSearch index that is already absent" >&2
+  exit 1
+fi
+if [[ $missing_index_confirm != *"absent indexes skipped: ss4o_traces-local"* ]]; then
+  echo "confirmed cleanup must summarize absent OpenSearch targets" >&2
+  exit 1
+fi
+if grep -q 'ss4o_traces-local/_delete_by_query' "$call_log"; then
+  echo "confirmed cleanup must not delete an absent OpenSearch index" >&2
+  exit 1
+fi
+if ! grep -q 'bkn-trace-evidence-local/_delete_by_query' "$call_log" || ! grep -q 'bkn-trace-core-local/_delete_by_query' "$call_log"; then
+  echo "confirmed cleanup must retain the remaining explicit OpenSearch targets" >&2
+  exit 1
+fi
+
+: >"$call_log"
 env "${common[@]}" PATH="$fake_bin:$PATH" CALL_LOG="$call_log" FAKE_STATE="$fake_state" bash "$target" --confirm >/dev/null
 if ! grep -q 'DELETE FROM bkn_trace_operation_call_facts' "$call_log" || ! grep -q '_delete_by_query' "$call_log"; then
   echo "confirmed cleanup did not execute the explicit Trace targets" >&2

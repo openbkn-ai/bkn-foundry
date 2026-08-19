@@ -108,12 +108,14 @@ for table in "${tables[@]}"; do
   echo "mariadb $table count=$count"
 done
 existing_indices=()
+absent_indices=()
 for index in "${indices[@]}"; do
   if ! count_response=$(curl "${query_curl_args[@]}" "$endpoint/$index/_count"); then
     echo "OpenSearch count request failed for $index" >&2
     exit 1
   fi
   if [[ $(jq -r 'if .status == 404 then "absent" else empty end' <<<"$count_response") == "absent" ]]; then
+    absent_indices+=("$index")
     echo "opensearch $index status=absent"
     continue
   fi
@@ -158,4 +160,8 @@ for index in "${existing_indices[@]}"; do
     exit 1
   fi
 done
-echo "cleanup complete; all explicit BKN Trace targets are empty"
+if [[ ${#absent_indices[@]} -gt 0 ]]; then
+  echo "cleanup complete; all existing explicit BKN Trace targets are empty; absent indexes skipped: ${absent_indices[*]}"
+else
+  echo "cleanup complete; all explicit BKN Trace targets are empty"
+fi
