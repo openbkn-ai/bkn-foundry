@@ -134,7 +134,12 @@ type StartBuildTaskRequest struct {
 type BuildTasksQueryParams struct {
 	PaginationQueryParams
 	ResourceID string
-	CatalogID  string
+	// ResourceIDs narrows the listing to a set of resources. It is how the
+	// authorization filter reaches the SQL: the visible ids are resolved once and
+	// applied to the count and the page together, so total_count stays honest and
+	// pages do not develop holes.
+	ResourceIDs []string
+	CatalogID   string
 	Statuses   []string // Multi-valued state filtering (IN) Empty means no filtering
 	Mode       string
 }

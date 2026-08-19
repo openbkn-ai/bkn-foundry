@@ -111,3 +111,82 @@ func TestBuildTaskCreateRequiresTaskManage(t *testing.T) {
 	assert.Empty(t, id)
 	assert.Same(t, denied, err)
 }
+
+// TestBuildTaskListFiltersByVisibleResources 是 #472 的标题项：列表曾经返回全量。
+//
+// 过滤下推到 SQL 而不是对取回的一页做筛选:后者会让 total_count 虚高、每页条数
+// 忽多忽少，把服务端排序分页的语义破坏掉。
+func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
+	t.Run("按可见资源集过滤", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return([]string{"res-1"}, false, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Equal(t, []string{"res-1"}, params.ResourceIDs, "可见资源集必须下推到查询里")
+				return []*interfaces.BuildTaskSummary{}, 0, nil
+			})
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		_, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
+		require.NoError(t, err)
+	})
+
+	t.Run("一个都看不见就直接空，不查库", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs}
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+		// bta.List 未被期望。
+
+		tasks, total, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
+		require.NoError(t, err)
+		assert.Empty(t, tasks)
+		assert.Zero(t, total)
+	})
+
+	t.Run("显式指定的 resource_id 是取交集，不是放宽", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs}
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).
+			Return([]string{"res-1"}, false, nil)
+		// 问的是看不见的那张表，bta.List 不该被调用。
+
+		tasks, total, err := svc.List(context.Background(),
+			interfaces.BuildTasksQueryParams{ResourceID: "res-other"})
+		require.NoError(t, err)
+		assert.Empty(t, tasks)
+		assert.Zero(t, total)
+	})
+
+	t.Run("持类型级授权则完全不过滤", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, true, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Empty(t, params.ResourceIDs, "持类型级授权时不该下推 id 集——那会把「看得见全部」变成「只看得见当时列出来的那些」")
+				return []*interfaces.BuildTaskSummary{}, 0, nil
+			})
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		_, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
+		require.NoError(t, err)
+	})
+}

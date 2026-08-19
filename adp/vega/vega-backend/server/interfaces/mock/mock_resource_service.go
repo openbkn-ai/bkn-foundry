@@ -42,6 +42,22 @@ func (m *MockResourceService) EXPECT() *MockResourceServiceMockRecorder {
 	return m.recorder
 }
 
+// AuthorizedResourceIDs mocks base method.
+func (m *MockResourceService) AuthorizedResourceIDs(ctx context.Context, op string) ([]string, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthorizedResourceIDs", ctx, op)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// AuthorizedResourceIDs indicates an expected call of AuthorizedResourceIDs.
+func (mr *MockResourceServiceMockRecorder) AuthorizedResourceIDs(ctx, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizedResourceIDs", reflect.TypeOf((*MockResourceService)(nil).AuthorizedResourceIDs), ctx, op)
+}
+
 // CheckExistByCategories mocks base method.
 func (m *MockResourceService) CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error) {
 	m.ctrl.T.Helper()

@@ -52,6 +52,12 @@ type ResourceService interface {
 	// task is authorized by the table it belongs to rather than by nothing at all.
 	CheckResourcePermission(ctx context.Context, resourceID string, op string) error
 
+	// AuthorizedResourceIDs lists the resources the caller may perform op on.
+	// unrestricted reports a type-wide grant, in which case ids is empty and the
+	// caller must not filter at all — the distinction matters because "sees
+	// everything" and "sees nothing" are otherwise the same empty slice.
+	AuthorizedResourceIDs(ctx context.Context, op string) (ids []string, unrestricted bool, err error)
+
 	// InternalGetByID retrieves a Resource by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*Resource, error)
 	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.

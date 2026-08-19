@@ -612,6 +612,55 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 // A missing resource is reported as forbidden rather than as "not found": the
 // caller has not proven it may see the resource, and saying which ids exist is
 // itself a disclosure.
+// AuthorizedResourceIDs answers "which resources may I act on", for listings of
+// things that hang off a resource rather than of resources themselves — build
+// tasks above all.
+//
+// The type-wide grant is probed first and reported as unrestricted. That is not
+// only an optimisation: most accounts hold resource:*, and resolving a concrete
+// id set for them would mean listing every resource on every page request.
+//
+// Otherwise the visible set is resolved in one batch. It is deliberately the
+// whole set rather than the page's ids: the caller filters the SQL with it, so
+// the count and the page agree. Filtering a page after the fact would leave
+// total_count too high and pages unevenly sized.
+func (rs *resourceService) AuthorizedResourceIDs(ctx context.Context, op string) ([]string, bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.AuthorizedResourceIDs")
+	defer span.End()
+
+	if err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{op}); err == nil {
+		return nil, true, nil
+	}
+
+	ids, err := rs.ra.ListIDs(ctx, interfaces.ResourcesQueryParams{})
+	if err != nil {
+		span.SetStatus(codes.Error, "List resource ids failed")
+		return nil, false, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if len(ids) == 0 {
+		return nil, false, nil
+	}
+	internalResources, err := rs.internalResourceIDSet(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	allowed, err := rs.filterResourcePermissions(ctx, ids, internalResources, []string{op}, true)
+	if err != nil {
+		return nil, false, err
+	}
+	out := make([]string, 0, len(allowed))
+	for _, id := range ids { // 保持 ListIDs 的顺序，便于比对
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return out, false, nil
+}
+
 func (rs *resourceService) CheckResourcePermission(ctx context.Context, resourceID string, op string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.CheckResourcePermission")
 	defer span.End()
