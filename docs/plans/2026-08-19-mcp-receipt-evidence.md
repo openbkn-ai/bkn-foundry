@@ -71,3 +71,22 @@ Run the repository-supported bkn-agent checks from its module directory.
 **Step 3: Commit**
 
 Commit the focused implementation, tests, and this plan with a Conventional Commit message.
+
+### Task 4: Preserve the MCP result contract at the Context Loader boundary
+
+**Files:**
+- Modify: `infra/bkn-agent/app/core/context_loader.py`
+- Test: `infra/bkn-agent/app/test/test_context_loader.py`
+- Test: `infra/bkn-agent/app/test/test_limits_and_gates.py`
+
+The context-injection wrapper must retain `content_and_artifact`; otherwise
+LangChain stringifies the raw MCP tuple before the model sees it, while the
+evidence candidate hash is calculated from the content blocks. Exercise a
+bound Context Loader tool through `ainvoke` with a real MCP-style
+`(content, artifact)` result and assert the candidate is supplied to the model.
+
+Limit receipt admission to 100 distinct valid evidence event ids and normalize
+Context Loader `business_refs` into the local safe-reference schema before
+recording downstream facts. The receipt trust decision must use an internal
+wrapper capability token, not metadata that a third-party MCP server might
+eventually be able to supply.

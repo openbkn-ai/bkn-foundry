@@ -305,7 +305,10 @@ def instrument_tool_calls(tools: list[Any], account_id: str, account_type: str) 
             __inner=inner,
             __tool_name=tool_name,
             __tool_id=tool_id,
-            __trust_mcp_receipt=metadata.get("bkn_context_loader") is True,
+            __trust_mcp_receipt=(
+                metadata.get("bkn_context_loader_trust_token")
+                is context_loader._MCP_RECEIPT_TRUST_TOKEN
+            ),
             **kwargs,
         ):
             operation_id, parent_event_id = evidence.new_operation()

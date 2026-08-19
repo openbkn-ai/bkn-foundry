@@ -3,10 +3,9 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
-from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
 
-from app.core import graph, tools
+from app.core import context_loader, graph, tools
 from app import evidence, observability
 from app.models import AgentOut
 
@@ -114,9 +113,16 @@ def test_generic_tools_get_distinct_operations_and_dynamic_causality_headers(mon
 def test_context_loader_tools_trust_mcp_receipts_but_external_tools_do_not(monkeypatch):
     captured = []
 
-    async def run() -> tuple[list[dict], dict]:
+    async def context_loader_run(*, bkn_context: dict) -> tuple[list[dict], dict]:
+        assert bkn_context == {"conversation_id": "conv-1", "interaction_id": "int-1"}
         return (
             [{"type": "text", "text": "retrieval result"}],
+            {"structured_content": {"bkn_receipt": {"receipt_status": "completed"}}},
+        )
+
+    async def external_run() -> tuple[list[dict], dict]:
+        return (
+            [{"type": "text", "text": "external result"}],
             {"structured_content": {"bkn_receipt": {"receipt_status": "completed"}}},
         )
 
@@ -127,13 +133,12 @@ def test_context_loader_tools_trust_mcp_receipts_but_external_tools_do_not(monke
         captured.append(kwargs)
 
     context_loader_tool = StructuredTool.from_function(
-        coroutine=run,
+        coroutine=context_loader_run,
         name="search_schema",
         description="context loader",
-        metadata={"bkn_context_loader": True},
     )
     external_tool = StructuredTool.from_function(
-        coroutine=run,
+        coroutine=external_run,
         name="external_search",
         description="external",
         metadata={"bkn_context_loader": "false"},
@@ -150,7 +155,10 @@ def test_context_loader_tools_trust_mcp_receipts_but_external_tools_do_not(monke
     )
     interaction_token = evidence.begin_interaction("question", "task", "agent-1", "bkn.agent.task")
     try:
-        wrapped = tools.instrument_tool_calls([context_loader_tool, external_tool], "acct", "user")
+        bound = context_loader._bind_context(
+            context_loader_tool, context_loader.ContextLoaderSession("conv-1", "int-1")
+        )
+        wrapped = tools.instrument_tool_calls([bound, external_tool], "acct", "user")
         asyncio.run(wrapped[0].coroutine())
         asyncio.run(wrapped[1].coroutine())
     finally:
@@ -165,7 +173,8 @@ def test_context_loader_tools_trust_mcp_receipts_but_external_tools_do_not(monke
 def test_context_loader_mcp_receipt_links_retrieval_event_to_model_candidates(monkeypatch):
     content = [{"type": "text", "text": "retrieval result"}]
 
-    async def run() -> tuple[list[dict], dict]:
+    async def run(*, bkn_context: dict) -> tuple[list[dict], dict]:
+        assert bkn_context == {"conversation_id": "conv-1", "interaction_id": "int-1"}
         return (
             content,
             {"structured_content": {"bkn_receipt": {
@@ -182,7 +191,12 @@ def test_context_loader_mcp_receipt_links_retrieval_event_to_model_candidates(mo
         coroutine=run,
         name="search_schema",
         description="context loader",
-        metadata={"bkn_context_loader": True},
+        args_schema={
+            "type": "object",
+            "properties": {"bkn_context": {"type": "object"}},
+            "required": ["bkn_context"],
+        },
+        response_format="content_and_artifact",
     )
     monkeypatch.setattr(evidence, "submit_events", fake_submit)
     trace_token = observability.set_context(
@@ -195,10 +209,18 @@ def test_context_loader_mcp_receipt_links_retrieval_event_to_model_candidates(mo
     )
     interaction_token = evidence.begin_interaction("question", "task", "agent-1", "bkn.agent.task")
     try:
-        wrapped = tools.instrument_tool_calls([tool], "acct", "user")
-        asyncio.run(wrapped[0].coroutine())
+        bound = context_loader._bind_context(
+            tool, context_loader.ContextLoaderSession("conv-1", "int-1")
+        )
+        wrapped = tools.instrument_tool_calls([bound], "acct", "user")
+        message = asyncio.run(wrapped[0].ainvoke({
+            "args": {},
+            "id": "call-context-retrieval",
+            "name": "search_schema",
+            "type": "tool_call",
+        }))
         headers = evidence.model_context_headers(
-            [ToolMessage(content=content, tool_call_id="call-context-retrieval")],
+            [message],
             "op-model-context-retrieval",
         )
     finally:

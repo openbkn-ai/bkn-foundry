@@ -8,6 +8,7 @@
 import asyncio
 
 import pytest
+from langchain_core.tools import StructuredTool
 
 from app import auth
 from app.core import context_loader
@@ -93,6 +94,24 @@ def test_session_injects_bkn_context_and_hides_it(monkeypatch):
     assert business.calls == [
         {"kn_id": "kn-1", "bkn_context": {"conversation_id": "conv_real", "interaction_id": "int_real"}}
     ]
+
+
+def test_bound_context_loader_tool_preserves_mcp_artifact_response_format():
+    async def raw_call(**_kwargs):
+        return ([{"type": "text", "text": "result"}], {"structured_content": {}})
+
+    raw = StructuredTool.from_function(
+        coroutine=raw_call,
+        name="search_schema",
+        description="search",
+        response_format="content_and_artifact",
+    )
+
+    bound = context_loader._bind_context(
+        raw, context_loader.ContextLoaderSession("conv-1", "int-1")
+    )
+
+    assert bound.response_format == "content_and_artifact"
 
 
 def test_session_tools_can_be_limited_to_an_explicit_read_only_allow_list(monkeypatch):

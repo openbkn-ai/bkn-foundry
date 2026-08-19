@@ -31,6 +31,7 @@ _REF_FIELDS = {
     "summary_hash",
 }
 _DERIVABLE_DOWNSTREAM_EVENTS = {"retrieval.completed"}
+_MAX_MCP_RECEIPT_EVIDENCE_REFS = 100
 
 
 class EvidenceSubmissionError(RuntimeError):
@@ -467,6 +468,38 @@ def _safe_refs(value: Any) -> list[dict[str, Any]]:
     return refs
 
 
+def _mcp_business_refs(value: Any) -> list[dict[str, Any]]:
+    """Map Context Loader receipt references into the agent's safe-ref shape.
+
+    Context Loader owns the receipt schema, whose business references describe
+    domain/version but not the local provenance fields required by evidence.
+    The mapping is deliberately narrow: no display text or unknown fields cross
+    the boundary into the agent event.
+    """
+    if not isinstance(value, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in value[:_MAX_MCP_RECEIPT_EVIDENCE_REFS]:
+        if not isinstance(item, dict):
+            continue
+        ref_id = item.get("ref_id")
+        ref_type = item.get("ref_type")
+        version = item.get("version")
+        if not all(isinstance(field, str) and field for field in (ref_id, ref_type)):
+            continue
+        normalized.append(
+            {
+                "ref_id": ref_id,
+                "ref_type": ref_type,
+                "source_system": "context-loader",
+                "validity": "observed",
+                "version_status": version if isinstance(version, str) and version else "unversioned",
+                "visibility": "visible",
+            }
+        )
+    return _safe_refs(normalized)
+
+
 def record_downstream_fact(
     *,
     event_id: str,
@@ -541,13 +574,20 @@ def record_fact_receipt(
     references = mcp_receipt.get("observed_evidence_refs")
     if not isinstance(references, list):
         return
+    business_refs = _mcp_business_refs(mcp_receipt.get("business_refs"))
+    accepted: set[str] = set()
     for reference in references:
-        if not isinstance(reference, str):
+        if (
+            len(accepted) >= _MAX_MCP_RECEIPT_EVIDENCE_REFS
+            or not _valid_id(reference)
+            or reference in accepted
+        ):
             continue
+        accepted.add(reference)
         record_downstream_fact(
             event_id=reference,
             operation_id=operation_id,
-            business_refs=mcp_receipt.get("business_refs"),
+            business_refs=business_refs,
             context_hash=context_hash,
         )
 

@@ -394,6 +394,45 @@ def test_trusted_mcp_receipt_ignores_invalid_evidence_refs():
     assert headers == {}
 
 
+def test_trusted_mcp_receipt_caps_evidence_and_normalizes_business_refs():
+    token = observability.set_context(observability.build_context(_headers()))
+    interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
+    try:
+        evidence.record_fact_receipt(
+            operation_id="op_context_retrieval_4",
+            body={"bkn_receipt": {
+                "receipt_status": "completed",
+                "evidence_durability": "durable",
+                "observed_evidence_refs": [f"evt_context_retrieval_{i}" for i in range(101)],
+                "business_refs": [{
+                    "ref_id": "object:knowledge_network:purchase_order",
+                    "ref_type": "object_type",
+                    "business_domain_id": "domain-supply-chain",
+                    "version": "v1",
+                    "display_hint": "Purchase order",
+                }],
+            }},
+            context_hash=evidence.tool_message_context_hash("capped-result"),
+            trust_mcp_receipt=True,
+        )
+        current = evidence._interaction.get()
+    finally:
+        evidence.end_interaction(interaction)
+        observability.reset_context(token)
+
+    assert current is not None
+    assert len(current.fact_candidates) == 100
+    assert "evt_context_retrieval_100" not in current.fact_candidates
+    assert current.fact_candidates["evt_context_retrieval_0"]["business_refs"] == [{
+        "ref_id": "object:knowledge_network:purchase_order",
+        "ref_type": "object_type",
+        "source_system": "context-loader",
+        "validity": "observed",
+        "version_status": "v1",
+        "visibility": "visible",
+    }]
+
+
 def test_mf_model_call_propagates_operation_and_consumes_stable_fact(monkeypatch):
     captured = {}
 
