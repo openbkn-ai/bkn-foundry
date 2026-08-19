@@ -117,7 +117,7 @@ class TestSessionService:
         )
         scheduler.schedule.return_value = runtime_node
 
-        # Test setup.
+        # Execute the command.
         command = CreateSessionCommand(
             template_id="python-datascience", timeout=300, resource_limit=ResourceLimit.default()
         )
@@ -126,9 +126,9 @@ class TestSessionService:
 
         # Verify expected behavior.
         assert result.template_id == "python-datascience"
-        # Status-specific test setup.
+        # Status may be CREATING or RUNNING depending on the implementation.
         assert result.status in (SessionStatus.CREATING.value, SessionStatus.RUNNING.value)
-        assert session_repo.save.call_count >= 1  # Test setup.
+        assert session_repo.save.call_count >= 1  # Save at least once.
 
     @pytest.mark.asyncio
     async def test_create_session_template_not_found(self, service, template_repo):
@@ -643,7 +643,7 @@ class TestSessionService:
         self, service, session_repo, execution_repo
     ):
         """Test get session executions session not found."""
-        # Test setup.
+        # list_executions does not check whether the session exists; it queries execution records directly.
         execution_repo.find_by_session_id.return_value = []
 
         result = await service.list_executions("non-existent")

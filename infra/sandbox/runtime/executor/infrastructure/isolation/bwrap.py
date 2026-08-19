@@ -168,7 +168,7 @@ class BubblewrapRunner:
         )
 
         try:
-            # build language-specific command and environment
+            # Build language-specific command and environment
             cmd, env_args = self._build_command(execution)
             if env_args:
                 cmd = self._inject_env_args(cmd, env_args)
@@ -388,7 +388,7 @@ except Exception as e:
         return cmd, self._build_execution_env(execution)
 
     def _build_node_command(self, execution: Execution) -> tuple[List[str], dict]:
-        """build command for Node.js execution."""
+        """Build command for Node.js execution."""
         execution.context.resolve_working_directory_path()
         # Wrap user code in AWS Lambda handler pattern
         wrapper_code = f'''
@@ -415,7 +415,7 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
         return cmd, self._build_execution_env(execution)
 
     def _build_shell_command(self, execution: Execution) -> tuple[List[str], dict]:
-        """build command for shell execution."""
+        """Build command for shell execution."""
         resolved_cwd = execution.context.resolve_working_directory_path()
         normalized_code = normalize_shell_code(execution.code, resolved_cwd)
         cmd = self._build_base_args(execution.context.container_working_directory()) + [

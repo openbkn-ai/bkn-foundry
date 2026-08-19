@@ -172,7 +172,7 @@ class TestExecutionState:
             error_message="test"
         )
 
-        # Test setup.
+        # frozen=True means the object cannot be modified.
         with pytest.raises(Exception):  # FrozenInstanceError
             state.exit_code = 1
 

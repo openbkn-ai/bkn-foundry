@@ -121,7 +121,7 @@ class TestArtifact:
             mime_type="text/plain"
         )
 
-        # Test setup.
+        # frozen=True means the object cannot be modified.
         with pytest.raises(Exception):  # FrozenInstanceError from dataclasses
             artifact.size = 2048
 

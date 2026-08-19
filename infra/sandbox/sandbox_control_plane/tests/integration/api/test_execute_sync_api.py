@@ -1,4 +1,10 @@
-"""Unit tests for execute sync API."""
+"""
+Execute-Sync API Integration Tests
+
+Tests for synchronous code execution endpoint.
+Covers valid parameters, invalid parameters, successful code execution, runtime exceptions,
+stderr output, return values, standard library usage, and third-party library usage.
+"""
 import pytest
 import asyncio
 from httpx import AsyncClient
@@ -52,7 +58,7 @@ def handler(event):
             "timeout": 10
         }
 
-        # Test setup.
+        # Use the default poll_interval and sync_timeout.
         response = await http_client.post(
             f"/executions/sessions/{test_session_id}/execute-sync",
             json=request_data
@@ -264,7 +270,7 @@ def handler(event):
             "timeout": 10
         }
 
-        # Test setup.
+        # Test the minimum poll_interval.
         response = await http_client.post(
             f"/executions/sessions/{test_session_id}/execute-sync",
             json=request_data,
@@ -272,7 +278,7 @@ def handler(event):
         )
         assert response.status_code == 200
 
-        # Test setup.
+        # Test the maximum poll_interval.
         response = await http_client.post(
             f"/executions/sessions/{test_session_id}/execute-sync",
             json=request_data,
@@ -280,7 +286,7 @@ def handler(event):
         )
         assert response.status_code == 200
 
-    # ==================== Valid parameter tests ====================
+    # ==================== Invalid parameter tests ====================
 
     async def test_execute_sync_invalid_poll_interval_too_low(
         self,
@@ -297,7 +303,7 @@ def handler(event):
         response = await http_client.post(
             f"/executions/sessions/{test_session_id}/execute-sync",
             json=request_data,
-            params={"poll_interval": 0.05}  # Test setup.
+            params={"poll_interval": 0.05}  # Below the minimum value 0.1.
         )
 
         assert response.status_code == 422
@@ -317,7 +323,7 @@ def handler(event):
         response = await http_client.post(
             f"/executions/sessions/{test_session_id}/execute-sync",
             json=request_data,
-            params={"poll_interval": 15.0}  # Test setup.
+            params={"poll_interval": 15.0}  # Above the maximum value 10.0.
         )
 
         assert response.status_code == 422
@@ -337,7 +343,7 @@ def handler(event):
         response = await http_client.post(
             f"/executions/sessions/{test_session_id}/execute-sync",
             json=request_data,
-            params={"sync_timeout": 5}  # Test setup.
+            params={"sync_timeout": 5}  # Below the minimum value 10.
         )
 
         assert response.status_code == 422
@@ -357,7 +363,7 @@ def handler(event):
         response = await http_client.post(
             f"/executions/sessions/{test_session_id}/execute-sync",
             json=request_data,
-            params={"sync_timeout": 4000}  # Test setup.
+            params={"sync_timeout": 4000}  # Above the maximum value 3600.
         )
 
         assert response.status_code == 422
@@ -426,7 +432,7 @@ def handler(event):
         request_data = {
             "code": "print('test')",
             "language": "python",
-            "timeout": 0  # Test setup.
+            "timeout": 0  # Below the minimum value 1.
         }
 
         response = await http_client.post(
@@ -445,7 +451,7 @@ def handler(event):
         request_data = {
             "code": "print('test')",
             "language": "python",
-            "timeout": 4000  # Test setup.
+            "timeout": 4000  # Above the maximum value 3600.
         }
 
         response = await http_client.post(
@@ -473,7 +479,7 @@ def handler(event):
 
         assert response.status_code in (400, 404)
 
-    # ==================== Test group ====================
+    # ==================== Successful code execution tests ====================
 
     async def test_execute_sync_simple_execution(
         self,
@@ -531,7 +537,7 @@ def handler(event):
         assert data["status"] in ("success", "completed")
         assert data["exit_code"] == 0
 
-    # ==================== Test group ====================
+    # ==================== Runtime exception tests ====================
 
     async def test_execute_sync_runtime_exception(
         self,
@@ -645,7 +651,7 @@ def handler(event):
         assert "CustomError" in data["stderr"]
         assert "custom error" in data["stderr"].lower()
 
-    # ==================== Test group ====================
+    # ==================== stderr output tests ====================
 
     async def test_execute_sync_stderr_output(
         self,
@@ -704,10 +710,10 @@ def handler(event):
         assert response.status_code == 200
         data = response.json()
         assert data["status"] in ("success", "completed")
-        # Test setup.
+        # Warning messages are usually written to stderr.
         assert "stderr" in data
 
-    # ==================== Test group ====================
+    # ==================== Return value tests ====================
 
     async def test_execute_sync_return_dict(
         self,
@@ -855,7 +861,7 @@ def handler(event):
         assert data["return_value"]["user"]["tags"] == ["admin", "tester"]
         assert data["return_value"]["items"][0]["value"] == "first"
 
-    # ==================== standard library execution tests ====================
+    # ==================== Standard library execution tests ====================
 
     async def test_execute_sync_use_json_stdlib(
         self,
@@ -1026,15 +1032,19 @@ def handler(event):
         assert 3.14 < data["return_value"]["pi"] < 3.15
         assert data["return_value"]["sqrt_2"] == 2 ** 0.5
 
-    # ==================== third-party dependency execution tests ====================
+    # ==================== Third-party dependency execution tests ====================
 
     async def test_execute_sync_use_requests_third_party(
         self,
         http_client: AsyncClient,
         test_template_id: str
     ):
-        """Test execute sync use requests third party."""
-        # Create test data.
+        """Test execute-sync using requests third-party library.
+
+        This test creates a session with requests dependency pre-installed,
+        then executes code that uses the requests library.
+        """
+        # Step 1: create a session with the requests dependency.
         session_data = {
             "template_id": test_template_id,
             "timeout": 300,
@@ -1060,7 +1070,7 @@ def handler(event):
         track_session(session_id)
 
         try:
-            # Test setup.
+            # Step 2: wait for the session to become ready, including dependency installation.
             max_wait = 120
             for i in range(max_wait):
                 response = await http_client.get(f"/sessions/{session_id}")
@@ -1076,7 +1086,7 @@ def handler(event):
             else:
                 pytest.fail(f"Session did not become ready with dependencies in {max_wait} seconds")
 
-            # Test setup.
+            # Step 3: execute code in the session with requests installed.
             request_data = {
                 "code": '''
 import requests
@@ -1117,8 +1127,13 @@ def handler(event):
         http_client: AsyncClient,
         test_template_id: str
     ):
-        """Test execute sync use click third party."""
-        # Create test data.
+        """Test execute-sync using click third-party library.
+
+        This test creates a session with click dependency pre-installed,
+        then executes code that uses the click library.
+        Note: Using click instead of numpy as it's much lighter (<2MB vs >100MB).
+        """
+        # Step 1: create a session with the click dependency.
         session_data = {
             "template_id": test_template_id,
             "timeout": 300,
@@ -1129,7 +1144,7 @@ def handler(event):
             "dependencies": [
                 {"name": "click"}
             ],
-            "install_timeout": 60  # Test setup.
+            "install_timeout": 60  # click installs quickly.
         }
 
         create_response = await http_client.post("/sessions", json=session_data)
@@ -1144,7 +1159,7 @@ def handler(event):
         track_session(session_id)
 
         try:
-            # Test setup.
+            # Step 2: wait for the session to become ready, including dependency installation.
             max_wait = 60
             for i in range(max_wait):
                 response = await http_client.get(f"/sessions/{session_id}")
@@ -1160,7 +1175,7 @@ def handler(event):
             else:
                 pytest.fail(f"Session did not become ready with dependencies in {max_wait} seconds")
 
-            # Test setup.
+            # Step 3: execute code in the session with click installed.
             request_data = {
                 "code": '''
 import click
@@ -1193,7 +1208,7 @@ def handler(event):
             from tests.integration.conftest import untrack_session
             untrack_session(session_id)
 
-    # ==================== Test group ====================
+    # ==================== Additional edge-case tests ====================
 
     async def test_execute_sync_execution_timeout(
         self,
@@ -1206,11 +1221,11 @@ def handler(event):
 import time
 
 def handler(event):
-    time.sleep(15)  # Timing-related test setup.
+    time.sleep(15)  # Exceed the timeout setting.
     return {"should_not_reach": "here"}
 ''',
             "language": "python",
-            "timeout": 5  # Test setup.
+            "timeout": 5  # 5-second timeout.
         }
 
         response = await http_client.post(

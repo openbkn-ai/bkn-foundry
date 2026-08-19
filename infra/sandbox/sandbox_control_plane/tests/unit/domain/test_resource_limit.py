@@ -81,10 +81,10 @@ class TestResourceLimit:
         limit = ResourceLimit.default()
         new_limit = limit.with_cpu("2")
 
-        # Test setup.
+        # Original object is unchanged.
         assert limit.cpu == "1"
 
-        # Test setup.
+        # New object has the new value.
         assert new_limit.cpu == "2"
         assert new_limit.memory == limit.memory
 
@@ -93,10 +93,10 @@ class TestResourceLimit:
         limit = ResourceLimit.default()
         new_limit = limit.with_memory("1Gi")
 
-        # Test setup.
+        # Original object is unchanged.
         assert limit.memory == "512Mi"
 
-        # Test setup.
+        # New object has the new value.
         assert new_limit.memory == "1Gi"
         assert new_limit.cpu == limit.cpu
 
@@ -104,7 +104,7 @@ class TestResourceLimit:
         """Test frozen."""
         limit = ResourceLimit.default()
 
-        with pytest.raises(Exception):  # Test setup.
+        with pytest.raises(Exception):  # frozen.dataclass raises an exception.
             limit.cpu = "2"
 
     def test_valid_size_formats(self):

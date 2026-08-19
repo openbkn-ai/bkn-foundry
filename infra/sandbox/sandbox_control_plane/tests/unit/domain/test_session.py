@@ -79,7 +79,7 @@ class TestSession:
 
     def test_is_idle(self):
         """Test is idle."""
-        # Create test data.
+        # Create a session that has been inactive for more than 30 minutes.
         old_time = datetime.now() - timedelta(minutes=35)
 
         session = Session(
@@ -96,7 +96,7 @@ class TestSession:
 
     def test_should_cleanup(self):
         """Test should cleanup."""
-        # Test setup.
+        # Idle session.
         old_time = datetime.now() - timedelta(minutes=35)
 
         session = Session(
@@ -154,7 +154,7 @@ class TestSession:
 
         execution = Execution(
             id="exec_20240115_xyz789",
-            session_id="different_session_id",  # Test setup.
+            session_id="different_session_id",  # Wrong session ID.
             code="print('hello')",
             language="python",
             state=ExecutionState(status=ExecutionStatus.PENDING),
@@ -173,7 +173,7 @@ class TestSession:
                 resource_limit=ResourceLimit.default(),
                 workspace_path="s3://sandbox-workspace/sessions/sess_20240115_abc123",
                 runtime_type="docker",
-                timeout=-1,  # Test setup.
+                timeout=-1,  # Invalid value.
             )
 
     def test_invalid_workspace_path(self):
@@ -184,7 +184,7 @@ class TestSession:
                 template_id="python-datascience",
                 status=SessionStatus.CREATING,
                 resource_limit=ResourceLimit.default(),
-                workspace_path="",  # Test setup.
+                workspace_path="",  # Invalid value.
                 runtime_type="docker",
             )
 

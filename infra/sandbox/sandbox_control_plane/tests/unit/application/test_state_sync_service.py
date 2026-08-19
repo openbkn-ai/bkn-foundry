@@ -130,8 +130,8 @@ class TestStateSyncService:
 
         # Expected return value.
         session_repo.find_by_status.side_effect = [
-            [session1],  # Status-specific test setup.
-            [session2]   # Status-specific test setup.
+            [session1],  # running status query.
+            [session2]   # creating status query.
         ]
         container_scheduler.is_container_running.return_value = True
 
@@ -168,12 +168,12 @@ class TestStateSyncService:
 
         session_repo.find_by_status.return_value = [session1, session2]
 
-        # Test setup.
+        # The first container is healthy and the second is unhealthy.
         container_scheduler.is_container_running.side_effect = [True, False]
 
         result = await service.sync_on_startup()
 
-        # Status-specific test setup.
+        # find_by_status may be called multiple times for running and creating sessions.
         assert result["total"] >= 2
         assert result["healthy"] >= 1
         assert result["unhealthy"] >= 1
@@ -188,13 +188,13 @@ class TestStateSyncService:
             resource_limit=ResourceLimit.default(),
             workspace_path="s3://sandbox-workspace/sessions/sess_no_container",
             runtime_type="docker",
-            container_id=None  # Test setup.
+            container_id=None  # No container.
         )
 
         # Expected return value.
         session_repo.find_by_status.side_effect = [
-            [session],  # Status-specific test setup.
-            []         # Status-specific test setup.
+            [session],  # running status query.
+            []         # creating status query.
         ]
 
         result = await service.sync_on_startup()
@@ -524,7 +524,7 @@ class TestStateSyncService:
             container_id="container-creating"
         )
 
-        # Status-specific test setup.
+        # Only call find_by_status("running"), not "creating".
         session_repo.find_by_status.return_value = []
 
         result = await service.periodic_health_check()
@@ -630,7 +630,7 @@ class TestStateSyncService:
         container_scheduler.create_container.return_value = "new-container"
         template_repo.find_by_id.return_value = python_template
 
-        # Create test data.
+        # Do not pass scheduler; recovery will try to create a new container.
         result = await service._attempt_recovery(session)
 
         assert result is True

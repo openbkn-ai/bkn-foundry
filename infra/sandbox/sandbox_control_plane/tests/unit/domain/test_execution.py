@@ -170,7 +170,7 @@ class TestExecution:
             Execution(
                 id="exec_20240115_abc123",
                 session_id="sess_20240115_xyz789",
-                code="",  # Test setup.
+                code="",  # Invalid value.
                 language="python",
                 state=ExecutionState(status=ExecutionStatus.PENDING)
             )
@@ -182,6 +182,6 @@ class TestExecution:
                 id="exec_20240115_abc123",
                 session_id="sess_20240115_xyz789",
                 code="print('hello')",
-                language="",  # Test setup.
+                language="",  # Invalid value.
                 state=ExecutionState(status=ExecutionStatus.PENDING)
             )

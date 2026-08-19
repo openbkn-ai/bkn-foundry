@@ -78,7 +78,7 @@ class TestDockerSchedulerService:
         self, service, runtime_node_repo, healthy_node, schedule_request
     ):
         """Test schedule with affinity."""
-        # Test setup.
+        # Node has a template cache.
         healthy_node._cached_templates = ["python-test"]
         runtime_node_repo.find_by_status.return_value = [
             healthy_node.to_runtime_node() if hasattr(healthy_node, 'to_runtime_node') else healthy_node
@@ -110,7 +110,7 @@ class TestDockerSchedulerService:
         self, service, runtime_node_repo, schedule_request
     ):
         """Test schedule load balanced."""
-        # Create test data.
+        # Create multiple nodes with no template cache.
         node1 = create_mock_runtime_node(node_id="node-1")
         node1.cached_templates = []
         node1.session_count = 10
@@ -119,7 +119,7 @@ class TestDockerSchedulerService:
 
         node2 = create_mock_runtime_node(node_id="node-2")
         node2.cached_templates = []
-        node2.session_count = 5  # Test setup.
+        node2.session_count = 5  # Fewer sessions.
         node2._cpu_usage = 0.3
         node2._mem_usage = 0.4
 
@@ -131,7 +131,7 @@ class TestDockerSchedulerService:
 
         result = await service.schedule(schedule_request)
 
-        # Test setup.
+        # Should select the node with lower load.
         assert result is not None
 
     @pytest.mark.asyncio

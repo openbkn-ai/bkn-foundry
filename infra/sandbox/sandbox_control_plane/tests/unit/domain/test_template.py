@@ -140,7 +140,7 @@ class TestTemplate:
         )
 
         original_updated_at = template.updated_at
-        template.add_package("numpy")  # Test setup.
+        template.add_package("numpy")  # Add an existing package.
 
         # Verify expected behavior.
         assert template.pre_installed_packages.count("numpy") == 1
@@ -172,7 +172,7 @@ class TestTemplate:
         )
 
         original_updated_at = template.updated_at
-        template.remove_package("pandas")  # Test setup.
+        template.remove_package("pandas")  # Remove a nonexistent package.
 
         # Verify expected behavior.
         assert template.updated_at == original_updated_at

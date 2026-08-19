@@ -75,7 +75,7 @@ class SubprocessRunner:
         process = None
 
         try:
-            # build language-specific command and environment
+            # Build language-specific command and environment
             cmd, env_args = self._build_command(execution)
             cwd_path = execution.context.resolve_working_directory_path()
 
@@ -275,7 +275,7 @@ class SubprocessRunner:
         language = execution.language.lower()
         code = execution.code
 
-        # build environment variables - inherit from current process
+        # Build environment variables - inherit from current process
         env_args = os.environ.copy()
         # Override specific variables
         env_args.update({

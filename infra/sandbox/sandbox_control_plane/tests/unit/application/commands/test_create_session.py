@@ -21,8 +21,8 @@ class TestCreateSessionCommandValidation:
         ],
     )
     def test_rejects_unsafe_id(self, bad_id):
-        # Test setup.
-        # Test setup.
+        # Fallback layer: even without request schema validation, IDs containing shell metacharacters, `..`, or `/` must
+        # be rejected because they flow into the s3fs mount script running as root; otherwise they could cause command injection or prefix escape.
         with pytest.raises(ValueError):
             CreateSessionCommand(id=bad_id)
         with pytest.raises(ValueError):

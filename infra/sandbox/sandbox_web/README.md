@@ -63,7 +63,7 @@ npm run dev
 
 The development server starts at http://localhost:1101.
 
-### build the project
+### Build the project
 
 ```bash
 npm run build

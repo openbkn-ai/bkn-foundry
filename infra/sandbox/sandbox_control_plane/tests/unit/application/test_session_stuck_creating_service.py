@@ -27,13 +27,13 @@ class TestSessionStuckCreatingService:
         """Create service."""
         return SessionStuckCreatingService(
             session_repo=session_repo,
-            creating_timeout_seconds=300,  # Timing-related test setup.
+            creating_timeout_seconds=300,  # 5 minutes.
         )
 
     @pytest.fixture
     def creating_session_stuck(self):
         """Create creating session stuck."""
-        old_time = datetime.now() - timedelta(minutes=6)  # Timing-related test setup.
+        old_time = datetime.now() - timedelta(minutes=6)  # Exceeds the 5-minute threshold.
         return Session(
             id="sess_stuck",
             template_id="python-basic",
@@ -47,7 +47,7 @@ class TestSessionStuckCreatingService:
     @pytest.fixture
     def creating_session_recent(self):
         """Create creating session recent."""
-        recent_time = datetime.now() - timedelta(minutes=2)  # Timing-related test setup.
+        recent_time = datetime.now() - timedelta(minutes=2)  # Does not exceed the 5-minute threshold.
         return Session(
             id="sess_recent",
             template_id="python-basic",
@@ -96,7 +96,7 @@ class TestSessionStuckCreatingService:
                 resource_limit=ResourceLimit.default(),
                 workspace_path="s3://sandbox-workspace/sessions/sess_1",
                 runtime_type="docker",
-                created_at=stuck_time,  # Timing-related test setup.
+                created_at=stuck_time,  # Timed out.
             ),
             Session(
                 id="sess_2",
@@ -105,7 +105,7 @@ class TestSessionStuckCreatingService:
                 resource_limit=ResourceLimit.default(),
                 workspace_path="s3://sandbox-workspace/sessions/sess_2",
                 runtime_type="docker",
-                created_at=recent_time,  # Test setup.
+                created_at=recent_time,  # Not timed out.
             ),
         ]
 
@@ -129,10 +129,10 @@ class TestSessionStuckCreatingService:
         """Test custom timeout threshold."""
         service = SessionStuckCreatingService(
             session_repo=session_repo,
-            creating_timeout_seconds=60,  # Timing-related test setup.
+            creating_timeout_seconds=60,  # 1 minute.
         )
 
-        # Timing-related test setup.
+        # Create a session created 2 minutes ago, exceeding the custom threshold.
         old_time = datetime.now() - timedelta(minutes=2)
         stuck_session = Session(
             id="sess_stuck",
@@ -171,7 +171,7 @@ class TestSessionStuckCreatingService:
             resource_limit=ResourceLimit.default(),
             workspace_path="s3://sandbox-workspace/sessions/sess_no_created_at",
             runtime_type="docker",
-            created_at=None,  # Create test data.
+            created_at=None,  # No created_at value.
         )
         session_repo.find_by_status.return_value = [session]
 
@@ -184,7 +184,7 @@ class TestSessionStuckCreatingService:
     @pytest.mark.asyncio
     async def test_exactly_at_threshold(self, service, session_repo):
         """Test exactly at threshold."""
-        # Timing-related test setup.
+        # Create a session from exactly 5 minutes ago.
         exact_threshold_time = datetime.now() - timedelta(seconds=300)
         session = Session(
             id="sess_exact",
@@ -199,5 +199,5 @@ class TestSessionStuckCreatingService:
 
         result = await service.check_and_mark_stuck_sessions()
 
-        # Test setup.
+        # Exactly meeting the threshold should be marked as failed because the check time is slightly later.
         assert result["marked_failed"] == 1

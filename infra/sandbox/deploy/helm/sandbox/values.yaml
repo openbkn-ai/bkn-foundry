@@ -96,7 +96,7 @@ controlPlane:
     PYTHONUNBUFFERED: "1"
 
   s3:
-    # Note: endpointUrl is dynamically set in secret.yaml using .values.namespace
+    # Note: endpointUrl is dynamically set in secret.yaml using .Values.namespace
     # The actual endpoint will be: http://minio.<namespace>.svc.cluster.local:9000
     endpointUrl: ""  # Dynamically generated from namespace
     bucket: "sandbox-workspace"

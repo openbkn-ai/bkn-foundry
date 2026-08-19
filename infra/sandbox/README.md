@@ -1,6 +1,6 @@
 # Sandbox Control Plane
 
-[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![Chinese](https://img.shields.io/badge/lang-Chinese-red.svg)](README_ZH.md)
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![中文](https://img.shields.io/badge/lang-中文-red.svg)](README_ZH.md)
 
 A cloud-native, production-ready platform for secure code execution in isolated container environments, designed for AI agent applications.
 
@@ -165,7 +165,7 @@ flowchart TD
 
 > Note: The above resource requirements are for the docker-compose development environment. Adjust according to actual load in production environments.
 
-### build Images
+### Build Images
 
 Before starting the services, build the versioned executor/template images:
 
@@ -189,7 +189,7 @@ This creates:
 - `sandbox-python-executor-base:python3.11-v1` - Stable Python runtime base without executor code
 - `sandbox-multi-executor-base:go1.25-python3.11-v1` - Stable Python, Go, and Bash runtime base without executor code
 
-To push multi-arch base images to Huawei Cloud SWR, install `skopeo` and use Docker buildx. The script exports `linux/amd64,linux/arm64` OCI archives and copies them to SWR:
+To push multi-arch base images to Huawei Cloud SWR, install `skopeo` and use Docker Buildx. The script exports `linux/amd64,linux/arm64` OCI archives and copies them to SWR:
 
 ```bash
 cd images
@@ -204,15 +204,15 @@ cd images
 If you're building images in a network environment with limited access to official repositories (e.g., mainland China), you can use mirror sources:
 
 ```bash
-# build versioned executor/template images with mirror support
+# Build versioned executor/template images with mirror support
 cd images
 USE_MIRROR=true ./build.sh
 
-# build Control Plane with mirror from the repository root so VERSION is included
+# Build Control Plane with mirror from the repository root so VERSION is included
 cd ..
 docker build -f sandbox_control_plane/Dockerfile --build-arg USE_MIRROR=true -t sandbox-control-plane .
 
-# build Web Console with mirror
+# Build Web Console with mirror
 cd ../sandbox_web
 docker build --build-arg USE_MIRROR=true -t sandbox-web .
 ```
@@ -253,7 +253,7 @@ swr.cn-east-3.myhuaweicloud.com/openbkn-ai/sandbox-template-multi-language:<TEMP
 
 You can also override `DEFAULT_TEMPLATE_IMAGE` and `DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE` directly when different repositories or tags are required.
 
-### Kubernetes deployment (Production)
+### Kubernetes Deployment (Production)
 
 For production deployment, use Kubernetes with Helm Chart:
 
@@ -346,7 +346,7 @@ mypy sandbox_control_plane/
 
 ```
 sandbox/
-├── deploy/                   # deployment configurations
+├── deploy/                   # Deployment configurations
 │   ├── manifests/            # K8s native YAML deployment
 │   │   ├── 00-namespace.yaml
 │   │   ├── 01-configmap.yaml
@@ -387,7 +387,7 @@ sandbox/
 ├── images/                    # Container image build scripts
 │   ├── bases/                # Stable runtime base images without executor code
 │   ├── templates/            # Versioned executor/template image definitions
-│   └── build.sh              # build runtime bases and versioned template images
+│   └── build.sh              # Build runtime bases and versioned template images
 │
 ├── scripts/                  # Utility scripts
 ├── specs/                    # Implementation specifications

@@ -109,7 +109,7 @@ class TestFileService:
         """Test upload file invalid path."""
         session_repo.find_by_id.return_value = active_session
 
-        # Test setup.
+        # Absolute path.
         with pytest.raises(ValidationError, match="Invalid file path"):
             await service.upload_file(
                 session_id="sess_123",
@@ -460,7 +460,7 @@ class TestFileService:
         storage_service.file_exists.return_value = True
         storage_service.get_file_info.return_value = {
             "size": 1024
-            # Test setup.
+            # Missing content_type.
         }
         storage_service.download_file.return_value = b"content"
 
@@ -469,7 +469,7 @@ class TestFileService:
             path="test.txt"
         )
 
-        # Test setup.
+        # Should use the default content_type.
         assert result["content_type"] == "application/octet-stream"
 
     @pytest.mark.asyncio

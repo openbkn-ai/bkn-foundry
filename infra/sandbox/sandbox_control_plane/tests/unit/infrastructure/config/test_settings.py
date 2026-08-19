@@ -9,7 +9,7 @@ from src.infrastructure.config.settings import Settings, get_settings
 
 def create_settings_with_defaults(**kwargs):
     """Create settings with defaults."""
-    # Test setup.
+    # Use _env_file=None to skip loading the .env file.
     return Settings(_env_file=None, **kwargs)
 
 

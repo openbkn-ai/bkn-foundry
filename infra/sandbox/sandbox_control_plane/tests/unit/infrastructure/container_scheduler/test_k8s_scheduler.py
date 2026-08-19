@@ -555,7 +555,7 @@ class TestK8sSchedulerExtended:
         """Test parse memory to bytes plain number."""
         result = scheduler._parse_memory_to_bytes("1024")
 
-        # Test setup.
+        # Default unit is MB.
         assert result == 1024 * 1024 * 1024
 
     def test_parse_disk_to_bytes_mb(self, scheduler):
@@ -636,7 +636,7 @@ class TestK8sSchedulerExtended:
     @pytest.mark.asyncio
     async def test_start_container(self, scheduler, mock_core_v1):
         """Test start container."""
-        # Test setup.
+        # In K8s, start_container usually does not need extra operations.
         await scheduler.start_container("test-pod")
         # Verify expected behavior.
 

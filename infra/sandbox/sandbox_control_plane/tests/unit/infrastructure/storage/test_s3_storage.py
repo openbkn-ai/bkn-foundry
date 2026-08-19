@@ -308,7 +308,7 @@ class TestS3Storage:
         """Test initialize creates bucket."""
         from botocore.exceptions import ClientError
 
-        # Test setup.
+        # head_bucket raises a 404 error.
         error_response = {'Error': {'Code': '404'}}
         mock_boto_client.head_bucket.side_effect = ClientError(error_response, 'HeadBucket')
         mock_boto_client.meta.region_name = 'us-west-2'
@@ -330,7 +330,7 @@ class TestS3Storage:
 
         await storage.initialize()
 
-        # Test setup.
+        # us-east-1 does not need LocationConstraint.
         call_args = mock_boto_client.create_bucket.call_args
         assert 'CreateBucketConfiguration' not in call_args[1]
 
@@ -356,7 +356,7 @@ class TestS3Storage:
         mock_boto_client.head_object.side_effect = Exception("Not Found")
         mock_boto_client.upload_file = Mock()
 
-        # Create test data.
+        # Create content larger than 5 MB.
         large_content = b"x" * (6 * 1024 * 1024)  # 6MB
 
         await storage.upload_file("s3://test-bucket/large.bin", large_content)
@@ -370,7 +370,7 @@ class TestS3Storage:
         mock_boto_client.head_bucket.return_value = {}
         mock_boto_client.put_object.return_value = {}
 
-        # Test setup.
+        # Directory marker exists.
         mock_boto_client.head_object.return_value = {}
         mock_boto_client.delete_object.return_value = {}
 
@@ -387,7 +387,7 @@ class TestS3Storage:
         mock_boto_client.head_bucket.return_value = {}
         mock_boto_client.put_object.return_value = {}
 
-        # Test setup.
+        # Directory marker does not exist.
         error_response = {'Error': {'Code': '404'}}
         mock_boto_client.head_object.side_effect = ClientError(error_response, 'HeadObject')
 
@@ -400,7 +400,7 @@ class TestS3Storage:
     async def test_delete_prefix_empty(self, storage, mock_boto_client):
         """Test delete prefix empty."""
         mock_paginator = Mock()
-        mock_paginator.paginate.return_value = [{}]  # Test setup.
+        mock_paginator.paginate.return_value = [{}]  # No Contents.
         mock_boto_client.get_paginator.return_value = mock_paginator
 
         deleted_count = await storage.delete_prefix("sessions/empty/")
@@ -426,7 +426,7 @@ class TestS3Storage:
     async def test_list_files_empty(self, storage, mock_boto_client):
         """Test list files empty."""
         mock_paginator = Mock()
-        mock_paginator.paginate.return_value = [{}]  # Test setup.
+        mock_paginator.paginate.return_value = [{}]  # No Contents.
         mock_boto_client.get_paginator.return_value = mock_paginator
 
         files = await storage.list_files("empty/")

@@ -15,7 +15,7 @@ class TestDockerScheduler:
     def mock_docker(self):
         """Create docker."""
         docker = Mock()
-        # Test setup.
+        # Version info is a synchronous call.
         docker.version.return_value = {"Version": "20.10.0"}
         images_mock = Mock()
         images_mock.inspect = AsyncMock(return_value={})
@@ -380,7 +380,7 @@ class TestDockerScheduler:
         """Test build dependency install entrypoint no deps."""
         script = scheduler._build_dependency_install_entrypoint(None)
 
-        # Test setup.
+        # Should not contain pip install.
         assert "pip3 install" not in script
 
     @pytest.mark.asyncio
@@ -519,7 +519,7 @@ class TestDockerScheduler:
         """Test parse memory to bytes plain number."""
         result = scheduler._parse_memory_to_bytes("2048")
 
-        # Test setup.
+        # Default unit is MB.
         assert result == 2048 * 1024 * 1024
 
     @pytest.mark.asyncio
