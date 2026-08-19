@@ -12,6 +12,8 @@ import (
 
 	"github.com/bytedance/sonic"
 	"github.com/toon-format/toon-go"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
 const (
@@ -84,7 +86,8 @@ func marshalTOON(body interface{}) ([]byte, error) {
 		v = v.Elem()
 	}
 	if v.Kind() != reflect.Struct {
-		return toon.Marshal(body, toon.WithLengthMarkers(true))
+		safe, _ := interfaces.TOONSafeValue(body)
+		return toon.Marshal(safe, toon.WithLengthMarkers(true))
 	}
 	// struct → JSON → any → TOON (retain the field name of json tag)
 	jsonBytes, err := sonic.Marshal(body)
@@ -92,8 +95,14 @@ func marshalTOON(body interface{}) ([]byte, error) {
 		return nil, err
 	}
 	var m any
-	if err := sonic.Unmarshal(jsonBytes, &m); err != nil {
+	// UseNumber, not the default configuration: the round-trip is the last place
+	// a wide integer can be rounded, and it would undo the precision the driven
+	// adapters went out of their way to keep. See openbkn-ai/bkn-studio#464.
+	if err := precisionJSON.Unmarshal(jsonBytes, &m); err != nil {
 		return nil, err
 	}
-	return toon.Marshal(m, toon.WithLengthMarkers(true))
+	// toon-go renders json.Number through float64, so anything past the IEEE 754
+	// safe range has to become a decimal string before it reaches the encoder.
+	safe, _ := interfaces.TOONSafeValue(m)
+	return toon.Marshal(safe, toon.WithLengthMarkers(true))
 }
