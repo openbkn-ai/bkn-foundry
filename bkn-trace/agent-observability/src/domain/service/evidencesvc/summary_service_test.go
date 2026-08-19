@@ -470,6 +470,24 @@ func TestListConversationsFiltersAfterApplyingCanonicalSessionStatus(t *testing.
 	}
 }
 
+func TestFilterConversationSummariesMatchesKeywordAcrossBusinessPreviews(t *testing.T) {
+	entries := []evidencevo.ConversationSummary{
+		{
+			ConversationID: "conversation_purchase_order", QuestionPreview: "查询采购订单状态",
+			ResultPreview: "订单已完成", AgentName: "供应链助手", Status: "active",
+		},
+		{
+			ConversationID: "conversation_inventory", QuestionPreview: "查询库存", Status: "active",
+		},
+	}
+
+	filtered := filterConversationSummaries(entries, evidencevo.SummaryQueryOptions{Keyword: "采购订单"})
+
+	if len(filtered) != 1 || filtered[0].ConversationID != "conversation_purchase_order" {
+		t.Fatalf("keyword must keep the matching conversation summary: %+v", filtered)
+	}
+}
+
 func TestListConversationsSeparatesAgentDisplayNameFromTrustedIdentity(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequest(
