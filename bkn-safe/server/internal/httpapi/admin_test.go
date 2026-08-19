@@ -503,6 +503,37 @@ func TestDepartmentCRUD(t *testing.T) {
 	}
 }
 
+// A MySQL UPDATE that assigns the current values reports zero affected rows.
+// Saving a freshly created department without edits must therefore succeed,
+// rather than treating the zero count as a missing department.
+func TestDepartmentCreateThenSaveWithoutChanges(t *testing.T) {
+	r, _, _, _ := newAdminServer(t)
+
+	create := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/departments",
+		map[string]any{"name": "No-op", "type": "dept"})
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create: want 201, got %d (%s)", create.Code, create.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(create.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("create response did not return the generated department id")
+	}
+
+	save := adminReq(t, r, http.MethodPut, "/api/safe/v1/admin/departments/"+created.ID,
+		map[string]any{
+			"name": "No-op", "parent_id": "", "type": "dept",
+			"manager_id": "", "code": "", "email": "", "remark": "",
+		})
+	if save.Code != http.StatusNoContent {
+		t.Fatalf("save without changes: want 204, got %d (%s)", save.Code, save.Body.String())
+	}
+}
+
 func TestRoleCRUDAndBuiltInProtection(t *testing.T) {
 	r, e, db, _ := newAdminServer(t)
 	db.Create(&model.Role{ID: "sys-1", Name: "超级管理员", Source: model.RoleSourceSystem})

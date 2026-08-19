@@ -352,14 +352,16 @@ func (s *Service) CreateDepartment(ctx context.Context, d *model.Department) err
 }
 
 // UpdateDepartment patches the given mutable fields (name/parent_id/type) of a
-// department. Returns gorm.ErrRecordNotFound when no row matches.
+// department. A no-op update may report zero affected rows on MySQL, so it is
+// still successful when the department exists. Returns gorm.ErrRecordNotFound
+// only when no row matches.
 func (s *Service) UpdateDepartment(ctx context.Context, id string, fields map[string]any) error {
 	res := s.db.WithContext(ctx).Model(&model.Department{}).Where("id = ?", id).Updates(fields)
 	if res.Error != nil {
 		return res.Error
 	}
 	if res.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		return s.requireDepartment(ctx, id)
 	}
 	return nil
 }
