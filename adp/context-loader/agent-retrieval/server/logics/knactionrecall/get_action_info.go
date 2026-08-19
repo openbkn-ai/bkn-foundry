@@ -101,11 +101,13 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 				infraErr.LocalizedDetail(ctx, "ToolSchemaConversionFailed"))
 		}
 
-		// 10a. Build KnDynamicTool.
+		// 10a. Build KnDynamicTool. The output schema is best-effort: a tool that
+		// declares no success response simply leaves the field out.
 		dynamicTool = interfaces.KnDynamicTool{
 			Name:            toolDetail.Name,
 			Description:     toolDetail.Description,
 			Parameters:      parameters,
+			OutputSchema:    s.extractToolOutputSchema(ctx, toolDetail.Metadata.APISpec, toolDetail.MetadataType),
 			APIURL:          apiURL,
 			FixedParams:     fixedParams,
 			APICallStrategy: interfaces.ResultProcessStrategyKnActionRecall,
@@ -136,6 +138,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 			Name:            toolDetail.Name,
 			Description:     toolDetail.Description,
 			Parameters:      parameters,
+			OutputSchema:    s.extractMCPOutputSchema(ctx, toolDetail.OutputSchema),
 			APIURL:          apiURL,
 			FixedParams:     fixedParams,
 			APICallStrategy: interfaces.ResultProcessStrategyKnActionRecall,

@@ -59,7 +59,9 @@ type GetMCPToolDetailResponse struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description"`
 	InputSchema map[string]interface{} `json:"inputSchema"`
-	Annotations map[string]interface{} `json:"annotations"`
+	// OutputSchema is the MCP tool output schema, forwarded verbatim by Execution Factory.
+	OutputSchema map[string]interface{} `json:"outputSchema"`
+	Annotations  map[string]interface{} `json:"annotations"`
 }
 
 // CallMCPToolRequest Call MCP tool request

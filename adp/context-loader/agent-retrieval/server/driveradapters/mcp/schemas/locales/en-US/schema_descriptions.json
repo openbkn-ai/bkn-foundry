@@ -27,7 +27,7 @@
     "input_schema.properties.at_id.description": "Action type id returned by search_schema or get_kn_detail.",
     "input_schema.properties._instance_identities.description": "Object instances for which executable action tools should be generated.",
     "output_schema.properties.headers.description": "Headers required when calling the returned action tools.",
-    "output_schema.properties._dynamic_tools.description": "Dynamic tool definitions generated for the requested action and instances."
+    "output_schema.properties._dynamic_tools.description": "Dynamic tool definitions. Each entry carries parameters (the input schema, with dynamic parameters under parameters.properties.dynamic_params), and, when the tool declares an output contract, output_schema: the shape of the result field on success, to be used when describing the outcome in natural language."
   },
   "get_kn_detail": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",

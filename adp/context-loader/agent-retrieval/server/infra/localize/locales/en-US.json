@@ -109,6 +109,7 @@
     "ActionParamQuery": "URL query parameters.",
     "ActionParamBody": "Request body parameters.",
     "ActionDynamicParams": "Action execution dynamic parameters.",
+    "ActionOutputSchema": "Structure of the action execution result. On success the result field follows this shape; use it to describe the outcome in natural language.",
     "ActionInstanceIdentities": "Target instance identities. When empty, the action driver scans by condition. To target instances explicitly, provide dynamic property key-value pairs, for example [{\"id\": \"123\"}, {\"name\": \"test_instance\"}].",
     "ActionInstanceIdentity": "An instance identity object containing dynamic property key-value pairs.",
     "SubgraphQueryResponseInvalid": "The subgraph query response is invalid.",

@@ -51,6 +51,9 @@ paths:
 
         不传 `_instance_identities` 时召回的是行动类级别的定义；传了则返回已就该批
         实例实例化过的参数。
+
+        工具声明了输出契约时，还会带上 `output_schema`——执行结果的形状，供 Agent 把
+        `get_action_execution` 拿到的 `result` 复述成自然语言。
       requestBody:
         required: true
         content:
@@ -354,6 +357,14 @@ components:
           type: object
           additionalProperties: true
           description: OpenAI Function Call 参数 schema。
+        output_schema:
+          type: object
+          additionalProperties: true
+          description: |
+            执行结果的 JSON Schema：行动执行成功后 `result` 字段的形状。来源为工具自身
+            声明的输出契约（OpenAPI 的 2xx 响应、函数工具的 `result` 信封、MCP 的
+            `outputSchema`）。工具未声明输出时**整个字段不出现**——空对象会被读成
+            「该行动没有输出」，而真实语义是「输出形状未知」。
         api_url:
           type: string
           description: 工具执行代理地址。

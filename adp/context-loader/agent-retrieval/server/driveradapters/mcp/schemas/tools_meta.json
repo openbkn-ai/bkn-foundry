@@ -77,7 +77,7 @@
     "group": "action",
     "group_title": "行动",
     "order": 310,
-    "description": "行动信息召回。针对对象实例返回可执行行动的工具定义。"
+    "description": "行动信息召回。针对对象实例返回可执行行动的工具定义，含入参 schema 与（工具已声明时的）执行结果 schema output_schema。"
   },
   "execute_action": {
     "name": "execute_action",

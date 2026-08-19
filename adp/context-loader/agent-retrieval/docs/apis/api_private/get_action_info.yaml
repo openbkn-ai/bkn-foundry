@@ -186,6 +186,10 @@ components:
                 type: string
               parameters:
                 type: object
+              output_schema:
+                type: object
+                description: >-
+                  执行结果的 JSON Schema（result 字段的形状）。工具未声明输出契约时该字段不出现。
               api_url:
                 type: string
               fixed_params:

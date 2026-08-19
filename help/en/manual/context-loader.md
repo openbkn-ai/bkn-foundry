@@ -74,7 +74,7 @@ Once configured, MCP clients can discover and call these tools (your deployment 
 | `query_object_instance` | Query object instances with conditions |
 | `query_instance_subgraph` | Query the relation subgraph around instances |
 | `get_logic_properties_values` | Compute derived property values |
-| `get_action_info` | Get action type definition and parameter schema |
+| `get_action_info` | Get action type definition, input schema and result schema (`output_schema`) |
 | `execute_action` | Execute an action type |
 | `get_action_execution` / `list_action_executions` | Action execution status and history |
 | `find_skills` | Recall skills bound to an object type |
