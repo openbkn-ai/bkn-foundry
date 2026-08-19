@@ -25,7 +25,7 @@
       },
       "condition": {
         "type": "object",
-        "description": "过滤条件。operation 必填。比较算子配 field + value + value_from（value 与 value_from 必须同时出现，value_from 仅支持 const）；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。无过滤条件时可整体省略 condition。\n算子分两类，判断依据不同：\n① 比较算子按属性 type 自行判断，不会出现在 condition_operations 里。字符串类（string/keyword/text）：== != in not_in > >= < <= like not_like regex；数值/日期时间类：== != in not_in > >= < <= range out_range（不支持 like/regex）；exist / not_exist 任意类型可用，且不带 value。\n② 索引算子以属性的 condition_operations 为准：含 match 才能全文匹配，含 knn 才能向量检索——它们取决于绑定资源上这个字段建没建全文/向量索引，从 type 推不出来。属性上没有 condition_operations 这个键，只说明该字段没建索引，不代表它不能过滤。condition_operations 里的 multi_match 只是「建了全文索引」的标记，本工具不支持该算子，用 match。\nvalue 形状：单值算子用单值；in / not_in 用数组；range 用 [min, max]，两端都闭；out_range 同样用 [min, max]，排除这个闭区间；exist / not_exist 不传 value。knn 另需 limit_key=k + limit_value=<近邻数>。\nlike / not_like 的 value 是字面子串，不是 SQL LIKE 模式：直接给要包含的文字，不要自己拼 %；未转义的 % 会被拒（要匹配 % 字符本身写 \\%），_ 按普通字符处理。regex 的锚定行为随资源存储方式而变：索引路径是整串全匹配，表类资源翻成不加锚的 SQL 正则（MariaDB `REGEXP`、PostgreSQL `~`），等同搜索。所以不要依赖锚定——要匹配「包含」一律写 .*词.*（两条路都成立），要精确相等用 ==。",
+        "description": "过滤条件。operation 必填。比较算子配 field + value + value_from（value 与 value_from 必须同时出现，value_from 仅支持 const）；逻辑算子（and/or）配 sub_conditions 递归嵌套同结构条件。无过滤条件时可整体省略 condition。\n算子分两类，判断依据不同：\n① 比较算子按属性 type 自行判断，不会出现在 condition_operations 里。字符串类（string/keyword/text）：== != in not_in > >= < <= like not_like regex；数值/日期时间类：== != in not_in > >= < <= range out_range（不支持 like/regex）；exist / not_exist 任意类型可用，且不带 value。\n② 索引算子以属性的 condition_operations 为准：含 match 才能全文匹配，含 knn 才能向量检索——它们取决于绑定资源上这个字段建没建全文/向量索引，从 type 推不出来。属性上没有 condition_operations 这个键，只说明该字段没建索引，不代表它不能过滤。condition_operations 里的 multi_match 只是「建了全文索引」的标记，本工具不支持该算子，用 match。\nvalue 形状：单值算子用单值；in / not_in 用数组；range 用 [min, max]，两端都闭；out_range 同样用 [min, max]，排除这个闭区间；exist / not_exist 不传 value。knn 另需 limit_key=k + limit_value=<近邻数>。\nlike / not_like 的 value 是字面子串，不是 SQL LIKE 模式：直接给要包含的文字，不要自己拼 %；未转义的 % 会被拒（要匹配 % 字符本身写 \\%），_ 按普通字符处理。regex 的锚定随资源存储而变：索引路径是整串全匹配，表类资源翻成不加锚的 SQL 正则（MariaDB `REGEXP`、PostgreSQL `~`）是搜索语义，所以「包含」一律写 .*词.*（两条路都成立）。字符串比较是否区分大小写同样由存储决定：索引路径区分，表类资源随列的排序规则（常见的 utf8mb4_*_ci 不区分），== / like / regex 都受影响，别拿大小写当筛选条件。",
         "required": [
           "operation"
         ],
@@ -74,7 +74,7 @@
             "description": "值来源，仅支持 const；必须与 value 同时使用"
           },
           "value": {
-            "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range 用 [min, max]（两元素同类型，两端都闭）；out_range 同样用 [min, max]，排除这个闭区间；like/not_like 用字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒，\\% 匹配 % 字符本身）；regex 用正则字符串（锚定随资源存储而变，别依赖它：「包含」写 .*词.*，精确相等用 ==）；exist/not_exist 不传 value",
+            "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range 用 [min, max]（两元素同类型，两端都闭）；out_range 同样用 [min, max]，排除这个闭区间；like/not_like 用字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒，\\% 匹配 % 字符本身）；regex 用正则字符串（锚定与大小写敏感性随资源存储而变，「包含」写 .*词.*）；exist/not_exist 不传 value",
             "oneOf": [
               {
                 "type": "string"
@@ -120,7 +120,7 @@
       },
       "filters": {
         "type": "array",
-        "description": "扁平过滤简写：多个条件按 and 组合，等价于手写 condition 的 and 嵌套。覆盖最常见的「字段 op 值 [AND ...]」场景。与 condition 互斥（同传时 condition 优先）；需要 or 或多层嵌套时改用 condition。算子选择与取值规则同 condition：比较算子按属性 type 判断，match 以属性的 condition_operations 为准；like/not_like 的值是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 的锚定随资源存储而变，别依赖它（「包含」写 .*词.*，精确相等用 ==）。不带值的 exist/not_exist 与要配 limit_key/limit_value 的 knn 走不通这条简写，用 condition 写。",
+        "description": "扁平过滤简写：多个条件按 and 组合，等价于手写 condition 的 and 嵌套。覆盖最常见的「字段 op 值 [AND ...]」场景。与 condition 互斥（同传时 condition 优先）；需要 or 或多层嵌套时改用 condition。算子选择与取值规则同 condition：比较算子按属性 type 判断，match 以属性的 condition_operations 为准；like/not_like 的值是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）。不带值的 exist/not_exist 与要配 limit_key/limit_value 的 knn 走不通这条简写，用 condition 写。",
         "items": {
           "type": "object",
           "required": [
@@ -135,7 +135,7 @@
             },
             "op": {
               "type": "string",
-              "description": "比较算子：按属性 type 判断（字符串类才有 like/not_like/regex）；match 需该属性的 condition_operations 含 match。like/not_like 的值是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 的锚定随资源存储而变，别依赖它（「包含」写 .*词.*，精确相等用 ==）",
+              "description": "比较算子：按属性 type 判断（字符串类才有 like/not_like/regex）；match 需该属性的 condition_operations 含 match。like/not_like 的值是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 的锚定与大小写敏感性随资源存储而变（「包含」写 .*词.*）",
               "enum": [
                 "==",
                 "!=",
