@@ -42,15 +42,15 @@ service:
       enabled: true
       interface:
         path:
-          # Only the public side is exposed. internal-v1 does not verify the token - the identity is taken from the X-Account-ID header filled in by the caller,
-          # When this header is missing, hydra.go will demote the caller to a hardcoded administrator - once Ingress is mounted, its next.
-          # 40 write interfaces (function/exec, impex import, etc.) can be called from outside the cluster without credentials.
-          # The caller (bkn-agent, agent-retrieval) in the cluster goes to ClusterIP agent-operator-integration:9000,
-          # Without Ingress, it will not be affected. See #326.
+          # Only the public surface is exposed. internal-v1 does not verify tokens; identity comes from the caller-supplied X-Account-ID header.
+          # When this header is missing, hydra.go falls back to a hardcoded administrator. Once Ingress is enabled, about 40 write interfaces
+          # under this path (function/exec, impex import, etc.) can be called from outside the cluster without credentials.
+          # In-cluster callers (bkn-agent, agent-retrieval) use ClusterIP agent-operator-integration:9000 and do not go through Ingress,
+          # so they are not affected. See #326.
           - /api/agent-operator-integration/v1
-          # Capability plane: Ingress path of the original capabilities-lab independent service. The service has been merged.
-          # Enter this service (its chart will be deleted accordingly), the path remains unchanged and will be taken over by this service. This side is also.
-          # The public side (token verification) does not conflict with the closure of internal-v1 (#326 step 3).
+          # Capability surface: Ingress path of the original standalone capabilities-lab service. That service has been merged into this service
+          # and its chart will be deleted accordingly. The path remains unchanged and is now handled by this service.
+          # This surface is also public (token-verified), so it does not conflict with the internal-v1 consolidation in #326 step 3.
           - /api/capabilities-lab/v1
   type: ClusterIP
   enableDualStack: false
@@ -217,7 +217,7 @@ env:
 # Authorization level of internal (internal-v1) skill reading interface:
 # shadow (default) - checks authorization but does not block it, only logs if it is not passed, equivalent to the old behavior.
 # enforce - enforce by account, no right to return 403.
-# off - no checking at all (reverse file)
+# off - no checks at all (fallback level)
 # context-loader has packaged /content and /files/read into MCP tools, and skill_id is filled in by the caller;
 # Observe the shadow log online to confirm that there is no accidental damage, and then turn to enforce.
 skill:

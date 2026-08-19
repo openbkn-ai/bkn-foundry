@@ -22,8 +22,8 @@ WORKDIR /app/operator-integration
 
 COPY --from=builder /out/operator-integration ./operator-integration
 
-# The Go binary does not come with a root certificate, nor is it included in the base image. Any outbound HTTPS requests will end with.
-# "certificate signed by unknown authority" fails (e.g. querying PyPI version).
+# The Go binary does not include root certificates, and the base image does not include them either.
+# Without ca-certificates, outbound HTTPS requests fail with "certificate signed by unknown authority" (for example, querying PyPI versions).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*

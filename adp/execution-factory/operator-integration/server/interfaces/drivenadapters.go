@@ -563,7 +563,7 @@ type ExecuteCodeResp struct {
 type QueryPythonPackagesReq struct {
 	PythonVersion string `json:"python_version"`                              // Python version.
 	PackageName   string `json:"package_name"`                                // Third-party package name.
-	PyPIURL       string `json:"pypi_url" default:"https://pypi.org/simple/"` // PyPI URL
+	PypiURL       string `json:"pypi_url" default:"https://pypi.org/simple/"` // PyPI URL
 }
 
 // QueryPythonPackagesResp Query Python third-party package response.
