@@ -113,6 +113,11 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	InstanceRerankMode string `json:"instance_rerank_mode" default:"off"`
 	// InstanceRerankModel overrides fine-ranking small model names; leave blank to use the default reranker configured by model management (#842).
 	InstanceRerankModel string `json:"instance_rerank_model,omitempty"`
+	// MinRerankerScore drops instances the reranker scored below it. A request may override the
+	// deployment-calibrated value; 0 means "take the deployment's", and a deployment value of 0 leaves
+	// the gate off. Setting it implies reranking: a relevance gate without the model has nothing to
+	// judge with.
+	MinRerankerScore float64 `json:"min_reranker_score,omitempty"`
 	// RerankTopN The number of candidates entering the refined ranking. Fine rowing is O(N) times forward and must have an upper bound.
 	RerankTopN int `json:"rerank_top_n" default:"50"`
 	// RerankFieldCharLimit The truncated length of a single field into refined text.

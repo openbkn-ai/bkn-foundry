@@ -124,6 +124,8 @@ func retrievalConfigStructToLocal(rc *interfaces.RetrievalConfig) *interfaces.Kn
 			SemanticFieldKeepMax:              s.SemanticFieldKeepMax,
 			SemanticFieldRerankBatchSize:      s.SemanticFieldRerankBatchSize,
 			MinDirectRelevance:                s.MinDirectRelevance,
+			InstanceRerankMode:                s.InstanceRerankMode,
+			MinRerankerScore:                  s.MinRerankerScore,
 			EnableGlobalFinalScoreRatioFilter: boolPtr(s.EnableGlobalFinalScoreRatioFilter),
 			GlobalFinalScoreRatio:             s.GlobalFinalScoreRatio,
 			ExactNameMatchScore:               s.ExactNameMatchScore,

@@ -32,18 +32,19 @@ import (
 
 // Config configuration
 type Config struct {
-	Project             Project               `yaml:"project"`
-	OAuth               OAuthConfig           `yaml:"oauth"`
-	BknBackend          PrivateBaseConfig     `yaml:"bkn_backend"`
-	OntologyQuery       PrivateBaseConfig     `yaml:"ontology_query"`
-	Vega                PrivateBaseConfig     `yaml:"vega"`                 // Vega data-catalog backend (run_sql / resource query)
-	OperatorIntegration PrivateBaseConfig     `yaml:"operator_integration"` // Operator integration service configuration
-	BknSafe             PrivateBaseConfig     `yaml:"bkn_safe"`             // bkn-safe auth service (AppKey verification)
-	RedisConfig         RedisConfig           `yaml:"redis"`
-	Logger              interfaces.Logger     `yaml:"-"`
-	ConceptSearchConfig KnConceptSearchConfig `yaml:"concept_search_config"` // Knowledge network concept search configuration
-	Observability       ObservabilityConfig   `yaml:"-"`
-	OTelProviders       *bknotel.Providers    `yaml:"-"`
+	Project              Project                `yaml:"project"`
+	OAuth                OAuthConfig            `yaml:"oauth"`
+	BknBackend           PrivateBaseConfig      `yaml:"bkn_backend"`
+	OntologyQuery        PrivateBaseConfig      `yaml:"ontology_query"`
+	Vega                 PrivateBaseConfig      `yaml:"vega"`                 // Vega data-catalog backend (run_sql / resource query)
+	OperatorIntegration  PrivateBaseConfig      `yaml:"operator_integration"` // Operator integration service configuration
+	BknSafe              PrivateBaseConfig      `yaml:"bkn_safe"`             // bkn-safe auth service (AppKey verification)
+	RedisConfig          RedisConfig            `yaml:"redis"`
+	Logger               interfaces.Logger      `yaml:"-"`
+	ConceptSearchConfig  KnConceptSearchConfig  `yaml:"concept_search_config"`  // Knowledge network concept search configuration
+	InstanceSearchConfig KnInstanceSearchConfig `yaml:"instance_search_config"` // Semantic instance retrieval configuration
+	Observability        ObservabilityConfig    `yaml:"-"`
+	OTelProviders        *bknotel.Providers     `yaml:"-"`
 	// New configuration - knowledge rearrangement and retrieval related.
 	MFModelAPI PrivateBaseConfig `yaml:"mf_model_api"` // MF-Model API unified service configuration.
 	RerankLLM  RerankLLMConfig   `yaml:"rerank_llm"`   // LLM parameter configuration for Rerank.
@@ -151,6 +152,18 @@ type OpenSearchConfig struct {
 type KnConceptSearchConfig struct {
 	ConceptRecallSize int `yaml:"concept_recall_size"` // Concept rough recall size
 	KnnKValue         int `yaml:"knn_k"`               // knn k value
+}
+
+// KnInstanceSearchConfig holds the deployment-calibrated knobs of semantic instance retrieval.
+type KnInstanceSearchConfig struct {
+	// MinRerankerScore drops instances the reranker scored below it, and returns nothing at all when
+	// no candidate clears the bar. 0 (the default) leaves the gate off.
+	//
+	// It lives in deployment config rather than in the tool contract because the number does not
+	// travel: measured on two of our own environments, "clearly relevant" tops out near 0.16 on one
+	// and 0.74 on the other for the same kind of query. A caller cannot know which deployment it is
+	// talking to, so it cannot pick this value; whoever calibrated the deployment can.
+	MinRerankerScore float64 `yaml:"min_reranker_score"`
 }
 
 // MFModelAPI configuration uses a unified PrivateBaseConfig structure.

@@ -39,7 +39,7 @@ func TestRerankInstances_OffDoesNotCallModel(t *testing.T) {
 	client := &mockRerankClient{}
 	nodes := []*interfaces.KnSearchNode{rerankNode("a", 1.0), rerankNode("b", 0.9)}
 
-	got := rerankService(client).rerankInstances(context.Background(), "q", nodes, DefaultSemanticInstanceRetrievalConfig())
+	got, _ := rerankService(client).rerankInstances(context.Background(), "q", nodes, DefaultSemanticInstanceRetrievalConfig(), nil)
 
 	if client.callCount() != 0 {
 		t.Errorf("default mode must not call the model, got %d calls", client.callCount())
@@ -57,7 +57,7 @@ func TestRerankInstances_OnReordersByModelScore(t *testing.T) {
 	}}}
 	nodes := []*interfaces.KnSearchNode{rerankNode("还款单", 1.0), rerankNode("欠款单", 0.98)}
 
-	got := rerankService(client).rerankInstances(context.Background(), "欠款记录", nodes, rerankConfig(InstanceRerankModeOn))
+	got, _ := rerankService(client).rerankInstances(context.Background(), "欠款记录", nodes, rerankConfig(InstanceRerankModeOn), nil)
 
 	if got[0].InstanceName != "欠款单" {
 		t.Fatalf("expected the model to promote 欠款单, got %s", got[0].InstanceName)
@@ -85,7 +85,7 @@ func TestRerankInstances_OnKeepsFusionScoreForUnscoredAndTail(t *testing.T) {
 	config.RerankTopN = 2
 	nodes := []*interfaces.KnSearchNode{rerankNode("unscored", 1.0), rerankNode("scored", 0.9), rerankNode("tail", 0.8)}
 
-	got := rerankService(client).rerankInstances(context.Background(), "q", nodes, config)
+	got, _ := rerankService(client).rerankInstances(context.Background(), "q", nodes, config, nil)
 
 	byName := map[string]*interfaces.KnSearchNode{}
 	for _, n := range got {
@@ -112,7 +112,7 @@ func TestRerankInstances_ShadowKeepsOrderButRecordsScores(t *testing.T) {
 	logger := &mockLogger{}
 	svc := &localSearchImpl{logger: logger, rerankClient: client}
 
-	got := svc.rerankInstances(context.Background(), "欠款记录", nodes, rerankConfig(InstanceRerankModeShadow))
+	got, _ := svc.rerankInstances(context.Background(), "欠款记录", nodes, rerankConfig(InstanceRerankModeShadow), nil)
 
 	if got[0].InstanceName != "还款单" {
 		t.Fatalf("shadow must not reorder, got %s first", got[0].InstanceName)
@@ -150,7 +150,7 @@ func TestRerankInstances_DegradesToFusionOrder(t *testing.T) {
 	for name, client := range cases {
 		t.Run(name, func(t *testing.T) {
 			nodes := []*interfaces.KnSearchNode{rerankNode("a", 1.0), rerankNode("b", 0.9)}
-			got := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig(InstanceRerankModeOn))
+			got, _ := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig(InstanceRerankModeOn), nil)
 
 			if len(got) != 2 {
 				t.Fatalf("degradation must not drop results, got %d", len(got))
@@ -172,7 +172,7 @@ func TestRerankInstances_PartialResultsKeepUnscoredNodes(t *testing.T) {
 	}}}
 	nodes := []*interfaces.KnSearchNode{rerankNode("a", 1.0), rerankNode("b", 0.9), rerankNode("c", 0.8)}
 
-	got := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig(InstanceRerankModeOn))
+	got, _ := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig(InstanceRerankModeOn), nil)
 
 	if len(got) != 3 {
 		t.Fatalf("expected all nodes kept, got %d", len(got))
@@ -191,7 +191,7 @@ func TestRerankInstances_AlignsByIndexNotOrder(t *testing.T) {
 	}}}
 	nodes := []*interfaces.KnSearchNode{rerankNode("a", 0.5), rerankNode("b", 0.5), rerankNode("c", 0.5)}
 
-	got := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig(InstanceRerankModeOn))
+	got, _ := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig(InstanceRerankModeOn), nil)
 
 	want := []string{"a", "b", "c"}
 	for i, name := range want {
@@ -211,7 +211,7 @@ func TestRerankInstances_TailBeyondTopNIsKeptUnscored(t *testing.T) {
 	config.RerankTopN = 2
 	nodes := []*interfaces.KnSearchNode{rerankNode("a", 1.0), rerankNode("b", 0.9), rerankNode("tail", 0.8)}
 
-	got := rerankService(client).rerankInstances(context.Background(), "q", nodes, config)
+	got, _ := rerankService(client).rerankInstances(context.Background(), "q", nodes, config, nil)
 
 	if len(client.documents()) != 2 {
 		t.Errorf("only top_n candidates may be sent to the model, got %d", len(client.documents()))
@@ -237,7 +237,7 @@ func TestInstanceRerankDocument(t *testing.T) {
 		},
 	}
 
-	doc := instanceRerankDocument(node, 10)
+	doc := instanceRerankDocument(node, 10, nil)
 
 	if !strings.HasPrefix(doc, "马拉卡纳球场") {
 		t.Errorf("instance name must lead the document, got %q", doc)
@@ -266,7 +266,7 @@ func TestInstanceRerankDocument_TotalLengthCapped(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		props[string(rune('a'+i%26))+strings.Repeat("x", 3)+string(rune('0'+i/26))] = strings.Repeat("值", 200)
 	}
-	doc := instanceRerankDocument(&interfaces.KnSearchNode{Properties: props}, 200)
+	doc := instanceRerankDocument(&interfaces.KnSearchNode{Properties: props}, 200, nil)
 
 	if len([]rune(doc)) > rerankDocumentCharLimit {
 		t.Errorf("document must stay under the cap, got %d runes", len([]rune(doc)))
@@ -281,7 +281,7 @@ func TestRerankInstances_UnknownModeFallsBackToOff(t *testing.T) {
 	client := &mockRerankClient{}
 	nodes := []*interfaces.KnSearchNode{rerankNode("a", 1.0), rerankNode("b", 0.9)}
 
-	got := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig("ON!!"))
+	got, _ := rerankService(client).rerankInstances(context.Background(), "q", nodes, rerankConfig("ON!!"), nil)
 
 	if client.callCount() != 0 {
 		t.Errorf("an unrecognized mode must not call the model, got %d calls", client.callCount())

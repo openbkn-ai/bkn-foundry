@@ -18,6 +18,8 @@ data:
     concept_search_config:
       concept_recall_size: {{ .Values.service.concept_search_config.concept_recall_size }}
       knn_k: {{ .Values.service.concept_search_config.knn_k }}
+    instance_search_config:
+      min_reranker_score: {{ .Values.service.instance_search_config.min_reranker_score }}
     oauth:
       public_host: {{ .Values.depServices.hydra.publicHost | quote }}
       public_port: {{ .Values.depServices.hydra.publicPort }}

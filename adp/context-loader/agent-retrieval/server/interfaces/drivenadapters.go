@@ -268,6 +268,8 @@ type SemanticInstanceRetrievalConfig struct {
 	SemanticFieldRerankBatchSize      int     `json:"semantic_field_rerank_batch_size,omitempty"`       // Default128.
 	MinDirectRelevance                float64 `json:"min_direct_relevance,omitempty"`                   // Default0.3.
 	ExactNameMatchScore               float64 `json:"exact_name_match_score,omitempty"`                 // Default0.85.
+	InstanceRerankMode                string  `json:"instance_rerank_mode,omitempty"`                   // off (default) / on / shadow.
+	MinRerankerScore                  float64 `json:"min_reranker_score,omitempty"`                     // 0 keeps the deployment's value.
 }
 
 // RetrievalConfig retrieveconfiguration.

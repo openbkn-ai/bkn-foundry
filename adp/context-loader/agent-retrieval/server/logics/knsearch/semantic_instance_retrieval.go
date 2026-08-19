@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -66,6 +67,33 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	instanceConfig := config.SemanticInstanceRetrieval
 	propertyConfig := config.PropertyFilter
 
+	// The relevance gate: a request may override the deployment's calibrated threshold.
+	minRerankerScore := instanceConfig.MinRerankerScore
+	if minRerankerScore <= 0 && s.config != nil {
+		minRerankerScore = s.config.InstanceSearchConfig.MinRerankerScore
+	}
+	if minRerankerScore > 0 && normalizeRerankMode(instanceConfig.InstanceRerankMode) == InstanceRerankModeOff {
+		// Turning the gate on implies paying for the model: it is the only score in this pipeline that
+		// judges relevance in absolute terms. The fusion score cannot serve — a channel's top row
+		// scores 1.0 whether or not anything in the object type has to do with the query.
+		gated := *instanceConfig
+		gated.InstanceRerankMode = InstanceRerankModeOn
+		instanceConfig = &gated
+		s.logger.WithContext(ctx).Infof(
+			"[SemanticInstanceRetrieval] min_reranker_score=%.4f is set, enabling rerank for this query",
+			minRerankerScore)
+	}
+
+	// One lookup of what each object type indexed for semantic recall, reused by reranking so the
+	// document it sends the model leads with those fields.
+	searchableByType := make(map[string][]searchableField, len(objectTypes))
+	for _, objType := range objectTypes {
+		if objType == nil {
+			continue
+		}
+		searchableByType[objType.ConceptID] = findSemanticSearchableFields(objType)
+	}
+
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
 
@@ -110,7 +138,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 
 	// Fine ranking (default off). Placed before attribute filtering: filterNodeProperties will reduce the number of attributes and truncate the value.
 	// Sending truncated text to the model would judge relevance from incomplete text.
-	allNodes = s.rerankInstances(ctx, req.Query, allNodes, instanceConfig)
+	allNodes, rerank := s.rerankInstances(ctx, req.Query, allNodes, instanceConfig, searchableByType)
+
+	var gateMessage string
+	if minRerankerScore > 0 {
+		allNodes, gateMessage = s.applyRelevanceGate(ctx, allNodes, minRerankerScore, rerank)
+	}
 
 	// Property filtering.
 	if boolValue(propertyConfig.EnablePropertyFilter) {
@@ -121,11 +154,67 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		Nodes: allNodes,
 	}
 
-	if len(allNodes) == 0 {
+	switch {
+	case gateMessage != "":
+		// The gate has more to say than "nothing matched": it either rejected a batch it did judge, or
+		// could not judge at all. Both readings change what the caller should do next.
+		result.Message = gateMessage
+	case len(allNodes) == 0:
 		result.Message = infraErr.LocalizedDetail(ctx, "NoMatchingInstances")
 	}
 
 	return result, nil
+}
+
+// applyRelevanceGate drops the instances the reranker scored below the threshold, and returns the
+// message the caller has to be told when the outcome is not a plain list of results.
+//
+// Three outcomes, and they must stay distinguishable:
+//   - the model judged and nothing cleared the bar: return empty, and say the batch was rejected;
+//   - the model never ran, or scored every candidate identically: do not filter, and say the gate did
+//     not run. Filtering on a judgement we do not have would be inventing one;
+//   - rows the model never saw (past the rerank window) are dropped when the gate is on: the gate
+//     means "only what the model vouched for", and an unjudged row is not that.
+func (s *localSearchImpl) applyRelevanceGate(
+	ctx context.Context,
+	nodes []*interfaces.KnSearchNode,
+	threshold float64,
+	rerank rerankOutcome,
+) ([]*interfaces.KnSearchNode, string) {
+	if len(nodes) == 0 {
+		return nodes, ""
+	}
+	if !rerank.scored || rerank.unavailable || rerank.degenerate {
+		reason := "unavailable"
+		if rerank.degenerate {
+			reason = "degenerate score distribution"
+		}
+		s.logger.WithContext(ctx).Warnf(
+			"[RelevanceGate] Skipped (%s): returning %d unfiltered instances", reason, len(nodes))
+		return nodes, infraErr.LocalizedDetail(ctx, "InstanceRelevanceGateSkipped",
+			formatScore(threshold))
+	}
+
+	kept := make([]*interfaces.KnSearchNode, 0, len(nodes))
+	for _, node := range nodes {
+		if node.RerankScore >= threshold {
+			kept = append(kept, node)
+		}
+	}
+	s.logger.WithContext(ctx).Infof(
+		"[RelevanceGate] threshold=%.4f top=%.4f kept=%d/%d", threshold, rerank.top, len(kept), len(nodes))
+
+	if len(kept) == 0 {
+		return nil, infraErr.LocalizedDetail(ctx, "InstanceRelevanceGateRejected",
+			formatScore(threshold), formatScore(rerank.top))
+	}
+	return kept, ""
+}
+
+// formatScore renders a score for a message: short enough to read, precise enough to compare with
+// the reranker_score values in the same response.
+func formatScore(v float64) string {
+	return strconv.FormatFloat(v, 'f', 4, 64)
 }
 
 // retrieveInstancesForObjectType performs semantic retrieval of individual object types.

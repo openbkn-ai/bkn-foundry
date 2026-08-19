@@ -362,8 +362,24 @@ components:
           type: object
           nullable: true
           description: |
-            历史请求结构。仅 `concept_retrieval.top_k` 与
-            `concept_retrieval.schema_brief` 仍被吸收，其余字段传入不报错也不生效。
+            检索参数。`concept_retrieval` 下仅 `top_k` 与 `schema_brief` 被吸收；
+            `semantic_instance_retrieval` 下的实例召回参数生效，其中与相关性直接相关的是：
+
+            - `instance_rerank_mode`：`off`（默认）/ `on` / `shadow`。`shadow` 调模型但不改
+              顺序，只记录两个序的差异，用于在改默认值之前取证。
+            - `min_reranker_score`：相关性闸门。低于该分的实例被丢弃；**一条都不达标时返回空**，
+              并在 `message` 里说明最高分是多少。传 0（默认）则沿用部署配置
+              `instance_search_config.min_reranker_score`，后者为 0 时闸门关闭。
+
+            闸门自带模型：设了 `min_reranker_score` 就会为本次查询开启精排——融合分表达的是
+            通道一致性而非绝对相关度（某通道第一名恒得 1.0），只有精排分能回答「这批到底相不相关」。
+            代价是每次实例查询多一次模型调用。
+
+            **阈值不可跨部署照抄**：实测两套自有环境上，「明显相关」的精排分一套在 0.16 量级、
+            另一套在 0.74 量级。校准方法是各跑几条该网络答得上和答不上的 query，取两段分数之间的值。
+
+            精排不可用、或模型对所有候选给出同一个分数时，闸门**不过滤**并在 `message` 里说明——
+            没有判断就不能假装筛过。
           properties:
             concept_retrieval:
               type: object

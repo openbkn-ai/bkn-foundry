@@ -188,6 +188,9 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	if user.InstanceRerankModel != "" {
 		base.InstanceRerankModel = user.InstanceRerankModel
 	}
+	if user.MinRerankerScore > 0 {
+		base.MinRerankerScore = user.MinRerankerScore
+	}
 	if user.RerankTopN > 0 {
 		base.RerankTopN = user.RerankTopN
 	}

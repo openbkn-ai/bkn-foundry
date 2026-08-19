@@ -117,6 +117,8 @@
     "MCPSchemaConversionFailed": "MCP 工具 Schema 转换失败。",
     "NoSearchableObjectTypes": "没有可检索的对象类型。",
     "NoMatchingInstances": "未检索到符合条件的实例数据。",
+    "InstanceRelevanceGateRejected": "没有实例达到相关性阈值 min_reranker_score=%s，最高分为 %s。精排模型确实逐条判断过这批候选，结论是都答不上这个问题——这是「确实没有相关数据」，不是检索失败。可以换一种问法，或放宽 concept_groups / object_types 后重试。",
+    "InstanceRelevanceGateSkipped": "相关性阈值 min_reranker_score=%s 未生效：精排模型不可用，或对所有候选给出了相同的分数，没有可据以过滤的判断。下面是未经过滤的召回结果，可能包含不相关的行。",
     "ScopeObjectTypesNotFound": "object_types 指定的对象类在该知识网络中都不存在：%s。该参数取对象类 id（例如 material），不是名称；id 来自 search_schema 响应的 concept_id 或 search_instance 响应的 object_type_id。",
     "NoPublishedSkillsMatched": "没有匹配的已发布技能。请先在执行工厂注册并发布技能，或放宽名称、分类过滤条件后重试。",
     "SkillContentTruncated": "SKILL.md 内容过长已截断，请使用 read_skill_file 分文件读取。",

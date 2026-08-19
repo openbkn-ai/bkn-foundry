@@ -10,6 +10,13 @@ project:
 concept_search_config:
   concept_recall_size: 100
   knn_k: 300
+instance_search_config:
+  # Reject instances the reranker scores below this, and return nothing when no candidate clears it.
+  # 0 leaves the gate off. Calibrate per deployment: run a few queries the network can answer and a
+  # few it cannot, then pick a value between the two score bands — measured on two of our own
+  # environments those bands sit an order of magnitude apart, and in different places.
+  # Setting it above 0 makes every instance query pay for one reranker call.
+  min_reranker_score: 0
 oauth: # Corresponds to the Hydra service.
   public_host: "hydra-public.openbkn"
   public_port: 4444

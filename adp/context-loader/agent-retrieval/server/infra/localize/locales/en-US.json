@@ -117,6 +117,8 @@
     "MCPSchemaConversionFailed": "Unable to convert the MCP tool schema.",
     "NoSearchableObjectTypes": "There are no searchable object types.",
     "NoMatchingInstances": "No matching instance data was found.",
+    "InstanceRelevanceGateRejected": "No instance cleared the relevance threshold min_reranker_score=%s; the best candidate scored %s. The reranker did judge these candidates and none of them answers the query, so this is a real \"nothing relevant here\" rather than a retrieval failure. Rephrasing the query or widening concept_groups / object_types may help.",
+    "InstanceRelevanceGateSkipped": "The relevance threshold min_reranker_score=%s was not applied: the reranker was unavailable or returned the same score for every candidate, so there is no judgement to filter on. The instances below are the unfiltered recall results and may include irrelevant rows.",
     "ScopeObjectTypesNotFound": "None of the object types named by object_types exist in this knowledge network: %s. The parameter takes object type ids (for example material), not names; ids come from concept_id in a search_schema response or object_type_id in a search_instance response.",
     "NoPublishedSkillsMatched": "No published skills matched. Register and publish a skill in Execution Factory, or broaden the name or category filter.",
     "SkillContentTruncated": "SKILL.md was truncated because it is too large. Use read_skill_file to read individual files.",

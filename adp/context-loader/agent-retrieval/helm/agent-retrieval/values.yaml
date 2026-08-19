@@ -58,6 +58,9 @@ service:
   concept_search_config:
     concept_recall_size: 100
     knn_k: 300
+  instance_search_config:
+    # 0 keeps the relevance gate off. See agent-retrieval.yaml for how to calibrate it.
+    min_reranker_score: 0
   rerank_llm: # The model uses the system default LLM by default; override per request through rerank_llm_model.
     temperature: 0
     top_k: 2
