@@ -1,4 +1,5 @@
 import time
+import asyncio
 from datetime import datetime, timedelta
 from pydantic.types import Decimal
 import func_timeout.exceptions
@@ -296,12 +297,30 @@ async def source_model(userId, language, page, size, name, order, series, rule, 
         try:
             # Return all models when authorization is disabled or the caller is an administrator.
             if not base_config.AUTH_ENABLED or userId == "266c6a42-6131-4d62-8f39-853e7093701c":
-                result = llm_model_dao.get_data_from_model_list_by_name_fuzzy(name, page, size, order, rule, api_model,
-                                                                              model_type)
-                total = len(
-                    llm_model_dao.get_data_from_model_list_by_name_fuzzy(name, 1, 1000000, order, rule, api_model,
-                                                                         model_type))
+                # DAO access is synchronous. Keep connection acquisition and SQL work
+                # off the FastAPI event-loop worker while preserving query semantics.
+                request_started_at = time.perf_counter()
+                query_started_at = time.perf_counter()
+                result = await asyncio.to_thread(
+                    llm_model_dao.get_data_from_model_list_by_name_fuzzy,
+                    name, page, size, order, rule, api_model, model_type,
+                )
+                query_duration_ms = round((time.perf_counter() - query_started_at) * 1000, 2)
+                count_started_at = time.perf_counter()
+                total = await asyncio.to_thread(
+                    llm_model_dao.count_data_from_model_list_by_name_fuzzy,
+                    name, api_model, model_type,
+                )
+                count_duration_ms = round((time.perf_counter() - count_started_at) * 1000, 2)
+                reshape_started_at = time.perf_counter()
                 result = await reshape_source(result, total)
+                StandLogger.info({
+                    "event": "llm_list_timing",
+                    "list_query_ms": query_duration_ms,
+                    "count_query_ms": count_duration_ms,
+                    "directory_lookup_and_reshape_ms": round((time.perf_counter() - reshape_started_at) * 1000, 2),
+                    "controller_total_ms": round((time.perf_counter() - request_started_at) * 1000, 2),
+                })
                 return JSONResponse(status_code=200, content=result)
             else:
                 # Authorization filter (#213): regular users see only models with large_model:display permission.
