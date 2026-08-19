@@ -7,6 +7,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -173,15 +174,15 @@ func TestEnrichTableMetadataContinuesWhenOneTableFails(t *testing.T) {
 				return nil
 			})
 		connector.EXPECT().MapType("int4").Return("int4")
-		rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
-			DoAndReturn(func(_ context.Context, resource *interfaces.Resource) error {
+		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "r1", resource.ID)
 				assert.Equal(t, interfaces.DiscoverStatusError, resource.LastDiscoverStatus)
 				assert.NotEmpty(t, resource.StatusMessage)
 				return nil
 			})
-		rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
-			DoAndReturn(func(_ context.Context, resource *interfaces.Resource) error {
+		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, resource *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "r2", resource.ID)
 				require.Len(t, resource.SchemaDefinition, 1)
 				assert.Equal(t, "id", resource.SchemaDefinition[0].Name)
@@ -233,8 +234,8 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 			return nil
 		})
 	connector.EXPECT().MapType("varchar").Return(interfaces.DataType_String).Times(2)
-	rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
-		DoAndReturn(func(_ context.Context, updated *interfaces.Resource) error {
+	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
 			require.Len(t, updated.SchemaDefinition, 2)
 
 			existing := updated.SchemaDefinition[0]

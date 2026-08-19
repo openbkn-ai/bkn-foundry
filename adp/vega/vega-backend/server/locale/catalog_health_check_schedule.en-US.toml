@@ -1,0 +1,29 @@
+[VegaBackend.CatalogHealthCheckSchedule.InvalidParameter]
+Description = "Invalid catalog health check schedule parameters"
+Solution = "Check the schedule mode and cron configuration, and ensure the target catalog is physical"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.NotFound]
+Description = "Catalog health check schedule not found"
+Solution = "Check whether the catalog ID and its health check schedule exist"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.UpdateConflict]
+Description = "The catalog health check schedule was updated after it was read"
+Solution = "Reload the catalog health check schedule and retry the update"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.InternalError]
+Description = "Catalog health check schedule internal error"
+Solution = "Please contact the administrator"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.InternalError.GetFailed]
+Description = "Failed to get the catalog health check schedule"
+Solution = "Please contact the administrator"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.InternalError.UpdateFailed]
+Description = "Failed to update the catalog health check schedule"
+Solution = "Please contact the administrator"
+ErrorLink = ""

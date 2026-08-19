@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -109,7 +110,10 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 			resource.LastDiscoverStatus = interfaces.DiscoverStatusError
 			resource.StatusMessage = fmt.Sprintf("discover metadata failed: %v", err)
 			updateDiscoverResultForEnrichStatus(result, interfaces.DiscoverStatusError)
-			if updateErr := dtw.rs.UpdateResource(ctx, resource); updateErr != nil {
+			expectedUpdateTime := resource.UpdateTime
+			resource.Updater = task.Creator
+			resource.UpdateTime = time.Now().UnixMilli()
+			if updateErr := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); updateErr != nil {
 				logger.Errorf("Failed to update discover error for table %s: %v", table.Name, updateErr)
 				return updateErr
 			}
@@ -185,7 +189,10 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 		// Update Resource
 		resource.LastDiscoverStatus = discoverStatus
 		resource.StatusMessage = ""
-		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
+		expectedUpdateTime := resource.UpdateTime
+		resource.Updater = task.Creator
+		resource.UpdateTime = time.Now().UnixMilli()
+		if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); err != nil {
 			logger.Errorf("Failed to update metadata for table %s: %v", table.Name, err)
 			return err
 		}

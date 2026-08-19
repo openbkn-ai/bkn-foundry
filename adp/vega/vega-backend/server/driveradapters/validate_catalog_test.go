@@ -42,6 +42,12 @@ func TestValidateCatalogRequest(t *testing.T) {
 			name: "accepts valid request",
 		},
 		{
+			name: "ignores expected update time for shared create validation",
+			mutate: func(req *interfaces.CatalogRequest) {
+				req.ExpectedUpdateTime = -1
+			},
+		},
+		{
 			name: "rejects invalid id",
 			mutate: func(req *interfaces.CatalogRequest) {
 				req.ID = "catalog.with.dot"

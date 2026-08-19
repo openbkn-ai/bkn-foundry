@@ -22,11 +22,10 @@ type DiscoverScheduleAccess interface {
 	// List lists discover schedules with filters.
 	List(ctx context.Context, params DiscoverScheduleQueryParams) ([]*DiscoverSchedule, int64, error)
 	// Update updates a discover schedule.
-	Update(ctx context.Context, schedule *DiscoverSchedule) error
-	// Enable enables a discover schedule.
-	Enable(ctx context.Context, id string, nextRun int64) error
-	// Disable disables a discover schedule.
-	Disable(ctx context.Context, id string) error
+	Update(ctx context.Context, schedule *DiscoverSchedule, expectedUpdateTime int64) (int64, error)
+	// UpdateEnabled updates the enabled state and updates the next run time only when enabling a discover schedule.
+	UpdateEnabled(ctx context.Context, id string, enabled bool, nextRun *int64,
+		expectedUpdateTime, updateTime int64, updater AccountInfo) (int64, error)
 	// Delete deletes a discover schedule by ID.
 	Delete(ctx context.Context, id string) error
 	// DeleteByCatalogID deletes discover schedules belonging to a Catalog.
@@ -34,5 +33,5 @@ type DiscoverScheduleAccess interface {
 	// ListDue retrieves enabled discover schedules whose next run is due.
 	ListDue(ctx context.Context, now int64) ([]*DiscoverSchedule, error)
 	// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
-	UpdateRunMetadata(ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64) error
+	UpdateRunMetadata(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error)
 }

@@ -72,12 +72,6 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 		return err
 	}
 
-	metadataStr, err := sonic.MarshalString(catalog.Metadata)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to marshal metadata", err)
-		return err
-	}
-
 	sqlStr, vals, err := sq.Insert(CATALOG_TABLE_NAME).
 		Columns(
 			"f_id",
@@ -110,7 +104,7 @@ func (ca *catalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interf
 			catalog.Internal,
 			catalog.ConnectorType,
 			connectorConfigStr,
-			metadataStr,
+			"{}",
 			catalog.HealthCheckStatus,
 			catalog.LastCheckTime,
 			catalog.HealthCheckResult,
@@ -812,7 +806,7 @@ func (ca *catalogAccess) ListAuthResources(ctx context.Context, params interface
 }
 
 // Update updates ca Catalog.
-func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
+func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog, expectedUpdateTime int64) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog")
 	defer span.End()
 
@@ -821,50 +815,45 @@ func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interf
 	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(catalog.Tags)
 
-	connectorConfigBytes, err := sonic.Marshal(catalog.ConnectorCfg)
+	connectorConfigStr, err := sonic.MarshalString(catalog.ConnectorCfg)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal connector config failed")
-		return err
+		return 0, err
 	}
-	metadataBytes, err := sonic.Marshal(catalog.Metadata)
-	if err != nil {
-		span.SetStatus(codes.Error, "Marshal metadata failed")
-		return err
-	}
-
-	sqlStr, vals, err := sq.Update(CATALOG_TABLE_NAME).
+	builder := sq.Update(CATALOG_TABLE_NAME).
 		Set("f_name", catalog.Name).
 		Set("f_tags", tagsStr).
 		Set("f_description", catalog.Description).
-		Set("f_enabled", catalog.Enabled).
-		Set("f_connector_type", catalog.ConnectorType).
-		Set("f_connector_config", string(connectorConfigBytes)).
-		Set("f_metadata", string(metadataBytes)).
-		Set("f_health_check_status", catalog.HealthCheckStatus).
-		Set("f_last_check_time", catalog.LastCheckTime).
-		Set("f_health_check_result", catalog.HealthCheckResult).
+		Set("f_connector_config", connectorConfigStr).
 		Set("f_updater", catalog.Updater.ID).
 		Set("f_updater_type", catalog.Updater.Type).
 		Set("f_update_time", catalog.UpdateTime).
 		Where(sq.Eq{"f_id": catalog.ID}).
-		ToSql()
+		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+		return 0, err
 	}
 
+	var result sql.Result
 	if tx != nil {
-		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
 	} else {
-		_, err = ca.db.ExecContext(ctx, sqlStr, vals...)
+		result, err = ca.db.ExecContext(ctx, sqlStr, vals...)
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
-		return err
+		return 0, err
+	}
+	rowsAffected, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		return 0, rowsErr
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return rowsAffected, nil
 }
 
 // DeleteByID deletes a Catalog by ID.
@@ -957,10 +946,10 @@ func (ca *catalogAccess) UpdateMetadata(ctx context.Context, id string, metadata
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog metadata")
 	defer span.End()
 
-	metadataBytes, _ := sonic.Marshal(metadata)
+	metadataStr, _ := sonic.MarshalString(metadata)
 
 	sqlStr, vals, err := sq.Update(CATALOG_TABLE_NAME).
-		Set("f_metadata", string(metadataBytes)).
+		Set("f_metadata", metadataStr).
 		Where(sq.Eq{"f_id": id}).
 		ToSql()
 	if err != nil {

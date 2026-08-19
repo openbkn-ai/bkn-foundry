@@ -758,12 +758,17 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := cs.ca.Update(ctx, tx, catalog); err != nil {
+	rowsAffected, err := cs.ca.Update(ctx, tx, catalog, req.ExpectedUpdateTime)
+	if err != nil {
 		span.SetStatus(codes.Error, "Update catalog failed")
 		otellog.LogError(ctx, "Update catalog failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update catalog")
+	}
+	if rowsAffected == 0 {
+		span.SetStatus(codes.Error, "Catalog update conflict")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_UpdateConflict)
 	}
 
 	if req.Extensions != nil {

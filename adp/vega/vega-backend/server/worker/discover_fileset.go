@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -218,7 +219,10 @@ func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, task *
 		}
 
 		resource.LastDiscoverStatus = discoverStatus
-		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
+		expectedUpdateTime := resource.UpdateTime
+		resource.Updater = task.Creator
+		resource.UpdateTime = time.Now().UnixMilli()
+		if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); err != nil {
 			logger.Errorf("Failed to update fileset resource %s: %v", resource.ID, err)
 			return err
 		}

@@ -37,6 +37,7 @@ const (
 	VegaBackend_Resource_AlreadyDisabled     = "VegaBackend.Resource.AlreadyDisabled"
 	VegaBackend_Resource_NotQueryable        = "VegaBackend.Resource.NotQueryable"
 	VegaBackend_Resource_MetadataUnavailable = "VegaBackend.Resource.MetadataUnavailable"
+	VegaBackend_Resource_UpdateConflict      = "VegaBackend.Resource.UpdateConflict"
 
 	// 500 Internal Server Error
 	VegaBackend_Resource_InternalError                       = "VegaBackend.Resource.InternalError"
@@ -78,6 +79,7 @@ var ResourceErrCodeList = []string{
 	VegaBackend_Resource_AlreadyDisabled,
 	VegaBackend_Resource_NotQueryable,
 	VegaBackend_Resource_MetadataUnavailable,
+	VegaBackend_Resource_UpdateConflict,
 
 	// 500 Internal Server Error
 	VegaBackend_Resource_InternalError,

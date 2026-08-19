@@ -79,7 +79,7 @@ func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, tx *
 	if catalog == nil || catalog.Type != interfaces.CatalogTypePhysical {
 		span.SetStatus(codes.Error, "Catalog is not physical")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails("health check schedules are only supported for physical catalogs")
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails("health check schedules are only supported for physical catalogs")
 	}
 
 	if req == nil {
@@ -91,7 +91,7 @@ func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, tx *
 	if err := validateRequest(req); err != nil {
 		span.SetStatus(codes.Error, "Invalid health check schedule request")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(err.Error())
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails(err.Error())
 	}
 
 	nowTime := time.Now()
@@ -118,7 +118,7 @@ func (chcss *catalogHealthCheckScheduleService) Create(ctx context.Context, tx *
 		if err != nil {
 			span.SetStatus(codes.Error, "Invalid cron expression")
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(fmt.Sprintf("invalid cron_expr: %v", err))
+				verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails(fmt.Sprintf("invalid cron_expr: %v", err))
 		}
 		schedule.NextRun = nextRun
 	}
@@ -146,7 +146,7 @@ func (chcss *catalogHealthCheckScheduleService) GetByCatalogID(ctx context.Conte
 		span.SetStatus(codes.Error, "Get health check schedule failed")
 		otellog.LogError(ctx, "Get catalog health check schedule failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed).
 			WithErrorDetails("failed to get catalog health check schedule")
 	}
 
@@ -165,7 +165,7 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 	if err := validateRequest(req); err != nil {
 		span.SetStatus(codes.Error, "Invalid health check schedule request")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(err.Error())
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails(err.Error())
 	}
 
 	catalog, err := chcss.ca.GetByID(ctx, catalogID)
@@ -173,17 +173,18 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 		span.SetStatus(codes.Error, "Get catalog failed")
 		otellog.LogError(ctx, "Get catalog for health check schedule failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed).
 			WithErrorDetails("failed to get catalog for health check schedule")
 	}
 	if catalog == nil {
 		span.SetStatus(codes.Error, "Catalog not found")
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound)
+		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
+			verrors.VegaBackend_CatalogHealthCheckSchedule_NotFound)
 	}
 	if catalog.Type != interfaces.CatalogTypePhysical {
 		span.SetStatus(codes.Error, "Catalog is not physical")
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails("health check schedules are only supported for physical catalogs")
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails("health check schedules are only supported for physical catalogs")
 	}
 
 	resourceType := interfaces.AUTH_RESOURCE_TYPE_CATALOG
@@ -211,7 +212,7 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 		span.SetStatus(codes.Error, "Get health check schedule failed")
 		otellog.LogError(ctx, "Get catalog health check schedule failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_GetFailed).
 			WithErrorDetails("failed to get catalog health check schedule")
 	}
 
@@ -231,17 +232,23 @@ func (chcss *catalogHealthCheckScheduleService) Update(ctx context.Context, cata
 		if parseErr != nil {
 			span.SetStatus(codes.Error, "Invalid cron expression")
 			return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-				verrors.VegaBackend_Catalog_InvalidParameter).WithErrorDetails(fmt.Sprintf("invalid cron_expr: %v", parseErr))
+				verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).WithErrorDetails(fmt.Sprintf("invalid cron_expr: %v", parseErr))
 		}
 		schedule.NextRun = nextRun
 	}
 
-	if err := chcss.sa.Update(ctx, schedule); err != nil {
+	rowsAffected, err := chcss.sa.Update(ctx, schedule, req.ExpectedUpdateTime)
+	if err != nil {
 		span.SetStatus(codes.Error, "Update health check schedule failed")
 		otellog.LogError(ctx, "Update catalog health check schedule failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update catalog health check schedule")
+	}
+	if rowsAffected == 0 {
+		span.SetStatus(codes.Error, "Health check schedule update conflict")
+		return nil, rest.NewHTTPError(ctx, http.StatusConflict,
+			verrors.VegaBackend_CatalogHealthCheckSchedule_UpdateConflict)
 	}
 
 	span.SetStatus(codes.Ok, "")

@@ -32,7 +32,7 @@ type CatalogAccess interface {
 	// ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
 	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.
-	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog) error
+	Update(ctx context.Context, tx *sql.Tx, catalog *Catalog, expectedUpdateTime int64) (int64, error)
 	// DeleteByID deletes a Catalog by ID.
 	DeleteByID(ctx context.Context, tx *sql.Tx, id string) error
 	// UpdateHealthCheckStatus updates Catalog health check status.

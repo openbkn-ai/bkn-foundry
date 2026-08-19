@@ -48,13 +48,15 @@ func (r *restHandler) getCatalogHealthCheckSchedule(c *gin.Context, v hydra.Visi
 
 	catalog, err := r.cs.GetByID(ctx, catalogID, false)
 	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		httpErr := httpErrorOrInternal(ctx, err,
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
 	}
 	if catalog.Type != interfaces.CatalogTypePhysical {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Catalog_InvalidParameter).
+		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest,
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InvalidParameter).
 			WithErrorDetails("health check schedules are only supported for physical catalogs")
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
@@ -63,7 +65,8 @@ func (r *restHandler) getCatalogHealthCheckSchedule(c *gin.Context, v hydra.Visi
 
 	schedule, err := r.hcss.GetByCatalogID(ctx, catalogID)
 	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		httpErr := httpErrorOrInternal(ctx, err,
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return
@@ -105,10 +108,17 @@ func (r *restHandler) updateCatalogHealthCheckSchedule(c *gin.Context, v hydra.V
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	schedule, err := r.hcss.Update(ctx, catalogID, &req)
 	if err != nil {
-		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Catalog_InternalError)
+		httpErr := httpErrorOrInternal(ctx, err,
+			verrors.VegaBackend_CatalogHealthCheckSchedule_InternalError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)
 		return

@@ -40,9 +40,6 @@ type ResourceService interface {
 	// CheckExistByName checks if a Resource exists by name.
 	CheckExistByName(ctx context.Context, catalogID string, name string) (bool, error)
 
-	// UpdateResource updates a Resource directly.
-	UpdateResource(ctx context.Context, resource *Resource) error
-
 	// ListAuthResources lists resource auth resources with filters.
 	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
@@ -55,12 +52,12 @@ type ResourceService interface {
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
 	// InternalGetByCatalogID retrieves all Resources under a Catalog for internal callers.
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
-	// InternalUpdate updates a Resource for internal workers.
-	InternalUpdate(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// InternalUpdateLocalIndexName updates only a Resource's local index name for internal workers.
 	InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
 	// InternalUpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
-	InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource) error
+	InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) error
+	// InternalUpdateDiscoveryMetadata updates only Resource metadata owned by discovery.
+	InternalUpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) error
 	// InternalCreate creates a Resource for internal workers within a transaction.
 	InternalCreate(ctx context.Context, tx *sql.Tx, req *ResourceRequest) (*Resource, error)
 	// InternalUpdateStatus updates a Resource status for internal workers within a transaction.

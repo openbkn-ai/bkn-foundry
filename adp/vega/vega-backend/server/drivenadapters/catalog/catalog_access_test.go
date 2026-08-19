@@ -41,7 +41,7 @@ func TestCatalogAccessCreate(t *testing.T) {
 				false,
 				interfaces.ConnectorTypePostgreSQL,
 				`{"host":"127.0.0.1"}`,
-				`{"region":"cn"}`,
+				`{}`,
 				interfaces.CatalogHealthStatusHealthy,
 				int64(100),
 				"ok",
@@ -399,11 +399,13 @@ func TestCatalogAccessUpdate(t *testing.T) {
 		catalog := sampleCatalog()
 		catalog.Name = "Updated Catalog"
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_enabled = ?, f_connector_type = ?, f_connector_config = ?, f_metadata = ?, f_health_check_status = ?, f_last_check_time = ?, f_health_check_result = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
-			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, catalog.Enabled, catalog.ConnectorType, `{"host":"127.0.0.1"}`, `{"region":"cn"}`, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_connector_config = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
+			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, `{"host":"127.0.0.1"}`, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID, catalog.UpdateTime).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), nil, catalog))
+		rowsAffected, err := access.Update(context.Background(), nil, catalog, catalog.UpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -417,9 +419,28 @@ func TestCatalogAccessUpdate(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET")).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), tx, sampleCatalog()))
+		catalog := sampleCatalog()
+		rowsAffected, err := access.Update(context.Background(), tx, catalog, catalog.UpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		mock.ExpectCommit()
 		require.NoError(t, tx.Commit())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns zero affected rows for a stale catalog", func(t *testing.T) {
+		access, mock, cleanup := newCatalogAccessMock(t)
+		defer cleanup()
+		catalog := sampleCatalog()
+		expectedUpdateTime := catalog.UpdateTime - 1
+
+		mock.ExpectExec("UPDATE t_catalog SET .* WHERE f_id = \\? AND f_update_time = \\?").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		rowsAffected, err := access.Update(context.Background(), nil, catalog, expectedUpdateTime)
+
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

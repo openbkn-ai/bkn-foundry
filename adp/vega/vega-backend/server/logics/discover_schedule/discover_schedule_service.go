@@ -41,12 +41,6 @@ type discoverScheduleService struct {
 	ums        interfaces.UserMgmtService
 }
 
-func (dss *discoverScheduleService) UpdateRunMetadata(
-	ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64,
-) error {
-	return dss.dsa.UpdateRunMetadata(ctx, id, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun)
-}
-
 // NewDiscoverScheduleService creates a new DiscoverScheduleService.
 func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.DiscoverTaskService) interfaces.DiscoverScheduleService {
 	dsServiceOnce.Do(func() {
@@ -59,6 +53,11 @@ func NewDiscoverScheduleService(appSetting *common.AppSetting, dts interfaces.Di
 		}
 	})
 	return dsService
+}
+
+func (dss *discoverScheduleService) UpdateRunMetadata(ctx context.Context,
+	id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
+	return dss.dsa.UpdateRunMetadata(ctx, id, expectedUpdateTime, expectedNextRun, lastRun, nextRun)
 }
 
 /**
@@ -216,24 +215,30 @@ func (dss *discoverScheduleService) Update(ctx context.Context, schedule *interf
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 
+	nowTime := time.Now()
+	now := nowTime.UnixMilli()
+
 	schedule.CronExpr = req.CronExpr
 	schedule.Name = req.Name
 	schedule.StartTime = req.StartTime
 	schedule.EndTime = req.EndTime
 	schedule.Strategy = req.Strategy
 	schedule.Updater = accountInfo
-	now := time.Now()
-	nextRun, err := calculateScheduleNextRun(schedule.CronExpr, now, schedule.StartTime)
+	schedule.UpdateTime = now
+	nextRun, err := calculateScheduleNextRun(schedule.CronExpr, nowTime, schedule.StartTime)
 	if err != nil {
 		return err
 	}
 	schedule.NextRun = nextRun.UnixMilli()
-	schedule.UpdateTime = now.UnixMilli()
 
 	// Update schedule
-	if err := dss.dsa.Update(ctx, schedule); err != nil {
+	rowsAffected, err := dss.dsa.Update(ctx, schedule, req.ExpectedUpdateTime)
+	if err != nil {
 		otellog.LogError(ctx, "Failed to update discover schedule", err)
 		return err
+	}
+	if rowsAffected == 0 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
 	}
 	logger.Infof("Updated discover schedule: id=%s", schedule.ID)
 	return nil
@@ -254,27 +259,36 @@ func (dss *discoverScheduleService) Delete(ctx context.Context, id string) error
 	return nil
 }
 
-// Enable enables a discover schedule.
-func (dss *discoverScheduleService) Enable(ctx context.Context, id string) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.Enable")
+// UpdateEnabled updates the enabled state of a discover schedule.
+func (dss *discoverScheduleService) UpdateEnabled(ctx context.Context,
+	schedule *interfaces.DiscoverSchedule, enabled bool) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.UpdateEnabled")
 	defer span.End()
 
-	schedule, err := dss.dsa.GetByID(ctx, id)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to get discover schedule", err)
-		return err
-	}
 	if schedule == nil {
 		return fmt.Errorf("discover schedule not found")
 	}
 
-	nextRun, err := calculateScheduleNextRun(schedule.CronExpr, time.Now(), schedule.StartTime)
+	nowTime := time.Now()
+	var nextRun *int64
+	if enabled {
+		nextRunTime, err := calculateScheduleNextRun(schedule.CronExpr, nowTime, schedule.StartTime)
+		if err != nil {
+			return err
+		}
+		nextRunValue := nextRunTime.UnixMilli()
+		nextRun = &nextRunValue
+	}
+
+	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
+	rowsAffected, err := dss.dsa.UpdateEnabled(
+		ctx, schedule.ID, enabled, nextRun, schedule.UpdateTime, nowTime.UnixMilli(), accountInfo)
 	if err != nil {
+		otellog.LogError(ctx, "Failed to update discover schedule enabled state", err)
 		return err
 	}
-	if err := dss.dsa.Enable(ctx, id, nextRun.UnixMilli()); err != nil {
-		otellog.LogError(ctx, "Failed to enable discover schedule", err)
-		return err
+	if rowsAffected == 0 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
 	}
 
 	return nil
@@ -293,19 +307,6 @@ func calculateScheduleNextRun(cronExpr string, now time.Time, startTime int64) (
 		from = time.UnixMilli(startTime).In(now.Location()).Add(-time.Nanosecond)
 	}
 	return cronSchedule.Next(from), nil
-}
-
-// Disable disables a discover schedule.
-func (dss *discoverScheduleService) Disable(ctx context.Context, id string) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverScheduleService.Disable")
-	defer span.End()
-
-	if err := dss.dsa.Disable(ctx, id); err != nil {
-		otellog.LogError(ctx, "Failed to disable discover schedule", err)
-		return err
-	}
-
-	return nil
 }
 
 // ExecuteSchedule is a method for executing plan discovery tasks

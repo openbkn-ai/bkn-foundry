@@ -291,7 +291,10 @@ paths:
         更新 Resource。
 
         - `name` 在 catalog 内唯一；改名为已占用值返回 409 `VegaBackend.Resource.NameExists`。
-        - 不能跨 catalog 移动（`catalog_id` 与原值不一致时按 service 层规则处理）。
+        - `catalog_id` 和 `category` 不可修改，与当前 Resource 不一致时返回 400。
+        - PUT 中的 `status`、`schema`、`source_identifier`、`source_metadata` 由内部流程管理；即使携带也会被忽略。
+        - 必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
+          `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
         - **extensions**：请求体若包含 **`extensions` 键**（含 `{}`）则整包替换该 resource 的 `t_entity_extension` 行；
           **键未出现**则不修改副表。
       requestBody:
@@ -299,7 +302,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ResourceRequest"
+              allOf:
+                - $ref: "#/components/schemas/ResourceRequest"
+                - type: object
+                  required:
+                    - expected_update_time
       responses:
         "204":
           description: 更新成功
@@ -358,6 +365,7 @@ components:
       description: |
         资源冲突。常见 errcode：
         - `VegaBackend.Resource.NameExists`：catalog 内 name 已被占用
+        - `VegaBackend.Resource.UpdateConflict`：`expected_update_time` 与当前 `update_time` 不一致
       content:
         application/json:
           schema:
@@ -676,6 +684,11 @@ components:
           type: string
           pattern: "^[a-z0-9][a-z0-9\\-_]{0,39}$"
           maxLength: 40
+        expected_update_time:
+          description: 仅 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 `update_time`
+          type: integer
+          format: int64
+          minimum: 1
         catalog_id:
           description: 所属 catalog ID（必填）
           type: string

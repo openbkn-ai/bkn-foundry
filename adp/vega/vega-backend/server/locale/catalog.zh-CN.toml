@@ -122,3 +122,8 @@ ErrorLink = ""
 Description = "敏感字段未正确加密"
 Solution = "请使用公钥加密敏感字段后再提交"
 ErrorLink = ""
+
+[VegaBackend.Catalog.UpdateConflict]
+Description = "目录配置在读取后已被更新"
+Solution = "请重新加载目录配置后再提交修改"
+ErrorLink = ""

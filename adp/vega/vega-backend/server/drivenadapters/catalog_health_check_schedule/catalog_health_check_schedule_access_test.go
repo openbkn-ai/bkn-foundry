@@ -162,11 +162,13 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 			Updater:    interfaces.AccountInfo{ID: "user-1", Type: "user"},
 			UpdateTime: 300,
 		}
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ?")).
-			WithArgs("enabled", "*/10 * * * *", int64(200), "user-1", "user", int64(300), "catalog-1").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
+			WithArgs("enabled", "*/10 * * * *", int64(200), "user-1", "user", int64(300), "catalog-1", int64(300)).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), schedule))
+		rowsAffected, err := access.Update(context.Background(), schedule, schedule.UpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -175,29 +177,49 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 		defer cleanup()
 		updateErr := sql.ErrConnDone
 		schedule := &interfaces.CatalogHealthCheckSchedule{CatalogID: "catalog-1", Mode: interfaces.CatalogHealthCheckScheduleModeInherit}
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ?")).
-			WithArgs("inherit", "", int64(0), "", "", int64(0), "catalog-1").WillReturnError(updateErr)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
+			WithArgs("inherit", "", int64(0), "", "", int64(0), "catalog-1", int64(0)).WillReturnError(updateErr)
 
-		err := access.Update(context.Background(), schedule)
+		_, err := access.Update(context.Background(), schedule, schedule.UpdateTime)
 
 		require.ErrorIs(t, err, updateErr)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("returns not found when no schedule is updated", func(t *testing.T) {
+	t.Run("returns zero affected rows when no schedule is updated", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 		schedule := &interfaces.CatalogHealthCheckSchedule{
 			CatalogID: "missing",
 			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
 		}
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ?")).
-			WithArgs("inherit", "", int64(0), "", "", int64(0), "missing").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
+			WithArgs("inherit", "", int64(0), "", "", int64(0), "missing", int64(0)).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		err := access.Update(context.Background(), schedule)
+		rowsAffected, err := access.Update(context.Background(), schedule, schedule.UpdateTime)
 
-		require.ErrorIs(t, err, sql.ErrNoRows)
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns zero affected rows for a stale schedule", func(t *testing.T) {
+		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
+		defer cleanup()
+		schedule := &interfaces.CatalogHealthCheckSchedule{
+			CatalogID:  "catalog-1",
+			Mode:       interfaces.CatalogHealthCheckScheduleModeInherit,
+			UpdateTime: 300,
+		}
+		expectedUpdateTime := int64(299)
+		mock.ExpectExec("UPDATE t_catalog_health_check_schedule SET .* WHERE f_catalog_id = \\? AND f_update_time = \\?").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		rowsAffected, err := access.Update(context.Background(), schedule, expectedUpdateTime)
+
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -209,11 +231,11 @@ func TestCatalogHealthCheckScheduleAccessUpdate(t *testing.T) {
 			CatalogID: "catalog-1",
 			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
 		}
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ?")).
-			WithArgs("inherit", "", int64(0), "", "", int64(0), "catalog-1").
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_mode = ?, f_cron_expr = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
+			WithArgs("inherit", "", int64(0), "", "", int64(0), "catalog-1", int64(0)).
 			WillReturnResult(sqlmock.NewErrorResult(affectedRowsErr))
 
-		err := access.Update(context.Background(), schedule)
+		_, err := access.Update(context.Background(), schedule, schedule.UpdateTime)
 
 		require.ErrorIs(t, err, affectedRowsErr)
 		require.NoError(t, mock.ExpectationsWereMet())
@@ -225,11 +247,13 @@ func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
-			WithArgs(int64(100), int64(200), "catalog-1", int64(50)).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ? AND f_next_run = ? AND f_mode IN (?,?)")).
+			WithArgs(int64(100), int64(200), "catalog-1", int64(50), int64(75), "inherit", "enabled").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200))
+		rowsAffected, err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 75, 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -238,27 +262,28 @@ func TestCatalogHealthCheckScheduleAccessUpdateRunMetadata(t *testing.T) {
 		defer cleanup()
 
 		updateErr := sql.ErrConnDone
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
-			WithArgs(int64(100), int64(200), "catalog-1", int64(50)).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ? AND f_next_run = ? AND f_mode IN (?,?)")).
+			WithArgs(int64(100), int64(200), "catalog-1", int64(50), int64(75), "inherit", "enabled").
 			WillReturnError(updateErr)
 
-		err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200)
+		_, err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 75, 100, 200)
 
 		require.ErrorIs(t, err, updateErr)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("returns not found when schedule changed or was deleted", func(t *testing.T) {
+	t.Run("returns zero rows when schedule changed, was disabled, or was deleted", func(t *testing.T) {
 		access, mock, cleanup := newCatalogHealthCheckScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ?")).
-			WithArgs(int64(100), int64(200), "catalog-1", int64(50)).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog_health_check_schedule SET f_last_run = ?, f_next_run = ? WHERE f_catalog_id = ? AND f_update_time = ? AND f_next_run = ? AND f_mode IN (?,?)")).
+			WithArgs(int64(100), int64(200), "catalog-1", int64(50), int64(75), "inherit", "enabled").
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 100, 200)
+		rowsAffected, err := access.UpdateRunMetadata(context.Background(), "catalog-1", 50, 75, 100, 200)
 
-		require.ErrorIs(t, err, sql.ErrNoRows)
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

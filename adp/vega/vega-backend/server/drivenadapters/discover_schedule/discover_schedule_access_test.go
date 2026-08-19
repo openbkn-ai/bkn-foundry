@@ -104,8 +104,8 @@ func TestDiscoverScheduleAccessCreate(t *testing.T) {
 		schedule := sampleDiscoverSchedule()
 		schedule.NextRun = 123
 
-		mock.ExpectExec("INSERT INTO t_discover_schedule (f_id,f_name,f_catalog_id,f_cron_expr,f_start_time,f_end_time,f_enabled,f_strategy,f_last_run,f_next_run,f_creator,f_creator_type,f_create_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)").
-			WithArgs(schedule.ID, schedule.Name, schedule.CatalogID, schedule.CronExpr, schedule.StartTime, schedule.EndTime, schedule.Enabled, schedule.Strategy, schedule.LastRun, schedule.NextRun, schedule.Creator.ID, schedule.Creator.Type, schedule.CreateTime).
+		mock.ExpectExec("INSERT INTO t_discover_schedule (f_id,f_name,f_catalog_id,f_cron_expr,f_start_time,f_end_time,f_enabled,f_strategy,f_last_run,f_next_run,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").
+			WithArgs(schedule.ID, schedule.Name, schedule.CatalogID, schedule.CronExpr, schedule.StartTime, schedule.EndTime, schedule.Enabled, schedule.Strategy, schedule.LastRun, schedule.NextRun, schedule.Creator.ID, schedule.Creator.Type, schedule.CreateTime, schedule.Updater.ID, schedule.Updater.Type, schedule.UpdateTime).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		require.NoError(t, access.Create(context.Background(), schedule))
@@ -113,30 +113,49 @@ func TestDiscoverScheduleAccessCreate(t *testing.T) {
 	})
 }
 
-func TestDiscoverScheduleAccessDisable(t *testing.T) {
-	t.Run("disables schedule", func(t *testing.T) {
+func TestDiscoverScheduleAccessUpdateEnabled(t *testing.T) {
+	t.Run("disables schedule without changing next run", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec("UPDATE t_discover_schedule SET f_enabled = ? WHERE f_id = ?").
-			WithArgs(0, "schedule-1").
+		updater := interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER}
+		mock.ExpectExec("UPDATE t_discover_schedule SET f_enabled = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?").
+			WithArgs(false, updater.ID, updater.Type, int64(456), "schedule-1", int64(123)).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Disable(context.Background(), "schedule-1"))
+		nextRun := int64(123)
+		rowsAffected, err := access.UpdateEnabled(context.Background(), "schedule-1", false, &nextRun, 123, 456, updater)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
-}
-
-func TestDiscoverScheduleAccessEnable(t *testing.T) {
 	t.Run("sets caller supplied next run", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec("UPDATE t_discover_schedule SET f_enabled = ?, f_next_run = ? WHERE f_id = ?").
-			WithArgs(1, int64(123), "schedule-1").
+		updater := interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER}
+		mock.ExpectExec("UPDATE t_discover_schedule SET f_enabled = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?").
+			WithArgs(true, int64(123), updater.ID, updater.Type, int64(456), "schedule-1", int64(234)).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Enable(context.Background(), "schedule-1", 123))
+		nextRun := int64(123)
+		rowsAffected, err := access.UpdateEnabled(context.Background(), "schedule-1", true, &nextRun, 234, 456, updater)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+	t.Run("returns zero affected rows for a stale schedule", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+		defer cleanup()
+
+		updater := interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER}
+		mock.ExpectExec("UPDATE t_discover_schedule SET f_enabled = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?").
+			WithArgs(false, updater.ID, updater.Type, int64(456), "schedule-1", int64(123)).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		rowsAffected, err := access.UpdateEnabled(context.Background(), "schedule-1", false, nil, 123, 456, updater)
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -151,11 +170,30 @@ func TestDiscoverScheduleAccessUpdate(t *testing.T) {
 		schedule.Updater = interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER}
 		schedule.UpdateTime = 9
 
-		mock.ExpectExec("UPDATE t_discover_schedule SET f_name = ?, f_catalog_id = ?, f_cron_expr = ?, f_start_time = ?, f_end_time = ?, f_strategy = ?, f_next_run = ?, f_enabled = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?").
-			WithArgs(schedule.Name, schedule.CatalogID, schedule.CronExpr, schedule.StartTime, schedule.EndTime, schedule.Strategy, schedule.NextRun, schedule.Enabled, schedule.Updater.ID, schedule.Updater.Type, schedule.UpdateTime, schedule.ID).
+		mock.ExpectExec("UPDATE t_discover_schedule SET f_name = ?, f_cron_expr = ?, f_start_time = ?, f_end_time = ?, f_strategy = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?").
+			WithArgs(schedule.Name, schedule.CronExpr, schedule.StartTime, schedule.EndTime, schedule.Strategy, schedule.NextRun, schedule.Updater.ID, schedule.Updater.Type, schedule.UpdateTime, schedule.ID, schedule.UpdateTime).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), schedule))
+		rowsAffected, err := access.Update(context.Background(), schedule, schedule.UpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns zero affected rows for a stale schedule", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
+		defer cleanup()
+		schedule := sampleDiscoverSchedule()
+		expectedUpdateTime := int64(1)
+
+		mock.ExpectExec("UPDATE t_discover_schedule SET f_name = ?, f_cron_expr = ?, f_start_time = ?, f_end_time = ?, f_strategy = ?, f_next_run = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?").
+			WithArgs(schedule.Name, schedule.CronExpr, schedule.StartTime, schedule.EndTime, schedule.Strategy, schedule.NextRun, schedule.Updater.ID, schedule.Updater.Type, schedule.UpdateTime, schedule.ID, expectedUpdateTime).
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		rowsAffected, err := access.Update(context.Background(), schedule, expectedUpdateTime)
+
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -212,11 +250,13 @@ func TestDiscoverScheduleAccessUpdateRunMetadata(t *testing.T) {
 			WithArgs(int64(100), int64(200), "schedule-1", int64(50), int64(75), true).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateRunMetadata(context.Background(), "schedule-1", 50, 75, 100, 200))
+		rowsAffected, err := access.UpdateRunMetadata(context.Background(), "schedule-1", 50, 75, 100, 200)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("returns not found when schedule changed, was disabled, or was deleted", func(t *testing.T) {
+	t.Run("returns zero rows when schedule changed, was disabled, or was deleted", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverScheduleAccessMock(t)
 		defer cleanup()
 
@@ -224,9 +264,10 @@ func TestDiscoverScheduleAccessUpdateRunMetadata(t *testing.T) {
 			WithArgs(int64(100), int64(200), "schedule-1", int64(50), int64(75), true).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		err := access.UpdateRunMetadata(context.Background(), "schedule-1", 50, 75, 100, 200)
+		rowsAffected, err := access.UpdateRunMetadata(context.Background(), "schedule-1", 50, 75, 100, 200)
 
-		require.ErrorIs(t, err, sql.ErrNoRows)
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }

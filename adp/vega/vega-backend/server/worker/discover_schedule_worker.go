@@ -94,7 +94,7 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 	}
 
 	if schedule.EndTime > 0 && now.UnixMilli() > schedule.EndTime {
-		if err := dsw.dss.Disable(ctx, schedule.ID); err != nil {
+		if err := dsw.dss.UpdateEnabled(ctx, schedule, false); err != nil {
 			logger.Errorf("Disable expired discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
 		}
 		return
@@ -103,7 +103,7 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 	cronSchedule, err := common.ParseHourlyCronExpr(schedule.CronExpr)
 	if err != nil {
 		logger.Errorf("Parse discover schedule cron expression failed; disabling schedule: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
-		if disableErr := dsw.dss.Disable(ctx, schedule.ID); disableErr != nil {
+		if disableErr := dsw.dss.UpdateEnabled(ctx, schedule, false); disableErr != nil {
 			logger.Errorf("Disable discover schedule with invalid cron expression failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, disableErr)
 		}
 		return
@@ -117,9 +117,8 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 			from = time.UnixMilli(schedule.StartTime).In(now.Location()).Add(-time.Nanosecond)
 		}
 		nextRun := cronSchedule.Next(from)
-		if err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
-			schedule.UpdateTime, schedule.NextRun, schedule.LastRun, nextRun.UnixMilli(),
-		); err != nil {
+		if _, err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
+			schedule.UpdateTime, schedule.NextRun, schedule.LastRun, nextRun.UnixMilli()); err != nil {
 			logger.Errorf("Initialize discover schedule next run failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
 		}
 		return
@@ -128,10 +127,14 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 	// Advance the running time in the database before creating a task. Skip this trigger when the task creation fails and during the service downtime
 	// Missed historical cycles will not be made up for one by one after recovery.
 	nextRun := cronSchedule.Next(now)
-	if err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
+	rowsAffected, err := dsw.dss.UpdateRunMetadata(ctx, schedule.ID,
 		schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli(),
-	); err != nil {
+	)
+	if err != nil {
 		logger.Errorf("Advance discover schedule failed: schedule_id=%s, catalog_id=%s, error=%v", schedule.ID, catalogID, err)
+		return
+	}
+	if rowsAffected == 0 {
 		return
 	}
 

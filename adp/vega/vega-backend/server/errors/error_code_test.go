@@ -17,6 +17,7 @@ func TestErrCodeLists(t *testing.T) {
 	lists := map[string][]string{
 		"common":            commonErrCodeList,
 		"catalog":           CatalogErrCodeList,
+		"health_schedule":   CatalogHealthCheckScheduleErrCodeList,
 		"resource":          ResourceErrCodeList,
 		"connector_type":    ConnectorTypeErrCodeList,
 		"build_task":        BuildTaskErrCodeList,

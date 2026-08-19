@@ -75,11 +75,11 @@ func TestCatalogHealthCheckWorkerRunDueContinuesAfterSchedulePanic(t *testing.T)
 
 	gomock.InOrder(
 		sa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return([]*interfaces.CatalogHealthCheckSchedule{first, second}, nil),
-		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", first.UpdateTime, gomock.Any(), gomock.Any()).Return(nil),
+		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", first.UpdateTime, first.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil),
 		cs.EXPECT().InternalTestConnection(gomock.Any(), "catalog-1").Do(
 			func(context.Context, string) { panic("connector panic") },
 		),
-		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-2", second.UpdateTime, gomock.Any(), gomock.Any()).Return(nil),
+		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-2", second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil),
 		cs.EXPECT().InternalTestConnection(gomock.Any(), "catalog-2").Return(&interfaces.CatalogHealthCheckStatus{}, nil),
 	)
 
@@ -100,11 +100,11 @@ func TestCatalogHealthCheckWorkerRunSchedule(t *testing.T) {
 		}
 
 		gomock.InOrder(
-			sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", int64(123), gomock.Any(), gomock.Any()).DoAndReturn(
-				func(_ context.Context, _ string, _ int64, lastRun, nextRun int64) error {
+			sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", int64(123), schedule.NextRun, gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _ string, _, _ int64, lastRun, nextRun int64) (int64, error) {
 					assert.Greater(t, lastRun, int64(0))
 					assert.Greater(t, nextRun, lastRun)
-					return nil
+					return 1, nil
 				},
 			),
 			cs.EXPECT().InternalTestConnection(gomock.Any(), "catalog-1").Return(&interfaces.CatalogHealthCheckStatus{}, nil),
@@ -137,7 +137,7 @@ func TestCatalogHealthCheckWorkerRunSchedule(t *testing.T) {
 			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
 		}
 		gomock.InOrder(
-			sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", schedule.UpdateTime, gomock.Any(), gomock.Any()).Return(nil),
+			sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil),
 			cs.EXPECT().InternalTestConnection(gomock.Any(), "catalog-1").Return(nil, errors.New("connection unavailable")),
 		)
 
@@ -154,8 +154,24 @@ func TestCatalogHealthCheckWorkerRunSchedule(t *testing.T) {
 			CatalogID: "catalog-1",
 			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
 		}
-		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", schedule.UpdateTime, gomock.Any(), gomock.Any()).
-			Return(errors.New("database unavailable"))
+		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).
+			Return(int64(0), errors.New("database unavailable"))
+
+		w.runSchedule(context.Background(), schedule)
+	})
+
+	t.Run("does not run when schedule was already claimed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		cs := vmock.NewMockCatalogService(ctrl)
+		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
+		w := newCatalogHealthCheckWorker(&common.AppSetting{}, cs, sa)
+		schedule := &interfaces.CatalogHealthCheckSchedule{
+			CatalogID: "catalog-1",
+			Mode:      interfaces.CatalogHealthCheckScheduleModeInherit,
+		}
+		sa.EXPECT().UpdateRunMetadata(gomock.Any(), "catalog-1", schedule.UpdateTime, schedule.NextRun, gomock.Any(), gomock.Any()).
+			Return(int64(0), nil)
 
 		w.runSchedule(context.Background(), schedule)
 	})

@@ -59,6 +59,15 @@ func TestValidateLogicViewRequest(t *testing.T) {
 	})
 }
 
+func TestValidateResourceRequestIgnoresExpectedUpdateTime(t *testing.T) {
+	err := ValidateResourceRequest(context.Background(), &interfaces.ResourceRequest{
+		Name:               "resource",
+		Category:           interfaces.ResourceCategoryLogicView,
+		ExpectedUpdateTime: -1,
+	})
+	require.NoError(t, err)
+}
+
 func TestValidateLogicDefinition(t *testing.T) {
 	ctx := context.Background()
 

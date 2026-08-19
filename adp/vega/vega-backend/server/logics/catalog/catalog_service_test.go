@@ -919,7 +919,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
 
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		err = cs.Update(context.Background(), &interfaces.Catalog{
@@ -928,6 +928,61 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		}, &interfaces.CatalogRequest{Name: "catalog"}, false)
 
 		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("returns conflict for stale catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		expectedUpdateTime := int64(42)
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), expectedUpdateTime).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, expected int64) (int64, error) {
+				assert.Equal(t, expectedUpdateTime, expected)
+				assert.Greater(t, catalog.UpdateTime, expectedUpdateTime)
+				return 0, nil
+			})
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		err = cs.Update(context.Background(), &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}, &interfaces.CatalogRequest{
+			Name:               "catalog",
+			ExpectedUpdateTime: expectedUpdateTime,
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("returns conflict when no catalog is updated", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(0), nil)
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		err = cs.Update(context.Background(), &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}, &interfaces.CatalogRequest{Name: "catalog"}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
@@ -957,7 +1012,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectRollback()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
 
 		extensionValues := map[string]string{"owner": "team-a"}
 		cs := &catalogService{

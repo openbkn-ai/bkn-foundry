@@ -343,7 +343,7 @@ func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
 				ConnectorCfg:  interfaces.ConnectorConfig{},
 			}, nil)
 
-		body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{}}`
+		body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{},"expected_update_time":1}`
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -353,6 +353,22 @@ func Test_CatalogRestHandler_UpdateRejectsEnabledChange(t *testing.T) {
 		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), "use POST /catalogs/{id}/enable or /disable to change enabled state")
 	})
+}
+
+func Test_CatalogRestHandler_UpdateRequiresExpectedUpdateTime(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	engine, _, _ := setupCatalogHandlerTest(t)
+	body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{}}`
+	req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	engine.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+	assert.Contains(t, w.Body.String(), "expected_update_time is required")
 }
 
 func Test_CatalogRestHandler_DeleteCatalog(t *testing.T) {
@@ -543,7 +559,7 @@ func Test_CatalogRestHandler_UpdateAllowsDatabaseChange(t *testing.T) {
 				return nil
 			})
 
-		body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{"host":"localhost","database":"db2"}}`
+		body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{"host":"localhost","database":"db2"},"expected_update_time":1}`
 		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -567,7 +583,7 @@ func Test_CatalogRestHandler_UpdatePassesAllowUnhealthy(t *testing.T) {
 	}, nil)
 	cs.EXPECT().Update(gomock.Any(), gomock.Any(), gomock.Any(), true).Return(nil)
 
-	body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{}}`
+	body := `{"id":"catalog-1","name":"catalog","enabled":true,"connector_type":"mariadb","connector_config":{},"expected_update_time":1}`
 	req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/catalogs/catalog-1?allow_unhealthy=true", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()

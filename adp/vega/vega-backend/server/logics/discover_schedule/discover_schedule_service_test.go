@@ -9,6 +9,7 @@ package discover_schedule
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -131,8 +132,8 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 		}
 
 		dsa.EXPECT().
-			Update(gomock.Any(), current).
-			DoAndReturn(func(_ context.Context, schedule *interfaces.DiscoverSchedule) error {
+			Update(gomock.Any(), current, int64(0)).
+			DoAndReturn(func(_ context.Context, schedule *interfaces.DiscoverSchedule, _ int64) (int64, error) {
 				assert.Equal(t, "new", schedule.Name)
 				assert.Equal(t, "0 1 * * *", schedule.CronExpr)
 				assert.Equal(t, int64(100), schedule.StartTime)
@@ -141,7 +142,7 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 				assert.Equal(t, account, schedule.Updater)
 				assert.NotZero(t, schedule.UpdateTime)
 				assert.Greater(t, schedule.NextRun, schedule.UpdateTime)
-				return nil
+				return 1, nil
 			})
 
 		err := service.Update(ctx, current, &interfaces.DiscoverScheduleRequest{
@@ -153,6 +154,47 @@ func TestDiscoverScheduleServiceCreateAndUpdate(t *testing.T) {
 		})
 
 		require.NoError(t, err)
+	})
+
+	t.Run("returns conflict for stale schedule", func(t *testing.T) {
+		service, dsa, _, _ := newTestDiscoverScheduleService(t)
+		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", CronExpr: "0 0 * * *"}
+		expectedUpdateTime := int64(42)
+		dsa.EXPECT().Update(gomock.Any(), current, expectedUpdateTime).
+			DoAndReturn(func(_ context.Context, schedule *interfaces.DiscoverSchedule, expected int64) (int64, error) {
+				assert.Equal(t, expectedUpdateTime, expected)
+				assert.Greater(t, schedule.UpdateTime, expectedUpdateTime)
+				return 0, nil
+			})
+
+		err := service.Update(context.Background(), current, &interfaces.DiscoverScheduleRequest{
+			Name:               "nightly",
+			CronExpr:           "0 1 * * *",
+			Strategy:           "full_sync",
+			ExpectedUpdateTime: expectedUpdateTime,
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
+	})
+
+	t.Run("returns conflict when no schedule is updated", func(t *testing.T) {
+		service, dsa, _, _ := newTestDiscoverScheduleService(t)
+		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", CronExpr: "0 0 * * *"}
+		dsa.EXPECT().Update(gomock.Any(), current, int64(0)).Return(int64(0), nil)
+
+		err := service.Update(context.Background(), current, &interfaces.DiscoverScheduleRequest{
+			Name:     "nightly",
+			CronExpr: "0 1 * * *",
+			Strategy: "full_sync",
+		})
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
 	})
 
 	t.Run("update rejects nil schedule", func(t *testing.T) {
@@ -230,19 +272,41 @@ func TestDiscoverScheduleServiceGetListAndSimpleDelegates(t *testing.T) {
 
 	t.Run("delegates enable disable delete and run metadata", func(t *testing.T) {
 		service, dsa, _, _ := newTestDiscoverScheduleService(t)
-		dsa.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(&interfaces.DiscoverSchedule{
-			ID:       "schedule-1",
-			CronExpr: "0 * * * *",
-		}, nil)
-		dsa.EXPECT().Enable(gomock.Any(), "schedule-1", gomock.Any()).Return(nil)
-		dsa.EXPECT().Disable(gomock.Any(), "schedule-1").Return(nil)
-		dsa.EXPECT().UpdateRunMetadata(gomock.Any(), "schedule-1", int64(100), int64(110), int64(123), int64(456)).Return(nil)
+		schedule := &interfaces.DiscoverSchedule{
+			ID:         "schedule-1",
+			CronExpr:   "0 * * * *",
+			UpdateTime: 100,
+		}
+		dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule-1", true, gomock.Not(gomock.Nil()), int64(100), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule-1", false, nil, int64(100), gomock.Any(), gomock.Any()).Return(int64(1), nil)
+		dsa.EXPECT().UpdateRunMetadata(gomock.Any(), "schedule-1", int64(100), int64(110), int64(123), int64(456)).Return(int64(1), nil)
 		dsa.EXPECT().Delete(gomock.Any(), "schedule-1").Return(nil)
 
-		require.NoError(t, service.Enable(context.Background(), "schedule-1"))
-		require.NoError(t, service.Disable(context.Background(), "schedule-1"))
-		require.NoError(t, service.UpdateRunMetadata(context.Background(), "schedule-1", 100, 110, 123, 456))
+		require.NoError(t, service.UpdateEnabled(context.Background(), schedule, true))
+		require.NoError(t, service.UpdateEnabled(context.Background(), schedule, false))
+		rowsAffected, err := service.UpdateRunMetadata(context.Background(), "schedule-1", 100, 110, 123, 456)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, service.Delete(context.Background(), "schedule-1"))
+	})
+
+	t.Run("returns conflict when enabled state was based on a stale schedule", func(t *testing.T) {
+		service, dsa, _, _ := newTestDiscoverScheduleService(t)
+		schedule := &interfaces.DiscoverSchedule{ID: "schedule-1", UpdateTime: 100}
+		dsa.EXPECT().UpdateEnabled(gomock.Any(), "schedule-1", false, nil, int64(100), gomock.Any(), gomock.Any()).Return(int64(0), nil)
+
+		err := service.UpdateEnabled(context.Background(), schedule, false)
+
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_DiscoverSchedule_UpdateConflict, httpErr.BaseError.ErrorCode)
+	})
+
+	t.Run("rejects a nil schedule", func(t *testing.T) {
+		service, _, _, _ := newTestDiscoverScheduleService(t)
+
+		require.Error(t, service.UpdateEnabled(context.Background(), nil, false))
 	})
 }
 

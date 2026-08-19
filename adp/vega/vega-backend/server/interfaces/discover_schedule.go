@@ -59,4 +59,6 @@ type DiscoverScheduleRequest struct {
 	Strategy string `json:"strategy,omitempty"`
 	// Optional: whether to enable the schedule (default: false)
 	Enabled bool `json:"enabled"`
+
+	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
 }

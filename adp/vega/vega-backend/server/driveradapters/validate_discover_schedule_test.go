@@ -36,6 +36,12 @@ func Test_ValidateDiscoverScheduleRequest(t *testing.T) {
 			name: "valid request",
 		},
 		{
+			name: "ignores expected update time for shared create validation",
+			mutate: func(req *interfaces.DiscoverScheduleRequest) {
+				req.ExpectedUpdateTime = -1
+			},
+		},
+		{
 			name: "missing name",
 			mutate: func(req *interfaces.DiscoverScheduleRequest) {
 				req.Name = ""
