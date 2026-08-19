@@ -420,9 +420,11 @@ helm upgrade --install agent-observability charts/agent-observability \
 
 ## 本地 Trace 数据一次性清理
 
-`scripts/cleanup_legacy_bkn_trace_data.sh` 仅用于 0.1.4 验证前清空明确指定的 BKN Trace 服务库表及 Trace、Evidence、Projection 索引，不会清理日志索引或 MCP、SDK、BKN、Vega 业务数据。脚本默认只预览数量；核对目标后，才可显式增加 `--confirm`。MariaDB 密码可通过 `MYSQL_PWD` 提供，OpenSearch Basic Auth 可通过 `OPENSEARCH_USERNAME` 与 `OPENSEARCH_PASSWORD` 成对提供。
+`scripts/cleanup_legacy_bkn_trace_data.sh` 仅用于在 0.1.4 clean-slate 切换验收通过后，退役明确指定的旧 BKN Trace 服务库表及 Trace、Evidence、Projection 索引中的文档；不会清理日志索引或 MCP、SDK、BKN、Vega 业务数据，也不会自动运行。脚本默认只预览数量；核对目标并完成 Owner 确认后，才可显式增加 `--confirm`。MariaDB 密码可通过 `MYSQL_PWD` 提供，OpenSearch Basic Auth 可通过 `OPENSEARCH_USERNAME` 与 `OPENSEARCH_PASSWORD` 成对提供。
 
 必须显式设置：`BKN_TRACE_CLEANUP_DB_HOST`、`BKN_TRACE_CLEANUP_DB_NAME`、`BKN_TRACE_CLEANUP_DB_USER`、`OPENSEARCH_ENDPOINT`、`OPENSEARCH_TRACE_INDEX`、`OPENSEARCH_EVIDENCE_INDEX`、`BKN_TRACE_PROJECTION_INDEX`。脚本拒绝空值、未展开表达式、通配符、系统库及系统索引，并在清理后回读确认所有指定目标均为零。升级前版本尚不存在的明确允许表会报告 `status=absent` 并跳过，不会扩大清理范围。
+
+完整的目标隔离、切换验收、退役与共享日志处置流程见 [Trace 0.1.4 clean-slate 切换与 0.1.3 数据退役](docs/0.1.4-clean-slate-cutover.md)。
 
 ## CI/CD
 
