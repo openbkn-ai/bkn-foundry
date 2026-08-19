@@ -240,7 +240,7 @@ func (tx memoryTransaction) ListOperationCallFactsByTraceID(traceID string) []se
 	return result
 }
 
-func (tx memoryTransaction) ListOperationCallFactsByTraceIDs(traceIDs []string) []sessionvo.OperationCallFact {
+func (tx memoryTransaction) ListFirstOperationSourceModulesByTraceIDs(traceIDs []string) map[string]string {
 	requested := make(map[string]struct{}, len(traceIDs))
 	for _, traceID := range traceIDs {
 		if traceID != "" {
@@ -248,28 +248,43 @@ func (tx memoryTransaction) ListOperationCallFactsByTraceIDs(traceIDs []string) 
 		}
 	}
 	if len(requested) == 0 {
-		return []sessionvo.OperationCallFact{}
+		return map[string]string{}
 	}
 
-	result := make([]sessionvo.OperationCallFact, 0)
+	type candidate struct {
+		startedAt    time.Time
+		operationID  string
+		attempt      uint32
+		sourceModule string
+	}
+	candidates := make(map[string]candidate, len(requested))
 	for _, fact := range tx.s.operationCalls {
-		if _, found := requested[fact.TraceID]; found {
-			result = append(result, fact)
+		if _, requestedTrace := requested[fact.TraceID]; !requestedTrace || fact.SourceModule == "" {
+			continue
+		}
+		current, found := candidates[fact.TraceID]
+		if !found || operationCallFactPrecedes(fact, current.startedAt, current.operationID, current.attempt) {
+			candidates[fact.TraceID] = candidate{
+				startedAt: fact.StartedAt, operationID: fact.OperationID,
+				attempt: fact.Attempt, sourceModule: fact.SourceModule,
+			}
 		}
 	}
-	sort.Slice(result, func(i, j int) bool {
-		if result[i].TraceID != result[j].TraceID {
-			return result[i].TraceID < result[j].TraceID
-		}
-		if result[i].StartedAt.Equal(result[j].StartedAt) {
-			if result[i].OperationID == result[j].OperationID {
-				return result[i].Attempt < result[j].Attempt
-			}
-			return result[i].OperationID < result[j].OperationID
-		}
-		return result[i].StartedAt.Before(result[j].StartedAt)
-	})
+	result := make(map[string]string, len(candidates))
+	for traceID, value := range candidates {
+		result[traceID] = value.sourceModule
+	}
 	return result
+}
+
+func operationCallFactPrecedes(fact sessionvo.OperationCallFact, startedAt time.Time, operationID string, attempt uint32) bool {
+	if fact.StartedAt.Equal(startedAt) {
+		if fact.OperationID == operationID {
+			return fact.Attempt < attempt
+		}
+		return fact.OperationID < operationID
+	}
+	return fact.StartedAt.Before(startedAt)
 }
 
 func sortOperationCallFacts(result []sessionvo.OperationCallFact) {

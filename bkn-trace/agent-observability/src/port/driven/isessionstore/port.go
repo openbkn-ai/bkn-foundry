@@ -31,7 +31,7 @@ type Transaction interface {
 	FindOperationCallFact(operationID string, attempt uint32) (sessionvo.OperationCallFact, bool)
 	ListOperationCallFacts(interactionID string) []sessionvo.OperationCallFact
 	ListOperationCallFactsByTraceID(traceID string) []sessionvo.OperationCallFact
-	ListOperationCallFactsByTraceIDs(traceIDs []string) []sessionvo.OperationCallFact
+	ListFirstOperationSourceModulesByTraceIDs(traceIDs []string) map[string]string
 	SaveOperationCallFact(fact sessionvo.OperationCallFact)
 	PeekReceipt(receiptID string) (sessionvo.Receipt, bool)
 	FindReceipt(receiptID string) (sessionvo.Receipt, bool)
