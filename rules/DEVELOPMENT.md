@@ -28,7 +28,7 @@ Keywords in this document are interpreted per [RFC 2119](https://www.rfc-editor.
 |---------|---------|
 | **MUST** | Absolute requirement, no exceptions |
 | **MUST NOT** | Absolute prohibition |
-| **SHOULD** | Expected in normal circumstances; exceptions require justification in the design doc |
+| **SHOULD** | Expected in normal circumstances; exceptions require justification on the Issue |
 | **SHOULD NOT** | Normally avoided; exceptions require justification |
 | **MAY** | Optional, adopt as needed |
 

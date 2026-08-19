@@ -2,7 +2,7 @@
 
 [中文](WORKFLOW.zh.md) | English
 
-This document defines BKN Foundry's team R&D collaboration standards, covering the **boundary between humans and Agents**, Issue management, Feature tracking, design documentation, and team notification processes. Every rule includes concrete steps and file paths so both humans and Agents can execute them.
+This document defines BKN Foundry's team R&D collaboration standards, covering the **boundary between humans and Agents**, Issue management, Feature tracking, and team notification processes. Every rule includes concrete steps and file paths so both humans and Agents can execute them.
 
 ---
 
@@ -11,8 +11,8 @@ This document defines BKN Foundry's team R&D collaboration standards, covering t
 - [Human + Agent Collaboration Model](#-human--agent-collaboration-model)
 - [Issue Management](#-issue-management)
 - [Agent Workflow](#-agent-workflow)
-- [Feature Tracking: Issue → Branch → Design Doc](#-feature-tracking-issue--branch--design-doc)
-- [Design Document Specification](#-design-document-specification)
+- [Feature Tracking: Issue → Branch → PR](#-feature-tracking-issue--branch--pr)
+- [Issue Body Specification](#-issue-body-specification)
 - [PR and Merge Process](#-pr-and-merge-process)
 - [Email Notification Process](#-email-notification-process)
 
@@ -46,7 +46,7 @@ Every service / module has an Owner in [`.github/CODEOWNERS`](../.github/CODEOWN
 
 ### Issue Types and Labels
 
-| Type | Label | Design Doc Required | Description |
+| Type | Label | Design on the Issue | Description |
 | --- | --- | --- | --- |
 | Bug Report | `type: bug` | No (optional for complex bugs) | Functional defects or unexpected behavior |
 | Feature Request | `type: feature` | **Required** | New features or enhancements |
@@ -87,7 +87,7 @@ Open → Triaged → In Progress → In Review → Validating → Done
 | --- | --- |
 | `Open` | Created; awaiting triage |
 | `Triaged` | Priority, Assignee, and Milestone assigned |
-| `In Progress` | Branch and design doc created; development started (**update tracking comment in Issue**, see next section) |
+| `In Progress` | Branch created and the design written into the Issue; development started (**update tracking comment in Issue**, see next section) |
 | `In Review` | PR submitted; awaiting Code Review |
 | `Validating` | PR merged; being validated in the target environment. Tasks with no environment-validation step skip this column |
 | `Done` | Validation passed (or PR merged, for tasks with no validation step); Issue closed automatically or manually |
@@ -154,9 +154,9 @@ GitHub MCP or the `gh` CLI both work; no mandated tool. Only one Agent may take 
 
 ---
 
-## 🔗 Feature Tracking: Issue → Branch → Design Doc
+## 🔗 Feature Tracking: Issue → Branch → PR
 
-This is the core of this specification. Every Feature (`type: feature`) must follow the complete steps below from Issue creation to code merge. The **Issue tracking comment** is the single source of truth that links all three artifacts together.
+This is the core of this specification. Every Feature (`type: feature`) must follow the complete steps below from Issue creation to code merge. The **Issue tracking comment** is the single source of truth that links the Issue, the branch and the PR together.
 
 ### Complete Workflow
 
@@ -167,66 +167,35 @@ This is the core of this specification. Every Feature (`type: feature`) must fol
 2. Triage: assign Assignee, Priority, Milestone
       │
       ▼
-3. Create design doc  →  docs/design/{module}/features/{issue-id}-{desc}.md
+3. Write the design and trade-offs into the Issue body
       │
       ▼
 4. Create branch  →  feature/{issue-id}-{desc}
       │
       ▼
-5. Post tracking comment in Issue (branch + design doc link)
+5. Post tracking comment in Issue (branch)
       │
       ▼
-6. Develop + update design doc
+6. Develop; keep the Issue body current as the design shifts
       │
       ▼
-7. Submit PR (linked to Issue and design doc)
+7. Submit PR (linked to the Issue)
       │
       ▼
-8. Code Review (includes doc review)
+8. Code Review
       │
       ▼
-9. Merge → update design doc status to "implemented"
+9. Merge → update the Issue tracking comment
 ```
 
-### Step 3: Create the Design Document
+### Step 3: Write the Design into the Issue
 
-**File path rule:**
+The design and the trade-offs behind it live in the Issue body — not in a file in
+this repository. Edit the Issue body as the design settles, so the reasoning stays
+next to the discussion that produced it and there is no second copy to keep in sync.
 
-```
-docs/design/{module}/features/{issue-id}-{short-desc}.md
-```
-
-| Placeholder | Description | Example |
-| --- | --- | --- |
-| `{module}` | Module name, matching the code directory | `auth`, `knowledge-graph`, `data-agent` |
-| `{issue-id}` | GitHub Issue number (without `#`) | `123` |
-| `{short-desc}` | Kebab-case summary of the Issue title; 5 words max | `add-oauth-support` |
-
-**Examples:**
-
-```
-docs/design/auth/features/123-add-oauth-support.md
-docs/design/knowledge-graph/features/456-batch-import-nodes.md
-docs/design/data-agent/features/789-streaming-response.md
-```
-
-**Directory structure:**
-
-```
-docs/
-└── design/
-    ├── auth/
-    │   └── features/
-    │       └── 123-add-oauth-support.md
-    ├── knowledge-graph/
-    │   └── features/
-    │       └── 456-batch-import-nodes.md
-    └── data-agent/
-        ├── features/
-        │   └── 789-streaming-response.md
-        └── adr/                          ← Architecture Decision Records
-            └── 0001-use-opensearch.md
-```
+What the body should carry before development starts is listed under
+[Issue Body Specification](#-issue-body-specification).
 
 ### Step 4: Create the Branch
 
@@ -236,7 +205,7 @@ docs/
 feature/{issue-id}-{short-desc}
 ```
 
-The `{issue-id}` and `{short-desc}` in the branch name **must match** the design document filename exactly:
+The `{issue-id}` in the branch name **must match** the Issue number:
 
 ```bash
 # Examples
@@ -254,7 +223,6 @@ After starting development, post one tracking comment in the Issue. Update this 
 | Item | Value |
 | --- | --- |
 | **Branch** | `feature/123-add-oauth-support` |
-| **Design Doc** | [docs/design/auth/features/123-add-oauth-support.md](../docs/design/auth/features/123-add-oauth-support.md) |
 | **Status** | In Progress |
 | **Assignee** | @username |
 | **ETA** | YYYY-MM-DD |
@@ -264,58 +232,18 @@ After starting development, post one tracking comment in the Issue. Update this 
 
 ---
 
-## 📄 Design Document Specification
+## 📄 Issue Body Specification
 
-### Document Frontmatter (Metadata Header)
+A Feature records its design in the Issue body. There is no frontmatter and no
+document status to maintain: the Issue's own labels and project column already
+carry the state, and a second status field only drifts away from them.
 
-Every design document must begin with a YAML frontmatter block recording key metadata:
+### Recommended Sections
 
-```markdown
----
-issue: "#123"
-branch: "feature/123-add-oauth-support"
-module: "auth"
-status: "draft"          # draft | in-review | approved | implemented
-author: "@username"
-created: "2026-03-16"
-pr: ""                   # fill in after PR is merged, e.g. "#456"
----
-```
-
-| Field | Required | Description |
-| --- | --- | --- |
-| `issue` | Yes | Linked GitHub Issue number |
-| `branch` | Yes | Corresponding development branch |
-| `module` | Yes | Module this feature belongs to |
-| `status` | Yes | Document/feature status; see values below |
-| `author` | Yes | Primary assignee |
-| `created` | Yes | Document creation date |
-| `pr` | No | Fill in after PR is merged |
-
-**Status values:**
-
-| Value | Description |
-| --- | --- |
-| `draft` | Design in progress; not yet reviewed |
-| `in-review` | PR submitted; under review |
-| `approved` | Review passed; ready to implement |
-| `implemented` | Merged; feature is live |
-
-### Design Document Template
+Keep what applies and drop what does not — an Issue for a one-line fix does not
+need a migration plan.
 
 ````markdown
----
-issue: "#{issue-id}"
-branch: "feature/{issue-id}-{short-desc}"
-module: "{module}"
-status: "draft"
-author: "@username"
-created: "YYYY-MM-DD"
-pr: ""
----
-
-# Feature #{issue-id}: {Feature Title}
-
 ## Background and Goals
 
 Describe the feature background, user pain points, and the goals of this development effort.
@@ -382,60 +310,22 @@ Describe the unit tests, integration tests, or AT cases to be added.
 - Related documentation links
 ````
 
-### Bug Analysis Document (Optional)
+### Complex Bug Analysis (Optional)
 
-For complex bugs involving multiple modules or requiring root cause analysis, an analysis document can be created at:
+For a complex bug — one spanning several modules, or needing root cause analysis —
+record the analysis in the Issue itself: problem description, root cause, fix
+approach, and verification steps.
 
-```
-docs/design/{module}/bugs/{issue-id}-{short-desc}.md
-```
+### Significant Architecture Decisions
 
-Frontmatter uses the same format; the body should include: problem description, root cause analysis, fix approach, and verification steps.
+When a change carries an architecture decision, record it in the Issue under these
+headings, so the reasoning survives next to the discussion that produced it:
 
-### ADR (Architecture Decision Record)
-
-For Features involving significant design decisions, the decision should be documented in the design doc and optionally archived as an ADR:
-
-**Path:** `docs/design/{module}/adr/NNNN-{short-title}.md`
-
-**File naming:** Sequence starts at `0001`, counted independently per module.
-
-```markdown
----
-number: "0001"
-module: "{module}"
-status: "accepted"       # proposed | accepted | deprecated | superseded
-date: "YYYY-MM-DD"
-related-issue: "#123"
----
-
-# ADR-{module}-0001: {Decision Title}
-
-## Context
-
-Describe the background and constraints driving this decision.
-
-## Decision
-
-We will adopt ___.
-
-## Rationale
-
-- Reason 1
-- Reason 2
-
-## Consequences
-
-**Positive:**
-- ...
-
-**Negative (trade-offs):**
-- ...
-
-## Alternatives Considered
-
-Describe alternatives that were considered but not chosen, and why.
-```
+- **Context** — the background and constraints driving the decision
+- **Decision** — what will be adopted
+- **Rationale** — why
+- **Consequences** — the positives, and the trade-offs accepted
+- **Alternatives Considered** — what was weighed and not chosen, and why
 
 ---
 
@@ -460,7 +350,7 @@ Agents cannot approve, merge, or bypass CI. Recommended `main` configuration:
 
 ### PR Description Template
 
-The PR description must include the following to complete the three-way link: Issue → Branch → Design Doc.
+The PR description must include the following to complete the link: Issue → Branch → PR.
 
 ```markdown
 ## Description
@@ -472,7 +362,6 @@ Brief summary of what changed and why.
 | Item | Value |
 | --- | --- |
 | **Issue** | Closes #123 |
-| **Design Doc** | [docs/design/auth/features/123-add-oauth-support.md](../docs/design/auth/features/123-add-oauth-support.md) |
 | **Branch** | `feature/123-add-oauth-support` |
 
 ## Type of Change
@@ -488,7 +377,7 @@ Describe how to verify this change (test commands, manual steps, etc.).
 
 ## Pre-Merge Checklist
 
-- [ ] Design doc updated (status changed to `in-review`; `pr` field filled in)
+- [ ] Issue body reflects the design as built
 - [ ] CHANGELOG.md updated (under `[Unreleased]` section)
 - [ ] API documentation updated (if API changed)
 - [ ] Tests added/updated; all pass locally
@@ -500,17 +389,15 @@ Describe how to verify this change (test commands, manual steps, etc.).
 Reviewers must confirm:
 
 - [ ] For UI / interaction changes: the design mockup link is attached and the implementation matches it
-- [ ] Design doc is consistent with the actual implementation
+- [ ] The Issue body is consistent with the actual implementation
 - [ ] API documentation is up to date
 - [ ] CHANGELOG.md records user-facing changes
-- [ ] Design doc frontmatter: `pr` field is filled in and `status` is `in-review`
 
 ### Post-Merge Actions
 
 After the PR is merged, the merger or Assignee must:
 
-1. Update the design doc's `status` to `implemented`
-2. Update the Issue tracking comment: set Status to `Done` (for tasks requiring environment validation, `Validating` first, then `Done` once validation passes) and add the PR link
+1. Update the Issue tracking comment: set Status to `Done` (for tasks requiring environment validation, `Validating` first, then `Done` once validation passes) and add the PR link
 
 ---
 
@@ -538,7 +425,7 @@ BKN Foundry vX.Y.Z has been officially released!
 ## Key Changes
 
 ### ✨ Added
-- Feature description (#IssueNumber, design doc link)
+- Feature description (#IssueNumber)
 
 ### 🐛 Fixed
 - Fix description (#IssueNumber)
@@ -564,7 +451,7 @@ Subject: [BKN Foundry] vX.Y.Z-rc.N Test Release — Feedback Requested
 BKN Foundry vX.Y.Z-rc.N has been released. Please validate and provide feedback.
 
 ## Test Scope
-- Change list (with design doc links)
+- Change list (with Issue links)
 
 ## Known Issues
 - (if any)
@@ -615,4 +502,4 @@ YYYY-MM-DD
 
 ---
 
-*Last updated: 2026-06-30*
+*Last updated: 2026-08-19*

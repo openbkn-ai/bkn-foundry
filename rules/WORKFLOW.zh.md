@@ -2,7 +2,7 @@
 
 中文 | [English](WORKFLOW.md)
 
-本文档定义了 BKN Foundry 团队的研发协作规范，覆盖 **人与 Agent 的协作边界**、Issue 管理、Feature 追踪、设计文档管理，以及团队通知流程。每个规则都有明确的操作步骤和文件路径，确保人和 Agent 都可落地执行。
+本文档定义了 BKN Foundry 团队的研发协作规范，覆盖 **人与 Agent 的协作边界**、Issue 管理、Feature 追踪，以及团队通知流程。每个规则都有明确的操作步骤和文件路径，确保人和 Agent 都可落地执行。
 
 ---
 
@@ -11,8 +11,8 @@
 - [人 + Agent 协作模型](#-人--agent-协作模型)
 - [Issue 管理](#-issue-管理)
 - [Agent 工作流](#-agent-工作流)
-- [Feature 追踪：Issue → Branch → 设计文档](#-feature-追踪issue--branch--设计文档)
-- [设计文档规范](#-设计文档规范)
+- [Feature 追踪：Issue → Branch → PR](#-feature-追踪issue--branch--pr)
+- [Issue 正文规范](#-issue-正文规范)
 - [PR 与合并流程](#-pr-与合并流程)
 - [邮件通知流程](#-邮件通知流程)
 
@@ -46,7 +46,7 @@
 
 ### Issue 类型与 Label
 
-| 类型 | Label | 是否需要设计文档 | 说明 |
+| 类型 | Label | 设计是否写进 Issue | 说明 |
 | --- | --- | --- | --- |
 | Bug 报告 | `type: bug` | 否（复杂 bug 可选） | 功能异常、错误行为 |
 | Feature 申请 | `type: feature` | **必须** | 新功能或功能增强 |
@@ -87,7 +87,7 @@ Open → Triaged → In Progress → In Review → Validating → Done
 | --- | --- |
 | `Open` | 已创建，待分配 |
 | `Triaged` | 已评估优先级、已分配 Assignee 和 Milestone |
-| `In Progress` | 已创建分支和设计文档，正在开发（**需在 Issue 中更新追踪信息**，见下节） |
+| `In Progress` | 已创建分支、设计已写进 Issue，正在开发（**需在 Issue 中更新追踪信息**，见下节） |
 | `In Review` | PR 已提交，待 Code Review |
 | `Validating` | PR 已合并，部署到目标环境验证中；无需环境验证的任务跳过此列 |
 | `Done` | 验证通过（或无需验证的任务 PR 已合并），Issue 自动或手动关闭 |
@@ -154,7 +154,7 @@ GitHub MCP 或 `gh` CLI 均可，不强制工具。同一 Issue 同一时间只�
 
 ---
 
-## 🔗 Feature 追踪：Issue → Branch → 设计文档
+## 🔗 Feature 追踪：Issue → Branch → PR
 
 这是本规范的核心。每一个 Feature（`type: feature`）从 Issue 到代码合并，必须完整经过以下步骤，并在 **Issue 评论** 中维护追踪信息。
 
@@ -167,66 +167,33 @@ GitHub MCP 或 `gh` CLI 均可，不强制工具。同一 Issue 同一时间只�
 2. Triage：分配 Assignee、Priority、Milestone
       │
       ▼
-3. 创建设计文档（docs/design/{module}/features/{issue-id}-{desc}.md）
+3. 把设计与取舍写进 Issue 正文
       │
       ▼
 4. 创建分支（feature/{issue-id}-{desc}）
       │
       ▼
-5. 在 Issue 中更新追踪评论（branch + 设计文档链接）
+5. 在 Issue 中更新追踪评论（branch）
       │
       ▼
-6. 开发 + 更新设计文档
+6. 开发；设计有变动同步更新 Issue 正文
       │
       ▼
-7. 提交 PR（关联 Issue，关联设计文档）
+7. 提交 PR（关联 Issue）
       │
       ▼
-8. Code Review（含文档审查）
+8. Code Review
       │
       ▼
-9. 合并 → 更新设计文档状态为 Implemented
+9. 合并 → 更新 Issue 追踪评论
 ```
 
-### 步骤 3：创建设计文档
+### 步骤 3：把设计写进 Issue
 
-**文件路径规则：**
+设计与背后的取舍写在 Issue 正文里，不落成本仓库里的文件。设计定型的过程中直接改
+Issue 正文——推导过程与产生它的讨论留在一处，也没有第二份副本需要同步。
 
-```
-docs/design/{module}/features/{issue-id}-{short-desc}.md
-```
-
-| 占位符 | 说明 | 示例 |
-| --- | --- | --- |
-| `{module}` | 所属模块名，与代码目录保持一致 | `auth`、`knowledge-graph`、`data-agent` |
-| `{issue-id}` | GitHub Issue 编号（不含 `#`） | `123` |
-| `{short-desc}` | Issue 标题的短横线小写形式，不超过 5 个词 | `add-oauth-support` |
-
-**示例：**
-
-```
-docs/design/auth/features/123-add-oauth-support.md
-docs/design/knowledge-graph/features/456-batch-import-nodes.md
-docs/design/data-agent/features/789-streaming-response.md
-```
-
-**目录结构：**
-
-```
-docs/
-└── design/
-    ├── auth/
-    │   └── features/
-    │       └── 123-add-oauth-support.md
-    ├── knowledge-graph/
-    │   └── features/
-    │       └── 456-batch-import-nodes.md
-    └── data-agent/
-        ├── features/
-        │   └── 789-streaming-response.md
-        └── adr/                          ← 架构决策记录（见下节）
-            └── 0001-use-opensearch.md
-```
+开发开始前 Issue 正文该写哪些内容，见 [Issue 正文规范](#-issue-正文规范)。
 
 ### 步骤 4：创建分支
 
@@ -236,7 +203,7 @@ docs/
 feature/{issue-id}-{short-desc}
 ```
 
-分支名中的 `{issue-id}` 和 `{short-desc}` 必须与设计文档文件名完全一致：
+分支名中的 `{issue-id}` 必须与 Issue 编号一致：
 
 ```bash
 # 示例
@@ -254,7 +221,6 @@ git checkout -b feature/456-batch-import-nodes
 | 项目 | 内容 |
 | --- | --- |
 | **分支** | `feature/123-add-oauth-support` |
-| **设计文档** | [docs/design/auth/features/123-add-oauth-support.md](../docs/design/auth/features/123-add-oauth-support.md) |
 | **状态** | In Progress |
 | **负责人** | @username |
 | **预计完成** | YYYY-MM-DD |
@@ -264,75 +230,33 @@ git checkout -b feature/456-batch-import-nodes
 
 ---
 
-## 📄 设计文档规范
+## 📄 Issue 正文规范
 
-### 文档 Frontmatter（元信息头）
+Feature 的设计写在 Issue 正文里。没有 frontmatter，也没有需要维护的文档状态：Issue
+自身的 Label 与看板列已经承载了状态，再加一个状态字段只会和它们越走越远。
 
-每份设计文档必须以 YAML frontmatter 开头，记录关键元信息：
+### 建议章节
 
-```markdown
----
-issue: "#123"
-branch: "feature/123-add-oauth-support"
-module: "auth"
-status: "draft"          # draft | in-review | approved | implemented
-author: "@username"
-created: "2026-03-16"
-pr: ""                   # PR 合并后填写，如 "#456"
----
-```
+按需取舍，不适用的删掉——改一行的 Issue 不需要迁移方案。
 
-| 字段 | 必须 | 说明 |
-| --- | --- | --- |
-| `issue` | 是 | 关联的 GitHub Issue 编号 |
-| `branch` | 是 | 对应的开发分支名 |
-| `module` | 是 | 所属模块 |
-| `status` | 是 | 文档/功能状态，见下表 |
-| `author` | 是 | 主要负责人 |
-| `created` | 是 | 文档创建日期 |
-| `pr` | 否 | PR 合并后填写 |
-
-**Status 取值：**
-
-| 值 | 说明 |
-| --- | --- |
-| `draft` | 设计中，尚未评审 |
-| `in-review` | 已提交 PR，正在 Review |
-| `approved` | 已评审通过，可以实施 |
-| `implemented` | 已合并，功能已上线 |
-
-### 设计文档模板
-
-```markdown
----
-issue: "#{issue-id}"
-branch: "feature/{issue-id}-{short-desc}"
-module: "{module}"
-status: "draft"
-author: "@username"
-created: "YYYY-MM-DD"
-pr: ""
----
-
-# Feature #{issue-id}: {功能标题}
-
+````markdown
 ## 背景与目标
 
-描述功能背景、用户痛点，以及本次开发要达成的目标。
+描述功能背景、用户痛点、本次开发要达成的目标。
 
 ## 方案设计
 
-### 概要
+### 总体思路
 
-简要描述整体方案。
+简述整体实现方案。
 
 ### 交互设计（如涉及）
 
-涉及 UI / 前端交互的功能，**必须**附设计稿链接（Figma / 蓝湖 等），并简述关键交互。
+涉及 UI / 前端交互的功能，**必须附上设计稿链接（Figma 等）**，并简要说明关键交互。
 
 - 设计稿：<链接>
 
-### API 变更（如有）
+### 接口变更（如有）
 
 ```http
 POST /api/v1/{endpoint}
@@ -354,7 +278,7 @@ Content-Type: application/json
 
 ### 数据库变更（如有）
 
-描述新增或修改的表/字段，并提供迁移脚本路径。
+说明新增或修改的表/字段，并给出迁移脚本路径。
 
 ### 关键流程
 
@@ -362,80 +286,40 @@ Content-Type: application/json
 
 ## 验收标准
 
-- [ ] 功能条件 1
-- [ ] 功能条件 2
-- [ ] 测试覆盖率满足要求
+- [ ] 功能点 1
+- [ ] 功能点 2
+- [ ] 测试覆盖率达标
 
 ## 测试策略
 
-描述需要补充的单元测试、集成测试或 AT 用例。
+说明需要补充的单元测试、集成测试或 AT 用例。
 
 ## 影响分析
 
-- **向后兼容性**：是/否，说明
-- **依赖变更**：是/否，说明
-- **性能影响**：说明（如无影响可略）
+- **向后兼容**：是/否，说明理由
+- **依赖变更**：是/否，说明理由
+- **性能影响**：说明（无则省略）
 
 ## 参考资料
 
 - 相关 Issue/PR 链接
 - 相关文档链接
-```
+````
 
-### Bug 复杂分析文档（可选）
+### Bug 复杂分析（可选）
 
-对于复杂 Bug（如涉及多模块、需要根因分析），可在以下路径创建分析文档：
+复杂 Bug（涉及多模块、需要根因分析）的分析同样写在 Issue 里：问题描述、根因分析、
+修复方案、验证方式。
 
-```
-docs/design/{module}/bugs/{issue-id}-{short-desc}.md
-```
+### 重大架构决策
 
-模板相对简单，包含：问题描述、根因分析、修复方案、验证方式。
+变更涉及架构决策时，按以下几节写进 Issue，让推导过程留在产生它的讨论旁边：
 
-### ADR（架构决策记录）
-
-对于涉及重大设计决策的 Feature，在设计文档中说明决策后，可选择同步到 ADR 存档：
-
-**路径：** `docs/design/{module}/adr/NNNN-{short-title}.md`
-
-**文件命名：** 序号从 `0001` 开始，按模块独立计数。
-
-```markdown
----
-number: "0001"
-module: "{module}"
-status: "accepted"       # proposed | accepted | deprecated | superseded
-date: "YYYY-MM-DD"
-related-issue: "#123"
----
-
-# ADR-{module}-0001: {决策标题}
-
-## 背景
-
-描述做出此决策的背景与约束条件。
-
-## 决策
-
-我们决定采用 ___。
-
-## 原因
-
-- 原因 1
-- 原因 2
-
-## 后果
-
-**正面影响：**
-- ...
-
-**负面影响（权衡）：**
-- ...
-
-## 替代方案
-
-描述考虑过但未采用的方案及原因。
-```
+- **背景** —— 促成这个决策的背景与约束
+- **决策** —— 决定采用什么
+- **原因** —— 为什么
+- **后果** —— 收益，以及接受了哪些代价
+- **替代方案** —— 权衡过但没有选的方案，以及为什么没选
 
 ---
 
@@ -460,7 +344,7 @@ Agent 不能 approve、不能合并、不能绕过 CI。`main` 分支建议配�
 
 ### PR 描述模板
 
-PR 描述必须包含以下内容，以完成 Issue → Branch → 设计文档的三向关联：
+PR 描述必须包含以下内容，以完成 Issue → Branch → PR 的关联：
 
 ```markdown
 ## 变更描述
@@ -472,7 +356,6 @@ PR 描述必须包含以下内容，以完成 Issue → Branch → 设计文档�
 | 项目 | 内容 |
 | --- | --- |
 | **Issue** | Closes #123 |
-| **设计文档** | [docs/design/auth/features/123-add-oauth-support.md](../docs/design/auth/features/123-add-oauth-support.md) |
 | **分支** | `feature/123-add-oauth-support` |
 
 ## 变更类型
@@ -488,7 +371,7 @@ PR 描述必须包含以下内容，以完成 Issue → Branch → 设计文档�
 
 ## 合并前检查清单
 
-- [ ] 设计文档已更新（status 改为 `in-review`，`pr` 字段已填写）
+- [ ] Issue 正文与实际实现一致
 - [ ] CHANGELOG.md 已更新（在 `[Unreleased]` 节）
 - [ ] API 文档已更新（如有 API 变更）
 - [ ] 测试已添加/更新，本地测试通过
@@ -500,17 +383,15 @@ PR 描述必须包含以下内容，以完成 Issue → Branch → 设计文档�
 Reviewer 在 Code Review 时需确认：
 
 - [ ] 涉及 UI / 交互的变更：设计稿链接已附，且实现与设计稿一致
-- [ ] 设计文档与实际实现一致
+- [ ] Issue 正文与实际实现一致
 - [ ] API 文档已同步更新
 - [ ] CHANGELOG.md 已记录面向用户的变更
-- [ ] 设计文档 frontmatter 的 `pr` 字段和 `status` 已更新
 
 ### 合并后操作
 
 PR 合并后由合并者或 Assignee 完成：
 
-1. 将设计文档的 `status` 更新为 `implemented`
-2. 更新 Issue 追踪评论，将状态改为 `Done`（需环境验证的任务先 `Validating`，验证通过再 `Done`）并补充 PR 链接
+1. 更新 Issue 追踪评论，将状态改为 `Done`（需环境验证的任务先 `Validating`，验证通过再 `Done`）并补充 PR 链接
 
 ---
 
@@ -538,7 +419,7 @@ BKN Foundry vX.Y.Z 已正式发布！
 ## 主要变更
 
 ### ✨ 新增
-- 功能描述（#Issue编号，设计文档链接）
+- 功能描述（#Issue编号）
 
 ### 🐛 修复
 - 修复描述（#Issue编号）
@@ -562,7 +443,7 @@ BKN Foundry vX.Y.Z 已正式发布！
 BKN Foundry vX.Y.Z-rc.N 已发布，请测试团队进行验证。
 
 ## 测试范围
-- 变更列表（关联设计文档链接）
+- 变更列表（关联 Issue 链接）
 
 ## 已知问题
 - （如有）
@@ -613,4 +494,4 @@ YYYY-MM-DD
 
 ---
 
-*最后更新：2026-06-30*
+*最后更新：2026-08-19*

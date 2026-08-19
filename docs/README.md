@@ -5,6 +5,6 @@
 | 目录 | 内容 |
 | --- | --- |
 | [`api/`](api/) | 各服务的 OpenAPI 文档：YAML 为唯一真相源，Markdown 由其渲染 |
-| [`images/`](images/) | 架构图等图片资源 |
+| [`images/`](images/) | 根 README 引用的架构图 |
 
-设计文档在 [bkn-docs](https://github.com/openbkn-ai/bkn-docs) 项目维护，本目录只放 API 文档。
+本目录只承载 API 文档及其配图。设计与取舍写在对应的 Issue 上，不落成文件。

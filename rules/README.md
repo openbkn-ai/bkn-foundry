@@ -9,7 +9,7 @@ This directory contains the development standards for the BKN Foundry project. I
 | # | Document | What you'll learn |
 |---|----------|-------------------|
 | 1 | [CONTRIBUTING](CONTRIBUTING.md) | How to fork, submit PRs, branch naming, code style |
-| 2 | [WORKFLOW](WORKFLOW.md) | Issue → design doc → branch → PR → merge flow |
+| 2 | [WORKFLOW](WORKFLOW.md) | Issue → branch → PR → merge flow |
 | 3 | [ARCHITECTURE](ARCHITECTURE.md) | System layering, module boundaries, dependency rules |
 | 4 | [DEVELOPMENT](DEVELOPMENT.md) | API design, HTTP semantics, error handling, authentication |
 | 5 | [TESTING](TESTING.md) | Test layers, Makefile targets, Agent-First testing |
@@ -20,5 +20,5 @@ This directory contains the development standards for the BKN Foundry project. I
 - **Branch naming**: `feature/`, `fix/`, `refactor/`, `docs/`, `ci/`, `chore/` — see [CONTRIBUTING](CONTRIBUTING.md)
 - **Commit format**: Conventional Commits (`type(scope): subject`) — see [CONTRIBUTING](CONTRIBUTING.md)
 - **Documentation layout**: Root [`docs/`](../docs), per-module `docs/`, [`help/`](../help) manuals (`manual/`) and cookbooks (`cookbook/`) — see [CONTRIBUTING — DOCUMENTATION](CONTRIBUTING.md#documentation)
-- **Design docs**: Located in each module's `docs/design/` directory — see [WORKFLOW](WORKFLOW.md)
+- **Design**: Recorded in the Issue body — see [WORKFLOW](WORKFLOW.md)
 - **API checklist**: Error format, pagination, status codes — see [DEVELOPMENT](DEVELOPMENT.md)
