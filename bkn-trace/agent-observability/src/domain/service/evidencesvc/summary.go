@@ -151,7 +151,10 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 
 func (s *Service) ListInteractions(ctx context.Context, options evidencevo.SummaryQueryOptions) (evidencevo.InteractionSummaryPage, error) {
 	if s.canPageCanonicalConversation(options) {
-		return s.listCanonicalConversationInteractions(ctx, options)
+		page, handled, err := s.listCanonicalConversationInteractions(ctx, options)
+		if err != nil || handled {
+			return page, err
+		}
 	}
 	loadOptions := options
 	loadOptions.Status = ""
@@ -221,20 +224,22 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 func (s *Service) listCanonicalConversationInteractions(
 	ctx context.Context,
 	options evidencevo.SummaryQueryOptions,
-) (evidencevo.InteractionSummaryPage, error) {
+) (evidencevo.InteractionSummaryPage, bool, error) {
 	cursor, hasCursor, err := decodeSummaryCursor(options.Cursor)
 	if err != nil {
-		return evidencevo.InteractionSummaryPage{}, err
+		return evidencevo.InteractionSummaryPage{}, false, err
 	}
 	limit := normalizeSummaryLimit(options.Limit)
 	selection := isessionstore.InteractionPage{}
 	conversation := sessionvo.Conversation{}
+	foundCanonicalConversation := false
 	err = s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		var found bool
 		conversation, found = tx.PeekConversation(options.ConversationID)
 		if !found || !canReadCanonicalConversation(conversation, options.Scope) {
 			return nil
 		}
+		foundCanonicalConversation = true
 		query := isessionstore.InteractionPageQuery{
 			ConversationID: conversation.ID,
 			Limit:          limit,
@@ -246,13 +251,19 @@ func (s *Service) listCanonicalConversationInteractions(
 			}
 			query.AfterOrdinal = after.Ordinal
 		} else {
-			query.Offset = summaryOffset(options, 0)
+			query.Offset = summaryQueryOffset(options)
 		}
 		selection = tx.ListInteractionPage(query)
 		return nil
 	})
 	if err != nil {
-		return evidencevo.InteractionSummaryPage{}, err
+		return evidencevo.InteractionSummaryPage{}, false, err
+	}
+	// Managed lifecycle records are the paging source for newly created
+	// conversations. Older projection-only conversations have no lifecycle
+	// records, so retain the established projection path for those facts.
+	if !foundCanonicalConversation || selection.Total == 0 {
+		return evidencevo.InteractionSummaryPage{}, false, nil
 	}
 	entries := make([]evidencevo.InteractionListSummary, 0, len(selection.Entries))
 	metadata := summaryLoadMetadata{}
@@ -263,13 +274,13 @@ func (s *Service) listCanonicalConversationInteractions(
 			Limit: MaxSummaryQueryLimit,
 		})
 		if loadErr != nil {
-			return evidencevo.InteractionSummaryPage{}, loadErr
+			return evidencevo.InteractionSummaryPage{}, false, loadErr
 		}
 		mergeSummaryLoadMetadata(&metadata, factMetadata)
 		entries = append(entries, mergeCanonicalInteractionFacts(canonical, facts))
 	}
 	if err := s.applyCanonicalInteractionState(ctx, entries); err != nil {
-		return evidencevo.InteractionSummaryPage{}, err
+		return evidencevo.InteractionSummaryPage{}, false, err
 	}
 	page := evidencevo.InteractionSummaryPage{
 		Entries: append([]evidencevo.InteractionListSummary{}, entries...),
@@ -282,7 +293,7 @@ func (s *Service) listCanonicalConversationInteractions(
 		next := encodeSummaryCursor(summaryCursor{StartedAt: last.StartedAt, ID: last.InteractionID})
 		page.NextCursor = &next
 	}
-	return page, nil
+	return page, true, nil
 }
 
 func (s *Service) canPageCanonicalConversation(options evidencevo.SummaryQueryOptions) bool {
@@ -1819,4 +1830,8 @@ func summaryOffset(options evidencevo.SummaryQueryOptions, length int) int {
 		return length
 	}
 	return (page - 1) * limit
+}
+
+func summaryQueryOffset(options evidencevo.SummaryQueryOptions) int {
+	return (normalizeSummaryPage(options.Page) - 1) * normalizeSummaryLimit(options.Limit)
 }

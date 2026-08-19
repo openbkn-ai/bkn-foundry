@@ -1123,6 +1123,20 @@ func TestListConversationInteractionsPagesCanonicalTurnsBeforeLoadingFacts(t *te
 	}
 
 	source.queries = nil
+	options.Page = 2
+	secondByPage, err := service.ListInteractions(context.Background(), options)
+	if err != nil {
+		t.Fatalf("list second interaction page by page number: %v", err)
+	}
+	if secondByPage.Total != 3 || len(secondByPage.Entries) != 1 || secondByPage.Entries[0].InteractionID != "interaction_first" || secondByPage.NextCursor != nil {
+		t.Fatalf("second canonical interaction page by page number = %+v", secondByPage)
+	}
+	if len(source.queries) != 1 || source.queries[0].InteractionID != "interaction_first" {
+		t.Fatalf("numbered second page must load only its interaction facts: %+v", source.queries)
+	}
+
+	source.queries = nil
+	options.Page = 1
 	options.Cursor = *first.NextCursor
 	second, err := service.ListInteractions(context.Background(), options)
 	if err != nil {
@@ -1133,6 +1147,36 @@ func TestListConversationInteractionsPagesCanonicalTurnsBeforeLoadingFacts(t *te
 	}
 	if len(source.queries) != 1 || source.queries[0].InteractionID != "interaction_first" {
 		t.Fatalf("second page must load only its interaction facts: %+v", source.queries)
+	}
+}
+
+func TestListInteractionsFallsBackToProjectionWhenConversationIsNotInLifecycle(t *testing.T) {
+	store := evidencestore.New()
+	seedBusinessProvenanceRequest(t, store, "req_legacy", "trace_legacy", "conversation_legacy", "interaction_legacy", "2026-08-10T08:00:00Z", "历史问题", "历史结果", "acct_demo")
+	sessions := sessionstore.New()
+	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
+		tx.SaveConversation(sessionvo.Conversation{
+			ID: "conversation_legacy",
+			Owner: sessionvo.Owner{
+				TenantID: "tenant_demo", BusinessDomainID: "bd_demo",
+				EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+			},
+			Status: sessionvo.ConversationClosed,
+		})
+		return nil
+	}); err != nil {
+		t.Fatalf("seed lifecycle conversation without turns: %v", err)
+	}
+	service := New(store, WithProjectionSource(store), WithSessionStore(sessions))
+
+	page, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+		Scope: summaryScope("acct_demo"), ConversationID: "conversation_legacy", Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("list projection-only interaction: %v", err)
+	}
+	if page.Total != 1 || len(page.Entries) != 1 || page.Entries[0].InteractionID != "interaction_legacy" {
+		t.Fatalf("projection-only interaction must remain visible: %+v", page)
 	}
 }
 
