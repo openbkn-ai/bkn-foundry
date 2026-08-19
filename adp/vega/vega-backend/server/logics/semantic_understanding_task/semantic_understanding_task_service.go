@@ -302,6 +302,31 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.List")
 	defer span.End()
 
+	// A task is listed through the parent it was created against (#269). The
+	// filter goes into the SQL so the count and the page agree.
+	visibleResources, allResources, err := suts.rs.AuthorizedResourceIDs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve authorized resources failed")
+		return nil, 0, err
+	}
+	visibleCatalogs, allCatalogs, err := suts.cs.AuthorizedCatalogIDs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
+		return nil, 0, err
+	}
+	if !allResources || !allCatalogs {
+		if !allResources && !allCatalogs && len(visibleResources) == 0 && len(visibleCatalogs) == 0 {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.SemanticUnderstandingTaskSummary{}, 0, nil
+		}
+		params.Visibility = &interfaces.TaskVisibility{
+			ResourceIDs:  visibleResources,
+			AllResources: allResources,
+			CatalogIDs:   visibleCatalogs,
+			AllCatalogs:  allCatalogs,
+		}
+	}
+
 	tasks, total, err := suts.suta.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List semantic understanding tasks failed")

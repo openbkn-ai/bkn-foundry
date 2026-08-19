@@ -568,6 +568,11 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 		Return(nil).AnyTimes()
 	resourceService.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).
 		Return(&interfaces.Resource{ID: "resource-2"}, nil).AnyTimes()
+	// 列表按可见父过滤（#269）；这条用例验的是名称回填，当作持类型级授权。
+	resourceService.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).
+		Return(nil, true, nil).AnyTimes()
+	catalogService.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).
+		Return(nil, true, nil).AnyTimes()
 	userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
 	service := &semanticUnderstandingTaskService{
 		suta: taskAccess,

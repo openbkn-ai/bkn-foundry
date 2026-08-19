@@ -372,6 +372,12 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 	return tasks, nil
 }
 
+const (
+	// Scope values as stored in f_scope.
+	SemanticScopeResource = "resource"
+	SemanticScopeCatalog  = "catalog"
+)
+
 func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
 	params interfaces.SemanticUnderstandingTaskQueryParams) sq.SelectBuilder {
 	if params.Scope != "" {
@@ -391,6 +397,34 @@ func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
 	}
 	if params.Applied != nil {
 		builder = builder.Where(sq.Eq{"f_applied": *params.Applied})
+	}
+	if v := params.Visibility; v != nil {
+		// A task is visible through the parent it was created against, so the two
+		// branches are alternatives. Applied to the count and the page alike, which
+		// is what keeps total_count honest.
+		alternatives := sq.Or{}
+		if v.AllResources {
+			alternatives = append(alternatives, sq.Eq{"f_scope": SemanticScopeResource})
+		} else if len(v.ResourceIDs) > 0 {
+			alternatives = append(alternatives, sq.And{
+				sq.Eq{"f_scope": SemanticScopeResource},
+				sq.Eq{"f_resource_id": v.ResourceIDs},
+			})
+		}
+		if v.AllCatalogs {
+			alternatives = append(alternatives, sq.Eq{"f_scope": SemanticScopeCatalog})
+		} else if len(v.CatalogIDs) > 0 {
+			alternatives = append(alternatives, sq.And{
+				sq.Eq{"f_scope": SemanticScopeCatalog},
+				sq.Eq{"f_catalog_id": v.CatalogIDs},
+			})
+		}
+		if len(alternatives) == 0 {
+			// Nothing is visible. Say so in SQL rather than returning everything.
+			builder = builder.Where(sq.Expr("1 = 0"))
+		} else {
+			builder = builder.Where(alternatives)
+		}
 	}
 	return builder
 }

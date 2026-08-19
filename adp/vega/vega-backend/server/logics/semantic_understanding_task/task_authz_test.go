@@ -127,3 +127,89 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 	})
 }
+
+// TestSemanticTaskListFiltersByVisibleParents: 任务是双 scope 的,所以可见性是
+// 析取——资源级任务看它那张表,目录级任务看它那个目录,不能合成一个 id 集。
+func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
+	newSvc := func(ctrl *gomock.Controller) (*semanticUnderstandingTaskService,
+		*mock_interfaces.MockSemanticUnderstandingTaskAccess,
+		*mock_interfaces.MockResourceService, *mock_interfaces.MockCatalogService) {
+		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		return &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs, ums: ums}, suta, rs, cs
+	}
+
+	t.Run("两边的可见集都下推", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, suta, rs, cs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return([]string{"res-1"}, false, nil)
+		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return([]string{"cat-1"}, false, nil)
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
+				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+				require.NotNil(t, p.Visibility)
+				assert.Equal(t, []string{"res-1"}, p.Visibility.ResourceIDs)
+				assert.Equal(t, []string{"cat-1"}, p.Visibility.CatalogIDs)
+				assert.False(t, p.Visibility.AllResources)
+				assert.False(t, p.Visibility.AllCatalogs)
+				return nil, 0, nil
+			})
+
+		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		require.NoError(t, err)
+	})
+
+	t.Run("一边是类型级授权也要如实带上，不能当成空集", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, suta, rs, cs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, true, nil)
+		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
+				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+				require.NotNil(t, p.Visibility)
+				assert.True(t, p.Visibility.AllResources, "持 resource:* 的人应看到全部资源级任务")
+				return nil, 0, nil
+			})
+
+		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		require.NoError(t, err)
+	})
+
+	t.Run("两边都看不见就直接空，不查库", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, _, rs, cs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+
+		tasks, total, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		require.NoError(t, err)
+		assert.Empty(t, tasks)
+		assert.Zero(t, total)
+	})
+
+	t.Run("两边都是类型级授权则完全不过滤", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, suta, rs, cs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, true, nil)
+		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).Return(nil, true, nil)
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
+				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+				assert.Nil(t, p.Visibility, "看得见全部时不该带过滤条件")
+				return nil, 0, nil
+			})
+
+		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		require.NoError(t, err)
+	})
+}
