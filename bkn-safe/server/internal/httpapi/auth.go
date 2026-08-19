@@ -52,17 +52,17 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
 body:before{content:"";position:fixed;inset:0;z-index:-2;background-image:
   linear-gradient(90deg,rgba(248,250,252,.96) 0%,rgba(248,250,252,.82) 38%,rgba(248,250,252,.18) 100%),
   url("` + loginBackgroundPath + `");background-size:cover;background-position:center;background-repeat:no-repeat}
-.card{position:relative;width:min(380px,calc(100vw - 32px));box-sizing:border-box;background:rgba(255,255,255,.93);
-  border:1px solid rgba(22,40,73,.08);border-radius:20px;padding:36px 32px;
-  box-shadow:0 18px 52px rgba(22,40,73,.13);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.card{position:relative;width:min(440px,calc(100vw - 32px));box-sizing:border-box;background:rgba(255,255,255,.94);
+  border:1px solid rgba(22,40,73,.08);border-radius:22px;padding:42px 40px 44px;
+  box-shadow:0 22px 64px rgba(22,40,73,.14);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .locale-switch{position:absolute;top:14px;right:18px;display:flex;align-items:center;gap:6px;
   color:#a0aabd;font-size:12px;line-height:1}
 .locale-switch a{border-radius:4px;color:#72819b;text-decoration:none;padding:4px 2px}
 .locale-switch a:hover{color:#2563eb}
 .locale-switch a.active{color:#2563eb;font-weight:600}
 .locale-switch a:focus-visible{outline:2px solid rgba(37,99,235,.35);outline-offset:2px}
-.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:18px}
-.brand-logo{display:block;width:244px;height:84px;object-fit:contain}
+.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:24px}
+.brand-logo{display:block;width:272px;height:94px;object-fit:contain}
 .brand-mark{position:relative;width:40px;height:40px;border-radius:14px;
   background:linear-gradient(145deg,rgba(37,99,235,.16),rgba(37,99,235,.04)),#fff;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 24px rgba(37,99,235,.14)}
@@ -79,14 +79,14 @@ body:before{content:"";position:fixed;inset:0;z-index:-2;background-image:
 .label{font-size:12px;color:#72819b;text-align:center;margin-bottom:4px}
 .note{font-size:13px;color:#64748d;background:#f9fbff;border:1px solid rgba(15,30,54,.08);
   border-radius:10px;padding:12px;margin:16px 0}
-input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d9d9d9;border-radius:8px;
-  padding:10px 12px;color:rgba(0,0,0,.88);font-size:14px;margin:6px 0;outline:none;
+input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d9d9d9;border-radius:9px;
+  padding:13px 14px;color:rgba(0,0,0,.88);font-size:15px;margin:7px 0;outline:none;
   transition:border-color .2s,box-shadow .2s}
 input::placeholder{color:rgba(0,0,0,.35)}
 input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.1)}
 ul{list-style:none;padding:0;margin:14px 0}
 li{padding:6px 0;font-size:14px;color:#152239}li:before{content:"✓ ";color:#2563eb}
-button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:11px;
+button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:9px;padding:14px;
   font:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;
   transition:background .2s,color .2s}
 .primary{background:#2563eb;color:#fff;box-shadow:0 2px 0 rgba(37,99,235,.1)}
@@ -95,7 +95,7 @@ button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
 form{margin:0}
-@media (max-width:640px){body:before{background-position:60% center}.card{padding:34px 24px}}
+@media (max-width:640px){body:before{background-position:60% center}.card{padding:36px 24px}}
 </style>`
 
 //go:embed assets/openbkn-logo.svg
@@ -135,7 +135,7 @@ func serveCacheableAuthAsset(c *gin.Context, contentType, etag string, body []by
 // platform-level login) carry BKN Foundry.
 func brand(name string) string {
 	if name == "BKN Studio" {
-		return `<div class="brand"><img class="brand-logo" src="` + openBKNLogoPath + `" alt="OpenBKN" width="244" height="84"></div>`
+		return `<div class="brand"><img class="brand-logo" src="` + openBKNLogoPath + `" alt="OpenBKN" width="272" height="94"></div>`
 	}
 	return `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>` + name + `</strong></div>`
 }

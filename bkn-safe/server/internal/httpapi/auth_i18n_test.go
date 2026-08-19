@@ -137,8 +137,8 @@ func TestLoginPageReferencesExternalAssets(t *testing.T) {
 	for _, expected := range []string{
 		`url("` + loginBackgroundPath + `")`,
 		`src="` + openBKNLogoPath + `"`,
-		`width="244"`,
-		`height="84"`,
+		`width="272"`,
+		`height="94"`,
 	} {
 		if !strings.Contains(body, expected) {
 			t.Errorf("body does not contain %q", expected)
