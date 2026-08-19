@@ -54,7 +54,7 @@ mf_model_api:
   private_protocol: "http"
   private_host: "mf-model-api.openbkn"
   private_port: 9898
-  rerank_llm: # The model uses the system default LLM by default; override per request through rerank_llm_model (for testing/validation).
+rerank_llm: # The model uses the system default LLM by default; override per request through rerank_llm_model (for testing/validation).
   temperature: 0
   top_k: 2
   top_p: 0.5
