@@ -45,7 +45,7 @@ func TestProjectionSupervisorRetriesRebuildBeforeStartingWorker(t *testing.T) {
 	}
 }
 
-func TestProjectionSupervisorStopsWhileRebuildIsUnavailable(t *testing.T) {
+func TestProjectionSupervisorStartsWorkerWhileRebuildIsUnavailable(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -74,7 +74,7 @@ func TestProjectionSupervisorStopsWhileRebuildIsUnavailable(t *testing.T) {
 	}
 	select {
 	case <-workerStarted:
-		t.Fatal("projection worker started before a successful rebuild")
-	default:
+	case <-time.After(time.Second):
+		t.Fatal("projection worker did not start while rebuild was unavailable")
 	}
 }

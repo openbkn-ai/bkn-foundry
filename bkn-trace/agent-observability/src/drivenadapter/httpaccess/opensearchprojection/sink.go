@@ -46,14 +46,37 @@ func New(client *opensearch.Client, index string) *Sink {
 }
 
 func (s *Sink) Project(ctx context.Context, item iprojectionoutbox.Item) error {
+	return s.projectVersion(ctx, s.index, item)
+}
+
+func (s *Sink) projectVersion(ctx context.Context, index string, item iprojectionoutbox.Item) error {
 	if item.AggregateVersion == 0 {
 		return iprojectionoutbox.Permanent(errors.New("projection aggregate version is required"))
 	}
 	_, err := s.client.IndexDocumentVersion(
-		ctx, s.index, iprojectionoutbox.DocumentID(item),
+		ctx, index, iprojectionoutbox.DocumentID(item),
 		item.AggregateVersion, item.Payload,
 	)
 	if errors.Is(err, opensearch.ErrVersionConflict) {
+		documentID := iprojectionoutbox.DocumentID(item)
+		existing, getErr := s.client.GetDocument(ctx, index, documentID)
+		if getErr != nil {
+			return fmt.Errorf("read version-conflicted projection %q: %w", documentID, getErr)
+		}
+		expected, canonicalErr := canonicalJSON(item.Payload)
+		if canonicalErr != nil {
+			return iprojectionoutbox.Permanent(fmt.Errorf("canonicalize projection %q: %w", documentID, canonicalErr))
+		}
+		actual, canonicalErr := canonicalJSON(existing.Source)
+		if canonicalErr != nil {
+			return fmt.Errorf("canonicalize stored projection %q: %w", documentID, canonicalErr)
+		}
+		if !bytes.Equal(expected, actual) {
+			return iprojectionoutbox.Permanent(fmt.Errorf(
+				"projection contract conflict for document %q at aggregate version %d",
+				documentID, item.AggregateVersion,
+			))
+		}
 		return nil
 	}
 	if opensearch.IsPermanentStatusError(err) {
@@ -94,20 +117,7 @@ func (s *Sink) EnsureBootstrap(ctx context.Context, indexVersion string) error {
 }
 
 func (s *Sink) ProjectVersion(ctx context.Context, indexVersion string, item iprojectionoutbox.Item) error {
-	if item.AggregateVersion == 0 {
-		return iprojectionoutbox.Permanent(errors.New("projection aggregate version is required"))
-	}
-	_, err := s.client.IndexDocumentVersion(
-		ctx, indexVersion, iprojectionoutbox.DocumentID(item),
-		item.AggregateVersion, item.Payload,
-	)
-	if errors.Is(err, opensearch.ErrVersionConflict) {
-		return nil
-	}
-	if opensearch.IsPermanentStatusError(err) {
-		return iprojectionoutbox.Permanent(err)
-	}
-	return err
+	return s.projectVersion(ctx, indexVersion, item)
 }
 
 func (s *Sink) ValidateVersion(

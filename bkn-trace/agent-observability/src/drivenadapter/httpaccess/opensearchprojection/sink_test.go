@@ -49,11 +49,19 @@ func TestSinkIndexesByStableAggregateID(t *testing.T) {
 	}
 }
 
-func TestSinkAcknowledgesStaleAggregateVersionWithoutRetry(t *testing.T) {
+func TestSinkAcknowledgesVersionConflictWhenExistingDocumentMatches(t *testing.T) {
 	t.Parallel()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		http.Error(w, "version_conflict_engine_exception", http.StatusConflict)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			http.Error(w, "version_conflict_engine_exception", http.StatusConflict)
+			return
+		}
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"_source":{"row_version":1}}`))
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 	}))
 	t.Cleanup(server.Close)
 	sink := opensearchprojection.New(
@@ -65,7 +73,32 @@ func TestSinkAcknowledgesStaleAggregateVersionWithoutRetry(t *testing.T) {
 		AggregateVersion: 1, Payload: []byte(`{"row_version":1}`),
 	})
 	if err != nil {
-		t.Fatalf("stale aggregate version must be safely superseded: %v", err)
+		t.Fatalf("matching aggregate version must be safely acknowledged: %v", err)
+	}
+}
+
+func TestSinkRejectsVersionConflictWhenExistingDocumentDiffers(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			http.Error(w, "version_conflict_engine_exception", http.StatusConflict)
+			return
+		}
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"_source":{"row_version":1,"business_context":"legacy"}}`))
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	t.Cleanup(server.Close)
+	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+	err := sink.Project(context.Background(), iprojectionoutbox.Item{
+		AggregateType: "conversation", AggregateID: "conv-1", AggregateVersion: 1,
+		Payload: []byte(`{"row_version":1,"business_context":"managed"}`),
+	})
+	if err == nil || !strings.Contains(err.Error(), "projection contract conflict") {
+		t.Fatalf("different document at same version must report contract conflict: %v", err)
 	}
 }
 

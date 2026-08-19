@@ -404,6 +404,15 @@ func runProjectionSupervisor(
 	if retryInterval <= 0 {
 		retryInterval = time.Second
 	}
+	var workerDone <-chan struct{}
+	if rebuild != nil {
+		done := make(chan struct{})
+		workerDone = done
+		go func() {
+			defer close(done)
+			runWorker(ctx)
+		}()
+	}
 	for rebuild != nil {
 		if err := rebuild(ctx); err == nil {
 			break
@@ -422,7 +431,11 @@ func runProjectionSupervisor(
 		}
 	}
 	metrics.Set(icoremetrics.ProjectionReady, 1)
-	runWorker(ctx)
+	if rebuild == nil {
+		runWorker(ctx)
+		return
+	}
+	<-workerDone
 }
 
 // newApp preserves the community route test seam. Archive routes are mounted
