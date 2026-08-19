@@ -34,6 +34,23 @@ func TestSummaryOffsetClampsOverflowingPage(t *testing.T) {
 	}
 }
 
+func TestPaginateTraceSummariesUsesPageOffset(t *testing.T) {
+	page, err := paginateTraceSummaries([]evidencevo.TraceSummary{
+		{TraceID: "trace_oldest", StartedAt: "2026-08-01T08:00:00Z"},
+		{TraceID: "trace_latest", StartedAt: "2026-08-03T08:00:00Z"},
+		{TraceID: "trace_middle", StartedAt: "2026-08-02T08:00:00Z"},
+	}, evidencevo.SummaryQueryOptions{Page: 2, Limit: 1})
+	if err != nil {
+		t.Fatalf("paginate trace summaries: %v", err)
+	}
+	if page.Total != 3 {
+		t.Fatalf("total = %d, want 3", page.Total)
+	}
+	if len(page.Entries) != 1 || page.Entries[0].TraceID != "trace_middle" {
+		t.Fatalf("page 2 entries = %+v, want trace_middle", page.Entries)
+	}
+}
+
 func TestListConversationsUsesCanonicalSessionStatus(t *testing.T) {
 	evidenceStore := evidencestore.New()
 	seedBusinessProvenanceRequest(

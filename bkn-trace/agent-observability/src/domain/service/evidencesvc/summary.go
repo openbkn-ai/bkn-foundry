@@ -1617,8 +1617,9 @@ func paginateTraceSummaries(filtered []evidencevo.TraceSummary, options evidence
 	if err != nil {
 		return evidencevo.TraceSummaryPage{}, err
 	}
-	start := 0
+	start := summaryOffset(options, len(filtered))
 	if hasCursor {
+		start = 0
 		for start < len(filtered) && !afterSummaryCursor(filtered[start].StartedAt, filtered[start].TraceID, cursor) {
 			start++
 		}
