@@ -138,7 +138,7 @@ init_k8s_master() {
 
     # Pre-pull pause image with all possible versions and tag them
     log_info "Pre-pulling pause images with all versions..."
-    for pause_version in 3.6 3.9 3.10 3.10.0 3.10.1; do
+    for pause_version in 3.6 3.9 3.10 3.10.0 3.10.1 3.10.2; do
         log_info "Pulling pause:${pause_version}..."
         crictl pull "${IMAGE_REPOSITORY}/pause:${pause_version}" 2>/dev/null || true
         # Tag the image as registry.k8s.io version for kubeadm
