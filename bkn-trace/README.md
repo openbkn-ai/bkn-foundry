@@ -103,7 +103,7 @@ Run with Helm:
 
 ```bash
 helm upgrade --install agent-observability agent-observability/charts/agent-observability \
-  --set image.repository=swr.cn-east-3.myhuaweicloud.com/kweaver-ai/agent-observability \
+  --set image.repository=swr.cn-east-3.myhuaweicloud.com/openbkn-ai/agent-observability \
   --set image.tag=0.1.0 \
   --set opensearch.endpoint=http://opensearch-read.resource.svc.cluster.local:9200 \
   --set opensearch.auth.enabled=false \
@@ -139,7 +139,7 @@ Create and publish a multi-arch collector manifest:
 
 ```bash
 docker buildx imagetools create \
-  -t swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/opentelemetry-collector-contrib:0.148.0 \
+  -t swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/opentelemetry-collector-contrib:0.148.0 \
   swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.148.0 \
   swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.148.0-linuxarm64
 ```
@@ -148,7 +148,7 @@ Verify the manifest platforms:
 
 ```bash
 docker buildx imagetools inspect \
-  swr.cn-east-3.myhuaweicloud.com/kweaver-ai/dip/opentelemetry-collector-contrib:0.148.0
+  swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/opentelemetry-collector-contrib:0.148.0
 ```
 
 ## Quick Start
