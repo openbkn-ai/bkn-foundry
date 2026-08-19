@@ -18,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// TestKnSearch_Success 测试 KnSearch 固定走本地检索成功
+// TestKnSearch_Success Test KnSearch fixed local search success.
 func TestKnSearch_Success(t *testing.T) {
 	convey.Convey("TestKnSearch_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -54,7 +54,7 @@ func TestKnSearch_Success(t *testing.T) {
 	})
 }
 
-// TestKnSearch_Error 测试 KnSearch 本地检索错误场景
+// TestKnSearch_Error Test KnSearch local search error scenario.
 func TestKnSearch_Error(t *testing.T) {
 	convey.Convey("TestKnSearch_Error", t, func() {
 		ctrl := gomock.NewController(t)
@@ -83,7 +83,7 @@ func TestKnSearch_Error(t *testing.T) {
 	})
 }
 
-// TestKnSearch_KnIDConversion 测试 KnID 转换逻辑
+// TestKnSearch_KnIDConversion tests KnID conversion logic.
 func TestKnSearch_KnIDConversion(t *testing.T) {
 	convey.Convey("TestKnSearch_KnIDConversion", t, func() {
 		ctrl := gomock.NewController(t)
@@ -122,7 +122,7 @@ func TestKnSearch_KnIDConversion(t *testing.T) {
 	})
 }
 
-// fakeLocalSearch 用于单测的 IKnSearchLocalService 桩实现
+// fakeLocalSearch IKnSearchLocalService stub implementation for single testing.
 type fakeLocalSearch struct {
 	resp *interfaces.KnSearchLocalResponse
 	err  error

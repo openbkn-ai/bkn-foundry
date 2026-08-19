@@ -57,7 +57,7 @@ func newTestService() *knRetrievalServiceImpl {
 	}
 }
 
-// TestSortByRerankAndMatchScore 测试 sortByRerankAndMatchScore 函数
+// TestSortByRerankAndMatchScore tests the sortByRerankAndMatchScore function.
 func TestSortByRerankAndMatchScore(t *testing.T) {
 	convey.Convey("TestSortByRerankAndMatchScore", t, func() {
 		service := &knRetrievalServiceImpl{
@@ -74,7 +74,7 @@ func TestSortByRerankAndMatchScore(t *testing.T) {
 
 			result := service.sortByRerankAndMatchScore(concepts)
 			convey.So(len(result), convey.ShouldEqual, 4)
-			convey.So(result[0].ConceptID, convey.ShouldEqual, "1") // 0.8 最高
+			convey.So(result[0].ConceptID, convey.ShouldEqual, "1") // 0.8 highest.
 			convey.So(result[1].ConceptID, convey.ShouldEqual, "3") // 0.5
 			convey.So(result[2].ConceptID, convey.ShouldEqual, "2") // 0, MatchScore 5 > 3
 			convey.So(result[3].ConceptID, convey.ShouldEqual, "4")
@@ -126,7 +126,7 @@ func TestSortByRerankAndMatchScore(t *testing.T) {
 		})
 
 		convey.Convey("MatchScore 为零值(float64)时正常排序不 panic", func() {
-			// MatchScore/RerankScore 为 float64，在 Go 中不能为 nil，零值为 0
+			// MatchScore/RerankScore is float64, cannot be nil in Go, zero value is 0.
 			concepts := []*interfaces.ConceptResult{
 				{ConceptID: "1", RerankScore: 0.5, MatchScore: 0},
 				{ConceptID: "2", RerankScore: 0.5, MatchScore: 0},
@@ -152,7 +152,7 @@ func TestSortByRerankAndMatchScore(t *testing.T) {
 	})
 }
 
-// TestRerankConcepts_DefaultAction 测试 rerankConcepts default action 场景
+// TestRerankConcepts_DefaultAction tests rerankConcepts default action scenario.
 func TestRerankConcepts_DefaultAction(t *testing.T) {
 	convey.Convey("TestRerankConcepts_DefaultAction", t, func() {
 		sharedMFModelClient.rerankResp = nil
@@ -171,14 +171,14 @@ func TestRerankConcepts_DefaultAction(t *testing.T) {
 			{ConceptID: "2", ConceptName: "Concept2", RerankScore: 0.5},
 		}
 
-		// default action 不调用 KnowledgeRerank
+		// default action does not call KnowledgeRerank.
 		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionDefault, 10, "", "")
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(len(result), convey.ShouldEqual, 2)
 	})
 }
 
-// TestRerankConcepts_VectorAction 测试 rerankConcepts vector action 场景
+// TestRerankConcepts_VectorAction test rerankConcepts vector action scenario.
 func TestRerankConcepts_VectorAction(t *testing.T) {
 	convey.Convey("TestRerankConcepts_VectorAction", t, func() {
 		sharedMFModelClient.rerankResp = &interfaces.RerankResp{
@@ -207,7 +207,7 @@ func TestRerankConcepts_VectorAction(t *testing.T) {
 	})
 }
 
-// TestRerankConcepts_Error 测试 rerankConcepts 错误降级场景
+// TestRerankConcepts_Error Test rerankConcepts error downgrade scenario.
 func TestRerankConcepts_Error(t *testing.T) {
 	convey.Convey("TestRerankConcepts_Error", t, func() {
 		sharedMFModelClient.rerankResp = nil
@@ -233,7 +233,7 @@ func TestRerankConcepts_Error(t *testing.T) {
 	})
 }
 
-// TestRerankConcepts_WithLimit 测试 rerankConcepts 分页限制
+// TestRerankConcepts_WithLimit tests rerankConcepts paging limit.
 func TestRerankConcepts_WithLimit(t *testing.T) {
 	convey.Convey("TestRerankConcepts_WithLimit", t, func() {
 		sharedMFModelClient.rerankResp = nil
@@ -255,7 +255,7 @@ func TestRerankConcepts_WithLimit(t *testing.T) {
 			{ConceptID: "5", RerankScore: 0.5},
 		}
 
-		// limit=2 只返回前 2 个
+		// limit=2 only returns the first 2.
 		result, err := service.rerankConcepts(ctx, queryUnderstanding, concepts, interfaces.KnowledgeRerankActionDefault, 2, "", "")
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(len(result), convey.ShouldEqual, 2)

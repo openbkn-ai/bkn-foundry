@@ -7,9 +7,9 @@ package interfaces
 
 // SearchInstanceReq search_instance request.
 //
-// 只暴露三个 Agent 能正确判断的旋钮：范围（concept_groups）、宽度（max_object_types）、
-// 深度（max_instances_per_type）。候选池大小、向量子条件预算、相关性阈值一类运维级
-// 参数不进这里——Agent 无从判断怎么调，要调的人走 kn_search 的 retrieval_config。
+// Only three knobs are exposed that Agent can correctly judge: range (concept_groups), width (max_object_types),
+// Depth(max_instances_per_type). Candidate pool size, vector sub-condition budget, correlation threshold and other operational levels.
+// Parameters are not entered here - the Agent cannot determine how to adjust them. If you want to adjust them, go to kn_search's retrieval_config.
 type SearchInstanceReq struct {
 	XAccountID   string `header:"x-account-id"`
 	XAccountType string `header:"x-account-type"`
@@ -17,43 +17,43 @@ type SearchInstanceReq struct {
 
 	Query string `json:"query" validate:"required"`
 	KnID  string `json:"kn_id,omitempty"`
-	// ConceptGroups 限定参与召回的概念分组，留空则整网。
+	// ConceptGroups limits the concept groups participating in the recall, leaving it blank will result in the entire network.
 	ConceptGroups []string `json:"concept_groups,omitempty"`
-	// MaxObjectTypes 参与实例召回的对象类数量上限（概念召回的 Top-K）。
+	// MaxObjectTypes is the upper limit of the number of object types participating in instance recall (Top-K of concept recall).
 	MaxObjectTypes *int `json:"max_object_types,omitempty" default:"10"`
-	// MaxInstancesPerType 每个对象类最多返回几条实例。
+	// MaxInstancesPerType returns at most several instances of each object type.
 	MaxInstancesPerType *int `json:"max_instances_per_type,omitempty" default:"5"`
-	// IncludeObjectTypes 控制是否附带命中对象类的精简定义，默认开。
-	// 关掉只在「调用方已经拿着这些对象类的 Schema」时才划算。
+	// IncludeObjectTypes controls whether to include a simplified definition of the hit object type. It is enabled by default.
+	// Turning it off is only worthwhile if the caller already has the schema for these object types.
 	IncludeObjectTypes *bool `json:"include_object_types,omitempty" default:"true"`
 
-	// Rerank 是否对召回结果做 cross-encoder 精排，默认关。
+	// Rerank: Whether to perform cross-encoder refinement on the recall results. The default is off.
 	//
-	// 交给调用方而不是部署方：这一次查询要精度还是要速度，只有发起查询的人知道。
-	// 代价是多一次模型调用（约 100~400ms），且要求模型工厂里注册了 rerank 小模型；
-	// 模型不可用时自动退回融合序，不报错。
+	// Leave it to the caller rather than the deployer: only the person who initiated the query knows whether the query is more accurate or faster this time.
+	// The cost is one more model call (about 100~400ms), and the rerank small model is required to be registered in the model factory;
+	// When the model is unavailable, it automatically returns to the fusion sequence without reporting an error.
 	//
-	// 只有开/关两档。shadow（调模型但不改序、只记录排序差异）是取证用的运维档，
-	// 走 kn_search 的 retrieval_config.semantic_instance_retrieval.instance_rerank_mode，
-	// 不放进工具参数表——Agent 拿它没有用处。
+	// There are only two gears: on/off. Shadow (adjusts the model but does not change the order, only records the sorting differences) is an operation and maintenance file used for evidence collection.
+	// Go to kn_search's retrieval_config.semantic_instance_retrieval.instance_rerank_mode,
+	// Do not put it in the tool parameter list - the Agent has no use for it.
 	Rerank *bool `json:"rerank,omitempty" default:"false"`
 
-	// IndexOpsOnly 让附带的 condition_operations 只保留索引带来的算子。由 MCP 层设置，
-	// 不进请求契约——比较算子按属性 type 可推导，逐个下发对 Agent 是纯噪音，而且很贵：
-	// 实测一个知识网络的 154 个属性，全量算子 15KB，只留索引算子 364 字节。
-	// REST 调用方（Studio 这类直连消费者）仍拿全量。
+	// IndexOpsOnly allows the attached condition_operations to retain only the operators brought by the index. Set by the MCP layer,
+	// Without entering the request contract - the comparison operator can be deduced according to the attribute type, and issuing it one by one is pure noise to the Agent, and it is very expensive:
+	// After actually measuring 154 attributes of a knowledge network, the total operator size is 15KB, leaving only 364 bytes for the index operator.
+	// REST callers (direct consumers like Studio) still get the full amount.
 	IndexOpsOnly bool `json:"-"`
 }
 
 // SearchInstanceResp search_instance response.
 //
-// 实例 + 读懂这些实例所需的字段定义。带上后者是因为不自足的工具会逼调用方回头再调
-// 一次 search_schema / get_object_types，而那一趟会把同一个 query 的概念召回重跑一遍。
+// Examples + field definitions required to understand these examples. The latter is included because a tool that is not self-contained will force the caller to go back and adjust it again.
+// Search_schema / get_object_types once, and that time will recall the concept of the same query and run it again.
 type SearchInstanceResp struct {
 	Nodes []any `json:"nodes"`
-	// ObjectTypes 只含 Nodes 里真正出现过的对象类（精简定义：属性名与类型），
-	// 不是概念召回扫过的全部——后者动辄几十个，绝大多数没有出实例。
+	// ObjectTypes only contains object types that actually appear in Nodes (concise definition: attribute name and type),
+	// Not all of them are scanned by concept recall - there are often dozens of them, and most of them have no examples.
 	ObjectTypes []any `json:"object_types,omitempty"`
-	// Message 仅在没有命中时出现，说明为什么是空的。
+	// Message only appears if there are no hits, explaining why it is empty.
 	Message string `json:"message,omitempty"`
 }

@@ -34,7 +34,7 @@ func rerankService(client *mockRerankClient) *localSearchImpl {
 	return &localSearchImpl{logger: &mockLogger{}, rerankClient: client}
 }
 
-// 默认 off：一次模型都不能调。多一次调用就是多 100~400ms 和一份模型依赖。
+// Default is off: the model cannot be called at a time. One more call means 100~400ms more and one more model dependency.
 func TestRerankInstances_OffDoesNotCallModel(t *testing.T) {
 	client := &mockRerankClient{}
 	nodes := []*interfaces.KnSearchNode{rerankNode("a", 1.0), rerankNode("b", 0.9)}
@@ -49,11 +49,11 @@ func TestRerankInstances_OffDoesNotCallModel(t *testing.T) {
 	}
 }
 
-// on：模型分覆盖排序，且旧的融合分不再决定次序。
+// on: Model points cover sorting, and the old fusion points no longer determine the order.
 func TestRerankInstances_OnReordersByModelScore(t *testing.T) {
 	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
-		{Index: 0, RelevanceScore: 0.11}, // 融合序第 1，模型判为无关
-		{Index: 1, RelevanceScore: 0.94}, // 融合序第 2，模型判为强相关
+		{Index: 0, RelevanceScore: 0.11}, // The fusion order is 1st, and the model is judged to be irrelevant.
+		{Index: 1, RelevanceScore: 0.94}, // The fusion order is 2nd, and the model is judged to be strongly correlated.
 	}}}
 	nodes := []*interfaces.KnSearchNode{rerankNode("还款单", 1.0), rerankNode("欠款单", 0.98)}
 
@@ -65,8 +65,8 @@ func TestRerankInstances_OnReordersByModelScore(t *testing.T) {
 	if math.Abs(got[0].RerankScore-0.94) > 1e-9 {
 		t.Errorf("rerank_score must be carried out, got %.4f", got[0].RerankScore)
 	}
-	// 精排只改顺序，不覆盖 score：一次响应里只能有一把尺子。融合分跨对象类可比，
-	// 覆盖之后未打分候选与 top_n 之外的尾部会带着另一种量纲混进同一个列表。
+	// Fine sorting only changes the order and does not cover score: there can only be one ruler in one response. Fusion points are comparable across object types,
+	// After covering, the unscored candidates and the tails outside top_n will be mixed into the same list with another dimension.
 	if math.Abs(got[0].Score-0.98) > 1e-9 {
 		t.Errorf("fusion score must survive reranking, got %.4f", got[0].Score)
 	}
@@ -75,8 +75,8 @@ func TestRerankInstances_OnReordersByModelScore(t *testing.T) {
 	}
 }
 
-// on 模式下，模型没打到分的候选与 top_n 之外的尾部都必须保住各自的融合分——
-// 覆盖成模型分会把它们打成 0，而 score 一旦为 0 就与「本地兜底打不出重叠」不可区分。
+// In the on mode, the candidates that have not been scored by the model and the tails other than top_n must keep their respective fusion scores——.
+// Overriding them with model scores will mark them as 0, and once the score is 0, it is indistinguishable from "local fallback scores cannot overlap".
 func TestRerankInstances_OnKeepsFusionScoreForUnscoredAndTail(t *testing.T) {
 	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
 		{Index: 1, RelevanceScore: 0.9},
@@ -102,7 +102,7 @@ func TestRerankInstances_OnKeepsFusionScoreForUnscoredAndTail(t *testing.T) {
 	}
 }
 
-// shadow：序不变，但分带出来——这正是 A/B 取证需要的形态。
+// Shadow: The order remains unchanged, but is brought out separately - this is exactly the form required for A/B evidence collection.
 func TestRerankInstances_ShadowKeepsOrderButRecordsScores(t *testing.T) {
 	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
 		{Index: 0, RelevanceScore: 0.11},
@@ -138,7 +138,7 @@ func TestRerankInstances_ShadowKeepsOrderButRecordsScores(t *testing.T) {
 	}
 }
 
-// 模型不可用是常态而非异常：退回融合序，结果不能被打空。
+// Unavailability of the model is the norm rather than an exception: return to the fusion sequence and the results cannot be nulled.
 func TestRerankInstances_DegradesToFusionOrder(t *testing.T) {
 	cases := map[string]*mockRerankClient{
 		"未注册": {rerankError: errors.New("NameNotExist: reranker")},
@@ -165,7 +165,7 @@ func TestRerankInstances_DegradesToFusionOrder(t *testing.T) {
 	}
 }
 
-// 部分回填：能对上的用模型分，对不上的保留融合名次，不整体放弃。
+// Partial backfilling: Use model points for those who can match, keep the fusion ranking for those who can't match, and do not give up as a whole.
 func TestRerankInstances_PartialResultsKeepUnscoredNodes(t *testing.T) {
 	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
 		{Index: 1, RelevanceScore: 0.9},
@@ -182,7 +182,7 @@ func TestRerankInstances_PartialResultsKeepUnscoredNodes(t *testing.T) {
 	}
 }
 
-// 乱序返回按 index 对齐，不按返回顺序——厂商两种行为都存在。
+// Out-of-order returns are aligned by index, not in return order - both behaviors of manufacturers exist.
 func TestRerankInstances_AlignsByIndexNotOrder(t *testing.T) {
 	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
 		{Index: 2, RelevanceScore: 0.30},
@@ -201,7 +201,7 @@ func TestRerankInstances_AlignsByIndexNotOrder(t *testing.T) {
 	}
 }
 
-// 超过 top_n 的尾部不送模型，也不能丢。
+// The tail that exceeds top_n will not be sent to the model and cannot be lost.
 func TestRerankInstances_TailBeyondTopNIsKeptUnscored(t *testing.T) {
 	client := &mockRerankClient{rerankResp: &interfaces.RerankResp{Results: []interfaces.RerankResult{
 		{Index: 0, RelevanceScore: 0.2},
@@ -224,7 +224,7 @@ func TestRerankInstances_TailBeyondTopNIsKeptUnscored(t *testing.T) {
 	}
 }
 
-// 文档文本：内部元数据不进去，字段名排序稳定，长值按字符截断。
+// Document text: Internal metadata is not included, field name sorting is stable, and long values are truncated by characters.
 func TestInstanceRerankDocument(t *testing.T) {
 	node := &interfaces.KnSearchNode{
 		InstanceName: "马拉卡纳球场",
@@ -233,7 +233,7 @@ func TestInstanceRerankDocument(t *testing.T) {
 			"_instance_id": "sid-1",
 			"city_name":    "里约热内卢",
 			"comment":      strings.Repeat("长", 500),
-			"capacity":     78838, // 非字符串，跳过
+			"capacity":     78838, // non-string, skip.
 		},
 	}
 
@@ -254,13 +254,13 @@ func TestInstanceRerankDocument(t *testing.T) {
 	if strings.Count(doc, "长") != 10 {
 		t.Errorf("long values must be truncated by rune count, got %d", strings.Count(doc, "长"))
 	}
-	// 字段按名字排序：同一行两次拼出的文本必须一致，否则同一 query 会拿到不同模型分。
+	// Fields are sorted by name: the text spelled out twice on the same line must be consistent, otherwise the same query will get different model points.
 	if strings.Index(doc, "capacity") > strings.Index(doc, "city_name") && strings.Contains(doc, "capacity") {
 		t.Error("fields must be emitted in sorted order")
 	}
 }
 
-// 单文档总长有上限：下游会静默截到 4000 字符，被截掉的字段等于没参与打分。
+// There is an upper limit on the total length of a single document: the downstream will silently cut it to 4000 characters, and the truncated fields will not participate in scoring.
 func TestInstanceRerankDocument_TotalLengthCapped(t *testing.T) {
 	props := map[string]any{}
 	for i := 0; i < 100; i++ {
@@ -276,7 +276,7 @@ func TestInstanceRerankDocument_TotalLengthCapped(t *testing.T) {
 	}
 }
 
-// 无法识别的模式回落 off，不是报错——配置写错不该让检索整体失败。
+// Unrecognized patterns fall back to off, which is not an error - misconfiguration should not cause the overall retrieval to fail.
 func TestRerankInstances_UnknownModeFallsBackToOff(t *testing.T) {
 	client := &mockRerankClient{}
 	nodes := []*interfaces.KnSearchNode{rerankNode("a", 1.0), rerankNode("b", 0.9)}

@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knquerysubgraph 业务知识网络子图查询业务逻辑
+// Package knquerysubgraph business knowledge network subgraph query business logic.
 // file: index.go
 package knquerysubgraph
 
@@ -18,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// KnQuerySubgraphService 子图查询服务
+// KnQuerySubgraphService subgraph query service.
 type KnQuerySubgraphService interface {
 	QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error)
 	ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (resp *interfaces.ExploreSubgraphResp, err error)
@@ -34,7 +34,7 @@ var (
 	kqsService     KnQuerySubgraphService
 )
 
-// NewKnQuerySubgraphService 新建 KnQuerySubgraphService
+// NewKnQuerySubgraphService New KnQuerySubgraphService.
 func NewKnQuerySubgraphService() KnQuerySubgraphService {
 	kqsServiceOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -46,9 +46,9 @@ func NewKnQuerySubgraphService() KnQuerySubgraphService {
 	return kqsService
 }
 
-// QueryInstanceSubgraph 查询对象子图
+// QueryInstanceSubgraph queries the object subgraph.
 func (s *knQuerySubgraphService) QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error) {
-	// 调用 drivenadapters 层查询子图
+	// Call the drivenadapters layer to query the subgraph.
 	resp, err = s.OntologyQuery.QueryInstanceSubgraph(ctx, req)
 	if err == nil {
 		bkntrace.EmitQueryInstanceSubgraphEvents(ctx, s.Logger, req, resp)
@@ -56,7 +56,7 @@ func (s *knQuerySubgraphService) QueryInstanceSubgraph(ctx context.Context, req 
 	return
 }
 
-// ExploreSubgraph 起点探索式子图查询
+// ExploreSubgraph runs source-based exploratory subgraph queries.
 func (s *knQuerySubgraphService) ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (resp *interfaces.ExploreSubgraphResp, err error) {
 	resp, err = s.OntologyQuery.ExploreSubgraph(ctx, req)
 	if err == nil {

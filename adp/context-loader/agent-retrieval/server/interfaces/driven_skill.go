@@ -4,24 +4,24 @@
 
 package interfaces
 
-// ==================== Skill 浏览 / 读取 / 执行（执行工厂）====================
+// ==================== Skill Browse / Read / Execute (Execution Factory) ====================.
 //
-// find_skills 只回 skill_id + name + description，拿到之后无路可走：既读不到 SKILL.md，
-// 也列不出附属文件，更执行不了脚本。这里补的是那条链路的出站契约——执行工厂
-// (operator-integration) 的 internal-v1 技能接口。
+// find_skills only returns skill_id + name + description. After getting it, there is no way to go: neither SKILL.md can be read,
+// Attached files cannot be listed, nor can scripts be executed. What is added here is the outbound contract of that link - the execution factory.
+// (operator-integration) internal-v1 skill interface.
 //
-// 发布态的文件接口只回对象存储的 presigned URL，不回正文，所以适配层统一走两跳：
-// 先拿元数据再取正文，正文以 []byte 交给上层，由上层决定文本判定与截断。
+// The published file interface only returns the presigned URL of the object storage, not the text, so the adaptation layer takes two hops:
+// Get the metadata first and then the text. The text is handed to the upper layer in []byte, and the upper layer determines text judgment and truncation.
 
-// ListSkillsRequest 浏览已发布技能（技能市场）请求。
+// ListSkillsRequest Browse published skills (Skills Marketplace) requests.
 type ListSkillsRequest struct {
-	Name     string `json:"name,omitempty"`     // 按名称模糊过滤
-	Category string `json:"category,omitempty"` // 按分类过滤
-	Page     int    `json:"page,omitempty"`     // 页码，从 1 开始
+	Name     string `json:"name,omitempty"`     // Fuzzy-filter by name.
+	Category string `json:"category,omitempty"` // Filter by category.
+	Page     int    `json:"page,omitempty"`     // Page number, starting from 1.
 	PageSize int    `json:"page_size,omitempty"`
 }
 
-// SkillBrief 技能条目摘要（浏览用，不含文件与正文）。
+// SkillBrief Summary of skill entries (for browsing, excluding files and text).
 type SkillBrief struct {
 	SkillID     string `json:"skill_id"`
 	Name        string `json:"name"`
@@ -31,7 +31,7 @@ type SkillBrief struct {
 	Status      string `json:"status,omitempty"`
 }
 
-// ListSkillsResponse 浏览已发布技能响应。
+// ListSkillsResponse Browse published skill responses.
 type ListSkillsResponse struct {
 	Entries    []SkillBrief `json:"entries"`
 	TotalCount int          `json:"total_count"`
@@ -39,7 +39,7 @@ type ListSkillsResponse struct {
 	PageSize   int          `json:"page_size"`
 }
 
-// SkillFileSummary 技能包内的文件条目。
+// SkillFileSummary The file entry in the skill package.
 type SkillFileSummary struct {
 	RelPath  string `json:"rel_path"`
 	FileType string `json:"file_type,omitempty"`
@@ -47,7 +47,7 @@ type SkillFileSummary struct {
 	MimeType string `json:"mime_type,omitempty"`
 }
 
-// GetSkillContentResponse 技能主文档（SKILL.md）正文 + 包内文件清单。
+// GetSkillContentResponse Skill master document (SKILL.md) text + file list in the package.
 type GetSkillContentResponse struct {
 	SkillID string
 	Content []byte
@@ -55,13 +55,13 @@ type GetSkillContentResponse struct {
 	Files   []SkillFileSummary
 }
 
-// ReadSkillFileRequest 读取技能包内单个文件。
+// ReadSkillFileRequest reads a single file in the skill package.
 type ReadSkillFileRequest struct {
 	SkillID string
 	RelPath string
 }
 
-// ReadSkillFileResponse 技能包内单个文件的元数据 + 正文。
+// ReadSkillFileResponse Metadata + text of a single file within the skill package.
 type ReadSkillFileResponse struct {
 	SkillID  string
 	RelPath  string
@@ -70,14 +70,14 @@ type ReadSkillFileResponse struct {
 	Content  []byte
 }
 
-// ExecuteSkillRequest 在沙箱内执行技能入口命令。
+// ExecuteSkillRequest executes the skill entry command in the sandbox.
 type ExecuteSkillRequest struct {
 	SkillID    string `json:"-"`
 	EntryShell string `json:"entry_shell"`
-	Timeout    int    `json:"timeout,omitempty"` // 秒
+	Timeout    int    `json:"timeout,omitempty"` // seconds.
 }
 
-// ExecuteSkillResponse 沙箱执行结果。
+// ExecuteSkillResponse sandbox execution result.
 type ExecuteSkillResponse struct {
 	SkillID       string `json:"skill_id"`
 	SessionID     string `json:"session_id"`

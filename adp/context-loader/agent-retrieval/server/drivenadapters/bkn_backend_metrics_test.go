@@ -121,7 +121,7 @@ func TestListMetricsByObjectTypes_PagesUntilComplete(t *testing.T) {
 		client, mockHTTP, ctrl := newMetricsTestClient(t)
 		defer ctrl.Finish()
 
-		// 第一页满页且 total 更大 → 必须再请求一次；两页拼起来才是完整答案。
+		// The first page is full and total is larger → must request once more; only both pages together form the complete answer.
 		page := func(ids []string, total int) []byte {
 			entries := make([]string, 0, len(ids))
 			for _, id := range ids {
@@ -192,7 +192,7 @@ func TestListMetricsByObjectTypes_BatchesScopeRefs(t *testing.T) {
 
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(batchSizes, convey.ShouldResemble, []int{metricsScopeBatch, 5})
-		// 每批各回一条同 scope 的指标，合并后两条都在
+		// Each batch returns one metric with the same scope, both remain after merging.
 		convey.So(len(metrics), convey.ShouldEqual, 2)
 	})
 }

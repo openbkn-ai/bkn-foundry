@@ -4,56 +4,56 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package errors 定义错误码
+// Package errors define error codes.
 // @file errors_code.go
-// @description: 定义错误码
+// @description: Define error code.
 package errors
 
-// common拓展错误码定义
+// common extended error code definition.
 const (
-	ErrExtCommonOperationForbidden      = "CommonOperationForbidden"      // 没有操作权限
-	ErrExtCommonAddForbidden            = "CommonAddForbidden"            // 没有新建权限
-	ErrExtCommonEditForbidden           = "CommonEditForbidden"           // 没有编辑权限
-	ErrExtCommonDeleteForbidden         = "CommonDeleteForbidden"         // 没有删除权限
-	ErrExtCommonPublishForbidden        = "CommonPublishForbidden"        // 没有发布权限
-	ErrExtCommonUnpublishForbidden      = "CommonUnpublishForbidden"      // 没有下架权限
-	ErrExtCommonPermissionForbidden     = "CommonPermissionForbidden"     // 没有权限管理权限
-	ErrExtCommonPublicAccessForbidden   = "CommonPublicAccessForbidden"   // 没有公共访问权限
-	ErrExtCommonUseForbidden            = "CommonUseForbidden"            // 没有使用权限
-	ErrExtCommonViewForbidden           = "CommonViewForbidden"           // 没有查看权限
-	ErrExtCommonUserNotFound            = "CommonUserNotFound"            // 用户不存在
-	ErrExtCommonAnonymousUserNotAllowed = "CommonAnonymousUserNotAllowed" // 匿名用户不允许访问
-	ErrExtCommonExternalServerError     = "CommonExternalServerError"     // 外部服务异常
+	ErrExtCommonOperationForbidden      = "CommonOperationForbidden"      // No operation permission.
+	ErrExtCommonAddForbidden            = "CommonAddForbidden"            // No new permission.
+	ErrExtCommonEditForbidden           = "CommonEditForbidden"           // No editing rights.
+	ErrExtCommonDeleteForbidden         = "CommonDeleteForbidden"         // No delete permission.
+	ErrExtCommonPublishForbidden        = "CommonPublishForbidden"        // No publishing permission.
+	ErrExtCommonUnpublishForbidden      = "CommonUnpublishForbidden"      // No removal permission.
+	ErrExtCommonPermissionForbidden     = "CommonPermissionForbidden"     // No permission management permissions.
+	ErrExtCommonPublicAccessForbidden   = "CommonPublicAccessForbidden"   // No public access.
+	ErrExtCommonUseForbidden            = "CommonUseForbidden"            // No permission to use.
+	ErrExtCommonViewForbidden           = "CommonViewForbidden"           // No viewing permission.
+	ErrExtCommonUserNotFound            = "CommonUserNotFound"            // User does not exist.
+	ErrExtCommonAnonymousUserNotAllowed = "CommonAnonymousUserNotAllowed" // Anonymous users are not allowed access.
+	ErrExtCommonExternalServerError     = "CommonExternalServerError"     // Externalserviceexception.
 )
 
-// MCP拓展错误码定义
+// MCP extended error code definition.
 const (
-	ErrExtMCPInstanceAlreadyExists = "MCPInstanceAlreadyExists" // MCP实例已存在
-	ErrExtMCPInstanceNotFound      = "MCPInstanceNotFound"      // MCP实例不存在
-	ErrExtMCPInfoBuildFailed       = "MCPInfoBuildFailed"       // MCP 信息构建失败
-	ErrExtMCPPTCUnavailable         = "MCPPTCUnavailable"        // PTC MCP endpoint is unavailable
-	ErrExtMCPPTCToolkitBuildFailed  = "MCPPTCToolkitBuildFailed" // PTC MCP toolkit build failed
+	ErrExtMCPInstanceAlreadyExists = "MCPInstanceAlreadyExists" // MCP instance already exists.
+	ErrExtMCPInstanceNotFound      = "MCPInstanceNotFound"      // MCPinstancedoes not exist.
+	ErrExtMCPInfoBuildFailed       = "MCPInfoBuildFailed"       // MCP information construction failed.
+	ErrExtMCPPTCUnavailable        = "MCPPTCUnavailable"        // PTC MCP endpoint is unavailable
+	ErrExtMCPPTCToolkitBuildFailed = "MCPPTCToolkitBuildFailed" // PTC MCP toolkit build failed
 )
 
-// 业务知识网络行动召回拓展错误码定义
+// Business knowledge network action recall expansion error code definition.
 const (
-	ErrExtKnActionRecallUnsupportedType     = "KnActionRecallUnsupportedType"     // 不支持的行动源类型
-	ErrExtKnActionRecallNoActionsFound      = "KnActionRecallNoActionsFound"      // 未找到可用行动
-	ErrExtKnActionRecallSchemaConvertFailed = "KnActionRecallSchemaConvertFailed" // Schema转换失败
-	ErrExtKnActionRecallToolNotFound        = "KnActionRecallToolNotFound"        // 工具不存在
+	ErrExtKnActionRecallUnsupportedType     = "KnActionRecallUnsupportedType"     // Unsupported action source type.
+	ErrExtKnActionRecallNoActionsFound      = "KnActionRecallNoActionsFound"      // No available actions found.
+	ErrExtKnActionRecallSchemaConvertFailed = "KnActionRecallSchemaConvertFailed" // Schemaconvertfailure.
+	ErrExtKnActionRecallToolNotFound        = "KnActionRecallToolNotFound"        // Tooldoes not exist.
 )
 
-// 通用错误码定义
+// Common error code definitions.
 const (
-	ErrExtCommonNameInvalid = "CommonNameInvalid" // 仅支持输入中文、字母、数字、下划线或空格
+	ErrExtCommonNameInvalid = "CommonNameInvalid" // Only supports input of Chinese characters, letters, numbers, underlines or spaces.
 )
 
-// 验证器错误码定义
+// Validator error code definition.
 const (
-	ErrExtCodeValidationRequired = "ValidationRequired" // 必填项
-	ErrExtCodeValidationFormat   = "ValidationFormat"   // 格式错误
-	ErrExtCodeValidationRange    = "ValidationRange"    // 范围错误
-	ErrExtCodeValidationEnum     = "ValidationEnum"     // 枚举错误
+	ErrExtCodeValidationRequired = "ValidationRequired" // Required fields.
+	ErrExtCodeValidationFormat   = "ValidationFormat"   // Format error.
+	ErrExtCodeValidationRange    = "ValidationRange"    // Range error.
+	ErrExtCodeValidationEnum     = "ValidationEnum"     // Enumeration error.
 )
 
 const (

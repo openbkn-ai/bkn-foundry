@@ -44,10 +44,10 @@ type Config struct {
 	ConceptSearchConfig KnConceptSearchConfig `yaml:"concept_search_config"` // Knowledge network concept search configuration
 	Observability       ObservabilityConfig   `yaml:"-"`
 	OTelProviders       *bknotel.Providers    `yaml:"-"`
-	// 新增配置 - 知识重排和检索相关
-	MFModelAPI PrivateBaseConfig `yaml:"mf_model_api"` // MF-Model API统一服务配置
-	RerankLLM  RerankLLMConfig   `yaml:"rerank_llm"`   // Rerank用的LLM参数配置
-	FindSkills FindSkillsConfig  `yaml:"find_skills"`  // find_skills Skill 召回配置
+	// New configuration - knowledge rearrangement and retrieval related.
+	MFModelAPI PrivateBaseConfig `yaml:"mf_model_api"` // MF-Model API unified service configuration.
+	RerankLLM  RerankLLMConfig   `yaml:"rerank_llm"`   // LLM parameter configuration for Rerank.
+	FindSkills FindSkillsConfig  `yaml:"find_skills"`  // find_skills Skill recall configuration.
 }
 
 // ObservabilityConfig trace configuration
@@ -149,23 +149,23 @@ type OpenSearchConfig struct {
 
 // KnConceptSearchConfig knowledge network concept search configuration
 type KnConceptSearchConfig struct {
-	ConceptRecallSize int    `yaml:"concept_recall_size"`             // Concept rough recall size
-	KnnKValue         int    `yaml:"knn_k"`                           // knn k value
+	ConceptRecallSize int `yaml:"concept_recall_size"` // Concept rough recall size
+	KnnKValue         int `yaml:"knn_k"`               // knn k value
 }
 
-// MFModelAPI 配置使用统一的 PrivateBaseConfig 结构
+// MFModelAPI configuration uses a unified PrivateBaseConfig structure.
 
-// RerankLLMConfig Rerank用的LLM参数配置（模型不在此配置：默认走系统默认大模型，per-request 经 rerank_llm_model 覆盖）
+// RerankLLMConfig LLM parameter configuration for Rerank (the model is not configured here: the system default large model is used by default, per-request is overridden by rerank_llm_model)
 type RerankLLMConfig struct {
-	Temperature      float64 `yaml:"temperature" default:"0"`         // 生成随机性
-	TopK             int     `yaml:"top_k" default:"2"`               // 采样范围
-	TopP             float64 `yaml:"top_p" default:"0.5"`             // 核采样阈值
-	FrequencyPenalty float64 `yaml:"frequency_penalty" default:"0.5"` // 频率惩罚
-	PresencePenalty  float64 `yaml:"presence_penalty" default:"0.5"`  // 存在惩罚
-	MaxTokens        int     `yaml:"max_tokens" default:"5000"`       // 最大token数
+	Temperature      float64 `yaml:"temperature" default:"0"`         // generate randomness.
+	TopK             int     `yaml:"top_k" default:"2"`               // Sampling range.
+	TopP             float64 `yaml:"top_p" default:"0.5"`             // Kernel sampling threshold.
+	FrequencyPenalty float64 `yaml:"frequency_penalty" default:"0.5"` // Frequency penalty.
+	PresencePenalty  float64 `yaml:"presence_penalty" default:"0.5"`  // Presence penalty.
+	MaxTokens        int     `yaml:"max_tokens" default:"5000"`       // Maximum token count.
 }
 
-// FindSkillsConfig find_skills Skill 召回配置
+// FindSkillsConfig find_skills Skill recall configuration.
 type FindSkillsConfig struct {
 	DefaultTopK        int    `yaml:"default_top_k" default:"10"`
 	MaxTopK            int    `yaml:"max_top_k" default:"20"`
@@ -301,7 +301,7 @@ func overrideWithEnv(cfg any) {
 		}
 
 		// Use reflection to set field value directly, type match required
-		//nolint:exhaustive // 只处理 String/Int/Bool，其他类型走 default 跳过
+		//nolint:exhaustive // Only handle String/Int/Bool, other types are skipped by default.
 		switch field.Kind() {
 		case reflect.String:
 			field.SetString(envValue)
@@ -316,7 +316,7 @@ func overrideWithEnv(cfg any) {
 				field.SetBool(boolValue)
 			}
 		default:
-			// 不支持的类型直接跳过，不再 panic
+			// Unsupported types are skipped directly and no longer panic.
 		}
 	}
 }

@@ -17,8 +17,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// 实例召回接回来之后：本地层做了实例召回就把 nodes / message 透出去，
-// 没做（Schema-only，即存量调用方的默认路径）则响应里连字段都不出现。
+// After the instance is recalled and brought back: the local layer will reveal the nodes/messages after the instance is recalled.
+// If it is not done (Schema-only, that is, the default path of the existing caller), even the field will not appear in the response.
 func TestKnSearch_PassesThroughInstanceNodes(t *testing.T) {
 	convey.Convey("TestKnSearch_PassesThroughInstanceNodes", t, func() {
 		ctrl := gomock.NewController(t)
@@ -73,7 +73,7 @@ func TestKnSearch_PassesThroughInstanceNodes(t *testing.T) {
 	})
 }
 
-// only_schema 缺省时按 true 处理：存量 kn_search 调用方不会突然多出实例召回。
+// only_schema is handled by true by default: the caller of the existing kn_search will not suddenly recall additional instances.
 func TestKnSearchReqToLocal_OnlySchemaDefaultsToTrue(t *testing.T) {
 	convey.Convey("TestKnSearchReqToLocal_OnlySchemaDefaultsToTrue", t, func() {
 		local := KnSearchReqToLocal(&interfaces.KnSearchReq{Query: "q", KnID: "kn-001"})

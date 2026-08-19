@@ -61,7 +61,7 @@ func TestPTCMCPInitializeUsesRequestLocale(t *testing.T) {
 	}
 }
 
-// fakeExecutor 记录最后一次沙箱执行请求。
+// fakeExecutor records the last sandbox execution request.
 type fakeExecutor struct {
 	interfaces.DrivenOperatorIntegration
 	last *interfaces.ExecuteFunctionRequest
@@ -86,9 +86,9 @@ func ptcCallRequest(name string, args map[string]any) mcp.CallToolRequest {
 	req := mcp.CallToolRequest{}
 	req.Params.Name = name
 	req.Params.Arguments = args
-	// 走 JSON-RPC 时 mcp-go 同时填 RawArguments，且 GetRawArguments() 优先返回它
-	// （json.RawMessage，不是 map）。只设 Arguments 的请求真实流量里不存在，照那样
-	// 构造会让「取错字段」这类 bug 全程静默通过——最初就是这么漏掉的。
+	// When using JSON-RPC, mcp-go also fills in RawArguments, and GetRawArguments() returns it first.
+	// (json.RawMessage, not map). Just assume that the Arguments request does not exist in the actual traffic, as usual.
+	// The structure will allow bugs such as "getting the wrong field" to pass silently - that's how they were missed in the first place.
 	raw, err := json.Marshal(args)
 	if err != nil {
 		panic(err)
@@ -108,9 +108,9 @@ func ptcToolByName(t *testing.T, name string) PTCTool {
 	return PTCTool{}
 }
 
-// 工作目录规则在两处实现：stub 里的 Python（run_code 走）和这里的 Go（run_shell 走）。
-// 两边算不出同一个路径，两个工具就落在不同目录，彼此看不见对方写的文件——而且不会
-// 报错，只会表现为「文件莫名其妙不在」。
+// Working directory rules are implemented in two places: Python in the stub (run_code goes) and Go here (run_shell goes).
+// The two sides cannot calculate the same path, so the two tools are located in different directories, and each other cannot see the files written by the other - and they cannot.
+// The error will only appear as "the file is somehow missing".
 func TestPTCWorkdirMatchesStubRule(t *testing.T) {
 	cases := []struct {
 		conversation string
@@ -119,11 +119,11 @@ func TestPTCWorkdirMatchesStubRule(t *testing.T) {
 		{"conv_3767f54b17db900b31e554d2e9103cb6", "/workspace/conv-conv_3767f54b17db900b31e554d2e9103cb6"},
 		{"", "/workspace/shared"},
 		{"  ", "/workspace/shared"},
-		// 归一化：路径分隔符与其他字符一律换成 -，不能让 conversation_id 逃出目录。
+		// Normalization: The path separator and other characters must be replaced by -, and conversation_id cannot escape from the directory.
 		{"../../etc/passwd", "/workspace/conv-------etc-passwd"},
 		{"a/b", "/workspace/conv-a-b"},
-		// Python 的 isalnum() 认 Unicode 而 Go 只认 ASCII；stub 因此写死 ASCII 白名单，
-		// 两边对中文必须同样换成 -。
+		// Python's isalnum() recognizes Unicode but Go only recognizes ASCII; stub therefore hardcodes the ASCII whitelist.
+		// Chinese must be replaced with - on both sides.
 		{"名字", "/workspace/conv---"},
 	}
 	for _, c := range cases {
@@ -133,20 +133,20 @@ func TestPTCWorkdirMatchesStubRule(t *testing.T) {
 		}
 	}
 
-	// 截断到 64 个字符，与 stub 的 [:64] 对齐。
+	// Truncated to 64 characters, aligned with stub's [:64].
 	long := strings.Repeat("x", 200)
 	got := ptcWorkdir(map[string]any{"conversation_id": long})
 	if got != "/workspace/conv-"+strings.Repeat("x", 64) {
 		t.Fatalf("超长 conversation_id 未按 64 截断: %s", got)
 	}
 
-	// 拿不到 bkn_context 时不能 panic，退到共用目录。
+	// When you cannot get bkn_context, you cannot panic and retreat to the shared directory.
 	if got := ptcWorkdir(nil); got != "/workspace/shared" {
 		t.Fatalf("空上下文应退到 shared，得到 %s", got)
 	}
 }
 
-// 目录名会原样拼进 shell 命令，只允许 [A-Za-z0-9_-] 与路径前缀。
+// The directory name will be spelled into the shell command as is, only [A-Za-z0-9_-] and the path prefix are allowed.
 func TestPTCWorkdirIsShellSafe(t *testing.T) {
 	for _, hostile := range []string{
 		"a; rm -rf /", "$(whoami)", "`id`", "a && echo pwned", "a|b", "a\nb", "'x'", `"y"`,
@@ -181,7 +181,7 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	if executor.last.Language != "python" {
 		t.Fatalf("language 应为 python: %s", executor.last.Language)
 	}
-	// 沙箱按 Lambda 规范执行，入口必须是单参数 handler，模型代码要缩进进去。
+	// The sandbox is executed according to Lambda specifications. The entry must be a single-parameter handler, and the model code must be indented.
 	if !strings.Contains(executor.last.Code, "def handler(event):") ||
 		!strings.Contains(executor.last.Code, "    print(1)") ||
 		!strings.Contains(executor.last.Code, "    print(2)") {
@@ -190,8 +190,8 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	if !strings.Contains(executor.last.Code, "_configure(event)") {
 		t.Fatal("未调用 _configure，工作目录与凭据都不会注入")
 	}
-	// 凭据与会话上下文走 event 而非 env_vars：沙箱会话池化复用，env 会把上一个
-	// 调用方的值留在容器里。
+	// Credentials and session context use event instead of env_vars: sandbox session pooling and reuse, env will use the previous.
+	// The caller's value remains in the container.
 	if executor.last.Event["token"] != "tok-123" {
 		t.Fatalf("未下发调用方令牌: %v", executor.last.Event["token"])
 	}
@@ -206,7 +206,7 @@ func TestPTCRunCodeWrapsIntoHandler(t *testing.T) {
 	}
 }
 
-// shell 不回访 MCP，就不该拿到令牌——沙箱里少一份可被读出来的凭据。
+// If the shell doesn't call back to the MCP, it shouldn't get the token - there's one less credential in the sandbox that can be read.
 func TestPTCRunShellGetsNoToken(t *testing.T) {
 	executor := &fakeExecutor{}
 	handler := handlePTCExecute(executor, ptcTestToolkit(t), ptcToolByName(t, "run_shell"))
@@ -227,7 +227,7 @@ func TestPTCRunShellGetsNoToken(t *testing.T) {
 	if executor.last.Language != "shell" {
 		t.Fatalf("language 应为 shell: %s", executor.last.Language)
 	}
-	// 与 run_code 落在同一个目录，否则看不见对方写的文件。
+	// It falls in the same directory as run_code, otherwise the files written by the other party will not be visible.
 	if !strings.HasPrefix(executor.last.Code, "mkdir -p /workspace/conv-conv_a && cd /workspace/conv-conv_a\n") {
 		t.Fatalf("未先切到本次对话的工作目录:\n%s", executor.last.Code)
 	}
@@ -236,7 +236,7 @@ func TestPTCRunShellGetsNoToken(t *testing.T) {
 	}
 }
 
-// 退出码非 0 要标成工具错误，且报文照常带回——吞掉 stderr 调用方只能盲目重试。
+// If the exit code is non-0, it will be marked as a tool error, and the message will be brought back as usual - the caller that swallows stderr can only retry blindly.
 func TestPTCExecuteSurfacesFailure(t *testing.T) {
 	executor := &fakeExecutor{resp: &interfaces.ExecuteFunctionResponse{
 		Stdout: "部分输出", Stderr: "ToolError: 字段不存在", ExitCode: 1,
@@ -262,7 +262,7 @@ func TestPTCExecuteSurfacesFailure(t *testing.T) {
 	}
 }
 
-// 空入参要在打沙箱之前拒掉，白跑一次执行既慢又占会话。
+// Empty input parameters must be rejected before sandboxing. Running the execution in vain is slow and takes up the session.
 func TestPTCExecuteRejectsEmptyInput(t *testing.T) {
 	for _, c := range []struct{ tool, key string }{
 		{"run_code", "code"}, {"run_shell", "command"},
@@ -302,8 +302,8 @@ func TestPTCExecuteUsesPinnedLocaleForValidationError(t *testing.T) {
 	}
 }
 
-// MCP 客户端没有 studio 那层前端替它管会话，bkn_context 必须出现在入参 schema 里，
-// 且是必填——否则模型不会传，每次调用都被生命周期守卫拦下。
+// The MCP client does not have a studio front-end to manage sessions for it, so bkn_context must appear in the input parameter schema.
+// And it is required - otherwise the model will not be passed and every call will be blocked by the lifecycle guard.
 func TestPTCSchemaRequiresBusinessContext(t *testing.T) {
 	for _, tool := range ptcTestToolkit(t).Tools {
 		var schema map[string]any
@@ -326,15 +326,15 @@ func TestPTCSchemaRequiresBusinessContext(t *testing.T) {
 		if !found {
 			t.Fatalf("%s: bkn_context 应为必填，required=%v", tool.Name, required)
 		}
-		// 原有必填项不能被顶掉。
+		// The original required fields cannot be deleted.
 		if tool.Name == "run_code" && len(required) < 2 {
 			t.Fatalf("run_code 的 code 必填项丢了: %v", required)
 		}
 	}
 }
 
-// 工具包给 studio 用的 schema 里不该有 bkn_context（那边前端管会话），
-// 补 bkn_context 只发生在 MCP 端点上。两者混淆会让 studio 的模型去填一个它没有的值。
+// There should not be bkn_context in the schema used by the toolkit for studio (where the front end manages the session).
+// Complementing bkn_context only occurs on MCP endpoints. Confusing the two will cause the studio model to fill in a value that it does not have.
 func TestPTCToolkitSchemaStaysContextFree(t *testing.T) {
 	for _, tool := range ptcTestToolkit(t).Tools {
 		if strings.Contains(string(tool.InputSchema), "bkn_context") {

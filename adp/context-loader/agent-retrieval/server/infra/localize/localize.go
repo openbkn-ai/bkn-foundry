@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package localize 语言资源
+// Package localize language resources.
 package localize
 
 import (
@@ -41,13 +41,13 @@ var (
 	}
 )
 
-// I18nTranslator 翻译器
+// I18nTranslator translator.
 type I18nTranslator struct {
 	current language.Tag
 	loc     *i18n.Localizer
 }
 
-// NewI18nTranslator 新建翻译器
+// NewI18nTranslator New translator.
 func NewI18nTranslator(lang string) *I18nTranslator {
 	return newI18nTranslator(lang, locales)
 }
@@ -107,7 +107,7 @@ func normalizeLanguageKey(lang string) string {
 	}
 }
 
-// Trans 翻译
+// Trans translation.
 func (tr *I18nTranslator) Trans(msg string, params ...interface{}) string {
 	l := len(params)
 	localizeConf := &i18n.LocalizeConfig{
@@ -150,7 +150,7 @@ func SetDefaultLang(lang string) (err error) {
 	return
 }
 
-// GetI18nTranslator 获取翻译器
+// GetI18nTranslator Get the translator.
 // func GetI18nTranslator(lang string) *I18nTranslator {
 // 	lt, l, err := getLang(lang)
 // 	if err != nil {

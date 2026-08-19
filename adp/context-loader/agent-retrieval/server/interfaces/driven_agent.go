@@ -7,7 +7,7 @@
 package interfaces
 
 // Dynamic parameter requests are consumed by the direct LLM resolver.
-// 现由直连 LLM（knlogicpropertyresolver.dynamicParamsLLM）使用，序列化后作为 LLM user 消息。
+// Now used by direct-connected LLM (knlogicpropertyresolver.dynamicParamsLLM), serialized as LLM user message.
 
 // MetricDynamicParamsGeneratorReq Metric Dynamic Params Generator Request
 type MetricDynamicParamsGeneratorReq struct {

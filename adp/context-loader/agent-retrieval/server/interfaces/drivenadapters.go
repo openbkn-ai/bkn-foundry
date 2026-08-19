@@ -229,46 +229,46 @@ type KnDataSourceConfig struct {
 	KnowledgeNetworkID string `json:"knowledge_network_id"` // Knowledge Network ID
 }
 
-// ConceptRetrievalConfig 概念召回配置
+// ConceptRetrievalConfig concept recall configuration.
 type ConceptRetrievalConfig struct {
 	ConceptGroups          []string `json:"concept_groups,omitempty"`
-	TopK                   int      `json:"top_k,omitempty"`                     // 默认10
-	IncludeSampleData      bool     `json:"include_sample_data,omitempty"`       // 默认false
-	SchemaBrief            bool     `json:"schema_brief,omitempty"`              // 默认false
-	PerObjectPropertyTopK  int      `json:"per_object_property_top_k,omitempty"` // 默认8
-	GlobalPropertyTopK     int      `json:"global_property_top_k,omitempty"`     // 默认30
-	EnablePropertyBrief    bool     `json:"enable_property_brief,omitempty"`     // 默认true
-	EnableCoarseRecall     bool     `json:"enable_coarse_recall,omitempty"`      // 默认true，启用粗召回
-	CoarseObjectLimit      int      `json:"coarse_object_limit,omitempty"`       // 默认2000
-	CoarseRelationLimit    int      `json:"coarse_relation_limit,omitempty"`     // 默认300
-	CoarseMinRelationCount int      `json:"coarse_min_relation_count,omitempty"` // 默认5000，触发粗召回的最小关系数量
+	TopK                   int      `json:"top_k,omitempty"`                     // Default is 10.
+	IncludeSampleData      bool     `json:"include_sample_data,omitempty"`       // Default is false.
+	SchemaBrief            bool     `json:"schema_brief,omitempty"`              // Default is false.
+	PerObjectPropertyTopK  int      `json:"per_object_property_top_k,omitempty"` // Default8.
+	GlobalPropertyTopK     int      `json:"global_property_top_k,omitempty"`     // Default30.
+	EnablePropertyBrief    bool     `json:"enable_property_brief,omitempty"`     // Default is true.
+	EnableCoarseRecall     bool     `json:"enable_coarse_recall,omitempty"`      // Default is true, enabling coarse recall.
+	CoarseObjectLimit      int      `json:"coarse_object_limit,omitempty"`       // Default2000.
+	CoarseRelationLimit    int      `json:"coarse_relation_limit,omitempty"`     // Default300.
+	CoarseMinRelationCount int      `json:"coarse_min_relation_count,omitempty"` // Default is 5000, the minimum number of relations that triggers rough recall.
 }
 
-// PropertyFilterConfig 属性过滤配置
+// PropertyFilterConfig propertyfilterconfiguration.
 type PropertyFilterConfig struct {
-	MaxPropertiesPerInstance int  `json:"max_properties_per_instance,omitempty"` // 默认20
-	MaxPropertyValueLength   int  `json:"max_property_value_length,omitempty"`   // 默认500
-	EnablePropertyFilter     bool `json:"enable_property_filter,omitempty"`      // 默认true
+	MaxPropertiesPerInstance int  `json:"max_properties_per_instance,omitempty"` // Default20.
+	MaxPropertyValueLength   int  `json:"max_property_value_length,omitempty"`   // Default500.
+	EnablePropertyFilter     bool `json:"enable_property_filter,omitempty"`      // Default is true.
 }
 
-// SemanticInstanceRetrievalConfig 语义实例检索配置
+// SemanticInstanceRetrievalConfig semanticsinstanceretrieveconfiguration.
 type SemanticInstanceRetrievalConfig struct {
-	PerTypeInstanceLimit              int     `json:"per_type_instance_limit,omitempty"`                // 默认5
-	InitialCandidateCount             int     `json:"initial_candidate_count,omitempty"`                // 默认50
-	EnableGlobalFinalScoreRatioFilter bool    `json:"enable_global_final_score_ratio_filter,omitempty"` // 默认true
-	GlobalFinalScoreRatio             float64 `json:"global_final_score_ratio,omitempty"`               // 默认0.25
-	PreFilterPerTypeLimit             int     `json:"pre_filter_per_type_limit,omitempty"`              // 可选
-	MaxKeywords                       int     `json:"max_keywords,omitempty"`                           // 多关键词最大数量，默认5
-	MaxSemanticSubConditions          int     `json:"max_semantic_sub_conditions,omitempty"`            // 默认10
-	SemanticFieldKeepRatio            float64 `json:"semantic_field_keep_ratio,omitempty"`              // 默认0.2
-	SemanticFieldKeepMin              int     `json:"semantic_field_keep_min,omitempty"`                // 默认5
-	SemanticFieldKeepMax              int     `json:"semantic_field_keep_max,omitempty"`                // 默认15
-	SemanticFieldRerankBatchSize      int     `json:"semantic_field_rerank_batch_size,omitempty"`       // 默认128
-	MinDirectRelevance                float64 `json:"min_direct_relevance,omitempty"`                   // 默认0.3
-	ExactNameMatchScore               float64 `json:"exact_name_match_score,omitempty"`                 // 默认0.85
+	PerTypeInstanceLimit              int     `json:"per_type_instance_limit,omitempty"`                // Default is 5.
+	InitialCandidateCount             int     `json:"initial_candidate_count,omitempty"`                // Default50.
+	EnableGlobalFinalScoreRatioFilter bool    `json:"enable_global_final_score_ratio_filter,omitempty"` // Default is true.
+	GlobalFinalScoreRatio             float64 `json:"global_final_score_ratio,omitempty"`               // Default0.25.
+	PreFilterPerTypeLimit             int     `json:"pre_filter_per_type_limit,omitempty"`              // Optional.
+	MaxKeywords                       int     `json:"max_keywords,omitempty"`                           // Maximum number of multiple keywords, default 5.
+	MaxSemanticSubConditions          int     `json:"max_semantic_sub_conditions,omitempty"`            // Default is 10.
+	SemanticFieldKeepRatio            float64 `json:"semantic_field_keep_ratio,omitempty"`              // Default0.2.
+	SemanticFieldKeepMin              int     `json:"semantic_field_keep_min,omitempty"`                // Default is 5.
+	SemanticFieldKeepMax              int     `json:"semantic_field_keep_max,omitempty"`                // Default15.
+	SemanticFieldRerankBatchSize      int     `json:"semantic_field_rerank_batch_size,omitempty"`       // Default128.
+	MinDirectRelevance                float64 `json:"min_direct_relevance,omitempty"`                   // Default0.3.
+	ExactNameMatchScore               float64 `json:"exact_name_match_score,omitempty"`                 // Default0.85.
 }
 
-// RetrievalConfig 检索配置
+// RetrievalConfig retrieveconfiguration.
 type RetrievalConfig struct {
 	ConceptRetrieval          *ConceptRetrievalConfig          `json:"concept_retrieval,omitempty"`
 	SemanticInstanceRetrieval *SemanticInstanceRetrievalConfig `json:"semantic_instance_retrieval,omitempty"`
@@ -290,11 +290,11 @@ type KnSearchReq struct {
 	RetrievalConfig any                   `json:"retrieval_config,omitempty"`
 	OnlySchema      *bool                 `json:"only_schema,omitempty"`
 	EnableRerank    *bool                 `json:"enable_rerank,omitempty"`
-	RerankModel     *string               `json:"rerank_model,omitempty"` // 精排小模型名覆盖；空即用模型管理配置的默认 reranker
+	RerankModel     *string               `json:"rerank_model,omitempty"` // Finely sorted small model name coverage; use the default reranker of the model management configuration out of the box.
 	IncludeColumns  *bool                 `json:"include_columns,omitempty"`
-	// IndexOpsOnly 让响应里的 condition_operations 只保留索引带来的算子。由 MCP 层设置，
-	// 不进请求契约：比较算子按属性 type 可推导，逐个下发对 Agent 是纯噪音；REST 调用方
-	// 与直连 BKN 的消费者（如 Studio）仍拿全量。
+	// IndexOpsOnly keeps only index-derived operators in response condition_operations. It is set by the MCP layer,
+	// Not entering the request contract: the comparison operator can be deduced according to the attribute type, and issuing it one by one is pure noise to the Agent; the REST caller.
+	// Consumers with direct BKN connections (such as Studio) still get the full amount.
 	IndexOpsOnly bool `json:"-"`
 }
 
@@ -319,44 +319,44 @@ type KnSearchResp struct {
 	Message       *string `json:"message,omitempty"`
 }
 
-// LLMMessage LLM对话消息
+// LLMMessage LLM conversation message.
 type LLMMessage struct {
 	Role    string `json:"role"`    // "system" | "user" | "assistant"
-	Content string `json:"content"` // 消息内容
+	Content string `json:"content"` // Message content.
 }
 
-// LLMChatReq LLM对话请求
+// LLMChatReq LLM conversation request.
 type LLMChatReq struct {
-	Model            string       `json:"model"`                       // 模型名称
-	Messages         []LLMMessage `json:"messages"`                    // 对话消息列表
-	Temperature      float64      `json:"temperature,omitempty"`       // 温度参数
-	TopK             int          `json:"top_k,omitempty"`             // TopK采样
-	TopP             float64      `json:"top_p,omitempty"`             // TopP采样
-	FrequencyPenalty float64      `json:"frequency_penalty,omitempty"` // 频率惩罚
-	PresencePenalty  float64      `json:"presence_penalty,omitempty"`  // 存在惩罚
-	MaxTokens        int          `json:"max_tokens,omitempty"`        // 最大token数
-	Stream           bool         `json:"stream,omitempty"`            // 是否流式
-	AccountID        string       `json:"-"`                           // 账号ID（用于Header）
-	AccountType      string       `json:"-"`                           // 账号类型（用于Header）
+	Model            string       `json:"model"`                       // Model name.
+	Messages         []LLMMessage `json:"messages"`                    // Conversation message list.
+	Temperature      float64      `json:"temperature,omitempty"`       // Temperature parameters.
+	TopK             int          `json:"top_k,omitempty"`             // TopKsampling.
+	TopP             float64      `json:"top_p,omitempty"`             // TopPsampling.
+	FrequencyPenalty float64      `json:"frequency_penalty,omitempty"` // Frequency penalty.
+	PresencePenalty  float64      `json:"presence_penalty,omitempty"`  // Presence penalty.
+	MaxTokens        int          `json:"max_tokens,omitempty"`        // Maximum token count.
+	Stream           bool         `json:"stream,omitempty"`            // Whether to stream.
+	AccountID        string       `json:"-"`                           // Account ID (for Header)
+	AccountType      string       `json:"-"`                           // Account type (for Header)
 }
 
-// DrivenMFModelAPIClient MF-Model API客户端接口
-// 统一提供LLM对话和向量重排序能力
+// DrivenMFModelAPIClient MF-Model API client interface.
+// Unifiedly provides LLM dialogue and vector reordering capabilities.
 type DrivenMFModelAPIClient interface {
-	// Chat 对话，返回完整响应内容
+	// Chat conversation, return complete response content.
 	Chat(ctx context.Context, req *LLMChatReq) (content string, err error)
-	// Rerank 对文档进行重排序；model 为空时使用默认 reranker 模型
+	// Rerank reorders documents; when model is empty, the default reranker model is used.
 	Rerank(ctx context.Context, query string, documents []string, model string) (*RerankResp, error)
 }
 
-// RerankResult 单个重排结果
+// RerankResult single reranking result.
 type RerankResult struct {
-	Index          int     `json:"index"`           // 文档索引
-	RelevanceScore float64 `json:"relevance_score"` // 相关性分数
-	Document       *string `json:"document"`        // 原始文档（通常为null）
+	Index          int     `json:"index"`           // Document index.
+	RelevanceScore float64 `json:"relevance_score"` // relevance score.
+	Document       *string `json:"document"`        // the original document (usually null)
 }
 
-// RerankResp 重排响应
+// RerankResp Rerank response.
 type RerankResp struct {
-	Results []RerankResult `json:"results"` // 重排结果列表
+	Results []RerankResult `json:"results"` // Reorder results list.
 }

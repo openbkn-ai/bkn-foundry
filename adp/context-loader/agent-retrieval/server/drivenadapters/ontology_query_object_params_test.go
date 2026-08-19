@@ -20,7 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// newObjectQueryClient 返回一个只关心「发出去的 URL 与请求体长什么样」的被测客户端。
+// newObjectQueryClient returns a client under test that only cares about "what the sent URL and request body look like".
 func newObjectQueryClient(t *testing.T, ctrl *gomock.Controller) (*ontologyQueryClient, *mocks.MockHTTPClient) {
 	t.Helper()
 
@@ -39,8 +39,8 @@ func newObjectQueryClient(t *testing.T, ctrl *gomock.Controller) (*ontologyQuery
 	}, mockHTTP
 }
 
-// need_total 是请求体字段。不设它下游就不回 total_count，调用方只知道「还有没有下一页」，
-// 不知道命中总量——这不是可选项，所以本层无条件置 true，调用方传什么都覆盖。
+// need_total is the request body field. If it is not set downstream, total_count will not be returned. The caller only knows "Is there a next page?".
+// The total number of hits is not known - this is not optional, so this layer is unconditionally set to true, and anything passed by the caller will be overwritten.
 func TestQueryObjectInstances_AlwaysAsksForTotal(t *testing.T) {
 	convey.Convey("need_total 无条件为 true", t, func() {
 		ctrl := gomock.NewController(t)
@@ -62,11 +62,11 @@ func TestQueryObjectInstances_AlwaysAsksForTotal(t *testing.T) {
 	})
 }
 
-// total_count 是三态，两个方向都得钉住：
-//   - 真零命中必须序列化成 0（指针上的 omitempty 只吞 nil，不吞 0），否则调用方看到
-//     字段缺失，把有效结论当成服务没回；
-//   - 下游没算总数时必须缺失（游标翻页第二页起，下游强制 NeedTotal=false），否则
-//     0 就是伪造的零命中，还会和非空 datas 自相矛盾。
+// total_count is three-state, and must be pinned in both directions:
+// - True zero hits must be serialized to 0 (omitempty on the pointer only swallows nil, not 0), otherwise the caller sees.
+// The field is missing, and the valid conclusion is regarded as service failure;
+// - Must be missing when the downstream does not calculate the total (from the second page of the cursor, the downstream is forced to NeedTotal=false), otherwise.
+// 0 is a false zero hit and is inconsistent with non-empty datas.
 func TestQueryObjectInstancesResp_TotalCountIsThreeState(t *testing.T) {
 	convey.Convey("零命中序列化成 0", t, func() {
 		zero := int64(0)
@@ -84,9 +84,9 @@ func TestQueryObjectInstancesResp_TotalCountIsThreeState(t *testing.T) {
 	})
 }
 
-// 下游 Objects.TotalCount 自己带 omitempty，真实的 0 在线上根本传不过来，光看响应体
-// 分不出「零命中」与「没算」。判据在请求里：无游标 ⇒ 算过了，缺失即 0；有游标 ⇒ 下游
-// 强制关了总数计算，必须保持缺失。
+// The downstream Objects.TotalCount brings its own omitempty. The real 0 cannot be transmitted online at all. Just look at the response body.
+// Can't tell the difference between "zero hit" and "no count". The criteria are in the request: no cursor ⇒ calculated, missing is 0; there is a cursor ⇒ downstream.
+// The total calculation is forced to be turned off and must remain missing.
 func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 	convey.Convey("无 search_after 时缺失的总数补成 0", t, func() {
 		ctrl := gomock.NewController(t)
@@ -132,15 +132,15 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 	})
 }
 
-// "sort":[null] 绑成 []*SortSpec{nil}。下游 validate.go 与 logics/common.go 都直接取
-// sp.Field，转发过去换来的是空指针 panic 而不是 400，所以结构性 nil 必须在本层拦掉。
+// "sort":[null] is tied to []*SortSpec{nil}. Downstream validate.go and logics/common.go are directly fetched.
+// sp.Field, forwarding will result in a null pointer panic instead of 400, so structural nil must be blocked at this layer.
 func TestQueryObjectInstances_RejectsNilSortEntry(t *testing.T) {
 	convey.Convey("sort 里的 null 元素回 400 且不发请求", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
-		// 不 EXPECT Post：请求必须在本层就被拦下，一个字节都不该发给下游。
+		// No EXPECT Post: The request must be blocked at this layer, and not a single byte should be sent to the downstream.
 		_ = mockHTTP
 
 		req := &interfaces.QueryObjectInstancesReq{
@@ -157,7 +157,7 @@ func TestQueryObjectInstances_RejectsNilSortEntry(t *testing.T) {
 	})
 }
 
-// sort 原样透传：field 是否属于该对象类只有下游知道，本层再校验一半只会让两侧规则漂移。
+// Sort is transmitted transparently as it is: only the downstream knows whether the field belongs to the object type, and checking half of it at this layer will only cause the rules on both sides to drift.
 func TestQueryObjectInstances_ForwardsSort(t *testing.T) {
 	convey.Convey("sort 原样进请求体", t, func() {
 		ctrl := gomock.NewController(t)
@@ -188,8 +188,8 @@ func TestQueryObjectInstances_ForwardsSort(t *testing.T) {
 	})
 }
 
-// exclude_system_properties / ignoring_store_cache 是下游的 query 参数，不是请求体字段。
-// 整个 req 会被直接序列化成 body，所以两者必须标 json:"-" 才不会混进 body。
+// exclude_system_properties / ignoring_store_cache are downstream query parameters, not request body fields.
+// The entire req will be directly serialized into the body, so both must be marked with json: "-" so that they will not be mixed into the body.
 func TestQueryObjectInstances_InternalParamsGoToQueryStringNotBody(t *testing.T) {
 	convey.Convey("内部参数进查询串且不落 body", t, func() {
 		ctrl := gomock.NewController(t)
@@ -219,7 +219,7 @@ func TestQueryObjectInstances_InternalParamsGoToQueryStringNotBody(t *testing.T)
 		q := parsed.Query()
 		convey.So(q["exclude_system_properties"], convey.ShouldResemble, []string{"_instance_id", "_display"})
 		convey.So(q.Get("ignoring_store_cache"), convey.ShouldEqual, "true")
-		// 既有参数没被这次重构改掉
+		// Existing parameters have not been changed by this reconstruction.
 		convey.So(q.Get("include_type_info"), convey.ShouldEqual, "false")
 		convey.So(q.Get("include_logic_params"), convey.ShouldEqual, "false")
 
@@ -228,8 +228,8 @@ func TestQueryObjectInstances_InternalParamsGoToQueryStringNotBody(t *testing.T)
 	})
 }
 
-// 两个默认关闭的参数不该凭空出现在查询串里：ignoring_store_cache 会把查询从索引赶到
-// 数据源，慢一个数量级，误发比不发危险。
+// Two parameters that are turned off by default should not appear in the query string out of thin air: ignoring_store_cache will push the query away from the index.
+// Data source, one order of magnitude slower, sending it accidentally is more dangerous than not sending it.
 func TestQueryObjectInstances_OmitsInternalParamsWhenUnset(t *testing.T) {
 	convey.Convey("未设置时不发内部参数", t, func() {
 		ctrl := gomock.NewController(t)
@@ -259,8 +259,8 @@ func TestQueryObjectInstances_OmitsInternalParamsWhenUnset(t *testing.T) {
 	})
 }
 
-// ot_id 由 agent 自由填写。未转义就拼进 path 的话，一个带 "?" 的值就能给下游塞进
-// ignoring_store_cache 等查询参数——与 metric_id 是同一类注入面。
+// ot_id is freely filled in by the agent. If path is entered without escaping, a value with "?" can be inserted downstream.
+// Query parameters such as ignoring_store_cache - are the same type of injection surface as metric_id.
 func TestQueryObjectInstances_EscapesIDsIntoPath(t *testing.T) {
 	convey.Convey("kn_id / ot_id 转义后才进 URL", t, func() {
 		ctrl := gomock.NewController(t)
@@ -283,10 +283,10 @@ func TestQueryObjectInstances_EscapesIDsIntoPath(t *testing.T) {
 
 		parsed, perr := url.Parse(got)
 		convey.So(perr, convey.ShouldBeNil)
-		// 注入串整体留在 path 段，下游只会把它当成一个不存在的 ot_id
+		// The entire injected string remains in the path segment, and the downstream will only treat it as a non-existent ot_id.
 		convey.So(parsed.Path, convey.ShouldEqual,
 			"/api/ontology-query/in/v1/knowledge-networks/kn1/object-types/ot1?ignoring_store_cache=true&x=")
-		// 本层给的值没被顶掉
+		// The value set by this layer was not overridden.
 		convey.So(parsed.Query().Get("ignoring_store_cache"), convey.ShouldBeEmpty)
 		convey.So(parsed.Query().Get("include_type_info"), convey.ShouldEqual, "false")
 	})

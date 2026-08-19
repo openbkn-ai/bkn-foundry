@@ -46,10 +46,10 @@ func exploreRequest(t *testing.T, body string) (*httptest.ResponseRecorder, *rec
 	return w, service
 }
 
-// MCP 那侧显式拦了 path_length <= 0，REST 这侧不能只靠下游——下游只拦 > 3，对 0
-// 不报错、返回空子图。两个入口对同一份参数行为不同，就是「同一个请求换个门进来
-// 结果不一样」，而且失败形态最坏：漏填参数被读成「什么都没连上」。
-// 规则钉在结构体的 validate tag 上，两个入口才共用同一条。
+// The MCP side explicitly blocks path_length <= 0, and the REST side cannot only rely on the downstream side - the downstream side only blocks > 3, for 0.
+// No error is reported and an empty subgraph is returned. The two entrances have different behaviors for the same parameter, that is, "the same request comes in through another door.".
+// The results are different", and the failure pattern is the worst: the missing parameter is read as "nothing is connected".
+// The rules are nailed to the validate tag of the structure, and the two entries share the same one.
 func TestExploreSubgraph_RESTRejectsMissingPathLength(t *testing.T) {
 	convey.Convey("REST 入口漏传 path_length 回 400，不放行到下游", t, func() {
 		w, service := exploreRequest(t, `{"source_object_type_id":"ot1","direction":"forward"}`)

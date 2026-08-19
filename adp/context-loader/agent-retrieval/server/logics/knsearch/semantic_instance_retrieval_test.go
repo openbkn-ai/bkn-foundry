@@ -155,7 +155,7 @@ func TestRetrieveInstancesForObjectType(t *testing.T) {
 	}
 
 	req := &interfaces.KnSearchLocalRequest{KnID: "129", Query: "test"}
-	// 需有可搜字段才会调用 API（与 Python 一致）
+	// The API will be called only if there is a searchable field (consistent with Python)
 	objType := &interfaces.KnSearchObjectType{
 		ConceptID: "ot1",
 		DataProperties: []*interfaces.KnSearchDataProperty{
@@ -189,14 +189,14 @@ func TestRetrieveInstancesForObjectType(t *testing.T) {
 func TestRetrieveInstancesForObjectType_NoSearchableFields(t *testing.T) {
 	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: &mockOntologyQuery{}}
 	req := &interfaces.KnSearchLocalRequest{KnID: "129", Query: "test"}
-	objType := &interfaces.KnSearchObjectType{ConceptID: "ot1"} // 无 DataProperties
+	objType := &interfaces.KnSearchObjectType{ConceptID: "ot1"} // None DataProperties.
 	config := &interfaces.KnSearchSemanticInstanceRetrievalConfig{InitialCandidateCount: 10, PerTypeInstanceLimit: 2}
 
 	nodes, err := svc.retrieveInstancesForObjectType(context.Background(), req, objType, config, true)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	// 无可搜字段时跳过该对象类型，返回 nil/空（与 Python 一致）
+	// When there is no searchable field, the object type is skipped and nil/empty is returned (consistent with Python)
 	if len(nodes) != 0 {
 		t.Errorf("Expected empty nodes when no searchable fields, got len=%d", len(nodes))
 	}
@@ -208,14 +208,14 @@ func TestBuildSemanticSearchConditionStruct(t *testing.T) {
 		InitialCandidateCount:    50,
 		MaxSemanticSubConditions: 10,
 	}
-	// 无可搜字段时返回 nil（与 Python 一致，无 "*" 回退）
+	// Returns nil if there is no searchable field (consistent with Python, no "*" fallback)
 	objTypeEmpty := &interfaces.KnSearchObjectType{ConceptID: "ot1"}
 	condEmpty := svc.buildSemanticSearchConditionStruct("query", findSemanticSearchableFields(objTypeEmpty), config, true)
 	if condEmpty != nil {
 		t.Errorf("Expected nil when no searchable fields (align with Python), got %v", condEmpty)
 	}
 
-	// 有可搜字段时按字段构建条件
+	// Build conditions by fields when there are searchable fields.
 	objTypeWithProps := &interfaces.KnSearchObjectType{
 		ConceptID: "ot1",
 		DataProperties: []*interfaces.KnSearchDataProperty{
@@ -357,7 +357,7 @@ func DefaultRetrievalConfig() *interfaces.KnSearchRetrievalConfig {
 	}
 }
 
-// 字段只支持等值时拼不出子条件，必须返回 nil：空 OR 条件会被 ontology-query 判 400。
+// When the field only supports equal values, the sub-condition cannot be spelled out and must return nil: the empty OR condition will be evaluated as 400 by ontology-query.
 func TestBuildSemanticSearchConditionStruct_ExactOnlyFieldsYieldNoCondition(t *testing.T) {
 	svc := &localSearchImpl{}
 	config := &interfaces.KnSearchSemanticInstanceRetrievalConfig{
@@ -418,7 +418,7 @@ func countOps(cond *interfaces.KnCondition, op interfaces.KnOperationType) int {
 	return n
 }
 
-// 同一行的多个向量字段各发一次 knn，成本线性叠加而召回增益很小：每个对象类只发一个。
+// Multiple vector fields in the same row each emit knn once, the cost adds up linearly and the recall gain is small: only one per object type.
 func TestBuildSemanticSearchConditionStruct_KnnBudgetPerType(t *testing.T) {
 	svc := &localSearchImpl{}
 	searchable := []searchableField{
@@ -437,7 +437,7 @@ func TestBuildSemanticSearchConditionStruct_KnnBudgetPerType(t *testing.T) {
 	}
 }
 
-// 尾部对象类不发向量条件，但全文照常——否则等于把它们整个丢掉。
+// The tail object type does not emit vector conditions, but the full text remains as usual - otherwise it is equivalent to throwing them away entirely.
 func TestBuildSemanticSearchConditionStruct_KnnDeniedKeepsMatch(t *testing.T) {
 	svc := &localSearchImpl{}
 	searchable := []searchableField{{Name: "stadium_name", HasKnn: true, HasMatch: true}}
@@ -452,7 +452,7 @@ func TestBuildSemanticSearchConditionStruct_KnnDeniedKeepsMatch(t *testing.T) {
 	}
 }
 
-// 只有向量字段、又不许发 knn 时拼不出条件，必须返回 nil 而不是空 OR。
+// When there is only a vector field and knn is not allowed, the condition cannot be spelled out, so nil must be returned instead of empty OR.
 func TestBuildSemanticSearchConditionStruct_KnnOnlyFieldDeniedYieldsNil(t *testing.T) {
 	svc := &localSearchImpl{}
 	searchable := []searchableField{{Name: "embedding_only", HasKnn: true}}
@@ -462,7 +462,7 @@ func TestBuildSemanticSearchConditionStruct_KnnOnlyFieldDeniedYieldsNil(t *testi
 	}
 }
 
-// 只有真有向量字段的对象类才发向量条件：没有的话本来也拼不出 knn。
+// Only object types that really have vector fields send vector conditions: otherwise, knn would not be spelled out.
 func TestKnnAllowedFor(t *testing.T) {
 	config := knnTestConfig()
 
@@ -480,8 +480,8 @@ func TestKnnAllowedFor(t *testing.T) {
 	}
 }
 
-// 默认配置必须真的把向量检索打开：struct tag 上的 default 在这条链路不生效，
-// 漏了就等于功能整个关掉，而且不会有任何报错。
+// The default configuration must actually turn on vector retrieval: default on the struct tag does not take effect on this link.
+// If it is missing, it means that the function is completely turned off, and no error will be reported.
 func TestDefaultConfig_EnablesKnn(t *testing.T) {
 	config := DefaultSemanticInstanceRetrievalConfig()
 

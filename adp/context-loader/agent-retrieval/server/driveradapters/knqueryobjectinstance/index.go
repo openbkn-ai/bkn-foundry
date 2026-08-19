@@ -23,7 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// KnQueryObjectInstanceHandler 查询对象实例处理器
+// KnQueryObjectInstanceHandler query object instance handler.
 type KnQueryObjectInstanceHandler interface {
 	QueryObjectInstance(c *gin.Context)
 }
@@ -38,7 +38,7 @@ var (
 	koiHandler KnQueryObjectInstanceHandler
 )
 
-// NewKnQueryObjectInstanceHandler 新建 KnQueryObjectInstanceHandler
+// NewKnQueryObjectInstanceHandler New KnQueryObjectInstanceHandler.
 func NewKnQueryObjectInstanceHandler() KnQueryObjectInstanceHandler {
 	koiOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -50,33 +50,33 @@ func NewKnQueryObjectInstanceHandler() KnQueryObjectInstanceHandler {
 	return koiHandler
 }
 
-// QueryObjectInstance 查询对象实例
+// QueryObjectInstance queryobject instance.
 func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 	var err error
 	req := &interfaces.QueryObjectInstancesReq{}
 
-	// 绑定 Header
+	// Bind headers.
 	if err = c.ShouldBindHeader(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 绑定 Query Parameters
+	// Bind query parameters.
 	if err = c.ShouldBindQuery(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 绑定 JSON Body
+	// Bind the JSON body.
 	if err = c.ShouldBindJSON(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 设置默认值
+	// Set default values.
 	if err = defaults.Set(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
@@ -84,14 +84,14 @@ func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 	}
 	req.IncludeTypeInfo = false
 
-	// 参数校验
+	// Validate parameters.
 	err = validator.New().Struct(req)
 	if err != nil {
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 调用业务逻辑
+	// Call business logic.
 	resp, err := h.OntologyQuery.QueryObjectInstances(c.Request.Context(), req)
 	if err != nil {
 		h.Logger.Errorf("[KnQueryObjectInstanceHandler#QueryObjectInstance] QueryObjectInstances failed, err: %v", err)
@@ -102,12 +102,12 @@ func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 		c.Header("bkn-evidence-event-id", eventID)
 	}
 
-	// 纯结构化过滤无相关度评分，剥除恒定的 _score 避免误导调用方；
-	// knn / match 有真实相关度分则保留（#236）。
+	// Pure structured filtering has no relevance score; strip the constant _score to avoid misleading callers.
+	// Keep real relevance scores from knn/match (#236).
 	if !req.HasScoringOperator() {
 		resp.StripInstanceScores()
 	}
 
-	// 返回成功响应
+	// Return a successful response.
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

@@ -125,8 +125,8 @@ func TestInfoAndToolsListAgreeOnEnterpriseSchemas(t *testing.T) {
 	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
 	mcptool.Register(extraTool("probe_context", "probe_context"))
 
-	// 企业工具那一半与 locale 无关：两侧用的都是 ee 自带的 t.Input，各自过一次
-	// offerBKNContext。这条断言在任何 locale 下都必须成立，所以不钉环境。
+	// The half of the enterprise tools has nothing to do with locale: both sides use t.Input that comes with ee, and each passes it once.
+	// offerBKNContext. This assertion must be true in any locale, so it is not specific to the environment.
 	listed := listVisible(t)
 	info, err := BuildMCPInfo("https://example.invalid/mcp")
 	if err != nil {
@@ -151,15 +151,15 @@ func TestInfoAndToolsListAgreeOnEnterpriseSchemas(t *testing.T) {
 }
 
 func TestInfoAndToolsListAgreeOnEveryToolInTheDefaultLocale(t *testing.T) {
-	// 钉 locale。tools/list 那侧的 core 工具会过 locale 覆盖层
-	// （locale.go 的 schema_descriptions.json），/mcp/info 那侧永远读内嵌那份，
-	// 所以「两侧逐字相等」只在覆盖层为空的默认 locale 下成立。不钉的话，
-	// mcpLocaleFromEnv 会读 LANG——CI runner 上没有所以今天绿，开发机上
-	// LANG=en_US.UTF-8 是常态，会红在一处与本改动无关的 core 工具上。
+	// Pin locale. The core tools on the tools/list side will go through the locale overlay.
+	// (schema_descriptions.json of locale.go), the /mcp/info side always reads the embedded copy,
+	// So "both sides are literally equal" only holds true in the default locale where the overlay is empty. If not nailed,
+	// mcpLocaleFromEnv can read LANG - it is not available on CI runner, so it is green today, on the development machine.
+	// LANG=en_US.UTF-8 is the norm and will be red on a core tool that has nothing to do with this change.
 	//
-	// 「/mcp/info 对 locale 失明」本身是本 PR 之前就有的缺口（连 Description 都
-	// 取默认 tools_meta.json，而对外文档说随部署语言本地化），值得单开 follow-up；
-	// 这里先把它的边界写清楚，免得这条注释成为仓里唯一记得它的地方。
+	// "/mcp/info is blind to the locale" itself is a gap that existed before this PR (even the Description.
+	// Take the default tools_meta.json, and the external documentation says that it will be localized with the deployment language), it is worth opening follow-up separately;
+	// Let’s first write down its boundaries clearly, lest this comment become the only place where it is remembered in the repo.
 	t.Setenv("MCP_LOCALE", "zh-CN")
 	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
 	mcptool.Register(extraTool("probe_context", "probe_context"))
@@ -189,24 +189,24 @@ func TestRefusalIsIndistinguishableFromAnUnknownTool(t *testing.T) {
 	withSocket(t, entitlement.FixedGate(licverify.EditionCommunity))
 	mcptool.Register(extraTool("probe_context", "probe_context"))
 
-	// 一个未授权的企业工具，对外必须和一个根本不存在的工具长得一模一样——
-	// 文本和错误码都一样。否则调用方逐个猜名字就能把「社区版二进制」和
-	// 「未授权的企业版二进制」区分开，而两者不可区分正是 assemble.go 开头
-	// 写下的自我承诺。
+	// An unauthorized enterprise tool must look exactly like a non-existent tool to the outside world——.
+	// The text and error code are the same. Otherwise, the caller can guess the names one by one and combine the "community version binary" and.
+	// "Unauthorized Enterprise Edition Binaries" are distinguished, and the indistinguishability between the two is precisely the beginning of assemble.go.
+	// Written self-commitment.
 	unknown := errorText(t, callTool(t, "probe_context_x", map[string]any{}))
 	refused := errorText(t, callTool(t, "probe_context", map[string]any{}))
 	if want := strings.Replace(unknown, "probe_context_x", "probe_context", 1); refused != want {
 		t.Fatalf("未授权的企业工具与未知工具的文本不一致：\n未知  : %s\n未授权: %s", want, refused)
 	}
 
-	// 错误码曾经不一致：未知工具走 handleToolCall 内部的 INVALID_PARAMS
-	// (-32602)，而中间件返回的 error 一律被包成 INTERNAL_ERROR(-32603)。
-	// mcp-go v0.55.0 起 ToolFilterFunc 在 tools/call 时也执行，被过滤掉的工具
-	// 由 handleToolCall 用同一条 format string、同一个 sentinel 直接拒掉，两侧
-	// 因此对齐。
+	// The error code has been inconsistent: Unknown tool goes to INVALID_PARAMS inside handleToolCall.
+	// (-32602), and the error returned by the middleware is always packaged as INTERNAL_ERROR (-32603).
+	// Starting from mcp-go v0.55.0, ToolFilterFunc is also executed when tools/call, and the tools are filtered out.
+	// The handleToolCall uses the same format string and the same sentinel to reject it directly. Both sides.
+	// Hence the alignment.
 	//
-	// 这条保证挂在 app.go 的 server.WithToolFilter(b.filter) 上：filter 现在
-	// 同时是列表可见性和调用边界。谁把它摘了，这里就会红。
+	// This guarantee is hung on server.WithToolFilter(b.filter) in app.go: filter now.
+	// Both list visibility and call boundaries. Whoever picks it will make it red.
 	unknownCode := callTool(t, "probe_context_x", map[string]any{}).(mcpsdk.JSONRPCError).Error.Code
 	refusedCode := callTool(t, "probe_context", map[string]any{}).(mcpsdk.JSONRPCError).Error.Code
 	if unknownCode != refusedCode {
@@ -216,8 +216,8 @@ func TestRefusalIsIndistinguishableFromAnUnknownTool(t *testing.T) {
 
 func TestEnterpriseToolCannotShadowACoreToolKey(t *testing.T) {
 	withSocket(t, entitlement.FixedGate(licverify.EditionEnterprise))
-	// Name 不撞、Key 撞。/mcp/info 按 key 排序，两个条目共用一个 key 会在两次
-	// 进程之间换位置——claimName 的第二道查重就是为这个，之前没有用例走过它。
+	// Name does not collide, Key does. /mcp/info is sorted by key. Two entries sharing a key will be displayed twice.
+	// Changing positions between processes - the second duplication check of claimName is for this, and no use case has gone through it before.
 	shadow := extraTool(toolKeyRunSQL, "ee_run_sql")
 	mcptool.Register(shadow)
 

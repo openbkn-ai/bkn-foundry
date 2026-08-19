@@ -1,4 +1,4 @@
-# 多阶段：builder 内编译 Go（原 Azure pipeline 的独立编译阶段已内联），prod 仅留二进制。
+# Multi-stage build: compile Go in builder (the original separate Azure pipeline compile stage is now inline); prod keeps only the binary.
 ########################### Stage 0: builder ########################
 ARG BUILD_IMAGE=golang:1.25.10
 ARG baseImage=ubuntu:22.04
@@ -22,11 +22,11 @@ WORKDIR /app/agent-retrieval
 
 COPY --from=builder /out/agent-retrieval ./agent-retrieval
 
-# 创建非root用户
+# Create a non-root user.
 RUN useradd -m -r -s /bin/bash aishu \
     && chown -R aishu:aishu /app/agent-retrieval
 
-# 切换到非root用户
+# Switch to the non-root user.
 USER aishu
 
 CMD ["./agent-retrieval"]

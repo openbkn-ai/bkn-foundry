@@ -12,7 +12,7 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 )
 
-// TestGenerateMCPKey 测试 GenerateMCPKey 函数
+// TestGenerateMCPKey Test the GenerateMCPKey function.
 func TestGenerateMCPKey(t *testing.T) {
 	convey.Convey("TestGenerateMCPKey", t, func() {
 		convey.Convey("正常参数", func() {
@@ -32,7 +32,7 @@ func TestGenerateMCPKey(t *testing.T) {
 	})
 }
 
-// TestGenerateMCPServerVersion 测试 GenerateMCPServerVersion 函数
+// TestGenerateMCPServerVersion Test the GenerateMCPServerVersion function.
 func TestGenerateMCPServerVersion(t *testing.T) {
 	convey.Convey("TestGenerateMCPServerVersion", t, func() {
 		convey.Convey("版本号 1", func() {

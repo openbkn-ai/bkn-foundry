@@ -54,7 +54,7 @@ func TestBackfillConditionOperations_FillsFromDetail(t *testing.T) {
 		t.Fatalf("team_code should be backfilled, got %+v", objType.DataProperties[1].ConditionOperations)
 	}
 
-	// 补齐后必须能被识别成可检索字段，否则等于没补。
+	// After completion, it must be recognized as a searchable field, otherwise it means no completion.
 	searchable := findSemanticSearchableFields(objType)
 	if len(searchable) != 2 || !searchable[0].HasMatch {
 		t.Fatalf("expected team_name to be match-searchable after backfill, got %+v", searchable)
@@ -85,9 +85,9 @@ func TestBackfillConditionOperations_DegradesOnError(t *testing.T) {
 	}
 }
 
-// 概念召回的 Schema 取自知识网络导出视图，属性上不带算子。补齐必须发生在这一阶段，
-// 否则 search_schema 的响应里没有能力信息——Agent 就无从知道字段能不能 match / knn，
-// 而这正是它规划查询的唯一依据。
+// The Schema of concept recall is taken from the knowledge network export view, without operators on the attributes. Completion must occur at this stage,
+// Otherwise, there is no capability information in the search_schema response - the Agent has no way of knowing whether the field can match / knn.
+// And that's the only basis it plans queries on.
 func TestBackfillConditionOperations_MakesCapabilityVisibleInSchema(t *testing.T) {
 	backend := &mockBknBackend{
 		objectDetailResp: []*interfaces.ObjectType{
@@ -128,8 +128,8 @@ func TestBackfillConditionOperations_MakesCapabilityVisibleInSchema(t *testing.T
 	}
 }
 
-// 裁剪只在出响应前做，且只对 MCP 面：实例召回要靠算子挑可检索字段，提前裁掉会让只支持等值的字段
-// 整个消失——那是响应开关改了召回口径。实测全量比索引类多 10,453 字节（69 倍）。
+// Clipping is only done before the response is issued, and only for the MCP side: instance recall relies on operators to select searchable fields, and pruning in advance will only support fields with equivalent values.
+// The whole thing disappeared - that's because the response switch changed the recall semantics. The measured full size is 10,453 bytes (69 times) larger than the index class.
 func TestTrimToIndexBackedOperations(t *testing.T) {
 	full := []interfaces.KnOperationType{
 		interfaces.KnOperationTypeEqual,
@@ -166,7 +166,7 @@ func TestTrimToIndexBackedOperations(t *testing.T) {
 		t.Fatalf("full mode must keep every operation, got %+v", kept.DataProperties[0].ConditionOperations)
 	}
 
-	// 裁剪之前，只支持等值的字段必须仍然是可检索的——否则实例召回会漏掉它。
+	// A field that only supports equal values must still be searchable before pruning - otherwise instance recall will miss it.
 	searchable := findSemanticSearchableFields(newObjType())
 	if len(searchable) != 2 {
 		t.Fatalf("retrieval must see every field before trimming, got %+v", searchable)

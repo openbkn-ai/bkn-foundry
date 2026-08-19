@@ -2,9 +2,9 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package knskills 提供技能浏览 / 阅读 / 执行工具的内部 REST 入口：
+// Package knskills provides an internal REST portal for skill browsing/reading/execution tools:
 // list_skills、get_skill_content、read_skill_file、execute_skill。
-// 这几条与同名 MCP 工具同源，同时作为 operator-integration toolbox(OpenAPI HTTP)的后端。
+// These items have the same origin as the MCP tool of the same name and serve as the backend of the operator-integration toolbox (OpenAPI HTTP).
 package knskills
 
 import (
@@ -20,7 +20,7 @@ import (
 	logicsSkills "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
-// KnSkillsHandler 技能浏览 / 阅读 / 执行的 HTTP 入口。
+// KnSkillsHandler HTTP entry for skill browsing/reading/execution.
 type KnSkillsHandler interface {
 	ListSkills(c *gin.Context)
 	GetSkillContent(c *gin.Context)
@@ -38,7 +38,7 @@ var (
 	handlerInst KnSkillsHandler
 )
 
-// NewKnSkillsHandler 创建 KnSkillsHandler 单例。
+// NewKnSkillsHandler create KnSkillsHandler singleton.
 func NewKnSkillsHandler() KnSkillsHandler {
 	handlerOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -50,11 +50,11 @@ func NewKnSkillsHandler() KnSkillsHandler {
 	return handlerInst
 }
 
-// ListSkills 浏览已发布技能（不需要知识网络上下文，与 find_skills 互补）。
+// ListSkills Browse published skills (no knowledge network context required, complementary to find_skills).
 func (h *knSkillsHandler) ListSkills(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &logicsSkills.ListSkillsReq{}
-	// body 可选；忽略空 body 的绑定错误。
+	// The body is optional; ignore binding errors for an empty body.
 	_ = c.ShouldBindJSON(req)
 
 	resp, err := h.skills.ListSkills(ctx, req)
@@ -66,12 +66,12 @@ func (h *knSkillsHandler) ListSkills(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// skillIDReq get_skill_content 入参。
+// skillIDReq get_skill_content input parameter.
 type skillIDReq struct {
 	SkillID string `json:"skill_id" form:"skill_id"`
 }
 
-// GetSkillContent 取 SKILL.md 正文 + 包内文件清单。
+// GetSkillContent gets the text of SKILL.md + the file list in the package.
 func (h *knSkillsHandler) GetSkillContent(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &skillIDReq{}
@@ -91,7 +91,7 @@ func (h *knSkillsHandler) GetSkillContent(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// ReadSkillFile 读技能包内单个文件（rel_path 取自 get_skill_content 的 files 清单）。
+// ReadSkillFile reads a single file in the skill package (rel_path is taken from the files list of get_skill_content).
 func (h *knSkillsHandler) ReadSkillFile(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &logicsSkills.ReadSkillFileReq{}
@@ -110,7 +110,7 @@ func (h *knSkillsHandler) ReadSkillFile(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// ExecuteSkill 在沙箱内执行技能入口命令。
+// ExecuteSkill executes the skill entry command in the sandbox.
 func (h *knSkillsHandler) ExecuteSkill(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &logicsSkills.ExecuteSkillReq{}

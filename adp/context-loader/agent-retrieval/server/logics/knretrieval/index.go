@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knretrieval 基于业务知识网络实现统一检索
+// Package knretrieval realizes unified retrieval based on business knowledge network.
 // file: index.go
 package knretrieval
 
@@ -34,14 +34,14 @@ func NewKnRetrievalService() interfaces.IKnRetrievalService {
 		conf := config.NewConfigLoader()
 		logger := conf.GetLogger()
 
-		// 创建统一的mf-model-api客户端（同时提供LLM和Rerank能力）
+		// Create a unified mf-model-api client (providing both LLM and Rerank capabilities)
 		mfModelClient := drivenadapters.NewMFModelAPIClient()
 
 		knRetrievalService = &knRetrievalServiceImpl{
 			logger:              logger,
 			ontologyQueryAccess: drivenadapters.NewOntologyQueryAccess(),
 			bknBackendAccess:    drivenadapters.NewBknBackendAccess(),
-			knReranker:          knrerank.NewKnowledgeReranker(mfModelClient, logger), // 单例
+			knReranker:          knrerank.NewKnowledgeReranker(mfModelClient, logger), // Singleton.
 		}
 	})
 	return knRetrievalService

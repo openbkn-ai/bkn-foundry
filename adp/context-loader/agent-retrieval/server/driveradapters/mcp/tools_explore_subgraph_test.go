@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// toolResultText 把工具返回里的文本拼起来，用于断言错误信息点到了具体字段名。
+// toolResultText concatenates the text returned by the tool and is used to assert that the error message points to a specific field name.
 func toolResultText(result *mcp.CallToolResult) string {
 	if result == nil {
 		return ""
@@ -80,7 +80,7 @@ func TestHandleExploreSubgraph_ForwardsExplorationParams(t *testing.T) {
 	})
 }
 
-// 必填项缺失要点名，一句笼统的 "required" 会让模型猜是哪个漏了、然后随便补一个。
+// If the required fields are missing, please name them. A general "required" will let the model guess which one is missing and then fill it in at will.
 func TestHandleExploreSubgraph_NamesTheMissingRequiredField(t *testing.T) {
 	base := map[string]any{
 		"kn_id":                 "kn-001",
@@ -106,8 +106,8 @@ func TestHandleExploreSubgraph_NamesTheMissingRequiredField(t *testing.T) {
 	}
 }
 
-// path_length 是 int，0 分不清「没传」和「传了 0」。下游对 0 不报错、只回空子图，
-// 调用方会把「参数没填对」读成「什么都没连上」——这是最坏的一种失败。
+// path_length is int, 0 cannot distinguish between "not passed" and "0 passed". The downstream does not report an error for 0, but only returns an empty subgraph.
+// The caller will read "the parameters are not filled in correctly" as "nothing is connected" - this is the worst kind of failure.
 func TestHandleExploreSubgraph_RejectsZeroPathLength(t *testing.T) {
 	convey.Convey("path_length 为 0 直接拒绝，不去下游拿空子图", t, func() {
 		stub := &stubSubgraphService{}
@@ -123,7 +123,7 @@ func TestHandleExploreSubgraph_RejectsZeroPathLength(t *testing.T) {
 	})
 }
 
-// 工具面只开放探索参数；两个内部参数与 need_total 不该出现在 schema 里。
+// The tool surface only allows exploration parameters; the two internal parameters and need_total should not appear in the schema.
 func TestExploreSubgraphSchema_ShapeAndRequiredFields(t *testing.T) {
 	convey.Convey("explore_subgraph schema 形状正确", t, func() {
 		input, output := loadToolSchemas("explore_subgraph")
@@ -144,7 +144,7 @@ func TestExploreSubgraphSchema_ShapeAndRequiredFields(t *testing.T) {
 			_, ok := in.Properties[key]
 			convey.So(ok, convey.ShouldBeFalse)
 		}
-		// bkn_context 是 offerBKNContext 在装配时给业务工具统一追加的，不在基线文件里
+		// bkn_context is added by offerBKNContext to the business tools during assembly and is not in the baseline file.
 		convey.So(in.Required, convey.ShouldResemble,
 			[]string{"kn_id", "source_object_type_id", "direction", "path_length", "bkn_context"})
 
@@ -159,7 +159,7 @@ func TestExploreSubgraphSchema_ShapeAndRequiredFields(t *testing.T) {
 	})
 }
 
-// path_length 的上下界写死在 schema 里，模型才可能一次填对；漏了就得等下游 400。
+// The upper and lower bounds of path_length are written firmly in the schema, so that the model can fill it in correctly at the first time; if it is missing, you have to wait for 400 downstream.
 func TestExploreSubgraphSchema_PinsPathLengthBounds(t *testing.T) {
 	convey.Convey("path_length 带 1-3 的上下界", t, func() {
 		input, _ := loadToolSchemas("explore_subgraph")
@@ -175,13 +175,13 @@ func TestExploreSubgraphSchema_PinsPathLengthBounds(t *testing.T) {
 		convey.So(in.Properties.PathLength.Minimum, convey.ShouldNotBeNil)
 		convey.So(*in.Properties.PathLength.Minimum, convey.ShouldEqual, 1)
 		convey.So(in.Properties.PathLength.Maximum, convey.ShouldNotBeNil)
-		// 下游 validateSubgraphSearchRequest 拦 >3，schema 必须与它一致
+		// Downstream validateSubgraphSearchRequest is >3, the schema must be consistent with it.
 		convey.So(*in.Properties.PathLength.Maximum, convey.ShouldEqual, 3)
 	})
 }
 
-// 基线 schema 是中文，英文靠 locale 覆盖层补。漏加不会报错，只会让英文客户端
-// 看到中文描述——尤其是 isolated_objects 那条「这是有效结论不是失败」的提示。
+// The baseline schema is Chinese, and English is supplemented by the locale overlay. If you omit the addition, no error will be reported, only the English client will.
+// See the Chinese description - especially the prompt "This is a valid conclusion, not a failure" in isolated_objects.
 func TestExploreSubgraphSchema_DescriptionsAreLocalized(t *testing.T) {
 	convey.Convey("explore_subgraph 的描述有 en-US 覆盖", t, func() {
 		bundle := loadMCPLocaleBundle("en-US")
@@ -194,9 +194,9 @@ func TestExploreSubgraphSchema_DescriptionsAreLocalized(t *testing.T) {
 		var wrapper map[string]any
 		convey.So(json.Unmarshal(mustMarshalToolSchema(input, output), &wrapper), convey.ShouldBeNil)
 
-		// 基线里每一条 description 都要有对应的覆盖条目，否则英文客户端静默回落中文
+		// Each description in the baseline must have a corresponding coverage entry, otherwise the English client will silently fall back to Chinese.
 		for _, path := range collectDescriptionPaths(wrapper, nil) {
-			// bkn_context 由 offerBKNContext 在装配时注入，不属于本文件的基线
+			// bkn_context is injected by offerBKNContext at assembly time and is not part of the baseline of this file.
 			if strings.Contains(path, "bkn_context") {
 				continue
 			}
@@ -205,7 +205,7 @@ func TestExploreSubgraphSchema_DescriptionsAreLocalized(t *testing.T) {
 	})
 }
 
-// collectDescriptionPaths 收集 schema 里所有 description 的点分路径，形如
+// collectDescriptionPaths collects the dotted paths of all descriptions in the schema, in the form.
 // input_schema.properties.direction.description。
 func collectDescriptionPaths(node any, prefix []string) []string {
 	obj, ok := node.(map[string]any)

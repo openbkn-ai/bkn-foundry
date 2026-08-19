@@ -17,9 +17,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// metric_id 是 agent 自由填写的字符串。未转义就拼进 path 的话，一个带 "?" 的值
-// 就能给下游塞进 branch / fill_null 等查询参数——下游按 path 路由仍会命中，
-// 只是参数被调用方接管了。
+// metric_id is a string freely filled in by the agent. If path is spelled without escaping, a value with "?".
+// You can insert query parameters such as branch / fill_null into the downstream - the downstream route according to path will still be hit.
+// But parameters are taken over by the caller.
 func TestQueryMetricData_EscapesIDsIntoPath(t *testing.T) {
 	convey.Convey("kn_id / metric_id 转义后才进 URL", t, func() {
 		ctrl := gomock.NewController(t)
@@ -49,10 +49,10 @@ func TestQueryMetricData_EscapesIDsIntoPath(t *testing.T) {
 
 		parsed, perr := url.Parse(got)
 		convey.So(perr, convey.ShouldBeNil)
-		// 注入的 branch 没能进查询串，fill_null 仍是本层给的值
+		// The injected branch failed to enter the query string, and fill_null is still the value given by this layer.
 		convey.So(parsed.Query().Get("branch"), convey.ShouldBeEmpty)
 		convey.So(parsed.Query().Get("fill_null"), convey.ShouldEqual, "false")
-		// 注入串整体留在 path 段里，下游只会把它当作一个不存在的 metric_id
+		// The entire injection string remains in the path segment, and the downstream will only treat it as a non-existent metric_id.
 		convey.So(parsed.EscapedPath(), convey.ShouldEqual,
 			"/api/ontology-query/in/v1/knowledge-networks/kn1/metrics/m1%2Fdata%3Fbranch=dev&x=/data")
 		convey.So(strings.Count(got, "?"), convey.ShouldEqual, 1)

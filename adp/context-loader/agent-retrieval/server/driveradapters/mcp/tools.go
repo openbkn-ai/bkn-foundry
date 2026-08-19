@@ -41,7 +41,7 @@ func handleSearchSchema(knSearchService knsearch.KnSearchService) func(ctx conte
 		}
 
 		schemaReq := buildSearchSchemaReqFromMCP(req, authCtx)
-		// MCP 面只发不可推导的算子，比较算子由属性 type 决定。
+		// The MCP surface only issues underivable operators, and comparison operators are determined by the attribute type.
 		schemaReq.IndexOpsOnly = true
 
 		resp, err := knSearchService.SearchSchema(ctx, schemaReq)
@@ -62,9 +62,9 @@ func buildSearchSchemaReqFromMCP(req mcp.CallToolRequest, authCtx *interfaces.Ac
 	schemaReq := &interfaces.SearchSchemaReq{}
 	_ = bindArguments(req, schemaReq)
 
-	// MCP（LLM）场景默认精简 Schema：未显式传 schema_brief 时用 brief，
-	// 体积更小且已保留 data_source.id / 属性 name/type/condition_operations；
-	// 需要属性备注/主键/标签的完整 Schema 时显式传 schema_brief=false。
+	// MCP (LLM) scenario defaults to simplified Schema: use brief when schema_brief is not explicitly passed.
+	// Smaller and preserved data_source.id / attribute name/type/condition_operations;
+	// Explicitly pass schema_brief=false when the complete schema of attribute comments/primary keys/labels is required.
 	if schemaReq.SchemaBrief == nil {
 		brief := true
 		schemaReq.SchemaBrief = &brief
@@ -90,7 +90,7 @@ func handleSearchInstance(knSearchService knsearch.KnSearchService) func(ctx con
 
 		instanceReq := &interfaces.SearchInstanceReq{}
 		_ = bindArguments(req, instanceReq)
-		// MCP 面只发不可推导的算子，比较算子由属性 type 决定——与 search_schema 同一姿势。
+		// The MCP surface only emits non-derivable operators, and the comparison operator is determined by the attribute type - the same posture as search_schema.
 		instanceReq.IndexOpsOnly = true
 		instanceReq.XKnID = getKnIDFromHeader(req)
 		if authCtx != nil {
@@ -147,8 +147,8 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) fun
 		}
 		bkntrace.EmitQueryObjectInstanceEvents(ctx, nil, queryReq, resp)
 		resp.ObjectConcept = nil
-		// 纯结构化过滤无相关度评分，剥除恒定的 _score 避免误导调用方；
-		// knn / match 有真实相关度分则保留（#236）。
+		// Pure structured filtering has no relevance score; strip the constant _score to avoid misleading callers.
+		// Keep real relevance scores from knn/match (#236).
 		if !queryReq.HasScoringOperator() {
 			resp.StripInstanceScores()
 		}
@@ -218,7 +218,7 @@ func handleExploreSubgraph(service logicsKqs.KnQuerySubgraphService) func(ctx co
 		if exploreReq.Limit == 0 {
 			exploreReq.Limit = 10
 		}
-		// 三个必填项分开报，合成一句 "required" 会让模型猜是哪个漏了。
+		// The three required fields are reported separately, and the combined sentence "required" will allow the model to guess which one is missing.
 		for _, missing := range []struct {
 			empty bool
 			name  string
@@ -231,9 +231,9 @@ func handleExploreSubgraph(service logicsKqs.KnQuerySubgraphService) func(ctx co
 				return mcp.NewToolResultError(missing.name + " is required"), nil
 			}
 		}
-		// path_length 的取值范围由下游把关（>3 回 400），但 0 在这里就得拦：它是 int
-		// 的零值，分不清「没传」还是「传了 0」，而下游对 0 不报错、只会返回空子图,
-		// 让调用方以为「什么都没连上」。
+		// The value range of path_length is controlled downstream (>3 back to 400), but 0 has to be blocked here: it is int.
+		// With a zero value, it is unclear whether "no transmission" or "0 was passed", and the downstream does not report an error for 0, but only returns an empty subgraph.
+		// Let the caller think "nothing is connected".
 		if exploreReq.PathLength <= 0 {
 			return mcp.NewToolResultError("path_length is required and must be at least 1"), nil
 		}
@@ -320,7 +320,7 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		// get_action_info 始终返回 JSON：行动工具定义需机器可消费，忽略 response_format（TOON 会破坏结构）。
+		// get_action_info always returns JSON: action tool definition needs to be machine consumable, response_format is ignored (TOON will destroy the structure).
 		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -330,8 +330,8 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 }
 
 // handleExecuteAction handles execute_action tool calls.
-// 与 get_action_info 配对：Agent 先用 get_action_info 拿到 dynamic_params schema，
-// 再用本工具填入真实动态参数值触发执行（异步，返回 execution_id）。
+// Paired with get_action_info: Agent first uses get_action_info to get dynamic_params schema,
+// Then use this tool to fill in the real dynamic parameter values to trigger execution (asynchronously, return execution_id).
 func handleExecuteAction(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
@@ -357,7 +357,7 @@ func handleExecuteAction(service interfaces.IKnActionRecallService) func(ctx con
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		// execute_action 始终返回 JSON：execution_id 等需机器可消费。
+		// execute_action always returns JSON: execution_id, etc. need to be consumed by the machine.
 		result, err := BuildMCPToolResult(resp, rest.FormatJSON)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -367,7 +367,7 @@ func handleExecuteAction(service interfaces.IKnActionRecallService) func(ctx con
 }
 
 // handleGetActionExecution handles get_action_execution tool calls.
-// 与 execute_action 配对：用 execute_action 返回的 execution_id 查询该次执行的 status 与 results。
+// Paired with execute_action: Use the execution_id returned by execute_action to query the status and results of the execution.
 func handleGetActionExecution(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
@@ -407,7 +407,7 @@ func handleGetActionExecution(service interfaces.IKnActionRecallService) func(ct
 }
 
 // handleListActionExecutions handles list_action_executions tool calls.
-// 列出行动执行历史（可按行动类型/状态/触发方式过滤，分页）。
+// List action execution history (can be filtered and paginated by action type/status/trigger method).
 func handleListActionExecutions(service interfaces.IKnActionRecallService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		authCtx, ok := common.GetAccountAuthContextFromCtx(ctx)
@@ -447,7 +447,7 @@ func handleListActionExecutions(service interfaces.IKnActionRecallService) func(
 }
 
 // handleListKnowledgeNetworks handles list_knowledge_networks tool calls.
-// 用于让外部 Agent 发现可用的 kn_id（其余查询工具的前置）。
+// Used to let external agents discover available kn_id (prefix of other query tools).
 func handleListKnowledgeNetworks(bkn interfaces.BknBackendAccess) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -476,7 +476,7 @@ func handleListKnowledgeNetworks(bkn interfaces.BknBackendAccess) func(ctx conte
 }
 
 // handleRunSQL handles run_sql tool calls.
-// 对知识网络挂载的数据资源执行只读 SQL（强制 SELECT-only），底层走共享 knrunsql 服务。
+// Execute read-only SQL (mandatory SELECT-only) on the data resources mounted on the knowledge network, and use the shared knrunsql service at the bottom.
 func handleRunSQL(svc knrunsql.KnRunSQLService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -503,7 +503,7 @@ func handleRunSQL(svc knrunsql.KnRunSQLService) func(ctx context.Context, req mc
 }
 
 // handleListResources handles list_resources tool calls.
-// 数据层「资源直查」入口（脱离本体）：列出账户有权查看的数据资源，配合 describe_resource + run_sql。
+// Data layer "Resource Direct Inspection" entrance (separated from the ontology): List the data resources that the account has the right to view, with describe_resource + run_sql.
 func handleListResources(svc knresources.KnResourcesService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -530,7 +530,7 @@ func handleListResources(svc knresources.KnResourcesService) func(ctx context.Co
 }
 
 // handleDescribeResource handles describe_resource tool calls.
-// 取单个资源的物理 schema（列名 + 连接器类型），供写 run_sql 用。
+// Get the physical schema (column name + connector type) of a single resource for writing run_sql.
 func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -557,8 +557,8 @@ func handleDescribeResource(svc knresources.KnResourcesService) func(ctx context
 }
 
 // handleGetKnDetail handles get_kn_detail tool calls.
-// 包装 bkn-backend 的知识网络详情（概念组 / 对象类 / 关系类 / 行动类），并按
-// detail_level 做渐进式裁剪：summary（默认）返回骨架 + 属性名，full 返回全量。
+// Pack the knowledge network details (concept group/object type/relation type/action class) of bkn-backend and press.
+// detail_level does progressive cropping: summary (default) returns the skeleton + attribute name, full returns the full amount.
 func handleGetKnDetail(bkn interfaces.BknBackendAccess, metrics knmetrics.KnMetricsService) func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		format, err := GetResponseFormatFromRequest(req)
@@ -626,12 +626,12 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 			return mcp.NewToolResultError("ids is required (object type ids from get_kn_detail)"), nil
 		}
 
-		// 优先走按 id 取详情的端点：导出视图只列对象类、不做数据源富化，属性上的
-		// condition_operations 一律为空，而调用方正是据此判断字段能不能做 match / knn。
+		// Prioritize the endpoint that retrieves details by id: the export view only lists object types, does not enrich the data source, and does not enrich the data source.
+		// condition_operations is always empty, and the caller uses this to determine whether the field can match / knn.
 		//
-		// 但这个端点要求 id 全部命中，混进一个失效 id 就整批 404。此时退回导出视图：
-		// 宁可这一批少了算子，也不能因为一个失效 id 把其余有效的对象类一起丢掉——
-		// 导出视图还支持按名字回退匹配，那也是既有行为。
+		// But this endpoint requires all ids to be hit. If an invalid id is mixed in, the whole batch will be 404. Return to the export view at this time:
+		// It would be better to have fewer operators in this batch than to throw away the remaining valid object types because of an invalid id——.
+		// Exported views also support fallback matching by name, which is also existing behavior.
 		matched, err := bkn.GetObjectTypeDetail(ctx, knID, args.IDs, true)
 		var missing []string
 		if err != nil || len(matched) < len(args.IDs) {
@@ -643,8 +643,8 @@ func handleGetObjectTypes(bkn interfaces.BknBackendAccess, metrics knmetrics.KnM
 		} else {
 			missing = missingObjectTypeIDs(args.IDs, matched)
 		}
-		// 与 search_schema 同一条规则：只发不可推导的算子。比较算子（==/in/like/range…）
-		// 由属性 type 决定，每个属性重复一遍十来个是纯噪音——对象类少也照样占上下文。
+		// The same rule as search_schema: only emit underivable operators. Comparison operators (==/in/like/range…)
+		// Determined by the attribute type, repeating each attribute for more than ten times is pure noise - the object type is small and it still occupies the context.
 		trimObjectTypesToIndexBackedOps(matched)
 
 		// Step 2 of the OT-first metric path: a metric that is not bound to a logic
@@ -806,7 +806,7 @@ func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Cont
 	}
 }
 
-// missingObjectTypeIDs 返回请求了但没取到的对象类 id，保持与导出视图过滤时一致的语义。
+// missingObjectTypeIDs returns the object type IDs that were requested but not obtained, maintaining the same semantics as when filtering exported views.
 func missingObjectTypeIDs(requested []string, matched []*interfaces.ObjectType) []string {
 	found := make(map[string]struct{}, len(matched))
 	for _, ot := range matched {
@@ -824,11 +824,11 @@ func missingObjectTypeIDs(requested []string, matched []*interfaces.ObjectType) 
 	return missing
 }
 
-// trimObjectTypesToIndexBackedOps 把算子收敛到索引带来的那几个。
+// trimObjectTypesToIndexBackedOps converges the operator to those brought by the index.
 //
-// 规则与 search_schema 一致：condition_operations 只登记从属性类型推不出来的能力
-// （match / multi_match / knn，取决于底层索引建没建）。比较算子按 type 判断，服务端
-// 逐个下发没有信息量。这只影响 MCP 面；Studio 直接对接 BKN，拿到的仍是全量。
+// The rules are consistent with search_schema: condition_operations only registers capabilities that cannot be inferred from the attribute type.
+// (match / multi_match / knn, depending on whether the underlying index is built or not). The comparison operator is judged by type, and the server side.
+// There is no amount of information being distributed one by one. This only affects the MCP side; Studio directly connects to BKN and still gets the full amount.
 func trimObjectTypesToIndexBackedOps(objectTypes []*interfaces.ObjectType) {
 	for _, ot := range objectTypes {
 		if ot == nil {
@@ -843,7 +843,7 @@ func trimObjectTypesToIndexBackedOps(objectTypes []*interfaces.ObjectType) {
 	}
 }
 
-// indexBackedConditionOperations 只保留索引带来的算子。
+// indexBackedConditionOperations only retains the operators brought by the index.
 func indexBackedConditionOperations(ops []interfaces.KnOperationType) []interfaces.KnOperationType {
 	var out []interfaces.KnOperationType
 	for _, op := range ops {

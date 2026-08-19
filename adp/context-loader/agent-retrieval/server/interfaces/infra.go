@@ -45,7 +45,7 @@ const (
 	KeyRequestID ContextKey = "request_id"
 	// KeyAccountAuthContext Account authentication context
 	KeyAccountAuthContext ContextKey = "account_auth_context"
-	// KeyResponseFormat 响应格式（json / toon），用于 HTTP 与 MCP 的序列化出口
+	// KeyResponseFormat response format (json/toon), used for HTTP and MCP serialization exports.
 	KeyResponseFormat ContextKey = "response_format"
 )
 
@@ -63,7 +63,7 @@ const (
 	HeaderXBusinessDomain HeaderKey = "x-business-domain"
 )
 
-// 系统内置导入上下文
+// System built-in import context.
 const (
 	ADMIN_ACCOUNT_ID        = "266c6a42-6131-4d62-8f39-853e7093701c"
 	ADMIN_ACCOUNT_TYPE      = "user"

@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// --- 测试脚手架 ---
+// --- Test scaffolding ---.
 
 func rrfTestObjectType() *interfaces.KnSearchObjectType {
 	return &interfaces.KnSearchObjectType{
@@ -35,7 +35,7 @@ func rrfTestObjectType() *interfaces.KnSearchObjectType {
 	}
 }
 
-// condChannel 判断一条请求属于哪一路：拆分之后每条查询只含单一算子。
+// condChannel determines which channel a request belongs to: after splitting, each query only contains a single operator.
 func condChannel(cond *interfaces.KnCondition) string {
 	if cond == nil || len(cond.SubConditions) == 0 {
 		return ""
@@ -77,8 +77,8 @@ func countPrefixed(nodes []*interfaces.KnSearchNode, prefix string) int {
 	return n
 }
 
-// bm25Flood 造 50 条 BM25 高分行，向量行只有 5 条低分行——这正是线上分布：
-// BM25 无上界，knn 相似度在 0~1。
+// bm25Flood creates 50 BM25 high-score rows and only 5 low-score vector rows - this is exactly the online distribution:
+// BM25 has no upper bound, and knn similarity is between 0 and 1.
 func bm25Flood() []map[string]any {
 	rows := make([]map[string]any, 0, 50)
 	for i := 0; i < 50; i++ {
@@ -95,9 +95,9 @@ func vectorHits() []map[string]any {
 	return rows
 }
 
-// --- 用例 ---
+// ---Use cases ---.
 
-// 融合路径下向量命中不会被 BM25 洪水挤掉；旧的单查询路径会。
+// Vector hits under the fusion path will not be crowded out by the BM25 flood; the old single query path will.
 func TestFusedRetrieval_VectorHitsSurviveBM25Flood(t *testing.T) {
 	mockQuery := &mockOntologyQuery{
 		instancesFunc: func(req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
@@ -127,10 +127,10 @@ func TestFusedRetrieval_VectorHitsSurviveBM25Flood(t *testing.T) {
 	}
 }
 
-// 旧路径（enable_rrf_fusion=false）复现缺陷：单条 OR 查询里 BM25 主导，
-// 向量命中一条都进不了 Top-K。留这个用例是为了让回归可见。
+// The old path (enable_rrf_fusion=false) recurrence defect: BM25 dominates in a single OR query.
+// Vector can't make it into the Top-K even if he hits a single hit. This use case is left to make the regression visible.
 func TestSingleQueryRetrieval_VectorHitsLostToBM25(t *testing.T) {
-	merged := append(bm25Flood(), vectorHits()...) // 单查询按 _score 降序返回，BM25 行全部在前
+	merged := append(bm25Flood(), vectorHits()...) // Single query returns in descending order by _score, with all BM25 rows at the front.
 	mockQuery := &mockOntologyQuery{instancesResp: rowsToResp(merged)}
 	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
 	config := DefaultSemanticInstanceRetrievalConfig()
@@ -149,7 +149,7 @@ func TestSingleQueryRetrieval_VectorHitsLostToBM25(t *testing.T) {
 	}
 }
 
-// RRF 分的算式：Σ 1/(k+rank) × (k+1)。
+// The formula for RRF score: Σ 1/(k+rank) × (k+1).
 func TestFuseByRRF_ScoreMath(t *testing.T) {
 	k := 60
 	knn := channelOutcome{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{
@@ -172,22 +172,22 @@ func TestFuseByRRF_ScoreMath(t *testing.T) {
 	}
 	norm := float64(k + 1)
 	want := map[string]float64{
-		"a": (1.0 / float64(k+1)) * norm,                  // 仅 knn 第 1 → 1.0
-		"b": (1.0/float64(k+2) + 1.0/float64(k+1)) * norm, // knn 第 2 + match 第 1
-		"c": (1.0 / float64(k+2)) * norm,                  // 仅 match 第 2
+		"a": (1.0 / float64(k+1)) * norm,                  // Only knn 1st → 1.0.
+		"b": (1.0/float64(k+2) + 1.0/float64(k+1)) * norm, // knn 2nd + match 1st.
+		"c": (1.0 / float64(k+2)) * norm,                  // Only match 2nd.
 	}
 	for name, expected := range want {
 		if math.Abs(byName[name]-expected) > 1e-9 {
 			t.Errorf("%s: expected score %.6f, got %.6f", name, expected, byName[name])
 		}
 	}
-	// 两路都命中的 b 必须排第一：那是真信号。
+	// The b that hits both ways must come first: that's the true signal.
 	sortNodesByScore(fused)
 	if fused[0].InstanceName != "b" {
 		t.Errorf("expected 'b' (hit by both channels) first, got %s", fused[0].InstanceName)
 	}
-	// 任一通道的第 1 名恰为 1.0——这个锚点不随该对象类发了几路而变，
-	// 否则双通道对象类里只被一路命中的实例会被系统性压低（VM 实测踩过）。
+	// The 1st position of any channel is exactly 1.0 - this anchor point does not change depending on how many channels the object is sent to.
+	// Otherwise, instances in the dual-channel object type that are only hit by one channel will be systematically suppressed (VM has tested this).
 	single := fuseByRRF([]channelOutcome{knn}, k, equalWeights())
 	if math.Abs(single[0].Score-1.0) > 1e-9 {
 		t.Errorf("expected rank-1-in-one-channel to score 1.0, got %.6f", single[0].Score)
@@ -197,7 +197,7 @@ func TestFuseByRRF_ScoreMath(t *testing.T) {
 	}
 }
 
-// 同一实例被两路召回时只保留一份，原始召回分取较大者。
+// When the same instance is recalled by two ways, only one copy is retained, and the larger original recall score is used.
 func TestFuseByRRF_DedupKeepsMaxRecallScore(t *testing.T) {
 	node := func(score float64) *interfaces.KnSearchNode {
 		return &interfaces.KnSearchNode{
@@ -223,7 +223,7 @@ func TestFuseByRRF_DedupKeepsMaxRecallScore(t *testing.T) {
 	}
 }
 
-// 缺唯一标识且缺实例名的行不参与去重——宁可重复也不误合并两个不同实例。
+// Rows lacking unique identifiers and instance names do not participate in deduplication - it is better to duplicate than to accidentally merge two different instances.
 func TestFuseByRRF_AnonymousRowsNotMerged(t *testing.T) {
 	anon := func() *interfaces.KnSearchNode { return &interfaces.KnSearchNode{ObjectTypeID: "ot1"} }
 	fused := fuseByRRF([]channelOutcome{
@@ -235,7 +235,7 @@ func TestFuseByRRF_AnonymousRowsNotMerged(t *testing.T) {
 	}
 }
 
-// knn 通道 400（字段没有向量映射）不再打掉整个对象类，全文那路照常返回。
+// knn channel 400 (field has no vector mapping) no longer destroys the entire object type, and the full text path is returned as usual.
 func TestFusedRetrieval_KnnChannelFailureIsolated(t *testing.T) {
 	mockQuery := &mockOntologyQuery{
 		instancesFunc: func(req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
@@ -258,7 +258,7 @@ func TestFusedRetrieval_KnnChannelFailureIsolated(t *testing.T) {
 	}
 }
 
-// 两路全失败才向上报错，由调用方跳过该对象类。
+// Only when both paths fail will an error be reported upward, and the caller will skip the object type.
 func TestFusedRetrieval_AllChannelsFailReturnsError(t *testing.T) {
 	mockQuery := &mockOntologyQuery{instancesError: errors.New("downstream down")}
 	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
@@ -271,8 +271,8 @@ func TestFusedRetrieval_AllChannelsFailReturnsError(t *testing.T) {
 	}
 }
 
-// 无 _score（源库直查）时名次无意义：跳过 RRF，走本地兜底打分，
-// MinDirectRelevance 在这条路上才生效。
+// When there is no _score (source database direct query), the ranking is meaningless: skip RRF and use local scoring.
+// MinDirectRelevance only takes effect on this path.
 func TestFusedRetrieval_UnscoredRowsUseLocalScoring(t *testing.T) {
 	mockQuery := &mockOntologyQuery{
 		instancesFunc: func(req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
@@ -280,8 +280,8 @@ func TestFusedRetrieval_UnscoredRowsUseLocalScoring(t *testing.T) {
 				return rowsToResp(nil), nil
 			}
 			return rowsToResp([]map[string]any{
-				instanceRow("test instance", 0), // 目标含查询词 → 0.5
-				instanceRow("unrelated", 0),     // 无重叠 → 0，被 MinDirectRelevance 滤掉
+				instanceRow("test instance", 0), // Target contains query terms → 0.5.
+				instanceRow("unrelated", 0),     // No overlap → 0, filtered out by MinDirectRelevance.
 			}), nil
 		},
 	}
@@ -304,7 +304,7 @@ func TestFusedRetrieval_UnscoredRowsUseLocalScoring(t *testing.T) {
 	}
 }
 
-// 相对分数过滤在通道内做：融合之后第一名恒为 1.0，"整体都不相关"表达不出来。
+// Relative score filtering is done within the channel: after fusion, the first score is always 1.0, and "the whole is irrelevant" cannot be expressed.
 func TestPruneChannelByScoreRatio(t *testing.T) {
 	nodes := []*interfaces.KnSearchNode{
 		{InstanceName: "top", RecallScore: 0.9},
@@ -315,14 +315,14 @@ func TestPruneChannelByScoreRatio(t *testing.T) {
 		t.Fatalf("expected only the top row kept, got %v", kept)
 	}
 
-	// 全零分（无 _score）时不做裁剪，交给本地兜底打分。
+	// When there are all zero points (no _score), no cropping will be performed, and it will be left to the local bureau for scoring.
 	unscored := []*interfaces.KnSearchNode{{InstanceName: "a"}, {InstanceName: "b"}}
 	if got := pruneChannelByScoreRatio(unscored, 0.5); len(got) != 2 {
 		t.Errorf("unscored rows must not be pruned, got %d", len(got))
 	}
 }
 
-// 通道条件构造：没有向量字段 / 本轮不发向量时，knn 通道整体不发出。
+// Channel condition construction: There is no vector field/When no vector is sent in this round, the knn channel as a whole is not sent.
 func TestBuildChannelConditions(t *testing.T) {
 	config := DefaultSemanticInstanceRetrievalConfig()
 	withKnn := findSemanticSearchableFields(rrfTestObjectType())
@@ -356,7 +356,7 @@ func TestBuildChannelConditions(t *testing.T) {
 	}
 }
 
-// 去重键跨通道稳定，且不同对象类的同名实例不会撞在一起。
+// Deduplication keys are stable across channels, and instances of the same name from different object types will not collide.
 func TestInstanceKey(t *testing.T) {
 	a := &interfaces.KnSearchNode{ObjectTypeID: "ot1", UniqueIdentities: map[string]any{"b": 2, "a": 1}}
 	b := &interfaces.KnSearchNode{ObjectTypeID: "ot1", UniqueIdentities: map[string]any{"a": 1, "b": 2}}
@@ -378,7 +378,7 @@ func TestInstanceKey(t *testing.T) {
 	}
 }
 
-// 索引行常常两个顶层身份字段都空，身份落在 properties 的 _instance_id 上（VM 实测）。
+// Index rows often have both top-level identity fields empty, and the identity falls on the _instance_id of properties (VM actual measurement).
 func TestInstanceKey_FallsBackToInstanceIDProperty(t *testing.T) {
 	knnRow := &interfaces.KnSearchNode{
 		ObjectTypeID: "stadiums",
@@ -401,7 +401,7 @@ func TestInstanceKey_FallsBackToInstanceIDProperty(t *testing.T) {
 	}
 }
 
-// 连 _instance_id 都没有时按属性内容取指纹，仍能跨通道认出同一行。
+// When there is no _instance_id, fingerprints are taken based on the attribute content, and the same row can still be recognized across channels.
 func TestInstanceKey_FallsBackToPropertiesFingerprint(t *testing.T) {
 	a := &interfaces.KnSearchNode{ObjectTypeID: "ot1", Properties: map[string]any{"b": 2, "a": 1}}
 	b := &interfaces.KnSearchNode{ObjectTypeID: "ot1", Properties: map[string]any{"a": 1, "b": 2}}
@@ -414,8 +414,8 @@ func TestInstanceKey_FallsBackToPropertiesFingerprint(t *testing.T) {
 	}
 }
 
-// equalWeights 等权，即默认 knn_weight=0.5。老用例全部走它——「加了权重之后默认
-// 行为逐位不变」这件事，就靠这些原样保留的断言盯着。
+// equalWeights equal weight, that is, the default knn_weight=0.5. All old use cases use it - "default after adding weights".
+// "The behavior remains unchanged from bit to bit." This matter depends on these assertions that remain unchanged.
 func equalWeights() map[string]float64 {
 	return channelWeights(DefaultSemanticInstanceRetrievalConfig())
 }

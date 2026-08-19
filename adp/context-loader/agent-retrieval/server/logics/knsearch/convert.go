@@ -6,7 +6,7 @@
 
 // Package knsearch provides business logic for knowledge network search operations.
 // file: convert.go
-// description: KnSearchReq/KnSearchResp 与本地请求/响应的转换
+// description: Conversion of KnSearchReq/KnSearchResp to local request/response.
 package knsearch
 
 import (
@@ -15,7 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// KnSearchReqToLocal 将 KnSearchReq 转为 KnSearchLocalRequest
+// KnSearchReqToLocal converts KnSearchReq to KnSearchLocalRequest.
 func KnSearchReqToLocal(req *interfaces.KnSearchReq) *interfaces.KnSearchLocalRequest {
 	if req == nil {
 		return nil
@@ -26,8 +26,8 @@ func KnSearchReqToLocal(req *interfaces.KnSearchReq) *interfaces.KnSearchLocalRe
 		Query:       req.Query,
 		KnID:        req.KnID,
 	}
-	// 默认只回 Schema：这是所有存量调用方今天拿到的东西。
-	// 显式传 only_schema=false 才额外做语义实例召回。
+	// By default, only Schema is returned: this is what all existing callers get today.
+	// Explicitly pass only_schema=false to perform additional semantic instance recall.
 	local.OnlySchema = true
 	if req.OnlySchema != nil {
 		local.OnlySchema = *req.OnlySchema
@@ -65,9 +65,9 @@ func applySearchScopeToLocalRetrievalConfig(local *interfaces.KnSearchLocalReque
 	local.RetrievalConfig.ConceptRetrieval.ConceptGroups = conceptGroups
 }
 
-// retrievalConfigToLocal 将 any 形式的 retrieval_config 转为 *KnSearchRetrievalConfig。
-// 当 cfg 为 *RetrievalConfig 时走显式拷贝：避免 JSON 往返时 bool 字段带 omitempty 导致 false 被省略，
-// 进而 Unmarshal 到 *bool 时变成 nil（与显式 false 语义不同）。
+// retrievalConfigToLocal Convert any form of retrieval_config to *KnSearchRetrievalConfig.
+// Explicit copying when cfg is *RetrievalConfig: avoid bool fields with omitempty causing false to be omitted during JSON round-trips.
+// Then Unmarshal to *bool becomes nil (different from explicit false semantics).
 func retrievalConfigToLocal(cfg any) *interfaces.KnSearchRetrievalConfig {
 	if cfg == nil {
 		return nil
@@ -138,7 +138,7 @@ func retrievalConfigStructToLocal(rc *interfaces.RetrievalConfig) *interfaces.Kn
 	return out
 }
 
-// KnSearchLocalResponseToResp 将 KnSearchLocalResponse 转为 KnSearchResp
+// KnSearchLocalResponseToResp Convert KnSearchLocalResponse to KnSearchResp.
 func KnSearchLocalResponseToResp(local *interfaces.KnSearchLocalResponse) *interfaces.KnSearchResp {
 	if local == nil {
 		return nil
@@ -148,7 +148,7 @@ func KnSearchLocalResponseToResp(local *interfaces.KnSearchLocalResponse) *inter
 		RelationTypes: local.RelationTypes,
 		ActionTypes:   local.ActionTypes,
 	}
-	// 只在真的做了实例召回时才带 nodes / message：Schema-only 的响应保持原样。
+	// Only bring nodes/message if instance recall is actually done: Schema-only responses remain as is.
 	if len(local.Nodes) > 0 {
 		resp.Nodes = local.Nodes
 	}

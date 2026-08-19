@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knactionrecall 业务知识网络行动召回业务逻辑
+// Package knactionrecall business knowledge network action recall business logic.
 // file: index.go
 package knactionrecall
 
@@ -28,7 +28,7 @@ var (
 	knActionRecallService interfaces.IKnActionRecallService
 )
 
-// NewKnActionRecallService 创建业务知识网络行动召回服务实例
+// NewKnActionRecallService creates a business knowledge network action recall service instance.
 func NewKnActionRecallService() interfaces.IKnActionRecallService {
 	karOnce.Do(func() {
 		configLoader := config.NewConfigLoader()

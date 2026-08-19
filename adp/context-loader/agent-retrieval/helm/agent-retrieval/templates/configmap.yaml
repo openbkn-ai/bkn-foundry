@@ -5,7 +5,7 @@ metadata:
   namespace: {{ .Values.namespace }}
 data:
   agent-retrieval.yaml: |
-    # 配置文件路径/sysvol/conf/agent-retrieval.yaml
+    # Configuration file path: /sysvol/conf/agent-retrieval.yaml
     project:
       language: {{ .Values.service.language }}
       host: "0.0.0.0"

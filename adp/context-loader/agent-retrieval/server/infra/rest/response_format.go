@@ -15,21 +15,21 @@ import (
 )
 
 const (
-	// ContentTypeTOON TOON 响应 Content-Type
+	// ContentTypeTOON TOON response Content-Type.
 	ContentTypeTOON = "application/toon"
 )
 
-// ResponseFormat 响应格式：JSON 或 TOON
+// ResponseFormat response format: JSON or TOON.
 type ResponseFormat string
 
 const (
-	// FormatJSON 默认 JSON
+	// FormatJSON default JSON.
 	FormatJSON ResponseFormat = "json"
-	// FormatTOON 压缩格式 TOON
+	// FormatTOON compression format TOON.
 	FormatTOON ResponseFormat = "toon"
 )
 
-// ParseResponseFormat 解析 response_format 参数，非法值返回错误
+// ParseResponseFormat parses response_format parameter, illegal value returns error.
 func ParseResponseFormat(s string) (ResponseFormat, error) {
 	switch s {
 	case "", "json":
@@ -41,7 +41,7 @@ func ParseResponseFormat(s string) (ResponseFormat, error) {
 	}
 }
 
-// MarshalResponse 按指定格式序列化 body，返回 Content-Type 与 body 字节；错误时不做静默降级
+// MarshalResponse serializes the body according to the specified format and returns the Content-Type and body bytes; no silent degradation is performed when an error occurs.
 func MarshalResponse(format ResponseFormat, body interface{}) (contentType string, bodyBytes []byte, err error) {
 	if body == nil {
 		return ContentTypeJSON, nil, nil
@@ -72,9 +72,9 @@ type toonValueProvider interface {
 	TOONValue() any
 }
 
-// marshalTOON 将 body 编码为 TOON。
-// 实现 toonValueProvider 的响应可提供适配后的 TOON 视图；
-// 其他 struct 因为只有 json tag、没有 toon tag，需通过 JSON 中转为 map 再编码，确保字段名与 API 契约一致。
+// marshalTOON encodes body as TOON.
+// Implement toonValueProvider's response to provide an adapted TOON view;
+// Because other structs only have json tags and no toon tags, they need to be converted into maps through JSON and then encoded to ensure that the field names are consistent with the API contract.
 func marshalTOON(body interface{}) ([]byte, error) {
 	if provider, ok := body.(toonValueProvider); ok {
 		return toon.Marshal(provider.TOONValue(), toon.WithLengthMarkers(true))
@@ -86,7 +86,7 @@ func marshalTOON(body interface{}) ([]byte, error) {
 	if v.Kind() != reflect.Struct {
 		return toon.Marshal(body, toon.WithLengthMarkers(true))
 	}
-	// struct → JSON → any → TOON（保留 json tag 的字段名）
+	// struct → JSON → any → TOON (retain the field name of json tag)
 	jsonBytes, err := sonic.Marshal(body)
 	if err != nil {
 		return nil, err

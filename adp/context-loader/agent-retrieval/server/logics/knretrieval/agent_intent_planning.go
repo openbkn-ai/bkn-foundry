@@ -15,31 +15,31 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// AgentIntentPlanning 语义搜索: 基于意图分析智能体+规划策略
+// AgentIntentPlanning Semantic Search: Intent-based analysis of agents + planning strategies.
 func (k *knRetrievalServiceImpl) AgentIntentPlanning(ctx context.Context, req *interfaces.SemanticSearchRequest) (resp *interfaces.SemanticSearchResponse, err error) {
-	// 记录可观测
+	// Record observability data.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 概念意图分析智能体已随 decision-agent 退役，语义检索降级为基于 Query 的关键词召回策略。
+	// The conceptual intent analysis agent has been retired along with the decision-agent, and semantic retrieval has been downgraded to a Query-based keyword recall strategy.
 	queryUnderstandResult := &interfaces.QueryUnderstanding{}
 	queryStrategys := k.longtailRecallByKnowledgeNetwork(req.Query)
-	// 筛选查询策略
+	// Filter query strategies.
 	queryStrategys = k.filterQueryStrategysBySearchScope(queryStrategys, req.SearchScope)
-	// TODO: 根据搜索与配置对查询策略进行过滤
-	// 策略执行：并发解析并执行query_strategy，获取结果
+	// TODO: Filter query strategies based on search and configuration.
+	// Strategy execution: parse and execute query_strategy concurrently and obtain the results.
 	conceptResults, err := k.parallelExecSemanticQueryStrategy(ctx, req.KnID, queryStrategys)
 	if err != nil {
 		return
 	}
-	// 返回执行的策略
+	// Return the executed strategies.
 	queryUnderstandResult.QueryStrategys = queryStrategys
-	// TODO：实例数据采样（本版本跳过）
-	// 排序：精排, 去重
+	// TODO: instance data sampling, skipped in this version.
+	// Sorting: fine sorting, deduplication.
 	rerankConceptResults, err := k.rerankConcepts(ctx, queryUnderstandResult, conceptResults, req.RerankAction, req.MaxConcepts, req.RerankLLMModel, req.RerankVectorModel)
 	if err != nil {
 		return
 	}
-	// 组装结果
+	// Assemble the result.
 	resp = &interfaces.SemanticSearchResponse{
 		QueryUnderstanding: queryUnderstandResult,
 		KnowledgeConcepts:  rerankConceptResults,
@@ -48,7 +48,7 @@ func (k *knRetrievalServiceImpl) AgentIntentPlanning(ctx context.Context, req *i
 	return
 }
 
-// deduplicateConcepts 概念结果去重: 根据ID、Type去重
+// deduplicateConcepts Concept result deduplication: Deduplication based on ID and Type.
 func (k *knRetrievalServiceImpl) deduplicateConcepts(concepts []*interfaces.ConceptResult) []*interfaces.ConceptResult {
 	seen := make(map[string]bool)
 	unique := make([]*interfaces.ConceptResult, 0)
@@ -62,9 +62,9 @@ func (k *knRetrievalServiceImpl) deduplicateConcepts(concepts []*interfaces.Conc
 	return unique
 }
 
-// 根据搜索与配置对查询策略进行过滤
+// Filter query strategies based on search and configuration.
 func (k *knRetrievalServiceImpl) filterQueryStrategysBySearchScope(queryStrategys []*interfaces.SemanticQueryStrategy, searchScope *interfaces.SearchScopeConfig) []*interfaces.SemanticQueryStrategy {
-	// 过滤后的查询策略
+	// Filtered query strategy.
 	filteredQueryStrategys := make([]*interfaces.SemanticQueryStrategy, 0)
 	for _, queryStrategy := range queryStrategys {
 		if queryStrategy.Filter != nil {

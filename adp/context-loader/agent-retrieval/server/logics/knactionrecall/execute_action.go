@@ -12,12 +12,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// ExecuteAction 执行行动（异步）。
+// ExecuteAction Execute an action (asynchronously).
 //
-// 与 GetActionInfo 配对：Agent 先用 get_action_info 拿到行动的可执行定义与
-// dynamic_params schema，再用本接口填入真实动态参数值触发执行，形成
-// 「发现 → 读定义 → 执行」的闭环。真正的执行与动态参数完整性校验在
-// ontology-query 的 execute 端点完成，本层仅做透传。
+// Paired with GetActionInfo: Agent first uses get_action_info to get the executable definition and.
+// dynamic_params schema, and then use this interface to fill in the real dynamic parameter values to trigger execution, forming.
+// The closed loop of "discover → read definition → execute". True execution and dynamic parameter integrity checking in.
+// The execute endpoint of ontology-query is completed, and this layer only performs transparent transmission.
 func (s *knActionRecallServiceImpl) ExecuteAction(ctx context.Context, req *interfaces.KnActionExecuteRequest) (*interfaces.KnActionExecuteResponse, error) {
 	execReq := &interfaces.ExecuteActionsRequest{
 		KnID:               req.KnID,
@@ -40,13 +40,13 @@ func (s *knActionRecallServiceImpl) ExecuteAction(ctx context.Context, req *inte
 	}, nil
 }
 
-// GetActionExecution 查询单次行动执行的状态与结果。
-// 与 execute_action 配对：Agent 用 execute_action 提交后拿到 execution_id，
-// 再用本接口查询该次执行的 status 与逐对象 results。
+// GetActionExecution queries the status and results of a single action execution.
+// Paired with execute_action: Agent gets execution_id after submitting with execute_action.
+// Then use this interface to query the status and object-by-object results of this execution.
 //
-// 返回结果会剔除 Agent 决策用不到的重货（action_type_snapshot、重复的
-// executor/action_source、分页元数据等），仅保留状态、计数与逐对象结果，
-// 以降低 token 占用。
+// The returned results will eliminate heavy items that are not used for Agent decision-making (action_type_snapshot, duplicate.
+// executor/action_source, paging metadata, etc.), only the status, count and per-object results are retained.
+// To reduce token usage.
 func (s *knActionRecallServiceImpl) GetActionExecution(ctx context.Context, req *interfaces.KnGetActionExecutionRequest) (map[string]any, error) {
 	resp, err := s.ontologyQuery.GetActionExecution(ctx, &interfaces.GetActionExecutionRequest{
 		KnID:        req.KnID,
@@ -59,9 +59,9 @@ func (s *knActionRecallServiceImpl) GetActionExecution(ctx context.Context, req 
 	return slimActionExecution(resp), nil
 }
 
-// actionExecutionKeepKeys 是单次执行详情中对 Agent 有用、需保留的顶层字段。
-// execution_mode/target_count 必须留：once 模式下 total_count 是工具调用次数（恒为 1），
-// 没有这两个字段，Agent 会把「30 个实例合并成 1 次调用」误读成「只处理了 1 个对象」。
+// actionExecutionKeepKeys is a top-level field in the single execution details that is useful to the Agent and needs to be retained.
+// execution_mode/target_count must be left: in once mode, total_count is the number of tool calls (always 1),
+// Without these two fields, the Agent will misread "30 instances merged into 1 call" as "only 1 object was processed.".
 var actionExecutionKeepKeys = []string{
 	"id", "kn_id", "action_type_id", "action_type_name",
 	"status", "trigger_type", "execution_mode", "target_count",
@@ -69,9 +69,9 @@ var actionExecutionKeepKeys = []string{
 	"start_time", "end_time", "duration_ms", "dynamic_params", "results",
 }
 
-// slimActionExecution 从后端返回的执行详情中投影出精简结构：
-// 剔除 action_type_snapshot、executor(_id)、action_source、object_type_id、
-// results_limit/offset/total 等冗余，并压缩逐对象结果。
+// slimActionExecution projects the slim structure from the execution details returned by the backend:
+// Remove action_type_snapshot, executor(_id), action_source, object_type_id,.
+// results_limit/offset/total etc. are redundant and compress per-object results.
 func slimActionExecution(full map[string]any) map[string]any {
 	if full == nil {
 		return nil
@@ -88,19 +88,19 @@ func slimActionExecution(full map[string]any) map[string]any {
 	return slim
 }
 
-// actionResultKeepKeys 是逐对象结果中需保留的字段。
-// targets 只在 once 模式出现，装着这一次调用覆盖的实例，是 Agent 判断
-// 「这条聚合结果对应哪些对象」的唯一依据。
+// actionResultKeepKeys are fields that need to be kept in object-by-object results.
+// Targets only appear in once mode. They contain the instance covered by this call and are judged by the Agent.
+// The only basis for "which objects this aggregation result corresponds to".
 var actionResultKeepKeys = []string{
 	"_instance_id", "_instance_identity", "_display", "targets",
 	"status", "parameters", "duration_ms", "error_message", "result",
 }
 
-// maxSlimTargets 是单条结果里 targets 的返回上限。
-// once 模式下 results 恒为 1 条，results_limit 只裁结果条数、裁不到条内的 targets，
-// 而一次不带 _instance_identities 的扫描最多可命中 ACTION_EXECUTION_MAX_OBJECTS
-// （默认 10000）个实例。不设上限，一次查询就能把 MB 级实例明细灌进 Agent 上下文，
-// 与这一层压 token 的目的相反。覆盖总数看 target_count，这里只给样本。
+// maxSlimTargets is the upper limit of returns of targets in a single result.
+// In the once mode, results is always 1, results_limit only cuts the number of results, and cannot cut the targets within the strip.
+// A scan without _instance_identities can hit at most ACTION_EXECUTION_MAX_OBJECTS.
+// (Default 10000) instances. There is no upper limit, and MB-level instance details can be poured into the Agent context in one query.
+// Contrary to the purpose of this laminated token. For the total number of coverage, see target_count. Only samples are given here.
 const maxSlimTargets = 20
 
 func slimActionResults(results []any) []any {
@@ -127,7 +127,7 @@ func slimActionResults(results []any) []any {
 	return slim
 }
 
-// ListActionExecutions 列出行动执行历史（可按行动类型/状态/触发方式过滤，分页）。
+// ListActionExecutions lists action execution history (can be filtered and paging by action type/status/trigger method).
 func (s *knActionRecallServiceImpl) ListActionExecutions(ctx context.Context, req *interfaces.KnListActionExecutionsRequest) (map[string]any, error) {
 	resp, err := s.ontologyQuery.ListActionExecutions(ctx, &interfaces.ListActionExecutionsRequest{
 		KnID:          req.KnID,
@@ -144,8 +144,8 @@ func (s *knActionRecallServiceImpl) ListActionExecutions(ctx context.Context, re
 		s.logger.WithContext(ctx).Errorf("[KnActionRecall#ListActionExecutions] ListActionExecutions failed, err: %v", err)
 		return nil, err
 	}
-	// 列表每条同样剔除重货（action_type_snapshot 等），仅保留概览字段。
-	// results 不进列表：逐实例明细只在 get_action_execution 里给，列表拿的是任务摘要。
+	// Each item in the list also excludes heavy items (action_type_snapshot, etc.), leaving only the overview field.
+	// Results are not included in the list: instance-by-instance details are only given in get_action_execution, and the list takes the task summary.
 	if entries, ok := resp["entries"].([]any); ok {
 		slimmed := make([]any, 0, len(entries))
 		for _, e := range entries {

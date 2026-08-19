@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// TestParseKnOperationType_Success 测试 ParseKnOperationType 成功场景
+// TestParseKnOperationType_Success test ParseKnOperationType success scenario.
 func TestParseKnOperationType_Success(t *testing.T) {
 	convey.Convey("TestParseKnOperationType_Success", t, func() {
 		testCases := []struct {
@@ -50,12 +50,12 @@ func TestParseKnOperationType_Success(t *testing.T) {
 	})
 }
 
-// TestParseKnOperationType_Invalid 测试 ParseKnOperationType 无效输入
+// TestParseKnOperationType_Invalid Test ParseKnOperationType invalid input.
 func TestParseKnOperationType_Invalid(t *testing.T) {
 	convey.Convey("TestParseKnOperationType_Invalid", t, func() {
 		invalidInputs := []string{
 			"invalid",
-			"AND", // 大小写敏感
+			"AND", // Case sensitive.
 			"OR",
 			"equals",
 			"",

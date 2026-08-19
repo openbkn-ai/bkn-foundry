@@ -126,7 +126,7 @@ func TestQueryMetric(t *testing.T) {
 			AnalysisDimensions: []string{"region"},
 			Limit:              ptr(10),
 			FillNull:           true,
-			// fill_null 只对带 start/end 的序列查询有效，与下游同规则。
+			// fill_null is only valid for sequence queries with start/end, and has the same rules as downstream.
 			Time: &interfaces.MetricTimeWindow{
 				Instant: ptr(false), Start: ptr(int64(1)), End: ptr(int64(2)), Step: ptr("day")},
 		})
@@ -167,8 +167,8 @@ func TestQueryMetric(t *testing.T) {
 		convey.So(oq.calls, convey.ShouldEqual, 0)
 	})
 
-	// 时间窗规则逐条对齐 ontology-query 的 validateMetricQueryRequest：本地比下游严
-	// 会把合法调用误拒，比下游松只是把同一个错误延后，两者都不可接受。
+	// Time window rules are aligned one by one in ontology-query's validateMetricQueryRequest: local is stricter than downstream.
+	// It will falsely reject legitimate calls, and it will only delay the same error, both of which are unacceptable.
 	convey.Convey("时间窗校验与下游同规则", t, func() {
 		oq := &stubOntologyQuery{}
 		svc := NewKnMetricsServiceWith(nil, nil, oq)

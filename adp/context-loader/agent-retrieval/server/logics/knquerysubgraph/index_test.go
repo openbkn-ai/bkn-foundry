@@ -18,7 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// TestQueryInstanceSubgraph_Success 测试 QueryInstanceSubgraph 成功场景
+// TestQueryInstanceSubgraph_Success test QueryInstanceSubgraph success scenario.
 func TestQueryInstanceSubgraph_Success(t *testing.T) {
 	convey.Convey("TestQueryInstanceSubgraph_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -42,7 +42,7 @@ func TestQueryInstanceSubgraph_Success(t *testing.T) {
 			},
 		}
 
-		// Mock OntologyQuery 成功响应
+		// Mock OntologyQuery successful response.
 		mockOntologyQuery.EXPECT().QueryInstanceSubgraph(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryInstanceSubgraphResp{
 				Entries: []interface{}{},
@@ -54,7 +54,7 @@ func TestQueryInstanceSubgraph_Success(t *testing.T) {
 	})
 }
 
-// TestQueryInstanceSubgraph_Error 测试 QueryInstanceSubgraph 错误场景
+// TestQueryInstanceSubgraph_Error Test QueryInstanceSubgraph error scenario.
 func TestQueryInstanceSubgraph_Error(t *testing.T) {
 	convey.Convey("TestQueryInstanceSubgraph_Error", t, func() {
 		ctrl := gomock.NewController(t)
@@ -75,7 +75,7 @@ func TestQueryInstanceSubgraph_Error(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock OntologyQuery 错误
+		// Mock OntologyQuery error.
 		mockOntologyQuery.EXPECT().QueryInstanceSubgraph(gomock.Any(), gomock.Any()).
 			Return(nil, errors.New("query failed"))
 
@@ -84,7 +84,7 @@ func TestQueryInstanceSubgraph_Error(t *testing.T) {
 	})
 }
 
-// TestQueryInstanceSubgraph_WithEntries 测试有返回结果的场景
+// TestQueryInstanceSubgraph_WithEntries tests scenarios where results are returned.
 func TestQueryInstanceSubgraph_WithEntries(t *testing.T) {
 	convey.Convey("TestQueryInstanceSubgraph_WithEntries", t, func() {
 		ctrl := gomock.NewController(t)
@@ -112,7 +112,7 @@ func TestQueryInstanceSubgraph_WithEntries(t *testing.T) {
 			},
 		}
 
-		// Mock OntologyQuery 返回有结果的响应
+		// Mock OntologyQuery returns a response with results.
 		mockOntologyQuery.EXPECT().QueryInstanceSubgraph(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryInstanceSubgraphResp{
 				Entries: []interface{}{

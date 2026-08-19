@@ -15,76 +15,76 @@ import (
 	"strings"
 )
 
-// PTC（代码化工具调用）工具包：把本服务的工具面渲染成「一段说明 + 一份 stub」。
+// PTC (Coded Tool Call) toolkit: renders the tool surface of this service into "a description + a stub".
 //
-// 客户端只给模型一个 run_code 工具，模型写 Python 交沙箱执行，脚本里直接调用
-// 这里生成的函数；中间结果留在沙箱，只有 stdout 回到上下文。
+// The client only gives the model a run_code tool. The model writes Python code that is executed in the sandbox
+// and calls the functions generated here directly. Intermediate results stay in the sandbox; only stdout returns to the context.
 //
-// 两份产物都从 BuildMCPInfo 的工具目录渲染，与 tools/list 同源——条件注册未启用
-// 的工具、按档位装饰过的参数，在这里的表现与实际可调用的工具面完全一致。
+// Both artifacts are rendered from the BuildMCPInfo tool catalog, the same source as tools/list. Conditionally
+// registered tools and tier-decorated parameters therefore match the actual callable tool surface exactly.
 //
-// 由服务端而非客户端渲染，有两个客户端做不到的地方：
-//  1. schema 里没有 bkn_context（它是生命周期守卫在运行时向业务工具索取的），
-//     从 tools/list 渲染的客户端会把它当成必填参数写进签名，让模型去填一个它
-//     没有的值；
-//  2. 只有服务端知道哪些工具真正注册了。
+// Rendered by the server instead of the client, there are two things that the client cannot do:
+// 1. There is no bkn_context in the schema (it is obtained by the lifecycle guard from the business tool at runtime),
+// A client rendered from tools/list would put it into the signature as a required parameter and ask the model
+// to fill a value it does not have;
+// 2. Only the server knows which tools are actually registered.
 type PTCToolkit struct {
-	// Version 是 digest 与 stub 的内容哈希，客户端据此缓存。
+	// Version is the content hash of digest and stub, which is cached by the client.
 	Version string `json:"version"`
-	// Digest 是给模型看的函数签名清单，用作 run_code 的工具描述。
+	// Digest is a list of function signatures shown to the model and is used as a tool description for run_code.
 	Digest string `json:"digest"`
-	// Stub 是沙箱内的 Python 实现，随每次执行内联进脚本。
+	// A stub is a sandboxed Python implementation that is inlined into the script with each execution.
 	Stub string `json:"stub"`
-	// SandboxMCPURL 是沙箱回访本服务的地址。沙箱在集群内，用不了浏览器侧的
-	// 网关地址；而集群内地址只有服务端知道，让浏览器去配置只会配错。
+	// SandboxMCPURL is the address the sandbox uses to call back into this service. The sandbox is inside the cluster
+	// and cannot use the browser-side gateway address; only the server knows the in-cluster address.
 	SandboxMCPURL string `json:"sandbox_mcp_url"`
-	// Tools 是要暴露给模型的工具全表。客户端应当遍历它建工具，不要按名字硬编码：
-	// 这样以后加工具是纯服务端改动。Digest/Stub 是 run_code 那一项的展开，保留
-	// 为顶层字段只为兼容先于本字段上线的客户端。
+	// Tools is the full list of tools to be exposed to the model. Clients should iterate through it to build tools, not hard-code by name:
+	// This keeps future tool additions server-side only. Digest/Stub are the expanded run_code artifacts and remain
+	// as top-level fields only for clients that shipped before Tools existed.
 	Tools []PTCTool `json:"tools"`
 }
 
-// PTCTool 一个要暴露给模型的工具。客户端据此建工具、组装执行请求。
+// PTCTool A tool to be exposed to the model. The client builds tools and assembles execution requests accordingly.
 type PTCTool struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"input_schema"`
-	// Language 直接填进执行工厂 /function/execute 的 language 字段。
-	// 沙箱控制面只认 python / javascript / shell，bash 会被 422 拒掉。
+	// Language is directly filled in the language field of the execution factory /function/execute.
+	// The sandbox control surface only recognizes python/javascript/shell, and bash will be rejected with 422.
 	Language string `json:"language"`
-	// Wrap 说明客户端该如何把模型的入参组装成 code：
-	//   handler    —— 取 stub，拼上 "def handler(event):"，模型代码缩进进函数体，
-	//                 凭据与 bkn_context 走 event 下发（沿用既有 run_code 逻辑）。
-	//   cd_workdir —— 在模型给的命令前面拼一行 cd 到本次对话的工作目录。
-	// 新增取值必须同步客户端，故取值集合刻意保持极小。
+	// Wrap explains how the client should assemble the model's input parameters into code:
+	// handler - take the stub and spell "def handler(event):", and indent the model code into the function body.
+	// Credentials and bkn_context are sent via event (the existing run_code logic is used).
+	// cd_workdir - put a line before the command given by the model and cd to the working directory of this conversation.
+	// New values must be synchronized with the client, so the value set is deliberately kept very small.
 	Wrap string `json:"wrap"`
 }
 
 const (
-	// PTC 暴露的两个工具名。并进业务工具面时要按名字挑出 run_code 换描述，
-	// 字面量散在两处容易改漏。
+	// Two tool names exposed by PTC. When merging them into the business tool surface, select run_code by name
+	// and replace its description. Keeping literals here avoids scattered string updates.
 	toolKeyRunCode  = "run_code"
 	toolKeyRunShell = "run_shell"
 
-	// ptcWrapHandler 见 PTCTool.Wrap。
+	// ptcWrapHandler See PTCTool.Wrap.
 	ptcWrapHandler = "handler"
-	// ptcWrapCdWorkdir 见 PTCTool.Wrap。
+	// ptcWrapCdWorkdir See PTCTool.Wrap.
 	ptcWrapCdWorkdir = "cd_workdir"
 )
 
-// 生命周期工具由调用方按轮次接管，沙箱沿用同一个 interaction，不自行开关——
-// 否则一次任务会分裂成两条互不关联的证据链。
+// Lifecycle tools are controlled by the caller per turn. The sandbox reuses the same interaction and does not open or close it itself.
+// Otherwise, a task will be split into two unrelated evidence chains.
 var ptcSkipTools = map[string]bool{
 	"bkn_start_interaction":  true,
 	"bkn_finish_interaction": true,
 }
 
-// ptcToolSchemas 取 run_code / run_shell 的入参与出参声明。
+// ptcToolSchemas takes the input and output parameter declarations of run_code / run_shell.
 //
-// 读的是 PTC 自己那份 locale 资源，而不是在 schemas/ 下另放一份：同一个 schema
-// 存两处，改一处忘另一处时没有任何东西会报错，模型拿到的声明就和执行侧对不上。
-// 返回的入参已经带上 bkn_context：run_code 确实要这个参数，而 offerBKNContext
-// 正是业务工具那条路加它的方式，共用同一个函数才能保证两者逐字一致。
+// This reads PTC's own locale resource instead of placing another copy under schemas/: storing the same schema in
+// two places makes it easy for model-facing declarations to drift from execution-side behavior without any error.
+// The returned input schema already includes bkn_context: run_code really needs that parameter, and offerBKNContext
+// is exactly how business tools add it. Sharing the same function keeps the two paths byte-for-byte consistent.
 func ptcToolSchemas(locale *mcpLocaleBundle, toolKey string) (json.RawMessage, json.RawMessage, bool) {
 	var inputResource string
 	switch toolKey {
@@ -99,10 +99,10 @@ func ptcToolSchemas(locale *mcpLocaleBundle, toolKey string) (json.RawMessage, j
 		json.RawMessage(locale.PTCResource("ptc_output_schema.json")), true
 }
 
-// ptcInlineDescriptions 渲染并进业务工具面时 PTC 工具的描述，按工具 key 返回。
+// ptcInlineDescriptions describes the PTC tool when rendering and entering the business tool surface, returned by tool key.
 //
-// tools 是当前这一版的工具全表（含 PTC 工具自己，由 ptcUsableTools 剔除）。
-// /mcp 的 tools/list 与 /mcp/info 都从这里取，两处才不会各说一套。
+// tools is the complete list of tools in the current version (including PTC tools themselves, excluded by ptcUsableTools).
+// /mcp tools/list and /mcp/info both use this source so they cannot diverge.
 func ptcInlineDescriptions(locale *mcpLocaleBundle, tools []MCPToolInfo) map[string]string {
 	usable := ptcUsableTools(&MCPInfo{Tools: tools})
 	return map[string]string{
@@ -111,15 +111,15 @@ func ptcInlineDescriptions(locale *mcpLocaleBundle, tools []MCPToolInfo) map[str
 	}
 }
 
-// PTC 工具在 digest 里不能列出自己：那份清单是给沙箱内的脚本看的可调函数表，
-// 把 run_code 写进去等于告诉模型可以在代码里再开一层沙箱。
+// The PTC tool cannot list itself in the digest: that list is a list of callable functions for scripts in the sandbox,
+// Writing run_code is equivalent to telling the model that it can open another layer of sandbox in the code.
 var ptcSelfTools = map[string]bool{toolKeyRunCode: true, toolKeyRunShell: true}
 
-// bkn_context 是会话生命周期管道，由 stub 的 _call 自动注入，不该出现在签名里。
+// bkn_context is the session lifecycle pipeline, which is automatically injected by stub's _call and should not appear in the signature.
 var ptcPlumbingParams = map[string]bool{"bkn_context": true}
 
-// schema 默认 response_format=toon，那是为「直接喂给模型」优化的省 token 文本
-// 格式。代码模式下返回值先经脚本处理，需要可下标访问的结构，故覆盖为 json。
+// Schema defaults to response_format=toon, a token-saving text format optimized for "directly feeding the model".
+// In code mode, the return value is first processed by the script and needs a subscriptable structure, so it is overridden to json.
 var ptcDefaultOverrides = map[string]any{"response_format": "json"}
 
 var ptcPyTypes = map[string]string{
@@ -129,10 +129,10 @@ var ptcPyTypes = map[string]string{
 
 const defaultSandboxMCPPath = "/api/agent-retrieval/v1/mcp/"
 
-// sandboxMCPURL 返回沙箱回访本服务的地址。
+// sandboxMCPURL returns the address of the sandbox return visit to this service.
 //
-// 尾斜杠不能省：缺斜杠时网关 307 跳转，而沙箱侧用标准库 urllib，它不对 POST
-// 跟随重定向——症状是一个没有报文的 400，排查代价远大于这行注释。
+// The trailing slash cannot be omitted: the gateway will jump to 307 when the slash is missing, and the sandbox side uses the standard library urllib, which is not correct for POST.
+// Follow the redirect - the symptom is a 400 with no packet, and the troubleshooting cost is much greater than this line of comments.
 func sandboxMCPURL(port int) string {
 	if v := strings.TrimSpace(os.Getenv("PTC_SANDBOX_MCP_URL")); v != "" {
 		if !strings.HasSuffix(v, "/") {
@@ -171,8 +171,8 @@ func ptcParams(raw json.RawMessage) []ptcParam {
 	for _, r := range schema.Required {
 		required[r] = true
 	}
-	// JSON 对象无序，按名字排序保证两次渲染字节一致——Version 是内容哈希，
-	// 顺序抖动会让客户端每次都以为工具面变了。
+	// The JSON objects are unordered and sorted by name to ensure that the bytes are consistent between the two renderings - Version is the content hash.
+	// Sequence thrashing will cause the client to think that the tool surface has changed every time.
 	names := make([]string, 0, len(schema.Properties))
 	for name := range schema.Properties {
 		if !ptcPlumbingParams[name] {
@@ -197,7 +197,7 @@ func ptcParams(raw json.RawMessage) []ptcParam {
 			defVal: def, desc: spec.Description,
 		})
 	}
-	// 必填在前：Python 不允许有默认值的参数排在无默认值的之前。
+	// Required first: Python does not allow parameters with default values to be listed before parameters without default values.
 	sort.SliceStable(params, func(i, j int) bool { return params[i].required && !params[j].required })
 	return params
 }
@@ -235,17 +235,17 @@ func ptcSignature(tool MCPToolInfo) string {
 	return fmt.Sprintf("%s(%s)", tool.Name, strings.Join(parts, ", "))
 }
 
-// ptcReturnKeys 渲染返回值顶层键。键名在各工具间并不统一（列表类有的叫 entries、
-// 有的叫 datas），模型无从推断——不写出来首次调用就会因 KeyError 失败。
-// ptcReturnKeys 渲染返回结构，数组键再往下展开一层元素字段。
+// ptcReturnKeys Render return value top-level keys. Key names are not uniform among tools (some list classes are called entries,
+// Some are called data), and the model cannot be inferred - if it is not written out, the first call will fail with a KeyError.
+// ptcReturnKeys renders the return structure, and the array keys expand one layer of element fields downwards.
 //
-// 只写顶层键是不够的。代码模式下调用方必须**先写出取值路径再执行**，取不到就得
-// 多花一轮把原始结构打出来找字段名——实测中 search_schema 的 object_types 因此被
-// 当成有 name 字段（实际是 concept_name），一整轮浪费在探查上，而探查本身又要把
-// 原始数据 print 回上下文，正好抵消了代码模式省上下文的意义。
+// Just writing the top level key is not enough. In code mode, the caller must first write the value path before executing it. If it cannot be obtained, it must.
+// Spend an extra round to type out the original structure to find the field names - in actual testing, the object_types of search_schema was therefore.
+// As if there is a name field (actually concept_name), a whole round is wasted on probing, and the probing itself requires.
+// The original data is printed back to the context, which just offsets the context-saving meaning of the code pattern.
 //
-// 只展开一层：再深就把签名清单撑成 schema 全文了，而第二层往下可以在脚本里
-// help() 或直接看值。
+// Expand only one layer: the deeper it is, the signature list will be expanded into the full text of the schema, and the second layer down can be in the script.
+// help() or inspect the value directly.
 func ptcReturnKeys(tool MCPToolInfo) string {
 	var schema struct {
 		Properties map[string]json.RawMessage `json:"properties"`
@@ -274,8 +274,8 @@ func ptcReturnKeys(tool MCPToolInfo) string {
 	return "{" + strings.Join(rendered, ", ") + "}"
 }
 
-// ptcItemKeys 取数组元素的字段名。非数组、或元素没声明字段时返回空串，
-// 调用方按普通键渲染。
+// ptcItemKeys takes the field name of the array element. If it is not an array, or the element has no declared field, an empty string is returned.
+// The caller presses normal keys to render.
 func ptcItemKeys(raw json.RawMessage) string {
 	var field struct {
 		Type  string `json:"type"`
@@ -297,8 +297,8 @@ func ptcItemKeys(raw json.RawMessage) string {
 	return strings.Join(names, " ")
 }
 
-// ptcToolNames 把工具名排成一行，供不带签名的那版 digest 使用。
-// 排序保证渲染可重复——Version 是内容哈希，顺序抖动会让客户端每次都以为工具面变了。
+// ptcToolNames Lines up the tool names for use with the unsigned version of the digest.
+// Sorting ensures repeatable rendering - Version is a content hash, and order jittering will make the client think that the tool surface has changed every time.
 func ptcToolNames(tools []MCPToolInfo) string {
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -318,8 +318,8 @@ func ptcUsableTools(info *MCPInfo) []MCPToolInfo {
 		}
 		tools = append(tools, t)
 	}
-	// 分组按组内最小 Order 排，而非组名字典序：Order 编码了「先发现、再查询、
-	// 后执行」的使用顺序，字典序会把它打乱。
+	// Groups are arranged according to the smallest Order within the group, rather than group name dictionary order: Order encodes "discover first, then query,
+	// "Execute later", the dictionary order will disrupt it.
 	groupRank := map[string]int{}
 	for _, t := range tools {
 		g := ptcGroupOf(t)
@@ -358,30 +358,30 @@ func renderPTCDigest(tools []MCPToolInfo) string {
 	return renderPTCDigestForLocale(loadMCPLocaleBundle(defaultMCPLocale), tools, true)
 }
 
-// renderPTCDigestForLocale 渲染 run_code 的工具描述。
+// renderPTCDigestForLocale renders the tool description for run_code.
 //
-// withSignatures 决定要不要带那份函数签名清单，它占整份 digest 的 55%：
+// withSignatures determines whether to bring the function signature list, which accounts for 55% of the entire digest:
 //
-//   - 独立的 PTC 端点上工具面只有 run_code / run_shell，模型没有别处可看，必须带；
-//   - run_code 与业务工具并列在同一个工具面上时不带——那些工具的完整 schema 就在
-//     工具面里，再渲染一遍 Python 签名等于同一批工具描述两次。
+// - The tool surface on the independent PTC endpoint only has run_code / run_shell, and the model has no other place to look at, so it must be brought;
+// - run_code is not included when listed alongside business tools on the same tool surface - the complete schema for those tools is in.
+// In the tool interface, rendering the Python signature again is equivalent to describing the same batch of tools twice.
 //
-// 不带签名时改用另一份前言：它不列函数，只说清「工具面上的工具已在作用域内」以及
-// 两处与 schema 不符的地方（bkn_context 由运行时注入、response_format 固定 json）。
-// 那两条靠「参数与 schema 一致」打发不掉——schema 里 bkn_context 是必填。
+// Use another preface without a signature: it does not list functions, it only states that "the tool on the tool surface is already in scope" and.
+// Two inconsistencies with the schema (bkn_context is injected by runtime, response_format fixes json).
+// Those two items cannot be dismissed by "parameters are consistent with the schema" - bkn_context in the schema is required.
 func renderPTCDigestForLocale(locale *mcpLocaleBundle, tools []MCPToolInfo, withSignatures bool) string {
 	var b strings.Builder
 	if !withSignatures {
 		b.WriteString(locale.PTCResource("ptc_digest_prefix_inline.txt"))
-		// 只列名字，不列签名。参数与返回值让调用方去读工具面上的 schema——那份就在
-		// 眼前，重复渲染是浪费；但「哪些工具能在脚本里调」不该靠推断：条件注册的工具
-		// （execute_skill）存在与否、有没有漏掉某一个，列出来才没有歧义。
-		// 实测 21 个名字约 300 字符，而完整签名清单是 4897。
+		// List only names, not signatures. The parameters and return values allow the caller to read the schema on the tool surface - that's right there.
+		// At present, repeated rendering is a waste; but "which tools can be called in the script" should not be inferred: conditionally registered tools.
+		// (execute_skill) exists or not, and whether any one is missing, there will be no ambiguity if it is listed.
+		// The measured 21 names are about 300 characters, while the full signature list is 4897.
 		if names := ptcToolNames(tools); names != "" {
 			b.WriteString("\n")
 			b.WriteString(locale.PTCResource("ptc_digest_names_lead.txt"))
 			b.WriteString(names)
-			// 多一个换行：紧邻的 suffix 以 ## 标题开头，粘在同一段里 markdown 不成立。
+			// One more line break: the adjacent suffix starts with the ## title, and markdown does not work if it is stuck in the same paragraph.
 			b.WriteString("\n\n")
 		}
 		b.WriteString(locale.PTCResource("ptc_digest_suffix.txt"))
@@ -440,8 +440,8 @@ func renderPTCStub(tools []MCPToolInfo) string {
 	return b.String()
 }
 
-// BuildPTCToolkit 渲染 PTC 工具包。endpoint 与 BuildMCPInfo 一致（仅用于自描述），
-// port 是本服务监听端口，用于推导沙箱回访地址。
+// BuildPTCToolkit renders the PTC toolkit. endpoint is consistent with BuildMCPInfo (self-describing only),
+// port is the listening port of this service and is used to derive the sandbox return address.
 func BuildPTCToolkit(endpoint string, port int) (*PTCToolkit, error) {
 	return BuildPTCToolkitForLocale(endpoint, port, mcpLocaleFromEnv())
 }
@@ -455,17 +455,17 @@ func BuildPTCToolkitForLocale(endpoint string, port int, locale string) (*PTCToo
 	return buildPTCToolkitFromLocale(ptcUsableTools(info), port, loadMCPLocaleBundle(locale))
 }
 
-// InlinePTCToolkit 渲染可以并进业务工具面的 PTC 工具包（run_code / run_shell）。
+// InlinePTCToolkit renders the PTC toolkit (run_code / run_shell) that can be incorporated into the business tool surface.
 //
-// 与 BuildPTCToolkit 的差别只在 run_code 的描述：那份签名清单被省掉了，因为并列时
-// 那些工具的完整 schema 就在同一个工具面上，再渲染一遍 Python 签名是重复。
-// 实测两种渲染 8852 vs 约 3800 字符。
+// The only difference from BuildPTCToolkit is the description of run_code: the signature list is omitted, because when paralleling.
+// The complete schema of those tools is on the same tool surface, rendering the Python signature again is a duplication.
+// Measured two renderings 8852 vs about 3800 characters.
 //
-// 其余部分（stub、沙箱回访地址、组装方式）完全一致——两条路最终拼出的脚本相同。
+// The rest (stub, sandbox return address, assembly method) are exactly the same - the two paths eventually spell out the same script.
 //
-// 返回整个工具包而不只是工具表：执行侧还要 Stub 与 SandboxMCPURL 才能拼脚本。
-// 走的是同一条构建路径而非事后改描述，因此 Version 覆盖的是这一版的实际内容，
-// 不会出现两份不同的 digest 顶着同一个哈希。
+// Return the entire toolkit instead of just the tool table: Stub and SandboxMCPURL are required on the execution side to build the script.
+// The same build path is followed instead of changing the description afterwards, so Version covers the actual content of this version.
+// There will never be two different digests with the same hash.
 func InlinePTCToolkit(port int, locale string) (*PTCToolkit, error) {
 	info, err := BuildMCPInfoForLocale("", locale)
 	if err != nil {
@@ -474,8 +474,8 @@ func InlinePTCToolkit(port int, locale string) (*PTCToolkit, error) {
 	return buildPTCToolkitVariant(ptcUsableTools(info), port, loadMCPLocaleBundle(locale), false)
 }
 
-// buildPTCToolkitFrom 从已筛好的工具目录渲染工具包。与 BuildPTCToolkit 分开，
-// 是为了让测试不必起一个真实端点就能覆盖工具表与版本号。
+// buildPTCToolkitFrom Renders a toolkit from a filtered tools directory. Separate from BuildPTCToolkit,
+// This is so that the test can cover the tool table and version number without setting up a real endpoint.
 func buildPTCToolkitFrom(tools []MCPToolInfo, port int) (*PTCToolkit, error) {
 	return buildPTCToolkitFromLocale(tools, port, loadMCPLocaleBundle(defaultMCPLocale))
 }
@@ -484,9 +484,9 @@ func buildPTCToolkitFromLocale(tools []MCPToolInfo, port int, locale *mcpLocaleB
 	return buildPTCToolkitVariant(tools, port, locale, true)
 }
 
-// buildPTCToolkitVariant 是两种 digest 渲染共用的构建路径。withSignatures 决定
-// run_code 的描述里带不带函数签名清单：独立端点上没有别的工具可参照，必须带；
-// 并进业务工具面时那些 schema 就在旁边，只留函数名。
+// buildPTCToolkitVariant is the build path shared by both digest renderings. withSignatures decides.
+// Whether the function signature list is included in the description of run_code: there are no other tools to refer to on the independent endpoint, it must be included;
+// When entering the business tool interface, the schema is next to it, leaving only the function name.
 func buildPTCToolkitVariant(
 	tools []MCPToolInfo, port int, locale *mcpLocaleBundle, withSignatures bool,
 ) (*PTCToolkit, error) {
@@ -508,8 +508,8 @@ func buildPTCToolkitVariant(
 			Wrap:        ptcWrapCdWorkdir,
 		},
 	}
-	// Version 覆盖工具全表：客户端按它缓存，只要模型看到的工具面变了就得失效，
-	// 光哈希 digest+stub 会让新增工具、改描述这类改动悄悄用着旧缓存。
+	// Version covers the entire tool table: the client caches it, and it will become invalid as long as the tool surface seen by the model changes.
+	// Light hash digest+stub will allow changes such as new tools and description changes to silently use the old cache.
 	fingerprint, err := json.Marshal(exposed)
 	if err != nil {
 		return nil, err

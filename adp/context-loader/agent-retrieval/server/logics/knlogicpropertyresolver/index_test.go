@@ -53,7 +53,7 @@ func TestLogicPropertyErrorsLocalizeOwnedMessages(t *testing.T) {
 	}
 }
 
-// TestValidateRequest_Success 测试 validateRequest 成功场景
+// TestValidateRequest_Success test validateRequest success scenario.
 func TestValidateRequest_Success(t *testing.T) {
 	convey.Convey("TestValidateRequest_Success", t, func() {
 		service := &knLogicPropertyResolverService{}
@@ -73,7 +73,7 @@ func TestValidateRequest_Success(t *testing.T) {
 	})
 }
 
-// TestValidateRequest_MissingKnID 测试 validateRequest 缺少 KnID
+// TestValidateRequest_MissingKnID test validateRequest missing KnID.
 func TestValidateRequest_MissingKnID(t *testing.T) {
 	convey.Convey("TestValidateRequest_MissingKnID", t, func() {
 		service := &knLogicPropertyResolverService{}
@@ -94,7 +94,7 @@ func TestValidateRequest_MissingKnID(t *testing.T) {
 	})
 }
 
-// TestValidateRequest_MissingOtID 测试 validateRequest 缺少 OtID
+// TestValidateRequest_MissingOtID test validateRequest missing OtID.
 func TestValidateRequest_MissingOtID(t *testing.T) {
 	convey.Convey("TestValidateRequest_MissingOtID", t, func() {
 		service := &knLogicPropertyResolverService{}
@@ -115,7 +115,7 @@ func TestValidateRequest_MissingOtID(t *testing.T) {
 	})
 }
 
-// TestValidateRequest_MissingQuery 测试 validateRequest 缺少 Query
+// TestValidateRequest_MissingQuery test validateRequest missing Query.
 func TestValidateRequest_MissingQuery(t *testing.T) {
 	convey.Convey("TestValidateRequest_MissingQuery", t, func() {
 		service := &knLogicPropertyResolverService{}
@@ -136,7 +136,7 @@ func TestValidateRequest_MissingQuery(t *testing.T) {
 	})
 }
 
-// TestValidateRequest_EmptyInstanceIdentities 测试 validateRequest 空 InstanceIdentities
+// TestValidateRequest_EmptyInstanceIdentities Test validateRequest empty InstanceIdentities.
 func TestValidateRequest_EmptyInstanceIdentities(t *testing.T) {
 	convey.Convey("TestValidateRequest_EmptyInstanceIdentities", t, func() {
 		service := &knLogicPropertyResolverService{}
@@ -155,7 +155,7 @@ func TestValidateRequest_EmptyInstanceIdentities(t *testing.T) {
 	})
 }
 
-// TestValidateRequest_EmptyProperties 测试 validateRequest 空 Properties
+// TestValidateRequest_EmptyProperties Test validateRequest empty Properties.
 func TestValidateRequest_EmptyProperties(t *testing.T) {
 	convey.Convey("TestValidateRequest_EmptyProperties", t, func() {
 		service := &knLogicPropertyResolverService{}
@@ -176,7 +176,7 @@ func TestValidateRequest_EmptyProperties(t *testing.T) {
 	})
 }
 
-// TestValidateMetricParams_Success_Instant 测试 validateMetricParams 即时查询成功
+// TestValidateMetricParams_Success_Instant test validateMetricParams instant query is successful.
 func TestValidateMetricParams_Success_Instant(t *testing.T) {
 	convey.Convey("TestValidateMetricParams_Success_Instant", t, func() {
 		ctrl := gomock.NewController(t)
@@ -208,7 +208,7 @@ func TestValidateMetricParams_Success_Instant(t *testing.T) {
 	})
 }
 
-// TestValidateMetricParams_Success_Trend 测试 validateMetricParams 趋势查询成功
+// TestValidateMetricParams_Success_Trend Test validateMetricParams trend query successful.
 func TestValidateMetricParams_Success_Trend(t *testing.T) {
 	convey.Convey("TestValidateMetricParams_Success_Trend", t, func() {
 		ctrl := gomock.NewController(t)
@@ -241,7 +241,7 @@ func TestValidateMetricParams_Success_Trend(t *testing.T) {
 	})
 }
 
-// TestValidateMetricParams_MissingStart 测试 validateMetricParams 缺少 start
+// TestValidateMetricParams_MissingStart test validateMetricParams missing start.
 func TestValidateMetricParams_MissingStart(t *testing.T) {
 	convey.Convey("TestValidateMetricParams_MissingStart", t, func() {
 		ctrl := gomock.NewController(t)
@@ -273,7 +273,7 @@ func TestValidateMetricParams_MissingStart(t *testing.T) {
 	})
 }
 
-// TestValidateMetricParams_MissingEnd 测试 validateMetricParams 缺少 end
+// TestValidateMetricParams_MissingEnd test validateMetricParams missing end.
 func TestValidateMetricParams_MissingEnd(t *testing.T) {
 	convey.Convey("TestValidateMetricParams_MissingEnd", t, func() {
 		ctrl := gomock.NewController(t)
@@ -305,7 +305,7 @@ func TestValidateMetricParams_MissingEnd(t *testing.T) {
 	})
 }
 
-// TestValidateMetricParams_InstantWithStep 测试 instant=true 但有 step 的错误
+// TestValidateMetricParams_InstantWithStep tests instant=true but has step error.
 func TestValidateMetricParams_InstantWithStep(t *testing.T) {
 	convey.Convey("TestValidateMetricParams_InstantWithStep", t, func() {
 		ctrl := gomock.NewController(t)
@@ -329,7 +329,7 @@ func TestValidateMetricParams_InstantWithStep(t *testing.T) {
 			"instant": true,
 			"start":   int64(1704067200000),
 			"end":     int64(1706745600000),
-			"step":    "day", // instant=true 不应该有 step
+			"step":    "day", // instant=true should not have step.
 		}
 
 		ctx := context.Background()
@@ -339,7 +339,7 @@ func TestValidateMetricParams_InstantWithStep(t *testing.T) {
 	})
 }
 
-// TestValidateMetricParams_TrendWithoutStep 测试 instant=false 但没有 step 的错误
+// TestValidateMetricParams_TrendWithoutStep tests instant=false but no step error.
 func TestValidateMetricParams_TrendWithoutStep(t *testing.T) {
 	convey.Convey("TestValidateMetricParams_TrendWithoutStep", t, func() {
 		ctrl := gomock.NewController(t)
@@ -363,7 +363,7 @@ func TestValidateMetricParams_TrendWithoutStep(t *testing.T) {
 			"instant": false,
 			"start":   int64(1704067200000),
 			"end":     int64(1706745600000),
-			// 缺少 step
+			// Missing step.
 		}
 
 		ctx := context.Background()
@@ -373,7 +373,7 @@ func TestValidateMetricParams_TrendWithoutStep(t *testing.T) {
 	})
 }
 
-// TestValidateMetricParams_InvalidStep 测试无效的 step 值
+// TestValidateMetricParams_InvalidStep tests for invalid step values.
 func TestValidateMetricParams_InvalidStep(t *testing.T) {
 	convey.Convey("TestValidateMetricParams_InvalidStep", t, func() {
 		ctrl := gomock.NewController(t)
@@ -407,48 +407,48 @@ func TestValidateMetricParams_InvalidStep(t *testing.T) {
 	})
 }
 
-// TestValidateTimestamp_Int64 测试 int64 类型的时间戳
+// TestValidateTimestamp_Int64 tests the timestamp of type int64.
 func TestValidateTimestamp_Int64(t *testing.T) {
 	convey.Convey("TestValidateTimestamp_Int64", t, func() {
 		service := &knLogicPropertyResolverService{}
 		ctx := context.Background()
 
-		// 有效时间戳
+		// Valid timestamp.
 		err := service.validateTimestamp(ctx, int64(1704067200000), "start", "test_prop")
 		convey.So(err, convey.ShouldBeNil)
 
-		// 无效时间戳（太小）
+		// Invalid timestamp (too small)
 		err = service.validateTimestamp(ctx, int64(100000000000), "start", "test_prop")
 		convey.So(err, convey.ShouldNotBeNil)
 	})
 }
 
-// TestValidateTimestamp_Float64 测试 float64 类型的时间戳
+// TestValidateTimestamp_Float64 tests float64 type timestamp.
 func TestValidateTimestamp_Float64(t *testing.T) {
 	convey.Convey("TestValidateTimestamp_Float64", t, func() {
 		service := &knLogicPropertyResolverService{}
 		ctx := context.Background()
 
-		// 有效时间戳
+		// Valid timestamp.
 		err := service.validateTimestamp(ctx, float64(1704067200000), "start", "test_prop")
 		convey.So(err, convey.ShouldBeNil)
 	})
 }
 
-// TestValidateTimestamp_InvalidType 测试无效类型的时间戳
+// TestValidateTimestamp_InvalidType Test timestamp of invalid type.
 func TestValidateTimestamp_InvalidType(t *testing.T) {
 	convey.Convey("TestValidateTimestamp_InvalidType", t, func() {
 		service := &knLogicPropertyResolverService{}
 		ctx := context.Background()
 
-		// 无效类型
+		// Invalid type.
 		err := service.validateTimestamp(ctx, "not_a_number", "start", "test_prop")
 		convey.So(err, convey.ShouldNotBeNil)
 		convey.So(err.Error(), convey.ShouldContainSubstring, "must be a number")
 	})
 }
 
-// TestExtractLogicProperties_Success 测试 extractLogicProperties 成功
+// TestExtractLogicProperties_Success test extractLogicProperties success.
 func TestExtractLogicProperties_Success(t *testing.T) {
 	convey.Convey("TestExtractLogicProperties_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -480,7 +480,7 @@ func TestExtractLogicProperties_Success(t *testing.T) {
 	})
 }
 
-// TestExtractLogicProperties_NoLogicProperties 测试对象类没有逻辑属性
+// TestExtractLogicProperties_NoLogicProperties The test object type has no logical properties.
 func TestExtractLogicProperties_NoLogicProperties(t *testing.T) {
 	convey.Convey("TestExtractLogicProperties_NoLogicProperties", t, func() {
 		ctrl := gomock.NewController(t)
@@ -506,7 +506,7 @@ func TestExtractLogicProperties_NoLogicProperties(t *testing.T) {
 	})
 }
 
-// TestExtractLogicProperties_PropertyNotFound 测试请求的属性不存在
+// TestExtractLogicProperties_PropertyNotFound The property requested by the test does not exist.
 func TestExtractLogicProperties_PropertyNotFound(t *testing.T) {
 	convey.Convey("TestExtractLogicProperties_PropertyNotFound", t, func() {
 		ctrl := gomock.NewController(t)

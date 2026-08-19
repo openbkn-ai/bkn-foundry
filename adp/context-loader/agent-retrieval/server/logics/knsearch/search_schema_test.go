@@ -264,8 +264,8 @@ func TestSearchSchema_LimitsObjectTypesWhenRelationTypesExcluded(t *testing.T) {
 	})
 }
 
-// 对象类的相关性顺序（由检索层决定）不再被关系端点重排。
-// 修复前该用例断言端点优先，导致与查询最匹配的对象类被挤到后面甚至挤出响应（issue #778）。
+// The correlation order of object types (determined by the retrieval layer) is no longer rearranged by relationship endpoints.
+// Before the fix, the use case asserted endpoint priority, causing the object type that best matched the query to be pushed to the back or even squeezed out of the response (issue #778).
 func TestSearchSchema_ObjectRelevanceOrderIsPreserved(t *testing.T) {
 	maxConcepts := 10
 	service := &knSearchService{
@@ -297,7 +297,7 @@ func TestSearchSchema_ObjectRelevanceOrderIsPreserved(t *testing.T) {
 		if got := len(resp.ObjectTypes); got != 3 {
 			t.Fatalf("ObjectTypes len=%d, want all 3 objects within budget", got)
 		}
-		// 预算充足时全部返回，顺序保持检索层给出的相关性顺序
+		// When the budget is sufficient, all are returned, and the order maintains the relevance order given by the retrieval layer.
 		wantIDs := []string{"ot_resource_project", "ot_project", "ot_requirement"}
 		for i, want := range wantIDs {
 			if got := resp.ObjectTypes[i].(map[string]any)["concept_id"]; got != want {
@@ -338,8 +338,8 @@ func TestSearchSchema_RelationEndpointsMayExceedMaxConceptsForCompleteness(t *te
 		if got := len(resp.RelationTypes); got != 1 {
 			t.Fatalf("RelationTypes len=%d, want 1", got)
 		}
-		// 预算内先给相关性最高的对象类，再补齐关系端点以保证 schema 自洽——
-		// 端点补齐允许超出 max_concepts，这是既有契约。
+		// Within the budget, give the most relevant object type first, and then complete the relationship endpoints to ensure that the schema is self-consistent——.
+		// Endpoint completion is allowed beyond max_concepts, which is an established contract.
 		if got := len(resp.ObjectTypes); got != 3 {
 			t.Fatalf("ObjectTypes len=%d, want top-relevance object plus both relation endpoints", got)
 		}

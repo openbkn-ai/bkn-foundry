@@ -64,8 +64,8 @@ func NormalizeSearchSchemaReq(req *interfaces.SearchSchemaReq) (*interfaces.KnSe
 		return nil, SearchSchemaScope{}, errors.New("failed to apply defaults: " + err.Error())
 	}
 
-	// SearchScope 为 nil 时（用户未传），默认四类全开；
-	// 非 nil 时 defaults.Set 已填充子字段。
+	// When SearchScope is nil (not passed by the user), all four categories are enabled by default;
+	// When non-nil defaults.Set has subfields populated.
 	scope := SearchSchemaScope{
 		IncludeObjectTypes:   true,
 		IncludeRelationTypes: true,
@@ -339,14 +339,14 @@ func limitAnySlice(items []any, limit int) []any {
 	return items[:limit]
 }
 
-// limitObjectTypesKeepingRelationEndpoints 按相关性截断对象类，同时补齐返回关系的端点。
+// limitObjectTypesKeepingRelationEndpoints truncates object types by relevance while padding the endpoints of the returned relationships.
 //
-// 两条约束的优先级：
-//  1. 相关性优先——检索层已按对象类自身与 query 的相关性排好序，先取前 limit 个。
-//     修复前这里会把关系端点整体提到最前，把相关性排序又打乱一次，导致与查询最匹配
-//     的对象类被挤出响应（issue #778）。
-//  2. 自洽兜底——返回的关系若指向未返回的对象，调用方拿到的是断头引用，因此缺失的
-//     端点一律补上，允许超出 limit。这是既有契约，本次修复保留。
+// The priority of the two constraints:
+// 1. Relevance priority - the retrieval layer has been sorted according to the correlation between the object type itself and the query, and the first limit objects are taken first.
+// Before repair, the relationship endpoints will be brought to the front as a whole, and the correlation sorting will be disrupted again, resulting in the best match for the query.
+// Object classes are squeezed out of responses (issue #778).
+// 2. Self-consistent - if the returned relationship points to an unreturned object, the caller will get a decapitated reference, so the missing.
+// The endpoints are always filled in and exceeding the limit is allowed. This is an existing contract and will be retained during this restoration.
 func limitObjectTypesKeepingRelationEndpoints(objectTypes, relationTypes []any, limit int) []any {
 	if len(objectTypes) == 0 {
 		return objectTypes
@@ -364,7 +364,7 @@ func limitObjectTypesKeepingRelationEndpoints(objectTypes, relationTypes []any, 
 		return conceptID
 	}
 
-	// 必须拷贝：limitAnySlice 返回的是 objectTypes 的子切片，直接 append 会写坏原切片。
+	// Must be copied: limitAnySlice returns a sub-slice of objectTypes. Direct append will destroy the original slice.
 	head := limitAnySlice(objectTypes, limit)
 	out := make([]any, len(head), len(objectTypes))
 	copy(out, head)

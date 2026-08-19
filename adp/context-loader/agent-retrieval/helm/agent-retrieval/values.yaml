@@ -5,7 +5,7 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-retrieval
 
-# 设置为dev则为开发模式.
+# Set to dev for development mode.
 runMode: release
 
 enableSecurityContext: true
@@ -21,7 +21,7 @@ image:
     pullPolicy: IfNotPresent
 
 service:
-  podID: "POD_ID" # 使用PODID作为machineID, 这里填写podID环境变量名
+  podID: "POD_ID" # Use PODID as machineID; set the podID environment variable name here.
   name: "agent-retrieval"
   machineID: ""
   ingressclassname: "class-443"
@@ -58,14 +58,14 @@ service:
   concept_search_config:
     concept_recall_size: 100
     knn_k: 300
-  rerank_llm: # 模型默认走系统默认大模型；per-request 经 rerank_llm_model 覆盖
+  rerank_llm: # The model uses the system default LLM by default; override per request through rerank_llm_model.
     temperature: 0
     top_k: 2
     top_p: 0.5
     frequency_penalty: 0.5
     presence_penalty: 0.5
     max_tokens: 5000
-# 认证开关
+# Authentication switches.
 auth:
   enabled: true
 
@@ -144,10 +144,10 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 
-# 技能执行能力的总闸，默认关。
-# 关闭时 execute_skill 既不装配为 MCP 工具（tools/list 与 /mcp/info 都没有），
-# 对应的 REST 路由也不注册——「这个部署没有技能执行能力」在路由表上成立。
-# 它把模型生成的入口命令送进沙箱执行，开启前请确认沙箱隔离与技能授权已按需配置。
+# Master switch for skill execution capability; disabled by default.
+# When disabled, execute_skill is not assembled as an MCP tool (absent from tools/list and /mcp/info),
+# and the corresponding REST route is not registered, so the route table reflects that this deployment has no skill execution capability.
+# It sends model-generated entry commands into the sandbox. Before enabling it, verify sandbox isolation and skill authorization are configured as needed.
 skill:
   executeEnabled: false
 

@@ -2,9 +2,9 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package knresources 提供数据层「资源直查」能力（脱离本体）：list_resources / describe_resource。
-// 与 search_schema（本体/语义入口）互补，二者都喂给 run_sql。
-// 授权由下游 vega 在其 /in resource 端点按账户 view_detail 强制（空账户 fail-closed）。
+// Package knresources provides the data layer "resource direct query" capability (out of the ontology): list_resources / describe_resource.
+// Complementary to search_schema (ontology/semantic entry), both are fed to run_sql.
+// Authorization is forced by the downstream vega by checking account view_detail in its /in resource endpoint (empty account fail-closed).
 package knresources
 
 import (
@@ -19,75 +19,75 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// ErrResourceIDRequired describe_resource 的 resource_id 入参为空。
+// The resource_id input parameter of ErrResourceIDRequired describe_resource is empty.
 var ErrResourceIDRequired = errors.New("resource_id is required")
 
-// ErrKnBackendUnavailable 按 kn_id 查询需要本体侧依赖，但它没有注入。
+// ErrKnBackendUnavailable Querying by kn_id requires an ontology side dependency, but it is not injected.
 var ErrKnBackendUnavailable = errors.New("knowledge network backend is not configured")
 
 const (
-	// dataSourceTypeResource 对象类绑定里唯一能直接映射到 vega resource 的形态。
+	// dataSourceTypeResource is the only form in object type binding that can be directly mapped to vega resource.
 	dataSourceTypeResource = "resource"
-	// knResourceFetchConcurrency 按 id 取资源的并发上限。绑定是几十张表的量级，
-	// 串行会到秒级；再高的并发对 vega 只是无谓压力。
+	// knResourceFetchConcurrency Gets the upper limit of concurrency of resources by id. Binding is on the order of dozens of tables.
+	// The serialization will reach the second level; any higher concurrency will only put unnecessary pressure on vega.
 	knResourceFetchConcurrency = 8
 )
 
-// ListResourcesReq list_resources 入参（MCP 工具与内部 REST 端点共用）。
+// ListResourcesReq list_resources input (shared by MCP tools and internal REST endpoints).
 type ListResourcesReq struct {
-	KnID      string `json:"kn_id"`      // 可选，限定某知识网络已绑定的资源；在场时忽略 catalog_id/offset/limit
-	CatalogID string `json:"catalog_id"` // 可选，限定某 catalog
-	Type      string `json:"type"`       // 可选，资源类别（table / file / ...），映射 vega category
-	Offset    int    `json:"offset"`     // 可选，分页偏移
-	Limit     int    `json:"limit"`      // 可选，分页大小
+	KnID      string `json:"kn_id"`      // Optional, limit resources bound to a certain knowledge network; catalog_id/offset/limit is ignored when present.
+	CatalogID string `json:"catalog_id"` // Optional, limited to a certain catalog.
+	Type      string `json:"type"`       // Optional, resource category (table/file/...), mapping vega category.
+	Offset    int    `json:"offset"`     // Optional, page offset.
+	Limit     int    `json:"limit"`      // Optional, paging size.
 }
 
-// UnresolvedBinding 一条没能解析成资源的对象类绑定。三种成因分开上报，
-// 因为调用方要做的事完全不同：去建模 / 去重绑 / 去要权限。
+// UnresolvedBinding An object type binding that could not be resolved into a resource. The three causes are reported separately.
+// Because what the caller has to do is completely different: to model/to rebind/to ask for permissions.
 type UnresolvedBinding struct {
 	ObjectTypeID string `json:"object_type_id"`
 	ResourceID   string `json:"resource_id,omitempty"`
-	SourceType   string `json:"source_type,omitempty"` // stale_binding：绑定声明的 data_source.type
-	Reason       string `json:"reason,omitempty"`      // missing：下游返回的原因
+	SourceType   string `json:"source_type,omitempty"` // stale_binding: data_source.type of binding declaration.
+	Reason       string `json:"reason,omitempty"`      // missing: Reason for downstream return.
 }
 
-// ResourceLite list_resources 的精简资源条目。
+// Lite resource entries for ResourceLite list_resources.
 type ResourceLite struct {
 	ResourceID string `json:"resource_id"`
 	Name       string `json:"name"`
-	Type       string `json:"type"` // 资源类别（取自 vega category）
+	Type       string `json:"type"` // Resource category (taken from vega category)
 	Status     string `json:"status"`
 	CatalogID  string `json:"catalog_id"`
 }
 
-// ListResourcesResp list_resources 响应。
-// Unbound / StaleBinding / Missing 仅在按 kn_id 查询时可能非空。
+// ListResourcesResp list_resources response.
+// Unbound / StaleBinding / Missing may not be empty only when querying by kn_id.
 type ListResourcesResp struct {
 	Entries    []ResourceLite `json:"entries"`
 	TotalCount int64          `json:"total_count"`
-	// Unbound 对象类压根没绑数据源（data_source 缺失或 id 为空）。
+	// The Unbound object type is not bound to the data source at all (data_source is missing or the id is empty).
 	Unbound []UnresolvedBinding `json:"unbound,omitempty"`
-	// StaleBinding 绑的是已废弃的数据源形态（如 data_view），不是 vega resource。
+	// StaleBinding is bound to the obsolete data source form (such as data_view), not vega resource.
 	StaleBinding []UnresolvedBinding `json:"stale_binding,omitempty"`
-	// Missing 绑定的 resource_id 取不回来：资源已删，或调用账户无权。
+	// The resource_id bound to Missing cannot be retrieved: the resource has been deleted, or the calling account does not have permission.
 	Missing []UnresolvedBinding `json:"missing,omitempty"`
 }
 
-// ColumnLite describe_resource 的物理列（写 SQL 用）。
+// ColumnLite describe_resource's physical column (used for writing SQL).
 type ColumnLite struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
 	Description string `json:"description,omitempty"`
 }
 
-// DescribeResourceResp describe_resource 响应。
+// DescribeResourceResp describe_resource response.
 type DescribeResourceResp struct {
 	ResourceID    string       `json:"resource_id"`
 	ConnectorType string       `json:"connector_type"`
 	Columns       []ColumnLite `json:"columns"`
 }
 
-// KnResourcesService 数据层资源直查（list / describe），薄包装 vega resource 端点。
+// KnResourcesService direct query of data layer resources (list/describe), thin wrapper vega resource endpoint.
 type KnResourcesService interface {
 	ListResources(ctx context.Context, req *ListResourcesReq) (*ListResourcesResp, error)
 	DescribeResource(ctx context.Context, resourceID string) (*DescribeResourceResp, error)
@@ -103,7 +103,7 @@ var (
 	instance KnResourcesService
 )
 
-// NewKnResourcesService 创建 KnResourcesService 单例。
+// NewKnResourcesService create KnResourcesService singleton.
 func NewKnResourcesService() KnResourcesService {
 	once.Do(func() {
 		instance = &knResourcesService{
@@ -114,13 +114,13 @@ func NewKnResourcesService() KnResourcesService {
 	return instance
 }
 
-// NewKnResourcesServiceWith 注入依赖创建（测试用）。
+// NewKnResourcesServiceWith injection dependency creation (for testing).
 func NewKnResourcesServiceWith(vega interfaces.DrivenVega, bkn interfaces.BknBackendAccess) KnResourcesService {
 	return &knResourcesService{vega: vega, bkn: bkn}
 }
 
-// ListResources 列出可查询的数据资源（输出精简字段；type 即 vega category）。
-// 带 kn_id 时走本体绑定按 id 直取，不带时是账户级资源池分页。
+// ListResources lists queryable data resources (output condensed fields; type is vega category).
+// When kn_id is provided, the ontology binding is performed and fetched directly by id. When kn_id is not provided, it is account-level resource pool paging.
 func (s *knResourcesService) ListResources(ctx context.Context, req *ListResourcesReq) (*ListResourcesResp, error) {
 	if req == nil {
 		req = &ListResourcesReq{}
@@ -154,13 +154,13 @@ func (s *knResourcesService) ListResources(ctx context.Context, req *ListResourc
 	return out, nil
 }
 
-// listByKnowledgeNetwork 列出某知识网络已绑定的数据资源。
+// listByKnowledgeNetwork lists the data resources bound to a knowledge network.
 //
-// 走「本体拿绑定 -> 按 id 逐个取资源」，刻意不碰 vega 的列表端点：那是账户级
-// 资源池的分页，绑定的表在大池子里按 update_time 排到几千名开外，取任何一页再
-// 求交集都会漏（#781）。按 id 直取与池子大小无关。
+// Go to "Get the binding on the main body -> Get the resources one by one by ID", deliberately not touching the list endpoint of vega: that is the account level.
+// For resource pool paging, the bound table is ranked thousands of places in the large pool according to update_time. Take any page and then.
+// The intersection will be missed (#781). Direct access by id has nothing to do with the size of the pool.
 //
-// 绑定天然是几十张表的量级，因此一次全返、不分页；分页只会把同一个坑重挖一遍。
+// Binding is naturally on the order of dozens of tables, so it is returned all at once without paging; paging will only dig the same hole over again.
 func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, typeFilter string) (*ListResourcesResp, error) {
 	if s.bkn == nil {
 		return nil, ErrKnBackendUnavailable
@@ -175,8 +175,8 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 		return out, nil
 	}
 
-	// 绑定分流：能取的排成 targets（按对象类顺序去重，输出稳定），取不了的
-	// 按成因分到三个字段里。
+	// Binding diversion: Those that can be retrieved are arranged into targets (duplication is removed in order of object type, the output is stable), and those that cannot be retrieved are arranged.
+	// It is divided into three fields according to the cause.
 	type target struct {
 		objectTypeID string
 		resourceID   string
@@ -193,8 +193,8 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 			continue
 		}
 		resourceID := strings.TrimSpace(ds.ID)
-		// 空 type 按 resource 处理（老数据没写全）；其余非 resource 的形态（如已
-		// 废弃的 data_view）不能拿去调 vega 的 resource 端点，那条路必然 500。
+		// Empty types are treated as resource (the old data is not fully written); other non-resource forms (such as.
+		// The obsolete data_view) cannot be used to adjust the resource endpoint of vega, and that path must be 500.
 		if sourceType := strings.TrimSpace(ds.Type); sourceType != "" &&
 			!strings.EqualFold(sourceType, dataSourceTypeResource) {
 			out.StaleBinding = append(out.StaleBinding, UnresolvedBinding{
@@ -205,14 +205,14 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 			continue
 		}
 		if _, dup := seen[resourceID]; dup {
-			continue // 多个对象类共用一张表是常态，资源只返一次
+			continue // It is normal for multiple object types to share one table, and resources are only returned once.
 		}
 		seen[resourceID] = struct{}{}
 		targets = append(targets, target{objectTypeID: ot.ID, resourceID: resourceID})
 	}
 
-	// 限并发取回。单条失败只落进 missing，不能让整次调用失败——一个悬空绑定
-	// 不该把其余几十张表一起拖垮。
+	// Concurrent retrieval is limited. A single failure will only fall into missing, and the entire call cannot fail - a dangling binding.
+	// It shouldn't drag down the other dozens of tables.
 	type fetched struct {
 		resource *interfaces.VegaResource
 		err      error
@@ -261,13 +261,13 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 			CatalogID:  r.resource.CatalogID,
 		})
 	}
-	// 有绑定、一条都没取回来、且失败不是「这个资源没了/没权限」这种单资源成因，
-	// 那基本只剩下游整体不可用（vega 挂了、ctx 超时）。这时候返回「成功 + 空列表」，
-	// 调用方就得把「后端挂了」当成「这张网没有表」——正是本 issue 要消灭的那种
-	// 哑故障。透传第一个错误，让下游的状态码和原因浮上去。
+	// There is binding, none is retrieved, and the failure is not caused by a single resource such as "this resource is gone/no permissions".
+	// That basically leaves the entire game unavailable (vega hangs, ctx times out). At this time, "success + empty list" is returned.
+	// The caller must regard "the backend is down" as "this network has no tables" - exactly what this issue wants to eliminate.
+	// Dumb failure. Transparently transmit the first error so that the downstream status code and reason can surface.
 	//
-	// 反过来，404/403 仍然留在 missing 里：一张网只绑了一张表、这张表刚好被删，
-	// 那是确凿的建模事实，不该伪装成服务故障。
+	// On the contrary, 404/403 still remains in missing: only one table is bound to a network, and this table happened to be deleted.
+	// That's a solid modeling fact and shouldn't be disguised as a service failure.
 	if len(targets) > 0 && len(out.Missing) == len(targets) && isDownstreamOutage(firstFetchErr) {
 		return nil, firstFetchErr
 	}
@@ -275,9 +275,9 @@ func (s *knResourcesService) listByKnowledgeNetwork(ctx context.Context, knID, t
 	return out, nil
 }
 
-// isDownstreamOutage 判断取资源的失败是否属于「下游整体不可用」，而不是这一条
-// 资源自己的问题。404/403 是单资源事实（已删 / 无权），其余（5xx、超时、连不上、
-// 非 HTTPError 的裸错误）都按不可用处理——宁可报错，也不要把故障伪装成空列表。
+// isDownstreamOutage determines whether the failure to obtain resources belongs to "the entire downstream is unavailable", not this one.
+// resources themselves. 404/403 is a single resource fact (deleted/unauthorized), and the rest (5xx, timeout, unable to connect,
+// Naked errors other than HTTPError) are treated as unavailable - it is better to report an error than to disguise the failure as an empty list.
 func isDownstreamOutage(err error) bool {
 	if err == nil {
 		return false
@@ -292,7 +292,7 @@ func isDownstreamOutage(err error) bool {
 	return true
 }
 
-// unresolvedReason 把下游错误压成一行放进 missing.reason；无错时说明资源为空。
+// unresolvedReason Pack downstream errors into one line and put them into missing.reason; if there are no errors, it means the resource is empty.
 func unresolvedReason(err error) string {
 	if err == nil {
 		return "resource not found"
@@ -300,7 +300,7 @@ func unresolvedReason(err error) string {
 	return err.Error()
 }
 
-// DescribeResource 取单个资源物理 schema + 连接器类型（写 run_sql 用）。
+// DescribeResource takes the physical schema + connector type of a single resource (for writing run_sql).
 func (s *knResourcesService) DescribeResource(ctx context.Context, resourceID string) (*DescribeResourceResp, error) {
 	resourceID = strings.TrimSpace(resourceID)
 	if resourceID == "" {

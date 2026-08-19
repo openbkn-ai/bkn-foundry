@@ -27,18 +27,18 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// httpClient HTTP客户端结构
+// httpClient HTTP client structure.
 type httpClient struct {
 	client *http.Client
 	logger interfaces.Logger
 }
 
-// HTTPClientOptions 配置信息
+// HTTPClientOptions configuration information.
 type HTTPClientOptions struct {
 	TimeOut int
 }
 
-// NewRawHTTPClient 创建原生HTTP客户端对象
+// NewRawHTTPClient creates a native HTTP client object.
 func NewRawHTTPClient() *http.Client {
 	opts := HTTPClientOptions{
 		TimeOut: 600, //nolint:mnd
@@ -46,7 +46,7 @@ func NewRawHTTPClient() *http.Client {
 	return NewRawHTTPClientWithOptions(opts)
 }
 
-// NewHTTPClientWithOptions 根据配置创建HTTP客户端对象
+// NewHTTPClientWithOptions creates an HTTP client object based on configuration.
 func NewHTTPClientWithOptions(opts HTTPClientOptions) interfaces.HTTPClient {
 	client := &httpClient{
 		client: NewRawHTTPClientWithOptions(opts),
@@ -56,7 +56,7 @@ func NewHTTPClientWithOptions(opts HTTPClientOptions) interfaces.HTTPClient {
 	return client
 }
 
-// NewRawHTTPClientWithOptions 根据配置创建原生HTTP客户端对象
+// NewRawHTTPClientWithOptions creates a native HTTP client object based on configuration.
 func NewRawHTTPClientWithOptions(opts HTTPClientOptions) *http.Client {
 	rawClient := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -85,7 +85,7 @@ func NewHTTPClientWithRawClient(rawClient *http.Client) *httpClient {
 	return client
 }
 
-// NewHTTPClient 创建HTTP客户端对象
+// NewHTTPClient creates an HTTP client object.
 func NewHTTPClient() interfaces.HTTPClient {
 	client := &httpClient{
 		client: NewRawHTTPClient(),
@@ -95,7 +95,7 @@ func NewHTTPClient() interfaces.HTTPClient {
 	return client
 }
 
-// Get, 返回序列化对象
+// Get, returns the serialized object.
 func (c *httpClient) Get(ctx context.Context, rawURL string, queryValues url.Values, headers map[string]string) (respCode int, respData interface{}, err error) {
 	url, err := c.generateURL(rawURL, queryValues)
 	if err != nil {
@@ -106,7 +106,7 @@ func (c *httpClient) Get(ctx context.Context, rawURL string, queryValues url.Val
 	return c.httpDo(ctx, http.MethodGet, url.String(), headers, nil)
 }
 
-// Get, 返回text
+// Get, returntext.
 func (c *httpClient) GetNoUnmarshal(ctx context.Context, rawURL string, queryValues url.Values, headers map[string]string) (respCode int, respBody []byte, err error) {
 	url, err := c.generateURL(rawURL, queryValues)
 	if err != nil {
@@ -117,47 +117,47 @@ func (c *httpClient) GetNoUnmarshal(ctx context.Context, rawURL string, queryVal
 	return c.httpDoNoUnmarshal(ctx, http.MethodGet, url.String(), headers, nil)
 }
 
-// Post, 传入序列化对象，返回序列化对象
+// Post, pass in the serialized object and return the serialized object.
 func (c *httpClient) Post(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPost, url, headers, reqParam)
 }
 
-// Post, 传入序列化对象，返回text
+// Post, pass in the serialized object and return text.
 func (c *httpClient) PostNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPost, url, headers, reqParam)
 }
 
-// Put, 传入序列化对象，返回序列化对象
+// Put, pass in the serialized object and return the serialized object.
 func (c *httpClient) Put(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPut, url, headers, reqParam)
 }
 
-// Put, 传入序列化对象，返回text
+// Put, pass in the serialized object and return text.
 func (c *httpClient) PutNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPut, url, headers, reqParam)
 }
 
-// Delete, 返回序列化对象
+// Delete, returns the serialized object.
 func (c *httpClient) Delete(ctx context.Context, url string, headers map[string]string) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodDelete, url, headers, nil)
 }
 
-// Delete, 传入序列化对象，返回text
+// Delete, pass in the serialized object and return text.
 func (c *httpClient) DeleteNoUnmarshal(ctx context.Context, url string, headers map[string]string) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodDelete, url, headers, nil)
 }
 
-// Patch, 传入序列化对象，返回序列化对象
+// Patch, pass in the serialized object and return the serialized object.
 func (c *httpClient) Patch(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPatch, url, headers, reqParam)
 }
 
-// Patch, 传入序列化对象，返回text
+// Patch, pass in the serialized object and return text.
 func (c *httpClient) PatchNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPatch, url, headers, reqParam)
 }
 
-// 反序列化返回内容
+// Deserialize return content.
 func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	respCode, respBody, err := c.httpDoNoUnmarshal(ctx, mtehod, url, headers, reqParam)
 	if err != nil {
@@ -176,7 +176,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 		respStr := utils.ObjectToJSON(respData)
 		c.logger.Errorf("Exception(http do error, method: %s, url: %s, headers: %v, reqParam: %v, respCode: %d, error: %s)",
 			mtehod, url, utils.ObjectToJSON(headers), utils.ObjectToJSON(reqParam), respCode, respStr)
-		// 调用外部服务异常
+		// Exception when calling external service.
 		err = infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", mtehod, url, respCode, respStr))
 		return
@@ -184,7 +184,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 	return
 }
 
-// 返回原始respBody, 不进行反序列化
+// Return original respBody without deserialization.
 func (c *httpClient) httpDoNoUnmarshal(ctx context.Context, mtehod, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	if c.client == nil {
 		return 0, nil, errors.New("http client is unavailable")

@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package telemetry 可观测性相关包
+// Package telemetry Observability related packages.
 package telemetry
 
 import (
@@ -21,21 +21,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// LogExporterType 日志导出类型
+// LogExporterType log export type.
 type LogExporterType string
 
 const (
-	LogExporterTypeConsole LogExporterType = "console" // 控制台导出
-	LogExporterTypeOTLP    LogExporterType = "http"    // http导出
+	LogExporterTypeConsole LogExporterType = "console" // Console export.
+	LogExporterTypeOTLP    LogExporterType = "http"    // http export.
 	contextLoaderLogSource                 = "context-loader"
 )
 
-// SamplerLogger 采样logger
+// SamplerLogger samplinglogger.
 type SamplerLogger struct {
 	DefaultLogger interfaces.Logger
 }
 
-// NewSamplerLogger 创建logger
+// NewSamplerLogger createlogger.
 func NewSamplerLogger(defaultLogger interfaces.Logger) interfaces.Logger {
 	s := &SamplerLogger{
 		DefaultLogger: defaultLogger,
@@ -99,7 +99,7 @@ func (l *SamplerLogger) Errorf(format string, v ...interface{}) {
 	s.Errorf(format, v...)
 }
 
-// WithContext 传递context
+// WithContext passes context.
 func (l *SamplerLogger) WithContext(ctx context.Context) interfaces.Logger {
 	return &spanLogger{
 		ctx:   ctx,

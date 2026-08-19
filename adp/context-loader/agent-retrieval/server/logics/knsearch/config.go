@@ -4,13 +4,13 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knsearch（配置与默认值）
+// Package knsearch (configuration and defaults)
 // file: config.go
 package knsearch
 
 import "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 
-// DefaultConceptRetrievalConfig 返回概念召回默认配置
+// DefaultConceptRetrievalConfig returns the concept recall default configuration.
 func DefaultConceptRetrievalConfig() *interfaces.KnSearchConceptRetrievalConfig {
 	return &interfaces.KnSearchConceptRetrievalConfig{
 		TopK:                   10,
@@ -26,7 +26,7 @@ func DefaultConceptRetrievalConfig() *interfaces.KnSearchConceptRetrievalConfig 
 	}
 }
 
-// DefaultSemanticInstanceRetrievalConfig 返回语义实例召回默认配置
+// DefaultSemanticInstanceRetrievalConfig returns the semantic instance recall default configuration.
 func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstanceRetrievalConfig {
 	return &interfaces.KnSearchSemanticInstanceRetrievalConfig{
 		InitialCandidateCount:             50,
@@ -51,7 +51,7 @@ func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstan
 	}
 }
 
-// DefaultPropertyFilterConfig 返回属性过滤默认配置
+// DefaultPropertyFilterConfig returnpropertyfilterdefaultconfiguration.
 func DefaultPropertyFilterConfig() *interfaces.KnSearchPropertyFilterConfig {
 	return &interfaces.KnSearchPropertyFilterConfig{
 		MaxPropertiesPerInstance: 20,
@@ -60,7 +60,7 @@ func DefaultPropertyFilterConfig() *interfaces.KnSearchPropertyFilterConfig {
 	}
 }
 
-// MergeRetrievalConfig 合并用户配置和默认配置。
+// MergeRetrievalConfig Merges user configuration and default configuration.
 func MergeRetrievalConfig(userConfig *interfaces.KnSearchRetrievalConfig) *interfaces.KnSearchRetrievalConfig {
 	result := &interfaces.KnSearchRetrievalConfig{
 		ConceptRetrieval:          DefaultConceptRetrievalConfig(),
@@ -72,17 +72,17 @@ func MergeRetrievalConfig(userConfig *interfaces.KnSearchRetrievalConfig) *inter
 		return result
 	}
 
-	// 合并概念召回配置
+	// Merge concept recall configuration.
 	if userConfig.ConceptRetrieval != nil {
 		mergeConceptRetrievalConfig(result.ConceptRetrieval, userConfig.ConceptRetrieval)
 	}
 
-	// 合并语义实例召回配置
+	// Merge semantic instance recall configuration.
 	if userConfig.SemanticInstanceRetrieval != nil {
 		mergeSemanticInstanceRetrievalConfig(result.SemanticInstanceRetrieval, userConfig.SemanticInstanceRetrieval)
 	}
 
-	// 合并属性过滤配置
+	// Merge attribute filtering configuration.
 	if userConfig.PropertyFilter != nil {
 		mergePropertyFilterConfig(result.PropertyFilter, userConfig.PropertyFilter)
 	}

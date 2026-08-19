@@ -10,7 +10,7 @@ project:
 concept_search_config:
   concept_recall_size: 100
   knn_k: 300
-oauth: # 对应hydra服务
+oauth: # Corresponds to the Hydra service.
   public_host: "hydra-public.openbkn"
   public_port: 4444
   public_protocol: "http"
@@ -38,7 +38,7 @@ operator_integration:
   private_protocol: "http"
   private_host: "agent-operator-integration.openbkn"
   private_port: 9000
-bkn_safe: # bkn-safe 鉴权服务，用于校验用户自助签发的 AppKey（API Key）
+bkn_safe: # bkn-safe authorization service, used to validate user self-issued AppKey (API Key).
   private_protocol: "http"
   private_host: "bkn-safe"
   private_port: 3000
@@ -54,7 +54,7 @@ mf_model_api:
   private_protocol: "http"
   private_host: "mf-model-api.openbkn"
   private_port: 9898
-rerank_llm: # 模型默认走系统默认大模型；per-request 经 rerank_llm_model 覆盖（测试/验证用）
+  rerank_llm: # The model uses the system default LLM by default; override per request through rerank_llm_model (for testing/validation).
   temperature: 0
   top_k: 2
   top_p: 0.5

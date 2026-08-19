@@ -14,7 +14,7 @@ import (
 
 func intPtr(v int) *int { return &v }
 
-// 这个工具存在的全部理由：把 only_schema 置为 false，进到语义实例召回。
+// The entire reason this tool exists: Set only_schema to false to get to semantic instance recall.
 func TestNormalizeSearchInstanceReq_TurnsInstanceRecallOn(t *testing.T) {
 	req := &interfaces.SearchInstanceReq{
 		KnID:                "kn1",
@@ -50,7 +50,7 @@ func TestNormalizeSearchInstanceReq_TurnsInstanceRecallOn(t *testing.T) {
 	}
 }
 
-// 缺省值来自 struct tag，调用方不传也要能跑。
+// The default value comes from the struct tag, and the caller must be able to run without passing it.
 func TestNormalizeSearchInstanceReq_AppliesDefaults(t *testing.T) {
 	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"})
 	if err != nil {
@@ -65,8 +65,8 @@ func TestNormalizeSearchInstanceReq_AppliesDefaults(t *testing.T) {
 	}
 }
 
-// include_object_types 默认开：工具不自足会逼调用方回头再查一次 Schema，
-// 而那一趟会把同一个 query 的概念召回重跑一遍。
+// include_object_types is enabled by default: Insufficient tools will force the caller to go back and check the Schema again.
+// And that run will recall the concept of the same query and run it again.
 func TestSearchInstanceReq_IncludeObjectTypesDefaultsOn(t *testing.T) {
 	req := &interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"}
 	if _, err := NormalizeSearchInstanceReq(req); err != nil {
@@ -77,7 +77,7 @@ func TestSearchInstanceReq_IncludeObjectTypesDefaultsOn(t *testing.T) {
 	}
 }
 
-// kn_id 走头也算数，两处都没有才报错。
+// kn_id also counts when moving, and an error will be reported if both are missing.
 func TestNormalizeSearchInstanceReq_KnIDFromHeader(t *testing.T) {
 	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{XKnID: " kn-header ", Query: "q"})
 	if err != nil {
@@ -112,13 +112,13 @@ func TestNormalizeSearchInstanceReq_Rejects(t *testing.T) {
 	}
 }
 
-// 只带回出了实例的那几个对象类；关系类与行动类一律丢弃。
+// Only the object types whose instances were returned are brought back; relation types and action classes are discarded.
 func TestFilterSearchInstanceResp_KeepsOnlyHitObjectTypes(t *testing.T) {
 	msg := "未检索到符合条件的实例数据"
 	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{
 		ObjectTypes: []any{
 			map[string]any{"concept_id": "ot1"},
-			map[string]any{"concept_id": "ot2"}, // 概念召回扫到了，但没出实例
+			map[string]any{"concept_id": "ot2"}, // The concept recall was scanned, but no examples were produced.
 		},
 		RelationTypes: []any{map[string]any{"concept_id": "rt1"}},
 		ActionTypes:   []any{map[string]any{"concept_id": "at1"}},
@@ -140,7 +140,7 @@ func TestFilterSearchInstanceResp_KeepsOnlyHitObjectTypes(t *testing.T) {
 	}
 }
 
-// 关掉开关就一条 schema 都不回——省体积是调用方的选择，不是默认。
+// Turning off the switch will not return any schema - saving volume is the caller's choice, not the default.
 func TestFilterSearchInstanceResp_ObjectTypesCanBeTurnedOff(t *testing.T) {
 	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{
 		ObjectTypes: []any{map[string]any{"concept_id": "ot1"}},
@@ -155,7 +155,7 @@ func TestFilterSearchInstanceResp_ObjectTypesCanBeTurnedOff(t *testing.T) {
 	}
 }
 
-// 空结果要带上原因，且不是错误——Agent 拿到「没找到」比拿到 500 更可用。
+// The empty result should have a reason and it is not an error - it is more usable for the Agent to get "Not Found" than to get 500.
 func TestFilterSearchInstanceResp_EmptyKeepsMessage(t *testing.T) {
 	msg := "未检索到符合条件的实例数据"
 	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{Nodes: []any{}, Message: &msg}, true)
@@ -166,18 +166,18 @@ func TestFilterSearchInstanceResp_EmptyKeepsMessage(t *testing.T) {
 		t.Errorf("expected the message to be carried through, got %q", out.Message)
 	}
 
-	// nil 响应也不能 panic，且 nodes 必须是空数组而不是 null——省得调用方分两种情况解析。
+	// A nil response cannot panic, and nodes must be an empty array rather than null - saving the caller from parsing in two cases.
 	empty := FilterSearchInstanceResp(nil, true)
 	if empty.Nodes == nil {
 		t.Error("nodes must serialize as [] rather than null")
 	}
 }
 
-// 未设置的开关必须保持「没填」，不能变成显式 false。
+// Unset switches must remain "unfilled" and cannot be made explicitly false.
 //
-// 走请求面的 RetrievalConfig 会踩这个坑：它的开关是值类型 bool，转换层无条件
-// boolPtr 包一层，于是没填的 enable_global_final_score_ratio_filter 以显式 false
-// 覆盖掉默认的 true，跨对象类的相关性过滤在这条路上永不执行。
+// RetrievalConfig on the request side will step into this trap: its switch is the value type bool, and the conversion layer is unconditional.
+// boolPtr contains one layer, so the unfilled enable_global_final_score_ratio_filter is explicitly false.
+// Overriding the default of true, cross-object type correlation filtering is never performed in this way.
 func TestNormalizeSearchInstanceReq_DoesNotClobberDefaultSwitches(t *testing.T) {
 	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"})
 	if err != nil {
@@ -206,8 +206,8 @@ func TestNormalizeSearchInstanceReq_DoesNotClobberDefaultSwitches(t *testing.T) 
 	}
 }
 
-// MCP 面必须只发索引带来的算子。比较算子按属性 type 可推导，逐个下发是纯噪音，
-// 而且很贵——实测 154 个属性的全量算子 15KB，只留索引算子 364 字节。
+// The MCP plane must only send the operators brought by the index. The comparison operator can be deduced according to the attribute type, and it is pure noise to issue one by one.
+// And it's very expensive - the measured total operator of 154 attributes is 15KB, leaving only 364 bytes for the index operator.
 func TestNormalizeSearchInstanceReq_PassesIndexOpsOnly(t *testing.T) {
 	knReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{
 		KnID: "kn1", Query: "q", IndexOpsOnly: true,
@@ -219,7 +219,7 @@ func TestNormalizeSearchInstanceReq_PassesIndexOpsOnly(t *testing.T) {
 		t.Error("index_ops_only must reach KnSearchReq, otherwise MCP callers get every comparison operator")
 	}
 
-	// REST 调用方不设它，拿全量算子。
+	// The REST caller does not set it and takes the full operator.
 	restReq, err := NormalizeSearchInstanceReq(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -229,7 +229,7 @@ func TestNormalizeSearchInstanceReq_PassesIndexOpsOnly(t *testing.T) {
 	}
 }
 
-// 精排开关交给调用方：这一次查询要精度还是要速度，只有发起查询的人知道。
+// The switch for fine-tuning is handed over to the caller: only the person who initiated the query knows whether the query should be accurate or fast this time.
 func TestNormalizeSearchInstanceReq_RerankFlag(t *testing.T) {
 	modeOf := func(req *interfaces.SearchInstanceReq) string {
 		knReq, err := NormalizeSearchInstanceReq(req)
@@ -240,7 +240,7 @@ func TestNormalizeSearchInstanceReq_RerankFlag(t *testing.T) {
 			SemanticInstanceRetrieval.InstanceRerankMode
 	}
 
-	// 默认关：精排要多一次模型调用，不该在调用方没要求时发生。
+	// Default off: Fine sorting requires one more model call and should not occur without the caller requesting it.
 	if got := modeOf(&interfaces.SearchInstanceReq{KnID: "kn1", Query: "q"}); got != InstanceRerankModeOff {
 		t.Errorf("rerank must default to off, got %q", got)
 	}

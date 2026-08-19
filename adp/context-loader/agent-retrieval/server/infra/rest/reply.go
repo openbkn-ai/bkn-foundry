@@ -4,9 +4,9 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package rest 响应处理
+// Package rest responsehandle.
 // @file rest.go
-// @description: 响应处理
+// @description: responsehandle.
 package rest
 
 import (
@@ -33,7 +33,7 @@ const (
 	ContentTypeJSON = "application/json"
 )
 
-// ReplyOK 响应成功；根据 context 中的 response_format 决定输出 JSON 或 TOON
+// ReplyOK response is successful; output JSON or TOON depending on response_format in context.
 func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	format := FormatJSON
 	if v, ok := common.GetResponseFormatFromCtx(c.Request.Context()); ok {
@@ -67,7 +67,7 @@ func ReplyOK(c *gin.Context, statusCode int, body interface{}) {
 	}
 }
 
-// ReplyError 响应错误
+// ReplyError responseerror.
 func ReplyError(c *gin.Context, err error) {
 	if err != nil {
 		errWithStack := errorwrap.WithStack(err)
@@ -92,7 +92,7 @@ func ReplyError(c *gin.Context, err error) {
 			httpCode = http.StatusBadRequest
 			if len(vErr) > 0 {
 				extCode := validatorv.TagToErrorType[vErr[0].Tag()]
-				// 生成友好的多语言错误详情信息（大模型可理解）
+				// Generate friendly multi-language error details (understandable by large models)
 				friendlyDetails := formatValidatorErrorDetails(ctx, vErr[0])
 				body = myErr.NewHTTPError(ctx, http.StatusBadRequest, extCode, friendlyDetails).Error()
 			} else {
@@ -110,7 +110,7 @@ func ReplyError(c *gin.Context, err error) {
 	c.String(httpCode, body)
 }
 
-// ExHTTPError 依赖服务的错误码
+// ExHTTPError error code depending on the service.
 type ExHTTPError struct {
 	HTTPCode int
 	Body     []byte
@@ -120,11 +120,11 @@ func (e *ExHTTPError) Error() string {
 	return string(e.Body)
 }
 
-// formatValidatorErrorDetails 格式化 validator 错误详情信息，生成大模型可理解的多语言友好错误信息
+// formatValidatorErrorDetails formats validator error details and generates multi-language friendly error information that can be understood by large models.
 func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) string {
-	// 获取语言设置（格式：zh-CN 或 en-US）
+	// Get language settings (format: zh-CN or en-US)
 	lang := common.GetLanguageFromCtx(ctx)
-	// 将 zh-CN 转换为 zh_CN 格式（国际化系统使用的格式）
+	// Convert zh-CN to zh_CN format (the format used by internationalization systems)
 	langKey := strings.ReplaceAll(lang, "-", "_")
 	tr := localize.NewI18nTranslator(langKey)
 
@@ -136,7 +136,7 @@ func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) 
 		currentValue = fmt.Sprintf("%v", err.Value())
 	}
 
-	// 根据不同的验证标签生成友好的多语言错误信息
+	// Generate friendly multi-language error messages based on different validation tags.
 	var templateKey string
 	var formatArgs []interface{}
 
@@ -162,14 +162,14 @@ func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) 
 		formatArgs = []interface{}{fieldName}
 	case "oneof":
 		templateKey = "desc.ValidationDetailOneof"
-		// 格式化选项列表：中文使用"、"，英文使用", "
+		// Formatting option list: use "," in Chinese and ", " in English.
 		options := strings.ReplaceAll(param, " ", "、")
 		if langKey == "en_US" {
 			options = strings.ReplaceAll(param, " ", ", ")
 		}
 		formatArgs = []interface{}{fieldName, options}
 	default:
-		// 其他验证标签，使用通用格式
+		// Other validation tags, using a common format.
 		if currentValue != "" {
 			templateKey = "desc.ValidationDetailUnknown"
 			formatArgs = []interface{}{fieldName, currentValue, tag, param}
@@ -179,7 +179,7 @@ func formatValidatorErrorDetails(ctx context.Context, err validator.FieldError) 
 		}
 	}
 
-	// 获取翻译模板并格式化
+	// Get the translation template and format it.
 	template := tr.Trans(templateKey)
 	return fmt.Sprintf(template, formatArgs...)
 }

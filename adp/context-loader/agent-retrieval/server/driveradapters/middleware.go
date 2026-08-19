@@ -4,9 +4,9 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package driveradapters 定义驱动适配器
+// Package driveradapters defines driver adapters.
 // @file middleware.go
-// @description: 中间件适配器
+// @description: middleware adapter.
 package driveradapters
 
 import (
@@ -36,7 +36,7 @@ type apiLogModel struct {
 	RequestBody  interface{} `json:"requestBody"`
 	ResponseCode int         `json:"responseCode"`
 	ResponseBody interface{} `json:"ResponseBody"`
-	Latency      float64     `json:"latency"` // 单位(ms)
+	Latency      float64     `json:"latency"` // Unit(ms)
 }
 
 func getToken(c *gin.Context) (token string) {
@@ -52,13 +52,13 @@ func getToken(c *gin.Context) (token string) {
 	return token
 }
 
-// middlewareIntrospect 令牌内省中间件。
-// 凭据二选一:以 AppKey 前缀(bak_)开头的交给 bkn-safe 校验(用户自助签发的 API Key),
-// 其余 bearer token 走 hydra 内省。两条路产出同一个 TokenInfo,下游认证上下文一致。
+// middlewareIntrospect token introspection middleware.
+// Choose one of the two credentials: the one starting with the AppKey prefix (bak_) is submitted to bkn-safe for verification (API Key issued by the user),
+// The rest of the bearer token goes hydra introspection. The two paths produce the same TokenInfo, and the downstream authentication context is consistent.
 func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
-		// 设置language信息到context
+		// Set language information to context.
 		ctx = common.SetLanguageToCtx(ctx, common.GetLanguageInfo(c))
 
 		token := getToken(c)
@@ -77,18 +77,18 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 			return
 		}
 		if tokenInfo.LoginIP == "" {
-			// 若返回IP为空则使用clientIP
+			// If the returned IP is empty, use clientIP.
 			tokenInfo.LoginIP = c.ClientIP()
 		}
 		tokenInfo.MAC = c.GetHeader("X-Request-MAC")
 		tokenInfo.UserAgent = c.GetHeader("User-Agent")
 
 		ctx = common.SetPublicAPIToCtx(ctx, true)
-		// 原始令牌留在上下文里：PTC 的 run_code 要以调用方本人的身份去打执行工厂
-		// 的公开面，好让那边的 execute 权限判定照常生效（见 SetRawTokenToCtx）。
+		// The original token remains in the context: PTC's run_code needs to open the execution factory as the caller himself.
+		// public side, so that the execute permission determination there will still take effect (see SetRawTokenToCtx).
 		ctx = common.SetRawTokenToCtx(ctx, token)
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
-		// 设置认证上下文到context
+		// Set the authentication context on the context.
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   tokenInfo.VisitorID,
 			AccountType: tokenInfo.VisitorTyp.ToAccessorType(),
@@ -102,22 +102,22 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 	}
 }
 
-// 内部接口Header认证账户信息处理中间件
+// Internal interface Header authentication account information processing middleware.
 func middlewareHeaderAuthContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		ctx = common.SetTraceContextToCtx(ctx, common.TraceContextFromHeaders(c.GetHeader))
-		// 获取Header中xAccountType账户类型
+		// Get the xAccountType account type in the Header.
 		xAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
 
-		// 兼容user_id传参，当user_id为空时，使用xAccountID
+		// Compatible with user_id parameter passing, when user_id is empty, xAccountID is used.
 		xAccountID := c.GetHeader(string(interfaces.HeaderUserID))
 		if xAccountID == "" {
 			xAccountID = c.GetHeader(string(interfaces.HeaderXAccountID))
 		}
-		// 将user_id设置到Header中,TODO:是否需要检查必填？
+		// Set user_id to Header, TODO: Do you need to check required?.
 		c.Request.Header.Set(string(interfaces.HeaderUserID), xAccountID)
-		// 设置认证上下文到context
+		// Set the authentication context on the context.
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   xAccountID,
 			AccountType: interfaces.AccessorType(xAccountType),
@@ -238,16 +238,16 @@ func byteToInterface(byt []byte) interface{} {
 	return m
 }
 
-// sensitiveBodyKeys 是请求体中需要在日志里脱敏的字段名。dynamic_params 是任意
-// 工具输入，可能含令牌/密码等敏感值（见 PR #379 review P1）；对其值整体脱敏，
-// 仅保留字段名以维持可观测性。
+// sensitiveBodyKeys is the field name in the request body that needs to be desensitized in the log. dynamic_params is arbitrary.
+// Tool input may contain sensitive values such as tokens/passwords (see PR #379 review P1); overall desensitization of its values,
+// Only field names are preserved to maintain observability.
 var sensitiveBodyKeys = map[string]struct{}{
 	"dynamic_params": {},
 }
 
-// redactSensitiveFields 递归遍历已解析的请求体（map / slice），将 sensitiveBodyKeys
-// 命中的字段值替换为脱敏标记，其余结构原样保留。覆盖 REST 顶层 dynamic_params 与
-// MCP JSON-RPC 嵌套的 params.arguments.dynamic_params 两种形态。
+// redactSensitiveFields recursively traverses the parsed request body (map/slice) and adds sensitiveBodyKeys.
+// Hit field values are replaced with desensitization markers, and the rest of the structure is left intact. Override REST top-level dynamic_params with.
+// There are two forms of MCP JSON-RPC nested params.arguments.dynamic_params.
 func redactSensitiveFields(v interface{}) interface{} {
 	switch val := v.(type) {
 	case map[string]interface{}:
@@ -271,7 +271,7 @@ func redactSensitiveFields(v interface{}) interface{} {
 	}
 }
 
-// middlewareResponseFormat 解析 Query 参数 response_format（默认 json），非法值返回 400，并写入 context
+// middlewareResponseFormat parses the Query parameter response_format (default json), returns 400 for illegal values, and writes it to context.
 func middlewareResponseFormat() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		formatStr := c.Query("response_format")

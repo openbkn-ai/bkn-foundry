@@ -21,7 +21,7 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// TestGetToolDetail_Success 测试 GetToolDetail 成功场景
+// TestGetToolDetail_Success test GetToolDetail success scenario.
 func TestGetToolDetail_Success(t *testing.T) {
 	convey.Convey("TestGetToolDetail_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -45,7 +45,7 @@ func TestGetToolDetail_Success(t *testing.T) {
 			ToolID: "tool-001",
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"tool_id":     "tool-001",
@@ -68,7 +68,7 @@ func TestGetToolDetail_Success(t *testing.T) {
 	})
 }
 
-// TestGetToolDetail_HTTPError 测试 GetToolDetail HTTP 错误
+// TestGetToolDetail_HTTPError test GetToolDetail HTTP error.
 func TestGetToolDetail_HTTPError(t *testing.T) {
 	convey.Convey("TestGetToolDetail_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -93,7 +93,7 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 			ToolID: "tool-001",
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -105,7 +105,7 @@ func TestGetToolDetail_HTTPError(t *testing.T) {
 	})
 }
 
-// TestGetMCPToolDetail_Success 测试 GetMCPToolDetail 成功场景
+// TestGetMCPToolDetail_Success test GetMCPToolDetail success scenario.
 func TestGetMCPToolDetail_Success(t *testing.T) {
 	convey.Convey("TestGetMCPToolDetail_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -129,7 +129,7 @@ func TestGetMCPToolDetail_Success(t *testing.T) {
 			ToolName: "test_tool",
 		}
 
-		// Mock HTTP 成功响应 - 返回工具列表
+		// Mock HTTP successful response - returning a tool list.
 		mockHTTPClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"tools": []interface{}{
@@ -157,7 +157,7 @@ func TestGetMCPToolDetail_Success(t *testing.T) {
 	})
 }
 
-// TestGetMCPToolDetail_NotFound 测试 GetMCPToolDetail 工具未找到
+// TestGetMCPToolDetail_NotFound test GetMCPToolDetail tool not found.
 func TestGetMCPToolDetail_NotFound(t *testing.T) {
 	convey.Convey("TestGetMCPToolDetail_NotFound", t, func() {
 		ctrl := gomock.NewController(t)
@@ -181,7 +181,7 @@ func TestGetMCPToolDetail_NotFound(t *testing.T) {
 			ToolName: "nonexistent_tool",
 		}
 
-		// Mock HTTP 成功响应 - 返回空工具列表
+		// Mock HTTP successful response - returning an empty tool list.
 		mockHTTPClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"tools": []interface{}{
@@ -197,7 +197,7 @@ func TestGetMCPToolDetail_NotFound(t *testing.T) {
 	})
 }
 
-// TestGetMCPToolDetail_HTTPError 测试 GetMCPToolDetail HTTP 错误
+// TestGetMCPToolDetail_HTTPError test GetMCPToolDetail HTTP error.
 func TestGetMCPToolDetail_HTTPError(t *testing.T) {
 	convey.Convey("TestGetMCPToolDetail_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -222,7 +222,7 @@ func TestGetMCPToolDetail_HTTPError(t *testing.T) {
 			ToolName: "test_tool",
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -231,7 +231,7 @@ func TestGetMCPToolDetail_HTTPError(t *testing.T) {
 	})
 }
 
-// TestCallMCPTool_Success 测试 CallMCPTool 成功场景
+// TestCallMCPTool_Success test CallMCPTool success scenario.
 func TestCallMCPTool_Success(t *testing.T) {
 	convey.Convey("TestCallMCPTool_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -258,7 +258,7 @@ func TestCallMCPTool_Success(t *testing.T) {
 			},
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"result": "success",
@@ -272,7 +272,7 @@ func TestCallMCPTool_Success(t *testing.T) {
 	})
 }
 
-// TestCallMCPTool_HTTPError 测试 CallMCPTool HTTP 错误
+// TestCallMCPTool_HTTPError test CallMCPTool HTTP error.
 func TestCallMCPTool_HTTPError(t *testing.T) {
 	convey.Convey("TestCallMCPTool_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -300,7 +300,7 @@ func TestCallMCPTool_HTTPError(t *testing.T) {
 			},
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 

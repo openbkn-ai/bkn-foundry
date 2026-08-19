@@ -21,14 +21,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
-// API路径常量
+// API path constants.
 const (
 	chatCompletionsURI = "/v1/chat/completions"
 	rerankURI          = "/v1/small-model/reranker"
 )
 
-// mfModelAPIClient MF-Model API统一客户端
-// 提供LLM对话和向量重排序两类能力，统一使用 mf-model-api 服务
+// MfModelAPIClient MF-Model APIunified client.
+// Provides LLM chat and vector reranking capabilities, uniformly uses mf-model-api service.
 type mfModelAPIClient struct {
 	logger     interfaces.Logger
 	baseURL    string
@@ -40,25 +40,25 @@ var (
 	mfModelAPIClientInst *mfModelAPIClient
 )
 
-// NewMFModelAPIClient 创建MF-Model API统一客户端单例
-// 实现 DrivenMFModelAPIClient 接口
+// NewMFModelAPIClient createMF-Model APIunified clientsingleton.
+// Implements DrivenMFModelAPIClient API.
 func NewMFModelAPIClient() *mfModelAPIClient {
 	mfModelAPIClientOnce.Do(func() {
 		conf := config.NewConfigLoader()
 		mfModelAPIClientInst = &mfModelAPIClient{
-			logger:             conf.GetLogger(),
-			baseURL:            conf.MFModelAPI.BuildURL("/api/private/mf-model-api"),
-			httpClient:         rest.NewHTTPClient(),
+			logger:     conf.GetLogger(),
+			baseURL:    conf.MFModelAPI.BuildURL("/api/private/mf-model-api"),
+			httpClient: rest.NewHTTPClient(),
 		}
 	})
 	return mfModelAPIClientInst
 }
 
 // ============================================================
-// DrivenLLMClient 接口实现
+// DrivenLLMClient interface implementation.
 // ============================================================
 
-// chatCompletionsResp Chat接口响应结构
+// chatCompletionsResp is the Chat API response structure.
 type chatCompletionsResp struct {
 	Choices []struct {
 		Message struct {
@@ -67,20 +67,20 @@ type chatCompletionsResp struct {
 	} `json:"choices"`
 }
 
-// Chat 非流式对话，返回完整响应内容
+// Chat non-streaming chat, returncomplete response content.
 func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq) (string, error) {
 	url := fmt.Sprintf("%s%s", c.baseURL, chatCompletionsURI)
 
-	// 构建请求体。
-	// temperature / frequency_penalty / presence_penalty 的 0 是合法业务取值（区间分别为
-	// [0,2] 与 [-2,2]），恒发；top_p / top_k / max_tokens 的合法区间不含 0
-	// （0 < top_p ≤ 1、top_k ≥ 1、max_tokens ≥ 10），调用方未设置时的 Go 零值不能当成业务
-	// 参数发出去，否则 mf-model-api 直接 400（issue #450）。此处用 map 组装，struct 上的
-	// omitempty 不生效，必须显式判零。
+	// Buildrequest body.
+	// 0 in temperature / frequency_penalty / presence_penalty is a legal service value (the range is respectively.
+	// [0,2] and [-2,2]), always send; the legal range of top_p / top_k / max_tokens does not contain 0.
+	// (0 < top_p <= 1, top_k ≥ 1, max_tokens ≥ 10), the Go zero value when not set by the caller cannot be regarded as a business.
+	// The parameters are sent out, otherwise mf-model-api will directly 400 (issue #450). Use map here to assemble, on struct.
+	// Omitempty does not take effect, mustexplicitly check for zero.
 	reqBody := map[string]interface{}{
 		"model":             req.Model,
 		"messages":          req.Messages,
-		"stream":            false, // 非流式
+		"stream":            false, // Non-streaming.
 		"temperature":       req.Temperature,
 		"frequency_penalty": req.FrequencyPenalty,
 		"presence_penalty":  req.PresencePenalty,
@@ -95,13 +95,13 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 		reqBody["max_tokens"] = req.MaxTokens
 	}
 
-	// 获取Header（统一方式）
+	// Get headers in a unified way.
 	header := common.GetHeaderForChildOperation(ctx, "model.chat", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	c.logger.WithContext(ctx).Debugf("[MFModelAPIClient#Chat] URL: %s", url)
 
-	// 调用HTTP客户端
+	// Call the HTTP client.
 	respCode, respBody, err := c.httpClient.Post(ctx, url, header, reqBody)
 	if err != nil {
 		c.logger.WithContext(ctx).Errorf("[MFModelAPIClient#Chat] Request failed: %v", err)
@@ -113,7 +113,7 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 		return "", infraErr.DefaultHTTPError(ctx, respCode, fmt.Sprintf("chat request failed with code %d", respCode))
 	}
 
-	// 解析响应
+	// Parse the response.
 	var resp chatCompletionsResp
 	resultBytes := utils.ObjectToByte(respBody)
 	if err := json.Unmarshal(resultBytes, &resp); err != nil {
@@ -121,7 +121,7 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 		return "", fmt.Errorf("unmarshal response failed: %w", err)
 	}
 
-	// 提取content
+	// Extract content.
 	if len(resp.Choices) > 0 && resp.Choices[0].Message.Content != "" {
 		content := resp.Choices[0].Message.Content
 		c.logger.WithContext(ctx).Debugf("[MFModelAPIClient#Chat] Response length: %d", len(content))
@@ -132,39 +132,39 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 }
 
 // ============================================================
-// DrivenRerankClient 接口实现
+// DrivenRerankClient interface implementation.
 // ============================================================
 
-// Rerank 对文档进行重排序。
+// Rerank reorders documents.
 //
-// model 为空即「用模型管理里勾选的默认 reranker」，由 mf-model-api 按类型解析
-// （t_small_model.f_default=1）。**不再兜底成字面量 "reranker"**：那是拿一个猜出来的
-// 注册名去撞运气，注册名只要不叫 reranker 就是 NameNotExist 全线降级，而管理员在
-// 模型管理里勾的默认反倒没人读（#842）。要指定具体模型仍可由调用方传 model。
+// If the model is empty, it means "use the default reranker checked in the model management", which is parsed by mf-model-api by type.
+// (t_small_model.f_default=1). **No more taking the word "reranker"** literally: That's just a guess.
+// The registered name is to try your luck. As long as the registered name is not called reranker, it will be downgraded across the board by NameNotExist, and the administrator is.
+// The default checkbox in model management is not read by anyone (#842). To specify a specific model, the caller can still pass model.
 func (c *mfModelAPIClient) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
 	url := fmt.Sprintf("%s%s", c.baseURL, rerankURI)
-	// 构建请求体
+	// Build the request body.
 	reqBody := map[string]interface{}{
 		"query":     query,
 		"documents": documents,
 		"model":     model,
 	}
 
-	// 获取Header（统一方式）
+	// Get headers in a unified way.
 	header := common.GetHeaderForChildOperation(ctx, "model.rerank", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
 	c.logger.WithContext(ctx).Debugf("[MFModelAPIClient#Rerank] URL: %s, query: %s, docs count: %d",
 		url, query, len(documents))
 
-	// 调用HTTP客户端
+	// Call the HTTP client.
 	_, respBody, err := c.httpClient.Post(ctx, url, header, reqBody)
 	if err != nil {
 		c.logger.WithContext(ctx).Errorf("[MFModelAPIClient#Rerank] Request failed: %v", err)
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	// 解析响应
+	// Parse the response.
 	var result interfaces.RerankResp
 	resultBytes := utils.ObjectToByte(respBody)
 	if err := json.Unmarshal(resultBytes, &result); err != nil {

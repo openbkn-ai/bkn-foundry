@@ -11,15 +11,15 @@ import (
 	myErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 )
 
-// TagToErrorType Validate tag 映射到错误分类
+// TagToErrorType Validate tag maps to error category.
 var TagToErrorType = map[string]string{
-	// 必填类
+	// Required category.
 	"required":        myErr.ErrExtCodeValidationRequired,
 	"required_if":     myErr.ErrExtCodeValidationRequired,
 	"required_unless": myErr.ErrExtCodeValidationRequired,
 	"required_with":   myErr.ErrExtCodeValidationRequired,
 
-	// 格式类
+	// Format class.
 	"email":    myErr.ErrExtCodeValidationFormat,
 	"url":      myErr.ErrExtCodeValidationFormat,
 	"uuid":     myErr.ErrExtCodeValidationFormat,
@@ -30,7 +30,7 @@ var TagToErrorType = map[string]string{
 	"ip":       myErr.ErrExtCodeValidationFormat,
 	"mac":      myErr.ErrExtCodeValidationFormat,
 
-	// 范围类
+	// scope class.
 	"min": myErr.ErrExtCodeValidationRange,
 	"max": myErr.ErrExtCodeValidationRange,
 	"len": myErr.ErrExtCodeValidationRange,
@@ -39,6 +39,6 @@ var TagToErrorType = map[string]string{
 	"gt":  myErr.ErrExtCodeValidationRange,
 	"lt":  myErr.ErrExtCodeValidationRange,
 
-	// 枚举类
+	// enum class.
 	"oneof": myErr.ErrExtCodeValidationEnum,
 }

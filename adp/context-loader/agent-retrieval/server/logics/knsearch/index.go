@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// localSearchImpl 本地检索实现体
+// localSearchImpl local search implementation body.
 type localSearchImpl struct {
 	logger        interfaces.Logger
 	config        *config.Config
@@ -30,7 +30,7 @@ var (
 	localSearchService interfaces.IKnSearchLocalService
 )
 
-// NewLocalSearchService 创建知识网络检索本地服务实例
+// NewLocalSearchService creates a knowledge network retrieval local service instance.
 func NewLocalSearchService() interfaces.IKnSearchLocalService {
 	localSearchOnce.Do(func() {
 		configLoader := config.NewConfigLoader()
@@ -86,7 +86,7 @@ func (s *knSearchService) KnSearch(ctx context.Context, req *interfaces.KnSearch
 	}
 	req.SetKnIDs(knIDs)
 
-	// kn_search 已固定走本地实现，移除远端 data-retrieval 旁路分支。
+	// kn_search has been implemented locally and the remote data-retrieval bypass branch has been removed.
 	s.Logger.WithContext(ctx).Info("[KnSearch] Using local search")
 	localReq := KnSearchReqToLocal(req)
 	localResp, err := s.LocalSearch.Search(ctx, localReq)

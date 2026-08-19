@@ -32,7 +32,7 @@ var (
 	h    interfaces.Hydra
 )
 
-// Extend 解析拓展信息
+// Extend parses extension information.
 type Extend struct {
 	AccountType string `json:"account_type"`
 	ClientType  string `json:"client_type"`
@@ -43,7 +43,7 @@ type Extend struct {
 	VisitorName string `json:"visitor_name"`
 }
 
-// IntrospectInfo 内省信息
+// IntrospectInfo contains introspection information.
 type IntrospectInfo struct {
 	Active    bool   `json:"active"`
 	Scope     string `json:"scope"`
@@ -83,7 +83,7 @@ func NewHydra() interfaces.Hydra {
 	return h
 }
 
-// Introspect token内省
+// Introspect introspects a token.
 func (h *hydra) Introspect(ctx context.Context, token string) (info *interfaces.TokenInfo, err error) {
 	target := fmt.Sprintf("%s%s", h.adminAddress, introspectURI)
 	header := map[string]string{"Content-Type": "application/x-www-form-urlencoded"}
@@ -100,44 +100,44 @@ func (h *hydra) Introspect(ctx context.Context, token string) (info *interfaces.
 		return
 	}
 	info = &interfaces.TokenInfo{}
-	// 令牌状态
+	// Token status.
 	info.Active = introspectInfo.Active
 	if !info.Active {
 		err = errors.DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")
 		return
 	}
-	// 访问者ID
+	// Visitor ID.
 	info.VisitorID = introspectInfo.SubID
-	// Scope 权限范围
+	// Scope permission range.
 	info.Scope = introspectInfo.Scope
-	// 客户端ID
+	// Client ID.
 	info.ClientID = introspectInfo.ClientID
-	// 客户端凭据模式
+	// Client credentials mode.
 	if info.VisitorID == info.ClientID {
 		info.VisitorTyp = interfaces.Business
 		return
 	}
-	// 以下字段 只在非客户端凭据模式时才存在
-	// 访问者类型
+	// The following fields exist only outside client-credentials mode.
+	// Visitor type.
 	info.VisitorTyp = interfaces.VisitorType(introspectInfo.Ext.VisitorType)
 
-	// 匿名用户
+	// Anonymous user.
 	if info.VisitorTyp == interfaces.Anonymous {
 		info.PhoneNumber = introspectInfo.Ext.PhoneNumber
 		info.VisitorName = introspectInfo.Ext.VisitorName
 		return
 	}
-	// 实名用户
+	// Real-name user.
 	if info.VisitorTyp == interfaces.RealName {
-		// 登陆IP
+		// Login IP.
 		info.LoginIP = introspectInfo.Ext.LoginIP
-		// 用户名
+		// Username.
 		info.VisitorName = introspectInfo.Ext.VisitorName
-		// 设备ID
+		// Device ID.
 		info.Udid = introspectInfo.Ext.UdID
-		// 登录账号类型
+		// Login account type.
 		info.AccountTyp = interfaces.ReverseAccountTypeMap[introspectInfo.Ext.AccountType]
-		// 设备类型
+		// Device type.
 		info.ClientTyp = interfaces.ReverseClientTypeMap[introspectInfo.Ext.ClientType]
 	}
 	return

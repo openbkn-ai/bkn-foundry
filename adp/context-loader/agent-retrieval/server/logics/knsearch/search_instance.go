@@ -18,8 +18,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// SearchInstance 用一句自然语言召回实例：概念召回锁定对象类，再在这些对象类上做
-// 语义实例召回，回实例行与读懂它们所需的对象类定义。
+// SearchInstance uses a natural language sentence to recall instances: concept recall locks object types, and then performs operations on these object types.
+// Semantic instance recall returns instance rows and the object type definitions required to read them.
 func (s *knSearchService) SearchInstance(
 	ctx context.Context,
 	req *interfaces.SearchInstanceReq,
@@ -39,10 +39,10 @@ func (s *knSearchService) SearchInstance(
 	return out, nil
 }
 
-// NormalizeSearchInstanceReq 把 SearchInstanceReq 转成 KnSearchReq。
+// NormalizeSearchInstanceReq Converts SearchInstanceReq to KnSearchReq.
 //
-// 与 NormalizeSearchSchemaReq 相对：那边写死 only_schema=true 只要 Schema，这边写死
-// false 以进入语义实例召回——这正是本工具存在的理由。
+// Relative to NormalizeSearchSchemaReq: only_schema=true is hardcoded over there, only Schema is required, and hardcoded here.
+// false to enter semantic instance recall - which is the raison d'être of this tool.
 func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.KnSearchReq, error) {
 	if req == nil {
 		return nil, errors.New("request is required")
@@ -76,19 +76,19 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 		KnID:         knID,
 		OnlySchema:   &onlySchema,
 		IndexOpsOnly: req.IndexOpsOnly,
-		// 这里刻意用**本地**配置结构体（字段是 *bool）而不是请求面的
-		// RetrievalConfig（字段是 bool 值类型）。请求面那条转换路径
-		// （retrievalConfigStructToLocal）会把每个 bool 无条件包成 boolPtr，
-		// 于是「没填」和「填了 false」变成同一件事，未设置的开关会以显式 false
-		// 覆盖掉默认的 true——enable_global_final_score_ratio_filter、
-		// enable_coarse_recall、enable_property_brief 三个默认开启的旋钮都会被静默关掉。
-		// 走本地结构体则未设字段保持 nil，MergeRetrievalConfig 原样保留默认值。
+		// The **local** configuration structure is deliberately used here (the field is *bool) instead of the request side.
+		// RetrievalConfig (field is of bool value type). Request the conversion path.
+		// (retrievalConfigStructToLocal) will unconditionally wrap each bool into boolPtr,
+		// So "not filled in" and "filled in false" become the same thing, and unset switches will be explicitly false.
+		// Override the default true——enable_global_final_score_ratio_filter,
+		// The three knobs enable_coarse_recall and enable_property_brief that are turned on by default will be turned off silently.
+		// If the local structure is used, the unset fields will remain nil, and MergeRetrievalConfig will retain the default value as it is.
 		RetrievalConfig: &interfaces.KnSearchRetrievalConfig{
 			ConceptRetrieval: &interfaces.KnSearchConceptRetrievalConfig{
 				ConceptGroups: normalizeConceptGroups(req.ConceptGroups),
 				TopK:          *req.MaxObjectTypes,
-				// schema_brief 恒开：概念召回的 Schema 在这条路上只是实例召回的
-				// 中间产物，调用方拿不到它，没有理由为它多付体积与下游查询开销。
+				// schema_brief Hengkai: Schema recalled by concepts is only recalled by instances on this path.
+				// The caller cannot get the intermediate product, so there is no reason to pay extra volume and downstream query overhead for it.
 				SchemaBrief: boolPtr(true),
 			},
 			SemanticInstanceRetrieval: &interfaces.KnSearchSemanticInstanceRetrievalConfig{
@@ -99,9 +99,9 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 	}, nil
 }
 
-// FilterSearchInstanceResp 从 KnSearchResp 里取实例，并按需附上读懂它们所需的对象类定义。
+// FilterSearchInstanceResp takes instances from KnSearchResp and optionally attaches the object type definitions required to read them.
 //
-// 关系类与行动类一律丢弃：它们与「这几行数据怎么读」无关。
+// Relationship classes and action classes are discarded: they have nothing to do with "how to read these rows of data".
 func FilterSearchInstanceResp(resp *interfaces.KnSearchResp, includeObjectTypes bool) *interfaces.SearchInstanceResp {
 	out := &interfaces.SearchInstanceResp{Nodes: []any{}}
 	if resp == nil {
@@ -111,17 +111,17 @@ func FilterSearchInstanceResp(resp *interfaces.KnSearchResp, includeObjectTypes 
 	if includeObjectTypes {
 		out.ObjectTypes = objectTypesOfNodes(toAnySlice(resp.ObjectTypes), out.Nodes)
 	}
-	// message 只在没有命中时才有意义：有结果还带一句说明纯属噪音。
+	// message is only meaningful when there is no hit: if there is a result, it is just noise.
 	if len(out.Nodes) == 0 && resp.Message != nil {
 		out.Message = strings.TrimSpace(*resp.Message)
 	}
 	return out
 }
 
-// objectTypesOfNodes 只留真正出了实例的那些对象类。
+// objectTypesOfNodes only retains those object types that actually have instances.
 //
-// 概念召回扫过的对象类动辄几十个（VM 实测一次 20 个里只有 3 个出实例），
-// 全回等于把 search_schema 的输出复制过来，那正是这个工具不该做的事。
+// There are often dozens of object types scanned by concept recall (only 3 out of 20 instances were found in a VM measurement).
+// Full return is equivalent to copying the output of search_schema, which is exactly what this tool is not supposed to do.
 func objectTypesOfNodes(objectTypes, nodes []any) []any {
 	if len(objectTypes) == 0 || len(nodes) == 0 {
 		return nil
@@ -157,10 +157,10 @@ func objectTypesOfNodes(objectTypes, nodes []any) []any {
 	return kept
 }
 
-// instanceRerankModeFromFlag 把工具面的开关映射成精排档位。
+// instanceRerankModeFromFlag maps the switch on the tool surface to the fine ranking position.
 //
-// 工具参数只给开/关：shadow 是拿线上流量取证用的运维档，对 Agent 没有意义，
-// 留给 kn_search 的 retrieval_config 走。
+// The tool parameters are only on/off: shadow is an operation and maintenance file used for online traffic forensics, and has no meaning for the Agent.
+// Leave kn_search's retrieval_config to go.
 func instanceRerankModeFromFlag(rerank *bool) string {
 	if rerank != nil && *rerank {
 		return InstanceRerankModeOn

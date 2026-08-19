@@ -22,9 +22,9 @@ const (
 	commitTextMessage
 
 	defaultCommitTag = "0.0.0"
-	// CommitHashNull 无commit hash
+	// CommitHashNull No commit hash.
 	CommitHashNull = "null"
-	// CommitHashLen Commit hash 长度
+	// CommitHashLen Commit hash length.
 	CommitHashLen = 32
 )
 
@@ -71,7 +71,7 @@ func LoadGitCommitInfoFromFile(path string) (info GitCommitInfo, err error) {
 	return
 }
 
-// GitCommitInfo 提交信息
+// GitCommitInfo commit information.
 type GitCommitInfo struct {
 	Hash    string
 	Time    time.Time
@@ -80,7 +80,7 @@ type GitCommitInfo struct {
 	Tag     string
 }
 
-// Version 获取version
+// Version getversion.
 func (info *GitCommitInfo) Version(hl int) string {
 	hash := info.Hash
 	if len(info.Hash) >= hl {

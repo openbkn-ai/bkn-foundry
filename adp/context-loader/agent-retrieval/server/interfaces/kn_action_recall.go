@@ -66,10 +66,10 @@ type KnFixedParams struct {
 	Body   map[string]any `json:"body"`   // Request Body Parameters
 }
 
-// ActionDriverFixedParams 行动驱动请求默认值
+// ActionDriverFixedParams action driver request default value.
 type ActionDriverFixedParams struct {
-	DynamicParams      map[string]any   `json:"dynamic_params"`       // 行动实例化后已确定的固定参数
-	InstanceIdentities []map[string]any `json:"_instance_identities"` // 默认填入当前 get_action_info 的 _instance_identity
+	DynamicParams      map[string]any   `json:"dynamic_params"`       // Fixed parameters determined after action instantiation.
+	InstanceIdentities []map[string]any `json:"_instance_identities"` // By default, the _instance_identity of the current get_action_info is filled in.
 }
 
 // ==================== Action Query Related Structures ====================
@@ -169,38 +169,38 @@ type ExecuteActionsResponse struct {
 	CreatedAt   int64  `json:"created_at"`
 }
 
-// KnGetActionExecutionRequest 查询单次行动执行的状态与结果
+// KnGetActionExecutionRequest queries the status and results of a single action execution.
 type KnGetActionExecutionRequest struct {
 	KnID        string `json:"kn_id" validate:"required"`        // Knowledge Network ID
-	ExecutionID string `json:"execution_id" validate:"required"` // 由 execute_action 返回的执行 ID
+	ExecutionID string `json:"execution_id" validate:"required"` // Execution ID returned by execute_action.
 
 	AccountID   string `json:"-" header:"x-account-id"`
 	AccountType string `json:"-" header:"x-account-type"`
 }
 
-// KnListActionExecutionsRequest 列出行动执行历史（可按行动类型/状态/触发方式过滤，分页）
+// KnListActionExecutionsRequest lists action execution history (can be filtered by action type/status/trigger method, paging)
 type KnListActionExecutionsRequest struct {
 	KnID          string `json:"kn_id" validate:"required"` // Knowledge Network ID
-	ActionTypeID  string `json:"action_type_id,omitempty"`  // 按行动类型过滤（可选）
-	Status        string `json:"status,omitempty"`          // 按状态过滤：pending/running/completed/failed/cancelled（可选）
-	TriggerType   string `json:"trigger_type,omitempty"`    // 按触发方式过滤：manual/scheduled（可选）
-	StartTimeFrom int64  `json:"start_time_from,omitempty"` // 起始时间下界（Unix 毫秒，可选）
-	StartTimeTo   int64  `json:"start_time_to,omitempty"`   // 起始时间上界（Unix 毫秒，可选）
-	Offset        int    `json:"offset,omitempty"`          // 分页偏移（可选）
-	Limit         int    `json:"limit,omitempty"`           // 分页条数，默认 20，最大 1000（可选）
-	SearchAfter   []any  `json:"search_after,omitempty"`    // 游标分页：上一页响应的 search_after 原样回传（可选）
+	ActionTypeID  string `json:"action_type_id,omitempty"`  // Filter by action type (optional)
+	Status        string `json:"status,omitempty"`          // Filter by status: pending/running/completed/failed/cancelled (optional)
+	TriggerType   string `json:"trigger_type,omitempty"`    // Filter by trigger method: manual/scheduled (optional)
+	StartTimeFrom int64  `json:"start_time_from,omitempty"` // Lower bound on start time (Unix milliseconds, optional)
+	StartTimeTo   int64  `json:"start_time_to,omitempty"`   // Upper starting time bound (Unix milliseconds, optional)
+	Offset        int    `json:"offset,omitempty"`          // Page break offset (optional)
+	Limit         int    `json:"limit,omitempty"`           // Number of pagination items, default 20, maximum 1000 (optional)
+	SearchAfter   []any  `json:"search_after,omitempty"`    // Cursor paging: The search_after of the previous page response is returned as is (optional)
 
 	AccountID   string `json:"-" header:"x-account-id"`
 	AccountType string `json:"-" header:"x-account-type"`
 }
 
-// GetActionExecutionRequest 转发到 ontology-query 的单次执行查询请求
+// GetActionExecutionRequest forwards a single execution query request to ontology-query.
 type GetActionExecutionRequest struct {
 	KnID        string `json:"-"`
 	ExecutionID string `json:"-"`
 }
 
-// ListActionExecutionsRequest 转发到 ontology-query 的执行历史查询请求
+// ListActionExecutionsRequest forwards the execution history query request to ontology-query.
 type ListActionExecutionsRequest struct {
 	KnID          string
 	ActionTypeID  string

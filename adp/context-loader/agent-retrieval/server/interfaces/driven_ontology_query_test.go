@@ -8,8 +8,8 @@ package interfaces
 
 import "testing"
 
-// TestStripInstanceScores 覆盖 #236：query_object_instance 无相关度评分，
-// 响应中的恒定 _score 必须被剥除；有无过滤条件的结果结构一致。
+// TestStripInstanceScores covers #236: query_object_instance has no relevance score,
+// The constant _score in the response must be stripped; the result structure is consistent with and without filters.
 func TestStripInstanceScores(t *testing.T) {
 	hasScore := func(item any) bool {
 		m, ok := item.(map[string]any)
@@ -63,15 +63,15 @@ func TestStripInstanceScores(t *testing.T) {
 
 	t.Run("非 map 元素不影响", func(t *testing.T) {
 		resp := &QueryObjectInstancesResp{Data: []any{"raw", 42}}
-		resp.StripInstanceScores() // 不 panic 即可
+		resp.StripInstanceScores() // Just don’t panic.
 		if len(resp.Data) != 2 {
 			t.Fatalf("非 map 元素被改动")
 		}
 	})
 }
 
-// TestHasScoringOperator 覆盖 #236 的意图判定：knn / match 有真实相关度分要保留 _score，
-// 纯结构化过滤无评分语义要剥除。filters 语法糖与 condition 树两条入口都要认。
+// TestHasScoringOperator covers the intent determination of #236: knn / match has a true correlation score to retain _score,
+// Pure structured filtering has no scoring semantics to be stripped away. Both the syntactic sugar of filters and the condition tree must be recognized.
 func TestHasScoringOperator(t *testing.T) {
 	tests := []struct {
 		name string

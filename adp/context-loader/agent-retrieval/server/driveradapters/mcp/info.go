@@ -13,11 +13,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
-// MCPToolInfo 单个工具的对外说明（名称 / 展示元数据 / 描述 / 输入输出 schema）。
+// MCPToolInfo External description of a single tool (name / display metadata / description / input and output schema).
 //
-// title / group / group_title / order 与 tools/list 同源：那边 title 落在协议
-// 自己的字段上、其余三个落在工具的 `_meta`，这边一律是平铺字段。两处必须给出
-// 同一份答案——这个端点存在的理由就是「不握手也能看清能力面」。
+// title / group / group_title / order has the same origin as tools/list: where title falls in the protocol.
+// On its own field, the other three fall in the `_meta` of the tool, which are all tiled fields. Two places must be given.
+// The same answer - the reason for the existence of this endpoint is "to be able to see clearly the capabilities without shaking hands.".
 type MCPToolInfo struct {
 	Name         string          `json:"name"`
 	Title        string          `json:"title,omitempty"`
@@ -29,8 +29,8 @@ type MCPToolInfo struct {
 	OutputSchema json.RawMessage `json:"output_schema,omitempty"`
 }
 
-// MCPInfo MCP 服务自描述文档：端点、协议、鉴权、工具目录、客户端配置示例。
-// 供 Agent / 人通过 GET 一次性了解如何集成，无需先走 MCP 握手。
+// MCPInfo MCP service self-describing document: endpoint, protocol, authentication, tool directory, client configuration example.
+// For Agent/people to learn how to integrate in one go via GET without having to go through the MCP handshake first.
 type MCPInfo struct {
 	Service             string          `json:"service"`
 	Endpoint            string          `json:"endpoint"`
@@ -42,8 +42,8 @@ type MCPInfo struct {
 	ClientConfigExample json.RawMessage `json:"client_config_example"`
 }
 
-// tryLoadToolSchemas 与 loadToolSchemas 同源，但读不到/解析失败时返回 nil 而非 panic，
-// 供 info 端点容错使用。取到之后按 locale 叠一层，与 tools/list 同一份答案。
+// tryLoadToolSchemas has the same origin as loadToolSchemas, but returns nil instead of panic when it cannot be read or fails to parse.
+// For use by info endpoint fault tolerance. After getting it, stack it one layer according to locale, and have the same answer as tools/list.
 func tryLoadToolSchemas(locale *mcpLocaleBundle, toolKey string) (input, output json.RawMessage) {
 	if input, output, ok := lifecycleToolSchemas(toolKey); ok {
 		return locale.OverlaySchemas(toolKey, input, output)
@@ -84,9 +84,9 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 	}
 	// Resolve localized text from the same resource bundle as tools/list.
 
-	// 与 tools/list 用同一套按当前档位的判定：装饰过的工具带上付费参数、
-	// 未授权的企业工具不出现。两处若不一致，这个端点就比不存在更糟——它的
-	// 用途正是让人不握手就看清能力面。
+	// Use the same set of judgments based on the current gear as tools/list: decorated tools bring paid parameters,
+	// Unauthorized enterprise tools do not appear. If the two places are inconsistent, the endpoint is worse than not existing - its.
+	// The purpose is to let people see their capabilities clearly without shaking hands.
 	type entry struct {
 		key  string
 		info MCPToolInfo
@@ -94,8 +94,8 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 	locale := loadMCPLocaleBundle(localeName)
 	all := make([]entry, 0, len(meta))
 	for key := range meta {
-		// 未装配的工具不能出现在这里：这个端点的用途是「不握手就看清能力面」，
-		// 广播一条 tools/call 会答「无此工具」的条目比不广播更糟。
+		// Unassembled tools cannot appear here: the purpose of this endpoint is to "see the capabilities without shaking hands",
+		// Broadcasting a tools/call entry that will answer "No such tool" is worse than not broadcasting at all.
 		if key == toolKeyExecuteSkill && !knskills.ExecuteEnabled() {
 			continue
 		}
@@ -115,7 +115,7 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 			OutputSchema: out,
 		}})
 	}
-	// 社区二进制这里是空循环。
+	// Community binary here is an empty loop.
 	for _, t := range mcptool.Extras() {
 		if !t.Allowed() {
 			continue
@@ -127,20 +127,20 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 			GroupTitle:  t.GroupTitle,
 			Order:       t.Order,
 			Description: t.Desc,
-			// 与 tools/list 同样施加（assemble.go 的 addExtras）：企业工具按本服务
-			// 自己的定义就是业务工具，生命周期守卫会向它要 bkn_context。这个端点
-			// 存在的理由是「不握手就看清能力面」，广播一份调不通的 schema 比不广播
-			// 更糟——照它集成会直接拿到 conversation_required。
+			// Same as tools/list (addExtras of assemble.go): Enterprise tools are based on this service.
+			// Its own definition is a business tool, and the lifecycle guard will ask it for bkn_context. this endpoint.
+			// The reason for existence is "to see the capabilities clearly without shaking hands". Broadcasting a schema that cannot be called is better than not broadcasting at all.
+			// Even worse - integrating it will get conversation_required directly.
 			InputSchema:  offerBKNContext(t.Input),
 			OutputSchema: t.Output,
 		}})
 	}
-	// PTC 工具的描述必须与 tools/list 同源。run_code 那份是按当前工具表渲染出来
-	// 的函数清单，静态文件里存不下；两处各写一份的话，照 /mcp/info 集成的人会
-	// 拿到一份和模型看到的不一样的说明。
+	// PTC tool descriptions must have the same origin as tools/list. run_code is rendered according to the current tool table.
+	// The function list cannot be stored in the static file; if you write one copy in each place, people who integrate it according to /mcp/info will.
+	// Get a different description than what the model saw.
 	//
-	// 这里能直接渲染而不必回头调 InlinePTCToolkit：可调函数表就是刚组装好的
-	// all，而 ptcUsableTools 已经把 PTC 工具自己排除了，不存在递归。
+	// Here you can render directly without having to go back to adjust InlinePTCToolkit: the adjustable function table is just assembled.
+	// all, and ptcUsableTools has excluded the PTC tool itself, and there is no recursion.
 	catalogue := make([]MCPToolInfo, 0, len(all))
 	for _, e := range all {
 		catalogue = append(catalogue, e.info)
@@ -152,11 +152,11 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 		}
 	}
 
-	// 按工具 key 排，不是按对外 name 排。目前 tools_meta.json 与 locales/en-US
-	// 里 name 恒等于 key，两种排法结果一样——但那是巧合，locale 里改个 name
-	// 社区侧的顺序就跟着变了。
-	// 稳定排序：装配期已保证 key 互不重复(toolBuilder.claimName)，稳定排序是
-	// 第二道保险——真出现重复时顺序至少不会在两次进程之间抖动。
+	// Sort by tool key, not by external name. Currently tools_meta.json is the same as locales/en-US.
+	// The name here is always equal to the key, and the results of the two arrangements are the same - but that is a coincidence, change the name in the locale.
+	// The order on the community side has changed accordingly.
+	// Stable sorting: The assembly period has ensured that the keys are non-duplicate (toolBuilder.claimName), and the stable sorting is.
+	// The second insurance - when duplication occurs, at least the sequence will not jitter between the two processes.
 	sort.SliceStable(all, func(i, j int) bool { return all[i].key < all[j].key })
 
 	tools := make([]MCPToolInfo, 0, len(all))

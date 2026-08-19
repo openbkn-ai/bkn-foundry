@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// noopLogger 空实现，避免为每条日志写 gomock 期望
+// NoopLogger empty implementation to avoid writing gomock expectations for each log.
 type noopLogger struct{}
 
 func (l *noopLogger) Debug(...interface{})                                {}
@@ -29,9 +29,9 @@ func (l *noopLogger) WithContext(context.Context) interfaces.Logger       { retu
 func (l *noopLogger) WithField(string, interface{}) interfaces.Logger     { return l }
 func (l *noopLogger) WithFields(map[string]interface{}) interfaces.Logger { return l }
 
-// TestChatJSON_SamplingParamsWithinGatewayRange 复现 issue #450：动态参数生成必须显式设置
-// 采样参数。留空走 Go 零值时 mf-model-api 直接 400（要求 0 < top_p ≤ 1、top_k ≥ 1），
-// 失败又被上层包装成「缺参」，根因被掩盖。
+// TestChatJSON_SamplingParamsWithinGatewayRange reproduces issue #450: Dynamic parameter generation must be set explicitly.
+// Sampling parameters. Leave it blank and go. When Go has zero value, mf-model-api will be directly 400 (requires 0 < top_p <= 1, top_k ≥ 1),
+// The failure was packaged as "lack of reference" by the upper management, and the root cause was covered up.
 func TestChatJSON_SamplingParamsWithinGatewayRange(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

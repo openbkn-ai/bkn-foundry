@@ -33,7 +33,7 @@ const (
 	KnOperationTypeRegex          KnOperationType = "regex"     // regex
 	KnOperationTypeMatch          KnOperationType = "match"     // match
 	KnOperationTypeKnn            KnOperationType = "knn"       // knn
-	// KnOperationTypeMultiMatch 由 BKN 随 match 一起登记，代表字段建了全文索引。
+	// KnOperationTypeMultiMatch is registered by BKN together with match, which means that the field has a full-text index.
 	KnOperationTypeMultiMatch KnOperationType = "multi_match"
 )
 
@@ -452,16 +452,16 @@ func (d *KnowledgeNetworkDetail) FilterRelationTypes(ids []string) (matched []*R
 }
 
 // BknBackendAccess BKN backend ontology management interface
-// ListKnReq 列出知识网络的查询参数
+// ListKnReq lists the query parameters of the knowledge network.
 type ListKnReq struct {
-	NamePattern string `json:"name_pattern,omitempty"` // 按名称模糊过滤
-	Limit       int    `json:"limit,omitempty"`        // 单页数量，默认 20
-	Offset      int    `json:"offset,omitempty"`       // 偏移，用于翻页
-	Sort        string `json:"sort,omitempty"`         // 排序字段，默认 update_time
-	Direction   string `json:"direction,omitempty"`    // asc / desc，默认 desc
+	NamePattern string `json:"name_pattern,omitempty"` // Fuzzy-filter by name.
+	Limit       int    `json:"limit,omitempty"`        // Number of single pages, default 20.
+	Offset      int    `json:"offset,omitempty"`       // Offset, used to turn pages.
+	Sort        string `json:"sort,omitempty"`         // Sortfield, default update_time.
+	Direction   string `json:"direction,omitempty"`    // Asc / desc, default desc.
 }
 
-// KnBrief 知识网络概要（list 用）
+// KnBrief Knowledge Network Summary (for list)
 type KnBrief struct {
 	ID             string `json:"id"`
 	Name           string `json:"name"`
@@ -470,7 +470,7 @@ type KnBrief struct {
 	BusinessDomain string `json:"business_domain,omitempty"`
 }
 
-// ListKnResp 知识网络列表响应
+// ListKnResp Knowledge Network List Response.
 type ListKnResp struct {
 	Entries    []*KnBrief `json:"entries"`
 	TotalCount int64      `json:"total_count"`
@@ -480,7 +480,7 @@ type BknBackendAccess interface {
 	// GetKnowledgeNetworkDetail Get knowledge network detail with full schema (include_detail=true, mode=export)
 	GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*KnowledgeNetworkDetail, error)
 
-	// ListKnowledgeNetworks 列出知识网络（用于发现 kn_id）
+	// ListKnowledgeNetworks lists knowledge networks (used to discover kn_id)
 	ListKnowledgeNetworks(ctx context.Context, req *ListKnReq) (resp *ListKnResp, err error)
 
 	// SearchObjectTypes Search object types

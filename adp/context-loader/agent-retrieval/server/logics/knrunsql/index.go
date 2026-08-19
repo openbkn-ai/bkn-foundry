@@ -16,20 +16,20 @@ import (
 )
 
 var (
-	// ErrSQLRequired sql 入参为空。
+	// ErrSQLRequired sql input parameter is empty.
 	ErrSQLRequired = errors.New("sql is required")
-	// ErrNoResourcePlaceholder SQL 未通过 {{.resource_id}} 占位符引用任何数据资源。
+	// ErrNoResourcePlaceholder SQL did not reference any data resource through the {{.resource_id}} placeholder.
 	ErrNoResourcePlaceholder = errors.New("sql must reference at least one data resource via the {{.resource_id}} placeholder")
 	emitRunSQLFailure        = bkntrace.EmitRunSQLFailure
 )
 
-// RunSQLReq run_sql 入参（MCP 工具与内部 REST 端点共用）。
+// RunSQLReq run_sql input (shared by MCP tools and internal REST endpoints).
 type RunSQLReq struct {
-	SQL          string `json:"sql"`           // MySQL 方言 SQL，表名用 {{.resource_id}} 占位
-	QueryTimeout int    `json:"query_timeout"` // 查询超时（秒），可选
+	SQL          string `json:"sql"`           // MySQL dialect SQL, the table name uses {{.resource_id}} placeholder.
+	QueryTimeout int    `json:"query_timeout"` // Query timeout (seconds), optional.
 }
 
-// KnRunSQLService 对知识网络挂载的数据资源执行只读 SQL（强制 SELECT-only）。
+// KnRunSQLService executes read-only SQL (forced SELECT-only) on data resources mounted on the knowledge network.
 type KnRunSQLService interface {
 	RunSQL(ctx context.Context, req *RunSQLReq) (*interfaces.VegaRawQueryResp, error)
 }
@@ -43,7 +43,7 @@ var (
 	instance KnRunSQLService
 )
 
-// NewKnRunSQLService 创建 KnRunSQLService 单例。
+// NewKnRunSQLService create KnRunSQLService singleton.
 func NewKnRunSQLService() KnRunSQLService {
 	once.Do(func() {
 		instance = &knRunSQLService{
@@ -53,12 +53,12 @@ func NewKnRunSQLService() KnRunSQLService {
 	return instance
 }
 
-// NewKnRunSQLServiceWith 注入依赖创建（测试用）。
+// NewKnRunSQLServiceWith injection dependency creation (for testing).
 func NewKnRunSQLServiceWith(vega interfaces.DrivenVega) KnRunSQLService {
 	return &knRunSQLService{vega: vega}
 }
 
-// RunSQL 守卫 → 提取 resource_id → 按固定 Raw Query 契约调 Vega。
+// RunSQL Guard → Extract resource_id → Adjust Vega by fixed Raw Query contract.
 func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfaces.VegaRawQueryResp, error) {
 	if req == nil || strings.TrimSpace(req.SQL) == "" {
 		sql := ""
@@ -71,7 +71,7 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 		return nil, ErrSQLRequired
 	}
 
-	// 只读守卫：拒绝写入 / DDL / 多语句。
+	// Read-only guard: Deny writing to /DDL/multiple statements.
 	if err := EnsureReadOnlySQL(req.SQL); err != nil {
 		emitRunSQLFailure(ctx, nil, req.SQL, ExtractResourceIDs(req.SQL), bkntrace.RunSQLFailure{
 			Stage: "sql_guard", Code: "RUN_SQL_READ_ONLY_REJECTED", Summary: err.Error(),
@@ -79,7 +79,7 @@ func (s *knRunSQLService) RunSQL(ctx context.Context, req *RunSQLReq) (*interfac
 		return nil, err
 	}
 
-	// 必须通过 {{.resource_id}} 占位符引用资源，否则 vega 无法定位数据源。
+	// The resource must be referenced through the {{.resource_id}} placeholder, otherwise vega cannot locate the data source.
 	resourceIDs := ExtractResourceIDs(req.SQL)
 	if len(resourceIDs) == 0 {
 		emitRunSQLFailure(ctx, nil, req.SQL, nil, bkntrace.RunSQLFailure{

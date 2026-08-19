@@ -87,12 +87,12 @@ type TraceContext struct {
 
 var businessTraceIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 
-// GetLanguageFromCtx 从context中获取语言设置
+// GetLanguageFromCtx Gets the language setting from context.
 func GetLanguageFromCtx(ctx context.Context) Language {
 	return GetLanguageByCtx(ctx)
 }
 
-// SetLanguageToCtx 设置语言到context
+// SetLanguageToCtx sets the language to context.
 func SetLanguageToCtx(ctx context.Context, languageInfo Language) context.Context {
 	return SetLanguageByCtx(ctx, languageInfo)
 }
@@ -101,7 +101,7 @@ func SetPublicAPIToCtx(ctx context.Context, isPublic bool) context.Context {
 	return context.WithValue(ctx, interfaces.IsPublic, isPublic)
 }
 
-// IsPublicAPIFromCtx 判断是否为公开API
+// IsPublicAPIFromCtx determines whether it is a public API.
 func IsPublicAPIFromCtx(ctx context.Context) bool {
 	if isPublic, ok := ctx.Value(interfaces.IsPublic).(bool); ok {
 		return isPublic
@@ -109,23 +109,23 @@ func IsPublicAPIFromCtx(ctx context.Context) bool {
 	return false
 }
 
-// SetRawTokenToCtx 保存调用方的原始 bearer 令牌。
+// SetRawTokenToCtx saves the caller's raw bearer token.
 //
-// TokenInfo 是内省结果，不含原文，而 PTC 的 run_code 必须把调用方本人的令牌带到
-// 下游：沙箱里执行的是调用方提交的任意代码，授权判定要留在执行工厂的公开面
-// （算子类型上的 execute 权限，见 #345）。换成服务端身份去打内部面，等于把这道
-// 检查洗掉，任何能连上 MCP 的账号都拿到了沙箱代码执行能力。
+// TokenInfo is the introspection result and does not contain the original text, and PTC's run_code must bring the caller's own token to.
+// Downstream: Any code submitted by the caller is executed in the sandbox, and the authorization determination must be left on the public side of the execution factory.
+// (execute permission on operator types, see #345). Switching to the server identity to open the internal interface is equivalent to changing this.
+// Check and wash out, any account that can connect to MCP has obtained the sandbox code execution capability.
 func SetRawTokenToCtx(ctx context.Context, token string) context.Context {
 	return context.WithValue(ctx, interfaces.KeyToken, token)
 }
 
-// GetRawTokenFromCtx 取出调用方的原始 bearer 令牌。
+// GetRawTokenFromCtx Gets the caller's original bearer token.
 func GetRawTokenFromCtx(ctx context.Context) (string, bool) {
 	token, ok := ctx.Value(interfaces.KeyToken).(string)
 	return token, ok && token != ""
 }
 
-// SetAccountAuthContextToCtx 设置账户认证上下文到context
+// SetAccountAuthContextToCtx sets the account authentication context to context.
 func SetAccountAuthContextToCtx(ctx context.Context, authContext *interfaces.AccountAuthContext) context.Context {
 	return context.WithValue(ctx, interfaces.KeyAccountAuthContext, authContext)
 }
@@ -135,7 +135,7 @@ func GetAccountAuthContextFromCtx(ctx context.Context) (*interfaces.AccountAuthC
 	return authContext, ok
 }
 
-// GetTokenInfoFromCtx 从context中获取token信息
+// GetTokenInfoFromCtx Gets token information from context.
 func GetTokenInfoFromCtx(ctx context.Context) (*interfaces.TokenInfo, bool) {
 	authContext, ok := GetAccountAuthContextFromCtx(ctx)
 	if !ok {
@@ -147,12 +147,12 @@ func GetTokenInfoFromCtx(ctx context.Context) (*interfaces.TokenInfo, bool) {
 	return authContext.TokenInfo, true
 }
 
-// SetResponseFormatToCtx 设置响应格式到 context（用于 HTTP 序列化出口）
+// SetResponseFormatToCtx sets the response format to context (for HTTP serialization exit)
 func SetResponseFormatToCtx(ctx context.Context, format interface{}) context.Context {
 	return context.WithValue(ctx, interfaces.KeyResponseFormat, format)
 }
 
-// GetResponseFormatFromCtx 从 context 获取响应格式，不存在时返回 nil（调用方按默认 json 处理）
+// GetResponseFormatFromCtx gets the response format from context, and returns nil if it does not exist (the caller processes it by default json)
 func GetResponseFormatFromCtx(ctx context.Context) (interface{}, bool) {
 	v := ctx.Value(interfaces.KeyResponseFormat)
 	return v, v != nil
@@ -224,8 +224,8 @@ func CopyRequestScopedValues(from, onto context.Context) context.Context {
 		interfaces.KeyAccountAuthContext,
 		interfaces.KeyResponseFormat,
 		interfaces.IsPublic,
-		// PTC 的 run_code 在 MCP 会话上下文里执行，取不到 gin 的请求上下文；
-		// 漏掉这一项，工具侧就拿不到调用方令牌，只能降级成服务端身份。
+		// PTC's run_code is executed in the MCP session context and cannot obtain the gin request context;
+		// If you omit this item, the tool side will not be able to get the caller token and can only downgrade to the server identity.
 		interfaces.KeyToken,
 	} {
 		if value := from.Value(key); value != nil {
@@ -290,7 +290,7 @@ func NewBKNRequestID() string {
 	return fmt.Sprintf("req_%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// GetHeaderFromCtx 请求外部接口时，从context中获取Header参数传递
+// GetHeaderFromCtx When requesting the external interface, obtain the Header parameter from the context and pass it.
 func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	header = map[string]string{}
 	authContext, ok := GetAccountAuthContextFromCtx(ctx)

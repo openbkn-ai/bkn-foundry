@@ -2,16 +2,16 @@
 //
 // Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
-// Package knmetrics 承载 OT-first 指标路径的第 2、3 步：
+// Package knmetrics carries steps 2 and 3 of the OT-first metric path:
 //
-//	召回对象类 → 在该对象类下看见可用指标 → 按指标自身口径取数
+//	Recall the object type → see the available metrics under the object type → get the number according to the metric's own semantics.
 //
-// 第 2 步是 AttachRelatedMetrics：把 scope_type=object_type 且 scope_ref=<ot_id> 的
-// 指标挂到对象类上。未绑逻辑属性的指标在对象类上本来完全不可见，Agent 因此只能退化成
-// run_sql 自己重写口径。
+// Step 2 is AttachRelatedMetrics: put scope_type=object_type and scope_ref=<ot_id>.
+// The metric is attached to the object type. Indicators that are not bound to logical attributes are completely invisible on the object type, so the Agent can only degenerate into.
+// run_sql overrides the semantics itself.
 //
-// 第 3 步是 QueryMetric：选定指标后交给 ontology-query 按 MetricDefinition 计算。
-// 实例级、且已绑逻辑属性的那一支仍走 get_logic_properties_values，不在本包。
+// The third step is QueryMetric: After selecting the metric, it is handed over to ontology-query to calculate according to MetricDefinition.
+// The instance-level branch that has bound logical properties still uses get_logic_properties_values, which is not included in this package.
 package knmetrics
 
 import (
@@ -26,24 +26,24 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// 指标查询入参错误。均为调用方错误，直接回给 Agent 让它改参数重试。
+// Incorrect input parameters for metric query. They are all errors on the caller's side, and are directly returned to the Agent to change the parameters and try again.
 var (
 	ErrKnIDRequired     = errors.New("kn_id is required")
 	ErrMetricIDRequired = errors.New("metric_id is required (from get_object_types related_metrics)")
 )
 
-// 步长白名单，与 MetricDefinition 支持的粒度一致。
+// Step whitelist, consistent with the granularity supported by MetricDefinition.
 var validSteps = map[string]struct{}{
 	"day": {}, "week": {}, "month": {}, "quarter": {}, "year": {},
 }
 
-// KnMetricsService 指标可见性与指标取数。
+// KnMetricsService metric visibility and metric access.
 type KnMetricsService interface {
-	// AttachRelatedMetrics 给对象类挂上其 scope 下的指标（失败降级为不挂）。
+	// AttachRelatedMetrics attaches the metrics under its scope to the object type (failed to downgrade to not attached).
 	AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType)
-	// AttachRelatedMetricCounts 只挂计数，用于 get_kn_detail 的渐进式下钻。
+	// AttachRelatedMetricCounts Attach only counts, used for progressive drill-down of get_kn_detail.
 	AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType)
-	// QueryMetric 按指标自身口径取数。
+	// QueryMetric takes the number based on the metric's own semantics.
 	QueryMetric(ctx context.Context, req *interfaces.QueryMetricReq) (*interfaces.QueryMetricResp, error)
 }
 
@@ -58,7 +58,7 @@ var (
 	instance KnMetricsService
 )
 
-// NewKnMetricsService 创建 KnMetricsService 单例。
+// NewKnMetricsService create KnMetricsService singleton.
 func NewKnMetricsService() KnMetricsService {
 	once.Do(func() {
 		conf := config.NewConfigLoader()
@@ -71,16 +71,16 @@ func NewKnMetricsService() KnMetricsService {
 	return instance
 }
 
-// NewKnMetricsServiceWith 注入依赖创建（测试用）。
+// NewKnMetricsServiceWith injection dependency creation (for testing).
 func NewKnMetricsServiceWith(logger interfaces.Logger, bkn interfaces.BknBackendAccess,
 	oq interfaces.DrivenOntologyQuery) KnMetricsService {
 	return &knMetricsService{logger: logger, bknBackend: bkn, ontologyQuery: oq}
 }
 
-// AttachRelatedMetrics 按 scope_ref 把指标分发到各对象类。
+// AttachRelatedMetrics distributes metrics to each object type according to scope_ref.
 //
-// 取不到指标不算致命：对象类定义本身已经拿到了，把整个 get_object_types 打成失败只会
-// 让 Agent 连 schema 都读不到。降级成「没有 related_metrics」并留日志。
+// Failure to get the index is not fatal: the object type definition itself has been obtained, and marking the entire get_object_types as failed will only.
+// The Agent cannot even read the schema. Downgrade to "no related_metrics" and leave logs.
 func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) {
 	byScope := s.metricsByScope(ctx, knID, objectTypes)
 	if byScope == nil {
@@ -95,7 +95,7 @@ func (s *knMetricsService) AttachRelatedMetrics(ctx context.Context, knID string
 	}
 }
 
-// AttachRelatedMetricCounts 只写计数，不写明细（get_kn_detail summary 用）。
+// AttachRelatedMetricCounts only writes counts, not details (used for get_kn_detail summary).
 func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID string, objectTypes []*interfaces.ObjectType) {
 	byScope := s.metricsByScope(ctx, knID, objectTypes)
 	if byScope == nil {
@@ -109,7 +109,7 @@ func (s *knMetricsService) AttachRelatedMetricCounts(ctx context.Context, knID s
 	}
 }
 
-// metricsByScope 一次批量取回这批对象类下的指标，按 scope_ref 归类；失败返回 nil。
+// metricsByScope retrieves the metrics under this batch of object types in batches at one time and sorts them according to scope_ref; returns nil on failure.
 func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 	objectTypes []*interfaces.ObjectType) map[string][]*interfaces.RelatedMetric {
 	ids := make([]string, 0, len(objectTypes))
@@ -138,7 +138,7 @@ func (s *knMetricsService) metricsByScope(ctx context.Context, knID string,
 	return byScope
 }
 
-// QueryMetric 校验入参后转发 ontology-query 的指标取数端点。
+// QueryMetric forwards ontology-query's metric fetching endpoint after verifying the input parameters.
 func (s *knMetricsService) QueryMetric(ctx context.Context, req *interfaces.QueryMetricReq) (*interfaces.QueryMetricResp, error) {
 	if req == nil {
 		return nil, ErrKnIDRequired

@@ -34,8 +34,8 @@ var knOperationTypeMap = map[string]interfaces.KnOperationType{
 	"knn":       interfaces.KnOperationTypeKnn,
 }
 
-// ParseKnOperationType 将字符串解析为 KnOperationType。
-// 如果输入字符串无效，则返回错误。
+// ParseKnOperationType Parses a string into a KnOperationType.
+// If the input string is invalid, an error is returned.
 func ParseKnOperationType(s string) (interfaces.KnOperationType, error) {
 	if op, exists := knOperationTypeMap[s]; exists {
 		return op, nil

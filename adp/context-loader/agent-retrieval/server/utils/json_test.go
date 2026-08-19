@@ -12,7 +12,7 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 )
 
-// TestJSONToObject_Success 测试 JSONToObject 成功场景
+// TestJSONToObject_Success test JSONToObject success scenario.
 func TestJSONToObject_Success(t *testing.T) {
 	convey.Convey("TestJSONToObject_Success", t, func() {
 		type TestStruct struct {
@@ -27,7 +27,7 @@ func TestJSONToObject_Success(t *testing.T) {
 	})
 }
 
-// TestJSONToObject_EmptyString 测试 JSONToObject 空字符串
+// TestJSONToObject_EmptyString Test JSONToObject empty string.
 func TestJSONToObject_EmptyString(t *testing.T) {
 	convey.Convey("TestJSONToObject_EmptyString", t, func() {
 		type TestStruct struct {
@@ -39,7 +39,7 @@ func TestJSONToObject_EmptyString(t *testing.T) {
 	})
 }
 
-// TestJSONToObject_InvalidJSON 测试 JSONToObject 无效 JSON
+// TestJSONToObject_InvalidJSON Test JSONToObject invalid JSON.
 func TestJSONToObject_InvalidJSON(t *testing.T) {
 	convey.Convey("TestJSONToObject_InvalidJSON", t, func() {
 		type TestStruct struct {
@@ -51,7 +51,7 @@ func TestJSONToObject_InvalidJSON(t *testing.T) {
 	})
 }
 
-// TestJSONToObjectWithError_Success 测试 JSONToObjectWithError 成功场景
+// TestJSONToObjectWithError_Success test JSONToObjectWithError success scenario.
 func TestJSONToObjectWithError_Success(t *testing.T) {
 	convey.Convey("TestJSONToObjectWithError_Success", t, func() {
 		type TestStruct struct {
@@ -64,7 +64,7 @@ func TestJSONToObjectWithError_Success(t *testing.T) {
 	})
 }
 
-// TestJSONToObjectWithError_EmptyString 测试 JSONToObjectWithError 空字符串
+// TestJSONToObjectWithError_EmptyString Test JSONToObjectWithError empty string.
 func TestJSONToObjectWithError_EmptyString(t *testing.T) {
 	convey.Convey("TestJSONToObjectWithError_EmptyString", t, func() {
 		type TestStruct struct {
@@ -77,7 +77,7 @@ func TestJSONToObjectWithError_EmptyString(t *testing.T) {
 	})
 }
 
-// TestJSONToObjectWithError_InvalidJSON 测试 JSONToObjectWithError 无效 JSON
+// TestJSONToObjectWithError_InvalidJSON Test JSONToObjectWithError invalid JSON.
 func TestJSONToObjectWithError_InvalidJSON(t *testing.T) {
 	convey.Convey("TestJSONToObjectWithError_InvalidJSON", t, func() {
 		type TestStruct struct {
@@ -89,7 +89,7 @@ func TestJSONToObjectWithError_InvalidJSON(t *testing.T) {
 	})
 }
 
-// TestAnyToObject_Success 测试 AnyToObject 成功场景
+// TestAnyToObject_Success test AnyToObject success scenario.
 func TestAnyToObject_Success(t *testing.T) {
 	convey.Convey("TestAnyToObject_Success", t, func() {
 		type TestStruct struct {
@@ -110,7 +110,7 @@ func TestAnyToObject_Success(t *testing.T) {
 	})
 }
 
-// TestAnyToObject_SliceToStruct 测试 AnyToObject 数组转换
+// TestAnyToObject_SliceToStruct tests AnyToObject array conversion.
 func TestAnyToObject_SliceToStruct(t *testing.T) {
 	convey.Convey("TestAnyToObject_SliceToStruct", t, func() {
 		source := []map[string]interface{}{

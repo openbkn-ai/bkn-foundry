@@ -79,34 +79,34 @@ type DrivenOperatorIntegration interface {
 	GetMCPToolDetail(ctx context.Context, req *GetMCPToolDetailRequest) (*GetMCPToolDetailResponse, error)
 	// CallMCPTool Call MCP tool
 	CallMCPTool(ctx context.Context, req *CallMCPToolRequest) (map[string]interface{}, error)
-	// ListSkills 浏览已发布技能（技能市场）
+	// ListSkills Browse published skills (Skills Marketplace)
 	ListSkills(ctx context.Context, req *ListSkillsRequest) (*ListSkillsResponse, error)
-	// GetSkillContent 取技能主文档（SKILL.md）正文与包内文件清单
+	// GetSkillContent gets the text of the skill master document (SKILL.md) and the file list in the package.
 	GetSkillContent(ctx context.Context, skillID string) (*GetSkillContentResponse, error)
-	// ReadSkillFile 读技能包内单个文件正文
+	// ReadSkillFile reads the text of a single file in the skill package.
 	ReadSkillFile(ctx context.Context, req *ReadSkillFileRequest) (*ReadSkillFileResponse, error)
-	// ExecuteSkill 在沙箱内执行技能入口命令
+	// ExecuteSkill executes the skill entry command in the sandbox.
 	ExecuteSkill(ctx context.Context, req *ExecuteSkillRequest) (*ExecuteSkillResponse, error)
-	// ExecuteFunction 在沙箱内执行一段代码（PTC 的 run_code / run_shell）
+	// ExecuteFunction executes a piece of code within the sandbox (PTC's run_code / run_shell)
 	ExecuteFunction(ctx context.Context, req *ExecuteFunctionRequest) (*ExecuteFunctionResponse, error)
 }
 
-// ExecuteFunctionRequest 沙箱代码执行请求。
+// ExecuteFunctionRequest sandbox code execution request.
 type ExecuteFunctionRequest struct {
-	// Code 完整脚本。Language 为 python 时必须导出 handler(event)。
+	// Code complete script. When Language is python, handler(event) must be exported.
 	Code string `json:"code"`
-	// Language 执行工厂只认 python / javascript / shell；bash 会被沙箱控制面 422 拒掉。
+	// The Language execution factory only recognizes python / javascript / shell; bash will be rejected by the sandbox control plane 422.
 	Language string `json:"language"`
-	// Event 传给入口函数的事件对象。凭据与会话上下文走这里而不是 env_vars：
-	// 沙箱会话是池化复用的，env 会把上一个调用方的值留在容器里。
+	// Event The event object passed to the entry function. Credentials and session context go here instead of env_vars:
+	// Sandbox sessions are pooled and reused, and env will leave the value of the previous caller in the container.
 	Event map[string]any `json:"event"`
-	// Timeout 执行超时，单位秒。
+	// Timeout Execution timeout, unit seconds.
 	Timeout int `json:"timeout,omitempty"`
 }
 
-// ExecuteFunctionResponse 沙箱代码执行结果。
+// ExecuteFunctionResponse Sandbox code execution result.
 //
-// 代码自身报错也是 HTTP 200，据 ExitCode 与 Stderr 判断，不能只看状态码。
+// The error reported by the code itself is also HTTP 200. Judging from ExitCode and Stderr, you cannot just look at the status code.
 type ExecuteFunctionResponse struct {
 	Stdout    string `json:"stdout"`
 	Stderr    string `json:"stderr"`

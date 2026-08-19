@@ -297,8 +297,8 @@ func lifecycleHTTPStatus(code string) int {
 		return http.StatusBadRequest
 	// capability_not_licensed belongs with these, not with permission_denied:
 	// a licence gap must be indistinguishable from the resource not existing,
-	// while a permission gap is told plainly (ee-design.md §4.5 — 缺证书 →
-	// 装作没有；缺权限 → 明确拒绝). Sharing an arm with permission_denied made
+	// while a permission gap is told plainly (ee-design.md §4.5 — Missing Certificate →.
+	// Pretending not to; lack of permission → explicitly denied). Sharing an arm with permission_denied made.
 	// an entitlement boundary answer like an authorization one, which is the
 	// one distinction the two-binary contract depends on.
 	case "conversation_not_found", "resource_not_disclosed", "capability_not_licensed":

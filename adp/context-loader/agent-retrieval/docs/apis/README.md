@@ -1,16 +1,16 @@
-# agent-retrieval 接口文档
+# agent-retrieval API documentation
 
-**对外接口（`/api/agent-retrieval/v1`）的 OpenAPI 文档已迁到仓库顶层的文档中心：**
-[`docs/api/context-loader/`](../../../../../docs/api/context-loader/)。
+**The OpenAPI documentation for the external interface (`/api/agent-retrieval/v1`) has been moved to the top-level documentation center:**
+[`docs/api/context-loader/`](../../../../../docs/api/context-loader/).
 
-按 [`rules/CONTRIBUTING.md`](../../../../../rules/CONTRIBUTING.md) 的「文档放置规范」，
-各服务的 OpenAPI 文档统一放顶层 `docs/api/`，不再放在模块自己的 `docs/` 下——改对外
-接口文档请改那边，本目录不要再新增对外接口的 YAML。
+According to the "document placement" rules in [`rules/CONTRIBUTING.md`](../../../../../rules/CONTRIBUTING.md),
+OpenAPI documents for all services live under the top-level `docs/api/` directory and are no longer kept under each module's own `docs/` directory.
+Update external API documentation there, and do not add new external-interface YAML files in this directory.
 
-本目录余下的文件是**内部接口面（`/api/agent-retrieval/in/v1`）** 的草稿，鉴权走
-`X-Account-ID` / `X-Account-Type` 头而非 Token，不对外发布，也不进文档站：
+The remaining files in this directory are drafts for the **internal interface (`/api/agent-retrieval/in/v1`)**.
+They authenticate with `X-Account-ID` / `X-Account-Type` headers instead of tokens, are not published externally, and are not included in the documentation site:
 
-| 目录 | 内容 |
+| Directory | Contents |
 |---|---|
-| `api_private/` | 内部面各端点的请求 / 响应定义 |
-| `api_public/` | 对外面的历史草稿，已被文档中心取代，保留仅供比对 |
+| `api_private/` | Request/response definitions for internal endpoints |
+| `api_public/` | Historical external drafts, replaced by the documentation center and kept only for comparison |

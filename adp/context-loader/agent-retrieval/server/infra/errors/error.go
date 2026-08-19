@@ -44,7 +44,7 @@ func (e *HTTPError) WithDescription(extCode string, params ...interface{}) *HTTP
 	return e
 }
 
-// Error 返回错误信息
+// Error returns error message.
 func (e *HTTPError) Error() string {
 	errBys, _ := jsoniter.Marshal(e)
 	return string(errBys)

@@ -522,8 +522,8 @@ func TestQueryObjectTruncatedUsesExplicitNextPageSignals(t *testing.T) {
 		t.Fatalf("truncated should be false when total_count proves the current page is complete")
 	}
 
-	// 下游在游标翻页第二页起不算总数，TotalCount 为 nil。缺失不是零命中，
-	// 更不能当成「本页已完整」——不然证据链会把截断的结果标成完整的。
+	// The downstream count does not count from the second page turned by the cursor, and TotalCount is nil. Missing is not a zero hit,
+	// It cannot be regarded as "this page is complete" - otherwise the evidence chain will mark the truncated results as complete.
 	unknownTotalResp := &interfaces.QueryObjectInstancesResp{
 		Data: []any{map[string]any{"id": "inst_1"}, map[string]any{"id": "inst_2"}},
 	}

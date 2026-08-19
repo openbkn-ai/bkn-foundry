@@ -14,25 +14,25 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// AgentIntentRetrieval 语义检索。
-// 原依赖「概念意图分析智能体」+「概念召回策略智能体」做意图粗识别与召回规划；
-// 二者随 decision-agent(agent-factory) 退役后，本路径降级为基于 Query 的关键词召回（longtail），
-// 再经业务知识网络执行查询策略并重排。需要完整 Schema 召回的接入方应改用 search_schema。
+// AgentIntentRetrieval semanticsretrieve.
+// Originally relied on "Conceptual Intention Analysis Agent" + "Conceptual Recall Strategy Agent" for coarse intent recognition and recall planning;
+// After both are retired with decision-agent (agent-factory), this path is downgraded to Query-based keyword recall (longtail).
+// Then the query strategy is executed and rearranged through the business knowledge network. Access parties requiring full Schema recall should use search_schema instead.
 func (k *knRetrievalServiceImpl) AgentIntentRetrieval(ctx context.Context, req *interfaces.SemanticSearchRequest) (resp *interfaces.SemanticSearchResponse, err error) {
-	// 记录可观测
+	// Record observability data.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 
 	queryUnderstanding := &interfaces.QueryUnderstanding{}
-	// 基于用户 Query 构建关键词查询策略
+	// Build keyword query strategy based on user Query.
 	queryStrategys := k.longtailRecallByKnowledgeNetwork(req.Query)
-	// 筛选查询策略
+	// Filter query strategies.
 	queryStrategys = k.filterQueryStrategysBySearchScope(queryStrategys, req.SearchScope)
 
-	// 概念结果候选集
+	// Concept result candidate set.
 	conceptResults := []*interfaces.ConceptResult{}
 	if len(queryStrategys) > 0 {
-		// 并发执行查询策略
+		// Execute query strategies concurrently.
 		var queryConceptResults []*interfaces.ConceptResult
 		queryConceptResults, err = k.parallelExecSemanticQueryStrategy(ctx, req.KnID, queryStrategys)
 		if err != nil {
@@ -42,15 +42,15 @@ func (k *knRetrievalServiceImpl) AgentIntentRetrieval(ctx context.Context, req *
 		if len(queryConceptResults) > 0 {
 			conceptResults = append(conceptResults, queryConceptResults...)
 		}
-		// 返回执行的策略
+		// Return the executed strategies.
 		queryUnderstanding.QueryStrategys = queryStrategys
 	}
-	// 排序：按概念类型排序, 去重
+	// Sorting: Sort by concept type, remove duplicates.
 	rerankConceptResults, err := k.rerankConcepts(ctx, queryUnderstanding, conceptResults, req.RerankAction, req.MaxConcepts, req.RerankLLMModel, req.RerankVectorModel)
 	if err != nil {
 		return
 	}
-	// 组装结果
+	// Assemble the result.
 	resp = &interfaces.SemanticSearchResponse{
 		QueryUnderstanding: queryUnderstanding,
 		KnowledgeConcepts:  rerankConceptResults,
@@ -59,9 +59,9 @@ func (k *knRetrievalServiceImpl) AgentIntentRetrieval(ctx context.Context, req *
 	return
 }
 
-// 长尾召回策略:基于业务知识网络做关键词匹配 -- 构建查询策略
+// Long-tail recall strategy: keyword matching based on business knowledge network -- building query strategy.
 func (k *knRetrievalServiceImpl) longtailRecallByKnowledgeNetwork(query string) (queryStrategys []*interfaces.SemanticQueryStrategy) {
-	// 根据用户数据的原始Query生成查询策略
+	// Generate query strategy based on the original Query of user data.
 	var empty []*interfaces.QueryStrategyCondition
 	objectTypeDiscoveryStrategy := k.buildConceptDiscoveryStrategy(interfaces.KnConceptTypeObject, query, empty)
 	if objectTypeDiscoveryStrategy != nil {

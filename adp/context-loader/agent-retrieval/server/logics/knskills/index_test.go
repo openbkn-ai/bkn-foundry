@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// fakeOperator 只实现技能面，其余方法留空——这一层只用得着这四条。
+// fakeOperator only implements the technical side, leaving the other methods blank - only these four are needed for this layer.
 type fakeOperator struct {
 	interfaces.DrivenOperatorIntegration
 
@@ -64,7 +64,7 @@ func TestListSkillsExplainsEmptyResult(t *testing.T) {
 }
 
 func TestGetSkillContentTruncatesByRune(t *testing.T) {
-	// 全中文正文，按字节截断会切碎多字节字符。
+	// Full Chinese text, truncation by bytes will chop up multi-byte characters.
 	body := strings.Repeat("知", maxDocChars+10)
 	fake := &fakeOperator{contentResp: &interfaces.GetSkillContentResponse{
 		SkillID: "sk-1",
@@ -115,7 +115,7 @@ func TestReadSkillFileKeepsUTF8Body(t *testing.T) {
 	fake := &fakeOperator{fileResp: &interfaces.ReadSkillFileResponse{
 		SkillID:  "sk-1",
 		RelPath:  "refs/guide.md",
-		MimeType: "application/octet-stream", // 对象存储常这么回，不能据此判定二进制
+		MimeType: "application/octet-stream", // This is often the case in object storage, and binary data cannot be determined based on this.
 		Content:  []byte("# 指南\n正文"),
 	}}
 

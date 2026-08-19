@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knsearch（语义实例召回）
+// Package knsearch (semantic instance recall)
 // file: semantic_instance_retrieval.go
 package knsearch
 
@@ -23,20 +23,20 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// 召回通道名，进日志用于分辨是哪一路出的问题。
+// Recall channel names are logged to identify which path has a problem.
 const (
 	channelKnn   = "knn"
 	channelMatch = "match"
 )
 
-// retrievalChannel 一路召回通道：一条独立发出的查询。
+// retrievalChannel A recall channel: an independently issued query.
 type retrievalChannel struct {
 	name string
 	cond *interfaces.KnCondition
 }
 
-// channelOutcome 单通道的召回结果。scored 记录这一路的行是否带 _score——
-// 没有的话（回落源库直查）响应顺序不代表相关性，名次无意义，不能拿去做 RRF。
+// channelOutcome is the recall result of a single channel. scored records whether this path returned _score.
+// If not (fall back to the source store for direct query) the response order does not represent relevance, the ranking is meaningless, and cannot be used for RRF.
 type channelOutcome struct {
 	name   string
 	nodes  []*interfaces.KnSearchNode
@@ -44,8 +44,8 @@ type channelOutcome struct {
 	err    error
 }
 
-// semanticInstanceRetrieval 语义实例召回主逻辑
-// 流程：遍历对象类型 -> 向量检索 -> 打分与排序 -> 全局分数过滤 -> 属性过滤
+// semanticInstanceRetrieval semantic instance recall main logic.
+// Process: Traverse object types -> Vector retrieval -> Scoring and sorting -> Global score filtering -> Attribute filtering.
 func (s *localSearchImpl) semanticInstanceRetrieval(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -76,7 +76,7 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 			continue
 		}
 
-		// 更新最高分
+		// Update high score.
 		for _, node := range nodes {
 			if node.Score > maxScore {
 				maxScore = node.Score
@@ -89,7 +89,7 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Retrieved %d instances from %d object types, max_score=%.4f",
 		len(allNodes), len(objectTypes), maxScore)
 
-	// 全局分数过滤
+	// Global score filtering.
 	if boolValue(instanceConfig.EnableGlobalFinalScoreRatioFilter) && maxScore > 0 && len(allNodes) > 0 {
 		threshold := maxScore * instanceConfig.GlobalFinalScoreRatio
 		var topNode *interfaces.KnSearchNode
@@ -107,11 +107,11 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 			threshold, len(allNodes))
 	}
 
-	// 精排级（默认 off）。放在属性过滤**之前**：filterNodeProperties 会砍属性数并截断值，
-	// 截完再送模型就是拿残文本判相关性。
+	// Fine ranking (default off). Placed before attribute filtering: filterNodeProperties will reduce the number of attributes and truncate the value.
+	// Sending truncated text to the model would judge relevance from incomplete text.
 	allNodes = s.rerankInstances(ctx, req.Query, allNodes, instanceConfig)
 
-	// 属性过滤
+	// Property filtering.
 	if boolValue(propertyConfig.EnablePropertyFilter) {
 		allNodes = s.filterNodeProperties(allNodes, propertyConfig)
 	}
@@ -127,12 +127,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	return result, nil
 }
 
-// retrieveInstancesForObjectType 对单个对象类型进行语义检索。
+// retrieveInstancesForObjectType performs semantic retrieval of individual object types.
 //
-// 默认走两通道：knn 与 match 各发一条查询，再按名次做 RRF 融合。拆开发是必需的——
-// 合在一条 OR 里时 OpenSearch 把两路子句分直接相加，knn 分落在 0~1 而 BM25 无上界，
-// 向量命中会被挤出 InitialCandidateCount 条候选，排序阶段再怎么修都救不回来。
-// 而拆出来的子句分拿不到：named queries 只回答命中与否，取子句分只能走 explain。
+// By default, two channels are used: knn and match each send one query, then RRF fusion is performed by rank. Splitting the requests is required.
+// When combined in an OR, OpenSearch directly adds the two clauses, and the knn score falls between 0 and 1, while BM25 has no upper bound.
+// Vector hits will be squeezed out of InitialCandidateCount candidates, and no amount of repairs in the sorting stage can save them.
+// However, the separated clause scores cannot be obtained: named queries only answer whether it is hit or not, and the clause scores can only be obtained by explain.
 func (s *localSearchImpl) retrieveInstancesForObjectType(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -152,7 +152,7 @@ func (s *localSearchImpl) retrieveInstancesForObjectType(
 	return s.retrieveInstancesSingleQuery(ctx, req, objType, config, searchable, allowKnn)
 }
 
-// retrieveInstancesFused 双通道召回 + RRF 融合。
+// retrieveInstancesFused dual-channel recall + RRF fusion.
 func (s *localSearchImpl) retrieveInstancesFused(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -187,9 +187,9 @@ func (s *localSearchImpl) retrieveInstancesFused(
 	live := make([]channelOutcome, 0, len(outcomes))
 	for _, o := range outcomes {
 		if o.err != nil {
-			// 单通道失败不打掉整个对象类。knn 打在没有向量映射的字段上时下游回 400
-			// （condition_operations 由建网方声明并原样落库，不可信），过去这个 400
-			// 会连带 match 一起失败，该对象类一条实例都召不回。
+			// Failure of a single channel does not destroy the entire object type. Knn returns 400 when hitting a field without vector mapping.
+			// (condition_operations is declared by the network builder and stored as it is, so it is not trustworthy). In the past, this 400.
+			// It will fail together with match, and no instance of the object type will be recalled.
 			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Channel %s failed for %s: %v",
 				o.name, objType.ConceptID, o.err)
 			continue
@@ -212,8 +212,8 @@ func (s *localSearchImpl) retrieveInstancesFused(
 	if anyScored {
 		nodes = fuseByRRF(live, rrfK(config), channelWeights(config))
 	} else {
-		// 源库直查路径没有 _score，响应顺序是库的自然序，名次无意义。
-		// 退回本地兜底打分——0/0.3/0.5/0.85 那套分档本来就是为这条路设计的。
+		// The source-store direct query path has no _score; response order is the store's natural order and rank is meaningless.
+		// Fall back to local scoring. The 0/0.3/0.5/0.85 tiers were designed for this path.
 		nodes = mergeChannelNodes(live)
 		s.scoreNodes(req.Query, nodes, searchable, config)
 	}
@@ -224,9 +224,9 @@ func (s *localSearchImpl) retrieveInstancesFused(
 		nodes = nodes[:config.PerTypeInstanceLimit]
 	}
 
-	// MinDirectRelevance 是绝对阈值，只对本地兜底打分有意义。打在 RRF 分上会把
-	// 全部结果滤掉（RRF 分量级在 0.0x），打在原始 _score 上则是另一种坏：BM25 行
-	// 恒大于阈值全部放过、纯向量行卡在边缘随机掉。
+	// MinDirectRelevance is an absolute threshold and is only meaningful for local bottom-line scoring. A score higher than RRF will result in.
+	// Filtering out all results (RRF component level at 0.0x), hitting the original _score is another kind of bad: BM25 line.
+	// If the value is always greater than the threshold, all will be let go, and pure vector rows will be randomly dropped at the edge.
 	if !anyScored {
 		nodes = s.filterLowRelevanceNodes(nodes, config.MinDirectRelevance)
 	}
@@ -234,7 +234,7 @@ func (s *localSearchImpl) retrieveInstancesFused(
 	return nodes, nil
 }
 
-// fetchChannel 发出一路查询并转成节点，同时记录这一路是否带 _score。
+// fetchChannel issues a query and converts it into a node, and records whether the query contains _score.
 func (s *localSearchImpl) fetchChannel(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -270,16 +270,16 @@ func (s *localSearchImpl) fetchChannel(
 		out.nodes = append(out.nodes, node)
 	}
 
-	// 相对分数过滤放在通道内、融合之前——这是原始分唯一可比的地方：同一对象类、
-	// 同一索引、同一查询、同一种算子。融合之后就没法做了：RRF 分只表达名次，
-	// 第一名恒为 1.0，哪怕它其实毫不相关，"整体都不相关"这个信息在名次里表达不出来。
+	// Relative score filtering is placed within the channel, before fusion - this is the only place where the original scores are comparable: the same object type,
+	// The same index, the same query, and the same operator. After fusion, there is nothing you can do: RRF points only express rankings.
+	// The first place is always 1.0, even if it is actually irrelevant. The message "the whole is not relevant" cannot be expressed in the ranking.
 	if out.scored && boolValue(config.EnableGlobalFinalScoreRatioFilter) && config.GlobalFinalScoreRatio > 0 {
 		out.nodes = pruneChannelByScoreRatio(out.nodes, config.GlobalFinalScoreRatio)
 	}
 	return out
 }
 
-// pruneChannelByScoreRatio 丢掉与本通道最高分差距过大的行，最高分那条始终保留。
+// pruneChannelByScoreRatio discards the rows that are too far apart from the highest score of this channel, and the row with the highest score is always retained.
 func pruneChannelByScoreRatio(nodes []*interfaces.KnSearchNode, ratio float64) []*interfaces.KnSearchNode {
 	if len(nodes) <= 1 {
 		return nodes
@@ -306,8 +306,8 @@ func pruneChannelByScoreRatio(nodes []*interfaces.KnSearchNode, ratio float64) [
 	return kept
 }
 
-// retrieveInstancesSingleQuery 旧路径：单条 OR 查询。仅 enable_rrf_fusion=false 时走，
-// 作为新融合逻辑出问题时的逃生门。
+// retrieveInstancesSingleQuery Old path: single OR query. Only go when enable_rrf_fusion=false,
+// Serves as an escape door when something goes wrong with the new fusion logic.
 func (s *localSearchImpl) retrieveInstancesSingleQuery(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -322,7 +322,7 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 		return nil, nil
 	}
 
-	// 调用 ontology-query 进行实例检索
+	// Call ontology-query to retrieve instances.
 	queryReq := &interfaces.QueryObjectInstancesReq{
 		KnID:               req.KnID,
 		OtID:               objType.ConceptID,
@@ -337,7 +337,7 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 		return nil, fmt.Errorf("query instances failed: %w", err)
 	}
 
-	// 转换为 KnSearchNode 格式
+	// Convert to KnSearchNode format.
 	nodes := make([]*interfaces.KnSearchNode, 0, len(resp.Data))
 	for _, data := range resp.Data {
 		if dataMap, ok := data.(map[string]any); ok {
@@ -347,31 +347,31 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 		}
 	}
 
-	// 计算相关性分数
+	// Calculate relevance score.
 	s.scoreNodes(req.Query, nodes, searchable, config)
 
-	// 按分数降序排序
+	// Sort by score descending.
 	sort.Slice(nodes, func(i, j int) bool {
 		return nodes[i].Score > nodes[j].Score
 	})
 
-	// 取 Top-K
+	// Take Top-K.
 	if len(nodes) > config.PerTypeInstanceLimit {
 		nodes = nodes[:config.PerTypeInstanceLimit]
 	}
 
-	// 过滤低相关性节点
+	// Filter low relevance nodes.
 	nodes = s.filterLowRelevanceNodes(nodes, config.MinDirectRelevance)
 
 	return nodes, nil
 }
 
-// buildSemanticSearchConditionStruct 构建语义检索条件结构体
-// buildSemanticSearchConditionStruct 把一句自然语言拼成 OR 条件。
+// buildSemanticSearchConditionStruct builds the semantic search condition structure.
+// buildSemanticSearchConditionStruct spells a natural language sentence into an OR condition.
 //
-// 只用 knn 与 match：knn 吃整句（句向量本就该整句进），match 吃整句后由分析器分词
-// 逐词命中。等值不参与——拿整句去和某个字段做 == 永远为假，还要白占一个
-// max_sub_conditions 名额，把真正能命中的子条件挤掉。
+// Only use knn and match: knn eats the entire sentence (the sentence vector should enter the entire sentence), match eats the entire sentence and then the analyzer segments the words.
+// Hit by word. Equivalent values do not participate - use the entire sentence to do == with a certain field, it will always be false, and one will be occupied in vain.
+// max_sub_conditions quota, squeeze out the sub-conditions that can really hit.
 func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 	query string,
 	searchable []searchableField,
@@ -436,8 +436,8 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 		subConditions = subConditions[:maxSub]
 	}
 
-	// 字段只支持等值时一个子条件都拼不出来。空的 OR 条件 ontology-query 会直接判 400
-	// （"sub condition size is 0"），所以这里返回 nil 让调用方跳过该对象类。
+	// When the field only supports equal values, a sub-condition cannot be spelled out. Empty OR condition ontology-query will directly evaluate 400.
+	// ("sub condition size is 0"), so nil is returned here to let the caller skip the object type.
 	if len(subConditions) == 0 {
 		return nil
 	}
@@ -448,12 +448,12 @@ func (s *localSearchImpl) buildSemanticSearchConditionStruct(
 	}
 }
 
-// buildKnnOnlyCondition 只含向量子条件的通道。对象类没有向量字段、或本轮不允许发
-// 向量条件时返回 nil，调用方据此跳过这一路。
+// buildKnnOnlyCondition contains only channels with vector subconditions. The object type does not have a vector field, or is not allowed to be sent in this round.
+// Returns nil for vector conditions, and the caller skips this path accordingly.
 //
-// k 沿用 PerTypeInstanceLimit 而不是 InitialCandidateCount：向量检索的成本随 k 增长，
-// 而这一路的作用是「保底名额」——把最相关的几条送进融合池，够用即可。调大 k 的收益
-// 需要召回率实验支撑，属于 #708 的范围。
+// k follows PerTypeInstanceLimit instead of InitialCandidateCount: the cost of vector retrieval grows with k,
+// The function of this path is to "guarantee quota" - send the most relevant ones into the fusion pool, as long as it is enough. The benefit of increasing k.
+// It needs support from recall experiments and falls within the scope of #708.
 func buildKnnOnlyCondition(
 	query string,
 	searchable []searchableField,
@@ -500,8 +500,8 @@ func buildKnnOnlyCondition(
 	}
 }
 
-// buildMatchOnlyCondition 只含全文子条件的通道。等值不参与：拿整句去和某个字段做 ==
-// 永远为假，还要白占一个 max_sub_conditions 名额。
+// buildMatchOnlyCondition Passes containing only full-text subconditions. Equivalence does not participate: take the entire sentence and do == with a certain field.
+// It is always false and will occupy a max_sub_conditions quota in vain.
 func buildMatchOnlyCondition(
 	query string,
 	searchable []searchableField,
@@ -539,7 +539,7 @@ func buildMatchOnlyCondition(
 	}
 }
 
-// rrfK 取融合常数，非正值回落默认 60。
+// rrfK takes the fusion constant, and non-positive values ​​fall back to the default value of 60.
 func rrfK(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) int {
 	if config != nil && config.RRFK > 0 {
 		return config.RRFK
@@ -547,11 +547,11 @@ func rrfK(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) int {
 	return 60
 }
 
-// channelWeights 解析各通道权重。knn 取 knn_weight，match 取 1-knn_weight，
-// 其余通道（将来若有）按等权处理。
+// channelWeights parses the weight of each channel. knn takes knn_weight, match takes 1-knn_weight,
+// The remaining channels (if any in the future) are treated with equal weight.
 //
-// 越界值钳制到 [0,1] 而不是报错：配错一个数不该让整条检索链失败，何况这个旋钮
-// 目前没有召回率实验支撑（同 #708），更不该有硬性失败路径。
+// Clamp the out-of-bounds value to [0,1] instead of reporting an error: mismatching one number should not cause the entire search chain to fail, let alone this knob.
+// There is currently no recall experimental support (same as #708), and there should be no hard failure path.
 func channelWeights(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) map[string]float64 {
 	w := 0.5
 	if config != nil && config.KnnWeight != nil {
@@ -569,7 +569,7 @@ func channelWeights(config *interfaces.KnSearchSemanticInstanceRetrievalConfig) 
 	}
 }
 
-// weightOf 取某通道的权重；未登记的通道按等权 0.5 处理。
+// weightOf takes the weight of a certain channel; unregistered channels are treated with an equal weight of 0.5.
 func weightOf(weights map[string]float64, channel string) float64 {
 	if v, ok := weights[channel]; ok {
 		return v
@@ -577,28 +577,28 @@ func weightOf(weights map[string]float64, channel string) float64 {
 	return 0.5
 }
 
-// fuseByRRF 按 Reciprocal Rank Fusion 融合多路召回：
+// fuseByRRF fuses multi-channel recall according to Reciprocal Rank Fusion:
 //
 //	score = Σ w_i/(k + rank_i) × 2(k+1)
 //
-// 用名次而不是分数，是因为两路的分根本不同量纲：knn 分在 0~1，BM25 无上界且跨索引
-// 不可比。归一化加权和也能凑合，但 min-max 在候选少、分数集中时噪声很大（top1 恒为
-// 1.0），且权重要按知识网络手调；RRF 只有一个常数，跨网不用调。
+// The reason for using rankings instead of scores is that the scores of the two routes are fundamentally different dimensions: knn scores are between 0 and 1, and BM25 has no upper bound and spans indexes.
+// Not comparable. The normalized weighted sum can also make do, but min-max is very noisy when there are few candidates and the scores are concentrated (top1 is always.
+// 1.0), and the weight must be tuned manually for each knowledge network; RRF has only one constant and does not need cross-network tuning.
 //
-// 乘 2(k+1) 只是换量纲：**等权（默认 0.5）时**任意一路的第 1 名恰好得 1.0，两路都
-// 第 1 得 2.0——与不带权重的旧式 Σ1/(k+rank)×(k+1) 逐位相同。这样跨对象
-// 类比较有一个稳定的锚——「在自己能发的通道里排第 1」在哪个对象类都是 1.0，不受
-// 该类发了几路影响；两路都命中的实例高出一截，那是真信号。同时量级与无 _score
-// 路径的本地兜底打分（0~0.85）相当，两条路径的结果汇进同一个池子做全局比例过滤时
-// 不会互相抹掉。
+// Multiplying by 2(k+1) just changes the dimensions: **When the weights are equal (default 0.5)** the first place in any way will get exactly 1.0, and both ways will get exactly 1.0.
+// 1st gets 2.0, exactly matching the old unweighted Σ1/(k+rank)×(k+1). This gives cross-object-type comparison
+// a stable anchor: "rank 1 in any channel it can send" is 1.0 in every object type, regardless of how many channels
+// that type sends. Instances hit by both paths score higher, which is a real signal. The magnitude is also comparable
+// with local fallback scores (0~0.85) from paths without _score, so both path results can enter the same global ratio filter pool.
+// They won't erase each other.
 //
-// 不要再除以通道数：那样做会把「双通道对象类里只被一路命中的实例」压到单通道
-// 对象类同名次实例的一半（VM 实测 0.5 vs 1.0），偏置只是换了个方向。缺席另一路
-// 本身已经通过「少加一项」体现了，不需要再罚一次。
+// Don't divide by the number of channels: doing so will push "instances of a dual-channel object type that are only hit by one channel" to single-channel.
+// Half of the sub-instances of the object type with the same name (VM measured 0.5 vs 1.0), the offset just changes the direction. missing another way.
+// It has already been reflected by "one less item added" and does not need to be punished again.
 //
-// 权重偏离 0.5 之后，上面那个跨类锚点会跟着倾斜：调高向量权重，没有向量字段的
-// 对象类整体被压低。那是调用方声明的偏好带来的结果，不是缺陷——但也正因如此，
-// 默认值必须留在 0.5。
+// After the weight deviates from 0.5, the above cross-category anchor point will follow the tilt: increase the vector weight, there is no vector field.
+// Object classes as a whole are suppressed. That's a result of the caller's declared preference, not a bug - but that's why,
+// The default value must be left at 0.5.
 func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*interfaces.KnSearchNode {
 	if len(outcomes) == 0 {
 		return nil
@@ -618,8 +618,8 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 		for rank, node := range o.nodes {
 			key := instanceKey(node)
 			if key == "" {
-				// 既无唯一标识又无实例名：无法安全判定与其他行是否同一实例。
-				// 宁可重复也不误合并两个不同实例，给它一个不会碰撞的键。
+				// There is neither a unique identifier nor an instance name: it cannot be safely determined whether it is the same instance as other rows.
+				// Rather than duplicating it by mistake and merging two different instances, give it a key that won't collide.
 				key = fmt.Sprintf("%s|anon:%s:%d", node.ObjectTypeID, o.name, rank)
 			}
 			e, ok := byKey[key]
@@ -628,8 +628,8 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 				byKey[key] = e
 				order = append(order, key)
 			} else if node.RecallScore > e.node.RecallScore {
-				// 同一实例两路都召回：属性内容一致（两路请求同一组字段），
-				// 只把原始召回分取较大者留作观测。
+				// The same instance is recalled in both ways: the attribute content is consistent (the two ways request the same set of fields),
+				// Only the larger original recall score is retained for observation.
 				e.node.RecallScore = node.RecallScore
 			}
 			e.score += weightOf(weights, o.name) / float64(k+rank+1)
@@ -637,7 +637,7 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 	}
 
 	fused := make([]*interfaces.KnSearchNode, 0, len(order))
-	// 2(k+1)：等权时把「某一路第 1 名」拉回 1.0，与不带权重的老公式对齐。
+	// 2(k+1): When equal-weighted, bring "No. 1 on a certain road" back to 1.0, aligning with the old formula without weights.
 	norm := 2 * float64(k+1)
 	for _, key := range order {
 		e := byKey[key]
@@ -647,8 +647,8 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 	return fused
 }
 
-// mergeChannelNodes 只做去重合并、不打分。用于无 _score 的源库直查路径：
-// 那条路上名次无意义，分数交给本地兜底打分算。
+// mergeChannelNodes only merges overlaps and does not score. Source-store direct query paths have no _score:
+// their ranks are meaningless, so scores are decided by the local fallback scorer.
 func mergeChannelNodes(outcomes []channelOutcome) []*interfaces.KnSearchNode {
 	seen := make(map[string]struct{})
 	merged := make([]*interfaces.KnSearchNode, 0)
@@ -668,15 +668,15 @@ func mergeChannelNodes(outcomes []channelOutcome) []*interfaces.KnSearchNode {
 	return merged
 }
 
-// instanceIDProperties 是索引行携带的身份列，按可靠性排序。
+// instanceIDProperties is the identity column carried by the index row, sorted by reliability.
 //
-// 这条链路上 `unique_identities` / `instance_name` 经常都是空的——VM 实测（#818）
-// 对象类实例返回的身份落在 properties 的 `_instance_id` 里。只认顶层字段的话，
-// 两路召回的同一行会被当成两个匿名实例各占一个名额。
+// `unique_identities` / `instance_name` on this link are often empty - VM actual measurement (#818)
+// The identity returned by the object type instance falls in the `_instance_id` of properties. If only the top-level fields are recognized,
+// The same row recalled in both ways will be treated as two anonymous instances, each occupying one place.
 var instanceIDProperties = []string{"_instance_id", "_instance_identity"}
 
-// instanceKey 生成跨通道稳定的实例标识。按 唯一标识 → 身份列 → 实例名 → 属性内容
-// 依次退让；全都拿不到才返回空串交由调用方当匿名行处理。
+// instanceKey generates an instance ID that is stable across channels. Press Unique Identification → Identity Column → Instance Name → Attribute Content.
+// Give in one by one; only when no one can get it, an empty string is returned and handed over to the caller as an anonymous line for processing.
 func instanceKey(node *interfaces.KnSearchNode) string {
 	if node == nil {
 		return ""
@@ -703,16 +703,16 @@ func instanceKey(node *interfaces.KnSearchNode) string {
 	if node.InstanceName != "" {
 		return node.ObjectTypeID + "|name=" + node.InstanceName
 	}
-	// 兜底按属性内容取指纹：同一行经两路召回拿到的字段完全相同（两路请求同一组
-	// 字段），指纹必然一致。两个属性完全相同的不同实例会被合并，但那样的两行在
-	// 输出里本就无法区分，合并不比重复更糟。属性为空则无从判断，留给匿名分支。
+	// Fingerprints are taken based on attribute content: the fields obtained by the same row through two-way recall are exactly the same (two-way requests for the same group.
+	// field), the fingerprints must be consistent. Two different instances with exactly the same properties will be merged, but such two lines will be.
+	// The output is inherently indistinguishable, and merging is no worse than duplication. If the attribute is empty, there is no way to judge, leaving the anonymous branch.
 	if len(node.Properties) > 0 {
 		return node.ObjectTypeID + "|fingerprint=" + propertiesFingerprint(node.Properties)
 	}
 	return ""
 }
 
-// propertiesFingerprint 对属性做与 map 遍历顺序无关的指纹。
+// propertiesFingerprint Fingerprints properties independently of map traversal order.
 func propertiesFingerprint(props map[string]any) string {
 	keys := make([]string, 0, len(props))
 	for k := range props {
@@ -726,8 +726,8 @@ func propertiesFingerprint(props map[string]any) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-// sortNodesByScore 按分数降序，同分时按原始召回分降序、再按实例名升序——
-// 没有兜底列时同分行的次序会随 map 遍历漂移，同一查询两次结果不一致。
+// sortNodesByScore is sorted in descending order by score, and at the same time, it is sorted in descending order by the original recall score, and then in ascending order by instance name——.
+// When there is no bottom column, the order of the same branches will drift with map traversal, and the results of the same query will be inconsistent twice.
 func sortNodesByScore(nodes []*interfaces.KnSearchNode) {
 	sort.SliceStable(nodes, func(i, j int) bool {
 		if nodes[i].Score != nodes[j].Score {
@@ -740,7 +740,7 @@ func sortNodesByScore(nodes []*interfaces.KnSearchNode) {
 	})
 }
 
-// convertToKnSearchNode 将原始数据转换为 KnSearchNode 格式
+// convertToKnSearchNode converts raw data to KnSearchNode format.
 func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObjectType, data map[string]any) *interfaces.KnSearchNode {
 	node := &interfaces.KnSearchNode{
 		ObjectTypeID:   objType.ConceptID,
@@ -748,28 +748,28 @@ func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObje
 		Properties:     make(map[string]any),
 	}
 
-	// 提取唯一标识
+	// Extract unique identifier.
 	if uid, ok := data["unique_identities"]; ok {
 		if uidMap, ok := uid.(map[string]any); ok {
 			node.UniqueIdentities = uidMap
 		}
 	}
 
-	// 提取实例名称
+	// Extract instance name.
 	if name, ok := data["instance_name"]; ok {
 		if nameStr, ok := name.(string); ok {
 			node.InstanceName = nameStr
 		}
 	}
 
-	// 提取其他属性
+	// Extract other attributes.
 	for key, value := range data {
 		if key != "unique_identities" && key != "instance_name" && key != "_score" {
 			node.Properties[key] = value
 		}
 	}
 
-	// 提取分数（如果有）
+	// Extract the score (if any)
 	if score, ok := data["_score"]; ok {
 		switch v := score.(type) {
 		case float64:
@@ -782,18 +782,18 @@ func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObje
 	return node
 }
 
-// scoreNodes 计算节点的相关性分数
-// scoreNodes 只在底层没给出分数时兜底。
+// scoreNodes calculates the relevance scores of nodes.
+// scoreNodes only takes the bottom when the bottom layer does not give a score.
 //
-// 索引查询回来的行带 _score（ontology-query 逐行注入 hit.Score），那是 OpenSearch 的
-// 相关性，比这里的字符串比对可靠得多，一律保留。回落到源库直查的资源没有 _score，
-// 才用下面的兜底：命中范围覆盖参与检索的全部字段而不只是实例名——match 很可能命中
-// 的是描述、地址一类字段，只比实例名会把它们判成 0 分再被相关性过滤掉。
+// The rows returned by the index query have _score (ontology-query injects hit.Score row by row), which is OpenSearch's.
+// Correlation, which is much more reliable than the string comparison here, is always retained. Resources returned to the source store for direct query do not have _score.
+// Just use the following caveat: the hit range covers all fields participating in the search, not just the instance name - match is likely to hit.
+// Fields such as description and address are only scored as 0 points compared to instance names and then filtered out by relevance.
 func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchNode,
 	searchable []searchableField, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) {
 
 	for _, node := range nodes {
-		// 已有分数（来自索引检索）时保留
+		// Keep if there is already a score (from index retrieval)
 		if node.Score > 0 {
 			continue
 		}
@@ -807,7 +807,7 @@ func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchN
 	}
 }
 
-// fallbackNodeScore 取实例名与各可检索字段里的最高分。
+// fallbackNodeScore takes the highest score in the instance name and each searchable field.
 func fallbackNodeScore(query string, node *interfaces.KnSearchNode,
 	searchable []searchableField, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) float64 {
 
@@ -821,8 +821,8 @@ func fallbackNodeScore(query string, node *interfaces.KnSearchNode,
 		if !ok || text == "" {
 			continue
 		}
-		// 属性上的命中不如实例名精确，完全相等也只给 0.6，避免把地址、备注一类
-		// 长文本的整串相等抬到与实例名同级。
+		// The hit on the attribute is not as precise as the instance name. If it is completely equal, only 0.6 will be given. Avoid using addresses and remarks.
+		// The entire string of long text is raised to the same level as the instance name.
 		if score := textOverlapScore(query, text, 0.6); score > best {
 			best = score
 		}
@@ -830,7 +830,7 @@ func fallbackNodeScore(query string, node *interfaces.KnSearchNode,
 	return best
 }
 
-// textOverlapScore 按「相等 > 目标含查询 > 查询含目标」三档给分。
+// textOverlapScore is scored according to the three levels of "equal > target with query > query with target".
 func textOverlapScore(query, target string, exactScore float64) float64 {
 	if target == "" {
 		return 0
@@ -847,7 +847,7 @@ func textOverlapScore(query, target string, exactScore float64) float64 {
 	}
 }
 
-// filterLowRelevanceNodes 过滤低相关性节点
+// filterLowRelevanceNodes filters low-relevance nodes.
 func (s *localSearchImpl) filterLowRelevanceNodes(nodes []*interfaces.KnSearchNode, minRelevance float64) []*interfaces.KnSearchNode {
 	var filtered []*interfaces.KnSearchNode
 	for _, node := range nodes {
@@ -858,7 +858,7 @@ func (s *localSearchImpl) filterLowRelevanceNodes(nodes []*interfaces.KnSearchNo
 	return filtered
 }
 
-// filterNodesByScore 按分数阈值过滤节点
+// filterNodesByScore filters nodes by score threshold.
 func (s *localSearchImpl) filterNodesByScore(nodes []*interfaces.KnSearchNode, threshold float64) []*interfaces.KnSearchNode {
 	var filtered []*interfaces.KnSearchNode
 	for _, node := range nodes {
@@ -869,7 +869,7 @@ func (s *localSearchImpl) filterNodesByScore(nodes []*interfaces.KnSearchNode, t
 	return filtered
 }
 
-// filterNodeProperties 过滤节点属性
+// filterNodeProperties filter node properties.
 func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode, config *interfaces.KnSearchPropertyFilterConfig) []*interfaces.KnSearchNode {
 	for _, node := range nodes {
 		if len(node.Properties) > config.MaxPropertiesPerInstance {
@@ -889,7 +889,7 @@ func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode,
 			node.Properties = newProps
 		}
 
-		// 截断过长的属性值
+		// Truncate overly long attribute values.
 		for key, value := range node.Properties {
 			if strVal, ok := value.(string); ok {
 				if config.MaxPropertyValueLength > 0 {
@@ -904,14 +904,14 @@ func (s *localSearchImpl) filterNodeProperties(nodes []*interfaces.KnSearchNode,
 	return nodes
 }
 
-// knnAllowedFor 判断某个对象类这一轮是否发向量条件。
+// knnAllowedFor determines whether a certain object type sends vector conditions this round.
 //
-// 唯一的门槛是它真有向量字段：没有的话本来也拼不出 knn，白占成本。至于「只挑最相关
-// 的几个对象类」——概念召回在主路径上不给对象类打分（Schema 取自知识网络详情，没有
-// _score），排出来的名次是知识网络里的自然顺序而不是相关度，按它截取只会随机地把
-// 向量能力从某些对象类上拿掉。实测在筛掉无向量字段的对象类之后，限不限个数的延迟
-// 没有差别，因此不设这个旋钮。成本随「建了向量索引的对象类数量」增长，那由建索引
-// 的人决定。
+// The only threshold is that it really has a vector field: without it, knn would not be able to be spelled out, and the cost would be wasted. As for "pick only the most relevant.
+// "Several object types" - Concept recall does not score object types on the main path (Schema is taken from the knowledge network details, no.
+// _score), the ranking is the natural order in the knowledge network rather than the correlation, intercepting according to it will only randomly.
+// Vector capabilities are removed from some object types. Actual measurement: After filtering out object types without vector fields, the delay is limited to an unlimited number of objects.
+// There is no difference, so this knob is not provided. The cost increases with the "number of object types for which vector indexes are built", so by building the index.
+// people decide.
 func knnAllowedFor(objType *interfaces.KnSearchObjectType, config *interfaces.KnSearchSemanticInstanceRetrievalConfig) bool {
 	if config == nil || !boolValue(config.EnableKnnInstanceRetrieval) {
 		return false
@@ -919,7 +919,7 @@ func knnAllowedFor(objType *interfaces.KnSearchObjectType, config *interfaces.Kn
 	return hasKnnField(objType)
 }
 
-// hasKnnField 判断对象类上有没有可以发向量条件的属性。
+// hasKnnField determines whether there is an attribute on the object type that can send vector conditions.
 func hasKnnField(objType *interfaces.KnSearchObjectType) bool {
 	for _, f := range findSemanticSearchableFields(objType) {
 		if f.HasKnn {

@@ -37,10 +37,10 @@ type restPublicHandler struct {
 	AppKeys            interfaces.AppKeyVerifier
 	KnRetrievalHandler knretrieval.KnRetrievalHandler
 	MCPHandler         http.Handler
-	// PTCMCPHandler 是 PTC 的独立 MCP 端点（…/mcp/ptc）。与 MCPHandler 分开，
-	// 是因为两者的工具面互斥：客户端同时看到 run_code 与二十个业务工具时，
-	// 模型会挑后者，PTC 就退化成普通工具调用。装配失败时为 nil，该路由报 503，
-	// 不影响主工具面。
+	// PTCMCPHandler is a standalone MCP endpoint for PTC (…/mcp/ptc). separate from MCPHandler,
+	// This is because the two tool surfaces are mutually exclusive: when the client sees run_code and twenty business tools at the same time,
+	// The model will choose the latter, and PTC will degenerate into ordinary tool calls. It is nil when the assembly fails, and the route reports 503.
+	// Does not affect the main tool surface.
 	PTCMCPHandler                  http.Handler
 	KnLogicPropertyResolverHandler knlogicpropertyresolver.KnLogicPropertyResolverHandler
 	KnActionRecallHandler          knactionrecall.KnActionRecallHandler
@@ -52,14 +52,14 @@ type restPublicHandler struct {
 	KnSkillsHandler                knskills.KnSkillsHandler
 	Logger                         interfaces.Logger
 	LifecycleClient                *bkntrace.LifecycleClient
-	// ServicePort 用于推导沙箱回访本服务的地址（见 PTC 工具包端点）。
+	// ServicePort is used to deduce the address for the sandbox to return to this service (see PTC toolkit endpoint).
 	ServicePort int
 }
 
 var buildMCPInfo = mcp.BuildMCPInfoForLocale
 
-// NewRestPublicHandler 创建restHandler实例
-// servicePort 用于推导沙箱回访地址；沙箱在集群内，走不了浏览器侧的网关地址。
+// NewRestPublicHandler createrestHandlerinstance.
+// servicePort is used to derive the sandbox return address; the sandbox is within the cluster and cannot reach the gateway address on the browser side.
 func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.HTTPRouterInterface {
 	return &restPublicHandler{
 		Hydra:                          drivenadapters.NewHydra(),
@@ -184,10 +184,10 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 	case strings.HasPrefix(path, ptcPathPrefix):
 		// When the global gate is disabled, make this endpoint indistinguishable
 		// from one that was never deployed.
-		// PTC 不受 EXECUTE_SKILL_ENABLED 约束，端点常开。这是明确的产品决策：
-		// 该开关按语义是技能执行的闸，而 run_code / run_shell 是另一种能力，
-		// 共用一个开关会让想开技能执行的人被迫连任意代码执行一起开，反之亦然。
-		// 代价是本部署没有关闭 PTC 的手段——沙箱侧的隔离因此成为必答项而非可选项。
+		// PTC is not subject to EXECUTE_SKILL_ENABLED and the endpoint is always open. This is a clear product decision:
+		// This switch is semantically a gate for skill execution, and run_code / run_shell is another ability.
+		// Sharing a switch will force anyone who wants to enable skill execution to enable arbitrary code execution along with it, and vice versa.
+		// The trade-off is that this deployment has no means of turning off PTC - isolation on the sandbox side therefore becomes a must rather than an option.
 		if r.PTCMCPHandler == nil {
 			sharedrest.MarkLocalizedCacheableResponse(c)
 			infrarest.ReplyError(c, infraerrors.NewHTTPError(

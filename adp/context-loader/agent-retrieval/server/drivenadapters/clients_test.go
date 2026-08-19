@@ -19,7 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// mockLogger 测试用的mock logger
+// mockLogger is a mock logger for tests.
 type mockLogger struct{}
 
 func (m *mockLogger) Debug(args ...interface{})                                  {}
@@ -34,7 +34,7 @@ func (m *mockLogger) WithContext(ctx context.Context) interfaces.Logger         
 func (m *mockLogger) WithField(key string, value interface{}) interfaces.Logger  { return m }
 func (m *mockLogger) WithFields(fields map[string]interface{}) interfaces.Logger { return m }
 
-// mockHTTPClient 测试用的mock HTTP客户端
+// mockHTTPClient is a mock HTTP client for tests.
 type mockHTTPClient struct {
 	handlerFunc         func(ctx context.Context, method, url string, header map[string]string, body interface{}) (int, interface{}, error)
 	postNoUnmarshalFunc func(ctx context.Context, url string, header map[string]string, body interface{}) (int, []byte, error)
@@ -84,7 +84,7 @@ func (m *mockHTTPClient) PatchNoUnmarshal(ctx context.Context, url string, heade
 }
 
 func TestMFModelAPIClient_Chat(t *testing.T) {
-	// 模拟非流式响应
+	// Simulate a non-streaming response.
 	response := map[string]interface{}{
 		"choices": []interface{}{
 			map[string]interface{}{
@@ -96,7 +96,7 @@ func TestMFModelAPIClient_Chat(t *testing.T) {
 	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 验证路径
+		// Validate the path.
 		if !strings.Contains(r.URL.Path, "/chat/completions") {
 			t.Errorf("Expected path to contain /chat/completions, got %s", r.URL.Path)
 		}
@@ -107,7 +107,7 @@ func TestMFModelAPIClient_Chat(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// 使用mock HTTPClient
+	// Use the mock HTTPClient.
 	mockHTTP := &mockHTTPClient{
 		handlerFunc: func(ctx context.Context, method, url string, header map[string]string, body interface{}) (int, interface{}, error) {
 			return 200, response, nil
@@ -140,7 +140,7 @@ func TestMFModelAPIClient_Chat(t *testing.T) {
 }
 
 func TestMFModelAPIClient_Rerank(t *testing.T) {
-	// 模拟Rerank响应
+	// Simulate a rerank response.
 	response := interfaces.RerankResp{
 		Results: []interfaces.RerankResult{
 			{Index: 0, RelevanceScore: 0.9},
@@ -151,7 +151,7 @@ func TestMFModelAPIClient_Rerank(t *testing.T) {
 
 	mockHTTP := &mockHTTPClient{
 		handlerFunc: func(ctx context.Context, method, url string, header map[string]string, body interface{}) (int, interface{}, error) {
-			// 验证路径
+			// Validate the path.
 			if !strings.Contains(url, "/reranker") {
 				t.Errorf("Expected URL to contain /reranker, got %s", url)
 			}

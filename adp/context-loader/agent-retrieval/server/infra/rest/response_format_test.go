@@ -53,7 +53,7 @@ func TestMarshalResponse_JSON(t *testing.T) {
 
 func TestMarshalResponse_TOON_RoundTrip(t *testing.T) {
 	convey.Convey("MarshalResponse FormatTOON round-trip", t, func() {
-		// 与 PRD 示例一致：同构对象数组
+		// Consistent with PRD example: array of homogeneous objects.
 		body := map[string]any{
 			"concepts": []map[string]any{
 				{"concept_type": "object_type", "concept_id": "ot_1", "concept_name": "公司", "intent_score": 0.95},
@@ -71,7 +71,7 @@ func TestMarshalResponse_TOON_RoundTrip(t *testing.T) {
 		err = toon.Unmarshal(toonBytes, &decoded)
 		convey.So(err, convey.ShouldBeNil)
 
-		// 再 Marshal 为 JSON 与原始结构语义一致（比较关键字段）
+		// Then Marshal to JSON with the same semantics as the original structure (compare key fields)
 		jsonBytes, _ := json.Marshal(decoded)
 		var decodedFromJSON map[string]any
 		err = json.Unmarshal(jsonBytes, &decodedFromJSON)
@@ -174,7 +174,7 @@ func TestMarshalResponse_NilBody(t *testing.T) {
 
 		ct, b, err = MarshalResponse(FormatTOON, nil)
 		convey.So(err, convey.ShouldBeNil)
-		convey.So(ct, convey.ShouldEqual, ContentTypeJSON) // nil 时 response_format 未改 contentType 逻辑
+		convey.So(ct, convey.ShouldEqual, ContentTypeJSON) // When nil, response_format does not change the contentType logic.
 		convey.So(b, convey.ShouldBeNil)
 	})
 }

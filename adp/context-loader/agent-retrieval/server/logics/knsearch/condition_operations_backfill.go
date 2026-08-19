@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knsearch（属性算子补齐）
+// Package knsearch (attribute operator completion)
 // file: condition_operations_backfill.go
 package knsearch
 
@@ -15,15 +15,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// backfillConditionOperations 为待检索的对象类补齐属性算子。
+// backfillConditionOperations completes attribute operators for the object type to be retrieved.
 //
-// 概念召回拿到的 Schema 来自知识网络导出视图（GET /knowledge-networks/{kn}?mode=export），
-// 那条路只列对象类，不做数据源富化，因此属性上一律没有 condition_operations。
-// 而「这个属性能不能发 match」正是由 bkn-backend 在对象类详情里按资源实况派生的。
-// 检索前按需补一次详情，实例召回才有判断依据；不补的话每个对象类都会因为「无可检索属性」
-// 被跳过，语义实例召回永远返回空。
+// The Schema obtained by concept recall comes from the knowledge network export view (GET /knowledge-networks/{kn}?mode=export),
+// That path only lists object types and does not enrich data sources, so there is no condition_operations in the attributes.
+// And "Whether this attribute can match" is derived by bkn-backend according to the resource reality in the object type details.
+// Fill in the details as needed before retrieval, so that the instance recall can have a basis for judgment; otherwise, each object type will have "no retrieval attributes".
+// is skipped, semantic instance recall always returns null.
 //
-// 只补真正缺算子的对象类，且合并成一次批量请求。
+// Only the object types with missing operators are supplemented and merged into one batch request.
 func (s *localSearchImpl) backfillConditionOperations(
 	ctx context.Context,
 	knID string,
@@ -47,7 +47,7 @@ func (s *localSearchImpl) backfillConditionOperations(
 		if _, seen := pending[id]; !seen {
 			ids = append(ids, id)
 		}
-		// 同一个 id 可能出现多次（不同召回路径合并而来），补齐要覆盖到每一份。
+		// The same id may appear multiple times (combined from different recall paths), and the completion must cover every copy.
 		pending[id] = append(pending[id], objType)
 	}
 	if len(ids) == 0 {
@@ -56,7 +56,7 @@ func (s *localSearchImpl) backfillConditionOperations(
 
 	details, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, ids, true)
 	if err != nil {
-		// 补不到就退回原样：召回可能变空，但 Schema 结果仍然有效，不该整条失败。
+		// If it cannot be filled, return to the original state: the recall may become empty, but the Schema result is still valid, and the entire schema should not fail.
 		s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Backfill condition_operations failed for %d object types: %v", len(ids), err)
 		return
 	}
@@ -103,7 +103,7 @@ func (s *localSearchImpl) backfillConditionOperations(
 	s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Backfilled condition_operations: object_types=%d properties=%d", len(ids), filled)
 }
 
-// conditionOperationsPresent 判断对象类的属性上是否已经带了算子。
+// conditionOperationsPresent determines whether the attributes of the object type have operators.
 func conditionOperationsPresent(objType *interfaces.KnSearchObjectType) bool {
 	for _, p := range objType.DataProperties {
 		if p != nil && len(p.ConditionOperations) > 0 {
@@ -113,15 +113,15 @@ func conditionOperationsPresent(objType *interfaces.KnSearchObjectType) bool {
 	return false
 }
 
-// trimToIndexBackedOperations 出响应前把算子收敛到索引带来的那几个。
+// trimToIndexBackedOperations converges the operators to the ones brought by the index before sending the response.
 //
-// 实测一次 10 个对象类、172 个属性的检索：全量算子多 10,453 字节（+27%），只留索引类
-// 多 151 字节（+0.4%），差 69 倍。多出来的几乎全是每个字符串属性重复一遍的
-// ==/in/like 之类，那些从属性 type 就能推出来，服务端逐个告知没有信息量；而精简
-// Schema 本就是为省体积而设。
+// Actual measurement of a retrieval of 10 object types and 172 attributes: 10,453 more bytes (+27%) for all operators, leaving only the index class.
+// 151 bytes more (+0.4%), a 69x difference. Almost all the extra ones are repeated for each string attribute.
+// ==/in/like and the like, those attributes type can be deduced, and the server will inform one by one that there is no information; and streamline.
+// Schema is designed to save space.
 //
-// 只在出响应时做，不影响检索：实例召回靠算子挑可检索字段，提前裁掉会让只支持等值的
-// 字段整个消失。也只对 MCP 面生效，REST 调用方仍拿全量。
+// It is only done when a response is issued and does not affect retrieval: instance recall relies on operators to select searchable fields. Cutting them in advance will only support equivalent fields.
+// The field disappears entirely. It only takes effect on the MCP side, and the REST caller still gets the full amount.
 func trimToIndexBackedOperations(objectTypes []*interfaces.KnSearchObjectType, indexOpsOnly bool) {
 	if !indexOpsOnly {
 		return
@@ -139,8 +139,8 @@ func trimToIndexBackedOperations(objectTypes []*interfaces.KnSearchObjectType, i
 	}
 }
 
-// indexBackedOperations 挑出只有服务端才知道的那几个算子——它们取决于底层索引建没建，
-// 从属性类型推不出来。其余比较算子调用方按 type 自行判断即可。
+// indexBackedOperations selects those operators that only the server knows - they depend on whether the underlying index is built or not.
+// It cannot be inferred from the attribute type. The caller of the remaining comparison operators can make their own judgment based on type.
 func indexBackedOperations(ops []interfaces.KnOperationType) []interfaces.KnOperationType {
 	var out []interfaces.KnOperationType
 	for _, op := range ops {

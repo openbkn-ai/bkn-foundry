@@ -17,7 +17,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-// ObjectMD5Hash 计算对象的MD5哈希值
+// ObjectMD5Hash calculates the MD5 hash value of an object.
 func ObjectMD5Hash(data interface{}) (string, error) {
 	b, err := jsoniter.Marshal(data)
 	if err != nil {

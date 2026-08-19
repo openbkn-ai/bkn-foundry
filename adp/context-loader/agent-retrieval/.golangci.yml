@@ -1,5 +1,5 @@
-# golangci-lint 配置
-# 文档: https://golangci-lint.run/usage/configuration/
+# golangci-lint configuration.
+# Documentation: https://golangci-lint.run/usage/configuration/
 
 run:
   timeout: 5m
@@ -17,7 +17,7 @@ linters:
 
 linters-settings:
   errcheck:
-    # 忽略 fmt.Print* 和 fmt.Fprint* 系列函数的错误返回值
+    # Ignore error return values from fmt.Print* and fmt.Fprint* functions.
     exclude-functions:
       - fmt.Fprintf
       - fmt.Fprintln
@@ -30,11 +30,11 @@ linters-settings:
       - all
 
 issues:
-  # 不限制每个 linter 的最大报告数量（默认为 50）
+  # Do not limit the maximum number of reports per linter (default is 50).
   max-issues-per-linter: 0
-  # 不限制每段代码的最大报告数量（默认为 3）
+  # Do not limit the maximum number of reports per code section (default is 3).
   max-same-issues: 0
-  # 排除自动生成和测试辅助目录
+  # Exclude generated and test-helper directories.
   exclude-dirs:
     - vendor
     - mock

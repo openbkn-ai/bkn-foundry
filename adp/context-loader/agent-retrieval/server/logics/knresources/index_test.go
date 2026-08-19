@@ -16,9 +16,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// fakeVega 实现 interfaces.DrivenVega，仅供本包测试。
-// byID / errByID 覆盖单条 getResource/getErr，用于按 kn_id 取多个资源的用例；
-// 取资源是并发的，所以记录字段都加锁。
+// fakeVega implements interfaces.DrivenVega and is only for testing this package.
+// byID / errByID covers a single getResource/getErr, used for use cases where multiple resources are retrieved by kn_id;
+// Retrieving resources is concurrent, so all record fields are locked.
 type fakeVega struct {
 	mu             sync.Mutex
 	listReq        *interfaces.VegaListResourcesReq
@@ -34,7 +34,7 @@ type fakeVega struct {
 	gotResourceIDs []string
 }
 
-// fetchedIDs 返回排序后的取回 id，避开并发导致的顺序抖动。
+// fetchedIDs returns the sorted fetched IDs to avoid order jitter caused by concurrency.
 func (f *fakeVega) fetchedIDs() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -43,7 +43,7 @@ func (f *fakeVega) fetchedIDs() []string {
 	return out
 }
 
-// fakeBkn 只实现本包用到的方法，其余通过嵌入接口保持编译（与 knmetrics 的 stub 同构）。
+// fakeBkn only implements the methods used in this package, and the rest remains compiled through embedded interfaces (isomorphic to the knmetrics stub).
 type fakeBkn struct {
 	interfaces.BknBackendAccess
 	detail  *interfaces.KnowledgeNetworkDetail
@@ -111,7 +111,7 @@ func TestListResources_MapsAndForwardsFilters(t *testing.T) {
 		t.Fatalf("unexpected err: %v", err)
 	}
 
-	// type(入参) 映射到 vega category；分页透传。
+	// type(input parameter) maps to the Vega category; pagination is passed through.
 	if fake.listReq.Category != "table" || fake.listReq.CatalogID != "c1" {
 		t.Fatalf("filters not forwarded: %+v", fake.listReq)
 	}
@@ -121,7 +121,7 @@ func TestListResources_MapsAndForwardsFilters(t *testing.T) {
 	if resp.TotalCount != 2 || len(resp.Entries) != 2 {
 		t.Fatalf("unexpected resp: %+v", resp)
 	}
-	// vega category → 输出 type。
+	// vega category → output type.
 	if resp.Entries[0].Type != "table" || resp.Entries[0].ResourceID != "r1" {
 		t.Fatalf("entry0 mapping wrong: %+v", resp.Entries[0])
 	}
@@ -154,7 +154,7 @@ func TestListResources_VegaErrorPropagates(t *testing.T) {
 	}
 }
 
-// ot 造一个带 data_source 的对象类；dsType/dsID 传空表示该维度缺失。
+// ot creates an object type with data_source; passing dsType/dsID empty indicates that the dimension is missing.
 func ot(id, dsType, dsID string) *interfaces.ObjectType {
 	o := &interfaces.ObjectType{ID: id}
 	if dsType != "" || dsID != "" {
@@ -163,12 +163,12 @@ func ot(id, dsType, dsID string) *interfaces.ObjectType {
 	return o
 }
 
-// #781 的核心回归：绑定的表在账户资源池里排在分页窗口之外时，按 kn_id 查询
-// 必须仍然返回它们。fakeVega 的 listResp 故意为空——一旦实现退回去走列表端点
-// 再过滤，这个用例立刻挂。
+// Core regression of #781: When the bound table is ranked outside the paging window in the account resource pool, query by kn_id.
+// They must still be returned. fakeVega's listResp is intentionally empty - fall back to the list endpoint once implemented.
+// After filtering again, this use case will be suspended immediately.
 func TestListResources_ByKnID_ResolvesBindingsWithoutListEndpoint(t *testing.T) {
 	fake := &fakeVega{
-		listResp: &interfaces.VegaListResourcesResp{}, // 列表端点返回空池
+		listResp: &interfaces.VegaListResourcesResp{}, // List endpoint returns empty pool.
 		byID: map[string]*interfaces.VegaResource{
 			"r1": {ID: "r1", Name: "orders", Category: "table", Status: "active", CatalogID: "c1"},
 			"r2": {ID: "r2", Name: "shipments", Category: "table", Status: "active", CatalogID: "c1"},
@@ -219,7 +219,7 @@ func TestListResources_ByKnID_DedupesSharedResource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	// total_count 是去重后的资源数，不是对象类数。
+	// total_count is the number of resources after deduplication, not the number of object types.
 	if resp.TotalCount != 1 || len(resp.Entries) != 1 {
 		t.Fatalf("expected deduped single entry, got %+v", resp)
 	}
@@ -236,10 +236,10 @@ func TestListResources_ByKnID_ClassifiesUnresolvedBindings(t *testing.T) {
 	bkn := &fakeBkn{detail: &interfaces.KnowledgeNetworkDetail{
 		ObjectTypes: []*interfaces.ObjectType{
 			ot("order", "resource", "r1"),
-			ot("forecast", "resource", ""),    // data_source.id 为空 -> unbound
-			ot("legacy", "", ""),              // 压根没有 data_source -> unbound
-			ot("old_view", "data_view", "v1"), // 废弃形态 -> stale_binding
-			ot("deleted", "resource", "gone"), // 取不回来 -> missing
+			ot("forecast", "resource", ""),    // Data_source.id empty -> unbound.
+			ot("legacy", "", ""),              // There is no data_source -> unbound at all.
+			ot("old_view", "data_view", "v1"), // Abandoned form -> stale_binding.
+			ot("deleted", "resource", "gone"), // Can't get it back -> missing.
 		},
 	}}
 	svc := NewKnResourcesServiceWith(fake, bkn)
@@ -248,7 +248,7 @@ func TestListResources_ByKnID_ClassifiesUnresolvedBindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected err: %v", err)
 	}
-	// 一条悬空绑定不能把其余的表一起拖垮。
+	// A dangling binding cannot bring down the rest of the table.
 	if resp.TotalCount != 1 || len(resp.Entries) != 1 || resp.Entries[0].ResourceID != "r1" {
 		t.Fatalf("resolvable binding must still be returned: %+v", resp)
 	}
@@ -263,7 +263,7 @@ func TestListResources_ByKnID_ClassifiesUnresolvedBindings(t *testing.T) {
 		resp.Missing[0].ResourceID != "gone" || resp.Missing[0].Reason == "" {
 		t.Fatalf("missing wrong: %+v", resp.Missing)
 	}
-	// 废弃形态绝不能拿去调 vega 的 resource 端点。
+	// The obsolete form must not be used to adjust the resource endpoint of vega.
 	for _, id := range fake.fetchedIDs() {
 		if id == "v1" {
 			t.Fatal("stale data_view binding must not be fetched from vega")
@@ -271,8 +271,8 @@ func TestListResources_ByKnID_ClassifiesUnresolvedBindings(t *testing.T) {
 	}
 }
 
-// vega 整体不可用时，绝不能返回「成功 + 空列表」——那正是本 issue 要消灭的
-// 哑故障：agent 分不出「后端挂了」和「这张网没有表」。
+// When vega is unavailable as a whole, it must not return "success + empty list" - that is what this issue wants to eliminate.
+// Dumb failure: The agent cannot distinguish between "the backend is down" and "this network has no tables".
 func TestListResources_ByKnID_AllFetchesFailDownstreamReturnsError(t *testing.T) {
 	fake := &fakeVega{errByID: map[string]error{
 		"r1": infraErr.DefaultHTTPError(context.Background(), http.StatusInternalServerError, "vega down"),
@@ -291,8 +291,8 @@ func TestListResources_ByKnID_AllFetchesFailDownstreamReturnsError(t *testing.T)
 	}
 }
 
-// 反过来：一张网只绑一张表、这张表刚好被删，是确凿的建模事实，
-// 该留在 missing 里，不该伪装成服务故障。
+// On the other hand: a network only has one table tied to it, and this table happened to be deleted, which is a conclusive modeling fact.
+// It should be left in missing and should not be disguised as a service failure.
 func TestListResources_ByKnID_AllFetchesNotFoundStaysClassified(t *testing.T) {
 	fake := &fakeVega{errByID: map[string]error{
 		"gone": infraErr.DefaultHTTPError(context.Background(), http.StatusNotFound, "resource not found"),

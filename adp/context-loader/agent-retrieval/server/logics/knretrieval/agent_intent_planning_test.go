@@ -14,7 +14,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// TestDeduplicateConcepts 测试 deduplicateConcepts 函数
+// TestDeduplicateConcepts tests the deduplicateConcepts function.
 func TestDeduplicateConcepts(t *testing.T) {
 	convey.Convey("TestDeduplicateConcepts", t, func() {
 		service := &knRetrievalServiceImpl{}
@@ -22,10 +22,10 @@ func TestDeduplicateConcepts(t *testing.T) {
 		convey.Convey("去重重复概念", func() {
 			concepts := []*interfaces.ConceptResult{
 				{ConceptType: interfaces.KnConceptTypeObject, ConceptID: "obj-001"},
-				{ConceptType: interfaces.KnConceptTypeObject, ConceptID: "obj-001"}, // 重复
+				{ConceptType: interfaces.KnConceptTypeObject, ConceptID: "obj-001"}, // Duplicate.
 				{ConceptType: interfaces.KnConceptTypeObject, ConceptID: "obj-002"},
 				{ConceptType: interfaces.KnConceptTypeRelation, ConceptID: "rel-001"},
-				{ConceptType: interfaces.KnConceptTypeRelation, ConceptID: "rel-001"}, // 重复
+				{ConceptType: interfaces.KnConceptTypeRelation, ConceptID: "rel-001"}, // Duplicate.
 			}
 
 			result := service.deduplicateConcepts(concepts)
@@ -59,7 +59,7 @@ func TestDeduplicateConcepts(t *testing.T) {
 	})
 }
 
-// TestFilterQueryStrategysBySearchScope 测试 filterQueryStrategysBySearchScope 函数
+// TestFilterQueryStrategysBySearchScope tests filterQueryStrategysBySearchScope function.
 func TestFilterQueryStrategysBySearchScope(t *testing.T) {
 	convey.Convey("TestFilterQueryStrategysBySearchScope", t, func() {
 		service := &knRetrievalServiceImpl{}
@@ -131,7 +131,7 @@ func TestFilterQueryStrategysBySearchScope(t *testing.T) {
 			}
 
 			strategies := []*interfaces.SemanticQueryStrategy{
-				{Filter: nil}, // 无 Filter 的策略应该被保留
+				{Filter: nil}, // Policies without Filter should be retained.
 			}
 
 			result := service.filterQueryStrategysBySearchScope(strategies, searchScope)

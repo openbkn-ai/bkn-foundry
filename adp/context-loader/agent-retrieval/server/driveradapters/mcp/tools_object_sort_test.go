@@ -14,8 +14,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// sort 得能从 MCP 参数一路绑到 driven 请求上，否则「最近的 N 条」这类问题模型只能
-// 拉回全量自己排。
+// sort must be able to tie all the way from the MCP parameters to the driven request, otherwise the "nearest N" problem model can only.
+// Pull back the full amount and arrange it yourself.
 func TestHandleQueryObjectInstance_ForwardsSort(t *testing.T) {
 	convey.Convey("handleQueryObjectInstance 透传 sort", t, func() {
 		stub := &stubOntologyQuery{
@@ -45,9 +45,9 @@ func TestHandleQueryObjectInstance_ForwardsSort(t *testing.T) {
 	})
 }
 
-// 工具面只开放 sort。exclude_system_properties 与 ignoring_store_cache 是内部参数：
-// 前者丢哪些系统字段取决于调用方后续要不要下钻，后者是索引异常时的逃生通道（慢一个
-// 数量级），交给模型判断都会被误用。
+// The tool surface only opens sort. exclude_system_properties and ignoring_store_cache are internal parameters:
+// Which system fields are lost in the former depends on whether the caller wants to drill down later, while the latter is an escape channel when the index is abnormal (a bit slower)
+// order of magnitude), it will be misused if left to model judgment.
 func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T) {
 	convey.Convey("query_object_instance schema 只开放 sort", t, func() {
 		input, _ := loadToolSchemas("query_object_instance")
@@ -64,14 +64,14 @@ func TestQueryObjectInstanceSchema_ExposesSortButNotInternalParams(t *testing.T)
 		convey.So(hasExclude, convey.ShouldBeFalse)
 		_, hasIgnoring := schema.Properties["ignoring_store_cache"]
 		convey.So(hasIgnoring, convey.ShouldBeFalse)
-		// need_total 由 driven adapter 无条件置 true，不是调用方的选项
+		// need_total is unconditionally set to true by the driven adapter and is not an option on the caller's part.
 		_, hasNeedTotal := schema.Properties["need_total"]
 		convey.So(hasNeedTotal, convey.ShouldBeFalse)
 	})
 }
 
-// 基线 schema 是中文，英文靠 locale 覆盖层补。新增字段漏加 locale 条目不会报错，
-// 只会让英文客户端看到中文描述——这里把 sort 的三条钉住。
+// The baseline schema is Chinese, and English is supplemented by the locale overlay. If you omit the locale entry for a new field, no error will be reported.
+// Only English clients will see the Chinese description - pin the three items of sort here.
 func TestQueryObjectInstanceSchema_SortDescriptionsAreLocalized(t *testing.T) {
 	convey.Convey("sort 的描述有 en-US 覆盖", t, func() {
 		bundle := loadMCPLocaleBundle("en-US")

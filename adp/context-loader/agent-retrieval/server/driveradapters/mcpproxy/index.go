@@ -32,11 +32,11 @@ func NewMCPProxyHandler() MCPProxyHandler {
 	}
 }
 
-// CallMCPTool 代理调用 MCP 工具
+// CallMCPTool agent calls the MCP tool.
 func (h *mcpProxyHandler) CallMCPTool(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	// 1. 获取路径参数
+	// 1. getpathparameter.
 	mcpID := c.Param("mcp_id")
 	toolName := c.Param("tool_name")
 
@@ -45,10 +45,10 @@ func (h *mcpProxyHandler) CallMCPTool(c *gin.Context) {
 		return
 	}
 
-	// 2. 解析请求体（扁平化参数）
+	// 2. Parse the request body (flattened parameters)
 	var parameters map[string]interface{}
 	if err := c.ShouldBindJSON(&parameters); err != nil {
-		// 允许空参数 {}
+		// Allow empty parameters {}
 		if err.Error() == "EOF" {
 			parameters = make(map[string]interface{})
 		} else {
@@ -57,7 +57,7 @@ func (h *mcpProxyHandler) CallMCPTool(c *gin.Context) {
 		}
 	}
 
-	// 3. 调用 OperatorIntegration
+	// 3. Call OperatorIntegration.
 	req := &interfaces.CallMCPToolRequest{
 		McpID:      mcpID,
 		ToolName:   toolName,
@@ -70,6 +70,6 @@ func (h *mcpProxyHandler) CallMCPTool(c *gin.Context) {
 		return
 	}
 
-	// 4. 返回结果
+	// 4. Return results.
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

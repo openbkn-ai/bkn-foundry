@@ -1,6 +1,6 @@
 # Context Loader
 
-中文文档请见 [README-zh.md](README-zh.md)。
+For Chinese documentation, please see [README-zh.md](README-zh.md).
 
 ## Module Overview
 

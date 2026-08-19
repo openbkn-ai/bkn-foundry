@@ -9,11 +9,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// issue #778 回归：对象类必须按自身与 query 的相关性排序，不能只靠关系端点带出。
+// Issue #778 Regression: Object classes must be sorted by their relevance to the query and cannot be brought out solely by the relationship endpoint.
 //
-// 场景：查询「员工 性别」，「员工」对象类的 name/comment 与 query 命中度最高，
-// 但挂着它的唯一一条关系被 reranker 排在末位。修复前该对象类在 max_concepts=5
-// 时完全不出现，max_concepts=10 时排在最后。
+// Scenario: Query "employee gender", the "employee" object type has the highest hit rate between name/comment and query.
+// But the only relationship hanging on it is ranked last by the reranker. Before the repair, the object type was at max_concepts=5.
+// Does not appear at all when max_concepts=10, ranks last.
 
 func buildObjectRankingNetwork() *interfaces.KnowledgeNetworkDetail {
 	objNames := []string{
@@ -53,7 +53,7 @@ func buildObjectRankingNetwork() *interfaces.KnowledgeNetworkDetail {
 	return detail
 }
 
-// objectRankingRerank 把挂着「员工」的那条关系排到末位。
+// objectRankingRerank ranks the relationship with "employee" to the bottom.
 type objectRankingRerank struct{}
 
 func (d *objectRankingRerank) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
@@ -72,7 +72,7 @@ func (d *objectRankingRerank) Chat(ctx context.Context, req *interfaces.LLMChatR
 	return "", nil
 }
 
-// buildScoredObjectEntries 模拟 BKN 概念检索：与 query 最匹配的对象类得分最高。
+// buildScoredObjectEntries simulates BKN concept retrieval: the object type that best matches the query has the highest score.
 func buildScoredObjectEntries(net *interfaces.KnowledgeNetworkDetail, topName string) []*interfaces.ObjectType {
 	entries := make([]*interfaces.ObjectType, 0, len(net.ObjectTypes))
 	for _, o := range net.ObjectTypes {
@@ -137,8 +137,8 @@ func TestObjectTypesRankedByOwnRelevance(t *testing.T) {
 		maxConcepts   int
 		scope         SearchSchemaScope
 		conceptGroups []string
-		// 关系一并返回时，端点补齐允许超出 max_concepts（既有的 schema 自洽契约）；
-		// 只要对象类，就必须严格受 max_concepts 约束。
+		// When the relationship is returned together, endpoint completion is allowed to exceed max_concepts (the existing schema self-consistent contract);
+		// As long as the object type is used, it must be strictly bound by max_concepts.
 		exactLimit bool
 	}{
 		{"四类全开/传统路径", 5, allOn, nil, false},
@@ -164,10 +164,10 @@ func TestObjectTypesRankedByOwnRelevance(t *testing.T) {
 	}
 }
 
-// 孤儿对象类（不挂任何关系）同样必须能按相关性召回。
+// Orphan object types (not tied to any relationship) must also be recalled by dependency.
 func TestOrphanObjectTypeIsRecalled(t *testing.T) {
 	net := buildObjectRankingNetwork()
-	// 摘掉唯一一条挂着「员工」的关系，令其成为孤儿对象
+	// Remove the only relationship with "employee" and make him an orphan.
 	net.RelationTypes = net.RelationTypes[:len(net.RelationTypes)-1]
 
 	backend := &mockBknBackend{
@@ -209,10 +209,10 @@ func TestOrphanObjectTypeIsRecalled(t *testing.T) {
 	}
 }
 
-// buildEndpointsLastNetwork 构造一个「关系端点全部排在定义序末尾」的网络。
+// buildEndpointsLastNetwork constructs a network in which all relationship endpoints are listed at the end of the definition order.
 //
-// 这个形状是刻意的：只有当端点集不等于定义序的前若干个时，「端点优先」与「定义序」
-// 才是两种可区分的顺序，降级路径的顺序断言才有鉴别力。
+// This shape is deliberate: only when the endpoint set is not equal to the first few of the definition order, "endpoint first" and "definition order".
+// There are two distinguishable orders, and only the order assertion of the downgrade path has discriminating power.
 func buildEndpointsLastNetwork() *interfaces.KnowledgeNetworkDetail {
 	detail := &interfaces.KnowledgeNetworkDetail{ID: "kn_endpoints_last"}
 	for i := 0; i < 10; i++ {
@@ -222,7 +222,7 @@ func buildEndpointsLastNetwork() *interfaces.KnowledgeNetworkDetail {
 			Comment: fmt.Sprintf("对象_%d 说明", i),
 		})
 	}
-	// 关系只挂在定义序靠后的 obj_6..obj_9 上
+	// The relationship only hangs on obj_6..obj_9 that is later in the definition order.
 	rels := [][3]string{
 		{"关系_A", "obj_6", "obj_7"},
 		{"关系_B", "obj_8", "obj_9"},
@@ -240,8 +240,8 @@ func buildEndpointsLastNetwork() *interfaces.KnowledgeNetworkDetail {
 	return detail
 }
 
-// 打分不可用（BKN 检索失败）时必须优雅降级：不报错、不返回空，
-// 且顺序退回修复前的「关系端点优先」，不能凭空改成定义序。
+// When scoring is unavailable (BKN retrieval fails), it must be degraded gracefully: no error is reported, no null is returned,
+// And the order returns to the "relationship endpoint first" before the repair, and cannot be changed to the definition order out of thin air.
 func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	net := buildEndpointsLastNetwork()
 	backend := &mockBknBackend{
@@ -281,8 +281,8 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	}
 	t.Logf("degraded order -> %v (endpoints=%d)", got, len(endpoints))
 
-	// 断言的鉴别力前提：端点集不等于定义序的前 N 个，否则「端点优先」与「定义序」
-	// 无从区分，这条断言就是空的。
+	// The discriminating premise of the assertion: the endpoint set is not equal to the first N in the definition order, otherwise "endpoint first" and "definition order".
+	// There is no way to distinguish, and the assertion is empty.
 	definitionOrderHead := map[string]struct{}{}
 	for i := 0; i < len(endpoints); i++ {
 		definitionOrderHead[fmt.Sprintf("obj_%d", i)] = struct{}{}
@@ -311,10 +311,10 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	}
 }
 
-// 入选关系的端点必须全部出现在对象类里，哪怕超出 maxObjectCount 预算——
-// 否则返回的关系会指向缺失的对象，调用方拿到断头引用。
+// The endpoints of the selected relationships must all appear in the object type, even if the maxObjectCount budget is exceeded——.
+// Otherwise, the returned relationship will point to the missing object, and the caller will get a broken reference.
 func TestRelationEndpointsAreNeverDropped(t *testing.T) {
-	// 5 条互不共享端点的关系 → 10 个不同端点，刻意超过 maxObjectCount 预算
+	// 5 relationships that share no endpoints → 10 different endpoints, deliberately exceeding the maxObjectCount budget.
 	detail := &interfaces.KnowledgeNetworkDetail{ID: "kn_disjoint"}
 	for i := 0; i < 12; i++ {
 		detail.ObjectTypes = append(detail.ObjectTypes, &interfaces.ObjectType{
@@ -331,7 +331,7 @@ func TestRelationEndpointsAreNeverDropped(t *testing.T) {
 			TargetObjectTypeID: fmt.Sprintf("obj_%d", i*2+1),
 		})
 	}
-	// 让两个与关系无关的对象类拿到最高分，占满 topK 名额
+	// Let two object types that have nothing to do with the relationship get the highest score and fill the topK quota.
 	scoredEntries := make([]*interfaces.ObjectType, 0, len(detail.ObjectTypes))
 	for _, o := range detail.ObjectTypes {
 		cp := *o

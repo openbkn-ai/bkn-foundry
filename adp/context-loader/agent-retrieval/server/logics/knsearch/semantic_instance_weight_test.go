@@ -26,7 +26,7 @@ func weightedConfig(w float64) *interfaces.KnSearchSemanticInstanceRetrievalConf
 	return config
 }
 
-// 两路各一条、各自第 1 名，是观察权重最干净的形状。
+// One road on each side, each ranked 1st, is the cleanest shape for observing weights.
 func fuseTwoChannels(t *testing.T, w float64) (knnFirst, matchFirst float64) {
 	t.Helper()
 	knn := channelOutcome{name: channelKnn, scored: true,
@@ -45,7 +45,7 @@ func fuseTwoChannels(t *testing.T, w float64) (knnFirst, matchFirst float64) {
 	return byName["v1"], byName["m1"]
 }
 
-// 默认 0.5 必须与「不带权重」逐位相同，否则这个特性就是一次静默的行为变更。
+// The default of 0.5 must be bit-by-bit identical to "no weight", otherwise this feature is a silent behavior change.
 func TestChannelWeights_DefaultIsIdenticalToUnweighted(t *testing.T) {
 	knnFirst, matchFirst := fuseTwoChannels(t, 0.5)
 
@@ -53,7 +53,7 @@ func TestChannelWeights_DefaultIsIdenticalToUnweighted(t *testing.T) {
 		t.Errorf("equal weights must keep the 1.0 anchor, got knn=%.6f match=%.6f", knnFirst, matchFirst)
 	}
 
-	// 两路都命中同一条仍是 2.0
+	// Hitting the same one in both lanes is still 2.0.
 	node := weightNode("same")
 	both := fuseByRRF([]channelOutcome{
 		{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{node}},
@@ -64,7 +64,7 @@ func TestChannelWeights_DefaultIsIdenticalToUnweighted(t *testing.T) {
 	}
 }
 
-// 权重直接决定两路第 1 名的相对高低，这才是这个旋钮存在的意义。
+// The weight directly determines the relative ranking of the two No. 1s. This is the purpose of this knob.
 func TestChannelWeights_ShiftTheBalance(t *testing.T) {
 	cases := []struct {
 		w         float64
@@ -74,7 +74,7 @@ func TestChannelWeights_ShiftTheBalance(t *testing.T) {
 		{0.5, 1.0, 1.0},
 		{0.8, 1.6, 0.4},
 		{0.2, 0.4, 1.6},
-		{1.0, 2.0, 0.0}, // 只信向量：全文独有的命中不再贡献分数
+		{1.0, 2.0, 0.0}, // Trust vectors only: hits unique to the full text no longer contribute points.
 		{0.0, 0.0, 2.0},
 	}
 	for _, c := range cases {
@@ -86,7 +86,7 @@ func TestChannelWeights_ShiftTheBalance(t *testing.T) {
 	}
 }
 
-// 极端权重不能把另一路的结果丢掉——只压到最后，不删。
+// Extreme weighting cannot throw away the results of the other path - only push them to the end without deleting them.
 func TestChannelWeights_ExtremeKeepsAllResults(t *testing.T) {
 	knn := channelOutcome{name: channelKnn, scored: true,
 		nodes: []*interfaces.KnSearchNode{weightNode("v1")}}
@@ -103,7 +103,7 @@ func TestChannelWeights_ExtremeKeepsAllResults(t *testing.T) {
 	}
 }
 
-// 配错一个数不该让整条检索链失败——钳制，不报错。
+// Mismatching one number should not cause the entire retrieval chain to fail - clamp it and not report an error.
 func TestChannelWeights_OutOfRangeIsClamped(t *testing.T) {
 	for _, w := range []float64{-1, 2, 100} {
 		weights := channelWeights(weightedConfig(w))
@@ -117,23 +117,23 @@ func TestChannelWeights_OutOfRangeIsClamped(t *testing.T) {
 	}
 }
 
-// 未登记的通道按等权处理：将来加第三路时不会因为忘了配权重而拿到 0 分。
+// Unregistered channels are treated with equal weight: when adding a third channel in the future, you will not get 0 points because you forget to assign weights.
 func TestWeightOf_UnknownChannelFallsBackToEqual(t *testing.T) {
 	if got := weightOf(channelWeights(DefaultSemanticInstanceRetrievalConfig()), "future_channel"); got != 0.5 {
 		t.Errorf("an unregistered channel must fall back to 0.5, got %.2f", got)
 	}
 }
 
-// 偏权会让跨对象类的锚点倾斜——这是**已知代价**，不是缺陷。钉在这里，
-// 免得以后有人把它当 bug「修」掉，反而破坏了调用方声明的偏好。
+// Bias will skew anchors across object types - this is a known cost, not a bug. Nail it here,
+// This prevents someone from "fixing" it as a bug in the future and destroying the caller's declared preferences.
 func TestChannelWeights_KnownCrossTypeSkew(t *testing.T) {
-	// 有向量字段的对象类：两路都发
+	// Object classes with vector fields: sent both ways.
 	dual := fuseByRRF([]channelOutcome{
 		{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{weightNode("dual-v")}},
 		{name: channelMatch, scored: true, nodes: []*interfaces.KnSearchNode{weightNode("dual-m")}},
 	}, 60, channelWeights(weightedConfig(0.8)))
 
-	// 没有向量字段的对象类：只有全文一路
+	// Object class without vector field: only full text path.
 	single := fuseByRRF([]channelOutcome{
 		{name: channelMatch, scored: true, nodes: []*interfaces.KnSearchNode{weightNode("single-m")}},
 	}, 60, channelWeights(weightedConfig(0.8)))
@@ -148,7 +148,7 @@ func TestChannelWeights_KnownCrossTypeSkew(t *testing.T) {
 		t.Errorf("at knn_weight=0.8 the vector-backed type is expected to rank higher: %.2f vs %.2f",
 			dualKnnFirst, single[0].Score)
 	}
-	// 等权时锚点仍然一致——倾斜只由权重带来
+	// Anchors remain consistent when weighted equally - tilt is only brought about by weights.
 	dualEqual := fuseByRRF([]channelOutcome{
 		{name: channelKnn, scored: true, nodes: []*interfaces.KnSearchNode{weightNode("d2")}},
 	}, 60, channelWeights(DefaultSemanticInstanceRetrievalConfig()))

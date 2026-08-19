@@ -369,7 +369,7 @@ func extractSkillMatchesFromInstances(data []any, scope string, priority int) []
 //	          "object_type_name": "skills",
 //	          "properties": {
 //	            "skill_id":    "skill_review",
-//	            "name":        "合同审查",
+//	"name": "Contract Review",
 //	            "description": "..."
 //	          }
 //	        }

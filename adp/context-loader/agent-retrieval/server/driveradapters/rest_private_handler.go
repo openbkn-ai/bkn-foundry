@@ -4,9 +4,9 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package driveradapters 定义驱动适配器
+// Package driveradapters defines driver adapters.
 // @file rest_private_handler.go
-// @description: 定义rest私有接口适配器
+// @description: Define rest private interface adapter.
 package driveradapters
 
 import (
@@ -43,7 +43,7 @@ type restPrivateHandler struct {
 	LifecycleClient                *bkntrace.LifecycleClient
 }
 
-// NewRestPrivateHandler 创建restHandler实例
+// NewRestPrivateHandler createrestHandlerinstance.
 func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterface {
 	return &restPrivateHandler{
 		KnRetrievalHandler:             knretrieval.NewKnRetrievalHandler(),
@@ -61,7 +61,7 @@ func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterf
 	}
 }
 
-// RegisterRouter 注册路由
+// RegisterRouter registers routes.
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
 	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContext(), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
@@ -81,7 +81,7 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/kn_search", r.KnSearchHandler.KnSearch)
 	engine.POST("/kn/find_skills", r.KnFindSkillsHandler.FindSkills)
 
-	// 同时作为 MCP 工具 + operator-integration toolbox(OpenAPI HTTP)入口
+	// At the same time, it serves as the entrance to MCP tool + operator-integration toolbox (OpenAPI HTTP)
 	engine.POST("/kn/run_sql", r.KnQueryToolsHandler.RunSQL)
 	engine.POST("/kn/list_knowledge_networks", r.KnQueryToolsHandler.ListKnowledgeNetworks)
 	engine.POST("/kn/get_kn_detail", r.KnQueryToolsHandler.GetKnDetail)
@@ -91,13 +91,13 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	engine.POST("/kn/list_resources", r.KnQueryToolsHandler.ListResources)
 	engine.POST("/kn/describe_resource", r.KnQueryToolsHandler.DescribeResource)
 
-	// 技能面：浏览 / 读文件 / 执行（find_skills 之后的下钻链路）
+	// Skills: browse/read files/execute (drill-down link after find_skills)
 	engine.POST("/kn/list_skills", r.KnSkillsHandler.ListSkills)
 	engine.POST("/kn/get_skill_content", r.KnSkillsHandler.GetSkillContent)
 	engine.POST("/kn/read_skill_file", r.KnSkillsHandler.ReadSkillFile)
-	// 与 MCP 工具面同一道闸：关闭时这条路由根本不注册，而不是注册后再拒绝。
-	// 「这个部署没有技能执行能力」要在路由表上成立，否则文档里那句「唯一的
-	// 命令执行通道」在 REST 这侧就是假的。
+	// The same gate as the MCP tool: when closed, this route is not registered at all, instead of being registered and then rejected.
+	// "This deployment does not have skill execution capabilities" must be established on the routing table, otherwise the sentence in the document "the only.
+	// "Command Execution Channel" is false on the REST side.
 	if logicsSkills.ExecuteEnabled() {
 		engine.POST("/kn/execute_skill", r.KnSkillsHandler.ExecuteSkill)
 	}

@@ -13,11 +13,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
 
-// TestExecuteSkillRouteFollowsTheSwitch 盯住那道总闸在 REST 这一侧也成立。
+// TestExecuteSkillRouteFollowsTheSwitch is also true on the REST side.
 //
-// 开关最初只管 MCP 工具面，REST 路由照常注册——于是文档里「唯一的命令执行通道」
-// 在 REST 这侧是假的，而看文档决定要不要开的人会据此误判风险。关闭时这条路由
-// 必须根本不存在，而不是存在后再拒绝。
+// The switch initially only takes care of the MCP tool surface, and the REST route is still registered - so the "only command execution channel" in the document.
+// It is false on the REST side, and people who look at the documentation to decide whether to open it will misjudge the risks based on this. This route is closed when.
+// It must not exist at all, rather than exist and then be rejected.
 func TestExecuteSkillRouteFollowsTheSwitch(t *testing.T) {
 	hasRoute := func(t *testing.T) bool {
 		t.Helper()
@@ -46,8 +46,8 @@ func TestExecuteSkillRouteFollowsTheSwitch(t *testing.T) {
 	}
 }
 
-// TestExecuteEnabledAcceptsLegacyEnvName 旧名是 MCP-only 时期留下的，
-// 已经有人按旧名配过；升上来时不能把开着的能力悄悄关掉。
+// The old name of TestExecuteEnabledAcceptsLegacyEnvName is left over from the MCP-only era.
+// Someone has already assigned it under the old name; you cannot quietly turn off the ability that is on when you ascend.
 func TestExecuteEnabledAcceptsLegacyEnvName(t *testing.T) {
 	t.Setenv(knskills.ExecuteEnabledEnv, "")
 	t.Setenv("MCP_EXECUTE_SKILL_ENABLED", "true")

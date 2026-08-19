@@ -88,8 +88,8 @@ func TestConvertMCPSchemaToFunctionCall(t *testing.T) {
 	}
 }
 
-// TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription 测试 MCP Schema 转换时 body 参数默认描述逻辑
-// 规则：当第一层存在 body 参数但缺少 description 时，自动添加 "Request Body参数"
+// TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription Tests the default description logic of the body parameter when converting MCP Schema.
+// Rule: When the body parameter exists in the first layer but description is missing, the "Request Body parameter" is automatically added.
 func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -97,8 +97,8 @@ func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 
 	ctx := common.SetLanguageToCtx(context.Background(), "en-US")
 
-	// Case 1: body 存在但通过 $ref 引用，引用的 schema 没有 description
-	// 期望：自动添加默认描述 "Request Body参数"
+	// Case 1: body exists but is referenced through $ref, and the referenced schema has no description.
+	// Expected: automatically add the default description "Request Body parameters".
 	t.Run("body_without_description_via_ref", func(t *testing.T) {
 		inputJSON := `{
 			"$defs": {
@@ -139,15 +139,15 @@ func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 			t.Errorf("Expected body description 'Request body parameters.', got %v", body["description"])
 		}
 
-		// 验证 path 保持原有描述
+		// Verify path maintains original description.
 		path := props["path"].(map[string]any)
 		if desc, ok := path["description"].(string); !ok || desc != "URL 路径参数" {
 			t.Errorf("Expected path description 'URL 路径参数', got %v", path["description"])
 		}
 	})
 
-	// Case 2: body 存在且已有 description
-	// 期望：保留原有描述，不覆盖
+	// Case 2: body exists and has description.
+	// Expectation: keep the original description and do not overwrite it.
 	t.Run("body_with_existing_description", func(t *testing.T) {
 		inputJSON := `{
 			"type": "object",
@@ -174,14 +174,14 @@ func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 		props := result["properties"].(map[string]any)
 		body := props["body"].(map[string]any)
 
-		// 验证保留原有描述
+		// Verify that the original description is retained.
 		if desc, ok := body["description"].(string); !ok || desc != "自定义请求体描述" {
 			t.Errorf("Expected body description '自定义请求体描述', got %v", body["description"])
 		}
 	})
 
-	// Case 3: 没有 body 参数
-	// 期望：不做任何处理，不报错
+	// Case 3: No body parameter.
+	// Expectation: No processing, no error reporting.
 	t.Run("no_body_property", func(t *testing.T) {
 		inputJSON := `{
 			"type": "object",
@@ -206,19 +206,19 @@ func TestConvertMCPSchemaToFunctionCall_BodyDefaultDescription(t *testing.T) {
 
 		props := result["properties"].(map[string]any)
 
-		// 验证 body 不存在
+		// Validate body does not exist.
 		if _, ok := props["body"]; ok {
 			t.Error("Expected no body property, but found one")
 		}
 
-		// 验证 query 存在
+		// Validate query exists.
 		if _, ok := props["query"]; !ok {
 			t.Error("Expected query property to exist")
 		}
 	})
 
-	// Case 4: body 直接定义（非 $ref）且无 description
-	// 期望：自动添加默认描述 "Request Body参数"
+	// Case 4: body is defined directly (not $ref) and has no description.
+	// Expected: automatically add the default description "Request Body parameters".
 	t.Run("body_direct_without_description", func(t *testing.T) {
 		inputJSON := `{
 			"type": "object",
@@ -306,7 +306,7 @@ func TestResolveMCPSchemaCircular(t *testing.T) {
 	}
 }
 
-// TestConvertSchemaToFunctionCall_WithParameters 测试带参数的 OpenAPI Schema 转换
+// TestConvertSchemaToFunctionCall_WithParameters Tests OpenAPI Schema conversion with parameters.
 func TestConvertSchemaToFunctionCall_WithParameters(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -351,7 +351,7 @@ func TestConvertSchemaToFunctionCall_WithParameters(t *testing.T) {
 
 	props := result["properties"].(map[string]any)
 
-	// 检查 path 参数
+	// Check path parameters.
 	if pathProps, ok := props["path"].(map[string]any); ok {
 		pathParams := pathProps["properties"].(map[string]any)
 		if _, ok := pathParams["id"]; !ok {
@@ -361,7 +361,7 @@ func TestConvertSchemaToFunctionCall_WithParameters(t *testing.T) {
 		t.Error("Expected path to exist in properties")
 	}
 
-	// 检查 query 参数
+	// Check query parameters.
 	if queryProps, ok := props["query"].(map[string]any); ok {
 		queryParams := queryProps["properties"].(map[string]any)
 		if _, ok := queryParams["limit"]; !ok {
@@ -371,7 +371,7 @@ func TestConvertSchemaToFunctionCall_WithParameters(t *testing.T) {
 		t.Error("Expected query to exist in properties")
 	}
 
-	// 检查 header 参数
+	// Check header parameters.
 	if headerProps, ok := props["header"].(map[string]any); ok {
 		headerParams := headerProps["properties"].(map[string]any)
 		if _, ok := headerParams["X-Request-ID"]; !ok {
@@ -382,7 +382,7 @@ func TestConvertSchemaToFunctionCall_WithParameters(t *testing.T) {
 	}
 }
 
-// TestConvertSchemaToFunctionCall_WithRequestBody 测试带 request_body 的 Schema 转换
+// TestConvertSchemaToFunctionCall_WithRequestBody tests Schema conversion with request_body.
 func TestConvertSchemaToFunctionCall_WithRequestBody(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -420,7 +420,7 @@ func TestConvertSchemaToFunctionCall_WithRequestBody(t *testing.T) {
 
 	props := result["properties"].(map[string]any)
 
-	// 检查 body 参数
+	// Check body parameter.
 	if bodyProps, ok := props["body"].(map[string]any); ok {
 		bodyParams := bodyProps["properties"].(map[string]any)
 		if _, ok := bodyParams["name"]; !ok {
@@ -434,7 +434,7 @@ func TestConvertSchemaToFunctionCall_WithRequestBody(t *testing.T) {
 	}
 }
 
-// TestConvertSchemaToFunctionCall_Empty 测试空 Schema
+// TestConvertSchemaToFunctionCall_Empty tests the empty Schema.
 func TestConvertSchemaToFunctionCall_Empty(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -454,13 +454,13 @@ func TestConvertSchemaToFunctionCall_Empty(t *testing.T) {
 	}
 
 	props := result["properties"].(map[string]any)
-	// 空 Schema 应该至少有一个 body 字段
+	// An empty Schema should have at least one body field.
 	if _, ok := props["body"]; !ok {
 		t.Error("Expected body to exist in properties for empty schema")
 	}
 }
 
-// TestMapFixedParams_AllLocations 测试固定参数映射到所有位置
+// TestMapFixedParams_AllLocations tests fixed parameters mapped to all locations.
 func TestMapFixedParams_AllLocations(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -485,28 +485,28 @@ func TestMapFixedParams_AllLocations(t *testing.T) {
 
 	result := service.mapFixedParams(ctx, parameters, apiSpec)
 
-	// 检查 path 参数
+	// Check path parameters.
 	if result.Path["id"] != "123" {
 		t.Errorf("Expected path[id] = '123', got %v", result.Path["id"])
 	}
 
-	// 检查 query 参数
+	// Check query parameters.
 	if result.Query["limit"] != 10 {
 		t.Errorf("Expected query[limit] = 10, got %v", result.Query["limit"])
 	}
 
-	// 检查 header 参数
+	// Check header parameters.
 	if result.Header["X-Request-ID"] != "req-001" {
 		t.Errorf("Expected header[X-Request-ID] = 'req-001', got %v", result.Header["X-Request-ID"])
 	}
 
-	// 检查未映射的参数进入 body
+	// Check for unmapped parameters into body.
 	if result.Body["name"] != "test" {
 		t.Errorf("Expected body[name] = 'test', got %v", result.Body["name"])
 	}
 }
 
-// TestMapFixedParams_HeaderByNaming 测试通过命名规则判断 header 参数
+// TestMapFixedParams_HeaderByNaming tests to determine header parameters through naming rules.
 func TestMapFixedParams_HeaderByNaming(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -520,27 +520,27 @@ func TestMapFixedParams_HeaderByNaming(t *testing.T) {
 		"normal-param":    "value2",
 	}
 
-	apiSpec := map[string]any{} // 没有参数定义
+	apiSpec := map[string]any{} // No parameters defined.
 
 	result := service.mapFixedParams(ctx, parameters, apiSpec)
 
-	// x- 开头的参数应该进入 header
+	// Parameters starting with x- should go into the header.
 	if result.Header["x-custom-header"] != "value1" {
 		t.Errorf("Expected header[x-custom-header] = 'value1', got %v", result.Header["x-custom-header"])
 	}
 
-	// Authorization 应该进入 header
+	// Authorization should go into header.
 	if result.Header["Authorization"] != "Bearer token" {
 		t.Errorf("Expected header[Authorization] = 'Bearer token', got %v", result.Header["Authorization"])
 	}
 
-	// 普通参数应该进入 body
+	// Normal parameters should go into body.
 	if result.Body["normal-param"] != "value2" {
 		t.Errorf("Expected body[normal-param] = 'value2', got %v", result.Body["normal-param"])
 	}
 }
 
-// TestIsHeaderParam 测试 header 参数判断
+// TestIsHeaderParam test header parameter judgment.
 func TestIsHeaderParam(t *testing.T) {
 	testCases := []struct {
 		key      string
@@ -567,13 +567,13 @@ func TestIsHeaderParam(t *testing.T) {
 	}
 }
 
-// TestBuildPropertyDefinition 测试属性定义构建
+// TestBuildPropertyDefinition test property definition build.
 func TestBuildPropertyDefinition(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
 	}
 
-	// 测试基本类型
+	// Test basic types.
 	schema := map[string]any{
 		"type":        "string",
 		"description": "测试描述",
@@ -586,7 +586,7 @@ func TestBuildPropertyDefinition(t *testing.T) {
 		t.Errorf("Expected description '测试描述', got %v", result["description"])
 	}
 
-	// 测试带枚举
+	// Test strip enumeration.
 	schema = map[string]any{
 		"type": "string",
 		"enum": []any{"a", "b", "c"},
@@ -596,7 +596,7 @@ func TestBuildPropertyDefinition(t *testing.T) {
 		t.Error("Expected enum to be preserved")
 	}
 
-	// 测试带 properties 的对象
+	// Test objects with properties.
 	schema = map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -611,7 +611,7 @@ func TestBuildPropertyDefinition(t *testing.T) {
 		t.Error("Expected properties to be preserved")
 	}
 
-	// 测试数组类型
+	// Test array type.
 	schema = map[string]any{
 		"type": "array",
 		"items": map[string]any{
@@ -623,7 +623,7 @@ func TestBuildPropertyDefinition(t *testing.T) {
 		t.Error("Expected items to be preserved for array type")
 	}
 
-	// 测试参数级别描述覆盖 schema 描述
+	// Test parameter level description overrides schema description.
 	schema = map[string]any{
 		"type":        "string",
 		"description": "schema描述",
@@ -634,13 +634,13 @@ func TestBuildPropertyDefinition(t *testing.T) {
 	}
 }
 
-// TestPruneSchema 测试 schema 剪枝
+// TestPruneSchema test schema pruning.
 func TestPruneSchema(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
 	}
 
-	// 测试基本剪枝
+	// Test basic pruning.
 	schema := map[string]any{
 		"type":        "object",
 		"description": "测试对象",
@@ -659,7 +659,7 @@ func TestPruneSchema(t *testing.T) {
 		t.Error("Expected properties to be removed after pruning")
 	}
 
-	// 测试数组类型剪枝
+	// Test array type pruning.
 	schema = map[string]any{
 		"type": "array",
 		"items": map[string]any{
@@ -681,7 +681,7 @@ func TestPruneSchema(t *testing.T) {
 		t.Error("Expected items properties to be removed after pruning")
 	}
 
-	// 测试无类型 schema
+	// Test untyped schema.
 	schema = map[string]any{
 		"description": "无类型",
 	}
@@ -691,9 +691,9 @@ func TestPruneSchema(t *testing.T) {
 	}
 }
 
-// ==================== Action Driver Schema 转换测试 ====================
+// ==================== Action Driver Schema converttest ====================.
 
-// TestConvertToolSchemaToActionDriver_WithParameters 测试 Tool 类型 path/query/header 参数去壳合并
+// TestConvertToolSchemaToActionDriver_WithParameters Test Tool type path/query/header parameter unpacking and merging.
 func TestConvertToolSchemaToActionDriver_WithParameters(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -732,14 +732,14 @@ func TestConvertToolSchemaToActionDriver_WithParameters(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	// 验证顶层结构
+	// Validate the top-level structure.
 	if result["type"] != "object" {
 		t.Errorf("Expected type object, got %v", result["type"])
 	}
 
 	props := result["properties"].(map[string]any)
 
-	// 验证包含 dynamic_params 和 _instance_identities
+	// Validate that dynamic_params and _instance_identities are included.
 	if _, ok := props["dynamic_params"]; !ok {
 		t.Fatal("Expected dynamic_params in properties")
 	}
@@ -747,14 +747,14 @@ func TestConvertToolSchemaToActionDriver_WithParameters(t *testing.T) {
 		t.Fatal("Expected _instance_identities in properties")
 	}
 
-	// 验证不包含旧的 header/path/query/body
+	// Verify that old header/path/query/body is not included.
 	for _, oldKey := range []string{"header", "path", "query", "body"} {
 		if _, ok := props[oldKey]; ok {
 			t.Errorf("Should not contain old key '%s' in top-level properties", oldKey)
 		}
 	}
 
-	// 验证 dynamic_params 包含所有参数（去壳后）
+	// Verify dynamic_params contains all parameters (after unpacking)
 	dp := props["dynamic_params"].(map[string]any)
 	dpProps := dp["properties"].(map[string]any)
 	if _, ok := dpProps["id"]; !ok {
@@ -767,7 +767,7 @@ func TestConvertToolSchemaToActionDriver_WithParameters(t *testing.T) {
 		t.Error("Expected dynamic_params to have X-Request-ID parameter")
 	}
 
-	// 验证 required 合并
+	// Verify required merge.
 	if dpRequired, ok := dp["required"].([]string); ok {
 		requiredSet := make(map[string]bool)
 		for _, r := range dpRequired {
@@ -782,7 +782,7 @@ func TestConvertToolSchemaToActionDriver_WithParameters(t *testing.T) {
 	}
 }
 
-// TestConvertToolSchemaToActionDriver_WithRequestBody 测试 body 参数去壳后合并到 dynamic_params
+// TestConvertToolSchemaToActionDriver_WithRequestBody test body parameters are unpacked and merged into dynamic_params.
 func TestConvertToolSchemaToActionDriver_WithRequestBody(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -829,7 +829,7 @@ func TestConvertToolSchemaToActionDriver_WithRequestBody(t *testing.T) {
 		t.Error("Expected dynamic_params to have age parameter from body")
 	}
 
-	// 验证 required 从 body 合并
+	// Validate required merge from body.
 	if dpRequired, ok := dp["required"].([]string); ok {
 		found := false
 		for _, r := range dpRequired {
@@ -844,7 +844,7 @@ func TestConvertToolSchemaToActionDriver_WithRequestBody(t *testing.T) {
 	}
 }
 
-// TestConvertToolSchemaToActionDriver_NameConflict 测试同名字段来自不同 location 时返回错误
+// TestConvertToolSchemaToActionDriver_NameConflict returns an error when testing fields with the same name from different locations.
 func TestConvertToolSchemaToActionDriver_NameConflict(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -861,7 +861,7 @@ func TestConvertToolSchemaToActionDriver_NameConflict(t *testing.T) {
 			},
 			map[string]any{
 				"name":   "id",
-				"in":     "query", // 同名不同 location
+				"in":     "query", // Same name but different locations.
 				"schema": map[string]any{"type": "string"},
 			},
 		},
@@ -873,7 +873,7 @@ func TestConvertToolSchemaToActionDriver_NameConflict(t *testing.T) {
 	}
 }
 
-// TestConvertToolSchemaToActionDriver_Empty 测试空 schema
+// TestConvertToolSchemaToActionDriver_Empty tests empty schema.
 func TestConvertToolSchemaToActionDriver_Empty(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -901,7 +901,7 @@ func TestConvertToolSchemaToActionDriver_Empty(t *testing.T) {
 	}
 }
 
-// TestConvertMCPSchemaToActionDriver 测试 MCP schema 转换为行动驱动结构
+// TestConvertMCPSchemaToActionDriver tests MCP schema converted to action driven structure.
 func TestConvertMCPSchemaToActionDriver(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -927,14 +927,14 @@ func TestConvertMCPSchemaToActionDriver(t *testing.T) {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	// 验证顶层结构
+	// Validate the top-level structure.
 	if result["type"] != "object" {
 		t.Errorf("Expected type object, got %v", result["type"])
 	}
 
 	props := result["properties"].(map[string]any)
 
-	// 验证包含 dynamic_params 和 _instance_identities
+	// Validate that dynamic_params and _instance_identities are included.
 	if _, ok := props["dynamic_params"]; !ok {
 		t.Fatal("Expected dynamic_params in properties")
 	}
@@ -942,7 +942,7 @@ func TestConvertMCPSchemaToActionDriver(t *testing.T) {
 		t.Fatal("Expected _instance_identities in properties")
 	}
 
-	// 验证 dynamic_params 包含原始 MCP schema 属性
+	// Verify dynamic_params contains original MCP schema attributes.
 	dp := props["dynamic_params"].(map[string]any)
 	dpProps := dp["properties"].(map[string]any)
 	if _, ok := dpProps["disease_id"]; !ok {
@@ -952,7 +952,7 @@ func TestConvertMCPSchemaToActionDriver(t *testing.T) {
 		t.Error("Expected dynamic_params to have include_drugs")
 	}
 
-	// 验证 required 透传
+	// Validate required pass through.
 	if dpRequired, ok := dp["required"].([]any); ok {
 		found := false
 		for _, r := range dpRequired {
@@ -966,7 +966,7 @@ func TestConvertMCPSchemaToActionDriver(t *testing.T) {
 	}
 }
 
-// TestWrapActionDriverParameters 测试辅助方法构造顶层结构
+// TestWrapActionDriverParameters test auxiliary method constructs the top-level structure.
 func TestWrapActionDriverParameters(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		logger: &mockLogger{},
@@ -1046,7 +1046,7 @@ func TestActionDriverSchemaDescriptionsUseRequestLocale(t *testing.T) {
 	}
 }
 
-// TestBuildActionDriverAPIURL 测试行动驱动 URL 格式化
+// TestBuildActionDriverAPIURL test action driver URL formatting.
 func TestBuildActionDriverAPIURL(t *testing.T) {
 	service := &knActionRecallServiceImpl{
 		config: &config.Config{
@@ -1065,7 +1065,7 @@ func TestBuildActionDriverAPIURL(t *testing.T) {
 	}
 }
 
-// TestBuildActionDriverFixedParams 测试行动驱动 fixed_params 构造
+// TestBuildActionDriverFixedParams test action driver fixed_params constructor.
 func TestBuildActionDriverFixedParams(t *testing.T) {
 	instanceIdentities := []map[string]any{{"id": "obj-001"}}
 	parameters := map[string]any{"namespace": "default", "pod_name": "test-pod"}

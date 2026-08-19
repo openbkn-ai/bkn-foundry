@@ -29,10 +29,10 @@ func TestExpandFilters(t *testing.T) {
 
 			expandFilters(req)
 
-			// 糖衣字段清空，不下发给 ontology-query
+			// Clear syntactic-sugar fields and do not send them to ontology-query.
 			convey.So(req.Filters, convey.ShouldBeNil)
 
-			// 等价于手写的 and 嵌套 condition（每个叶子 value_from=const）
+			// Equivalent to a handwritten nested AND condition where each leaf has value_from=const.
 			convey.So(req.Cond, convey.ShouldNotBeNil)
 			convey.So(req.Cond.Operation, convey.ShouldEqual, interfaces.KnOperationTypeAnd)
 			convey.So(req.Cond.SubConditions, convey.ShouldHaveLength, 2)
@@ -58,7 +58,7 @@ func TestExpandFilters(t *testing.T) {
 
 			expandFilters(req)
 
-			// 既有 condition 未被覆盖（仍是 or，不是 filters 展开出的 and）
+			// The existing condition is not overwritten; it remains OR, not the AND expanded from filters.
 			convey.So(req.Cond.Operation, convey.ShouldEqual, interfaces.KnOperationTypeOr)
 			convey.So(req.Cond.SubConditions, convey.ShouldBeEmpty)
 			convey.So(req.Filters, convey.ShouldBeNil)

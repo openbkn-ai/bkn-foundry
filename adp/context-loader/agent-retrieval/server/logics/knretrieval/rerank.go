@@ -13,18 +13,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// rerankByConceptType 收集不同概念类集合，并进行排序，每个概念集取前limit个
+// rerankByConceptType collects different concept class sets and sorts them. The top limit of each concept set is taken.
 //
-//nolint:unused // 预留函数，后续可能使用
+//nolint:unused // Reserved function, may be used later.
 func (k *knRetrievalServiceImpl) rerankByConceptType(conceptResults []*interfaces.ConceptResult, limit int) []*interfaces.ConceptResult {
-	// 去重
+	// Deduplicate.
 	conceptResults = k.deduplicateConcepts(conceptResults)
 	conceptTypeMap := make(map[interfaces.KnConceptType][]*interfaces.ConceptResult)
-	// 按概念类型分类
+	// Classification by concept type.
 	for _, concept := range conceptResults {
 		conceptTypeMap[concept.ConceptType] = append(conceptTypeMap[concept.ConceptType], concept)
 	}
-	// 按概念类型排序
+	// Sort by concept type.
 	for _, concepts := range conceptTypeMap {
 		sort.Slice(concepts, func(i, j int) bool {
 			return concepts[i].MatchScore > concepts[j].MatchScore
@@ -34,7 +34,7 @@ func (k *knRetrievalServiceImpl) rerankByConceptType(conceptResults []*interface
 		}
 	}
 	result := []*interfaces.ConceptResult{}
-	// 顺序要求：对象类、关系类、行动类
+	// Sequence requirements: object type, relation type, action class.
 	if len(conceptTypeMap[interfaces.KnConceptTypeObject]) > 0 {
 		result = append(result, conceptTypeMap[interfaces.KnConceptTypeObject]...)
 	}
@@ -50,15 +50,15 @@ func (k *knRetrievalServiceImpl) rerankByConceptType(conceptResults []*interface
 	return result
 }
 
-// rerankConcepts 重排概念。三层模型优先级：请求传入(llmModel/vectorModel) > [agent/检索配置, 预留] > yaml/默认(下游回退)。
-// per-request 模型经 KnowledgeRerankReq 透传，下游构造请求时局部覆盖，不写 reranker 单例。
+// rerankConcepts rerank concepts. Three-layer model priority: request incoming (llmModel/vectorModel) > [agent/retrieval configuration, reserved] > yaml/default (downstream fallback).
+// The per-request model is transparently transmitted through KnowledgeRerankReq, and is partially covered when the downstream request is constructed, without writing the reranker singleton.
 func (k *knRetrievalServiceImpl) rerankConcepts(ctx context.Context, queryUnderstandResult *interfaces.QueryUnderstanding, conceptResults []*interfaces.ConceptResult,
 	action interfaces.KnowledgeRerankActionType, limit int, llmModel, vectorModel string,
 ) (rerankResults []*interfaces.ConceptResult, err error) {
-	// 去重
+	// Deduplicate.
 	conceptResults = k.deduplicateConcepts(conceptResults)
 
-	// 优化1：如果没有概念，直接返回空列表，无需调用 rerank
+	// Optimization 1: If there is no concept, return an empty list directly without calling rerank.
 	if len(conceptResults) == 0 {
 		k.logger.WithContext(ctx).Debug("[knretrieval#rerank] No concepts to rerank, returning empty list")
 		return []*interfaces.ConceptResult{}, nil
@@ -67,7 +67,7 @@ func (k *knRetrievalServiceImpl) rerankConcepts(ctx context.Context, queryUnders
 	if action == interfaces.KnowledgeRerankActionDefault {
 		rerankResults = conceptResults
 	} else {
-		// 使用本地Rerank模块
+		// Using the local Rerank module.
 		k.logger.WithContext(ctx).Info("[knretrieval#rerank] Using local KnowledgeReranker")
 		rerankResults, err = k.knReranker.Rerank(ctx, &interfaces.KnowledgeRerankReq{
 			QueryUnderstanding: queryUnderstandResult,
@@ -77,22 +77,22 @@ func (k *knRetrievalServiceImpl) rerankConcepts(ctx context.Context, queryUnders
 			VectorModel:        vectorModel,
 		})
 		if err != nil {
-			// 本地 rerank 失败时，直接返回原始概念列表（降级）
+			// When local rerank fails, return directly to the original concept list (downgrade)
 			k.logger.WithContext(ctx).Warnf("[knretrieval#rerank] Local rerank failed: %v, using original concepts as fallback", err)
 			rerankResults = conceptResults
-			err = nil // 清除错误，确保不影响核心功能
+			err = nil // Clean up errors to ensure core functionality is not affected.
 		}
 	}
-	// 按 RerankScore 降序、相同时按 MatchScore 降序排序（不再过滤 RerankScore=0，避免 concepts 为 null）
+	// Sort by RerankScore in descending order and MatchScore in descending order if they are the same (no longer filter RerankScore=0 to avoid concepts being null)
 	rerankResults = k.sortByRerankAndMatchScore(rerankResults)
-	// 分页
+	// Pagination.
 	if len(rerankResults) > limit {
 		rerankResults = rerankResults[:limit]
 	}
 	return
 }
 
-// sortByRerankAndMatchScore 按 RerankScore 降序排序，相同时按 MatchScore 降序
+// sortByRerankAndMatchScore sorts by RerankScore in descending order, and if they are the same, sort by MatchScore in descending order.
 func (k *knRetrievalServiceImpl) sortByRerankAndMatchScore(conceptResults []*interfaces.ConceptResult) []*interfaces.ConceptResult {
 	if conceptResults == nil {
 		return nil

@@ -11,7 +11,7 @@ import (
 	"log"
 )
 
-// JSONToObject 将JSON字符串转换为指定类型的对象
+// JSONToObject converts a JSON string into an object of the specified type.
 func JSONToObject[T any](jsonStr string) T {
 	var result T
 	if jsonStr == "" {
@@ -26,7 +26,7 @@ func JSONToObject[T any](jsonStr string) T {
 	return result
 }
 
-// JSONToObjectWithError 将JSON字符串转换为指定类型的对象，返回错误信息
+// JSONToObjectWithError Converts a JSON string into an object of the specified type and returns error information.
 func JSONToObjectWithError[T any](jsonStr string) (T, error) {
 	var result T
 	if jsonStr == "" {
@@ -40,7 +40,7 @@ func JSONToObjectWithError[T any](jsonStr string) (T, error) {
 	return result, nil
 }
 
-// AnyToObject 将任意对象转换为指定对象
+// AnyToObject converts any object to the specified object.
 func AnyToObject(anyObj any, obj interface{}) error {
 	jsonBytes, err := json.Marshal(anyObj)
 	if err != nil {

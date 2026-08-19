@@ -29,7 +29,7 @@ func ptcTestTools() []MCPToolInfo {
 			Name: "query_object_instance", Title: "实例查询",
 			Group: "query", GroupTitle: "实例查询", Order: 210,
 			Description: "查询对象实例",
-			// bkn_context 在服务端是必填：生命周期守卫向业务工具索取它。
+			// bkn_context is required on the server side: the lifecycle guard asks the business tools for it.
 			InputSchema: json.RawMessage(`{"type":"object","properties":{
 				"kn_id":{"type":"string"},"ot_id":{"type":"string"},
 				"bkn_context":{"type":"object"},
@@ -96,16 +96,16 @@ func TestPTCToolkitUsesLocalizedSchemasAndDescription(t *testing.T) {
 func TestPTCDigestRendersSignatures(t *testing.T) {
 	digest := ptcTestDigest()
 
-	// 必填在前、可选带默认值——Python 不允许有默认值的参数排在无默认值之前。
+	// Required first, optional with default value - Python does not allow parameters with default values to be listed before parameters without default values.
 	if !strings.Contains(digest, "query_object_instance(kn_id: str, ot_id: str,") {
 		t.Fatalf("必填参数未排在前面:\n%s", digest)
 	}
-	// 返回键必须写出来：键名在各工具间不统一（entries 与 datas 并存），
-	// 模型无从推断，不写出来首次调用就会因 KeyError 失败。
+	// The return key must be written out: the key names are not consistent across tools (entries and datas coexist),
+	// The model cannot be inferred, and if it is not written out, the first call will fail with a KeyError.
 	//
-	// 数组键还要再展开一层元素字段。只写顶层键时，模型得先猜取值路径、猜错再花一整轮
-	// print 原始结构找字段名——实测中 search_schema 的 object_types 就是这么被当成有
-	// name 字段的（真实字段是 concept_name）。
+	// Array keys also need to expand one layer of element fields. When only writing top-level keys, the model has to guess the value path first, guess wrong and then spend a whole round.
+	// Print the original structure to find the field name - in actual testing, the object_types of search_schema is regarded as having.
+	// of the name field (the real field is concept_name).
 	if !strings.Contains(digest, "-> {entries[kn_id name], total_count}") {
 		t.Fatalf("数组元素字段未展开:\n%s", digest)
 	}
@@ -114,8 +114,8 @@ func TestPTCDigestRendersSignatures(t *testing.T) {
 	}
 }
 
-// 元素没声明字段（items 为空、或 items 只有 type）时按普通键渲染，不能凭空造出
-// 一对空方括号——search_after 那种不透明游标就是有意不声明的。
+// When the element has no declared fields (items is empty, or items only has type), it is rendered by pressing the normal key and cannot be created out of thin air.
+// A pair of empty square brackets - the search_after opaque cursor is intentionally not declared.
 func TestPTCDigestLeavesUndeclaredArraysFlat(t *testing.T) {
 	tools := []MCPToolInfo{{
 		Name: "probe", Group: "g", GroupTitle: "G", Order: 1, Description: "d",
@@ -133,16 +133,16 @@ func TestPTCDigestLeavesUndeclaredArraysFlat(t *testing.T) {
 	}
 }
 
-// bkn_context 是生命周期管道，由 stub 的 _call 注入。留在签名里会让模型去填一个
-// 它没有的值——客户端从 tools/list 自行渲染时正是栽在这里。
+// bkn_context is a lifecycle pipeline injected by stub's _call. Leave it in the signature and let the model fill in one.
+// It doesn't have a value - this is where the client fails when rendering itself from tools/list.
 func TestPTCDigestStripsPlumbingParams(t *testing.T) {
 	if digest := ptcTestDigest(); strings.Contains(digest, "bkn_context") {
 		t.Fatalf("bkn_context 不应出现在给模型的签名里:\n%s", digest)
 	}
 }
 
-// toon 是为「直接喂给模型」优化的省 token 文本格式；代码模式下返回值先经脚本
-// 处理，需要可下标访问的结构。
+// Toon is a token-saving text format optimized for "directly feeding the model"; in code mode, the return value is first passed through the script.
+// Processing requires a subscript-accessible structure.
 func TestPTCDigestOverridesResponseFormat(t *testing.T) {
 	digest := ptcTestDigest()
 	if !strings.Contains(digest, "response_format: str = 'json'") {
@@ -159,7 +159,7 @@ func TestPTCDigestExcludesLifecycleTools(t *testing.T) {
 	}
 }
 
-// Order 编码了「先发现、再查询」的使用顺序；按组名字典序排会把它打乱。
+// Order encodes the order of use of "find first, query later"; sorting by group name dictionary would disrupt this.
 func TestPTCDigestGroupsOrderedByOrder(t *testing.T) {
 	digest := ptcTestDigest()
 	discovery := strings.Index(digest, "### 网络与 Schema")
@@ -169,14 +169,14 @@ func TestPTCDigestGroupsOrderedByOrder(t *testing.T) {
 	}
 }
 
-// 代码围栏必须成对：早期版本每组只开不闭，模型看到的是糊在一起的一整块。
+// Code fences must be in pairs: in the early version, each group was only open and not closed, and the model saw a whole block that was glued together.
 func TestPTCDigestFencesBalanced(t *testing.T) {
 	if n := strings.Count(ptcTestDigest(), "```"); n%2 != 0 {
 		t.Fatalf("代码围栏未闭合，共 %d 个", n)
 	}
 }
 
-// 实测中模型不看完整 docstring 就写 SQL，会漏掉占位符约定并失败一轮。
+// In actual testing, if the model writes SQL without reading the complete docstring, it will miss the placeholder convention and fail in one round.
 func TestPTCDigestCarriesRunSQLHint(t *testing.T) {
 	if digest := ptcTestDigest(); !strings.Contains(digest, "{{.<resource_id>}}") {
 		t.Fatalf("run_sql 缺少占位符示例:\n%s", digest)
@@ -186,7 +186,7 @@ func TestPTCDigestCarriesRunSQLHint(t *testing.T) {
 func TestPTCStubIsSelfContained(t *testing.T) {
 	stub := renderPTCStub(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}))
 
-	// 只用标准库：沙箱镜像无需预装依赖，也就没有 SDK 版本漂移。
+	// Only standard libraries are used: Sandbox images do not require pre-installed dependencies, and there is no SDK version drift.
 	for _, forbidden := range []string{"import mcp", "import httpx", "import requests"} {
 		if strings.Contains(stub, forbidden) {
 			t.Fatalf("stub 不应依赖第三方库，出现了 %q", forbidden)
@@ -198,7 +198,7 @@ func TestPTCStubIsSelfContained(t *testing.T) {
 	if !strings.Contains(stub, `_call("query_object_instance"`) {
 		t.Fatalf("stub 未生成调用体:\n%s", stub)
 	}
-	// bkn_context 由 _call 统一注入，不能变成函数参数。
+	// bkn_context is uniformly injected by _call and cannot be turned into a function parameter.
 	if strings.Contains(stub, `"bkn_context": bkn_context`) {
 		t.Fatal("stub 不应把 bkn_context 当成函数参数传递")
 	}
@@ -207,27 +207,27 @@ func TestPTCStubIsSelfContained(t *testing.T) {
 	}
 }
 
-// /workspace 是所有调用方共用的一个目录——执行接口不收 session_id，池子实测恒命中
-// 同一个会话。stub 必须按 conversation 切出子目录并 chdir 进去，否则两个对话写同名
-// 文件会互相覆盖，读回来的可能是别人的数据。
+// /workspace is a directory shared by all callers - the execution interface does not accept session_id, and the actual measurement of the pool is constant.
+// same session. The stub must be cut out of the subdirectory by conversation and chdir into it, otherwise the two conversations will have the same name.
+// The files will overwrite each other, and what is read back may be other people's data.
 func TestPTCStubIsolatesWorkdirPerConversation(t *testing.T) {
 	stub := renderPTCStub(ptcUsableTools(&MCPInfo{Tools: ptcTestTools()}))
 
-	// 目录名是归一化而非哈希：run_shell 走 language=shell 不经过 stub，要在浏览器侧
-	// 算出同一个路径，而 crypto.subtle 在非 HTTPS 源下不可用。两边必须是同一套规则。
+	// The directory name is normalized rather than hashed: run_shell uses language=shell without going through the stub, it must be on the browser side.
+	// Works out the same path and crypto.subtle is not available under non-HTTPS origins. Both sides must have the same set of rules.
 	if strings.Contains(stub, "hashlib") {
 		t.Fatalf("工作目录不应再用哈希命名（浏览器侧算不出来）:\n%s", stub)
 	}
-	// Python 的 isalnum() 认 Unicode（"名".isalnum() 为真），而 Go 侧只认 ASCII。
-	// 用它归一化，中文 conversation_id 会让 run_code 与 run_shell 落进不同目录。
-	// 匹配可执行写法而不是裸词：stub 的注释里正解释着为什么不能用它。
+	// Python's isalnum() recognizes Unicode ("name".isalnum() is true), while the Go side only recognizes ASCII.
+	// Use it to normalize, Chinese conversation_id will make run_code and run_shell fall into different directories.
+	// Match executable notation instead of bare words: the comments of stub explain why it cannot be used.
 	if strings.Contains(stub, "c.isalnum() or") {
 		t.Fatalf("工作目录归一化不能用 isalnum（Unicode 语义与 Go 侧不一致）:\n%s", stub)
 	}
 	for _, want := range []string{
-		`conversation_id`,          // 目录名的来源
-		`c if c in _SAFE else "-"`, // 归一化规则，必须与 Go 侧 ptcWorkdir 一致
-		`[:64]`,                    // 截断长度，同上
+		`conversation_id`,          // The origin of the directory name.
+		`c if c in _SAFE else "-"`, // Normalization rules must be consistent with the Go side ptcWorkdir.
+		`[:64]`,                    // Cut off length, same as above.
 		`"conv-" + safe if safe else "shared"`,
 		`candidate.mkdir(`,
 		`os.chdir(candidate)`,
@@ -236,13 +236,13 @@ func TestPTCStubIsolatesWorkdirPerConversation(t *testing.T) {
 			t.Fatalf("stub 缺少工作目录隔离逻辑 %q:\n%s", want, stub)
 		}
 	}
-	// 拿不到 conversation_id 或目录建不出来时要退回可用状态，不能让整段脚本失败。
+	// When the conversation_id cannot be obtained or the directory cannot be created, it must be returned to the available state and the entire script cannot fail.
 	if !strings.Contains(stub, `"shared"`) || !strings.Contains(stub, "except OSError:") {
 		t.Fatalf("stub 的工作目录缺少兜底分支:\n%s", stub)
 	}
 }
 
-// 目录既然已经切好，digest 就不能再教模型写 /workspace 绝对路径——那正好绕开隔离。
+// Now that the directory has been cut, digest cannot teach the model to write the absolute path to /workspace - that just circumvents isolation.
 func TestPTCDigestTeachesRelativePaths(t *testing.T) {
 	digest := ptcTestDigest()
 
@@ -252,13 +252,13 @@ func TestPTCDigestTeachesRelativePaths(t *testing.T) {
 	if !strings.Contains(digest, "WORKDIR") {
 		t.Fatalf("digest 未说明工作目录:\n%s", digest)
 	}
-	// 用户反复问「有没有 run shell」，说明埋在别的小节里的一句话没被看见。
+	// The user repeatedly asked "Do you have a run shell?" This means that a sentence buried in another section has not been seen.
 	if !strings.Contains(digest, "## 执行 shell 命令") || !strings.Contains(digest, "subprocess.run(") {
 		t.Fatalf("digest 缺少 shell 小节:\n%s", digest)
 	}
 }
 
-// 客户端应当遍历 tools 建工具，不按名字硬编码——加工具才能是纯服务端改动。
+// The client should traverse tools to build tools without hard-coding them by name - adding tool capabilities is a pure server-side change.
 func TestPTCToolkitExposesToolTable(t *testing.T) {
 	toolkit := ptcTestToolkit(t)
 
@@ -277,7 +277,7 @@ func TestPTCToolkitExposesToolTable(t *testing.T) {
 	if runCode.Language != "python" || runCode.Wrap != ptcWrapHandler {
 		t.Fatalf("run_code 组装方式不对: %+v", runCode)
 	}
-	// Digest 顶层字段保留只为兼容老客户端，内容必须与工具表一致，否则两边会漂。
+	// The Digest top-level field is reserved only for compatibility with old clients. The content must be consistent with the tool table, otherwise both sides will drift.
 	if runCode.Description != toolkit.Digest {
 		t.Fatal("run_code 描述与顶层 digest 不一致")
 	}
@@ -286,11 +286,11 @@ func TestPTCToolkitExposesToolTable(t *testing.T) {
 	if !ok {
 		t.Fatalf("缺少 run_shell: %+v", toolkit.Tools)
 	}
-	// 沙箱控制面只认 python / javascript / shell；bash 实测被 422 拒掉。
+	// The sandbox control surface only recognizes python / javascript / shell; bash was rejected by 422 in actual testing.
 	if runShell.Language != "shell" || runShell.Wrap != ptcWrapCdWorkdir {
 		t.Fatalf("run_shell 组装方式不对: %+v", runShell)
 	}
-	// 不划边界模型就会用 curl 手搓 MCP 调用，把一段脚本拆成很多轮。
+	// If the boundary model is not drawn, curl will be used to call the MCP by hand, splitting a script into many rounds.
 	if !strings.Contains(runShell.Description, "不要用它取 BKN 数据") {
 		t.Fatalf("run_shell 描述缺少边界说明:\n%s", runShell.Description)
 	}
@@ -306,8 +306,8 @@ func TestPTCToolkitExposesToolTable(t *testing.T) {
 	}
 }
 
-// Version 是客户端的缓存键，必须覆盖工具全表：只哈希 digest+stub 的话，新增工具
-// 或改描述都不会变版本号，客户端会一直用着旧的工具面。
+// Version is the cache key of the client and must cover the entire tool table: if only hashing digest+stub, add a new tool.
+// The version number will not change even if the description is changed, and the client will always use the old tool surface.
 func TestPTCToolkitVersionCoversToolTable(t *testing.T) {
 	toolkit := ptcTestToolkit(t)
 	baseline := toolkit.Version
@@ -316,7 +316,7 @@ func TestPTCToolkitVersionCoversToolTable(t *testing.T) {
 	if !strings.Contains(original, "run_code") {
 		t.Fatal("前置条件变了：run_shell 描述里不再提到 run_code")
 	}
-	// 描述改了而 digest/stub 没变时，版本号必须跟着变。
+	// When the description changes but digest/stub remains unchanged, the version number must change accordingly.
 	mutated := *toolkit
 	mutated.Tools = append([]PTCTool(nil), toolkit.Tools...)
 	for i := range mutated.Tools {
@@ -341,7 +341,7 @@ func fingerprintPTCTools(t *testing.T, tools []PTCTool) string {
 	return string(encoded)
 }
 
-// Version 是内容哈希，客户端据此缓存；渲染必须可重复，否则每次都像工具面变了。
+// Version is the content hash, which is cached by the client; rendering must be repeatable, otherwise it will look like the tool surface has changed each time.
 func TestPTCRenderIsDeterministic(t *testing.T) {
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
 	if renderPTCDigest(tools) != renderPTCDigest(tools) {
@@ -353,8 +353,8 @@ func TestPTCRenderIsDeterministic(t *testing.T) {
 }
 
 func TestSandboxMCPURLAlwaysEndsWithSlash(t *testing.T) {
-	// 缺尾斜杠时网关 307 跳转，而沙箱侧用 urllib，它不对 POST 跟随重定向，
-	// 症状是一个没有报文的 400。
+	// When the trailing slash is missing, the gateway will jump to 307, and the sandbox side uses urllib, which does not follow redirects for POST.
+	// The symptom is a 400 with no packet.
 	t.Setenv("PTC_SANDBOX_MCP_URL", "http://svc:1/api/agent-retrieval/v1/mcp")
 	if got := sandboxMCPURL(30779); !strings.HasSuffix(got, "/") {
 		t.Fatalf("尾斜杠被丢弃: %s", got)
@@ -367,33 +367,33 @@ func TestSandboxMCPURLAlwaysEndsWithSlash(t *testing.T) {
 	}
 }
 
-// 实测（2026-08-14，A/B）：同一个问题，普通工具面 2 次调用 55k token 答完，PTC 用了
-// 12 次 136k token 还没收敛。差别在于普通面的提示词把聚合推给 run_sql，而 PTC 的
-// digest 当时写着「分组、连接、统计交给 pandas 或 collections」，把模型推去
-// query_object_instance(limit=5000) 拉行回来自己算——慢，且被 limit 悄悄截断。
+// Actual test (2026-08-14, A/B): The same question was answered by calling 55k tokens twice on the ordinary tool surface, and PTC used it.
+// 136k tokens 12 times have not yet converged. The difference is that the normal prompt word pushes the aggregation to run_sql, while the PTC prompt.
+// At that time, digest said "Leave grouping, connection, and statistics to pandas or collections", and pushed the model.
+// query_object_instance(limit=5000) pulls rows back for local calculation, which is slow and silently truncated by limit.
 func TestPTCDigestPrefersSQLPushdown(t *testing.T) {
 	digest := ptcTestDigest()
 
 	if !strings.Contains(digest, "## 能下推的聚合一律下推") {
 		t.Fatalf("digest 缺少下推小节:\n%s", digest)
 	}
-	// 不能再出现「统计交给 pandas」这类把模型推离 SQL 的表述。
+	// There can no longer be expressions such as "Leave statistics to pandas" that push the model away from SQL.
 	if strings.Contains(digest, "分组、连接、统计交给") {
 		t.Fatalf("digest 仍在把聚合推给 pandas:\n%s", digest)
 	}
-	// 反例要写出来：只说「优先 SQL」模型照旧会拉行回来。
+	// Counterexamples need to be written: just say "SQL first" and the model will still pull back.
 	if !strings.Contains(digest, "拉 5000 行回来自己数") {
 		t.Fatalf("digest 缺少反例:\n%s", digest)
 	}
 }
 
-// 实测里那 12 轮不是瞎试，是逐轮修正口径：第 6 轮才发现数据混着女足，第 7 轮才发现
-// West Germany 与 Germany 是同一支。这类误解本可以在第一段脚本里连同答案一起打出来。
+// The 12 rounds in the actual measurement were not a blind test, but a round-by-round correction: it was only in the 6th round that the data was mixed with women’s football, and in the 7th round it was discovered.
+// West Germany and Germany are the same branch. This kind of misunderstanding could have been typed out in the first script along with the answer.
 func TestPTCDigestTeachesPrintingAssumptions(t *testing.T) {
 	digest := ptcTestDigest()
 
-	// 这条规则并进了「一段脚本解决整个问题」——它是那一节的延伸，不像 run_shell
-	// 那样是个独立工具需要自己的标题才被看见。钉规则本身，不钉它住在哪个小节。
+	// This rule incorporates "One script solves the entire problem" - it is an extension of that section, unlike run_shell.
+	// That's a standalone tool that needs its own title to be visible. Nail the rule itself, not the subsection it lives in.
 	if !strings.Contains(digest, "对数据口径有误解") {
 		t.Fatalf("digest 缺少「先打印口径」这条规则:\n%s", digest)
 	}
@@ -405,8 +405,8 @@ func TestPTCDigestTeachesPrintingAssumptions(t *testing.T) {
 	}
 }
 
-// 并进业务工具面时省掉签名清单：那些工具的完整 schema 就在同一个工具面上，
-// 再渲染一遍 Python 签名是把同一批工具描述两遍。实测清单占整份 digest 的 55%。
+// Omit the signature list when merging business tool surfaces: the complete schema for those tools is in the same tool surface,
+// Rendering a Python signature again is describing the same set of tools twice. The measured list accounts for 55% of the entire digest.
 func TestInlineDigestDropsSignatureList(t *testing.T) {
 	locale := loadMCPLocaleBundle(defaultMCPLocale)
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
@@ -417,8 +417,8 @@ func TestInlineDigestDropsSignatureList(t *testing.T) {
 	if !strings.Contains(full, "## 可用函数") {
 		t.Fatalf("完整版必须带签名清单:\n%s", full)
 	}
-	// 判据是签名行的形状（`name(...) -> {返回键}`），不是函数名本身——共用的规则
-	// 小节里有示例代码，会正常出现 query_object_instance(...) 这样的调用。
+	// The criterion is the shape of the signature line (`name(...) -> {return key}`), not the function name itself - common rule.
+	// There is sample code in this section, and calls like query_object_instance(...) will appear normally.
 	if strings.Contains(inline, "## 可用函数") || strings.Contains(inline, ") -> {") {
 		t.Fatalf("并入版不该重复渲染签名:\n%s", inline)
 	}
@@ -426,7 +426,7 @@ func TestInlineDigestDropsSignatureList(t *testing.T) {
 		t.Fatalf("并入版应更短: 完整 %d / 并入 %d", len(full), len(inline))
 	}
 
-	// 规则小节两边共用——省的是重复，不是把规矩一起丢了。
+	// Rules sections are shared on both sides - this saves duplication, not throws away the rules altogether.
 	for _, section := range []string{
 		"## 一段脚本解决整个问题", "## 能下推的聚合一律下推",
 		"## 工作目录与大结果", "## 执行 shell 命令", "## 参数写不准时", "## 错误处理",
@@ -436,8 +436,8 @@ func TestInlineDigestDropsSignatureList(t *testing.T) {
 		}
 	}
 
-	// 这两条靠「参数与 schema 一致」打发不掉：schema 里 bkn_context 是必填，
-	// 而脚本里由运行时注入；response_format 默认 toon，代码要的是 json。
+	// These two items cannot be dismissed by "parameters are consistent with the schema": bkn_context in the schema is required.
+	// The script is injected at runtime; response_format defaults to toon, and the code requires json.
 	for _, must := range []string{"bkn_context", "response_format"} {
 		if !strings.Contains(inline, must) {
 			t.Fatalf("并入版缺少 %s 的说明:\n%s", must, inline)
@@ -445,11 +445,11 @@ func TestInlineDigestDropsSignatureList(t *testing.T) {
 	}
 }
 
-// 名字要列出来，但只列名字。
+// Names should be listed, but only first names.
 //
-// 「哪些工具能在脚本里调」不该靠推断——条件注册的工具存在与否、有没有漏掉某一个，
-// 列出来才没有歧义；而参数与返回值就在工具面的 schema 里，再渲一遍是重复。
-// 实测这份名单约 430 字符，完整签名清单是 4897。
+// "Which tools can be called in the script" should not be relied on inference - whether the conditionally registered tools exist, whether any one is missing,
+// There is no ambiguity if they are listed; the parameters and return values are in the schema on the tool surface, and rendering them again is duplication.
+// The actual length of this list is about 430 characters, and the complete signature list is 4897.
 func TestInlineDigestListsNamesOnly(t *testing.T) {
 	locale := loadMCPLocaleBundle(defaultMCPLocale)
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
@@ -460,21 +460,21 @@ func TestInlineDigestListsNamesOnly(t *testing.T) {
 			t.Fatalf("缺少函数名 %s:\n%s", name, inline)
 		}
 	}
-	// 生命周期工具由调用方按轮次接管，不该出现在脚本可调清单里。
+	// Lifecycle tools are taken over by the caller in turn and should not appear in the script's adjustable list.
 	if strings.Contains(inline, "bkn_start_interaction") {
 		t.Fatalf("生命周期工具不该列入:\n%s", inline)
 	}
-	// 有名字但不能有签名。
+	// Have a name but no signature.
 	if strings.Contains(inline, ") -> {") || strings.Contains(inline, "kn_id: str") {
 		t.Fatalf("只该列名字，不该带签名:\n%s", inline)
 	}
-	// 名单与后一节之间要留空行，否则 ## 标题被粘进同一段，markdown 不成立。
+	// A blank line must be left between the list and the following section, otherwise the ## title will be pasted into the same paragraph and markdown will not be established.
 	if !strings.Contains(inline, "\n\n## ") {
 		t.Fatalf("名单与后续小节之间缺空行:\n%s", inline)
 	}
 }
 
-// 名字按字典序渲染：Version 是内容哈希，顺序抖动会让客户端每次都以为工具面变了。
+// Names are rendered in dictionary order: Version is a content hash, and order jittering will make the client think that the tool surface has changed every time.
 func TestInlineDigestNameOrderIsStable(t *testing.T) {
 	locale := loadMCPLocaleBundle(defaultMCPLocale)
 	tools := ptcUsableTools(&MCPInfo{Tools: ptcTestTools()})
@@ -487,8 +487,8 @@ func TestInlineDigestNameOrderIsStable(t *testing.T) {
 	}
 }
 
-// 两条路拼出的脚本必须一致：stub、沙箱回访地址、组装方式都不因描述精简而变，
-// 否则同一段代码在两个端点上会有不同行为。
+// The scripts spelled out by the two paths must be consistent: the stub, sandbox return address, and assembly method do not change due to the simplified description.
+// Otherwise the same piece of code will behave differently on the two endpoints.
 func TestInlineToolsKeepAssemblyIdentical(t *testing.T) {
 	inlineKit, err := InlinePTCToolkit(30779, defaultMCPLocale)
 	if err != nil {
@@ -518,7 +518,7 @@ func TestInlineToolsKeepAssemblyIdentical(t *testing.T) {
 		if string(tool.InputSchema) != string(full.InputSchema) {
 			t.Fatalf("%s 的入参 schema 不一致", tool.Name)
 		}
-		// 只有 run_code 的描述该变短，run_shell 本来就不含签名清单。
+		// Only the description of run_code should be shortened, run_shell does not contain a signature list.
 		if tool.Name == toolKeyRunShell && tool.Description != full.Description {
 			t.Fatalf("run_shell 的描述不该变")
 		}

@@ -13,11 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// mcp catch-all 之下的分流有一处顺序陷阱：/ptc 是**前缀**匹配（mcp-go 自己也按前缀
-// 吃路径），把它排在精确匹配之前，/mcp/ptc/toolkit 会被当成一次 MCP 调用交给 PTC
-// Server，然后 404——静默的，看起来就像端点没上线。
+// There is a sequence trap in the diversion under mcp catch-all: /ptc is a **prefix** match (mcp-go itself also matches by prefix.
+// path), ranking it before exact matching, /mcp/ptc/toolkit will be treated as an MCP call and handed over to PTC.
+// Server, then 404 - silent, looks like the endpoint is not online.
 //
-// 这里不构造真的 MCP Server：装配它要连下游。用探针替掉两个 handler，只验分流。
+// The real MCP Server is not constructed here: to assemble it, you need to connect to the downstream. Use probes to replace both handlers and only check the shunt.
 func newRoutingProbe(t *testing.T) (*gin.Engine, *string) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -38,7 +38,7 @@ func newRoutingProbe(t *testing.T) (*gin.Engine, *string) {
 	engine.Any("/api/agent-retrieval/v1/mcp/*path", func(c *gin.Context) {
 		switch c.Param("path") {
 		case ptcToolkitPath, legacyToolkitPath:
-			// handlePTCToolkit 会去渲染工具包，这里只关心分流有没有走到它。
+			// handlePTCToolkit will go to the rendering toolkit. Here we only care about whether the shunt has reached it.
 			hit = "toolkit"
 			c.Status(http.StatusOK)
 		case ptcInfoPath:
@@ -60,16 +60,16 @@ func TestMCPRoutingDispatch(t *testing.T) {
 		path   string
 		want   string
 	}{
-		// 精确匹配必须先于 /ptc 前缀，否则这两条被 PTC Server 吞掉后 404。
+		// The exact match must precede the /ptc prefix, otherwise these two items will be swallowed by the PTC Server and a 404 will be issued.
 		{http.MethodGet, "/api/agent-retrieval/v1/mcp/ptc/toolkit", "toolkit"},
 		{http.MethodGet, "/api/agent-retrieval/v1/mcp/ptc/info", "ptc-info"},
-		// 旧别名：studio 已在用，摘掉会让线上前端直接坏。
+		// The old alias: studio is already in use. If you remove it, the online front-end will be damaged directly.
 		{http.MethodGet, "/api/agent-retrieval/v1/mcp/toolkit", "toolkit"},
 		{http.MethodGet, "/api/agent-retrieval/v1/mcp/info", "mcp-info"},
-		// 两台 MCP Server。POST 是 JSON-RPC 主通道。
+		// Two MCP Servers. POST is the JSON-RPC main channel.
 		{http.MethodPost, "/api/agent-retrieval/v1/mcp/ptc", "ptc"},
 		{http.MethodPost, "/api/agent-retrieval/v1/mcp/", "mcp"},
-		// Streamable HTTP 还会用 GET 开 SSE 流、DELETE 终止会话，不能只放行 POST。
+		// Streamable HTTP also uses GET to open the SSE stream and DELETE to terminate the session. It cannot only allow POST.
 		{http.MethodGet, "/api/agent-retrieval/v1/mcp/ptc", "ptc"},
 		{http.MethodDelete, "/api/agent-retrieval/v1/mcp/ptc", "ptc"},
 	}
@@ -84,8 +84,8 @@ func TestMCPRoutingDispatch(t *testing.T) {
 	}
 }
 
-// PTC 装配失败只该让 PTC 路由报 503：主工具面与全部 REST 端点跟它无关，
-// 不能一起拖垮。
+// PTC assembly failure should only cause PTC routing to report 503: The main tool surface and all REST endpoints have nothing to do with it.
+// They cannot be dragged down together.
 func TestPTCRouteFailsClosedWithoutHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	var mcpHit bool
@@ -104,8 +104,8 @@ func TestPTCRouteFailsClosedWithoutHandler(t *testing.T) {
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("PTC 不可用时应返回 503，得到 %d", recorder.Code)
 	}
-	// 关键：不能退回主 MCP Server。那边工具面完全不同，客户端会拿到二十个业务
-	// 工具而不是 run_code，静默地换掉了接入语义。
+	// Critical: Cannot fall back to the primary MCP Server. The tool interface there is completely different, the client will get twenty businesses.
+	// Tools instead of run_code, silently swap out access semantics.
 	if mcpHit {
 		t.Fatal("PTC 不可用时不应回落到主 MCP Server")
 	}
@@ -117,11 +117,11 @@ func TestPTCRouteFailsClosedWithoutHandler(t *testing.T) {
 	}
 }
 
-// PTC 端点常开，不受 EXECUTE_SKILL_ENABLED 约束。
+// The PTC endpoint is always open and is not subject to EXECUTE_SKILL_ENABLED.
 //
-// 这是明确的产品决策：该开关按语义是技能执行的闸，而 run_code / run_shell 是另一种
-// 能力，共用一个开关会让想开技能执行的人被迫连任意代码执行一起开，反之亦然。
-// 代价是没有关闭 PTC 的手段，因此沙箱侧的隔离是必答项。
+// This is a clear product decision: the switch is semantically a gate for skill execution, while run_code / run_shell is another.
+// Ability, sharing a switch will force people who want to enable skill execution to enable arbitrary code execution together, and vice versa.
+// The trade-off is that there is no means of shutting down the PTC, so isolation on the sandbox side is a must.
 func TestPTCRouteIsNotGatedByExecuteSkill(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Setenv("EXECUTE_SKILL_ENABLED", "")
@@ -138,7 +138,7 @@ func TestPTCRouteIsNotGatedByExecuteSkill(t *testing.T) {
 	}
 }
 
-// 工具包与 info 是文档，不执行任何东西——连同端点本身，都不受任何开关影响。
+// The toolkit and info are documents and do not execute anything - nor the endpoints themselves, nor are they affected by any switches.
 func TestPTCToolkitNotGatedByExecutionSwitch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	t.Setenv("EXECUTE_SKILL_ENABLED", "")

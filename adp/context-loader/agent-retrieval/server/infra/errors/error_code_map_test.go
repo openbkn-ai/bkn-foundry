@@ -10,12 +10,12 @@ import (
 	"testing"
 )
 
-// TestDistinguishableErrorCodes 盯住那些「模型据此决定要不要重试」的状态码。
+// TestDistinguishableErrorCodes focuses on those status codes that the model uses to decide whether to retry.
 //
-// DefaultHTTPError 用 errCodeMap 反查 code 字符串，表里没有的码一律退回
-// InternalServerError。MCP 工具层回给模型的是 HTTPError 的 JSON，模型读的是 code
-// 而不是 HTTP status——413（文件太大）和 502（上游挂了）若都被说成内部错误，
-// 模型就会去重试一个永远不会变小的文件。
+// DefaultHTTPError uses errCodeMap to check the code string. Codes that are not in the table will be returned.
+// InternalServerError. The MCP tool layer returns JSON of HTTPError to the model, and the model reads code.
+// Instead of HTTP status - 413 (file too large) and 502 (upstream hung) are said to be internal errors,
+// The model will then retry a file that will never get smaller.
 func TestDistinguishableErrorCodes(t *testing.T) {
 	statuses := []int{
 		http.StatusRequestEntityTooLarge,

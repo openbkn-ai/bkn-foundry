@@ -9,7 +9,7 @@ import (
 )
 
 func TestLocalSearch_Service(t *testing.T) {
-	// 准备基础测试数据
+	// Prepare base test data.
 	mockDetail := createMockNetworkDetail(3, 3, 1)
 
 	tests := []struct {

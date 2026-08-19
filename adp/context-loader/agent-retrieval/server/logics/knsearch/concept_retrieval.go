@@ -4,7 +4,7 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package knsearch（概念召回）
+// Package knsearch (concept recall)
 // file: concept_retrieval.go
 package knsearch
 
@@ -18,21 +18,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// objectTypeRelationMultiplier 无关系/按关系过滤时对象类型数量相对 topK 的倍数
+// objectTypeRelationMultiplier The multiple of the number of object types relative to topK when filtering without relationship/relationship.
 const objectTypeRelationMultiplier = 2
 
-// conceptRetrieval 概念召回主逻辑
+// conceptRetrieval concept recall main logic.
 //
-// 路由策略：
-//   - 当 config.ConceptGroups 非空时，走 conceptRetrievalByGroups：直接调用 BKN
-//     的 SearchObjectTypes/SearchRelationTypes/SearchActionTypes，由 BKN 在分组
-//     范围内完成召回，跳过本地全量 GetKnowledgeNetworkDetail 与本地过滤。
-//   - 当 config.ConceptGroups 为空时，沿用历史路径：拉全量网络详情 -> 可选粗召
-//     回 -> 关系排序 -> 对象选择 -> 属性裁剪。
+// Routing strategy:
+// - When config.ConceptGroups is not empty, use conceptRetrievalByGroups: call BKN directly.
+// of SearchObjectTypes/SearchRelationTypes/SearchActionTypes, grouped by BKN in.
+// Complete the recall within the scope, skipping the local full GetKnowledgeNetworkDetail and local filtering.
+// - When config.ConceptGroups is empty, follow the historical path: pull all network details -> optional rough call.
+// Back -> Relationship sorting -> Object selection -> Attribute clipping.
 //
-// 这样切分的原因：BKN concept_group 以 object_type 集合作为边界，
-// relation_type/action_type 的分组范围由 BKN 按对象边界推导。ContextLoader
-// 不复制这套分组推导逻辑，而是把 BKN typed search 作为事实来源。
+// The reason for this split: BKN concept_group uses the object_type collection as its boundary.
+// The grouping range of relation_type/action_type is derived by BKN by object boundaries. ContextLoader.
+// Instead of duplicating this grouping derivation logic, use BKN typed search as the source of truth.
 func (s *localSearchImpl) conceptRetrieval(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -55,7 +55,7 @@ func (s *localSearchImpl) conceptRetrieval(
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Network detail: object_types=%d, relation_types=%d, action_types=%d",
 		len(networkDetail.ObjectTypes), len(networkDetail.RelationTypes), len(networkDetail.ActionTypes))
 
-	// 2. 粗召回（可选，针对大规模知识网络）
+	// 2. Rough recall (optional, for large-scale knowledge networks)
 	coarseScored := false
 	if boolValue(config.EnableCoarseRecall) && len(networkDetail.RelationTypes) >= config.CoarseMinRelationCount {
 		s.logger.WithContext(ctx).Infof("[ConceptRetrieval] Enable coarse recall, relation_count=%d >= threshold=%d",
@@ -63,34 +63,34 @@ func (s *localSearchImpl) conceptRetrieval(
 		networkDetail, err = s.coarseRecall(ctx, req.KnID, req.Query, networkDetail, config)
 		if err != nil {
 			s.logger.WithContext(ctx).Warnf("[ConceptRetrieval] Coarse recall failed, continue with full schema: %v", err)
-			// 粗召回失败不影响后续流程，继续使用完整 Schema
+			// Failure of rough recall will not affect subsequent processes, and the complete Schema will continue to be used.
 		} else {
 			coarseScored = true
 		}
 	}
 
-	// 3. 对象类相关性打分。粗召回只在超大网络（关系数 >= CoarseMinRelationCount）
-	// 触发，绝大多数真实网络走不到，对象侧就没有任何查询信号，只能被关系端点被动带出。
-	// 这里补上这条通道，让对象类的相关性能够独立参与后续排序。
+	// 3. Object class correlation scoring. Coarse recall only works in very large networks (relationship number >= CoarseMinRelationCount)
+	// Triggered, most real networks cannot reach it, and there is no query signal on the object side, and can only be passively brought out by the relationship endpoint.
+	// This channel is added here so that the correlation of object types can independently participate in subsequent sorting.
 	if !coarseScored {
 		s.scoreObjectTypes(ctx, req.KnID, req.Query, networkDetail.ObjectTypes, config)
 	}
 
-	// 4. 关系类型排序（基于语义相关性）并取 Top-K
+	// 4. Sort relationship types (based on semantic relevance) and select Top-K.
 	rankedRelations := s.rankRelationTypes(ctx, req.Query, networkDetail.ObjectTypes, networkDetail.RelationTypes, config.TopK, req.EnableRerank, req.RerankModel)
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Ranked relations: %d -> top_k=%d", len(networkDetail.RelationTypes), len(rankedRelations))
 
-	// 5. 对象类型选择：按自身相关性排序，关系端点作为 schema 自洽约束并入
+	// 5. Object type selection: Sort by self-relevance, relationship endpoints are incorporated as schema self-consistent constraints.
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(networkDetail.ObjectTypes, rankedRelations, config.TopK)
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Selected objects: %d", len(selectedObjects))
 
-	// 5. 转换为本地响应结构（与 Python schema_brief 语义一致）
+	// 5. Convert to local response structure (consistent with Python schema_brief semantics)
 	brief := boolValue(config.SchemaBrief)
 	objectTypesLocal := s.convertObjectTypesToLocal(selectedObjects, brief, req.IncludeColumns)
 	relationTypesLocal := s.convertRelationTypesToLocal(rankedRelations, brief)
 	actionTypesLocal := s.convertActionTypesToLocal(networkDetail.ActionTypes, networkDetail.ID, networkDetail.ObjectTypes)
 
-	// 7. 获取样例数据（可选）
+	// 7. Get sample data (optional)
 	if boolValue(config.IncludeSampleData) && len(objectTypesLocal) > 0 {
 		s.fetchSampleData(ctx, req.KnID, objectTypesLocal, boolValue(config.SchemaBrief))
 	}
@@ -102,22 +102,23 @@ func (s *localSearchImpl) conceptRetrieval(
 	}, nil
 }
 
-// conceptRetrievalByGroups 是 concept_groups 非空场景下的概念召回路径。
+// conceptRetrievalByGroups is the concept recall path in the scenario where concept_groups is not empty.
 //
-// 设计要点：
-//   - 直接调用 BKN 的 typed search API（SearchObjectTypes / SearchRelationTypes /
-//     SearchActionTypes），由 BKN 完成 concept_groups 范围过滤；不再依赖
-//     GetKnowledgeNetworkDetail 与本地过滤。
-//   - 三个调用任一失败立即向上透传错误（包含分组不存在场景）。这里有意不把
-//     BKN 错误（例如未知分组返回的 5xx + "all concept group not found ..."）
-//     吞成空结果，调用方需要据此区分"分组合法但无概念"与"分组本身不存在"。
-//     BKN 侧在分组未知时返回 5xx 是已知语义偏差，应通过独立 issue 推动改为 4xx，
-//     ContextLoader 在切换前不做错误码翻译。
-//   - relation/action 可能引用未被独立 object search 命中的对象；转换前批量
-//     补齐这些对象详情，避免返回缺端点对象的 schema。
-//   - 排序、对象选择、属性裁剪复用现有函数（rankRelationTypes /
+// Design points:
+// - Directly call BKN's typed search API (SearchObjectTypes / SearchRelationTypes /.
+// SearchActionTypes), concept_groups range filtering is completed by BKN; no longer relied on.
+// GetKnowledgeNetworkDetail with local filtering.
+// - If any of the three calls fails, an upward transparent transmission error will occur immediately (including the scenario where the group does not exist). There is no intention here.
+// BKN errors (e.g. 5xx + "all concept group not found ..." returned by unknown group)
+// Swallowing an empty result, the caller needs to distinguish between "the grouping is legal but has no concept" and "the grouping itself does not exist".
+// The BKN side returning 5xx when the grouping is unknown is a known semantic deviation and should be changed to 4xx through an independent issue.
+// ContextLoader does not translate error codes before switching.
+// - relation/action may refer to objects not hit by independent object search; batch before conversion.
+// Complete these object details to avoid returning schema for missing endpoint objects.
+//   - Sorting, object selection, and attribute clipping reuse existing functions (rankRelationTypes/.
 //     selectObjectTypesForConceptRetrieval / convertXxxToLocal / fetchSampleData），
-//     保证两条路径下的下游行为对齐。
+//
+// Ensure that the downstream behaviors under the two paths are aligned.
 func (s *localSearchImpl) conceptRetrievalByGroups(
 	ctx context.Context,
 	req *interfaces.KnSearchLocalRequest,
@@ -125,8 +126,8 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 ) (*interfaces.KnSearchConceptResult, error) {
 	objectLimit := config.CoarseObjectLimit
 	relationLimit := config.CoarseRelationLimit
-	// Action 类型缺少专用 limit；BKN 端 action 数量级与 object 类似，复用
-	// CoarseObjectLimit 即可，避免给配置面引入新字段。
+	// The Action type lacks a dedicated limit; the action magnitude on the BKN side is similar to that of object and can be reused.
+	// CoarseObjectLimit is enough to avoid introducing new fields to the configuration surface.
 	actionLimit := config.CoarseObjectLimit
 
 	objectReq := s.buildCoarseRecallQuery(req.KnID, req.Query, objectLimit, config.ConceptGroups)
@@ -266,14 +267,14 @@ func (s *localSearchImpl) completeReferencedObjectTypes(
 	return out, nil
 }
 
-// scoreObjectTypes 为对象类打上与 query 的相关性分数（写入 obj.Score）。
+// scoreObjectTypes scores object types for their relevance to query (written as obj.Score).
 //
-// 与 coarseRecall 的区别：只打分、不裁剪候选集，并且不受 CoarseMinRelationCount
-// 门槛约束。此前 obj.Score 全局唯一的赋值点在 coarseRecall 内部，而它要求关系类型
-// 数 >= CoarseMinRelationCount（默认 5000），正常规模的知识网络永不触发，导致对象类
-// 的相关性从来没有信号来源，只能被关系端点被动带出（issue #778）。
+// The difference from coarseRecall: it only scores, does not clip the candidate set, and is not affected by CoarseMinRelationCount.
+// threshold constraints. Previously, the globally unique assignment point for obj.Score was inside coarseRecall, which required a relational type.
+// Number >= CoarseMinRelationCount (default 5000), the normal-scale knowledge network is never triggered, resulting in the object type.
+// The correlation never has a signal source and can only be passively brought out by the relationship endpoint (issue #778).
 //
-// 打分失败不影响主流程：拿不到分数时退回原有的关系端点选择，行为与修复前一致。
+// Failure in scoring does not affect the main process: when the score is not obtained, the original relationship endpoint selection is returned, and the behavior is the same as before repair.
 func (s *localSearchImpl) scoreObjectTypes(
 	ctx context.Context,
 	knID string,
@@ -320,18 +321,18 @@ func (s *localSearchImpl) scoreObjectTypes(
 	s.logger.WithContext(ctx).Debugf("[ScoreObjectTypes] scored %d/%d object types", scored, len(objectTypes))
 }
 
-// selectObjectTypesForConceptRetrieval 选出参与响应的对象类。
+// selectObjectTypesForConceptRetrieval selects the object types that participate in the response.
 //
-// 排序主序是对象类自身与 query 的相关性（obj.Score）。关系端点不再是对象类的唯一
-// 来源，只作为 schema 自洽约束并入——返回的关系若指向未返回的对象，调用方拿到的是
-// 断头引用。因此顺序是：相关性最高的 topK 先占位，再并入入选关系的端点，仍有余量
-// 才按相关性补齐。端点并入**不受 maxObjectCount 约束**，自洽性优先于预算。
+// The main order of sorting is the correlation between the object type itself and query (obj.Score). Relationship endpoints are no longer unique to object types.
+// Source, only incorporated as schema self-consistent constraints - if the returned relationship points to an unreturned object, the caller will get.
+// Decapitated quote. Therefore, the order is: topK with the highest correlation takes up space first, and then is merged into the endpoint of the selected relationship. There is still room left.
+// Only complete based on relevance. Endpoint incorporation is not constrained by maxObjectCount, and self-consistency takes precedence over budget.
 //
-// 若没有任何对象类拿到分数（打分后端不可用等），退回修复前的端点优先顺序：此时
-// 相关性无从谈起，按定义序占满名额只会凭空改变行为。
+// If no object type gets a score (the scoring backend is unavailable, etc.), return to the endpoint priority before repair: at this time.
+// There is no correlation, and filling the slots in a defined order will simply change behavior out of thin air.
 //
-// 修复前的行为是反过来的：关系端点铺满即返回，对象自身相关性完全不参与，导致与
-// 查询高度匹配但所属关系排名靠后（或没有关系）的对象类被整体丢弃（issue #778）。
+// The behavior before repair is the opposite: the relationship endpoint is returned when it is full, and the object's own correlation is not involved at all, resulting in.
+// Object classes that are highly matched by the query but have low (or no) relationship rankings are discarded as a whole (issue #778).
 func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 	objectTypes []*interfaces.ObjectType,
 	relations []*interfaces.RelationType,
@@ -376,8 +377,8 @@ func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 	}
 
 	selected := make(map[string]struct{}, maxObjectCount+len(endpoints))
-	// 1. 相关性最高的 topK 先占位：这是查询意图的直接体现，优先级高于关系端点。
-	// 无分数可用时跳过，把名额留给端点，保持与修复前一致的顺序。
+	// 1. The topK with the highest correlation occupies the position first: This is a direct reflection of the query intention and has a higher priority than the relationship endpoint.
+	// Skip when no points are available, leaving spots for endpoints, keeping the same order as before the fix.
 	if scoreAvailable {
 		for _, obj := range ranked {
 			if len(selected) >= topK {
@@ -386,12 +387,12 @@ func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 			selected[obj.ID] = struct{}{}
 		}
 	}
-	// 2. 并入入选关系的端点，保证返回的关系不指向缺失的对象。这里不设上限：
-	// 端点被截断就等于放任断头引用，而出参层只能从本函数的结果里补，救不回来。
+	// 2. Incorporate the endpoints of the selected relationships to ensure that the returned relationships do not point to missing objects. There is no upper limit here:
+	// If the endpoint is truncated, it is equivalent to letting the broken reference go, and the parameter layer can only make up for it from the result of this function and cannot save it.
 	for id := range endpoints {
 		selected[id] = struct{}{}
 	}
-	// 3. 仍有余量则继续按相关性补齐
+	// 3. If there is still room left, continue to fill it up based on relevance.
 	for _, obj := range ranked {
 		if len(selected) >= maxObjectCount {
 			break
@@ -413,14 +414,14 @@ func (s *localSearchImpl) selectObjectTypesForConceptRetrieval(
 		}
 	}
 	if !scoreAvailable {
-		// 与修复前一致：端点优先，其余按定义序补齐
+		// The same as before the repair: endpoints are given priority, and the rest are completed in the order of definition.
 		appendSelected(func(id string) bool { _, ok := endpoints[id]; return ok })
 	}
 	appendSelected(func(string) bool { return true })
 	return out
 }
 
-// sortObjectTypesByScore 按相关性降序排列对象类；无分数的保持原有相对顺序并排在后面。
+// sortObjectTypesByScore sorts object types in descending order of relevance; those without scores maintain their original relative order and come last.
 func sortObjectTypesByScore(objectTypes []*interfaces.ObjectType) []*interfaces.ObjectType {
 	scored := make([]*interfaces.ObjectType, 0, len(objectTypes))
 	unscored := make([]*interfaces.ObjectType, 0, len(objectTypes))
@@ -449,8 +450,8 @@ func maxInt(a, b int) int {
 	return b
 }
 
-// coarseRecall 粗召回：在大规模知识网络中先裁剪候选集
-// 业务逻辑：构造 knn+match 查询条件，调用基础搜索接口
+// coarseRecall coarse recall: first prune the candidate set in large-scale knowledge networks.
+// Business logic: construct knn+match query conditions and call the basic search interface.
 func (s *localSearchImpl) coarseRecall(
 	ctx context.Context,
 	knID string,
@@ -461,13 +462,13 @@ func (s *localSearchImpl) coarseRecall(
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, nil)
 
-	// 构建粗召回后的对象类型 ID 集合
+	// Construct a collection of object type IDs after rough recall.
 	coarseObjectIDs := make(map[string]bool)
 	coarseRelationIDs := make(map[string]bool)
 	coarseObjectScores := make(map[string]float64)
 	coarseRelationScores := make(map[string]float64)
 
-	// 粗召回对象类型
+	// Rough recall object type.
 	objectReq := s.buildCoarseRecallQuery(knID, query, config.CoarseObjectLimit, config.ConceptGroups)
 	coarseObjects, objErr := s.bknBackend.SearchObjectTypes(ctx, objectReq)
 	if objErr != nil {
@@ -481,7 +482,7 @@ func (s *localSearchImpl) coarseRecall(
 		}
 	}
 
-	// 粗召回关系类型
+	// Rough recall relationship type.
 	relationReq := s.buildCoarseRecallQuery(knID, query, config.CoarseRelationLimit, config.ConceptGroups)
 	coarseRelations, relErr := s.bknBackend.SearchRelationTypes(ctx, relationReq)
 	if relErr != nil {
@@ -495,13 +496,13 @@ func (s *localSearchImpl) coarseRecall(
 		}
 	}
 
-	// 过滤原始数据
+	// Filter raw data.
 	filteredDetail := &interfaces.KnowledgeNetworkDetail{
 		ID:          detail.ID,
-		ActionTypes: detail.ActionTypes, // ActionTypes 不做粗召回过滤
+		ActionTypes: detail.ActionTypes, // ActionTypes does not do rough recall filtering.
 	}
 
-	// 过滤对象类型
+	// Filter object type.
 	if len(coarseObjectIDs) > 0 {
 		relationEndpointIDs := make(map[string]bool)
 		if len(coarseRelationIDs) > 0 {
@@ -544,7 +545,7 @@ func (s *localSearchImpl) coarseRecall(
 		filteredDetail.ObjectTypes = detail.ObjectTypes
 	}
 
-	// 过滤关系类型
+	// Filter relationship types.
 	if len(coarseRelationIDs) > 0 {
 		var pruned []*interfaces.RelationType
 		for _, rel := range detail.RelationTypes {
@@ -571,8 +572,8 @@ func (s *localSearchImpl) coarseRecall(
 	return filteredDetail, nil
 }
 
-// buildCoarseRecallQuery 构建粗召回查询条件
-// 业务逻辑：使用 knn + match 组合查询，按分数降序排序
+// buildCoarseRecallQuery builds coarse recall query conditions.
+// Business logic: Use knn + match combination query, sort by score in descending order.
 func (s *localSearchImpl) buildCoarseRecallQuery(knID, query string, limit int, conceptGroups []string) *interfaces.QueryConceptsReq {
 	return &interfaces.QueryConceptsReq{
 		KnID:          knID,
@@ -604,8 +605,8 @@ func (s *localSearchImpl) buildCoarseRecallQuery(knID, query string, limit int, 
 	}
 }
 
-// rankRelationTypes 对关系类型进行语义排序并取 Top-K
-// 使用 Rerank 服务进行语义排序
+// rankRelationTypes semantically ranks relationship types and takes Top-K.
+// Semantic ranking using the Rerank service.
 func (s *localSearchImpl) rankRelationTypes(
 	ctx context.Context,
 	query string,
@@ -619,7 +620,7 @@ func (s *localSearchImpl) rankRelationTypes(
 		return relations
 	}
 
-	// 不启用 Rerank 时：保持原始顺序，仅截断 Top-K（用于与 Python 当前概念召回行为对齐）
+	// When Rerank is not enabled: keep original order, only truncate Top-K (for alignment with Python's current concept recall behavior)
 	if !enableRerank {
 		if topK <= 0 || topK >= len(relations) {
 			return relations
@@ -653,12 +654,12 @@ func (s *localSearchImpl) rankRelationTypes(
 		documents[i] = buildRelationText(sourceName, relationName, targetName, rel.Comment)
 	}
 
-	// 调用 Rerank 服务；model 为空即用模型管理里勾选的默认 reranker（#842）
+	// Call the Rerank service; model is the default reranker checked in the empty model management (#842)
 	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, rerankModel)
 	if err != nil {
-		// 优雅降级：reranker 不可用（未注册 / NameNotExist）时，不丢相关性。
-		// 优先按粗召回 BM25 _score 排序（已有的相关性信号，零额外延迟）；
-		// 仅当 _score 全为 0（如粗召回未启用）时才退到纯名称匹配。
+		// Graceful downgrade: Relevance is not lost when the reranker is unavailable (not registered/NameNotExist).
+		// Prioritize sorting by coarse recall BM25 _score (existing correlation signal, zero additional delay);
+		// Only fall back to pure name matching if _score is all 0 (if coarse recall is not enabled).
 		s.logger.WithContext(ctx).Warnf("[RankRelationTypes] Rerank unavailable (%v); degrading to coarse-recall _score order", err)
 		if ranked, ok := rankRelationTypesByScore(relations, topK); ok {
 			return ranked
@@ -667,7 +668,7 @@ func (s *localSearchImpl) rankRelationTypes(
 		return s.rankRelationTypesBySimpleMatch(query, relations, topK)
 	}
 
-	// 按 Rerank 分数排序
+	// Sort by Rerank score.
 	type scoredRelation struct {
 		relation *interfaces.RelationType
 		score    float64
@@ -690,7 +691,7 @@ func (s *localSearchImpl) rankRelationTypes(
 		return scored[i].score > scored[j].score
 	})
 
-	// 取 Top-K
+	// Take Top-K.
 	if topK > len(scored) {
 		topK = len(scored)
 	}
@@ -723,9 +724,9 @@ func buildRelationText(sourceName, relationName, targetName, relationComment str
 	return strings.Join(parts, " ")
 }
 
-// rankRelationTypesByScore 按粗召回 BM25 _score 降序排序并取 Top-K，作为 Rerank
-// 不可用时的相关性保留降级路径。返回 ok=false 表示所有 _score 均为 0（例如未启用
-// 粗召回），此时应退到 rankRelationTypesBySimpleMatch。使用稳定排序，等分保留召回顺序。
+// rankRelationTypesByScore Sort by rough recall BM25 _score in descending order and take Top-K as Rerank.
+// Dependencies in the event of unavailability preserve the downgrade path. Returning ok=false means all _scores are 0 (e.g. not enabled.
+// Coarse recall), in this case you should fall back to rankRelationTypesBySimpleMatch. Using stable sorting, equal division preserves recall order.
 func rankRelationTypesByScore(relations []*interfaces.RelationType, topK int) ([]*interfaces.RelationType, bool) {
 	anyScore := false
 	for _, rel := range relations {
@@ -750,13 +751,13 @@ func rankRelationTypesByScore(relations []*interfaces.RelationType, topK int) ([
 	return sorted[:topK], true
 }
 
-// rankRelationTypesBySimpleMatch 使用简单匹配进行排序（Rerank 失败时的回退）
+// rankRelationTypesBySimpleMatch uses simple matching to sort (fallback when Rerank fails)
 func (s *localSearchImpl) rankRelationTypesBySimpleMatch(
 	query string,
 	relations []*interfaces.RelationType,
 	topK int,
 ) []*interfaces.RelationType {
-	// 简单的相关性评分（基于名称匹配）
+	// Simple relevance scoring (based on name matching)
 	type scoredRelation struct {
 		relation *interfaces.RelationType
 		score    float64
@@ -768,12 +769,12 @@ func (s *localSearchImpl) rankRelationTypesBySimpleMatch(
 		scored[i] = scoredRelation{relation: rel, score: score}
 	}
 
-	// 按分数降序排序
+	// Sort by score descending.
 	sort.Slice(scored, func(i, j int) bool {
 		return scored[i].score > scored[j].score
 	})
 
-	// 取 Top-K
+	// Take Top-K.
 	if topK > len(scored) {
 		topK = len(scored)
 	}
@@ -786,8 +787,7 @@ func (s *localSearchImpl) rankRelationTypesBySimpleMatch(
 	return result
 }
 
-
-// calculateRelevanceScore 计算 Query 与概念的相关性分数
+// calculateRelevanceScore calculates the relevance score between Query and concept.
 func (s *localSearchImpl) calculateRelevanceScore(query, name, comment string) float64 {
 	if strings.TrimSpace(query) == "" {
 		return 0
@@ -795,12 +795,12 @@ func (s *localSearchImpl) calculateRelevanceScore(query, name, comment string) f
 
 	score := 0.0
 
-	// 名称完全匹配
+	// Name exactly matches.
 	if name == query {
 		score += 1.0
 	}
 
-	// 名称包含 Query
+	// Name contains Query.
 	if name != "" {
 		if containsFold(name, query) {
 			score += 0.5
@@ -810,7 +810,7 @@ func (s *localSearchImpl) calculateRelevanceScore(query, name, comment string) f
 		}
 	}
 
-	// 描述包含 Query
+	// Description contains Query.
 	if comment != "" && containsFold(comment, query) {
 		score += 0.2
 	}
@@ -822,14 +822,14 @@ func containsFold(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// pruneProperties 属性裁剪：只保留与 Query 最相关的属性
+// pruneProperties attribute clipping: only retain the properties most relevant to Query.
 func (s *localSearchImpl) pruneProperties(
 	_ context.Context,
 	query string,
 	objectTypes []*interfaces.KnSearchObjectType,
 	config *interfaces.KnSearchConceptRetrievalConfig,
 ) []*interfaces.KnSearchObjectType {
-	// 收集所有属性及其分数
+	// Collect all attributes and their scores.
 	type propertyWithScore struct {
 		objIndex  int
 		propIndex int
@@ -860,12 +860,12 @@ func (s *localSearchImpl) pruneProperties(
 		}
 	}
 
-	// 按分数降序排序
+	// Sort by score descending.
 	sort.Slice(allProperties, func(i, j int) bool {
 		return allProperties[i].score > allProperties[j].score
 	})
 
-	// 标记要保留的属性
+	// Mark attributes to keep.
 	perObjectDataCount := make(map[int]int)
 	perObjectLogicCount := make(map[int]int)
 	keepDataProps := make(map[int]map[int]bool)
@@ -897,7 +897,7 @@ func (s *localSearchImpl) pruneProperties(
 		}
 	}
 
-	// 应用裁剪
+	// Apply crop.
 	for objIdx, obj := range objectTypes {
 		var filteredDataProps []*interfaces.KnSearchDataProperty
 		for propIdx, prop := range obj.DataProperties {
@@ -919,10 +919,10 @@ func (s *localSearchImpl) pruneProperties(
 	return objectTypes
 }
 
-// fetchSampleData 获取样例数据
+// fetchSampleData gets sample data.
 func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string, objectTypes []*interfaces.KnSearchObjectType, schemaBrief bool) {
 	for _, obj := range objectTypes {
-		// 调用实例检索获取一条样例数据
+		// Call instance retrieval to obtain a piece of sample data.
 		req := &interfaces.QueryObjectInstancesReq{
 			KnID:               knID,
 			OtID:               obj.ConceptID,
@@ -956,10 +956,10 @@ func (s *localSearchImpl) fetchSampleData(ctx context.Context, knID string, obje
 	}
 }
 
-// ==================== 类型转换函数 ====================
+// ==================== Type conversion function ====================.
 
-// mappedFieldColumn 从 data property 的 mapped_field（无类型 map，形如 {"name": "..."}）
-// 提取物理列名；mapped_field 缺失或格式异常时回退到逻辑名 fallback。
+// mappedFieldColumn mapped_field from data property (untyped map, of the form {"name": "..."})
+// Extract physical column names; fallback to logical name fallback when mapped_field is missing or formatted abnormally.
 func mappedFieldColumn(mappedField any, fallback string) string {
 	if m, ok := mappedField.(map[string]any); ok {
 		if name, ok := m["name"].(string); ok && name != "" {
@@ -969,15 +969,15 @@ func mappedFieldColumn(mappedField any, fallback string) string {
 	return fallback
 }
 
-// convertObjectTypesToLocal 将对象类型映射为本地响应结构；brief 控制包含的字段范围；
-// includeColumns 为 true 时额外填充每个属性的物理列名（mapped_field），供 run_sql 使用。
+// convertObjectTypesToLocal maps object types to local response structures; brief controls the scope of included fields;
+// When includeColumns is true, the physical column name (mapped_field) of each attribute is additionally populated for use by run_sql.
 func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.ObjectType, brief bool, includeColumns bool) []*interfaces.KnSearchObjectType {
 	result := make([]*interfaces.KnSearchObjectType, len(objects))
 	for i, obj := range objects {
 		var conceptType string
 		var primaryKeys []string
 		var tags []string
-		// data_source 始终保留：brief 也需要 data_source.id 写 run_sql。
+		// data_source is always retained: brief also requires data_source.id to write run_sql.
 		dataSource := obj.DataSource
 		if !brief {
 			conceptType = "object_type"
@@ -1034,9 +1034,9 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 	return result
 }
 
-// convertRelationTypesToLocal 转换关系类型为本地响应格式，与 Python schema_brief 对齐：
-// - brief=true：仅返回 concept_id, concept_name, source_object_type_id, target_object_type_id（不含 concept_type, comment）
-// - brief=false：返回完整字段（含 concept_type, comment）
+// convertRelationTypesToLocal converts relation types to local response format, aligned with Python schema_brief:
+// - brief=true: only return concept_id, concept_name, source_object_type_id, target_object_type_id (excluding concept_type, comment)
+// - brief=false: Return the complete field (including concept_type, comment)
 func (s *localSearchImpl) convertRelationTypesToLocal(relations []*interfaces.RelationType, brief bool) []*interfaces.KnSearchRelationType {
 	result := make([]*interfaces.KnSearchRelationType, len(relations))
 	for i, rel := range relations {

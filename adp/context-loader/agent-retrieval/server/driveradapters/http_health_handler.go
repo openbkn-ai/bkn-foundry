@@ -15,7 +15,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// 健康检查
+// health check.
 type httpHealthHandler struct{}
 
 var (
@@ -31,7 +31,7 @@ func NewHTTPHealthHandler() interfaces.HTTPRouterInterface {
 	return httpHealthHand
 }
 
-// RegisterRouter 注册路由
+// RegisterRouter registers routes.
 func (h *httpHealthHandler) RegisterRouter(router *gin.RouterGroup) {
 	router.GET("/ready", h.getReady)
 	router.GET("/alive", h.getAlive)

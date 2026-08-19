@@ -11,7 +11,7 @@ import "context"
 
 // ==================== Request Structures ====================
 
-// KnSearchLocalRequest 知识网络检索本地请求
+// KnSearchLocalRequest Knowledge network search local request.
 type KnSearchLocalRequest struct {
 	// Header Fields
 	AccountID   string `json:"-" header:"x-account-id"`
@@ -29,18 +29,18 @@ type KnSearchLocalRequest struct {
 	// IncludeColumns adds each data property's physical column name (mapped_field)
 	// to the response for run_sql. Off by default to keep responses compact.
 	IncludeColumns bool `json:"include_columns" default:"false"`
-	// IndexOpsOnly 见 SearchSchemaReq 同名字段。
+	// IndexOpsOnly See SearchSchemaReq field of the same name.
 	IndexOpsOnly bool `json:"-"`
 }
 
-// KnSearchRetrievalConfig 召回配置参数
+// KnSearchRetrievalConfig recall configuration parameters.
 type KnSearchRetrievalConfig struct {
 	ConceptRetrieval          *KnSearchConceptRetrievalConfig          `json:"concept_retrieval,omitempty"`
 	SemanticInstanceRetrieval *KnSearchSemanticInstanceRetrievalConfig `json:"semantic_instance_retrieval,omitempty"`
 	PropertyFilter            *KnSearchPropertyFilterConfig            `json:"property_filter,omitempty"`
 }
 
-// KnSearchConceptRetrievalConfig 概念召回配置参数
+// KnSearchConceptRetrievalConfig concept recall configuration parameters.
 type KnSearchConceptRetrievalConfig struct {
 	ConceptGroups          []string `json:"concept_groups,omitempty"`
 	TopK                   int      `json:"top_k" default:"10"`
@@ -55,7 +55,7 @@ type KnSearchConceptRetrievalConfig struct {
 	GlobalPropertyTopK     int      `json:"global_property_top_k" default:"30"`
 }
 
-// KnSearchSemanticInstanceRetrievalConfig 语义实例召回配置参数
+// KnSearchSemanticInstanceRetrievalConfig semantic instance recall configuration parameters.
 type KnSearchSemanticInstanceRetrievalConfig struct {
 	InitialCandidateCount             int     `json:"initial_candidate_count" default:"50"`
 	PerTypeInstanceLimit              int     `json:"per_type_instance_limit" default:"5"`
@@ -69,53 +69,53 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	GlobalFinalScoreRatio             float64 `json:"global_final_score_ratio" default:"0.25"`
 	ExactNameMatchScore               float64 `json:"exact_name_match_score" default:"0.85"`
 
-	// EnableKnnInstanceRetrieval 控制实例召回是否发向量条件。关掉只留全文：
-	// 向量能跨语言、跨措辞召回，但每个 knn 子条件都要向量化一次查询词，是这条
-	// 链路上唯一按次计费也按次等待的部分。
+	// EnableKnnInstanceRetrieval controls whether instance recall sends vector conditions. Close and leave only the full text:
+	// Vectors can be recalled across languages and phrases, but each knn sub-condition must vectorize the query word once. This is.
+	// The only part of the link where pay-per-view is also pay-per-view.
 	EnableKnnInstanceRetrieval *bool `json:"enable_knn_instance_retrieval" default:"true"`
-	// MaxKnnSubConditionsPerType 限制单个对象类发多少个向量条件。
-	// 同一行的多个文本字段各发一次 knn，召回增益很小，成本却是线性叠加，默认只取
-	// 最靠前的一个字段。
+	// MaxKnnSubConditionsPerType limits how many vector conditions a single object type can send.
+	// Multiple text fields in the same line each send knn once. The recall gain is very small, but the cost is linear superposition. By default, only.
+	// The first field.
 	MaxKnnSubConditionsPerType int `json:"max_knn_sub_conditions_per_type" default:"1"`
 
-	// EnableRRFFusion 控制实例召回是否把 knn 与 match 拆成两条查询、再按名次做 RRF 融合。
-	// 关掉退回单条 OR 查询的旧路径：那条路上 knn 分（0~1）与 BM25 分（无上界）被
-	// OpenSearch 直接相加，BM25 恒定主导，向量命中连候选集都进不去。仅作逃生门保留。
+	// EnableRRFFusion controls whether instance recall splits knn and match into two queries, and then performs RRF fusion based on ranking.
+	// Turn off the old path that returns a single OR query: the knn score (0~1) and BM25 score (no upper bound) on that path are.
+	// OpenSearch adds directly, BM25 is always dominant, and vector hits cannot even enter the candidate set. Reserved only for escape doors.
 	EnableRRFFusion *bool `json:"enable_rrf_fusion" default:"true"`
-	// RRFK RRF 融合常数 k：score = Σ 1/(k + rank)。k 越大越平缓（各通道靠前名次之间
-	// 的差距被压小），60 是文献与工业界的通用取值，跨知识网络不需要重调。
+	// RRFK RRF fusion constant k: score = Σ 1/(k + rank). The larger k is, the smoother it is (between the top rankings of each channel.
+	// The gap is reduced), 60 is a common value in literature and industry, and does not need to be readjusted across knowledge networks.
 	RRFK int `json:"rrf_k" default:"60"`
-	// KnnWeight 向量通道在融合里的权重，0~1，默认 0.5（等权，与不带权重时逐位等价）。
-	// 全文通道取 1-KnnWeight：名次分的绝对幅度不影响排序，只有两路的**比例**有意义，
-	// 所以一个数就够，不需要两个独立权重。
+	// KnnWeight: The weight of the vector channel in the fusion, 0~1, default 0.5 (equal weight, bit by bit equivalent to without weight).
+	// The full text channel takes 1-KnnWeight: the absolute magnitude of the ranking does not affect the sorting, only the **proportion** of the two channels is meaningful.
+	// So one number is enough and there is no need for two independent weights.
 	//
-	// 1 = 只信向量，0 = 只信全文。什么时候值得偏：中文短名称、跨语言表述上 BM25 分词
-	// 效果差，向量更可靠；编号 / 编码类字段则相反。
+	// 1 = only trust vectors, 0 = only trust full text. When is it worth biasing: BM25 word segmentation on Chinese short names and cross-language expressions.
+	// Less effective, vectors are more reliable; the opposite is true for numbered/encoded fields.
 	//
-	// 代价：偏权会打破「任一通道第 1 名恒为 1.0」这个跨对象类锚点——调高向量权重之后，
-	// 没有向量字段的对象类整体被压低。那是调用方声明的偏好带来的**语义正确**的结果，
-	// 不是缺陷，但正因如此默认必须保持 0.5。
+	// Cost: The partial weight will break the cross-object type anchor point of "the first position of any channel is always 1.0" - after increasing the vector weight,
+	// Object classes without vector fields are suppressed overall. That is the **semantically correct** result of the caller's declared preference,
+	// Not a bug, but because of this the default must remain 0.5.
 	KnnWeight *float64 `json:"knn_weight,omitempty" default:"0.5"`
 
-	// InstanceRerankMode 精排级开关：off / shadow / on。
+	// InstanceRerankMode fine ranking switch: off / shadow / on.
 	//
-	// 第一级的 RRF 只调和名次，判不出「欠款」与「还款」这类语义差异，而且名次分表达
-	// 不了绝对相关性——第一名恒为 1.0，哪怕它毫不相关。cross-encoder 把 query 与文档
-	// 拼进同一条序列做 attention，正是补这一格。
+	// The first-level RRF only reconciles rankings and cannot determine semantic differences such as "arrears" and "repayments", and rankings are not expressible.
+	// There is no absolute correlation - the first number is always 1.0, even if it has no correlation. cross-encoder combines query with document.
+	// Spelling the same sequence into attention is just to make up for this grid.
 	//
-	// 默认 off：多一次模型调用、延迟涨 100~400ms，且 reranker 未注册在客户环境是常态。
-	// shadow 照常返回融合序，但额外调一次模型并记录两个序列的差异，用于翻默认前取证。
+	// The default is off: one more model call, the delay increases by 100~400ms, and it is normal that the reranker is not registered in the customer environment.
+	// shadow returns the fusion sequence as usual, but adjusts the model once more and records the difference between the two sequences for pre-default evidence collection.
 	InstanceRerankMode string `json:"instance_rerank_mode" default:"off"`
-	// InstanceRerankModel 覆盖精排小模型名；留空即用模型管理配置的默认 reranker（#842）。
+	// InstanceRerankModel overrides fine-ranking small model names; leave blank to use the default reranker configured by model management (#842).
 	InstanceRerankModel string `json:"instance_rerank_model,omitempty"`
-	// RerankTopN 进入精排的候选数。精排是 O(N) 次前向，必须有上界。
+	// RerankTopN The number of candidates entering the refined ranking. Fine rowing is O(N) times forward and must have an upper bound.
 	RerankTopN int `json:"rerank_top_n" default:"50"`
-	// RerankFieldCharLimit 单个字段进入精排文本的截断长度。
-	// mf-model-api 会把单文档静默截到 4000 字符，长字段不设限的话尾部字段等于没参与打分。
+	// RerankFieldCharLimit The truncated length of a single field into refined text.
+	// mf-model-api will silently cut a single document to 4000 characters. If there is no limit on long fields, the tail fields will not participate in scoring.
 	RerankFieldCharLimit int `json:"rerank_field_char_limit" default:"200"`
 }
 
-// KnSearchPropertyFilterConfig 实例属性过滤配置
+// KnSearchPropertyFilterConfig instancepropertyfilterconfiguration.
 type KnSearchPropertyFilterConfig struct {
 	MaxPropertiesPerInstance int   `json:"max_properties_per_instance" default:"20"`
 	MaxPropertyValueLength   int   `json:"max_property_value_length" default:"500"`
@@ -124,7 +124,7 @@ type KnSearchPropertyFilterConfig struct {
 
 // ==================== Response Structures ====================
 
-// KnSearchLocalResponse 知识网络检索本地响应
+// KnSearchLocalResponse Knowledge network retrieves local response.
 type KnSearchLocalResponse struct {
 	ObjectTypes   []*KnSearchObjectType   `json:"object_types,omitempty"`
 	RelationTypes []*KnSearchRelationType `json:"relation_types,omitempty"`
@@ -197,14 +197,14 @@ type KnSearchNode struct {
 	InstanceName     string         `json:"instance_name,omitempty"`
 	UniqueIdentities map[string]any `json:"unique_identities,omitempty"`
 	Properties       map[string]any `json:"properties,omitempty"`
-	// Score 相关性分。**不带 omitempty**：0 分是有意义的取值（本地兜底打分给不出重叠
-	// 时就是 0），省略字段会让调用方分不清「没这个字段」与「分是 0」。
+	// Score relevance score. **Without omitempty**: 0 points is a meaningful value (local scoring does not allow overlap.
+	// When it is 0), omitting a field will make it difficult for the caller to distinguish between "there is no such field" and "when it is 0".
 	Score float64 `json:"score"`
-	// RecallScore 保留召回阶段的原始 _score（OpenSearch 相关性）。Score 在 RRF 路径上
-	// 会被融合分覆盖，两个量纲不同，排障时需要能同时看见。
+	// RecallScore retains the original _score (OpenSearch relevance) of the recall phase. Score on RRF path.
+	// It will be covered by fusion points. The two dimensions are different and need to be visible at the same time when troubleshooting.
 	RecallScore float64 `json:"recall_score,omitempty"`
-	// RerankScore cross-encoder 给出的相关性分。mode=on 时 Score 就是它；
-	// mode=shadow 时 Score 仍是融合分，这个字段单独带出来供对比。
+	// RerankScore Relevance score given by cross-encoder. Score is it when mode=on;
+	// When mode=shadow, Score is still a fusion score, and this field is brought out separately for comparison.
 	RerankScore float64 `json:"rerank_score,omitempty"`
 }
 

@@ -13,8 +13,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// run_code / run_shell 与业务工具并列在 /mcp 上，而不是只在 /mcp/ptc 那个独立
-// 端点上。communityTools 基线已经钉住了「在」，这里钉的是「以什么形态在」。
+// run_code / run_shell are listed on /mcp alongside business tools, rather than just in /mcp/ptc.
+// on the endpoint. The communityTools baseline has already nailed "being", what is nailed here is "in what form".
 func TestInlinePTCToolsAreOnTheBusinessSurface(t *testing.T) {
 	noExtensions(t)
 
@@ -29,8 +29,8 @@ func TestInlinePTCToolsAreOnTheBusinessSurface(t *testing.T) {
 	}
 }
 
-// 并列版的 run_code 描述不该再带一份 Python 签名清单：那些工具的完整 schema 就
-// 在同一个工具面上，重渲染一遍是纯重复，实测多花约 5.5k 字符。
+// The side-by-side run_code description should no longer carry a list of Python signatures: the complete schema for those tools is.
+// On the same tool surface, re-rendering is pure repetition, and it is measured that it takes about 5.5k more characters.
 func TestInlineRunCodeDescriptionOmitsSignatures(t *testing.T) {
 	noExtensions(t)
 
@@ -46,8 +46,8 @@ func TestInlineRunCodeDescriptionOmitsSignatures(t *testing.T) {
 	if strings.Contains(inline, "def ") {
 		t.Fatalf("并列版描述不该带函数签名:\n%s", inline)
 	}
-	// 但函数名要留着。模型得知道脚本里能调哪些名字，而 tools/list 的 schema 是
-	// 按工具分开的，没有任何一处告诉它「这些在脚本作用域内」。
+	// But the function name should be kept. The model needs to know which names can be called in the script, and the schema of tools/list is.
+	// Separated by tool, nowhere does it tell "these are in script scope".
 	if !strings.Contains(inline, toolKeySearchSchema) {
 		t.Fatalf("并列版描述应列出可用函数名:\n%s", inline)
 	}
@@ -61,8 +61,8 @@ func TestInlineRunCodeDescriptionOmitsSignatures(t *testing.T) {
 	}
 }
 
-// digest 是给沙箱内脚本看的可调函数表。把 run_code 写进去等于告诉模型可以在
-// 代码里再开一层沙箱，而那个函数在 stub 里根本不存在。
+// digest is a table of callable functions for scripts in the sandbox to see. Writing run_code is equivalent to telling the model that it can.
+// Another layer of sandbox is opened in the code, and that function does not exist in the stub at all.
 func TestInlineDigestDoesNotListTheExecutionToolsThemselves(t *testing.T) {
 	noExtensions(t)
 
@@ -77,8 +77,8 @@ func TestInlineDigestDoesNotListTheExecutionToolsThemselves(t *testing.T) {
 	}
 }
 
-// /mcp/info 与 tools/list 对这两个工具必须说同一套话。前者的用途是让人不握手
-// 就看清能力面，广播一份和模型看到的不一样的说明比不广播更糟。
+// /mcp/info and tools/list must say the same thing about these two tools. The purpose of the former is to prevent people from shaking hands.
+// In terms of ability, broadcasting a description that is different from what the model sees is worse than not broadcasting it at all.
 func TestInfoAndToolsListAgreeOnTheExecutionTools(t *testing.T) {
 	noExtensions(t)
 
@@ -105,16 +105,16 @@ func TestInfoAndToolsListAgreeOnTheExecutionTools(t *testing.T) {
 		if got.Title == "" || got.Group == "" || got.Order == 0 {
 			t.Fatalf("%s 的展示元数据不全: %+v", tool.Name, got)
 		}
-		// schema 也走的是同一条路：两处各拼一份的话，照 /mcp/info 集成的人会
-		// 拿到一份调不通的声明。
+		// schema is also taking the same path: if you put together a copy of each place, people who integrate it according to /mcp/info will.
+		// Got a statement that didn't make sense.
 		if !schemaEquivalent(t, wireInputSchema(t, tool), got.InputSchema) {
 			t.Fatalf("%s 的入参 schema 在两个端点上不一致", tool.Name)
 		}
 	}
 }
 
-// run_code 的入参声明必须带 bkn_context——生命周期守卫向每个业务工具要它，
-// 少了这一项模型会照着 schema 调，然后拿到 conversation_required。
+// The input parameter declaration of run_code must contain bkn_context - the lifecycle guard requires it from each business tool.
+// Without this item, the model will call according to the schema, and then get conversation_required.
 func TestInlineExecutionToolsDeclareBKNContext(t *testing.T) {
 	noExtensions(t)
 
@@ -144,9 +144,9 @@ func TestInlineExecutionToolsDeclareBKNContext(t *testing.T) {
 	}
 }
 
-// 不受 MCP_EXECUTE_SKILL_ENABLED 约束。那个开关按语义是技能执行的闸，而这两个
-// 是另一种能力；共用一个开关会让想开技能执行的人被迫连任意代码执行一起开。
-// 这与 /mcp/ptc 端点上的判断一致，代价写在 rest_public_handler.go 上。
+// Not subject to MCP_EXECUTE_SKILL_ENABLED. That switch is semantically the gate for skill execution, and these two.
+// is another ability; sharing a switch forces anyone who wants to enable skill execution to enable arbitrary code execution as well.
+// This is consistent with the judgment on the /mcp/ptc endpoint, and the cost is written on rest_public_handler.go.
 func TestInlineExecutionToolsIgnoreTheSkillSwitch(t *testing.T) {
 	noExtensions(t)
 	t.Setenv("MCP_EXECUTE_SKILL_ENABLED", "")
@@ -168,9 +168,9 @@ func TestInlineExecutionToolsIgnoreTheSkillSwitch(t *testing.T) {
 	}
 }
 
-// 光在 tools/list 里出现不算接上——handler 挂错的话，模型会看到工具、调用时
-// 却拿到「无此工具」。这里走真实的 tools/call 路径：缺 bkn_context 时应该被
-// 生命周期守卫拦下，而不是被 mcp-go 当作未知工具拒掉。
+// Just appearing in the tools/list does not count as being connected - if the handler is hanged incorrectly, the model will see the tool and call it.
+// But I got "no such tool". Take the real tools/call path here: when bkn_context is missing, it should be.
+// Lifecycle guards block it instead of being rejected by mcp-go as an unknown tool.
 func TestInlineExecutionToolsAreCallable(t *testing.T) {
 	noExtensions(t)
 
@@ -185,10 +185,10 @@ func TestInlineExecutionToolsAreCallable(t *testing.T) {
 	}
 }
 
-// wireInputSchema 取工具真正上线的那份入参声明。
+// wireInputSchema gets the input parameter statement when the tool is actually online.
 //
-// 不能读 mcp.Tool.InputSchema：schema 是以 RawInputSchema 传进去的，那个结构化
-// 字段在这条路上恒为空，照它断言会得到一个永远通过的测试。
+// Unable to read mcp.Tool.InputSchema: The schema is passed in as RawInputSchema. That structure.
+// The field is always empty on this path, and asserting it results in a test that always passes.
 func wireInputSchema(t *testing.T, tool mcp.Tool) json.RawMessage {
 	t.Helper()
 	raw, err := json.Marshal(tool)

@@ -19,7 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// TestExecuteAction_Success 透传 ontology-query 的执行响应
+// TestExecuteAction_Success transparently transmits the execution response of ontology-query.
 func TestExecuteAction_Success(t *testing.T) {
 	convey.Convey("TestExecuteAction_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -47,7 +47,7 @@ func TestExecuteAction_Success(t *testing.T) {
 			DynamicParams:      map[string]any{"message": "hi", "name": "zhangsan"},
 		}
 
-		// 断言透传的 execReq 携带了动态参数与实例标识
+		// The execReq that asserts transparent transmission carries dynamic parameters and instance identifiers.
 		mockOntologyQuery.EXPECT().ExecuteActions(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, r *interfaces.ExecuteActionsRequest) (*interfaces.ExecuteActionsResponse, error) {
 				convey.So(r.KnID, convey.ShouldEqual, "kn-001")
@@ -71,7 +71,7 @@ func TestExecuteAction_Success(t *testing.T) {
 	})
 }
 
-// TestExecuteAction_Error ExecuteActions 失败时向上返回错误
+// TestExecuteAction_Error ExecuteActions returns an error upward when it fails.
 func TestExecuteAction_Error(t *testing.T) {
 	convey.Convey("TestExecuteAction_Error", t, func() {
 		ctrl := gomock.NewController(t)
@@ -102,7 +102,7 @@ func TestExecuteAction_Error(t *testing.T) {
 	})
 }
 
-// TestGetActionExecution_Success 透传单次执行查询结果
+// TestGetActionExecution_Success transparently executes query results once.
 func TestGetActionExecution_Success(t *testing.T) {
 	convey.Convey("TestGetActionExecution_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -141,8 +141,8 @@ func TestGetActionExecution_Success(t *testing.T) {
 		})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp["status"], convey.ShouldEqual, "completed")
-		// once 模式的执行必须把粒度与覆盖范围透给 Agent，否则 total_count=1 会被
-		// 误读成「只处理了 1 个对象」
+		// The execution of once mode must reveal the granularity and coverage to the Agent, otherwise total_count=1 will be.
+		// Misread as "Only 1 object was processed".
 		convey.So(resp["execution_mode"], convey.ShouldEqual, "once")
 		convey.So(resp["target_count"], convey.ShouldEqual, 30)
 		r0 := resp["results"].([]any)[0].(map[string]any)
@@ -150,8 +150,8 @@ func TestGetActionExecution_Success(t *testing.T) {
 	})
 }
 
-// TestGetActionExecution_TargetsCapped once 模式命中上万实例时,投影层必须截断 targets,
-// 否则一次查询就能把 MB 级实例明细灌进 Agent 上下文
+// When the TestGetActionExecution_TargetsCapped once mode hits tens of thousands of instances, the projection layer must truncate the targets.
+// Otherwise, a single query can pour MB-level instance details into the Agent context.
 func TestGetActionExecution_TargetsCapped(t *testing.T) {
 	convey.Convey("TestGetActionExecution_TargetsCapped", t, func() {
 		ctrl := gomock.NewController(t)
@@ -187,12 +187,12 @@ func TestGetActionExecution_TargetsCapped(t *testing.T) {
 		convey.So(len(r0["targets"].([]any)), convey.ShouldEqual, maxSlimTargets)
 		convey.So(r0["targets_total"], convey.ShouldEqual, 5000)
 		convey.So(r0["targets_truncated"], convey.ShouldBeTrue)
-		// 覆盖总数仍然拿得到
+		// Total coverage is still available.
 		convey.So(resp["target_count"], convey.ShouldEqual, 5000)
 	})
 }
 
-// TestListActionExecutions_Success 透传执行历史查询,过滤参数正确传递
+// TestListActionExecutions_Success transparently transmits execution history queries, and filtering parameters are correctly passed.
 func TestListActionExecutions_Success(t *testing.T) {
 	convey.Convey("TestListActionExecutions_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -211,13 +211,13 @@ func TestListActionExecutions_Success(t *testing.T) {
 			operatorIntegration: mockOperatorIntegration,
 		}
 
-		// ontology-query 真实响应键名为 total_count / entries / search_after
+		// ontology-query real response key name is total_count / entries / search_after.
 		mockOntologyQuery.EXPECT().ListActionExecutions(gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, r *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
 				convey.So(r.KnID, convey.ShouldEqual, "kn-001")
 				convey.So(r.Status, convey.ShouldEqual, "completed")
 				convey.So(r.Limit, convey.ShouldEqual, 10)
-				// 游标透传：上一页 search_after 原样传到转发结构
+				// Cursor transparent transmission: the previous page search_after is passed to the forwarding structure as it is.
 				convey.So(len(r.SearchAfter), convey.ShouldEqual, 2)
 				convey.So(r.SearchAfter[0], convey.ShouldEqual, int64(1784703617885))
 				convey.So(r.SearchAfter[1], convey.ShouldEqual, "d9g6l08acb8s73c6l470")
@@ -227,8 +227,8 @@ func TestListActionExecutions_Success(t *testing.T) {
 						map[string]any{
 							"id":                   "exec-001",
 							"status":               "completed",
-							"action_type_snapshot": map[string]any{"parameters": []any{"x"}},   // 重货，list 精简后应剔除
-							"results":              []any{map[string]any{"status": "success"}}, // 逐对象明细只在单查里给
+							"action_type_snapshot": map[string]any{"parameters": []any{"x"}},   // Heavy goods should be eliminated after the list is streamlined.
+							"results":              []any{map[string]any{"status": "success"}}, // Object-by-object details are only given in the single query.
 						},
 					},
 				}, nil
@@ -240,20 +240,20 @@ func TestListActionExecutions_Success(t *testing.T) {
 		})
 		convey.So(err, convey.ShouldBeNil)
 		convey.So(resp["total_count"], convey.ShouldEqual, 1)
-		// 列表每条也应精简：保留 id/status，剔除 action_type_snapshot
+		// Each item in the list should also be streamlined: retain id/status and eliminate action_type_snapshot.
 		entries := resp["entries"].([]any)
 		convey.So(len(entries), convey.ShouldEqual, 1)
 		e0 := entries[0].(map[string]any)
 		convey.So(e0["id"], convey.ShouldEqual, "exec-001")
 		convey.So(e0["status"], convey.ShouldEqual, "completed")
 		convey.So(e0["action_type_snapshot"], convey.ShouldBeNil)
-		// 列表不带逐对象明细：键本身也不应存在，而不是留一个 null
+		// The list has no per-object detail: the key itself should not be present either, rather than leaving a null.
 		_, hasResults := e0["results"]
 		convey.So(hasResults, convey.ShouldBeFalse)
 	})
 }
 
-// TestSlimActionExecution 精简投影剔除重货、保留核心字段
+// TestSlimActionExecution streamlines projection to eliminate heavy items and retain core fields.
 func TestSlimActionExecution(t *testing.T) {
 	convey.Convey("TestSlimActionExecution", t, func() {
 		full := map[string]any{
@@ -263,11 +263,11 @@ func TestSlimActionExecution(t *testing.T) {
 			"success_count":        0,
 			"failed_count":         1,
 			"dynamic_params":       map[string]any{"message": "hi"},
-			"action_type_snapshot": map[string]any{"parameters": []any{"a", "b"}}, // 重货，应剔除
-			"executor":             map[string]any{"id": "u1"},                    // 冗余，应剔除
-			"executor_id":          "u1",                                          // 冗余，应剔除
-			"action_source":        map[string]any{"tool_id": "t1"},               // 冗余，应剔除
-			"results_limit":        1000,                                          // 分页元数据，应剔除
+			"action_type_snapshot": map[string]any{"parameters": []any{"a", "b"}}, // Heavy goods should be eliminated.
+			"executor":             map[string]any{"id": "u1"},                    // Redundant and should be removed.
+			"executor_id":          "u1",                                          // Redundant and should be removed.
+			"action_source":        map[string]any{"tool_id": "t1"},               // Redundant and should be removed.
+			"results_limit":        1000,                                          // Pagination metadata should be removed.
 			"results": []any{
 				map[string]any{
 					"_instance_id":  "obj-14",
@@ -276,7 +276,7 @@ func TestSlimActionExecution(t *testing.T) {
 					"parameters":    map[string]any{"message": "hi", "name": "张三"},
 					"error_message": "503",
 					"duration_ms":   1374,
-					"end_time":      123, // 逐对象里未列入保留集，应剔除
+					"end_time":      123, // The objects are not included in the reserved set and should be removed.
 				},
 			},
 		}
@@ -304,7 +304,7 @@ func TestSlimActionExecution(t *testing.T) {
 			convey.So(r["status"], convey.ShouldEqual, "failed")
 			convey.So(r["error_message"], convey.ShouldEqual, "503")
 			convey.So(r["parameters"], convey.ShouldNotBeNil)
-			// 未列入保留集的字段被剔除
+			// Fields not included in the reserved set are eliminated.
 			convey.So(r["end_time"], convey.ShouldBeNil)
 		})
 	})

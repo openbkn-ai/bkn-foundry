@@ -35,7 +35,7 @@ func (s *knActionRecallServiceImpl) GetActionInfo(ctx context.Context, req *inte
 		KnID:               req.KnID,
 		AtID:               req.AtID,
 		InstanceIdentities: instanceIdentities,
-		IncludeTypeInfo:    false, // 不需要类型信息
+		IncludeTypeInfo:    false, // No type information required.
 	}
 
 	actionsResp, err := s.ontologyQuery.QueryActions(ctx, actionsReq)

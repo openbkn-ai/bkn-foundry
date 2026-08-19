@@ -17,7 +17,7 @@ func TestEnsureReadOnlySQL_Allowed(t *testing.T) {
 		`select id, name from {{.res1}} where age > 18`,
 		`WITH t AS (SELECT * FROM {{.res1}}) SELECT * FROM t`,
 		`(SELECT 1 FROM {{.res1}}) UNION (SELECT 2 FROM {{.res2}})`,
-		`SELECT * FROM {{.res1}};`, // 单个结尾分号允许
+		`SELECT * FROM {{.res1}};`, // A single trailing semicolon is allowed.
 		`SELECT * FROM {{.delete_logs}}`,
 		`SELECT * FROM {{.update_history}}`,
 		`SELECT * FROM {{.res1}} WHERE note = 'please delete later'`,

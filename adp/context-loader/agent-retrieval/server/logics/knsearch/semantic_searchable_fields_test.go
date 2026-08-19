@@ -13,7 +13,7 @@ import (
 )
 
 func TestFindSemanticSearchableFields_Empty(t *testing.T) {
-	// 无 DataProperties 或 非文本/无可搜操作符 时返回空
+	// Returns null if there are no DataProperties or non-text/no search operator.
 	objType := &interfaces.KnSearchObjectType{ConceptID: "ot1"}
 	out := findSemanticSearchableFields(objType)
 	if len(out) != 0 {
@@ -22,13 +22,13 @@ func TestFindSemanticSearchableFields_Empty(t *testing.T) {
 }
 
 func TestFindSemanticSearchableFields_TextWithOps(t *testing.T) {
-	// 文本类型且 condition_operations 含 knn/match/== 时入选
+	// Selected when text type and condition_operations contains knn/match/==.
 	objType := &interfaces.KnSearchObjectType{
 		ConceptID: "ot1",
 		DataProperties: []*interfaces.KnSearchDataProperty{
 			{Name: "title", Type: "text", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeKnn, interfaces.KnOperationTypeMatch}},
 			{Name: "name", Type: "string", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeEqual}},
-			{Name: "count", Type: "int", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeKnn}}, // 非文本，不选
+			{Name: "count", Type: "int", ConditionOperations: []interfaces.KnOperationType{interfaces.KnOperationTypeKnn}}, // Non-text, do not select.
 		},
 	}
 	out := findSemanticSearchableFields(objType)
@@ -59,11 +59,11 @@ func TestBuildSemanticSearchConditionStruct_WithSearchableFields(t *testing.T) {
 	if cond.Operation != interfaces.KnOperationTypeOr {
 		t.Errorf("Expected OR operation, got %s", cond.Operation)
 	}
-	// 有 1 个可搜字段 title：knn + match => 至少 2 条
+	// There is 1 searchable field title: knn + match => at least 2 items.
 	if len(cond.SubConditions) < 2 {
 		t.Errorf("Expected at least 2 subconditions (knn+match for title), got %d", len(cond.SubConditions))
 	}
-	// knn 的 limit_value 应为 PerTypeInstanceLimit（5）
+	// limit_value of knn should be PerTypeInstanceLimit(5)
 	first := cond.SubConditions[0]
 	if first.Operation == interfaces.KnOperationTypeKnn && first.Field == "title" {
 		if first.LimitValue != 5 {

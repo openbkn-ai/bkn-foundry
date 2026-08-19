@@ -66,7 +66,7 @@ const (
 	queryMetricDataURI = "/in/v1/knowledge-networks/%s/metrics/%s/data"
 )
 
-// NewOntologyQueryAccess 创建OntologyQueryAccess
+// NewOntologyQueryAccess creates an OntologyQueryAccess.
 func NewOntologyQueryAccess() interfaces.DrivenOntologyQuery {
 	ontologyQueryOnce.Do(func() {
 		configLoader := config.NewConfigLoader()
@@ -79,7 +79,7 @@ func NewOntologyQueryAccess() interfaces.DrivenOntologyQuery {
 	return ontologyQuery
 }
 
-// QueryObjectInstances 检索指定对象类的对象的详细数据
+// QueryObjectInstances retrieves detailed data for objects of the specified object type.
 // expandFilters converts the flat Filters shortcut into a nested AND
 // condition so downstream only ever sees `condition`. It is a no-op when
 // there are no filters. When condition is already set it leaves condition
@@ -193,9 +193,9 @@ func resolveTotalCount(req *interfaces.QueryObjectInstancesReq, resp *interfaces
 	resp.TotalCount = resolveAbsentTotal(hasCursor, resp.TotalCount)
 }
 
-// resolveAbsentTotal 是上面那条推断的可复用形式：子图探索走的是同一条下游链路
-// （起点对象类同样过 BuildDslQuery），三态语义必须与对象查询一字不差，否则同一个
-// 「缺失」在两个工具里含义不同，比不做还糟。
+// ResolveAbsentTotal is the reusable form of the inference above: subgraph exploration uses the same downstream path.
+// (The starting point object type also passes BuildDslQuery). The three-state semantics must be exactly the same as the object query, otherwise the same.
+// The same "missing" state must not have different meanings in the two tools; that would be worse than not handling it.
 func resolveAbsentTotal(hasCursor bool, total *int64) *int64 {
 	if total != nil || hasCursor {
 		return total
@@ -206,7 +206,7 @@ func resolveAbsentTotal(hasCursor bool, total *int64) *int64 {
 
 // classifyQueryError re-classifies a downstream client error (4xx) from
 // ontology-query. The shared HTTP client flattens every non-2xx into
-// CommonExternalServerError ("调用依赖服务异常"), which mislabels a caller mistake
+// CommonExternalServerError ("dependency service error"), which mislabels a caller mistake
 // — most notably a knn condition on a non-vector string field
 // ("OntologyQuery.InvalidParameter.Condition: left field is not a vector field")
 // — as a dependency outage, so the caller cannot tell "my query is wrong" from
@@ -237,19 +237,19 @@ func classifyQueryError(ctx context.Context, err error) error {
 	return err
 }
 
-// QueryLogicProperties 查询逻辑属性值
+// QueryLogicProperties queries logical property values.
 func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *interfaces.QueryLogicPropertiesReq) (resp *interfaces.QueryLogicPropertiesResp, err error) {
 	uri := fmt.Sprintf(queryLogicPropertiesURI, req.KnID, req.OtID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
-	// 构建请求体
+	// Build the request body.
 	body := map[string]any{
 		"_instance_identities": req.InstanceIdentities,
 		"properties":           req.Properties,
 		"dynamic_params":       req.DynamicParams,
 	}
 
-	// 📤 记录调用 ontology-query 的完整入参
+	// 📤 Log the complete input parameters for calling ontology-query.
 	bodyJSON, _ := json.Marshal(body)
 	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 调用] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 请求] Body: %s", string(bodyJSON))
@@ -273,23 +273,23 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 		return nil, err
 	}
 
-	// 📥 记录 ontology-query 的完整出参
+	// 📥 Log the complete output parameters from ontology-query.
 	respJSON, _ := json.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("  └─ [ontology-query 响应] ✅ 成功 (%d 条数据): %s", len(resp.Datas), string(respJSON))
 	return resp, nil
 }
 
-// QueryActions 查询行动
+// QueryActions queries actions.
 func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.QueryActionsRequest) (resp *interfaces.QueryActionsResponse, err error) {
 	uri := fmt.Sprintf(queryActionsURI, req.KnID, req.AtID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
-	// 构建请求体
+	// Build the request body.
 	body := map[string]any{
 		"_instance_identities": req.InstanceIdentities,
 	}
 
-	// 记录请求日志
+	// Log the request.
 	bodyJSON, _ := json.Marshal(body)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Request Body: %s", string(bodyJSON))
@@ -315,19 +315,19 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 		return nil, err
 	}
 
-	// 记录响应日志
+	// Log the response.
 	respJSON, _ := json.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Response: %s", string(respJSON))
 
 	return resp, nil
 }
 
-// ExecuteActions 执行行动（异步），返回 execution_id
+// ExecuteActions executes actions asynchronously and returns execution_id.
 func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interfaces.ExecuteActionsRequest) (resp *interfaces.ExecuteActionsResponse, err error) {
 	uri := fmt.Sprintf(executeActionsURI, req.KnID, req.AtID)
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
-	// 构建请求体（真实执行，携带动态参数；不设 method-override，为真正的 POST）
+	// Buildrequest body (real execution, carries dynamic parameters; does not set method-override, so it is a real POST)
 	body := map[string]any{
 		"_instance_identities": req.InstanceIdentities,
 	}
@@ -335,8 +335,8 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 		body["dynamic_params"] = req.DynamicParams
 	}
 
-	// 记录请求日志（脱敏：dynamic_params 是任意工具输入，可能含令牌/密码等敏感值，
-	// 仅记录参数名与实例数，不输出参数值。见 PR #379 review P1）
+	// Record request logs (desensitization: dynamic_params is any tool input and may contain sensitive values such as tokens/passwords.
+	// Only the parameter name and instance number are recorded, and parameter values are not output. See PR #379 review P1)
 	dynamicParamKeys := make([]string, 0, len(req.DynamicParams))
 	for k := range req.DynamicParams {
 		dynamicParamKeys = append(dynamicParamKeys, k)
@@ -365,14 +365,14 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 		return nil, err
 	}
 
-	// 记录响应日志
+	// Log the response.
 	respJSON, _ := json.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] Response: %s", string(respJSON))
 
 	return resp, nil
 }
 
-// GetActionExecution 查询单次行动执行的状态与结果
+// GetActionExecution queries the status and result of a single action execution.
 func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *interfaces.GetActionExecutionRequest) (map[string]any, error) {
 	uri := fmt.Sprintf(getActionExecutionURI, req.KnID, req.ExecutionID)
 	reqURL := fmt.Sprintf("%s%s", o.baseURL, uri)
@@ -400,7 +400,7 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 	return result, nil
 }
 
-// ListActionExecutions 列出行动执行历史（可过滤，分页）
+// ListActionExecutions lists action execution history with filters and pagination.
 func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *interfaces.ListActionExecutionsRequest) (map[string]any, error) {
 	uri := fmt.Sprintf(listActionExecutionsURI, req.KnID)
 	reqURL := fmt.Sprintf("%s%s", o.baseURL, uri)
@@ -427,8 +427,8 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	if req.Limit > 0 {
 		query.Set("limit", strconv.Itoa(req.Limit))
 	}
-	// 游标分页：下游 action-logs 以逗号分隔字符串接收 search_after（GET query），
-	// 故将上一页返回的 search_after 数组按元素拼成逗号分隔转发。
+	// Cursor pagination: downstream action-logs receives a comma-separated string search_after (GET query),.
+	// Therefore, the search_after array returned from the previous page is separated by commas and forwarded.
 	if len(req.SearchAfter) > 0 {
 		parts := make([]string, 0, len(req.SearchAfter))
 		for _, v := range req.SearchAfter {
@@ -436,7 +436,7 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 		}
 		query.Set("search_after", strings.Join(parts, ","))
 	}
-	// 默认返回总数，便于分页
+	// Return the total count by default to support pagination.
 	query.Set("need_total", "true")
 
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ListActionExecutions] URL: %s?%s", reqURL, query.Encode())
@@ -462,23 +462,24 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	return result, nil
 }
 
-// ExploreSubgraph 起点探索式子图查询。
+// ExploreSubgraph source-based exploratory subgraph query.
 //
-// 与 QueryInstanceSubgraph 打的是同一个下游端点，区别只在 query_type：那边固定
-// relation_path（按调用方给的路径模板取数），这边**留空**，走下游默认的
-// 「起点 + 方向 + 跳数」探索分支。留空不是省略——下游 handler 用
-// c.DefaultQuery("query_type", "") 做 switch，空串就是探索模式的显式取值。
+// It uses the same downstream endpoint as QueryInstanceSubgraph. The only difference is query_type:
+// QueryInstanceSubgraph fixes it to relation_path to fetch data by the caller-provided path template,
+// while this flow **leaves it empty** to use the downstream "source + direction + hop count" exploration branch.
+// Leaving it empty is not omission; the downstream handler switches on c.DefaultQuery("query_type", ""),
+// and the empty string is the explicit value for exploration mode.
 func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfaces.ExploreSubgraphReq) (resp *interfaces.ExploreSubgraphResp, err error) {
 	if err = rejectNilSortEntries(ctx, req.Sort); err != nil {
 		return nil, err
 	}
 
-	// 与对象查询同理：need_total 不是调用方的选项，缺了它拿不到起点对象类的总数。
+	// Same as object query: need_total is not an option for the caller. Without it, the total number of starting object types cannot be obtained.
 	req.NeedTotal = true
 
 	uri := fmt.Sprintf(queryInstanceSubgraphURI, url.PathEscape(req.KnID))
 	query := url.Values{}
-	// query_type 显式留空：下游按空串选探索分支，写成 relation_path 就变成另一种模式。
+	// Query_type is explicitly left blank: the downstream selects the exploration branch according to the empty string, and it becomes another mode when written as relation_path.
 	query.Set("query_type", "")
 	query.Set("include_logic_params", strconv.FormatBool(req.IncludeLogicParams))
 	if req.IgnoringStoreCache {
@@ -498,8 +499,8 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	_, respBody, err := o.httpClient.Post(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#ExploreSubgraph] request failed, err: %v", err)
-		// 起点对象类不存在、方向非法、path_length 超过 3 都是调用方的错，下游回 400/404
-		// 且带可执行详情，复用对象查询那套分类，别塌陷成依赖故障。
+		// The starting object type does not exist, the direction is illegal, and path_length exceeds 3. It is the fault of the caller, and 400/404 will be returned downstream.
+		// And with executable details, reuse the object to query the set of categories, so as not to collapse into a dependency failure.
 		return nil, classifyQueryError(ctx, err)
 	}
 
@@ -515,14 +516,14 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	return resp, nil
 }
 
-// QueryInstanceSubgraph 查询对象子图
+// QueryInstanceSubgraph queries the object subgraph.
 func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *interfaces.QueryInstanceSubgraphReq) (resp *interfaces.QueryInstanceSubgraphResp, err error) {
-	// 构建查询参数 - QueryType 固定为 "relation_path"
+	// Build query parameters with QueryType fixed to "relation_path".
 	queryParams := []string{}
 	if req.IncludeLogicParams {
 		queryParams = append(queryParams, fmt.Sprintf("include_logic_params=%v", req.IncludeLogicParams))
 	}
-	// 固定 query_type 为 relation_path
+	// Fix query_type to relation_path.
 	queryParams = append(queryParams, "query_type=relation_path")
 
 	queryStr := ""
@@ -536,29 +537,29 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	uri := fmt.Sprintf(queryInstanceSubgraphURI, req.KnID) + queryStr
 	url := fmt.Sprintf("%s%s", o.baseURL, uri)
 
-	// 构建请求体 - 直接透传 RelationTypePaths (any)
+	// Build the request body and pass RelationTypePaths (any) through directly.
 	body := map[string]any{
 		"relation_type_paths": req.RelationTypePaths,
 	}
 
-	// 记录请求日志
+	// Log the request.
 	bodyJSON, _ := json.Marshal(body)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Request Body: %s", string(bodyJSON))
 
-	// 构建请求头
+	// Build request headers.
 	header := common.GetHeaderForChildOperation(ctx, "ontology.subgraph.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
-	// 发送请求
+	// Send the request.
 	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] Request failed, err: %v", err)
 		return nil, err
 	}
 
-	// 解析响应 - 直接解析到 any
+	// Parse the response directly into any.
 	resp = &interfaces.QueryInstanceSubgraphResp{}
 	resultByt := utils.ObjectToByte(respBody)
 	err = json.Unmarshal(resultByt, resp)
@@ -569,17 +570,17 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 		return nil, err
 	}
 
-	// 记录响应日志
+	// Log the response.
 	respJSON, _ := json.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Response: %s", string(respJSON))
 
 	return resp, nil
 }
 
-// QueryMetricData 按指标自身口径计算取数（OT-first 路径第 3 步）。
+// QueryMetricData calculates the number based on the metric's own semantics (step 3 of the OT-first path).
 //
-// 走 ontology-query 内部路由，与 QueryLogicProperties 同一姿势：账户信息随 header
-// 透传，授权在下游判定。
+// Take the ontology-query internal route, the same posture as QueryLogicProperties: account information comes with the header.
+// Pass through, authorization is determined downstream.
 func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricID string, fillNull bool,
 	req *interfaces.MetricQueryDownstreamReq) (resp *interfaces.MetricQueryDownstreamResp, err error) {
 	uri := fmt.Sprintf(queryMetricDataURI, url.PathEscape(knID), url.PathEscape(metricID))
@@ -596,7 +597,7 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 	_, respBody, err := o.httpClient.Post(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#QueryMetricData] kn=%s metric=%s failed: %v", knID, metricID, err)
-		// 指标不存在 / 参数不合法是调用方的错，别混进依赖故障。
+		// The metric does not exist/the parameters are invalid. It is the caller's fault. Don't mix dependency faults into it.
 		return nil, classifyQueryError(ctx, err)
 	}
 

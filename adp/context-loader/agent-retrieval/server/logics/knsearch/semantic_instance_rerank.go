@@ -3,7 +3,7 @@
 // Licensed under the OpenBKN License.
 // See the LICENSE file in the project root for details.
 
-// Package knsearch（语义实例召回·精排级）
+// Package knsearch (semantic instance recall·fine ranking)
 // file: semantic_instance_rerank.go
 package knsearch
 
@@ -16,28 +16,28 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// 精排级的三档。
+// Precision-grade third gear.
 const (
-	// InstanceRerankModeOff 不调用模型，返回第一级的融合序。
+	// InstanceRerankModeOff does not call the model and returns the first-level fusion order.
 	InstanceRerankModeOff = "off"
-	// InstanceRerankModeShadow 照常返回融合序，但额外调一次模型并记录两个序列的差异。
-	// 翻默认之前用它取证：改动到底值不值那 100~400ms。
+	// InstanceRerankModeShadow returns the fusion sequence as usual, but adjusts the model one more time and records the difference between the two sequences.
+	// Use it to collect evidence before changing the default: is the change worth the 100~400ms?.
 	InstanceRerankModeShadow = "shadow"
-	// InstanceRerankModeOn 用模型分覆盖排序。
+	// InstanceRerankModeOn uses model points to override sorting.
 	InstanceRerankModeOn = "on"
 )
 
-// 进入精排文本的内部字段前缀。_score / _instance_id / _display 这类是链路自带的
-// 元数据，喂给 cross-encoder 只会稀释真正的业务文本。
+// Enter the internal field prefix for finely typed text. _score / _instance_id / _display This type comes with the link.
+// Metadata, fed to the cross-encoder only dilutes the real business text.
 const internalPropertyPrefix = "_"
 
-// rerankDocumentCharLimit 单个文档的总长上限。
+// rerankDocumentCharLimit The maximum total length of a single document.
 //
-// mf-model-api 的适配层把单文档静默截到 4000 字符（external_small_model_utils.py），
-// 留出余量避免踩在边界上——被截掉的尾部字段等于没参与打分，而且不报错。
+// The adaptation layer of mf-model-api silently cuts a single document to 4000 characters (external_small_model_utils.py).
+// Leave a margin to avoid stepping on the boundary - the truncated tail fields are equal to not participating in scoring, and no error will be reported.
 const rerankDocumentCharLimit = 3600
 
-// normalizeRerankMode 归一化模式字符串；无法识别时返回空串，交由调用方决定回落。
+// normalizeRerankMode Normalize mode string; if it cannot be recognized, it returns an empty string and leaves it to the caller to decide how to fall back.
 func normalizeRerankMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case InstanceRerankModeOff:
@@ -51,12 +51,12 @@ func normalizeRerankMode(mode string) string {
 	}
 }
 
-// rerankInstances 用 cross-encoder 对融合后的候选做精排。
+// rerankInstances uses cross-encoder to refine the fused candidates.
 //
-// 位置很重要：必须在属性过滤之前。filterNodeProperties 会砍属性数并截断值，
-// 截完再送模型就是拿残文本判相关性。
+// Position is important: must precede attribute filtering. filterNodeProperties will cut the number of properties and truncate the value.
+// Sending truncated text to the model would judge relevance from incomplete text.
 //
-// 任何一步出问题都退回入参顺序——降级路径不能把结果打空，也不能塞进无关项（#788）。
+// If there is a problem at any step, the input order will be returned - the downgrade path cannot empty the result, nor can it insert irrelevant items (#788).
 func (s *localSearchImpl) rerankInstances(
 	ctx context.Context,
 	query string,
@@ -98,14 +98,14 @@ func (s *localSearchImpl) rerankInstances(
 
 	resp, err := s.rerankClient.Rerank(ctx, query, documents, config.InstanceRerankModel)
 	if err != nil || resp == nil {
-		// reranker 未注册（NameNotExist）在客户环境是常态，不是异常路径。
+		// The reranker is not registered (NameNotExist), which is normal in the customer environment and is not an abnormal path.
 		s.logger.WithContext(ctx).Warnf("[InstanceRerank] Rerank unavailable (%v), keeping fusion order", err)
 		return nodes
 	}
 
 	applied := 0
 	for _, result := range resp.Results {
-		// 必须按 index 回填：厂商行为不一致，有的按分数降序返、有的按原序返。
+		// Must be backfilled by index: The behavior of manufacturers is inconsistent, some return in descending order of scores, and some return in original order.
 		if result.Index < 0 || result.Index >= len(head) {
 			continue
 		}
@@ -132,25 +132,25 @@ func (s *localSearchImpl) rerankInstances(
 		mode, len(head), applied, spearman, movedInTop5)
 
 	if mode == InstanceRerankModeShadow {
-		// 只取证，不改序：rerank 分已经写进节点，调用方能对比，排序仍是融合序。
+		// Only obtain evidence, do not change the order: the rerank score has been written into the node, and the caller can compare it, and the sorting is still the fusion order.
 		return nodes
 	}
 
-	// on 模式只改**顺序**，不覆盖 Score。
+	// The on mode only changes the order and does not overwrite the Score.
 	//
-	// 覆盖是错的：模型没回填到的候选（厂商少返一条就会发生）会被赋 0，超出 top_n 的
-	// 尾部则从没进过模型，一次响应里于是同时出现融合分与模型分两把尺子——按 score
-	// 二次排序的调用方会拿到错误次序，而 Score 带 omitempty 时 0 分还会让整个字段消失。
+	// Coverage is wrong: Candidates that are not backfilled by the model (which will happen if the manufacturer returns one less) will be assigned 0, and those beyond top_n will be assigned a value of 0.
+	// The tail has never entered the model, so two rulers, fusion score and model score, appear simultaneously in one response - press score.
+	// The caller of secondary sorting will get the wrong order, and when Score contains omitempty, 0 points will make the entire field disappear.
 	//
-	// 融合分是 PR1 挣来的、跨对象类可比的单一量纲，不该被精排破坏。精排要表达的是
-	// 「谁该排前面」，那就体现在返回顺序上；模型判了多少分，rerank_score 单独带出。
+	// Fusion points are a single dimension earned by PR1 that is comparable across object types and should not be destroyed by refinement. What Jingpai wants to express is.
+	// "Who should be ranked first" is reflected in the return order; the rerank_score is brought out separately as to how many points the model has judged.
 	return append(reranked, tail...)
 }
 
-// instanceRerankDocument 把一条实例拼成送 rerank 的文本。
+// instanceRerankDocument converts an instance into text for reranking.
 //
-// 字段按名字排序保证同一行每次拼出的文本一致——否则 map 遍历顺序会让同一个
-// query 两次拿到不同的模型分。
+// Fields are sorted by name to ensure that the text spelled out in the same line is consistent each time - otherwise the map traversal order will make the same.
+// query got different model scores twice.
 func instanceRerankDocument(node *interfaces.KnSearchNode, fieldCharLimit int) string {
 	if node == nil {
 		return ""
@@ -186,7 +186,7 @@ func instanceRerankDocument(node *interfaces.KnSearchNode, fieldCharLimit int) s
 
 	keys := make([]string, 0, len(node.Properties))
 	for k := range node.Properties {
-		// 内部元数据（_score / _instance_id / _display …）不进文本。
+		// Internal metadata (_score / _instance_id / _display …) does not enter the text.
 		if strings.HasPrefix(k, internalPropertyPrefix) {
 			continue
 		}
@@ -205,7 +205,7 @@ func instanceRerankDocument(node *interfaces.KnSearchNode, fieldCharLimit int) s
 	return b.String()
 }
 
-// truncateRunes 按字符而不是字节截断，避免把一个中文字劈成两半。
+// truncateRunes truncate by characters rather than bytes to avoid splitting a Chinese character in half.
 func truncateRunes(s string, limit int) string {
 	runes := []rune(s)
 	if len(runes) <= limit {
@@ -214,10 +214,10 @@ func truncateRunes(s string, limit int) string {
 	return string(runes[:limit])
 }
 
-// orderDelta 比较两个序列：Spearman 等级相关系数，以及前 K 名里换了几个。
+// orderDelta compares two sequences: the Spearman rank correlation coefficient, and the number of changes in the top K names.
 //
-// 这两个数是 shadow 模式的全部产出：相关系数说明整体重排幅度，top-K 变动说明
-// 调用方真正能感知到的差异——Agent 通常只看前几条。
+// These two numbers are the total output of the shadow mode: the correlation coefficient explains the overall rearrangement extent, and the top-K changes explain.
+// The difference that the caller can really perceive - Agent usually only looks at the first few items.
 func orderDelta(before, after []*interfaces.KnSearchNode, k int) (float64, int) {
 	n := len(before)
 	if n < 2 || len(after) != n {

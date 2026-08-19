@@ -22,7 +22,7 @@ import (
 	logicskn "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knsearch"
 )
 
-// KnSearchHandler kn_search 处理器
+// KnSearchHandler kn_search handler.
 type KnSearchHandler interface {
 	KnSearch(c *gin.Context)
 	SearchSchema(c *gin.Context)
@@ -39,7 +39,7 @@ var (
 	ksHandler KnSearchHandler
 )
 
-// NewKnSearchHandler 新建 KnSearchHandler
+// NewKnSearchHandler New KnSearchHandler.
 func NewKnSearchHandler() KnSearchHandler {
 	ksOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -51,40 +51,40 @@ func NewKnSearchHandler() KnSearchHandler {
 	return ksHandler
 }
 
-// KnSearch 知识网络检索
+// KnSearch knowledge network search.
 func (h *knSearchHandler) KnSearch(c *gin.Context) {
 	var err error
 	req := &interfaces.KnSearchReq{}
 
-	// 绑定 Header
+	// Bind headers.
 	if err = c.ShouldBindHeader(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 绑定 JSON Body
+	// Bind the JSON body.
 	if err = c.ShouldBindJSON(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 设置默认值
+	// Set default values.
 	if err = defaults.Set(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 参数校验
+	// Validate parameters.
 	err = validator.New().Struct(req)
 	if err != nil {
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 调用业务逻辑
+	// Call business logic.
 	resp, err := h.KnSearchService.KnSearch(c.Request.Context(), req)
 	if err != nil {
 		h.Logger.Errorf("[KnSearchHandler#KnSearch] KnSearch failed, err: %v", err)
@@ -92,11 +92,11 @@ func (h *knSearchHandler) KnSearch(c *gin.Context) {
 		return
 	}
 
-	// 返回成功响应
+	// Return a successful response.
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// SearchSchema 标准 Schema Search HTTP 入口。
+// SearchSchema Standard Schema Search HTTP entry.
 func (h *knSearchHandler) SearchSchema(c *gin.Context) {
 	var err error
 	req := &interfaces.SearchSchemaReq{}
@@ -126,7 +126,7 @@ func (h *knSearchHandler) SearchSchema(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// SearchInstance 自然语言实例召回 HTTP 入口。
+// SearchInstance Natural language instance recall HTTP entry.
 func (h *knSearchHandler) SearchInstance(c *gin.Context) {
 	var err error
 	req := &interfaces.SearchInstanceReq{}

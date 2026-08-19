@@ -39,7 +39,7 @@ func TestConvertObjectTypesToLocal_BriefKeepsDataSource(t *testing.T) {
 		convey.So(brief[0].Tags, convey.ShouldBeEmpty)
 		convey.So(brief[0].ConceptType, convey.ShouldEqual, "")
 		convey.So(brief[0].DataProperties[0].Name, convey.ShouldEqual, "amount")
-		convey.So(brief[0].DataProperties[0].Comment, convey.ShouldEqual, "") // brief 砍属性备注
+		convey.So(brief[0].DataProperties[0].Comment, convey.ShouldEqual, "") // brief Cut attribute remarks.
 
 		full := s.convertObjectTypesToLocal([]*interfaces.ObjectType{obj}, false, false)
 		convey.So(full[0].DataSource, convey.ShouldNotBeNil)

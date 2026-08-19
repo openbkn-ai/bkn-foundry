@@ -22,7 +22,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// TestQueryObjectInstances_Success 测试 QueryObjectInstances 成功场景
+// TestQueryObjectInstances_Success test QueryObjectInstances success scenario.
 func TestQueryObjectInstances_Success(t *testing.T) {
 	convey.Convey("TestQueryObjectInstances_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -46,7 +46,7 @@ func TestQueryObjectInstances_Success(t *testing.T) {
 			Limit: 10,
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"datas":       []interface{}{},
@@ -59,7 +59,7 @@ func TestQueryObjectInstances_Success(t *testing.T) {
 	})
 }
 
-// TestQueryObjectInstances_HTTPError 测试 QueryObjectInstances HTTP 错误
+// TestQueryObjectInstances_HTTPError test QueryObjectInstances HTTP error.
 func TestQueryObjectInstances_HTTPError(t *testing.T) {
 	convey.Convey("TestQueryObjectInstances_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -86,7 +86,7 @@ func TestQueryObjectInstances_HTTPError(t *testing.T) {
 			Limit: 10,
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -95,7 +95,7 @@ func TestQueryObjectInstances_HTTPError(t *testing.T) {
 	})
 }
 
-// TestQueryLogicProperties_Success 测试 QueryLogicProperties 成功场景
+// TestQueryLogicProperties_Success test QueryLogicProperties success scenario.
 func TestQueryLogicProperties_Success(t *testing.T) {
 	convey.Convey("TestQueryLogicProperties_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -121,7 +121,7 @@ func TestQueryLogicProperties_Success(t *testing.T) {
 			Properties:         []string{"prop1"},
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"datas": []interface{}{
@@ -136,7 +136,7 @@ func TestQueryLogicProperties_Success(t *testing.T) {
 	})
 }
 
-// TestQueryLogicProperties_HTTPError 测试 QueryLogicProperties HTTP 错误
+// TestQueryLogicProperties_HTTPError test QueryLogicProperties HTTP error.
 func TestQueryLogicProperties_HTTPError(t *testing.T) {
 	convey.Convey("TestQueryLogicProperties_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -161,7 +161,7 @@ func TestQueryLogicProperties_HTTPError(t *testing.T) {
 			OtID: "ot-001",
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -170,7 +170,7 @@ func TestQueryLogicProperties_HTTPError(t *testing.T) {
 	})
 }
 
-// TestQueryActions_Success 测试 QueryActions 成功场景
+// TestQueryActions_Success test QueryActions success scenario.
 func TestQueryActions_Success(t *testing.T) {
 	convey.Convey("TestQueryActions_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -195,7 +195,7 @@ func TestQueryActions_Success(t *testing.T) {
 			InstanceIdentities: []map[string]interface{}{{"id": "obj-001"}},
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"action_source": map[string]interface{}{
@@ -220,7 +220,7 @@ func TestQueryActions_Success(t *testing.T) {
 	})
 }
 
-// TestQueryActions_HTTPError 测试 QueryActions HTTP 错误
+// TestQueryActions_HTTPError test QueryActions HTTP error.
 func TestQueryActions_HTTPError(t *testing.T) {
 	convey.Convey("TestQueryActions_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -245,7 +245,7 @@ func TestQueryActions_HTTPError(t *testing.T) {
 			AtID: "at-001",
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -254,7 +254,7 @@ func TestQueryActions_HTTPError(t *testing.T) {
 	})
 }
 
-// TestQueryInstanceSubgraph_Success 测试 QueryInstanceSubgraph 成功场景
+// TestQueryInstanceSubgraph_Success test QueryInstanceSubgraph success scenario.
 func TestQueryInstanceSubgraph_Success(t *testing.T) {
 	convey.Convey("TestQueryInstanceSubgraph_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -280,7 +280,7 @@ func TestQueryInstanceSubgraph_Success(t *testing.T) {
 			},
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, map[string]interface{}{
 				"entries": []interface{}{},
@@ -292,7 +292,7 @@ func TestQueryInstanceSubgraph_Success(t *testing.T) {
 	})
 }
 
-// TestQueryInstanceSubgraph_HTTPError 测试 QueryInstanceSubgraph HTTP 错误
+// TestQueryInstanceSubgraph_HTTPError test QueryInstanceSubgraph HTTP error.
 func TestQueryInstanceSubgraph_HTTPError(t *testing.T) {
 	convey.Convey("TestQueryInstanceSubgraph_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -316,7 +316,7 @@ func TestQueryInstanceSubgraph_HTTPError(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -325,11 +325,11 @@ func TestQueryInstanceSubgraph_HTTPError(t *testing.T) {
 	})
 }
 
-// TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest 回归 #235:
-// 下游对非 vector 字段做 knn 时返回 4xx（"left field is not a vector field"）,
-// 共享 http client 把它拍成 CommonExternalServerError「依赖服务异常」。驱动层须
-// 把 4xx 重映射成 BadRequest 并保留下游 detail,让调用方看清是自己参数用错、不是
-// 服务故障。
+// TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest regression #235:
+// When the downstream performs knn on a non-vector field, it returns 4xx ("left field is not a vector field"),
+// Shared HTTP client maps it to CommonExternalServerError"dependencyserviceexception".the driven layer must.
+// Remap 4xx to BadRequest and retain the downstream detail, so that the caller can see clearly whether his own parameters are used incorrectly or not.
+// Service failure.
 func TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest(t *testing.T) {
 	convey.Convey("downstream 4xx -> BadRequest, detail preserved", t, func() {
 		ctrl := gomock.NewController(t)
@@ -369,8 +369,8 @@ func TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest(t *testin
 	})
 }
 
-// TestQueryObjectInstances_DownstreamNotFoundKeepsCode 下游 404（如 kn_id/ot_id
-// 不存在）须保留 404 语义,不被压成 400「参数错误」。
+// TestQueryObjectInstances_DownstreamNotFoundKeepsCode downstream 404 (such as kn_id/ot_id.
+// Does not exist)must preserve 404 semantics,must not be collapsed into 400"parametererror".
 func TestQueryObjectInstances_DownstreamNotFoundKeepsCode(t *testing.T) {
 	convey.Convey("downstream 404 stays NotFound, not collapsed to 400", t, func() {
 		ctrl := gomock.NewController(t)
@@ -433,8 +433,8 @@ func TestExecuteActions_PreservesConflictStatus(t *testing.T) {
 	})
 }
 
-// TestQueryObjectInstances_DownstreamServerErrorUntouched 下游 5xx（真服务故障）
-// 与传输错误(无 HTTP 码)保持原样,不误降为 400。
+// TestQueryObjectInstances_DownstreamServerErrorUntouched Downstream 5xx (true service failure)
+// Leave the transfer error (no HTTP code) as is and not downgrade to 400.
 func TestQueryObjectInstances_DownstreamServerErrorUntouched(t *testing.T) {
 	convey.Convey("downstream 5xx stays as-is", t, func() {
 		ctrl := gomock.NewController(t)

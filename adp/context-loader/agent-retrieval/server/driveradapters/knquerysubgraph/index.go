@@ -22,7 +22,7 @@ import (
 	logicskn "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knquerysubgraph"
 )
 
-// KnQuerySubgraphHandler 子图查询处理器
+// KnQuerySubgraphHandler subgraph query processor.
 type KnQuerySubgraphHandler interface {
 	QueryInstanceSubgraph(c *gin.Context)
 	ExploreSubgraph(c *gin.Context)
@@ -38,7 +38,7 @@ var (
 	kqsHandler KnQuerySubgraphHandler
 )
 
-// NewKnQuerySubgraphHandler 新建 KnQuerySubgraphHandler
+// NewKnQuerySubgraphHandler New KnQuerySubgraphHandler.
 func NewKnQuerySubgraphHandler() KnQuerySubgraphHandler {
 	kqsOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -50,54 +50,54 @@ func NewKnQuerySubgraphHandler() KnQuerySubgraphHandler {
 	return kqsHandler
 }
 
-// QueryInstanceSubgraph 查询对象子图
+// QueryInstanceSubgraph queries the object subgraph.
 func (h *knQuerySubgraphHandler) QueryInstanceSubgraph(c *gin.Context) {
 	var err error
 	req := &interfaces.QueryInstanceSubgraphReq{}
 
-	// 绑定 Header
+	// Bind headers.
 	if err = c.ShouldBindHeader(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 绑定 Path Parameters
+	// Bind Path Parameters.
 	if err = c.ShouldBindUri(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 绑定 Query Parameters
+	// Bind query parameters.
 	if err = c.ShouldBindQuery(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 绑定 JSON Body
+	// Bind the JSON body.
 	if err = c.ShouldBindJSON(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 设置默认值
+	// Set default values.
 	if err = defaults.Set(req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 参数校验
+	// Validate parameters.
 	err = validator.New().Struct(req)
 	if err != nil {
 		rest.ReplyError(c, err)
 		return
 	}
 
-	// 调用业务逻辑
+	// Call business logic.
 	resp, err := h.KnQuerySubgraphService.QueryInstanceSubgraph(c.Request.Context(), req)
 	if err != nil {
 		h.Logger.Errorf("[KnQuerySubgraphHandler#QueryInstanceSubgraph] QueryInstanceSubgraph failed, err: %v", err)
@@ -105,11 +105,11 @@ func (h *knQuerySubgraphHandler) QueryInstanceSubgraph(c *gin.Context) {
 		return
 	}
 
-	// 返回成功响应
+	// Return a successful response.
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// ExploreSubgraph 起点探索式子图查询
+// ExploreSubgraph runs source-based exploratory subgraph queries.
 func (h *knQuerySubgraphHandler) ExploreSubgraph(c *gin.Context) {
 	var err error
 	req := &interfaces.ExploreSubgraphReq{}

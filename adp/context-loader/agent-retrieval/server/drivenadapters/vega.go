@@ -33,7 +33,7 @@ var (
 	vegaJSON       = sonic.Config{UseNumber: true}.Froze()
 )
 
-// NewVegaAccess 创建 vega 后端访问对象（只读查询）。
+// NewVegaAccess creates a Vega backend access object for read-only queries.
 func NewVegaAccess() interfaces.DrivenVega {
 	vegaAccessOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -46,7 +46,7 @@ func NewVegaAccess() interfaces.DrivenVega {
 	return vegaAccessInst
 }
 
-// RawQuery 调用 vega 内网原始查询接口执行 SQL。
+// RawQuery calls Vega's internal raw query API to execute SQL.
 func (v *vegaAccess) RawQuery(ctx context.Context, req *interfaces.VegaRawQueryReq) (*interfaces.VegaRawQueryResp, error) {
 	src := fmt.Sprintf("%s/in/v1/resources/query", v.baseURL)
 	header := common.GetHeaderForChildOperation(ctx, "vega.raw_query", 1)
@@ -76,7 +76,7 @@ func (v *vegaAccess) RawQuery(ctx context.Context, req *interfaces.VegaRawQueryR
 	return resp, nil
 }
 
-// vegaEntriesWrapper vega get-by-ids 接口统一的 {"entries":[...]} 信封。
+// vegaEntriesWrapper is the unified {"entries":[...]} envelope for Vega get-by-ids APIs.
 type vegaResourceLite struct {
 	ID        string `json:"id"`
 	CatalogID string `json:"catalog_id"`
@@ -95,7 +95,7 @@ type vegaCatalogEnvelope struct {
 	Entries []vegaCatalogLite `json:"entries"`
 }
 
-// GetResourceConnectorType resource_id -> catalog_id -> connector_type（两跳）。
+// GetResourceConnectorType resource_id -> catalog_id -> connector_type (two hops).
 func (v *vegaAccess) GetResourceConnectorType(ctx context.Context, resourceID string) (string, error) {
 	header := common.GetHeaderForChildOperation(ctx, "vega.resource.connector_type", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
@@ -137,14 +137,14 @@ func (v *vegaAccess) GetResourceConnectorType(ctx context.Context, resourceID st
 	return catEnv.Entries[0].ConnectorType, nil
 }
 
-// vegaResourceFullEnvelope vega resources list/get 的 {"entries":[...],"total_count":N} 信封（带物理列）。
+// vegaResourceFullEnvelope {"entries":[...],"total_count":N} envelope (with physical columns) for vega resources list/get.
 type vegaResourceFullEnvelope struct {
 	Entries    []interfaces.VegaResource `json:"entries"`
 	TotalCount int64                     `json:"total_count"`
 }
 
-// ListResources 列出可查询的数据资源。授权由 vega 在该 /in 端点按账户 view_detail 强制，
-// 本方法仅透传账户头并组装过滤/分页查询参数。
+// ListResources lists queryable data resources. Vega enforces account-level view_detail authorization on this /in endpoint.
+// This method only passes account headers through and assembles filter/pagination query parameters.
 func (v *vegaAccess) ListResources(ctx context.Context, req *interfaces.VegaListResourcesReq) (*interfaces.VegaListResourcesResp, error) {
 	header := common.GetHeaderForChildOperation(ctx, "vega.resource.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
@@ -187,8 +187,8 @@ func (v *vegaAccess) ListResources(ctx context.Context, req *interfaces.VegaList
 	return resp, nil
 }
 
-// GetResource 取单个资源（含物理列）。vega get-by-id 返回 entries 信封，取首条。
-// 资源不存在或调用账户无权时 vega 返回非 2xx，本方法透传为错误。
+// GetResource gets a single resource, including physical columns. Vega get-by-id returns an entries envelope; take the first entry.
+// When the resource does not exist or the calling account has no permission, Vega returns non-2xx and this method passes that through as an error.
 func (v *vegaAccess) GetResource(ctx context.Context, resourceID string) (*interfaces.VegaResource, error) {
 	header := common.GetHeaderForChildOperation(ctx, "vega.resource.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON

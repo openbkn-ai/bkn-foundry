@@ -35,7 +35,7 @@ var (
 	bknAccess     interfaces.BknBackendAccess
 )
 
-// NewBknBackendAccess 创建 BknBackendAccess
+// NewBknBackendAccess creates a BknBackendAccess.
 func NewBknBackendAccess() interfaces.BknBackendAccess {
 	bknAccessOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -48,7 +48,7 @@ func NewBknBackendAccess() interfaces.BknBackendAccess {
 	return bknAccess
 }
 
-// ListKnowledgeNetworks 列出知识网络（GET /in/v1/knowledge-networks），用于让外部发现 kn_id。
+// ListKnowledgeNetworks lists knowledge networks (GET /in/v1/knowledge-networks), used to let external callers discover kn_id.
 func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *interfaces.ListKnReq) (resp *interfaces.ListKnResp, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks", b.baseURL)
 	header := common.GetHeaderForChildOperation(ctx, "bkn.knowledge_network.list", 1)
@@ -110,8 +110,8 @@ func (b *bknBackendAccess) ListKnowledgeNetworks(ctx context.Context, req *inter
 	return resp, nil
 }
 
-// GetKnowledgeNetworkDetail 获取知识网络详情（include_detail=true, mode=export）
-// 对应 Python 的 _get_knowledge_network_detail
+// GetKnowledgeNetworkDetail gets knowledge-network details (include_detail=true, mode=export)
+// Corresponds to Python _get_knowledge_network_detail.
 func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID string) (*interfaces.KnowledgeNetworkDetail, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s", b.baseURL, knID)
 	header := common.GetHeaderForChildOperation(ctx, "bkn.knowledge_network.get", 1)
@@ -167,7 +167,7 @@ func (b *bknBackendAccess) GetKnowledgeNetworkDetail(ctx context.Context, knID s
 	return result, nil
 }
 
-// SearchObjectTypes 搜索对象类
+// SearchObjectTypes searches object types.
 func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (objectTypes *interfaces.ObjectTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types", b.baseURL, query.KnID)
 	header := common.GetHeaderForChildOperation(ctx, "bkn.object_type.search", 1)
@@ -211,7 +211,7 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 		return objectTypes, nil
 	}
 
-	// 处理返回结果
+	// Handle the returned result.
 	if err := sonic.Unmarshal(respBody, objectTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess] SearchObjectTypes unmarshal ObjectTypes failed: %v\n", err)
 		return nil, err
@@ -220,7 +220,7 @@ func (b *bknBackendAccess) SearchObjectTypes(ctx context.Context, query *interfa
 	return objectTypes, nil
 }
 
-// GetObjectTypeDetail 获取对象类详情
+// GetObjectTypeDetail gets object type details.
 func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/object-types/%s", b.baseURL, knID, strings.Join(otIds, ","))
 	header := common.GetHeaderForChildOperation(ctx, "bkn.object_type.get", 1)
@@ -267,7 +267,7 @@ func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string,
 		return emptyObjectTypes, nil
 	}
 
-	// 处理返回结果 - 适配新的响应结构 {"entries": []}
+	// Handle the returned result and adapt to the new response structure {"entries": []}.
 	var response struct {
 		Entries []*interfaces.ObjectType `json:"entries"`
 	}
@@ -279,7 +279,7 @@ func (b *bknBackendAccess) GetObjectTypeDetail(ctx context.Context, knID string,
 	return response.Entries, nil
 }
 
-// SearchRelationTypes 搜索关系类
+// SearchRelationTypes searches relation types.
 func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (releationTypes *interfaces.RelationTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/relation-types", b.baseURL, query.KnID)
 	header := common.GetHeaderForChildOperation(ctx, "bkn.relation_type.search", 1)
@@ -322,7 +322,7 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 		return releationTypes, nil
 	}
 
-	// 处理返回结果
+	// Handle the returned result.
 	if err := sonic.Unmarshal(respBody, releationTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess]SearchRelationTypes unmalshal RelationTypes failed: %v\n", err)
 		return nil, err
@@ -331,7 +331,7 @@ func (b *bknBackendAccess) SearchRelationTypes(ctx context.Context, query *inter
 	return releationTypes, nil
 }
 
-// GetRelationTypeDetail 获取关系类详情
+// GetRelationTypeDetail gets relation type details.
 func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID string, rtIDs []string, includeDetail bool) ([]*interfaces.RelationType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/relation-types/%s", b.baseURL, knID, strings.Join(rtIDs, ","))
 	header := common.GetHeaderForChildOperation(ctx, "bkn.relation_type.get", 1)
@@ -378,7 +378,7 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 		return emptyRelationTypes, nil
 	}
 
-	// 处理返回结果
+	// Handle the returned result.
 	var releationTypes []*interfaces.RelationType
 	if err := sonic.Unmarshal(respBody, &releationTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetRelationTypeDetail unmalshal releationTypes failed: %v\n", err)
@@ -388,7 +388,7 @@ func (b *bknBackendAccess) GetRelationTypeDetail(ctx context.Context, knID strin
 	return releationTypes, nil
 }
 
-// SearchActionTypes 搜索行动类
+// SearchActionTypes searches action types.
 func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (actionTypes *interfaces.ActionTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/action-types", b.baseURL, query.KnID)
 	header := common.GetHeaderForChildOperation(ctx, "bkn.action_type.search", 1)
@@ -431,7 +431,7 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 		return actionTypes, nil
 	}
 
-	// 处理返回结果
+	// Handle the returned result.
 	if err := sonic.Unmarshal(respBody, actionTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess]SearchActionTypes unmalshal actionTypes failed: %v\n", err)
 		return nil, err
@@ -440,7 +440,7 @@ func (b *bknBackendAccess) SearchActionTypes(ctx context.Context, query *interfa
 	return actionTypes, nil
 }
 
-// SearchMetricTypes 搜索指标类
+// SearchMetricTypes searches metric types.
 func (b *bknBackendAccess) SearchMetricTypes(ctx context.Context, query *interfaces.QueryConceptsReq) (metricTypes *interfaces.MetricTypeConcepts, err error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/metrics", b.baseURL, query.KnID)
 	header := common.GetHeaderForChildOperation(ctx, "bkn.metric.search", 1)
@@ -492,7 +492,7 @@ func (b *bknBackendAccess) SearchMetricTypes(ctx context.Context, query *interfa
 	return metricTypes, nil
 }
 
-// GetActionTypeDetail 获取行动类详情
+// GetActionTypeDetail gets action type details.
 func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string, atIDs []string, includeDetail bool) ([]*interfaces.ActionType, error) {
 	src := fmt.Sprintf("%s/in/v1/knowledge-networks/%s/action-types/%s", b.baseURL, knID, strings.Join(atIDs, ","))
 	header := common.GetHeaderForChildOperation(ctx, "bkn.action_type.get", 1)
@@ -539,7 +539,7 @@ func (b *bknBackendAccess) GetActionTypeDetail(ctx context.Context, knID string,
 		return emptyActionTypes, nil
 	}
 
-	// 处理返回结果
+	// Handle the returned result.
 	var actionTypes []*interfaces.ActionType
 	if err := sonic.Unmarshal(respBody, &actionTypes); err != nil {
 		b.logger.Errorf("[BknBackendAccess]GetActionTypeDetail unmalshal actionTypes failed: %v\n", err)
@@ -586,10 +586,10 @@ const (
 	metricsScopeBatch = 100
 )
 
-// listMetricsPage 取一批对象类的指标，翻页取全。
+// ListMetricsPage fetches one batch of metrics for object types, paginates until all are fetched.
 //
-// 分页而不是截断：截断后的答案与「这个对象类没有指标」在调用方眼里完全一样，
-// 而那正是把 Agent 推回 run_sql 的状态——本条链路存在的理由就是消灭它。
+// Paging instead of truncation: The truncated answer is exactly the same as "This object type has no pointer" in the eyes of the caller.
+// And that is what pushes the Agent back to the run_sql state - the reason for this link's existence is to destroy it.
 func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, header map[string]string,
 	scopeRefs []string, knID string) ([]metricsListEntry, error) {
 	entries := make([]metricsListEntry, 0, metricsPageSize)
@@ -653,9 +653,9 @@ func (b *bknBackendAccess) listMetricsPage(ctx context.Context, src string, head
 	return entries, nil
 }
 
-// ListMetricsByObjectTypes 枚举挂在给定对象类下的指标（scope_type=object_type）。
-// 走 bkn-backend 指标注册表（GET .../metrics），不是概念索引语义召回：对象类要"看得见"
-// 自己的指标，必须是全量且与库一致的。
+// ListMetricsByObjectTypes enumerates metrics attached to the given object types (scope_type=object_type).
+// Use bkn-backend metric registry (GET .../metrics), not concept index semantic recall: object types must be "visible".
+// Your own metrics must be full and consistent with the library.
 func (b *bknBackendAccess) ListMetricsByObjectTypes(ctx context.Context, knID string, otIDs []string) ([]*interfaces.RelatedMetric, error) {
 	scopeRefs := make([]string, 0, len(otIDs))
 	seen := make(map[string]struct{}, len(otIDs))

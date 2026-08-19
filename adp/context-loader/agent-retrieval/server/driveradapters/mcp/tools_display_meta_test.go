@@ -12,15 +12,15 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// 展示元数据的价值全在「客户端不用自己维护一张工具名到中文名的表」。所以每条
-// 断言都对着序列化后的 JSON 走，而不是对着 Go 结构体——结构体填对了但没进
-// wire 的情况，正是这类字段最容易出的问题。
+// The value of displaying metadata is that "the client does not need to maintain a table from tool name to Chinese name". So every.
+// The assertions are all directed against the serialized JSON, not the Go structure - the structure is filled in correctly but not entered.
+// In the case of wire, this type of field is most prone to problems.
 
 func TestToolsListCarriesDisplayMetadata(t *testing.T) {
 	noExtensions(t)
 
-	// 按进程当前的 locale 取期望值，而不是恒读中文基准文件：本地开发机上
-	// LANG=en_US 是常态，写死基准文件会让这条断言在那里假红。
+	// Get the expected value according to the current locale of the process, instead of the Hengdu Chinese benchmark file: on the local development machine.
+	// LANG=en_US is the norm. Hard-coding the benchmark file will make this assertion falsely red.
 	locale := loadMCPLocaleBundle(mcpLocaleFromEnv())
 	for _, tool := range assembledTools(t) {
 		raw, err := json.Marshal(tool)
@@ -49,15 +49,15 @@ func TestToolsListCarriesDisplayMetadata(t *testing.T) {
 		if got := wire.Meta[toolMetaKeyGroupTitle]; got != want.GroupTitle {
 			t.Fatalf("tool %q advertises group_title %v, tool metadata says %q", wire.Name, got, want.GroupTitle)
 		}
-		// JSON 数字解到 any 上是 float64，比较前先归一。
+		// JSON numbers converted to any are float64, and should be normalized before comparison.
 		if got, _ := wire.Meta[toolMetaKeyOrder].(float64); int(got) != want.Order {
 			t.Fatalf("tool %q advertises order %v, tool metadata says %d", wire.Name, wire.Meta[toolMetaKeyOrder], want.Order)
 		}
 	}
 }
 
-// 每个核心工具都得声明齐这四项，且 order 互不重复——重复的 order 会让两个工具
-// 在前端之间换位置，跟没有排序一样。
+// Each core tool must declare these four items, and the orders must not repeat each other - repeated orders will cause the two tools to.
+// Changing positions between front ends is the same as without sorting.
 func TestEveryCoreToolDeclaresDisplayMetadata(t *testing.T) {
 	seenOrder := map[int]string{}
 	for key, meta := range allToolMeta() {
@@ -77,8 +77,8 @@ func TestEveryCoreToolDeclaresDisplayMetadata(t *testing.T) {
 	}
 }
 
-// 本地化文件只翻译，不重新建模：它可以给 title/group_title，但不该自带 group
-// 或 order——那两项一旦分语言就意味着中英文两套目录结构。
+// The localization file is only translated, not remodeled: it can give title/group_title, but it should not bring its own group.
+// Or order - once those two items are divided into languages, they mean two sets of directory structures in Chinese and English.
 func TestLocalizedToolMetaTranslatesWithoutRemodelling(t *testing.T) {
 	raw, err := schemasFS.ReadFile("schemas/locales/en-US/tools_meta.json")
 	if err != nil {
@@ -105,16 +105,16 @@ func TestLocalizedToolMetaTranslatesWithoutRemodelling(t *testing.T) {
 		if m.Group != "" || m.Order != 0 {
 			t.Errorf("localized tool %q declares group/order; those belong to tools_meta.json alone", key)
 		}
-		// Name 是 tools/call 携带的标识。本地化文件写了它，同一个工具在中文和
-		// 英文部署上就会有两个名字，照着一边写的客户端在另一边直接调不通。
+		// Name is the identifier carried by tools/call. Localization files were written for it, the same tool works in Chinese and.
+		// There will be two names on the English deployment. According to the client written on one side, it cannot be called directly on the other side.
 		if m.Name != "" {
 			t.Errorf("localized tool %q declares a name; the wire identifier must not depend on the deployment's language", key)
 		}
 	}
 }
 
-// /mcp/info 的用途是「不握手就看清能力面」，展示元数据两边说法不一致，前端按
-// 哪一份渲染就成了掷硬币。
+// The purpose of /mcp/info is to "see the capabilities clearly without shaking hands". It shows that the two sides of the metadata are inconsistent. The front-end press.
+// Which render becomes a coin toss.
 func TestMCPInfoDisplayMetadataMatchesToolsList(t *testing.T) {
 	noExtensions(t)
 
@@ -149,10 +149,10 @@ func TestMCPInfoDisplayMetadataMatchesToolsList(t *testing.T) {
 	}
 }
 
-// 三条注册路径——toolBuilder、生命周期适配层、企业插座——此前只有第一条过
-// locale，另外两条直接读中文基准文件。缺陷只在非中文部署上现形：一份目录里
-// 14 个英文名配 4 个中文名。这条测试把整个目录按非默认 locale 装配一遍，任何
-// 一条路径漏接都会红。
+// Three registration paths - toolBuilder, lifecycle adaptation layer, enterprise socket - only the first one passed before.
+// locale, the other two directly read the Chinese benchmark file. The flaw only appears on non-Chinese deployments: in a directory.
+// 14 English names and 4 Chinese names. This test assembles the entire directory according to the non-default locale. Any.
+// If a path is missed, it will be red.
 func TestEveryRegistrationPathHonoursTheLocale(t *testing.T) {
 	noExtensions(t)
 	t.Setenv("MCP_LOCALE", "en-US")

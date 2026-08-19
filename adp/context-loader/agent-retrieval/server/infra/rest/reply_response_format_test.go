@@ -20,7 +20,7 @@ func TestReplyOK_WithTOONResponseFormatFromContext(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		req := httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 
-		// 设置 context 中的 response_format 为 TOON
+		// Set response_format in context to TOON.
 		ctx := common.SetResponseFormatToCtx(req.Context(), FormatTOON)
 		req = req.WithContext(ctx)
 		c.Request = req
@@ -38,7 +38,7 @@ func TestReplyOK_WithTOONResponseFormatFromContext(t *testing.T) {
 		convey.So(w.Header().Get(ContentTypeKey), convey.ShouldEqual, ContentTypeTOON)
 		convey.So(w.Body.Len(), convey.ShouldBeGreaterThan, 0)
 
-		// 验证 TOON 内容可被正常反序列化
+		// Verify that TOON content can be deserialized normally.
 		var decoded map[string]any
 		err := toon.Unmarshal(w.Body.Bytes(), &decoded)
 		convey.So(err, convey.ShouldBeNil)

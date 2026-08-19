@@ -12,13 +12,13 @@ import (
 
 var maxSafeTOONInteger = big.NewInt(9007199254740991)
 
-// VegaRawQueryReq vega 原始 SQL 查询请求（只读）。
-// Query 为 MySQL 方言 SQL，表名用 {{.resource_id}} 占位符引用，由 vega 解析成真实表名。
+// VegaRawQueryReq vega raw SQL query request (read-only).
+// Query is MySQL dialect SQL. The table name is referenced by {{.resource_id}} placeholder, which is parsed into the real table name by vega.
 type VegaRawQueryReq struct {
-	Query           string            `json:"query"`                       // MySQL 方言 SQL
-	QueryFormat     string            `json:"query_format"`                // 固定为 sql
-	InputDialect    string            `json:"input_dialect"`               // 固定为 mysql
-	QueryTimeoutSec int               `json:"query_timeout_sec,omitempty"` // 查询超时（秒），1-3600
+	Query           string            `json:"query"`                       // MySQL Dialect SQL.
+	QueryFormat     string            `json:"query_format"`                // fixed to sql.
+	InputDialect    string            `json:"input_dialect"`               // fixed to mysql.
+	QueryTimeoutSec int               `json:"query_timeout_sec,omitempty"` // Query timeout (seconds), 1-3600.
 	Paging          VegaPagingRequest `json:"paging"`
 }
 
@@ -34,13 +34,13 @@ type VegaPagingResponse struct {
 	ExpiresAtSec *int64  `json:"expires_at_sec" toon:"expires_at_sec"`
 }
 
-// VegaColumn vega 查询返回的列信息。
+// VegaColumn The column information returned by the vega query.
 type VegaColumn struct {
 	Name string `json:"name" toon:"name"`
 	Type string `json:"type,omitempty" toon:"type,omitempty"`
 }
 
-// VegaRawQueryResp vega 原始查询响应。
+// VegaRawQueryResp vega raw query response.
 type VegaRawQueryResp struct {
 	Columns    []VegaColumn        `json:"columns" toon:"columns"`
 	Entries    []map[string]any    `json:"entries" toon:"entries"`
@@ -127,16 +127,16 @@ func toonSafeValue(value any) (any, bool) {
 	return value, false
 }
 
-// VegaListResourcesReq vega 资源列表查询入参（数据层直查，脱离本体）。
-// 空字段不参与过滤；Offset/Limit 为 0 时由 vega 取默认值（offset=0, limit=20）。
+// VegaListResourcesReq Vega resource list query input parameters (direct query at the data layer, separated from the ontology).
+// Empty fields do not participate in filtering; when Offset/Limit is 0, vega takes the default value (offset=0, limit=20).
 type VegaListResourcesReq struct {
-	CatalogID string // 限定某 catalog
-	Category  string // 资源类别：table / file / fileset / api / metric / topic / index / logicview / dataset
+	CatalogID string // Limit a catalog.
+	Category  string // Resource category: table/file/fileset/api/metric/topic/index/logicview/dataset.
 	Offset    int
 	Limit     int
 }
 
-// VegaResourceColumn vega 资源的物理列（取自 schema_definition）。
+// VegaResourceColumn The physical column of the vega resource (taken from schema_definition).
 type VegaResourceColumn struct {
 	Name        string `json:"name"`
 	Type        string `json:"type"`
@@ -144,7 +144,7 @@ type VegaResourceColumn struct {
 	Description string `json:"description"`
 }
 
-// VegaResource vega 数据资源（list/get 共用，list 时 SchemaDefinition 一般为空）。
+// VegaResource vega data resource (shared by list/get, SchemaDefinition is usually empty when using list).
 type VegaResource struct {
 	ID               string               `json:"id"`
 	CatalogID        string               `json:"catalog_id"`
@@ -154,21 +154,21 @@ type VegaResource struct {
 	SchemaDefinition []VegaResourceColumn `json:"schema_definition"`
 }
 
-// VegaListResourcesResp vega 资源列表响应（entries 信封 + 总数）。
+// VegaListResourcesResp vega resource list response (entries envelope + total).
 type VegaListResourcesResp struct {
 	Entries    []VegaResource `json:"entries"`
 	TotalCount int64          `json:"total_count"`
 }
 
-// DrivenVega vega 数据目录后端访问接口（只读查询）。
+// DrivenVega vega data directory backend access interface (read-only query).
 type DrivenVega interface {
-	// RawQuery 执行只读 SQL。调用方（MCP 工具层）须自行保证 SELECT-only，本接口不做语句校验。
+	// RawQuery executes read-only SQL. The caller (MCP tool layer) must ensure SELECT-only by itself, and this interface does not perform statement verification.
 	RawQuery(ctx context.Context, req *VegaRawQueryReq) (*VegaRawQueryResp, error)
-	// GetResourceConnectorType 按 resource_id 解析其所属 catalog 的连接器类型，
-	// 用于资源发现和展示。
+	// GetResourceConnectorType parses the connector type of the catalog to which it belongs based on resource_id.
+	// For resource discovery and display.
 	GetResourceConnectorType(ctx context.Context, resourceID string) (string, error)
-	// ListResources 列出可查询的数据资源（按账户 view_detail 授权过滤，由 vega 强制）。
+	// ListResources lists queryable data resources (filtered by account view_detail authorization, forced by vega).
 	ListResources(ctx context.Context, req *VegaListResourcesReq) (*VegaListResourcesResp, error)
-	// GetResource 取单个资源（含物理列 schema_definition）；资源不存在或无权时返回错误。
+	// GetResource gets a single resource (including physical column schema_definition); an error is returned when the resource does not exist or has no rights.
 	GetResource(ctx context.Context, resourceID string) (*VegaResource, error)
 }

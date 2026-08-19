@@ -36,10 +36,10 @@ func TestMain(m *testing.M) {
 // core means adding it here in the same change; a diff that touches only the
 // socket and moves this list is the bug this file exists to catch.
 var communityTools = []string{
-	// 追踪生命周期工具（bkntrace 适配层直接挂到 server 上，不走 toolBuilder）
+	// Tracing lifecycle tool (bkntrace adaptation layer is directly hung on the server without using toolBuilder)
 	"bkn_finish_interaction",
 	"bkn_start_interaction",
-	// 知识网络工具
+	// knowledge network tools.
 	"describe_resource",
 	"execute_action",
 	"explore_subgraph",
@@ -59,15 +59,15 @@ var communityTools = []string{
 	"query_metric",
 	"query_object_instance",
 	"read_skill_file",
-	// 代码执行工具：与业务工具并列在同一个面上，模型按任务性质自选。
-	// 不受 MCP_EXECUTE_SKILL_ENABLED 约束，所以它们进基线而 execute_skill 不进。
+	// Code execution tools: listed on the same surface as business tools, and models are selected based on the nature of the task.
+	// Not subject to MCP_EXECUTE_SKILL_ENABLED, so they go into baseline but execute_skill does not.
 	"run_code",
 	"run_shell",
 	"run_sql",
 	"search_instance",
 	"search_schema",
-	// execute_skill 默认不装配（MCP_EXECUTE_SKILL_ENABLED），所以不在这份基线里，
-	// 由 TestExecuteSkillOnlyAppearsWhenEnabled 单独盯。
+	// execute_skill is not configured by default (MCP_EXECUTE_SKILL_ENABLED), so it is not included in this baseline.
+	// Watched by TestExecuteSkillOnlyAppearsWhenEnabled alone.
 }
 
 // noExtensions puts the process in the state a community binary is always in:
@@ -101,8 +101,8 @@ func TestCommunityToolSchemasUnchanged(t *testing.T) {
 	srv, _ := newMCPServer(nil)
 	for _, key := range communityTools {
 		if _, isLifecycle := lifecycleToolNames[key]; isLifecycle {
-			// 生命周期工具由 bkntrace 适配层直接注册，schema 也来自那边，
-			// 不经过插座的装饰路径——这条断言只管走 toolBuilder 的那些。
+			// The lifecycle tool is registered directly by the bkntrace adaptation layer, and the schema also comes from there.
+			// Decoration paths that don't go through sockets - this assertion only goes through those of the toolBuilder.
 			continue
 		}
 		tool := srv.GetTool(key)
@@ -134,9 +134,9 @@ func TestCommunityMCPInfoUnchanged(t *testing.T) {
 
 	// /mcp/info and tools/list have to agree: the endpoint exists so an
 	// integrator can read the surface without a handshake.
-	// tools/list 的顺序来自 map 遍历，本身不确定，所以那一侧只能比集合；
-	// /mcp/info 的顺序是按 key 稳定排出来的，逐位比才有意义——上面那段循环
-	// 已经做了。这里补的是集合相等，两个方向都要。
+	// The order of tools/list comes from map traversal and is itself uncertain, so that side can only be compared with the set;
+	// The order of /mcp/info is arranged stably by key, and the bit-by-bit ratio is meaningful - the above loop.
+	// Already done. The complement here is that the sets are equal, both directions are required.
 	assembled := map[string]bool{}
 	for _, name := range assembledNames(t) {
 		assembled[name] = true

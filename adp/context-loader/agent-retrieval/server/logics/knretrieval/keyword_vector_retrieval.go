@@ -14,21 +14,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// KeywordVectorRetrieval 基于关键词+向量召回
+// KeywordVectorRetrieval based on keyword + vector recall.
 func (k *knRetrievalServiceImpl) KeywordVectorRetrieval(ctx context.Context, req *interfaces.SemanticSearchRequest) (resp *interfaces.SemanticSearchResponse, err error) {
-	// 记录可观测
+	// Record observability data.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 查询策略
+	// Query strategy.
 	var queryStrategys []*interfaces.SemanticQueryStrategy
-	// 概念结果候选集
+	// Concept result candidate set.
 	conceptResults := []*interfaces.ConceptResult{}
-	// 自定义构建查询策略，请求业务知识网络接口做关键词匹配
+	// Customize the query strategy and request the business knowledge network interface for keyword matching.
 	queryStrategys = k.longtailRecallByKnowledgeNetwork(req.Query)
-	// 筛选查询策略
+	// Filter query strategies.
 	queryStrategys = k.filterQueryStrategysBySearchScope(queryStrategys, req.SearchScope)
 	if len(queryStrategys) > 0 {
-		// 并发执行查询策略
+		// Execute query strategies concurrently.
 		var queryConceptResults []*interfaces.ConceptResult
 		queryConceptResults, err = k.parallelExecSemanticQueryStrategy(ctx, req.KnID, queryStrategys)
 		if err != nil {
@@ -43,13 +43,13 @@ func (k *knRetrievalServiceImpl) KeywordVectorRetrieval(ctx context.Context, req
 		OriginQuery:    req.Query,
 		QueryStrategys: queryStrategys,
 	}
-	// TODO：实例数据采样（本版本跳过）
-	// 排序：根据匹配分数排序，去重
+	// TODO: instance data sampling, skipped in this version.
+	// Sorting: Sort according to matching score, remove duplicates.
 	rerankConceptResults, err := k.rerankConcepts(ctx, queryUnderstanding, conceptResults, req.RerankAction, req.MaxConcepts, req.RerankLLMModel, req.RerankVectorModel)
 	if err != nil {
 		return
 	}
-	// 组装结果
+	// Assemble the result.
 	resp = &interfaces.SemanticSearchResponse{
 		QueryUnderstanding: queryUnderstanding,
 		KnowledgeConcepts:  rerankConceptResults,

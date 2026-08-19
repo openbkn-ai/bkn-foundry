@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// DebugCollector Debug 信息收集器
+// DebugCollector Debug information collector.
 type DebugCollector struct {
 	propertyTypes  map[string]string
 	agentRequests  map[string]interfaces.AgentRequestDebugInfo
@@ -22,7 +22,7 @@ type DebugCollector struct {
 	warnings       []string
 }
 
-// NewDebugCollector 创建 Debug 信息收集器
+// NewDebugCollector creates a Debug information collector.
 func NewDebugCollector() *DebugCollector {
 	return &DebugCollector{
 		propertyTypes:  make(map[string]string),
@@ -33,17 +33,17 @@ func NewDebugCollector() *DebugCollector {
 	}
 }
 
-// AddPropertyType 添加属性类型
+// AddPropertyType Add property type.
 func (dc *DebugCollector) AddPropertyType(propertyName, propertyType string) {
 	dc.propertyTypes[propertyName] = propertyType
 }
 
-// RecordMetricAgentRequest 记录 Metric Agent 请求（直接存储 Agent 请求结构）
+// RecordMetricAgentRequest records the Metric Agent request (directly stores the Agent request structure)
 func (dc *DebugCollector) RecordMetricAgentRequest(
 	propertyName string,
 	agentReq *interfaces.MetricDynamicParamsGeneratorReq,
 ) {
-	// 直接存储 Agent 请求结构
+	// Store the Agent request structure directly.
 	dc.agentRequests[propertyName] = agentReq
 }
 
@@ -52,22 +52,22 @@ func (dc *DebugCollector) RecordToolAgentRequest(
 	propertyName string,
 	agentReq *interfaces.ToolDynamicParamsGeneratorReq,
 ) {
-	// 直接存储 Agent 请求结构
+	// Store the Agent request structure directly.
 	dc.agentRequests[propertyName] = agentReq
 }
 
-// RecordAgentResponseSuccess 记录 Agent 成功响应（直接存储 Agent 响应）
+// RecordAgentResponseSuccess records Agent's successful response (directly stores Agent response)
 func (dc *DebugCollector) RecordAgentResponseSuccess(propertyName string, dynamicParams map[string]any) {
-	// 直接存储 Agent 响应：成功时返回 dynamicParams
+	// Store Agent response directly: return dynamicParams on success.
 	dc.agentResponses[propertyName] = &interfaces.AgentResponseDebugInfo{
 		DynamicParams: dynamicParams,
 	}
 
-	// 同时收集到 dynamic_params
+	// Also collected dynamic_params.
 	dc.dynamicParams[propertyName] = dynamicParams
 }
 
-// RecordAgentResponseMissingParams 记录 Agent 缺参响应（直接存储 Agent 响应）
+// RecordAgentResponseMissingParams records Agent’s missing parameter response (directly stores Agent response)
 func (dc *DebugCollector) RecordAgentResponseMissingParams(
 	propertyName string,
 	missingParams *interfaces.MissingPropertyParams,
@@ -77,38 +77,38 @@ func (dc *DebugCollector) RecordAgentResponseMissingParams(
 		errorMsg = missingParams.ErrorMsg
 	}
 
-	// 直接存储 Agent 响应：失败时返回 _error 字段
+	// Store the Agent response directly; return the _error field on failure.
 	dc.agentResponses[propertyName] = &interfaces.AgentResponseDebugInfo{
 		Error: errorMsg,
 	}
 }
 
-// RecordAgentResponseError 记录 Agent 错误响应（直接存储 Agent 响应）
+// RecordAgentResponseError records Agent error response (directly stores Agent response)
 func (dc *DebugCollector) RecordAgentResponseError(propertyName, errorMsg string) {
-	// 直接存储 Agent 响应：失败时返回 _error 字段
+	// Store the Agent response directly; return the _error field on failure.
 	dc.agentResponses[propertyName] = &interfaces.AgentResponseDebugInfo{
 		Error: errorMsg,
 	}
 }
 
-// SetNowMs 设置当前时间戳
+// SetNowMs sets the current timestamp.
 func (dc *DebugCollector) SetNowMs(nowMs int64) {
 	dc.nowMs = nowMs
 }
 
-// SetTraceID 设置追踪 ID
+// SetTraceID Set trace ID.
 func (dc *DebugCollector) SetTraceID(traceID string) {
 	dc.traceID = traceID
 }
 
-// AddWarning 添加警告信息
+// AddWarning adds warning information.
 func (dc *DebugCollector) AddWarning(warning string) {
 	dc.warnings = append(dc.warnings, warning)
 }
 
-// BuildDebugInfo 构建最终的 Debug 信息
+// BuildDebugInfo builds the final Debug information.
 func (dc *DebugCollector) BuildDebugInfo() *interfaces.ResolveDebugInfo {
-	// 将 property_types、agent_requests、agent_responses 合并为 agent_info
+	// Merge property_types, agent_requests, agent_responses into agent_info.
 	agentInfo := make(map[string]*interfaces.AgentInfo)
 	for propertyName, propertyType := range dc.propertyTypes {
 		var request interfaces.AgentRequestDebugInfo

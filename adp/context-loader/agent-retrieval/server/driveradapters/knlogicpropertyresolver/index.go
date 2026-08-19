@@ -24,7 +24,7 @@ import (
 	logicskn "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver"
 )
 
-// KnLogicPropertyResolverHandler 逻辑属性解析 Handler
+// KnLogicPropertyResolverHandler logical propertyparse Handler.
 type KnLogicPropertyResolverHandler interface {
 	ResolveLogicProperties(c *gin.Context)
 }
@@ -39,7 +39,7 @@ var (
 	handler     KnLogicPropertyResolverHandler
 )
 
-// NewKnLogicPropertyResolverHandler 创建 KnLogicPropertyResolverHandler
+// NewKnLogicPropertyResolverHandler create KnLogicPropertyResolverHandler.
 func NewKnLogicPropertyResolverHandler() KnLogicPropertyResolverHandler {
 	handlerOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -72,7 +72,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		Options: &interfaces.ResolveOptions{},
 	}
 
-	// 绑定 Header 参数
+	// Bind Header parameters.
 	if err = c.ShouldBindHeader(req); err != nil {
 		k.Logger.Errorf("[KnLogicPropertyResolverHandler] Bind header failed: %v", err)
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
@@ -80,7 +80,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		return
 	}
 
-	// 绑定 JSON Body
+	// Bind the JSON body.
 	if err = c.ShouldBindJSON(req); err != nil {
 		k.Logger.Errorf("[KnLogicPropertyResolverHandler] Bind JSON failed: %v", err)
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
@@ -88,7 +88,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		return
 	}
 
-	// 设置默认值
+	// Set default values.
 	if err = defaults.Set(req.Options); err != nil {
 		k.Logger.Errorf("[KnLogicPropertyResolverHandler] Set defaults failed: %v", err)
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
@@ -96,7 +96,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		return
 	}
 
-	// 参数校验
+	// Validate parameters.
 	err = validator.New().Struct(req)
 	if err != nil {
 		k.Logger.Errorf("[KnLogicPropertyResolverHandler] Validate failed: %v", err)
@@ -104,12 +104,12 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		return
 	}
 
-	// 📥 记录请求入参（结构化）
+	// 📥 Record request input parameters (structured)
 	reqJSON, _ := json.Marshal(req)
 	k.Logger.Infof("========== [kn-logic-property-resolver] 请求开始 ==========")
 	k.Logger.Infof("📥 请求参数: %s", string(reqJSON))
 
-	// 调用 Service 层（记录耗时）
+	// Call the Service layer (record the time taken)
 	startTime := time.Now()
 	resp, err := k.Service.ResolveLogicProperties(c.Request.Context(), req)
 	elapsed := time.Since(startTime).Milliseconds()
@@ -121,11 +121,11 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 		return
 	}
 
-	// 📤 记录响应结果
+	// 📤 Record response results.
 	respJSON, _ := json.Marshal(resp)
 	k.Logger.Infof("========== [kn-logic-property-resolver] 请求成功 ========== (耗时: %dms)", elapsed)
 	k.Logger.Infof("📤 响应数据: %s", string(respJSON))
 
-	// 返回成功响应
+	// Return a successful response.
 	rest.ReplyOK(c, http.StatusOK, resp)
 }

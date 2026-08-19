@@ -26,7 +26,7 @@ func sameStringSet(got, want []string) bool {
 }
 
 func TestConceptRetrieval_MainFlow(t *testing.T) {
-	// 准备基础测试数据
+	// Prepare base test data.
 	mockDetail := createMockNetworkDetail(5, 5, 2)
 	baseConfig := DefaultConceptRetrievalConfig()
 	baseConfig.EnableCoarseRecall = boolPtr(false)
@@ -55,7 +55,7 @@ func TestConceptRetrieval_MainFlow(t *testing.T) {
 				if len(res.ObjectTypes) == 0 {
 					t.Error("Expected object types, got 0")
 				}
-				// 检查关联过滤：对象类型_0 应该被召回 (因为有关系连接)
+				// Check relational filtering: object type_0 should be recalled (because of relational join)
 				found := false
 				for _, obj := range res.ObjectTypes {
 					if obj.ConceptID == "obj_0" {
@@ -108,7 +108,7 @@ func TestConceptRetrieval_MainFlow(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Unexpected error: %v", err)
 				}
-				// 验证排序结果：rel_1 分数更高，应排在第一
+				// Verify the sorting result: rel_1 has a higher score and should be ranked first.
 				if len(res.RelationTypes) > 0 {
 					if res.RelationTypes[0].ConceptID != "rel_1" {
 						t.Errorf("Expected rel_1 first, got %s", res.RelationTypes[0].ConceptID)
@@ -221,9 +221,9 @@ func TestConceptRetrieval_ObjectFallback_FillByScore(t *testing.T) {
 	}
 }
 
-// TestConceptRetrieval_GroupScopeDelegatesToBkn 验证 concept_groups 非空时，
-// ContextLoader 直接调用 BKN 的 typed search API，并将分组参数透传下去；
-// 同时不应再触发 GetKnowledgeNetworkDetail 与本地按组过滤。
+// TestConceptRetrieval_GroupScopeDelegatesToBkn verifies that concept_groups is not empty,
+// ContextLoader directly calls BKN's typed search API and transparently passes the grouping parameters;
+// Also GetKnowledgeNetworkDetail and local filtering by group should no longer be triggered.
 func TestConceptRetrieval_GroupScopeDelegatesToBkn(t *testing.T) {
 	cfg := DefaultConceptRetrievalConfig()
 	cfg.EnableCoarseRecall = boolPtr(false)
@@ -368,10 +368,10 @@ func TestConceptRetrieval_GroupScopeCompletesReferencedObjects(t *testing.T) {
 	}
 }
 
-// TestConceptRetrieval_UnknownConceptGroupPropagatesError 验证当 BKN 对未知
-// concept_groups 返回错误时（线上行为：5xx + "all concept group not found"），
-// ContextLoader 直接向上透传，而不是吞错并返回空桶。这个语义对调用方区分
-// "分组不存在" 与 "分组合法但无概念" 至关重要。
+// TestConceptRetrieval_UnknownConceptGroupPropagatesError validates when BKN pair is unknown.
+// When concept_groups returns an error (online behavior: 5xx + "all concept group not found"),
+// ContextLoader directly passes upwards instead of swallowing errors and returning empty buckets. This semantics distinguishes between callers.
+// "Group does not exist" and "Group is legal but has no concept" are crucial.
 func TestConceptRetrieval_UnknownConceptGroupPropagatesError(t *testing.T) {
 	cfg := DefaultConceptRetrievalConfig()
 	cfg.EnableCoarseRecall = boolPtr(false)
@@ -406,15 +406,15 @@ func TestConceptRetrieval_UnknownConceptGroupPropagatesError(t *testing.T) {
 }
 
 func TestConceptRetrieval_CoarseRecall(t *testing.T) {
-	// 创建大量关系以触发粗召回
+	// Create a large number of relationships to trigger coarse recall.
 	mockDetail := createMockNetworkDetail(10, 6000, 10)
 
 	config := DefaultConceptRetrievalConfig()
-	config.CoarseMinRelationCount = 5000 // 设定阈值
+	config.CoarseMinRelationCount = 5000 // Set threshold.
 
 	mockManager := &mockBknBackend{
 		networkDetail: mockDetail,
-		// 模拟粗召回返回部分对象和关系
+		// Simulate rough recall to return partial objects and relationships.
 		objectTypesResp: &interfaces.ObjectTypeConcepts{
 			Entries: []*interfaces.ObjectType{
 				{ID: "obj_0"}, {ID: "obj_1"},
@@ -442,11 +442,11 @@ func TestConceptRetrieval_CoarseRecall(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	// 验证结果是否被过滤
-	// 原始有6000个关系，粗召回模拟返回2个
-	if len(res.RelationTypes) > 2 { // 考虑到可能后续还有排序截断，这里简单验证应该很少
-		// 注意：rankRelationTypes 默认 TopK 是 10，所以这里最多返回 10
-		// 但如果粗召回生效，实际上只有 2 个候选，所以应该返回 2
+	// Verify that the results are filtered.
+	// There are 6000 original relationships, and the rough recall simulation returns 2.
+	if len(res.RelationTypes) > 2 { // Considering that there may be sorting truncation in the future, there should be very few simple verifications here.
+		// Note: The default TopK of rankRelationTypes is 10, so the maximum returned here is 10.
+		// But if rough recall is in effect, there are actually only 2 candidates, so 2 should be returned.
 		if len(res.RelationTypes) != 2 {
 			t.Errorf("Expected 2 relations after coarse recall, got %d", len(res.RelationTypes))
 		}
@@ -466,7 +466,7 @@ func TestRankRelationTypes(t *testing.T) {
 
 	// Case 1: Simple Match
 	t.Run("Simple Match", func(t *testing.T) {
-		// "Alpha" 匹配 "Alpha" 得分最高
+		// "Alpha" matches "Alpha" with the highest score.
 		res := svc.rankRelationTypesBySimpleMatch("Alpha", relations, 10)
 		if res[0].ID != "r1" {
 			t.Errorf("Expected r1 first, got %s", res[0].ID)
@@ -534,15 +534,15 @@ func TestRerankRelationPathsAcrossNetworks(t *testing.T) {
 	})
 }
 
-// TestRankRelationTypes_RerankUnavailable_DegradesToScore 验证 #114 Phase A：
-// reranker 不可用时降级到粗召回 _score 排序（保留相关性），而非丢相关性的名称匹配。
+// TestRankRelationTypes_RerankUnavailable_DegradesToScore validate #114 Phase A:
+// When the reranker is unavailable, downgrade to a coarse recall _score ranking (preserving relevance) instead of losing relevance for name matches.
 func TestRankRelationTypes_RerankUnavailable_DegradesToScore(t *testing.T) {
 	svc := &localSearchImpl{
 		logger:       &mockLogger{},
 		rerankClient: &mockRerankClient{rerankError: errors.New("ModelFactory.ExternalSmallModel.Used.NameNotExist")},
 	}
 	objectTypes := []*interfaces.ObjectType{{ID: "obj_1", Name: "对象1"}, {ID: "obj_2", Name: "对象2"}}
-	// _score 无序给入：期望按 _score 降序返回（rel_b=0.9 > rel_c=0.8 > rel_a=0.3）
+	// _score is given out of order: expected to be returned in descending order of _score (rel_b=0.9 > rel_c=0.8 > rel_a=0.3)
 	relationTypes := []*interfaces.RelationType{
 		{ID: "rel_a", Name: "关系A", Score: 0.3, SourceObjectTypeID: "obj_1", TargetObjectTypeID: "obj_2"},
 		{ID: "rel_b", Name: "关系B", Score: 0.9, SourceObjectTypeID: "obj_2", TargetObjectTypeID: "obj_1"},
@@ -558,8 +558,8 @@ func TestRankRelationTypes_RerankUnavailable_DegradesToScore(t *testing.T) {
 	}
 }
 
-// TestRankRelationTypesByScore_AllZero_SignalsFallback 验证 _score 全 0 时返回 ok=false，
-// 交由上层退到名称匹配。
+// TestRankRelationTypesByScore_AllZero_SignalsFallback returns ok=false when verifying that _score is all 0,
+// Leave it to the upper layer to return to name matching.
 func TestRankRelationTypesByScore_AllZero_SignalsFallback(t *testing.T) {
 	relations := []*interfaces.RelationType{{ID: "rel_a"}, {ID: "rel_b"}}
 	if _, ok := rankRelationTypesByScore(relations, 2); ok {

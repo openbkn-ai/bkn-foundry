@@ -22,7 +22,7 @@ import (
 	logicskn "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knretrieval"
 )
 
-// KnRetrievalHandler 基于业务知识网络实现统一Retrieval
+// KnRetrievalHandler implements unified Retrieval based on business knowledge network.
 type KnRetrievalHandler interface {
 	SemanticSearch(c *gin.Context)
 }
@@ -37,7 +37,7 @@ var (
 	knHandler KnRetrievalHandler
 )
 
-// NewKnRetrievalHandler 新建KnRetrievalHandler
+// NewKnRetrievalHandler New KnRetrievalHandler.
 func NewKnRetrievalHandler() KnRetrievalHandler {
 	knOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -49,7 +49,7 @@ func NewKnRetrievalHandler() KnRetrievalHandler {
 	return knHandler
 }
 
-// SemanticSearch 语义检索
+// SemanticSearch semanticsretrieve.
 func (k *knRetrievalHandle) SemanticSearch(c *gin.Context) {
 	var err error
 	req := &interfaces.SemanticSearchRequest{

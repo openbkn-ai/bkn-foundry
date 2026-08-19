@@ -305,7 +305,7 @@ func TestRedactSensitiveFields(t *testing.T) {
 			out := redactSensitiveFields(in).(map[string]interface{})
 			convey.So(out["kn_id"], convey.ShouldEqual, "kn-1")
 			convey.So(out["dynamic_params"], convey.ShouldEqual, "[REDACTED]")
-			// 非敏感字段结构原样
+			// The non-sensitive field structure is as is.
 			convey.So(out["_instance_identities"], convey.ShouldNotBeNil)
 		})
 		convey.Convey("MCP JSON-RPC 嵌套 params.arguments.dynamic_params 脱敏", func() {

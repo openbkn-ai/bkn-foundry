@@ -16,36 +16,36 @@ import (
 )
 
 const (
-	// MaxSchemaDepth 最大 $ref 引用递归深度，用于防止过深嵌套和循环引用导致的无限递归
-	// 作用：
-	// 1. 限制非循环的深层嵌套引用（如 A -> B -> C -> D）
-	// 2. 作为循环引用的第二道防线（循环引用检测优先触发）
-	// 建议值：2-3 层
-	// - 2 层：适合简单场景（如树形结构）
-	// - 3 层：适合复杂场景（多层嵌套）
+	// MaxSchemaDepth is the maximum $ref reference recursion depth, used to prevent infinite recursion caused by excessively deep nesting and circular references.
+	// Purpose:
+	// 1. Limit non-cyclic deeply nested references (such as A -> B -> C -> D)
+	// 2. As the second line of defense for circular references (circular reference detection is triggered first)
+	// Recommended value: 2-3 layers.
+	// - 2 layers: suitable for simple scenarios (such as tree structures)
+	// - 3 layers: suitable for complex scenarios (multi-layer nesting)
 	MaxSchemaDepth = 3
 )
 
-// ==================== 通用 Schema 引用解析器 ====================
-// NOTE: 统一 OpenAPI (#/components/schemas/) 和 MCP (#/$defs/) 的 $ref 解析逻辑
-// 两者的核心递归逻辑、循环检测、深度控制、剪枝策略完全一致，
-// 仅引用路径格式和查找位置不同，通过 RefResolver 函数参数化实现复用。
+// ==================== Universal Schema reference parser ====================.
+// NOTE: Unify the $ref parsing logic of OpenAPI (#/components/schemas/) and MCP (#/$defs/)
+// The core recursive logic, loop detection, depth control, and pruning strategies of the two are completely consistent.
+// Only the reference path format and search location are different, and reuse is achieved through RefResolver function parameterization.
 
-// RefResolver 引用解析器函数类型
-// 作用：根据 $ref 路径查找并返回被引用的 Schema 定义
-// OpenAPI: 从 apiSpec["components"]["schemas"] 查找
-// MCP: 从 inputSchema["$defs"] 查找
+// RefResolver reference resolver function type.
+// Purpose: Find and return the referenced Schema definition based on the $ref path.
+// OpenAPI: Find from apiSpec["components"]["schemas"]
+// MCP: Find from inputSchema["$defs"]
 type RefResolver func(refPath string) (map[string]any, error)
 
-// resolveSchemaWithResolver 通用 Schema 解析函数（支持 $ref 引用、循环检测和深度控制）
-// 参数：
-//   - ctx: 上下文
-//   - schema: 待解析的 Schema
-//   - refResolver: 引用解析器（根据 $ref 路径查找定义）
-//   - visitedRefs: 已访问的引用路径（用于循环检测）
-//   - currentDepth: 当前递归深度
+// resolveSchemaWithResolver general Schema parsing function (supports $ref reference, cycle detection and depth control)
+// Parameter:
+// - ctx: context
+// - schema: Schema to be parsed.
+// - refResolver: Reference resolver (find definition based on $ref path)
+// - visitedRefs: visited reference paths (for cycle detection)
+// - currentDepth: current recursion depth.
 //
-// 返回：解析后的 Schema（$ref 已内联）
+// Returns: the parsed Schema ($ref is inlined)
 func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 	ctx context.Context,
 	schema map[string]any,
@@ -57,15 +57,15 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 		return map[string]any{"type": "string"}, nil
 	}
 
-	// 复制 schema 以避免修改原 map
+	// Copy the schema to avoid modifying the original map.
 	resolved := make(map[string]any)
 	for k, v := range schema {
 		resolved[k] = v
 	}
 
-	// 1. 处理 $ref 引用
+	// 1. Handle $ref reference.
 	if refPath, ok := resolved["$ref"].(string); ok {
-		// 1.1 循环引用检测
+		// 1.1 Circular reference detection.
 		if visitedRefs[refPath] {
 			s.logger.WithContext(ctx).Debugf("[SchemaResolver] Circular reference detected for %s, pruning", refPath)
 			refSchema, err := refResolver(refPath)
@@ -75,7 +75,7 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 			return s.pruneSchema(refSchema), nil
 		}
 
-		// 1.2 深度限制检测
+		// 1.2 Depth limit detection.
 		if currentDepth >= MaxSchemaDepth {
 			s.logger.WithContext(ctx).Debugf("[SchemaResolver] Max depth reached for %s (depth: %d), pruning", refPath, currentDepth)
 			refSchema, err := refResolver(refPath)
@@ -85,11 +85,11 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 			return s.pruneSchema(refSchema), nil
 		}
 
-		// 1.3 标记为已访问
+		// 1.3 Mark as visited.
 		visitedRefs[refPath] = true
 		defer func() { delete(visitedRefs, refPath) }()
 
-		// 1.4 获取引用定义并递归解析（深度 +1）
+		// 1.4 Get the reference definition and parse it recursively (depth +1)
 		refSchema, err := refResolver(refPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve $ref %s: %w", refPath, err)
@@ -97,7 +97,7 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 		return s.resolveSchemaWithResolver(ctx, refSchema, refResolver, visitedRefs, currentDepth+1)
 	}
 
-	// 2. 处理 properties（递归解析每个属性，深度不变）
+	// 2. Process properties (recursively parse each property, the depth remains unchanged)
 	if props, ok := resolved["properties"].(map[string]any); ok {
 		newProps := make(map[string]any)
 		for propName, propDef := range props {
@@ -105,7 +105,7 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 				resolvedProp, err := s.resolveSchemaWithResolver(ctx, propMap, refResolver, visitedRefs, currentDepth)
 				if err != nil {
 					s.logger.WithContext(ctx).Warnf("[SchemaResolver] Failed to resolve property %s: %v", propName, err)
-					newProps[propName] = propDef // 降级：保留原值
+					newProps[propName] = propDef // Downgrade: keep original value.
 				} else {
 					newProps[propName] = resolvedProp
 				}
@@ -116,7 +116,7 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 		resolved["properties"] = newProps
 	}
 
-	// 3. 处理 array items（递归解析，深度不变）
+	// 3. Process array items (recursive analysis, unchanged depth)
 	if resolved["type"] == "array" {
 		if items, ok := resolved["items"].(map[string]any); ok {
 			resolvedItems, err := s.resolveSchemaWithResolver(ctx, items, refResolver, visitedRefs, currentDepth)
@@ -131,12 +131,12 @@ func (s *knActionRecallServiceImpl) resolveSchemaWithResolver(
 	return resolved, nil
 }
 
-// convertSchemaToFunctionCall 将 OpenAPI Schema 转换为 OpenAI Function Call Schema
-// 改进：保持分层结构（header/path/query/body），而不是扁平化
+// convertSchemaToFunctionCall Convert OpenAPI Schema to OpenAI Function Call Schema.
+// Improvement: Keep hierarchical structure (header/path/query/body) instead of flattening.
 //
-//nolint:unparam // 保持接口一致性，error 返回用于后续扩展
+//nolint:unparam // Keep the interface consistent; the error return is for future extension.
 func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Context, apiSpec map[string]any) (map[string]any, error) {
-	// 使用分层结构：header/path/query/body
+	// Use hierarchical structure: header/path/query/body.
 	properties := map[string]any{
 		"header": map[string]any{
 			"type":        "object",
@@ -160,7 +160,7 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 		},
 	}
 
-	// 各位置的必填参数
+	// Required parameters for each position.
 	requiredByLocation := map[string][]string{
 		"header": {},
 		"path":   {},
@@ -168,10 +168,10 @@ func (s *knActionRecallServiceImpl) convertSchemaToFunctionCall(ctx context.Cont
 		"body":   {},
 	}
 
-	// 用于循环引用检测的访问记录
+	// Visited records used for circular-reference detection.
 	visitedRefs := make(map[string]bool)
 
-	// 1. 处理 parameters (path/query/header)
+	// 1. Handle parameters (path/query/header).
 	if params, ok := apiSpec["parameters"].([]any); ok {
 		for _, paramItem := range params {
 			param, ok := paramItem.(map[string]any)
@@ -310,9 +310,9 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 		return map[string]any{"type": "string"}, nil
 	}
 
-	// 如果直接有 type 且没有 $ref，直接返回
+	// If there is type directly and there is no $ref, return directly.
 	if _, hasType := schemaMap["type"]; hasType && schemaMap["$ref"] == nil {
-		// 如果有 properties，需要递归处理（深度不变）
+		// If there are properties, it needs to be processed recursively (the depth remains unchanged)
 		if props, ok := schemaMap["properties"].(map[string]any); ok {
 			resolvedProps := make(map[string]any)
 			for propName, propDef := range props {
@@ -325,7 +325,7 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 			}
 			schemaMap["properties"] = resolvedProps
 		}
-		// 处理 array.items（深度不变）
+		// Handle array.items without changing depth.
 		if schemaMap["type"] == "array" {
 			if items, ok := schemaMap["items"].(map[string]any); ok {
 				resolvedItems, err := s.resolveSchema(ctx, items, apiSpec, visitedRefs, currentDepth)
@@ -339,13 +339,13 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 		return schemaMap, nil
 	}
 
-	// 处理 $ref 引用
+	// Handling $ref references.
 	if refPath, ok := schemaMap["$ref"].(string); ok {
-		// 检查循环引用（必须在深度检查之前，避免无限递归）
+		// Check for circular references (must be done before deep checking to avoid infinite recursion)
 		if visitedRefs[refPath] {
-			// 检测到循环引用，执行剪枝
+			// Circular reference detected, perform pruning.
 			s.logger.WithContext(ctx).Debugf("[KnActionRecall#resolveSchema] Circular reference detected for %s (depth: %d), pruning", refPath, currentDepth)
-			// 获取被引用的 schema 基本信息，然后剪枝
+			// Get basic information for the referenced schema, then prune it.
 			referencedSchema, err := s.getReferencedSchema(refPath, apiSpec)
 			if err != nil {
 				s.logger.WithContext(ctx).Warnf("[KnActionRecall#resolveSchema] Failed to get referenced schema for pruning: %v", err)
@@ -354,10 +354,10 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 			return s.pruneSchema(referencedSchema), nil
 		}
 
-		// 检查是否达到最大深度
+		// Check if maximum depth is reached.
 		if currentDepth >= MaxSchemaDepth {
 			s.logger.WithContext(ctx).Debugf("[KnActionRecall#resolveSchema] Max depth reached for %s (depth: %d), pruning", refPath, currentDepth)
-			// 获取被引用的 schema 基本信息，然后剪枝
+			// Get basic information for the referenced schema, then prune it.
 			referencedSchema, err := s.getReferencedSchema(refPath, apiSpec)
 			if err != nil {
 				s.logger.WithContext(ctx).Warnf("[KnActionRecall#resolveSchema] Failed to get referenced schema for pruning: %v", err)
@@ -366,17 +366,17 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 			return s.pruneSchema(referencedSchema), nil
 		}
 
-		// 标记为已访问
+		// Mark as visited.
 		wasVisited := visitedRefs[refPath]
 		visitedRefs[refPath] = true
 		defer func() {
-			// 递归返回时，如果这是第一次访问，清理标记
+			// When returning recursively, if this is the first visit, clean up the mark.
 			if !wasVisited {
 				delete(visitedRefs, refPath)
 			}
 		}()
 
-		// 解析 $ref 路径（深度 +1）
+		// Parse $ref paths (depth +1)
 		resolvedSchema, err := s.resolveDollarRef(ctx, refPath, apiSpec, visitedRefs, currentDepth+1)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve $ref %s: %w", refPath, err)
@@ -385,7 +385,7 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 		return resolvedSchema, nil
 	}
 
-	// 如果有 properties，递归处理（深度不变，同一层级）
+	// If there are properties, recursive processing (the depth remains unchanged, at the same level)
 	if props, ok := schemaMap["properties"].(map[string]any); ok {
 		resolvedProps := make(map[string]any)
 		for propName, propDef := range props {
@@ -399,7 +399,7 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 		schemaMap["properties"] = resolvedProps
 	}
 
-	// 处理 array.items（深度不变）
+	// Handle array.items without changing depth.
 	if schemaMap["type"] == "array" {
 		if items, ok := schemaMap["items"].(map[string]any); ok {
 			resolvedItems, err := s.resolveSchema(ctx, items, apiSpec, visitedRefs, currentDepth)
@@ -414,9 +414,9 @@ func (s *knActionRecallServiceImpl) resolveSchema(
 	return schemaMap, nil
 }
 
-// getReferencedSchema 获取被引用的 schema 定义（不解析，只获取基本信息）
+// getReferencedSchema gets the referenced schema definition (does not parse, only gets basic information)
 func (s *knActionRecallServiceImpl) getReferencedSchema(refPath string, apiSpec map[string]any) (map[string]any, error) {
-	// 解析 $ref 路径格式：#/components/schemas/SchemaName
+	// Parse $ref path format: #/components/schemas/SchemaName.
 	if !strings.HasPrefix(refPath, "#/components/schemas/") {
 		return nil, fmt.Errorf("unsupported $ref path format: %s (only #/components/schemas/* is supported)", refPath)
 	}
@@ -426,7 +426,7 @@ func (s *knActionRecallServiceImpl) getReferencedSchema(refPath string, apiSpec 
 		return nil, fmt.Errorf("empty schema name in $ref: %s", refPath)
 	}
 
-	// 从 components.schemas 中查找
+	// Find from components.schemas.
 	components, ok := apiSpec["components"].(map[string]any)
 	if !ok {
 		return nil, fmt.Errorf("components not found in api_spec")
@@ -445,38 +445,38 @@ func (s *knActionRecallServiceImpl) getReferencedSchema(refPath string, apiSpec 
 	return schema, nil
 }
 
-// pruneSchema 剪枝函数：当达到最大深度时，保留类型和原始描述，移除 properties
-// 核心策略：不添加循环引用说明，节省 token
+// pruneSchema pruning function: when reaching the maximum depth, retain the type and original description, and remove properties.
+// Core strategy: Do not add circular reference instructions to save tokens.
 func (s *knActionRecallServiceImpl) pruneSchema(schema map[string]any) map[string]any {
 	result := make(map[string]any)
 
-	// 保留类型信息
+	// Preserve type information.
 	if schemaType, ok := schema["type"].(string); ok && schemaType != "" {
 		result["type"] = schemaType
 	} else {
-		result["type"] = "object" // 默认类型
+		result["type"] = "object" // Default type.
 	}
 
-	// 保留原始 description（如果存在，不修改，不添加循环引用说明）
+	// Keep the original description (if it exists, do not modify it, do not add a circular reference description)
 	if desc, ok := schema["description"].(string); ok && desc != "" {
 		result["description"] = desc
 	}
 
-	// 如果是 array，保留 items 结构但不展开 properties
+	// If it is an array, retain the items structure but do not expand properties.
 	if result["type"] == "array" {
 		if items, ok := schema["items"].(map[string]any); ok {
-			// 递归剪枝 items
+			// Recursive pruning items.
 			result["items"] = s.pruneSchema(items)
 		}
 	}
 
-	// 不包含 properties（避免继续递归）
-	// 不添加循环引用说明（节省 token）
+	// Do not include properties (avoid continuing recursion)
+	// Do not add circular reference instructions (save tokens)
 
 	return result
 }
 
-// resolveDollarRef 解析 $ref 引用（完整实现，支持循环引用检测和深度控制）
+// resolveDollarRef resolves the $ref reference (complete implementation, supports circular reference detection and depth control)
 func (s *knActionRecallServiceImpl) resolveDollarRef(
 	ctx context.Context,
 	refPath string,
@@ -484,46 +484,46 @@ func (s *knActionRecallServiceImpl) resolveDollarRef(
 	visitedRefs map[string]bool,
 	currentDepth int,
 ) (map[string]any, error) {
-	// 获取被引用的 schema
+	// Get the referenced schema.
 	schema, err := s.getReferencedSchema(refPath, apiSpec)
 	if err != nil {
 		return nil, err
 	}
 
-	// 递归解析（可能包含嵌套的 $ref，传递深度信息）
+	// Recursive parsing (may contain nested $refs, passing depth information)
 	return s.resolveSchema(ctx, schema, apiSpec, visitedRefs, currentDepth)
 }
 
-// buildPropertyDefinition 构建属性定义
+// buildPropertyDefinition build property definition.
 func (s *knActionRecallServiceImpl) buildPropertyDefinition(schema map[string]any, description any) map[string]any {
 	propDef := make(map[string]any)
 
-	// 类型
+	// Type.
 	if propType, ok := schema["type"].(string); ok && propType != "" {
 		propDef["type"] = propType
 	} else {
-		propDef["type"] = "string" // 默认类型
+		propDef["type"] = "string" // Default type.
 	}
 
-	// 描述（优先使用参数级别的 description，其次使用 schema 中的 description）
+	// Description (preferably use parameter-level description, followed by description in schema)
 	if desc, ok := description.(string); ok && desc != "" {
 		propDef["description"] = desc
 	} else if desc, ok := schema["description"].(string); ok && desc != "" {
 		propDef["description"] = desc
 	}
 
-	// 枚举
+	// enumeration.
 	if enum, ok := schema["enum"].([]any); ok {
 		propDef["enum"] = enum
 	}
 
-	// 如果 schema 有 properties，保留嵌套结构
+	// If the schema has properties, retain the nested structure.
 	if props, ok := schema["properties"].(map[string]any); ok {
 		propDef["properties"] = props
 		propDef["type"] = "object"
 	}
 
-	// 如果 schema 是 array，保留 items 结构
+	// If schema is an array, retain the items structure.
 	if schema["type"] == "array" {
 		if items, ok := schema["items"].(map[string]any); ok {
 			propDef["items"] = items
@@ -533,7 +533,7 @@ func (s *knActionRecallServiceImpl) buildPropertyDefinition(schema map[string]an
 	return propDef
 }
 
-// mergeSchemaProperties 合并 schema 的 properties 到目标 properties
+// mergeSchemaProperties merges schema properties into target properties.
 func (s *knActionRecallServiceImpl) mergeSchemaProperties(
 	ctx context.Context,
 	targetProps, schema, apiSpec map[string]any,
@@ -552,7 +552,7 @@ func (s *knActionRecallServiceImpl) mergeSchemaProperties(
 	}
 }
 
-// mapFixedParams 映射固定参数到 header/path/query/body
+// mapFixedParams maps fixed parameters to header/path/query/body.
 func (s *knActionRecallServiceImpl) mapFixedParams(
 	_ context.Context,
 	parameters, apiSpec map[string]any,
@@ -564,7 +564,7 @@ func (s *knActionRecallServiceImpl) mapFixedParams(
 		Body:   make(map[string]any),
 	}
 
-	// 建立参数名到位置的映射表
+	// Create a mapping table from parameter names to positions.
 	paramLocationMap := make(map[string]string)
 	if params, ok := apiSpec["parameters"].([]any); ok {
 		for _, paramItem := range params {
@@ -578,7 +578,7 @@ func (s *knActionRecallServiceImpl) mapFixedParams(
 		}
 	}
 
-	// 根据映射表分类参数
+	// Classification parameters according to mapping table.
 	for key, value := range parameters {
 		location := paramLocationMap[key]
 		switch location {
@@ -591,11 +591,11 @@ func (s *knActionRecallServiceImpl) mapFixedParams(
 		case "body":
 			fixedParams.Body[key] = value
 		default:
-			// 未找到映射，使用命名规则判断
+			// No mapping found, use naming rules to determine.
 			if isHeaderParam(key) {
 				fixedParams.Header[key] = value
 			} else {
-				// 默认放入 body
+				// Default is placed in body.
 				fixedParams.Body[key] = value
 			}
 		}
@@ -604,9 +604,9 @@ func (s *knActionRecallServiceImpl) mapFixedParams(
 	return fixedParams
 }
 
-// isHeaderParam 判断是否为 header 参数（基于命名规则）
+// isHeaderParam determines whether it is a header parameter (based on naming rules)
 func isHeaderParam(key string) bool {
-	// 常见的 header 参数名称模式
+	// Common header parameter name patterns.
 	headerPatterns := []string{
 		"x-", "X-",
 		"authorization", "Authorization",
@@ -622,16 +622,16 @@ func isHeaderParam(key string) bool {
 	return false
 }
 
-// convertMCPSchemaToFunctionCall 将 MCP JSON Schema 转换为 OpenAI Function Call Schema
-// NOTE: 使用通用的 resolveSchemaWithResolver 函数，通过 RefResolver 参数化 $defs 查找逻辑
+// convertMCPSchemaToFunctionCall Converts MCP JSON Schema to OpenAI Function Call Schema.
+// NOTE: Use the generic resolveSchemaWithResolver function to parameterize $defs search logic via RefResolver.
 func (s *knActionRecallServiceImpl) convertMCPSchemaToFunctionCall(ctx context.Context, inputSchema map[string]any) (map[string]any, error) {
-	// OpenAI function call schema 期望根节点有 type=object 和 properties
-	// MCP schema 通常已经是 JSON Schema，但可能包含 $defs
-	// 我们需要解析 $defs，并确保根结构符合 OpenAI 要求
+	// OpenAI function call schema expects the root node to have type=object and properties.
+	// The MCP schema is usually already a JSON Schema, but may contain $defs.
+	// We need to parse the $defs and make sure the root structure meets OpenAI requirements.
 
 	visitedRefs := make(map[string]bool)
 
-	// 提取 rootDefs ($defs)
+	// Extract rootDefs ($defs)
 	rootDefs := make(map[string]any)
 	if defs, ok := inputSchema["$defs"].(map[string]any); ok {
 		rootDefs = defs
@@ -677,23 +677,23 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToFunctionCall(ctx context.C
 	return resolvedSchema, nil
 }
 
-// ==================== Action Driver Schema 转换方法 ====================
+// ==================== Action Driver Schema conversion method ====================.
 
-// convertToolSchemaToActionDriver 将 Tool OpenAPI Schema 去壳转换为行动驱动 dynamic_params
-// 去除 header/path/query/body 外壳，将所有参数合并为扁平的 dynamic_params.properties
-// 若同名字段来自不同 location，返回错误
+// convertToolSchemaToActionDriver Convert Tool OpenAPI Schema to action driver dynamic_params.
+// Remove the header/path/query/body wrappers and merge all parameters into flat dynamic_params.properties.
+// If fields with the same name come from different locations, an error will be returned.
 func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.Context, apiSpec map[string]any) (map[string]any, error) {
-	// 合并后的 dynamic_params properties 和 required
+	// Merged dynamic_params properties and required.
 	dynamicProperties := make(map[string]any)
 	dynamicRequired := []string{}
 
-	// 记录参数名到 location 的映射，用于冲突检测
+	// Record the mapping of parameter names to locations for conflict detection.
 	paramLocationMap := make(map[string]string)
 
-	// 用于循环引用检测的访问记录
+	// Visited records used for circular-reference detection.
 	visitedRefs := make(map[string]bool)
 
-	// 1. 处理 parameters (path/query/header)
+	// 1. Handle parameters (path/query/header).
 	if params, ok := apiSpec["parameters"].([]any); ok {
 		for _, paramItem := range params {
 			param, ok := paramItem.(map[string]any)
@@ -711,7 +711,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 				continue
 			}
 
-			// 冲突检测：同名字段来自不同 location
+			// Conflict detection: fields with the same name come from different locations.
 			if existingLocation, exists := paramLocationMap[paramName]; exists {
 				if existingLocation != paramLocation {
 					errMsg := fmt.Sprintf("parameter %q is duplicated across locations (existing: %s, current: %s); cannot build action driver tool",
@@ -722,25 +722,25 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 			}
 			paramLocationMap[paramName] = paramLocation
 
-			// 解析参数 schema
+			// Parseparameter schema.
 			paramSchema, err := s.resolveSchema(ctx, param["schema"], apiSpec, visitedRefs, 0)
 			if err != nil {
 				s.logger.WithContext(ctx).Warnf("[KnActionRecall#convertToolSchemaToActionDriver] Failed to resolve param schema for %s: %v", paramName, err)
 				continue
 			}
 
-			// 构建参数定义，直接放入 dynamic_params.properties
+			// Build parameter definitions and put them directly into dynamic_params.properties.
 			propDef := s.buildPropertyDefinition(paramSchema, param["description"])
 			dynamicProperties[paramName] = propDef
 
-			// 收集必填参数
+			// Collect required parameters.
 			if isRequired, ok := param["required"].(bool); ok && isRequired {
 				dynamicRequired = append(dynamicRequired, paramName)
 			}
 		}
 	}
 
-	// 2. 处理 request_body (body 参数) — 去掉 body 外壳，展开到 dynamic_params
+	// 2. Process request_body (body parameter) — remove the body shell and expand to dynamic_params.
 	if requestBody, ok := apiSpec["request_body"].(map[string]any); ok {
 		if content, ok := requestBody["content"].(map[string]any); ok {
 			if appJSON, ok := content["application/json"].(map[string]any); ok {
@@ -749,10 +749,10 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 					if err != nil {
 						s.logger.WithContext(ctx).Warnf("[KnActionRecall#convertToolSchemaToActionDriver] Failed to resolve body schema: %v", err)
 					} else {
-						// 展开 body schema 的 properties 到 dynamic_params
+						// Expand the properties of body schema to dynamic_params.
 						if bodyProps, ok := bodySchema["properties"].(map[string]any); ok {
 							for propName, propDef := range bodyProps {
-								// 冲突检测
+								// conflict detection.
 								if existingLocation, exists := paramLocationMap[propName]; exists {
 									errMsg := fmt.Sprintf("parameter %q is duplicated across locations (existing: %s, current: body); cannot build action driver tool",
 										propName, existingLocation)
@@ -770,7 +770,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 							}
 						}
 
-						// 合并 body required — 仅添加实际存在于 dynamicProperties 中的 key
+						// Merge body required — only add keys that actually exist in dynamicProperties.
 						if bodyRequired, ok := bodySchema["required"].([]any); ok {
 							for _, req := range bodyRequired {
 								if reqStr, ok := req.(string); ok {
@@ -786,7 +786,7 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 		}
 	}
 
-	// 3. 构造 dynamic_params schema
+	// 3. construct dynamic_params schema.
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
 		"description": infraerrors.LocalizedDetail(ctx, "ActionDynamicParams"),
@@ -796,22 +796,22 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 		dynamicParamsSchema["required"] = dynamicRequired
 	}
 
-	// 4. 包装顶层行动驱动结构
+	// 4. Packaging top-level action-driven structure.
 	return s.wrapActionDriverParameters(ctx, dynamicParamsSchema), nil
 }
 
-// convertMCPSchemaToActionDriver 将 MCP Schema 转换为行动驱动请求结构
-// 将解析后的 MCP input_schema 直接作为 dynamic_params 的 schema
+// convertMCPSchemaToActionDriver Converts MCP Schema to action-driven request structure.
+// Use the parsed MCP input_schema directly as the schema of dynamic_params.
 func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.Context, inputSchema map[string]any) (map[string]any, error) {
 	visitedRefs := make(map[string]bool)
 
-	// 提取 $defs
+	// Extract $defs.
 	rootDefs := make(map[string]any)
 	if defs, ok := inputSchema["$defs"].(map[string]any); ok {
 		rootDefs = defs
 	}
 
-	// 构建 MCP 专用的引用解析器
+	// Building an MCP-specific reference resolver.
 	mcpRefResolver := func(refPath string) (map[string]any, error) {
 		prefix := "#/$defs/"
 		if !strings.HasPrefix(refPath, prefix) {
@@ -824,21 +824,21 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.C
 		return nil, fmt.Errorf("MCP schema definition not found: %s", name)
 	}
 
-	// 使用通用解析器解析 schema
+	// Parse the schema using a universal parser.
 	resolvedSchema, err := s.resolveSchemaWithResolver(ctx, inputSchema, mcpRefResolver, visitedRefs, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	// 确保有 type=object
+	// Make sure you have type=object.
 	if _, ok := resolvedSchema["type"]; !ok {
 		resolvedSchema["type"] = "object"
 	}
 
-	// 移除 $defs
+	// Remove $defs.
 	delete(resolvedSchema, "$defs")
 
-	// 构造 dynamic_params schema：使用解析后的 MCP schema 作为 dynamic_params
+	// Construct dynamic_params schema: use the parsed MCP schema as dynamic_params.
 	dynamicParamsSchema := map[string]any{
 		"type":        "object",
 		"description": infraerrors.LocalizedDetail(ctx, "ActionDynamicParams"),
@@ -852,12 +852,12 @@ func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.C
 		dynamicParamsSchema["required"] = required
 	}
 
-	// 包装顶层行动驱动结构
+	// Packaging top-level action-driven structure.
 	return s.wrapActionDriverParameters(ctx, dynamicParamsSchema), nil
 }
 
-// wrapActionDriverParameters 统一包装顶层行动驱动请求参数结构
-// 最外层固定为 dynamic_params + _instance_identities
+// wrapActionDriverParameters uniformly wraps the top-level action driver request parameter structure.
+// The outermost layer is fixed to dynamic_params + _instance_identities.
 func (s *knActionRecallServiceImpl) wrapActionDriverParameters(ctx context.Context, dynamicParamsSchema map[string]any) map[string]any {
 	return map[string]any{
 		"type": "object",

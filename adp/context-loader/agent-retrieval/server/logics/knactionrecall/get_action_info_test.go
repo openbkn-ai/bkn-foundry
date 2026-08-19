@@ -19,7 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// TestGetActionInfo_QueryActionsError 测试 QueryActions 调用失败的场景
+// TestGetActionInfo_QueryActionsError Test QueryActions call failure scenario.
 func TestGetActionInfo_QueryActionsError(t *testing.T) {
 	convey.Convey("TestGetActionInfo_QueryActionsError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -46,7 +46,7 @@ func TestGetActionInfo_QueryActionsError(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回错误
+		// Mock QueryActions returnerror.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(nil, errors.New("query actions failed"))
 
@@ -55,7 +55,7 @@ func TestGetActionInfo_QueryActionsError(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_ActionSourceNil 测试 ActionSource 为 nil 的场景
+// TestGetActionInfo_ActionSourceNil tests the scenario where ActionSource is nil.
 func TestGetActionInfo_ActionSourceNil(t *testing.T) {
 	convey.Convey("TestGetActionInfo_ActionSourceNil", t, func() {
 		ctrl := gomock.NewController(t)
@@ -82,7 +82,7 @@ func TestGetActionInfo_ActionSourceNil(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回 ActionSource 为 nil
+		// Mock QueryActions returns ActionSource as nil.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ActionSource: nil,
@@ -96,7 +96,7 @@ func TestGetActionInfo_ActionSourceNil(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_ActionsEmpty 测试 Actions 为空的场景
+// TestGetActionInfo_ActionsEmpty tests the scenario where Actions is empty.
 func TestGetActionInfo_ActionsEmpty(t *testing.T) {
 	convey.Convey("TestGetActionInfo_ActionsEmpty", t, func() {
 		ctrl := gomock.NewController(t)
@@ -123,7 +123,7 @@ func TestGetActionInfo_ActionsEmpty(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回空 Actions
+		// Mock QueryActions returns empty Actions.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ActionSource: &interfaces.ActionSource{Type: interfaces.ActionSourceTypeTool},
@@ -137,7 +137,7 @@ func TestGetActionInfo_ActionsEmpty(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_UnsupportedType 测试不支持的 action_source 类型
+// TestGetActionInfo_UnsupportedType Tests an unsupported action_source type.
 func TestGetActionInfo_UnsupportedType(t *testing.T) {
 	convey.Convey("TestGetActionInfo_UnsupportedType", t, func() {
 		ctrl := gomock.NewController(t)
@@ -164,7 +164,7 @@ func TestGetActionInfo_UnsupportedType(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回不支持的类型
+		// Mock QueryActions returns unsupported type.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ActionSource: &interfaces.ActionSource{Type: "unsupported_type"},
@@ -178,7 +178,7 @@ func TestGetActionInfo_UnsupportedType(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_ToolType_Success 测试 Tool 类型成功路径
+// TestGetActionInfo_ToolType_Success Test Tool type success path.
 func TestGetActionInfo_ToolType_Success(t *testing.T) {
 	convey.Convey("TestGetActionInfo_ToolType_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -212,7 +212,7 @@ func TestGetActionInfo_ToolType_Success(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回 Tool 类型
+		// Mock QueryActions returning the Tool type.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ActionSource: &interfaces.ActionSource{
@@ -266,24 +266,24 @@ func TestGetActionInfo_ToolType_Success(t *testing.T) {
 		convey.So(tool.APICallStrategy, convey.ShouldEqual, interfaces.ResultProcessStrategyKnActionRecall)
 		convey.So(tool.OriginalSchema, convey.ShouldBeNil)
 
-		// 验证 api_url 指向行动驱动执行接口
+		// Validate that api_url points to the action-driver execution API.
 		convey.So(tool.APIURL, convey.ShouldEqual,
 			"http://ontology-query:13018/api/ontology-query/in/v1/knowledge-networks/kn-001/action-types/at-001/execute")
 
-		// 验证 parameters 顶层为 dynamic_params + _instance_identities
+		// Validate that top-level parameters are dynamic_params plus _instance_identities.
 		params := tool.Parameters
 		convey.So(params["type"], convey.ShouldEqual, "object")
 		props := params["properties"].(map[string]interface{})
 		convey.So(props["dynamic_params"], convey.ShouldNotBeNil)
 		convey.So(props["_instance_identities"], convey.ShouldNotBeNil)
 
-		// 验证 dynamic_params 中包含去壳后的参数
+		// Verify that dynamic_params contains unpacked parameters.
 		dynamicParams := props["dynamic_params"].(map[string]interface{})
 		dynamicProps := dynamicParams["properties"].(map[string]interface{})
 		convey.So(dynamicProps["pod_name"], convey.ShouldNotBeNil)
 		convey.So(dynamicProps["namespace"], convey.ShouldNotBeNil)
 
-		// 验证 fixed_params 为 ActionDriverFixedParams 结构
+		// Validate that fixed_params has the ActionDriverFixedParams structure.
 		fixedParams, ok := tool.FixedParams.(interfaces.ActionDriverFixedParams)
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(fixedParams.DynamicParams["param1"], convey.ShouldEqual, "value1")
@@ -292,7 +292,7 @@ func TestGetActionInfo_ToolType_Success(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_WithoutInstanceIdentity_Success 测试 _instance_identity 非必传时的成功路径
+// TestGetActionInfo_WithoutInstanceIdentity_Success Test the success path when _instance_identity is not required.
 func TestGetActionInfo_WithoutInstanceIdentity_Success(t *testing.T) {
 	convey.Convey("TestGetActionInfo_WithoutInstanceIdentity_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -371,7 +371,7 @@ func TestGetActionInfo_WithoutInstanceIdentity_Success(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_MCPType_Success 测试 MCP 类型成功路径
+// TestGetActionInfo_MCPType_Success Test MCP type success path.
 func TestGetActionInfo_MCPType_Success(t *testing.T) {
 	convey.Convey("TestGetActionInfo_MCPType_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -405,7 +405,7 @@ func TestGetActionInfo_MCPType_Success(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回 MCP 类型
+		// Mock QueryActions returning the MCP type.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ActionSource: &interfaces.ActionSource{
@@ -442,23 +442,23 @@ func TestGetActionInfo_MCPType_Success(t *testing.T) {
 		convey.So(tool.APICallStrategy, convey.ShouldEqual, interfaces.ResultProcessStrategyKnActionRecall)
 		convey.So(tool.OriginalSchema, convey.ShouldBeNil)
 
-		// 验证 api_url 指向行动驱动执行接口
+		// Validate that api_url points to the action-driver execution API.
 		convey.So(tool.APIURL, convey.ShouldEqual,
 			"http://ontology-query:13018/api/ontology-query/in/v1/knowledge-networks/kn-001/action-types/at-001/execute")
 
-		// 验证 parameters 顶层为 dynamic_params + _instance_identities
+		// Validate that top-level parameters are dynamic_params plus _instance_identities.
 		params := tool.Parameters
 		convey.So(params["type"], convey.ShouldEqual, "object")
 		props := params["properties"].(map[string]interface{})
 		convey.So(props["dynamic_params"], convey.ShouldNotBeNil)
 		convey.So(props["_instance_identities"], convey.ShouldNotBeNil)
 
-		// 验证 dynamic_params 中包含 MCP schema 参数
+		// Verify that dynamic_params contains MCP schema parameters.
 		dynamicParams := props["dynamic_params"].(map[string]interface{})
 		dynamicProps := dynamicParams["properties"].(map[string]interface{})
 		convey.So(dynamicProps["disease_id"], convey.ShouldNotBeNil)
 
-		// 验证 fixed_params 为 ActionDriverFixedParams 结构
+		// Validate that fixed_params has the ActionDriverFixedParams structure.
 		fixedParams, ok := tool.FixedParams.(interfaces.ActionDriverFixedParams)
 		convey.So(ok, convey.ShouldBeTrue)
 		convey.So(fixedParams.DynamicParams["param1"], convey.ShouldEqual, "value1")
@@ -467,7 +467,7 @@ func TestGetActionInfo_MCPType_Success(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_GetToolDetailError 测试 GetToolDetail 调用失败
+// TestGetActionInfo_GetToolDetailError Test GetToolDetail call failed.
 func TestGetActionInfo_GetToolDetailError(t *testing.T) {
 	convey.Convey("TestGetActionInfo_GetToolDetailError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -496,7 +496,7 @@ func TestGetActionInfo_GetToolDetailError(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回 Tool 类型
+		// Mock QueryActions returning the Tool type.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ActionSource: &interfaces.ActionSource{
@@ -509,7 +509,7 @@ func TestGetActionInfo_GetToolDetailError(t *testing.T) {
 				},
 			}, nil)
 
-		// Mock GetToolDetail 返回错误
+		// Mock GetToolDetail returnerror.
 		mockOperatorIntegration.EXPECT().GetToolDetail(gomock.Any(), gomock.Any()).
 			Return(nil, errors.New("get tool detail failed"))
 
@@ -518,7 +518,7 @@ func TestGetActionInfo_GetToolDetailError(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_GetMCPToolDetailError 测试 GetMCPToolDetail 调用失败
+// TestGetActionInfo_GetMCPToolDetailError Test GetMCPToolDetail call failed.
 func TestGetActionInfo_GetMCPToolDetailError(t *testing.T) {
 	convey.Convey("TestGetActionInfo_GetMCPToolDetailError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -547,7 +547,7 @@ func TestGetActionInfo_GetMCPToolDetailError(t *testing.T) {
 			InstanceIdentity: map[string]interface{}{"id": "obj-001"},
 		}
 
-		// Mock QueryActions 返回 MCP 类型
+		// Mock QueryActions returning the MCP type.
 		mockOntologyQuery.EXPECT().QueryActions(gomock.Any(), gomock.Any()).
 			Return(&interfaces.QueryActionsResponse{
 				ActionSource: &interfaces.ActionSource{
@@ -560,7 +560,7 @@ func TestGetActionInfo_GetMCPToolDetailError(t *testing.T) {
 				},
 			}, nil)
 
-		// Mock GetMCPToolDetail 返回错误
+		// Mock GetMCPToolDetail returnerror.
 		mockOperatorIntegration.EXPECT().GetMCPToolDetail(gomock.Any(), gomock.Any()).
 			Return(nil, errors.New("get mcp tool detail failed"))
 
@@ -569,8 +569,8 @@ func TestGetActionInfo_GetMCPToolDetailError(t *testing.T) {
 	})
 }
 
-// 保留原有测试
-// TestMCPAPIURLConstruction 测试 MCP 类型的 API URL 构造
+// Keep original tests.
+// TestMCPAPIURLConstruction Tests the API URL construction of the MCP type.
 func TestMCPAPIURLConstruction(t *testing.T) {
 	testCases := []struct {
 		name        string
@@ -594,7 +594,7 @@ func TestMCPAPIURLConstruction(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			// 使用与 get_action_info.go 相同的格式化逻辑
+			// Uses the same formatting logic as get_action_info.go.
 			apiURL := "/api/agent-retrieval/v1/mcp/proxy/" + tc.mcpID + "/tools/" + tc.toolName + "/call"
 			if apiURL != tc.expectedURL {
 				t.Errorf("API URL 构造错误\n期望: %s\n实际: %s", tc.expectedURL, apiURL)
@@ -603,19 +603,19 @@ func TestMCPAPIURLConstruction(t *testing.T) {
 	}
 }
 
-// TestMCPFixedParamsFlat 测试 MCP 类型的固定参数是扁平化结构
+// TestMCPFixedParamsFlat tests that the fixed parameters of the MCP type are flat structures.
 func TestMCPFixedParamsFlat(t *testing.T) {
-	// 模拟从 Ontology Query 返回的行动参数
+	// Simulate action parameters returned from Ontology Query.
 	actionParams := map[string]interface{}{
 		"disease_id":    "disease_000001",
 		"include_drugs": "true",
 		"lang":          "zh",
 	}
 
-	// MCP 类型直接使用扁平化的 map
+	// MCP types use flattened maps directly.
 	fixedParams := actionParams
 
-	// 验证是扁平结构（没有 header/path/query/body 分层）
+	// Validation is flat structure (no header/path/query/body hierarchy)
 	if _, hasHeader := fixedParams["header"]; hasHeader {
 		t.Error("MCP fixed_params 不应该有 header 字段")
 	}
@@ -629,13 +629,13 @@ func TestMCPFixedParamsFlat(t *testing.T) {
 		t.Error("MCP fixed_params 不应该有 body 字段")
 	}
 
-	// 验证原始字段存在
+	// Verify original field exists.
 	if fixedParams["disease_id"] != "disease_000001" {
 		t.Error("MCP fixed_params 应该包含原始的 disease_id 字段")
 	}
 }
 
-// TestActionSourceTypeMCP 测试 MCP 类型常量定义正确
+// TestActionSourceTypeMCP tests that MCP type constants are correctly defined.
 func TestActionSourceTypeMCP(t *testing.T) {
 	if interfaces.ActionSourceTypeMCP != "mcp" {
 		t.Errorf("ActionSourceTypeMCP 应该为 'mcp', 实际为 '%s'", interfaces.ActionSourceTypeMCP)
@@ -645,7 +645,7 @@ func TestActionSourceTypeMCP(t *testing.T) {
 	}
 }
 
-// TestActionSourceMCPFields 测试 ActionSource 结构体包含 MCP 相关字段
+// TestActionSourceMCPFields Test ActionSource structure contains MCP related fields.
 func TestActionSourceMCPFields(t *testing.T) {
 	actionSource := interfaces.ActionSource{
 		Type:     interfaces.ActionSourceTypeMCP,
@@ -664,9 +664,9 @@ func TestActionSourceMCPFields(t *testing.T) {
 	}
 }
 
-// ==================== _instance_identities 合并逻辑测试 ====================
+// ==================== _instance_identities merge logic test ====================.
 
-// TestGetActionInfo_InstanceIdentities_MultipleValid 测试传入多个有效 _instance_identities
+// TestGetActionInfo_InstanceIdentities_MultipleValid tests passing in multiple valid _instance_identities.
 func TestGetActionInfo_InstanceIdentities_MultipleValid(t *testing.T) {
 	convey.Convey("TestGetActionInfo_InstanceIdentities_MultipleValid", t, func() {
 		ctrl := gomock.NewController(t)
@@ -751,7 +751,7 @@ func TestGetActionInfo_InstanceIdentities_MultipleValid(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_InstanceIdentities_FilterEmptyMaps 测试 _instance_identities 中的空 map 被过滤
+// TestGetActionInfo_InstanceIdentities_FilterEmptyMaps tests that empty maps in _instance_identities are filtered.
 func TestGetActionInfo_InstanceIdentities_FilterEmptyMaps(t *testing.T) {
 	convey.Convey("TestGetActionInfo_InstanceIdentities_FilterEmptyMaps", t, func() {
 		ctrl := gomock.NewController(t)
@@ -834,7 +834,7 @@ func TestGetActionInfo_InstanceIdentities_FilterEmptyMaps(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_InstanceIdentities_PriorityOverIdentity 测试同时传两者时 _instance_identities 优先
+// TestGetActionInfo_InstanceIdentities_PriorityOverIdentity When testing to pass both at the same time, _instance_identities takes precedence.
 func TestGetActionInfo_InstanceIdentities_PriorityOverIdentity(t *testing.T) {
 	convey.Convey("TestGetActionInfo_InstanceIdentities_PriorityOverIdentity", t, func() {
 		ctrl := gomock.NewController(t)
@@ -918,7 +918,7 @@ func TestGetActionInfo_InstanceIdentities_PriorityOverIdentity(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_InstanceIdentities_AllEmpty 测试 _instance_identities 全部为空 map
+// TestGetActionInfo_InstanceIdentities_AllEmpty Test _instance_identities all empty map.
 func TestGetActionInfo_InstanceIdentities_AllEmpty(t *testing.T) {
 	convey.Convey("TestGetActionInfo_InstanceIdentities_AllEmpty", t, func() {
 		ctrl := gomock.NewController(t)
@@ -998,7 +998,7 @@ func TestGetActionInfo_InstanceIdentities_AllEmpty(t *testing.T) {
 	})
 }
 
-// TestGetActionInfo_InstanceIdentities_FallbackToIdentity 测试未传 _instance_identities 时回退到 _instance_identity
+// TestGetActionInfo_InstanceIdentities_FallbackToIdentity falls back to _instance_identity when the test does not pass _instance_identities.
 func TestGetActionInfo_InstanceIdentities_FallbackToIdentity(t *testing.T) {
 	convey.Convey("TestGetActionInfo_InstanceIdentities_FallbackToIdentity", t, func() {
 		ctrl := gomock.NewController(t)

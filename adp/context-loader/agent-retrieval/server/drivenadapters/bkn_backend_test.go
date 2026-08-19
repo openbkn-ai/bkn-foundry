@@ -20,7 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/mocks"
 )
 
-// TestSearchObjectTypes_Success 测试 SearchObjectTypes 成功场景
+// TestSearchObjectTypes_Success test SearchObjectTypes success scenario.
 func TestSearchObjectTypes_Success(t *testing.T) {
 	convey.Convey("TestSearchObjectTypes_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -42,7 +42,7 @@ func TestSearchObjectTypes_Success(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, []byte(`{"object_types": []}`), nil)
 
@@ -52,7 +52,7 @@ func TestSearchObjectTypes_Success(t *testing.T) {
 	})
 }
 
-// TestSearchObjectTypes_HTTPError 测试 SearchObjectTypes HTTP 错误
+// TestSearchObjectTypes_HTTPError test SearchObjectTypes HTTP error.
 func TestSearchObjectTypes_HTTPError(t *testing.T) {
 	convey.Convey("TestSearchObjectTypes_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -75,7 +75,7 @@ func TestSearchObjectTypes_HTTPError(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -84,7 +84,7 @@ func TestSearchObjectTypes_HTTPError(t *testing.T) {
 	})
 }
 
-// TestSearchObjectTypes_NotFound 测试 SearchObjectTypes 404 错误
+// TestSearchObjectTypes_NotFound test SearchObjectTypes 404 error.
 func TestSearchObjectTypes_NotFound(t *testing.T) {
 	convey.Convey("TestSearchObjectTypes_NotFound", t, func() {
 		ctrl := gomock.NewController(t)
@@ -107,7 +107,7 @@ func TestSearchObjectTypes_NotFound(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock 404 响应
+		// Mock 404 response.
 		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(404, nil, nil)
 
@@ -116,7 +116,7 @@ func TestSearchObjectTypes_NotFound(t *testing.T) {
 	})
 }
 
-// TestGetObjectTypeDetail_Success 测试 GetObjectTypeDetail 成功场景
+// TestGetObjectTypeDetail_Success test GetObjectTypeDetail success scenario.
 func TestGetObjectTypeDetail_Success(t *testing.T) {
 	convey.Convey("TestGetObjectTypeDetail_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -135,7 +135,7 @@ func TestGetObjectTypeDetail_Success(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, []byte(`{"entries": [{"id": "ot-001", "name": "测试对象类"}]}`), nil)
 
@@ -146,7 +146,7 @@ func TestGetObjectTypeDetail_Success(t *testing.T) {
 	})
 }
 
-// TestGetObjectTypeDetail_HTTPError 测试 GetObjectTypeDetail HTTP 错误
+// TestGetObjectTypeDetail_HTTPError test GetObjectTypeDetail HTTP error.
 func TestGetObjectTypeDetail_HTTPError(t *testing.T) {
 	convey.Convey("TestGetObjectTypeDetail_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -166,7 +166,7 @@ func TestGetObjectTypeDetail_HTTPError(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -175,7 +175,7 @@ func TestGetObjectTypeDetail_HTTPError(t *testing.T) {
 	})
 }
 
-// TestSearchRelationTypes_Success 测试 SearchRelationTypes 成功场景
+// TestSearchRelationTypes_Success test SearchRelationTypes success scenario.
 func TestSearchRelationTypes_Success(t *testing.T) {
 	convey.Convey("TestSearchRelationTypes_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -197,7 +197,7 @@ func TestSearchRelationTypes_Success(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, []byte(`{"relation_types": []}`), nil)
 
@@ -207,7 +207,7 @@ func TestSearchRelationTypes_Success(t *testing.T) {
 	})
 }
 
-// TestSearchRelationTypes_HTTPError 测试 SearchRelationTypes HTTP 错误
+// TestSearchRelationTypes_HTTPError test SearchRelationTypes HTTP error.
 func TestSearchRelationTypes_HTTPError(t *testing.T) {
 	convey.Convey("TestSearchRelationTypes_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -230,7 +230,7 @@ func TestSearchRelationTypes_HTTPError(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -239,7 +239,7 @@ func TestSearchRelationTypes_HTTPError(t *testing.T) {
 	})
 }
 
-// TestSearchActionTypes_Success 测试 SearchActionTypes 成功场景
+// TestSearchActionTypes_Success test SearchActionTypes success scenario.
 func TestSearchActionTypes_Success(t *testing.T) {
 	convey.Convey("TestSearchActionTypes_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -261,7 +261,7 @@ func TestSearchActionTypes_Success(t *testing.T) {
 			KnID: "kn-001",
 		}
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, []byte(`{"action_types": []}`), nil)
 
@@ -271,7 +271,7 @@ func TestSearchActionTypes_Success(t *testing.T) {
 	})
 }
 
-// TestGetActionTypeDetail_Success 测试 GetActionTypeDetail 成功场景
+// TestGetActionTypeDetail_Success test GetActionTypeDetail success scenario.
 func TestGetActionTypeDetail_Success(t *testing.T) {
 	convey.Convey("TestGetActionTypeDetail_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -290,7 +290,7 @@ func TestGetActionTypeDetail_Success(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Mock HTTP 成功响应
+		// Mock a successful HTTP response.
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(200, []byte(`[{"id": "at-001", "name": "测试行动类"}]`), nil)
 
@@ -301,7 +301,7 @@ func TestGetActionTypeDetail_Success(t *testing.T) {
 	})
 }
 
-// TestGetActionTypeDetail_HTTPError 测试 GetActionTypeDetail HTTP 错误
+// TestGetActionTypeDetail_HTTPError test GetActionTypeDetail HTTP error.
 func TestGetActionTypeDetail_HTTPError(t *testing.T) {
 	convey.Convey("TestGetActionTypeDetail_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -321,7 +321,7 @@ func TestGetActionTypeDetail_HTTPError(t *testing.T) {
 
 		ctx := context.Background()
 
-		// Mock HTTP 错误
+		// Mock an HTTP error.
 		mockHTTPClient.EXPECT().GetNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
@@ -330,7 +330,7 @@ func TestGetActionTypeDetail_HTTPError(t *testing.T) {
 	})
 }
 
-// TestSearchMetricTypes_Success 测试 SearchMetricTypes 成功场景
+// TestSearchMetricTypes_Success test SearchMetricTypes success scenario.
 func TestSearchMetricTypes_Success(t *testing.T) {
 	convey.Convey("TestSearchMetricTypes_Success", t, func() {
 		ctrl := gomock.NewController(t)
@@ -393,7 +393,7 @@ func TestSearchMetricTypes_Success(t *testing.T) {
 	})
 }
 
-// TestSearchMetricTypes_HTTPError 测试 SearchMetricTypes HTTP 错误
+// TestSearchMetricTypes_HTTPError test SearchMetricTypes HTTP error.
 func TestSearchMetricTypes_HTTPError(t *testing.T) {
 	convey.Convey("TestSearchMetricTypes_HTTPError", t, func() {
 		ctrl := gomock.NewController(t)
@@ -424,7 +424,7 @@ func TestSearchMetricTypes_HTTPError(t *testing.T) {
 	})
 }
 
-// TestSearchMetricTypes_NotFound 测试 SearchMetricTypes 404 错误
+// TestSearchMetricTypes_NotFound test SearchMetricTypes 404 error.
 func TestSearchMetricTypes_NotFound(t *testing.T) {
 	convey.Convey("TestSearchMetricTypes_NotFound", t, func() {
 		ctrl := gomock.NewController(t)

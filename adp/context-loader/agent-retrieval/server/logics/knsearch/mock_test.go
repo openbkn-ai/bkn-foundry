@@ -8,8 +8,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// mockLogger 模拟 Logger 接口。实例召回会并发发出多路查询，两路都会写日志，
-// 所以 logs 必须上锁——否则 -race 下必炸。
+// mockLogger simulates the Logger interface. Instance recall will issue multiple queries concurrently, and both channels will write logs.
+// So logs must be locked - otherwise it will explode under -race.
 type mockLogger struct {
 	mu   sync.Mutex
 	logs []string
@@ -21,7 +21,7 @@ func (m *mockLogger) append(line string) {
 	m.logs = append(m.logs, line)
 }
 
-// entries 返回日志快照，供断言使用。
+// entries returns a log snapshot for use by assertions.
 func (m *mockLogger) entries() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -64,7 +64,7 @@ func (m *mockLogger) Errorf(format string, args ...interface{}) {
 	m.append(fmt.Sprintf("[ERROR] "+format, args...))
 }
 
-// mockBknBackend 模拟 BknBackendAccess 接口
+// mockBknBackend simulates the BknBackendAccess interface.
 type mockBknBackend struct {
 	networkDetail      *interfaces.KnowledgeNetworkDetail
 	networkError       error
@@ -104,7 +104,7 @@ func (m *mockBknBackend) SearchRelationTypes(ctx context.Context, req *interface
 	return m.relationTypesResp, m.relationTypesError
 }
 
-// 下面是接口中其他方法的空实现，满足接口定义
+// The following is an empty implementation of other methods in the interface, which satisfies the interface definition.
 func (m *mockBknBackend) GetObjectTypeDetail(ctx context.Context, knID string, otIds []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
 	m.objectDetailCalls++
 	m.objectDetailKnID = knID
@@ -133,10 +133,10 @@ func (m *mockBknBackend) GetActionTypeDetail(ctx context.Context, knID string, a
 	return nil, nil
 }
 
-// mockOntologyQuery 模拟 DrivenOntologyQuery 接口。
+// mockOntologyQuery simulates the DrivenOntologyQuery interface.
 //
-// instancesFunc 让用例按请求条件分路应答——实例召回把 knn 与 match 拆成两条查询，
-// 各自的返回不同才测得出融合行为。设了它就走它，否则退回单一的 instancesResp。
+// instancesFunc allows use cases to branch responses based on request conditions - instance recall splits knn and match into two queries.
+// The fusion behavior can be measured only when the respective returns are different. Set it and leave it, otherwise return a single instancesResp.
 type mockOntologyQuery struct {
 	mu             sync.Mutex
 	instancesResp  *interfaces.QueryObjectInstancesResp
@@ -160,7 +160,7 @@ func (m *mockOntologyQuery) QueryObjectInstances(ctx context.Context, req *inter
 	return resp, err
 }
 
-// calls 返回调用次数快照。
+// calls returns a snapshot of the number of calls.
 func (m *mockOntologyQuery) calls() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -200,7 +200,7 @@ func (m *mockOntologyQuery) ExploreSubgraph(ctx context.Context, req *interfaces
 	return nil, nil
 }
 
-// mockRerankClient 模拟 DrivenMFModelAPIClient 接口
+// mockRerankClient simulates the DrivenMFModelAPIClient interface.
 type mockRerankClient struct {
 	mu          sync.Mutex
 	rerankResp  *interfaces.RerankResp
@@ -244,7 +244,7 @@ func (m *mockRerankClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 	return "", nil
 }
 
-// createMockNetworkDetail 创建测试用的知识网络详情
+// createMockNetworkDetail creates knowledge network details for testing.
 func createMockNetworkDetail(objectCount, relationCount, actionCount int) *interfaces.KnowledgeNetworkDetail {
 	detail := &interfaces.KnowledgeNetworkDetail{
 		ID:            "129",
@@ -253,7 +253,7 @@ func createMockNetworkDetail(objectCount, relationCount, actionCount int) *inter
 		ActionTypes:   make([]*interfaces.ActionType, actionCount),
 	}
 
-	// 生成对象类型（至少一个属性支持语义检索，供语义实例召回测试使用）
+	// Generate object type (at least one attribute supports semantic retrieval for use in semantic instance recall testing)
 	for i := 0; i < objectCount; i++ {
 		detail.ObjectTypes[i] = &interfaces.ObjectType{
 			ID:      fmt.Sprintf("obj_%d", i),
@@ -271,7 +271,7 @@ func createMockNetworkDetail(objectCount, relationCount, actionCount int) *inter
 		}
 	}
 
-	// 生成关系类型
+	// Generate relationship type.
 	for i := 0; i < relationCount; i++ {
 		detail.RelationTypes[i] = &interfaces.RelationType{
 			ID:                 fmt.Sprintf("rel_%d", i),
@@ -282,7 +282,7 @@ func createMockNetworkDetail(objectCount, relationCount, actionCount int) *inter
 		}
 	}
 
-	// 生成操作类型
+	// Generate operation type.
 	for i := 0; i < actionCount; i++ {
 		detail.ActionTypes[i] = &interfaces.ActionType{
 			ID:           fmt.Sprintf("action_%d", i),
@@ -295,7 +295,7 @@ func createMockNetworkDetail(objectCount, relationCount, actionCount int) *inter
 	return detail
 }
 
-// createMockInstanceData 创建测试用的实例数据（预留供扩展测试使用）
+// createMockInstanceData creates instance data for testing (reserved for extended testing)
 //
 //nolint:unused
 func createMockInstanceData(count int) []interface{} {

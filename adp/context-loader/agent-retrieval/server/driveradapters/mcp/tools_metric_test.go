@@ -32,8 +32,8 @@ func (s *stubMetricBknBackend) ListMetricsByObjectTypes(_ context.Context, _ str
 	return s.metrics, nil
 }
 
-// GetObjectTypeDetail 按 id 返回详情，模拟 BKN 的富化端点：get_object_types 改走它
-// 之后，桩不实现就会空指针。
+// GetObjectTypeDetail returns details by id, simulating the enriched endpoint of BKN: get_object_types changes it.
+// After that, if the pile is not implemented, it will be a null pointer.
 func (s *stubMetricBknBackend) GetObjectTypeDetail(_ context.Context, _ string, ids []string, _ bool) ([]*interfaces.ObjectType, error) {
 	if s.detail == nil {
 		return nil, nil
@@ -132,8 +132,8 @@ func TestHandleQueryMetric(t *testing.T) {
 	})
 }
 
-// get_object_types 必须走按 id 取详情的富化端点：导出视图不带 condition_operations，
-// 调用方（Agent）据此判断字段能不能 match / knn，拿到空的就只能靠猜。
+// get_object_types must go to the enriched endpoint to get details by id: the exported view does not have condition_operations,
+// The caller (Agent) determines whether the field can match / knn based on this. If it gets empty, it can only rely on guessing.
 func TestHandleGetObjectTypes_UsesEnrichedEndpoint(t *testing.T) {
 	convey.Convey("Test get_object_types reads the enriched detail endpoint", t, func() {
 		stub := &capsBknBackend{
@@ -161,7 +161,7 @@ func TestHandleGetObjectTypes_UsesEnrichedEndpoint(t *testing.T) {
 	})
 }
 
-// capsBknBackend 只回一个带算子的对象类，并分别记录两条取数路径被调用的次数。
+// capsBknBackend only returns an object type with an operator, and records the number of times the two access paths are called.
 type capsBknBackend struct {
 	interfaces.BknBackendAccess
 	ops         []interfaces.KnOperationType

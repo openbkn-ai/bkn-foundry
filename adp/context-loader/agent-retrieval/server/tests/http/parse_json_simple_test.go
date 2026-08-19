@@ -62,7 +62,7 @@ func parseJSONString(jsonStr string) (QueryStrategy, error) {
 }
 
 func TestParseJSONString(_ *testing.T) {
-	// 测试字符串包含 JSON 块，需要提取并解析
+	// The test string contains JSON chunks that need to be extracted and parsed.
 	jsonStr := "```json\n" +
 		`{"query_strategy":[{"strategy_type":"concept_discovery","confidence":0.9,` +
 		`"filter":{"concept_type":"object_type","conditions":[` +

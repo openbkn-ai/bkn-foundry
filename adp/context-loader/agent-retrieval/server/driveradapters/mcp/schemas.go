@@ -74,8 +74,8 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 	if input, output, ok := lifecycleToolSchemas(toolKey); ok {
 		return input, output
 	}
-	// PTC 工具在 schemas/ 下没有文件，声明存在 PTC 自己那份 locale 资源里。
-	// 基准 locale 就够：需要本地化的调用方走 mcpLocaleBundle.ToolSchemas。
+	// The PTC tool has no files under schemas/, and the declaration exists in PTC's own locale resource.
+	// The baseline locale is sufficient: callers that require localization go to mcpLocaleBundle.ToolSchemas.
 	if input, output, ok := ptcToolSchemas(loadMCPLocaleBundle(defaultMCPLocale), toolKey); ok {
 		return input, output
 	}
@@ -304,9 +304,9 @@ func closureManifestOutputSchema() map[string]any {
 }
 
 func businessRefOutputSchema() map[string]any {
-	// ref_type 的取值集合与 bkn-trace 的 sessionvo.BusinessRef 对齐（#587 起它是
-	// 一个具名枚举类型）。TestLifecycleSchemaUsesRegisteredIssue541ErrorsAndCoreTypes
-	// 会逐项递归比对这两侧，漏一个值就红。
+	// The value set of ref_type is aligned with sessionvo.BusinessRef of bkn-trace (since #587 it is.
+	// a named enum type). TestLifecycleSchemaUsesRegisteredIssue541ErrorsAndCoreTypes.
+	// It will recursively compare the two sides item by item. If a value is missing, it will be red.
 	return closedSchema(map[string]any{
 		"ref_type": enumSchema(
 			"action_instance", "action_type", "data_resource", "function",

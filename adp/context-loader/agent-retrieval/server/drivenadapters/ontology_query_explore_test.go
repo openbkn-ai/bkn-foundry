@@ -19,9 +19,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// 探索模式与路径模板模式打的是同一个端点，唯一的区别就是 query_type。写成
-// relation_path 会静默变成另一种模式：下游按 SubGraphQueryBaseOnTypePath 绑请求体，
-// 拿不到 relation_type_paths 就返回空子图，不报错——所以这条必须钉死。
+// The exploration mode and the path template mode hit the same endpoint, the only difference is query_type. written as.
+// relation_path will silently change to another mode: the downstream binds the request body according to SubGraphQueryBaseOnTypePath,
+// If relation_type_paths cannot be obtained, an empty subgraph will be returned and no error will be reported - so this must be nailed down.
 func TestExploreSubgraph_UsesEmptyQueryType(t *testing.T) {
 	convey.Convey("query_type 为空串走探索分支", t, func() {
 		ctrl := gomock.NewController(t)
@@ -51,7 +51,7 @@ func TestExploreSubgraph_UsesEmptyQueryType(t *testing.T) {
 	})
 }
 
-// 起点对象类的总数与对象查询同源同语义，need_total 同样不是调用方的选项。
+// The total number of starting object types has the same origin and semantics as the object query, and need_total is also not an option for the caller.
 func TestExploreSubgraph_AlwaysAsksForTotal(t *testing.T) {
 	convey.Convey("need_total 无条件为 true", t, func() {
 		ctrl := gomock.NewController(t)
@@ -73,8 +73,8 @@ func TestExploreSubgraph_AlwaysAsksForTotal(t *testing.T) {
 	})
 }
 
-// 三态语义必须和 query_object_instance 一字不差，否则同一个「缺失」在两个工具里
-// 含义不同，比不做还糟。
+// The tri-state semantics must match query_object_instance exactly; otherwise the same "missing" state
+// would mean different things in the two tools, which is worse than not handling it.
 func TestExploreSubgraph_TotalCountThreeState(t *testing.T) {
 	run := func(cursor []any, downstream map[string]any) *interfaces.ExploreSubgraphResp {
 		ctrl := gomock.NewController(t)
@@ -108,14 +108,14 @@ func TestExploreSubgraph_TotalCountThreeState(t *testing.T) {
 	})
 }
 
-// sort 的 nil 元素在探索模式一样会打 panic（起点排序同样过下游 BuildDslQuery），
-// 拦截逻辑与对象查询共用，这里盯的是「探索这条路真的调了它」。
+// The nil element of sort will also panic in exploration mode (the starting point sorting also goes through the downstream BuildDslQuery).
+// The interception logic is shared with object query. The focus here is "exploring this path and really invoked it".
 func TestExploreSubgraph_RejectsNilSortEntry(t *testing.T) {
 	convey.Convey("sort 里的 null 元素回 400 且不发请求", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, _ := newObjectQueryClient(t, ctrl)
-		// 不 EXPECT Post：必须在本层拦下。
+		// Do not EXPECT Post: it must be blocked in this layer.
 
 		resp, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
 			KnID: "kn1", SourceObjectTypeID: "ot1", Direction: "forward", PathLength: 1, Limit: 10,
@@ -128,7 +128,7 @@ func TestExploreSubgraph_RejectsNilSortEntry(t *testing.T) {
 	})
 }
 
-// 内部专用参数进查询串、不进请求体；kn_id 转义后才拼进 path。
+// Internal special parameters are entered into the query string and not into the request body; kn_id is escaped and then spelled into path.
 func TestExploreSubgraph_InternalParamsAndEscaping(t *testing.T) {
 	convey.Convey("内部参数进查询串，kn_id 转义", t, func() {
 		ctrl := gomock.NewController(t)
@@ -154,28 +154,28 @@ func TestExploreSubgraph_InternalParamsAndEscaping(t *testing.T) {
 
 		parsed, perr := url.Parse(got)
 		convey.So(perr, convey.ShouldBeNil)
-		// 注入串整体留在 path 段，没能顶掉本层给的参数
+		// The entire injection string remains in the path segment and fails to remove the parameters given by this layer.
 		convey.So(parsed.Path, convey.ShouldEqual,
 			"/api/ontology-query/in/v1/knowledge-networks/kn1?ignoring_store_cache=true/subgraph")
 		convey.So(parsed.Query()["ignoring_store_cache"], convey.ShouldResemble, []string{"true"})
-		// exclude_system_properties 在探索分支是生效的：裁剪发生在子图组装那层
-		// （expandObjectPathsBatch），不是被注释掉的那条起点对象查询。
+		// exclude_system_properties is effective in the exploration branch: clipping occurs at the subgraph assembly layer.
+		// (expandObjectPathsBatch), not the commented out starting point object query.
 		convey.So(parsed.Query()["exclude_system_properties"], convey.ShouldResemble, []string{"_display"})
 
-		// 两者是 query 参数不是请求体字段
+		// Both are query parameternot request-body fields.
 		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "exclude_system_properties")
 		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "ignoring_store_cache")
-		// kn_id 走 URL，也不该混进 body
+		// kn_id goes through the URL and must not leak into the body.
 		convey.So(string(bodyJSON), convey.ShouldNotContainSubstring, "kn1?ignoring_store_cache")
-		// 探索模式的三个必填项确实进了 body
+		// The three required fields for exploration mode are indeed in the body.
 		convey.So(string(bodyJSON), convey.ShouldContainSubstring, `"source_object_type_id":"ot1"`)
 		convey.So(string(bodyJSON), convey.ShouldContainSubstring, `"direction":"bidirectional"`)
 		convey.So(string(bodyJSON), convey.ShouldContainSubstring, `"path_length":3`)
 	})
 }
 
-// 下游对非法方向 / path_length 超 3 / 起点对象类不存在都回 4xx 且带可执行详情，
-// 这些是调用方的错，不能塌陷成「依赖服务异常」。
+// Downstream will return 4xx with executable details for illegal directions / path_length exceeds 3 / starting point object type does not exist.
+// These are the fault of the caller and cannot be collapsed into "dependency service exceptions".
 func TestExploreSubgraph_PreservesDownstreamClientError(t *testing.T) {
 	convey.Convey("下游 400 保留状态码与详情", t, func() {
 		ctrl := gomock.NewController(t)

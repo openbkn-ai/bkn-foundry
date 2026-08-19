@@ -350,8 +350,8 @@ func BuildSearchSchemaEvents(ctx context.Context, req *interfaces.SearchSchemaRe
 	return buildRetrievalEvents(ec, "context.search_schema", HashValue(strings.TrimSpace(req.Query)), candidateCount, false, refs)
 }
 
-// BuildSearchInstanceEvents 记录一次语义实例召回。引用按命中的对象类去重登记——
-// 实例行本身没有受控标识可引，能确证的是「这些对象类被读过」。
+// BuildSearchInstanceEvents records a semantic instance recall. References are deduplicated and registered by hit object type.
+// The instance rows themselves have no controlled identifiers to reference; all that can be confirmed is that "these object types were read.".
 func BuildSearchInstanceEvents(ctx context.Context, req *interfaces.SearchInstanceReq, resp *interfaces.SearchInstanceResp) []Event {
 	ec, ok := contextFromRequest(ctx, req)
 	if !ok {
@@ -375,7 +375,7 @@ func BuildSearchInstanceEvents(ctx context.Context, req *interfaces.SearchInstan
 	return buildRetrievalEvents(ec, "context.search_instance", HashValue(query), candidateCount, false, refs)
 }
 
-// searchInstanceEvidenceRefs 把命中的对象类去重成受控引用。
+// searchInstanceEvidenceRefs converts the hit object type into a controlled reference.
 func searchInstanceEvidenceRefs(knID string, nodes []any) []map[string]any {
 	if knID == "" || len(nodes) == 0 {
 		return nil
@@ -1026,8 +1026,8 @@ func contextFromRequest(ctx context.Context, req any) (eventContext, bool) {
 		return eventContext{}, false
 	}
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
-	// 账户身份可能只在请求体/头上，没进 ctx（REST 面就是这样）。缺了它
-	// SubmitEvents 会静默不发事件，所以每个带身份字段的请求类型都要在这里回填。
+	// The account identity may only be in the request body/header, not in ctx (this is the case in REST). missing it.
+	// SubmitEvents will silently send no events, so every request type with an identity field must be backfilled here.
 	switch typed := req.(type) {
 	case *interfaces.SearchSchemaReq:
 		if typed != nil {
@@ -1335,8 +1335,8 @@ func queryObjectTruncated(req *interfaces.QueryObjectInstancesReq, resp *interfa
 	if len(resp.SearchAfter) > 0 {
 		return true
 	}
-	// TotalCount 缺失表示下游没算总数（游标翻页第二页起如此），不是零命中；
-	// 这条路上游已被 SearchAfter 分支接走，这里只需不把 nil 当 0。
+	// Missing TotalCount means that the downstream has not calculated the total (this is true from the second page of the cursor), and it is not a zero hit;
+	// This path has been picked up upstream by the SearchAfter branch, so just don't treat nil as 0.
 	if req == nil || resp.TotalCount == nil || *resp.TotalCount <= 0 {
 		return false
 	}
@@ -1454,9 +1454,9 @@ func isRelationContainerKey(key string) bool {
 	}
 }
 
-// exploreSubgraphEvidenceRefs 从**响应**取证据引用，而不是像路径模板模式那样从请求取。
-// 探索模式的请求里只有一个起点对象类，命中哪些对象类与关系类是引擎跑完才知道的，
-// 照着请求提取等于只记一个起点，证据链就废了。
+// exploreSubgraphEvidenceRefs takes the evidence reference from the response, not from the request like in path template mode.
+// There is only one starting point object type in the exploration mode request. Which object types and relation types are hit will only be known after the engine runs.
+// Extracting according to the request means that only one starting point is recorded, and the evidence chain is abolished.
 func exploreSubgraphEvidenceRefs(req *interfaces.ExploreSubgraphReq, resp *interfaces.ExploreSubgraphResp) ([]map[string]any, bool) {
 	if req == nil || resp == nil {
 		return nil, false
@@ -1501,8 +1501,8 @@ func exploreSubgraphEvidenceRefs(req *interfaces.ExploreSubgraphReq, resp *inter
 	return refs, truncated
 }
 
-// exploreSubgraphHash 摘要的是「这次探索问的是什么」——起点、方向、跳数、起点过滤与
-// 概念分组。分页字段不进摘要：翻页不改变问题本身。
+// exploreSubgraphHash summarizes "What is this exploration asking?" - starting point, direction, number of hops, starting point filtering and.
+// Concept grouping. Pagination fields do not enter the summary: turning pages does not change the question itself.
 func exploreSubgraphHash(req *interfaces.ExploreSubgraphReq) string {
 	if req == nil {
 		return HashValue(nil)

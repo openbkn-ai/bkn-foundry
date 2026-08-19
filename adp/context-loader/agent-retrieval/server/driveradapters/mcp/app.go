@@ -186,7 +186,7 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	b.add(toolKeyListSkills, handleListSkills(skillsService))
 	b.add(toolKeyGetSkillContent, handleGetSkillContent(skillsService))
 	b.add(toolKeyReadSkillFile, handleReadSkillFile(skillsService))
-	// execute_skill 是工具面唯一的命令执行通道，默认不装配（见 executeSkillEnabled）。
+	// execute_skill is the only command execution channel on the tool surface and is not configured by default (see executeSkillEnabled).
 	if knskills.ExecuteEnabled() {
 		b.add(toolKeyExecuteSkill, handleExecuteSkill(skillsService))
 	}
@@ -227,21 +227,21 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 	return mcpServer, b
 }
 
-// registerInlinePTCTools 把 run_code / run_shell 并进业务工具面。
+// registerInlinePTCTools incorporates run_code / run_shell into the business tool surface.
 //
-// 为什么并在一起，而不是只留 /mcp/ptc 那个独立端点：实测同一道检索型问题，只给
-// 业务工具是 9 次调用 258k token，只给 run_code 是 8 次 108k，两者都给是 3 次
-// 96k。模型按任务性质自选——检索走工具，跨表编排走代码。此前独立端点的注释断言
-// 「并列会让模型退化成逐个调工具」，那个判断是错的：检索型问题上业务工具本来就
-// 更合适，选它不是退化。
+// Why merge them together instead of just leaving the independent endpoint of /mcp/ptc: In the actual test of the same retrieval type question, only.
+// The business tool is called 258k tokens 9 times, only run_code is given 8 times 108k, and both are given 3 times.
+// 96k. The model can be selected according to the nature of the task - retrieval tool, cross-table arrangement code. Annotated assertions for previously independent endpoints.
+// "Juxtaposition will degenerate the model into calling tools one by one." That judgment is wrong: business tools are inherently inherently complex for retrieval-type problems.
+// More appropriate, choose it rather than degenerate.
 //
-// 并列还补上了代码模式「先定后见」的短板：模型可以先用 search_schema 看到真实的
-// 返回结构，再照着写代码，不必凭 digest 猜字段名。
+// Parallel also makes up for the shortcomings of "determine it first and see it later" in the code model: the model can be used first to see the real model using search_schema.
+// Return the structure and write the code accordingly without having to guess the field names based on digest.
 //
-// 不受 EXECUTE_SKILL_ENABLED 约束，与 /mcp/ptc 端点一致，理由见
-// rest_public_handler.go 上的说明。
+// Not subject to EXECUTE_SKILL_ENABLED, consistent with /mcp/ptc endpoint, see the reason.
+// Instructions at rest_public_handler.go.
 //
-// 装配失败只记日志：内嵌工具元数据读不出来时，不该连累其余二十来个业务工具。
+// Only log when installation fails: When the embedded tool metadata cannot be read, the other twenty or so business tools should not be affected.
 func registerInlinePTCTools(mcpServer *server.MCPServer, localeBundle *mcpLocaleBundle, locale string) {
 	toolkit, err := InlinePTCToolkit(defaultPTCServicePort, locale)
 	if err != nil {
@@ -250,10 +250,10 @@ func registerInlinePTCTools(mcpServer *server.MCPServer, localeBundle *mcpLocale
 	}
 	executor := drivenadapters.NewOperatorIntegrationClient()
 	for _, tool := range toolkit.Tools {
-		// schema 与展示元数据都走业务工具那条路：/mcp/info 读的是同两个来源，
-		// 两处各拼一份的话它们迟早会不一致，而 /mcp/info 的用途正是让人不握手
-		// 就看清工具面。描述是唯一的例外——工具面上给模型看的是按当前工具表
-		// 动态渲染的 digest，tools_meta.json 里那句静态说明只够 /mcp/info 用。
+		// Both schema and display metadata follow the path of business tools: /mcp/info reads from the same two sources.
+		// If you put two copies in each place, they will be inconsistent sooner or later, and the purpose of /mcp/info is to make people not shake hands.
+		// Just look at the tool surface clearly. The only exception is the description - the tool surface shows the model according to the current tool table.
+		// For dynamically rendered digest, the static description in tools_meta.json is only enough for /mcp/info.
 		meta := localeBundle.ToolMeta(tool.Name)
 		meta.Description = tool.Description
 		input, output := tryLoadToolSchemas(localeBundle, tool.Name)

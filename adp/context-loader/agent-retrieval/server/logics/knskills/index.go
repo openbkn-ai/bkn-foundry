@@ -66,10 +66,10 @@ func EntryShellRequiredError(ctx context.Context) error {
 
 // ListSkillsReq is the input for list_skills.
 type ListSkillsReq struct {
-	Name     string `json:"name"`      // 可选，按名称模糊过滤
-	Category string `json:"category"`  // 可选，按分类过滤
-	Page     int    `json:"page"`      // 可选，页码，从 1 开始
-	PageSize int    `json:"page_size"` // 可选，每页大小
+	Name     string `json:"name"`      // Optional, fuzzy filter by name.
+	Category string `json:"category"`  // Optional, filter by category.
+	Page     int    `json:"page"`      // Optional, page number, starting from 1.
+	PageSize int    `json:"page_size"` // Optional, per page size.
 }
 
 // SkillEntry is a skill entry returned by list_skills.
@@ -130,7 +130,7 @@ type ReadSkillFileResp struct {
 type ExecuteSkillReq struct {
 	SkillID    string `json:"skill_id"`
 	EntryShell string `json:"entry_shell"`
-	Timeout    int    `json:"timeout"` // 秒，可选
+	Timeout    int    `json:"timeout"` // seconds, optional.
 }
 
 // ExecuteSkillResp is the execute_skill response.

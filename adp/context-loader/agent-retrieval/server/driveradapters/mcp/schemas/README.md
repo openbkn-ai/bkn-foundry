@@ -1,31 +1,31 @@
-# MCP 工具 Schema 配置
+# MCP tool schema configuration
 
-工具元信息与 JSON Schema 统一在此目录维护，便于扩展与 LLM 理解。
+Tool metadata and JSON schemas are maintained in this directory to make extension and LLM understanding easier.
 
-## 文件规范
+## File specification
 
-| 文件 | 说明 |
+| File | Description |
 |------|------|
-| `tools_meta.json` | 工具元信息（name、description），新增工具在此添加条目 |
-| `{tool_key}.json` | 工具 Schema（含 `input_schema` 与 `output_schema` 两个键） |
+| `tools_meta.json` | Tool meta information (name, description), add entries here for new tools |
+| `{tool_key}.json` | Tool schema, including the `input_schema` and `output_schema` keys |
 
-## 新增工具步骤
+## Steps to add a tool
 
-1. 在 `tools_meta.json` 中添加 `{tool_key}: { "name": "...", "description": "..." }`
-2. 添加 `{tool_key}.json`，包含 `input_schema` 与 `output_schema` 两个 JSON Schema 对象
-3. 在 `app.go` 中注册工具（`loadToolMeta` 与 `loadToolSchemas` 已统一封装，无需修改 `schemas.go`）
+1. Add `{tool_key}: { "name": "...", "description": "..." }` in `tools_meta.json`
+2. Add `{tool_key}.json`, containing two JSON Schema objects `input_schema` and `output_schema`
+3. Register the tool in `app.go` (`loadToolMeta` and `loadToolSchemas` are already centralized, so `schemas.go` does not need to be changed)
 
-## 开关控制的工具
+## Switch-controlled tools
 
-个别工具默认不装配，需要显式开启后才出现在 `tools/list` 与 `GET /mcp/info`：
+Some tools are not installed by default and need to be explicitly enabled before they appear in `tools/list` and `GET /mcp/info`:
 
-| 工具 | 环境变量 | 默认 | 说明 |
+| Tool | Environment variable | Default | Description |
 |------|---------|------|------|
-| `execute_skill` | `EXECUTE_SKILL_ENABLED` | 关 | 把入口命令送进沙箱执行。这是技能执行能力的**总闸**：同时决定 MCP 是否装配该工具、`/kn/execute_skill` 路由是否注册。未开启时与「没编译进来」无异——不能让「未开启」和「不存在」在探测者眼里长得不一样。旧名 `MCP_EXECUTE_SKILL_ENABLED` 仍被识别 |
+| `execute_skill` | `EXECUTE_SKILL_ENABLED` | Off | Sends the entry command into the sandbox for execution. This is the **master switch** for skill execution: it determines both whether the MCP tool is assembled and whether the `/kn/execute_skill` route is registered. When disabled, the deployment should look the same as if the capability were not compiled in; probes must not be able to distinguish "disabled" from "does not exist". The legacy name `MCP_EXECUTE_SKILL_ENABLED` is still recognized |
 
-新增此类工具时，`app.go` 的装配与 `info.go` 的目录都要按同一个判定跳过，
-两处不一致会让 `/mcp/info` 广播一条调不通的工具。
+When adding this type of tool, the assembly logic in `app.go` and the catalog logic in `info.go` must skip it using the same predicate.
+If the two places diverge, `/mcp/info` will advertise a tool that cannot be called.
 
-## 描述参考
+## Description reference
 
-描述建议参考 `docs/releases/v5.0.4/tool-usage-guide.md` 中的「工具总览」与「工具参考」章节。
+For descriptions, refer to the "Tool Overview" and "Tool Reference" sections in `docs/releases/v5.0.4/tool-usage-guide.md`.

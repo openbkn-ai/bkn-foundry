@@ -13,13 +13,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
-// GetResponseFormatFromRequest 从 MCP CallToolRequest 的 arguments 中解析 response_format，未传时默认 toon
+// GetResponseFormatFromRequest parses response_format from the arguments of MCP CallToolRequest. If not passed, it defaults to toon.
 func GetResponseFormatFromRequest(req mcp.CallToolRequest) (rest.ResponseFormat, error) {
 	s := req.GetString("response_format", "toon")
 	return rest.ParseResponseFormat(s)
 }
 
-// BuildMCPToolResult 根据 response_format 统一构造 MCP Tool 返回结果（文本为 JSON 或 TOON，structuredContent 仍为原对象）
+// BuildMCPToolResult uniformly constructs the MCP Tool return result based on response_format (the text is JSON or TOON, and structuredContent is still the original object)
 func BuildMCPToolResult(resp interface{}, format rest.ResponseFormat) (*mcp.CallToolResult, error) {
 	var textContent string
 	if format == rest.FormatTOON {

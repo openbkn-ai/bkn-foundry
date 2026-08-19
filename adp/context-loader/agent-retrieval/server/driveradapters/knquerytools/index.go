@@ -25,8 +25,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knrunsql"
 )
 
-// KnQueryToolsHandler 处理 run_sql / list_knowledge_networks / get_kn_detail /
-// get_object_types / get_relation_types / list_resources / describe_resource 的内部 REST 入口。
+// KnQueryToolsHandler handle run_sql / list_knowledge_networks / get_kn_detail /.
+// Internal REST entry for get_object_types / get_relation_types / list_resources / describe_resource.
 type KnQueryToolsHandler interface {
 	RunSQL(c *gin.Context)
 	ListKnowledgeNetworks(c *gin.Context)
@@ -51,7 +51,7 @@ var (
 	handler KnQueryToolsHandler
 )
 
-// NewKnQueryToolsHandler 创建 KnQueryToolsHandler 单例。
+// NewKnQueryToolsHandler create KnQueryToolsHandler singleton.
 func NewKnQueryToolsHandler() KnQueryToolsHandler {
 	once.Do(func() {
 		conf := config.NewConfigLoader()
@@ -66,7 +66,7 @@ func NewKnQueryToolsHandler() KnQueryToolsHandler {
 	return handler
 }
 
-// RunSQL 对知识网络挂载的数据资源执行只读 SQL（强制 SELECT-only）。
+// RunSQL executes read-only SQL (forced SELECT-only) on data resources mounted on the knowledge network.
 func (h *knQueryToolsHandler) RunSQL(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &knrunsql.RunSQLReq{}
@@ -84,11 +84,11 @@ func (h *knQueryToolsHandler) RunSQL(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// ListKnowledgeNetworks 列出知识网络（发现 kn_id）。
+// ListKnowledgeNetworks Lists knowledge networks (discovered by kn_id).
 func (h *knQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &interfaces.ListKnReq{}
-	// body 可选；忽略空 body 的绑定错误。
+	// The body is optional; ignore binding errors for an empty body.
 	_ = c.ShouldBindJSON(req)
 	if req.Limit == 0 {
 		req.Limit = 20
@@ -103,14 +103,14 @@ func (h *knQueryToolsHandler) ListKnowledgeNetworks(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// getKnDetailReq get_kn_detail 入参。
+// getKnDetailReq get_kn_detail input parameter.
 type getKnDetailReq struct {
 	KnID        string `json:"kn_id" form:"kn_id"`
-	DetailLevel string `json:"detail_level" form:"detail_level"` // summary（默认）| full
+	DetailLevel string `json:"detail_level" form:"detail_level"` // Summary (default)| full.
 }
 
-// GetKnDetail 获取知识网络详情（概念组 / 对象类 / 关系类 / 行动类）。
-// detail_level=summary（默认）返回骨架 + 属性名，full 返回全量。
+// GetKnDetail Gets knowledge network details (concept group/object type/relation type/action class).
+// detail_level=summary (default) returns the skeleton + attribute name, full returns the full amount.
 func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &getKnDetailReq{}
@@ -130,7 +130,7 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 只挂计数不挂明细：够 Agent 判断哪个对象类值得下钻取指标。
+	// Only the count is attached but not the details: it is enough for the Agent to judge which object type is worthy of drill-down metrics.
 	h.metrics.AttachRelatedMetricCounts(ctx, req.KnID, resp.ObjectTypes)
 	detailLevel := req.DetailLevel
 	if detailLevel == "" {
@@ -140,11 +140,11 @@ func (h *knQueryToolsHandler) GetKnDetail(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// ListResources 数据层资源直查：列出账户有权查看的数据资源（配合 describe_resource + run_sql）。
+// ListResources Data layer resource direct query: List the data resources that the account has the right to view (with describe_resource + run_sql).
 func (h *knQueryToolsHandler) ListResources(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &knresources.ListResourcesReq{}
-	// body 可选；忽略空 body 的绑定错误。
+	// The body is optional; ignore binding errors for an empty body.
 	_ = c.ShouldBindJSON(req)
 
 	resp, err := h.resources.ListResources(ctx, req)
@@ -156,12 +156,12 @@ func (h *knQueryToolsHandler) ListResources(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// describeResourceReq describe_resource 入参。
+// describeResourceReq describe_resource input parameter.
 type describeResourceReq struct {
 	ResourceID string `json:"resource_id" form:"resource_id"`
 }
 
-// DescribeResource 取单个资源的物理 schema（列 + 连接器类型），写 run_sql 用。
+// DescribeResource takes the physical schema (column + connector type) of a single resource and writes it to run_sql.
 func (h *knQueryToolsHandler) DescribeResource(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &describeResourceReq{}
@@ -181,7 +181,7 @@ func (h *knQueryToolsHandler) DescribeResource(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// knDrillReq get_object_types / get_relation_types 共用入参。
+// knDrillReq get_object_types / get_relation_types share input parameters.
 type knDrillReq struct {
 	KnID string   `json:"kn_id" form:"kn_id"`
 	IDs  []string `json:"ids"`
@@ -194,7 +194,7 @@ func (r *knDrillReq) resolveKnID(c *gin.Context) string {
 	return c.GetHeader("X-Kn-ID")
 }
 
-// GetObjectTypes 按 id 批量取对象类完整定义（配合 get_kn_detail summary 下钻）。
+// GetObjectTypes retrieves the complete definitions of object types in batches by ID (cooperated with get_kn_detail summary drill-down).
 func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &knDrillReq{}
@@ -217,13 +217,13 @@ func (h *knQueryToolsHandler) GetObjectTypes(c *gin.Context) {
 		return
 	}
 	matched, missing := detail.FilterObjectTypes(req.IDs)
-	// OT-first 第 2 步：未绑逻辑属性的 scoped 指标只有在这里才看得见。
+	// OT-first step 2: scoped metrics with unbound logical properties are only visible here.
 	h.metrics.AttachRelatedMetrics(ctx, knID, matched)
 	bkntrace.EmitSchemaDefinitionEvents(ctx, h.logger, "object", knID, req.IDs, len(matched))
 	rest.ReplyOK(c, http.StatusOK, &interfaces.ObjectTypesResp{KnID: knID, ObjectTypes: matched, Missing: missing})
 }
 
-// GetRelationTypes 按 id 批量取关系类完整定义（含 mapping_rules）。
+// GetRelationTypes retrieves complete definitions of relation types (including mapping_rules) in batches by id.
 func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &knDrillReq{}
@@ -250,10 +250,10 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, &interfaces.RelationTypesResp{KnID: knID, RelationTypes: matched, Missing: missing})
 }
 
-// QueryMetric 按指标自身口径取数（OT-first 路径第 3 步）。
+// QueryMetric takes the number according to the metric's own semantics (step 3 of the OT-first path).
 //
-// 与 get_logic_properties_values 分流：实例级、已绑逻辑属性的走那条；类级、或未绑
-// 逻辑属性的走这条。两条都不该被 run_sql 取代——口径在 MetricDefinition 里。
+// Separate from get_logic_properties_values: instance level, which one has bound logical properties; class level, or unbound.
+// Logical attributes go this way. Neither should be replaced by run_sql - the semantics is in MetricDefinition.
 func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &interfaces.QueryMetricReq{}
@@ -273,7 +273,7 @@ func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 			rest.ReplyError(c, httpErr)
 			return
 		}
-		// 入参错误（kn_id / metric_id 缺失、时间窗自相矛盾）都是调用方的错。
+		// Errors in input parameters (missing kn_id / metric_id, contradictory time windows) are all the fault of the caller.
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
 		return
 	}

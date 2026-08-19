@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-// mockLogger 测试用的mock logger
+// mockLogger is a mock logger for tests.
 type mockLogger struct{}
 
 func (m *mockLogger) Debug(args ...interface{})                                  {}
@@ -28,7 +28,7 @@ func (m *mockLogger) WithContext(ctx context.Context) interfaces.Logger         
 func (m *mockLogger) WithField(key string, value interface{}) interfaces.Logger  { return m }
 func (m *mockLogger) WithFields(fields map[string]interface{}) interfaces.Logger { return m }
 
-// mockMFModelClient 测试用的统一MF-Model-API客户端
+// mockMFModelClient Unified MF-Model-API client for testing.
 type mockMFModelClient struct {
 	chatResponse string
 	chatError    error
@@ -55,7 +55,7 @@ func TestKnowledgeReranker_ParseIndices(t *testing.T) {
 		{
 			name:     "JSON数组格式",
 			content:  "[1, 3, 5]",
-			expected: []int{0, 2, 4}, // 转为0-based
+			expected: []int{0, 2, 4}, // Convert to 0-based indexing.
 		},
 		{
 			name:     "带文本的JSON数组",
@@ -298,7 +298,7 @@ func TestKnowledgeReranker_RerankByVector(t *testing.T) {
 		t.Fatalf("Expected 3 results, got %d", len(results))
 	}
 
-	// 验证按分数降序排序
+	// Validate sorting by score in descending order.
 	if results[0].RerankScore < results[1].RerankScore {
 		t.Error("Results should be sorted by score descending")
 	}

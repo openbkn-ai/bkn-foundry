@@ -12,7 +12,7 @@ import (
 	"github.com/smartystreets/goconvey/convey"
 )
 
-// TestMD5 测试 MD5 函数
+// TestMD5 Test MD5 function.
 func TestMD5(t *testing.T) {
 	convey.Convey("TestMD5", t, func() {
 		convey.Convey("正常字符串", func() {
@@ -39,7 +39,7 @@ func TestMD5(t *testing.T) {
 	})
 }
 
-// TestObjectMD5Hash 测试 ObjectMD5Hash 函数
+// TestObjectMD5Hash Test ObjectMD5Hash function.
 func TestObjectMD5Hash(t *testing.T) {
 	convey.Convey("TestObjectMD5Hash", t, func() {
 		convey.Convey("简单对象", func() {
@@ -61,7 +61,7 @@ func TestObjectMD5Hash(t *testing.T) {
 		})
 
 		convey.Convey("相同对象产生相同哈希", func() {
-			// 使用 struct 保证 JSON 序列化顺序稳定；map 两次 Marshal 可能因迭代顺序不同得到不同哈希
+			// Use struct to ensure that the JSON serialization order is stable; map twice and Marshal may get different hashes due to different iteration orders.
 			type kv struct {
 				A int `json:"a"`
 				B int `json:"b"`
