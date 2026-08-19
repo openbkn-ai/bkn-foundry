@@ -44,6 +44,22 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 	}
 }
 
+func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
+
+	migrations := sessionstore.Migrations()
+	if len(migrations) != 4 {
+		t.Fatalf("expected four embedded schema migrations, got %d", len(migrations))
+	}
+	for index, migration := range migrations {
+		if migration.Version == "" || migration.Checksum == "" || migration.SQL == "" {
+			t.Fatalf("migration %d is incomplete: %#v", index, migration)
+		}
+		if index > 0 && migrations[index-1].Version >= migration.Version {
+			t.Fatalf("migrations are not strictly ordered: %q before %q", migrations[index-1].Version, migration.Version)
+		}
+	}
+}
+
 func TestSchemaEnforcesOneOperationCallFactPerAttempt(t *testing.T) {
 	t.Parallel()
 

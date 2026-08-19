@@ -1,12 +1,50 @@
 package sessionstore
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"strings"
+
 	v013 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v013"
 	v014 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v014"
 	v015 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v015"
 	v016 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v016"
 )
 
+type Migration struct {
+	Version  string
+	Checksum string
+	SQL      string
+}
+
+func Migrations() []Migration {
+	return newMigrationManifest([]struct {
+		version string
+		sql     string
+	}{
+		{version: "013", sql: v013.SchemaSQL()},
+		{version: "014", sql: v014.SchemaSQL()},
+		{version: "015", sql: v015.SchemaSQL()},
+		{version: "016", sql: v016.SchemaSQL()},
+	})
+}
+
+func newMigrationManifest(entries []struct{ version, sql string }) []Migration {
+	migrations := make([]Migration, 0, len(entries))
+	for _, entry := range entries {
+		sum := sha256.Sum256([]byte(entry.sql))
+		migrations = append(migrations, Migration{
+			Version: entry.version, Checksum: hex.EncodeToString(sum[:]), SQL: entry.sql,
+		})
+	}
+	return migrations
+}
+
 func SchemaSQL() string {
-	return v013.SchemaSQL() + "\n" + v014.SchemaSQL() + "\n" + v015.SchemaSQL() + "\n" + v016.SchemaSQL()
+	migrations := Migrations()
+	schema := make([]string, 0, len(migrations))
+	for _, migration := range migrations {
+		schema = append(schema, migration.SQL)
+	}
+	return strings.Join(schema, "\n")
 }

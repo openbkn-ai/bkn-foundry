@@ -11,12 +11,13 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	"github.com/go-sql-driver/mysql"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/ledgersvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/projectionrebuildsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
@@ -28,6 +29,87 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/infra/opensearch"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 )
+
+func TestEnsureSchemaRejectsLegacyDatabaseWithoutLedger(t *testing.T) {
+	adminDSN := os.Getenv("BKN_TRACE_TEST_MARIADB_ADMIN_DSN")
+	if adminDSN == "" {
+		t.Skip("BKN_TRACE_TEST_MARIADB_ADMIN_DSN is not set")
+	}
+	adminDB, err := sql.Open("mysql", adminDSN)
+	if err != nil {
+		t.Fatalf("open MariaDB admin connection: %v", err)
+	}
+	t.Cleanup(func() { _ = adminDB.Close() })
+	name := fmt.Sprintf("bkn_trace_legacy_%d", time.Now().UnixNano())
+	if _, err := adminDB.Exec("CREATE DATABASE `" + name + "`"); err != nil {
+		t.Fatalf("create isolated legacy database: %v", err)
+	}
+	t.Cleanup(func() { _, _ = adminDB.Exec("DROP DATABASE `" + name + "`") })
+	cfg, err := mysql.ParseDSN(adminDSN)
+	if err != nil {
+		t.Fatalf("parse MariaDB admin DSN: %v", err)
+	}
+	cfg.DBName = name
+	legacyDB, err := sql.Open("mysql", cfg.FormatDSN())
+	if err != nil {
+		t.Fatalf("open isolated legacy database: %v", err)
+	}
+	t.Cleanup(func() { _ = legacyDB.Close() })
+	if _, err := legacyDB.Exec(`
+		CREATE TABLE bkn_trace_operations (
+			operation_id VARCHAR(64) NOT NULL PRIMARY KEY,
+			normalized_input_hash CHAR(64) NULL
+		)`); err != nil {
+		t.Fatalf("create legacy Trace table: %v", err)
+	}
+	if err := sessionstore.New(legacyDB).EnsureSchema(context.Background(), true); err == nil || !strings.Contains(err.Error(), "ledger is missing from a non-empty") {
+		t.Fatalf("expected legacy database refusal, got %v", err)
+	}
+	var ledgerRows int
+	if err := legacyDB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_schema = DATABASE() AND table_name = 'bkn_trace_schema_migrations'`).Scan(&ledgerRows); err != nil {
+		t.Fatalf("check absent migration ledger: %v", err)
+	}
+	if ledgerRows != 0 {
+		t.Fatal("legacy database refusal must not create a migration ledger")
+	}
+	var legacyColumnRows int
+	if err := legacyDB.QueryRow(`
+		SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = DATABASE() AND table_name = 'bkn_trace_operations' AND column_name = 'normalized_input_hash'`).Scan(&legacyColumnRows); err != nil {
+		t.Fatalf("check preserved legacy column: %v", err)
+	}
+	if legacyColumnRows != 1 {
+		t.Fatal("legacy database refusal must not modify existing Trace tables")
+	}
+}
+
+func TestMigrateIsIdempotentAndRecordsVersionLedger(t *testing.T) {
+	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
+	if dsn == "" {
+		t.Skip("BKN_TRACE_TEST_MARIADB_DSN is not set")
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Fatalf("open MariaDB: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	store := sessionstore.New(db)
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("first migrate: %v", err)
+	}
+	if err := store.Migrate(context.Background()); err != nil {
+		t.Fatalf("second migrate: %v", err)
+	}
+	var ledgerRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM bkn_trace_schema_migrations`).Scan(&ledgerRows); err != nil {
+		t.Fatalf("read migration ledger: %v", err)
+	}
+	if ledgerRows != len(sessionstore.Migrations()) {
+		t.Fatalf("expected %d migration ledger rows, got %d", len(sessionstore.Migrations()), ledgerRows)
+	}
+}
 
 func TestSourceCoverageSurvivesStoreRestart(t *testing.T) {
 	dsn := os.Getenv("BKN_TRACE_TEST_MARIADB_DSN")
