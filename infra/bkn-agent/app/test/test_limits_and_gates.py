@@ -3,6 +3,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool
 
 from app.core import graph, tools
@@ -108,6 +109,103 @@ def test_generic_tools_get_distinct_operations_and_dynamic_causality_headers(mon
     assert called[0]["operation_id"] != called[1]["operation_id"]
     assert propagated[0]["bkn-operation-id"] == called[0]["operation_id"]
     assert propagated[1]["bkn-operation-id"] == called[1]["operation_id"]
+
+
+def test_context_loader_tools_trust_mcp_receipts_but_external_tools_do_not(monkeypatch):
+    captured = []
+
+    async def run() -> tuple[list[dict], dict]:
+        return (
+            [{"type": "text", "text": "retrieval result"}],
+            {"structured_content": {"bkn_receipt": {"receipt_status": "completed"}}},
+        )
+
+    async def fake_submit(*_args, **_kwargs):
+        return True
+
+    def capture_receipt(**kwargs):
+        captured.append(kwargs)
+
+    context_loader_tool = StructuredTool.from_function(
+        coroutine=run,
+        name="search_schema",
+        description="context loader",
+        metadata={"bkn_context_loader": True},
+    )
+    external_tool = StructuredTool.from_function(
+        coroutine=run,
+        name="external_search",
+        description="external",
+        metadata={"bkn_context_loader": "false"},
+    )
+    monkeypatch.setattr(evidence, "submit_events", fake_submit)
+    monkeypatch.setattr(evidence, "record_fact_receipt", capture_receipt)
+    trace_token = observability.set_context(
+        observability.TraceContext(
+            trace_id="1234567890abcdef1234567890abcdef",
+            request_id="req_mcp_receipt_001",
+            traceparent="00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+            entry_boundary="external",
+        )
+    )
+    interaction_token = evidence.begin_interaction("question", "task", "agent-1", "bkn.agent.task")
+    try:
+        wrapped = tools.instrument_tool_calls([context_loader_tool, external_tool], "acct", "user")
+        asyncio.run(wrapped[0].coroutine())
+        asyncio.run(wrapped[1].coroutine())
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(trace_token)
+
+    assert captured[0]["trust_mcp_receipt"] is True
+    assert captured[1]["trust_mcp_receipt"] is False
+    assert captured[0]["body"]["bkn_receipt"]["receipt_status"] == "completed"
+
+
+def test_context_loader_mcp_receipt_links_retrieval_event_to_model_candidates(monkeypatch):
+    content = [{"type": "text", "text": "retrieval result"}]
+
+    async def run() -> tuple[list[dict], dict]:
+        return (
+            content,
+            {"structured_content": {"bkn_receipt": {
+                "receipt_status": "completed",
+                "evidence_durability": "durable",
+                "observed_evidence_refs": ["evt_context_retrieval_4"],
+            }}},
+        )
+
+    async def fake_submit(*_args, **_kwargs):
+        return True
+
+    tool = StructuredTool.from_function(
+        coroutine=run,
+        name="search_schema",
+        description="context loader",
+        metadata={"bkn_context_loader": True},
+    )
+    monkeypatch.setattr(evidence, "submit_events", fake_submit)
+    trace_token = observability.set_context(
+        observability.TraceContext(
+            trace_id="1234567890abcdef1234567890abcdef",
+            request_id="req_mcp_receipt_002",
+            traceparent="00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
+            entry_boundary="external",
+        )
+    )
+    interaction_token = evidence.begin_interaction("question", "task", "agent-1", "bkn.agent.task")
+    try:
+        wrapped = tools.instrument_tool_calls([tool], "acct", "user")
+        asyncio.run(wrapped[0].coroutine())
+        headers = evidence.model_context_headers(
+            [ToolMessage(content=content, tool_call_id="call-context-retrieval")],
+            "op-model-context-retrieval",
+        )
+    finally:
+        evidence.end_interaction(interaction_token)
+        observability.reset_context(trace_token)
+
+    assert headers["bkn-candidate-source-event-ids"] == '["evt_context_retrieval_4"]'
 
 
 def _sub_agent(mode="task", status="published") -> AgentOut:

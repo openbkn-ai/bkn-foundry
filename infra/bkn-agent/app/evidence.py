@@ -494,6 +494,7 @@ def record_fact_receipt(
     body: Any = None,
     context_hash: str | None = None,
     expected_event_type: str | None = None,
+    trust_mcp_receipt: bool = False,
 ) -> None:
     normalized_headers = {
         str(key).lower(): value for key, value in (headers or {}).items()
@@ -519,15 +520,36 @@ def record_fact_receipt(
     )
     if not isinstance(event_id, str):
         event_id = _expected_downstream_event_id(expected_event_type, operation_id)
-    if not isinstance(event_id, str):
+    if isinstance(event_id, str):
+        record_downstream_fact(
+            event_id=event_id,
+            operation_id=operation_id,
+            evidence_refs=structured("evidence_refs", "bkn-fact-evidence-refs"),
+            business_refs=structured("business_refs", "bkn-fact-business-refs"),
+            context_hash=context_hash,
+        )
         return
-    record_downstream_fact(
-        event_id=event_id,
-        operation_id=operation_id,
-        evidence_refs=structured("evidence_refs", "bkn-fact-evidence-refs"),
-        business_refs=structured("business_refs", "bkn-fact-business-refs"),
-        context_hash=context_hash,
-    )
+
+    mcp_receipt = body.get("bkn_receipt") if isinstance(body, dict) else None
+    if not trust_mcp_receipt or not isinstance(mcp_receipt, dict):
+        return
+    if (
+        mcp_receipt.get("receipt_status") != "completed"
+        or mcp_receipt.get("evidence_durability") != "durable"
+    ):
+        return
+    references = mcp_receipt.get("observed_evidence_refs")
+    if not isinstance(references, list):
+        return
+    for reference in references:
+        if not isinstance(reference, str):
+            continue
+        record_downstream_fact(
+            event_id=reference,
+            operation_id=operation_id,
+            business_refs=mcp_receipt.get("business_refs"),
+            context_hash=context_hash,
+        )
 
 
 def _expected_downstream_event_id(

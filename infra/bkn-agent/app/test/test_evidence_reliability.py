@@ -318,6 +318,82 @@ def test_canonical_fact_receipt_overrides_expected_downstream_event_id():
     assert headers["bkn-candidate-source-event-ids"] == '["evt_tool_canonical"]'
 
 
+def test_trusted_completed_mcp_receipt_adopts_observed_evidence_refs():
+    token = observability.set_context(observability.build_context(_headers()))
+    interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
+    try:
+        result = {"bkn_receipt": {
+            "receipt_status": "completed",
+            "evidence_durability": "durable",
+            "observed_evidence_refs": ["evt_context_retrieval_1"],
+        }}
+        evidence.record_fact_receipt(
+            operation_id="op_context_retrieval_1",
+            body=result,
+            context_hash=evidence.tool_message_context_hash("context-result"),
+            trust_mcp_receipt=True,
+        )
+        headers = evidence.model_context_headers(
+            [ToolMessage(content="context-result", tool_call_id="call-context")],
+            "op_model_context",
+        )
+    finally:
+        evidence.end_interaction(interaction)
+        observability.reset_context(token)
+
+    assert headers["bkn-candidate-source-event-ids"] == '["evt_context_retrieval_1"]'
+
+
+def test_trusted_mcp_receipt_without_durable_completed_evidence_is_not_adopted():
+    token = observability.set_context(observability.build_context(_headers()))
+    interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
+    try:
+        evidence.record_fact_receipt(
+            operation_id="op_context_retrieval_2",
+            body={"bkn_receipt": {
+                "receipt_status": "pending",
+                "evidence_durability": "durable",
+                "observed_evidence_refs": ["evt_context_retrieval_2"],
+            }},
+            context_hash=evidence.tool_message_context_hash("pending-result"),
+            trust_mcp_receipt=True,
+        )
+        headers = evidence.model_context_headers(
+            [ToolMessage(content="pending-result", tool_call_id="call-pending")],
+            "op_model_pending",
+        )
+    finally:
+        evidence.end_interaction(interaction)
+        observability.reset_context(token)
+
+    assert headers == {}
+
+
+def test_trusted_mcp_receipt_ignores_invalid_evidence_refs():
+    token = observability.set_context(observability.build_context(_headers()))
+    interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
+    try:
+        evidence.record_fact_receipt(
+            operation_id="op_context_retrieval_3",
+            body={"bkn_receipt": {
+                "receipt_status": "completed",
+                "evidence_durability": "durable",
+                "observed_evidence_refs": ["", "not valid", 7],
+            }},
+            context_hash=evidence.tool_message_context_hash("invalid-result"),
+            trust_mcp_receipt=True,
+        )
+        headers = evidence.model_context_headers(
+            [ToolMessage(content="invalid-result", tool_call_id="call-invalid")],
+            "op_model_invalid",
+        )
+    finally:
+        evidence.end_interaction(interaction)
+        observability.reset_context(token)
+
+    assert headers == {}
+
+
 def test_mf_model_call_propagates_operation_and_consumes_stable_fact(monkeypatch):
     captured = {}
 
