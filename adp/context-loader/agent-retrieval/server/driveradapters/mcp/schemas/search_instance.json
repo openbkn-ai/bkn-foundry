@@ -26,6 +26,20 @@
         },
         "description": "限定召回范围到指定的 BKN 概念分组；不传则在整个知识网络内召回。"
       },
+      "object_types": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "把召回范围钉死在这几个对象类上，只取对象类 id（例如 material），不接受名称。id 来自 search_schema 响应的 concept_id、search_instance 响应的 object_type_id 或 get_kn_detail 的 object_types[].id。不传则不限。过滤发生在相关性排序与 max_object_types 截断之前，因此点名的对象类不会因为排名靠后被挤掉。"
+      },
+      "exclude_object_types": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "从召回范围里排除这几个对象类，同样只取对象类 id。适合上一轮返回里混进了噪音对象类、想重跑一次时用；与 object_types 同时给且有重叠时，以排除为准。"
+      },
       "max_object_types": {
         "type": "integer",
         "default": 10,

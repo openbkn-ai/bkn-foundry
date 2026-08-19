@@ -10,9 +10,11 @@ package knsearch
 
 import (
 	"context"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
+	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -55,6 +57,18 @@ func (s *localSearchImpl) Search(ctx context.Context, req *interfaces.KnSearchLo
 		ObjectTypes:   conceptResult.ObjectTypes,
 		RelationTypes: conceptResult.RelationTypes,
 		ActionTypes:   conceptResult.ActionTypes,
+	}
+
+	// An allow list that matched nothing leaves an empty candidate pool. Say exactly that:
+	// the downstream message ("there are no searchable object types") reads as a property of
+	// the knowledge network rather than of the caller's own object_types list, and sends an
+	// agent looking for the problem in the wrong place.
+	if len(conceptResult.ObjectTypes) == 0 && len(conceptResult.UnmatchedObjectTypes) > 0 {
+		response.Message = infraErr.LocalizedDetail(ctx, "ScopeObjectTypesNotFound",
+			strings.Join(conceptResult.UnmatchedObjectTypes, ", "))
+		s.logger.WithContext(ctx).Infof("[KnSearchLocal] object_types matched no object type: %v",
+			conceptResult.UnmatchedObjectTypes)
+		return response, nil
 	}
 
 	// 4. Semantic instance recall: only done when the caller explicitly wants an instance (search_schema is always schema-only)

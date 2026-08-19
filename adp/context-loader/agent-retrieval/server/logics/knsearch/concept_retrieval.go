@@ -39,6 +39,7 @@ func (s *localSearchImpl) conceptRetrieval(
 	config *interfaces.KnSearchConceptRetrievalConfig,
 ) (*interfaces.KnSearchConceptResult, error) {
 	var err error
+	var unmatchedObjectTypes []string
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 
@@ -54,6 +55,13 @@ func (s *localSearchImpl) conceptRetrieval(
 
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Network detail: object_types=%d, relation_types=%d, action_types=%d",
 		len(networkDetail.ObjectTypes), len(networkDetail.RelationTypes), len(networkDetail.ActionTypes))
+
+	// Apply the caller's object type scope here, on the raw candidate pool: everything below
+	// (scoring, relation ranking, the TopK cut) must only ever see object types that are in
+	// scope, or a pinned object type ranking below TopK would be cut before the filter runs.
+	scope := newObjectTypeScope(config.ObjectTypes, config.ExcludeObjectTypes)
+	networkDetail.ObjectTypes, unmatchedObjectTypes = scope.apply(networkDetail.ObjectTypes)
+	s.logScopeOutcome(ctx, "", scope, networkDetail.ObjectTypes, unmatchedObjectTypes)
 
 	// 2. Rough recall (optional, for large-scale knowledge networks)
 	coarseScored := false
@@ -96,9 +104,10 @@ func (s *localSearchImpl) conceptRetrieval(
 	}
 
 	return &interfaces.KnSearchConceptResult{
-		ObjectTypes:   objectTypesLocal,
-		RelationTypes: relationTypesLocal,
-		ActionTypes:   actionTypesLocal,
+		ObjectTypes:          objectTypesLocal,
+		RelationTypes:        relationTypesLocal,
+		ActionTypes:          actionTypesLocal,
+		UnmatchedObjectTypes: unmatchedObjectTypes,
 	}, nil
 }
 
@@ -171,6 +180,13 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 		config.ConceptGroups, len(objects), len(relations), len(actions),
 	)
 
+	// Same rule as the whole-network path: scope first, rank and cut afterwards. Filtering
+	// before completeReferencedObjectTypes also keeps that step from pulling an out-of-scope
+	// object type back in as a relation endpoint.
+	scope := newObjectTypeScope(config.ObjectTypes, config.ExcludeObjectTypes)
+	objects, unmatchedObjectTypes := scope.apply(objects)
+	s.logScopeOutcome(ctx, "[Groups]", scope, objects, unmatchedObjectTypes)
+
 	objects, err = s.completeReferencedObjectTypes(ctx, req.KnID, objects, relations, actions)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("[ConceptRetrieval][Groups] complete referenced object types failed: %v", err)
@@ -190,9 +206,10 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	}
 
 	return &interfaces.KnSearchConceptResult{
-		ObjectTypes:   objectTypesLocal,
-		RelationTypes: relationTypesLocal,
-		ActionTypes:   actionTypesLocal,
+		ObjectTypes:          objectTypesLocal,
+		RelationTypes:        relationTypesLocal,
+		ActionTypes:          actionTypesLocal,
+		UnmatchedObjectTypes: unmatchedObjectTypes,
 	}, nil
 }
 

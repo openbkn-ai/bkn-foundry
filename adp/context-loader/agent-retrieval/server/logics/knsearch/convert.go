@@ -99,6 +99,8 @@ func retrievalConfigStructToLocal(rc *interfaces.RetrievalConfig) *interfaces.Kn
 		cr := rc.ConceptRetrieval
 		out.ConceptRetrieval = &interfaces.KnSearchConceptRetrievalConfig{
 			ConceptGroups:          normalizeConceptGroups(cr.ConceptGroups),
+			ObjectTypes:            normalizeObjectTypeIDs(cr.ObjectTypes),
+			ExcludeObjectTypes:     normalizeObjectTypeIDs(cr.ExcludeObjectTypes),
 			TopK:                   cr.TopK,
 			IncludeSampleData:      boolPtr(cr.IncludeSampleData),
 			SchemaBrief:            boolPtr(cr.SchemaBrief),

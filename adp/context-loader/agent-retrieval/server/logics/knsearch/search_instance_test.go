@@ -255,3 +255,31 @@ func TestNormalizeSearchInstanceReq_RerankFlag(t *testing.T) {
 		t.Errorf("rerank=false must keep it off, got %q", got)
 	}
 }
+
+func TestNormalizeSearchInstanceReq_PassesObjectTypeScope(t *testing.T) {
+	req := &interfaces.SearchInstanceReq{
+		KnID:               "kn1",
+		Query:              "q",
+		ObjectTypes:        []string{" Material ", "material", ""},
+		ExcludeObjectTypes: []string{"audit_log"},
+	}
+
+	knReq, err := NormalizeSearchInstanceReq(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	local := KnSearchReqToLocal(&interfaces.KnSearchReq{
+		Query:           knReq.Query,
+		KnID:            knReq.KnID,
+		OnlySchema:      knReq.OnlySchema,
+		RetrievalConfig: knReq.RetrievalConfig,
+	})
+	concept := MergeRetrievalConfig(local.RetrievalConfig).ConceptRetrieval
+	if len(concept.ObjectTypes) != 1 || concept.ObjectTypes[0] != "Material" {
+		t.Fatalf("allow list not trimmed and de-duplicated: %v", concept.ObjectTypes)
+	}
+	if len(concept.ExcludeObjectTypes) != 1 || concept.ExcludeObjectTypes[0] != "audit_log" {
+		t.Fatalf("deny list lost on the way to concept retrieval: %v", concept.ExcludeObjectTypes)
+	}
+}

@@ -94,6 +94,12 @@ func mergeConceptRetrievalConfig(base, user *interfaces.KnSearchConceptRetrieval
 	if len(user.ConceptGroups) > 0 {
 		base.ConceptGroups = normalizeConceptGroups(user.ConceptGroups)
 	}
+	if len(user.ObjectTypes) > 0 {
+		base.ObjectTypes = normalizeObjectTypeIDs(user.ObjectTypes)
+	}
+	if len(user.ExcludeObjectTypes) > 0 {
+		base.ExcludeObjectTypes = normalizeObjectTypeIDs(user.ExcludeObjectTypes)
+	}
 	if user.TopK > 0 {
 		base.TopK = user.TopK
 	}

@@ -19,6 +19,19 @@ type SearchInstanceReq struct {
 	KnID  string `json:"kn_id,omitempty"`
 	// ConceptGroups limits the concept groups participating in the recall, leaving it blank will result in the entire network.
 	ConceptGroups []string `json:"concept_groups,omitempty"`
+	// ObjectTypes pins recall to these object types (object type ids); empty means no limit.
+	//
+	// Ids only, never names: every tool that can hand an agent an object type returns its id
+	// (search_schema.concept_id, search_instance.object_type_id, get_kn_detail.object_types[].id),
+	// so accepting names buys nothing and costs the ability to tell "you passed a name" apart from
+	// "this object type does not exist" when the list matches nothing.
+	ObjectTypes []string `json:"object_types,omitempty"`
+	// ExcludeObjectTypes drops these object types (object type ids) from recall. Exclusion wins over
+	// ObjectTypes when an id appears in both.
+	//
+	// It sits next to the allow list because an agent can usually name what is noise -- the object
+	// types the previous call returned and it did not want -- more precisely than what it wants.
+	ExcludeObjectTypes []string `json:"exclude_object_types,omitempty"`
 	// MaxObjectTypes is the upper limit of the number of object types participating in instance recall (Top-K of concept recall).
 	MaxObjectTypes *int `json:"max_object_types,omitempty" default:"10"`
 	// MaxInstancesPerType returns at most several instances of each object type.

@@ -85,8 +85,10 @@ func NormalizeSearchInstanceReq(req *interfaces.SearchInstanceReq) (*interfaces.
 		// If the local structure is used, the unset fields will remain nil, and MergeRetrievalConfig will retain the default value as it is.
 		RetrievalConfig: &interfaces.KnSearchRetrievalConfig{
 			ConceptRetrieval: &interfaces.KnSearchConceptRetrievalConfig{
-				ConceptGroups: normalizeConceptGroups(req.ConceptGroups),
-				TopK:          *req.MaxObjectTypes,
+				ConceptGroups:      normalizeConceptGroups(req.ConceptGroups),
+				ObjectTypes:        normalizeObjectTypeIDs(req.ObjectTypes),
+				ExcludeObjectTypes: normalizeObjectTypeIDs(req.ExcludeObjectTypes),
+				TopK:               *req.MaxObjectTypes,
 				// schema_brief Hengkai: Schema recalled by concepts is only recalled by instances on this path.
 				// The caller cannot get the intermediate product, so there is no reason to pay extra volume and downstream query overhead for it.
 				SchemaBrief: boolPtr(true),

@@ -42,7 +42,12 @@ type KnSearchRetrievalConfig struct {
 
 // KnSearchConceptRetrievalConfig concept recall configuration parameters.
 type KnSearchConceptRetrievalConfig struct {
-	ConceptGroups          []string `json:"concept_groups,omitempty"`
+	ConceptGroups []string `json:"concept_groups,omitempty"`
+	// ObjectTypes / ExcludeObjectTypes scope recall to (or away from) the given object type ids.
+	// Both are applied to the candidate pool *before* relevance ranking and the TopK cut: filtering
+	// afterwards would silently drop a pinned object type that happened to rank below TopK.
+	ObjectTypes            []string `json:"object_types,omitempty"`
+	ExcludeObjectTypes     []string `json:"exclude_object_types,omitempty"`
 	TopK                   int      `json:"top_k" default:"10"`
 	IncludeSampleData      *bool    `json:"include_sample_data" default:"false"`
 	SchemaBrief            *bool    `json:"schema_brief" default:"false"`
@@ -215,6 +220,10 @@ type KnSearchConceptResult struct {
 	ObjectTypes   []*KnSearchObjectType
 	RelationTypes []*KnSearchRelationType
 	ActionTypes   []*KnSearchActionType
+	// UnmatchedObjectTypes lists the ids from the caller's object_types allow list that match no
+	// object type in this knowledge network. Carried out of concept retrieval so the caller can be
+	// told "these ids do not exist" instead of being handed a bare empty result.
+	UnmatchedObjectTypes []string
 }
 
 // KnSearchSemanticInstanceResult semantic instance retrieval result (internal)

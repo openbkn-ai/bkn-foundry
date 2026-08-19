@@ -232,6 +232,8 @@ type KnDataSourceConfig struct {
 // ConceptRetrievalConfig concept recall configuration.
 type ConceptRetrievalConfig struct {
 	ConceptGroups          []string `json:"concept_groups,omitempty"`
+	ObjectTypes            []string `json:"object_types,omitempty"`              // Recall only these object type ids.
+	ExcludeObjectTypes     []string `json:"exclude_object_types,omitempty"`      // Drop these object type ids from recall.
 	TopK                   int      `json:"top_k,omitempty"`                     // Default is 10.
 	IncludeSampleData      bool     `json:"include_sample_data,omitempty"`       // Default is false.
 	SchemaBrief            bool     `json:"schema_brief,omitempty"`              // Default is false.

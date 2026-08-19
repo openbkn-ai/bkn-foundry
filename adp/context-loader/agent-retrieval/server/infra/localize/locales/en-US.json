@@ -117,6 +117,7 @@
     "MCPSchemaConversionFailed": "Unable to convert the MCP tool schema.",
     "NoSearchableObjectTypes": "There are no searchable object types.",
     "NoMatchingInstances": "No matching instance data was found.",
+    "ScopeObjectTypesNotFound": "None of the object types named by object_types exist in this knowledge network: %s. The parameter takes object type ids (for example material), not names; ids come from concept_id in a search_schema response or object_type_id in a search_instance response.",
     "NoPublishedSkillsMatched": "No published skills matched. Register and publish a skill in Execution Factory, or broaden the name or category filter.",
     "SkillContentTruncated": "SKILL.md was truncated because it is too large. Use read_skill_file to read individual files.",
     "SkillFileNotTextual": "The skill file is not textual. Use the skill package download endpoint for binary content.",
