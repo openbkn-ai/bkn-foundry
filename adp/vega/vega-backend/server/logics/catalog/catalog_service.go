@@ -350,6 +350,34 @@ func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql
 }
 
 // Get retrieves a Catalog by ID.
+// CheckCatalogPermission authorizes an operation on one catalog for callers that
+// hold only its id. A missing catalog is reported as forbidden rather than as
+// "not found": the caller has not proven it may see the catalog, and saying
+// which ids exist is itself a disclosure.
+func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID string, op string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.CheckCatalogPermission")
+	defer span.End()
+
+	if catalogID == "" {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("catalog_id is required")
+	}
+	catalog, err := cs.ca.GetByID(ctx, catalogID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get catalog failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if catalog == nil {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
+	}
+	return cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: catalogAuthResourceType(catalog.Internal),
+		ID:   catalog.ID,
+	}, []string{op})
+}
+
 func (cs *catalogService) GetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Get catalog")
 	defer span.End()

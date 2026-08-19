@@ -777,8 +777,12 @@ func TestResourceServiceCreate(t *testing.T) {
 		expectResourceServiceTransaction(t, rs, true)
 
 		mockCS.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"cat-internal"}, nil)
-		// 建表判的是目标目录的 resource_manage（#801）：内部目录下的资源
-		// 相应判 internal_catalog，与 resourceAuthResourceType 的分型对称。
+		// 老动词先问、拒了再回落到目标目录的 resource_manage（#801）：内部目录下的
+		// 资源两侧都判 internal_*，与 resourceAuthResourceType 的分型对称。
+		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+			ID:   interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(errors.New("denied"))
 		mockPS.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 			Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
 			ID:   "cat-internal",

@@ -106,6 +106,13 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 		return "", rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 
+	// Creating a task is a write on the table it builds, so it needs task_manage
+	// there — GetByID above only proves the caller may see the table (#472).
+	if err := bts.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return "", err
+	}
+
 	if resource.Category != interfaces.ResourceCategoryTable {
 		span.SetStatus(codes.Error, "Resource category is not table")
 		return "", rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_Resource_InternalError_InvalidCategory).
@@ -413,6 +420,14 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
+	if buildTask != nil {
+		// A task is read through the table it builds (#472).
+		if err := bts.rs.CheckResourcePermission(ctx, buildTask.ResourceID,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			span.SetStatus(codes.Error, "Permission denied")
+			return nil, err
+		}
+	}
 	if buildTask == nil {
 		span.SetStatus(codes.Error, "Build task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
@@ -653,6 +668,10 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
+	if err := bts.rs.CheckResourcePermission(ctx, buildTask.ResourceID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return err
+	}
 	// Failed tasks may also be restarted; otherwise they become dead ends that must be deleted and rebuilt.
 	if buildTask.Status != interfaces.BuildTaskStatusStopped &&
 		buildTask.Status != interfaces.BuildTaskStatusFailed {
@@ -770,6 +789,10 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
+	if err := bts.rs.CheckResourcePermission(ctx, buildTask.ResourceID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return err
+	}
 	if buildTask.Status != interfaces.BuildTaskStatusRunning &&
 		buildTask.Status != interfaces.BuildTaskStatusPending {
 		span.SetStatus(codes.Error, "Invalid state transition for stop")
@@ -846,6 +869,13 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 		if buildTask.Status == interfaces.BuildTaskStatusRunning || buildTask.Status == interfaces.BuildTaskStatusStopping {
 			runningIDs = append(runningIDs, id)
 			continue
+		}
+		// Checked per task, before anything is deleted: a batch is one transaction,
+		// so one unauthorized id must stop the whole request rather than delete the
+		// rest of it (#472).
+		if err := bts.rs.CheckResourcePermission(ctx, buildTask.ResourceID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+			span.SetStatus(codes.Error, "Permission denied")
+			return err
 		}
 		resource, err := bts.rs.GetByID(ctx, buildTask.ResourceID)
 		if err != nil {

@@ -370,17 +370,30 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	_, parentInternal := internalCatalogs[req.CatalogID]
 	authType := resourceAuthResourceType(parentInternal)
 
-	// Creating a table is judged on the target catalog's resource_manage (#801).
+	// Creating a table is authorised by the target catalog's resource_manage, or
+	// by the legacy resource:* + create — legacy first, short-circuit (#801).
 	//
 	// A table is always created INSIDE a catalog, so "may create a table" and
-	// "may act on this catalog" were always the same question. The old check
-	// asked resource:* + create, and a wildcard object cannot answer which
-	// catalog the table lands in: whoever held it could create a table anywhere.
+	// "may act on this catalog" are the same question, and the legacy check
+	// cannot answer it: a wildcard object does not say which catalog the table
+	// lands in, so whoever holds it can create a table anywhere.
+	//
+	// The legacy verb is nonetheless asked FIRST and kept. Dropping it looks like
+	// tidying and is a breaking change: the seed rebuilds only the built-in roles,
+	// so a CUSTOM role created through the admin console still carries
+	// resource:*/create and nothing migrates it. Those roles would start getting
+	// 403 on an upgrade. Retiring it belongs with the seed convergence (#513),
+	// which owns the migration story.
 	if err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: catalogAuthResourceType(parentInternal),
-		ID:   req.CatalogID,
-	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err != nil {
-		return nil, err
+		Type: authType,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_CREATE}); err != nil {
+		if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: catalogAuthResourceType(parentInternal),
+			ID:   req.CatalogID,
+		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err2 != nil {
+			return nil, err // the legacy error, so client-visible codes do not change
+		}
 	}
 
 	// Get account info from context
@@ -589,6 +602,41 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
+}
+
+// CheckResourcePermission authorizes an operation on one resource for callers
+// that hold only its id — the task services, whose objects all hang off a
+// resource. It resolves the owning catalog itself, so a caller never has to know
+// that the fallback exists.
+//
+// A missing resource is reported as forbidden rather than as "not found": the
+// caller has not proven it may see the resource, and saying which ids exist is
+// itself a disclosure.
+func (rs *resourceService) CheckResourcePermission(ctx context.Context, resourceID string, op string) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.CheckResourcePermission")
+	defer span.End()
+
+	if resourceID == "" {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_ID).
+			WithErrorDetails("resource_id is required")
+	}
+	resource, err := rs.ra.GetByID(ctx, resourceID)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get resource failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if resource == nil {
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
+	}
+
+	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	if err != nil {
+		return err
+	}
+	_, parentInternal := internalCatalogs[resource.CatalogID]
+	return rs.checkResourceOrCatalog(ctx, resource.ID, resource.CatalogID, parentInternal, op)
 }
 
 func (rs *resourceService) InternalGetByID(ctx context.Context, id string) (*interfaces.Resource, error) {

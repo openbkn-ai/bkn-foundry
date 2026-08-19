@@ -125,6 +125,9 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: resourceService}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
 		var createdTask *interfaces.SemanticUnderstandingTask
@@ -169,7 +172,12 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		active := &interfaces.SemanticUnderstandingTask{ID: "semantic-task-1"}
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService, rs: resourceService}
 		var findScope string
 
@@ -263,6 +271,9 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
@@ -280,6 +291,9 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
@@ -297,6 +311,9 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
@@ -313,6 +330,9 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
@@ -511,7 +531,11 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 	taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 	catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+	catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
 	resourceService := mock_interfaces.NewMockResourceService(ctrl)
+	resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
 	userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
 	service := &semanticUnderstandingTaskService{
 		suta: taskAccess,

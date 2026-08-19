@@ -87,6 +87,20 @@ func (mr *MockResourceServiceMockRecorder) CheckExistByName(ctx, catalogID, name
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByName", reflect.TypeOf((*MockResourceService)(nil).CheckExistByName), ctx, catalogID, name)
 }
 
+// CheckResourcePermission mocks base method.
+func (m *MockResourceService) CheckResourcePermission(ctx context.Context, resourceID, op string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckResourcePermission", ctx, resourceID, op)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckResourcePermission indicates an expected call of CheckResourcePermission.
+func (mr *MockResourceServiceMockRecorder) CheckResourcePermission(ctx, resourceID, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckResourcePermission", reflect.TypeOf((*MockResourceService)(nil).CheckResourcePermission), ctx, resourceID, op)
+}
+
 // Create mocks base method.
 func (m *MockResourceService) Create(ctx context.Context, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()

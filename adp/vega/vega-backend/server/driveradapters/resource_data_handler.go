@@ -122,6 +122,15 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 		return
 	}
 
+	// Reading rows needs query_data, not just view_detail. The two were split so
+	// that "may see the structure" and "may read the contents" could differ
+	// (#801); until this is checked the split decides nothing (#571).
+	if err := r.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+		otellog.LogError(ctx, "Query resource data denied", err)
+		rest.ReplyError(c, err)
+		return
+	}
+
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)

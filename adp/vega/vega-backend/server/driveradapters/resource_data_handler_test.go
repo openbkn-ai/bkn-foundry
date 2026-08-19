@@ -36,6 +36,9 @@ func setupResourceDataHandlerTest(
 	t.Cleanup(mockCtrl.Finish)
 
 	rs := vmock.NewMockResourceService(mockCtrl)
+	// 取数要 query_data（#571）；这些用例验的是查询本身，统一放行。
+	rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
 	ds := vmock.NewMockDatasetService(mockCtrl)
 	rds := vmock.NewMockResourceDataService(mockCtrl)
 	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, rds)

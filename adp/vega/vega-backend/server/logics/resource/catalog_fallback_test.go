@@ -8,9 +8,11 @@ package resource
 import (
 	"context"
 	"errors"
+	"net/http"
 	"sort"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -261,13 +263,13 @@ func TestMergeCatalogPermissionsIgnoresUnmappedOps(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-// TestCreateJudgesTheCatalogOnly 钉住 #801 的收口:建表只判目标目录的
-// resource_manage,不再问 resource:* 的 create。
+// TestCreateFallsBackToCatalogResourceManage 钉住建表判定的形状:老动词在前、
+// 短路,拒了才问目标目录的 resource_manage。
 //
-// 表必须建在某个目录里,所以「有权建表」与「有权动这个目录」本来就是同一件事;
-// 而 resource:* 这个通配对象答不了「建在哪个目录」——持有它的人可以往任意目录
-// 里建表。mock 只允许目录那一问,多问一次就会失败。
-func TestCreateJudgesTheCatalogOnly(t *testing.T) {
+// 保留老动词不是恋旧。种子只重建内置角色,管理台建的自定义角色手上还是
+// resource:*/create,没有任何东西迁移它们——直接切成只判目录,那些角色升级即 403。
+// 收紧留给 #513,那条线自带迁移。
+func TestCreateFallsBackToCatalogResourceManage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ra := vmock.NewMockResourceAccess(ctrl)
 	ps := vmock.NewMockPermissionService(ctrl)
@@ -276,6 +278,11 @@ func TestCreateJudgesTheCatalogOnly(t *testing.T) {
 	expectResourceServiceTransaction(t, rs, true)
 
 	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	// 老动词先问，这里让它拒，回落到目录。
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(errors.New("denied")).Times(1)
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   "c-1",
@@ -298,4 +305,52 @@ func TestCreateJudgesTheCatalogOnly(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+// TestViewDetailAloneDoesNotGrantQueryData 是拆分两个读动词的意义所在:看得见
+// 结构不等于读得到行。
+//
+// 在取数路径判上 query_data 之前(#571),这个区分只存在于词表里——取数只验
+// view_detail,拆不拆一个样。这条用例钉住判定本身;取数入口的那次调用在
+// PostResourceDataByEx 里,它开头要 verifyOAuth,没有 hydra 桩没法在单测里走完。
+func TestViewDetailAloneDoesNotGrantQueryData(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := vmock.NewMockPermissionService(ctrl)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ps: ps, ra: ra, cs: cs}
+
+	ra.EXPECT().GetByID(gomock.Any(), "r-1").Return(&interfaces.Resource{
+		ID: "r-1", CatalogID: "c-1",
+	}, nil)
+	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+
+	denied := errors.New("denied")
+	// 表上只有 view_detail,所以 query_data 被拒;目录上也没有,回落同样拒。
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "r-1",
+	}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(denied)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "c-1",
+	}, []string{interfaces.OPERATION_TYPE_QUERY_DATA}).Return(errors.New("catalog says no"))
+
+	err := rs.CheckResourcePermission(context.Background(), "r-1", interfaces.OPERATION_TYPE_QUERY_DATA)
+	assert.Same(t, denied, err, "只有 view_detail 的人不该读到数据")
+}
+
+// TestCheckResourcePermissionHidesUnknownResources: 查不到的资源报 403 而不是
+// 404——调用方还没证明它能看见这个资源，告诉它哪些 id 存在本身就是泄露。
+func TestCheckResourcePermissionHidesUnknownResources(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	rs := &resourceService{ra: ra}
+
+	ra.EXPECT().GetByID(gomock.Any(), "gone").Return(nil, nil)
+
+	err := rs.CheckResourcePermission(context.Background(), "gone", interfaces.OPERATION_TYPE_QUERY_DATA)
+	require.Error(t, err)
+	var httpErr *rest.HTTPError
+	require.True(t, errors.As(err, &httpErr), "want an HTTPError, got %v", err)
+	assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode,
+		"查不到就报 404 会把「哪些 id 存在」告诉一个还没证明自己能看的调用方")
 }

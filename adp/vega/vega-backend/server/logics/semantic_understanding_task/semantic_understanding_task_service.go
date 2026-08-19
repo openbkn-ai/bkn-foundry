@@ -102,6 +102,14 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 
+	// InternalGetByID above deliberately skips authorization, so this is the only
+	// thing standing between an unauthorized caller and a task that reads the
+	// table's unmasked sample rows (bkn-studio#342).
+	if err := suts.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, err
+	}
+
 	task, err := normalizeResourceSemanticUnderstandingRequest(resource, req)
 	if err != nil {
 		span.SetStatus(codes.Error, "Invalid semantic understanding task request")
@@ -109,6 +117,16 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 			WithErrorDetails(err.Error())
 	}
 	if req.IncludeSampleRows {
+		// Sample rows are the table's actual contents, sent unmasked to the
+		// semantic service and then kept in the task's input snapshot. Asking for
+		// them is a data read, so it needs query_data on top of task_manage —
+		// otherwise task_manage alone would be a way around the read permission
+		// (#571).
+		if err := suts.rs.CheckResourcePermission(ctx, resourceID,
+			interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+			span.SetStatus(codes.Error, "Permission denied")
+			return nil, err
+		}
 		if _, err := resourcelogic.EnsureResourceQueryable(ctx, resource); err != nil {
 			logger.Warnf("Skipping semantic sample rows because resource is not queryable: resource_id=%s, category=%s, error=%v", resource.ID, resource.Category, err)
 		} else if err := suts.attachUnmaskedSampleRows(ctx, resource, task); err != nil {
@@ -144,6 +162,13 @@ func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Cont
 		span.SetStatus(codes.Error, "Get catalog resources failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
+	}
+
+	// Same hole as the resource path: the catalog was fetched internally, which
+	// skips authorization (bkn-studio#342).
+	if err := suts.cs.CheckCatalogPermission(ctx, catalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, err
 	}
 
 	task, err := normalizeCatalogSemanticUnderstandingRequest(catalog, resources, req)

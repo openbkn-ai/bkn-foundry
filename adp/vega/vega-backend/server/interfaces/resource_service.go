@@ -46,6 +46,12 @@ type ResourceService interface {
 	// CheckExistByCategories checks if Resources exists by catalog ID and categories.
 	CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error)
 
+	// CheckResourcePermission reports whether the caller may perform op on the
+	// resource, falling back to the owning catalog exactly as the resource's own
+	// endpoints do (#817). Task services use it so a build, discover or semantic
+	// task is authorized by the table it belongs to rather than by nothing at all.
+	CheckResourcePermission(ctx context.Context, resourceID string, op string) error
+
 	// InternalGetByID retrieves a Resource by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*Resource, error)
 	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.
