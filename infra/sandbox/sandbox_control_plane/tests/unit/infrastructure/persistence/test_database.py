@@ -1,8 +1,4 @@
-"""
-数据库管理器单元测试
-
-测试 DatabaseManager 的功能。
-"""
+"""Unit tests for database."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 
@@ -15,11 +11,11 @@ from src.infrastructure.persistence.database import (
 
 
 class TestDatabaseManager:
-    """数据库管理器测试"""
+    """Tests for TestDatabaseManager."""
 
     @pytest.fixture
     def mock_settings(self):
-        """模拟设置"""
+        """Create settings."""
         settings = Mock()
         settings.effective_database_url = "mysql+aiomysql://root:password@localhost:3306/openbkn"
         settings.log_level = "INFO"
@@ -30,16 +26,16 @@ class TestDatabaseManager:
 
     @pytest.fixture
     def db_manager(self):
-        """创建数据库管理器"""
+        """Create db manager."""
         return DatabaseManager()
 
     def test_init(self, db_manager):
-        """测试初始化"""
+        """Test init."""
         assert db_manager._engine is None
         assert db_manager._session_factory is None
 
     def test_get_runtime_database_url_normalizes_legacy_database_name(self, db_manager, mock_settings):
-        """测试运行期数据库 URL 会将旧库名规范化到新库名。"""
+        """Test get runtime database URL normalizes legacy database name."""
         mock_settings.effective_database_url = "mysql+aiomysql://root:password@localhost:3306/adp"
 
         with patch("src.infrastructure.persistence.database.get_settings", return_value=mock_settings):
@@ -48,7 +44,7 @@ class TestDatabaseManager:
         assert runtime_url == "mysql+aiomysql://root:password@localhost:3306/openbkn"
 
     def test_get_managed_sandbox_table_names(self, db_manager):
-        """测试只返回受管的沙箱表。"""
+        """Test get managed sandbox table names."""
         assert db_manager._get_managed_sandbox_table_names() == {
             "t_sandbox_execution",
             "t_sandbox_runtime_node",
@@ -58,33 +54,33 @@ class TestDatabaseManager:
 
     @pytest.mark.asyncio
     async def test_ensure_database_exists_integration(self, db_manager):
-        """测试确保数据库存在（集成测试，需要实际连接）"""
+        """Test ensure database exists integration."""
         # This test requires actual database connection
         # Skip in unit tests
         pass
 
     @pytest.mark.asyncio
     async def test_initialize_integration(self, db_manager):
-        """测试初始化数据库引擎（集成测试）"""
+        """Test initialize integration."""
         # This test requires actual database connection
         # Skip in unit tests
         pass
 
     @pytest.mark.asyncio
     async def test_create_tables_not_initialized(self, db_manager):
-        """测试未初始化时创建表"""
+        """Test create tables not initialized."""
         with pytest.raises(RuntimeError, match="not initialized"):
             await db_manager.create_tables()
 
     @pytest.mark.asyncio
     async def test_run_startup_schema_migrations_not_initialized(self, db_manager):
-        """测试未初始化时执行启动迁移。"""
+        """Test run startup schema migrations not initialized."""
         with pytest.raises(RuntimeError, match="not initialized"):
             await db_manager.run_startup_schema_migrations()
 
     @pytest.mark.asyncio
     async def test_initialize_with_seed_no_tables_no_seed(self, db_manager):
-        """测试初始化不创建表和种子数据"""
+        """Test initialize with seed no tables no seed."""
         result = await db_manager.initialize_with_seed(
             create_tables=False,
             seed_data=False
@@ -96,7 +92,7 @@ class TestDatabaseManager:
 
     @pytest.mark.asyncio
     async def test_initialize_with_seed_create_tables(self, db_manager):
-        """测试初始化创建表"""
+        """Test initialize with seed create tables."""
         with patch.object(db_manager, 'create_tables', new_callable=AsyncMock):
             result = await db_manager.initialize_with_seed(
                 create_tables=True,
@@ -108,7 +104,7 @@ class TestDatabaseManager:
 
     @pytest.mark.asyncio
     async def test_initialize_with_seed_with_seed(self, db_manager):
-        """测试初始化带种子数据"""
+        """Test initialize with seed with seed."""
         with patch.object(db_manager, 'create_tables', new_callable=AsyncMock):
             with patch('src.infrastructure.persistence.seed.seeder.seed_default_data',
                       new_callable=AsyncMock, return_value={"templates": 1, "runtime_nodes": 1}):
@@ -123,20 +119,20 @@ class TestDatabaseManager:
 
     @pytest.mark.asyncio
     async def test_get_session_not_initialized(self, db_manager):
-        """测试未初始化时获取会话"""
+        """Test get session not initialized."""
         with pytest.raises(RuntimeError, match="not initialized"):
             async with db_manager.get_session():
                 pass
 
     @pytest.mark.asyncio
     async def test_close_no_engine(self, db_manager):
-        """测试没有引擎时关闭"""
+        """Test close no engine."""
         # Should not raise error
         await db_manager.close()
 
     @pytest.mark.asyncio
     async def test_close_with_engine(self, db_manager):
-        """测试有引擎时关闭"""
+        """Test close with engine."""
         mock_engine = Mock()
         mock_engine.dispose = AsyncMock()
         db_manager._engine = mock_engine
@@ -151,7 +147,7 @@ class TestDatabaseManager:
         db_manager,
         mock_settings,
     ):
-        """测试旧数据库名会迁移受管表，但不会删除旧库。"""
+        """Test upgrade legacy database name migrates managed tables without dropping legacy database."""
         mock_cursor = AsyncMock()
         mock_cursor.fetchone = AsyncMock(side_effect=[(1,), (0,)])
         mock_cursor.fetchall = AsyncMock(
@@ -205,7 +201,7 @@ class TestDatabaseManager:
         db_manager,
         mock_settings,
     ):
-        """测试新数据库已存在但缺表时会迁移缺失表且保留旧库。"""
+        """Test upgrade legacy database name migrates missing tables when target exists."""
         mock_cursor = AsyncMock()
         mock_cursor.fetchone = AsyncMock(side_effect=[(1,), (1,)])
         mock_cursor.fetchall = AsyncMock(
@@ -254,7 +250,7 @@ class TestDatabaseManager:
         db_manager,
         mock_settings,
     ):
-        """测试目标库已有同名表时保留旧库剩余表，避免覆盖数据。"""
+        """Test upgrade legacy database name keeps legacy database when tables remain."""
         mock_cursor = AsyncMock()
         mock_cursor.fetchone = AsyncMock(side_effect=[(1,), (1,)])
         mock_cursor.fetchall = AsyncMock(
@@ -298,7 +294,7 @@ class TestDatabaseManager:
         db_manager,
         mock_settings,
     ):
-        """测试只迁移受管的沙箱表，不处理其他业务表。"""
+        """Test upgrade legacy database name ignores non sandbox tables."""
         mock_cursor = AsyncMock()
         mock_cursor.fetchone = AsyncMock(side_effect=[(1,), (1,)])
         mock_cursor.fetchall = AsyncMock(
@@ -342,7 +338,7 @@ class TestDatabaseManager:
 
     @pytest.mark.asyncio
     async def test_run_startup_schema_migrations_adds_missing_column(self, db_manager):
-        """测试启动迁移会补齐缺失字段。"""
+        """Test run startup schema migrations adds missing column."""
         mock_conn = AsyncMock()
         table_exists_result = Mock()
         table_exists_result.scalar.return_value = 1
@@ -371,7 +367,7 @@ class TestDatabaseManager:
 
     @pytest.mark.asyncio
     async def test_run_startup_schema_migrations_skips_existing_column(self, db_manager):
-        """测试启动迁移在字段已存在时跳过。"""
+        """Test run startup schema migrations skips existing column."""
         mock_conn = AsyncMock()
         table_exists_result = Mock()
         table_exists_result.scalar.return_value = 1
@@ -396,9 +392,9 @@ class TestDatabaseManager:
 
 
 class TestBase:
-    """SQLAlchemy 基类测试"""
+    """Tests for TestBase."""
 
     def test_base_is_declarative_base(self):
-        """测试 Base 是 DeclarativeBase"""
+        """Test base is declarative base."""
         from sqlalchemy.orm import DeclarativeBase
         assert issubclass(Base, DeclarativeBase)

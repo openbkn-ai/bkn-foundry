@@ -1,8 +1,4 @@
-"""
-后台任务管理器单元测试
-
-测试 BackgroundTask 和 BackgroundTaskManager 的功能。
-"""
+"""Unit tests for task manager."""
 import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch
@@ -14,16 +10,16 @@ from src.infrastructure.background_tasks.task_manager import (
 
 
 class TestBackgroundTask:
-    """后台任务测试"""
+    """Tests for TestBackgroundTask."""
 
     @pytest.fixture
     def task_func(self):
-        """创建模拟任务函数"""
+        """Create task func."""
         return AsyncMock()
 
     @pytest.fixture
     def task(self, task_func):
-        """创建后台任务"""
+        """Create task."""
         return BackgroundTask(
             name="test_task",
             func=task_func,
@@ -32,7 +28,7 @@ class TestBackgroundTask:
         )
 
     def test_init(self, task_func):
-        """测试任务初始化"""
+        """Test init."""
         task = BackgroundTask(
             name="test_task",
             func=task_func,
@@ -47,12 +43,12 @@ class TestBackgroundTask:
         assert task._task is None
 
     def test_is_running_false_initially(self, task):
-        """测试初始状态为未运行"""
+        """Test is running false initially."""
         assert task.is_running is False
 
     @pytest.mark.asyncio
     async def test_start_task(self, task, task_func):
-        """测试启动任务"""
+        """Test start task."""
         await task.start()
 
         assert task._running is True
@@ -63,7 +59,7 @@ class TestBackgroundTask:
 
     @pytest.mark.asyncio
     async def test_start_already_running_task(self, task, task_func):
-        """测试启动已在运行的任务"""
+        """Test start already running task."""
         await task.start()
 
         # Should not create a new task
@@ -77,7 +73,7 @@ class TestBackgroundTask:
 
     @pytest.mark.asyncio
     async def test_stop_task(self, task, task_func):
-        """测试停止任务"""
+        """Test stop task."""
         await task.start()
         await task.stop()
 
@@ -85,14 +81,14 @@ class TestBackgroundTask:
 
     @pytest.mark.asyncio
     async def test_stop_not_running_task(self, task):
-        """测试停止未运行的任务"""
+        """Test stop not running task."""
         # Should not raise error
         await task.stop()
         assert task._running is False
 
     @pytest.mark.asyncio
     async def test_task_executes_func(self, task_func):
-        """测试任务执行函数"""
+        """Test task executes func."""
         task = BackgroundTask(
             name="test_task",
             func=task_func,
@@ -108,7 +104,7 @@ class TestBackgroundTask:
 
     @pytest.mark.asyncio
     async def test_task_with_initial_delay(self, task_func):
-        """测试带初始延迟的任务"""
+        """Test task with initial delay."""
         task = BackgroundTask(
             name="test_task",
             func=task_func,
@@ -130,7 +126,7 @@ class TestBackgroundTask:
 
     @pytest.mark.asyncio
     async def test_task_handles_exception(self, task_func):
-        """测试任务处理异常"""
+        """Test task handles exception."""
         task_func.side_effect = RuntimeError("Test error")
 
         task = BackgroundTask(
@@ -151,7 +147,7 @@ class TestBackgroundTask:
 
     @pytest.mark.asyncio
     async def test_is_running_property(self, task, task_func):
-        """测试 is_running 属性"""
+        """Test is running property."""
         assert task.is_running is False
 
         await task.start()
@@ -162,27 +158,27 @@ class TestBackgroundTask:
 
 
 class TestBackgroundTaskManager:
-    """后台任务管理器测试"""
+    """Tests for TestBackgroundTaskManager."""
 
     @pytest.fixture
     def manager(self):
-        """创建任务管理器"""
+        """Create manager."""
         return BackgroundTaskManager()
 
     @pytest.fixture
     def task_func(self):
-        """创建模拟任务函数"""
+        """Create task func."""
         return AsyncMock()
 
     def test_init(self):
-        """测试管理器初始化"""
+        """Test init."""
         manager = BackgroundTaskManager()
 
         assert manager._tasks == []
         assert manager._running is False
 
     def test_register_task(self, manager, task_func):
-        """测试注册任务"""
+        """Test register task."""
         manager.register_task(
             name="test_task",
             func=task_func,
@@ -193,7 +189,7 @@ class TestBackgroundTaskManager:
         assert manager.task_count == 1
 
     def test_register_multiple_tasks(self, manager, task_func):
-        """测试注册多个任务"""
+        """Test register multiple tasks."""
         manager.register_task("task1", task_func, 5)
         manager.register_task("task2", task_func, 10)
         manager.register_task("task3", task_func, 15)
@@ -201,7 +197,7 @@ class TestBackgroundTaskManager:
         assert manager.task_count == 3
 
     def test_task_count(self, manager, task_func):
-        """测试任务计数"""
+        """Test task count."""
         assert manager.task_count == 0
 
         manager.register_task("task1", task_func, 5)
@@ -212,7 +208,7 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_start_all(self, manager, task_func):
-        """测试启动所有任务"""
+        """Test start all."""
         manager.register_task("task1", task_func, 0.1)
         manager.register_task("task2", task_func, 0.1)
 
@@ -226,7 +222,7 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_start_all_already_running(self, manager, task_func):
-        """测试在已运行时启动所有任务"""
+        """Test start all already running."""
         manager.register_task("task1", task_func, 0.1)
 
         await manager.start_all()
@@ -239,7 +235,7 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_stop_all(self, manager, task_func):
-        """测试停止所有任务"""
+        """Test stop all."""
         manager.register_task("task1", task_func, 0.1)
         manager.register_task("task2", task_func, 0.1)
 
@@ -250,14 +246,14 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_stop_all_not_running(self, manager):
-        """测试停止未运行的管理器"""
+        """Test stop all not running."""
         # Should not raise error
         await manager.stop_all()
         assert manager.running is False
 
     @pytest.mark.asyncio
     async def test_lifecycle_context_manager(self, manager, task_func):
-        """测试生命周期上下文管理器"""
+        """Test lifecycle context manager."""
         manager.register_task("task1", task_func, 0.1)
 
         async with manager.lifecycle():
@@ -267,7 +263,7 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_lifecycle_context_manager_with_exception(self, manager, task_func):
-        """测试生命周期上下文管理器处理异常"""
+        """Test lifecycle context manager with exception."""
         manager.register_task("task1", task_func, 0.1)
 
         with pytest.raises(RuntimeError):
@@ -279,7 +275,7 @@ class TestBackgroundTaskManager:
         assert manager.running is False
 
     def test_get_task_status(self, manager, task_func):
-        """测试获取任务状态"""
+        """Test get task status."""
         manager.register_task("task1", task_func, 5)
         manager.register_task("task2", task_func, 10)
 
@@ -292,7 +288,7 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_get_task_status_running(self, manager, task_func):
-        """测试获取运行中任务状态"""
+        """Test get task status running."""
         manager.register_task("task1", task_func, 0.5)
         manager.register_task("task2", task_func, 0.5)
 
@@ -306,7 +302,7 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_running_property(self, manager, task_func):
-        """测试 running 属性"""
+        """Test running property."""
         assert manager.running is False
 
         manager.register_task("task1", task_func, 0.5)
@@ -318,7 +314,7 @@ class TestBackgroundTaskManager:
 
     @pytest.mark.asyncio
     async def test_multiple_tasks_execute_independently(self, manager):
-        """测试多个任务独立执行"""
+        """Test multiple tasks execute independently."""
         call_counts = {"task1": 0, "task2": 0}
 
         async def task1_func():

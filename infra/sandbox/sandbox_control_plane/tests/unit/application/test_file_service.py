@@ -1,8 +1,4 @@
-"""
-文件应用服务单元测试
-
-测试 FileService 的用例编排逻辑。
-"""
+"""Unit tests for file service."""
 import io
 import stat
 import zipfile
@@ -19,18 +15,18 @@ from src.shared.errors.domain import NotFoundError, ValidationError
 
 
 class TestFileService:
-    """文件应用服务测试"""
+    """Tests for TestFileService."""
 
     @pytest.fixture
     def session_repo(self):
-        """模拟会话仓储"""
+        """Create session repo."""
         repo = Mock()
         repo.find_by_id = AsyncMock()
         return repo
 
     @pytest.fixture
     def storage_service(self):
-        """模拟存储服务"""
+        """Create storage service."""
         service = Mock()
         service.upload_file = AsyncMock()
         service.download_file = AsyncMock()
@@ -42,7 +38,7 @@ class TestFileService:
 
     @pytest.fixture
     def service(self, session_repo, storage_service):
-        """创建文件服务"""
+        """Create service."""
         return FileService(
             session_repo=session_repo,
             storage_service=storage_service
@@ -50,7 +46,7 @@ class TestFileService:
 
     @pytest.fixture
     def active_session(self):
-        """活跃会话"""
+        """Create active session."""
         return Session(
             id="sess_123",
             template_id="python-basic",
@@ -62,7 +58,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_file_success(self, service, session_repo, storage_service, active_session):
-        """测试成功上传文件"""
+        """Test upload file success."""
         session_repo.find_by_id.return_value = active_session
 
         content = b"hello world"
@@ -78,7 +74,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_file_session_not_found(self, service, session_repo):
-        """测试上传文件到不存在的会话"""
+        """Test upload file session not found."""
         session_repo.find_by_id.return_value = None
 
         with pytest.raises(NotFoundError, match="Session not found"):
@@ -90,7 +86,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_file_session_not_active(self, service, session_repo):
-        """测试上传文件到非活跃会话"""
+        """Test upload file session not active."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -110,10 +106,10 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_file_invalid_path(self, service, session_repo, active_session):
-        """测试上传文件到无效路径"""
+        """Test upload file invalid path."""
         session_repo.find_by_id.return_value = active_session
 
-        # 绝对路径
+        # Test setup.
         with pytest.raises(ValidationError, match="Invalid file path"):
             await service.upload_file(
                 session_id="sess_123",
@@ -121,7 +117,7 @@ class TestFileService:
                 content=b"hello"
             )
 
-        # 空路径
+        # Invalid input case.
         with pytest.raises(ValidationError, match="Invalid file path"):
             await service.upload_file(
                 session_id="sess_123",
@@ -138,7 +134,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_file_with_default_content_type(self, service, session_repo, storage_service, active_session):
-        """测试使用默认内容类型上传文件"""
+        """Test upload file with default content type."""
         session_repo.find_by_id.return_value = active_session
 
         await service.upload_file(
@@ -147,13 +143,13 @@ class TestFileService:
             content=b"\x00\x01\x02"
         )
 
-        # 验证使用了默认的 content_type
+        # Verify expected behavior.
         call_args = storage_service.upload_file.call_args
         assert call_args[1]["content_type"] == "application/octet-stream"
 
     @pytest.mark.asyncio
     async def test_upload_file_with_custom_content_type(self, service, session_repo, storage_service, active_session):
-        """测试使用自定义内容类型上传文件"""
+        """Test upload file with custom content type."""
         session_repo.find_by_id.return_value = active_session
 
         await service.upload_file(
@@ -163,13 +159,13 @@ class TestFileService:
             content_type="application/json"
         )
 
-        # 验证使用了自定义的 content_type
+        # Verify expected behavior.
         call_args = storage_service.upload_file.call_args
         assert call_args[1]["content_type"] == "application/json"
 
     @pytest.mark.asyncio
     async def test_upload_file_s3_path_construction(self, service, session_repo, storage_service, active_session):
-        """测试 S3 路径构造"""
+        """Test upload file S3 path construction."""
         session_repo.find_by_id.return_value = active_session
 
         await service.upload_file(
@@ -178,7 +174,7 @@ class TestFileService:
             content=b"id,name\n1,test"
         )
 
-        # 验证 S3 路径包含 workspace_path
+        # S3-related assertion.
         call_args = storage_service.upload_file.call_args
         if call_args[0]:
             s3_path = call_args[0][0]
@@ -189,7 +185,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_and_extract_zip_success(self, service, session_repo, storage_service, active_session):
-        """测试成功解压 ZIP 并上传多个文件"""
+        """Test upload and extract ZIP success."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.return_value = False
 
@@ -213,7 +209,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_and_extract_zip_skips_conflicts(self, service, session_repo, storage_service, active_session):
-        """测试 ZIP 解压时跳过已存在文件"""
+        """Test upload and extract ZIP skips conflicts."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.side_effect = [True, False]
 
@@ -235,7 +231,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_and_extract_zip_invalid_entry_path(self, service, session_repo, active_session):
-        """测试 ZIP 含非法路径时拒绝解压"""
+        """Test upload and extract ZIP invalid entry path."""
         session_repo.find_by_id.return_value = active_session
 
         archive_buffer = io.BytesIO()
@@ -257,7 +253,7 @@ class TestFileService:
         session_repo,
         active_session,
     ):
-        """测试 ZIP 含符号链接 entry 时拒绝解压"""
+        """Test upload and extract ZIP rejects symlink entry."""
         session_repo.find_by_id.return_value = active_session
 
         archive_buffer = io.BytesIO()
@@ -281,7 +277,7 @@ class TestFileService:
         storage_service,
         active_session,
     ):
-        """测试 ZIP 文件数量超过限制时拒绝解压"""
+        """Test upload and extract ZIP rejects too many files."""
         service = FileService(
             session_repo=session_repo,
             storage_service=storage_service,
@@ -311,7 +307,7 @@ class TestFileService:
         storage_service,
         active_session,
     ):
-        """测试 ZIP 解压后总大小超过限制时拒绝解压"""
+        """Test upload and extract ZIP rejects uncompressed size limit."""
         service = FileService(
             session_repo=session_repo,
             storage_service=storage_service,
@@ -335,7 +331,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_upload_and_extract_zip_invalid_archive(self, service, session_repo, active_session):
-        """测试非法 ZIP 内容"""
+        """Test upload and extract ZIP invalid archive."""
         session_repo.find_by_id.return_value = active_session
 
         with pytest.raises(ValidationError, match="Invalid ZIP archive"):
@@ -348,7 +344,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_download_file_small_file(self, service, session_repo, storage_service, active_session):
-        """测试下载小文件（直接返回内容）"""
+        """Test download file small file."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.return_value = True
         storage_service.get_file_info.return_value = {
@@ -368,7 +364,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_download_file_large_file(self, service, session_repo, storage_service, active_session):
-        """测试下载大文件（返回预签名 URL）"""
+        """Test download file large file."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.return_value = True
         storage_service.get_file_info.return_value = {
@@ -388,7 +384,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_download_file_session_not_found(self, service, session_repo):
-        """测试从不存在会话下载文件"""
+        """Test download file session not found."""
         session_repo.find_by_id.return_value = None
 
         with pytest.raises(NotFoundError, match="Session not found"):
@@ -399,7 +395,7 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_download_file_not_found(self, service, session_repo, storage_service, active_session):
-        """测试下载不存在的文件"""
+        """Test download file not found."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.return_value = False
 
@@ -411,11 +407,11 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_download_file_10mb_boundary(self, service, session_repo, storage_service, active_session):
-        """测试 10MB 边界情况"""
+        """Test download file 10mb boundary."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.return_value = True
 
-        # 正好 10MB
+        # 10 MB boundary case.
         storage_service.get_file_info.return_value = {
             "size": 10 * 1024 * 1024,
             "content_type": "application/octet-stream"
@@ -427,14 +423,14 @@ class TestFileService:
             path="boundary.bin"
         )
 
-        # 小于 10MB（等于也是小于），应返回内容
-        # 但如果 result 是 Mock，需要检查其属性
+        # 10 MB boundary case.
+        # Mock test dependency.
         if hasattr(result, "__getitem__"):
             assert "content" in result or "presigned_url" in result
 
     @pytest.mark.asyncio
     async def test_download_file_s3_path_construction(self, service, session_repo, storage_service, active_session):
-        """测试下载文件 S3 路径构造"""
+        """Test download file S3 path construction."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.return_value = True
         storage_service.get_file_info.return_value = {
@@ -448,7 +444,7 @@ class TestFileService:
             path="data/test.csv"
         )
 
-        # 验证所有文件操作都使用正确的 S3 路径
+        # S3-related test setup.
         file_exists_path = storage_service.file_exists.call_args[0][0]
         file_info_path = storage_service.get_file_info.call_args[0][0]
         download_path = storage_service.download_file.call_args[0][0]
@@ -459,12 +455,12 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_download_file_with_missing_content_type(self, service, session_repo, storage_service, active_session):
-        """测试缺少 content_type 的文件信息"""
+        """Test download file with missing content type."""
         session_repo.find_by_id.return_value = active_session
         storage_service.file_exists.return_value = True
         storage_service.get_file_info.return_value = {
             "size": 1024
-            # 缺少 content_type
+            # Test setup.
         }
         storage_service.download_file.return_value = b"content"
 
@@ -473,12 +469,12 @@ class TestFileService:
             path="test.txt"
         )
 
-        # 应使用默认 content_type
+        # Test setup.
         assert result["content_type"] == "application/octet-stream"
 
     @pytest.mark.asyncio
     async def test_list_files_all(self, service, session_repo, storage_service, active_session):
-        """测试列出所有文件"""
+        """Test list files all."""
         session_repo.find_by_id.return_value = active_session
         storage_service.list_files.return_value = [
             {
@@ -504,13 +500,13 @@ class TestFileService:
         assert result[1]["name"] == "src/main.py"
         assert result[1]["container_path"] == "/workspace/src/main.py"
         assert result[1]["size"] == 2048
-        # 验证调用时使用了正确的 workspace 前缀
+        # Verify expected behavior.
         call_prefix = storage_service.list_files.call_args[0][0]
         assert "sessions/sess_123" in call_prefix
 
     @pytest.mark.asyncio
     async def test_list_files_with_path(self, service, session_repo, storage_service, active_session):
-        """测试列出指定目录下的文件"""
+        """Test list files with path."""
         session_repo.find_by_id.return_value = active_session
         storage_service.list_files.return_value = [
             {
@@ -527,13 +523,13 @@ class TestFileService:
         assert result[0]["name"] == "src/utils/helper.py"
         assert result[0]["container_path"] == "/workspace/src/utils/helper.py"
         assert result[0]["size"] == 512
-        # 验证调用时使用了正确的前缀（包含子目录）
+        # Verify expected behavior.
         call_prefix = storage_service.list_files.call_args[0][0]
         assert "sessions/sess_123/src/utils" in call_prefix
 
     @pytest.mark.asyncio
     async def test_list_files_with_trailing_slash_path(self, service, session_repo, storage_service, active_session):
-        """测试列出指定目录下的文件（带尾部斜杠）"""
+        """Test list files with trailing slash path."""
         session_repo.find_by_id.return_value = active_session
         storage_service.list_files.return_value = [
             {
@@ -549,13 +545,13 @@ class TestFileService:
         assert len(result) == 1
         assert result[0]["name"] == "src/app.py"
         assert result[0]["container_path"] == "/workspace/src/app.py"
-        # 验证路径被正确规范化
+        # Verify expected behavior.
         call_prefix = storage_service.list_files.call_args[0][0]
         assert "sessions/sess_123/src" in call_prefix
 
     @pytest.mark.asyncio
     async def test_list_files_session_not_found(self, service, session_repo):
-        """测试列出不存在会话的文件"""
+        """Test list files session not found."""
         session_repo.find_by_id.return_value = None
 
         with pytest.raises(NotFoundError, match="Session not found"):
@@ -563,21 +559,21 @@ class TestFileService:
 
     @pytest.mark.asyncio
     async def test_list_files_with_limit(self, service, session_repo, storage_service, active_session):
-        """测试列出文件（带限制）"""
+        """Test list files with limit."""
         session_repo.find_by_id.return_value = active_session
         storage_service.list_files.return_value = []
 
         await service.list_files(session_id="sess_123", limit=100)
 
-        # 验证 limit 参数被正确传递（通过位置参数）
+        # Verify expected behavior.
         call_args = storage_service.list_files.call_args[0]
         assert call_args[1] == 100
 
     @pytest.mark.asyncio
     async def test_list_files_empty_directory(self, service, session_repo, storage_service, active_session):
-        """测试列出空目录（S3 返回目录本身作为 0 大小对象）"""
+        """Test list files empty directory."""
         session_repo.find_by_id.return_value = active_session
-        # S3 返回目录标记本身（以 / 结尾，size=0）
+        # S3-related test setup.
         storage_service.list_files.return_value = [
             {
                 "key": "s3://sandbox-workspace/sessions/sess_123/",
@@ -589,6 +585,6 @@ class TestFileService:
 
         result = await service.list_files(session_id="sess_123")
 
-        # 应该过滤掉目录标记，返回空数组
+        # Expected return value.
         assert len(result) == 0
         assert result == []

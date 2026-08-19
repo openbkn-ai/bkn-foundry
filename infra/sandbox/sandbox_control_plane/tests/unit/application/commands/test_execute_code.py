@@ -1,18 +1,14 @@
-"""
-执行代码命令单元测试
-
-测试 ExecuteCodeCommand 的功能。
-"""
+"""Unit tests for execute code."""
 import pytest
 
 from src.application.commands.execute_code import ExecuteCodeCommand
 
 
 class TestExecuteCodeCommand:
-    """执行代码命令测试"""
+    """Tests for TestExecuteCodeCommand."""
 
     def test_create_with_required_fields(self):
-        """测试使用必填字段创建"""
+        """Test create with required fields."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -28,7 +24,7 @@ class TestExecuteCodeCommand:
         assert command.event_data is None  # default
 
     def test_create_with_all_fields(self):
-        """测试使用所有字段创建"""
+        """Test create with all fields."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -50,7 +46,7 @@ class TestExecuteCodeCommand:
         assert command.working_directory == "src/jobs"
 
     def test_language_python(self):
-        """测试 Python 语言"""
+        """Test language python."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -60,7 +56,7 @@ class TestExecuteCodeCommand:
         assert command.language == "python"
 
     def test_language_javascript(self):
-        """测试 JavaScript 语言"""
+        """Test language javascript."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="console.log('hello')",
@@ -70,7 +66,7 @@ class TestExecuteCodeCommand:
         assert command.language == "javascript"
 
     def test_language_shell(self):
-        """测试 Shell 语言"""
+        """Test language shell."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="echo hello",
@@ -80,7 +76,7 @@ class TestExecuteCodeCommand:
         assert command.language == "shell"
 
     def test_empty_code_raises_error(self):
-        """测试空代码抛出错误"""
+        """Test empty code raises error."""
         with pytest.raises(ValueError, match="code cannot be empty"):
             ExecuteCodeCommand(
                 session_id="sess-123",
@@ -89,7 +85,7 @@ class TestExecuteCodeCommand:
             )
 
     def test_zero_timeout_raises_error(self):
-        """测试零超时抛出错误"""
+        """Test zero timeout raises error."""
         with pytest.raises(ValueError, match="timeout must be positive"):
             ExecuteCodeCommand(
                 session_id="sess-123",
@@ -99,7 +95,7 @@ class TestExecuteCodeCommand:
             )
 
     def test_negative_timeout_raises_error(self):
-        """测试负超时抛出错误"""
+        """Test negative timeout raises error."""
         with pytest.raises(ValueError, match="timeout must be positive"):
             ExecuteCodeCommand(
                 session_id="sess-123",
@@ -109,7 +105,7 @@ class TestExecuteCodeCommand:
             )
 
     def test_unsupported_language_raises_error(self):
-        """测试不支持的语言抛出错误"""
+        """Test unsupported language raises error."""
         with pytest.raises(ValueError, match="Unsupported language"):
             ExecuteCodeCommand(
                 session_id="sess-123",
@@ -118,7 +114,7 @@ class TestExecuteCodeCommand:
             )
 
     def test_async_mode_true(self):
-        """测试异步模式为 True"""
+        """Test async mode true."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -129,7 +125,7 @@ class TestExecuteCodeCommand:
         assert command.async_mode is True
 
     def test_async_mode_false(self):
-        """测试异步模式为 False"""
+        """Test async mode false."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -140,7 +136,7 @@ class TestExecuteCodeCommand:
         assert command.async_mode is False
 
     def test_with_stdin(self):
-        """测试带标准输入"""
+        """Test with stdin."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="name = input()",
@@ -151,7 +147,7 @@ class TestExecuteCodeCommand:
         assert command.stdin == "World"
 
     def test_with_event_data(self):
-        """测试带事件数据"""
+        """Test with event data."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print(event['name'])",
@@ -162,7 +158,7 @@ class TestExecuteCodeCommand:
         assert command.event_data == {"name": "World", "count": 42}
 
     def test_with_working_directory_normalized(self):
-        """测试工作目录归一化"""
+        """Test with working directory normalized."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="echo hello",
@@ -173,7 +169,7 @@ class TestExecuteCodeCommand:
         assert command.working_directory == "skill/mini-wiki"
 
     def test_invalid_working_directory_raises_error(self):
-        """测试非法工作目录抛出错误"""
+        """Test invalid working directory raises error."""
         with pytest.raises(ValueError, match="working_directory must be a relative workspace path"):
             ExecuteCodeCommand(
                 session_id="sess-123",
@@ -183,7 +179,7 @@ class TestExecuteCodeCommand:
             )
 
     def test_timeout_boundary_minimum(self):
-        """测试超时边界值（最小有效值）"""
+        """Test timeout boundary minimum."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -194,7 +190,7 @@ class TestExecuteCodeCommand:
         assert command.timeout == 1
 
     def test_timeout_boundary_large(self):
-        """测试超时边界值（较大值）"""
+        """Test timeout boundary large."""
         command = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -205,13 +201,13 @@ class TestExecuteCodeCommand:
         assert command.timeout == 3600
 
     def test_is_dataclass(self):
-        """测试是数据类"""
+        """Test is dataclass."""
         from dataclasses import is_dataclass
 
         assert is_dataclass(ExecuteCodeCommand)
 
     def test_dataclass_equality(self):
-        """测试数据类相等性"""
+        """Test dataclass equality."""
         command1 = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -227,7 +223,7 @@ class TestExecuteCodeCommand:
         assert command1 == command2
 
     def test_dataclass_inequality(self):
-        """测试数据类不等性"""
+        """Test dataclass inequality."""
         command1 = ExecuteCodeCommand(
             session_id="sess-123",
             code="print('hello')",
@@ -243,7 +239,7 @@ class TestExecuteCodeCommand:
         assert command1 != command2
 
     def test_multiline_code(self):
-        """测试多行代码"""
+        """Test multiline code."""
         code = '''
 def greet(name):
     return f"Hello, {name}!"
@@ -260,7 +256,7 @@ print(greet("World"))
         assert "Hello" in command.code
 
     def test_whitespace_only_code_raises_error(self):
-        """测试仅空白字符的代码抛出错误"""
+        """Test whitespace only code raises error."""
         # Note: The validation checks `if not self.code`, which evaluates to True for empty string
         # but False for whitespace-only strings. This test verifies the current behavior.
         command = ExecuteCodeCommand(

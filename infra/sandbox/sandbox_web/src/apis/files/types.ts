@@ -1,4 +1,4 @@
 /**
- * File API 类型定义
+ * File API type definitions
  */
 export type { FileUploadResponse } from '@/types/api';

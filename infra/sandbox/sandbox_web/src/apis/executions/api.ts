@@ -1,5 +1,5 @@
 /**
- * Execution API 实现
+ * Execution API implementation
  */
 import { API_ENDPOINTS, DEFAULT_PAGINATION } from '@/constants/api';
 import { get, post } from '@/utils/http/request';
@@ -11,28 +11,28 @@ import type {
 } from './types';
 
 /**
- * 提交代码执行
+ * Submit code execution
  */
 export function executeCode(sessionId: string, data: ExecuteCodeRequest): Promise<ExecuteCodeResponse> {
   return post<ExecuteCodeResponse>(API_ENDPOINTS.EXECUTE(sessionId), data);
 }
 
 /**
- * 获取执行状态
+ * Get execution status
  */
 export function getExecutionStatus(executionId: string): Promise<ExecutionResponse> {
   return get<ExecutionResponse>(API_ENDPOINTS.EXECUTION_STATUS(executionId));
 }
 
 /**
- * 获取执行结果
+ * Get execution result
  */
 export function getExecutionResult(executionId: string): Promise<ExecutionResponse> {
   return get<ExecutionResponse>(API_ENDPOINTS.EXECUTION_RESULT(executionId));
 }
 
 /**
- * 获取会话的执行列表
+ * Get the execution list for a session
  */
 export function listSessionExecutions(
   sessionId: string,

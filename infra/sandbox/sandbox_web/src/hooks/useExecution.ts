@@ -1,5 +1,5 @@
 /**
- * 执行管理 Hook
+ * Execution management hook
  */
 import { useState, useCallback } from 'react';
 import { message } from 'antd';
@@ -15,7 +15,7 @@ export function useExecution() {
   const [loading, setLoading] = useState(false);
   const [currentExecution, setCurrentExecution] = useState<ExecutionResponse | null>(null);
 
-  // 提交代码执行
+  // Submit code execution
   const executeCode = useCallback(async (
     sessionId: string,
     data: ExecuteCodeRequest
@@ -23,7 +23,7 @@ export function useExecution() {
     setLoading(true);
     try {
       const result = await executionsApi.executeCode(sessionId, data);
-      // 轮询获取执行结果
+      // Poll for execution results
       pollExecutionResult(result.execution_id);
       return result;
     } catch (error) {
@@ -35,9 +35,9 @@ export function useExecution() {
     }
   }, []);
 
-  // 轮询执行结果
+  // Poll execution results
   const pollExecutionResult = useCallback(async (executionId: string) => {
-    const maxAttempts = 60; // 最多轮询 60 次 (约 1 分钟)
+    const maxAttempts = 60; // Poll at most 60 times, about 1 minute.
     let attempts = 0;
 
     const poll = async () => {
@@ -46,7 +46,7 @@ export function useExecution() {
         const result = await executionsApi.getExecutionResult(executionId);
         setCurrentExecution(result);
 
-        // 如果执行还在进行中，继续轮询
+        // Continue polling if execution is still in progress
         if (
           result.status === 'pending' ||
           result.status === 'PENDING' ||
@@ -54,19 +54,19 @@ export function useExecution() {
           result.status === 'RUNNING'
         ) {
           if (attempts < maxAttempts) {
-            setTimeout(poll, 1000); // 1 秒后重试
+            setTimeout(poll, 1000); // Retry after 1 second.
           }
         } else {
-          // 执行完成，添加到历史记录并清除当前执行
+          // When execution completes, add it to history and clear the current execution
           setExecutions((prev) => {
-            // 检查是否已存在，避免重复添加
+            // Check whether it already exists to avoid duplicate additions
             const exists = prev.some(e => e.id === result.id);
             if (exists) {
               return prev;
             }
             return [result, ...prev];
           });
-          // 延迟清除 currentExecution，让用户看到最终状态
+          // Delay clearing currentExecution so the user can see the final state
           setTimeout(() => setCurrentExecution(null), 100);
           if (result.status === 'completed' || result.status === 'COMPLETED') {
             message.success('代码执行成功');
@@ -87,7 +87,7 @@ export function useExecution() {
     poll();
   }, []);
 
-  // 获取会话的执行列表
+  // Get the execution list for a session
   const fetchSessionExecutions = useCallback(async (sessionId: string) => {
     setLoading(true);
     try {
@@ -101,7 +101,7 @@ export function useExecution() {
     }
   }, []);
 
-  // 清空当前执行
+  // Clear current execution
   const clearCurrentExecution = useCallback(() => {
     setCurrentExecution(null);
   }, []);

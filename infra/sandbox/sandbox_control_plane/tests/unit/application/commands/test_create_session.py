@@ -1,4 +1,4 @@
-"""CreateSessionCommand 校验测试（id / template_id 安全白名单兜底层）。"""
+"""Unit tests for create session."""
 
 import pytest
 
@@ -21,8 +21,8 @@ class TestCreateSessionCommandValidation:
         ],
     )
     def test_rejects_unsafe_id(self, bad_id):
-        # 兜底层：即使不经 request schema，含 shell 元字符 / '..' / '/' 的 id 也必须
-        # 被拒——它会落入以 root 运行的 s3fs 挂载脚本，否则造成命令注入 / 前缀逃逸。
+        # Test setup.
+        # Test setup.
         with pytest.raises(ValueError):
             CreateSessionCommand(id=bad_id)
         with pytest.raises(ValueError):
@@ -34,7 +34,7 @@ class TestCreateSessionCommandValidation:
         assert cmd.template_id == "python-basic"
 
     def test_allows_none(self):
-        # id/template_id 可选；None 走自动生成 / 默认模板，不应被校验拦下。
+        # Verify expected behavior.
         cmd = CreateSessionCommand()
         assert cmd.id is None
         assert cmd.template_id is None

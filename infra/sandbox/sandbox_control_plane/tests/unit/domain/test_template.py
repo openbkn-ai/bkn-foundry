@@ -1,8 +1,4 @@
-"""
-模板实体单元测试
-
-测试 Template 实体的领域行为。
-"""
+"""Unit tests for template."""
 import pytest
 from datetime import datetime
 
@@ -11,10 +7,10 @@ from src.domain.value_objects.resource_limit import ResourceLimit
 
 
 class TestTemplate:
-    """模板实体测试"""
+    """Tests for TestTemplate."""
 
     def test_create_template_success(self):
-        """测试成功创建模板"""
+        """Test create template success."""
         template = Template(
             id="python-datascience",
             name="Python Data Science",
@@ -28,7 +24,7 @@ class TestTemplate:
         assert template.base_image == "python:3.11-slim"
 
     def test_create_template_with_default_resources(self):
-        """测试使用默认资源配置创建模板"""
+        """Test create template with default resources."""
         template = Template(
             id="python-basic",
             name="Python Basic",
@@ -41,7 +37,7 @@ class TestTemplate:
         assert template.default_resources.disk == "1Gi"
 
     def test_create_template_with_custom_resources(self):
-        """测试使用自定义资源配置创建模板"""
+        """Test create template with custom resources."""
         resources = ResourceLimit(
             cpu="2",
             memory="1Gi",
@@ -62,7 +58,7 @@ class TestTemplate:
         assert template.default_resources.max_processes == 256
 
     def test_create_template_invalid_name(self):
-        """测试无效的模板名称"""
+        """Test create template invalid name."""
         with pytest.raises(ValueError, match="name cannot be empty"):
             Template(
                 id="test",
@@ -72,7 +68,7 @@ class TestTemplate:
             )
 
     def test_create_template_invalid_image(self):
-        """测试无效的镜像"""
+        """Test create template invalid image."""
         with pytest.raises(ValueError, match="image cannot be empty"):
             Template(
                 id="test",
@@ -82,7 +78,7 @@ class TestTemplate:
             )
 
     def test_create_template_invalid_base_image(self):
-        """测试无效的基础镜像"""
+        """Test create template invalid base image."""
         with pytest.raises(ValueError, match="base_image cannot be empty"):
             Template(
                 id="test",
@@ -92,7 +88,7 @@ class TestTemplate:
             )
 
     def test_update_image(self):
-        """测试更新镜像"""
+        """Test update image."""
         template = Template(
             id="python-basic",
             name="Python Basic",
@@ -107,7 +103,7 @@ class TestTemplate:
         assert template.updated_at > original_updated_at
 
     def test_update_image_invalid(self):
-        """测试更新为无效镜像"""
+        """Test update image invalid."""
         template = Template(
             id="python-basic",
             name="Python Basic",
@@ -119,7 +115,7 @@ class TestTemplate:
             template.update_image("")
 
     def test_add_package(self):
-        """测试添加预装包"""
+        """Test add package."""
         template = Template(
             id="python-datascience",
             name="Python Data Science",
@@ -134,7 +130,7 @@ class TestTemplate:
         assert "numpy" in template.pre_installed_packages
 
     def test_add_duplicate_package(self):
-        """测试添加重复的包"""
+        """Test add duplicate package."""
         template = Template(
             id="python-datascience",
             name="Python Data Science",
@@ -144,14 +140,14 @@ class TestTemplate:
         )
 
         original_updated_at = template.updated_at
-        template.add_package("numpy")  # 添加已存在的包
+        template.add_package("numpy")  # Test setup.
 
-        # 不应该重复添加，也不应该更新 updated_at
+        # Verify expected behavior.
         assert template.pre_installed_packages.count("numpy") == 1
         assert template.updated_at == original_updated_at
 
     def test_remove_package(self):
-        """测试移除预装包"""
+        """Test remove package."""
         template = Template(
             id="python-datascience",
             name="Python Data Science",
@@ -166,7 +162,7 @@ class TestTemplate:
         assert "pandas" not in template.pre_installed_packages
 
     def test_remove_nonexistent_package(self):
-        """测试移除不存在的包"""
+        """Test remove nonexistent package."""
         template = Template(
             id="python-datascience",
             name="Python Data Science",
@@ -176,13 +172,13 @@ class TestTemplate:
         )
 
         original_updated_at = template.updated_at
-        template.remove_package("pandas")  # 移除不存在的包
+        template.remove_package("pandas")  # Test setup.
 
-        # 不应该更新 updated_at
+        # Verify expected behavior.
         assert template.updated_at == original_updated_at
 
     def test_update_default_resources(self):
-        """测试更新默认资源配置"""
+        """Test update default resources."""
         template = Template(
             id="python-basic",
             name="Python Basic",
@@ -206,7 +202,7 @@ class TestTemplate:
         assert template.updated_at > original_updated_at
 
     def test_has_package(self):
-        """测试检查是否包含指定包"""
+        """Test has package."""
         template = Template(
             id="python-datascience",
             name="Python Data Science",
@@ -220,7 +216,7 @@ class TestTemplate:
         assert template.has_package("scikit-learn") is False
 
     def test_get_image_name(self):
-        """测试获取镜像名称"""
+        """Test get image name."""
         template1 = Template(
             id="python-basic",
             name="Python Basic",
@@ -246,7 +242,7 @@ class TestTemplate:
         assert template3.get_image_name() == "python"
 
     def test_security_context(self):
-        """测试安全上下文"""
+        """Test security context."""
         security_context = {
             "readonly_rootfs": True,
             "capabilities": ["CAP_NET_RAW"],

@@ -1,8 +1,4 @@
-"""
-依赖解析工具单元测试
-
-测试 shared/utils/dependencies.py 模块的功能。
-"""
+"""Unit tests for dependencies."""
 import pytest
 
 from src.shared.utils.dependencies import (
@@ -14,27 +10,27 @@ from src.shared.utils.dependencies import (
 
 
 class TestParseDependenciesToPipSpecs:
-    """依赖解析测试"""
+    """Tests for TestParseDependenciesToPipSpecs."""
 
     def test_parse_empty_list(self):
-        """测试解析空列表"""
+        """Test parse empty list."""
         result = parse_dependencies_to_pip_specs([])
         assert result == []
 
     def test_parse_none(self):
-        """测试解析 None"""
+        """Test parse none."""
         result = parse_dependencies_to_pip_specs(None)
         assert result == []
 
     def test_parse_string_dependencies(self):
-        """测试解析字符串格式的依赖"""
+        """Test parse string dependencies."""
         deps = ["requests==2.31.0", "pandas>=2.0"]
         result = parse_dependencies_to_pip_specs(deps)
 
         assert result == ["requests==2.31.0", "pandas>=2.0"]
 
     def test_parse_dict_dependencies_with_version(self):
-        """测试解析字典格式的依赖（带版本）"""
+        """Test parse dict dependencies with version."""
         deps = [
             {"name": "requests", "version": "==2.31.0"},
             {"name": "pandas", "version": ">=2.0"}
@@ -44,7 +40,7 @@ class TestParseDependenciesToPipSpecs:
         assert result == ["requests==2.31.0", "pandas>=2.0"]
 
     def test_parse_dict_dependencies_without_version(self):
-        """测试解析字典格式的依赖（不带版本）"""
+        """Test parse dict dependencies without version."""
         deps = [
             {"name": "requests"},
             {"name": "pandas", "version": ""}
@@ -54,7 +50,7 @@ class TestParseDependenciesToPipSpecs:
         assert result == ["requests", "pandas"]
 
     def test_parse_mixed_dependencies(self):
-        """测试解析混合格式的依赖"""
+        """Test parse mixed dependencies."""
         deps = [
             "requests==2.31.0",
             {"name": "pandas", "version": ">=2.0"},
@@ -65,7 +61,7 @@ class TestParseDependenciesToPipSpecs:
         assert result == ["requests==2.31.0", "pandas>=2.0", "numpy"]
 
     def test_parse_complex_version_specs(self):
-        """测试解析复杂版本规格"""
+        """Test parse complex version specs."""
         deps = [
             {"name": "requests", "version": ">=2.28.0,<3.0"},
             {"name": "django", "version": "==4.2.*"}
@@ -77,24 +73,24 @@ class TestParseDependenciesToPipSpecs:
 
 
 class TestFormatDependenciesForScript:
-    """格式化依赖脚本测试"""
+    """Tests for TestFormatDependenciesForScript."""
 
     def test_format_empty_list(self):
-        """测试格式化空列表"""
+        """Test format empty list."""
         deps_json, deps_list = format_dependencies_for_script([])
 
         assert deps_json == ""
         assert deps_list == ""
 
     def test_format_none(self):
-        """测试格式化 None"""
+        """Test format none."""
         deps_json, deps_list = format_dependencies_for_script(None)
 
         assert deps_json == ""
         assert deps_list == ""
 
     def test_format_string_dependencies(self):
-        """测试格式化字符串依赖"""
+        """Test format string dependencies."""
         deps = ["requests==2.31.0", "pandas>=2.0"]
         deps_json, deps_list = format_dependencies_for_script(deps)
 
@@ -104,7 +100,7 @@ class TestFormatDependenciesForScript:
         assert '"pandas>=2.0"' in deps_list
 
     def test_format_dict_dependencies(self):
-        """测试格式化字典依赖"""
+        """Test format dict dependencies."""
         deps = [{"name": "requests", "version": "==2.31.0"}]
         deps_json, deps_list = format_dependencies_for_script(deps)
 
@@ -114,10 +110,10 @@ class TestFormatDependenciesForScript:
 
 
 class TestBuildDependencyInstallScript:
-    """构建依赖安装脚本测试"""
+    """Tests for TestBuildDependencyInstallScript."""
 
     def test_build_script(self):
-        """测试构建安装脚本"""
+        """Test build script."""
         script = build_dependency_install_script()
 
         assert "pip3 install" in script
@@ -126,22 +122,22 @@ class TestBuildDependencyInstallScript:
 
 
 class TestFormatDependencyInstallScriptForShell:
-    """格式化 Shell 脚本测试"""
+    """Tests for TestFormatDependencyInstallScriptForShell."""
 
     def test_format_empty_list(self):
-        """测试格式化空列表"""
+        """Test format empty list."""
         result = format_dependency_install_script_for_shell([])
 
         assert result == ""
 
     def test_format_none(self):
-        """测试格式化 None"""
+        """Test format none."""
         result = format_dependency_install_script_for_shell(None)
 
         assert result == ""
 
     def test_format_dependencies(self):
-        """测试格式化依赖"""
+        """Test format dependencies."""
         deps = [
             {"name": "requests", "version": "==2.31.0"},
             "pandas>=2.0"
@@ -153,14 +149,14 @@ class TestFormatDependencyInstallScriptForShell:
         assert "/opt/sandbox-venv" in result
 
     def test_format_includes_pip_specs(self):
-        """测试格式化包含 pip 规格"""
+        """Test format includes pip specs."""
         deps = ["requests==2.31.0"]
         result = format_dependency_install_script_for_shell(deps)
 
         assert "requests==2.31.0" in result
 
     def test_format_includes_success_message(self):
-        """测试格式化包含成功消息"""
+        """Test format includes success message."""
         deps = ["requests"]
         result = format_dependency_install_script_for_shell(deps)
 

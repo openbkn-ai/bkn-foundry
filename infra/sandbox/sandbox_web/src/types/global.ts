@@ -1,11 +1,11 @@
 /**
- * 全局类型定义
+ * Global type definitions
  */
 
-/** 路由路径 */
+/** Route path */
 export type RoutePath = '/' | '/templates' | '/sessions' | '/execute' | '/files';
 
-/** 应用菜单项 */
+/** Application menu item */
 export interface MenuItem {
   key: string;
   label: string;
@@ -13,7 +13,7 @@ export interface MenuItem {
   icon: string;
 }
 
-/** 应用状态 */
+/** Application state */
 export interface AppState {
   currentRoute: RoutePath;
   sidebarCollapsed: boolean;

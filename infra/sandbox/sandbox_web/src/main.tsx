@@ -1,5 +1,5 @@
 /**
- * 应用入口文件
+ * Application entry file
  */
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';

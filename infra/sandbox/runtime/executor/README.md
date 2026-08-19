@@ -1,59 +1,59 @@
 # Sandbox Executor
 
-> 安全的代码执行守护进程，使用 Bubblewrap 和 macOS Seatbelt 提供进程级隔离
+> A secure code execution daemon that uses Bubblewrap and macOS Seatbelt for process-level isolation
 
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## 概述
+## Overview
 
-Sandbox Executor 是一个高性能的代码执行服务，专为 AI Agent 应用场景设计。它提供了多层安全隔离机制，确保不受信任的代码在受控环境中安全执行。
+Sandbox Executor is a high-performance code execution service designed for AI Agent scenarios. It provides multilayer security isolation to ensure untrusted code runs safely in a controlled environment.
 
-## 核心特性
+## Key features
 
-- **多层安全隔离** - Docker 容器 + Bubblewrap/sandbox-exec 双层隔离
-- **异步高性能** - 基于 asyncio 的真正异步执行，支持高并发
-- **Lambda 兼容** - 支持 AWS Lambda handler 规范
-- **实时可观测** - 心跳上报、生命周期管理、执行指标
+- **Multilayer security isolation** - Docker container plus Bubblewrap/sandbox-exec isolation
+- **High-performance async execution** - Real async execution based on asyncio with high-concurrency support
+- **Lambda compatible** - Supports the AWS Lambda handler convention
+- **Real-time observability** - Heartbeats, lifecycle management, and execution metrics
 
-## 快速开始
+## Quick Start
 
 ```bash
-# 安装依赖
+# Install dependencies
 pip install -r requirements.txt
 
-# 启动服务
+# Start the service
 python -m executor.interfaces.http.rest
 
-# 验证服务
+# validate the service
 curl http://localhost:8080/health
 ```
 
-**详细指南**: [快速开始文档](docs/quick-start.md)
+**Detailed guide**: [Quick Start documentation](docs/quick-start.md)
 
-## 技术栈
+## Technology stack
 
-| 组件 | 技术 |
+| Component | Technology |
 |------|------|
-| HTTP 框架 | FastAPI + Uvicorn |
-| 隔离技术 | Bubblewrap (Linux) / sandbox-exec (macOS) |
-| 异步运行时 | asyncio |
-| 日志 | structlog |
-| 数据验证 | Pydantic |
+| HTTP framework | FastAPI + Uvicorn |
+| Isolation technology | Bubblewrap (Linux) / sandbox-exec (macOS) |
+| Async runtime | asyncio |
+| Logging | structlog |
+| Data validation | Pydantic |
 
-## 文档
+## Documentation
 
-| 文档 | 说明 |
+| Document | Description |
 |------|------|
-| [快速开始](docs/quick-start.md) | 安装、配置和基本使用 |
-| [架构设计](docs/architecture.md) | 六边形架构、模块结构、设计原理 |
-| [API 文档](docs/api-reference.md) | RESTful API 端点和示例 |
-| [配置说明](docs/configuration.md) | 环境变量和隔离配置 |
-| [开发指南](docs/development.md) | 开发环境设置、测试、代码规范 |
-| [部署指南](docs/deployment.md) | Docker、Docker Compose、Kubernetes 部署 |
-| [故障排查](docs/troubleshooting.md) | 常见问题和解决方案 |
+| [Quick Start](docs/quick-start.md) | installation, configuration, and basic usage |
+| [Architecture design](docs/architecture.md) | hexagonal architecture, module structure, and design principles |
+| [API documentation](docs/api-reference.md) | RESTful API endpoints and examples |
+| [configuration guide](docs/configuration.md) | environment variables and isolation configuration |
+| [Development guide](docs/development.md) | development setup, tests, and code conventions |
+| [deployment guide](docs/deployment.md) | Docker, Docker Compose, and Kubernetes deployment |
+| [Troubleshooting](docs/troubleshooting.md) | common issues and solutions |
 
-## 示例
+## Examples
 
 ### Python Handler
 
@@ -63,7 +63,7 @@ def handler(event):
     return {'message': f'Hello, {name}!'}
 ```
 
-### 执行代码
+### Execute code
 
 ```bash
 curl -X POST http://localhost:8080/execute \
@@ -77,6 +77,6 @@ curl -X POST http://localhost:8080/execute \
   }'
 ```
 
-## 许可证
+## License
 
-MIT License - 详见 [LICENSE](../../LICENSE)
+MIT License - see [LICENSE](../../LICENSE).

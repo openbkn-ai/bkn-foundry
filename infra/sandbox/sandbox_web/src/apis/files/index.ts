@@ -1,5 +1,5 @@
 /**
- * File API 导出
+ * File API exports
  */
 export * from './api';
 export * from './types';

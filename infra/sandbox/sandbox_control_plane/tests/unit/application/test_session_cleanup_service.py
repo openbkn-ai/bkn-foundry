@@ -1,8 +1,4 @@
-"""
-会话清理服务单元测试
-
-测试 SessionCleanupService 的清理逻辑。
-"""
+"""Unit tests for session cleanup service."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime, timedelta
@@ -16,11 +12,11 @@ from src.domain.services.scheduler import IScheduler
 
 
 class TestSessionCleanupService:
-    """会话清理服务测试"""
+    """Tests for TestSessionCleanupService."""
 
     @pytest.fixture
     def session_repo(self):
-        """模拟会话仓储"""
+        """Create session repo."""
         repo = Mock()
         repo.save = AsyncMock()
         repo.find_by_id = AsyncMock()
@@ -29,21 +25,21 @@ class TestSessionCleanupService:
 
     @pytest.fixture
     def scheduler(self):
-        """模拟调度器"""
+        """Create scheduler."""
         sched = Mock()
         sched.destroy_container = AsyncMock()
         return sched
 
     @pytest.fixture
     def storage_service(self):
-        """模拟存储服务"""
+        """Create storage service."""
         storage = Mock()
         storage.delete_prefix = AsyncMock()
         return storage
 
     @pytest.fixture
     def service(self, session_repo, scheduler, storage_service):
-        """创建会话清理服务"""
+        """Create service."""
         return SessionCleanupService(
             session_repo=session_repo,
             scheduler=scheduler,
@@ -54,7 +50,7 @@ class TestSessionCleanupService:
 
     @pytest.fixture
     def active_session(self):
-        """创建活跃会话"""
+        """Create active session."""
         return Session(
             id="sess_active",
             template_id="python-basic",
@@ -68,7 +64,7 @@ class TestSessionCleanupService:
 
     @pytest.fixture
     def idle_session(self):
-        """创建空闲会话"""
+        """Create idle session."""
         old_time = datetime.now() - timedelta(minutes=35)
         return Session(
             id="sess_idle",
@@ -83,7 +79,7 @@ class TestSessionCleanupService:
 
     @pytest.fixture
     def expired_session(self):
-        """创建过期会话"""
+        """Create expired session."""
         old_time = datetime.now() - timedelta(hours=7)
         return Session(
             id="sess_expired",
@@ -99,7 +95,7 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_idle_sessions(self, service, session_repo, scheduler, storage_service, idle_session):
-        """测试清理空闲会话"""
+        """Test cleanup idle sessions."""
         session_repo.find_by_status.return_value = [idle_session]
         storage_service.delete_prefix.return_value = 5
 
@@ -107,14 +103,14 @@ class TestSessionCleanupService:
 
         assert result["idle_cleaned"] == 1
         assert idle_session.status == SessionStatus.TERMINATED
-        # destroy_container 可能使用 container_id 参数名
+        # Test setup.
         assert scheduler.destroy_container.called
         storage_service.delete_prefix.assert_called_once()
         session_repo.save.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cleanup_expired_sessions(self, service, session_repo, scheduler, storage_service, expired_session):
-        """测试清理过期会话"""
+        """Test cleanup expired sessions."""
         session_repo.find_by_status.return_value = [expired_session]
         storage_service.delete_prefix.return_value = 3
 
@@ -122,12 +118,12 @@ class TestSessionCleanupService:
 
         assert result["expired_cleaned"] == 1
         assert expired_session.status == SessionStatus.TERMINATED
-        # destroy_container 可能使用 container_id 参数名
+        # Test setup.
         assert scheduler.destroy_container.called
 
     @pytest.mark.asyncio
     async def test_no_cleanup_for_active_sessions(self, service, session_repo, active_session):
-        """测试不清理活跃会话"""
+        """Test no cleanup for active sessions."""
         session_repo.find_by_status.return_value = [active_session]
 
         result = await service.cleanup_idle_sessions()
@@ -138,7 +134,7 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_mixed_sessions(self, service, session_repo, scheduler, storage_service):
-        """测试清理混合状态的会话"""
+        """Test cleanup mixed sessions."""
         session_repo.find_by_status.return_value = [
             Session(
                 id="sess_1",
@@ -148,7 +144,7 @@ class TestSessionCleanupService:
                 workspace_path="s3://sandbox-workspace/sessions/sess_1",
                 runtime_type="docker",
                 container_id="container-1",
-                last_activity_at=datetime.now()  # 活跃
+                last_activity_at=datetime.now()  # Test setup.
             ),
             Session(
                 id="sess_2",
@@ -158,7 +154,7 @@ class TestSessionCleanupService:
                 workspace_path="s3://sandbox-workspace/sessions/sess_2",
                 runtime_type="docker",
                 container_id="container-2",
-                last_activity_at=datetime.now() - timedelta(minutes=40)  # 空闲
+                last_activity_at=datetime.now() - timedelta(minutes=40)  # Test setup.
             ),
         ]
         storage_service.delete_prefix.return_value = 2
@@ -170,11 +166,11 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_disabled_idle_timeout(self, session_repo, scheduler, storage_service):
-        """测试禁用空闲超时清理"""
+        """Test cleanup disabled idle timeout."""
         service = SessionCleanupService(
             session_repo=session_repo,
             scheduler=scheduler,
-            idle_timeout_minutes=-1,  # 禁用
+            idle_timeout_minutes=-1,  # Test setup.
             max_lifetime_hours=6,
             storage_service=storage_service
         )
@@ -187,24 +183,24 @@ class TestSessionCleanupService:
             workspace_path="s3://sandbox-workspace/sessions/sess_idle",
             runtime_type="docker",
             container_id="container-idle",
-            last_activity_at=datetime.now() - timedelta(hours=10)  # 超过空闲阈值
+            last_activity_at=datetime.now() - timedelta(hours=10)  # Test setup.
         )
         session_repo.find_by_status.return_value = [idle_session]
 
         result = await service.cleanup_idle_sessions()
 
-        # 空闲会话不应被清理
+        # Verify expected behavior.
         assert result["idle_cleaned"] == 0
         assert idle_session.status == SessionStatus.RUNNING
 
     @pytest.mark.asyncio
     async def test_cleanup_disabled_max_lifetime(self, session_repo, scheduler, storage_service):
-        """测试禁用最大生命周期清理"""
+        """Test cleanup disabled max lifetime."""
         service = SessionCleanupService(
             session_repo=session_repo,
             scheduler=scheduler,
             idle_timeout_minutes=30,
-            max_lifetime_hours=-1,  # 禁用
+            max_lifetime_hours=-1,  # Test setup.
             storage_service=storage_service
         )
 
@@ -216,20 +212,20 @@ class TestSessionCleanupService:
             workspace_path="s3://sandbox-workspace/sessions/sess_expired",
             runtime_type="docker",
             container_id="container-expired",
-            created_at=datetime.now() - timedelta(days=1),  # 超过生命周期
+            created_at=datetime.now() - timedelta(days=1),  # Test setup.
             last_activity_at=datetime.now()
         )
         session_repo.find_by_status.return_value = [expired_session]
 
         result = await service.cleanup_idle_sessions()
 
-        # 过期会话不应被清理
+        # Verify expected behavior.
         assert result["expired_cleaned"] == 0
         assert expired_session.status == SessionStatus.RUNNING
 
     @pytest.mark.asyncio
     async def test_cleanup_orphaned_failed_sessions(self, service, session_repo):
-        """测试清理孤立的失败会话"""
+        """Test cleanup orphaned failed sessions."""
         failed_session = Session(
             id="sess_failed",
             template_id="python-basic",
@@ -239,10 +235,10 @@ class TestSessionCleanupService:
             runtime_type="docker",
             container_id="container-failed"
         )
-        # 使用 side_effect 区分不同参数的返回值
+        # Expected return value.
         session_repo.find_by_status.side_effect = [
-            [failed_session],  # failed 状态查询
-            []  # timeout 状态查询
+            [failed_session],  # Status-specific test setup.
+            []  # Status-specific test setup.
         ]
 
         result = await service.cleanup_orphaned_sessions()
@@ -252,7 +248,7 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_orphaned_timeout_sessions(self, service, session_repo):
-        """测试清理孤立超时会话"""
+        """Test cleanup orphaned timeout sessions."""
         timeout_session = Session(
             id="sess_timeout",
             template_id="python-basic",
@@ -262,10 +258,10 @@ class TestSessionCleanupService:
             runtime_type="docker",
             container_id="container-timeout"
         )
-        # 使用 side_effect 区分不同参数的返回值
+        # Expected return value.
         session_repo.find_by_status.side_effect = [
-            [],  # failed 状态查询
-            [timeout_session]  # timeout 状态查询
+            [],  # Status-specific test setup.
+            [timeout_session]  # Status-specific test setup.
         ]
 
         result = await service.cleanup_orphaned_sessions()
@@ -274,7 +270,7 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_orphaned_without_container(self, service, session_repo):
-        """测试不清理没有容器的孤立会话"""
+        """Test cleanup orphaned without container."""
         failed_session = Session(
             id="sess_failed",
             template_id="python-basic",
@@ -282,7 +278,7 @@ class TestSessionCleanupService:
             resource_limit=ResourceLimit.default(),
             workspace_path="s3://sandbox-workspace/sessions/sess_failed",
             runtime_type="docker",
-            container_id=None  # 没有容器
+            container_id=None  # Test setup.
         )
         session_repo.find_by_status.return_value = [failed_session]
 
@@ -292,7 +288,7 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_session_files(self, service, storage_service):
-        """测试清理会话文件"""
+        """Test cleanup session files."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -312,29 +308,29 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_session_without_workspace(self, service, storage_service):
-        """测试清理没有 workspace 的会话"""
-        # 注意：Session 实体会验证 workspace_path 不能为空
-        # 所以这里使用非 S3 路径
+        """Test cleanup session without workspace."""
+        # Verify expected behavior.
+        # S3-related test setup.
         session = Session(
             id="sess_123",
             template_id="python-basic",
             status=SessionStatus.RUNNING,
             resource_limit=ResourceLimit.default(),
-            workspace_path="local:/tmp/sess_123",  # 非 S3 路径，不会执行 S3 清理
+            workspace_path="local:/tmp/sess_123",  # S3-related test setup.
             runtime_type="docker"
         )
 
-        # 模拟 delete_prefix 返回 0
+        # Expected return value.
         storage_service.delete_prefix.return_value = 0
 
         deleted_count = await service.cleanup_session_files(session, "test_cleanup")
 
-        # 非 S3 路径可能仍会执行清理，但结果应为 0
+        # S3-related test setup.
         assert deleted_count == 0
 
     @pytest.mark.asyncio
     async def test_cleanup_by_ids(self, service, session_repo):
-        """测试按 ID 清理会话"""
+        """Test cleanup by ids."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -353,7 +349,7 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_by_ids_not_found(self, service, session_repo):
-        """测试按 ID 清理不存在的会话"""
+        """Test cleanup by ids not found."""
         session_repo.find_by_id.return_value = None
 
         result = await service.cleanup_by_ids(["non-existent"])
@@ -363,7 +359,7 @@ class TestSessionCleanupService:
 
     @pytest.mark.asyncio
     async def test_cleanup_container_destruction_failure(self, service, session_repo, scheduler, storage_service):
-        """测试容器销毁失败时的处理"""
+        """Test cleanup container destruction failure."""
         idle_session = Session(
             id="sess_idle",
             template_id="python-basic",
@@ -376,20 +372,20 @@ class TestSessionCleanupService:
         )
         session_repo.find_by_status.return_value = [idle_session]
 
-        # 模拟容器销毁失败
+        # Mock test dependency.
         scheduler.destroy_container.side_effect = Exception("Docker error")
         storage_service.delete_prefix.return_value = 2
 
         result = await service.cleanup_idle_sessions()
 
-        # 应继续执行文件清理和状态更新
+        # Status-specific test setup.
         assert result["idle_cleaned"] == 1
         assert idle_session.status == SessionStatus.TERMINATED
         storage_service.delete_prefix.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_cleanup_error_handling(self, service, session_repo):
-        """测试清理过程中的错误处理"""
+        """Test cleanup error handling."""
         session_repo.find_by_status.side_effect = Exception("Database error")
 
         result = await service.cleanup_idle_sessions()

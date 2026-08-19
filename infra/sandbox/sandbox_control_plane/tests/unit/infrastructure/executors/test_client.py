@@ -1,8 +1,4 @@
-"""
-执行器 HTTP 客户端单元测试
-
-测试 ExecutorClient 的功能。
-"""
+"""Unit tests for client."""
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
@@ -19,16 +15,16 @@ from src.infrastructure.executors.errors import (
 
 
 class TestExecutorClient:
-    """执行器客户端测试"""
+    """Tests for TestExecutorClient."""
 
     @pytest.fixture
     def client(self):
-        """创建执行器客户端"""
+        """Create client."""
         return ExecutorClient(timeout=30.0, max_retries=3, retry_delay=0.1)
 
     @pytest.fixture
     def mock_httpx_client(self):
-        """创建模拟 httpx 客户端"""
+        """Create httpx client."""
         mock = Mock()
         mock.post = AsyncMock()
         mock.get = AsyncMock()
@@ -36,7 +32,7 @@ class TestExecutorClient:
         return mock
 
     def test_init_default_params(self):
-        """测试默认参数初始化"""
+        """Test init default params."""
         client = ExecutorClient()
 
         assert client._timeout == 30.0
@@ -44,7 +40,7 @@ class TestExecutorClient:
         assert client._retry_delay == 0.5
 
     def test_init_custom_params(self):
-        """测试自定义参数初始化"""
+        """Test init custom params."""
         client = ExecutorClient(timeout=60.0, max_retries=5, retry_delay=1.0)
 
         assert client._timeout == 60.0
@@ -53,7 +49,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_context_manager(self):
-        """测试上下文管理器"""
+        """Test context manager."""
         async with ExecutorClient() as client:
             assert client._client is not None
 
@@ -62,7 +58,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_context_manager_creates_client(self):
-        """测试上下文管理器创建客户端"""
+        """Test context manager creates client."""
         client = ExecutorClient()
         assert client._client is None
 
@@ -71,7 +67,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_close(self, client):
-        """测试关闭客户端"""
+        """Test close."""
         # First, get a client instance
         client._get_client()
         assert client._client is not None
@@ -81,13 +77,13 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_close_when_no_client(self, client):
-        """测试关闭不存在的客户端"""
+        """Test close when no client."""
         # Should not raise error
         await client.close()
 
     @pytest.mark.asyncio
     async def test_submit_execution_success(self, client, mock_httpx_client):
-        """测试成功提交执行请求"""
+        """Test submit execution success."""
         client._client = mock_httpx_client
 
         mock_response = Mock()
@@ -115,7 +111,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_submit_execution_validation_error(self, client, mock_httpx_client):
-        """测试验证错误（不重试）"""
+        """Test submit execution validation error."""
         client._client = mock_httpx_client
 
         mock_response = Mock()
@@ -141,7 +137,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_submit_execution_5xx_retry_then_success(self, client, mock_httpx_client):
-        """测试 5xx 错误后重试成功"""
+        """Test submit execution 5xx retry then success."""
         client._client = mock_httpx_client
 
         # First call: 500 error
@@ -176,7 +172,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_submit_execution_5xx_max_retries(self, client, mock_httpx_client):
-        """测试 5xx 错误达到最大重试次数"""
+        """Test submit execution 5xx max retries."""
         client._client = mock_httpx_client
 
         mock_response = Mock()
@@ -201,7 +197,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_submit_execution_connection_error_retry(self, client, mock_httpx_client):
-        """测试连接错误重试"""
+        """Test submit execution connection error retry."""
         client._client = mock_httpx_client
 
         # First two calls: connection error
@@ -236,7 +232,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_submit_execution_connection_error_max_retries(self, client, mock_httpx_client):
-        """测试连接错误达到最大重试次数"""
+        """Test submit execution connection error max retries."""
         client._client = mock_httpx_client
 
         mock_httpx_client.post.side_effect = httpx.ConnectError("Connection refused")
@@ -257,7 +253,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_submit_execution_timeout_error(self, client, mock_httpx_client):
-        """测试超时错误"""
+        """Test submit execution timeout error."""
         client._client = mock_httpx_client
 
         mock_httpx_client.post.side_effect = httpx.TimeoutException("Timeout")
@@ -276,7 +272,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_submit_execution_other_error_response(self, client, mock_httpx_client):
-        """测试其他错误响应（如 404）"""
+        """Test submit execution other error response."""
         client._client = mock_httpx_client
 
         mock_response = Mock()
@@ -300,7 +296,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_health_check_success(self, client, mock_httpx_client):
-        """测试健康检查成功"""
+        """Test health check success."""
         client._client = mock_httpx_client
 
         mock_response = Mock()
@@ -315,7 +311,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_health_check_unhealthy(self, client, mock_httpx_client):
-        """测试健康检查不健康"""
+        """Test health check unhealthy."""
         client._client = mock_httpx_client
 
         mock_response = Mock()
@@ -327,7 +323,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_health_check_connection_error(self, client, mock_httpx_client):
-        """测试健康检查连接错误"""
+        """Test health check connection error."""
         client._client = mock_httpx_client
 
         mock_httpx_client.get.side_effect = httpx.ConnectError("Connection refused")
@@ -337,7 +333,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_health_check_timeout(self, client, mock_httpx_client):
-        """测试健康检查超时"""
+        """Test health check timeout."""
         client._client = mock_httpx_client
 
         mock_httpx_client.get.side_effect = httpx.TimeoutException("Timeout")
@@ -347,7 +343,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_get_client_creates_if_none(self, client):
-        """测试获取客户端时自动创建"""
+        """Test get client creates if none."""
         assert client._client is None
 
         c = client._get_client()
@@ -357,7 +353,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_get_client_returns_existing(self, client, mock_httpx_client):
-        """测试获取客户端时返回现有实例"""
+        """Test get client returns existing."""
         client._client = mock_httpx_client
 
         c = client._get_client()
@@ -366,7 +362,7 @@ class TestExecutorClient:
 
     @pytest.mark.asyncio
     async def test_sync_session_config_uses_request_timeout(self, client, mock_httpx_client):
-        """测试同步依赖配置时使用本次请求超时。"""
+        """Test sync session config uses request timeout."""
         client._client = mock_httpx_client
 
         mock_response = Mock()

@@ -1,10 +1,10 @@
 /**
- * API 相关常量
+ * API-related constants
  */
 
 export { getApiBaseUrl } from '@/utils/config';
 
-/** API 端点路径 */
+/** API endpoint paths */
 export const API_ENDPOINTS = {
   // Health
   HEALTH: '/api/v1/health',
@@ -33,14 +33,14 @@ export const API_ENDPOINTS = {
     `/api/v1/sessions/${sessionId}/files/${filePath}`,
 } as const;
 
-/** 默认分页参数 */
+/** Default pagination parameters */
 export const DEFAULT_PAGINATION = {
   LIMIT: 50,
   OFFSET: 0,
 } as const;
 
-/** HTTP 超时时间（毫秒） */
+/** HTTP timeout (milliseconds) */
 export const HTTP_TIMEOUT = 30000;
 
-/** 长耗时 HTTP 超时时间（毫秒） */
+/** Long-running HTTP timeout (milliseconds) */
 export const LONG_TASK_HTTP_TIMEOUT = 180000;

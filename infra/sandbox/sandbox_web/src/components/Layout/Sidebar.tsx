@@ -1,6 +1,6 @@
 /**
- * 侧边栏导航组件
- * 基于 Figma 设计
+ * Sidebar navigation component
+ * Based on the Figma design
  */
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu } from 'antd';
@@ -27,19 +27,19 @@ function getItem(
   } as MenuItem;
 }
 
-/** 侧边栏菜单项 */
+/** Sidebar menu item */
 const menuItems: MenuItem[] = [
   getItem('会话管理', 'sessions', <CodeOutlined />),
   getItem('模版管理', 'templates', <FileOutlined />),
   getItem('代码执行', 'execute', <PlayCircleOutlined />),
 ];
 
-/** 侧边栏组件 */
+/** Sidebar component */
 export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // 获取当前激活的菜单项
+  // Get the currently active menu item
   const getSelectedKey = () => {
     const path = location.pathname;
     if (path.startsWith('/sessions')) return 'sessions';
@@ -60,7 +60,7 @@ export function Sidebar() {
         flexDirection: 'column',
       }}
     >
-      {/* Logo 区域 */}
+      {/* Logo area */}
       <div
         style={{
           padding: '24px',
@@ -89,7 +89,7 @@ export function Sidebar() {
         </p>
       </div>
 
-      {/* 导航菜单 */}
+      {/* Navigation menu */}
       <div style={{ flex: 1, padding: '16px' }}>
         <Menu
           mode="inline"

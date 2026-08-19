@@ -1,8 +1,4 @@
-"""
-会话应用服务单元测试
-
-测试 SessionService 的用例编排逻辑。
-"""
+"""Unit tests for session service."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -30,11 +26,11 @@ from src.shared.errors.domain import ConflictError, NotFoundError, ValidationErr
 
 
 class TestSessionService:
-    """会话应用服务测试"""
+    """Tests for TestSessionService."""
 
     @pytest.fixture
     def session_repo(self):
-        """模拟会话仓储"""
+        """Create session repo."""
         repo = Mock()
         repo.save = AsyncMock()
         repo.find_by_id = AsyncMock()
@@ -42,14 +38,14 @@ class TestSessionService:
 
     @pytest.fixture
     def template_repo(self):
-        """模拟模板仓储"""
+        """Create template repo."""
         repo = Mock()
         repo.find_by_id = AsyncMock()
         return repo
 
     @pytest.fixture
     def scheduler(self):
-        """模拟调度器"""
+        """Create scheduler."""
         scheduler = Mock()
         scheduler.schedule = AsyncMock()
         scheduler.create_container_for_session = AsyncMock(return_value="container-123")
@@ -59,7 +55,7 @@ class TestSessionService:
 
     @pytest.fixture
     def execution_repo(self):
-        """模拟执行仓储"""
+        """Create execution repo."""
         repo = Mock()
         repo.save = AsyncMock()
         repo.find_by_id = AsyncMock()
@@ -86,7 +82,7 @@ class TestSessionService:
         executor_client,
         initial_dependency_sync_scheduler,
     ):
-        """创建会话服务"""
+        """Create service."""
         return SessionService(
             session_repo=session_repo,
             execution_repo=execution_repo,
@@ -98,8 +94,8 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_create_session_success(self, service, template_repo, scheduler, session_repo):
-        """测试成功创建会话"""
-        # 设置模拟返回值
+        """Test create session success."""
+        # Expected return value.
         template = Template(
             id="python-datascience",
             name="Python Data Science",
@@ -121,22 +117,22 @@ class TestSessionService:
         )
         scheduler.schedule.return_value = runtime_node
 
-        # 执行命令
+        # Test setup.
         command = CreateSessionCommand(
             template_id="python-datascience", timeout=300, resource_limit=ResourceLimit.default()
         )
 
         result = await service.create_session(command)
 
-        # 验证
+        # Verify expected behavior.
         assert result.template_id == "python-datascience"
-        # 状态可能是 CREATING 或 RUNNING，取决于具体实现
+        # Status-specific test setup.
         assert result.status in (SessionStatus.CREATING.value, SessionStatus.RUNNING.value)
-        assert session_repo.save.call_count >= 1  # 至少保存一次
+        assert session_repo.save.call_count >= 1  # Test setup.
 
     @pytest.mark.asyncio
     async def test_create_session_template_not_found(self, service, template_repo):
-        """测试模板不存在"""
+        """Test create session template not found."""
         template_repo.find_by_id.return_value = None
 
         command = CreateSessionCommand(template_id="non-existent", timeout=300)
@@ -153,7 +149,7 @@ class TestSessionService:
         session_repo,
         monkeypatch,
     ):
-        """测试未指定模板时使用默认模板配置"""
+        """Test create session uses default template when omitted."""
         monkeypatch.setattr(
             "src.application.services.session_service.get_settings",
             lambda: SimpleNamespace(
@@ -191,7 +187,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_get_session_success(self, service, session_repo):
-        """测试成功获取会话"""
+        """Test get session success."""
         session = Session(
             id="sess_20240115_abc123",
             template_id="python-datascience",
@@ -213,7 +209,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_get_session_not_found(self, service, session_repo):
-        """测试会话不存在"""
+        """Test get session not found."""
         session_repo.find_by_id.return_value = None
 
         from src.application.queries.get_session import GetSessionQuery
@@ -225,7 +221,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_terminate_session_success(self, service, session_repo):
-        """测试成功终止会话"""
+        """Test terminate session success."""
         session = Session(
             id="sess_20240115_abc123",
             template_id="python-datascience",
@@ -243,7 +239,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_terminate_already_terminated(self, service, session_repo):
-        """测试终止已终止的会话"""
+        """Test terminate already terminated."""
         session = Session(
             id="sess_20240115_abc123",
             template_id="python-datascience",
@@ -257,12 +253,12 @@ class TestSessionService:
         result = await service.terminate_session("sess_20240115_abc123")
 
         assert result.status == SessionStatus.TERMINATED.value
-        # 不应该再次调用 save
+        # Verify expected behavior.
         session_repo.save.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_session_success(self, service, session_repo, execution_repo):
-        """测试成功删除会话（硬删除，级联删除执行记录）"""
+        """Test delete session success."""
         session = Session(
             id="sess_20240115_abc123",
             template_id="python-datascience",
@@ -286,7 +282,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_delete_session_not_found(self, service, session_repo):
-        """测试删除不存在的会话"""
+        """Test delete session not found."""
         session_repo.find_by_id.return_value = None
 
         with pytest.raises(NotFoundError, match="Session not found"):
@@ -299,7 +295,7 @@ class TestSessionService:
     async def test_create_session_with_manual_id(
         self, service, template_repo, scheduler, session_repo
     ):
-        """测试使用手动指定 ID 创建会话"""
+        """Test create session with manual ID."""
         template = Template(
             id="python-test", name="Python Test", image="python:3.11", base_image="python:3.11-slim"
         )
@@ -318,7 +314,7 @@ class TestSessionService:
         )
         scheduler.schedule.return_value = runtime_node
 
-        # 第一个调用返回 None（检查 ID 是否存在），后续调用返回会话
+        # Expected return value.
         session_repo.find_by_id.side_effect = [None, None]
 
         command = CreateSessionCommand(
@@ -465,7 +461,7 @@ class TestSessionService:
     async def test_create_session_with_duplicate_id(
         self, service, template_repo, scheduler, session_repo
     ):
-        """测试使用重复 ID 创建会话"""
+        """Test create session with duplicate ID."""
         template = Template(
             id="python-test", name="Python Test", image="python:3.11", base_image="python:3.11-slim"
         )
@@ -499,7 +495,7 @@ class TestSessionService:
         session_repo,
         initial_dependency_sync_scheduler,
     ):
-        """测试创建带依赖的会话"""
+        """Test create session with dependencies."""
         template = Template(
             id="python-test", name="Python Test", image="python:3.11", base_image="python:3.11-slim"
         )
@@ -534,7 +530,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_list_sessions(self, service, session_repo):
-        """测试列出会话"""
+        """Test list sessions."""
         sessions = [
             Session(
                 id="sess_1",
@@ -563,7 +559,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_list_sessions_by_status(self, service, session_repo):
-        """测试按状态列出会话"""
+        """Test list sessions by status."""
         sessions = [
             Session(
                 id="sess_1",
@@ -584,7 +580,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_terminate_session_not_found(self, service, session_repo):
-        """测试终止不存在的会话"""
+        """Test terminate session not found."""
         session_repo.find_by_id.return_value = None
 
         with pytest.raises(NotFoundError, match="Session not found"):
@@ -592,7 +588,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_terminate_session_with_container(self, service, session_repo, scheduler):
-        """测试终止带容器的会话"""
+        """Test terminate session with container."""
         session = Session(
             id="sess_123",
             template_id="python-test",
@@ -611,7 +607,7 @@ class TestSessionService:
 
     @pytest.mark.asyncio
     async def test_get_session_executions(self, service, session_repo, execution_repo):
-        """测试获取会话的执行记录"""
+        """Test get session executions."""
         session = Session(
             id="sess_123",
             template_id="python-test",
@@ -646,20 +642,20 @@ class TestSessionService:
     async def test_get_session_executions_session_not_found(
         self, service, session_repo, execution_repo
     ):
-        """测试获取不存在会话的执行记录"""
-        # list_executions 不检查会话是否存在，直接查询执行记录
+        """Test get session executions session not found."""
+        # Test setup.
         execution_repo.find_by_session_id.return_value = []
 
         result = await service.list_executions("non-existent")
 
-        # 应该返回空列表
+        # Invalid input case.
         assert result == []
 
     @pytest.mark.asyncio
     async def test_create_session_without_container_creation_support(
         self, session_repo, template_repo, scheduler
     ):
-        """调度器不支持容器创建时保留创建中的会话记录。"""
+        """Test create session without container creation support."""
         scheduler_without_container_create = SimpleNamespace(schedule=scheduler.schedule)
         service = SessionService(
             session_repo=session_repo,

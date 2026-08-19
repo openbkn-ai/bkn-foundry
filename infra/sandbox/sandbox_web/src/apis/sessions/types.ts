@@ -1,5 +1,5 @@
 /**
- * Session API 类型定义
+ * Session API type definitions
  */
 export type {
   SessionResponse,

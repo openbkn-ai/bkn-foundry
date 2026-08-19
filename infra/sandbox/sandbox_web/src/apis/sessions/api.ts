@@ -1,5 +1,5 @@
 /**
- * Session API 实现
+ * Session API implementation
  */
 import { API_ENDPOINTS, LONG_TASK_HTTP_TIMEOUT } from '@/constants/api';
 import { get, post, del } from '@/utils/http/request';
@@ -12,21 +12,21 @@ import type {
 } from './types';
 
 /**
- * 获取会话列表
+ * Get session list
  */
 export function listSessions(params?: ListSessionsParams): Promise<SessionListResponse> {
   return get<SessionListResponse>(API_ENDPOINTS.SESSIONS, { params });
 }
 
 /**
- * 获取会话详情
+ * Get session details
  */
 export function getSession(sessionId: string): Promise<SessionResponse> {
   return get<SessionResponse>(API_ENDPOINTS.SESSION(sessionId));
 }
 
 /**
- * 创建会话
+ * createsession
  */
 export function createSession(data: CreateSessionRequest): Promise<SessionResponse> {
   return post<SessionResponse>(API_ENDPOINTS.SESSIONS, data, {
@@ -35,7 +35,7 @@ export function createSession(data: CreateSessionRequest): Promise<SessionRespon
 }
 
 /**
- * 安装会话依赖
+ * Install session dependencies
  */
 export function installSessionDependencies(
   sessionId: string,
@@ -47,7 +47,7 @@ export function installSessionDependencies(
 }
 
 /**
- * 终止会话
+ * Terminate session
  */
 export function terminateSession(sessionId: string): Promise<SessionResponse> {
   return del<SessionResponse>(API_ENDPOINTS.SESSION(sessionId));

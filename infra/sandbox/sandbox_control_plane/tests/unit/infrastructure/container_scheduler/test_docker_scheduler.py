@@ -1,8 +1,4 @@
-"""
-Docker 容器调度器单元测试
-
-测试 DockerScheduler 类的功能。
-"""
+"""Unit tests for docker scheduler."""
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -13,13 +9,13 @@ from src.infrastructure.container_scheduler.docker_scheduler import DockerSchedu
 
 
 class TestDockerScheduler:
-    """Docker 容器调度器测试"""
+    """Tests for TestDockerScheduler."""
 
     @pytest.fixture
     def mock_docker(self):
-        """模拟 Docker 客户端"""
+        """Create docker."""
         docker = Mock()
-        # 版本信息同步调用
+        # Test setup.
         docker.version.return_value = {"Version": "20.10.0"}
         images_mock = Mock()
         images_mock.inspect = AsyncMock(return_value={})
@@ -29,7 +25,7 @@ class TestDockerScheduler:
 
     @pytest.fixture
     def scheduler(self, mock_docker):
-        """创建 Docker 调度器"""
+        """Create scheduler."""
         sched = DockerScheduler()
         sched._docker = mock_docker
         sched._initialized = True
@@ -37,7 +33,7 @@ class TestDockerScheduler:
 
     @pytest.fixture
     def basic_config(self):
-        """基础容器配置"""
+        """Create basic config."""
         return ContainerConfig(
             image="python:3.11",
             name="test-container",
@@ -51,7 +47,7 @@ class TestDockerScheduler:
         )
 
     def test_parse_s3_workspace_valid(self, scheduler):
-        """测试解析有效的 S3 workspace 路径"""
+        """Test parse S3 workspace valid."""
         result = scheduler._parse_s3_workspace("s3://my-bucket/sessions/sess_123/")
 
         assert result is not None
@@ -59,48 +55,48 @@ class TestDockerScheduler:
         assert result["prefix"] == "sessions/sess_123/"
 
     def test_parse_s3_workspace_invalid(self, scheduler):
-        """测试解析无效的 S3 workspace 路径"""
+        """Test parse S3 workspace invalid."""
         result = scheduler._parse_s3_workspace("/local/path/workspace")
 
         assert result is None
 
     def test_parse_memory_to_bytes_gi(self, scheduler):
-        """测试解析内存限制（Gi）"""
+        """Test parse memory to bytes gi."""
         result = scheduler._parse_memory_to_bytes("1Gi")
 
         assert result == 1024 * 1024 * 1024
 
     def test_parse_memory_to_bytes_mi(self, scheduler):
-        """测试解析内存限制（Mi）"""
+        """Test parse memory to bytes mi."""
         result = scheduler._parse_memory_to_bytes("512Mi")
 
         assert result == 512 * 1024 * 1024
 
     def test_parse_memory_to_bytes_ki(self, scheduler):
-        """测试解析内存限制（Ki）"""
+        """Test parse memory to bytes ki."""
         result = scheduler._parse_memory_to_bytes("256Ki")
 
         assert result == 256 * 1024
 
     def test_parse_memory_to_bytes_default(self, scheduler):
-        """测试解析内存限制（默认单位为 MB）"""
+        """Test parse memory to bytes default."""
         result = scheduler._parse_memory_to_bytes("1024")
 
         assert result == 1024 * 1024 * 1024
 
     def test_parse_disk_to_bytes(self, scheduler):
-        """测试解析磁盘限制"""
+        """Test parse disk to bytes."""
         result = scheduler._parse_disk_to_bytes("10Gi")
 
         assert result == 10 * 1024 * 1024 * 1024
 
     @pytest.mark.asyncio
     async def test_create_container_basic(self, scheduler, mock_docker, basic_config):
-        """测试创建基本容器"""
+        """Test create container basic."""
         mock_container = Mock()
         mock_container.id = "container-123"
 
-        # 创建 containers mock
+        # Mock test dependency.
         containers_mock = Mock()
         containers_mock.create = AsyncMock(return_value=mock_container)
         mock_docker.containers = containers_mock
@@ -114,7 +110,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_create_container_pulls_missing_image(self, scheduler, mock_docker, basic_config):
-        """测试本地镜像缺失时会先拉取远端镜像。"""
+        """Test create container pulls missing image."""
         mock_container = Mock()
         mock_container.id = "container-123"
 
@@ -134,7 +130,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_create_container_with_s3_workspace(self, scheduler, mock_docker):
-        """测试创建带 S3 workspace 的容器"""
+        """Test create container with S3 workspace."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-container",
@@ -158,15 +154,15 @@ class TestDockerScheduler:
 
         assert container_id == "container-123"
 
-        # 验证容器配置包含 S3 相关配置
+        # S3-related test setup.
         call_args = containers_mock.create.call_args
         container_config = call_args[0][0]
-        assert container_config["User"] == "root"  # S3 模式需要 root
+        assert container_config["User"] == "root"  # S3-related test setup.
         assert "SYS_ADMIN" in container_config["HostConfig"]["CapAdd"]
 
     @pytest.mark.asyncio
     async def test_start_container(self, scheduler, mock_docker):
-        """测试启动容器"""
+        """Test start container."""
         mock_container = Mock()
         mock_container.start = AsyncMock()
 
@@ -181,7 +177,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_stop_container(self, scheduler, mock_docker):
-        """测试停止容器"""
+        """Test stop container."""
         mock_container = Mock()
         mock_container.stop = AsyncMock()
 
@@ -195,7 +191,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_remove_container(self, scheduler, mock_docker):
-        """测试删除容器"""
+        """Test remove container."""
         mock_container = Mock()
         mock_container.delete = AsyncMock()
 
@@ -209,7 +205,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_get_container_status_running(self, scheduler, mock_docker):
-        """测试获取运行中容器状态"""
+        """Test get container status running."""
         mock_container = Mock()
         mock_container.show = AsyncMock(return_value={
             "Id": "container-123",
@@ -243,7 +239,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_is_container_running_true(self, scheduler, mock_docker):
-        """测试检查容器是否运行中（运行中）"""
+        """Test is container running true."""
         mock_container = Mock()
         mock_container.show = AsyncMock(return_value={
             "Id": "container-123",
@@ -275,7 +271,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_get_container_logs(self, scheduler, mock_docker):
-        """测试获取容器日志"""
+        """Test get container logs."""
         mock_container = Mock()
         mock_container.log = AsyncMock(return_value=["log line 1\n", "log line 2\n"])
 
@@ -290,7 +286,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_wait_container_success(self, scheduler, mock_docker):
-        """测试等待容器完成（成功）"""
+        """Test wait container success."""
         mock_container = Mock()
         mock_container.wait = AsyncMock(return_value={"StatusCode": 0})
         mock_container.log = AsyncMock(return_value=["output\n"])
@@ -307,7 +303,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_wait_container_timeout(self, scheduler, mock_docker):
-        """测试等待容器完成（超时）"""
+        """Test wait container timeout."""
         mock_container = Mock()
         mock_container.wait = AsyncMock(side_effect=TimeoutError())
 
@@ -322,14 +318,14 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_ping_success(self, scheduler, mock_docker):
-        """测试 ping 成功"""
+        """Test ping success."""
         mock_docker.version = AsyncMock(return_value={"Version": "20.10.0"})
         result = await scheduler.ping()
         assert result is True
 
     @pytest.mark.asyncio
     async def test_close(self, scheduler, mock_docker):
-        """测试关闭连接"""
+        """Test close."""
         mock_docker.close = AsyncMock()
 
         await scheduler.close()
@@ -338,7 +334,7 @@ class TestDockerScheduler:
         assert scheduler._initialized is False
 
     def test_build_s3_mount_entrypoint(self, scheduler):
-        """测试构建 S3 挂载入口脚本"""
+        """Test build S3 mount entrypoint."""
         script = scheduler._build_s3_mount_entrypoint(
             s3_bucket="test-bucket",
             s3_prefix="sessions/sess_123",
@@ -357,7 +353,7 @@ class TestDockerScheduler:
         assert "ln -s" not in script
 
     def test_build_s3_mount_entrypoint_with_dependencies(self, scheduler):
-        """测试构建带依赖的 S3 挂载入口脚本"""
+        """Test build S3 mount entrypoint with dependencies."""
         dependencies = [{"name": "requests", "version": "==2.31.0"}]
         script = scheduler._build_s3_mount_entrypoint(
             s3_bucket="test-bucket",
@@ -373,7 +369,7 @@ class TestDockerScheduler:
         assert 'mount --bind "$SESSION_PATH" /workspace' in script
 
     def test_build_dependency_install_entrypoint(self, scheduler):
-        """测试构建依赖安装入口脚本"""
+        """Test build dependency install entrypoint."""
         dependencies = [{"name": "pandas", "version": ">=2.0"}]
         script = scheduler._build_dependency_install_entrypoint(dependencies)
 
@@ -381,15 +377,15 @@ class TestDockerScheduler:
         assert "pandas>=2.0" in script
 
     def test_build_dependency_install_entrypoint_no_deps(self, scheduler):
-        """测试构建无依赖的入口脚本"""
+        """Test build dependency install entrypoint no deps."""
         script = scheduler._build_dependency_install_entrypoint(None)
 
-        # 应不包含 pip install
+        # Test setup.
         assert "pip3 install" not in script
 
     @pytest.mark.asyncio
     async def test_is_container_running_false(self, scheduler, mock_docker):
-        """测试检查容器是否运行中（未运行）"""
+        """Test is container running false."""
         mock_container = Mock()
         mock_container.show = AsyncMock(return_value={
             "Id": "container-123",
@@ -421,7 +417,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_get_container_status_stopped(self, scheduler, mock_docker):
-        """测试获取已停止容器状态"""
+        """Test get container status stopped."""
         mock_container = Mock()
         mock_container.show = AsyncMock(return_value={
             "Id": "container-123",
@@ -454,7 +450,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_wait_container_failure(self, scheduler, mock_docker):
-        """测试等待容器完成（失败）"""
+        """Test wait container failure."""
         mock_container = Mock()
         mock_container.wait = AsyncMock(return_value={"StatusCode": 1})
         mock_container.log = AsyncMock(return_value=["error output\n"])
@@ -470,14 +466,14 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_ping_failure(self, scheduler, mock_docker):
-        """测试 ping 失败"""
+        """Test ping failure."""
         mock_docker.version = AsyncMock(side_effect=Exception("Connection failed"))
         result = await scheduler.ping()
         assert result is False
 
     @pytest.mark.asyncio
     async def test_ensure_docker_initialization(self, mock_docker):
-        """测试 Docker 客户端初始化"""
+        """Test ensure docker initialization."""
         scheduler = DockerScheduler()
         scheduler._initialized = False
 
@@ -490,45 +486,45 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_ensure_docker_already_initialized(self, scheduler, mock_docker):
-        """测试 Docker 客户端已初始化"""
+        """Test ensure docker already initialized."""
         result = await scheduler._ensure_docker()
 
         assert result is mock_docker
 
     def test_parse_s3_workspace_empty(self, scheduler):
-        """测试解析空 S3 workspace 路径"""
+        """Test parse S3 workspace empty."""
         result = scheduler._parse_s3_workspace("")
 
         assert result is None
 
     def test_parse_s3_workspace_none(self, scheduler):
-        """测试解析 None S3 workspace 路径"""
+        """Test parse S3 workspace none."""
         result = scheduler._parse_s3_workspace(None)
 
         assert result is None
 
     def test_parse_disk_to_bytes_mb(self, scheduler):
-        """测试解析磁盘限制（MB）"""
+        """Test parse disk to bytes mb."""
         result = scheduler._parse_disk_to_bytes("512Mi")
 
         assert result == 512 * 1024 * 1024
 
     def test_parse_memory_to_bytes_gib(self, scheduler):
-        """测试解析内存限制（GiB）"""
+        """Test parse memory to bytes gib."""
         result = scheduler._parse_memory_to_bytes("2Gi")
 
         assert result == 2 * 1024 * 1024 * 1024
 
     def test_parse_memory_to_bytes_plain_number(self, scheduler):
-        """测试解析内存限制（纯数字）"""
+        """Test parse memory to bytes plain number."""
         result = scheduler._parse_memory_to_bytes("2048")
 
-        # 默认单位为 MB
+        # Test setup.
         assert result == 2048 * 1024 * 1024
 
     @pytest.mark.asyncio
     async def test_create_container_with_labels(self, scheduler, mock_docker):
-        """测试创建带标签的容器"""
+        """Test create container with labels."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-container",
@@ -552,7 +548,7 @@ class TestDockerScheduler:
 
         assert container_id == "container-123"
 
-        # 验证标签被传递
+        # Verify expected behavior.
         call_args = containers_mock.create.call_args
         container_config = call_args[0][0]
         assert container_config["Labels"]["session_id"] == "sess-123"
@@ -560,7 +556,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_get_container_status_with_name(self, scheduler, mock_docker):
-        """测试获取容器状态（带名称）"""
+        """Test get container status with name."""
         mock_container = Mock()
         mock_container.show = AsyncMock(return_value={
             "Id": "container-123",
@@ -592,7 +588,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_get_container_logs_with_stderr(self, scheduler, mock_docker):
-        """测试获取容器日志（包含 stderr）"""
+        """Test get container logs with stderr."""
         mock_container = Mock()
         mock_container.log = AsyncMock(return_value=["stdout\n", "stderr\n"])
 
@@ -607,7 +603,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_stop_container_default_timeout(self, scheduler, mock_docker):
-        """测试停止容器（默认超时）"""
+        """Test stop container default timeout."""
         mock_container = Mock()
         mock_container.stop = AsyncMock()
 
@@ -621,7 +617,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_remove_container_no_force(self, scheduler, mock_docker):
-        """测试删除容器（不强制）"""
+        """Test remove container no force."""
         mock_container = Mock()
         mock_container.delete = AsyncMock()
 
@@ -635,7 +631,7 @@ class TestDockerScheduler:
 
     @pytest.mark.asyncio
     async def test_create_container_with_env_vars(self, scheduler, mock_docker):
-        """测试创建带环境变量的容器"""
+        """Test create container with env vars."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-container",
@@ -659,7 +655,7 @@ class TestDockerScheduler:
 
         assert container_id == "container-123"
 
-        # 验证环境变量被传递
+        # Verify expected behavior.
         call_args = containers_mock.create.call_args
         container_config = call_args[0][0]
         assert "DEBUG=true" in container_config["Env"]

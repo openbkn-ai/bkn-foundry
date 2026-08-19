@@ -21,7 +21,7 @@ from executor.domain.value_objects import ExecutionResult, ExecutionStatus, Exec
 from executor.infrastructure.config import settings
 from executor.infrastructure.isolation.code_wrapper import defines_handler, normalize_shell_code, uses_tool_decorator
 
-# 超时后先发 SIGTERM，等这么久仍未退出就 SIGKILL
+# After timeout, send SIGTERM first; send SIGKILL if the process still has not exited after this period.
 _TERMINATE_GRACE_SECONDS = 3
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class SubprocessRunner:
         process = None
 
         try:
-            # Build language-specific command and environment
+            # build language-specific command and environment
             cmd, env_args = self._build_command(execution)
             cwd_path = execution.context.resolve_working_directory_path()
 
@@ -263,7 +263,7 @@ class SubprocessRunner:
 
     def _build_command(self, execution: Execution) -> Tuple[List[str], dict]:
         """
-        Build language-specific command and environment.
+        build language-specific command and environment.
 
         Args:
             execution: Execution entity with code and context
@@ -275,7 +275,7 @@ class SubprocessRunner:
         language = execution.language.lower()
         code = execution.code
 
-        # Build environment variables - inherit from current process
+        # build environment variables - inherit from current process
         env_args = os.environ.copy()
         # Override specific variables
         env_args.update({

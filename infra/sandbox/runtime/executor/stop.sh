@@ -1,9 +1,9 @@
 #!/bin/bash
-# Runtime Executor 停止脚本
+# Runtime Executor stop script
 
 echo "正在停止 executor 服务..."
 
-# 查找并终止占用端口 8080 的所有进程
+# Find and terminate all processes occupying port 8080
 PIDS=$(lsof -ti:8080 2>/dev/null)
 
 if [ -z "$PIDS" ]; then
@@ -14,13 +14,13 @@ fi
 echo "发现进程: $PIDS"
 echo "正在终止..."
 
-# 先尝试优雅退出（SIGTERM）
+# Try graceful shutdown first (SIGTERM)
 lsof -ti:8080 | xargs kill -15 2>/dev/null
 
-# 等待 2 秒
+# Wait 2 seconds
 sleep 2
 
-# 检查是否还有进程
+# Check whether processes are still running
 REMAINING=$(lsof -ti:8080 2>/dev/null)
 if [ -n "$REMAINING" ]; then
     echo "进程未响应，强制终止（SIGKILL）..."
@@ -28,7 +28,7 @@ if [ -n "$REMAINING" ]; then
     sleep 1
 fi
 
-# 最终检查
+# Final check
 FINAL=$(lsof -ti:8080 2>/dev/null)
 if [ -z "$FINAL" ]; then
     echo "✓ 服务已停止"

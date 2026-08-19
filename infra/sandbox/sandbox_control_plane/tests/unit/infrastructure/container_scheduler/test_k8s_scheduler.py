@@ -1,8 +1,4 @@
-"""
-Kubernetes 容器调度器单元测试
-
-测试 K8sScheduler 类的功能。
-"""
+"""Unit tests for K8s scheduler."""
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -15,17 +11,17 @@ from src.infrastructure.container_scheduler.k8s_scheduler import K8sScheduler
 
 
 class TestK8sScheduler:
-    """K8s 容器调度器测试"""
+    """Tests for TestK8sScheduler."""
 
     @pytest.fixture
     def mock_core_v1(self):
-        """模拟 Kubernetes CoreV1Api"""
+        """Create core v1."""
         api = Mock()
         return api
 
     @pytest.fixture
     def scheduler(self, mock_core_v1):
-        """创建 K8s 调度器"""
+        """Create scheduler."""
         sched = K8sScheduler(namespace="test-namespace")
         sched._core_v1 = mock_core_v1
         sched._initialized = True
@@ -33,7 +29,7 @@ class TestK8sScheduler:
 
     @pytest.fixture
     def basic_config(self):
-        """基础容器配置"""
+        """Create basic config."""
         return ContainerConfig(
             image="python:3.11",
             name="test-session-abc123",
@@ -47,7 +43,7 @@ class TestK8sScheduler:
         )
 
     def test_build_pod_name(self, scheduler):
-        """测试生成 Pod 名称"""
+        """Test build Pod name."""
         pod_name = scheduler._build_pod_name("sess_abc123")
 
         assert "sandbox" in pod_name
@@ -55,15 +51,15 @@ class TestK8sScheduler:
         assert len(pod_name) <= 253
 
     def test_build_pod_name_with_uppercase(self, scheduler):
-        """测试大写会话 ID 转换"""
+        """Test build Pod name with uppercase."""
         pod_name = scheduler._build_pod_name("Sess_ABC123")
 
         assert "sess" in pod_name.lower()
-        # 应该不包含大写字母
+        # Verify expected behavior.
         assert pod_name == pod_name.lower()
 
     def test_parse_s3_workspace_valid(self, scheduler):
-        """测试解析有效的 S3 workspace 路径"""
+        """Test parse S3 workspace valid."""
         result = scheduler._parse_s3_workspace("s3://my-bucket/sessions/sess_123/")
 
         assert result is not None
@@ -71,32 +67,32 @@ class TestK8sScheduler:
         assert result["prefix"] == "sessions/sess_123/"
 
     def test_parse_s3_workspace_invalid(self, scheduler):
-        """测试解析无效的 S3 workspace 路径"""
+        """Test parse S3 workspace invalid."""
         result = scheduler._parse_s3_workspace("/local/path/workspace")
 
         assert result is None
 
     def test_parse_memory_to_bytes_gi(self, scheduler):
-        """测试解析内存限制（Gi）"""
+        """Test parse memory to bytes gi."""
         result = scheduler._parse_memory_to_bytes("1Gi")
 
         assert result == 1024 * 1024 * 1024
 
     def test_parse_memory_to_bytes_mi(self, scheduler):
-        """测试解析内存限制（Mi）"""
+        """Test parse memory to bytes mi."""
         result = scheduler._parse_memory_to_bytes("512Mi")
 
         assert result == 512 * 1024 * 1024
 
     def test_parse_disk_to_bytes(self, scheduler):
-        """测试解析磁盘限制"""
+        """Test parse disk to bytes."""
         result = scheduler._parse_disk_to_bytes("10Gi")
 
         assert result == 10 * 1024 * 1024 * 1024
 
     @pytest.mark.asyncio
     async def test_ping_success(self, scheduler, mock_core_v1):
-        """测试 ping 成功"""
+        """Test ping success."""
         mock_core_v1.list_namespace.return_value = Mock(items=[])
 
         result = await scheduler.ping()
@@ -105,7 +101,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_ping_failure(self, scheduler, mock_core_v1):
-        """测试 ping 失败"""
+        """Test ping failure."""
         mock_core_v1.list_namespace.side_effect = Exception("Connection error")
 
         result = await scheduler.ping()
@@ -114,7 +110,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_create_pod_basic(self, scheduler, mock_core_v1, basic_config):
-        """测试创建基本 Pod"""
+        """Test create Pod basic."""
         mock_pod = Mock()
         mock_pod.metadata = Mock()
         mock_pod.metadata.name = "sandbox-test-session-abc123"
@@ -125,7 +121,7 @@ class TestK8sScheduler:
         assert pod_name == "sandbox-test-session-abc123"
         mock_core_v1.create_namespaced_pod.assert_called_once()
 
-        # 验证参数
+        # Verify expected behavior.
         call_args = mock_core_v1.create_namespaced_pod.call_args
         assert call_args[1]["namespace"] == "test-namespace"
 
@@ -137,7 +133,7 @@ class TestK8sScheduler:
         basic_config,
         monkeypatch,
     ):
-        """测试 executor Pod 使用配置化镜像拉取策略和 imagePullSecrets。"""
+        """Test create Pod uses configured image pull settings."""
         monkeypatch.setenv("EXECUTOR_IMAGE_PULL_POLICY", "Always")
         monkeypatch.setenv("EXECUTOR_IMAGE_PULL_SECRETS", "swr-secret, backup-secret")
         get_settings.cache_clear()
@@ -162,7 +158,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_create_pod_sets_owner_references_and_annotations(self, scheduler, mock_core_v1):
-        """测试创建 Pod 时写入 ownerReferences 和 control plane annotations。"""
+        """Test create Pod sets owner references and annotations."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-session",
@@ -201,7 +197,7 @@ class TestK8sScheduler:
         mock_core_v1,
         basic_config,
     ):
-        """测试旧 Pod 正在删除时会等待并重试同名创建。"""
+        """Test create Pod retries after terminating Pod conflict."""
         stale_pod = Mock()
         stale_pod.metadata = Mock()
         stale_pod.metadata.deletion_timestamp = datetime.now(UTC)
@@ -224,7 +220,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_create_pod_with_s3_workspace(self, scheduler, mock_core_v1):
-        """测试创建带 S3 workspace 的 Pod"""
+        """Test create Pod with S3 workspace."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-session",
@@ -246,7 +242,7 @@ class TestK8sScheduler:
 
         assert pod_name == "sandbox-test-session"
 
-        # 验证 Pod 配置包含单个 executor 容器（s3fs 在容器内挂载）
+        # Verify expected behavior.
         call_args = mock_core_v1.create_namespaced_pod.call_args
         pod_spec = call_args[1]["body"]
         assert len(pod_spec.spec.containers) == 1
@@ -254,7 +250,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_create_pod_with_dependencies(self, scheduler, mock_core_v1):
-        """测试创建带依赖安装的 Pod"""
+        """Test create Pod with dependencies."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-session",
@@ -276,7 +272,7 @@ class TestK8sScheduler:
 
         assert pod_name == "sandbox-test-session"
 
-        # 验证 executor 容器有启动脚本
+        # Verify expected behavior.
         call_args = mock_core_v1.create_namespaced_pod.call_args
         pod_spec = call_args[1]["body"]
         executor_container = next(c for c in pod_spec.spec.containers if c.name == "executor")
@@ -285,7 +281,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_stop_container(self, scheduler, mock_core_v1):
-        """测试停止 Pod"""
+        """Test stop container."""
         mock_core_v1.delete_namespaced_pod.return_value = None
 
         await scheduler.stop_container("test-pod", timeout=30)
@@ -297,7 +293,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_remove_container_force(self, scheduler, mock_core_v1):
-        """测试强制删除 Pod"""
+        """Test remove container force."""
         mock_core_v1.delete_namespaced_pod.return_value = None
 
         await scheduler.remove_container("test-pod", force=True)
@@ -307,7 +303,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_get_container_status_running(self, scheduler, mock_core_v1):
-        """测试获取运行中 Pod 状态"""
+        """Test get container status running."""
         mock_pod = Mock()
         mock_pod.metadata = Mock()
         mock_pod.metadata.name = "test-pod"
@@ -338,7 +334,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_is_container_running_true(self, scheduler, mock_core_v1):
-        """测试检查 Pod 是否运行中（运行中）"""
+        """Test is container running true."""
         mock_pod = Mock()
         mock_pod.metadata = Mock()
         mock_pod.metadata.name = "test-pod"
@@ -367,7 +363,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_is_container_running_false(self, scheduler, mock_core_v1):
-        """测试检查 Pod 是否运行中（未运行）"""
+        """Test is container running false."""
         mock_pod = Mock()
         mock_pod.metadata = Mock()
         mock_pod.metadata.name = "test-pod"
@@ -384,7 +380,7 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_get_container_logs(self, scheduler, mock_core_v1):
-        """测试获取 Pod 日志"""
+        """Test get container logs."""
         mock_core_v1.read_namespaced_pod_log.return_value = "log line 1\nlog line 2\n"
 
         logs = await scheduler.get_container_logs("test-pod", tail=100)
@@ -394,8 +390,8 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_wait_container_success(self, scheduler, mock_core_v1):
-        """测试等待 Pod 完成（成功）"""
-        # 第一次调用返回运行中，第二次返回完成
+        """Test wait container success."""
+        # Expected return value.
         running_pod = Mock()
         running_pod.status.phase = "Running"
         running_pod.status.container_statuses = [
@@ -423,8 +419,8 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_wait_container_timeout(self, scheduler, mock_core_v1):
-        """测试等待 Pod 完成（超时）"""
-        # 始终返回运行中
+        """Test wait container timeout."""
+        # Expected return value.
         running_pod = Mock()
         running_pod.status.phase = "Running"
         running_pod.status.container_statuses = [
@@ -446,12 +442,12 @@ class TestK8sScheduler:
 
     @pytest.mark.asyncio
     async def test_close(self, scheduler):
-        """测试关闭连接"""
+        """Test close."""
         await scheduler.close()
         assert scheduler._initialized is False
 
     def test_build_executor_container(self, scheduler, basic_config):
-        """测试构建 executor 容器"""
+        """Test build executor container."""
         container = scheduler._build_executor_container(
             config=basic_config,
             use_s3_mount=False,
@@ -462,7 +458,7 @@ class TestK8sScheduler:
         assert container.image == "python:3.11"
 
     def test_build_executor_container_with_s3_mount(self, scheduler):
-        """测试构建带 S3 挂载的 executor 容器"""
+        """Test build executor container with S3 mount."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-session",
@@ -481,7 +477,7 @@ class TestK8sScheduler:
             has_dependencies=False,
         )
 
-        # 验证 S3 相关环境变量
+        # S3-related test setup.
         env_names = [env.name for env in container.env]
         assert "WORKSPACE_PATH" in env_names
         assert "S3_BUCKET" in env_names
@@ -489,31 +485,31 @@ class TestK8sScheduler:
 
 
 class TestS3PrefixHelper:
-    """测试 S3 路径前缀辅助函数"""
+    """Tests for TestS3PrefixHelper."""
 
     def test_s3_prefix_from_path_session_format(self):
-        """测试从会话格式路径提取会话 ID"""
+        """Test S3 prefix from path session format."""
         from src.infrastructure.container_scheduler.k8s_scheduler import s3_prefix_from_path
 
         session_id = s3_prefix_from_path("sessions/test-001/workspace")
         assert session_id == "test-001"
 
     def test_s3_prefix_from_path_session_format_without_workspace(self):
-        """测试从会话格式路径提取会话 ID（无 workspace 后缀）"""
+        """Test S3 prefix from path session format without workspace."""
         from src.infrastructure.container_scheduler.k8s_scheduler import s3_prefix_from_path
 
         session_id = s3_prefix_from_path("sessions/test-001")
         assert session_id == "test-001"
 
     def test_s3_prefix_from_path_non_session_format(self):
-        """测试非会话格式路径返回原路径"""
+        """Test S3 prefix from path non session format."""
         from src.infrastructure.container_scheduler.k8s_scheduler import s3_prefix_from_path
 
         result = s3_prefix_from_path("custom/path/to/files")
         assert result == "custom/path/to/files"
 
     def test_s3_prefix_from_path_with_trailing_slash(self):
-        """测试带尾部斜杠的路径"""
+        """Test S3 prefix from path with trailing slash."""
         from src.infrastructure.container_scheduler.k8s_scheduler import s3_prefix_from_path
 
         session_id = s3_prefix_from_path("sessions/test-001/")
@@ -521,56 +517,56 @@ class TestS3PrefixHelper:
 
 
 class TestK8sSchedulerExtended:
-    """K8s 调度器扩展测试"""
+    """Tests for TestK8sSchedulerExtended."""
 
     @pytest.fixture
     def mock_core_v1(self):
-        """模拟 Kubernetes CoreV1Api"""
+        """Create core v1."""
         api = Mock()
         return api
 
     @pytest.fixture
     def scheduler(self, mock_core_v1):
-        """创建 K8s 调度器"""
+        """Create scheduler."""
         sched = K8sScheduler(namespace="test-namespace")
         sched._core_v1 = mock_core_v1
         sched._initialized = True
         return sched
 
     def test_parse_s3_workspace_empty(self, scheduler):
-        """测试解析空 S3 workspace 路径"""
+        """Test parse S3 workspace empty."""
         result = scheduler._parse_s3_workspace("")
 
         assert result is None
 
     def test_parse_s3_workspace_none(self, scheduler):
-        """测试解析 None S3 workspace 路径"""
+        """Test parse S3 workspace none."""
         result = scheduler._parse_s3_workspace(None)
 
         assert result is None
 
     def test_parse_memory_to_bytes_ki(self, scheduler):
-        """测试解析内存限制（Ki）"""
+        """Test parse memory to bytes ki."""
         result = scheduler._parse_memory_to_bytes("256Ki")
 
         assert result == 256 * 1024
 
     def test_parse_memory_to_bytes_plain_number(self, scheduler):
-        """测试解析内存限制（纯数字）"""
+        """Test parse memory to bytes plain number."""
         result = scheduler._parse_memory_to_bytes("1024")
 
-        # 默认单位为 MB
+        # Test setup.
         assert result == 1024 * 1024 * 1024
 
     def test_parse_disk_to_bytes_mb(self, scheduler):
-        """测试解析磁盘限制（MB）"""
+        """Test parse disk to bytes mb."""
         result = scheduler._parse_disk_to_bytes("512Mi")
 
         assert result == 512 * 1024 * 1024
 
     @pytest.mark.asyncio
     async def test_get_container_status_pending(self, scheduler, mock_core_v1):
-        """测试获取等待中 Pod 状态"""
+        """Test get container status pending."""
         mock_pod = Mock()
         mock_pod.metadata = Mock()
         mock_pod.metadata.name = "test-pod"
@@ -589,7 +585,7 @@ class TestK8sSchedulerExtended:
 
     @pytest.mark.asyncio
     async def test_get_container_status_failed(self, scheduler, mock_core_v1):
-        """测试获取失败 Pod 状态"""
+        """Test get container status failed."""
         mock_pod = Mock()
         mock_pod.metadata = Mock()
         mock_pod.metadata.name = "test-pod"
@@ -617,7 +613,7 @@ class TestK8sSchedulerExtended:
 
     @pytest.mark.asyncio
     async def test_wait_container_failure(self, scheduler, mock_core_v1):
-        """测试等待 Pod 完成（失败）"""
+        """Test wait container failure."""
         failed_pod = Mock()
         failed_pod.status.phase = "Failed"
         failed_pod.status.container_statuses = [
@@ -639,14 +635,14 @@ class TestK8sSchedulerExtended:
 
     @pytest.mark.asyncio
     async def test_start_container(self, scheduler, mock_core_v1):
-        """测试启动 Pod（K8s 中 Pod 创建即启动）"""
-        # K8s 中 start_container 通常不需要额外操作
+        """Test start container."""
+        # Test setup.
         await scheduler.start_container("test-pod")
-        # 不应该有异常
+        # Verify expected behavior.
 
     @pytest.mark.asyncio
     async def test_get_container_logs_with_tail(self, scheduler, mock_core_v1):
-        """测试获取 Pod 日志（带 tail 参数）"""
+        """Test get container logs with tail."""
         mock_core_v1.read_namespaced_pod_log.return_value = "log output"
 
         logs = await scheduler.get_container_logs("test-pod", tail=50)
@@ -657,7 +653,7 @@ class TestK8sSchedulerExtended:
 
     @pytest.mark.asyncio
     async def test_remove_container_no_force(self, scheduler, mock_core_v1):
-        """测试删除 Pod（不强制）"""
+        """Test remove container no force."""
         mock_core_v1.delete_namespaced_pod.return_value = None
 
         await scheduler.remove_container("test-pod", force=False)
@@ -666,23 +662,23 @@ class TestK8sSchedulerExtended:
         assert call_args[1]["grace_period_seconds"] == 30
 
     def test_build_pod_name_long_id(self, scheduler):
-        """测试生成 Pod 名称（长 ID）"""
+        """Test build Pod name long ID."""
         long_id = "a" * 300
         pod_name = scheduler._build_pod_name(long_id)
 
         assert len(pod_name) <= 253
 
     def test_build_pod_name_special_chars(self, scheduler):
-        """测试生成 Pod 名称（特殊字符）"""
+        """Test build Pod name special chars."""
         session_id = "session_ABC-123.test"
         pod_name = scheduler._build_pod_name(session_id)
 
-        # 应该只包含小写字母、数字和连字符
+        # Verify expected behavior.
         assert pod_name == pod_name.lower()
         assert "_" not in pod_name or "." not in pod_name
 
     def test_build_executor_container_with_resources(self, scheduler):
-        """测试构建带资源限制的 executor 容器"""
+        """Test build executor container with resources."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-session",
@@ -711,7 +707,7 @@ class TestK8sSchedulerExtended:
         assert container.resources.limits["ephemeral-storage"] == "10Gi"
 
     def test_build_executor_container_with_dependencies(self, scheduler):
-        """测试构建带依赖安装的 executor 容器"""
+        """Test build executor container with dependencies."""
         config = ContainerConfig(
             image="python:3.11",
             name="test-session",
@@ -730,6 +726,6 @@ class TestK8sSchedulerExtended:
             has_dependencies=True,
         )
 
-        # 应该有启动命令
+        # Verify expected behavior.
         assert container.command is not None
         assert "pip3 install" in container.command[2]

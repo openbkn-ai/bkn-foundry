@@ -1,5 +1,5 @@
 /**
- * App 根组件
+ * App root component
  */
 import { Router } from '@/router';
 import '@/styles/main.less';

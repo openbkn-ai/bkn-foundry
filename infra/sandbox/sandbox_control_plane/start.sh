@@ -1,14 +1,14 @@
 #!/bin/bash
-# Sandbox Control Plane 启动脚本
+# Sandbox Control Plane start script
 
-# 设置项目根目录
+# Set the project root directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$SCRIPT_DIR"
 
-# 进入项目目录
+# Enter the project directory
 cd "$SCRIPT_DIR"
 
-# 清理端口 8000 上的旧进程
+# Clean up old processes on port 8000
 echo "检查端口 8000..."
 OLD_PIDS=$(lsof -ti:8000 2>/dev/null)
 if [ -n "$OLD_PIDS" ]; then
@@ -19,7 +19,7 @@ if [ -n "$OLD_PIDS" ]; then
     echo "旧进程已清理"
 fi
 
-# 检查 .env 文件
+# Check the .env file
 if [ ! -f .env ]; then
     echo "警告: .env 文件不存在"
     echo "正在从 .env.example 创建 .env..."
@@ -27,7 +27,7 @@ if [ ! -f .env ]; then
     echo "请根据需要编辑 .env 文件"
 fi
 
-# 同步依赖
+# Sync dependencies
 echo "正在同步依赖..."
 if command -v uv &> /dev/null; then
     uv sync
@@ -36,7 +36,7 @@ else
     pip install -e ".[dev]"
 fi
 
-# 启动服务
+# Start the service
 echo "正在启动 Sandbox Control Plane..."
 echo "提示: 使用 Ctrl+C 停止服务"
 echo ""
@@ -46,7 +46,7 @@ echo "  - API 文档: http://localhost:8000/docs"
 echo "  - ReDoc: http://localhost:8000/redoc"
 echo ""
 
-# 使用 uv 或直接运行
+# Use uv or run directly
 if command -v uv &> /dev/null; then
     uv run uvicorn src.interfaces.rest.main:app --host 0.0.0.0 --port 8000 --reload
 else

@@ -1,8 +1,4 @@
-"""
-日志中间件单元测试
-
-测试 RequestLoggingMiddleware 的功能。
-"""
+"""Unit tests for logging middleware."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 import uuid
@@ -14,21 +10,21 @@ from src.interfaces.rest.middleware.logging_middleware import RequestLoggingMidd
 
 
 class TestRequestLoggingMiddleware:
-    """日志中间件测试"""
+    """Tests for TestRequestLoggingMiddleware."""
 
     @pytest.fixture
     def mock_app(self):
-        """模拟 ASGI 应用"""
+        """Create app."""
         return Mock()
 
     @pytest.fixture
     def middleware(self, mock_app):
-        """创建中间件"""
+        """Create middleware."""
         return RequestLoggingMiddleware(mock_app)
 
     @pytest.fixture
     def mock_request(self):
-        """创建模拟请求"""
+        """Create request."""
         request = MagicMock(spec=Request)
         request.method = "GET"
         request.url = MagicMock()
@@ -40,7 +36,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.fixture
     def mock_response(self):
-        """创建模拟响应"""
+        """Create response."""
         response = MagicMock(spec=Response)
         response.status_code = 200
         response.headers = {}
@@ -48,7 +44,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_generates_request_id(self, middleware, mock_request, mock_response):
-        """测试生成请求 ID"""
+        """Test dispatch generates request ID."""
         async def call_next(request):
             return mock_response
 
@@ -63,7 +59,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_binds_context(self, middleware, mock_request, mock_response):
-        """测试绑定上下文"""
+        """Test dispatch binds context."""
         async def call_next(request):
             return mock_response
 
@@ -80,7 +76,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_adds_request_id_header(self, middleware, mock_request, mock_response):
-        """测试添加请求 ID 响应头"""
+        """Test dispatch adds request ID header."""
         async def call_next(request):
             return mock_response
 
@@ -93,7 +89,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_adds_process_time_header(self, middleware, mock_request, mock_response):
-        """测试添加处理时间响应头"""
+        """Test dispatch adds process time header."""
         async def call_next(request):
             return mock_response
 
@@ -106,7 +102,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_clears_context(self, middleware, mock_request, mock_response):
-        """测试清理上下文"""
+        """Test dispatch clears context."""
         async def call_next(request):
             return mock_response
 
@@ -119,7 +115,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_clears_context_on_exception(self, middleware, mock_request):
-        """测试异常时清理上下文"""
+        """Test dispatch clears context on exception."""
         async def call_next(request):
             raise RuntimeError("Test error")
 
@@ -133,7 +129,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_handles_no_client(self, middleware, mock_request, mock_response):
-        """测试处理无客户端信息"""
+        """Test dispatch handles no client."""
         mock_request.client = None
 
         async def call_next(request):
@@ -147,7 +143,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_with_different_status_codes(self, middleware, mock_request):
-        """测试不同状态码"""
+        """Test dispatch with different status codes."""
         for status_code in [200, 201, 400, 404, 500]:
             mock_response = MagicMock(spec=Response)
             mock_response.status_code = status_code
@@ -163,7 +159,7 @@ class TestRequestLoggingMiddleware:
 
     @pytest.mark.asyncio
     async def test_dispatch_with_post_request(self, middleware, mock_response):
-        """测试 POST 请求"""
+        """Test dispatch with post request."""
         mock_request = MagicMock(spec=Request)
         mock_request.method = "POST"
         mock_request.url = MagicMock()

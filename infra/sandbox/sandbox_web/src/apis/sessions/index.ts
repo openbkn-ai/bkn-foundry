@@ -1,5 +1,5 @@
 /**
- * Session API 导出
+ * Session API exports
  */
 export * from './types';
 export * from './api';

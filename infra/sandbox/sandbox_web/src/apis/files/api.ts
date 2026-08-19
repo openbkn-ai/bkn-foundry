@@ -1,15 +1,15 @@
 /**
- * File API 实现
+ * File API implementation
  */
 import { API_ENDPOINTS } from '@/constants/api';
 import apiClient from '@/utils/http/axios';
 import type { FileUploadResponse } from './types';
 
 /**
- * 上传文件到会话工作区
- * @param sessionId 会话ID
- * @param file 要上传的文件
- * @param path 文件在会话工作区中的路径（作为 URL 参数，默认使用文件名）
+ * Upload a file to the session workspace
+ * @param sessionId Session ID
+ * @param file File to upload
+ * @param path File path in the session workspace (as a URL parameter; defaults to the file name)
  */
 export async function uploadFile(
   sessionId: string,
@@ -23,7 +23,7 @@ export async function uploadFile(
   const formData = new FormData();
   formData.append('file', file);
 
-  // path 是必填参数，如果未提供则使用文件名
+  // path is required; use the file name if it is not provided
   const uploadPath = path || file.name;
 
   const response = await apiClient.post<FileUploadResponse>(
@@ -36,7 +36,7 @@ export async function uploadFile(
         overwrite: options?.overwrite ?? false,
       },
       headers: {
-        // 覆盖默认的 application/json，让 axios 自动检测 FormData 并设置正确的 Content-Type
+        // Override the default application/json so axios can detect FormData and set the correct Content-Type
         'Content-Type': undefined as any,
       },
     }
@@ -45,7 +45,7 @@ export async function uploadFile(
 }
 
 /**
- * 从会话工作区下载文件
+ * Download a file from the session workspace
  */
 export async function downloadFile(sessionId: string, filePath: string): Promise<Blob> {
   const response = await apiClient.get<Blob>(

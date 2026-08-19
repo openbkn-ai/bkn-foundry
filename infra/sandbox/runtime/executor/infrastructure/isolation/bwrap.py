@@ -95,7 +95,7 @@ class BubblewrapRunner:
 
     def _build_base_args(self, container_working_directory: str = "/workspace") -> List[str]:
         """
-        Build base Bubblewrap arguments for isolation.
+        build base Bubblewrap arguments for isolation.
 
         Returns:
             List of bwrap command arguments
@@ -168,7 +168,7 @@ class BubblewrapRunner:
         )
 
         try:
-            # Build language-specific command and environment
+            # build language-specific command and environment
             cmd, env_args = self._build_command(execution)
             if env_args:
                 cmd = self._inject_env_args(cmd, env_args)
@@ -350,7 +350,7 @@ except Exception as e:
 
     def _build_command(self, execution: Execution) -> tuple[List[str], dict]:
         """
-        Build the complete command for executing code.
+        build the complete command for executing code.
 
         Args:
             execution: Execution entity
@@ -371,7 +371,7 @@ except Exception as e:
 
     def _build_python_command(self, execution: Execution) -> tuple[List[str], dict]:
         """
-        Build command for Python execution using fileless approach.
+        build command for Python execution using fileless approach.
 
         Uses python3 -c to execute code directly in memory with Lambda-style wrapper.
         """
@@ -388,7 +388,7 @@ except Exception as e:
         return cmd, self._build_execution_env(execution)
 
     def _build_node_command(self, execution: Execution) -> tuple[List[str], dict]:
-        """Build command for Node.js execution."""
+        """build command for Node.js execution."""
         execution.context.resolve_working_directory_path()
         # Wrap user code in AWS Lambda handler pattern
         wrapper_code = f'''
@@ -415,7 +415,7 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
         return cmd, self._build_execution_env(execution)
 
     def _build_shell_command(self, execution: Execution) -> tuple[List[str], dict]:
-        """Build command for shell execution."""
+        """build command for shell execution."""
         resolved_cwd = execution.context.resolve_working_directory_path()
         normalized_code = normalize_shell_code(execution.code, resolved_cwd)
         cmd = self._build_base_args(execution.context.container_working_directory()) + [
@@ -439,13 +439,13 @@ console.log('===SANDBOX_RESULT===' + JSON.stringify(result) + '===SANDBOX_RESULT
         env_args: dict[str, str] = {
             "PYTHONPATH": self._build_pythonpath(os.environ.get("PYTHONPATH")),
         }
-        # --clearenv 之后镜像上的环境变量一个都不剩，得像 PYTHONPATH 那样显式带进去。
-        # sandbox_sdk.bkn 拿不到它时会报「请由控制面设置环境变量 BKN_SANDBOX_MCP_URL」
-        # ——而运维恰恰已经设了，只是被 bwrap 挡在了外面。
+        # After --clearenv, no image-level environment variables remain, so this must be passed through explicitly like PYTHONPATH.
+        # sandbox_sdk.bkn reports that BKN_SANDBOX_MCP_URL must be set by the control plane if it cannot read this value.
+        # In that case operations has already set it, but bwrap has blocked it from the process.
         #
-        # 只有这一个需要在这里透传：它由控制面设在**容器**上，本次执行的 env 里没有。
-        # BKN_TOKEN 那些是随每次执行下发的，已经在上面的 execution.context.env_vars
-        # 里，不必也不该从容器环境去捞——容器级的值会跨调用方存活。
+        # Only this value needs to be passed through here: the control plane sets it on the **container**, and it is not present in the current execution env.
+        # values such as BKN_TOKEN are delivered with each execution and are already in execution.context.env_vars above,
+        # so they do not need to and should not be read from the container environment because container-level values can persist across callers.
         bkn_mcp_url = os.environ.get("BKN_SANDBOX_MCP_URL", "").strip()
         if bkn_mcp_url:
             env_args["BKN_SANDBOX_MCP_URL"] = bkn_mcp_url

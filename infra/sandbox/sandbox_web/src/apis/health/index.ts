@@ -1,4 +1,4 @@
 /**
- * Health API 导出
+ * Health API exports
  */
 export * from './api';

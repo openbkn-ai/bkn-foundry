@@ -1,6 +1,6 @@
 /**
- * 布局组件
- * 基于 Figma 设计
+ * Layout component
+ * Based on the Figma design
  */
 import { Outlet } from 'react-router-dom';
 import { Layout } from 'antd';
@@ -8,7 +8,7 @@ import { Sidebar } from './Sidebar';
 
 const { Sider, Content } = Layout;
 
-/** 布局组件 */
+/** Layout component */
 export default function LayoutComponent() {
   return (
     <Layout style={{ minHeight: '100vh', backgroundColor: '#fafafa' }}>

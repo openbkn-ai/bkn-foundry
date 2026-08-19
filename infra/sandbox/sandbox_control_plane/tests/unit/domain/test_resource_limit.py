@@ -1,18 +1,14 @@
-"""
-资源限制值对象单元测试
-
-测试 ResourceLimit 值对象的行为。
-"""
+"""Unit tests for resource limit."""
 import pytest
 
 from src.domain.value_objects.resource_limit import ResourceLimit
 
 
 class TestResourceLimit:
-    """资源限制值对象测试"""
+    """Tests for TestResourceLimit."""
 
     def test_create_default(self):
-        """测试创建默认资源限制"""
+        """Test create default."""
         limit = ResourceLimit.default()
 
         assert limit.cpu == "1"
@@ -21,7 +17,7 @@ class TestResourceLimit:
         assert limit.max_processes == 128
 
     def test_create_custom(self):
-        """测试创建自定义资源限制"""
+        """Test create custom."""
         limit = ResourceLimit(
             cpu="2",
             memory="1Gi",
@@ -35,7 +31,7 @@ class TestResourceLimit:
         assert limit.max_processes == 256
 
     def test_invalid_cpu(self):
-        """测试无效的 CPU 值"""
+        """Test invalid CPU."""
         with pytest.raises(ValueError, match="Invalid cpu format"):
             ResourceLimit(
                 cpu="invalid",
@@ -44,7 +40,7 @@ class TestResourceLimit:
             )
 
     def test_negative_cpu(self):
-        """测试负数 CPU"""
+        """Test negative CPU."""
         with pytest.raises(ValueError, match="cpu must be positive"):
             ResourceLimit(
                 cpu="-1",
@@ -53,7 +49,7 @@ class TestResourceLimit:
             )
 
     def test_invalid_memory_format(self):
-        """测试无效的内存格式"""
+        """Test invalid memory format."""
         with pytest.raises(ValueError, match="Invalid memory format"):
             ResourceLimit(
                 cpu="1",
@@ -62,7 +58,7 @@ class TestResourceLimit:
             )
 
     def test_invalid_disk_format(self):
-        """测试无效的磁盘格式"""
+        """Test invalid disk format."""
         with pytest.raises(ValueError, match="Invalid disk format"):
             ResourceLimit(
                 cpu="1",
@@ -71,7 +67,7 @@ class TestResourceLimit:
             )
 
     def test_negative_max_processes(self):
-        """测试负数最大进程数"""
+        """Test negative max processes."""
         with pytest.raises(ValueError, match="max_processes must be positive"):
             ResourceLimit(
                 cpu="1",
@@ -81,38 +77,38 @@ class TestResourceLimit:
             )
 
     def test_with_cpu(self):
-        """测试创建新的 CPU 限制"""
+        """Test with CPU."""
         limit = ResourceLimit.default()
         new_limit = limit.with_cpu("2")
 
-        # 原对象不变
+        # Test setup.
         assert limit.cpu == "1"
 
-        # 新对象有新值
+        # Test setup.
         assert new_limit.cpu == "2"
         assert new_limit.memory == limit.memory
 
     def test_with_memory(self):
-        """测试创建新的内存限制"""
+        """Test with memory."""
         limit = ResourceLimit.default()
         new_limit = limit.with_memory("1Gi")
 
-        # 原对象不变
+        # Test setup.
         assert limit.memory == "512Mi"
 
-        # 新对象有新值
+        # Test setup.
         assert new_limit.memory == "1Gi"
         assert new_limit.cpu == limit.cpu
 
     def test_frozen(self):
-        """测试值对象不可变"""
+        """Test frozen."""
         limit = ResourceLimit.default()
 
-        with pytest.raises(Exception):  # frozen.dataclass 会抛出异常
+        with pytest.raises(Exception):  # Test setup.
             limit.cpu = "2"
 
     def test_valid_size_formats(self):
-        """测试有效的大小格式"""
+        """Test valid size formats."""
         valid_formats = [
             ("512Mi", True),
             ("1Gi", True),

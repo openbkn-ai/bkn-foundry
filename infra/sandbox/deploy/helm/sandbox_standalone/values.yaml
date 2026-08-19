@@ -268,7 +268,7 @@ securityContext:
 depServices:
   class-443:
     ingressClass: class-443
-  # 数据库连接配置
+  # Database connection configuration
   rds:
     type: MYSQL
     host: mariadb.sandbox-system

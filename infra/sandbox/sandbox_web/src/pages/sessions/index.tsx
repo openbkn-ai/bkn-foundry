@@ -1,5 +1,5 @@
 /**
- * 会话管理页面
+ * Session management page
  */
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -73,12 +73,12 @@ export default function SessionsPage() {
   const [installSessionName, setInstallSessionName] = useState<string>('');
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // 初始加载
+  // Initial load
   useEffect(() => {
     fetchSessions();
   }, [fetchSessions]);
 
-  // 定时刷新，依赖安装进行中时加快轮询
+  // Periodic refresh; poll faster while dependency installation is in progress
   useEffect(() => {
     const hasInstallingDependencies = sessions.some(
       (session) => session.dependency_install_status === 'installing',
@@ -100,7 +100,7 @@ export default function SessionsPage() {
     };
   }, [fetchSessions, sessions]);
 
-  // 打开创建模态框时获取模板列表
+  // Get the template list when opening the create modal
   const handleOpenCreateModal = async () => {
     await fetchTemplates();
     form.setFieldsValue({
@@ -110,11 +110,11 @@ export default function SessionsPage() {
     setShowCreateModal(true);
   };
 
-  // 当选择模版时，自动带入配置
+  // Automatically populate configuration when a template is selected
   const handleTemplateChange = (templateId: string) => {
     const template = templates.find((t) => t.id === templateId);
     if (template) {
-      // 自动填充资源配置
+      // Automatically fill resource configuration
       form.setFieldsValue({
         cpu: template.default_cpu_cores.toString(),
         memory: `${template.default_memory_mb}Mi`,
@@ -124,7 +124,7 @@ export default function SessionsPage() {
     }
   };
 
-  // 查看详情
+  // View details
   const handleViewDetail = (record: SessionResponse) => {
     setDetailSession(record);
     setShowDetailModal(true);
@@ -134,12 +134,12 @@ export default function SessionsPage() {
     setDetailSession((prev) => (prev?.id === updatedSession.id ? updatedSession : prev));
   };
 
-  // 跳转到执行页面并选中会话
+  // Navigate to the execution page and select the session
   const handleExecuteCode = (sessionId: string) => {
     navigate(`/execute?sessionId=${sessionId}`);
   };
 
-  // 过滤会话
+  // Filter sessions
   const filteredSessions = sessions.filter((s) => {
     const matchesSearch =
       s.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -150,7 +150,7 @@ export default function SessionsPage() {
     return matchesSearch && matchesStatus;
   });
 
-  // 创建会话
+  // createsession
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
@@ -166,20 +166,20 @@ export default function SessionsPage() {
       form.resetFields();
       setDepInput('');
     } catch (error) {
-      // 表单验证失败或创建失败
+      // Form validation or creation failed
     }
   };
 
-  // 终止会话
+  // Terminate session
   const handleTerminate = async (id: string) => {
     try {
       await terminateSession(id);
     } catch (error) {
-      // 终止失败
+      // terminatefailed
     }
   };
 
-  // 打开上传文件模态框
+  // Open the upload file modal
   const handleOpenUploadModal = (record: SessionResponse) => {
     setUploadSessionId(record.id);
     setUploadSessionName(record.id);
@@ -239,7 +239,7 @@ export default function SessionsPage() {
     }
   };
 
-  // 处理文件上传
+  // handlefileupload
   const handleUpload = async () => {
     if (fileList.length === 0) {
       message.warning('请选择要上传的文件');
@@ -287,7 +287,7 @@ export default function SessionsPage() {
     }
   };
 
-  // 状态配置 - 支持小写状态值（API 返回小写）
+  // Status configuration - supports lowercase status values returned by the API
   const getStatusConfig = (status: string) => {
     const configs: Record<
       string,
@@ -301,7 +301,7 @@ export default function SessionsPage() {
       TERMINATED: { color: 'default', icon: '⏹', label: SESSION_STATUS_LABELS.TERMINATED },
       FAILED: { color: 'error', icon: '✗', label: SESSION_STATUS_LABELS.FAILED },
       TIMEOUT: { color: 'error', icon: '⏱', label: SESSION_STATUS_LABELS.TIMEOUT },
-      // 支持小写（API 返回）
+      // Supports lowercase values returned by the API
       pending: { color: 'warning', icon: '⏱', label: SESSION_STATUS_LABELS.PENDING },
       creating: { color: 'processing', icon: '🔄', label: SESSION_STATUS_LABELS.CREATING },
       starting: { color: 'processing', icon: '🔄', label: SESSION_STATUS_LABELS.STARTING },
@@ -339,7 +339,7 @@ export default function SessionsPage() {
     return <Tag>待安装</Tag>;
   };
 
-  // 表格列定义
+  // Table column definitions
   const columns = [
     {
       title: '会话ID',
@@ -391,7 +391,7 @@ export default function SessionsPage() {
       width: 150,
       fixed: 'right' as const,
       render: (_: unknown, record: SessionResponse) => {
-        // 判断是否可以终止（只有运行中/启动中的会话可以终止）
+        // Determine whether the session can be terminated; only running or starting sessions can be terminated
         const canTerminate =
           record.status === 'running' ||
           record.status === 'RUNNING' ||
@@ -475,7 +475,7 @@ export default function SessionsPage() {
 
   return (
     <>
-      {/* 页面标题 */}
+      {/* Page title */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
           <div
@@ -503,7 +503,7 @@ export default function SessionsPage() {
         </p>
       </div>
 
-      {/* 统计卡片 */}
+      {/* Statistics cards */}
       <div style={{ display: 'flex', gap: 16, marginBottom: 24 }}>
         <Card
           style={{
@@ -583,7 +583,7 @@ export default function SessionsPage() {
         </Card>
       </div>
 
-      {/* 筛选状态提示 */}
+      {/* Filter status hint */}
       {statusFilter && (
         <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Tag
@@ -596,7 +596,7 @@ export default function SessionsPage() {
         </div>
       )}
 
-      {/* 会话列表 */}
+      {/* sessionlist */}
       <div
         style={{
           backgroundColor: '#ffffff',
@@ -605,7 +605,7 @@ export default function SessionsPage() {
           padding: 24,
         }}
       >
-        {/* 搜索和操作栏 */}
+        {/* Search and action bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <Input
             placeholder="搜索会话ID或模版ID"
@@ -620,7 +620,7 @@ export default function SessionsPage() {
           </Button>
         </div>
 
-        {/* 会话表格 */}
+        {/* Session table */}
         <Table
           columns={columns}
           dataSource={filteredSessions}
@@ -631,7 +631,7 @@ export default function SessionsPage() {
         />
       </div>
 
-      {/* 创建会话对话框 */}
+      {/* Create session dialog */}
       <Modal
         title="创建新会话"
         open={showCreateModal}
@@ -760,7 +760,7 @@ export default function SessionsPage() {
         </Form>
       </Modal>
 
-      {/* 详情模态框 */}
+      {/* Details modal */}
       <Modal
         title="会话详情"
         open={showDetailModal}
@@ -926,7 +926,7 @@ export default function SessionsPage() {
         </Form>
       </Modal>
 
-      {/* 上传文件模态框 */}
+      {/* Upload file modal */}
       <Modal
         title="上传文件"
         open={showUploadModal}

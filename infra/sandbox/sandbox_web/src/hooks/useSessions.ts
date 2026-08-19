@@ -1,5 +1,5 @@
 /**
- * 会话管理 Hook
+ * Session management hook
  */
 import { useState, useCallback, useRef } from 'react';
 import { message } from 'antd';
@@ -11,7 +11,7 @@ import type {
   SessionStatus,
 } from '@apis/sessions';
 
-/** 会话统计 */
+/** Session statistics */
 export interface SessionStats {
   total: number;
   starting: number;
@@ -24,7 +24,7 @@ export function useSessions() {
   const [loading, setLoading] = useState(false);
   const isLoadingRef = useRef(false);
 
-  // 获取统计 - 支持小写状态值
+  // Get statistics; supports lowercase status values
   const stats: SessionStats = {
     total: sessions.length,
     starting: sessions.filter((s) =>
@@ -38,9 +38,9 @@ export function useSessions() {
     ).length,
   };
 
-  // 获取会话列表
+  // Get session list
   const fetchSessions = useCallback(async () => {
-    // 使用 ref 防止重复请求
+    // Use a ref to prevent duplicate requests
     if (isLoadingRef.current) return;
     isLoadingRef.current = true;
     setLoading(true);
@@ -56,7 +56,7 @@ export function useSessions() {
     }
   }, []);
 
-  // 创建会话
+  // createsession
   const createSession = useCallback(async (data: CreateSessionRequest) => {
     setLoading(true);
     try {
@@ -73,7 +73,7 @@ export function useSessions() {
     }
   }, []);
 
-  // 终止会话
+  // Terminate session
   const terminateSession = useCallback(async (id: string) => {
     setLoading(true);
     try {

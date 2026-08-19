@@ -1,15 +1,4 @@
-"""
-Session dependency installation integration tests.
-
-完整验证链路：
-1. 创建 session
-2. 等待 session 进入 running
-3. 调用依赖安装接口安装指定仓库源和依赖
-4. 校验 session 中的依赖安装状态与结果
-5. 调用同步执行接口运行依赖相关代码
-6. 校验执行成功并返回预期结果
-7. 删除 session
-"""
+"""Unit tests for session dependency installation API."""
 import asyncio
 
 import pytest

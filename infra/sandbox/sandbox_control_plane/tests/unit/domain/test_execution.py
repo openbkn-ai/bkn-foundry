@@ -1,8 +1,4 @@
-"""
-执行实体单元测试
-
-测试 Execution 实体的领域行为。
-"""
+"""Unit tests for execution."""
 import pytest
 from datetime import datetime, timedelta
 
@@ -12,10 +8,10 @@ from src.domain.value_objects.artifact import Artifact, ArtifactType
 
 
 class TestExecution:
-    """执行实体测试"""
+    """Tests for TestExecution."""
 
     def test_create_execution(self):
-        """测试创建执行"""
+        """Test create execution."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -30,7 +26,7 @@ class TestExecution:
         assert execution.is_running() is False
 
     def test_mark_running(self):
-        """测试标记为运行中"""
+        """Test mark running."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -45,7 +41,7 @@ class TestExecution:
         assert execution.last_heartbeat_at is not None
 
     def test_mark_completed(self):
-        """测试标记为已完成"""
+        """Test mark completed."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -76,7 +72,7 @@ class TestExecution:
         assert len(execution.artifacts) == 1
 
     def test_mark_failed(self):
-        """测试标记为失败"""
+        """Test mark failed."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -95,7 +91,7 @@ class TestExecution:
         assert execution.state.exit_code == 1
 
     def test_mark_timeout(self):
-        """测试标记为超时"""
+        """Test mark timeout."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -109,7 +105,7 @@ class TestExecution:
         assert execution.state.status == ExecutionStatus.TIMEOUT
 
     def test_mark_crashed(self):
-        """测试标记为崩溃"""
+        """Test mark crashed."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -124,7 +120,7 @@ class TestExecution:
         assert execution.can_retry() is True
 
     def test_increment_retry_count(self):
-        """测试增加重试计数"""
+        """Test increment retry count."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -139,7 +135,7 @@ class TestExecution:
         assert execution.retry_count == 1
 
     def test_can_retry(self):
-        """测试是否可以重试"""
+        """Test can retry."""
         execution = Execution(
             id="exec_20240115_abc123",
             session_id="sess_20240115_xyz789",
@@ -153,7 +149,7 @@ class TestExecution:
         assert execution.can_retry(max_retries=2) is False
 
     def test_is_heartbeat_timeout(self):
-        """测试心跳超时检查"""
+        """Test is heartbeat timeout."""
         import time
 
         execution = Execution(
@@ -169,23 +165,23 @@ class TestExecution:
         assert execution.is_heartbeat_timeout(timeout_seconds=30) is False
 
     def test_invalid_empty_code(self):
-        """测试空代码"""
+        """Test invalid empty code."""
         with pytest.raises(ValueError, match="code cannot be empty"):
             Execution(
                 id="exec_20240115_abc123",
                 session_id="sess_20240115_xyz789",
-                code="",  # 无效值
+                code="",  # Test setup.
                 language="python",
                 state=ExecutionState(status=ExecutionStatus.PENDING)
             )
 
     def test_invalid_empty_language(self):
-        """测试空语言"""
+        """Test invalid empty language."""
         with pytest.raises(ValueError, match="language cannot be empty"):
             Execution(
                 id="exec_20240115_abc123",
                 session_id="sess_20240115_xyz789",
                 code="print('hello')",
-                language="",  # 无效值
+                language="",  # Test setup.
                 state=ExecutionState(status=ExecutionStatus.PENDING)
             )

@@ -1,5 +1,5 @@
 /**
- * Template API 导出
+ * Template API exports
  */
 export * from './types';
 export * from './api';

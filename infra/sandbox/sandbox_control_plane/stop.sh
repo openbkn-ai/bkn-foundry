@@ -1,9 +1,9 @@
 #!/bin/bash
-# Sandbox Control Plane 停止脚本
+# Sandbox Control Plane stop script
 
 echo "正在停止 Sandbox Control Plane..."
 
-# 查找并终止占用端口 8000 的进程
+# Find and terminate the process occupying port 8000
 PIDS=$(lsof -ti:8000 2>/dev/null)
 
 if [ -z "$PIDS" ]; then
@@ -17,13 +17,13 @@ ps -p $PIDS -o pid,ppid,cmd 2>/dev/null || echo "PID: $PIDS"
 echo ""
 echo "正在终止进程..."
 
-# 尝试优雅终止
+# Try graceful termination
 for PID in $PIDS; do
     echo "发送 SIGTERM 到进程 $PID..."
     kill -TERM $PID 2>/dev/null
 done
 
-# 等待进程结束
+# Wait for the process to exit
 echo "等待进程结束..."
 for i in {1..10}; do
     sleep 1
@@ -35,7 +35,7 @@ for i in {1..10}; do
     echo "等待中... ($i/10)"
 done
 
-# 强制终止剩余进程
+# Force-terminate remaining processes
 REMAINING=$(lsof -ti:8000 2>/dev/null)
 if [ -n "$REMAINING" ]; then
     echo "强制终止剩余进程..."
@@ -43,7 +43,7 @@ if [ -n "$REMAINING" ]; then
     sleep 1
 fi
 
-# 验证
+# validate
 REMAINING=$(lsof -ti:8000 2>/dev/null)
 if [ -z "$REMAINING" ]; then
     echo "Sandbox Control Plane 已停止"

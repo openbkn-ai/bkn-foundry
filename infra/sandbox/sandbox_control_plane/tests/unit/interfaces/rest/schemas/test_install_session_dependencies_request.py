@@ -1,6 +1,4 @@
-"""
-增量安装依赖请求模型测试。
-"""
+"""Unit tests for install session dependencies request."""
 
 import pytest
 from pydantic import ValidationError

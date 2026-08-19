@@ -1,32 +1,32 @@
 /**
- * API 类型定义
- * 基于 Control Plane OpenAPI 规范
+ * API type definitions
+ * Based on the Control Plane OpenAPI specification
  */
 
 // ============================================
-// 通用类型
+// Common types
 // ============================================
 
-/** 运行时类型 */
+/** Runtime type */
 export type RuntimeType = 'python3.11' | 'nodejs20' | 'java17' | 'go1.21';
 
-/** 会话状态 */
+/** Session status */
 export type SessionStatus = 'PENDING' | 'CREATING' | 'STARTING' | 'RUNNING' | 'COMPLETED' | 'TERMINATED' | 'FAILED' | 'TIMEOUT';
 
-/** 依赖安装状态 */
+/** Dependency installation status */
 export type DependencyInstallStatus = 'pending' | 'installing' | 'completed' | 'failed';
 
-/** 执行状态 */
+/** Execution status */
 export type ExecutionStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'TIMEOUT' | 'CRASHED';
 
-/** 编程语言 */
+/** Programming language */
 export type CodeLanguage = 'python' | 'javascript' | 'shell';
 
 // ============================================
-// Template 相关类型
+// Template-related types
 // ============================================
 
-/** 模板响应 */
+/** Template response */
 export interface TemplateResponse {
   id: string;
   name: string;
@@ -42,7 +42,7 @@ export interface TemplateResponse {
   updated_at?: string;
 }
 
-/** 创建模板请求 */
+/** Create template request */
 export interface CreateTemplateRequest {
   id: string;
   name: string;
@@ -55,7 +55,7 @@ export interface CreateTemplateRequest {
   default_env_vars?: Record<string, string>;
 }
 
-/** 更新模板请求 */
+/** Update template request */
 export interface UpdateTemplateRequest {
   name?: string;
   image_url?: string;
@@ -67,10 +67,10 @@ export interface UpdateTemplateRequest {
 }
 
 // ============================================
-// Session 相关类型
+// Session-related types
 // ============================================
 
-/** 资源限制响应 */
+/** Resource limit response */
 export interface ResourceLimitResponse {
   cpu: string;
   memory: string;
@@ -78,7 +78,7 @@ export interface ResourceLimitResponse {
   max_processes?: number;
 }
 
-/** 会话响应 */
+/** Session response */
 export interface SessionResponse {
   id: string;
   template_id: string;
@@ -104,13 +104,13 @@ export interface SessionResponse {
   last_activity_at?: string;
 }
 
-/** 依赖包规范 */
+/** Dependency spec */
 export interface DependencySpec {
   name: string;
   version?: string;
 }
 
-/** 已安装依赖 */
+/** Installed dependency */
 export interface InstalledDependencyResponse {
   name: string;
   version: string;
@@ -119,7 +119,7 @@ export interface InstalledDependencyResponse {
   is_from_template?: boolean;
 }
 
-/** 创建会话请求 */
+/** Create session request */
 export interface CreateSessionRequest {
   template_id?: string;
   timeout?: number;
@@ -135,13 +135,13 @@ export interface CreateSessionRequest {
   allow_version_conflicts?: boolean;
 }
 
-/** 安装会话依赖请求 */
+/** Install session dependencies request */
 export interface InstallSessionDependenciesRequest {
   python_package_index_url?: string;
   dependencies: DependencySpec[];
 }
 
-/** 会话列表响应 */
+/** sessionlistresponse */
 export interface SessionListResponse {
   items: SessionResponse[];
   total: number;
@@ -149,7 +149,7 @@ export interface SessionListResponse {
   offset: number;
 }
 
-/** 会话列表查询参数 */
+/** Session list query parameters */
 export interface ListSessionsParams {
   status?: SessionStatus | null;
   template_id?: string | null;
@@ -158,10 +158,10 @@ export interface ListSessionsParams {
 }
 
 // ============================================
-// Execution 相关类型
+// Execution-related types
 // ============================================
 
-/** 文件制品响应 */
+/** fileartifactresponse */
 export interface ArtifactResponse {
   path: string;
   size: number;
@@ -171,7 +171,7 @@ export interface ArtifactResponse {
   checksum?: string;
 }
 
-/** 执行指标 */
+/** Execution metrics */
 export interface ExecutionMetrics {
   duration_ms: number;
   cpu_time_ms?: number;
@@ -180,7 +180,7 @@ export interface ExecutionMetrics {
   io_write_bytes?: number;
 }
 
-/** 执行响应 */
+/** Execution response */
 export interface ExecutionResponse {
   id: string;
   session_id: string;
@@ -202,7 +202,7 @@ export interface ExecutionResponse {
   metrics?: ExecutionMetrics;
 }
 
-/** 执行代码请求 */
+/** executioncoderequest */
 export interface ExecuteCodeRequest {
   code: string;
   language: CodeLanguage;
@@ -211,7 +211,7 @@ export interface ExecuteCodeRequest {
   working_directory?: string;
 }
 
-/** 执行代码响应 */
+/** executioncoderesponse */
 export interface ExecuteCodeResponse {
   execution_id: string;
   session_id: string;
@@ -219,7 +219,7 @@ export interface ExecuteCodeResponse {
   created_at?: string;
 }
 
-/** 文件上传响应 */
+/** File upload response */
 export interface FileUploadResponse {
   session_id: string;
   mode: 'file' | 'archive_extract';
@@ -230,7 +230,7 @@ export interface FileUploadResponse {
   size: number;
 }
 
-/** 执行列表响应 */
+/** executionlistresponse */
 export interface ExecutionListResponse {
   items: ExecutionResponse[];
   total: number;
@@ -239,17 +239,17 @@ export interface ExecutionListResponse {
 }
 
 // ============================================
-// Health 相关类型
+// Health-related types
 // ============================================
 
-/** 健康检查响应 */
+/** Health Checkresponse */
 export interface HealthResponse {
   status: string;
   version: string;
   uptime: number;
 }
 
-/** 详细健康检查响应 */
+/** Detailed health checkresponse */
 export interface DetailedHealthResponse extends Record<string, unknown> {
   status: string;
   version?: string;
@@ -258,10 +258,10 @@ export interface DetailedHealthResponse extends Record<string, unknown> {
 }
 
 // ============================================
-// File 相关类型
+// File-related types
 // ============================================
 
-/** 文件上传响应 */
+/** File upload response */
 export interface FileUploadResponse {
   session_id: string;
   file_path: string;
@@ -269,10 +269,10 @@ export interface FileUploadResponse {
 }
 
 // ============================================
-// 通用 API 响应类型
+// Common API response types
 // ============================================
 
-/** API 错误响应 */
+/** API errorresponse */
 export interface ErrorResponse {
   detail: Array<{
     loc: Array<string | number>;
@@ -281,7 +281,7 @@ export interface ErrorResponse {
   }>;
 }
 
-/** 分页参数 */
+/** Pagination parameters */
 export interface PaginationParams {
   limit?: number;
   offset?: number;

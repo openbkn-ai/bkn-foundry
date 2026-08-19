@@ -1,5 +1,5 @@
 /**
- * Execution API 类型定义
+ * Execution API type definitions
  */
 export type {
   ExecutionResponse,

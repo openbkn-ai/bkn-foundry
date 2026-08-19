@@ -1,6 +1,6 @@
 # Documentation
 
-项目文档按产品、设计、API、开发、运维五类组织，避免需求文档、架构文档和操作手册混放在根目录。
+Project documents are organized into product, design, API, development, and operations categories to avoid mixing requirements, architecture, and runbooks in the root directory.
 
 ## Structure
 
@@ -30,75 +30,75 @@ docs/
 
 ### Product
 
-- [产品路线图](./product/roadmap.md)
-- [PRD 模板](./product/prd/template.md)
-- [Session Python 依赖管理 PRD](./product/prd/session-python-dependency-management.md)
-- [场景：PTC 数据分析与上下文问答](./product/use-cases/ptc-data-analysis-and-context-qa.md)
-- [背景：统一沙箱临时区](./product/use-cases/unified-sandbox-background.md)
+- [Product roadmap](./product/roadmap.md)
+- [PRD template](./product/prd/template.md)
+- [Session Python Dependency Management PRD](./product/prd/session-python-dependency-management.md)
+- [Scenario: PTC data analysis and contextual Q&A](./product/use-cases/ptc-data-analysis-and-context-qa.md)
+- [Background: unified sandbox temporary area](./product/use-cases/unified-sandbox-background.md)
 
 ### Design
 
-- [架构总览](./design/architecture/overview.md)
-- [系统上下文](./design/architecture/system-context.md)
-- [逻辑架构与流程](./design/architecture/logical-architecture.md)
-- [安全与性能](./design/architecture/security-and-performance.md)
-- [存储架构](./design/architecture/storage-architecture.md)
-- [模块设计：Control Plane](./design/modules/control-plane.md)
-- [模块设计：Container Scheduler](./design/modules/container-scheduler.md)
-- [模块设计：Executor](./design/modules/executor.md)
-- [模块设计：Python Dependencies](./design/modules/python-dependencies.md)
-- [需求设计：Session Python 依赖管理](./design/features/session-python-dependency-management.md)
-- [需求设计：MCP Server](./design/features/mcp-server-implementation.md)
-- [Design 模板](./design/features/template.md)
-- [ADR 模板](./design/decisions/template.md)
+- [Architecture overview](./design/architecture/overview.md)
+- [System context](./design/architecture/system-context.md)
+- [Logical architecture and flow](./design/architecture/logical-architecture.md)
+- [Security and performance](./design/architecture/security-and-performance.md)
+- [Storage architecture](./design/architecture/storage-architecture.md)
+- [Module design: Control Plane](./design/modules/control-plane.md)
+- [Module design: Container Scheduler](./design/modules/container-scheduler.md)
+- [Module design: Executor](./design/modules/executor.md)
+- [Module design: Python dependencies](./design/modules/python-dependencies.md)
+- [Requirement design: Session Python dependency management](./design/features/session-python-dependency-management.md)
+- [Requirement design: MCP Server](./design/features/mcp-server-implementation.md)
+- [Design template](./design/features/template.md)
+- [ADR template](./design/decisions/template.md)
 
 ### API
 
-- [API 总览](./api/README.md)
+- [API overview](./api/README.md)
 - [REST OpenAPI](./api/rest/sandbox-openapi.json)
 - [Execute Sync OpenAPI](./api/rest/execute-sync-openapi.yaml)
 
 ### Dev
 
-- [环境准备](./dev/setup.md)
-- [构建](./dev/build.md)
-- [测试](./dev/test.md)
-- [发布](./dev/release.md)
-- [贡献指南](./dev/contributing.md)
-- [项目结构](./dev/project-structure.md)
+- [Environment setup](./dev/setup.md)
+- [build](./dev/build.md)
+- [Test](./dev/test.md)
+- [Release](./dev/release.md)
+- [Contribution guide](./dev/contributing.md)
+- [Project structure](./dev/project-structure.md)
 
 ### Ops
 
-- [部署](./ops/deploy.md)
-- [配置](./ops/config.md)
-- [监控](./ops/monitoring.md)
-- [故障排查](./ops/troubleshooting.md)
-- [历史文档：监控与部署](./ops/monitoring-and-deployment.md)
-- [历史文档：Runtime Node 注册](./ops/runtime-node-registration.md)
+- [deployment](./ops/deploy.md)
+- [configuration](./ops/config.md)
+- [Monitoring](./ops/monitoring.md)
+- [Troubleshooting](./ops/troubleshooting.md)
+- [Historical document: monitoring and deployment](./ops/monitoring-and-deployment.md)
+- [Historical document: Runtime Node registration](./ops/runtime-node-registration.md)
 
 ## PRD <-> Design Linking Convention
 
-每个需求默认生成两份文档：
+Each requirement generates two documents by default:
 
 1. `docs/product/prd/<feature>.md`
 2. `docs/design/features/<feature>.md`
 
-两份文档必须使用同一个 `<feature>` slug，并互相链接。
+Both documents must use the same `<feature>` slug and link to each other.
 
-### PRD 必备区块
-
-```md
-## 关联设计
-
-- Design: [<标题>](../../design/features/<feature>.md)
-```
-
-### Design 必备区块
+### Required PRD section
 
 ```md
-## 关联需求
+## Related design
 
-- PRD: [<标题>](../../product/prd/<feature>.md)
+- Design: [<title>](../../design/features/<feature>.md)
 ```
 
-建议在文档创建时直接从模板复制，避免后补链接。
+### Required Design section
+
+```md
+## Related requirement
+
+- PRD: [<title>](../../product/prd/<feature>.md)
+```
+
+Copy directly from the template when creating documents to avoid adding links later.

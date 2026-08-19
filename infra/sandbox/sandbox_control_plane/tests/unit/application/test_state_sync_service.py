@@ -1,8 +1,4 @@
-"""
-状态同步服务单元测试
-
-测试 StateSyncService 的状态同步逻辑。
-"""
+"""Unit tests for state sync service."""
 import pytest
 from unittest.mock import Mock, AsyncMock
 from datetime import datetime, timedelta
@@ -18,11 +14,11 @@ from src.infrastructure.container_scheduler.base import IContainerScheduler
 
 
 class TestStateSyncService:
-    """状态同步服务测试"""
+    """Tests for TestStateSyncService."""
 
     @pytest.fixture
     def session_repo(self):
-        """模拟会话仓储"""
+        """Create session repo."""
         repo = Mock()
         repo.save = AsyncMock()
         repo.find_by_id = AsyncMock()
@@ -33,7 +29,7 @@ class TestStateSyncService:
 
     @pytest.fixture
     def container_scheduler(self):
-        """模拟容器调度器"""
+        """Create container scheduler."""
         scheduler = Mock()
         scheduler.is_container_running = AsyncMock()
         scheduler.create_container = AsyncMock()
@@ -44,14 +40,14 @@ class TestStateSyncService:
 
     @pytest.fixture
     def template_repo(self):
-        """模拟模板仓储"""
+        """Create template repo."""
         repo = Mock()
         repo.find_by_id = AsyncMock()
         return repo
 
     @pytest.fixture
     def execution_repo(self):
-        """模拟执行仓储"""
+        """Create execution repo."""
         repo = Mock()
         repo.find_by_session_id = AsyncMock(return_value=[])
         repo.save = AsyncMock()
@@ -60,7 +56,7 @@ class TestStateSyncService:
 
     @pytest.fixture
     def service(self, session_repo, container_scheduler, template_repo, execution_repo):
-        """创建状态同步服务"""
+        """Create service."""
         return StateSyncService(
             session_repo=session_repo,
             container_scheduler=container_scheduler,
@@ -70,7 +66,7 @@ class TestStateSyncService:
 
     @pytest.fixture
     def python_template(self):
-        """创建测试模板"""
+        """Create python template."""
         return Template(
             id="python-basic",
             name="Python Basic",
@@ -84,7 +80,7 @@ class TestStateSyncService:
 
     @pytest.fixture
     def running_session(self):
-        """创建运行中的会话"""
+        """Create running session."""
         return Session(
             id="sess_running",
             template_id="python-basic",
@@ -98,7 +94,7 @@ class TestStateSyncService:
 
     @pytest.fixture
     def creating_session(self):
-        """创建创建中的会话"""
+        """Create creating session."""
         return Session(
             id="sess_creating",
             template_id="python-basic",
@@ -112,7 +108,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_sync_on_startup_all_healthy(self, service, session_repo, container_scheduler):
-        """测试启动同步时所有容器健康"""
+        """Test sync on startup all healthy."""
         session1 = Session(
             id="sess_1",
             template_id="python-basic",
@@ -132,23 +128,23 @@ class TestStateSyncService:
             container_id="container-2"
         )
 
-        # 使用 side_effect 区分不同参数的返回值
+        # Expected return value.
         session_repo.find_by_status.side_effect = [
-            [session1],  # running 状态查询
-            [session2]   # creating 状态查询
+            [session1],  # Status-specific test setup.
+            [session2]   # Status-specific test setup.
         ]
         container_scheduler.is_container_running.return_value = True
 
         result = await service.sync_on_startup()
 
-        # 验证结果
+        # Verify expected behavior.
         assert result["total"] == 2
         assert result["healthy"] == 2
         assert result["unhealthy"] == 0
 
     @pytest.mark.asyncio
     async def test_sync_on_startup_with_unhealthy(self, service, session_repo, container_scheduler):
-        """测试启动同步时有不健康容器"""
+        """Test sync on startup with unhealthy."""
         session1 = Session(
             id="sess_1",
             template_id="python-basic",
@@ -172,19 +168,19 @@ class TestStateSyncService:
 
         session_repo.find_by_status.return_value = [session1, session2]
 
-        # 第一个健康，第二个不健康
+        # Test setup.
         container_scheduler.is_container_running.side_effect = [True, False]
 
         result = await service.sync_on_startup()
 
-        # find_by_status 可能被调用多次（running 和 creating）
+        # Status-specific test setup.
         assert result["total"] >= 2
         assert result["healthy"] >= 1
         assert result["unhealthy"] >= 1
 
     @pytest.mark.asyncio
     async def test_sync_on_startup_skip_no_container(self, service, session_repo):
-        """测试跳过没有 container_id 的会话"""
+        """Test sync on startup skip no container."""
         session = Session(
             id="sess_no_container",
             template_id="python-basic",
@@ -192,18 +188,18 @@ class TestStateSyncService:
             resource_limit=ResourceLimit.default(),
             workspace_path="s3://sandbox-workspace/sessions/sess_no_container",
             runtime_type="docker",
-            container_id=None  # 没有容器
+            container_id=None  # Test setup.
         )
 
-        # 使用 side_effect 区分不同参数的返回值
+        # Expected return value.
         session_repo.find_by_status.side_effect = [
-            [session],  # running 状态查询
-            []         # creating 状态查询
+            [session],  # Status-specific test setup.
+            []         # Status-specific test setup.
         ]
 
         result = await service.sync_on_startup()
 
-        # 验证不检查容器状态（因为会话没有 container_id）
+        # Verify expected behavior.
         assert result["total"] == 1
 
     @pytest.mark.asyncio
@@ -215,7 +211,7 @@ class TestStateSyncService:
         execution_repo,
         python_template,
     ):
-        """测试 K8s 启动接管时缺失 Pod 会直接重建，并标记中断执行。"""
+        """Test sync on startup K8s takeover recreates missing Pod."""
         service = StateSyncService(
             session_repo=session_repo,
             container_scheduler=container_scheduler,
@@ -267,7 +263,7 @@ class TestStateSyncService:
         template_repo,
         execution_repo,
     ):
-        """测试当前 owner 且健康的 Pod 会被保留。"""
+        """Test sync on startup K8s takeover keeps healthy current owner."""
         service = StateSyncService(
             session_repo=session_repo,
             container_scheduler=container_scheduler,
@@ -313,7 +309,7 @@ class TestStateSyncService:
         execution_repo,
         python_template,
     ):
-        """测试当前 owner 但不健康的 Pod 会先删除再重建，并标记中断执行。"""
+        """Test sync on startup K8s takeover recreates unhealthy current owner and marks execution failed."""
         scheduler = Mock(
             _cluster_node=Mock(type="kubernetes", id="k8s-cluster"),
             _owner_context=Mock(pod_name="cp-new", pod_uid="uid-new"),
@@ -376,7 +372,7 @@ class TestStateSyncService:
         execution_repo,
         python_template,
     ):
-        """测试仅 annotation 匹配而无 Pod ownerReference 时仍会接管重建。"""
+        """Test sync on startup K8s takeover recreates when only annotations match current owner."""
         scheduler = Mock(
             _cluster_node=Mock(type="kubernetes", id="k8s-cluster"),
             _owner_context=Mock(pod_name="cp-new", pod_uid="uid-new"),
@@ -427,7 +423,7 @@ class TestStateSyncService:
         execution_repo,
         python_template,
     ):
-        """测试 takeover 删除旧 Pod 并将未完成执行标记为失败。"""
+        """Test sync on startup K8s takeover recreates old owner and marks execution failed."""
         scheduler = Mock(
             _cluster_node=Mock(type="kubernetes", id="k8s-cluster"),
             _owner_context=Mock(pod_name="cp-new", pod_uid="uid-new"),
@@ -484,7 +480,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_periodic_health_check(self, service, session_repo, container_scheduler):
-        """测试定期健康检查"""
+        """Test periodic health check."""
         session1 = Session(
             id="sess_1",
             template_id="python-basic",
@@ -517,7 +513,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_periodic_health_check_only_running(self, service, session_repo):
-        """测试定期健康检查只检查 RUNNING 状态"""
+        """Test periodic health check only running."""
         creating_session = Session(
             id="sess_creating",
             template_id="python-basic",
@@ -528,7 +524,7 @@ class TestStateSyncService:
             container_id="container-creating"
         )
 
-        # 只调用 find_by_status("running")，不调用 "creating"
+        # Status-specific test setup.
         session_repo.find_by_status.return_value = []
 
         result = await service.periodic_health_check()
@@ -537,7 +533,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_check_session_health_success(self, service, session_repo, container_scheduler):
-        """测试检查单个会话健康状态"""
+        """Test check session health success."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -560,7 +556,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_check_session_health_not_found(self, service, session_repo):
-        """测试检查不存在的会话"""
+        """Test check session health not found."""
         session_repo.find_by_id.return_value = None
 
         result = await service.check_session_health("non-existent")
@@ -570,7 +566,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_check_session_health_no_container(self, service, session_repo):
-        """测试检查没有容器的会话"""
+        """Test check session health no container."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -590,7 +586,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_check_session_health_unhealthy(self, service, session_repo, container_scheduler):
-        """测试检查不健康的会话"""
+        """Test check session health unhealthy."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -618,7 +614,7 @@ class TestStateSyncService:
         template_repo,
         python_template,
     ):
-        """测试成功恢复会话"""
+        """Test recovery success."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -634,7 +630,7 @@ class TestStateSyncService:
         container_scheduler.create_container.return_value = "new-container"
         template_repo.find_by_id.return_value = python_template
 
-        # 不传入 scheduler 参数，恢复功能会尝试创建新容器
+        # Create test data.
         result = await service._attempt_recovery(session)
 
         assert result is True
@@ -653,7 +649,7 @@ class TestStateSyncService:
         template_repo,
         python_template,
     ):
-        """测试恢复成功后会刷新 last_activity_at，避免被空闲清理立即回收。"""
+        """Test recovery success refreshes last activity."""
         stale_last_activity = datetime.now() - timedelta(minutes=45)
         session = Session(
             id="sess_recovery_refresh",
@@ -685,7 +681,7 @@ class TestStateSyncService:
         template_repo,
         python_template,
     ):
-        """测试恢复失败时标记会话为失败"""
+        """Test recovery failure marks failed."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -713,7 +709,7 @@ class TestStateSyncService:
         container_scheduler,
         template_repo,
     ):
-        """测试恢复时模板不存在会标记失败且不创建容器"""
+        """Test recovery fails when template missing."""
         session = Session(
             id="sess_123",
             template_id="python-basic",
@@ -740,7 +736,7 @@ class TestStateSyncService:
         template_repo,
         execution_repo,
     ):
-        """测试启动同步会分页加载全部 active sessions，而不是受默认 limit 截断。"""
+        """Test sync on startup loads all active sessions via pagination."""
         class PaginatedSessionRepo:
             def __init__(self, pages):
                 self.pages = pages
@@ -813,7 +809,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_sync_error_handling(self, service, session_repo):
-        """测试同步过程中的错误处理"""
+        """Test sync error handling."""
         session_repo.find_by_status.side_effect = Exception("Database error")
 
         result = await service.sync_on_startup()
@@ -824,7 +820,7 @@ class TestStateSyncService:
 
     @pytest.mark.asyncio
     async def test_sync_empty_sessions(self, service, session_repo):
-        """测试没有会话需要同步"""
+        """Test sync empty sessions."""
         session_repo.find_by_status.return_value = []
 
         result = await service.sync_on_startup()

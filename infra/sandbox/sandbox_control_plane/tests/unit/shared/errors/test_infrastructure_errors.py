@@ -1,8 +1,4 @@
-"""
-基础设施错误单元测试
-
-测试基础设施层的错误类型。
-"""
+"""Unit tests for infrastructure errors."""
 import pytest
 
 from src.shared.errors.infrastructure import (
@@ -18,21 +14,21 @@ from src.shared.errors.infrastructure import (
 
 
 class TestInfrastructureError:
-    """基础设施错误基类测试"""
+    """Tests for TestInfrastructureError."""
 
     def test_is_exception(self):
-        """测试继承自 Exception"""
+        """Test is exception."""
         error = InfrastructureError("Test error")
         assert isinstance(error, Exception)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = InfrastructureError("Test error message")
         assert str(error) == "Test error message"
         assert error.message == "Test error message"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = ValueError("Original error")
         error = InfrastructureError("Wrapper error", original_error=original)
 
@@ -40,7 +36,7 @@ class TestInfrastructureError:
         assert error.original_error is original
 
     def test_without_original_error(self):
-        """测试不带原始错误"""
+        """Test without original error."""
         error = InfrastructureError("Test error")
 
         assert error.message == "Test error"
@@ -48,20 +44,20 @@ class TestInfrastructureError:
 
 
 class TestDatabaseError:
-    """数据库错误测试"""
+    """Tests for TestDatabaseError."""
 
     def test_inherits_from_infrastructure_error(self):
-        """测试继承自 InfrastructureError"""
+        """Test inherits from infrastructure error."""
         error = DatabaseError("Database connection failed")
         assert isinstance(error, InfrastructureError)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = DatabaseError("Connection timeout")
         assert str(error) == "Connection timeout"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = ConnectionRefusedError("Connection refused")
         error = DatabaseError("Database error", original_error=original)
 
@@ -69,20 +65,20 @@ class TestDatabaseError:
 
 
 class TestConnectionError:
-    """连接错误测试"""
+    """Tests for TestConnectionError."""
 
     def test_inherits_from_infrastructure_error(self):
-        """测试继承自 InfrastructureError"""
+        """Test inherits from infrastructure error."""
         error = ConnectionError("Connection failed")
         assert isinstance(error, InfrastructureError)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = ConnectionError("Failed to connect to server")
         assert str(error) == "Failed to connect to server"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = TimeoutError("Connection timeout")
         error = ConnectionError("Connection error", original_error=original)
 
@@ -90,20 +86,20 @@ class TestConnectionError:
 
 
 class TestStorageError:
-    """存储错误测试"""
+    """Tests for TestStorageError."""
 
     def test_inherits_from_infrastructure_error(self):
-        """测试继承自 InfrastructureError"""
+        """Test inherits from infrastructure error."""
         error = StorageError("Storage error")
         assert isinstance(error, InfrastructureError)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = StorageError("Failed to upload file")
         assert str(error) == "Failed to upload file"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = IOError("Disk full")
         error = StorageError("Storage error", original_error=original)
 
@@ -111,20 +107,20 @@ class TestStorageError:
 
 
 class TestHTTPClientError:
-    """HTTP 客户端错误测试"""
+    """Tests for TestHTTPClientError."""
 
     def test_inherits_from_infrastructure_error(self):
-        """测试继承自 InfrastructureError"""
+        """Test inherits from infrastructure error."""
         error = HTTPClientError("HTTP error")
         assert isinstance(error, InfrastructureError)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = HTTPClientError("Request timeout")
         assert str(error) == "Request timeout"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = Exception("Network error")
         error = HTTPClientError("HTTP client error", original_error=original)
 
@@ -132,20 +128,20 @@ class TestHTTPClientError:
 
 
 class TestContainerError:
-    """容器错误测试"""
+    """Tests for TestContainerError."""
 
     def test_inherits_from_infrastructure_error(self):
-        """测试继承自 InfrastructureError"""
+        """Test inherits from infrastructure error."""
         error = ContainerError("Container error")
         assert isinstance(error, InfrastructureError)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = ContainerError("Failed to start container")
         assert str(error) == "Failed to start container"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = RuntimeError("Docker daemon not running")
         error = ContainerError("Container error", original_error=original)
 
@@ -153,20 +149,20 @@ class TestContainerError:
 
 
 class TestKubernetesError:
-    """Kubernetes 错误测试"""
+    """Tests for TestKubernetesError."""
 
     def test_inherits_from_infrastructure_error(self):
-        """测试继承自 InfrastructureError"""
+        """Test inherits from infrastructure error."""
         error = KubernetesError("Kubernetes error")
         assert isinstance(error, InfrastructureError)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = KubernetesError("Pod failed to start")
         assert str(error) == "Pod failed to start"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = Exception("API server unavailable")
         error = KubernetesError("Kubernetes error", original_error=original)
 
@@ -174,20 +170,20 @@ class TestKubernetesError:
 
 
 class TestMessagingError:
-    """消息队列错误测试"""
+    """Tests for TestMessagingError."""
 
     def test_inherits_from_infrastructure_error(self):
-        """测试继承自 InfrastructureError"""
+        """Test inherits from infrastructure error."""
         error = MessagingError("Messaging error")
         assert isinstance(error, InfrastructureError)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = MessagingError("Failed to publish message")
         assert str(error) == "Failed to publish message"
 
     def test_with_original_error(self):
-        """测试带原始错误"""
+        """Test with original error."""
         original = Exception("Queue not found")
         error = MessagingError("Messaging error", original_error=original)
 
@@ -195,10 +191,10 @@ class TestMessagingError:
 
 
 class TestErrorHierarchy:
-    """错误层次结构测试"""
+    """Tests for TestErrorHierarchy."""
 
     def test_all_errors_inherit_from_infrastructure_error(self):
-        """测试所有错误都继承自 InfrastructureError"""
+        """Test all errors inherit from infrastructure error."""
         errors = [
             DatabaseError("test"),
             ConnectionError("test"),
@@ -214,7 +210,7 @@ class TestErrorHierarchy:
             assert isinstance(error, Exception)
 
     def test_errors_can_be_caught_by_base_class(self):
-        """测试可以通过基类捕获所有错误"""
+        """Test errors can be caught by base class."""
         errors_to_raise = [
             DatabaseError("db error"),
             ContainerError("container error"),

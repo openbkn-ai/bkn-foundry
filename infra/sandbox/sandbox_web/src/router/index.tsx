@@ -1,5 +1,5 @@
 /**
- * Router 组件
+ * Router component
  */
 import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
@@ -8,12 +8,12 @@ import zhCN from 'antd/locale/zh_CN';
 import LayoutComponent from '@components/Layout';
 import { sandboxTheme } from '@/styles/theme';
 
-// 懒加载页面组件
+// Lazy-load page components
 const SessionsPage = lazy(() => import('@pages/sessions'));
 const TemplatesPage = lazy(() => import('@pages/templates'));
 const ExecutePage = lazy(() => import('@pages/execute'));
 
-/** 加载中组件 */
+/** Loading component */
 function PageLoading() {
   return (
     <div
@@ -29,7 +29,7 @@ function PageLoading() {
   );
 }
 
-/** Router 组件 */
+/** Router component */
 export function Router() {
   return (
     <BrowserRouter>

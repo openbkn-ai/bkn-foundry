@@ -1,5 +1,5 @@
 /**
- * 模板管理页面
+ * Template management page
  */
 import { useState, useEffect } from 'react';
 import { Button, Input, Table, Modal, Form, InputNumber, Select, Tag, Space, Popconfirm, Descriptions } from 'antd';
@@ -24,14 +24,14 @@ export default function TemplatesPage() {
     fetchTemplates();
   }, [fetchTemplates]);
 
-  // 过滤模板
+  // Filter templates
   const filteredTemplates = templates.filter(
     (t) =>
       t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       t.id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // 创建模板
+  // Create template
   const handleCreate = async () => {
     try {
       const values = await form.validateFields();
@@ -39,22 +39,22 @@ export default function TemplatesPage() {
       setShowCreateModal(false);
       form.resetFields();
     } catch (error) {
-      // 表单验证失败或创建失败
+      // Form validation or creation failed
     }
   };
 
-  // 查看详情
+  // View details
   const handleViewDetail = async (template: TemplateResponse) => {
     try {
       const detail = await templatesApi.getTemplate(template.id);
       setSelectedTemplate(detail);
       setShowDetailModal(true);
     } catch (error) {
-      // 获取详情失败
+      // Failed to get details
     }
   };
 
-  // 打开编辑模态框
+  // Open the edit modal
   const handleOpenEdit = async (template: TemplateResponse) => {
     try {
       const detail = await templatesApi.getTemplate(template.id);
@@ -70,11 +70,11 @@ export default function TemplatesPage() {
       });
       setShowEditModal(true);
     } catch (error) {
-      // 获取详情失败
+      // Failed to get details
     }
   };
 
-  // 保存编辑
+  // Save edits
   const handleEditSave = async () => {
     if (!selectedTemplate) return;
     try {
@@ -85,20 +85,20 @@ export default function TemplatesPage() {
       setSelectedTemplate(null);
       fetchTemplates();
     } catch (error) {
-      // 保存失败
+      // Save failed
     }
   };
 
-  // 删除模板
+  // Delete template
   const handleDelete = async (id: string) => {
     try {
       await deleteTemplate(id);
     } catch (error) {
-      // 删除失败
+      // Delete failed
     }
   };
 
-  // 表格列定义
+  // Table column definitions
   const columns = [
     {
       title: '模版ID',
@@ -174,7 +174,7 @@ export default function TemplatesPage() {
 
   return (
     <>
-      {/* 页面标题 */}
+      {/* Page title */}
       <div style={{ marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
           <div
@@ -202,7 +202,7 @@ export default function TemplatesPage() {
         </p>
       </div>
 
-      {/* 内容区域 */}
+      {/* Content area */}
       <div
         style={{
           backgroundColor: '#ffffff',
@@ -211,7 +211,7 @@ export default function TemplatesPage() {
           padding: 24,
         }}
       >
-        {/* 搜索和操作栏 */}
+        {/* Search and action bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
           <Input
             placeholder="搜索模版名称或ID"
@@ -226,7 +226,7 @@ export default function TemplatesPage() {
           </Button>
         </div>
 
-        {/* 模板表格 */}
+        {/* Template table */}
         <Table
           columns={columns}
           dataSource={filteredTemplates}
@@ -237,7 +237,7 @@ export default function TemplatesPage() {
         />
       </div>
 
-      {/* 创建模版对话框 */}
+      {/* Create template dialog */}
       <Modal
         title="创建新模版"
         open={showCreateModal}
@@ -330,7 +330,7 @@ export default function TemplatesPage() {
         </Form>
       </Modal>
 
-      {/* 详情模态框 */}
+      {/* Details modal */}
       <Modal
         title="模板详情"
         open={showDetailModal}
@@ -388,7 +388,7 @@ export default function TemplatesPage() {
         )}
       </Modal>
 
-      {/* 编辑模态框 */}
+      {/* Edit modal */}
       <Modal
         title="编辑模板"
         open={showEditModal}

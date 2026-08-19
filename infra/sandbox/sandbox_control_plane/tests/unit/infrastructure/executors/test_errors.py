@@ -1,8 +1,4 @@
-"""
-执行器错误单元测试
-
-测试执行器相关错误类。
-"""
+"""Unit tests for errors."""
 import pytest
 
 from src.infrastructure.executors.errors import (
@@ -16,24 +12,24 @@ from src.infrastructure.executors.errors import (
 
 
 class TestExecutorError:
-    """执行器错误基类测试"""
+    """Tests for TestExecutorError."""
 
     def test_is_exception(self):
-        """测试继承自 Exception"""
+        """Test is exception."""
         error = ExecutorError("Test error")
         assert isinstance(error, Exception)
 
     def test_message(self):
-        """测试错误消息"""
+        """Test message."""
         error = ExecutorError("Test error message")
         assert str(error) == "Test error message"
 
 
 class TestExecutorConnectionError:
-    """执行器连接错误测试"""
+    """Tests for TestExecutorConnectionError."""
 
     def test_init(self):
-        """测试初始化"""
+        """Test init."""
         error = ExecutorConnectionError(
             executor_url="http://localhost:8080",
             reason="Connection refused"
@@ -43,7 +39,7 @@ class TestExecutorConnectionError:
         assert error.reason == "Connection refused"
 
     def test_message_format(self):
-        """测试消息格式"""
+        """Test message format."""
         error = ExecutorConnectionError(
             executor_url="http://localhost:8080",
             reason="Connection refused"
@@ -53,12 +49,12 @@ class TestExecutorConnectionError:
         assert "Connection refused" in str(error)
 
     def test_inherits_from_executor_error(self):
-        """测试继承自 ExecutorError"""
+        """Test inherits from executor error."""
         error = ExecutorConnectionError("http://localhost:8080", "test")
         assert isinstance(error, ExecutorError)
 
     def test_empty_reason(self):
-        """测试空原因"""
+        """Test empty reason."""
         error = ExecutorConnectionError("http://localhost:8080")
 
         assert error.executor_url == "http://localhost:8080"
@@ -67,10 +63,10 @@ class TestExecutorConnectionError:
 
 
 class TestExecutorTimeoutError:
-    """执行器超时错误测试"""
+    """Tests for TestExecutorTimeoutError."""
 
     def test_init(self):
-        """测试初始化"""
+        """Test init."""
         error = ExecutorTimeoutError(
             executor_url="http://localhost:8080",
             timeout=30.0
@@ -80,7 +76,7 @@ class TestExecutorTimeoutError:
         assert error.timeout == 30.0
 
     def test_message_format(self):
-        """测试消息格式"""
+        """Test message format."""
         error = ExecutorTimeoutError(
             executor_url="http://localhost:8080",
             timeout=30.0
@@ -91,16 +87,16 @@ class TestExecutorTimeoutError:
         assert "timed out" in str(error).lower()
 
     def test_inherits_from_executor_error(self):
-        """测试继承自 ExecutorError"""
+        """Test inherits from executor error."""
         error = ExecutorTimeoutError("http://localhost:8080", 30.0)
         assert isinstance(error, ExecutorError)
 
 
 class TestExecutorUnavailableError:
-    """执行器不可用错误测试"""
+    """Tests for TestExecutorUnavailableError."""
 
     def test_init(self):
-        """测试初始化"""
+        """Test init."""
         error = ExecutorUnavailableError(
             executor_url="http://localhost:8080",
             status="unhealthy"
@@ -110,7 +106,7 @@ class TestExecutorUnavailableError:
         assert error.status == "unhealthy"
 
     def test_message_format(self):
-        """测试消息格式"""
+        """Test message format."""
         error = ExecutorUnavailableError(
             executor_url="http://localhost:8080",
             status="unhealthy"
@@ -121,23 +117,23 @@ class TestExecutorUnavailableError:
         assert "unhealthy" in str(error)
 
     def test_empty_status(self):
-        """测试空状态"""
+        """Test empty status."""
         error = ExecutorUnavailableError("http://localhost:8080")
 
         assert error.executor_url == "http://localhost:8080"
         assert error.status == ""
 
     def test_inherits_from_executor_error(self):
-        """测试继承自 ExecutorError"""
+        """Test inherits from executor error."""
         error = ExecutorUnavailableError("http://localhost:8080", "test")
         assert isinstance(error, ExecutorError)
 
 
 class TestExecutorResponseError:
-    """执行器响应错误测试"""
+    """Tests for TestExecutorResponseError."""
 
     def test_init(self):
-        """测试初始化"""
+        """Test init."""
         error = ExecutorResponseError(
             executor_url="http://localhost:8080",
             status_code=500,
@@ -149,7 +145,7 @@ class TestExecutorResponseError:
         assert error.message == "Internal Server Error"
 
     def test_message_format(self):
-        """测试消息格式"""
+        """Test message format."""
         error = ExecutorResponseError(
             executor_url="http://localhost:8080",
             status_code=500,
@@ -161,7 +157,7 @@ class TestExecutorResponseError:
         assert "Internal Server Error" in str(error)
 
     def test_empty_message(self):
-        """测试空消息"""
+        """Test empty message."""
         error = ExecutorResponseError(
             executor_url="http://localhost:8080",
             status_code=404
@@ -172,16 +168,16 @@ class TestExecutorResponseError:
         assert error.message == ""
 
     def test_inherits_from_executor_error(self):
-        """测试继承自 ExecutorError"""
+        """Test inherits from executor error."""
         error = ExecutorResponseError("http://localhost:8080", 500, "test")
         assert isinstance(error, ExecutorError)
 
 
 class TestExecutorValidationError:
-    """执行器验证错误测试"""
+    """Tests for TestExecutorValidationError."""
 
     def test_init(self):
-        """测试初始化"""
+        """Test init."""
         error = ExecutorValidationError(
             executor_url="http://localhost:8080",
             validation_errors=["Missing field: code", "Invalid timeout"]
@@ -191,7 +187,7 @@ class TestExecutorValidationError:
         assert error.validation_errors == ["Missing field: code", "Invalid timeout"]
 
     def test_message_format(self):
-        """测试消息格式"""
+        """Test message format."""
         error = ExecutorValidationError(
             executor_url="http://localhost:8080",
             validation_errors=["Missing field: code"]
@@ -202,7 +198,7 @@ class TestExecutorValidationError:
         assert "Missing field: code" in str(error)
 
     def test_empty_validation_errors(self):
-        """测试空验证错误列表"""
+        """Test empty validation errors."""
         error = ExecutorValidationError(
             executor_url="http://localhost:8080",
             validation_errors=[]
@@ -212,6 +208,6 @@ class TestExecutorValidationError:
         assert error.validation_errors == []
 
     def test_inherits_from_executor_error(self):
-        """测试继承自 ExecutorError"""
+        """Test inherits from executor error."""
         error = ExecutorValidationError("http://localhost:8080", [])
         assert isinstance(error, ExecutorError)

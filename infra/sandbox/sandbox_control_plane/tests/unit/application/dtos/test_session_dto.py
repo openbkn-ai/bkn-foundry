@@ -1,8 +1,4 @@
-"""
-会话 DTO 单元测试
-
-测试 SessionDTO 的功能。
-"""
+"""Unit tests for session DTO."""
 import pytest
 from datetime import datetime
 
@@ -13,10 +9,10 @@ from src.domain.value_objects.execution_status import SessionStatus
 
 
 class TestSessionDTO:
-    """会话 DTO 测试"""
+    """Tests for TestSessionDTO."""
 
     def test_create_with_required_fields(self):
-        """测试使用必填字段创建"""
+        """Test create with required fields."""
         dto = SessionDTO(
             id="test-session",
             template_id="python-test",
@@ -47,7 +43,7 @@ class TestSessionDTO:
         assert dto.last_activity_at is not None  # Default from __post_init__
 
     def test_create_with_all_fields(self):
-        """测试使用所有字段创建"""
+        """Test create with all fields."""
         now = datetime.now()
         dto = SessionDTO(
             id="test-session",
@@ -81,7 +77,7 @@ class TestSessionDTO:
         assert dto.completed_at == now
 
     def test_post_init_defaults(self):
-        """测试 __post_init__ 默认值"""
+        """Test post init defaults."""
         dto = SessionDTO(
             id="test-session",
             template_id="python-test",
@@ -104,7 +100,7 @@ class TestSessionDTO:
         assert dto.installed_dependencies == []
 
     def test_from_entity(self):
-        """测试从领域实体创建 DTO"""
+        """Test from entity."""
         session = Session(
             id="test-session",
             template_id="python-test",
@@ -138,7 +134,7 @@ class TestSessionDTO:
         ]
 
     def test_from_entity_with_all_fields(self):
-        """测试从领域实体创建 DTO（所有字段）"""
+        """Test from entity with all fields."""
         now = datetime.now()
         session = Session(
             id="test-session",
@@ -176,7 +172,7 @@ class TestSessionDTO:
         assert dto.completed_at == now
 
     def test_is_dataclass(self):
-        """测试是数据类"""
+        """Test is dataclass."""
         from dataclasses import is_dataclass
 
         assert is_dataclass(SessionDTO)

@@ -1,4 +1,4 @@
-"""默认 seed 数据测试。"""
+"""Unit tests for default data."""
 
 from src.infrastructure.persistence.seed.default_data import (
     DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE_REPOSITORY,
@@ -10,7 +10,7 @@ from src.infrastructure.persistence.seed.default_data import (
 
 
 def test_default_template_images_use_swr_registry(monkeypatch):
-    """测试默认模板镜像使用 SWR 仓库地址。"""
+    """Test default template images use swr registry."""
     monkeypatch.delenv("DEFAULT_TEMPLATE_IMAGE", raising=False)
     monkeypatch.delenv("DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE", raising=False)
     monkeypatch.delenv("DEFAULT_TEMPLATE_IMAGE_REGISTRY", raising=False)
@@ -34,7 +34,7 @@ def test_default_template_images_use_swr_registry(monkeypatch):
 
 
 def test_default_template_images_can_use_template_image_tag(monkeypatch):
-    """测试可通过 TEMPLATE_IMAGE_TAG 覆盖默认模板镜像 tag。"""
+    """Test default template images can use template image tag."""
     monkeypatch.delenv("DEFAULT_TEMPLATE_IMAGE", raising=False)
     monkeypatch.delenv("DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE", raising=False)
     monkeypatch.delenv("DEFAULT_TEMPLATE_IMAGE_REGISTRY", raising=False)
@@ -56,7 +56,7 @@ def test_default_template_images_can_use_template_image_tag(monkeypatch):
 
 
 def test_default_template_images_can_be_overridden_independently(monkeypatch):
-    """测试部署时可分别覆盖两个默认模板镜像。"""
+    """Test default template images can be overridden independently."""
     monkeypatch.setenv("DEFAULT_TEMPLATE_IMAGE", "registry.local/python-basic:dev")
     monkeypatch.setenv(
         "DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE",
@@ -71,7 +71,7 @@ def test_default_template_images_can_be_overridden_independently(monkeypatch):
 
 
 def test_default_template_images_can_use_registry_and_repositories(monkeypatch):
-    """测试可分别配置默认模板镜像仓库路径，tag 仍跟随项目版本配置。"""
+    """Test default template images can use registry and repositories."""
     monkeypatch.delenv("DEFAULT_TEMPLATE_IMAGE", raising=False)
     monkeypatch.delenv("DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE", raising=False)
     monkeypatch.setenv("DEFAULT_TEMPLATE_IMAGE_REGISTRY", "registry.local/team")
@@ -93,7 +93,7 @@ def test_default_template_images_can_use_registry_and_repositories(monkeypatch):
 
 
 def test_default_template_images_use_swr_when_registry_is_empty(monkeypatch):
-    """测试 Helm 注入空 registry 时仍回退到默认 SWR 仓库地址。"""
+    """Test default template images use swr when registry is empty."""
     monkeypatch.delenv("DEFAULT_TEMPLATE_IMAGE", raising=False)
     monkeypatch.delenv("DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE", raising=False)
     monkeypatch.setenv("DEFAULT_TEMPLATE_IMAGE_REGISTRY", "")
@@ -116,7 +116,7 @@ def test_default_template_images_use_swr_when_registry_is_empty(monkeypatch):
 
 
 def test_default_templates_include_multi_language(monkeypatch):
-    """测试默认模板包含多语言复合模板。"""
+    """Test default templates include multi language."""
     monkeypatch.delenv("DEFAULT_TEMPLATE_IMAGE", raising=False)
     monkeypatch.setenv(
         "DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE",

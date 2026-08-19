@@ -1,6 +1,6 @@
 /**
- * Template API 类型定义
- * 重新导出全局类型以保持模块独立性
+ * Template API type definitions
+ * Re-export global types to keep the module independent
  */
 export type {
   TemplateResponse,

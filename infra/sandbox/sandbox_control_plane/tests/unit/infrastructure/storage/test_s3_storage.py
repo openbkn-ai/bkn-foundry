@@ -1,8 +1,4 @@
-"""
-S3 存储单元测试
-
-测试 S3Storage 类的功能。
-"""
+"""Unit tests for S3 storage."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from datetime import datetime
@@ -12,17 +8,17 @@ from src.infrastructure.storage.s3_storage import S3Storage
 
 
 class TestS3Storage:
-    """S3 存储测试"""
+    """Tests for TestS3Storage."""
 
     @pytest.fixture
     def mock_boto_client(self):
-        """模拟 boto3 客户端"""
+        """Create boto client."""
         client = Mock()
         return client
 
     @pytest.fixture
     def mock_settings(self):
-        """模拟配置"""
+        """Create settings."""
         settings = Mock()
         settings.s3_endpoint_url = "http://localhost:9000"
         settings.s3_access_key_id = "minioadmin"
@@ -33,48 +29,48 @@ class TestS3Storage:
 
     @pytest.fixture
     def storage(self, mock_boto_client, mock_settings):
-        """创建 S3 存储实例"""
+        """Create storage."""
         with patch('src.infrastructure.storage.s3_storage.boto3.client', return_value=mock_boto_client):
             with patch('src.infrastructure.storage.s3_storage.get_settings', return_value=mock_settings):
                 return S3Storage()
 
     def test_parse_s3_path_with_prefix(self, storage):
-        """测试解析带 s3:// 前缀的路径"""
+        """Test parse S3 path with prefix."""
         bucket, key = storage._parse_s3_path("s3://my-bucket/path/to/file.txt")
 
         assert bucket == "my-bucket"
         assert key == "path/to/file.txt"
 
     def test_parse_s3_path_without_prefix(self, storage):
-        """测试解析不带 s3:// 前缀的路径"""
+        """Test parse S3 path without prefix."""
         bucket, key = storage._parse_s3_path("path/to/file.txt")
 
         assert bucket == storage._bucket
         assert key == "path/to/file.txt"
 
     def test_parse_s3_path_with_leading_slash(self, storage):
-        """测试解析带前导斜杠的路径"""
+        """Test parse S3 path with leading slash."""
         bucket, key = storage._parse_s3_path("/path/to/file.txt")
 
         assert bucket == storage._bucket
         assert key == "path/to/file.txt"
 
     def test_build_s3_path(self, storage):
-        """测试构建 S3 路径"""
+        """Test build S3 path."""
         path = storage._build_s3_path("my-bucket", "path/to/file.txt")
 
         assert path == "s3://my-bucket/path/to/file.txt"
 
     @pytest.mark.asyncio
     async def test_upload_file_small(self, storage, mock_boto_client):
-        """测试上传小文件"""
+        """Test upload file small."""
         mock_boto_client.head_object.return_value = {}
         mock_boto_client.put_object.return_value = {}
 
         content = b"hello world"
         await storage.upload_file("s3://test-bucket/test.txt", content, "text/plain")
 
-        # 验证调用了 put_object
+        # Verify expected behavior.
         mock_boto_client.put_object.assert_called_once()
         call_args = mock_boto_client.put_object.call_args
         assert call_args[1]["Bucket"] == "test-bucket"
@@ -84,19 +80,19 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_upload_file_with_bucket_check(self, storage, mock_boto_client):
-        """测试上传文件时检查 bucket 存在"""
+        """Test upload file with bucket check."""
         mock_boto_client.head_bucket.return_value = {}
         mock_boto_client.head_object.side_effect = Exception("Not Found")
         mock_boto_client.put_object.return_value = {}
 
         await storage.upload_file("s3://test-bucket/test.txt", b"content")
 
-        # 应该检查 bucket
+        # Verify expected behavior.
         mock_boto_client.head_bucket.assert_called()
 
     @pytest.mark.asyncio
     async def test_download_file(self, storage, mock_boto_client):
-        """测试下载文件"""
+        """Test download file."""
         mock_response = {
             'Body': Mock(read=Mock(return_value=b'file content'))
         }
@@ -112,7 +108,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_file_exists_true(self, storage, mock_boto_client):
-        """测试检查文件存在（存在）"""
+        """Test file exists true."""
         mock_boto_client.head_object.return_value = {}
 
         exists = await storage.file_exists("s3://test-bucket/test.txt")
@@ -121,7 +117,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_file_exists_false(self, storage, mock_boto_client):
-        """测试检查文件存在（不存在）"""
+        """Test file exists false."""
         from botocore.exceptions import ClientError
         error_response = {'Error': {'Code': '404'}}
         mock_boto_client.head_object.side_effect = ClientError(error_response, 'HeadObject')
@@ -132,7 +128,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_file_exists_error(self, storage, mock_boto_client):
-        """测试检查文件存在时出错"""
+        """Test file exists error."""
         from botocore.exceptions import ClientError
         error_response = {'Error': {'Code': '403'}}
         mock_boto_client.head_object.side_effect = ClientError(error_response, 'HeadObject')
@@ -142,7 +138,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_get_file_info(self, storage, mock_boto_client):
-        """测试获取文件信息"""
+        """Test get file info."""
         mock_response = {
             'ContentLength': 1024,
             'ContentType': 'text/plain',
@@ -160,7 +156,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_get_file_info_default_content_type(self, storage, mock_boto_client):
-        """测试获取文件信息（缺少 content_type）"""
+        """Test get file info default content type."""
         mock_response = {
             'ContentLength': 2048,
             'LastModified': datetime.now(),
@@ -174,7 +170,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_generate_presigned_url(self, storage, mock_boto_client):
-        """测试生成预签名 URL"""
+        """Test generate presigned URL."""
         mock_boto_client.generate_presigned_url.return_value = "https://s3.amazonaws.com/..."
 
         url = await storage.generate_presigned_url("s3://test-bucket/test.txt", 3600)
@@ -184,7 +180,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_delete_file(self, storage, mock_boto_client):
-        """测试删除文件"""
+        """Test delete file."""
         mock_boto_client.delete_object.return_value = {}
 
         await storage.delete_file("s3://test-bucket/test.txt")
@@ -196,8 +192,8 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_delete_prefix(self, storage, mock_boto_client):
-        """测试删除指定前缀的所有文件"""
-        # 模拟分页器
+        """Test delete prefix."""
+        # Mock test dependency.
         mock_paginator = Mock()
         mock_page_iterator = [
             {
@@ -223,7 +219,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_delete_prefix_with_bucket_in_prefix(self, storage, mock_boto_client):
-        """测试删除带 bucket 的前缀"""
+        """Test delete prefix with bucket in prefix."""
         mock_paginator = Mock()
         mock_paginator.paginate.return_value = [{
             'Contents': [
@@ -239,7 +235,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_list_files(self, storage, mock_boto_client):
-        """测试列出文件"""
+        """Test list files."""
         mock_paginator = Mock()
         mock_paginator.paginate.return_value = [{
             'Contents': [
@@ -267,7 +263,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_list_files_with_limit(self, storage, mock_boto_client):
-        """测试列出文件（限制数量）"""
+        """Test list files with limit."""
         mock_paginator = Mock()
         mock_paginator.paginate.return_value = [{
             'Contents': [
@@ -283,7 +279,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_list_files_with_bucket_in_prefix(self, storage, mock_boto_client):
-        """测试列出文件（带 bucket）"""
+        """Test list files with bucket in prefix."""
         mock_paginator = Mock()
         mock_paginator.paginate.return_value = [{
             'Contents': [
@@ -295,12 +291,12 @@ class TestS3Storage:
         files = await storage.list_files("s3://test-bucket/sessions/sess_123/")
 
         assert len(files) == 1
-        # key 应该是相对于 bucket 的路径，包含 sessions/sess_123/file.txt
+        # Verify expected behavior.
         assert 'sessions/' in files[0]['key']
 
     @pytest.mark.asyncio
     async def test_initialize_success(self, storage, mock_boto_client):
-        """测试初始化成功"""
+        """Test initialize success."""
         mock_boto_client.head_bucket.return_value = {}
 
         await storage.initialize()
@@ -309,10 +305,10 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_initialize_creates_bucket(self, storage, mock_boto_client):
-        """测试初始化时创建 bucket"""
+        """Test initialize creates bucket."""
         from botocore.exceptions import ClientError
 
-        # head_bucket 抛出 404 错误
+        # Test setup.
         error_response = {'Error': {'Code': '404'}}
         mock_boto_client.head_bucket.side_effect = ClientError(error_response, 'HeadBucket')
         mock_boto_client.meta.region_name = 'us-west-2'
@@ -324,7 +320,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_initialize_creates_bucket_us_east_1(self, storage, mock_boto_client):
-        """测试初始化时创建 bucket（us-east-1 区域）"""
+        """Test initialize creates bucket us east 1."""
         from botocore.exceptions import ClientError
 
         error_response = {'Error': {'Code': '404'}}
@@ -334,13 +330,13 @@ class TestS3Storage:
 
         await storage.initialize()
 
-        # us-east-1 不需要 LocationConstraint
+        # Test setup.
         call_args = mock_boto_client.create_bucket.call_args
         assert 'CreateBucketConfiguration' not in call_args[1]
 
     @pytest.mark.asyncio
     async def test_initialize_bucket_create_error(self, storage, mock_boto_client):
-        """测试初始化时创建 bucket 失败"""
+        """Test initialize bucket create error."""
         from botocore.exceptions import ClientError
 
         error_response = {'Error': {'Code': '404'}}
@@ -350,61 +346,61 @@ class TestS3Storage:
         create_error = ClientError({'Error': {'Code': '403'}}, 'CreateBucket')
         mock_boto_client.create_bucket.side_effect = create_error
 
-        # 不应该抛出异常，只是记录错误
+        # Verify expected behavior.
         await storage.initialize()
 
     @pytest.mark.asyncio
     async def test_upload_large_file(self, storage, mock_boto_client):
-        """测试上传大文件（分片上传）"""
+        """Test upload large file."""
         mock_boto_client.head_bucket.return_value = {}
         mock_boto_client.head_object.side_effect = Exception("Not Found")
         mock_boto_client.upload_file = Mock()
 
-        # 创建大于 5MB 的内容
+        # Create test data.
         large_content = b"x" * (6 * 1024 * 1024)  # 6MB
 
         await storage.upload_file("s3://test-bucket/large.bin", large_content)
 
-        # 大文件应该使用 upload_file
+        # Verify expected behavior.
         mock_boto_client.upload_file.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_upload_file_removes_directory_marker(self, storage, mock_boto_client):
-        """测试上传文件时删除目录标记"""
+        """Test upload file removes directory marker."""
         mock_boto_client.head_bucket.return_value = {}
         mock_boto_client.put_object.return_value = {}
 
-        # 目录标记存在
+        # Test setup.
         mock_boto_client.head_object.return_value = {}
         mock_boto_client.delete_object.return_value = {}
 
         await storage.upload_file("s3://test-bucket/dir/file.txt", b"content")
 
-        # 应该删除目录标记
+        # Verify expected behavior.
         mock_boto_client.delete_object.assert_called()
 
     @pytest.mark.asyncio
     async def test_upload_file_directory_marker_not_exists(self, storage, mock_boto_client):
-        """测试上传文件时目录标记不存在"""
+        """Test upload file directory marker not exists."""
         from botocore.exceptions import ClientError
 
         mock_boto_client.head_bucket.return_value = {}
         mock_boto_client.put_object.return_value = {}
 
-        # 目录标记不存在
+        # Test setup.
         error_response = {'Error': {'Code': '404'}}
         mock_boto_client.head_object.side_effect = ClientError(error_response, 'HeadObject')
 
         await storage.upload_file("s3://test-bucket/dir/file.txt", b"content")
 
-        # 不应该删除目录标记
+        # Verify expected behavior.
         mock_boto_client.delete_object.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_delete_prefix_empty(self, storage, mock_boto_client):
-        """测试删除空前缀"""
+        """Test delete prefix empty."""
         mock_paginator = Mock()
-        mock_paginator.paginate.return_value = [{}]  # 没有 Contents
+        mock_paginator.paginate.return_value = [{}]  # Test setup.
         mock_boto_client.get_paginator.return_value = mock_paginator
 
         deleted_count = await storage.delete_prefix("sessions/empty/")
@@ -413,7 +409,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_delete_prefix_error(self, storage, mock_boto_client):
-        """测试删除前缀时出错"""
+        """Test delete prefix error."""
         from botocore.exceptions import ClientError
 
         mock_paginator = Mock()
@@ -428,9 +424,9 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_list_files_empty(self, storage, mock_boto_client):
-        """测试列出空目录"""
+        """Test list files empty."""
         mock_paginator = Mock()
-        mock_paginator.paginate.return_value = [{}]  # 没有 Contents
+        mock_paginator.paginate.return_value = [{}]  # Test setup.
         mock_boto_client.get_paginator.return_value = mock_paginator
 
         files = await storage.list_files("empty/")
@@ -439,7 +435,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_list_files_error(self, storage, mock_boto_client):
-        """测试列出文件时出错"""
+        """Test list files error."""
         from botocore.exceptions import ClientError
 
         mock_paginator = Mock()
@@ -454,7 +450,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_delete_prefix_relative_path(self, storage, mock_boto_client):
-        """测试删除相对路径前缀"""
+        """Test delete prefix relative path."""
         mock_paginator = Mock()
         mock_paginator.paginate.return_value = [{
             'Contents': [
@@ -470,7 +466,7 @@ class TestS3Storage:
 
     @pytest.mark.asyncio
     async def test_list_files_relative_path(self, storage, mock_boto_client):
-        """测试列出相对路径文件"""
+        """Test list files relative path."""
         mock_paginator = Mock()
         mock_paginator.paginate.return_value = [{
             'Contents': [

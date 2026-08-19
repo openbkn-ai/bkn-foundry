@@ -1,116 +1,116 @@
-# 沙箱平台控制中心
+# Sandbox Control Plane
 
-基于六边形架构的代码沙箱管理平台。
+A code sandbox management platform based on hexagonal architecture.
 
-## 架构
+## Architecture
 
-本项目采用**六边形架构**（Hexagonal Architecture），确保核心业务逻辑独立于技术实现。
+This project uses **Hexagonal Architecture** to keep core business logic independent from technical implementations.
 
-### 依赖方向
+### Dependency direction
 
 ```
 Interfaces → Application → Domain ← Infrastructure
 ```
 
-- **Domain（领域层）**: 核心业务逻辑，无外部依赖
-- **Application（应用层）**: 用例编排，依赖 Domain
-- **Infrastructure（基础设施层）**: 技术实现，实现 Domain 定义的接口
-- **Interfaces（接口层）**: 对外接口，依赖 Application
+- **Domain**: Core business logic without external dependencies
+- **Application**: Use-case orchestration; depends on Domain
+- **Infrastructure**: Technical implementations for interfaces defined by Domain
+- **Interfaces**: External interfaces that depend on Application
 
-## 快速开始
+## Quick Start
 
-### 安装
+### Installation
 
 ```bash
-# 克隆仓库
+# Clone the repository
 git clone https://github.com/sandbox/sandbox-control-plane
 cd sandbox-control-plane
 
-# 使用 uv 管理项目
-# 安装 uv（如果尚未安装）
+# Use uv to manage the project
+# Install uv if it is not installed yet
 # curl -LsSf https://astral.sh/uv/install.sh | sh  # Linux/macOS
 # powershell -c "irm https://astral.sh/uv/install.ps1"  # Windows
 
-# 同步依赖
+# Sync dependencies
 uv sync
 
-# 激活虚拟环境
+# Activate the virtual environment
 source .venv/bin/activate  # Linux/macOS
 .venv\Scripts\activate     # Windows
 ```
 
-### 配置
+### configuration
 
 ```bash
-# 复制环境变量模板
+# Copy the environment variable template
 cp .env.example .env
 
-# 编辑配置
+# Edit configuration
 vim .env
 ```
 
-### 数据库迁移
+### Database migration
 
 ```bash
-# 初始化数据库
+# Initialize the database
 alembic upgrade head
 ```
 
-### 运行
+### Run
 
 ```bash
-# 开发模式
+# Development mode
 uvicorn src.interfaces.rest.main:app --reload --port 8000
 
-# 生产模式
+# Production mode
 uvicorn src.interfaces.rest.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-## 项目结构
+## Project structure
 
 ```
 src/
-├── domain/           # 领域层（核心）
-├── application/      # 应用层（用例）
-├── infrastructure/   # 基础设施层（适配器）
-└── interfaces/       # 接口层（API）
+├── domain/           # Domain layer (core)
+├── application/      # Application layer (use cases)
+├── infrastructure/   # Infrastructure layer (adapters)
+└── interfaces/       # Interface layer (API)
 ```
 
-详见 [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)。
+See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md).
 
-## API 文档
+## API documentation
 
-启动服务后访问：
+After starting the service, visit:
 
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-## 测试
+## Test
 
 ```bash
-# 使用 uv 运行所有测试
+# Run all tests with uv
 uv run pytest
 
-# 运行单元测试
+# Run unit tests
 uv run pytest tests/unit
 
-# 运行集成测试
+# Run integration tests
 uv run pytest tests/integration
 
-# 生成覆盖率报告
+# Generate a coverage report
 uv run pytest --cov=src --cov-report=html
 ```
 
-## 开发
+## Development
 
 ```bash
-# 使用 uv 运行代码格式化
+# Run code formatting with uv
 uv run black src tests
 
-# 代码检查
+# Code linting
 uv run ruff check src tests
 
-# 类型检查
+# Type checking
 uv run mypy src
 ```
 

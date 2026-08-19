@@ -1,5 +1,5 @@
 /**
- * Template API 实现
+ * Template API implementation
  */
 import { API_ENDPOINTS, DEFAULT_PAGINATION } from '@/constants/api';
 import { get, post, put, del } from '@/utils/http/request';
@@ -10,7 +10,7 @@ import type {
 } from './types';
 
 /**
- * 获取模板列表
+ * Get template list
  */
 export function listTemplates(params?: { limit?: number; offset?: number }): Promise<TemplateResponse[]> {
   return get<TemplateResponse[]>(API_ENDPOINTS.TEMPLATES, {
@@ -19,28 +19,28 @@ export function listTemplates(params?: { limit?: number; offset?: number }): Pro
 }
 
 /**
- * 获取模板详情
+ * Get template details
  */
 export function getTemplate(templateId: string): Promise<TemplateResponse> {
   return get<TemplateResponse>(API_ENDPOINTS.TEMPLATE(templateId));
 }
 
 /**
- * 创建模板
+ * Create template
  */
 export function createTemplate(data: CreateTemplateRequest): Promise<TemplateResponse> {
   return post<TemplateResponse>(API_ENDPOINTS.TEMPLATES, data);
 }
 
 /**
- * 更新模板
+ * Update template
  */
 export function updateTemplate(templateId: string, data: UpdateTemplateRequest): Promise<TemplateResponse> {
   return put<TemplateResponse>(API_ENDPOINTS.TEMPLATE(templateId), data);
 }
 
 /**
- * 删除模板
+ * Delete template
  */
 export function deleteTemplate(templateId: string): Promise<{ message: string }> {
   return del<{ message: string }>(API_ENDPOINTS.TEMPLATE(templateId));

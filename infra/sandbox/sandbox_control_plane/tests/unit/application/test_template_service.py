@@ -1,8 +1,4 @@
-"""
-模板应用服务单元测试
-
-测试 TemplateService 的用例编排逻辑。
-"""
+"""Unit tests for template service."""
 import pytest
 from unittest.mock import Mock, AsyncMock
 
@@ -17,11 +13,11 @@ from tests.helpers import create_mock_template
 
 
 class TestTemplateService:
-    """模板应用服务测试"""
+    """Tests for TestTemplateService."""
 
     @pytest.fixture
     def template_repo(self):
-        """模拟模板仓储"""
+        """Create template repo."""
         repo = Mock()
         repo.save = AsyncMock()
         repo.find_by_id = AsyncMock()
@@ -32,12 +28,12 @@ class TestTemplateService:
 
     @pytest.fixture
     def service(self, template_repo):
-        """创建模板服务"""
+        """Create service."""
         return TemplateService(template_repo=template_repo)
 
     @pytest.mark.asyncio
     async def test_create_template_success(self, service, template_repo):
-        """测试成功创建模板"""
+        """Test create template success."""
         template_repo.find_by_id.return_value = None
         template_repo.find_by_name.return_value = None
 
@@ -60,7 +56,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_create_template_duplicate_name(self, service, template_repo):
-        """测试创建重名模板"""
+        """Test create template duplicate name."""
         existing_template = create_mock_template(
             template_id="existing-id",
             name="Python Data Science"
@@ -84,7 +80,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_get_template_success(self, service, template_repo):
-        """测试成功获取模板"""
+        """Test get template success."""
         template = create_mock_template(
             template_id="python-datascience",
             name="Python Data Science",
@@ -100,7 +96,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_get_template_not_found(self, service, template_repo):
-        """测试获取不存在的模板"""
+        """Test get template not found."""
         template_repo.find_by_id.return_value = None
 
         query = GetTemplateQuery(template_id="non-existent")
@@ -110,7 +106,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_list_templates(self, service, template_repo):
-        """测试列出所有模板"""
+        """Test list templates."""
         templates = [
             create_mock_template("python-basic", "Python Basic", "python:3.11"),
             create_mock_template("python-datascience", "Python Data Science", "python:3.11-datascience"),
@@ -125,7 +121,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_list_templates_with_pagination(self, service, template_repo):
-        """测试分页列出模板"""
+        """Test list templates with pagination."""
         all_templates = [
             create_mock_template(f"template-{i}", f"Template {i}", "python:3.11")
             for i in range(5, 10)
@@ -139,7 +135,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_success(self, service, template_repo):
-        """测试成功更新模板"""
+        """Test update template success."""
         template = create_mock_template("python-basic", "Python Basic", "python:3.11")
         template_repo.find_by_id.return_value = template
         template_repo.find_by_name.return_value = None
@@ -157,7 +153,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_not_found(self, service, template_repo):
-        """测试更新不存在的模板"""
+        """Test update template not found."""
         template_repo.find_by_id.return_value = None
 
         command = UpdateTemplateCommand(
@@ -170,7 +166,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_duplicate_name(self, service, template_repo):
-        """测试更新模板为重名"""
+        """Test update template duplicate name."""
         template = create_mock_template("template-1", "Template 1")
         other_template = create_mock_template("template-2", "Template 2")
         template_repo.find_by_id.return_value = template
@@ -186,7 +182,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_resources(self, service, template_repo):
-        """测试更新模板资源"""
+        """Test update template resources."""
         template = create_mock_template("python-basic", "Python Basic", "python:3.11")
         template_repo.find_by_id.return_value = template
         template_repo.find_by_name.return_value = None
@@ -206,7 +202,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_delete_template_success(self, service, template_repo):
-        """测试成功删除模板"""
+        """Test delete template success."""
         template = create_mock_template("python-basic", "Python Basic", "python:3.11")
         template_repo.find_by_id.return_value = template
 
@@ -216,7 +212,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_delete_template_not_found(self, service, template_repo):
-        """测试删除不存在的模板"""
+        """Test delete template not found."""
         template_repo.find_by_id.return_value = None
 
         with pytest.raises(NotFoundError, match="Template not found"):
@@ -224,7 +220,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_same_name(self, service, template_repo):
-        """测试更新模板为相同名称（不应报错）"""
+        """Test update template same name."""
         template = create_mock_template("python-basic", "Python Basic", "python:3.11")
         template_repo.find_by_id.return_value = template
         template_repo.find_by_name.return_value = template
@@ -239,7 +235,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_name_to_new_value(self, service, template_repo):
-        """测试成功更新模板名称为新值"""
+        """Test update template name to new value."""
         template = create_mock_template("python-basic", "Python Basic", "python:3.11")
         template_repo.find_by_id.return_value = template
         template_repo.find_by_name.return_value = None  # No collision with new name
@@ -259,7 +255,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_timeout_to_new_value(self, service, template_repo):
-        """测试成功更新模板超时时间为新值"""
+        """Test update template timeout to new value."""
         template = create_mock_template("python-basic", "Python Basic", "python:3.11")
         template_repo.find_by_id.return_value = template
 
@@ -278,7 +274,7 @@ class TestTemplateService:
 
     @pytest.mark.asyncio
     async def test_update_template_timeout_to_zero(self, service, template_repo):
-        """测试更新模板超时时间为0（边界情况）"""
+        """Test update template timeout to zero."""
         template = create_mock_template("python-basic", "Python Basic", "python:3.11")
         template_repo.find_by_id.return_value = template
 

@@ -1,8 +1,4 @@
-"""
-共享测试工具
-
-提供通用的测试 fixture 和 mock 工具，减少测试代码重复。
-"""
+"""Unit tests for helpers."""
 from unittest.mock import Mock, AsyncMock
 from datetime import datetime
 
@@ -20,18 +16,7 @@ def create_mock_template(
     image: str = "python:3.11",
     default_timeout_sec: int = 300
 ) -> Template:
-    """
-    创建测试用模板实体
-
-    Args:
-        template_id: 模板 ID
-        name: 模板名称
-        image: 镜像名称
-        default_timeout_sec: 默认超时时间（秒）
-
-    Returns:
-        Template 实体
-    """
+    """Create mock template."""
     return Template(
         id=template_id,
         name=name,
@@ -54,17 +39,7 @@ def create_mock_session(
     template_id: str = "python-test",
     status: str = "running"
 ) -> Session:
-    """
-    创建测试用会话实体
-
-    Args:
-        session_id: 会话 ID
-        template_id: 模板 ID
-        status: 会话状态
-
-    Returns:
-        Session 实体
-    """
+    """Create mock session."""
     return Session(
         id=session_id,
         template_id=template_id,
@@ -88,17 +63,7 @@ def create_mock_execution(
     session_id: str = "test-session-123",
     status: str = "pending"
 ) -> Execution:
-    """
-    创建测试用执行实体
-
-    Args:
-        execution_id: 执行 ID
-        session_id: 会话 ID
-        status: 执行状态
-
-    Returns:
-        Execution 实体
-    """
+    """Create mock execution."""
     return Execution(
         id=execution_id,
         session_id=session_id,
@@ -113,16 +78,7 @@ def create_mock_runtime_node(
     node_id: str = "node-1",
     node_type: str = "docker"
 ) -> RuntimeNode:
-    """
-    创建测试用运行时节点
-
-    Args:
-        node_id: 节点 ID
-        node_type: 节点类型
-
-    Returns:
-        RuntimeNode 对象
-    """
+    """Create mock runtime node."""
     return RuntimeNode(
         id=node_id,
         type=node_type,
@@ -141,17 +97,7 @@ def create_mock_repository(
     save_return=None,
     find_all_return=None
 ) -> Mock:
-    """
-    创建模拟仓储
-
-    Args:
-        find_by_id_return: find_by_id 方法的返回值
-        save_return: save 方法的返回值
-        find_all_return: find_all 方法的返回值
-
-    Returns:
-        Mock 对象
-    """
+    """Create mock repository."""
     repo = Mock()
     repo.save = AsyncMock(return_value=save_return)
     repo.find_by_id = AsyncMock(return_value=find_by_id_return)
@@ -165,17 +111,7 @@ def create_mock_scheduler(
     create_container_return="container-123",
     destroy_container_return=None
 ) -> Mock:
-    """
-    创建模拟调度器
-
-    Args:
-        schedule_return: schedule 方法的返回值
-        create_container_return: create_container_for_session 方法的返回值
-        destroy_container_return: destroy_container 方法的返回值
-
-    Returns:
-        Mock 对象
-    """
+    """Create mock scheduler."""
     scheduler = Mock()
     scheduler.schedule = AsyncMock(return_value=schedule_return)
     scheduler.create_container_for_session = AsyncMock(

@@ -96,7 +96,7 @@ controlPlane:
     PYTHONUNBUFFERED: "1"
 
   s3:
-    # Note: endpointUrl is dynamically set in secret.yaml using .Values.namespace
+    # Note: endpointUrl is dynamically set in secret.yaml using .values.namespace
     # The actual endpoint will be: http://minio.<namespace>.svc.cluster.local:9000
     endpointUrl: ""  # Dynamically generated from namespace
     bucket: "sandbox-workspace"
@@ -188,7 +188,7 @@ securityContext:
 depServices:
   class-443:
     ingressClass: class-443
-  # 数据库连接配置
+  # Database connection configuration
   rds:
     type: MariaDB
     host: mariadb-mariadb-cluster.resource

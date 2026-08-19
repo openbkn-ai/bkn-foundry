@@ -1,5 +1,5 @@
 /**
- * 模板管理 Hook
+ * Template management hook
  */
 import { useState, useCallback } from 'react';
 import { message } from 'antd';
@@ -14,7 +14,7 @@ export function useTemplates() {
   const [templates, setTemplates] = useState<TemplateResponse[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // 获取模板列表
+  // Get template list
   const fetchTemplates = useCallback(async () => {
     setLoading(true);
     try {
@@ -28,7 +28,7 @@ export function useTemplates() {
     }
   }, []);
 
-  // 创建模板
+  // Create template
   const createTemplate = useCallback(async (data: CreateTemplateRequest) => {
     setLoading(true);
     try {
@@ -45,7 +45,7 @@ export function useTemplates() {
     }
   }, []);
 
-  // 更新模板
+  // Update template
   const updateTemplate = useCallback(
     async (id: string, data: UpdateTemplateRequest) => {
       setLoading(true);
@@ -67,7 +67,7 @@ export function useTemplates() {
     []
   );
 
-  // 删除模板
+  // Delete template
   const deleteTemplate = useCallback(async (id: string) => {
     setLoading(true);
     try {

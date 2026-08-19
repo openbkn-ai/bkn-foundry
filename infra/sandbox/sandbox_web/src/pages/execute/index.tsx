@@ -1,5 +1,5 @@
 /**
- * 代码执行页面
+ * Code execution page
  */
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -22,7 +22,7 @@ const CODE_TEMPLATES: Record<CodeLanguage, string> = {
 }`,
   shell: `pwd
 ls -la
-# 也支持:
+# Also supports:
 # bash run.sh
 # python scripts/analyze_project.py
 # bash python scripts/analyze_project.py`,

@@ -1,14 +1,14 @@
 #!/bin/bash
-# Runtime Executor 启动脚本
+# Runtime Executor start script
 
-# 设置 PYTHONPATH
+# Set PYTHONPATH
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export PYTHONPATH="$(dirname "$SCRIPT_DIR")"
 
-# 进入项目目录
+# Enter the project directory
 cd "$(dirname "$0")"
 
-# 清理端口 8080 上的旧进程
+# Clean up old processes on port 8080
 echo "检查端口 8080..."
 OLD_PIDS=$(lsof -ti:8080 2>/dev/null)
 if [ -n "$OLD_PIDS" ]; then
@@ -19,11 +19,11 @@ if [ -n "$OLD_PIDS" ]; then
     echo "旧进程已清理"
 fi
 
-# 同步依赖
+# Sync dependencies
 echo "正在同步依赖..."
 uv sync
 
-# 启动服务
+# Start the service
 echo "正在启动服务..."
 echo "提示: 使用 Ctrl+C 停止服务"
 echo ""

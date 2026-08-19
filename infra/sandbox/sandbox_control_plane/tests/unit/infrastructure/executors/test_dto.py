@@ -1,8 +1,4 @@
-"""
-执行器 DTO 单元测试
-
-测试执行器数据传输对象。
-"""
+"""Unit tests for DTO."""
 import pytest
 from pydantic import ValidationError
 
@@ -15,10 +11,10 @@ from src.infrastructure.executors.dto import (
 
 
 class TestExecutorExecuteRequest:
-    """执行器执行请求测试"""
+    """Tests for TestExecutorExecuteRequest."""
 
     def test_create_with_required_fields(self):
-        """测试使用必填字段创建"""
+        """Test create with required fields."""
         request = ExecutorExecuteRequest(
             execution_id="exec-123",
             session_id="sess-456",
@@ -36,7 +32,7 @@ class TestExecutorExecuteRequest:
         assert request.working_directory is None
 
     def test_create_with_all_fields(self):
-        """测试使用所有字段创建"""
+        """Test create with all fields."""
         request = ExecutorExecuteRequest(
             execution_id="exec-123",
             session_id="sess-456",
@@ -58,7 +54,7 @@ class TestExecutorExecuteRequest:
         assert request.working_directory == "src/jobs"
 
     def test_timeout_minimum(self):
-        """测试超时最小值"""
+        """Test timeout minimum."""
         request = ExecutorExecuteRequest(
             execution_id="exec-123",
             session_id="sess-456",
@@ -69,7 +65,7 @@ class TestExecutorExecuteRequest:
         assert request.timeout == 1
 
     def test_timeout_maximum(self):
-        """测试超时最大值"""
+        """Test timeout maximum."""
         request = ExecutorExecuteRequest(
             execution_id="exec-123",
             session_id="sess-456",
@@ -80,7 +76,7 @@ class TestExecutorExecuteRequest:
         assert request.timeout == 3600
 
     def test_timeout_below_minimum(self):
-        """测试超时低于最小值"""
+        """Test timeout below minimum."""
         with pytest.raises(ValidationError):
             ExecutorExecuteRequest(
                 execution_id="exec-123",
@@ -91,7 +87,7 @@ class TestExecutorExecuteRequest:
             )
 
     def test_timeout_above_maximum(self):
-        """测试超时高于最大值"""
+        """Test timeout above maximum."""
         with pytest.raises(ValidationError):
             ExecutorExecuteRequest(
                 execution_id="exec-123",
@@ -102,7 +98,7 @@ class TestExecutorExecuteRequest:
             )
 
     def test_missing_required_fields(self):
-        """测试缺少必填字段"""
+        """Test missing required fields."""
         with pytest.raises(ValidationError):
             ExecutorExecuteRequest(
                 execution_id="exec-123",
@@ -112,7 +108,7 @@ class TestExecutorExecuteRequest:
             )
 
     def test_model_dump(self):
-        """测试序列化为字典"""
+        """Test model dump."""
         request = ExecutorExecuteRequest(
             execution_id="exec-123",
             session_id="sess-456",
@@ -132,7 +128,7 @@ class TestExecutorExecuteRequest:
         assert data["timeout"] == 60
 
     def test_model_dump_includes_working_directory(self):
-        """测试序列化包含工作目录"""
+        """Test model dump includes working directory."""
         request = ExecutorExecuteRequest(
             execution_id="exec-123",
             session_id="sess-456",
@@ -146,16 +142,16 @@ class TestExecutorExecuteRequest:
         assert data["working_directory"] == "skill/mini-wiki"
 
     def test_json_schema_examples(self):
-        """测试 JSON schema 示例"""
+        """Test JSON schema examples."""
         # Should have examples defined
         assert "examples" in ExecutorExecuteRequest.model_config.get("json_schema_extra", {})
 
 
 class TestExecutorExecuteResponse:
-    """执行器执行响应测试"""
+    """Tests for TestExecutorExecuteResponse."""
 
     def test_create_with_required_fields(self):
-        """测试使用必填字段创建"""
+        """Test create with required fields."""
         response = ExecutorExecuteResponse(
             execution_id="exec-123",
             status="submitted"
@@ -166,7 +162,7 @@ class TestExecutorExecuteResponse:
         assert response.message == ""  # default
 
     def test_create_with_all_fields(self):
-        """测试使用所有字段创建"""
+        """Test create with all fields."""
         response = ExecutorExecuteResponse(
             execution_id="exec-123",
             status="completed",
@@ -178,7 +174,7 @@ class TestExecutorExecuteResponse:
         assert response.message == "Execution finished successfully"
 
     def test_missing_required_fields(self):
-        """测试缺少必填字段"""
+        """Test missing required fields."""
         with pytest.raises(ValidationError):
             ExecutorExecuteResponse(
                 execution_id="exec-123"
@@ -186,7 +182,7 @@ class TestExecutorExecuteResponse:
             )
 
     def test_from_json(self):
-        """测试从 JSON 创建"""
+        """Test from JSON."""
         response = ExecutorExecuteResponse(**{
             "execution_id": "exec-123",
             "status": "completed",
@@ -199,10 +195,10 @@ class TestExecutorExecuteResponse:
 
 
 class TestExecutorHealthResponse:
-    """执行器健康检查响应测试"""
+    """Tests for TestExecutorHealthResponse."""
 
     def test_create_with_required_fields(self):
-        """测试使用必填字段创建"""
+        """Test create with required fields."""
         response = ExecutorHealthResponse(
             status="healthy"
         )
@@ -213,7 +209,7 @@ class TestExecutorHealthResponse:
         assert response.active_executions is None
 
     def test_create_with_all_fields(self):
-        """测试使用所有字段创建"""
+        """Test create with all fields."""
         response = ExecutorHealthResponse(
             status="healthy",
             version="2.0.0",
@@ -227,7 +223,7 @@ class TestExecutorHealthResponse:
         assert response.active_executions == 5
 
     def test_unhealthy_status(self):
-        """测试不健康状态"""
+        """Test unhealthy status."""
         response = ExecutorHealthResponse(
             status="unhealthy"
         )
@@ -235,7 +231,7 @@ class TestExecutorHealthResponse:
         assert response.status == "unhealthy"
 
     def test_from_json(self):
-        """测试从 JSON 创建"""
+        """Test from JSON."""
         response = ExecutorHealthResponse(**{
             "status": "healthy",
             "version": "1.5.0",
@@ -249,7 +245,7 @@ class TestExecutorHealthResponse:
         assert response.active_executions == 3
 
     def test_from_json_minimal(self):
-        """测试从最小 JSON 创建"""
+        """Test from JSON minimal."""
         response = ExecutorHealthResponse(**{
             "status": "healthy"
         })
@@ -259,10 +255,10 @@ class TestExecutorHealthResponse:
 
 
 class TestExecutorContainerInfo:
-    """执行器容器信息测试"""
+    """Tests for TestExecutorContainerInfo."""
 
     def test_create_with_required_fields(self):
-        """测试使用必填字段创建"""
+        """Test create with required fields."""
         info = ExecutorContainerInfo(
             container_id="container-123",
             container_name="sandbox-sess-123"
@@ -273,7 +269,7 @@ class TestExecutorContainerInfo:
         assert info.executor_port == 8080  # default
 
     def test_create_with_custom_port(self):
-        """测试使用自定义端口创建"""
+        """Test create with custom port."""
         info = ExecutorContainerInfo(
             container_id="container-123",
             container_name="sandbox-sess-123",
@@ -283,7 +279,7 @@ class TestExecutorContainerInfo:
         assert info.executor_port == 9090
 
     def test_executor_url_default_port(self):
-        """测试执行器 URL（默认端口）"""
+        """Test executor URL default port."""
         info = ExecutorContainerInfo(
             container_id="container-123",
             container_name="sandbox-sess-123"
@@ -292,7 +288,7 @@ class TestExecutorContainerInfo:
         assert info.executor_url == "http://sandbox-sess-123:8080"
 
     def test_executor_url_custom_port(self):
-        """测试执行器 URL（自定义端口）"""
+        """Test executor URL custom port."""
         info = ExecutorContainerInfo(
             container_id="container-123",
             container_name="sandbox-sess-123",
@@ -302,7 +298,7 @@ class TestExecutorContainerInfo:
         assert info.executor_url == "http://sandbox-sess-123:9090"
 
     def test_executor_url_with_underscored_name(self):
-        """测试执行器 URL（带下划线的名称）"""
+        """Test executor URL with underscored name."""
         info = ExecutorContainerInfo(
             container_id="container-123",
             container_name="sandbox_session_test"
@@ -311,7 +307,7 @@ class TestExecutorContainerInfo:
         assert info.executor_url == "http://sandbox_session_test:8080"
 
     def test_is_dataclass(self):
-        """测试是数据类"""
+        """Test is dataclass."""
         from dataclasses import is_dataclass
 
         assert is_dataclass(ExecutorContainerInfo)

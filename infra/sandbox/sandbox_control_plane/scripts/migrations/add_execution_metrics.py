@@ -1,13 +1,13 @@
 """
-Alembic 迁移脚本模板
+Alembic migration script template
 
-添加 execution 表的 return_value 和 metrics 字段
+Add return_value and metrics fields to the execution table
 
-使用方法：
-1. 确保 Alembic 已初始化：`alembic init alembic`
-2. 将此文件复制到 `alembic/versions/` 目录
-3. 根据实际生成的修订版本号重命名文件
-4. 运行迁移：`alembic upgrade head`
+Usage:
+1. Ensure Alembic is initialized：`alembic init alembic`
+2. Copy this file to the Alembic versions directory
+3. Rename the file according to the generated revision number
+4. Run the migration:`alembic upgrade head`
 """
 from alembic import op
 import sqlalchemy as sa
@@ -20,7 +20,7 @@ depends_on = None
 
 
 def upgrade():
-    """添加 return_value 和 metrics 字段"""
+    """Add return_value and metrics fields."""
     op.add_column(
         'executions',
         sa.Column('return_value', sa.JSON(), nullable=True)
@@ -32,6 +32,6 @@ def upgrade():
 
 
 def downgrade():
-    """移除 return_value 和 metrics 字段"""
+    """Remove return_value and metrics fields"""
     op.drop_column('executions', 'metrics')
     op.drop_column('executions', 'return_value')

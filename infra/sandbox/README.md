@@ -1,6 +1,6 @@
 # Sandbox Control Plane
 
-[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![中文](https://img.shields.io/badge/lang-中文-red.svg)](README_ZH.md)
+[![English](https://img.shields.io/badge/lang-English-blue.svg)](README.md) [![Chinese](https://img.shields.io/badge/lang-Chinese-red.svg)](README_ZH.md)
 
 A cloud-native, production-ready platform for secure code execution in isolated container environments, designed for AI agent applications.
 
@@ -14,7 +14,7 @@ The system adopts a **Control Plane + Container Scheduler** separation architect
 
 ```mermaid
 flowchart TD
-    %% 定义全局样式
+    %% Define global styles
     classDef external fill:#f9f9f9,stroke:#666,stroke-width:2px,color:#333;
     classDef control fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#01579b;
     classDef scheduler fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#e65100;
@@ -22,38 +22,38 @@ flowchart TD
     classDef runtime fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#1b5e20;
     classDef database fill:#ede7f6,stroke:#311b92,stroke-width:2px,color:#311b92;
 
-    subgraph External ["🌐 外部系统 (External)"]
-        Client(["📱 客户端应用"])
-        Developer(["👨‍💻 开发者 SDK/API"])
+    subgraph External ["🌐 External systems (External)"]
+        Client(["📱 Client application"])
+        Developer(["👨‍💻 Developer SDK/API"])
     end
 
-    subgraph ControlPlane ["⚙️ 控制平面 (Control Plane)"]
+    subgraph ControlPlane ["⚙️ Control Plane (Control Plane)"]
         direction TB
         API[["🚀 API Gateway (FastAPI)"]]
-        Scheduler{{"📅 调度器 (Scheduler)"}}
-        SessionMgr["📂 会话管理器"]
-        TemplateMgr["📝 模板管理器"]
-        HealthProbe["🩺 健康检查"]
-        Cleanup["🧹 会话清理"]
-        StateSync["🔄 状态同步"]
+        Scheduler{{"📅 Scheduler (Scheduler)"}}
+        SessionMgr["📂 Session Manager"]
+        TemplateMgr["📝 Template Manager"]
+        HealthProbe["🩺 Health Check"]
+        Cleanup["🧹 Session Cleanup"]
+        StateSync["🔄 State Sync"]
     end
 
-    subgraph ContainerScheduler ["📦 容器编排 (Scheduler)"]
+    subgraph ContainerScheduler ["📦 Container Orchestration (Scheduler)"]
         DockerRuntime["Docker Runtime"]
         K8sRuntime["Kubernetes"]
     end
 
-    subgraph Storage ["💾 存储层 (Storage)"]
+    subgraph Storage ["💾 Storage Layer (Storage)"]
         MariaDB[("🗄️ MariaDB")]
         S3[("☁️ S3 Storage")]
     end
 
-    subgraph Runtime ["🛡️ 沙箱运行时 (Sandbox)"]
-        Executor["⚡ 执行器 (Executor)"]
-        Container["📦 容器实例"]
+    subgraph Runtime ["🛡️ Sandbox Runtime (Sandbox)"]
+        Executor["⚡ Executor (Executor)"]
+        Container["📦 Container Instance"]
     end
 
-    %% 这里的连接线逻辑
+    %% Connection line logic
     Client & Developer --> API
     API --> Scheduler
     Scheduler --> SessionMgr & ContainerScheduler
@@ -66,7 +66,7 @@ flowchart TD
     Cleanup --> SessionMgr
     API -.-> S3
 
-    %% 应用样式
+    %% Apply styles
     class Client,Developer external;
     class API,Scheduler,SessionMgr,TemplateMgr,HealthProbe,Cleanup,StateSync control;
     class DockerRuntime,K8sRuntime scheduler;
@@ -165,7 +165,7 @@ flowchart TD
 
 > Note: The above resource requirements are for the docker-compose development environment. Adjust according to actual load in production environments.
 
-### Build Images
+### build Images
 
 Before starting the services, build the versioned executor/template images:
 
@@ -189,7 +189,7 @@ This creates:
 - `sandbox-python-executor-base:python3.11-v1` - Stable Python runtime base without executor code
 - `sandbox-multi-executor-base:go1.25-python3.11-v1` - Stable Python, Go, and Bash runtime base without executor code
 
-To push multi-arch base images to Huawei Cloud SWR, install `skopeo` and use Docker Buildx. The script exports `linux/amd64,linux/arm64` OCI archives and copies them to SWR:
+To push multi-arch base images to Huawei Cloud SWR, install `skopeo` and use Docker buildx. The script exports `linux/amd64,linux/arm64` OCI archives and copies them to SWR:
 
 ```bash
 cd images
@@ -204,15 +204,15 @@ cd images
 If you're building images in a network environment with limited access to official repositories (e.g., mainland China), you can use mirror sources:
 
 ```bash
-# Build versioned executor/template images with mirror support
+# build versioned executor/template images with mirror support
 cd images
 USE_MIRROR=true ./build.sh
 
-# Build Control Plane with mirror from the repository root so VERSION is included
+# build Control Plane with mirror from the repository root so VERSION is included
 cd ..
 docker build -f sandbox_control_plane/Dockerfile --build-arg USE_MIRROR=true -t sandbox-control-plane .
 
-# Build Web Console with mirror
+# build Web Console with mirror
 cd ../sandbox_web
 docker build --build-arg USE_MIRROR=true -t sandbox-web .
 ```
@@ -253,7 +253,7 @@ swr.cn-east-3.myhuaweicloud.com/openbkn-ai/sandbox-template-multi-language:<TEMP
 
 You can also override `DEFAULT_TEMPLATE_IMAGE` and `DEFAULT_MULTI_LANGUAGE_TEMPLATE_IMAGE` directly when different repositories or tags are required.
 
-### Kubernetes Deployment (Production)
+### Kubernetes deployment (Production)
 
 For production deployment, use Kubernetes with Helm Chart:
 
@@ -346,7 +346,7 @@ mypy sandbox_control_plane/
 
 ```
 sandbox/
-├── deploy/                   # Deployment configurations
+├── deploy/                   # deployment configurations
 │   ├── manifests/            # K8s native YAML deployment
 │   │   ├── 00-namespace.yaml
 │   │   ├── 01-configmap.yaml
@@ -387,7 +387,7 @@ sandbox/
 ├── images/                    # Container image build scripts
 │   ├── bases/                # Stable runtime base images without executor code
 │   ├── templates/            # Versioned executor/template image definitions
-│   └── build.sh              # Build runtime bases and versioned template images
+│   └── build.sh              # build runtime bases and versioned template images
 │
 ├── scripts/                  # Utility scripts
 ├── specs/                    # Implementation specifications

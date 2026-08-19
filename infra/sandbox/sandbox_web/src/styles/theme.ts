@@ -1,46 +1,46 @@
 /**
- * Ant Design 主题配置
- * 基于 Figma 设计规范
+ * Ant Design theme configuration
+ * Based on the Figma design specification
  */
 import type { ThemeConfig } from 'antd';
 
-/** Sandbox 主题配置 */
+/** Sandbox theme configuration */
 export const sandboxTheme: ThemeConfig = {
   token: {
-    // 主色
+    // Primary color
     colorPrimary: '#126ee3',
     colorPrimaryHover: '#0f5dc2',
     colorPrimaryActive: '#0b4fa8',
 
-    // 背景色
+    // Background color
     colorBgLayout: '#fafafa',
     colorBgContainer: '#ffffff',
     colorBgElevated: '#ffffff',
 
-    // 边框色
+    // Border color
     colorBorder: '#e7edf7',
     colorBorderSecondary: '#d9d9d9',
 
-    // 文字颜色
+    // Text color
     colorText: 'rgba(0,0,0,0.85)',
     colorTextSecondary: 'rgba(0,0,0,0.65)',
     colorTextTertiary: '#677489',
     colorTextQuaternary: 'rgba(0,0,0,0.45)',
     colorTextPlaceholder: 'rgba(0,0,0,0.25)',
 
-    // 功能色
+    // Functional colors
     colorSuccess: '#52c41a',
     colorWarning: '#faad14',
     colorError: '#ff4d4f',
     colorInfo: '#1890ff',
 
-    // 圆角
+    // Border radius
     borderRadius: 4,
     borderRadiusLG: 8,
     borderRadiusSM: 4,
     borderRadiusXS: 2,
 
-    // 字体大小
+    // Font size
     fontSize: 14,
     fontSizeHeading1: 20,
     fontSizeHeading2: 16,
@@ -50,12 +50,12 @@ export const sandboxTheme: ThemeConfig = {
     fontSizeSM: 12,
     fontSizeXL: 24,
 
-    // 行高
+    // Line height
     lineHeight: 1.5715,
     lineHeightLG: 1.5,
     lineHeightSM: 1.66,
 
-    // 间距
+    // Spacing
     marginXS: 8,
     marginSM: 12,
     margin: 16,
@@ -63,7 +63,7 @@ export const sandboxTheme: ThemeConfig = {
     marginLG: 24,
     marginXL: 32,
 
-    // 其他
+    // Other settings
     wireframe: false,
   },
   components: {

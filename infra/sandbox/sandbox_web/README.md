@@ -1,124 +1,124 @@
 # Sandbox Web
 
-沙箱管理平台前端服务，用于对接 Sandbox Control Plane API，实现模板管理、会话管理和代码执行功能。
+Frontend service for the sandbox management platform. It integrates with the Sandbox Control Plane API to provide template management, session management, and code execution.
 
-## 技术栈
+## Technology stack
 
-- **React 18.3.1** - 用户界面库
-- **TypeScript 5.8.2** - 类型安全的 JavaScript 超集
-- **Ant Design 5.26.2** - 企业级 UI 设计语言和组件库
-- **Rsbuild** - 基于 Rspack 的构建工具
-- **react-router-dom** - 路由管理
-- **axios** - HTTP 客户端
-- **@monaco-editor/react** - Monaco 代码编辑器
+- **React 18.3.1** - UI library
+- **TypeScript 5.8.2** - Type-safe JavaScript superset
+- **Ant Design 5.26.2** - Enterprise UI design language and component library
+- **Rsbuild** - build tool based on Rspack
+- **react-router-dom** - Routing management
+- **axios** - HTTP client
+- **@monaco-editor/react** - Monaco code editor
 
-## 项目结构
+## Project structure
 
 ```
 sandbox_web/
-├── public/               # 公共静态资源
+├── public/               # Public static assets
 ├── src/
-│   ├── apis/            # API 接口管理
+│   ├── apis/            # API management
 │   │   ├── sessions/    # Session API
 │   │   ├── templates/   # Template API
 │   │   ├── executions/  # Execution API
 │   │   ├── files/       # File Upload/Download API
 │   │   └── health/      # Health Check API
-│   ├── components/      # React 组件
-│   │   ├── Layout/      # 布局组件
-│   │   ├── CodeEditor/  # 代码编辑器
+│   ├── components/      # React components
+│   │   ├── Layout/      # Layout component
+│   │   ├── CodeEditor/  # Code editor
 │   │   └── ...
-│   ├── hooks/           # 自定义 Hooks
-│   ├── pages/           # 页面入口
-│   ├── styles/          # 样式文件
-│   ├── utils/           # 工具函数
-│   ├── types/           # 类型定义
-│   ├── constants/       # 常量定义
-│   ├── router/          # 路由配置
+│   ├── hooks/           # Custom hooks
+│   ├── pages/           # Page entries
+│   ├── styles/          # Style files
+│   ├── utils/           # Utility functions
+│   ├── types/           # Type definitions
+│   ├── constants/       # Constant definitions
+│   ├── router/          # Router configuration
 │   ├── App.tsx
 │   └── main.tsx
-├── rsbuild.config.mts   # Rsbuild 配置
+├── rsbuild.config.mts   # Rsbuild configuration
 ├── package.json
 └── tsconfig.json
 ```
 
-## 快速开始
+## Quick Start
 
-### 环境要求
+### Requirements
 
 - Node.js 18+
-- npm 或 yarn
+- npm or yarn
 
-### 安装依赖
+### Install dependencies
 
 ```bash
 npm install
 ```
 
-### 开发模式
+### Development mode
 
 ```bash
 npm run dev
 ```
 
-开发服务器将在 http://localhost:1101 启动。
+The development server starts at http://localhost:1101.
 
-### 构建项目
+### build the project
 
 ```bash
 npm run build
 ```
 
-### 代码检查
+### Code linting
 
 ```bash
 npm run lint
 ```
 
-## 功能模块
+## Feature modules
 
-### 模板管理
-- 创建、编辑、删除执行环境模板
-- 支持 Python 3.11、Node.js 20、Java 17、Go 1.21 运行时
-- 配置 CPU、内存、磁盘等资源限制
+### Template management
+- Create, edit, and delete execution environment templates
+- Supports Python 3.11, Node.js 20, Java 17, and Go 1.21 runtimes
+- Configure CPU, memory, disk, and other resource limits
 
-### 会话管理
-- 创建和管理代码执行会话
-- 实时查看会话状态
-- 上传/下载会话文件
-- 支持 Python 依赖包安装
+### Session management
+- Create and manage code execution sessions
+- View session status in real time
+- Upload/download session files
+- Supports Python dependency installation
 
-### 代码执行
-- 在线代码编辑器 (Monaco Editor)
-- 支持 Lambda Handler 格式
-- 执行历史查看
-- 实时结果展示
+### Code execution
+- Online code editor (Monaco Editor)
+- Supports the Lambda Handler format
+- View execution history
+- Display results in real time
 
-## API 对接
+## API integration
 
-前端服务通过代理对接 `http://localhost:8000` 的 Control Plane API。
+The frontend service connects to `http://localhost:8000` Control Plane API through a proxy.
 
-主要端点：
-- `/api/v1/templates` - 模板管理
-- `/api/v1/sessions` - 会话管理
-- `/api/v1/executions` - 代码执行
+Main endpoints:
+- `/api/v1/templates` - Template management
+- `/api/v1/sessions` - Session management
+- `/api/v1/executions` - Code execution
 
-## 开发规范
+## Development conventions
 
-### 组件命名
-- 组件名使用 PascalCase：`<MyComponent />`
-- 文件名与组件名保持一致
+### Component naming
+- Use PascalCase for component names：`<MyComponent />`
+- Keep file names consistent with component names
 
-### 代码规范
-- 使用 TypeScript 进行类型检查
-- 函数组件使用 Hooks
-- 遵循 ESLint 和 Prettier 配置
+### Code conventions
+- Use TypeScript for type checking
+- Use Hooks in function components
+- Follow the ESLint and Prettier configuration
 
-## 设计规范
+## Design specifications
 
-| 属性 | 值 |
+| property | value |
 |------|-----|
-| 主色 | #126ee3 |
-| 背景色 | #fafafa |
-| 边框色 | #e7edf7 |
-| 圆角 | 4px / 8px / 12px |
+| Primary color | #126ee3 |
+| Background color | #fafafa |
+| Border color | #e7edf7 |
+| Border radius | 4px / 8px / 12px |

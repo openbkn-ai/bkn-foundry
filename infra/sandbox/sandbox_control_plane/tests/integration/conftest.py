@@ -1,9 +1,4 @@
-"""
-Integration Test Configuration
-
-Shared fixtures and configuration for integration tests.
-These tests run against a live docker-compose stack.
-"""
+"""Unit tests for conftest."""
 import asyncio
 import os
 import pytest
@@ -117,12 +112,7 @@ def untrack_session(session_id: str) -> None:
 
 
 async def _list_session_ids(http_client: httpx.AsyncClient) -> Optional[Set[str]]:
-    """
-    Return all visible session IDs, or None if the control plane is unavailable.
-
-    Use absolute URLs so this cleanup still works for modules that override
-    the http_client fixture without a base_url.
-    """
+    """Create list session ids."""
     session_ids: Set[str] = set()
     limit = 200
     offset = 0
@@ -187,11 +177,7 @@ async def _delete_sessions(http_client: httpx.AsyncClient, session_ids: Set[str]
 
 @pytest.fixture(scope="session")
 def event_loop_policy():
-    """
-    为整个测试会话创建一个事件循环策略。
-
-    这有助于避免异步测试中的事件循环问题。
-    """
+    """Create event loop policy."""
     import asyncio
     policy = asyncio.get_event_loop_policy()
     yield policy
@@ -199,17 +185,13 @@ def event_loop_policy():
 
 @pytest.fixture(scope="function", autouse=True)
 async def auto_cleanup_sessions(http_client: httpx.AsyncClient, request):
-    """
-    每个测试函数完成后自动清理所有测试 session。
-
-    autouse=True 确保此 fixture 在每个测试函数后自动运行。
-    """
-    # 记录测试开始前已存在的 sessions。清理时只删除本测试新增的
-    # sessions，避免误删运行环境中已有的手工 session。
+    """Create auto cleanup sessions."""
+    # Record sessions that existed before the test starts. During cleanup, delete only sessions created by this test.
+    # sessions to avoid deleting manual sessions that already existed in the runtime environment.
     sessions_before_test = await _list_session_ids(http_client)
     tracked_before_test = set(_created_sessions)
 
-    yield  # 测试运行
+    yield  # Test setup.
 
     tracked_new_sessions = _created_sessions - tracked_before_test
 
@@ -224,16 +206,7 @@ async def auto_cleanup_sessions(http_client: httpx.AsyncClient, request):
 
 @pytest.fixture(scope="function")
 async def http_client() -> AsyncGenerator[httpx.AsyncClient, None]:
-    """
-    Create HTTP client for API calls.
-
-    This client is used for all integration tests to communicate
-    with the control plane API.
-
-    Note: trust_env=False is set to bypass macOS system proxy
-    that would otherwise cause 502 errors. localhost resolves to IPv6
-    on this system, which is required for connectivity.
-    """
+    """Create HTTP client."""
     async with httpx.AsyncClient(
         base_url=API_BASE_URL,
         timeout=httpx.Timeout(30.0, connect=10.0),
@@ -244,14 +217,7 @@ async def http_client() -> AsyncGenerator[httpx.AsyncClient, None]:
 
 @pytest.fixture(scope="function")
 async def cleanup_test_data(http_client: httpx.AsyncClient) -> None:
-    """
-    Cleanup test data after each test.
-
-    This fixture runs after each test to clean up:
-    - Test sessions
-    - Test executions
-    - Test templates (if created during test)
-    """
+    """Create cleanup test data."""
     yield  # Run the test first
 
     # Cleanup: Delete test sessions
@@ -270,12 +236,8 @@ async def cleanup_test_data(http_client: httpx.AsyncClient) -> None:
 
 @pytest.fixture(scope="function")
 async def test_template_id(http_client: httpx.AsyncClient) -> str:
-    """
-    Create or get test template.
-
-    Returns the template ID for testing.
-    """
-    # Try to get existing template
+    """Test template ID."""
+    # Test setup.
     response = await http_client.get(f"/templates/{TEST_TEMPLATE_ID}")
     if response.status_code == 200:
         return TEST_TEMPLATE_ID
@@ -310,11 +272,7 @@ async def _create_session_and_track(
     template_id: str,
     mode: str = None
 ) -> str:
-    """
-    Helper function to create a session and track it for cleanup.
-
-    This ensures all created sessions are tracked for automatic cleanup.
-    """
+    """Create create session and track."""
     session_data = {
         "template_id": template_id,
         "timeout": 300,
@@ -360,11 +318,7 @@ async def test_session_id(
     http_client: httpx.AsyncClient,
     test_template_id: str
 ) -> str:
-    """
-    Create a test session and return its ID.
-
-    The session is automatically tracked for cleanup after the test.
-    """
+    """Test session ID."""
     return await _create_session_and_track(http_client, test_template_id)
 
 
@@ -373,13 +327,7 @@ async def persistent_session_id(
     http_client: httpx.AsyncClient,
     test_template_id: str
 ) -> str:
-    """
-    Create a persistent test session for multiple executions.
-
-    Persistent sessions can accept multiple execution requests and
-    maintain state between executions. The session is automatically
-    tracked for cleanup after the test.
-    """
+    """Create persistent session ID."""
     return await _create_session_and_track(http_client, test_template_id, mode="persistent")
 
 
@@ -388,11 +336,7 @@ async def test_execution_id(
     http_client: httpx.AsyncClient,
     test_session_id: str
 ) -> str:
-    """
-    Create a test execution and return its ID.
-
-    Executes simple Python code that prints "Hello, World!".
-    """
+    """Test execution ID."""
     execution_data = {
         "code": 'print("Hello, World!")',
         "language": "python",
@@ -418,13 +362,7 @@ async def test_execution_id(
 async def wait_for_execution_completion(
     http_client: httpx.AsyncClient
 ):
-    """
-    Return a function that waits for execution completion.
-
-    Usage:
-        execution_id = await test_execution_id(http_client, test_session_id)
-        result = await wait_for_execution_completion(http_client, execution_id)
-    """
+    """Create wait for execution completion."""
     async def _wait(execution_id: str, timeout: int = 60) -> Dict[str, Any]:
         """Wait for execution to complete and return result."""
         for _ in range(timeout):
@@ -448,15 +386,7 @@ async def wait_for_execution_completion(
 # ============== Helpers ==============
 
 def generate_test_id(prefix: str = "test") -> str:
-    """
-    Generate a unique test ID.
-
-    Args:
-        prefix: Prefix for the ID (default: "test")
-
-    Returns:
-        Unique ID string
-    """
+    """Create generate test ID."""
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
     return f"{prefix}_{timestamp}"
 
@@ -466,17 +396,7 @@ async def wait_for_container_ready(
     session_id: str,
     timeout: int = 30
 ) -> bool:
-    """
-    Wait for container to be ready.
-
-    Args:
-        http_client: HTTP client for API calls
-        session_id: Session ID to check
-        timeout: Maximum wait time in seconds
-
-    Returns:
-        True if container is ready, False otherwise
-    """
+    """Create wait for container ready."""
     for _ in range(timeout):
         response = await http_client.get(f"/sessions/{session_id}")
         if response.status_code == 200:

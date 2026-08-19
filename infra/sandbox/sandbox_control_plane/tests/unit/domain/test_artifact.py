@@ -1,8 +1,4 @@
-"""
-文件制品值对象单元测试
-
-测试 Artifact 值对象的行为。
-"""
+"""Unit tests for artifact."""
 import pytest
 from datetime import datetime
 
@@ -10,20 +6,20 @@ from src.domain.value_objects.artifact import Artifact, ArtifactType
 
 
 class TestArtifactType:
-    """制品类型枚举测试"""
+    """Tests for TestArtifactType."""
 
     def test_artifact_values(self):
-        """测试制品类型枚举值"""
+        """Test artifact values."""
         assert ArtifactType.ARTIFACT == "artifact"
         assert ArtifactType.LOG == "log"
         assert ArtifactType.OUTPUT == "output"
 
 
 class TestArtifact:
-    """制品值对象测试"""
+    """Tests for TestArtifact."""
 
     def test_create_artifact_success(self):
-        """测试成功创建制品"""
+        """Test create artifact success."""
         artifact = Artifact(
             path="output/result.csv",
             size=1024,
@@ -38,7 +34,7 @@ class TestArtifact:
         assert artifact.type == ArtifactType.ARTIFACT
 
     def test_create_artifact_factory_method(self):
-        """测试使用工厂方法创建制品"""
+        """Test create artifact factory method."""
         artifact = Artifact.create(
             path="logs/execution.log",
             size=2048,
@@ -52,7 +48,7 @@ class TestArtifact:
         assert artifact.type == ArtifactType.LOG
 
     def test_create_artifact_with_checksum(self):
-        """测试创建带校验和的制品"""
+        """Test create artifact with checksum."""
         artifact = Artifact.create(
             path="output/data.json",
             size=4096,
@@ -64,7 +60,7 @@ class TestArtifact:
         assert artifact.checksum == "a1b2c3d4e5f6"
 
     def test_create_artifact_invalid_size(self):
-        """测试无效的文件大小"""
+        """Test create artifact invalid size."""
         with pytest.raises(ValueError, match="size cannot be negative"):
             Artifact.create(
                 path="output/file.txt",
@@ -73,7 +69,7 @@ class TestArtifact:
             )
 
     def test_create_artifact_empty_path(self):
-        """测试空路径"""
+        """Test create artifact empty path."""
         with pytest.raises(ValueError, match="path cannot be empty"):
             Artifact.create(
                 path="",
@@ -82,7 +78,7 @@ class TestArtifact:
             )
 
     def test_is_log(self):
-        """测试是否为日志文件"""
+        """Test is log."""
         log_artifact = Artifact.create(
             path="logs/output.log",
             size=1024,
@@ -100,7 +96,7 @@ class TestArtifact:
         assert data_artifact.is_log() is False
 
     def test_is_output(self):
-        """测试是否为输出文件"""
+        """Test is output."""
         output_artifact = Artifact.create(
             path="output/stdout.txt",
             size=2048,
@@ -118,19 +114,19 @@ class TestArtifact:
         assert log_artifact.is_output() is False
 
     def test_immutability(self):
-        """测试不可变性"""
+        """Test immutability."""
         artifact = Artifact.create(
             path="output/file.txt",
             size=1024,
             mime_type="text/plain"
         )
 
-        # frozen=True 意味着不可修改
+        # Test setup.
         with pytest.raises(Exception):  # FrozenInstanceError from dataclasses
             artifact.size = 2048
 
     def test_different_mime_types(self):
-        """测试不同的 MIME 类型"""
+        """Test different mime types."""
         csv_artifact = Artifact.create(
             path="data.csv",
             size=1024,
@@ -156,7 +152,7 @@ class TestArtifact:
         assert png_artifact.mime_type == "image/png"
 
     def test_zero_size_artifact(self):
-        """测试零大小制品"""
+        """Test zero size artifact."""
         artifact = Artifact.create(
             path="output/empty.txt",
             size=0,
@@ -165,7 +161,7 @@ class TestArtifact:
         assert artifact.size == 0
 
     def test_artifact_equality(self):
-        """测试制品相等性"""
+        """Test artifact equality."""
         dt = datetime.now()
         artifact1 = Artifact(
             path="output/file.txt",

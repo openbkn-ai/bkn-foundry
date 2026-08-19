@@ -1,8 +1,4 @@
-"""
-FastAPI 主应用单元测试
-
-测试 FastAPI 应用的创建和配置。
-"""
+"""Unit tests for main."""
 import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from fastapi import FastAPI, Request
@@ -19,10 +15,10 @@ from src.shared.errors.domain import NotFoundError, ValidationError
 
 
 class TestCreateApp:
-    """创建应用测试"""
+    """Tests for TestCreateApp."""
 
     def test_create_app_returns_fastapi_instance(self):
-        """测试创建应用返回 FastAPI 实例"""
+        """Test create app returns fastapi instance."""
         with patch('src.interfaces.rest.main.lifespan'):
             app = create_app()
 
@@ -30,7 +26,7 @@ class TestCreateApp:
             assert app.title == "Sandbox Control Plane"
 
     def test_create_app_has_correct_metadata(self):
-        """测试应用元数据"""
+        """Test create app has correct metadata."""
         with patch('src.interfaces.rest.main.lifespan'):
             app = create_app()
 
@@ -41,7 +37,7 @@ class TestCreateApp:
             assert app.openapi_url == "/openapi.json"
 
     def test_create_app_registers_cors_middleware(self):
-        """测试注册 CORS 中间件"""
+        """Test create app registers CORS middleware."""
         with patch('src.interfaces.rest.main.lifespan'):
             app = create_app()
 
@@ -54,7 +50,7 @@ class TestCreateApp:
             assert cors_found
 
     def test_create_app_registers_gzip_middleware(self):
-        """测试注册 Gzip 中间件"""
+        """Test create app registers Gzip middleware."""
         with patch('src.interfaces.rest.main.lifespan'):
             app = create_app()
 
@@ -67,7 +63,7 @@ class TestCreateApp:
             assert gzip_found
 
     def test_create_app_registers_routes(self):
-        """测试注册路由"""
+        """Test create app registers routes."""
         with patch('src.interfaces.rest.main.lifespan'):
             app = create_app()
 
@@ -78,7 +74,7 @@ class TestCreateApp:
             assert "/openapi.json" in routes
 
     def test_create_app_has_lifespan(self):
-        """测试应用有生命周期管理"""
+        """Test create app has lifespan."""
         with patch('src.interfaces.rest.main.lifespan') as mock_lifespan:
             app = create_app()
 
@@ -87,15 +83,15 @@ class TestCreateApp:
 
 
 class TestRegisterExceptionHandlers:
-    """异常处理器测试"""
+    """Tests for TestRegisterExceptionHandlers."""
 
     @pytest.fixture
     def app(self):
-        """创建测试应用"""
+        """Create app."""
         return FastAPI()
 
     def test_register_exception_handlers_adds_handlers(self, app):
-        """测试注册异常处理器"""
+        """Test register exception handlers adds handlers."""
         _register_exception_handlers(app)
 
         # Check that exception handlers are registered
@@ -105,7 +101,7 @@ class TestRegisterExceptionHandlers:
 
     @pytest.mark.asyncio
     async def test_not_found_error_handler(self, app):
-        """测试 NotFound 异常处理"""
+        """Test not found error handler."""
         _register_exception_handlers(app)
 
         handler = app.exception_handlers[NotFoundError]
@@ -124,7 +120,7 @@ class TestRegisterExceptionHandlers:
 
     @pytest.mark.asyncio
     async def test_validation_error_handler(self, app):
-        """测试 ValidationError 异常处理"""
+        """Test validation error handler."""
         _register_exception_handlers(app)
 
         handler = app.exception_handlers[ValidationError]
@@ -143,7 +139,7 @@ class TestRegisterExceptionHandlers:
 
     @pytest.mark.asyncio
     async def test_global_exception_handler(self, app):
-        """测试全局异常处理"""
+        """Test global exception handler."""
         _register_exception_handlers(app)
 
         handler = app.exception_handlers[Exception]
@@ -162,15 +158,15 @@ class TestRegisterExceptionHandlers:
 
 
 class TestRegisterRoutes:
-    """路由注册测试"""
+    """Tests for TestRegisterRoutes."""
 
     @pytest.fixture
     def app(self):
-        """创建测试应用"""
+        """Create app."""
         return FastAPI()
 
     def test_register_routes_adds_routers(self, app):
-        """测试注册路由"""
+        """Test register routes adds routers."""
         _register_routes(app)
 
         routes = [route.path for route in app.routes]
@@ -180,7 +176,7 @@ class TestRegisterRoutes:
         assert "/" in routes  # Root endpoint
 
     def test_root_endpoint_exists(self, app):
-        """测试根端点存在"""
+        """Test root endpoint exists."""
         _register_routes(app)
 
         # Find root route
@@ -194,15 +190,15 @@ class TestRegisterRoutes:
 
 
 class TestRegisterMiddleware:
-    """中间件注册测试"""
+    """Tests for TestRegisterMiddleware."""
 
     @pytest.fixture
     def app(self):
-        """创建测试应用"""
+        """Create app."""
         return FastAPI()
 
     def test_register_middleware_adds_request_logging(self, app):
-        """测试注册请求日志中间件"""
+        """Test register middleware adds request logging."""
         _register_middleware(app)
 
         # Check that middleware is added
