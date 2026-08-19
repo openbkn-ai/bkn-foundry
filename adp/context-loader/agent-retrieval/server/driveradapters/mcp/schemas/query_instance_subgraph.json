@@ -21,7 +21,7 @@
       },
       "relation_type_paths": {
         "type": "array",
-        "description": "关系路径模板。object_types 与 relation_types 的顺序必须严格对应：n 跳路径 => object_types 长度为 n+1，relation_types 长度为 n；relation_types 不可为空。节点上的过滤条件取值规则：like/not_like 是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 是整串全匹配（要匹配「包含」写 .*词.*）",
+        "description": "关系路径模板。object_types 与 relation_types 的顺序必须严格对应：n 跳路径 => object_types 长度为 n+1，relation_types 长度为 n；relation_types 不可为空。节点上的过滤条件取值规则：like/not_like 是字面子串（不要自己拼 %，未转义的 % 会被拒），regex 的锚定随资源存储而变，别依赖它（「包含」写 .*词.*，精确相等用 ==）",
         "minItems": 1,
         "items": {
           "type": "object",
@@ -59,7 +59,7 @@
                       },
                       "operation": {
                         "type": "string",
-                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤。like/not_like 的值是字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒），regex 是整串全匹配（要匹配「包含」写 .*词.*）",
+                        "description": "条件操作符。比较算子按属性 type 判断，不会出现在 condition_operations 里：字符串类（string/keyword/text）可用 == != in not_in > >= < <= like not_like regex，数值/日期时间类可用 == != in not_in > >= < <= range out_range 但不支持 like/regex，exist/not_exist 任意类型可用且不带 value；索引算子 match 以属性的 condition_operations 为准（含 match 才建了全文索引）。属性上没有 condition_operations 这个键只说明没建索引，不代表不能过滤。like/not_like 的值是字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒），regex 的锚定随资源存储而变，别依赖它（「包含」写 .*词.*，精确相等用 ==）",
                         "enum": [
                           "and",
                           "or",
@@ -96,7 +96,7 @@
                         "description": "值来源，仅支持 const"
                       },
                       "value": {
-                        "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range 用 [min, max]（两元素同类型，两端都闭）；out_range 同样用 [min, max]，排除这个闭区间；like/not_like 用字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒，\\% 匹配 % 字符本身）；regex 用正则字符串（整串全匹配，要匹配「包含」写 .*词.*）；exist/not_exist 不传 value",
+                        "description": "字段值；与 value_from=const 同时使用。单值算子用单值；in/not_in 用数组；range 用 [min, max]（两元素同类型，两端都闭）；out_range 同样用 [min, max]，排除这个闭区间；like/not_like 用字面子串（不是 SQL LIKE 模式，不要自己拼 %，未转义的 % 会被拒，\\% 匹配 % 字符本身）；regex 用正则字符串（锚定随资源存储而变，别依赖它：「包含」写 .*词.*，精确相等用 ==）；exist/not_exist 不传 value",
                         "oneOf": [
                           {
                             "type": "string"
