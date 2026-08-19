@@ -187,7 +187,7 @@ jobs:
           # 不用 --paginate 是给超大 PR 兜底——那种 PR 翻十几页也只会用到前 FILE_CAP 个，
           # 多出来的页是白花的 API 调用。上限本身仍然存在（单 agent 的上下文吃不下无限
           # 文件），差额照旧由 verdict 在结论里点明。
-          FILE_CAP = 150
+          FILE_CAP = 500
           PER_PAGE = 100
           paths = []
           page = 1
@@ -1163,7 +1163,7 @@ jobs:
                "reason_absent": "整个分片没跑起来或中途挂了",
                "reason_malformed": "写出的结论文件解析不了",
                "trunc": "文件清单被截断",
-               "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（评审的文件清单上限 150），**其余 %d 个未进入任何分片、本轮未经评审**。",
+               "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（评审的文件清单上限 500），**其余 %d 个未进入任何分片、本轮未经评审**。",
                "footer": "改完请推新提交，或回复 `/review` 要一轮复评。",
                "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评，且回帖人需为本仓 OWNER/MEMBER/COLLABORATOR。"}
 
