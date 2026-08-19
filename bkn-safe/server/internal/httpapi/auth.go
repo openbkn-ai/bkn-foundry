@@ -40,9 +40,9 @@ func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessSto
 	r.GET("/device/success", showDeviceSuccess)
 }
 
-// pageCSS is the shared light shell (centered card), following the BKN Studio
+// pageCSS is the shared light shell (centered panel), following the BKN Studio
 // console design language: #2563eb primary, light product backdrop, white
-// 20px-radius card, AntD-like 8px fields/buttons, and the OpenBKN logo.
+// 20px-radius panel, AntD-like 8px fields/buttons, and the OpenBKN logo.
 const pageCSS = `<style>
 :root{color-scheme:light}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -52,16 +52,16 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
 body:before{content:"";position:fixed;inset:0;z-index:-2;background-image:
   linear-gradient(90deg,rgba(248,250,252,.96) 0%,rgba(248,250,252,.82) 38%,rgba(248,250,252,.18) 100%),
   url("` + loginBackgroundPath + `");background-size:cover;background-position:center;background-repeat:no-repeat}
-.card{position:relative;width:min(440px,calc(100vw - 32px));box-sizing:border-box;background:rgba(255,255,255,.94);
-  border:1px solid rgba(22,40,73,.08);border-radius:22px;padding:42px 40px 44px;
+.card{position:relative;width:min(600px,calc(100vw - 32px));box-sizing:border-box;background:rgba(255,255,255,.94);
+  border:1px solid rgba(22,40,73,.08);border-radius:22px;padding:38px 74px 42px;
   box-shadow:0 22px 64px rgba(22,40,73,.14);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-.locale-switch{position:absolute;top:14px;right:18px;display:flex;align-items:center;gap:6px;
+.locale-switch{position:absolute;top:18px;right:28px;display:flex;align-items:center;gap:6px;
   color:#a0aabd;font-size:12px;line-height:1}
 .locale-switch a{border-radius:4px;color:#72819b;text-decoration:none;padding:4px 2px}
 .locale-switch a:hover{color:#2563eb}
 .locale-switch a.active{color:#2563eb;font-weight:600}
 .locale-switch a:focus-visible{outline:2px solid rgba(37,99,235,.35);outline-offset:2px}
-.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:24px}
+.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:20px}
 .brand-logo{display:block;width:272px;height:94px;object-fit:contain}
 .brand-mark{position:relative;width:40px;height:40px;border-radius:14px;
   background:linear-gradient(145deg,rgba(37,99,235,.16),rgba(37,99,235,.04)),#fff;
@@ -95,7 +95,7 @@ button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:9px;padding:
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
 form{margin:0}
-@media (max-width:640px){body:before{background-position:60% center}.card{padding:36px 24px}}
+@media (max-width:640px){body:before{background-position:60% center}.card{padding:36px 24px}.locale-switch{right:18px}}
 </style>`
 
 //go:embed assets/openbkn-logo.svg
