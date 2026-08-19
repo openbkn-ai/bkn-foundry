@@ -398,7 +398,7 @@ func showChangePassword(c *gin.Context) {
 func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 	applyAuthLocale(c, "")
 	challenge := c.PostForm("login_challenge")
-	account := c.PostForm("account")
+	account := resolveChangePasswordAccount(c, c.PostForm("account"))
 	oldPw := c.PostForm("old_password")
 	newPw := c.PostForm("new_password")
 	confirm := c.PostForm("confirm_password")
@@ -435,6 +435,7 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.S
 		return
 	}
 	recordLogin(c, accessStore, user, account, "success", "")
+	clearChangePasswordAccount(c)
 	c.Redirect(http.StatusFound, redirectTo)
 }
 

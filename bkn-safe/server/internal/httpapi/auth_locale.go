@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/url"
 	"strings"
@@ -16,8 +17,11 @@ import (
 )
 
 const (
-	authLocaleCookieName = "openbkn_locale"
-	authLocaleCookieTTL  = 365 * 24 * time.Hour
+	authLocaleCookieName            = "openbkn_locale"
+	authLocaleCookieTTL             = 365 * 24 * time.Hour
+	changePasswordAccountCookieName = "openbkn_change_password_account"
+	changePasswordAccountCookieTTL  = 10 * time.Minute
+	changePasswordAccountCookiePath = "/change-password"
 )
 
 // applyAuthLocale resolves the presentation language for an authentication
@@ -112,11 +116,56 @@ func loginAuthPageData(c *gin.Context, challenge string) authPageData {
 }
 
 func changePasswordAuthPageData(c *gin.Context, challenge, account string) authPageData {
+	account = resolveChangePasswordAccount(c, account)
+	if account != "" {
+		rememberChangePasswordAccount(c, account)
+	}
 	values := url.Values{"login_challenge": {challenge}}
 	data := localizedAuthPageDataFor(c, "/change-password", values)
 	data.Challenge = challenge
 	data.Account = account
 	return data
+}
+
+func resolveChangePasswordAccount(c *gin.Context, account string) string {
+	if account = strings.TrimSpace(account); account != "" {
+		return account
+	}
+	cookie, err := c.Request.Cookie(changePasswordAccountCookieName)
+	if err != nil {
+		return ""
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(cookie.Value)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(decoded))
+}
+
+func rememberChangePasswordAccount(c *gin.Context, account string) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     changePasswordAccountCookieName,
+		Value:    base64.RawURLEncoding.EncodeToString([]byte(account)),
+		Path:     changePasswordAccountCookiePath,
+		MaxAge:   int(changePasswordAccountCookieTTL.Seconds()),
+		Expires:  time.Now().Add(changePasswordAccountCookieTTL),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsHTTPS(c.Request),
+	})
+}
+
+func clearChangePasswordAccount(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     changePasswordAccountCookieName,
+		Value:    "",
+		Path:     changePasswordAccountCookiePath,
+		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsHTTPS(c.Request),
+	})
 }
 
 func consentAuthPageData(c *gin.Context, challenge string) authPageData {

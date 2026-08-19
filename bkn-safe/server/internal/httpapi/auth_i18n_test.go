@@ -262,6 +262,30 @@ func TestChangePasswordLocaleLinksDoNotExposeAccount(t *testing.T) {
 	if strings.Contains(body, `account=user`) || strings.Contains(body, `account%40`) {
 		t.Error("change-password locale links expose the account in the query string")
 	}
+
+	accountCookie := findCookie(response, changePasswordAccountCookieName)
+	if accountCookie == nil {
+		t.Fatalf("response did not set %s cookie", changePasswordAccountCookieName)
+	}
+	if !accountCookie.HttpOnly || accountCookie.Path != changePasswordAccountCookiePath || accountCookie.MaxAge <= 0 {
+		t.Fatalf("unexpected change-password account cookie attributes: %#v", accountCookie)
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/change-password?login_challenge=test&lang=en-US", nil)
+	request.AddCookie(accountCookie)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("language switch status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body = response.Body.String()
+	if !strings.Contains(body, `<input type="hidden" name="account" value="user@example.com">`) {
+		t.Error("language switch did not restore the account from the scoped cookie")
+	}
+	if strings.Contains(body, `account=user`) || strings.Contains(body, `account%40`) {
+		t.Error("language switch links expose the account in the query string")
+	}
 }
 
 func TestShowLoginUsesOIDCUILocalesAndAllowsExplicitOverride(t *testing.T) {
@@ -571,19 +595,25 @@ func assertLocalizedAuthHeaders(t *testing.T, response *httptest.ResponseRecorde
 
 func assertAuthLocaleCookie(t *testing.T, response *httptest.ResponseRecorder, language string) {
 	t.Helper()
-	for _, cookie := range response.Result().Cookies() {
-		if cookie.Name != authLocaleCookieName {
-			continue
-		}
-		if cookie.Value != language {
-			t.Fatalf("%s cookie = %q, want %q", authLocaleCookieName, cookie.Value, language)
-		}
-		if cookie.Path != "/" || cookie.SameSite != http.SameSiteLaxMode || cookie.HttpOnly {
-			t.Fatalf("unexpected locale cookie attributes: %#v", cookie)
-		}
-		return
+	cookie := findCookie(response, authLocaleCookieName)
+	if cookie == nil {
+		t.Fatalf("response did not set %s cookie", authLocaleCookieName)
 	}
-	t.Fatalf("response did not set %s cookie", authLocaleCookieName)
+	if cookie.Value != language {
+		t.Fatalf("%s cookie = %q, want %q", authLocaleCookieName, cookie.Value, language)
+	}
+	if cookie.Path != "/" || cookie.SameSite != http.SameSiteLaxMode || cookie.HttpOnly {
+		t.Fatalf("unexpected locale cookie attributes: %#v", cookie)
+	}
+}
+
+func findCookie(response *httptest.ResponseRecorder, name string) *http.Cookie {
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
 }
 
 func oppositeAuthLanguage(language string) string {
