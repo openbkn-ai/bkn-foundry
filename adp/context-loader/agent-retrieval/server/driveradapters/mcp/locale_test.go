@@ -123,6 +123,51 @@ func TestMCPLocaleBundleFallsBackWhenOverlayResourcesAreMalformed(t *testing.T) 
 	}
 }
 
+func TestServerInstructionsLeadWithManagedInteractionLifecycle(t *testing.T) {
+	tests := []struct {
+		locale      string
+		lifecycle   []string
+		exploration string
+	}{
+		{
+			locale: "zh-CN",
+			lifecycle: []string{
+				"处理每个新的用户问题时",
+				"conversation_id 在整个对话过程中保持不变",
+				"interaction_id 在当前用户问题开始后、回复完成前保持不变",
+				"回复用户前，调用 bkn_finish_interaction",
+				"下一个用户问题会开始新的 Interaction",
+			},
+			exploration: "探索顺序：",
+		},
+		{
+			locale: "en-US",
+			lifecycle: []string{
+				"For each new user question",
+				"conversation_id remains unchanged throughout the conversation",
+				"interaction_id remains unchanged from the start of the current user question until the reply is complete",
+				"Before replying to the user, call bkn_finish_interaction",
+				"The next user question starts a new Interaction",
+			},
+			exploration: "Suggested exploration order:",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			instructions := loadMCPLocaleBundle(test.locale).ServerInstructions()
+			for _, expected := range test.lifecycle {
+				if !strings.Contains(instructions, expected) {
+					t.Fatalf("instructions for %s omit %q:\n%s", test.locale, expected, instructions)
+				}
+			}
+			if lifecycleAt, explorationAt := strings.Index(instructions, test.lifecycle[0]), strings.Index(instructions, test.exploration); lifecycleAt < 0 || explorationAt < 0 || lifecycleAt >= explorationAt {
+				t.Fatalf("managed lifecycle must precede query guidance for %s:\n%s", test.locale, instructions)
+			}
+		})
+	}
+}
+
 func getNestedString(root map[string]any, path []string) (string, bool) {
 	var current any = root
 	for _, segment := range path {
