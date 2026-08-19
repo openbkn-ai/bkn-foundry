@@ -15,7 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// debugToolFixture 组装工具调试所需的最小依赖，并回传代理实际收到的请求。
+// debugToolFixture assembles the minimal dependencies required for tool debugging and returns the actual request received by the proxy.
 type debugToolFixture struct {
 	service  *ToolServiceImpl
 	captured **interfaces.HTTPRequest
@@ -75,7 +75,7 @@ func newDebugToolFixture(t *testing.T, toolStatus string) *debugToolFixture {
 	}
 }
 
-// debugToolRequestJSON 是 Studio 调试面板实际提交的请求体形态：header/query/path/body 四段并列。
+// debugToolRequestJSON is the request body form actually submitted by the Studio debugging panel: header/query/path/body four sections in parallel.
 const debugToolRequestJSON = `{
 	"timeout": 5,
 	"header": {"X-Api-Key": "secret-key"},
@@ -84,7 +84,7 @@ const debugToolRequestJSON = `{
 	"body": {"code": "print(1)", "header": "业务字段 header"}
 }`
 
-// TestDebugTool_ForwardsAllRequestParams 校验调试请求体的 header/query/path/body 原样抵达代理层（#216 验收标准 1/3/4/5）。
+// TestDebugTool_ForwardsAllRequestParams verifies that the debug request body's header/query/path/body arrives unchanged at the proxy layer (#216 Acceptance Criteria 1/3/4/5).
 func TestDebugTool_ForwardsAllRequestParams(t *testing.T) {
 	Convey("工具调试透传完整请求参数", t, func() {
 		req := &interfaces.ExecuteToolReq{UserID: "u1", BoxID: "b1", ToolID: "t1"}
@@ -98,7 +98,7 @@ func TestDebugTool_ForwardsAllRequestParams(t *testing.T) {
 			body, ok := req.Body.(map[string]any)
 			So(ok, ShouldBeTrue)
 			So(body["code"], ShouldEqual, "print(1)")
-			// body 里的同名业务字段不会被当作调试信封（#216 验收标准 12）
+			// Business fields with the same name in the body will not be treated as debugging envelopes (#216 Acceptance Criteria 12)
 			So(body["header"], ShouldEqual, "业务字段 header")
 		})
 
@@ -141,7 +141,7 @@ func TestDebugTool_ForwardsAllRequestParams(t *testing.T) {
 	})
 }
 
-// TestDebugTool_NoParamsToolSendsEmptyEnvelope 校验无入参工具调试时不会凭空造出 path/query/header（#216 验收标准 8 的后端侧）。
+// TestDebugTool_NoParamsToolSendsEmptyEnvelope verifies that path/query/header will not be created out of thin air when debugging the tool without input parameters (#216 backend side of acceptance criterion 8).
 func TestDebugTool_NoParamsToolSendsEmptyEnvelope(t *testing.T) {
 	Convey("无入参工具调试只发空信封", t, func() {
 		fixture := newDebugToolFixture(t, string(interfaces.ToolStatusTypeEnabled))

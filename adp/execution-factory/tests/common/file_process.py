@@ -10,33 +10,33 @@ from pathlib import Path
 class FileProcess():
     def write_json_to_file(self, data, filename, indent=4):
         """
-        将JSON数据写入文件
+        Write JSON data to file.
         
-        参数:
-            data: 要写入的JSON数据（可以是字典、列表等可序列化对象）
-            filename: 要保存的文件名
+        Parameters:
+            data: JSON data to be written (can be a dictionary, list, etc. serializable object)
+            filename: the name of the file to be saved.
         """
         try:
-             # 获取文件所在的目录路径
+             # Get the directory path where the file is located.
             dir_path = os.path.dirname(filename)
             
-            # 如果目录不存在，则创建目录（包括所有父目录）
+            # Create the directory (including any parent directories) if it does not exist.
             if dir_path and not os.path.exists(dir_path):
-                # 使用Path.mkdir()创建目录，parents=True表示创建所有父目录
-                # exist_ok=True表示如果目录已存在也不报错
+                # Use Path.mkdir() to create a directory. parents=True means creating all parent directories.
+                # exist_ok=True means no error will be reported if the directory already exists.
                 Path(dir_path).mkdir(parents=True, exist_ok=True)
                 print(f"已创建目录: {dir_path}")
-            # 使用with语句打开文件，确保操作完成后正确关闭文件
-            # indent参数用于格式化输出，使JSON内容更易读
+            # Use the with statement to open the file and ensure that the file is closed correctly after the operation is completed.
+            # The indent parameter is used to format the output and make the JSON content more readable.
             with open(filename, 'w', encoding='utf-8') as file:
                 json.dump(data, file, ensure_ascii=False, indent=4)
             print(f"JSON数据已成功写入文件: {filename}")
         except Exception as e:
             print(f"写入文件时发生错误: {e}")
 
-# 示例用法
+# Example usage.
 if __name__ == "__main__":
-    # 要写入的JSON数据（字典形式）
+    # JSON data to write (in dictionary form)
     sample_data = {
         "name": "张三",
         "age": 30,
@@ -48,5 +48,5 @@ if __name__ == "__main__":
         }
     }
     
-    # 调用函数将数据写入文件
+    # Call a function to write data to a file.
     FileProcess().write_json_to_file(sample_data, "output.json")

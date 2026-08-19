@@ -5,18 +5,18 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 const (
-	// 权限查询相关常量
-	MaxInQuerySize   = 1000 // IN查询最大参数数量，避免数据库限制
-	InQueryBatchSize = 200  // 分批IN查询的批次大小
+	// Permission query related constants.
+	MaxInQuerySize   = 1000 // IN queries the maximum number of parameters to avoid database limitations.
+	InQueryBatchSize = 200  // Batch size of batch IN query.
 )
 
-// CheckCreatePermission 检查新增权限
+// CheckCreatePermission Check new permissions.
 func (s *authServiceImpl) CheckCreatePermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, interfaces.ResourceIDAll, resourceType, interfaces.AuthOperationTypeCreate)
 	if err != nil {
@@ -28,10 +28,10 @@ func (s *authServiceImpl) CheckCreatePermission(ctx context.Context, accessor *i
 	return nil
 }
 
-// CheckAdminPermission 检查超管权限。
-// 判定复用 bkn-safe 的 safe_admin:console:manage 能力位——即 Enforcer.CanAdmin 的口径——
-// 因此执行工厂与 bkn-safe 对「超管」的认定始终一致，无需在本服务硬编码管理员账号。
-// 用于保护返回跨租户数据、不隶属于任何单一业务资源的运维观测接口。
+// CheckAdminPermission checks super-administrative permissions.
+// Determine the reuse of bkn-safe’s safe_admin:console:manage capability bit—that is, the semantics of Enforcer.CanAdmin—.
+// Therefore, the execution factory and bkn-safe always have the same determination of "over-management", and there is no need to hardcode the administrator account in this service.
+// Used to protect operation and maintenance observation interfaces that return cross-tenant data and are not affiliated with any single business resource.
 func (s *authServiceImpl) CheckAdminPermission(ctx context.Context, accessor *interfaces.AuthAccessor) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor,
 		interfaces.SafeAdminConsoleResourceID,
@@ -46,7 +46,7 @@ func (s *authServiceImpl) CheckAdminPermission(ctx context.Context, accessor *in
 	return nil
 }
 
-// CheckModifyPermission 检查编辑权限
+// CheckModifyPermission Check editing permissions.
 func (s *authServiceImpl) CheckModifyPermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypeModify)
 	if err != nil {
@@ -58,7 +58,7 @@ func (s *authServiceImpl) CheckModifyPermission(ctx context.Context, accessor *i
 	return nil
 }
 
-// CheckViewPermission 检查查看权限
+// CheckViewPermission Check view permission.
 func (s *authServiceImpl) CheckViewPermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypeView)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *authServiceImpl) CheckViewPermission(ctx context.Context, accessor *int
 	return nil
 }
 
-// CheckDeletePermission 检查删除权限
+// CheckDeletePermission Check delete permission.
 func (s *authServiceImpl) CheckDeletePermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypeDelete)
 	if err != nil {
@@ -82,7 +82,7 @@ func (s *authServiceImpl) CheckDeletePermission(ctx context.Context, accessor *i
 	return nil
 }
 
-// CheckPublishPermission 检查发布权限
+// CheckPublishPermission Check publishing permission.
 func (s *authServiceImpl) CheckPublishPermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypePublish)
 	if err != nil {
@@ -94,7 +94,7 @@ func (s *authServiceImpl) CheckPublishPermission(ctx context.Context, accessor *
 	return nil
 }
 
-// CheckUnpublishPermission 检查下架权限
+// CheckUnpublishPermission Check the removal permission.
 func (s *authServiceImpl) CheckUnpublishPermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypeUnpublish)
 	if err != nil {
@@ -106,7 +106,7 @@ func (s *authServiceImpl) CheckUnpublishPermission(ctx context.Context, accessor
 	return nil
 }
 
-// CheckAuthorizePermission 检查权限管理权限
+// CheckAuthorizePermission Check permission management permissions.
 func (s *authServiceImpl) CheckAuthorizePermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypeAuthorize)
 	if err != nil {
@@ -118,7 +118,7 @@ func (s *authServiceImpl) CheckAuthorizePermission(ctx context.Context, accessor
 	return nil
 }
 
-// CheckPublicAccessPermission 检查公共访问权限
+// CheckPublicAccessPermission Check public access permissions.
 func (s *authServiceImpl) CheckPublicAccessPermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypePublicAccess)
 	if err != nil {
@@ -130,7 +130,7 @@ func (s *authServiceImpl) CheckPublicAccessPermission(ctx context.Context, acces
 	return nil
 }
 
-// CheckExecutePermission 检查使用权限
+// CheckExecutePermission Check usage permissions.
 func (s *authServiceImpl) CheckExecutePermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string, resourceType interfaces.AuthResourceType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, interfaces.AuthOperationTypeExecute)
 	if err != nil {
@@ -142,7 +142,7 @@ func (s *authServiceImpl) CheckExecutePermission(ctx context.Context, accessor *
 	return nil
 }
 
-// MultiCheckOperationPermission 多操作权限检查
+// MultiCheckOperationPermission Multi-operation permission check.
 func (s *authServiceImpl) MultiCheckOperationPermission(ctx context.Context, accessor *interfaces.AuthAccessor, resourceID string,
 	resourceType interfaces.AuthResourceType, operations ...interfaces.AuthOperationType) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor, resourceID, resourceType, operations...)
@@ -155,7 +155,7 @@ func (s *authServiceImpl) MultiCheckOperationPermission(ctx context.Context, acc
 	return nil
 }
 
-// OperationCheckAll 检查操作权限
+// OperationCheckAll Check operation permissions.
 func (s *authServiceImpl) OperationCheckAll(
 	ctx context.Context,
 	accessor *interfaces.AuthAccessor,
@@ -180,7 +180,7 @@ func (s *authServiceImpl) OperationCheckAll(
 	return resp.Result, nil
 }
 
-// OperationCheckAny 检查操作权限
+// OperationCheckAny checks operation permissions.
 func (s *authServiceImpl) OperationCheckAny(
 	ctx context.Context,
 	accessor *interfaces.AuthAccessor,
@@ -200,7 +200,7 @@ func (s *authServiceImpl) OperationCheckAny(
 	return false, nil
 }
 
-// ResourceFilterIDs 资源过滤
+// ResourceFilterIDs resource filtering.
 func (s *authServiceImpl) ResourceFilterIDs(
 	ctx context.Context,
 	accessor *interfaces.AuthAccessor,
@@ -233,7 +233,7 @@ func (s *authServiceImpl) ResourceFilterIDs(
 	return resourceIDs, nil
 }
 
-// ResourceListIDs 获取资源列表
+// ResourceListIDs Get the resource list.
 func (s *authServiceImpl) ResourceListIDs(
 	ctx context.Context,
 	accessor *interfaces.AuthAccessor,
@@ -260,7 +260,7 @@ func (s *authServiceImpl) ResourceListIDs(
 	return resourceIDs, nil
 }
 
-// SelectListWithAuth 查询列表并进行权限检查（独立泛型函数） -- 全量过滤
+// SelectListWithAuth queries the list and performs permission check (independent generic function) -- full filtering.
 func SelectListWithAuth[T any, PT interfaces.PtrBizIdentifiable[T]](ctx context.Context,
 	page int,
 	pageSize int,
@@ -268,10 +268,10 @@ func SelectListWithAuth[T any, PT interfaces.PtrBizIdentifiable[T]](ctx context.
 	queryOption interfaces.QueryOption[T, PT],
 	resourceListFunc interfaces.ResourceListFunc,
 ) (resp *interfaces.QueryResponse[T], err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 1. 执行查询获取所有数据
+	// 1. Execute a query to get all data.
 	allData, err := queryOption()
 	if err != nil {
 		return nil, err
@@ -291,13 +291,13 @@ func SelectListWithAuth[T any, PT interfaces.PtrBizIdentifiable[T]](ctx context.
 		}, nil
 	}
 
-	// 2. 获取用户有权限的资源ID列表
+	// 2. Get the list of resource IDs that the user has permissions for.
 	authorizedIDs, err := resourceListFunc()
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. 权限过滤
+	// 3. Permission filtering.
 	var filteredData []PT
 	if len(authorizedIDs) > 0 {
 		authMap := make(map[string]bool, len(authorizedIDs))
@@ -316,7 +316,7 @@ func SelectListWithAuth[T any, PT interfaces.PtrBizIdentifiable[T]](ctx context.
 		}
 	}
 
-	// 4. 分页处理
+	// 4. Paging processing.
 	totalCount := len(filteredData)
 
 	var pageData []*T
@@ -338,7 +338,7 @@ func SelectListWithAuth[T any, PT interfaces.PtrBizIdentifiable[T]](ctx context.
 		}, nil
 	}
 
-	// 设置默认分页参数
+	// Set default paging parameters.
 	if page <= 0 {
 		page = 1
 	}
@@ -346,12 +346,12 @@ func SelectListWithAuth[T any, PT interfaces.PtrBizIdentifiable[T]](ctx context.
 		pageSize = 10
 	}
 
-	// 计算分页
+	// Calculate pagination.
 	totalPages := (totalCount + pageSize - 1) / pageSize
 	hasNext := page < totalPages
 	hasPrev := page > 1
 
-	// 计算数据切片范围
+	// Calculate data slice range.
 	startIndex := (page - 1) * pageSize
 	endIndex := startIndex + pageSize
 

@@ -8,21 +8,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
-// 示例：如何在现有项目中使用ORM Helper
+// Example: How to use ORM Helper in an existing project.
 
-// ExampleUsage 展示ORM Helper的基本用法
+// ExampleUsage shows the basic usage of ORM Helper.
 func ExampleUsage() {
-	// 1. 初始化ORM Helper
-	// 假设你已经有了数据库连接池 dbPool 和数据库名 dbName
-	var dbPool ormhelper.Executor // 你的数据库连接池，实现了Executor接口
+	// 1. Initialize ORM Helper.
+	// Assume that you already have a database connection pool dbPool and a database name dbName.
+	var dbPool ormhelper.Executor // Your database connection pool implements the Executor interface.
 	dbName := "your_database_name"
 
 	orm := ormhelper.New(dbPool, dbName)
 
-	// 2. 基本查询操作
+	// 2. Basic query operations.
 	ctx := context.Background()
 
-	// SELECT查询示例
+	// SELECT query example.
 	var configs []MCPConfigExample
 	err := orm.Select().
 		From("t_mcp_server_config").
@@ -34,7 +34,7 @@ func ExampleUsage() {
 		return
 	}
 
-	// 单个记录查询
+	// Single record query.
 	var config MCPConfigExample
 	err = orm.Select().
 		From("t_mcp_server_config").
@@ -44,7 +44,7 @@ func ExampleUsage() {
 		return
 	}
 
-	// 统计数量
+	// Statistical quantity.
 	count, err := orm.Select().
 		From("t_mcp_server_config").
 		WhereEq("f_status", "active").
@@ -52,10 +52,10 @@ func ExampleUsage() {
 	if err != nil {
 		return
 	}
-	// 使用count变量的示例（在实际项目中可以用于返回给前端或日志）
-	_ = count // 这里可以使用count变量，比如：fmt.Printf("找到 %d 条记录\n", count)
+	// Example of using count variable (can be used to return to the front end or log in actual projects)
+	_ = count // You can use the count variable here, for example: fmt.Printf("Found %d records\n", count)
 
-	// 3. 插入操作
+	// 3. Insert operation.
 	data := map[string]interface{}{
 		"f_id":          "new-config-id",
 		"f_name":        "新配置",
@@ -73,11 +73,11 @@ func ExampleUsage() {
 		return
 	}
 
-	// 获取插入的ID（如果是自增主键）
+	// Get the inserted ID (if it is an auto-incrementing primary key)
 	lastID, _ := result.LastInsertId()
 	_ = lastID
 
-	// 4. 批量插入
+	// 4. Batch insert.
 	columns := []string{"f_id", "f_name", "f_status", "f_create_time", "f_update_time"}
 	now := time.Now().UnixNano()
 	values := [][]interface{}{
@@ -94,7 +94,7 @@ func ExampleUsage() {
 		return
 	}
 
-	// 5. 更新操作
+	// 5. Update operation.
 	_, err = orm.Update("t_mcp_server_config").
 		Set("f_status", "inactive").
 		Set("f_update_time", time.Now().UnixNano()).
@@ -104,7 +104,7 @@ func ExampleUsage() {
 		return
 	}
 
-	// 6. 删除操作
+	// 6. Delete operation.
 	_, err = orm.Delete().
 		From("t_mcp_server_config").
 		WhereEq("f_id", "some-id").
@@ -114,7 +114,7 @@ func ExampleUsage() {
 	}
 }
 
-// ExampleTransactionUsage 展示事务使用方法
+// ExampleTransactionUsage shows how to use transactions.
 func ExampleTransactionUsage() {
 	var dbPool ormhelper.Executor
 	dbName := "your_database_name"
@@ -122,11 +122,11 @@ func ExampleTransactionUsage() {
 
 	ctx := context.Background()
 
-	// 方法1：使用现有事务（兼容现有代码）
-	var tx *sql.Tx // 你的事务对象
+	// Method 1: Use existing transactions (compatible with existing code)
+	var tx *sql.Tx // your transaction object.
 	txORM := orm.WithTx(tx)
 
-	// 在事务中执行操作
+	// Perform operations within a transaction.
 	_, err := txORM.Insert().
 		Into("t_mcp_server_config").
 		Values(map[string]interface{}{
@@ -135,22 +135,22 @@ func ExampleTransactionUsage() {
 		}).
 		Execute(ctx)
 	if err != nil {
-		// 处理错误，可能需要回滚事务
+		// Handle errors, which may require rolling back the transaction.
 		return
 	}
 
-	// 继续在同一事务中执行其他操作
+	// Continue to perform other operations in the same transaction.
 	_, err = txORM.Update("t_mcp_server_config").
 		Set("f_status", "active").
 		WhereEq("f_id", "tx-config-1").
 		Execute(ctx)
 	if err != nil {
-		// 处理错误，可能需要回滚事务
+		// Handle errors, which may require rolling back the transaction.
 		return
 	}
 }
 
-// ExampleComplexQuery 展示复杂查询的构建
+// ExampleComplexQuery demonstrates the construction of complex queries.
 func ExampleComplexQuery() {
 	var dbPool ormhelper.Executor
 	dbName := "your_database_name"
@@ -158,7 +158,7 @@ func ExampleComplexQuery() {
 
 	ctx := context.Background()
 
-	// 复杂WHERE条件
+	// Complex WHERE conditions.
 	var configs []MCPConfigExample
 	err := orm.Select().
 		From("t_mcp_server_config").
@@ -179,7 +179,7 @@ func ExampleComplexQuery() {
 		return
 	}
 
-	// JOIN查询示例
+	// JOIN query example.
 	query, args := orm.Select("c.f_id", "c.f_name", "h.f_version").
 		From("t_mcp_server_config c").
 		LeftJoin("t_mcp_server_release_history h", "c.f_id = h.f_mcp_id").
@@ -187,7 +187,7 @@ func ExampleComplexQuery() {
 		OrderByDesc("h.f_create_time").
 		Build()
 
-	// 执行原生SQL查询
+	// Execute native SQL queries.
 	rows, err := orm.GetExecutor().QueryContext(ctx, query, args...)
 	if err != nil {
 		return
@@ -197,10 +197,10 @@ func ExampleComplexQuery() {
 		return
 	}
 	_ = rows.Close()
-	// 处理结果...
+	// Processing results...
 }
 
-// MCPConfigExample 示例配置结构体
+// MCPConfigExample sample configuration structure.
 type MCPConfigExample struct {
 	ID          string `json:"f_id" db:"f_id"`
 	Name        string `json:"f_name" db:"f_name"`
@@ -211,17 +211,17 @@ type MCPConfigExample struct {
 	UpdateTime  int64  `json:"f_update_time" db:"f_update_time"`
 }
 
-// ConfigDAO 示例DAO实现，展示如何在实际项目中组织代码
+// ConfigDAO sample DAO implementation, showing how to organize code in actual projects.
 type ConfigDAO struct {
 	orm *ormhelper.DB
 }
 
-// NewConfigDAO 创建DAO实例
+// NewConfigDAO creates DAO instance.
 func NewConfigDAO(orm *ormhelper.DB) *ConfigDAO {
 	return &ConfigDAO{orm: orm}
 }
 
-// GetActiveConfigs 获取活跃配置列表
+// GetActiveConfigs Gets the active configuration list.
 func (dao *ConfigDAO) GetActiveConfigs(ctx context.Context) ([]*MCPConfigExample, error) {
 	var configs []*MCPConfigExample
 	err := dao.orm.Select().
@@ -232,7 +232,7 @@ func (dao *ConfigDAO) GetActiveConfigs(ctx context.Context) ([]*MCPConfigExample
 	return configs, err
 }
 
-// GetConfigByID 根据ID获取配置
+// GetConfigByID Gets configuration based on ID.
 func (dao *ConfigDAO) GetConfigByID(ctx context.Context, id string) (*MCPConfigExample, error) {
 	config := &MCPConfigExample{}
 	err := dao.orm.Select().
@@ -245,7 +245,7 @@ func (dao *ConfigDAO) GetConfigByID(ctx context.Context, id string) (*MCPConfigE
 	return config, nil
 }
 
-// CreateConfig 创建新配置
+// CreateConfig creates a new configuration.
 func (dao *ConfigDAO) CreateConfig(ctx context.Context, config *MCPConfigExample) error {
 	now := time.Now().UnixNano()
 	data := map[string]interface{}{
@@ -265,7 +265,7 @@ func (dao *ConfigDAO) CreateConfig(ctx context.Context, config *MCPConfigExample
 	return err
 }
 
-// UpdateConfigStatus 更新配置状态
+// UpdateConfigStatus updates configuration status.
 func (dao *ConfigDAO) UpdateConfigStatus(ctx context.Context, id, status string) error {
 	_, err := dao.orm.Update("t_mcp_server_config").
 		Set("f_status", status).
@@ -275,7 +275,7 @@ func (dao *ConfigDAO) UpdateConfigStatus(ctx context.Context, id, status string)
 	return err
 }
 
-// DeleteConfig 删除配置
+// DeleteConfig delete configuration.
 func (dao *ConfigDAO) DeleteConfig(ctx context.Context, id string) error {
 	_, err := dao.orm.Delete().
 		From("t_mcp_server_config").
@@ -284,9 +284,9 @@ func (dao *ConfigDAO) DeleteConfig(ctx context.Context, id string) error {
 	return err
 }
 
-// GetConfigsPage 分页查询配置
+// GetConfigsPage paging query configuration.
 func (dao *ConfigDAO) GetConfigsPage(ctx context.Context, page, pageSize int, status string) ([]*MCPConfigExample, int64, error) {
-	// 查询总数
+	// Total number of queries.
 	countBuilder := dao.orm.Select().From("t_mcp_server_config")
 	if status != "" {
 		countBuilder.WhereEq("f_status", status)
@@ -296,7 +296,7 @@ func (dao *ConfigDAO) GetConfigsPage(ctx context.Context, page, pageSize int, st
 		return nil, 0, err
 	}
 
-	// 分页查询
+	// Page query.
 	var configs []*MCPConfigExample
 	queryBuilder := dao.orm.Select().
 		From("t_mcp_server_config").
@@ -312,7 +312,7 @@ func (dao *ConfigDAO) GetConfigsPage(ctx context.Context, page, pageSize int, st
 	return configs, total, err
 }
 
-// BatchCreateConfigs 批量创建配置
+// BatchCreateConfigs batch creation configuration.
 func (dao *ConfigDAO) BatchCreateConfigs(ctx context.Context, configs []*MCPConfigExample) error {
 	if len(configs) == 0 {
 		return nil

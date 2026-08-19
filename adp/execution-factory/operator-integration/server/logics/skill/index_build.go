@@ -48,7 +48,7 @@ var (
 	skillIndexBuildInst interfaces.SkillIndexBuildService
 )
 
-// NewSkillIndexBuildService 创建技能索引构建服务
+// NewSkillIndexBuildService creates a skill index build service.
 func NewSkillIndexBuildService() interfaces.SkillIndexBuildService {
 	skillIndexBuildOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -77,13 +77,13 @@ func NewSkillIndexBuildService() interfaces.SkillIndexBuildService {
 	return skillIndexBuildInst
 }
 
-// requireSkillTypePermission 校验调用方在 Skill 类型上持有指定操作权限。
+// requireSkillTypePermission verifies that the caller holds the specified operation permission on the Skill type.
 //
-// 索引构建任务面向全量 Skill，不隶属于任何单个 Skill，没有资源 ID 可判，因此按类型级
-// （ResourceIDAll）判定，口径与 logics/auth/decision.go 中 CheckCreatePermission 一致。
+// The index construction task is for all Skills and does not belong to any single Skill. There is no resource ID to determine, so it is based on type level.
+// (ResourceIDAll) determination, the semantics is consistent with CheckCreatePermission in logics/auth/decision.go.
 //
-// 仅在公开面生效。内部面（internal-v1）由服务间调用、周期调度器与重试 worker 触发，
-// 沿用服务内既有惯用法（见 logics/skill/reader.go:70）跳过判定，避免打断现有调用方。
+// Valid only on the public side. The internal plane (internal-v1) is triggered by inter-service calls, periodic schedulers and retry workers.
+// Follow the existing idiom within the service (see logics/skill/reader.go:70) to skip the test and avoid interrupting existing callers.
 func (s *skillIndexBuildService) requireSkillTypePermission(ctx context.Context, userID string,
 	operation interfaces.AuthOperationType) error {
 	if !infracommon.IsPublicAPIFromCtx(ctx) {

@@ -1,6 +1,6 @@
-// Package drivenadapters 定义驱动适配器
+// Package drivenadapters defines driver adapters.
 // @file user_management.go
-// @description: 实现用户管理服务
+// @description: Implement user management services.
 package drivenadapters
 
 import (
@@ -32,7 +32,7 @@ type userManagementClient struct {
 	httpClient interfaces.HTTPClient
 }
 
-// NewUserManagementClient 创建用户管理服务对象
+// NewUserManagementClient creates a user management service object.
 func NewUserManagementClient() interfaces.UserManagement {
 	if !config.GetAuthEnabled() {
 		return &noopUserManagementClient{}
@@ -102,7 +102,7 @@ func (n *noopUserManagementClient) GetUsersName(ctx context.Context, userIDs []s
 	return userMap, nil
 }
 
-// GetAppInfo 获取应用信息
+// GetAppInfo Get application information.
 func (u *userManagementClient) GetAppInfo(ctx context.Context, appID string) (appInfo *interfaces.AppInfo, err error) {
 	src := fmt.Sprintf("%s/v1/apps/%s", u.baseURL, appID)
 	header := common.GetHeaderFromCtx(ctx)
@@ -120,7 +120,7 @@ func (u *userManagementClient) GetAppInfo(ctx context.Context, appID string) (ap
 	return
 }
 
-// GetUserInfo 获取用户信息
+// GetUserInfo Get user information.
 func (u *userManagementClient) GetUserInfo(ctx context.Context, userID string, fields ...string) (info *interfaces.UserInfo, err error) {
 	if len(fields) == 0 {
 		fields = []string{"name", "account", "roles"}
@@ -138,7 +138,7 @@ func (u *userManagementClient) GetUserInfo(ctx context.Context, userID string, f
 	return
 }
 
-// GetUsersName 批量获取用户信息
+// GetUsersName Get user information in batches.
 func (u *userManagementClient) GetUsersInfo(ctx context.Context, userIDs, fields []string) (infos []*interfaces.UserInfo, err error) {
 	src := fmt.Sprintf("%s/v1/users/%s/%s", u.baseURL, strings.Join(userIDs, ","), strings.Join(fields, ","))
 	header := common.GetHeaderFromCtx(ctx)
@@ -146,7 +146,7 @@ func (u *userManagementClient) GetUsersInfo(ctx context.Context, userIDs, fields
 	infos = []*interfaces.UserInfo{}
 	if err != nil {
 		if respCode == http.StatusNotFound {
-			// 解析404错误响应中的用户ID列表
+			// Parse a list of user IDs in a 404 error response.
 			httpErr, ok := err.(*rest.ExHTTPError)
 			if ok {
 				notFoundUserIDs, parseErr := u.parseNotFoundUserIDs(ctx, httpErr.Body)
@@ -171,7 +171,7 @@ func (u *userManagementClient) GetUsersInfo(ctx context.Context, userIDs, fields
 	return
 }
 
-// GetUsersName 批量获取用户名称
+// GetUsersName Get user names in batches.
 func (u *userManagementClient) GetUsersName(ctx context.Context, userIDs []string) (userMap map[string]string, err error) {
 	userIDs = utils.UniqueStrings(userIDs)
 	userMap = make(map[string]string)
@@ -188,39 +188,39 @@ func (u *userManagementClient) GetUsersName(ctx context.Context, userIDs []strin
 		return
 	}
 
-	// 循环处理404错误，直到所有用户都被处理
+	// Loop around handling 404 errors until all users have been handled.
 	for len(checkUserIDs) > 0 {
 		info, err := u.GetUsersInfo(ctx, checkUserIDs, []string{interfaces.DisplayName})
 		if err != nil {
-			// 检查是否是HTTPError类型的404错误
+			// Check if it is a 404 error of type HTTPError.
 			if httpErr, ok := err.(*rest.ExHTTPError); ok && httpErr.HTTPCode == http.StatusNotFound {
-				// 解析404错误响应中的用户ID
+				// Parsing user ID in 404 error response.
 				notFoundUserIDs := []string{}
 				for _, userInfo := range info {
 					notFoundUserIDs = append(notFoundUserIDs, userInfo.UserID)
 					userMap[userInfo.UserID] = userInfo.DisplayName
 				}
 
-				// 从checkUserIDs中移除已处理的用户ID
+				// Remove processed user IDs from checkUserIDs.
 				checkUserIDs = u.removeUserIDs(checkUserIDs, notFoundUserIDs)
 				continue
 			}
 
-			// 其他错误直接返回
+			// Other errors are returned directly.
 			return nil, err
 		}
 
-		// 处理成功返回的用户信息
+		// Process successfully returned user information.
 		for _, user := range info {
 			userMap[user.UserID] = user.DisplayName
 		}
-		// 所有用户都已成功处理
+		// All users have been processed successfully.
 		break
 	}
 	return
 }
 
-// parseNotFoundUserIDs 解析404错误响应中的用户ID列表
+// parseNotFoundUserIDs parses a list of user IDs in a 404 error response.
 func (u *userManagementClient) parseNotFoundUserIDs(ctx context.Context, resultByt []byte) (userIDs []string, err error) {
 	var errResp interfaces.ErrorResponse
 	err = jsoniter.Unmarshal(resultByt, &errResp)
@@ -233,7 +233,7 @@ func (u *userManagementClient) parseNotFoundUserIDs(ctx context.Context, resultB
 	return
 }
 
-// removeUserIDs 从源数组中移除指定的用户ID
+// removeUserIDs removes the specified user IDs from the source array.
 func (u *userManagementClient) removeUserIDs(source, toRemove []string) []string {
 	toRemoveSet := make(map[string]bool)
 	for _, id := range toRemove {

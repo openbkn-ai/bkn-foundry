@@ -3,16 +3,16 @@ package operator
 import (
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 )
 
-// DebugOperator 调试算子
-// @Summary 调试算子
+// DebugOperator debug operator.
+// @Summary Debugging operator.
 func (op *operatorHandle) DebugOperator(c *gin.Context) {
 	req := &interfaces.DebugOperatorReq{}
 	err := c.ShouldBindHeader(req)
@@ -45,7 +45,7 @@ func (op *operatorHandle) DebugOperator(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// 执行算子
+// Execution operator.
 func (op *operatorHandle) ExecuteOperator(c *gin.Context) {
 	req := &interfaces.ExecuteOperatorReq{}
 	err := c.ShouldBindHeader(req)

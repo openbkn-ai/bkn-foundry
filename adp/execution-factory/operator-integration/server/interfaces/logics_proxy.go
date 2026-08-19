@@ -5,53 +5,53 @@ import (
 	"io"
 )
 
-// ProxyHandler 代理处理器
+// ProxyHandler proxy handler.
 //
 //go:generate mockgen -source=logics_proxy.go -destination=../mocks/logics_proxy.go -package=mocks
 type ProxyHandler interface {
 	HandlerRequest(ctx context.Context, req *HTTPRequest) (resp *HTTPResponse, err error)
 }
 
-// IOutboxMessageEvent 消息事件管理
+// IOutboxMessageEvent message event management.
 type IOutboxMessageEvent interface {
 	Publish(ctx context.Context, req *OutboxMessageReq) (err error)
 }
 
-// Forwarder 转发器接口
+// Forwarder forwarder interface.
 type Forwarder interface {
 	Forward(ctx context.Context, req *HTTPRequest) (*HTTPResponse, error)
 	ForwardStream(ctx context.Context, req *HTTPRequest) (*HTTPResponse, error)
 }
 
-// StreamProcessor 流式处理器接口
+// StreamProcessor stream processor interface.
 type StreamProcessor interface {
 	ProcessSSE(ctx context.Context, reader io.Reader, writer io.Writer) error
 	ProcessHTTPStream(ctx context.Context, reader io.Reader, writer io.Writer) error
 }
 
-// FunctionProxyExecuteCodeReq 函数代理执行代码请求
+// FunctionProxyExecuteCodeReq function proxy execution code request.
 type FunctionProxyExecuteCodeReq struct {
-	Code            string            `json:"code" validate:"required"`                                      // 执行代码
-	Event           map[string]any    `json:"event" validate:"required"`                                     // 事件
-	Language        string            `json:"language" default:"python"`                                     // 执行语言
-	Timeout         int               `json:"timeout,omitempty"`                                             // 超时时间，单位秒
-	Source          string            `json:"source,omitempty"`                                              // 执行来源
-	TaskID          string            `json:"task_id,omitempty"`                                             // 任务ID
-	CapabilityID    string            `json:"capability_id,omitempty"`                                       // 能力ID
-	CapabilityName  string            `json:"capability_name,omitempty"`                                     // 能力名称
-	UserID          string            `json:"user_id,omitempty"`                                             // 用户ID
-	UserName        string            `json:"user_name,omitempty"`                                           // 用户名
-	Dependencies    []*DependencyInfo `json:"dependencies,omitempty"`                                        // 依赖资源
-	DependenciesURL string            `json:"dependencies_url,omitempty" default:"https://pypi.org/simple/"` // 安装源URL
-	// 下面三项供沙箱内的 sandbox_sdk.bkn 调用 BKN 用，转成本次执行的进程级环境变量。
+	Code            string            `json:"code" validate:"required"`                                      // Execute code.
+	Event           map[string]any    `json:"event" validate:"required"`                                     // event.
+	Language        string            `json:"language" default:"python"`                                     // execution language.
+	Timeout         int               `json:"timeout,omitempty"`                                             // Timeout time in seconds.
+	Source          string            `json:"source,omitempty"`                                              // execution source.
+	TaskID          string            `json:"task_id,omitempty"`                                             // Task ID.
+	CapabilityID    string            `json:"capability_id,omitempty"`                                       // Capability ID.
+	CapabilityName  string            `json:"capability_name,omitempty"`                                     // Ability name.
+	UserID          string            `json:"user_id,omitempty"`                                             // User ID.
+	UserName        string            `json:"user_name,omitempty"`                                           // Username.
+	Dependencies    []*DependencyInfo `json:"dependencies,omitempty"`                                        // Depend on resources.
+	DependenciesURL string            `json:"dependencies_url,omitempty" default:"https://pypi.org/simple/"` // Installation source URL.
+	// The following three items are used by sandbox_sdk.bkn in the sandbox to call BKN and converted into process-level environment variables for this execution.
 	//
-	// 走环境变量而不是 event：event 是用户函数的业务入参，凭据混在里面既污染了它的
-	// 参数命名空间，也让每个想调 BKN 的人都得知道该往 event 里塞什么。走 env 之后
-	// 用户代码里看不到它们，与 task_id / user_id 那几个追踪字段是同一条既有通道。
+	// Use environment variables instead of events: event is the business input parameter of the user function, and mixing credentials in it will pollute its.
+	// The parameter namespace also allows everyone who wants to call BKN to know what to put in the event. After going env.
+	// They cannot be seen in the user code. They are the same existing channel as the task_id / user_id tracking fields.
 	//
-	// 生命周期与 event 相同：executor 为每次执行现组一份环境再 --setenv 进 bwrap，
-	// 随进程消亡。注意与建会话时的 env_vars 区分，那个是容器级的，会跨调用方存活。
-	BKNToken          string `json:"bkn_token,omitempty"`           // 调用方令牌，沙箱据此以调用方身份访问 BKN
-	BKNConversationID string `json:"bkn_conversation_id,omitempty"` // 会话 ID，取自 bkn_start_interaction
-	BKNInteractionID  string `json:"bkn_interaction_id,omitempty"`  // 交互 ID，同上
+	// The lifecycle is the same as event: executor creates an environment for each execution and then --setenv enters bwrap.
+	// Die with the process. Note the difference from env_vars when creating a session, which is container-level and will survive across callers.
+	BKNToken          string `json:"bkn_token,omitempty"`           // The caller token by which the sandbox accesses the BKN as the caller.
+	BKNConversationID string `json:"bkn_conversation_id,omitempty"` // Session ID, taken from bkn_start_interaction.
+	BKNInteractionID  string `json:"bkn_interaction_id,omitempty"`  // Interaction ID, same as above.
 }

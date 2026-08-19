@@ -12,14 +12,14 @@ const (
 	legacyTimeoutParamIn   = "query"
 )
 
-// stripLegacyTimeoutParameter 去掉函数元数据里遗留的 timeout 查询参数。
+// stripLegacyTimeoutParameter removes the remaining timeout query parameters in function metadata.
 //
-// 执行超时曾被当成契约参数写进 api_spec，导致它和业务入参并列出现在
-// 工具 schema 里：Agent 会把它当成可传的参数去猜，按 schema 渲染的界面
-// 也会要求使用者为它选固定值或动态输入。生成侧已经不再写入，但升级前
-// 建的函数工具库里仍有这个字段，这里在读取时剥掉，免去一次数据迁移。
+// The execution timeout was once written into the api_spec as a contract parameter, causing it to be listed alongside the business parameters.
+// In the tool schema: Agent will guess it as a passable parameter, and the interface will be rendered according to the schema.
+// The user will also be asked to select a fixed value or dynamic input for it. The build side is no longer writing, but before the upgrade.
+// There is still this field in the built function tool record, but it is stripped off when reading to avoid a data migration.
 //
-// 执行侧仍从请求的 query 读取 timeout，存量调用方不受影响。
+// The execution side still reads the timeout from the requested query, and the existing caller is not affected.
 func stripLegacyTimeoutParameter(spec *interfaces.APISpec) {
 	if spec == nil || len(spec.Parameters) == 0 {
 		return
@@ -34,7 +34,7 @@ func stripLegacyTimeoutParameter(spec *interfaces.APISpec) {
 	spec.Parameters = kept
 }
 
-// MetadataDBToStruct 将数据库模型转换为元数据接口
+// MetadataDBToStruct converts the database model into a metadata interface.
 func MetadataDBToStruct(metadataDB interfaces.IMetadataDB) *interfaces.MetadataInfo {
 	switch v := metadataDB.(type) {
 	case *model.FunctionMetadataDB:
@@ -57,7 +57,7 @@ func MetadataDBToStruct(metadataDB interfaces.IMetadataDB) *interfaces.MetadataI
 		if v.GetDependencies() != "" {
 			dependencies = utils.JSONToObject[[]interfaces.DependencyInfo](v.GetDependencies())
 		}
-		// 参数定义落库时被展开进 API 规格,这里反解回来,调用方无需自行解析 OpenAPI
+		// The parameter definition is expanded into the API specification when it is stored, and is decoded back here. The caller does not need to parse OpenAPI by itself.
 		inputs, outputs := parsers.FunctionParamsFromAPISpec(v.GetAPISpec())
 		metadata.FunctionContent = &interfaces.FunctionContent{
 			ScriptType:      interfaces.ScriptType(v.GetScriptType()),
@@ -75,7 +75,7 @@ func MetadataDBToStruct(metadataDB interfaces.IMetadataDB) *interfaces.MetadataI
 	}
 }
 
-// DefaultMetadataInfo 获取默认元数据信息
+// DefaultMetadataInfo gets default metadata information.
 func DefaultMetadataInfo(metadataType interfaces.MetadataType) *interfaces.MetadataInfo {
 	metadataInfo := &interfaces.MetadataInfo{}
 	switch metadataType {
@@ -92,7 +92,7 @@ func DefaultMetadataInfo(metadataType interfaces.MetadataType) *interfaces.Metad
 	}
 }
 
-// apimetadataDBToAPIMetadata 将数据库模型转换为 API 元数据接口
+// apimetadataDBToAPIMetadata converts the database model into an API metadata interface.
 func apimetadataDBToAPIMetadata(metadataDB *model.APIMetadataDB) *interfaces.MetadataInfo {
 	apiSpec := &interfaces.APISpec{}
 	_ = utils.StringToObject(metadataDB.APISpec, apiSpec)

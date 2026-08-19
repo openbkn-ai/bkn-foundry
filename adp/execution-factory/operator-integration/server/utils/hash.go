@@ -20,7 +20,7 @@ func MD5(str string) string {
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-// ObjectMD5Hash 计算对象的MD5哈希值
+// ObjectMD5Hash calculates the MD5 hash value of an object.
 func ObjectMD5Hash(data interface{}) (string, error) {
 	b, err := jsoniter.Marshal(data)
 	if err != nil {
@@ -34,7 +34,7 @@ func ObjectMD5Hash(data interface{}) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
-// ObjectUUIDHash 计算对象的UUID哈希值
+// ObjectUUIDHash calculates the UUID hash value of an object.
 func ObjectUUIDHash(data interface{}) (string, error) {
 	b, err := jsoniter.Marshal(data)
 	if err != nil {

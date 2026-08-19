@@ -1,6 +1,6 @@
 // Package dbaccess
 // @file op_register.go
-// @description: 实现算子注册数据库操作
+// @description: Implement operator registration database operations.
 package dbaccess
 
 import (
@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -33,11 +33,11 @@ var (
 )
 
 const (
-	// tbOperatorRegistry 表名
+	// tbOperatorRegistry table name.
 	tbOperatorRegistry = "t_op_registry"
 )
 
-// NewOperatorManagerDB 创建算子管理数据库
+// NewOperatorManagerDB creates an operator management database.
 func NewOperatorManagerDB() model.IOperatorRegisterDB {
 	once.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -54,7 +54,7 @@ func NewOperatorManagerDB() model.IOperatorRegisterDB {
 	return om
 }
 
-// InsertOperator 插入算子
+// InsertOperator insert operator.
 func (o *operatorManagerDB) InsertOperator(ctx context.Context, tx *sql.Tx, operator *model.OperatorRegisterDB) (opID string, err error) {
 	if operator.OperatorID == "" {
 		operator.OperatorID = uuid.NewString()
@@ -64,7 +64,7 @@ func (o *operatorManagerDB) InsertOperator(ctx context.Context, tx *sql.Tx, oper
 	if tx != nil {
 		orm = o.orm.WithTx(tx)
 	}
-	// 使用ormhelper 插入数据
+	// Insert data using ormhelper.
 	row, err := orm.Insert().Into(tbOperatorRegistry).Values(map[string]interface{}{
 		"f_op_id":            operator.OperatorID,
 		"f_name":             operator.Name,
@@ -99,20 +99,20 @@ func (o *operatorManagerDB) InsertOperator(ctx context.Context, tx *sql.Tx, oper
 	return
 }
 
-// SelectByNameAndStatus 根据算子名称获取算子
+// SelectByNameAndStatus Gets an operator based on its name.
 func (o *operatorManagerDB) SelectByNameAndStatus(ctx context.Context, tx *sql.Tx, name, status string) (has bool, operator *model.OperatorRegisterDB, err error) {
 	orm := o.orm
 	if tx != nil {
 		orm = o.orm.WithTx(tx)
 	}
 	operator = &model.OperatorRegisterDB{}
-	// 使用ormhelper 查询数据
+	// Use ormhelper to query data.
 	err = orm.Select().From(tbOperatorRegistry).WhereEq("f_name", name).WhereEq("f_status", status).First(ctx, operator)
 	has, err = checkHasQueryErr(err)
 	return
 }
 
-// SelectByOperatorID 根据算子ID获取状态
+// SelectByOperatorID Gets status based on operator ID.
 func (o *operatorManagerDB) SelectByOperatorID(ctx context.Context, tx *sql.Tx, operatorID string) (has bool, operator *model.OperatorRegisterDB, err error) {
 	orm := o.orm
 	if tx != nil {
@@ -124,7 +124,7 @@ func (o *operatorManagerDB) SelectByOperatorID(ctx context.Context, tx *sql.Tx, 
 	return
 }
 
-// SelectByOperatorIDAndVersion 根据算子ID和版本获取算子
+// SelectByOperatorIDAndVersion Gets an operator based on operator ID and version.
 func (o *operatorManagerDB) SelectByOperatorIDAndVersion(ctx context.Context, operatorID, version string) (has bool, operator *model.OperatorRegisterDB, err error) {
 	orm := o.orm
 	operator = &model.OperatorRegisterDB{}
@@ -133,7 +133,7 @@ func (o *operatorManagerDB) SelectByOperatorIDAndVersion(ctx context.Context, op
 	return
 }
 
-// CountByWhereClause 根据条件查询算子数量
+// CountByWhereClause queries the number of operators based on conditions.
 func (o *operatorManagerDB) CountByWhereClause(ctx context.Context, conditions map[string]interface{}) (count int64, err error) {
 	orm := o.orm
 	query := orm.Select().From(tbOperatorRegistry)
@@ -142,7 +142,7 @@ func (o *operatorManagerDB) CountByWhereClause(ctx context.Context, conditions m
 	return count, err
 }
 
-// SelectListPage 分页查询算子列表
+// SelectListPage paging query operator list.
 func (o *operatorManagerDB) SelectListPage(ctx context.Context, conditions map[string]interface{},
 	sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (operatorList []*model.OperatorRegisterDB, err error) {
 	orm := o.orm
@@ -150,7 +150,7 @@ func (o *operatorManagerDB) SelectListPage(ctx context.Context, conditions map[s
 	query = o.buildQueryConditions(query, conditions)
 	query.Cursor(cursor)
 	query.Sort(sort)
-	// 处理分页
+	// Handle pagination.
 	if conditions["all"] == nil || conditions["all"] == false {
 		pageSize, ok := conditions["limit"].(int)
 		if ok {
@@ -207,7 +207,7 @@ func (o *operatorManagerDB) buildQueryConditions(query *ormhelper.SelectBuilder,
 	return query
 }
 
-// DeleteByOperatorID 根据算子ID删除算子
+// DeleteByOperatorID Delete an operator based on its ID.
 func (o *operatorManagerDB) DeleteByOperatorID(ctx context.Context, tx *sql.Tx, operatorID string) error {
 	orm := o.orm
 	if tx != nil {
@@ -218,7 +218,7 @@ func (o *operatorManagerDB) DeleteByOperatorID(ctx context.Context, tx *sql.Tx, 
 	return err
 }
 
-// UpdateOperatorStatus 更新算子状态
+// UpdateOperatorStatus updates operator status.
 func (o *operatorManagerDB) UpdateOperatorStatus(ctx context.Context, tx *sql.Tx, operator *model.OperatorRegisterDB, userID string) error {
 	orm := o.orm
 	if tx != nil {
@@ -233,7 +233,7 @@ func (o *operatorManagerDB) UpdateOperatorStatus(ctx context.Context, tx *sql.Tx
 	return err
 }
 
-// UpdateNameByOperatorID 根据算子ID更新算子名称
+// UpdateNameByOperatorID updates the operator name based on the operator ID.
 func (o *operatorManagerDB) UpdateNameByOperatorID(ctx context.Context, tx *sql.Tx, operatorID, name, updateUser string) error {
 	orm := o.orm
 	if tx != nil {
@@ -247,7 +247,7 @@ func (o *operatorManagerDB) UpdateNameByOperatorID(ctx context.Context, tx *sql.
 	return err
 }
 
-// UpdateMetadataVersionByOperatorID 根据算子ID更新算子元数据版本
+// UpdateMetadataVersionByOperatorID Updates the operator metadata version based on the operator ID.
 func (o *operatorManagerDB) UpdateMetadataVersionByOperatorID(ctx context.Context, tx *sql.Tx, operatorID, version string) error {
 	orm := o.orm
 	if tx != nil {
@@ -259,7 +259,7 @@ func (o *operatorManagerDB) UpdateMetadataVersionByOperatorID(ctx context.Contex
 	return err
 }
 
-// UpdateByOperatorID 根据算子ID更新算子
+// UpdateByOperatorID updates the operator based on the operator ID.
 func (o *operatorManagerDB) UpdateByOperatorID(ctx context.Context, tx *sql.Tx, operator *model.OperatorRegisterDB) error {
 	orm := o.orm
 	if tx != nil {
@@ -283,7 +283,7 @@ func (o *operatorManagerDB) UpdateByOperatorID(ctx context.Context, tx *sql.Tx, 
 	return err
 }
 
-// SelectByOperatorIDs 批量查询算子信息
+// SelectByOperatorIDs batch query operator information.
 func (o *operatorManagerDB) SelectByOperatorIDs(ctx context.Context, operatorIDs []string) (operatorList []*model.OperatorRegisterDB, err error) {
 	operatorList = []*model.OperatorRegisterDB{}
 	orm := o.orm
@@ -298,7 +298,7 @@ func (o *operatorManagerDB) SelectByOperatorIDs(ctx context.Context, operatorIDs
 	return
 }
 
-// SelectListByNamesAndStatus 根据算子名称和状态获取算子列表
+// SelectListByNamesAndStatus gets the operator list based on the operator name and status.
 func (o *operatorManagerDB) SelectListByNamesAndStatus(ctx context.Context, names []string, status string) (operatorList []*model.OperatorRegisterDB, err error) {
 	orm := o.orm
 	args := []interface{}{}

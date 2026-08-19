@@ -3,15 +3,15 @@ package operator
 import (
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// OperatorQuery 算子信息查询
+// OperatorQuery operator information query.
 func (op *operatorHandle) OperatorQueryByOperatorID(c *gin.Context) {
 	req := &interfaces.GetOperatorInfoByOperatorIDReq{}
 	err := c.ShouldBindHeader(req)
@@ -34,7 +34,7 @@ func (op *operatorHandle) OperatorQueryByOperatorID(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// OperatorQueryPage 算子分页查询
+// OperatorQueryPage operator paging query.
 func (op *operatorHandle) OperatorQueryPage(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &interfaces.PageQueryRequest{}
@@ -72,7 +72,7 @@ func (op *operatorHandle) OperatorQueryPage(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// OperatorQueryNamesByIDs 按算子ID批量取名(给前端对象级授权页回显名称用)
+// OperatorQueryNamesByIDs batch names based on operator ID (used to echo names on the front-end object-level authorization page)
 func (op *operatorHandle) OperatorQueryNamesByIDs(c *gin.Context) {
 	req := &interfaces.BatchNamesReq{}
 	if err := c.ShouldBindJSON(req); err != nil {

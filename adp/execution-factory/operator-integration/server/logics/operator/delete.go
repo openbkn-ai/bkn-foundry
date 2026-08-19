@@ -7,21 +7,21 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// DeleteOperator 删除算子
+// DeleteOperator delete operator.
 func (m *operatorManager) DeleteOperator(ctx context.Context, req interfaces.OperatorDeleteReq, userID string) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 待删除算子校验
+	// Operator verification to be deleted.
 	if len(req) == 0 {
 		return errors.DefaultHTTPError(ctx, http.StatusBadRequest, "operator delete list is empty")
 	}
@@ -29,7 +29,7 @@ func (m *operatorManager) DeleteOperator(ctx context.Context, req interfaces.Ope
 	for _, item := range req {
 		operatorIDs = append(operatorIDs, item.OperatorID)
 	}
-	// 检查算子是否全部存在
+	// Check if all operators exist.
 	operatorList, err := m.DBOperatorManager.SelectByOperatorIDs(ctx, operatorIDs)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select operator failed, OperatorIDs: %v, err: %v", operatorIDs, err)
@@ -55,13 +55,13 @@ func (m *operatorManager) DeleteOperator(ctx context.Context, req interfaces.Ope
 		return
 	}
 	for _, operator := range operatorList {
-		// 只有未发布、已下架算子可以删除
+		// Only unpublished and removed operators can be deleted.
 		if operator.Status != string(interfaces.BizStatusUnpublish) && operator.Status != string(interfaces.BizStatusOffline) {
 			return errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtOperatorDeleteForbidden,
 				fmt.Sprintf("current operator status %s, can not be deleted", operator.Status))
 		}
 	}
-	// 获取事务
+	// Get transaction.
 	tx, err := m.DBTx.GetTx(ctx)
 	if err != nil {
 		return err
@@ -87,26 +87,26 @@ func (m *operatorManager) DeleteOperator(ctx context.Context, req interfaces.Ope
 		}
 		deleteList = append(deleteList, item.OperatorID)
 	}
-	// 取消关联业务域
+	// Unassociate business domain.
 	businessDomainID, _ := common.GetBusinessDomainFromCtx(ctx)
 	err = m.BusinessDomainService.BatchDisassociateResource(ctx, businessDomainID, deleteList, interfaces.AuthResourceTypeOperator)
 	if err != nil {
 		return
 	}
-	// 删除资源权限策略
+	// Delete resource permissions policy.
 	err = m.AuthService.DeletePolicy(ctx, deleteList, interfaces.AuthResourceTypeOperator)
 	return
 }
 
 func (m *operatorManager) deleteOperator(ctx context.Context, tx *sql.Tx, item *model.OperatorRegisterDB, accessor *interfaces.AuthAccessor) (err error) {
-	// 删除线上版本
+	// Delete online version.
 	err = m.OpReleaseDB.DeleteByOpID(ctx, tx, item.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("delete operator release failed, OperatorID: %s, err: %v", item.OperatorID, err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "delete operator release failed")
 		return
 	}
-	// 获取待删除历史版本
+	// Get the historical version to be deleted.
 	histories, err := m.OpReleaseHistoryDB.SelectByOpID(ctx, item.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("select operator history failed, OperatorID: %s, err: %v", item.OperatorID, err)
@@ -118,7 +118,7 @@ func (m *operatorManager) deleteOperator(ctx context.Context, tx *sql.Tx, item *
 		for _, historyDB := range histories {
 			metadataList = append(metadataList, historyDB.MetadataVersion)
 		}
-		// 删除历史版本
+		// Delete historical version.
 		err = m.OpReleaseHistoryDB.DeleteByOpID(ctx, tx, item.OperatorID)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("delete operator history failed, OperatorID: %s, err: %v", item.OperatorID, err)
@@ -126,13 +126,13 @@ func (m *operatorManager) deleteOperator(ctx context.Context, tx *sql.Tx, item *
 			return
 		}
 	}
-	// 删除元数据
+	// Delete metadata.
 	err = m.MetadataService.BatchDeleteMetadata(ctx, tx, interfaces.MetadataType(item.MetadataType), metadataList)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("delete metadata failed, MetadataVersions: %v, err: %v", metadataList, err)
 		return
 	}
-	// 删除注册表
+	// Delete registry.
 	err = m.DBOperatorManager.DeleteByOperatorID(ctx, tx, item.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("delete operator failed, OperatorID: %s, err: %v", item.OperatorID, err)
@@ -144,7 +144,7 @@ func (m *operatorManager) deleteOperator(ctx context.Context, tx *sql.Tx, item *
 		return
 	}
 	go func(operator *model.OperatorRegisterDB) {
-		// 发送删除算子审计日志
+		// Send deletion operator audit log.
 		accountAuth, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
 			m.Logger.WithContext(ctx).Errorf("get account auth context from ctx failed")
@@ -164,9 +164,9 @@ func (m *operatorManager) deleteOperator(ctx context.Context, tx *sql.Tx, item *
 	return
 }
 
-// 发送删除事件通知
+// Send deletion event notification.
 func (m *operatorManager) publishOperatorDeleteEvent(ctx context.Context, operatorDB *model.OperatorRegisterDB, updateUser string) (err error) {
-	// 通知删除
+	// Notice to delete.
 	extendInfo := map[string]interface{}{}
 	if operatorDB.ExtendInfo != "" {
 		err = json.Unmarshal([]byte(operatorDB.ExtendInfo), &extendInfo)

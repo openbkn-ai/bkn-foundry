@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 type mcpServerReleaseHistoryDB struct {
@@ -47,7 +47,7 @@ func NewMCPServerReleaseHistoryDBSingleton() model.DBMCPServerReleaseHistory {
 	return mcrh
 }
 
-// Insert 插入MCP Server发布历史
+// Insert Insert MCP Server release history.
 func (m *mcpServerReleaseHistoryDB) Insert(ctx context.Context, tx *sql.Tx, history *model.MCPServerReleaseHistoryDB) (mcpID string, err error) {
 	orm := m.orm
 	if tx != nil {

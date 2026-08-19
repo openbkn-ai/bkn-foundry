@@ -14,7 +14,7 @@ import (
 
 const testAccountID = "11111111-1111-4111-8111-111111111111"
 
-// publicCtx 构造一个带已校验身份的公开面 context，等价于 middlewareIntrospectVerify 的产物。
+// publicCtx constructs a public context with verified identity, equivalent to the product of middlewareIntrospectVerify.
 func publicCtx() context.Context {
 	ctx := common.SetPublicAPIToCtx(context.Background(), true)
 	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{

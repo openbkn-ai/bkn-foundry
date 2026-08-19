@@ -19,20 +19,20 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// 沙箱控制服务Client
+// Sandbox control service Client.
 type sandBoxControlPlaneClient struct {
 	baseURL    string
 	logger     interfaces.Logger
 	httpClient interfaces.HTTPClient
-	templateID string // 模版ID
+	templateID string // Template ID.
 }
 
 var (
-	sbcpInstance *sandBoxControlPlaneClient // 沙箱控制服务Client实例
-	sbcpOnce     sync.Once                  // 沙箱控制服务Client实例初始化Once
+	sbcpInstance *sandBoxControlPlaneClient // Sandbox control service Client instance.
+	sbcpOnce     sync.Once                  // Sandbox control service Client instance initialization Once.
 )
 
-// NewSandBoxControlPlaneClient 创建沙箱控制服务Client实例
+// NewSandBoxControlPlaneClient creates a sandbox control service Client instance.
 func NewSandBoxControlPlaneClient() interfaces.SandBoxControlPlane {
 	sbcpOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -47,7 +47,7 @@ func NewSandBoxControlPlaneClient() interfaces.SandBoxControlPlane {
 	return sbcpInstance
 }
 
-// GetTemplateDetail 获取模版详情
+// GetTemplateDetail Get template details.
 func (c *sandBoxControlPlaneClient) GetTemplateDetail(ctx context.Context, tempID string) (any, error) {
 	src := fmt.Sprintf("%s/templates/%s", c.baseURL, tempID)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -63,7 +63,7 @@ func (c *sandBoxControlPlaneClient) GetTemplateDetail(ctx context.Context, tempI
 	return respData, nil
 }
 
-// CreateSession 创建会话
+// CreateSession creates a session.
 func (c *sandBoxControlPlaneClient) CreateSession(ctx context.Context, req *interfaces.CreateSessionReq) (any, error) {
 	src := fmt.Sprintf("%s/sessions", c.baseURL)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -79,7 +79,7 @@ func (c *sandBoxControlPlaneClient) CreateSession(ctx context.Context, req *inte
 	return respData, nil
 }
 
-// QuerySession 查询会话
+// QuerySession query session.
 func (c *sandBoxControlPlaneClient) QuerySession(ctx context.Context, sessionID string) (exists bool, detail *interfaces.SessionDetail, err error) {
 	src := fmt.Sprintf("%s/sessions/%s", c.baseURL, sessionID)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -123,7 +123,7 @@ func (c *sandBoxControlPlaneClient) QuerySession(ctx context.Context, sessionID 
 	return true, detail, nil
 }
 
-// DeleteSession 删除会话
+// DeleteSession Delete session.
 func (c *sandBoxControlPlaneClient) DeleteSession(ctx context.Context, sessionID string) (err error) {
 	src := fmt.Sprintf("%s/sessions/%s", c.baseURL, sessionID)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -149,7 +149,7 @@ func (c *sandBoxControlPlaneClient) DeleteSession(ctx context.Context, sessionID
 	return nil
 }
 
-// ListSessions 列举会话
+// ListSessions lists sessions.
 func (c *sandBoxControlPlaneClient) ListSessions(ctx context.Context, req *interfaces.ListSessionsReq) (resp *interfaces.ListSessionsResp, err error) {
 	src := fmt.Sprintf("%s/sessions", c.baseURL)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -188,7 +188,7 @@ func (c *sandBoxControlPlaneClient) ListSessions(ctx context.Context, req *inter
 	return resp, nil
 }
 
-// ExecuteCodeSync 执行函数(同步)
+// ExecuteCodeSync execution function (synchronization)
 func (c *sandBoxControlPlaneClient) ExecuteCodeSync(ctx context.Context, sessionID string, req *interfaces.ExecuteCodeReq) (*interfaces.ExecuteCodeResp, error) {
 	src := fmt.Sprintf("%s/executions/sessions/%s/execute-sync", c.baseURL, sessionID)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -216,7 +216,7 @@ func (c *sandBoxControlPlaneClient) ExecuteCodeSync(ctx context.Context, session
 	return resp, nil
 }
 
-// InstallPythonDependencies 安装python依赖库
+// InstallPythonDependencies installs python dependency libraries.
 func (c *sandBoxControlPlaneClient) InstallPythonDependencies(ctx context.Context, sessionID string, req *interfaces.InstallDependenciesReq) (detail *interfaces.SessionDetail, err error) {
 	src := fmt.Sprintf("%s/sessions/%s/dependencies/install", c.baseURL, sessionID)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -246,7 +246,7 @@ func (c *sandBoxControlPlaneClient) InstallPythonDependencies(ctx context.Contex
 	return detail, nil
 }
 
-// UploadSkillArchive 上传 Skill 压缩包
+// UploadSkillArchive Upload Skill compressed package.
 func (c *sandBoxControlPlaneClient) UploadSkillArchive(ctx context.Context, sessionID string, req *interfaces.UploadSkillArchiveReq) (*interfaces.UploadSkillArchiveResp, error) {
 	workDir := strings.TrimSpace(req.WorkDir)
 	fileName := strings.TrimSpace(req.FileName)
@@ -333,7 +333,7 @@ func (c *sandBoxControlPlaneClient) UploadSkillArchive(ctx context.Context, sess
 	}, nil
 }
 
-// ExecuteShell 执行 shell 命令
+// ExecuteShell executes shell commands.
 func (c *sandBoxControlPlaneClient) ExecuteShell(ctx context.Context, sessionID string, req *interfaces.ExecuteShellReq) (*interfaces.ExecuteShellResp, error) {
 	workDir := normalizeWorkspacePath(req.WorkDir)
 	command := strings.TrimSpace(req.Command)

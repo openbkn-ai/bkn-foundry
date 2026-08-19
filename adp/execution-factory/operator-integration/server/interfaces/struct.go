@@ -7,69 +7,69 @@ import (
 )
 
 const (
-	// DefaultPageSize 默认每页大小
+	// DefaultPageSize default page size.
 	DefaultPageSize = 10
-	// DefaultPage  默认页码
+	// DefaultPage default page number.
 	DefaultPage = 1
-	// MaxPageSize 最大每页大小
+	// MaxPageSize maximum page size.
 	MaxPageSize = 1000
 
-	// OSSGatewayPrefix OSS 网关技能资产前缀
+	// OSSGatewayPrefix OSS gateway skill asset prefix.
 	OSSGatewayPrefix = "execution-factory"
 )
 
 var (
-	// 当前服务配置
+	// Current service configuration.
 	AOIServerURL = "http://agent-operator-integration:9000"
-	// AOPInternalV1Prefix AOP 内部 V1 前缀
+	// AOPInternalV1Prefix AOP internal V1 prefix.
 	AOPInternalV1Prefix = "/api/agent-operator-integration/internal-v1"
 )
 
-// SetAOIFuncExecPath 获取函数执行路径
+// SetAOIFuncExecPath gets the function execution path.
 func SetAOIFuncExecPath(version string) string {
 	return strings.ReplaceAll(GetAOIFuncExecPath(), ":version", version)
-} // GetAOIFuncExecPath 获取函数执行路径
+} // GetAOIFuncExecPath gets the function execution path.
 func GetAOIFuncExecPath() string {
 	return fmt.Sprintf("%s/function/exec/:version", AOPInternalV1Prefix)
 }
 
-// CommonPageResult 通用分页返回结果
+// CommonPageResult Common paging return results.
 type CommonPageResult struct {
-	TotalCount int  `json:"total"`       // 总记录数
-	Page       int  `json:"page"`        // 当前页码
-	PageSize   int  `json:"page_size"`   // 每页大小
-	TotalPage  int  `json:"total_pages"` // 总页数
-	HasNext    bool `json:"has_next"`    // 是否有下一页
-	HasPrev    bool `json:"has_prev"`    // 是否有上一页
+	TotalCount int  `json:"total"`       // Total number of records.
+	Page       int  `json:"page"`        // Current page number.
+	PageSize   int  `json:"page_size"`   // page size.
+	TotalPage  int  `json:"total_pages"` // Total pages.
+	HasNext    bool `json:"has_next"`    // Is there a next page?.
+	HasPrev    bool `json:"has_prev"`    // Is there a previous page?.
 }
 
-// BatchNamesReq 按 ID 批量取名请求(operator/tool_box/skill 统一契约)
+// BatchNamesReq Batch name request by ID (operator/tool_box/skill unified contract)
 type BatchNamesReq struct {
-	IDs []string `json:"ids"` // 待取名的 ID 列表，空列表返回空 entries
+	IDs []string `json:"ids"` // A list of IDs to be named. An empty list returns empty entries.
 }
 
-// NameEntry 单个 ID->名称 条目
+// NameEntry single ID->name entry.
 type NameEntry struct {
-	ID   string `json:"id"`   // 实体 ID
-	Name string `json:"name"` // 实体名称
+	ID   string `json:"id"`   // Entity ID.
+	Name string `json:"name"` // Entity name.
 }
 
-// BatchNamesResp 按 ID 批量取名响应
-// 容错：不存在的 ID 略过，不报错
+// BatchNamesResp Batch name response by ID.
+// Fault tolerance: IDs that do not exist are ignored and no error is reported.
 type BatchNamesResp struct {
 	Entries []*NameEntry `json:"entries"`
 }
 
-// PtrBizIdentifiable 业务ID可识别接口指针
+// PtrBizIdentifiable business ID identifiable interface pointer.
 type PtrBizIdentifiable[T any] interface {
 	*T
-	GetBizID() string // 获取业务ID
+	GetBizID() string // Get business ID.
 }
 
-// QueryResponse 通用查询响应结构
+// QueryResponse general query response structure.
 type QueryResponse[T any] struct {
 	CommonPageResult `json:",inline"`
-	Data             []*T `json:"data"` // 数据列表
+	Data             []*T `json:"data"` // Data list.
 }
 
 type ResultStatus string
@@ -79,17 +79,17 @@ const (
 	ResultStatusSuccess ResultStatus = "success"
 )
 
-// MetadataType 元数据类型
+// MetadataType metadata type.
 type MetadataType string
 
 const (
-	// MetadataTypeAPI API 源数据类型
+	// MetadataTypeAPI API source data type.
 	MetadataTypeAPI MetadataType = "openapi"
-	// MetadataTypeFunc 函数源数据类型
+	// MetadataTypeFunc function source data type.
 	MetadataTypeFunc MetadataType = "function"
 )
 
-// ExecutionMode 执行模式
+// ExecutionMode execution mode.
 type ExecutionMode string
 
 func (e ExecutionMode) String() string {
@@ -97,12 +97,12 @@ func (e ExecutionMode) String() string {
 }
 
 const (
-	ExecutionModeSync   ExecutionMode = "sync"   // 同步执行
-	ExecutionModeAsync  ExecutionMode = "async"  // 异步执行
-	ExecutionModeStream ExecutionMode = "stream" // 流式执行
+	ExecutionModeSync   ExecutionMode = "sync"   // Synchronous execution.
+	ExecutionModeAsync  ExecutionMode = "async"  // Asynchronous execution.
+	ExecutionModeStream ExecutionMode = "stream" // Streaming execution.
 )
 
-// StreamingMode 定义流式传输类型
+// StreamingMode defines the streaming type.
 type StreamingMode string
 
 const (
@@ -110,29 +110,29 @@ const (
 	StreamingModeHTTP StreamingMode = "http"
 )
 
-// HTTPRequest API请求
+// HTTPRequest API request.
 type HTTPRequest struct {
-	ClientID          string        `json:"client_id"` // 客户端ID
+	ClientID          string        `json:"client_id"` // Client ID.
 	Timeout           time.Duration `json:"timeout" validate:"gte=0"`
 	ExecutionMode     ExecutionMode `json:"execution_mode" validate:"required,oneof=sync async stream"`
 	HTTPRouter        `json:",inline"`
 	HTTPRequestParams `json:",inline"`
 }
 
-// HTTPRouter HTTP路由
+// HTTPRouter HTTP routing.
 type HTTPRouter struct {
 	URL    string `json:"url" validate:"required"`
 	Method string `json:"method" validate:"required"`
 }
 
-// APIRouter API路由
-// @description: API路由
+// APIRouter API routing.
+// @description: API routing.
 type APIRouter struct {
-	ServerURL  string `json:"server_url" validate:"required"` // 服务器URL
+	ServerURL  string `json:"server_url" validate:"required"` // Server URL.
 	HTTPRouter `json:",inline"`
 }
 
-// HTTPRequestParams HTTP请求参数
+// HTTPRequestParams HTTP request parameters.
 type HTTPRequestParams struct {
 	Headers     map[string]any    `json:"header"`
 	Body        interface{}       `json:"body"`
@@ -140,22 +140,22 @@ type HTTPRequestParams struct {
 	PathParams  map[string]string `json:"path"`
 }
 
-// FuncRequestParams 函数请求参数
+// FuncRequestParams function request parameters.
 type FuncRequestParams struct {
-	InputParams map[string]any `json:"inputs,omitempty" form:"inputs"` // 输入参数列表
-	Code        string         `json:"code"`                           // 函数代码
+	InputParams map[string]any `json:"inputs,omitempty" form:"inputs"` // Input parameter list.
+	Code        string         `json:"code"`                           // function code.
 }
 
-// HTTPResponse API响应
+// HTTPResponse API response.
 type HTTPResponse struct {
-	StatusCode int            `json:"status_code"` // 状态码
-	Headers    map[string]any `json:"headers"`     // 响应头
-	Body       interface{}    `json:"body"`        // 响应体
-	Error      string         `json:"error"`       // 错误信息
-	Duration   int64          `json:"duration_ms"` // 响应时间
+	StatusCode int            `json:"status_code"` // status code.
+	Headers    map[string]any `json:"headers"`     // response header.
+	Body       interface{}    `json:"body"`        // response body.
+	Error      string         `json:"error"`       // error message.
+	Duration   int64          `json:"duration_ms"` // response time.
 }
 
-// BizStatus 状态
+// BizStatus status.
 type BizStatus string
 
 func (b BizStatus) String() string {
@@ -163,13 +163,13 @@ func (b BizStatus) String() string {
 }
 
 const (
-	BizStatusUnpublish BizStatus = "unpublish" // 未发布
-	BizStatusPublished BizStatus = "published" // 已发布
-	BizStatusOffline   BizStatus = "offline"   // 已下架
-	BizStatusEditing   BizStatus = "editing"   // 已发布编辑中
+	BizStatusUnpublish BizStatus = "unpublish" // Unpublished.
+	BizStatusPublished BizStatus = "published" // Published.
+	BizStatusOffline   BizStatus = "offline"   // Removed.
+	BizStatusEditing   BizStatus = "editing"   // Published and editing.
 )
 
-// OutboxMessageReq 消息事件请求
+// OutboxMessageReq message event request.
 type OutboxMessageReq struct {
 	EventID   string                 `json:"event_id"`
 	EventType OutboxMessageEventType `json:"event_type" validate:"required"`
@@ -177,14 +177,14 @@ type OutboxMessageReq struct {
 	Payload   string                 `json:"payload" validate:"required"`
 }
 
-// OutboxMessageEventType 消息事件类型
+// OutboxMessageEventType message event type.
 type OutboxMessageEventType string
 
-// String 返回字符串
+// String Returns a string.
 func (eventType OutboxMessageEventType) String() string {
 	return string(eventType)
 }
 
 const (
-	OutboxMessageEventTypeAuditLog OutboxMessageEventType = "audit_log" // 审计日志
+	OutboxMessageEventTypeAuditLog OutboxMessageEventType = "audit_log" // Audit log.
 )

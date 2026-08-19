@@ -51,7 +51,7 @@ func (v *vegaBackendClient) buildHeaders(ctx context.Context) map[string]string 
 	return headers
 }
 
-// GetCatalogByID 获取Vega目录
+// GetCatalogByID Gets the Vega catalog.
 func (v *vegaBackendClient) GetCatalogByID(ctx context.Context, id string) (*interfaces.VegaCatalog, error) {
 	src := fmt.Sprintf("%s/v1/catalogs/%s", v.baseURL, url.PathEscape(id))
 	headers := v.buildHeaders(ctx)
@@ -68,14 +68,14 @@ func (v *vegaBackendClient) GetCatalogByID(ctx context.Context, id string) (*int
 		return nil, fmt.Errorf("get catalog by id failed: %s", string(respData))
 	}
 
-	// vega 的按 ID 查询走的是批量端点，响应是 {"entries":[...]} 包装；
-	// 直接反序列化成 VegaCatalog 只会得到零值(ID 为空)，历史上因为调用方只判
-	// nil 而没暴露出来。
+	// Vega's query by ID uses the batch endpoint, and the response is {"entries":[...]} packaging;
+	// Direct deserialization into VegaCatalog will only result in a zero value (ID is empty). Historically, the caller only determined.
+	// nil without being exposed.
 	var entries struct {
 		Entries []*interfaces.VegaCatalog `json:"entries"`
 	}
 	if err = json.Unmarshal(respData, &entries); err == nil && len(entries.Entries) > 0 {
-		// 按 id 挑，不认列表顺序：调用方(存量目录收养)强依赖拿到的就是请求的那个目录
+		// Select by id and do not recognize the order of the list: the caller (adoption of the existing directory) is strongly dependent on getting the requested directory.
 		for _, entry := range entries.Entries {
 			if entry != nil && entry.ID == id {
 				return entry, nil
@@ -95,7 +95,7 @@ func (v *vegaBackendClient) GetCatalogByID(ctx context.Context, id string) (*int
 	return catalog, nil
 }
 
-// CreateCatalog 创建Vega目录
+// CreateCatalog creates a Vega catalog.
 func (v *vegaBackendClient) CreateCatalog(ctx context.Context, req *interfaces.VegaCatalogRequest) (*interfaces.VegaCatalog, error) {
 	src := fmt.Sprintf("%s/v1/catalogs", v.baseURL)
 	headers := v.buildHeaders(ctx)
@@ -117,9 +117,9 @@ func (v *vegaBackendClient) CreateCatalog(ctx context.Context, req *interfaces.V
 	return catalog, nil
 }
 
-// UpdateCatalog 更新Vega目录的展示信息(名称/标签/描述)
-// vega 的 PUT /catalogs/{id} 要求 connector_type 与 enabled 与当前值一致，
-// 调用方须从 GetCatalogByID 的返回里原样回填这两个字段。
+// UpdateCatalog updates the display information of the Vega catalog (name/tag/description)
+// vega's PUT /catalogs/{id} requires connector_type and enabled to be consistent with the current values.
+// The caller must backfill these two fields unchanged from the return of GetCatalogByID.
 func (v *vegaBackendClient) UpdateCatalog(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
 	src := fmt.Sprintf("%s/v1/catalogs/%s", v.baseURL, url.PathEscape(req.ID))
 	headers := v.buildHeaders(ctx)
@@ -135,7 +135,7 @@ func (v *vegaBackendClient) UpdateCatalog(ctx context.Context, req *interfaces.V
 	return nil
 }
 
-// EnableCatalog 启用Vega目录
+// EnableCatalog enables Vega catalog.
 func (v *vegaBackendClient) EnableCatalog(ctx context.Context, id string) error {
 	src := fmt.Sprintf("%s/v1/catalogs/%s/enable", v.baseURL, url.PathEscape(id))
 	headers := v.buildHeaders(ctx)
@@ -171,7 +171,7 @@ func (v *vegaBackendClient) GetResourceByID(ctx context.Context, id string) (*in
 		Entries []*interfaces.VegaResource `json:"entries"`
 	}
 	if err = json.Unmarshal(respData, &entries); err == nil && len(entries.Entries) > 0 {
-		// 同 GetCatalogByID：按 id 挑，收养存量 dataset 时必须确认拿到的就是它
+		// Same as GetCatalogByID: select by id. When adopting an existing dataset, you must confirm that it is the one you get.
 		for _, entry := range entries.Entries {
 			if entry != nil && entry.ID == id {
 				return entry, nil

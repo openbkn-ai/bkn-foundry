@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
@@ -17,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 type skillReader struct {
@@ -35,7 +35,7 @@ var (
 	readerInst interfaces.SkillReader
 )
 
-// NewSkillReader 创建技能读取服务对象
+// NewSkillReader creates a skill reading service object.
 func NewSkillReader() interfaces.SkillReader {
 	readerOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -53,15 +53,15 @@ func NewSkillReader() interfaces.SkillReader {
 	return readerInst
 }
 
-// authorizeSkillRead 校验调用方对该技能是否有读取权限（执行 / 公开访问 / 查看三者之一）。
+// authorizeSkillRead verifies whether the caller has read permission (one of execution / public access / view) for the skill.
 //
-// 公开接口一律强制。内部接口（internal-v1）看 SKILL_INTERNAL_READ_AUTHZ：
-// off 直接放行；shadow（默认）查但不拦，未通过只打日志；enforce 与公开接口一致返回 403。
-// 分档是为了不打断存量内部调用方——context-loader 把这两个接口包成 MCP 工具之后，
-// 内部路径再无条件放行就等于任意账户可读任意技能全文，但直接翻强制会误伤，先影子观察。
+// Public interfaces are always mandatory. Internal interface (internal-v1) see SKILL_INTERNAL_READ_AUTHZ:
+// off will be allowed directly; shadow (default) will check but not block, and will only log if it fails; enforce will return 403 consistent with the public interface.
+// The purpose of binning is to not interrupt the existing internal callers - after context-loader packages these two interfaces into MCP tools,
+// If the internal path is unconditionally allowed, it means that any account can read the full text of any skill, but direct browsing will cause accidental damage, so shadow observation first.
 //
-// 内部接口若拿不到账户身份（accessor 解析失败），shadow 档同样只记日志：
-// 那是「无从判断」，不是「判定为无权」，此时拦下来纯属误伤。
+// If the internal interface cannot obtain the account identity (accessor resolution fails), the shadow file will also only record the log:
+// That is "unable to judge", not "judged to have no right". Stopping him at this time is purely accidental.
 func (r *skillReader) authorizeSkillRead(ctx context.Context, userID, skillID string) error {
 	isPublic := common.IsPublicAPIFromCtx(ctx)
 	mode := common.GetSkillReadAuthzMode()
@@ -69,8 +69,8 @@ func (r *skillReader) authorizeSkillRead(ctx context.Context, userID, skillID st
 		if mode == common.SkillReadAuthzOff {
 			return nil
 		}
-		// 内部路径上没有账户身份就没得判：调用方连自己是谁都没说，此时查授权只会
-		// 把「无从判断」误判成「无权」。公开路径不走这里——那条的身份由令牌保证。
+		// If there is no account identity on the internal path, there is no judgment: the caller has not even said who he is, and checking the authorization at this time will only.
+		// Misjudge "no way to judge" as "no right". The public path does not go here - the identity of that path is guaranteed by the token.
 		if authContext, ok := common.GetAccountAuthContextFromCtx(ctx); (!ok || authContext.AccountID == "") && userID == "" {
 			return nil
 		}
@@ -106,9 +106,9 @@ func (r *skillReader) authorizeSkillRead(ctx context.Context, userID, skillID st
 		fmt.Sprintf("user has no permission to execute、view、public access skill %s", skillID))
 }
 
-// GetSkillContent 获取技能内容
+// GetSkillContent Gets skill content.
 func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSkillContentReq) (resp *interfaces.GetSkillContentResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -122,7 +122,7 @@ func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSk
 	if err = r.authorizeSkillRead(ctx, req.UserID, req.SkillID); err != nil {
 		return nil, err
 	}
-	// 查询对应的"SKILL.md文件
+	// Query the corresponding "SKILL.md file.
 	skillFile, err := r.fileRepo.SelectSkillFileByPath(ctx, nil, skill.SkillID, skill.Version, SkillMD)
 	if err != nil {
 		r.Logger.WithContext(ctx).Errorf("select skill file failed: %v", err)
@@ -141,7 +141,7 @@ func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSk
 	if err != nil {
 		return nil, err
 	}
-	// TODO: 待接入审计日志
+	// TODO: Audit log to be accessed.
 	return &interfaces.GetSkillContentResp{
 		SkillID: skill.SkillID,
 		URL:     downloadURL,
@@ -150,9 +150,9 @@ func (r *skillReader) GetSkillContent(ctx context.Context, req *interfaces.GetSk
 	}, nil
 }
 
-// ReadSkillFile 读取技能文件内容
+// ReadSkillFile reads the content of the skill file.
 func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSkillFileReq) (resp *interfaces.ReadSkillFileResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -169,8 +169,8 @@ func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSki
 	if err = r.authorizeSkillRead(ctx, req.UserID, req.SkillID); err != nil {
 		return nil, err
 	}
-	// 越出技能包的路径是调用方参数错，回 400；裸 error 会被兜成 500，让调用方
-	// 以为服务坏了而不是自己传错。管理态那条（mgmt_reader）一直是 400，这里对齐。
+	// If the path beyond the skill package is that the caller parameter is wrong, 400 will be returned; the naked error will be converted to 500, allowing the caller to.
+	// I thought the service was broken instead of sending an error myself. The management state one (mgmt_reader) is always 400, so align it here.
 	relPath, err := normalizeZipPath(req.RelPath)
 	if err != nil {
 		return nil, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
@@ -203,7 +203,7 @@ func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSki
 	}, nil
 }
 
-// GetSkillReleaseHistory 查询 Skill 发布历史
+// GetSkillReleaseHistory Query Skill release history.
 func (r *skillReader) GetSkillReleaseHistory(ctx context.Context, req *interfaces.GetSkillReleaseHistoryReq) (resp []*interfaces.SkillReleaseHistoryInfo, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -211,7 +211,7 @@ func (r *skillReader) GetSkillReleaseHistory(ctx context.Context, req *interface
 		"skill_id": req.SkillID,
 	})
 
-	// 如果是外部接口，口径与同文件其余只读接口一致：执行、公共访问、查看三者有其一即可
+	// If it is an external interface, the semantics is the same as the other read-only interfaces in the same file: one of execution, public access, and view is enough.
 	if common.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = r.AuthService.GetAccessor(ctx, req.UserID)

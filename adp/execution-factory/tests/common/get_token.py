@@ -54,7 +54,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
         '''
 
     def registerClient(self):
-        #注册OAuth 2.0客户端
+        #Register an OAuth 2.0 client.
         requrl = self.public_url + 'oauth2/clients'
         redirect_uri = "https://%s:9010/callback" % self.host
         post_logout_redirect_uri = "https://%s:9010/successful-logout" % self.host
@@ -83,7 +83,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
         return json.loads(r.content)
 
     def OAuthUser(self, response_type, client_id):
-        #授权用户
+        #authorized user.
         state = ''.join(random.sample(string.ascii_letters, 24))
         # redirect_uri = urllib.quote(redirect_uri)
         redirect_uri = "https://%s:9010/callback" % self.host
@@ -100,7 +100,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
 
 
     def GetLogin(self, login_challenge):
-        #获取登陆请求
+        #Get login request.
         # import pdb;pdb.set_trace()
         requrl = self.admin_url + 'admin/oauth2/auth/requests/login?login_challenge=%s' % login_challenge
         r = requests.request('GET', requrl, verify=False, allow_redirects=False)
@@ -110,7 +110,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
         return json.loads(r.content)
 
     def AcceptLogin(self, login_challenge, subject, context):
-        #接受登陆请求
+        #Accept login request.
         # import pdb;pdb.set_trace()
         requrl = self.admin_url + 'admin/oauth2/auth/requests/login/accept?login_challenge=%s' % login_challenge
         # data = {"acr": acr, "remember": remember, "remember_for": remember_for, "subject": subject, "context": context}
@@ -131,7 +131,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
         return redirect_to
 
     def GetOAuth(self, requrl, cookies):
-        #获取授权
+        #Get authorization.
         # import pdb;pdb.set_trace()
         r = requests.request('GET', requrl, cookies=cookies, verify=False, allow_redirects=False)
         cookies = requests.utils.dict_from_cookiejar(r.cookies)
@@ -142,7 +142,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
             raise Exception("status code: %s\nbody: %s" % (r.status_code, r.content))
 
     def GetContent(self, consent_challenge, cookies):
-        #获取授权请求
+        #Get authorization request.
         requrl = self.admin_url + 'admin/oauth2/auth/requests/consent?consent_challenge=%s' % consent_challenge
         r = requests.request('GET', requrl, cookies=cookies, verify=False, allow_redirects=False)
         if r.status_code < 200 or r.status_code > 299:
@@ -151,7 +151,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
         return json.loads(r.content)
 
     def AcceptConsent(self, consent_challenge, scope, context):
-        #接受授权请求
+        #Accept authorization request.
         # import pdb;pdb.set_trace
         requrl = self.admin_url + 'admin/oauth2/auth/requests/consent/accept?consent_challenge=%s' % consent_challenge
         # data = {"grant_scope": grant_scope, "remember": remember, "remember_for": remember_for, "session": {"access_token": access_token}}
@@ -179,7 +179,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
         return redirect_to
 
     def GetToken(self, requrl, cookies):
-        #获取implicit token
+        #Get implicit token.
         r = requests.request('GET', requrl, cookies=cookies, verify=False, allow_redirects=False)
         if r.status_code == 303:
             # https://127.0.0.1:9010/callback#access_token=HQPbKpIMB7Lerxz-XZB-rJywAlnybuWQrH-dl-OVFUY.EvbroXUc4Pw-skJyxc0sdTMswcIwCCUCa5ut4O3GHLM&expires_in=3600&scope=all&state=BEXaqxiVRPpeNCQfvZKHsdtr&token_type=bearer
@@ -189,7 +189,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
             raise Exception("status code: %s\nbody: %s" % (r.status_code, r.content))
 
     def GetCode(self, requrl, cookies):
-        #获取implicit token
+        #Get implicit token.
         # import pdb;pdb.set_trace()
         r = requests.request('GET', requrl, cookies=cookies, verify=False, allow_redirects=False)
         if r.status_code == 303:
@@ -200,7 +200,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
             raise Exception("status code: %s\nbody: %s" % (r.status_code, r.content))
 
     def ApplyToken(self, grant_type, code, client_id, client_secret):
-        #申请令牌
+        #Apply for a token.
         requrl = self.public_url + '/oauth2/token'
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
         redirect_uri = "https://%s:9010/callback" % self.host
@@ -301,7 +301,7 @@ OQE5VFOIXPVTaa25mQIDAQAB
 
     def get_token(self, host, account, password):
         '''
-        管理员/普通用户获取access_token
+        Get access_token for administrators or regular users.
         '''
         # import pdb;pdb.set_trace()
         register_data = self.registerClient()
@@ -346,7 +346,7 @@ if __name__ == '__main__':
     else:
         host = "10.4.110.62"
         user_password = "111111"
-        print("警告: 配置文件不存在，使用默认值")
+        print("Warning: Configuration file does not exist, use default value")
     
     client = GetToken(host)
     # mod = client.modifyAdminPwd("eisoo.com123", "eisoo.com")

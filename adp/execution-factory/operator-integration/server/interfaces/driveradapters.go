@@ -1,17 +1,17 @@
-// Package interfaces 定义接口
+// Package interfaces define interfaces.
 // @file driveradapters.go
-// @description: 定义驱动适配器接口
+// @description: Define driver adapter interface.
 package interfaces
 
 //go:generate mockgen -source=driveradapters.go -destination=../mocks/driveradapters.go -package=mocks
 import "github.com/gin-gonic/gin"
 
-// HTTPRouterInterface 路由公共接口
+// HTTPRouterInterface routing public interface.
 type HTTPRouterInterface interface {
 	RegisterRouter(engine *gin.RouterGroup)
 }
 
-// MQHandler MQ处理接口
+// MQHandler MQ processing interface.
 type MQHandler interface {
 	Subscribe()
 }

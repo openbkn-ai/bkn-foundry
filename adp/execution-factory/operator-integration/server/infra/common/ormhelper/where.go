@@ -5,58 +5,58 @@ import (
 	"strings"
 )
 
-// WhereBuilder WHERE条件构建器
+// WhereBuilder WHERE condition builder.
 type WhereBuilder struct {
 	conditions []string
 	args       []interface{}
-	operator   string // AND 或 OR
+	operator   string // AND or OR.
 }
 
-// NewWhere 创建WHERE构建器
+// NewWhere creates a WHERE builder.
 func NewWhere() *WhereBuilder {
 	return &WhereBuilder{
 		operator: "AND",
 	}
 }
 
-// Condition 添加条件
+// Condition Add condition.
 func (w *WhereBuilder) Condition(field, op string, value interface{}) *WhereBuilder {
 	w.conditions = append(w.conditions, fmt.Sprintf("%s %s ?", field, op))
 	w.args = append(w.args, value)
 	return w
 }
 
-// Eq 等于条件
+// Eq equals condition.
 func (w *WhereBuilder) Eq(field string, value interface{}) *WhereBuilder {
 	return w.Condition(field, "=", value)
 }
 
-// Ne 不等于条件
+// Ne is not equal to the condition.
 func (w *WhereBuilder) Ne(field string, value interface{}) *WhereBuilder {
 	return w.Condition(field, "!=", value)
 }
 
-// Gt 大于条件
+// Gt is greater than condition.
 func (w *WhereBuilder) Gt(field string, value interface{}) *WhereBuilder {
 	return w.Condition(field, ">", value)
 }
 
-// Gte 大于等于条件
+// Gte greater than or equal to condition.
 func (w *WhereBuilder) Gte(field string, value interface{}) *WhereBuilder {
 	return w.Condition(field, ">=", value)
 }
 
-// Lt 小于条件
+// Lt is less than condition.
 func (w *WhereBuilder) Lt(field string, value interface{}) *WhereBuilder {
 	return w.Condition(field, "<", value)
 }
 
-// Lte 小于等于条件
+// Lte less than or equal to condition.
 func (w *WhereBuilder) Lte(field string, value interface{}) *WhereBuilder {
 	return w.Condition(field, "<=", value)
 }
 
-// In IN条件
+// In IN condition.
 func (w *WhereBuilder) In(field string, values ...interface{}) *WhereBuilder {
 	if len(values) == 0 {
 		return w
@@ -70,7 +70,7 @@ func (w *WhereBuilder) In(field string, values ...interface{}) *WhereBuilder {
 	return w
 }
 
-// NotIn NOT IN条件
+// NotIn NOT IN condition.
 func (w *WhereBuilder) NotIn(field string, values ...interface{}) *WhereBuilder {
 	if len(values) == 0 {
 		return w
@@ -84,43 +84,43 @@ func (w *WhereBuilder) NotIn(field string, values ...interface{}) *WhereBuilder 
 	return w
 }
 
-// Like LIKE条件
+// Like LIKE condition.
 func (w *WhereBuilder) Like(field, pattern string) *WhereBuilder {
 	return w.Condition(field, "LIKE", pattern)
 }
 
-// NotLike NOT LIKE条件
+// NotLike NOT LIKE condition.
 func (w *WhereBuilder) NotLike(field, pattern string) *WhereBuilder {
 	return w.Condition(field, "NOT LIKE", pattern)
 }
 
-// Between BETWEEN条件
+// Between BETWEEN condition.
 func (w *WhereBuilder) Between(field string, start, end interface{}) *WhereBuilder {
 	w.conditions = append(w.conditions, fmt.Sprintf("%s BETWEEN ? AND ?", field))
 	w.args = append(w.args, start, end)
 	return w
 }
 
-// NotBetween NOT BETWEEN条件
+// NotBetween NOT BETWEEN condition.
 func (w *WhereBuilder) NotBetween(field string, start, end interface{}) *WhereBuilder {
 	w.conditions = append(w.conditions, fmt.Sprintf("%s NOT BETWEEN ? AND ?", field))
 	w.args = append(w.args, start, end)
 	return w
 }
 
-// IsNull IS NULL条件
+// IsNull IS NULL condition.
 func (w *WhereBuilder) IsNull(field string) *WhereBuilder {
 	w.conditions = append(w.conditions, field+" IS NULL")
 	return w
 }
 
-// IsNotNull IS NOT NULL条件
+// IsNotNull IS NOT NULL condition.
 func (w *WhereBuilder) IsNotNull(field string) *WhereBuilder {
 	w.conditions = append(w.conditions, field+" IS NOT NULL")
 	return w
 }
 
-// And 添加AND条件组
+// And Add AND condition group.
 func (w *WhereBuilder) And(fn func(*WhereBuilder)) *WhereBuilder {
 	subWhere := NewWhere()
 	fn(subWhere)
@@ -133,7 +133,7 @@ func (w *WhereBuilder) And(fn func(*WhereBuilder)) *WhereBuilder {
 	return w
 }
 
-// Or 添加OR条件组
+// Or Add OR condition group.
 func (w *WhereBuilder) Or(fn func(*WhereBuilder)) *WhereBuilder {
 	subWhere := &WhereBuilder{operator: "OR"}
 	fn(subWhere)
@@ -146,7 +146,7 @@ func (w *WhereBuilder) Or(fn func(*WhereBuilder)) *WhereBuilder {
 	return w
 }
 
-// Cursor 游标条件
+// Cursor cursor condition.
 func (w *WhereBuilder) Cursor(field string, value interface{}, isAsc bool) *WhereBuilder {
 	if isAsc {
 		w.Gte(field, value)
@@ -156,14 +156,14 @@ func (w *WhereBuilder) Cursor(field string, value interface{}, isAsc bool) *Wher
 	return w
 }
 
-// Raw 原始条件
+// Raw original condition.
 func (w *WhereBuilder) Raw(condition string, args ...interface{}) *WhereBuilder {
 	w.conditions = append(w.conditions, condition)
 	w.args = append(w.args, args...)
 	return w
 }
 
-// Build 构建WHERE子句
+// Build build WHERE clause.
 func (w *WhereBuilder) Build() (query string, args []interface{}) {
 	if len(w.conditions) == 0 {
 		return "", nil

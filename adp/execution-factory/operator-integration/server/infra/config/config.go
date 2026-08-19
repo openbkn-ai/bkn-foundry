@@ -1,6 +1,6 @@
-// Package config 定义配置
+// Package config defines configuration.
 // @file config.go
-// @description: 定义配置
+// @description: define configuration.
 package config
 
 import (
@@ -16,21 +16,21 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/go-playground/validator/v10"
-	bknotel "github.com/openbkn-ai/bkn-foundry/comm-go/otel"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	bknotel "github.com/openbkn-ai/bkn-foundry/comm-go/otel"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	DefaultOperatorNameMaxLength  = 50 // 算子名称最大长度
-	DefaultOperatorHistoryRecords = 10 // 算子历史记录最大保留数
+	DefaultOperatorNameMaxLength  = 50 // Maximum length of operator name.
+	DefaultOperatorHistoryRecords = 10 // Maximum number of operator history records retained.
 )
 
-// Config 配置
+// Config configuration.
 type Config struct {
 	Project                  Project                   `yaml:"project"`
 	OAuth                    OAuthConfig               `yaml:"oauth"`
@@ -63,46 +63,46 @@ type SkillIndexBuildConfig struct {
 	TaskRetention            string `yaml:"task_retention" default:"720h"`
 }
 
-// OSSGatewayBackendConfig OSS 网关后端配置
+// OSSGatewayBackendConfig OSS gateway backend configuration.
 type OSSGatewayBackendConfig struct {
 	PrivateBaseConfig `yaml:",inline"`
 	StorageID         string `yaml:"storage_id"`
 	InternalRequest   bool   `yaml:"internal_request" default:"false"`
-	Expires           int64  `yaml:"expires" default:"3600"` // 单位（秒）
+	Expires           int64  `yaml:"expires" default:"3600"` // Unit (second)
 }
 
-// SandboxControlPlaneConfig 沙箱控制服务配置
+// SandboxControlPlaneConfig sandbox control service configuration.
 type SandboxControlPlaneConfig struct {
 	PrivateBaseConfig `yaml:",inline"`
-	// 模版ID
+	// Template ID.
 	TemplateID string `yaml:"template_id" default:"python-basic"`
-	// 会话资源配置
+	// Session resource configuration.
 	SessionResources SessionResourcesConfig `yaml:"session_resources"`
-	// 最大会话数，默认3
+	// Maximum number of sessions, default 3.
 	MaxSessions int `yaml:"max_sessions" default:"3"`
-	// 活跃会话数，默认1
+	// Number of active sessions, default 1.
 	ActiveSessions int `yaml:"active_sessions" default:"1"`
-	// 单个会话并发执行最大任务数，默认1
+	// The maximum number of tasks to be executed concurrently in a single session, default 1.
 	MaxConcurrentTasks int `yaml:"max_concurrent_tasks" default:"100"`
 }
 
-// SessionResourcesConfig 会话资源配置
+// SessionResourcesConfig session resource configuration.
 type SessionResourcesConfig struct {
-	CPU     string `yaml:"cpu" default:"1"`        // CPU核心数
-	Memory  string `yaml:"memory" default:"512Mi"` // 内存大小，单位为Mi, 默认512Mi
-	Disk    string `yaml:"disk" default:"1Gi"`     // 磁盘大小，单位为Gi, 默认1Gi
-	Timeout int    `yaml:"timeout" default:"3600"` // 会话超时时间，单位为秒, 默认1小时
+	CPU     string `yaml:"cpu" default:"1"`        // Number of CPU cores.
+	Memory  string `yaml:"memory" default:"512Mi"` // Memory size in Mi, default 512Mi.
+	Disk    string `yaml:"disk" default:"1Gi"`     // Disk size in Gi, default 1Gi.
+	Timeout int    `yaml:"timeout" default:"3600"` // Session timeout in seconds, default is 1 hour.
 }
 
-// AIGenerationConfig 智能生成配置
+// AIGenerationConfig intelligent generation configuration.
 type AIGenerationConfig struct {
-	// python代码生成系统提示词ID
-	PythonFunctionGeneratorPromptID string    `yaml:"python_function_generator_prompt_id"` // 如果为空或为找到，则使用默认提示词
-	MetadataParamGeneratorPromptID  string    `yaml:"metadata_param_generator_prompt_id"`  // 如果为空或为找到，则使用默认提示词
+	// python code generation system prompt word ID.
+	PythonFunctionGeneratorPromptID string    `yaml:"python_function_generator_prompt_id"` // If empty or not found, the default prompt word is used.
+	MetadataParamGeneratorPromptID  string    `yaml:"metadata_param_generator_prompt_id"`  // If empty or not found, the default prompt word is used.
 	LLMConfig                       LLMConfig `yaml:"llm"`
 }
 
-// LLMConfig LLM配置
+// LLMConfig LLM configuration.
 type LLMConfig struct {
 	Model            string  `yaml:"model"`
 	MaxTokens        int     `yaml:"max_tokens" default:"2048"`
@@ -113,7 +113,7 @@ type LLMConfig struct {
 	PresencePenalty  float64 `yaml:"presence_penalty" default:"0.0"`
 }
 
-// ObservabilityConfig 跟踪配置
+// ObservabilityConfig tracking configuration.
 type ObservabilityConfig struct {
 	bknotel.OtelConfig `mapstructure:",squash"`
 
@@ -125,7 +125,7 @@ type ObservabilityConfig struct {
 	GrpcTraceFeedIngesterURL string                 `mapstructure:"grpcTraceFeedIngesterUrl"`
 }
 
-// Project 项目配置
+// Project configuration.
 type Project struct {
 	Host        string              `yaml:"host"`
 	Port        int                 `yaml:"port"`
@@ -138,14 +138,14 @@ type Project struct {
 	CommitInfo  utils.GitCommitInfo `yaml:"-"`
 }
 
-// SetMachineID 设置机器ID
+// SetMachineID Set machine ID.
 func (conf *Project) SetMachineID() {
-	// 生成MachineID
+	// GenerateMachineID.
 	if conf.MachineID == "" {
 		mid := os.Getenv(conf.PodID)
 		if mid == "" {
 			mid, _ = os.Hostname()
-			// 为空也可以
+			// It can also be empty.
 			mid = utils.MD5(mid)
 			mid = mid[:8]
 		}
@@ -153,54 +153,54 @@ func (conf *Project) SetMachineID() {
 	}
 }
 
-// GetMachineID 获取机器ID
+// GetMachineID Gets the machine ID.
 func (conf *Project) GetMachineID() string {
 	return conf.MachineID
 }
 
-// ProxyModuleConfig 代理模块配置信息
+// ProxyModuleConfig proxy module configuration information.
 type ProxyModuleConfig struct {
-	// 代理配置
-	DefaultTimeout int64 `yaml:"default_timeout" default:"30"` // 单位: 秒
-	MaxTimeout     int64 `yaml:"max_timeout" default:"300"`    // 单位: 秒
-	// 代理池配置
-	MaxClients     int   `yaml:"max_clients" default:"50"`      // 最大客户端连接数
-	ClientLifetime int64 `yaml:"client_lifetime" default:"300"` // 单位: 秒
+	// Agent configuration.
+	DefaultTimeout int64 `yaml:"default_timeout" default:"30"` // Unit: seconds.
+	MaxTimeout     int64 `yaml:"max_timeout" default:"300"`    // Unit: seconds.
+	// Agent pool configuration.
+	MaxClients     int   `yaml:"max_clients" default:"50"`      // Maximum number of client connections.
+	ClientLifetime int64 `yaml:"client_lifetime" default:"300"` // Unit: seconds.
 }
 
-// OperatorConfig 算子配置
+// OperatorConfig operator configuration.
 type OperatorConfig struct {
-	ImportFileSizeLimit    int64 `yaml:"import_file_size_limit" default:"2097152"  validate:"min=0,max=104857600"` // 默认2MB
-	ImportOperatorMaxCount int64 `yaml:"import_operator_max_count" default:"10" validate:"min=1"`                  // 默认10
-	DescLengthLimit        int64 `yaml:"operator_description_length_limit" default:"255" validate:"min=1"`         // 算子描述最大长度, 单位: 字节
+	ImportFileSizeLimit    int64 `yaml:"import_file_size_limit" default:"2097152"  validate:"min=0,max=104857600"` // Default 2MB.
+	ImportOperatorMaxCount int64 `yaml:"import_operator_max_count" default:"10" validate:"min=1"`                  // Default 10.
+	DescLengthLimit        int64 `yaml:"operator_description_length_limit" default:"255" validate:"min=1"`         // Maximum length of operator description, unit: bytes.
 }
 
-// MCPConfig MCP配置
+// MCPConfig MCP configuration.
 type MCPConfig struct {
-	ConnTimeout int64 `yaml:"conn_timeout" default:"10"` // 单位: 秒
+	ConnTimeout int64 `yaml:"conn_timeout" default:"10"` // Unit: seconds.
 
-	// MaxInstances 控制进程内最多保留多少个运行态 MCP 实例：
-	// - <=0: 不限制（不推荐，实例数量大时会占用较多内存）
-	// - >0 : 超过后按 LRU 淘汰最久未访问实例（有活跃 SSE/Stream 连接的实例不淘汰）
+	// MaxInstances controls the maximum number of running MCP instances retained within the process:
+	// - <=0: No limit (not recommended, it will occupy more memory when the number of instances is large)
+	// - >0: After exceeding the limit, press LRU to eliminate the instance that has not been accessed for the longest time (instances with active SSE/Stream connections will not be eliminated)
 	MaxInstances int `yaml:"max_instances" default:"200"`
 
-	// InstanceTTL 控制实例的过期清理阈值（按最近访问时间）：
-	// - <=0: 不启用 TTL
-	// - >0 : lastAccess 超过该阈值则可被清理（有活跃 SSE/Stream 连接的实例不清理）
-	InstanceTTL int64 `yaml:"instance_ttl" default:"1800"` // 单位: 秒
+	// InstanceTTL controls the expiration cleanup threshold of an instance (by last access time):
+	// - <=0: disable TTL.
+	// - >0: lastAccess can be cleaned if it exceeds this threshold (instances with active SSE/Stream connections are not cleaned)
+	InstanceTTL int64 `yaml:"instance_ttl" default:"1800"` // Unit: seconds.
 
-	// CleanupInterval 定时清理周期：
-	// - <=0: 不启用定时清理
-	// - >0 : 周期性扫描并清理过期实例（仅在 InstanceTTL>0 时有效）
-	CleanupInterval int64 `yaml:"cleanup_interval" default:"60"` // 单位: 秒
+	// CleanupInterval scheduled cleaning cycle:
+	// - <=0: disable scheduled cleaning.
+	// - >0: Periodically scan and clean up expired instances (valid only when InstanceTTL>0)
+	CleanupInterval int64 `yaml:"cleanup_interval" default:"60"` // Unit: seconds.
 }
 
-// CategoryConfig 算子分类配置
+// CategoryConfig operator classification configuration.
 type CategoryConfig struct {
-	InitSwitch bool `yaml:"init_switch"` // 是否初始化算子分类
+	InitSwitch bool `yaml:"init_switch"` // Whether to initialize operator classification.
 }
 
-// DBConfig 数据库配置
+// DBConfig database configuration.
 type DBConfig struct {
 	Host         string `yaml:"host"`
 	Port         int    `yaml:"port"`
@@ -217,7 +217,7 @@ type DBConfig struct {
 	SystemID     string `yaml:"system_id"`
 }
 
-// GetDBName 获取数据库名称
+// GetDBName Gets the database name.
 func (conf *Config) GetDBName() string {
 	if conf.DB.DBName == "" {
 		conf.DB.DBName = "dip_data_operator_hub"
@@ -228,7 +228,7 @@ func (conf *Config) GetDBName() string {
 	return fmt.Sprintf("%s%s", conf.DB.SystemID, conf.DB.DBName)
 }
 
-// GetLogger 获取Logger
+// GetLogger Get Logger.
 func (conf *Config) GetLogger() interfaces.Logger {
 	if conf.Logger == nil {
 		return logger.DefaultLogger()
@@ -236,7 +236,7 @@ func (conf *Config) GetLogger() interfaces.Logger {
 	return conf.Logger
 }
 
-// OAuthConfig OAuth连接信息
+// OAuthConfig OAuth connection information.
 type OAuthConfig struct {
 	PublicBaseConfig `yaml:",inline"`
 	AdminHost        string `yaml:"admin_host"`
@@ -245,14 +245,14 @@ type OAuthConfig struct {
 	AdminPrefix      string `yaml:"admin_prefix"`
 }
 
-// PublicBaseConfig public 基础配置
+// PublicBaseConfig public basic configuration.
 type PublicBaseConfig struct {
 	PublicHost     string `yaml:"public_host"`
 	PublicPort     int    `yaml:"public_port"`
 	PublicProtocol string `yaml:"public_protocol"`
 }
 
-// PrivateBaseConfig private 基础配置
+// PrivateBaseConfig private basic configuration.
 type PrivateBaseConfig struct {
 	PrivateHost     string `yaml:"private_host"`
 	PrivatePort     int    `yaml:"private_port"`
@@ -264,7 +264,7 @@ var (
 	configLoader *Config
 )
 
-// NewConfigLoader 获取配置
+// NewConfigLoader Get configuration.
 func NewConfigLoader() *Config {
 	once.Do(func() {
 		profileDir := os.Getenv("CONFIG_PROFILE")
@@ -278,7 +278,7 @@ func NewConfigLoader() *Config {
 			secretFilePath = filepath.Join(profileDir, "agent-operator-integration-secret.yaml")
 			mqConfigFilePath = filepath.Join(profileDir, "mq_config.yaml")
 		}
-		// 设置默认配置
+		// Set default configuration.
 		configLoader = &Config{
 			MQConfigFile: mqConfigFilePath,
 		}
@@ -293,15 +293,15 @@ func NewConfigLoader() *Config {
 			return
 		}
 		overrideWithEnv(configLoader)
-		// 增加校验validator
+		// Add verification validator.
 		err = validator.New().Struct(configLoader)
 		if err != nil {
 			log.Panicln("Error: validate config failed: ", err)
 			return
 		}
-		// 初始化可观测性相关配置
+		// Initialize observability related configurations.
 		configLoader.initO11yAndLog()
-		// 设置机器ID
+		// Set machine ID.
 		configLoader.Project.SetMachineID()
 	})
 	return configLoader
@@ -320,9 +320,9 @@ func (conf *Config) localConfig(path string) (err error) {
 	return
 }
 
-// overrideWithEnv 自动遍历结构体，用反射根据 tag 进行环境变量覆盖
+// overrideWithEnv automatically traverses the structure and uses reflection to override environment variables based on tags.
 func overrideWithEnv(cfg interface{}) {
-	v := reflect.ValueOf(cfg).Elem() // 获取指向结构体的指针
+	v := reflect.ValueOf(cfg).Elem() // Get pointer to structure.
 	t := v.Type()
 
 	for i := 0; i < v.NumField(); i++ {
@@ -330,30 +330,30 @@ func overrideWithEnv(cfg interface{}) {
 		fieldType := t.Field(i)
 
 		if field.Kind() == reflect.Struct {
-			// 递归处理嵌套结构体
+			// Recursively process nested structures.
 			overrideWithEnv(field.Addr().Interface())
 			continue
 		}
 
-		// 获取字段的 env 标签
+		// Get the env tag of a field.
 		envTag := fieldType.Tag.Get("env")
 		if envTag == "" {
-			continue // 如果没有定义 env 标签，跳过
+			continue // If env tag is not defined, skip.
 		}
 
-		// 判断环境变量是否存在
+		// Determine whether environment variables exist.
 		envValue, exists := os.LookupEnv(envTag)
 		if !exists {
-			continue // 如果环境变量 key 不存在，跳过
+			continue // If the environment variable key does not exist, skip.
 		}
 
-		// 如果 key 存在但值为空，则将字段设为类型的零值
+		// If key exists but the value is null, set the field to the zero value of type.
 		if envValue == "" {
 			field.Set(reflect.Zero(field.Type()))
 			continue
 		}
 
-		// 使用反射直接设置字段值，要求类型匹配
+		// Use reflection to set field values directly, requiring type matching.
 		switch field.Kind() { //nolint:exhaustive
 		case reflect.String:
 			field.SetString(envValue)
@@ -373,15 +373,15 @@ func overrideWithEnv(cfg interface{}) {
 	}
 }
 
-// 加载&初始化可观测性相关配置
+// Load & initialize observability related configurations.
 func (conf *Config) initO11yAndLog() {
-	// 初始化日志
+	// Initialization log.
 	level := logger.Level(configLoader.Project.LoggerLevel)
 	if configLoader.Project.Debug {
 		level = logger.LevelDebug
 	}
 
-	// 加载配置文件
+	// Load configuration file.
 	viper.SetConfigName("observability")
 	viper.SetConfigType("yaml")
 	profileDir := os.Getenv("CONFIG_PROFILE")
@@ -404,7 +404,7 @@ func (conf *Config) initO11yAndLog() {
 	conf.Observability.OtelConfig = otelConfig
 	conf.OTelProviders = providers
 
-	// 初始化日志
+	// Initialization log.
 	if otelConfig.Log.Enabled {
 		configLoader.Logger = telemetry.NewSamplerLogger(logger.NewLogger(level, logger.MaxCalldepth))
 		return

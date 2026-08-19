@@ -7,9 +7,9 @@ import (
 	"fmt"
 )
 
-// MockExecutor 模拟数据库执行器
+// MockExecutor simulates database executor.
 type MockExecutor struct {
-	// 存储预期的查询和响应
+	// Store expected queries and responses.
 	expectedQueries []ExpectedQuery
 	currentIndex    int
 }
@@ -23,7 +23,7 @@ type ExpectedQuery struct {
 	QueryType string // "exec", "query", "queryrow"
 }
 
-// MockResult 模拟SQL结果
+// MockResult simulates SQL results.
 type MockResult struct {
 	lastInsertID int64
 	rowsAffected int64
@@ -37,7 +37,7 @@ func (m *MockResult) RowsAffected() (int64, error) {
 	return m.rowsAffected, nil
 }
 
-// NewMockExecutor 创建Mock执行器
+// NewMockExecutor creates a Mock executor.
 func NewMockExecutor() *MockExecutor {
 	return &MockExecutor{
 		expectedQueries: make([]ExpectedQuery, 0),
@@ -45,7 +45,7 @@ func NewMockExecutor() *MockExecutor {
 	}
 }
 
-// ExpectExec 预期一个Exec调用
+// ExpectExec expects an Exec call.
 func (m *MockExecutor) ExpectExec(sql string, args ...interface{}) *ExpectedQuery {
 	query := ExpectedQuery{
 		SQL:       sql,
@@ -56,7 +56,7 @@ func (m *MockExecutor) ExpectExec(sql string, args ...interface{}) *ExpectedQuer
 	return &m.expectedQueries[len(m.expectedQueries)-1]
 }
 
-// ExpectQuery 预期一个Query调用
+// ExpectQuery expects a Query call.
 func (m *MockExecutor) ExpectQuery(sql string, args ...interface{}) *ExpectedQuery {
 	query := ExpectedQuery{
 		SQL:       sql,
@@ -67,7 +67,7 @@ func (m *MockExecutor) ExpectQuery(sql string, args ...interface{}) *ExpectedQue
 	return &m.expectedQueries[len(m.expectedQueries)-1]
 }
 
-// ExpectQueryRow 预期一个QueryRow调用
+// ExpectQueryRow expects a QueryRow call.
 func (m *MockExecutor) ExpectQueryRow(sql string, args ...interface{}) *ExpectedQuery {
 	query := ExpectedQuery{
 		SQL:       sql,
@@ -78,7 +78,7 @@ func (m *MockExecutor) ExpectQueryRow(sql string, args ...interface{}) *Expected
 	return &m.expectedQueries[len(m.expectedQueries)-1]
 }
 
-// WillReturnResult 设置返回的结果
+// WillReturnResult sets the returned result.
 func (eq *ExpectedQuery) WillReturnResult(lastInsertID, rowsAffected int64) *ExpectedQuery {
 	eq.Result = &MockResult{
 		lastInsertID: lastInsertID,
@@ -87,13 +87,13 @@ func (eq *ExpectedQuery) WillReturnResult(lastInsertID, rowsAffected int64) *Exp
 	return eq
 }
 
-// WillReturnError 设置返回的错误
+// WillReturnError sets the returned error.
 func (eq *ExpectedQuery) WillReturnError(err error) *ExpectedQuery {
 	eq.Error = err
 	return eq
 }
 
-// ExecContext 模拟执行SQL
+// ExecContext simulates executing SQL.
 func (m *MockExecutor) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
 	if m.currentIndex >= len(m.expectedQueries) {
 		return nil, fmt.Errorf("unexpected exec call: %s", query)
@@ -113,7 +113,7 @@ func (m *MockExecutor) ExecContext(ctx context.Context, query string, args ...in
 	return expected.Result, nil
 }
 
-// QueryContext 模拟查询多行
+// QueryContext simulates querying multiple rows.
 func (m *MockExecutor) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
 	if m.currentIndex >= len(m.expectedQueries) {
 		return nil, fmt.Errorf("unexpected query call: %s", query)
@@ -133,10 +133,10 @@ func (m *MockExecutor) QueryContext(ctx context.Context, query string, args ...i
 	return expected.Rows, nil
 }
 
-// QueryRowContext 模拟查询单行
+// QueryRowContext simulates querying a single row.
 func (m *MockExecutor) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
 	if m.currentIndex >= len(m.expectedQueries) {
-		// 返回一个包含错误的Row
+		// Returns a Row containing errors.
 		return &sql.Row{}
 	}
 
@@ -144,21 +144,21 @@ func (m *MockExecutor) QueryRowContext(ctx context.Context, query string, args .
 	m.currentIndex++
 
 	if expected.QueryType != "queryrow" {
-		// 返回一个包含错误的Row
+		// Returns a Row containing errors.
 		return &sql.Row{}
 	}
 
-	// 这里简化处理，实际应该返回包含预期数据的Row
+	// The processing is simplified here. In fact, a Row containing the expected data should be returned.
 	return &sql.Row{}
 }
 
-// Reset 重置Mock状态
+// Reset resets the Mock state.
 func (m *MockExecutor) Reset() {
 	m.expectedQueries = make([]ExpectedQuery, 0)
 	m.currentIndex = 0
 }
 
-// ExpectationsWereMet 检查所有预期是否都被满足
+// ExpectationsWereMet checks whether all expectations are met.
 func (m *MockExecutor) ExpectationsWereMet() error {
 	if m.currentIndex < len(m.expectedQueries) {
 		return fmt.Errorf("expected %d queries, but only %d were executed", len(m.expectedQueries), m.currentIndex)
@@ -166,7 +166,7 @@ func (m *MockExecutor) ExpectationsWereMet() error {
 	return nil
 }
 
-// MockRows 简单的模拟Rows实现
+// MockRows simple simulation of Rows implementation.
 type MockRows struct {
 	columns []string
 	values  [][]driver.Value

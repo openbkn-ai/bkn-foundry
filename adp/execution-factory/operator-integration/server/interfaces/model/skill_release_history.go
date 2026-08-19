@@ -7,7 +7,7 @@ import (
 
 //go:generate mockgen -source=skill_release_history.go -destination=../../mocks/model_skill_release_history.go -package=mocks
 
-// SkillReleaseHistoryDB Skill 发布历史快照
+// SkillReleaseHistoryDB Skill release history snapshot.
 type SkillReleaseHistoryDB struct {
 	ID           int64  `json:"id" db:"f_id"`
 	SkillID      string `json:"skill_id" db:"f_skill_id"`
@@ -20,7 +20,7 @@ type SkillReleaseHistoryDB struct {
 	UpdateUser   string `json:"update_user" db:"f_update_user"`
 }
 
-// ISkillReleaseHistoryDB Skill 发布历史表操作接口
+// ISkillReleaseHistoryDB Skill releases history table operation interface.
 type ISkillReleaseHistoryDB interface {
 	Insert(ctx context.Context, tx *sql.Tx, history *SkillReleaseHistoryDB) error
 	SelectBySkillID(ctx context.Context, tx *sql.Tx, skillID string) (histories []*SkillReleaseHistoryDB, err error)

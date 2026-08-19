@@ -2,7 +2,7 @@ package interfaces
 
 import "context"
 
-// BizCategory 业务分类
+// BizCategory Business Category.
 //
 //go:generate mockgen -source=logics_category.go -destination=../mocks/category.go -package=mocks
 type BizCategory string
@@ -12,67 +12,67 @@ func (c BizCategory) String() string {
 }
 
 const (
-	CategoryTypeOther  = BizCategory("other_category") // 其他分类
-	CategoryTypeSystem = BizCategory("system")         // 系统内置分类
+	CategoryTypeOther  = BizCategory("other_category") // Other categories.
+	CategoryTypeSystem = BizCategory("system")         // System built-in classification.
 )
 
-// CategoryInfo 分类信息
+// CategoryInfo category information.
 type CategoryInfo struct {
 	CategoryType BizCategory `json:"category_type"`
-	CategoryName string      `json:"name"` // (支持国际化)
+	CategoryName string      `json:"name"` // (Supports internationalization)
 }
 
-// CreateCategoryReq 新增分类请求
+// CreateCategoryReq adds a new category request.
 type CreateCategoryReq struct {
 	UserID       string      `header:"user_id"`
 	CategoryType BizCategory `json:"category_type"`
 	CategoryName string      `json:"name" validate:"required"`
 }
 
-// CreateCategoryResp 新增分类响应
+// CreateCategoryResp adds category response.
 type CreateCategoryResp struct {
 	CategoryType BizCategory `json:"category_type"`
 	CategoryName string      `json:"name"`
 }
 
-// UpdateCategoryReq 更新分类请求
+// UpdateCategoryReq update category request.
 type UpdateCategoryReq struct {
 	UserID       string      `header:"user_id"`
 	CategoryType BizCategory `uri:"category_type" validate:"required"`
 	CategoryName string      `json:"name" validate:"required"`
 }
 
-// UpdateCategoryResp 更新分类响应
+// UpdateCategoryResp Update category response.
 type UpdateCategoryResp struct {
 	CategoryType BizCategory `json:"category_type"`
 	CategoryName string      `json:"name"`
 }
 
-// DeleteCategoryReq 删除分类请求
+// DeleteCategoryReq delete category request.
 type DeleteCategoryReq struct {
 	UserID       string      `header:"user_id"`
 	CategoryType BizCategory `uri:"category_type" validate:"required"`
 }
 
-// DeleteCategoryResp 删除分类响应
+// DeleteCategoryResp Delete category response.
 type DeleteCategoryResp struct {
 	CategoryType BizCategory `json:"category_type"`
 }
 
-// CategoryManager 分类管理器
+// CategoryManager manages categories.
 type CategoryManager interface {
-	// 获取分类列表
+	// Get category list.
 	GetCategoryList(ctx context.Context) (categoryList []*CategoryInfo, err error)
-	// 检查分类是否存在
+	// Check if the category exists.
 	CheckCategory(category BizCategory) (isExist bool)
-	// 获取分类名称
+	// Get category name.
 	GetCategoryName(ctx context.Context, category BizCategory) (categoryName string)
-	// 更新分类
+	// Update category.
 	UpdateCategory(ctx context.Context, req *UpdateCategoryReq) (resp *UpdateCategoryResp, err error)
-	// 新增分类
+	// Add new category.
 	CreateCategory(ctx context.Context, req *CreateCategoryReq) (resp *CreateCategoryResp, err error)
-	// 删除分类
+	// Delete category.
 	DeleteCategory(ctx context.Context, req *DeleteCategoryReq) (err error)
-	// 批量新增分类
+	// Add categories in batches.
 	BatchCreateCategory(ctx context.Context, req []*CreateCategoryReq) (resp []*CreateCategoryResp, err error)
 }

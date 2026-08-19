@@ -12,7 +12,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// 测试Function转换成OpenAPI3.0规范的Schema
+// Convert the test function into the Schema of the OpenAPI3.0 specification.
 
 func TestFunctionToOpenAPISchema(t *testing.T) {
 	Convey("TestFunctionToOpenAPISchema: 传参为空时", t, func() {
@@ -24,7 +24,7 @@ func TestFunctionToOpenAPISchema(t *testing.T) {
 		}
 		schema := convertToPathItemContent(input)
 		So(schema, ShouldNotBeNil)
-		// 输出到文件中
+		// output to file.
 		data, _ := jsoniter.Marshal(schema)
 		filename := input.Name + ".json"
 		err := os.WriteFile(filename, data, 0644)
@@ -67,7 +67,7 @@ func TestFunctionToOpenAPISchema(t *testing.T) {
 		}
 		schema := convertToPathItemContent(input)
 		So(schema, ShouldNotBeNil)
-		// 输出到文件中
+		// output to file.
 		data, _ := jsoniter.Marshal(schema)
 		filename := input.Name + ".json"
 		err := os.WriteFile(filename, data, 0644)
@@ -155,7 +155,7 @@ func TestCreateParameterSchema(t *testing.T) {
 		So(err, ShouldBeNil)
 		schema := convertToPathItemContent(functionInput)
 		So(schema, ShouldNotBeNil)
-		// 输出到文件中
+		// output to file.
 		data, _ := jsoniter.Marshal(schema)
 		filename := functionInput.Name + ".json"
 		err = os.WriteFile(filename, data, 0644)
@@ -222,7 +222,7 @@ func TestCreateParameterSchema(t *testing.T) {
 		So(err, ShouldBeNil)
 		schema := convertToPathItemContent(functionInput)
 		So(schema, ShouldNotBeNil)
-		// 输出到文件中
+		// output to file.
 		data, _ := jsoniter.Marshal(schema)
 		filename := functionInput.Name + ".json"
 		err = os.WriteFile(filename, data, 0644)

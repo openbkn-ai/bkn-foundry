@@ -45,7 +45,7 @@ func generateSQL(sqlstr string, args ...interface{}) string {
 	return sqlstr
 }
 
-// Before 开始
+// Before start.
 func (h *RDSHook) Before(ctx context.Context, sqltmp string, args ...interface{}) (context.Context, error) {
 	tracer := otel.GetTracerProvider()
 	if tracer != nil {
@@ -60,7 +60,7 @@ func (h *RDSHook) Before(ctx context.Context, sqltmp string, args ...interface{}
 	return ctx, nil
 }
 
-// After 结束
+// After end.
 func (h *RDSHook) After(ctx context.Context, _ string, _ ...interface{}) (context.Context, error) {
 	if span, ok := ctx.Value((*ctxSpanKey)(nil)).(trace.Span); ok {
 		span.End()
@@ -68,7 +68,7 @@ func (h *RDSHook) After(ctx context.Context, _ string, _ ...interface{}) (contex
 	return ctx, nil
 }
 
-// OnError 错误
+// OnError error.
 func (h *RDSHook) OnError(ctx context.Context, err error, _ string, _ ...interface{}) error {
 	if err != nil && !errors.Is(err, driver.ErrSkip) {
 		if span, ok := ctx.Value((*ctxSpanKey)(nil)).(trace.Span); ok {

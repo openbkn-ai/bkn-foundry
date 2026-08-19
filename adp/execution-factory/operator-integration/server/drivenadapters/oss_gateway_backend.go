@@ -20,7 +20,7 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// OSSGatewayBackendClient OSS 网关后端客户端
+// OSSGatewayBackendClient OSS gateway backend client.
 type ossGatewayBackendClient struct {
 	httpClient      interfaces.HTTPClient
 	client          *http.Client
@@ -65,13 +65,13 @@ var (
 	ossClient interfaces.OSSGatewayBackendClient
 )
 
-// NewOSSGatewayBackendClient 创建 OSS 网关后端客户端
+// NewOSSGatewayBackendClient creates an OSS gateway backend client.
 func NewOSSGatewayBackendClient() interfaces.OSSGatewayBackendClient {
 	ossOnce.Do(func() {
 		cfg := config.NewConfigLoader().OSSGatewayBackendConfig
 		expires := cfg.Expires
 		if expires <= 0 {
-			expires = 3600 // 单位（秒）
+			expires = 3600 // Unit (second)
 		}
 		client := &ossGatewayBackendClient{
 			httpClient:      rest.NewHTTPClient(),
@@ -93,7 +93,7 @@ func NewOSSGatewayBackendClient() interfaces.OSSGatewayBackendClient {
 	return ossClient
 }
 
-// IsReady 检查 OSS 网关后端客户端是否就绪
+// IsReady checks whether the OSS gateway backend client is ready.
 func (c *ossGatewayBackendClient) IsReady() bool {
 	return c.hasStorageID()
 }
@@ -103,7 +103,7 @@ func (c *ossGatewayBackendClient) Close() error {
 	return nil
 }
 
-// UploadFile 单个文件上传
+// UploadFile single file upload.
 func (c *ossGatewayBackendClient) UploadFile(ctx context.Context, object *interfaces.OssObject, content []byte) (err error) {
 	src := fmt.Sprintf("%s/upload/%s/%s", c.baseURL, object.StorageID, url.PathEscape(object.StorageKey))
 	query := url.Values{
@@ -138,7 +138,7 @@ func (c *ossGatewayBackendClient) UploadFile(ctx context.Context, object *interf
 	return c.doSignedRequest(ctx, authResp.Data.Method, authResp.Data.URL, authResp.Data.Headers, bytes.NewReader(content))
 }
 
-// DownloadFile 下载文件
+// DownloadFile download file.
 func (c *ossGatewayBackendClient) DownloadFile(ctx context.Context, object *interfaces.OssObject) (data []byte, err error) {
 	authReq, err := c.getDownloadInfo(ctx, object, true)
 	if err != nil {
@@ -156,7 +156,7 @@ func (c *ossGatewayBackendClient) DownloadFile(ctx context.Context, object *inte
 	return
 }
 
-// DeleteFile 删除文件
+// DeleteFile delete file.
 func (c *ossGatewayBackendClient) DeleteFile(ctx context.Context, object *interfaces.OssObject) (err error) {
 	src := fmt.Sprintf("%s/delete/%s/%s", c.baseURL, object.StorageID, url.PathEscape(object.StorageKey))
 	headers := common.GetHeaderFromCtx(ctx)
@@ -228,7 +228,7 @@ func (c *ossGatewayBackendClient) getDownloadInfo(ctx context.Context, object *i
 	return
 }
 
-// GetDownloadURL 获取文件下载URL
+// GetDownloadURL Gets the file download URL.
 func (c *ossGatewayBackendClient) GetDownloadURL(ctx context.Context, object *interfaces.OssObject) (url string, err error) {
 	resp, err := c.getDownloadInfo(ctx, object, c.internalRequest)
 	if err != nil {
@@ -277,7 +277,7 @@ func (c *ossGatewayBackendClient) currentStorageID(ctx context.Context) (string,
 	return c.storageID, nil
 }
 
-// GetDefaultStorageID 获取默认存储ID
+// GetDefaultStorageID Gets the default storage ID.
 func (c *ossGatewayBackendClient) GetDefaultStorageID(ctx context.Context) (string, error) {
 	src := fmt.Sprintf("%s/storages?enabled=true&is_default=true", c.baseURL)
 	headers := common.GetHeaderFromCtx(ctx)
@@ -368,7 +368,7 @@ func (c *ossGatewayBackendClient) doSignedRequest(ctx context.Context, method, r
 	return nil
 }
 
-// doSignedRequestRaw 发送已签名的HTTP请求
+// doSignedRequestRaw sends a signed HTTP request.
 func (c *ossGatewayBackendClient) doSignedRequestRaw(ctx context.Context, method, reqURL string, headers map[string]string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {

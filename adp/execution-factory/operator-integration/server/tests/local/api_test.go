@@ -16,22 +16,22 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-// OperatorAPI 算子API元数据
+// OperatorAPI operator API metadata.
 type OperatorAPI struct {
 }
 
-// 测试API格式解析
+// Test API format parsing.
 func TestAPIAnalysis(t *testing.T) {
 	localPath := "../file/test.json"
 
-	// 加载OpenAPI文档
+	// Load OpenAPI documentation.
 	loader := openapi3.NewLoader()
 
 	doc, err := loader.LoadFromFile(localPath)
 	if err != nil {
 		t.Fatalf("Failed to load OpenAPI document: %v", err)
 	}
-	// 验证OpenAPI文档
+	// Verify OpenAPI documentation.
 	err = doc.Validate(loader.Context)
 	if err != nil {
 		t.Fatalf("Failed to validate OpenAPI document: %v", err)
@@ -45,9 +45,9 @@ func TestAPIAnalysis(t *testing.T) {
 	defer func() {
 		_ = os.RemoveAll(dstPath)
 	}()
-	// 将批量导入的OpenAPI分割成多个
+	// Split batch imported OpenAPI into multiple.
 	for path, pathItem := range doc.Paths.Map() {
-		// 创建新的精简版OpenAPI文档
+		// Create new lite version of OpenAPI documentation.
 		newDoc := &openapi3.T{
 			OpenAPI: doc.OpenAPI,
 			Info:    doc.Info,
@@ -59,7 +59,7 @@ func TestAPIAnalysis(t *testing.T) {
 			Paths:    openapi3.NewPaths(openapi3.WithPath(path, pathItem)),
 			Security: doc.Security,
 		}
-		// 自动收集依赖的schema
+		// Automatically collect dependent schema.
 		for _, op := range pathItem.Operations() {
 			if op.RequestBody != nil {
 				collectSchemas(doc.Components, op.RequestBody.Value.Content, newDoc.Components.Schemas, make(map[string]bool))
@@ -68,14 +68,14 @@ func TestAPIAnalysis(t *testing.T) {
 				collectSchemas(doc.Components, resp.Value.Content, newDoc.Components.Schemas, make(map[string]bool))
 			}
 		}
-		// 生成安全文件名
+		// Generate safe file names.
 		fileName := strings.ReplaceAll(path, "/", "_")
 		if fileName == "" {
 			fileName = "root"
 		}
 		fileName = strings.TrimLeft(fileName, "_") + ".json"
 		filePath := filepath.Join(dstPath, fileName)
-		// 序列化并写入文件
+		// Serialize and write to file.
 		data, err := json.MarshalIndent(newDoc, "", "  ")
 		if err != nil {
 			t.Fatalf("Failed to marshal API for %s: %v", path, err)
@@ -117,7 +117,7 @@ func TestValidateAPI(t *testing.T) {
 	}
 }
 
-// 测试API元数据解析
+// Test API metadata parsing.
 func TestAPIMetadataAnalysis(t *testing.T) {
 	_, err := LoadOpenAPIMetadata(context.Background(), string(FileDataType), "./data/api_open-doc_v1_file-decrypt.json", nil)
 	if err != nil {

@@ -1,6 +1,6 @@
-// Package model 定义数据库操作接口
+// Package model defines database operation interface.
 // @file api_metadata.go
-// @description: 定义t_metadata_api表操作接口
+// @description: Define t_metadata_api table operation interface.
 package model
 
 //go:generate mockgen -source=api_metadata.go -destination=../../mocks/model_api_metadata.go -package=mocks
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// APIMetadataDB API元数据数据库
+// APIMetadataDB API metadata database.
 type APIMetadataDB struct {
 	ID          int64  `json:"f_id" db:"f_id"`
 	Summary     string `json:"f_summary" db:"f_summary"`
@@ -24,10 +24,10 @@ type APIMetadataDB struct {
 	CreateTime  int64  `json:"f_create_time" db:"f_create_time"`
 	UpdateUser  string `json:"f_update_user" db:"f_update_user"`
 	UpdateTime  int64  `json:"f_update_time" db:"f_update_time"`
-	ErrMessage  string `json:"-"` // 错误信息
+	ErrMessage  string `json:"-"` // error message.
 }
 
-// IAPIMetadataDB API元数据数据库
+// IAPIMetadataDB API metadata database.
 type IAPIMetadataDB interface {
 	InsertAPIMetadata(ctx context.Context, tx *sql.Tx, metadata *APIMetadataDB) (version string, err error)
 	SelectByVersion(ctx context.Context, version string) (has bool, metadata *APIMetadataDB, err error)
@@ -39,17 +39,17 @@ type IAPIMetadataDB interface {
 	SelectListByVersion(ctx context.Context, versions []string) ([]*APIMetadataDB, error)
 }
 
-// GetType 获取资源类型
+// GetType Gets the resource type.
 func (a *APIMetadataDB) GetType() string {
 	return string(SourceTypeOpenAPI)
 }
 
-// GetSummary 获取摘要
+// GetSummary Get summary.
 func (a *APIMetadataDB) GetSummary() string {
 	return a.Summary
 }
 
-// GetDescription 获取函数描述
+// GetDescription Get function description.
 func (a *APIMetadataDB) GetDescription() string {
 	if a.Description == "" {
 		return a.Summary
@@ -57,7 +57,7 @@ func (a *APIMetadataDB) GetDescription() string {
 	return a.Description
 }
 
-// GetVersion 获取版本
+// GetVersion Get version.
 func (a *APIMetadataDB) GetVersion() string {
 	return a.Version
 }
@@ -92,7 +92,7 @@ func (a *APIMetadataDB) SetVersion(version string) {
 	a.Version = version
 }
 func (a *APIMetadataDB) SetScriptType(scriptType string) {
-	// 不支持设置运行时
+	// Setting the runtime is not supported.
 }
 func (a *APIMetadataDB) GetServerURL() string {
 	return a.ServerURL
@@ -101,7 +101,7 @@ func (a *APIMetadataDB) SetServerURL(serverURL string) {
 	a.ServerURL = serverURL
 }
 
-// GetAPISpec 获取API规范
+// GetAPISpec Get API specification.
 func (a *APIMetadataDB) GetAPISpec() string {
 	return a.APISpec
 }
@@ -110,7 +110,7 @@ func (a *APIMetadataDB) SetAPISpec(apiSpec string) {
 	a.APISpec = apiSpec
 }
 
-// GetUpdateUser 获取更新用户
+// GetUpdateUser Gets the update user.
 func (a *APIMetadataDB) GetUpdateUser() (user string) {
 	return a.UpdateUser
 }
@@ -120,12 +120,12 @@ func (a *APIMetadataDB) SetUpdateInfo(user string) {
 	a.UpdateTime = time.Now().UnixNano()
 }
 
-// GetCreateUser 获取创建用户
+// GetCreateUser Gets the created user.
 func (a *APIMetadataDB) GetCreateUser() (user string) {
 	return a.CreateUser
 }
 
-// SetCreateInfo 设置创建信息
+// SetCreateInfo sets creation information.
 func (a *APIMetadataDB) SetCreateInfo(user string) {
 	a.CreateUser = user
 	a.CreateTime = time.Now().UnixNano()
@@ -136,31 +136,31 @@ func (a *APIMetadataDB) GetErrMessage() string {
 }
 
 // func (a *APIMetadataDB) GetFunctionContent() (code, scriptType, dependencies string) {
-// 	// 不支持获取函数内容
+// // Does not support getting function content.
 // 	return code, scriptType, dependencies
 // }
 // func (a *APIMetadataDB) SetFunctionContent(code, scriptType, dependencies string) {
-// 	// 不支持设置函数内容
+// // Setting function content is not supported.
 // }
 
 func (a *APIMetadataDB) GetCode() string {
-	// 不支持获取函数内容
+	// Getting function content is not supported.
 	return ""
 }
 func (a *APIMetadataDB) SetCode(code string) {
-	// 不支持设置函数内容
+	// Setting function content is not supported.
 }
 func (a *APIMetadataDB) GetDependenciesURL() string {
-	// 不支持获取函数内容
+	// Getting function content is not supported.
 	return ""
 }
 func (a *APIMetadataDB) SetDependenciesURL(dependenciesURL string) {
-	// 不支持设置函数依赖URL
+	// Setting function dependency URL is not supported.
 }
 func (a *APIMetadataDB) SetDependencies(dependencies string) {
-	// 不支持设置函数依赖
+	// Setting functional dependencies is not supported.
 }
 func (a *APIMetadataDB) GetDependencies() string {
-	// 不支持获取函数依赖
+	// Obtaining functional dependencies is not supported.
 	return ""
 }

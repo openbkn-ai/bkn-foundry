@@ -19,10 +19,10 @@ var (
 	service     interfaces.InstanceService
 )
 
-// instanceService 实现 MCP 实例的生命周期管理（对外暴露 interfaces.InstanceService）：
-// - 期望态：runtime config 持久化到 t_resource_deploy
-// - 运行态：实例由 InstancePool 按需创建并在内存中管理
-// - 构建/卸载：由 InstanceManager 负责把 runtime config 组装为可服务的 instance
+// instanceService implements lifecycle management of MCP instances (exposed to the outside interfaces.InstanceService):
+// - Expected state: runtime config is persisted to t_resource_deploy.
+// - Running state: instances are created on demand by InstancePool and managed in memory.
+// - Build/uninstall: InstanceManager is responsible for assembling the runtime config into a serviceable instance.
 type instanceService struct {
 	logger           interfaces.Logger
 	dbTx             model.DBTx
@@ -31,7 +31,7 @@ type instanceService struct {
 	// configStore      MCPConfigStore
 }
 
-// NewMCPInstanceService 新建 MCP 实例服务
+// NewMCPInstanceService New MCP instance service.
 func NewMCPInstanceService(executor interfaces.IMCPToolExecutor) interfaces.InstanceService {
 	serviceOnce.Do(func() {
 		service = &instanceService{
@@ -44,7 +44,7 @@ func NewMCPInstanceService(executor interfaces.IMCPToolExecutor) interfaces.Inst
 	return service
 }
 
-// CreateMCPInstance 创建 MCPInstance
+// CreateMCPInstance Create MCPInstance.
 func (s *instanceService) CreateMCPInstance(ctx context.Context, req *interfaces.MCPInstanceCreateRequest) (*interfaces.MCPInstanceCreateResponse, error) {
 	exists, err := s.dbResourceDeploy.Exists(ctx, req.MCPID, req.Version)
 	if err != nil {
@@ -82,7 +82,7 @@ func (s *instanceService) CreateMCPInstance(ctx context.Context, req *interfaces
 		return nil, err
 	}
 
-	// 创建实例
+	// Create instance.
 	instance, err := s.instancePool.GetOrCreateWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -207,7 +207,7 @@ func (s *instanceService) UpgradeMCPInstance(ctx context.Context, req *interface
 	return s.CreateMCPInstance(ctx, req)
 }
 
-// GetMCPInstance 获取MCP实例并初始化
+// GetMCPInstance gets the MCP instance and initializes it.
 func (s *instanceService) GetMCPInstance(ctx context.Context, mcpID string, version int) (*interfaces.MCPServerInstance, error) {
 	ins, err := s.instancePool.GetOrCreate(ctx, mcpID, version)
 	if err == nil {

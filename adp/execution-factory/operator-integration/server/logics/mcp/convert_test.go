@@ -6,7 +6,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// TestExtractParameters 测试参数提取功能
+// TestExtractParameters test parameter extraction function.
 func TestExtractParameters(t *testing.T) {
 	Convey("TestExtractParameters: 测试参数提取和描述", t, func() {
 		converter := NewSimpleConverter()
@@ -42,11 +42,11 @@ func TestExtractParameters(t *testing.T) {
 			So(props, ShouldContainKey, "Authorization")
 			So(props, ShouldContainKey, "Content-Type")
 
-			// 验证参数描述
+			// Verification parameter description.
 			authSchema := props["Authorization"].(map[string]any)
 			So(authSchema["description"], ShouldEqual, "认证令牌")
 
-			// 验证必填字段
+			// Validate required fields.
 			required := result["required"].([]string)
 			So(required, ShouldContain, "Authorization")
 			So(required, ShouldNotContain, "Content-Type")
@@ -121,7 +121,7 @@ func TestExtractParameters(t *testing.T) {
 	})
 }
 
-// TestExtractRequestBody 测试请求体提取功能
+// TestExtractRequestBody tests the request body extraction function.
 func TestExtractRequestBody(t *testing.T) {
 	Convey("TestExtractRequestBody: 测试请求体提取和默认描述", t, func() {
 		converter := NewSimpleConverter()
@@ -170,7 +170,7 @@ func TestExtractRequestBody(t *testing.T) {
 			result := converter.extractRequestBody(reqBody)
 
 			So(result, ShouldNotBeNil)
-			// 应该保留原有的 description
+			// The original description should be retained.
 			So(result["description"], ShouldEqual, "用户对象")
 		})
 
@@ -196,7 +196,7 @@ func TestExtractRequestBody(t *testing.T) {
 	})
 }
 
-// TestConvertSimpleOpenAPI 测试完整转换流程
+// TestConvertSimpleOpenAPI tests the complete conversion process.
 func TestConvertSimpleOpenAPI(t *testing.T) {
 	Convey("TestConvertSimpleOpenAPI: 测试完整 OpenAPI 到 MCP JSON Schema 转换", t, func() {
 		converter := NewSimpleConverter()
@@ -254,14 +254,14 @@ func TestConvertSimpleOpenAPI(t *testing.T) {
 			So(result.Data, ShouldNotBeNil)
 			So(result.Data["type"], ShouldEqual, "object")
 
-			// 验证 properties
+			// Verify properties.
 			properties := result.Data["properties"].(map[string]any)
 			So(properties, ShouldContainKey, "header")
 			So(properties, ShouldContainKey, "query")
 			So(properties, ShouldContainKey, "path")
 			So(properties, ShouldContainKey, "body")
 
-			// 验证各参数组的 description
+			// Verify the description of each parameter group.
 			header := properties["header"].(map[string]any)
 			So(header["description"], ShouldEqual, "HTTP header parameters")
 
@@ -304,11 +304,11 @@ func TestConvertSimpleOpenAPI(t *testing.T) {
 
 			So(result.Success, ShouldBeTrue)
 
-			// 验证 $defs 存在
+			// Verify $defs exists.
 			defs := result.Data["$defs"].(map[string]any)
 			So(defs, ShouldContainKey, "User")
 
-			// 验证 $ref 路径转换
+			// Verify $ref path conversion.
 			properties := result.Data["properties"].(map[string]any)
 			body := properties["body"].(map[string]any)
 			So(body["$ref"], ShouldEqual, "#/$defs/User")
@@ -328,7 +328,7 @@ func TestConvertSimpleOpenAPI(t *testing.T) {
 	})
 }
 
-// TestConvertFromBytes 测试从字节数组转换
+// TestConvertFromBytes tests conversion from byte array.
 func TestConvertFromBytes(t *testing.T) {
 	Convey("TestConvertFromBytes: 测试从字节数组解析", t, func() {
 		converter := NewSimpleConverter()
@@ -363,7 +363,7 @@ func TestConvertFromBytes(t *testing.T) {
 	})
 }
 
-// TestConvertFromString 测试从字符串转换
+// TestConvertFromString tests conversion from string.
 func TestConvertFromString(t *testing.T) {
 	Convey("TestConvertFromString: 测试从字符串解析", t, func() {
 		converter := NewSimpleConverter()
@@ -397,7 +397,7 @@ func TestConvertFromString(t *testing.T) {
 	})
 }
 
-// TestToJSONString 测试转换为 JSON 字符串
+// TestToJSONString Test conversion to JSON string.
 func TestToJSONString(t *testing.T) {
 	Convey("TestToJSONString: 测试转换结果序列化", t, func() {
 		converter := NewSimpleConverter()
@@ -437,7 +437,7 @@ func TestToJSONString(t *testing.T) {
 	})
 }
 
-// TestGetSchemaInfo 测试获取 Schema 信息
+// TestGetSchemaInfo tests to get Schema information.
 func TestGetSchemaInfo(t *testing.T) {
 	Convey("TestGetSchemaInfo: 测试获取 Schema 摘要信息", t, func() {
 		converter := NewSimpleConverter()

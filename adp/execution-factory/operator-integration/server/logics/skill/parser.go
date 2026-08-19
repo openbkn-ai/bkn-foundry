@@ -26,11 +26,11 @@ type skillFrontmatter struct {
 	Metadata     map[string]interface{} `yaml:"metadata"`
 }
 
-// 设置SKILL.md统一命名
+// Set a unified naming for SKILL.md.
 
 const SkillMD = "SKILL.md"
 
-// skillAsset 技能资产
+// skillAsset skill asset.
 type skillAsset struct {
 	RelPath  string
 	FileType string
@@ -53,7 +53,7 @@ func (p *skillParser) parseRegisterReq(req *interfaces.RegisterSkillReq) (skillD
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		// FR-5: 为 content 注册的 SKILL.md 生成 asset 和 file_summary
+		// FR-5: Generate asset and file_summary for SKILL.md registered for content.
 		files = append(files, &interfaces.SkillFileSummary{
 			RelPath:  SkillMD,
 			FileType: detectFileType(SkillMD),
@@ -142,7 +142,7 @@ func (p *skillParser) parseSkillZip(req *interfaces.RegisterSkillReq) (string, [
 
 		if strings.EqualFold(relPath, SkillMD) {
 			skillContent = string(content)
-			// 如果refpath为SKILL.md，转换为大写
+			// If refpath is SKILL.md, convert to uppercase.
 			relPath = SkillMD
 		}
 

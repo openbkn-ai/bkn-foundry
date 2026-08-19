@@ -7,35 +7,35 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
-// ToolboxDB 工具箱DB
+// ToolboxDB ToolboxDB.
 //
 //go:generate mockgen -source=toolbox.go -destination=../../mocks/model_toolbox.go -package=mocks
 type ToolboxDB struct {
-	ID          int64  `json:"id" db:"f_id"`                     // 主键ID
-	BoxID       string `json:"box_id" db:"f_box_id"`             // 工具箱ID
-	Name        string `json:"name" db:"f_name"`                 // 工具箱名称
-	Description string `json:"description" db:"f_description"`   // 工具箱描述
-	Source      string `json:"source" db:"f_source"`             // 工具箱来源
-	ServerURL   string `json:"server_url" db:"f_svc_url"`        // 工具箱服务地址
-	Category    string `json:"category" db:"f_category"`         // 分类
-	Status      string `json:"status" db:"f_status"`             // 状态
-	IsInternal  bool   `json:"is_internal" db:"f_is_internal"`   // 是否内置
-	CreateUser  string `json:"create_user" db:"f_create_user"`   // 创建人
-	CreateTime  int64  `json:"create_time" db:"f_create_time"`   // 创建时间
-	UpdateUser  string `json:"update_user" db:"f_update_user"`   // 更新人
-	UpdateTime  int64  `json:"update_time" db:"f_update_time"`   // 更新时间
-	ReleaseUser string `json:"release_user" db:"f_release_user"` // 发布人
-	ReleaseTime int64  `json:"release_time" db:"f_release_time"` // 发布时间
-	// 工具箱元数据类型
-	MetadataType string `json:"metadata_type" db:"f_metadata_type"` // 工具箱元数据类型
+	ID          int64  `json:"id" db:"f_id"`                     // Primary key ID.
+	BoxID       string `json:"box_id" db:"f_box_id"`             // Toolbox ID.
+	Name        string `json:"name" db:"f_name"`                 // Toolbox name.
+	Description string `json:"description" db:"f_description"`   // Toolbox description.
+	Source      string `json:"source" db:"f_source"`             // Toolbox source.
+	ServerURL   string `json:"server_url" db:"f_svc_url"`        // Toolbox service address.
+	Category    string `json:"category" db:"f_category"`         // Classification.
+	Status      string `json:"status" db:"f_status"`             // Status.
+	IsInternal  bool   `json:"is_internal" db:"f_is_internal"`   // Is it built-in.
+	CreateUser  string `json:"create_user" db:"f_create_user"`   // Creator.
+	CreateTime  int64  `json:"create_time" db:"f_create_time"`   // creation time.
+	UpdateUser  string `json:"update_user" db:"f_update_user"`   // Updater.
+	UpdateTime  int64  `json:"update_time" db:"f_update_time"`   // Update time.
+	ReleaseUser string `json:"release_user" db:"f_release_user"` // Posted by.
+	ReleaseTime int64  `json:"release_time" db:"f_release_time"` // Release time.
+	// Toolbox metadata types.
+	MetadataType string `json:"metadata_type" db:"f_metadata_type"` // Toolbox metadata types.
 }
 
-// GetBizID 获取业务ID
+// GetBizID Get business ID.
 func (b *ToolboxDB) GetBizID() string {
 	return b.BoxID
 }
 
-// IToolboxDB 工具箱接口
+// IToolboxDB toolbox interface.
 type IToolboxDB interface {
 	InsertToolBox(ctx context.Context, tx *sql.Tx, toolbox *ToolboxDB) (boxID string, err error)
 	UpdateToolBox(ctx context.Context, tx *sql.Tx, toolbox *ToolboxDB) error

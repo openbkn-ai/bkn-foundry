@@ -12,22 +12,22 @@ operator:
   import_operator_max_count: 10
   operator_description_length_limit: 500
 mcp:
-  conn_timeout: 10 # 单位:秒
+  conn_timeout: 10 # Unit: second.
   max_instances: 200
-  instance_ttl: 1800 # 单位:秒
-  cleanup_interval: 60 # 单位:秒
+  instance_ttl: 1800 # Unit: second.
+  cleanup_interval: 60 # Unit: second.
 category:
-  init_switch: true # 是否初始化算子分类
+  init_switch: true # Whether to initialize operator classification.
 
 proxy_module:
-  default_timeout: 30 # 单位:秒
-  max_timeout: 120 # 单位:秒
-  min_timeout: 1 # 单位:秒
+  default_timeout: 30 # Unit: second.
+  max_timeout: 120 # Unit: second.
+  min_timeout: 1 # Unit: second.
   max_clients: 100
-  client_lifetime: 300 # 单位:秒
+  client_lifetime: 300 # Unit: second.
 
 oauth:
-  # 对应hydra服务
+  # Compatible with hydra service.
   public_host: "hydra-public.openbkn"
   public_port: 4444
   public_protocol: "http"
@@ -69,12 +69,12 @@ sandbox-control-plane:
   private_host: "sandbox-control-plane.openbkn"
   private_port: 8000
   private_protocol: "http"
-  template_id: "" # 模板ID
+  template_id: "" # Template ID.
   session_resources:
     cpu: 1
     memory: 512Mi
     disk: 1Gi
-    timeout: 3600 # 单位:秒
+    timeout: 3600 # Unit: second.
   max_sessions: 3
   active_sessions: 1
   max_concurrent_tasks: 100
@@ -92,11 +92,11 @@ redis:
   keyName: ""
   poolSize: 10
 
-# ai辅助相关配置
+# ai auxiliary related configuration.
 ai_generation_config:
-  # python代码生成系统提示词ID
-  python_function_generator_prompt_id: "" # 如果为空或为找到，则使用默认提示词
-  metadata_param_generator_prompt_id: "" # 如果为空或为找到，则使用默认提示词
+  # python code generation system prompt word ID.
+  python_function_generator_prompt_id: "" # If empty or not found, the default prompt word is used.
+  metadata_param_generator_prompt_id: "" # If empty or not found, the default prompt word is used.
   llm:
     model: ""
     max_tokens: 1024

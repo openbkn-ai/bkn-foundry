@@ -20,19 +20,19 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// httpClient HTTP客户端结构
+// httpClient HTTP client structure.
 type httpClient struct {
 	client *http.Client
 	logger interfaces.Logger
 }
 
-// HTTPClientOptions 配置信息
+// HTTPClientOptions configuration information.
 type HTTPClientOptions struct {
 	TimeOut               int
 	ResponseHeaderTimeout int
 }
 
-// NewRawHTTPClient 创建原生HTTP客户端对象
+// NewRawHTTPClient creates a native HTTP client object.
 func NewRawHTTPClient() *http.Client {
 	opts := HTTPClientOptions{
 		TimeOut: 600, //nolint:mnd
@@ -40,7 +40,7 @@ func NewRawHTTPClient() *http.Client {
 	return NewRawHTTPClientWithOptions(opts)
 }
 
-// NewHTTPClientWithOptions 根据配置创建HTTP客户端对象
+// NewHTTPClientWithOptions creates an HTTP client object based on configuration.
 func NewHTTPClientWithOptions(opts HTTPClientOptions) interfaces.HTTPClient {
 	client := &httpClient{
 		client: NewRawHTTPClientWithOptions(opts),
@@ -50,14 +50,14 @@ func NewHTTPClientWithOptions(opts HTTPClientOptions) interfaces.HTTPClient {
 	return client
 }
 
-// NewRawHTTPClientWithOptions 根据配置创建原生HTTP客户端对象
+// NewRawHTTPClientWithOptions creates a native HTTP client object based on configuration.
 func NewRawHTTPClientWithOptions(opts HTTPClientOptions) *http.Client {
 	rawClient := &http.Client{
-		// 禁用自动跳转
+		// Disable automatic jump.
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return http.ErrUseLastResponse
 		},
-		// 自定义Transport
+		// Custom Transport.
 		Transport: &http.Transport{
 			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
 			MaxIdleConnsPerHost:   100,              //nolint:mnd
@@ -82,7 +82,7 @@ func NewHTTPClientWithRawClient(rawClient *http.Client) *httpClient {
 	return client
 }
 
-// NewHTTPClient 创建HTTP客户端对象
+// NewHTTPClient creates an HTTP client object.
 func NewHTTPClient() interfaces.HTTPClient {
 	client := &httpClient{
 		client: NewRawHTTPClient(),
@@ -92,7 +92,7 @@ func NewHTTPClient() interfaces.HTTPClient {
 	return client
 }
 
-// Get, 返回序列化对象
+// Get, returns the serialized object.
 func (c *httpClient) Get(ctx context.Context, rawURL string, queryValues url.Values, headers map[string]string) (respCode int, respData interface{}, err error) {
 	url, err := c.generateURL(rawURL, queryValues)
 	if err != nil {
@@ -103,7 +103,7 @@ func (c *httpClient) Get(ctx context.Context, rawURL string, queryValues url.Val
 	return c.httpDo(ctx, http.MethodGet, url.String(), headers, nil)
 }
 
-// Get, 返回text
+// Get, return text.
 func (c *httpClient) GetNoUnmarshal(ctx context.Context, rawURL string, queryValues url.Values, headers map[string]string) (respCode int, respBody []byte, err error) {
 	url, err := c.generateURL(rawURL, queryValues)
 	if err != nil {
@@ -114,47 +114,47 @@ func (c *httpClient) GetNoUnmarshal(ctx context.Context, rawURL string, queryVal
 	return c.httpDoNoUnmarshal(ctx, http.MethodGet, url.String(), headers, nil)
 }
 
-// Post, 传入序列化对象，返回序列化对象
+// Post, pass in the serialized object and return the serialized object.
 func (c *httpClient) Post(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPost, url, headers, reqParam)
 }
 
-// Post, 传入序列化对象，返回text
+// Post, pass in the serialized object and return text.
 func (c *httpClient) PostNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPost, url, headers, reqParam)
 }
 
-// Put, 传入序列化对象，返回序列化对象
+// Put, pass in the serialized object and return the serialized object.
 func (c *httpClient) Put(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPut, url, headers, reqParam)
 }
 
-// Put, 传入序列化对象，返回text
+// Put, pass in the serialized object and return text.
 func (c *httpClient) PutNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPut, url, headers, reqParam)
 }
 
-// Delete, 返回序列化对象
+// Delete, returns the serialized object.
 func (c *httpClient) Delete(ctx context.Context, url string, headers map[string]string) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodDelete, url, headers, nil)
 }
 
-// Delete, 传入序列化对象，返回text
+// Delete, pass in the serialized object and return text.
 func (c *httpClient) DeleteNoUnmarshal(ctx context.Context, url string, headers map[string]string) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodDelete, url, headers, nil)
 }
 
-// Patch, 传入序列化对象，返回序列化对象
+// Patch, pass in the serialized object and return the serialized object.
 func (c *httpClient) Patch(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPatch, url, headers, reqParam)
 }
 
-// Patch, 传入序列化对象，返回text
+// Patch, pass in the serialized object and return text.
 func (c *httpClient) PatchNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	return c.httpDoNoUnmarshal(ctx, http.MethodPatch, url, headers, reqParam)
 }
 
-// 反序列化返回内容
+// Deserialize return content.
 func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	respCode, respBody, err := c.httpDoNoUnmarshal(ctx, mtehod, url, headers, reqParam)
 	if err != nil {
@@ -178,7 +178,7 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 	return
 }
 
-// 返回原始respBody, 不进行反序列化
+// Return original respBody without deserialization.
 func (c *httpClient) httpDoNoUnmarshal(ctx context.Context, mtehod, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
 	if c.client == nil {
 		return 0, nil, errors.New("http client is unavailable")
@@ -260,7 +260,7 @@ func (c *httpClient) generateReq(ctx context.Context, httpMethod, url string,
 	return
 }
 
-// PostStream 发送POST请求，返回流式响应
+// PostStream sends a POST request and returns a streaming response.
 func (c *httpClient) PostStream(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (chan string, chan error, error) {
 	messages := make(chan string)
 	errs := make(chan error)
@@ -290,7 +290,7 @@ func (c *httpClient) PostStream(ctx context.Context, url string, headers map[str
 			req.Header.Add(k, v)
 		}
 		req.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
-		// 设置流式请求头
+		// Set streaming request headers.
 		req.Header.Set("Accept", "text/event-stream")
 		req.Header.Set("Cache-Control", "no-cache")
 		req.Header.Set("Connection", "keep-alive")
@@ -309,7 +309,7 @@ func (c *httpClient) PostStream(ctx context.Context, url string, headers map[str
 		}()
 
 		if resp.StatusCode != http.StatusOK {
-			// 读取响应体
+			// Read response body.
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				errs <- err
@@ -318,7 +318,7 @@ func (c *httpClient) PostStream(ctx context.Context, url string, headers map[str
 			errs <- fmt.Errorf("POST request failed with status %d: %s", resp.StatusCode, string(body))
 			return
 		}
-		// 处理流式响应
+		// Handling streaming responses.
 		reader := bufio.NewReader(resp.Body)
 
 		var currentEvent strings.Builder
@@ -333,14 +333,14 @@ func (c *httpClient) PostStream(ctx context.Context, url string, headers map[str
 				return
 			}
 
-			// 处理长行（isPrefix为true）
+			// Handle long lines (isPrefix is true)
 			if isPrefix {
-				// 对于长行，继续读取直到完整行
+				// For long lines, continue reading until the complete line.
 				currentEvent.Write(line)
 				continue
 			}
 
-			// 完整的行，直接转发
+			// Complete line, forward directly.
 			lineStr := string(line)
 			if lineStr != "" {
 				currentEvent.WriteString(lineStr)

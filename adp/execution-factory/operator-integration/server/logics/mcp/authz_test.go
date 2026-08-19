@@ -13,8 +13,8 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestParseSSEAuthz 覆盖 #345：解析接口会驱动服务端向调用方给定的 URL 发起出站请求，
-// 公开面必须先过 MCP 类型级新建权限。
+// TestParseSSEAuthz covers #345: The parsing interface will drive the server to initiate an outbound request to the URL given by the caller.
+// The public face must first have MCP type-level new permissions.
 func TestParseSSEAuthz(t *testing.T) {
 	Convey("ParseSSE 授权", t, func() {
 		ctrl := gomock.NewController(t)
@@ -38,7 +38,7 @@ func TestParseSSEAuthz(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "create forbidden")
 		})
 
-		// 内部面（internal-v1）未注册该端点，且解析逻辑必须建 MCP 客户端、加载运行时配置，
-		// 单测环境无法进入，因此内部面放行只由 IsPublicAPIFromCtx 判定本身保证，不在此断言。
+		// The endpoint is not registered in the internal plane (internal-v1), and the parsing logic must build the MCP client and load the runtime configuration.
+		// The single test environment cannot be entered, so internal surface release is only guaranteed by the IsPublicAPIFromCtx judgment itself and is not asserted here.
 	})
 }

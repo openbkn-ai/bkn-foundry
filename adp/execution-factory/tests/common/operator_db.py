@@ -17,7 +17,7 @@ db_user = config["server"]["db_user"]
 db_pwd = config["server"]["db_pwd"]
 
 def delete_operator_data():
-    '''清理数据库记录'''
+    '''Clean database records.'''
     conn = pymysql.connect(host=host, user=db_user, password=db_pwd, port=int(db_port), database="adp")
     cursor = conn.cursor()
     try:

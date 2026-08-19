@@ -10,7 +10,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// mcp-go v0.37.0 两种传输在鉴权被拒时产生的错误文本（含本仓 performHandshake 的包装前缀）
+// mcp-go v0.37.0 Error text generated when authentication is rejected for both transmissions (including the packaging prefix of performHandshake in this repository)
 const (
 	sseUnauthorizedErr    = "failed to start MCP client: unexpected status code: 401"
 	streamForbiddenErr    = `failed to initialize MCP client: request failed with status 403: {"message":"forbidden"}`
@@ -40,7 +40,7 @@ func TestUpstreamHTTPStatus(t *testing.T) {
 	}
 }
 
-// TestClassifyMCPConnErrorAuthFailed 复现「外部 MCP 返回 401/403 被报成服务不可访问」的缺陷
+// TestClassifyMCPConnErrorAuthFailed reproduces the defect of "external MCP returns 401/403 and is reported as service inaccessible".
 func TestClassifyMCPConnErrorAuthFailed(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -75,7 +75,7 @@ func TestClassifyMCPConnErrorAuthFailed(t *testing.T) {
 	}
 }
 
-// TestClassifyMCPConnErrorNotAccessible 真正不可达/上游 5xx 时仍归类为不可访问，HTTP 状态码在 errCodeMap 内
+// TestClassifyMCPConnErrorNotAccessible is still classified as inaccessible when it is truly unreachable/upstream 5xx, and the HTTP status code is in errCodeMap.
 func TestClassifyMCPConnErrorNotAccessible(t *testing.T) {
 	for _, c := range []struct {
 		name string
@@ -100,7 +100,7 @@ func TestClassifyMCPConnErrorNotAccessible(t *testing.T) {
 	}
 }
 
-// TestNewMCPClientModeNotSupported 模式不支持属于参数错误，不应被折叠成不可访问
+// TestNewMCPClientModeNotSupported Mode not supported is a parameter error and should not be collapsed into inaccessible.
 func TestNewMCPClientModeNotSupported(t *testing.T) {
 	_, err := NewMCPClient(context.Background(), &interfaces.MCPCoreConfigInfo{
 		Mode: interfaces.MCPModeStdioNpx,

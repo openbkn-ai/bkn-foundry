@@ -5,7 +5,7 @@ import "context"
 //
 //go:generate mockgen -source=dbaccess_metadata.go -destination=../mocks/dbaccess_metadata.go -package=mocks
 
-// IMetadataDB 元数据通用接口
+// IMetadataDB metadata common interface.
 type IMetadataDB interface {
 	GetType() string
 	GetSummary() string
@@ -28,7 +28,7 @@ type IMetadataDB interface {
 	GetCreateUser() (user string)
 	SetCreateInfo(user string)
 	// UpdataMetadata(metadata interface{}) error
-	// 获取ErrMessage信息
+	// Get ErrMessage information.
 	GetErrMessage() string
 	GetCode() string
 	SetCode(code string)

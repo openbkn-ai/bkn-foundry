@@ -11,66 +11,66 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// APIMetadata API元数据
+// APIMetadata API metadata.
 type APIMetadata struct {
-	ID          string       `json:"id" validate:"required"`          // 主键ID
-	Hash        string       `json:"hash" validate:"required"`        // 哈希值
-	Version     string       `json:"version" validate:"required"`     // 版本
-	Title       string       `json:"title" validate:"required"`       // 标题
-	Summary     string       `json:"summary" validate:"required"`     // 摘要
-	Description string       `json:"description" validate:"required"` // 描述
-	Path        string       `json:"path" validate:"required"`        // 路径
-	Method      string       `json:"method" validate:"required"`      // 方法
-	Parameters  []*Parameter `json:"parameters" validate:"required"`  // 结构化参数
-	RequestBody *RequestBody `json:"request_body"`                    // 请求体结构
-	Responses   []*Response  `json:"responses"`                       // 响应结构
-	CreateTime  int64        `json:"create_time" validate:"required"` // 创建时间
-	UpdateTime  int64        `json:"update_time" validate:"required"` // 更新时间
-	CreateUser  string       `json:"create_user" validate:"required"` // 创建人
-	UpdateUser  string       `json:"update_user" validate:"required"` // 更新人
-	IsDeleted   bool         `json:"is_deleted" validate:"required"`  // 是否删除
-	// APISpec     string      `json:"api_spec" validate:"required"`    // OpenAPI 格式
+	ID          string       `json:"id" validate:"required"`          // Primary key ID.
+	Hash        string       `json:"hash" validate:"required"`        // hash value.
+	Version     string       `json:"version" validate:"required"`     // version.
+	Title       string       `json:"title" validate:"required"`       // Title.
+	Summary     string       `json:"summary" validate:"required"`     // Summary.
+	Description string       `json:"description" validate:"required"` // Description.
+	Path        string       `json:"path" validate:"required"`        // path.
+	Method      string       `json:"method" validate:"required"`      // method.
+	Parameters  []*Parameter `json:"parameters" validate:"required"`  // Structured parameters.
+	RequestBody *RequestBody `json:"request_body"`                    // Request body structure.
+	Responses   []*Response  `json:"responses"`                       // response structure.
+	CreateTime  int64        `json:"create_time" validate:"required"` // creation time.
+	UpdateTime  int64        `json:"update_time" validate:"required"` // Update time.
+	CreateUser  string       `json:"create_user" validate:"required"` // Creator.
+	UpdateUser  string       `json:"update_user" validate:"required"` // Updater.
+	IsDeleted   bool         `json:"is_deleted" validate:"required"`  // Whether to delete.
+	// APISpec string `json:"api_spec" validate:"required"` // OpenAPI format.
 }
 
 // type APISpec
 
-// Parameter 参数类型
+// Parameter parameter type.
 type Parameter struct {
 	Name        string                 `json:"name"`
 	In          string                 `json:"in"` // path/query/header/cookie
 	Description string                 `json:"description"`
 	Required    bool                   `json:"required"`
-	Ref         string                 `json:"$ref,omitempty"` // 新增引用字段
-	Schema      map[string]interface{} `json:"schema"`         // 参数schema
+	Ref         string                 `json:"$ref,omitempty"` // Add a new reference field.
+	Schema      map[string]interface{} `json:"schema"`         // parameterschema.
 }
 
-// RequestBody 请求体结构
+// RequestBody request body structure.
 type RequestBody struct {
 	Description string             `json:"description"`
-	Content     map[string]Content `json:"content"` // 按媒体类型分类
+	Content     map[string]Content `json:"content"` // Sort by media type.
 }
 
-// Response 响应结构
+// Response response structure.
 type Response struct {
-	StatusCode  string             `json:"status_code"` // 200/400等
+	StatusCode  string             `json:"status_code"` // 200/400 etc.
 	Description string             `json:"description"`
 	Content     map[string]Content `json:"content"`
 }
 
-// Content 内容结构
+// Content content structure.
 type Content struct {
-	Ref     string                 `json:"$ref,omitempty"` // 新增引用字段
-	Schema  map[string]interface{} `json:"schema"`         // 完整schema
+	Ref     string                 `json:"$ref,omitempty"` // Add a new reference field.
+	Schema  map[string]interface{} `json:"schema"`         // Complete schema.
 	Example interface{}            `json:"example,omitempty"`
 }
 
-// 新增schema转换方法
+// Added schema conversion method.
 func schemaRefToMap(ref *openapi3.SchemaRef, components *openapi3.Components,
 	visited map[string]bool) (refPath string, schema map[string]interface{}) {
 	if ref == nil {
 		return "", nil
 	}
-	// 处理引用
+	// Handle references.
 	if ref.Ref != "" {
 		refPath = ref.Ref
 		refKey := strings.TrimPrefix(ref.Ref, "#/components/schemas/")
@@ -81,12 +81,12 @@ func schemaRefToMap(ref *openapi3.SchemaRef, components *openapi3.Components,
 		defer delete(visited, refKey)
 
 		if schemaDef, exists := components.Schemas[refKey]; exists {
-			// 保留原始引用
+			// Keep original reference.
 			schema = map[string]interface{}{"$ref": refPath}
-			// 同时保留解析后的schema
+			// Also retain the parsed schema.
 			_, resolved := schemaRefToMap(schemaDef, components, visited)
 			for k, v := range resolved {
-				if k != "$ref" { // 避免覆盖原始引用
+				if k != "$ref" { // Avoid overwriting the original reference.
 					schema[k] = v
 				}
 			}
@@ -94,17 +94,17 @@ func schemaRefToMap(ref *openapi3.SchemaRef, components *openapi3.Components,
 		}
 	}
 
-	// 解析当前schema
+	// Parse the current schema.
 	schema = make(map[string]interface{})
 	if ref.Value == nil {
 		return refPath, schema
 	}
-	// 保留原始引用信息
+	// Keep original citation information.
 	if refPath != "" {
 		schema["$ref"] = refPath
 	}
 
-	// 基本类型处理
+	// Basic type handling.
 	if ref.Value.Type != nil {
 		schema["type"] = ref.Value.Type
 	}
@@ -113,7 +113,7 @@ func schemaRefToMap(ref *openapi3.SchemaRef, components *openapi3.Components,
 		schema["format"] = ref.Value.Format
 	}
 
-	// 处理嵌套结构
+	// Handle nested structures.
 	if ref.Value.Properties != nil {
 		props := make(map[string]interface{})
 		for name, prop := range ref.Value.Properties {
@@ -128,7 +128,7 @@ func schemaRefToMap(ref *openapi3.SchemaRef, components *openapi3.Components,
 		schema["properties"] = props
 	}
 
-	// 处理数组类型
+	// Handle array types.
 	if ref.Value.Items != nil {
 		refPath, resolved := schemaRefToMap(ref.Value.Items, components, visited)
 		if refPath != "" {
@@ -139,11 +139,11 @@ func schemaRefToMap(ref *openapi3.SchemaRef, components *openapi3.Components,
 		}
 	}
 
-	// 处理组合类型
+	// Handling combination types.
 	handleComposition := func(schemas openapi3.SchemaRefs) []interface{} {
 		var result []interface{}
 		for _, s := range schemas {
-			// 生成引用路径并保留原始结构
+			// Generate reference paths and preserve original structure.
 			refPath, resolvedSchema := schemaRefToMap(s, components, visited)
 			if refPath != "" {
 				result = append(result, map[string]interface{}{"$ref": refPath})
@@ -170,11 +170,11 @@ func schemaRefToMap(ref *openapi3.SchemaRef, components *openapi3.Components,
 // type ParameterIn string
 
 // const (
-// 	ParameterInPath   ParameterIn = "path"   // 路径参数
-// 	ParameterInQuery  ParameterIn = "query"  // 查询参数
-// 	ParameterInHeader ParameterIn = "header" // 头部参数
-// 	ParameterInCookie ParameterIn = "cookie" // Cookie 参数
-// 	ParameterInBody   ParameterIn = "body"   // 请求体参数
+// ParameterInPath ParameterIn = "path" //Path parameter.
+// ParameterInQuery ParameterIn = "query" // Query parameters.
+// ParameterInHeader ParameterIn = "header" // Header parameter.
+// ParameterInCookie ParameterIn = "cookie" // Cookie parameter.
+// ParameterInBody ParameterIn = "body" //Request body parameters.
 // )
 
 type OpenAPIDataType string
@@ -184,7 +184,7 @@ const (
 	FileDataType    OpenAPIDataType = "file"
 )
 
-// GetHash 获取哈希
+// GetHash Gets the hash.
 // func GetHash(path, method string) (hash string, err error) {
 // 	type hashGenerator struct {
 // 		Path    string `json:"path"`
@@ -200,7 +200,7 @@ const (
 
 // Summary string `json:"summary"` na
 
-// GetVersion 获取版本
+// GetVersion Get version.
 // func GetVersion(path, method, title, summary string) (version string, err error) {
 // 	type versionGenerator struct {
 // 		Path    string `json:"path"`
@@ -217,15 +217,15 @@ const (
 // }
 
 type openAPIParser struct {
-	Loader    *openapi3.Loader  // 加载器
-	Doc       *openapi3.T       // OpenAPI文档
-	DataType  string            // 数据类型
-	DataValue interface{}       // 数据值
-	SubParser []*openapi3.T     // 子解析器
-	Logger    interfaces.Logger // 日志器
+	Loader    *openapi3.Loader  // loader.
+	Doc       *openapi3.T       // OpenAPI documentation.
+	DataType  string            // data type.
+	DataValue interface{}       // data value.
+	SubParser []*openapi3.T     // subparser.
+	Logger    interfaces.Logger // Logger.
 }
 
-// LoadOpenAPIMetadata 加载OpenAPI元数据
+// LoadOpenAPIMetadata loads OpenAPI metadata.
 func LoadOpenAPIMetadata(ctx context.Context, dataType string, dataValue interface{}, logger interfaces.Logger) (metadatas []*APIMetadata, err error) {
 	p := &openAPIParser{
 		Loader:    openapi3.NewLoader(),
@@ -233,12 +233,12 @@ func LoadOpenAPIMetadata(ctx context.Context, dataType string, dataValue interfa
 		DataValue: dataValue,
 		Logger:    logger,
 	}
-	// ParseAndValidateOpenAPI 解析并校验注入的OpenAPI数据
+	// ParseAndValidateOpenAPI parses and verifies injected OpenAPI data.
 	err = p.parseAndValidateOpenAPI(ctx)
 	if err != nil {
 		return
 	}
-	// 拆分OpenAPI文档
+	// Split OpenAPI documentation.
 	err = p.splitOpenAPIDocument(ctx)
 	if err != nil {
 		return
@@ -246,7 +246,7 @@ func LoadOpenAPIMetadata(ctx context.Context, dataType string, dataValue interfa
 	fmt.Println(len(p.SubParser))
 	metadatas = make([]*APIMetadata, 0, len(p.SubParser))
 	for _, doc := range p.SubParser {
-		// 解析OpenAPI文档
+		// Parse OpenAPI documentation.
 		metadata, err := p.getAPIMetadata(doc)
 		if err != nil {
 			return nil, err
@@ -258,11 +258,11 @@ func LoadOpenAPIMetadata(ctx context.Context, dataType string, dataValue interfa
 	return
 }
 
-// getAPIMetadatas 获取API元数据
+// getAPIMetadatas Get API metadata.
 func (p *openAPIParser) getAPIMetadata(doc *openapi3.T) (metadata *APIMetadata, err error) {
 	for path, pathItem := range doc.Paths.Map() {
 		for method, operation := range pathItem.Operations() {
-			// 转换结构化参数
+			// Convert structured parameters.
 			parameters := make([]*Parameter, 0)
 			for _, param := range operation.Parameters {
 				ref, paramSchema := schemaRefToMap(param.Value.Schema, doc.Components, make(map[string]bool))
@@ -275,7 +275,7 @@ func (p *openAPIParser) getAPIMetadata(doc *openapi3.T) (metadata *APIMetadata, 
 					Schema:      paramSchema,
 				})
 			}
-			// 处理请求体
+			// Process request body.
 			var requestBody *RequestBody
 			if operation.RequestBody != nil {
 				reqContent := make(map[string]Content)
@@ -293,7 +293,7 @@ func (p *openAPIParser) getAPIMetadata(doc *openapi3.T) (metadata *APIMetadata, 
 				}
 			}
 
-			// 处理响应
+			// Handle response.
 			var responses []*Response
 			for statusCode, resp := range operation.Responses.Map() {
 				respContent := make(map[string]Content)
@@ -337,7 +337,7 @@ func (p *openAPIParser) getAPIMetadata(doc *openapi3.T) (metadata *APIMetadata, 
 	return
 }
 
-// ParseOpenAPIFromData 解析OpenAPI数据
+// ParseOpenAPIFromData parses OpenAPI data.
 func (p *openAPIParser) parseAndValidateOpenAPI(ctx context.Context) (err error) {
 	switch p.DataType {
 	case string(ContentDataType):
@@ -358,15 +358,15 @@ func (p *openAPIParser) parseAndValidateOpenAPI(ctx context.Context) (err error)
 	return
 }
 
-// SplitOpenAPIDocument 拆分OpenAPI文档
+// SplitOpenAPIDocument splits the OpenAPI document.
 func (p *openAPIParser) splitOpenAPIDocument(ctx context.Context) (err error) {
 	if p.Doc == nil {
 		err = fmt.Errorf("OpenAPI document is nil")
 		return
 	}
-	// 将批量导入的OpenAPI分割成多个
+	// Split batch imported OpenAPI into multiple.
 	for path, pathItem := range p.Doc.Paths.Map() {
-		// 创建新的精简版OpenAPI文档
+		// Create new lite version of OpenAPI documentation.
 		newDoc := &openapi3.T{
 			OpenAPI: p.Doc.OpenAPI,
 			Info:    p.Doc.Info,
@@ -378,7 +378,7 @@ func (p *openAPIParser) splitOpenAPIDocument(ctx context.Context) (err error) {
 			Paths:    openapi3.NewPaths(openapi3.WithPath(path, pathItem)),
 			Security: p.Doc.Security,
 		}
-		// 自动收集依赖的schema
+		// Automatically collect dependent schema.
 		for _, op := range pathItem.Operations() {
 			if op.RequestBody != nil {
 				collectSchemas(p.Doc.Components, op.RequestBody.Value.Content, newDoc.Components.Schemas, make(map[string]bool))
@@ -397,11 +397,11 @@ func (p *openAPIParser) splitOpenAPIDocument(ctx context.Context) (err error) {
 	return
 }
 
-// 收集所有嵌套schema引用（添加visited参数）
+// Collect all nested schema references (add visited parameter)
 func collectSchemas(docComponents *openapi3.Components, content openapi3.Content, schemas map[string]*openapi3.SchemaRef, visited map[string]bool) {
 	for _, mediaType := range content {
 		if mediaType.Schema != nil {
-			// 保留原始schema引用
+			// Keep original schema reference.
 			if mediaType.Schema.Ref != "" {
 				refKey := strings.TrimPrefix(mediaType.Schema.Ref, "#/components/schemas/")
 				if _, exists := schemas[refKey]; !exists {
@@ -413,13 +413,13 @@ func collectSchemas(docComponents *openapi3.Components, content openapi3.Content
 	}
 }
 
-// 递归遍历schema（添加visited参数跟踪引用路径）
+// Recursively traverse the schema (add visited parameters to track reference paths)
 func traverseSchema(docComponents *openapi3.Components, schemaRef *openapi3.SchemaRef, schemas map[string]*openapi3.SchemaRef, visited map[string]bool) {
 	if schemaRef == nil || schemaRef.Value == nil {
 		return
 	}
 
-	// 处理直接引用
+	// Handling direct references.
 	if schemaRef.Ref != "" {
 		refKey := strings.TrimPrefix(schemaRef.Ref, "#/components/schemas/")
 		if visited[refKey] {
@@ -430,7 +430,7 @@ func traverseSchema(docComponents *openapi3.Components, schemaRef *openapi3.Sche
 			if origSchema, exists := docComponents.Schemas[refKey]; exists {
 				visited[refKey] = true
 				schemas[refKey] = origSchema
-				// 确保保留所有嵌套引用
+				// Make sure to keep all nested references.
 				if origSchema.Ref != "" {
 					nestedRefKey := strings.TrimPrefix(origSchema.Ref, "#/components/schemas/")
 					if _, exists := schemas[nestedRefKey]; !exists {
@@ -444,7 +444,7 @@ func traverseSchema(docComponents *openapi3.Components, schemaRef *openapi3.Sche
 		return
 	}
 
-	// 在处理组合结构、对象属性和数组项时传递visited参数
+	// Passing visited parameters when working with composite structures, object properties, and array items.
 	schema := schemaRef.Value
 	for _, s := range schema.AllOf {
 		traverseSchema(docComponents, s, schemas, visited)

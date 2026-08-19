@@ -33,7 +33,7 @@ func (h *mcpHandle) HandleStreamingHttp(c *gin.Context) {
 		return
 	}
 
-	// 直接从本地实例池获取并服务；连接存活期间增加活跃计数，避免实例被 LRU/TTL 淘汰
+	// Obtain and serve directly from the local instance pool; increase the active count during the connection survival period to avoid instances being eliminated by LRU/TTL.
 	instance, err := h.mcpInstance.GetMCPInstance(c.Request.Context(), result.MCPID, result.Version)
 	if err != nil {
 		rest.ReplyError(c, err)
@@ -65,7 +65,7 @@ func (h *mcpHandle) HandleServerSentEvents(c *gin.Context) {
 		return
 	}
 
-	// 直接从本地实例池获取并服务；连接存活期间增加活跃计数，避免实例被 LRU/TTL 淘汰
+	// Obtain and serve directly from the local instance pool; increase the active count during the connection survival period to avoid instances being eliminated by LRU/TTL.
 	instance, err := h.mcpInstance.GetMCPInstance(c.Request.Context(), result.MCPID, result.Version)
 	if err != nil {
 		rest.ReplyError(c, err)
@@ -98,7 +98,7 @@ func (h *mcpHandle) HandleSSEMessage(c *gin.Context) {
 		return
 	}
 
-	// 直接从本地内存实例获取并服务
+	// Get and serve directly from local memory instance.
 	instance, err := h.mcpInstance.GetMCPInstance(c.Request.Context(), result.MCPID, result.Version)
 	if err != nil {
 		rest.ReplyError(c, err)
@@ -106,4 +106,3 @@ func (h *mcpHandle) HandleSSEMessage(c *gin.Context) {
 	}
 	instance.SSEServer.MessageHandler().ServeHTTP(c.Writer, c.Request)
 }
-

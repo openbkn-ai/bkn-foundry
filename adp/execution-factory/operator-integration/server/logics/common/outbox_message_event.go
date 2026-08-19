@@ -9,22 +9,22 @@ import (
 
 	"github.com/creasty/defaults"
 	validator "github.com/go-playground/validator/v10"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/lock"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/mq"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	redis "github.com/redis/go-redis/v9"
 )
 
 const (
-	lockKeyTemp          = "agent-operator-integration:outbox_message_event:lock" // 锁键模板
-	defultLockExpiryTime = 1 * time.Minute                                        // 默认锁过期时间
-	commonPollInterval   = 3 * time.Second                                        // 扫描间隔
-	queryDefaultLimit    = 100                                                    // 默认查询数量
-	defaultTimeout       = 30 * time.Second                                       // 默认超时时间
+	lockKeyTemp          = "agent-operator-integration:outbox_message_event:lock" // Lock key template.
+	defultLockExpiryTime = 1 * time.Minute                                        // Default lock expiration time.
+	commonPollInterval   = 3 * time.Second                                        // Scan interval.
+	queryDefaultLimit    = 100                                                    // Default query quantity.
+	defaultTimeout       = 30 * time.Second                                       // Default timeout.
 )
 
 var (
@@ -32,7 +32,7 @@ var (
 	outboxEvent *outboxMessageEvent
 )
 
-// OutboxMessageEvent 消息事件管理
+// OutboxMessageEvent message event management.
 type outboxMessageEvent struct {
 	confLoader      *config.Config
 	logger          interfaces.Logger
@@ -42,7 +42,7 @@ type outboxMessageEvent struct {
 	quit            chan bool
 }
 
-// NewOutboxMessageEvent 创建消息事件管理
+// NewOutboxMessageEvent creates message event management.
 func NewOutboxMessageEvent() *outboxMessageEvent {
 	outboxOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -62,7 +62,7 @@ func NewOutboxMessageEvent() *outboxMessageEvent {
 	return outboxEvent
 }
 
-// Start 启动 outboxMessageEvent
+// Start starts outboxMessageEvent.
 func (m *outboxMessageEvent) Start() error {
 	m.logger.Info("[outboxMessageEvent] start scan outbox message event")
 	go func() {
@@ -82,10 +82,10 @@ func (m *outboxMessageEvent) Start() error {
 }
 func (m *outboxMessageEvent) scan(ctx context.Context) {
 	var err error
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 获取分布式锁
+	// Get distributed lock.
 	v := m.confLoader.Project.GetMachineID()
 	locker := lock.NewRedisLocker(m.redisCli, lockKeyTemp, v, defultLockExpiryTime)
 	ok, err := locker.Lock(ctx)
@@ -97,23 +97,23 @@ func (m *outboxMessageEvent) scan(ctx context.Context) {
 		return
 	}
 	defer locker.Unlock(ctx)
-	// 获取未处理的消息
+	// Get unprocessed messages.
 	events, err := m.outboxMessageDB.GetByStatus(ctx, model.OutboxMessageStatusPending, queryDefaultLimit)
 	if err != nil {
 		m.logger.WithContext(ctx).Errorf("[auditLogHandler] processFaildLogData get outbox message err: %s", err.Error())
 		return
 	}
-	// 处理消息事件
+	// Handle message events.
 	for _, event := range events {
 		m.processOutboxEventMessage(ctx, event)
 	}
 }
 
 func (m *outboxMessageEvent) processOutboxEventMessage(ctx context.Context, event *model.OutboxMessageDB) {
-	// 发送消息到MQ
+	// Send message to MQ.
 	err := m.mqClient.Publish(ctx, event.Topic, []byte(event.Payload))
 	if err == nil {
-		// 清理消息
+		// Clean up messages.
 		err = m.outboxMessageDB.DeleteByEventID(ctx, nil, event.EventID)
 		if err != nil {
 			m.logger.WithContext(ctx).Errorf("delete outbox message failed: %v, topic:%s, message:%s", err, event.Topic, event.Payload)
@@ -129,14 +129,14 @@ func (m *outboxMessageEvent) processOutboxEventMessage(ctx context.Context, even
 	}
 }
 
-// Stop 停止 outboxMessageEvent
+// Stop Stop outboxMessageEvent.
 func (m *outboxMessageEvent) Stop(ctx context.Context) {
 	close(m.quit)
 }
 
-// Publish 发布消息事件
+// Publish publish message event.
 func (m *outboxMessageEvent) Publish(ctx context.Context, req *interfaces.OutboxMessageReq) (err error) {
-	// 参数校验
+	// Parameter verification.
 	err = defaults.Set(req)
 	if err != nil {
 		return
@@ -145,7 +145,7 @@ func (m *outboxMessageEvent) Publish(ctx context.Context, req *interfaces.Outbox
 	if err != nil {
 		return
 	}
-	// 发送消息到MQ
+	// Send message to MQ.
 	err = m.mqClient.Publish(ctx, req.Topic, []byte(req.Payload))
 	if err == nil {
 		return
@@ -156,7 +156,7 @@ func (m *outboxMessageEvent) Publish(ctx context.Context, req *interfaces.Outbox
 		ctx, cancel = context.WithTimeout(context.Background(), defaultTimeout)
 		defer cancel()
 	}
-	// 处理失败，保存消息到数据库
+	// Processing failed, save message to database.
 	event := &model.OutboxMessageDB{
 		EventID:     req.EventID,
 		EventType:   req.EventType.String(),
@@ -165,7 +165,7 @@ func (m *outboxMessageEvent) Publish(ctx context.Context, req *interfaces.Outbox
 		NextRetryAt: time.Now().Add(commonPollInterval).UnixNano(),
 		Status:      model.OutboxMessageStatusPending,
 	}
-	// 保存消息到数据库
+	// Save message to database.
 	_, err = m.outboxMessageDB.Insert(ctx, nil, event)
 	if err != nil {
 		m.logger.WithContext(ctx).Errorf("insert outbox message failed: %v", err)

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -16,14 +15,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// RegisterOperatorByOpenAPI 算子注册
+// RegisterOperatorByOpenAPI operator registration.
 func (m *operatorManager) RegisterOperatorByOpenAPI(ctx context.Context, req *interfaces.OperatorRegisterReq, userID string) (resultList []*interfaces.OperatorRegisterResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查是否有新建权限
+	// Check if there is new permission.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = m.AuthService.GetAccessor(ctx, userID)
 	if err != nil {
@@ -33,19 +33,19 @@ func (m *operatorManager) RegisterOperatorByOpenAPI(ctx context.Context, req *in
 	if err != nil {
 		return
 	}
-	// 检查请求信息
+	// Check request information.
 	isDataSource, err := checkIsDataSource(ctx, req.OperatorInfo.ExecutionMode, req.OperatorInfo.IsDataSource)
 	if err != nil {
 		return
 	}
-	// 解析API文档
+	// Parse API documentation.
 	metadataDBs, err := m.checkAndParserOpenAPIOperator(ctx, req)
 	if err != nil {
 		return
 	}
-	// 初始化算子注册状态
+	// Initialization operator registration status.
 	operatorRegisterStatus := interfaces.BizStatusUnpublish
-	// 只允许单个算子直接注册发布
+	// Only a single operator is allowed to register and publish directly.
 	if req.DirectPublish && len(metadataDBs) > 1 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtOperatorDirectPublishErr, "direct_publish only support one api")
 		return
@@ -53,16 +53,16 @@ func (m *operatorManager) RegisterOperatorByOpenAPI(ctx context.Context, req *in
 		operatorRegisterStatus = interfaces.BizStatusPublished
 	}
 	resultList = []*interfaces.OperatorRegisterResp{}
-	// 遍历算子列表，解析元数据
+	// Traverse the operator list and parse metadata.
 	for _, metadataDB := range metadataDBs {
 		resultList = append(resultList, m.registerOperator(ctx, req, metadataDB, accessor, operatorRegisterStatus, isDataSource))
 	}
 	return resultList, nil
 }
 
-// UpdateOperatorByOpenAPI 算子更新
+// UpdateOperatorByOpenAPI operator update.
 func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *interfaces.OperatorUpdateReq, userID string) (resultList []*interfaces.OperatorRegisterResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	var isDataSource bool
@@ -71,13 +71,13 @@ func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *inte
 		m.Logger.WithContext(ctx).Warnf("check is data source failed, err: %v", err)
 		return
 	}
-	// 解析API文档
+	// Parse API documentation.
 	metadataDBs, err := m.checkAndParserOpenAPIOperator(ctx, req.OperatorRegisterReq)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("check and parser openapi operator failed, err: %v", err)
 		return
 	}
-	// 编辑仅允许单个算子
+	// Editing only allows a single operator.
 	if len(metadataDBs) > 1 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtOperatorEditLimit, "edit operator only support one api")
 		return
@@ -143,7 +143,7 @@ func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *inte
 		result.Version = editRes.Version
 	}
 	resultList = append(resultList, result)
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -163,7 +163,7 @@ func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *inte
 		if operator.Status != interfaces.BizStatusPublished.String() {
 			return
 		}
-		// 发布操作
+		// publish operation.
 		m.AuditLog.Logger(ctx, &metric.AuditLogBuilderParams{
 			TokenInfo: accountAuthContext.TokenInfo,
 			Accessor:  accessor,
@@ -178,25 +178,25 @@ func (m *operatorManager) UpdateOperatorByOpenAPI(ctx context.Context, req *inte
 	return resultList, nil
 }
 
-// validateOperator 校验算子信息
+// validateOperator verification operator information.
 func (m *operatorManager) validateOperator(ctx context.Context, metadataDB interfaces.IMetadataDB) (err error) {
 	if metadataDB.GetErrMessage() != "" {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, metadataDB.GetErrMessage())
 		return
 	}
-	// 校验算子名称
+	// Check operator name.
 	err = m.Validator.ValidateOperatorName(ctx, metadataDB.GetSummary())
 	if err != nil {
 		return
 	}
-	// 校验算子描述
+	// Check operator description.
 	err = m.Validator.ValidateOperatorDesc(ctx, metadataDB.GetDescription())
 	return
 }
 
-// checkAndParserOpenAPIOperator 检查并解析OpenAPI算子
+// checkAndParserOpenAPIOperator checks and parses the OpenAPI operator.
 func (m *operatorManager) checkAndParserOpenAPIOperator(ctx context.Context, req *interfaces.OperatorRegisterReq) (metadataDBs []interfaces.IMetadataDB, err error) {
-	// 检查算子类型
+	// Check operator type.
 	if !m.CategoryManager.CheckCategory(req.OperatorInfo.Category) {
 		m.Logger.WithContext(ctx).Warnf("invalid operator category, category: %s", req.OperatorInfo.Category)
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCategoryTypeInvalid, "invalid operator category")
@@ -204,7 +204,7 @@ func (m *operatorManager) checkAndParserOpenAPIOperator(ctx context.Context, req
 	}
 	switch req.MetadataType {
 	case interfaces.MetadataTypeAPI:
-		// 解析API数据
+		// Parse API data.
 		metadataDBs, err = m.MetadataService.ParseMetadata(ctx, req.MetadataType, &interfaces.OpenAPIInput{
 			Data: []byte(req.Data),
 		})
@@ -217,14 +217,14 @@ func (m *operatorManager) checkAndParserOpenAPIOperator(ctx context.Context, req
 	if err != nil {
 		return
 	}
-	// 检查Items长度
+	// Check the length of Items.
 	err = m.Validator.ValidateOperatorImportCount(ctx, int64(len(metadataDBs)))
 	return
 }
 
 func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.OperatorRegisterReq, metadataDB interfaces.IMetadataDB,
 	accessor *interfaces.AuthAccessor, status interfaces.BizStatus, isDataSource bool) (result *interfaces.OperatorRegisterResp) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, nil)
 	result = &interfaces.OperatorRegisterResp{
@@ -248,7 +248,7 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 	if req.Description != "" {
 		metadataDB.SetDescription(req.Description)
 	}
-	// 设置创建人和更新人
+	// Set creator and updater.
 	metadataDB.SetCreateInfo(accessor.ID)
 	metadataDB.SetUpdateInfo(accessor.ID)
 	metadataDB.SetVersion(uuid.New().String())
@@ -269,7 +269,7 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 		UpdateTime:      time.Now().UnixNano(),
 		IsDataSource:    isDataSource,
 	}
-	// 1. 检查算子是否存在
+	// 1. Check whether the operator exists.
 	err = m.checkDuplicateName(ctx, operator.Name, operator.OperatorID)
 	if err != nil {
 		return
@@ -287,14 +287,14 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 			err = finishErr
 		}
 	}()
-	// 2. 插入元数据
+	// 2. Insert metadata.
 	version, err := m.MetadataService.RegisterMetadata(ctx, tx, metadataDB)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("insert metadata failed, err: %v", err)
 		err = errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtOperatorRegisterFailed, "insert metadata failed")
 		return
 	}
-	// 3. 插入算子
+	// 3. Insertion operator.
 	operator.MetadataVersion = version
 	opID, err := m.DBOperatorManager.InsertOperator(ctx, tx, operator)
 	if err != nil {
@@ -302,17 +302,17 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 		err = errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtOperatorRegisterFailed, fmt.Errorf("insert operator failed, err: %v", err))
 		return
 	}
-	// 查找
+	// Find.
 	operator.OperatorID = opID
 
-	// 关联业务域
+	// Associated business domains.
 	businessDomainID, _ := common.GetBusinessDomainFromCtx(ctx)
 	err = m.BusinessDomainService.AssociateResource(ctx, businessDomainID, opID, interfaces.AuthResourceTypeOperator)
 	if err != nil {
 		return
 	}
 
-	// 触发新建策略，创建人默认拥有对当前资源的所有操作权限
+	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = m.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 		ID:   operator.OperatorID,
 		Type: string(interfaces.AuthResourceTypeOperator),
@@ -321,9 +321,9 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 	if err != nil {
 		return
 	}
-	// 注册填写了 direct_publish 为 true，直接发布
+	// Register and fill in direct_publish as true, publish directly.
 	if operator.Status == interfaces.BizStatusPublished.String() {
-		// 发布操作
+		// publish operation.
 		err = m.publishRelease(ctx, tx, operator, operator.UpdateUser)
 		if err != nil {
 			return

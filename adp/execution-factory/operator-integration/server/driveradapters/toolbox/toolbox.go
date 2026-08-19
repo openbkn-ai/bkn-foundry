@@ -12,7 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// CreateToolBox 创建工具箱
+// CreateToolBox Create toolbox.
 func (h *toolBoxHandler) CreateToolBox(c *gin.Context) {
 	req := &interfaces.CreateToolBoxReq{
 		OpenAPIInput: &interfaces.OpenAPIInput{},
@@ -48,7 +48,7 @@ func (h *toolBoxHandler) CreateToolBox(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 检验传参大小
+	// Check the parameter size.
 	resp, err := h.ToolService.CreateToolBox(c.Request.Context(), req)
 	if err != nil {
 		rest.ReplyError(c, err)
@@ -57,7 +57,7 @@ func (h *toolBoxHandler) CreateToolBox(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// UpdateToolBox 更新工具箱
+// UpdateToolBox update toolbox.
 func (h *toolBoxHandler) UpdateToolBox(c *gin.Context) {
 	req := &interfaces.UpdateToolBoxReq{
 		OpenAPIInput: &interfaces.OpenAPIInput{},
@@ -99,7 +99,7 @@ func (h *toolBoxHandler) UpdateToolBox(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 校验参数
+	// Check parameters.
 	err = h.Validator.ValidatorToolBoxName(c.Request.Context(), req.BoxName)
 	if err != nil {
 		rest.ReplyError(c, err)
@@ -118,7 +118,7 @@ func (h *toolBoxHandler) UpdateToolBox(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QueryToolBox 查询工具箱
+// QueryToolBox Query Toolbox.
 func (h *toolBoxHandler) QueryToolBox(c *gin.Context) {
 	req := &interfaces.GetToolBoxReq{}
 	err := c.ShouldBindHeader(req)
@@ -152,7 +152,7 @@ func (h *toolBoxHandler) QueryToolBox(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QueryToolBoxNamesByIDs 按工具箱ID批量取名(给前端对象级授权页回显名称用)
+// QueryToolBoxNamesByIDs batch names based on toolbox IDs (used to echo names on the front-end object-level authorization page)
 func (h *toolBoxHandler) QueryToolBoxNamesByIDs(c *gin.Context) {
 	req := &interfaces.BatchNamesReq{}
 	if err := c.ShouldBindJSON(req); err != nil {
@@ -199,7 +199,7 @@ func (h *toolBoxHandler) UpdateToolBoxStatus(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// DeleteToolBox 删除工具箱
+// DeleteToolBox delete toolbox.
 func (h *toolBoxHandler) DeleteToolBox(c *gin.Context) {
 	req := &interfaces.DeleteBoxReq{}
 	err := c.ShouldBindHeader(req)
@@ -227,7 +227,7 @@ func (h *toolBoxHandler) DeleteToolBox(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QueryToolBoxPage 查询工具箱分页
+// QueryToolBoxPage query toolbox paging.
 func (h *toolBoxHandler) QueryToolBoxPage(c *gin.Context) {
 	req := &interfaces.QueryToolBoxListReq{}
 	err := c.ShouldBindHeader(req)
@@ -261,7 +261,7 @@ func (h *toolBoxHandler) QueryToolBoxPage(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// CreateTool 创建工具
+// CreateTool Create tool.
 func (h *toolBoxHandler) CreateTool(c *gin.Context) {
 	req := &interfaces.CreateToolReq{
 		OpenAPIInput: &interfaces.OpenAPIInput{},
@@ -314,7 +314,7 @@ func (h *toolBoxHandler) CreateTool(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// UpdateTool 更新工具
+// UpdateTool update tool.
 func (h *toolBoxHandler) UpdateTool(c *gin.Context) {
 	req := &interfaces.UpdateToolReq{
 		OpenAPIInput: &interfaces.OpenAPIInput{},
@@ -359,7 +359,7 @@ func (h *toolBoxHandler) UpdateTool(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 参数校验
+	// Parameter verification.
 	err = h.Validator.ValidatorToolName(c.Request.Context(), req.ToolName)
 	if err != nil {
 		rest.ReplyError(c, err)
@@ -378,7 +378,7 @@ func (h *toolBoxHandler) UpdateTool(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QueryTool 查询工具
+// QueryTool Query Tool.
 func (h *toolBoxHandler) QueryTool(c *gin.Context) {
 	req := &interfaces.GetToolReq{}
 	err := c.ShouldBindHeader(req)
@@ -406,7 +406,7 @@ func (h *toolBoxHandler) QueryTool(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// DeleteBoxTool 删除工具
+// DeleteBoxTool Delete tool.
 func (h *toolBoxHandler) DeleteBoxTool(c *gin.Context) {
 	req := &interfaces.BatchDeleteToolReq{}
 	err := c.ShouldBindHeader(req)
@@ -440,7 +440,7 @@ func (h *toolBoxHandler) DeleteBoxTool(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QueryBoxToolPage 查询工具分页
+// QueryBoxToolPage query tool paging.
 func (h *toolBoxHandler) QueryBoxToolPage(c *gin.Context) {
 	req := &interfaces.QueryToolListReq{}
 	err := c.ShouldBindHeader(req)
@@ -480,7 +480,7 @@ func (h *toolBoxHandler) QueryBoxToolPage(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// UpdateToolStatus 更新工具状态
+// UpdateToolStatus update tool status.
 func (h *toolBoxHandler) UpdateToolStatus(c *gin.Context) {
 	req := &interfaces.UpdateToolStatusReq{
 		ToolStatusList: []*interfaces.ToolStatus{},
@@ -522,7 +522,7 @@ func (h *toolBoxHandler) UpdateToolStatus(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// GetMarketToolList 获取所有工具
+// GetMarketToolList Gets all tools.
 func (h *toolBoxHandler) GetMarketToolList(c *gin.Context) {
 	req := &interfaces.QueryMarketToolListReq{}
 	err := c.ShouldBindHeader(req)
@@ -556,7 +556,7 @@ func (h *toolBoxHandler) GetMarketToolList(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// DebugTool 调试工具
+// DebugTool debugging tool.
 func (h *toolBoxHandler) DebugTool(c *gin.Context) {
 	req := &interfaces.ExecuteToolReq{}
 	err := c.ShouldBindHeader(req)
@@ -592,7 +592,7 @@ func (h *toolBoxHandler) DebugTool(c *gin.Context) {
 	rest.ReplyWithExecutionMode(c, resp, err)
 }
 
-// ExecuteTool 执行工具
+// ExecuteTool execution tool.
 func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 	req := &interfaces.ExecuteToolReq{}
 	err := c.ShouldBindHeader(req)
@@ -628,7 +628,7 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 	rest.ReplyWithExecutionMode(c, resp, err)
 }
 
-// RegisterOpenApiBundle OpenAPI 能力包注册
+// RegisterOpenApiBundle OpenAPI capability package registration.
 func (h *toolBoxHandler) RegisterOpenApiBundle(c *gin.Context) {
 	req := &interfaces.RegisterOpenApiBundleReq{}
 	err := c.ShouldBindHeader(req)
@@ -662,7 +662,7 @@ func (h *toolBoxHandler) RegisterOpenApiBundle(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// OperatorToTool 算子转换成工具
+// OperatorToTool operator is converted into a tool.
 func (h *toolBoxHandler) OperatorToTool(c *gin.Context) {
 	req := &interfaces.ConvertOperatorToToolReq{}
 	err := c.ShouldBindHeader(req)
@@ -690,7 +690,7 @@ func (h *toolBoxHandler) OperatorToTool(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// 获取发布工具箱信息
+// Get publishing toolbox information.
 func (h *toolBoxHandler) GetReleaseToolBoxInfo(c *gin.Context) {
 	req := &interfaces.GetReleaseToolBoxInfoReq{}
 	err := c.ShouldBindHeader(req)

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// UpdateBuilder UPDATE语句构建器
+// UpdateBuilder UPDATE statement builder.
 type UpdateBuilder struct {
 	db    *DB
 	table string
@@ -16,12 +16,12 @@ type UpdateBuilder struct {
 	limit int
 }
 
-// rawExpression 原始表达式
+// rawExpression raw expression.
 type rawExpression struct {
 	expr string
 }
 
-// Set 设置字段值
+// Set sets the field value.
 func (u *UpdateBuilder) Set(field string, value interface{}) *UpdateBuilder {
 	if u.sets == nil {
 		u.sets = make(map[string]interface{})
@@ -30,7 +30,7 @@ func (u *UpdateBuilder) Set(field string, value interface{}) *UpdateBuilder {
 	return u
 }
 
-// SetData 批量设置字段值
+// SetData sets field values in batches.
 func (u *UpdateBuilder) SetData(data map[string]interface{}) *UpdateBuilder {
 	if u.sets == nil {
 		u.sets = make(map[string]interface{})
@@ -41,27 +41,27 @@ func (u *UpdateBuilder) SetData(data map[string]interface{}) *UpdateBuilder {
 	return u
 }
 
-// SetRaw 设置原始SQL表达式
+// SetRaw sets a raw SQL expression.
 func (u *UpdateBuilder) SetRaw(field, expr string) *UpdateBuilder {
 	if u.sets == nil {
 		u.sets = make(map[string]interface{})
 	}
-	// 使用特殊标记表示这是原始表达式
+	// Use special notation to indicate that this is a primitive expression.
 	u.sets[field] = &rawExpression{expr: expr}
 	return u
 }
 
-// Increment 字段自增
+// Increment field auto-increment.
 func (u *UpdateBuilder) Increment(field string, value interface{}) *UpdateBuilder {
 	return u.SetRaw(field, fmt.Sprintf("%s + %v", field, value))
 }
 
-// Decrement 字段自减
+// Decrement field decrements.
 func (u *UpdateBuilder) Decrement(field string, value interface{}) *UpdateBuilder {
 	return u.SetRaw(field, fmt.Sprintf("%s - %v", field, value))
 }
 
-// Where 添加WHERE条件
+// Where Add WHERE condition.
 func (u *UpdateBuilder) Where(field, op string, value interface{}) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -70,17 +70,17 @@ func (u *UpdateBuilder) Where(field, op string, value interface{}) *UpdateBuilde
 	return u
 }
 
-// WhereEq 等于条件的简写
+// WhereEq abbreviation for equal condition.
 func (u *UpdateBuilder) WhereEq(field string, value interface{}) *UpdateBuilder {
 	return u.Where(field, "=", value)
 }
 
-// WhereNe 不等于条件
+// WhereNe is not equal to the condition.
 func (u *UpdateBuilder) WhereNe(field string, value interface{}) *UpdateBuilder {
 	return u.Where(field, "!=", value)
 }
 
-// WhereIn IN条件
+// WhereIn IN condition.
 func (u *UpdateBuilder) WhereIn(field string, values ...interface{}) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -89,7 +89,7 @@ func (u *UpdateBuilder) WhereIn(field string, values ...interface{}) *UpdateBuil
 	return u
 }
 
-// WhereNotIn NOT IN条件
+// WhereNotIn NOT IN condition.
 func (u *UpdateBuilder) WhereNotIn(field string, values ...interface{}) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -98,12 +98,12 @@ func (u *UpdateBuilder) WhereNotIn(field string, values ...interface{}) *UpdateB
 	return u
 }
 
-// WhereLike LIKE条件
+// WhereLike LIKE condition.
 func (u *UpdateBuilder) WhereLike(field, pattern string) *UpdateBuilder {
 	return u.Where(field, "LIKE", pattern)
 }
 
-// WhereBetween BETWEEN条件
+// WhereBetween BETWEENCondition.
 func (u *UpdateBuilder) WhereBetween(field string, start, end interface{}) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -112,7 +112,7 @@ func (u *UpdateBuilder) WhereBetween(field string, start, end interface{}) *Upda
 	return u
 }
 
-// WhereNull IS NULL条件
+// WhereNull IS NULL condition.
 func (u *UpdateBuilder) WhereNull(field string) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -121,7 +121,7 @@ func (u *UpdateBuilder) WhereNull(field string) *UpdateBuilder {
 	return u
 }
 
-// WhereNotNull IS NOT NULL条件
+// WhereNotNull IS NOT NULL condition.
 func (u *UpdateBuilder) WhereNotNull(field string) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -130,7 +130,7 @@ func (u *UpdateBuilder) WhereNotNull(field string) *UpdateBuilder {
 	return u
 }
 
-// And 开始AND条件组
+// And starts the AND condition group.
 func (u *UpdateBuilder) And(fn func(*WhereBuilder)) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -139,7 +139,7 @@ func (u *UpdateBuilder) And(fn func(*WhereBuilder)) *UpdateBuilder {
 	return u
 }
 
-// Or 开始OR条件组
+// Or starts the OR condition group.
 func (u *UpdateBuilder) Or(fn func(*WhereBuilder)) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -148,7 +148,7 @@ func (u *UpdateBuilder) Or(fn func(*WhereBuilder)) *UpdateBuilder {
 	return u
 }
 
-// WhereRaw 原始WHERE条件
+// WhereRaw original WHERE condition.
 func (u *UpdateBuilder) WhereRaw(condition string, args ...interface{}) *UpdateBuilder {
 	if u.where == nil {
 		u.where = NewWhere()
@@ -157,20 +157,20 @@ func (u *UpdateBuilder) WhereRaw(condition string, args ...interface{}) *UpdateB
 	return u
 }
 
-// Limit 限制更新数量
+// Limit limits the number of updates.
 func (u *UpdateBuilder) Limit(limit int) *UpdateBuilder {
 	u.limit = limit
 	return u
 }
 
-// Build 构建SQL语句
+// Build build SQL statement.
 func (u *UpdateBuilder) Build() (query string, args []interface{}) {
 	sets := make([]string, 0, len(u.sets))
 	args = make([]interface{}, 0, len(u.sets))
 
 	for field, value := range u.sets {
 		if raw, ok := value.(*rawExpression); ok {
-			// 原始表达式，不需要占位符
+			// Raw expression, no placeholders required.
 			sets = append(sets, field+" = "+raw.expr)
 		} else {
 			sets = append(sets, field+" = ?")
@@ -180,7 +180,7 @@ func (u *UpdateBuilder) Build() (query string, args []interface{}) {
 
 	query = fmt.Sprintf("UPDATE %s SET %s", u.table, strings.Join(sets, ", "))
 
-	// WHERE条件
+	// WHERE condition.
 	if u.where != nil {
 		whereClause, whereArgs := u.where.Build()
 		if whereClause != "" {
@@ -197,13 +197,13 @@ func (u *UpdateBuilder) Build() (query string, args []interface{}) {
 	return query, args
 }
 
-// Execute 执行更新
+// Execute performs updates.
 func (u *UpdateBuilder) Execute(ctx context.Context) (sql.Result, error) {
 	query, args := u.Build()
 	return u.db.executor.ExecContext(ctx, query, args...)
 }
 
-// ExecuteAndReturnAffected 执行更新并返回影响的行数
+// ExecuteAndReturnAffected performs an update and returns the number of affected rows.
 func (u *UpdateBuilder) ExecuteAndReturnAffected(ctx context.Context) (int64, error) {
 	result, err := u.Execute(ctx)
 	if err != nil {

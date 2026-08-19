@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 const (
@@ -20,19 +20,19 @@ const (
 	executionFactorySkillDataset  = "bkn_execution_factory_skill_dataset"
 	executionFactoryDatasetDesc   = "执行工厂的Skill索引数据集"
 	executionFactoryDatasetStatus = "active"
-	// internalCatalogTag 让内置目录自带「内置」语义标签。Studio 目前不读后端的
-	// internal 字段，靠 metadata/tag/名称前缀启发式判定内置目录，该 tag 命中它的
-	// 内置标签集合 —— 前端零改就能正确显示「内置」并收起管理操作。
+	// internalCatalogTag allows built-in catalogs to have "built-in" semantic tags. Studio currently does not read the backend.
+	// internal field, rely on metadata/tag/name prefix heuristic to determine the built-in directory, the tag hits its.
+	// Built-in tag collection - "built-in" can be displayed correctly and management operations can be closed with zero modification on the front end.
 	internalCatalogTag = "internal"
-	// vegaMaxTags 与 vega 的 TAGS_MAX_NUMBER 对齐(超出会 400)
+	// vegaMaxTags is aligned with vega's TAGS_MAX_NUMBER (exceeding 400)
 	vegaMaxTags = 5
-	// embeddingModelConfigKey 是向量特征 config 里的模型键。只用于读：曾经把模型
-	// 快照写在这里，但 vega 会把向量属性的 feature config 原样拷进 OpenSearch
-	// knn_vector mapping，OpenSearch 以 unknown parameter 拒绝，索引建不出来。
-	// 写路径改用资源级 index_config.default_embedding_model。
+	// embeddingModelConfigKey is the model key in the vector feature config. For read only: once put the model.
+	// The snapshot is written here, but vega will copy the feature config of the vector attribute into OpenSearch as it is.
+	// knn_vector mapping, OpenSearch rejected it with unknown parameter, and the index could not be built.
+	// The write path uses resource-level index_config.default_embedding_model instead.
 	embeddingModelConfigKey = "embedding_model"
-	// embeddingModelTagPrefix 是该快照的旧载体(resource tag)。vega 的 tag 校验禁掉了
-	// ':'，带这种 tag 的建 dataset 请求会 400，因此只保留读路径兼容老 dataset。
+	// embeddingModelTagPrefix is the old vector (resource tag) of this snapshot. Vega's tag verification is disabled.
+	// ':', a dataset creation request with this tag will result in 400, so only the read path is retained to be compatible with the old dataset.
 	embeddingModelTagPrefix = "embedding_model:"
 )
 
@@ -43,10 +43,10 @@ type skillIndexSync struct {
 	logger       interfaces.Logger
 	mu           sync.RWMutex
 	initialized  bool
-	// datasetID 为本进程实际使用的数据集 ID；空值表示尚未解析，取默认值。
+	// datasetID is the dataset ID actually used by this process; an empty value means it has not been parsed yet, and the default value is used.
 	datasetID string
-	// embeddingModelName 该系统 skill dataset 建时锁定的 embedding 模型名(系统默认快照)，
-	// 受 mu 保护；upsert 读回它生成向量，而非每次重取当前默认。
+	// embeddingModelName The embedding model name locked when the system skill dataset is built (system default snapshot),
+	// Protected by mu; upsert reads back the vector it generates, rather than re-fetching the current default each time.
 	embeddingModelName string
 	retryOnce          sync.Once
 }
@@ -79,13 +79,13 @@ func (s *skillIndexSync) EnsureInitialized(ctx context.Context) error {
 	return nil
 }
 
-// EnsureDataset 确保Skill索引数据集存在
-// 如果不存在，则创建
-// 如果存在，则检查是否为最新版本
-// 如果不是最新版本，则更新
-// 如果是最新版本，则返回成功
+// EnsureDataset ensures that the Skill index data set exists.
+// If it does not exist, create it.
+// If it exists, check if it is the latest version.
+// If it is not the latest version, update it.
+// If it is the latest version, it returns success.
 func (s *skillIndexSync) Init(ctx context.Context) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 
@@ -105,12 +105,12 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	}
 	s.setDatasetID(datasetID)
 	if resource != nil {
-		// 收养到的 dataset 可能挂在另一个目录下(混合形态)，写入受它自己的父目录管辖
+		// The adopted dataset may be hung in another directory (hybrid form), and writing is governed by its own parent directory.
 		if err := s.ensureDatasetCatalogEnabled(ctx, resource, catalogID); err != nil {
 			return err
 		}
-		// dataset 已存在：读回建时锁定的模型名(建模型==查模型)。
-		// 旧 dataset 两种形态都兜住，都取不到时回退按名 "embedding"，与改造前行为一致。
+		// The dataset already exists: read back the model name locked during creation (model building == model query).
+		// The old dataset is trapped in both forms, and when neither can be retrieved, it falls back to the name "embedding", which is consistent with the behavior before the transformation.
 		modelName := extractEmbeddingModelFromIndexConfig(resource.IndexConfig)
 		if modelName == "" {
 			modelName = extractEmbeddingModelFromSchema(resource.SchemaDefinition)
@@ -126,7 +126,7 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 		s.logger.WithContext(ctx).Infof("resource already exists, resource_id=%s, embedding_model=%s", datasetID, modelName)
 		return nil
 	}
-	// 首次创建 dataset：用系统默认 embedding 模型(接口式可配)；未配置默认时回退按名 "embedding"。
+	// When creating a dataset for the first time: use the system default embedding model (interface configurable); if the default is not configured, it will fall back to the name "embedding".
 	embeddingModel, err := s.resolveBuildEmbeddingModel(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", datasetID, err)
@@ -144,9 +144,9 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 		Status:           executionFactoryDatasetStatus,
 		SourceIdentifier: datasetID,
 		SchemaDefinition: buildSkillIndexSchema(embeddingModel.EmbeddingDim),
-		// 建时锁定的模型名快照进资源级 index_config：vega 解析向量模型时拿它兜底，
-		// 且它不进 OpenSearch mapping。不能放 tag(vega tag 校验禁 ':' 会 400)，也不能
-		// 放向量属性的 feature config(会被拷进 knn_vector mapping，OpenSearch 拒绝)。
+		// The model name locked at build time is snapshotted into the resource level index_config: vega. Use it when parsing the vector model.
+		// And it does not enter OpenSearch mapping. You can't put tags (vega tag verification prohibits ':', which will result in 400), and you can't.
+		// Feature config with vector attributes (will be copied into knn_vector mapping, rejected by OpenSearch).
 		IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelName},
 	})
 	if err != nil {
@@ -158,7 +158,7 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	return nil
 }
 
-// ensureCatalog 解析并保证内置目录存在，返回本进程实际使用的目录 ID。
+// ensureCatalog parses and ensures the existence of the built-in catalog and returns the catalog ID actually used by this process.
 func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 	catalog, err := s.vegaClient.GetCatalogByID(ctx, executionFactoryCatalogID)
 	if err != nil {
@@ -172,10 +172,10 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 			Name:        executionFactoryCatalogID,
 			Tags:        []string{"execution-factory", "索引", internalCatalogTag},
 			Description: executionFactoryCatalogDesc,
-			// 系统内部目录：仅超级管理员可见，业务角色（数据管理员等）的 catalog:* 授权匹配不到
+			// System internal catalog: only visible to super administrators, the catalog:* authorization of business roles (data administrators, etc.) cannot match.
 			Internal: true,
-			// 逻辑目录若建成 disabled，其下 dataset 的读写会被 vega 以 409
-			// Catalog.IsDisabled 拒绝(bkn-backend 的内置目录同样显式置 true)
+			// If the logical directory is disabled, the reading and writing of the dataset under it will be blocked by vega with 409.
+			// Catalog.IsDisabled is rejected (the built-in catalog of bkn-backend is also explicitly set to true)
 			Enabled: true,
 		})
 		if err != nil {
@@ -190,16 +190,16 @@ func (s *skillIndexSync) ensureCatalog(ctx context.Context) (string, error) {
 	return catalog.ID, nil
 }
 
-// reconcileCatalog 把存量目录对齐到当前预期：展示名迁到新品牌名、补 internal 标签、
-// 目录置为启用。
+// reconcileCatalog aligns the inventory catalog to the current expectations: moves the display name to the new brand name, adds internal tags,
+// Directory is enabled.
 //
-// 改名与补标签是展示项，失败只告警；「启用」是功能项——目录 disabled 时其下 dataset
-// 的读写会被 vega 以 409 拒绝，所以启用失败必须冒泡成 Init 失败，交给重试循环，
-// 否则会带着必然写失败的状态标记成已初始化。
+// Renaming and adding labels are display items, and only alerts if they fail; "Enable" is a functional item - when the directory is disabled, the dataset below it.
+// The read and write will be rejected by vega with 409, so the activation failure must bubble up into Init failure and hand it over to the retry loop.
+// Otherwise, it will be marked as initialized with a status of inevitable write failure.
 func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfaces.VegaCatalog) error {
 	tags := appendInternalTag(catalog.Tags)
-	// vega 的 tag 数量上限是 5；超限时放弃补标签，保住「改名」这个主目标，
-	// 否则整个 PUT 会 400，改名和补标签一起永久失败。
+	// The upper limit of vega's tag number is 5; when the limit is exceeded, give up adding tags and keep the main goal of "renaming".
+	// Otherwise, the entire PUT will be 400, and the name change and label supplementation will fail permanently.
 	if len(tags) > vegaMaxTags {
 		s.logger.WithContext(ctx).Warnf("skip internal tag backfill, tag limit reached, catalog_id=%s, tags=%d", catalog.ID, len(tags))
 		tags = catalog.Tags
@@ -223,8 +223,8 @@ func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfac
 	return s.ensureCatalogEnabled(ctx, catalog)
 }
 
-// ensureCatalogEnabled 保证目录处于启用状态。目录 disabled 时其下 dataset 的读写
-// 会被 vega 以 409 Catalog.IsDisabled 拒绝，因此失败要作为错误返回。
+// ensureCatalogEnabled ensures that the catalog is enabled. Reading and writing of the dataset under the directory when it is disabled.
+// Will be rejected by vega with 409 Catalog.IsDisabled, so failure will be returned as an error.
 func (s *skillIndexSync) ensureCatalogEnabled(ctx context.Context, catalog *interfaces.VegaCatalog) error {
 	if catalog.Enabled {
 		return nil
@@ -237,10 +237,10 @@ func (s *skillIndexSync) ensureCatalogEnabled(ctx context.Context, catalog *inte
 	return nil
 }
 
-// ensureDatasetCatalogEnabled 保证「收养到的 dataset 自己挂的那个目录」是启用的。
+// ensureDatasetCatalogEnabled ensures that "the directory where the adopted dataset is hung" is enabled.
 //
-// 混合形态下两者可能不是同一个目录：ensureCatalog 解析到新 ID 的目录，而 dataset
-// 仍挂在旧目录上。写入受 dataset 的父目录管辖，只启用前者不够。
+// In mixed form, the two may not be the same directory: ensureCatalog resolves to the directory of the new ID, while dataset.
+// Still hanging on the old directory. Writing is governed by the dataset's parent directory, and simply enabling the former is not enough.
 func (s *skillIndexSync) ensureDatasetCatalogEnabled(ctx context.Context, resource *interfaces.VegaResource, resolvedCatalogID string) error {
 	if resource == nil || resource.CatalogID == "" || resource.CatalogID == resolvedCatalogID {
 		return nil
@@ -257,7 +257,7 @@ func (s *skillIndexSync) ensureDatasetCatalogEnabled(ctx context.Context, resour
 	return s.ensureCatalogEnabled(ctx, parent)
 }
 
-// appendInternalTag 补上 internal 标签；已有(忽略大小写与首尾空格)则原样返回。
+// appendInternalTag appends the internal tag; if it already exists (ignoring case and leading and trailing spaces), it will be returned as is.
 func appendInternalTag(tags []string) []string {
 	for _, tag := range tags {
 		if strings.EqualFold(strings.TrimSpace(tag), internalCatalogTag) {
@@ -267,8 +267,8 @@ func appendInternalTag(tags []string) []string {
 	return append(append([]string{}, tags...), internalCatalogTag)
 }
 
-// resolveDataset 解析本进程使用的 skill dataset。返回的 resource 为 nil 表示
-// 它还不存在，需新建。
+// resolveDataset resolves the skill dataset used by this process. The returned resource is nil.
+// It does not exist yet and needs to be created.
 func (s *skillIndexSync) resolveDataset(ctx context.Context) (string, *interfaces.VegaResource, error) {
 	resource, err := s.vegaClient.GetResourceByID(ctx, executionFactorySkillDataset)
 	if err != nil {
@@ -281,7 +281,7 @@ func (s *skillIndexSync) resolveDataset(ctx context.Context) (string, *interface
 	return executionFactorySkillDataset, nil, nil
 }
 
-// resolveBuildEmbeddingModel 建 dataset 时确定 embedding 模型：优先系统默认(接口式)，未配置则回退按名 "embedding"(改造前行为)。
+// resolveBuildEmbeddingModel determines the embedding model when building a dataset: the system default (interface type) is given priority, and if not configured, it falls back to the name "embedding" (behavior before transformation).
 func (s *skillIndexSync) resolveBuildEmbeddingModel(ctx context.Context) (*interfaces.EmbeddingModel, error) {
 	model, err := s.modelManager.GetDefaultEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding)
 	if err != nil {
@@ -292,7 +292,7 @@ func (s *skillIndexSync) resolveBuildEmbeddingModel(ctx context.Context) (*inter
 	return s.modelManager.GetEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding)
 }
 
-// extractEmbeddingModelFromIndexConfig 从资源级 index_config 读回建时锁定的模型名(当前写法)
+// extractEmbeddingModelFromIndexConfig reads back the model name locked at build time from resource-level index_config (current writing method)
 func extractEmbeddingModelFromIndexConfig(indexConfig *interfaces.VegaResourceIndexConfig) string {
 	if indexConfig == nil {
 		return ""
@@ -300,8 +300,8 @@ func extractEmbeddingModelFromIndexConfig(indexConfig *interfaces.VegaResourceIn
 	return indexConfig.DefaultEmbeddingModel
 }
 
-// extractEmbeddingModelFromSchema 从向量特征的 config.embedding_model 读回模型名。
-// 只服务于短暂写过该位置的 dataset，新建 dataset 不再往 schema 里写模型名。
+// extractEmbeddingModelFromSchema reads back the model name from the vector feature's config.embedding_model.
+// It only serves the dataset that has been written to this location briefly. When creating a new dataset, the model name will no longer be written into the schema.
 func extractEmbeddingModelFromSchema(schema []interfaces.VegaProperty) string {
 	for _, property := range schema {
 		for _, feature := range property.Features {
@@ -316,8 +316,8 @@ func extractEmbeddingModelFromSchema(schema []interfaces.VegaProperty) string {
 	return ""
 }
 
-// extractEmbeddingModelFromTags 从 resource tags 解析建时锁定的 embedding 模型名。
-// 只服务于 tag 快照时期建的老 dataset，新建 dataset 不再写这个 tag。
+// extractEmbeddingModelFromTags parses the build-time locked embedding model names from resource tags.
+// It only serves the old dataset created during the tag snapshot period, and the new dataset will no longer write this tag.
 func extractEmbeddingModelFromTags(tags []string) string {
 	for _, t := range tags {
 		if strings.HasPrefix(t, embeddingModelTagPrefix) {
@@ -342,7 +342,7 @@ func (s *skillIndexSync) setEmbeddingModelName(name string) {
 	s.embeddingModelName = name
 }
 
-// getDatasetID 返回本进程实际使用的 dataset ID；未解析时取新装默认值。
+// getDatasetID returns the dataset ID actually used by this process; if it is not parsed, it takes the new default value.
 func (s *skillIndexSync) getDatasetID() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -442,7 +442,7 @@ func (s *skillIndexSync) retryInit() {
 func (s *skillIndexSync) buildSkillDocument(ctx context.Context, skill *model.SkillRepositoryDB) (map[string]any, error) {
 	log := s.logger
 	log.Infof("build skill index document, skill_id=%s", skill.SkillID)
-	// 读回建 dataset 时锁定的模型(建模型==查模型)，而非每次重取当前系统默认
+	// Read back the model locked when creating the dataset (build model == check model), instead of retrieving the current system default each time.
 	embeddingResp, err := s.modelAPI.Embeddings(ctx, &interfaces.EmbeddingReq{
 		Model: s.getEmbeddingModelName(),
 		Input: []string{buildEmbeddingInput(skill.Name, skill.Description)},
@@ -477,8 +477,8 @@ func buildEmbeddingInput(name string, description string) string {
 	return strings.Join(parts, "\n")
 }
 
-// buildSkillIndexSchema 生成 skill 索引 schema。模型名不进这里 —— 向量属性的
-// feature config 会被 vega 原样拷进 OpenSearch mapping，多余键会让建索引失败。
+// buildSkillIndexSchema Builds the skill index schema. The model name does not enter here - it is a vector attribute.
+// The feature config will be copied into OpenSearch mapping by vega as it is, and extra keys will cause index building to fail.
 func buildSkillIndexSchema(dimension int) []interfaces.VegaProperty {
 	return []interfaces.VegaProperty{
 		{

@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
 type toolManager struct {
@@ -23,7 +23,7 @@ func newToolManager(executor interfaces.IMCPToolExecutor, logger interfaces.Logg
 	}
 }
 
-// RegisterTools 注册工具
+// RegisterTools Registration Tools.
 func (tm *toolManager) RegisterTools(tools []*interfaces.MCPToolDeployConfig, mcpServer *server.MCPServer) error {
 	for _, tool := range tools {
 		rawSchema := tool.InputSchema
@@ -39,7 +39,7 @@ func (tm *toolManager) RegisterTools(tools []*interfaces.MCPToolDeployConfig, mc
 	return nil
 }
 
-// toolHandler 工具处理函数
+// toolHandler tool processing function.
 func (tm *toolManager) toolHandler(ctx context.Context, request mcp.CallToolRequest, mcpToolID string) (*mcp.CallToolResult, error) {
 	requestJSON := utils.ObjectToJSON(request)
 	if mcpToolID == "" {

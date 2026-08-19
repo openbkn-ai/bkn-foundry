@@ -232,7 +232,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 			So(errors.As(err, &httpErr), ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		})
-		// Convey("外部接口: 拉取数据失败（db）", func() {
+		// Convey("External interface: Failed to pull data (db)", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockBusinessDomainService.EXPECT().BatchResourceList(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).Times(1)
@@ -240,7 +240,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	_, err := operator.QueryOperatorMarketList(ctx, req)
 		// 	So(err, ShouldNotBeNil)
 		// })
-		// Convey("外部接口: 获取accessor信息失败", func() {
+		// Convey("External interface: Failed to obtain accessor information", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockBusinessDomainService.EXPECT().BatchResourceList(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).Times(1)
@@ -249,7 +249,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	_, err := operator.QueryOperatorMarketList(ctx, req)
 		// 	So(err, ShouldNotBeNil)
 		// })
-		// Convey("外部接口: 检查公开访问权限，资源过滤失败", func() {
+		// Convey("External interface: Checking public access permissions, resource filtering failed", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockOpReleaseDB.EXPECT().SelectByWhereClause(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(releaseList, nil)
@@ -258,7 +258,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	_, err := operator.QueryOperatorMarketList(ctx, req)
 		// 	So(err, ShouldNotBeNil)
 		// })
-		// Convey("外部接口: 匹配到的资源为空", func() {
+		// Convey("External interface: The matched resource is empty", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockOpReleaseDB.EXPECT().SelectByWhereClause(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(releaseList, nil)
@@ -267,7 +267,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	_, err := operator.QueryOperatorMarketList(ctx, req)
 		// 	So(err, ShouldBeNil)
 		// })
-		// Convey("外部接口: 获取元数据失败（db）", func() {
+		// Convey("External interface: Failed to obtain metadata (db)", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockOpReleaseDB.EXPECT().SelectByWhereClause(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(releaseList, nil)
@@ -280,7 +280,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	So(errors.As(err, &httpErr), ShouldBeTrue)
 		// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// })
-		// Convey("内部接口: 根据条件统计失败（db）", func() {
+		// Convey("Internal interface: Statistics of failures based on conditions (db)", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockOpReleaseDB.EXPECT().CountByWhereClause(gomock.Any(), gomock.Any()).Return(int64(0), mocks.MockFuncErr("CountByWhereClause"))
@@ -290,14 +290,14 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	So(errors.As(err, &httpErr), ShouldBeTrue)
 		// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// })
-		// Convey("内部接口: 未匹配到数据", func() {
+		// Convey("Internal interface: No data matched", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockOpReleaseDB.EXPECT().CountByWhereClause(gomock.Any(), gomock.Any()).Return(int64(0), nil)
 		// 	_, err := operator.QueryOperatorMarketList(context.TODO(), req)
 		// 	So(err, ShouldBeNil)
 		// })
-		// Convey("内部接口: 条件查询失败（db）", func() {
+		// Convey("Internal interface: Conditional query failed (db)", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockOpReleaseDB.EXPECT().CountByWhereClause(gomock.Any(), gomock.Any()).Return(int64(1), nil)
@@ -308,7 +308,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	So(errors.As(err, &httpErr), ShouldBeTrue)
 		// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// })
-		// Convey("内部接口: 未匹配到元数据, 解析数据失败, 解析元数据失败, 获取用户名失败", func() {
+		// Convey("Internal interface: Metadata not matched, failed to parse data, failed to parse metadata, failed to obtain username", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
 		// 	mockOpReleaseDB.EXPECT().CountByWhereClause(gomock.Any(), gomock.Any()).Return(int64(len(releaseList)), nil)
@@ -319,7 +319,7 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// 	_, err := operator.QueryOperatorMarketList(context.TODO(), req)
 		// 	So(err, ShouldNotBeNil)
 		// })
-		// Convey("内部接口: 获取市场列表成功", func() {
+		// Convey("Internal interface: Obtaining market list successfully", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	req.All = true
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)

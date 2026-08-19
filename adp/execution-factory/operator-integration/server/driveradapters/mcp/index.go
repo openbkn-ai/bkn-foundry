@@ -13,47 +13,47 @@ import (
 )
 
 type MCPPublicHandler interface {
-	// ParseSSE 解析SSE类型的MCP服务
+	// ParseSSE parses SSE type MCP services.
 	ParseSSE(c *gin.Context)
-	// AddMCPServer 注册MCP服务
+	// AddMCPServer register MCP service.
 	AddMCPServer(c *gin.Context)
-	// DeleteMCPServer 删除MCP服务
+	// DeleteMCPServer Delete MCP service.
 	DeleteMCPServer(c *gin.Context)
-	// QueryMCPServerPage 查询MCP服务
+	// QueryMCPServerPage Query MCP service.
 	QueryMCPServerPage(c *gin.Context)
-	// QueryMCPServerDetail 查询MCP服务详情
+	// QueryMCPServerDetail Query MCP service details.
 	QueryMCPServerDetail(c *gin.Context)
-	// UpdateMCPServer 更新MCP服务
+	// UpdateMCPServer Update MCP service.
 	UpdateMCPServer(c *gin.Context)
-	// UpdateMCPServerStatus 更新MCP服务状态
+	// UpdateMCPServerStatus updates MCP service status.
 	UpdateMCPServerStatus(c *gin.Context)
-	// DebugTool 工具调试
+	// DebugTool tool debugging.
 	DebugTool(c *gin.Context)
 
-	// GetMCPTools 查询MCP服务工具
+	// GetMCPTools query MCP service tool.
 	GetMCPTools(c *gin.Context)
-	// CallMCPTool 调用MCP服务工具
+	// CallMCPTool calls MCP service tool.
 	CallMCPTool(c *gin.Context)
 
-	// QueryMCPServerMarketList 查询MCP服务市场列表
+	// QueryMCPServerMarketList Query MCP service market list.
 	QueryMCPServerMarketList(c *gin.Context)
-	// QueryMCPServerMarketDetail 查询MCP服务市场详情
+	// QueryMCPServerMarketDetail Query MCP service market details.
 	QueryMCPServerMarketDetail(c *gin.Context)
-	// QueryMCPServerMarketBatch 批量查询MCP服务市场详情
+	// QueryMCPServerMarketBatch Query MCP service market details in batches.
 	QueryMCPServerMarketBatch(c *gin.Context)
 
-	// HandleStreamingHttp 基于HTTP分块传输的流式处理
+	// HandleStreamingHttp Streaming based on HTTP chunked transmission.
 	HandleStreamingHttp(c *gin.Context)
-	// HandleServerSentEvents SSE事件处理
+	// HandleServerSentEvents SSE event handling.
 	HandleServerSentEvents(c *gin.Context)
-	// HandleMessage 消息处理
+	// HandleMessage message processing.
 	HandleSSEMessage(c *gin.Context)
 }
 
 type MCPPrivateHandler interface {
-	// GetMCPTools 查询MCP服务工具
+	// GetMCPTools query MCP service tool.
 	GetMCPTools(c *gin.Context)
-	// CallMCPTool 调用MCP服务工具
+	// CallMCPTool calls MCP service tool.
 	CallMCPTool(c *gin.Context)
 }
 
@@ -68,7 +68,7 @@ type mcpHandle struct {
 	mcpInstance interfaces.InstanceService
 }
 
-// NewMCPHandler 创建MCP处理程序
+// NewMCPHandler creates an MCP handler.
 func NewMCPHandler() *mcpHandle {
 	once.Do(func() {
 		conf := config.NewConfigLoader()

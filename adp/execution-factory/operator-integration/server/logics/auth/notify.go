@@ -7,7 +7,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// NotifyResourceChange 通知资源变更
+// NotifyResourceChange Notifies resource changes.
 func (s *authServiceImpl) NotifyResourceChange(ctx context.Context, authResource *interfaces.AuthResource) error {
 	jsonData, err := json.Marshal(authResource)
 	if err != nil {

@@ -12,9 +12,9 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestCategoryWriteAuthz 覆盖 #345：公开面分类写操作的类型级门禁。
-// 各用例都不给 DBCategory/Validator 设 EXPECT——门禁一旦失效走到业务逻辑，
-// gomock 会因非预期调用直接失败。
+// TestCategoryWriteAuthz Covers #345: Expose type-level gatekeeping for face category write operations.
+// Each use case does not set EXPECT for DBCategory/Validator - once the access control fails, the business logic will.
+// gomock will fail directly due to unexpected calls.
 func TestCategoryWriteAuthz(t *testing.T) {
 	Convey("算子分类写操作授权", t, func() {
 		ctrl := gomock.NewController(t)
@@ -67,14 +67,14 @@ func TestCategoryWriteAuthz(t *testing.T) {
 		})
 
 		Convey("内部面不判定（启动期内置分类灌入走此路）", func() {
-			// authService 不设 EXPECT：内部面若发起判定，gomock 会因非预期调用失败
+			// authService does not set EXPECT: if a judgment is initiated internally, gomock will fail due to unexpected calls.
 			manager := newManager(mocks.NewMockIAuthorizationService(ctrl))
 			manager.DBCategory.(*mocks.MockDBCategory).EXPECT().
 				SelectListByCategoryID(gomock.Any(), gomock.Nil(), "cat-1").Return(nil, nil)
 			err := manager.DeleteCategory(context.Background(), &interfaces.DeleteCategoryReq{
 				UserID: "user-1", CategoryType: "cat-1",
 			})
-			// 分类不存在 → 404，说明已越过门禁进入业务逻辑
+			// Category does not exist → 404, indicating that the access control has been exceeded and the business logic has been entered.
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "not found")
 		})
@@ -85,7 +85,7 @@ func TestCategoryWriteAuthz(t *testing.T) {
 				SelectList(gomock.Any(), gomock.Nil()).Return(nil, nil)
 			list, err := manager.GetCategoryList(publicCtx)
 			So(err, ShouldBeNil)
-			So(len(list), ShouldEqual, 2) // 两个内置分类：未分类、系统工具
+			So(len(list), ShouldEqual, 2) // Two built-in categories: Uncategorized and System Tools.
 		})
 	})
 }

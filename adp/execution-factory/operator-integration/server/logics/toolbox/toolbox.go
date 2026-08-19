@@ -1,6 +1,6 @@
-// Package toolbox 工具箱、工具管理
+// Package toolbox toolbox, tool management.
 // @file internal_tool.go
-// @description: 管理实现
+// @description: management implementation.
 package toolbox
 
 import (
@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	infracommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -17,16 +16,17 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// GetToolBox 获取工具箱信息
+// GetToolBox Get toolbox information.
 func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToolBoxReq, isMarket bool) (resp *interfaces.ToolBoxToolInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 如果是公开接口，检查查看权限
+	// If it is a public interface, check the viewing permissions.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -43,7 +43,7 @@ func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToo
 		}
 	}
 
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -55,18 +55,18 @@ func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToo
 			fmt.Sprintf("toolbox %s not found", req.BoxID))
 		return
 	}
-	// 如果时市场接口，只能获取已发布工具详情
+	// If the market interface is used, only the details of published tools can be obtained.
 	if isMarket && toolBox.Status != interfaces.BizStatusPublished.String() {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound,
 			fmt.Sprintf("toolbox %s is not published", req.BoxID))
 		return
 	}
 
-	// 转换工具箱数据库模型到工具箱信息
+	// Convert toolbox database model to toolbox information.
 	resp = s.toolBoxDBToToolBoxToolInfo(ctx, toolBox)
 	userIDs := []string{toolBox.CreateUser, toolBox.UpdateUser, toolBox.ReleaseUser}
 
-	// 获取工具箱下的工具
+	// Get the tools under the toolbox.
 	tools, err := s.ToolDB.SelectToolByBoxID(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
@@ -84,16 +84,16 @@ func (s *ToolServiceImpl) GetToolBox(ctx context.Context, req *interfaces.GetToo
 	return
 }
 
-// DeleteBoxByID 删除工具箱
+// DeleteBoxByID delete toolbox.
 func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.DeleteBoxReq) (resp *interfaces.DeleteBoxResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
 	})
-	// 校验删除权限
+	// Verify delete permission.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -103,7 +103,7 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 	if err != nil {
 		return
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -114,7 +114,7 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 删除工具箱
+	// Delete toolbox.
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -132,18 +132,18 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		return
 	}
 
-	// 取消关联业务域
+	// Unassociate business domain.
 	err = s.BusinessDomainService.DisassociateResource(ctx, req.BusinessDomainID, req.BoxID, interfaces.AuthResourceTypeToolBox)
 	if err != nil {
 		return
 	}
-	// 删除资源权限策略
+	// Delete resource permissions policy.
 	err = s.AuthService.DeletePolicy(ctx, []string{req.BoxID}, interfaces.AuthResourceTypeToolBox)
 	if err != nil {
 		return
 	}
 
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -164,12 +164,12 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 	return
 }
 
-// QueryToolBoxList 工具箱管理
+// QueryToolBoxList toolbox management.
 func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.QueryToolBoxListReq) (resp *interfaces.QueryToolBoxListResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 构造查询条件
+	// Construct query conditions.
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
 	if req.MetadataType != "" {
@@ -179,7 +179,7 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 		filter["name"] = req.BoxName
 	}
 	if req.BoxCategory != "" {
-		// 检查分类是否合法
+		// Check whether the classification is legal.
 		if !s.CategoryManager.CheckCategory(req.BoxCategory) {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxCategoryTypeInvalid,
 				fmt.Sprintf(" %s category not found", req.BoxCategory))
@@ -209,7 +209,7 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	if len(toolBoxList) == 0 {
 		return
 	}
-	// 组装工具箱信息结果
+	// Assembly toolbox information results.
 	toolBoxInfoList, err := s.getToolBoxList(ctx, toolBoxList, resourceToBdMap)
 	if err != nil {
 		return
@@ -218,16 +218,16 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	return
 }
 
-// UpdateToolBoxStatus 修改工具箱状态
+// UpdateToolBoxStatus Modifies toolbox status.
 func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfaces.UpdateToolBoxStatusReq) (resp *interfaces.UpdateToolBoxStatusResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
 	})
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -239,7 +239,7 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 			fmt.Sprintf("toolbox %s not found", req.BoxID))
 		return
 	}
-	// 检查请求转换参数是否合法
+	// Check whether the request conversion parameters are legal.
 	if !common.CheckStatusTransition(interfaces.BizStatus(toolBox.Status), req.Status) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxStatusInvalid,
 			fmt.Sprintf("toolbox %s status can not be transition to %s", req.BoxID, req.Status))
@@ -254,17 +254,17 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 	switch req.Status {
 	case interfaces.BizStatusPublished:
 		operation = metric.AuditLogOperationPublish
-		// 校验发布权限
+		// Verify publishing permissions.
 		err = s.AuthService.CheckPublishPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
 		if err != nil {
 			return
 		}
-		// 检查是否重名
+		// Check if there is a duplicate name.
 		err = s.checkBoxDuplicateName(ctx, toolBox.Name, toolBox.BoxID)
 	case interfaces.BizStatusUnpublish, interfaces.BizStatusEditing:
 	case interfaces.BizStatusOffline:
 		operation = metric.AuditLogOperationUnpublish
-		// 校验下架权限、校验编辑权限
+		// Verify delisting permissions, verify editing permissions.
 		err = s.AuthService.CheckUnpublishPermission(ctx, accessor, req.BoxID, interfaces.AuthResourceTypeToolBox)
 	default:
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxStatusInvalid,
@@ -279,7 +279,7 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "update toolbox status failed")
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	if operation != "" {
 		go func() {
 			accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
@@ -306,16 +306,16 @@ func (s *ToolServiceImpl) UpdateToolBoxStatus(ctx context.Context, req *interfac
 	return
 }
 
-// GetBoxTool 获取工具信息
+// GetBoxTool Get tool information.
 func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToolReq) (resp *interfaces.ToolInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"tool_id": req.ToolID,
 	})
-	// 如果是外部接口，校验是否拥有所属工具的查看、公开访问权限
+	// If it is an external interface, verify whether it has the viewing and public access rights of the tool it belongs to.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -332,7 +332,7 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 			return
 		}
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, boxDB, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -358,12 +358,12 @@ func (s *ToolServiceImpl) GetBoxTool(ctx context.Context, req *interfaces.GetToo
 	return
 }
 
-// DeleteBoxTool 批量删除工具箱内工具
+// DeleteBoxTool Batch delete tools in the toolbox.
 func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.BatchDeleteToolReq) (resp *interfaces.BatchDeleteToolResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 权限校验
+	// Permission verification.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -373,7 +373,7 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 	if err != nil {
 		return
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -384,12 +384,12 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 内置工具不允许删除工具
+	// Built-in tools do not allow deletion of tools.
 	if toolBox.IsInternal {
 		err = errors.DefaultHTTPError(ctx, http.StatusForbidden, "internal toolbox cannot delete tools")
 		return
 	}
-	// 检查工具是否存在
+	// Check if the tool exists.
 	tools, err := s.ToolDB.SelectToolBoxByID(ctx, req.BoxID, req.ToolIDs)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
@@ -423,7 +423,7 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 	if err != nil {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		var detils []metric.AuditLogToolDetil
 		for _, tool := range tools {
@@ -455,12 +455,12 @@ func (s *ToolServiceImpl) DeleteBoxTool(ctx context.Context, req *interfaces.Bat
 	return
 }
 
-// QueryToolList 查询工具列表(获取工具箱内工具列表)
+// QueryToolList Query tool list (get the tool list in the toolbox)
 func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.QueryToolListReq) (resp *interfaces.QueryToolListResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 如果外部接口，校验是否拥有所属工具箱的查看、公开访问权限
+	// If it is an external interface, verify whether it has the viewing and public access rights to the toolbox it belongs to.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
@@ -477,7 +477,7 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 			return
 		}
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, boxDB, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -488,7 +488,7 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 构造查询条件
+	// Construct query conditions.
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
 	if req.ToolName != "" {
@@ -500,7 +500,7 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 	if req.QueryUserID != "" {
 		filter["user_id"] = req.QueryUserID
 	}
-	// 查询工具箱总数
+	// Query the total number of toolboxes.
 	total, err := s.ToolDB.CountToolByBoxID(ctx, req.BoxID, filter)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("count tool failed by id: %s, err: %v", req.BoxID, err)
@@ -519,7 +519,7 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 	if total == 0 {
 		return
 	}
-	// 计算偏移量
+	// Calculate offset.
 	var offset int
 	if req.PageSize > 0 {
 		offset = (req.Page - 1) * req.PageSize
@@ -533,19 +533,19 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 		resp.TotalPage = 1
 		resp.PageSize = int(total)
 	}
-	// 构造排序条件
+	// Construct sorting conditions.
 	filter["sort_by"] = req.SortBy
 	filter["sort_order"] = req.SortOrder
 	filter["limit"] = req.PageSize
 	filter["offset"] = offset
-	// 查询工具箱列表
+	// Query toolbox list.
 	tools, err := s.ToolDB.SelectToolLisByBoxID(ctx, req.BoxID, filter)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool list failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 收集工具相关信息
+	// Collect information about tools.
 	userIDs := []string{}
 	toolInfos, _, err := s.batchGetToolInfoAndUserInfo(ctx, tools, userIDs, boxDB.ServerURL, interfaces.MetadataType(boxDB.MetadataType))
 	if err != nil {
@@ -555,16 +555,16 @@ func (s *ToolServiceImpl) QueryToolList(ctx context.Context, req *interfaces.Que
 	return
 }
 
-// UpdateToolStatus 更新工具状态
+// UpdateToolStatus update tool status.
 func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.UpdateToolStatusReq) (resp []*interfaces.ToolStatus, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
 	})
-	// 权限校验
+	// Permission verification.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -574,7 +574,7 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 	if err != nil {
 		return
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -585,7 +585,7 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 检查工具是否存在
+	// Check if the tool exists.
 	var toolIDs []string
 	for _, v := range req.ToolStatusList {
 		toolIDs = append(toolIDs, v.ToolID)
@@ -605,7 +605,7 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 			sourceMap[v.SourceType] = append(sourceMap[v.SourceType], v.SourceID)
 		}
 	}
-	//  比较工具ID是否存在
+	// Compare tool ID exists.
 	clist := utils.FindMissingElements(toolIDs, checkTools)
 	if len(clist) > 0 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotFound,
@@ -613,7 +613,7 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 		return
 	}
 	if len(sourceMap[model.SourceTypeOperator]) > 0 {
-		// 检查依赖资源是否存在
+		// Check whether dependent resources exist.
 		var sourceIDToMetadataMap map[string]interfaces.IMetadataDB
 		sourceIDToMetadataMap, err = s.MetadataService.BatchGetMetadataBySourceIDs(ctx, sourceMap)
 		if err != nil {
@@ -632,7 +632,7 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 		}
 	}
 
-	// 更新工具状态
+	// Update tool status.
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -658,7 +658,7 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 			Status: tool.Status,
 		})
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		var detils []metric.AuditLogToolDetil
 		for _, tool := range tools {
@@ -690,13 +690,13 @@ func (s *ToolServiceImpl) UpdateToolStatus(ctx context.Context, req *interfaces.
 	return resp, nil
 }
 
-// getToolInfo 获取工具信息
+// getToolInfo Get tool information.
 func (s *ToolServiceImpl) getToolInfo(ctx context.Context, tool *model.ToolDB, boxSvcURL string, boxMetadataType interfaces.MetadataType) (toolInfo *interfaces.ToolInfo, err error) {
 	toolInfo, err = s.toolDBToToolInfo(ctx, tool)
 	if err != nil {
 		return
 	}
-	// 获取元数据p
+	// Get metadata p.
 	has, metadataDB, err := s.MetadataService.GetMetadataBySource(ctx, tool.SourceID, tool.SourceType)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("get metadata failed, err: %v", err)
@@ -709,21 +709,21 @@ func (s *ToolServiceImpl) getToolInfo(ctx context.Context, tool *model.ToolDB, b
 		toolInfo.Metadata = metadata.DefaultMetadataInfo(boxMetadataType)
 		return
 	}
-	// 若为OpenAPI类型，ServerURL和工具箱配置的boxSvcURL保持一致
+	// If it is an OpenAPI type, the ServerURL must be consistent with the boxSvcURL configured in the toolbox.
 	metadataDB.SetServerURL(boxSvcURL)
-	// 转换为结构体
+	// Convert to structure.
 	toolInfo.MetadataType = interfaces.MetadataType(metadataDB.GetType())
 	toolInfo.Metadata = metadata.MetadataDBToStruct(metadataDB)
 	return
 }
 
-// batchGetToolInfoAndUserInfo 批量获取工具及用户信息
+// batchGetToolInfoAndUserInfo Get tools and user information in batches.
 func (s *ToolServiceImpl) batchGetToolInfoAndUserInfo(ctx context.Context, tools []*model.ToolDB, userIDs []string,
 	boxSvcURL string, boxMetadataType interfaces.MetadataType) (toolInfos []*interfaces.ToolInfo, userMap map[string]string, err error) {
 	toolInfos = []*interfaces.ToolInfo{}
 	sourceMap := map[model.SourceType][]string{}
 	toolIDSourceMap := map[string]string{}
-	// 组装工具信息
+	// Assembly tool information.
 	for _, toolDB := range tools {
 		toolIDSourceMap[toolDB.ToolID] = toolDB.SourceID
 		sourceMap[toolDB.SourceType] = append(sourceMap[toolDB.SourceType], toolDB.SourceID)
@@ -735,17 +735,17 @@ func (s *ToolServiceImpl) batchGetToolInfoAndUserInfo(ctx context.Context, tools
 		}
 		toolInfos = append(toolInfos, toolInfo)
 	}
-	// 获取用户名称
+	// Get user name.
 	userMap, err = s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return
 	}
-	// 批量获取工具元数据
+	// Get tool metadata in batches.
 	sourceIDToMetadataMap, err := s.MetadataService.BatchGetMetadataBySourceIDs(ctx, sourceMap)
 	if err != nil {
 		return
 	}
-	// 填充元数据信息
+	// Populate metadata information.
 	for _, toolInfo := range toolInfos {
 		toolInfo.CreateUser = utils.GetValueOrDefault(userMap, toolInfo.CreateUser, interfaces.UnknownUser)
 		toolInfo.UpdateUser = utils.GetValueOrDefault(userMap, toolInfo.UpdateUser, interfaces.UnknownUser)
@@ -763,7 +763,7 @@ func (s *ToolServiceImpl) batchGetToolInfoAndUserInfo(ctx context.Context, tools
 	return
 }
 
-// checkBoxDuplicateName 检查工具箱名称是否重复
+// checkBoxDuplicateName checks whether the toolbox name is duplicated.
 func (s *ToolServiceImpl) checkBoxDuplicateName(ctx context.Context, name, boxID string) (err error) {
 	has, boxDB, err := s.ToolBoxDB.SelectToolBoxByName(ctx, name, []string{string(interfaces.BizStatusPublished)})
 	if err != nil {

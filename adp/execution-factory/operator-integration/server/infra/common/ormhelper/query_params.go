@@ -2,7 +2,7 @@ package ormhelper
 
 import "strings"
 
-// SortOrder 排序方向枚举
+// SortOrder sort direction enumeration.
 type SortOrder string
 
 const (
@@ -10,56 +10,56 @@ const (
 	SortOrderDesc SortOrder = "DESC"
 )
 
-// ToUpper 将排序方向转换为大写字符串
+// ToUpper converts the sort direction to an uppercase string.
 func (s SortOrder) ToUpper() SortOrder {
 	return SortOrder(strings.ToUpper(string(s)))
 }
 
-// String 实现 Stringer 接口
+// String implements the Stringer interface.
 func (s SortOrder) String() string {
 	return string(s)
 }
 
-// IsValid 验证排序方向是否有效
+// IsValid verifies whether the sorting direction is valid.
 func (s SortOrder) IsValid() bool {
 	return s == SortOrderAsc || s == SortOrderDesc
 }
 
-// PaginationParams 分页参数
+// PaginationParams Pagination parameters.
 type PaginationParams struct {
-	Page     int `json:"page" validate:"min=1"`              // 页码，从1开始
-	PageSize int `json:"page_size" validate:"min=1,max=100"` // 每页数量
+	Page     int `json:"page" validate:"min=1"`              // Page number, starting from 1.
+	PageSize int `json:"page_size" validate:"min=1,max=100"` // Quantity per page.
 }
 
-// SortField 排序字段
+// SortField sort field.
 type SortField struct {
-	Field string    `json:"field"` // 数据库字段名（调用方负责传入正确的字段名）
-	Order SortOrder `json:"order"` // 排序方向
+	Field string    `json:"field"` // Database field name (the caller is responsible for passing in the correct field name)
+	Order SortOrder `json:"order"` // Sorting direction.
 }
 
-// SortParams 排序参数
+// SortParams sorting parameters.
 type SortParams struct {
-	Fields []SortField `json:"fields,omitempty"` // 支持多字段排序
+	Fields []SortField `json:"fields,omitempty"` // Support multi-field sorting.
 }
 
-// CursorParams 游标参数
+// CursorParams cursor parameters.
 type CursorParams struct {
-	Field     string    `json:"field,omitempty"`     // 游标字段名（调用方负责传入正确的字段名）
-	Value     any       `json:"value,omitempty"`     // 游标值
-	Direction SortOrder `json:"direction,omitempty"` // 游标方向，默认 ASC
+	Field     string    `json:"field,omitempty"`     // Cursor field name (the caller is responsible for passing in the correct field name)
+	Value     any       `json:"value,omitempty"`     // cursor value.
+	Direction SortOrder `json:"direction,omitempty"` // Cursor direction, default ASC.
 }
 
-// QueryResult 通用查询结果
+// QueryResult general query results.
 type QueryResult struct {
-	Total      int64 `json:"total"`       // 总记录数
-	Page       int   `json:"page"`        // 当前页码
-	PageSize   int   `json:"page_size"`   // 每页数量
-	TotalPages int   `json:"total_pages"` // 总页数
-	HasNext    bool  `json:"has_next"`    // 是否有下一页
-	HasPrev    bool  `json:"has_prev"`    // 是否有上一页
+	Total      int64 `json:"total"`       // Total number of records.
+	Page       int   `json:"page"`        // Current page number.
+	PageSize   int   `json:"page_size"`   // Quantity per page.
+	TotalPages int   `json:"total_pages"` // Total pages.
+	HasNext    bool  `json:"has_next"`    // Is there a next page?.
+	HasPrev    bool  `json:"has_prev"`    // Is there a previous page?.
 }
 
-// CalculateQueryResult 计算查询结果的分页信息
+// CalculateQueryResult calculates the paging information of query results.
 func CalculateQueryResult(total int64, pagination *PaginationParams) *QueryResult {
 	if pagination == nil || pagination.Page <= 0 || pagination.PageSize <= 0 {
 		return &QueryResult{

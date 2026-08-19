@@ -1,35 +1,35 @@
 package interfaces
 
-/*该文件定义了Topic常量，统一记录方便统计 */
+// This file defines Topic constants and records them uniformly to facilitate statistics.
 
 const (
-	// ChannelMessage 算子集成事件Channel
+	// ChannelMessage operator integrated event Channel.
 	ChannelMessage = "operator_integration" // channel
 )
 
-// 监听外部事件Topic列表
+// Listen to external event Topic list.
 const (
-	// AuthResourceNameModifyTopic 资源名称变更Topic
+	// AuthResourceNameModifyTopic Resource name change Topic.
 	AuthResourceNameModifyTopic = "authorization.resource.name.modify"
-	// AuditLogTopic 审计日志Topic
+	// AuditLogTopic audit log topic.
 	AuditLogTopic = "isf.audit_log.log"
 )
 
-// 通知外部事件Topick列表
+// Notify external event Topick list.
 
 const (
-	// OperatorDeleteEventTopic 算子删除事件Topic
+	// OperatorDeleteEventTopic Operator deletes event Topic.
 	OperatorDeleteEventTopic = "agent_operator_integration.operator.delete"
 )
 
-// OperatorDeleteEvent 算子删除事件
+// OperatorDeleteEvent Operator delete event.
 type OperatorDeleteEvent struct {
 	OperatorID   string                 `json:"operator_id"`
 	Version      string                 `json:"version"`
 	Status       BizStatus              `json:"status"`
-	IsInternal   bool                   `json:"is_internal"`                                          // 是否内部算子
-	IsDataSource bool                   `json:"is_data_source" form:"is_data_source" default:"false"` // 是否为数据源算子
+	IsInternal   bool                   `json:"is_internal"`                                          // Is it an internal operator?.
+	IsDataSource bool                   `json:"is_data_source" form:"is_data_source" default:"false"` // Whether it is a data source operator.
 	ExtendInfo   map[string]interface{} `json:"extend_info"`
-	OperatorType OperatorType           `json:"operator_type" form:"operator_type" default:"basic" validate:"oneof=basic composite"` // 算子类型(basic/composite
+	OperatorType OperatorType           `json:"operator_type" form:"operator_type" default:"basic" validate:"oneof=basic composite"` // Operator type (basic/composite.
 	UpdateUser   string                 `json:"update_user"`
 }

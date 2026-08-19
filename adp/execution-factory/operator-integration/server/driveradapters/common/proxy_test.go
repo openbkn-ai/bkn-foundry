@@ -63,8 +63,8 @@ func TestNewFunctionExecuteResp(t *testing.T) {
 	})
 }
 
-// bkn_token 是真凭据，与 user_id 那几个「仅作追踪标记」的字段不同，必须确实转成
-// 进程级环境变量——沙箱侧的 sandbox_sdk.bkn 只从这里取，漏了就是「配了不生效」。
+// bkn_token is a real credential, which is different from the user_id fields that are "only for tracking marks" and must be converted to.
+// The process-level environment variable - sandbox_sdk.bkn on the sandbox side is only taken from here. If it is missing, it means "the configuration will not take effect".
 func TestBuildFunctionExecutionEnvCarriesBKNContext(t *testing.T) {
 	env := buildFunctionExecutionEnv(&interfaces.FunctionProxyExecuteCodeReq{
 		BKNToken:          "tok",
@@ -79,18 +79,18 @@ func TestBuildFunctionExecutionEnvCarriesBKNContext(t *testing.T) {
 	if env["BKN_CONVERSATION_ID"] != "conv_1" || env["BKN_INTERACTION_ID"] != "int_1" {
 		t.Fatalf("会话上下文未注入: %v", env)
 	}
-	// 追踪标记照旧走小写键，两套命名不要混。
+	// Tracking labels are still in lowercase, so don’t mix the two sets of names.
 	if env["user_id"] != "u1" {
 		t.Fatalf("追踪标记丢了: %v", env)
 	}
 }
 
-// 不传时必须显式下发空串，而不是让键缺席。
+// If not passed, the empty string must be explicitly sent instead of leaving the key absent.
 //
-// 会话是池化复用的：调用方 A 带 bkn_token 触发建槽，令牌随之落进容器级 env；随后
-// 调用方 B 复用同一会话且不传令牌，若本次 env 里没有 BKN_TOKEN 这个键，合并后留下的
-// 就是 A 的令牌，B 的代码便以 A 的身份访问 BKN。这也是 executionEnvKeys 那份清单
-// 存在的理由——「每次执行下发全套、未知置空」。
+// Sessions are pooled and reused: caller A brings bkn_token to trigger slot creation, and the token then falls into the container-level env; subsequently.
+// Caller B reuses the same session and does not pass the token. If there is no BKN_TOKEN key in this env, the remaining.
+// It is A's token, and B's code accesses BKN as A. This is also the executionEnvKeys list.
+// Reason for existence - "A complete set is issued for each execution, and the unknown is left blank.".
 func TestBuildFunctionExecutionEnvClearsAbsentBKNContext(t *testing.T) {
 	env := buildFunctionExecutionEnv(&interfaces.FunctionProxyExecuteCodeReq{})
 	for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
@@ -104,8 +104,8 @@ func TestBuildFunctionExecutionEnvClearsAbsentBKNContext(t *testing.T) {
 	}
 }
 
-// 三个键必须列进 executionEnvKeys：newExecutionEnv 靠它预置空值，漏登记就等于
-// 回到条件写入，串号照旧。
+// The three keys must be listed in executionEnvKeys: newExecutionEnv relies on it to preset a null value. Missing registration means.
+// Returning to conditional writing, the serial number remains the same.
 func TestExecutionEnvKeysCoverBKNContext(t *testing.T) {
 	keys := map[string]bool{}
 	for _, k := range executionEnvKeys() {
@@ -116,7 +116,7 @@ func TestExecutionEnvKeysCoverBKNContext(t *testing.T) {
 			t.Fatalf("%s 未登记进 executionEnvKeys", want)
 		}
 	}
-	// 推导 schema 也会执行用户代码，同样要覆盖全套。
+	// Deriving schema will also execute user code, and the entire set must also be covered.
 	inferred := inferSchemaExecutionEnv()
 	for _, want := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
 		if value, ok := inferred[want]; !ok || value != "" {

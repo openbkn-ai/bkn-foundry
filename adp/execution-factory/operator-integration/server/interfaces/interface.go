@@ -1,36 +1,36 @@
-// Package interfaces 定义接口
+// Package interfaces define interfaces.
 // @file interfaces.go
-// @description: 定义接口
+// @description: define interface.
 package interfaces
 
 //go:generate mockgen -source=interface.go -destination=../mocks/interface.go -package=mocks
 import "context"
 
-// App 应用接口
+// App application interface.
 type App interface {
 	Start() error
 	Stop(context.Context)
 }
 
-// LogModelOperator 日志模型操作器
+// LogModelOperator log model operator.
 type LogModelOperator[T any] interface {
 	Logger(context.Context, T)
 }
 
 const (
-	DefaultBatchSize = 1000 // 默认批量大小为1000
-	MaxQuerySize     = 5000 // 最大查询数量为5000
+	DefaultBatchSize = 1000 // Default batch size is 1000.
+	MaxQuerySize     = 5000 // The maximum number of queries is 5000.
 )
 
-// ResourceObjectType 资源对象类型
+// ResourceObjectType resource object type.
 type ResourceObjectType string
 
 const (
-	ResourceObjectTool     ResourceObjectType = "tool"     // 工具
-	ResourceObjectOperator ResourceObjectType = "operator" // 算子
+	ResourceObjectTool     ResourceObjectType = "tool"     // Tools.
+	ResourceObjectOperator ResourceObjectType = "operator" // operator.
 )
 
-// ResourceDeployType 资源部署类型
+// ResourceDeployType resource deployment type.
 type ResourceDeployType string
 
 func (r ResourceDeployType) String() string {

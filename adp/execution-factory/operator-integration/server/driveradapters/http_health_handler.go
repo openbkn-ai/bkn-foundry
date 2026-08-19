@@ -1,17 +1,17 @@
-// Package driveradapters 定义驱动适配器
+// Package driveradapters defines driver adapters.
 // @file http_health_handler.go
-// @description: 定义HTTP健康检查适配器
+// @description: Define HTTP health check adapter.
 package driveradapters
 
 import (
 	"net/http"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// 健康检查
+// health check.
 type httpHealthHandler struct{}
 
 var (
@@ -27,7 +27,7 @@ func NewHTTPHealthHandler() interfaces.HTTPRouterInterface {
 	return httpHealthHand
 }
 
-// RegisterRouter 注册路由
+// RegisterRouter register route.
 func (h *httpHealthHandler) RegisterRouter(router *gin.RouterGroup) {
 	router.GET("/ready", h.getReady)
 	router.GET("/alive", h.getAlive)

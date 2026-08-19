@@ -5,13 +5,13 @@ import (
 	"database/sql"
 	"encoding/json"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
 //go:generate mockgen -source=logics_mcp.go -destination=../mocks/logics_mcp.go -package=mocks
 
-// MCPMode MCP运行模式
+// MCPMode MCP operating mode.
 type MCPMode string
 
 func (b MCPMode) String() string {
@@ -19,13 +19,13 @@ func (b MCPMode) String() string {
 }
 
 const (
-	MCPModeStdioUv  MCPMode = "stdio_uv"  // 标准UV
-	MCPModeStdioNpx MCPMode = "stdio_npx" // 标准NPX
+	MCPModeStdioUv  MCPMode = "stdio_uv"  // Standard UV.
+	MCPModeStdioNpx MCPMode = "stdio_npx" // StandardNPX.
 	MCPModeSSE      MCPMode = "sse"       // SSE
-	MCPModeStream   MCPMode = "stream"    // 流式
+	MCPModeStream   MCPMode = "stream"    // streaming.
 )
 
-// MCPCreationType MCP创建类型
+// MCPCreationType MCP creation type.
 type MCPCreationType string
 
 func (b MCPCreationType) String() string {
@@ -33,107 +33,107 @@ func (b MCPCreationType) String() string {
 }
 
 const (
-	MCPCreationTypeCustom       MCPCreationType = "custom"        // 自定义
-	MCPCreationTypeToolImported MCPCreationType = "tool_imported" // 工具导入
+	MCPCreationTypeCustom       MCPCreationType = "custom"        // Customize.
+	MCPCreationTypeToolImported MCPCreationType = "tool_imported" // Tool import.
 )
 
-// MCPParseSSERequest MCP解析SSE请求
+// MCPParseSSERequest MCP parses SSE request.
 type MCPParseSSERequest struct {
-	Mode    MCPMode           `json:"mode" validate:"required,oneof=stdio_uv stdio_npx sse stream"` // 运行模式
-	URL     string            `json:"url" validate:"required,url"`                                  // 请求URL
-	Headers map[string]string `json:"headers"`                                                      // 请求头
+	Mode    MCPMode           `json:"mode" validate:"required,oneof=stdio_uv stdio_npx sse stream"` // operating mode.
+	URL     string            `json:"url" validate:"required,url"`                                  // Request URL.
+	Headers map[string]string `json:"headers"`                                                      // Request header.
 }
 
 type MCPParseSSEResponse struct {
-	Tools          []mcp.Tool            `json:"tools"`     // 工具
-	ServerInitInfo *mcp.InitializeResult `json:"init_info"` // 初始化信息
+	Tools          []mcp.Tool            `json:"tools"`     // Tools.
+	ServerInitInfo *mcp.InitializeResult `json:"init_info"` // Initialization information.
 }
 
-// MCPCoreConfigInfo MCP核心信息
+// MCPCoreConfigInfo MCP core information.
 type MCPCoreConfigInfo struct {
-	Mode    MCPMode           `json:"mode,omitempty" default:"stream" validate:"required,oneof=sse stream"` // 运行模式
-	Command string            `json:"command,omitempty"`                                                    // 运行命令
-	Args    []string          `json:"args,omitempty"`                                                       // 运行参数
-	URL     string            `json:"url,omitempty" validate:"omitempty,url"`                               // 服务URL
-	Headers map[string]string `json:"headers,omitempty"`                                                    // 请求头
-	Env     map[string]string `json:"env,omitempty"`                                                        // 环境变量
+	Mode    MCPMode           `json:"mode,omitempty" default:"stream" validate:"required,oneof=sse stream"` // operating mode.
+	Command string            `json:"command,omitempty"`                                                    // Run command.
+	Args    []string          `json:"args,omitempty"`                                                       // Operating parameters.
+	URL     string            `json:"url,omitempty" validate:"omitempty,url"`                               // Service URL.
+	Headers map[string]string `json:"headers,omitempty"`                                                    // Request header.
+	Env     map[string]string `json:"env,omitempty"`                                                        // environment variables.
 }
 
 type MCPToolConfigInfo struct {
-	BoxID           string `json:"box_id"`      // 工具箱ID
-	ToolID          string `json:"tool_id"`     // 工具ID
-	BoxName         string `json:"box_name"`    // 工具箱名称
-	ToolName        string `json:"tool_name"`   // 工具名称
-	ToolDescription string `json:"description"` // 工具描述
-	UseRule         string `json:"use_rule"`    // 使用规则
+	BoxID           string `json:"box_id"`      // Toolbox ID.
+	ToolID          string `json:"tool_id"`     // Tool ID.
+	BoxName         string `json:"box_name"`    // Toolbox name.
+	ToolName        string `json:"tool_name"`   // Tool name.
+	ToolDescription string `json:"description"` // Tool description.
+	UseRule         string `json:"use_rule"`    // Usage rules.
 }
 
 type MCPAppEndpointRequest struct {
 	MCPID string `uri:"mcp_id" validate:"required"` // MCP Server ID
 }
 
-// MCPServerAddRequest MCP Server注册请求
+// MCPServerAddRequest MCP Server registration request.
 type MCPServerAddRequest struct {
 	MCPCoreConfigInfo
-	BusinessDomainID string               `header:"x-business-domain" validate:"required"`                                       // 业务域ID
-	UserID           string               `header:"user_id"`                                                                     // 用户ID，内部使用
-	IsPublic         bool                 `header:"is_public"`                                                                   // 是否为公共接口
-	CreationType     MCPCreationType      `json:"creation_type" default:"custom" validate:"required,oneof=custom tool_imported"` // 创建类型
-	Name             string               `json:"name" validate:"required"`                                                      // MCP Server名称
-	Description      string               `json:"description"`                                                                   // 描述信息
-	Source           string               `json:"source" default:"custom"`                                                       // 来源
-	IsInternal       bool                 `json:"is_internal" default:"false"`                                                   // 是否为内置
-	Category         string               `json:"category" default:"other_category"`                                             // 分类
-	ToolConfigs      []*MCPToolConfigInfo `json:"tool_configs"`                                                                  // 工具配置
+	BusinessDomainID string               `header:"x-business-domain" validate:"required"`                                       // Business domain ID.
+	UserID           string               `header:"user_id"`                                                                     // User ID, internal use.
+	IsPublic         bool                 `header:"is_public"`                                                                   // Is it a public interface?.
+	CreationType     MCPCreationType      `json:"creation_type" default:"custom" validate:"required,oneof=custom tool_imported"` // Create type.
+	Name             string               `json:"name" validate:"required"`                                                      // MCP Server name.
+	Description      string               `json:"description"`                                                                   // Description information.
+	Source           string               `json:"source" default:"custom"`                                                       // Source.
+	IsInternal       bool                 `json:"is_internal" default:"false"`                                                   // Whether it is built-in.
+	Category         string               `json:"category" default:"other_category"`                                             // Classification.
+	ToolConfigs      []*MCPToolConfigInfo `json:"tool_configs"`                                                                  // Tool configuration.
 }
 
-// MCPServerAddResponse MCP Server注册响应
+// MCPServerAddResponse MCP Server registration response.
 type MCPServerAddResponse struct {
 	MCPID  string `json:"mcp_id"` // MCP Server ID
-	Status string `json:"status"` // 状态
+	Status string `json:"status"` // Status.
 }
 
-// MCPServerDeleteRequest MCP Server删除请求
+// MCPServerDeleteRequest MCP Server delete request.
 type MCPServerDeleteRequest struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"` // 业务域ID
-	UserID           string `header:"user_id"`                               // 用户ID，内部使用
-	IsPublic         bool   `header:"is_public"`                             // 是否为公共接口
+	BusinessDomainID string `header:"x-business-domain" validate:"required"` // Business domain ID.
+	UserID           string `header:"user_id"`                               // User ID, internal use.
+	IsPublic         bool   `header:"is_public"`                             // Is it a public interface?.
 	MCPID            string `uri:"mcp_id" validate:"required"`               // MCP Server ID
 }
 
 type MCPServerConfigInfo struct {
 	MCPCoreConfigInfo `json:",inline"`
-	BusinessDomainID  string               `json:"business_domain_id"`                          // 业务域ID
+	BusinessDomainID  string               `json:"business_domain_id"`                          // Business domain ID.
 	MCPID             string               `json:"mcp_id"`                                      // MCP Server ID
-	Version           int                  `json:"version,omitempty"`                           // MCP Server版本
-	CreationType      MCPCreationType      `json:"creation_type,omitempty"`                     // 创建类型
-	Name              string               `json:"name,omitempty"`                              // MCP Server名称
-	Description       string               `json:"description,omitempty"`                       // 描述信息
-	Status            string               `json:"status,omitempty"`                            // 状态
-	Source            string               `json:"source,omitempty"`                            // 来源
-	IsInternal        bool                 `json:"is_internal"`                                 // 是否为内置
-	Category          string               `json:"category,omitempty" default:"other_category"` // 分类
-	CreateUser        string               `json:"create_user,omitempty"`                       // 创建用户
-	CreateTime        int64                `json:"create_time,omitempty"`                       // 创建时间
-	UpdateUser        string               `json:"update_user,omitempty"`                       // 更新用户
-	UpdateTime        int64                `json:"update_time,omitempty"`                       // 更新时间
-	ReleaseTime       int64                `json:"release_time,omitempty"`                      // 发布时间
-	ReleaseUser       string               `json:"release_user,omitempty"`                      // 发布用户
-	ToolConfigs       []*MCPToolConfigInfo `json:"tool_configs,omitempty"`                      // 工具配置
+	Version           int                  `json:"version,omitempty"`                           // MCP Server version.
+	CreationType      MCPCreationType      `json:"creation_type,omitempty"`                     // Create type.
+	Name              string               `json:"name,omitempty"`                              // MCP Server name.
+	Description       string               `json:"description,omitempty"`                       // Description information.
+	Status            string               `json:"status,omitempty"`                            // Status.
+	Source            string               `json:"source,omitempty"`                            // Source.
+	IsInternal        bool                 `json:"is_internal"`                                 // Whether it is built-in.
+	Category          string               `json:"category,omitempty" default:"other_category"` // Classification.
+	CreateUser        string               `json:"create_user,omitempty"`                       // Create user.
+	CreateTime        int64                `json:"create_time,omitempty"`                       // creation time.
+	UpdateUser        string               `json:"update_user,omitempty"`                       // Update user.
+	UpdateTime        int64                `json:"update_time,omitempty"`                       // Update time.
+	ReleaseTime       int64                `json:"release_time,omitempty"`                      // Release time.
+	ReleaseUser       string               `json:"release_user,omitempty"`                      // publish user.
+	ToolConfigs       []*MCPToolConfigInfo `json:"tool_configs,omitempty"`                      // Tool configuration.
 }
 
 func (m *MCPServerConfigInfo) ToMapByFields(fields []string) map[string]any {
-	// 先序列化为JSON，再反序列化为map
+	// First serialize to JSON, then deserialize to map.
 	data, _ := json.Marshal(m)
 	var fullMap map[string]interface{}
 	_ = json.Unmarshal(data, &fullMap)
 
-	// 如果没有指定fields，返回所有字段
+	// If fields are not specified, all fields are returned.
 	if len(fields) == 0 {
 		return fullMap
 	}
 
-	// 根据fields按需返回
+	// Return as needed based on fields.
 	result := make(map[string]interface{})
 	for _, field := range fields {
 		if value, exists := fullMap[field]; exists {
@@ -144,56 +144,56 @@ func (m *MCPServerConfigInfo) ToMapByFields(fields []string) map[string]any {
 	return result
 }
 
-// MCPConnectionInfo MCP连接信息
+// MCPConnectionInfo MCP connection information.
 type MCPConnectionInfo struct {
 	SSEURL    string `json:"sse_url,omitempty"`    // SSE URL
-	StreamURL string `json:"stream_url,omitempty"` // 流式URL，如果为空，则表示不支持流式
+	StreamURL string `json:"stream_url,omitempty"` // Streaming URL. If empty, streaming is not supported.
 }
 
-// MCPServerListRequest MCP Server列表请求
+// MCPServerListRequest MCP Server list request.
 type MCPServerListRequest struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`                                     // 业务域ID
-	UserID           string `header:"user_id"`                                                                   // 用户ID，内部使用
-	IsPublic         bool   `header:"is_public"`                                                                 // 是否为公共接口
-	Page             int    `form:"page" default:"1" validate:"min=1"`                                           // 页码
-	PageSize         int    `form:"page_size" default:"10" validate:"min=1,max=100"`                             // 每页条数
-	SortBy           string `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"` // 排序字段
-	SortOrder        string `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                         // 排序顺序
-	Name             string `form:"name"`                                                                        // MCP名称
-	Source           string `form:"source"`                                                                      // 来源
-	IsInternal       bool   `form:"is_internal"`                                                                 // 是否为内置
-	Category         string `form:"category"`                                                                    // 分类
-	Status           string `form:"status"`                                                                      // 状态
-	CreateUser       string `form:"create_user"`                                                                 // 创建用户
-	All              bool   `form:"all"`                                                                         // 是否返回所有信息
-	Mode             string `form:"mode" validate:"omitempty,oneof=stdio_uv stdio_npx sse stream"`               // 运行模式
+	BusinessDomainID string `header:"x-business-domain" validate:"required"`                                     // Business domain ID.
+	UserID           string `header:"user_id"`                                                                   // User ID, internal use.
+	IsPublic         bool   `header:"is_public"`                                                                 // Is it a public interface?.
+	Page             int    `form:"page" default:"1" validate:"min=1"`                                           // Page number.
+	PageSize         int    `form:"page_size" default:"10" validate:"min=1,max=100"`                             // Number of items per page.
+	SortBy           string `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"` // sort field.
+	SortOrder        string `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                         // sort order.
+	Name             string `form:"name"`                                                                        // MCP name.
+	Source           string `form:"source"`                                                                      // Source.
+	IsInternal       bool   `form:"is_internal"`                                                                 // Whether it is built-in.
+	Category         string `form:"category"`                                                                    // Classification.
+	Status           string `form:"status"`                                                                      // Status.
+	CreateUser       string `form:"create_user"`                                                                 // Create user.
+	All              bool   `form:"all"`                                                                         // Whether to return all information.
+	Mode             string `form:"mode" validate:"omitempty,oneof=stdio_uv stdio_npx sse stream"`               // operating mode.
 }
 
-// MCPServerListResponse MCP Server列表响应
+// MCPServerListResponse MCP Server list response.
 type MCPServerListResponse struct {
 	*ormhelper.QueryResult `json:",inline"`
-	Data                   []*MCPServerConfigInfo `json:"data"` // 数据列表
+	Data                   []*MCPServerConfigInfo `json:"data"` // Data list.
 }
 
-// MCPServerDetailRequest MCP Server详情请求
+// MCPServerDetailRequest MCP Server details request.
 type MCPServerDetailRequest struct {
-	UserID   string `header:"user_id"`                 // 用户ID，内部使用
-	IsPublic bool   `header:"is_public"`               // 是否为公共接口
+	UserID   string `header:"user_id"`                 // User ID, internal use.
+	IsPublic bool   `header:"is_public"`               // Is it a public interface?.
 	ID       string `uri:"mcp_id" validate:"required"` // MCP Server ID
 }
 
 type MCPServerDetailResponse struct {
-	BaseInfo       *MCPServerConfigInfo `json:"base_info"`       // MCP Server基本信息
-	ConnectionInfo *MCPConnectionInfo   `json:"connection_info"` // MCP连接信息
+	BaseInfo       *MCPServerConfigInfo `json:"base_info"`       // MCP Server basic information.
+	ConnectionInfo *MCPConnectionInfo   `json:"connection_info"` // MCP connection information.
 }
 
-// MCPServerReleaseListRequest MCP Server发布列表请求
+// MCPServerReleaseListRequest MCP Server publish list request.
 type MCPServerReleaseListRequest struct {
 	MCPServerListRequest `json:",inline"`
-	ReleaseUser          string `form:"release_user"` // 发布者
+	ReleaseUser          string `form:"release_user"` // Publisher.
 }
 
-// MCPServerReleaseListResponse MCP Server发布列表响应
+// MCPServerReleaseListResponse MCP Server publish list response.
 type MCPServerReleaseListResponse struct {
 	MCPServerListResponse `json:",inline"`
 }
@@ -222,172 +222,172 @@ var MCPFields = []string{
 	"release_user",
 }
 
-// MCPServerReleaseBatchRequest MCP Server发布批量详情请求
+// MCPServerReleaseBatchRequest MCP Server releases batch details request.
 type MCPServerReleaseBatchRequest struct {
-	UserID   string `header:"user_id"`                  // 用户ID，内部使用
-	IsPublic bool   `header:"is_public"`                // 是否为公共接口
-	MCPIDs   string `uri:"mcp_ids" validate:"required"` // MCP Server ID列表，多个ID用逗号分隔
-	Fields   string `uri:"fields" validate:"required"`  // 获取MCP信息字段名：（可任意组合，若获取多个，用逗号分隔）
+	UserID   string `header:"user_id"`                  // User ID, internal use.
+	IsPublic bool   `header:"is_public"`                // Is it a public interface?.
+	MCPIDs   string `uri:"mcp_ids" validate:"required"` // MCP Server ID list, multiple IDs separated by commas.
+	Fields   string `uri:"fields" validate:"required"`  // Get MCP information field names: (can be combined in any combination, if multiple are obtained, separate them with commas)
 }
 
-// MCPServerUpdateRequest MCP Server更新请求
+// MCPServerUpdateRequest MCP Server update request.
 type MCPServerUpdateRequest struct {
-	UserID       string               `header:"user_id" validate:"required"`                                                           // 用户ID，内部使用
-	IsPublic     bool                 `header:"is_public"`                                                                             // 是否为公开
+	UserID       string               `header:"user_id" validate:"required"`                                                           // User ID, internal use.
+	IsPublic     bool                 `header:"is_public"`                                                                             // Is it public?.
 	MCPID        string               `json:"mcp_id"`                                                                                  // MCP Server ID
-	Name         string               `json:"name,omitempty"`                                                                          // MCP Server名称
-	Description  string               `json:"description,omitempty"`                                                                   // 描述信息
-	CreationType MCPCreationType      `json:"creation_type" default:"custom" validate:"required,oneof=custom tool_imported"`           // 创建类型
-	Mode         MCPMode              `json:"mode,omitempty" default:"stream" validate:"required,oneof=stdio_uv stdio_npx sse stream"` // 运行模式
-	URL          string               `json:"url,omitempty" validate:"omitempty,url"`                                                  // 服务URL
-	Headers      map[string]string    `json:"headers,omitempty"`                                                                       // 请求头
-	Command      string               `json:"command,omitempty"`                                                                       // 运行命令
-	Args         []string             `json:"args,omitempty"`                                                                          // 运行参数
-	Env          map[string]string    `json:"env,omitempty"`                                                                           // 环境变量
-	Source       string               `json:"source,omitempty" default:"custom"`                                                       // 来源
-	Category     string               `json:"category,omitempty" default:"other_category"`                                             // 分类
-	ToolConfigs  []*MCPToolConfigInfo `json:"tool_configs"`                                                                            // 工具配置
+	Name         string               `json:"name,omitempty"`                                                                          // MCP Server name.
+	Description  string               `json:"description,omitempty"`                                                                   // Description information.
+	CreationType MCPCreationType      `json:"creation_type" default:"custom" validate:"required,oneof=custom tool_imported"`           // Create type.
+	Mode         MCPMode              `json:"mode,omitempty" default:"stream" validate:"required,oneof=stdio_uv stdio_npx sse stream"` // operating mode.
+	URL          string               `json:"url,omitempty" validate:"omitempty,url"`                                                  // Service URL.
+	Headers      map[string]string    `json:"headers,omitempty"`                                                                       // Request header.
+	Command      string               `json:"command,omitempty"`                                                                       // Run command.
+	Args         []string             `json:"args,omitempty"`                                                                          // Operating parameters.
+	Env          map[string]string    `json:"env,omitempty"`                                                                           // environment variables.
+	Source       string               `json:"source,omitempty" default:"custom"`                                                       // Source.
+	Category     string               `json:"category,omitempty" default:"other_category"`                                             // Classification.
+	ToolConfigs  []*MCPToolConfigInfo `json:"tool_configs"`                                                                            // Tool configuration.
 }
 
-// MCPServerUpdateResponse MCP Server更新响应
+// MCPServerUpdateResponse MCP Server update response.
 type MCPServerUpdateResponse struct {
 	MCPID  string    `json:"mcp_id"` // MCP Server ID
-	Status BizStatus `json:"status"` // 状态
+	Status BizStatus `json:"status"` // Status.
 }
 
-// UpdateMCPStatusRequest MCP Server状态更新请求
+// UpdateMCPStatusRequest MCP Server status update request.
 type UpdateMCPStatusRequest struct {
-	UserID   string    `header:"user_id" validate:"required"`                                        // 用户ID，内部使用
-	IsPublic bool      `header:"is_public"`                                                          // 是否为公开
+	UserID   string    `header:"user_id" validate:"required"`                                        // User ID, internal use.
+	IsPublic bool      `header:"is_public"`                                                          // Is it public?.
 	MCPID    string    `uri:"mcp_id" validate:"required"`                                            // MCP Server ID
-	Status   BizStatus `json:"status" validate:"required,oneof=unpublish editing published offline"` // 状态
+	Status   BizStatus `json:"status" validate:"required,oneof=unpublish editing published offline"` // Status.
 }
 
-// UpdateMCPStatusResponse MCP Server状态更新响应
+// UpdateMCPStatusResponse MCP Server status update response.
 type UpdateMCPStatusResponse struct {
 	MCPID  string    `json:"mcp_id"` // MCP Server ID
-	Status BizStatus `json:"status"` // 状态
+	Status BizStatus `json:"status"` // Status.
 }
 
-// MCPToolDebugRequest MCP工具调试请求
+// MCPToolDebugRequest MCP tool debug request.
 type MCPToolDebugRequest struct {
-	UserID     string         `header:"user_id" validate:"required"` // 用户ID，内部使用
-	IsPublic   bool           `header:"is_public"`                   // 是否为公开
+	UserID     string         `header:"user_id" validate:"required"` // User ID, internal use.
+	IsPublic   bool           `header:"is_public"`                   // Is it public?.
 	MCPID      string         `uri:"mcp_id" validate:"required"`     // MCP Server ID
-	ToolName   string         `uri:"tool_name" validate:"required"`  // 工具名称
-	Parameters map[string]any `json:"parameters"`                    // 工具请求参数
+	ToolName   string         `uri:"tool_name" validate:"required"`  // Tool name.
+	Parameters map[string]any `json:"parameters"`                    // Tool request parameters.
 }
 
-// MCPToolDebugResponse MCP工具调试响应
+// MCPToolDebugResponse MCP tool debug response.
 type MCPToolDebugResponse struct {
-	Content []mcp.Content `json:"content"`  // 工具调用结果内容
-	IsError bool          `json:"is_error"` // 是否为错误
+	Content []mcp.Content `json:"content"`  // Tool call result content.
+	IsError bool          `json:"is_error"` // Is it an error.
 }
 
 type MCPProxyToolListRequest struct {
-	UserID string `header:"user_id"`                 // 用户ID，内部使用
+	UserID string `header:"user_id"`                 // User ID, internal use.
 	MCPID  string `uri:"mcp_id" validate:"required"` // MCP Server ID
 }
 
 type MCPProxyToolListResponse struct {
-	Tools []mcp.Tool `json:"tools"` // 工具
+	Tools []mcp.Tool `json:"tools"` // Tools.
 }
 
-// MCPProxyCallToolRequest MCP工具调用请求
+// MCPProxyCallToolRequest MCP tool call request.
 type MCPProxyCallToolRequest struct {
-	UserID     string         `header:"user_id" validate:"required"`  // 用户ID,内部使用
+	UserID     string         `header:"user_id" validate:"required"`  // User ID, internal use.
 	MCPID      string         `uri:"mcp_id" validate:"required"`      // MCP Server ID
-	ToolName   string         `json:"tool_name" validate:"required"`  // 工具名称
-	Parameters map[string]any `json:"parameters" validate:"required"` // 工具请求参数
+	ToolName   string         `json:"tool_name" validate:"required"`  // Tool name.
+	Parameters map[string]any `json:"parameters" validate:"required"` // Tool request parameters.
 }
 
-// MCPProxyCallToolResponse MCP工具调用响应
+// MCPProxyCallToolResponse MCP tool call response.
 type MCPProxyCallToolResponse struct {
-	Content []mcp.Content `json:"content"`  // 工具调用结果内容
-	IsError bool          `json:"is_error"` // 是否为错误
+	Content []mcp.Content `json:"content"`  // Tool call result content.
+	IsError bool          `json:"is_error"` // Is it an error.
 }
 
-// IMCPManageService MCP管理接口
+// IMCPManageService MCP management interface.
 type IMCPManageService interface {
-	// ParseSSE 解析SSE MCPServer
+	// ParseSSE parses SSE MCPServer.
 	ParseSSE(ctx context.Context, req *MCPParseSSERequest) (*MCPParseSSEResponse, error)
-	// AddMCPServer 注册MCPServer
+	// AddMCPServer Register MCPServer.
 	AddMCPServer(ctx context.Context, req *MCPServerAddRequest) (*MCPServerAddResponse, error)
-	// DeleteMCPServer 删除MCPServer
+	// DeleteMCPServer DeleteMCPServer.
 	DeleteMCPServer(ctx context.Context, req *MCPServerDeleteRequest) error
-	// List 获取MCPServer列表
+	// List Get the MCPServer list.
 	QueryPage(ctx context.Context, req *MCPServerListRequest) (*MCPServerListResponse, error)
-	// Detail 获取MCPServer详情
+	// Detail Get MCPServer details.
 	GetDetail(ctx context.Context, req *MCPServerDetailRequest) (*MCPServerDetailResponse, error)
-	// UpdateMCPServer 编辑MCPServer
+	// UpdateMCPServer EditMCPServer.
 	UpdateMCPServer(ctx context.Context, req *MCPServerUpdateRequest) (*MCPServerUpdateResponse, error)
-	// UpdateMCPStatus 更新MCP Server状态
+	// UpdateMCPStatus updates MCP Server status.
 	UpdateMCPStatus(ctx context.Context, req *UpdateMCPStatusRequest) (*UpdateMCPStatusResponse, error)
-	// DebugTool 工具调试
+	// DebugTool tool debugging.
 	DebugTool(ctx context.Context, req *MCPToolDebugRequest) (*MCPToolDebugResponse, error)
 }
 
-// IMCPReleaseService MCP市场接口
+// IMCPReleaseService MCP market interface.
 type IMCPReleaseService interface {
-	// getList 获取MCP Server发布列表
+	// getList Gets the MCP Server publishing list.
 	QueryRelease(ctx context.Context, req *MCPServerReleaseListRequest) (*MCPServerReleaseListResponse, error)
-	// getDetail 获取MCP Server发布详情
+	// getDetail Gets MCP Server release details.
 	GetReleaseDetail(ctx context.Context, req *MCPServerReleaseDetailRequest) (*MCPServerReleaseDetailResponse, error)
-	// QueryReleaseBatch 批量获取MCP Server发布详情
+	// QueryReleaseBatch obtains MCP Server release details in batches.
 	QueryReleaseBatch(ctx context.Context, req *MCPServerReleaseBatchRequest) ([]map[string]any, error)
 }
 
-// IMCPExecuteService MCP代理接口
+// IMCPExecuteService MCP proxy interface.
 type IMCPExecuteService interface {
-	// GetMCPTools 获取MCP Server发布列表
+	// GetMCPTools Gets the MCP Server release list.
 	GetMCPTools(ctx context.Context, req *MCPProxyToolListRequest) (*MCPProxyToolListResponse, error)
-	// CallMCPTool 调用MCP工具
+	// CallMCPTool calls MCP tool.
 	CallMCPTool(ctx context.Context, req *MCPProxyCallToolRequest) (*MCPProxyCallToolResponse, error)
 }
 
-// IMCPService MCP服务接口
+// IMCPService MCP service interface.
 type IMCPService interface {
-	// MCPManageService MCP管理接口
+	// MCPManageService MCP management interface.
 	IMCPManageService
-	// MCPReleaseService MCP市场接口
+	// MCPReleaseService MCP market interface.
 	IMCPReleaseService
-	// MCPExecuteService MCP代理接口
+	// MCPExecuteService MCP proxy interface.
 	IMCPExecuteService
-	// IMCPImpexService MCP导入导出接口
+	// IMCPImpexService MCP import and export interface.
 	IMCPImpexService
-	// UpgradeMCPInstance 升级MCP Server实例
+	// UpgradeMCPInstance upgrade MCP Server instance.
 	UpgradeMCPInstance(ctx context.Context, mcpID string) error
-	// MCPInstancConfig MCP Server实例配置接口
+	// MCPInstancConfig MCP Server instance configuration interface.
 	IMCPInstancConfig
-	// IMCPToolExecutor MCP工具执行器
+	// IMCPToolExecutor MCP Tool Executor.
 	IMCPToolExecutor
 }
 
-// IMCPImpexService MCP导入导出接口
+// IMCPImpexService MCP import and export interface.
 type IMCPImpexService interface {
-	// 导入导出
+	// Import and export.
 	// Impex[*MCPImpexData]
 	Import(ctx context.Context, tx *sql.Tx, mode ImportType, data *ComponentImpexConfigModel, userID string) (err error)
-	// Export 导出配置
+	// Export export configuration.
 	Export(ctx context.Context, req *ExportReq) (data *ComponentImpexConfigModel, err error)
 }
 
-// IMCPToolExecutor MCP工具执行器
+// IMCPToolExecutor MCP Tool Executor.
 type IMCPToolExecutor interface {
 	ExecuteTool(ctx context.Context, mcpToolID string, params HTTPRequestParams) (*HTTPResponse, error)
 }
 
-// MCP 实例相关配置接口
+// MCP instance related configuration interface.
 type IMCPInstancConfig interface {
-	// GetMCPInstanceConfig 获取MCP Server实例配置
+	// GetMCPInstanceConfig Gets the MCP Server instance configuration.
 	GetMCPInstanceConfig(ctx context.Context, mcpID string, mode MCPMode) (*MCPInstancConfigInfo, error)
 }
 
-// MCPInstancConfigInfo MCP Server实例配置信息
+// MCPInstancConfigInfo MCP Server instance configuration information.
 type MCPInstancConfigInfo struct {
 	MCPID   string            // MCP Server ID
 	URL     string            // MCP Server URL
-	Headers map[string]string // MCP Server请求头
-	Mode    MCPMode           // MCP Server运行模式
-	Version int               // MCP Server版本（tool_imported场景使用）
+	Headers map[string]string // MCP Server request header.
+	Mode    MCPMode           // MCP Server operating mode.
+	Version int               // MCP Server version (used in tool_imported scenario)
 }

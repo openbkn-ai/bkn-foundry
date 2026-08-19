@@ -7,7 +7,7 @@ import (
 
 //go:generate mockgen -source=logics_toolbox.go -destination=../mocks/toolbox.go -package=mocks
 
-// ToolStatusType 工具状态类型
+// ToolStatusType tool status type.
 type ToolStatusType string
 
 func (t ToolStatusType) String() string {
@@ -15,302 +15,302 @@ func (t ToolStatusType) String() string {
 }
 
 const (
-	ToolStatusTypeDisabled ToolStatusType = "disabled" // 禁用
-	ToolStatusTypeEnabled  ToolStatusType = "enabled"  // 启用
+	ToolStatusTypeDisabled ToolStatusType = "disabled" // Disable.
+	ToolStatusTypeEnabled  ToolStatusType = "enabled"  // enable.
 )
 
-// UpsertInternalToolBoxReq 内置工具箱注册请求
+// UpsertInternalToolBoxReq built-in toolbox registration request.
 type UpsertInternalToolBoxReq struct {
-	BoxID    string      `json:"box_id" validate:"required"`                                // 唯一ID,由业务方注册，保证唯一性
-	BoxName  string      `json:"box_name" validate:"required"`                              // 工具箱名称
-	Desc     string      `json:"box_desc" validate:"required"`                              // 工具箱描述
-	Category BizCategory `json:"box_category" form:"box_category" default:"other_category"` // 分类
+	BoxID    string      `json:"box_id" validate:"required"`                                // Unique ID, registered by the business party to ensure uniqueness.
+	BoxName  string      `json:"box_name" validate:"required"`                              // Toolbox name.
+	Desc     string      `json:"box_desc" validate:"required"`                              // Toolbox description.
+	Category BizCategory `json:"box_category" form:"box_category" default:"other_category"` // Classification.
 }
 
-// CreateToolBoxReq 新建工具箱请求
+// CreateToolBoxReq New toolbox request.
 type CreateToolBoxReq struct {
-	BusinessDomainID string       `header:"x-business-domain" validate:"required"`                                       // 业务域ID
-	UserID           string       `header:"user_id" validate:"required"`                                                 // 用户ID,内部使用
-	BoxName          string       `json:"box_name" form:"box_name"`                                                      // 工具箱名称
-	BoxDesc          string       `json:"box_desc" form:"box_desc"`                                                      // 工具箱描述
-	BoxSvcURL        string       `json:"box_svc_url" form:"box_svc_url"`                                                // 工具箱服务地址
-	Category         BizCategory  `json:"box_category" form:"box_category" default:"other_category"`                     // 分类
-	MetadataType     MetadataType `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // 元数据类型(强制参数)
-	Source           string       `json:"source" form:"source" default:"custom"`                                         // 工具箱来源(默认custom)
+	BusinessDomainID string       `header:"x-business-domain" validate:"required"`                                       // Business domain ID.
+	UserID           string       `header:"user_id" validate:"required"`                                                 // User ID, internal use.
+	BoxName          string       `json:"box_name" form:"box_name"`                                                      // Toolbox name.
+	BoxDesc          string       `json:"box_desc" form:"box_desc"`                                                      // Toolbox description.
+	BoxSvcURL        string       `json:"box_svc_url" form:"box_svc_url"`                                                // Toolbox service address.
+	Category         BizCategory  `json:"box_category" form:"box_category" default:"other_category"`                     // Classification.
+	MetadataType     MetadataType `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // Metadata type (mandatory parameter)
+	Source           string       `json:"source" form:"source" default:"custom"`                                         // Toolbox source (default custom)
 	*OpenAPIInput    `json:",inline"`
 }
 
-// CreateToolBoxResp 新建工具返回结果
+// CreateToolBoxResp New tool returns results.
 type CreateToolBoxResp struct {
-	BoxID string `json:"box_id"` // 工具箱ID
+	BoxID string `json:"box_id"` // Toolbox ID.
 }
 
-// UpdateToolBoxReq 更新工具箱请求
+// UpdateToolBoxReq update toolbox request.
 type UpdateToolBoxReq struct {
-	UserID        string       `header:"user_id" validate:"required"`                                                 // 用户ID,内部使用
-	BoxID         string       `uri:"box_id" validate:"required"`                                                     // 工具箱ID
-	BoxName       string       `json:"box_name" form:"box_name" validate:"required"`                                  // 工具箱名称
-	BoxDesc       string       `json:"box_desc" form:"box_desc" validate:"required"`                                  // 工具箱描述
-	BoxSvcURL     string       `json:"box_svc_url" form:"box_svc_url"`                                                // 工具箱服务地址(当metadata_type为openapi时必填)
-	Category      BizCategory  `json:"box_category" form:"box_category" default:"other_category" validate:"required"` // 分类
-	// 元数据类型(可选参数)。工具箱建成后类型不会变,编辑请求可以不带;
-	// 带了才校验取值,否则「可选」的注释与 oneof 冲突,不传就被判成非法值。
+	UserID    string      `header:"user_id" validate:"required"`                                                 // User ID, internal use.
+	BoxID     string      `uri:"box_id" validate:"required"`                                                     // Toolbox ID.
+	BoxName   string      `json:"box_name" form:"box_name" validate:"required"`                                  // Toolbox name.
+	BoxDesc   string      `json:"box_desc" form:"box_desc" validate:"required"`                                  // Toolbox description.
+	BoxSvcURL string      `json:"box_svc_url" form:"box_svc_url"`                                                // Toolbox service address (required when metadata_type is openapi)
+	Category  BizCategory `json:"box_category" form:"box_category" default:"other_category" validate:"required"` // Classification.
+	// Metadata type (optional parameter). The type will not change after the toolbox is built, and the editing request does not need to be included;
+	// Verify the value only after it is provided, otherwise the "optional" comment conflicts with oneof, and if it is not passed, it will be judged as an illegal value.
 	MetadataType  MetadataType `json:"metadata_type" form:"metadata_type" validate:"omitempty,oneof=openapi function"`
 	*OpenAPIInput `json:",inline"`
 }
 
-// UpdateToolBoxResp 更新工具箱返回结果
+// UpdateToolBoxResp Update toolbox returns results.
 type UpdateToolBoxResp struct {
-	BoxID     string          `json:"box_id"`     // 工具箱ID
-	EditTools []*EditToolInfo `json:"edit_tools"` // 工具箱下的工具列表
+	BoxID     string          `json:"box_id"`     // Toolbox ID.
+	EditTools []*EditToolInfo `json:"edit_tools"` // Tool list under toolbox.
 }
 
-// EditToolInfo 已编辑的工具基本信息
+// EditToolInfo Basic information about the edited tool.
 type EditToolInfo struct {
-	ToolID string         `json:"tool_id"`     // 工具ID
-	Status ToolStatusType `json:"status"`      // 工具状态
-	Name   string         `json:"name"`        // 工具名称
-	Desc   string         `json:"description"` // 工具描述
+	ToolID string         `json:"tool_id"`     // Tool ID.
+	Status ToolStatusType `json:"status"`      // tool status.
+	Name   string         `json:"name"`        // Tool name.
+	Desc   string         `json:"description"` // Tool description.
 }
 
-// ToolBoxToolInfo 工具箱信息
+// ToolBoxToolInfo toolbox information.
 type ToolBoxToolInfo struct {
-	MetadataType     MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // 元数据类型
-	BusinessDomainID string       `json:"business_domain_id"`                                       // 业务域ID
-	BoxID            string       `json:"box_id"`                                                   // 工具箱ID
-	BoxName          string       `json:"box_name"`                                                 // 工具箱名称
-	BoxDesc          string       `json:"box_desc"`                                                 // 工具箱描述
-	Status           BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // 工具箱状态
-	BoxSvcURL        string       `json:"box_svc_url"`                                              // 工具箱服务地址
-	CategoryType     string       `json:"category_type"`                                            // 分类
-	CategoryName     string       `json:"category_name"`                                            // 分类名称
-	IsInternal       bool         `json:"is_internal"`                                              // 是否为内部工具箱
-	Source           string       `json:"source" default:"custom" validate:"oneof=custom internal"` // 工具箱来源
-	Tools            []*ToolInfo  `json:"tools"`                                                    // 工具箱下的工具列表
-	CreateTime       int64        `json:"create_time"`                                              // 创建时间
-	UpdateTime       int64        `json:"update_time"`                                              // 更新时间
-	CreateUser       string       `json:"create_user"`                                              // 创建用户
-	UpdateUser       string       `json:"update_user"`                                              // 更新用户
-	ReleaseUser      string       `json:"release_user,omitempty"`                                   // 发布人
-	ReleaseTime      int64        `json:"release_time,omitempty"`                                   // 发布时间
+	MetadataType     MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
+	BusinessDomainID string       `json:"business_domain_id"`                                       // Business domain ID.
+	BoxID            string       `json:"box_id"`                                                   // Toolbox ID.
+	BoxName          string       `json:"box_name"`                                                 // Toolbox name.
+	BoxDesc          string       `json:"box_desc"`                                                 // Toolbox description.
+	Status           BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
+	BoxSvcURL        string       `json:"box_svc_url"`                                              // Toolbox service address.
+	CategoryType     string       `json:"category_type"`                                            // Classification.
+	CategoryName     string       `json:"category_name"`                                            // Category name.
+	IsInternal       bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
+	Source           string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
+	Tools            []*ToolInfo  `json:"tools"`                                                    // Tool list under toolbox.
+	CreateTime       int64        `json:"create_time"`                                              // creation time.
+	UpdateTime       int64        `json:"update_time"`                                              // Update time.
+	CreateUser       string       `json:"create_user"`                                              // Create user.
+	UpdateUser       string       `json:"update_user"`                                              // Update user.
+	ReleaseUser      string       `json:"release_user,omitempty"`                                   // Posted by.
+	ReleaseTime      int64        `json:"release_time,omitempty"`                                   // Release time.
 }
 
-// ToolInfo 工具信息
+// ToolInfo tool information.
 type ToolInfo struct {
-	ToolID           string                 `json:"tool_id"`                                                                    // 工具ID
-	Name             string                 `json:"name"`                                                                       // 工具名称
-	Description      string                 `json:"description"`                                                                // 工具描述
-	Status           ToolStatusType         `json:"status" default:"disabled" validate:"oneof=disabled enabled"`                // 工具状态
-	MetadataType     MetadataType           `json:"metadata_type" default:"openapi" validate:"required,oneof=openapi function"` // 元数据类型
-	Metadata         *MetadataInfo          `json:"metadata"`                                                                   // 元数据
-	UseRule          string                 `json:"use_rule"`                                                                   // 使用规则
-	GlobalParameters *ParametersStruct      `json:"global_parameters"`                                                          // 全局参数
-	CreateTime       int64                  `json:"create_time"`                                                                // 创建时间
-	UpdateTime       int64                  `json:"update_time"`                                                                // 更新时间
-	CreateUser       string                 `json:"create_user"`                                                                // 创建用户
-	UpdateUser       string                 `json:"update_user"`                                                                // 更新用户
-	ExtendInfo       map[string]interface{} `json:"extend_info"`                                                                // 扩展信息
-	// 资源类型
-	ResourceObject ResourceObjectType `json:"resource_object"` // 资源类型
+	ToolID           string                 `json:"tool_id"`                                                                    // Tool ID.
+	Name             string                 `json:"name"`                                                                       // Tool name.
+	Description      string                 `json:"description"`                                                                // Tool description.
+	Status           ToolStatusType         `json:"status" default:"disabled" validate:"oneof=disabled enabled"`                // tool status.
+	MetadataType     MetadataType           `json:"metadata_type" default:"openapi" validate:"required,oneof=openapi function"` // metadata type.
+	Metadata         *MetadataInfo          `json:"metadata"`                                                                   // metadata.
+	UseRule          string                 `json:"use_rule"`                                                                   // Usage rules.
+	GlobalParameters *ParametersStruct      `json:"global_parameters"`                                                          // global parameters.
+	CreateTime       int64                  `json:"create_time"`                                                                // creation time.
+	UpdateTime       int64                  `json:"update_time"`                                                                // Update time.
+	CreateUser       string                 `json:"create_user"`                                                                // Create user.
+	UpdateUser       string                 `json:"update_user"`                                                                // Update user.
+	ExtendInfo       map[string]interface{} `json:"extend_info"`                                                                // Extended information.
+	// Resource type.
+	ResourceObject ResourceObjectType `json:"resource_object"` // Resource type.
 }
 
-// GetToolBoxReq 获取工具箱请求
+// GetToolBoxReq Get toolbox request.
 type GetToolBoxReq struct {
-	UserID   string `header:"user_id"`                 // 用户ID,内部使用
-	BoxID    string `uri:"box_id" validate:"required"` // 工具箱ID
-	IsPublic bool   `header:"is_public"`               // 是否公开接口
+	UserID   string `header:"user_id"`                 // User ID, internal use.
+	BoxID    string `uri:"box_id" validate:"required"` // Toolbox ID.
+	IsPublic bool   `header:"is_public"`               // Whether to expose the interface.
 }
 
-// DeleteBoxReq 删除工具箱请求
+// DeleteBoxReq delete toolbox request.
 type DeleteBoxReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"` // 业务域ID
-	UserID           string `header:"user_id" validate:"required"`           // 用户ID,内部使用
+	BusinessDomainID string `header:"x-business-domain" validate:"required"` // Business domain ID.
+	UserID           string `header:"user_id" validate:"required"`           // User ID, internal use.
 	BoxID            string `uri:"box_id" validate:"required"`
 }
 
-// DeleteBoxResp 删除工具箱返回结果
+// DeleteBoxResp Delete toolbox returns results.
 type DeleteBoxResp struct {
-	BoxID string `json:"box_id"` // 工具箱ID
+	BoxID string `json:"box_id"` // Toolbox ID.
 }
 
-// QueryToolBoxListReq 获取工具箱列表请求
+// QueryToolBoxListReq Get toolbox list request.
 type QueryToolBoxListReq struct {
-	BusinessDomainID string      `header:"x-business-domain" validate:"required"`                       // 业务域ID
-	UserID           string      `header:"user_id"`                                                     // 用户ID,内部使用
-	IsPublic         bool        `header:"is_public"`                                                   // 是否公开接口
-	CreateUser       string      `form:"create_user"`                                                   // 创建人
-	ReleaseUser      string      `form:"release_user"`                                                  // 发布人
-	BoxCategory      BizCategory `form:"category"`                                                      // 分类
-	Status           BizStatus   `form:"status" validate:"omitempty,oneof=unpublish published offline"` // 工具箱状态
-	BoxName          string      `form:"name"`                                                          // 工具箱名称
-	// 按元数据类型筛选。工具箱只有 openapi 与 function 两类,函数工具工作台据此只列函数工具箱。
+	BusinessDomainID string      `header:"x-business-domain" validate:"required"`                       // Business domain ID.
+	UserID           string      `header:"user_id"`                                                     // User ID, internal use.
+	IsPublic         bool        `header:"is_public"`                                                   // Whether to expose the interface.
+	CreateUser       string      `form:"create_user"`                                                   // Creator.
+	ReleaseUser      string      `form:"release_user"`                                                  // Posted by.
+	BoxCategory      BizCategory `form:"category"`                                                      // Classification.
+	Status           BizStatus   `form:"status" validate:"omitempty,oneof=unpublish published offline"` // toolbox status.
+	BoxName          string      `form:"name"`                                                          // Toolbox name.
+	// Filter by metadata type. There are only two types of toolboxes: openapi and function. Accordingly, the function tool workbench only lists function toolboxes.
 	MetadataType MetadataType `form:"metadata_type" validate:"omitempty,oneof=openapi function"`
 	CommonPageParams
 }
 
-// QueryMarketToolBoxListReq 查询市场工具箱列表请求
+// QueryMarketToolBoxListReq Query market toolbox list request.
 type QueryMarketToolBoxListReq struct {
-	BusinessDomainID string      `header:"x-business-domain" validate:"required"` // 业务域ID
-	UserID           string      `header:"user_id"`                               // 用户ID,内部使用
-	IsPublic         bool        `header:"is_public"`                             // 是否公开接口
-	CreateUser       string      `form:"create_user"`                             // 创建人
-	ReleaseUser      string      `form:"release_user"`                            // 发布人
-	BoxCategory      BizCategory `form:"category"`                                // 分类
-	BoxName          string      `form:"name"`                                    // 工具箱名称
+	BusinessDomainID string      `header:"x-business-domain" validate:"required"` // Business domain ID.
+	UserID           string      `header:"user_id"`                               // User ID, internal use.
+	IsPublic         bool        `header:"is_public"`                             // Whether to expose the interface.
+	CreateUser       string      `form:"create_user"`                             // Creator.
+	ReleaseUser      string      `form:"release_user"`                            // Posted by.
+	BoxCategory      BizCategory `form:"category"`                                // Classification.
+	BoxName          string      `form:"name"`                                    // Toolbox name.
 	CommonPageParams
 }
 
-// CommonPageParams 通用分页参数
+// CommonPageParams common paging parameters.
 type CommonPageParams struct {
-	Page      int    `form:"page" default:"1" validate:"min=1"`                                           // 页码，从1开始
-	PageSize  int    `form:"page_size" default:"10" validate:"min=1,max=100"`                             // 每页大小
-	All       bool   `form:"all"`                                                                         // 是否查询所有工具箱
-	SortBy    string `form:"sort_by" default:"update_time" validate:"oneof=create_time update_time name"` // 排序字段，默认为创建时间
-	SortOrder string `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                         // 排序顺序，默认为降序
+	Page      int    `form:"page" default:"1" validate:"min=1"`                                           // Page number, starting from 1.
+	PageSize  int    `form:"page_size" default:"10" validate:"min=1,max=100"`                             // page size.
+	All       bool   `form:"all"`                                                                         // Whether to query all toolboxes.
+	SortBy    string `form:"sort_by" default:"update_time" validate:"oneof=create_time update_time name"` // Sorting field, default is creation time.
+	SortOrder string `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                         // Sorting order, default is descending.
 }
 
-// ToolBoxInfo 工具箱信息
+// ToolBoxInfo toolbox information.
 type ToolBoxInfo struct {
-	MetadataType     MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // 元数据类型
-	BusinessDomainID string       `json:"business_domain_id"`                                       // 业务域ID
-	BoxID            string       `json:"box_id"`                                                   // 工具箱ID
-	BoxName          string       `json:"box_name"`                                                 // 工具箱名称
-	BoxDesc          string       `json:"box_desc"`                                                 // 工具箱描述
-	BoxSvcURL        string       `json:"box_svc_url"`                                              // 工具箱服务地址
-	Status           BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // 工具箱状态
-	CategoryType     string       `json:"category_type"`                                            // 分类
-	CategoryName     string       `json:"category_name"`                                            // 分类名称
-	IsInternal       bool         `json:"is_internal"`                                              // 是否为内部工具箱
-	Source           string       `json:"source" default:"custom" validate:"oneof=custom internal"` // 工具箱来源
-	Tools            []string     `json:"tools"`                                                    // 工具箱下的工具列表
-	CreateTime       int64        `json:"create_time"`                                              // 创建时间
-	UpdateTime       int64        `json:"update_time"`                                              // 更新时间
-	CreateUser       string       `json:"create_user"`                                              // 创建用户
-	UpdateUser       string       `json:"update_user"`                                              // 更新用户
-	ReleaseUser      string       `json:"release_user,omitempty"`                                   // 发布人
-	ReleaseTime      int64        `json:"release_time,omitempty"`                                   // 发布时间
+	MetadataType     MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
+	BusinessDomainID string       `json:"business_domain_id"`                                       // Business domain ID.
+	BoxID            string       `json:"box_id"`                                                   // Toolbox ID.
+	BoxName          string       `json:"box_name"`                                                 // Toolbox name.
+	BoxDesc          string       `json:"box_desc"`                                                 // Toolbox description.
+	BoxSvcURL        string       `json:"box_svc_url"`                                              // Toolbox service address.
+	Status           BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
+	CategoryType     string       `json:"category_type"`                                            // Classification.
+	CategoryName     string       `json:"category_name"`                                            // Category name.
+	IsInternal       bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
+	Source           string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
+	Tools            []string     `json:"tools"`                                                    // Tool list under toolbox.
+	CreateTime       int64        `json:"create_time"`                                              // creation time.
+	UpdateTime       int64        `json:"update_time"`                                              // Update time.
+	CreateUser       string       `json:"create_user"`                                              // Create user.
+	UpdateUser       string       `json:"update_user"`                                              // Update user.
+	ReleaseUser      string       `json:"release_user,omitempty"`                                   // Posted by.
+	ReleaseTime      int64        `json:"release_time,omitempty"`                                   // Release time.
 }
 
-// QueryToolBoxListResp 获取工具箱列表返回结果
+// QueryToolBoxListResp Gets the toolbox list and returns the results.
 type QueryToolBoxListResp struct {
 	CommonPageResult `json:",inline"`
-	Data             []*ToolBoxInfo `json:"data"` // 工具箱列表
+	Data             []*ToolBoxInfo `json:"data"` // Toolbox list.
 }
 
-// ParametersStruct 参数结构体
+// ParametersStruct parameter structure.
 type ParametersStruct struct {
-	Name        string      `json:"name" validate:"required"`                                           // 参数名称
-	Description string      `json:"description" validate:"required"`                                    // 参数描述
-	Required    bool        `json:"required"`                                                           // 是否必填
-	In          string      `json:"in" validate:"required,oneof=query path header cookie body"`         // 参数位置，例如：query, path, header, cookie, body
-	Type        string      `json:"type" validate:"required,oneof=string integer boolean array object"` // 参数类型，例如：string, integer, boolean, array, object
-	Value       interface{} `json:"value"`                                                              // 参数值
+	Name        string      `json:"name" validate:"required"`                                           // Parameter name.
+	Description string      `json:"description" validate:"required"`                                    // Parameter description.
+	Required    bool        `json:"required"`                                                           // Is it required?.
+	In          string      `json:"in" validate:"required,oneof=query path header cookie body"`         // Parameter location, for example: query, path, header, cookie, body.
+	Type        string      `json:"type" validate:"required,oneof=string integer boolean array object"` // Parameter type, for example: string, integer, boolean, array, object.
+	Value       interface{} `json:"value"`                                                              // Parameter value.
 }
 
-// CreateToolReq 创建工具请求
+// CreateToolReq Create tool request.
 type CreateToolReq struct {
-	UserID           string                 `header:"user_id" validate:"required"`                                                 // 用户ID,内部使用
-	BoxID            string                 `uri:"box_id" validate:"required"`                                                     // 工具箱ID
-	MetadataType     MetadataType           `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // 元数据类型(强制参数)
-	UseRule          string                 `json:"use_rule" form:"use_rule"`                                                      // 使用规则
-	GlobalParameters *ParametersStruct      `json:"global_parameters" form:"global_parameters" validate:"omitempty"`               // 全局参数
-	ExtendInfo       map[string]interface{} `json:"extend_info" form:"extend_info"`                                                // 扩展信息
+	UserID           string                 `header:"user_id" validate:"required"`                                                 // User ID, internal use.
+	BoxID            string                 `uri:"box_id" validate:"required"`                                                     // Toolbox ID.
+	MetadataType     MetadataType           `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // Metadata type (mandatory parameter)
+	UseRule          string                 `json:"use_rule" form:"use_rule"`                                                      // Usage rules.
+	GlobalParameters *ParametersStruct      `json:"global_parameters" form:"global_parameters" validate:"omitempty"`               // global parameters.
+	ExtendInfo       map[string]interface{} `json:"extend_info" form:"extend_info"`                                                // Extended information.
 	FunctionInput    *FunctionInput         `json:"function_input,omitempty"`
 	*OpenAPIInput    `json:",inline"`
 }
 
-// CreateToolResp 创建工具返回结果
+// CreateToolResp Create tool return result.
 type CreateToolResp struct {
-	BoxID        string                    `json:"box_id"`                // 工具箱ID
-	SuccessCount int64                     `json:"success_count"`         // 成功数量
-	SuccessIDs   []string                  `json:"success_ids,omitempty"` // 成功的工具ID列表
-	FailureCount int64                     `json:"failure_count"`         // 失败数量
-	Failures     []CreateToolFailureResult `json:"failures,omitempty"`    // 创建失败的工具ID列表及错误信息
+	BoxID        string                    `json:"box_id"`                // Toolbox ID.
+	SuccessCount int64                     `json:"success_count"`         // number of successes.
+	SuccessIDs   []string                  `json:"success_ids,omitempty"` // List of successful tool IDs.
+	FailureCount int64                     `json:"failure_count"`         // Number of failures.
+	Failures     []CreateToolFailureResult `json:"failures,omitempty"`    // List of tool IDs and error messages that failed to create.
 }
 
-// CreateToolFailureResult 创建工具失败结果
+// CreateToolFailureResult Create tool failure result.
 type CreateToolFailureResult struct {
-	ToolName string `json:"tool_name"` // 失败的工具名称
-	Error    error  `json:"error_msg"` // 失败原因
+	ToolName string `json:"tool_name"` // Failed tool name.
+	Error    error  `json:"error_msg"` // Reason for failure.
 }
 
-// UpdateToolReq 更新工具请求
+// UpdateToolReq update tool request.
 type UpdateToolReq struct {
-	UserID            string                 `header:"user_id" validate:"required"` // 用户ID,内部使用
+	UserID            string                 `header:"user_id" validate:"required"` // User ID, internal use.
 	BoxID             string                 `uri:"box_id" validate:"required"`
 	ToolID            string                 `uri:"tool_id" validate:"required"`
 	ToolName          string                 `json:"name" form:"name" validate:"required"`
 	ToolDesc          string                 `json:"description" form:"description" validate:"required"`
-	UseRule           string                 `json:"use_rule" form:"use_rule"`                                                      // 使用规则
-	GlobalParameters  *ParametersStruct      `json:"global_parameters" form:"global_parameters"`                                    // 全局参数
-	ExtendInfo        map[string]interface{} `json:"extend_info" form:"extend_info"`                                                // 扩展信息
-	MetadataType      MetadataType           `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // 元数据类型(可选参数)
+	UseRule           string                 `json:"use_rule" form:"use_rule"`                                                      // Usage rules.
+	GlobalParameters  *ParametersStruct      `json:"global_parameters" form:"global_parameters"`                                    // global parameters.
+	ExtendInfo        map[string]interface{} `json:"extend_info" form:"extend_info"`                                                // Extended information.
+	MetadataType      MetadataType           `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // Metadata type (optional parameter)
 	FunctionInputEdit *FunctionInputEdit     `json:"function_input,omitempty"`
 	*OpenAPIInput     `json:",inline"`
 }
 
-// UpdateToolResp 更新工具返回结果
+// UpdateToolResp Update tool returns results.
 type UpdateToolResp struct {
-	BoxID  string `json:"box_id"`  // 工具箱ID
-	ToolID string `json:"tool_id"` // 工具ID
+	BoxID  string `json:"box_id"`  // Toolbox ID.
+	ToolID string `json:"tool_id"` // Tool ID.
 }
 
-// GetToolReq 获取工具请求
+// GetToolReq Get tool request.
 type GetToolReq struct {
-	UserID string `header:"user_id"` // 用户ID,内部使用
+	UserID string `header:"user_id"` // User ID, internal use.
 	BoxID  string `uri:"box_id" validate:"required"`
 	ToolID string `uri:"tool_id" validate:"required"`
 }
 
-// BatchDeleteToolReq 批量删除工具请求
+// BatchDeleteToolReq Batch delete tool request.
 type BatchDeleteToolReq struct {
-	UserID  string   `header:"user_id" validate:"required"` // 用户ID,内部使用
+	UserID  string   `header:"user_id" validate:"required"` // User ID, internal use.
 	BoxID   string   `uri:"box_id" validate:"required"`
 	ToolIDs []string `json:"tool_ids" validate:"required"`
 }
 
 type BatchDeleteToolResp struct {
-	BoxID  string   `json:"box_id"`   // 工具箱ID
-	ToolID []string `json:"tool_ids"` // 工具ID
+	BoxID  string   `json:"box_id"`   // Toolbox ID.
+	ToolID []string `json:"tool_ids"` // Tool ID.
 }
 
-// QueryToolListReq 获取工具列表请求
+// QueryToolListReq Get tool list request.
 type QueryToolListReq struct {
-	UserID      string         `header:"user_id"` // 用户ID,内部使用
+	UserID      string         `header:"user_id"` // User ID, internal use.
 	Page        int            `form:"page" default:"1" validate:"min=1"`
 	PageSize    int            `form:"page_size" default:"10" validate:"min=1,max=100"`
-	SortBy      string         `form:"sort_by" default:"create_time" validate:"oneof=create_time update_time tool_name"` // 排序字段，默认为创建时间
-	SortOrder   string         `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                              // 排序顺序，默认为降序
-	ToolName    string         `form:"name"`                                                                             // 工具名称
-	Status      ToolStatusType `form:"status" validate:"omitempty,oneof=disabled enabled"`                               // 工具状态                                      // 工具状态
-	QueryUserID string         `form:"user_id"`                                                                          // 查询用户ID
-	All         bool           `form:"all"`                                                                              // 是否查询所有工具
-	BoxID       string         `uri:"box_id" validate:"required"`                                                        // 工具箱ID                                                               // 是否查询所有工具
+	SortBy      string         `form:"sort_by" default:"create_time" validate:"oneof=create_time update_time tool_name"` // Sorting field, default is creation time.
+	SortOrder   string         `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                              // Sorting order, default is descending.
+	ToolName    string         `form:"name"`                                                                             // Tool name.
+	Status      ToolStatusType `form:"status" validate:"omitempty,oneof=disabled enabled"`                               // tool status // tool status.
+	QueryUserID string         `form:"user_id"`                                                                          // Query user ID.
+	All         bool           `form:"all"`                                                                              // Whether to query all tools.
+	BoxID       string         `uri:"box_id" validate:"required"`                                                        // Toolbox ID // Whether to query all tools.
 }
 
-// QueryToolListResp 获取工具列表返回结果
+// QueryToolListResp Gets the tool list and returns the results.
 type QueryToolListResp struct {
 	CommonPageResult `json:",inline"`
-	BoxID            string      `json:"box_id"` // 工具箱ID
-	Tools            []*ToolInfo `json:"tools"`  // 工具箱下的工具列表
+	BoxID            string      `json:"box_id"` // Toolbox ID.
+	Tools            []*ToolInfo `json:"tools"`  // Tool list under toolbox.
 }
 
-// QueryMarketToolListReq 获取市场工具列表请求
+// QueryMarketToolListReq Get market tool list request.
 type QueryMarketToolListReq struct {
-	UserID    string         `header:"user_id"` // 用户ID,内部使用
+	UserID    string         `header:"user_id"` // User ID, internal use.
 	Page      int            `form:"page" default:"1" validate:"min=1"`
 	PageSize  int            `form:"page_size" default:"10" validate:"min=1,max=100"`
-	SortBy    string         `form:"sort_by" default:"update_time" validate:"oneof=create_time update_time tool_name"` // 排序字段，默认为创建时间
-	SortOrder string         `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                              // 排序顺序，默认为降序
-	ToolName  string         `form:"tool_name" validate:"required"`                                                    // 工具名称
-	Status    ToolStatusType `form:"status" validate:"omitempty,oneof=disabled enabled"`                               // 工具状态
-	All       bool           `form:"all"`                                                                              // 是否查询所有工具
+	SortBy    string         `form:"sort_by" default:"update_time" validate:"oneof=create_time update_time tool_name"` // Sorting field, default is creation time.
+	SortOrder string         `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                              // Sorting order, default is descending.
+	ToolName  string         `form:"tool_name" validate:"required"`                                                    // Tool name.
+	Status    ToolStatusType `form:"status" validate:"omitempty,oneof=disabled enabled"`                               // tool status.
+	All       bool           `form:"all"`                                                                              // Whether to query all tools.
 }
 
-// QueryMarketToolListResp 获取市场工具列表返回结果
+// QueryMarketToolListResp Gets the market tool list and returns the results.
 type QueryMarketToolListResp struct {
 	CommonPageResult `json:",inline"`
-	Data             []*ToolBoxToolInfo `json:"data"` // 工具详情列表
+	Data             []*ToolBoxToolInfo `json:"data"` // Tool details list.
 }
 
 type ToolStatus struct {
@@ -318,63 +318,63 @@ type ToolStatus struct {
 	Status ToolStatusType `json:"status" validate:"required,oneof=disabled enabled"`
 }
 
-// UpdateToolStatusReq 更新工具状态请求
+// UpdateToolStatusReq Update tool status request.
 type UpdateToolStatusReq struct {
-	UserID         string        `header:"user_id" validate:"required"` // 用户ID,内部使用
+	UserID         string        `header:"user_id" validate:"required"` // User ID, internal use.
 	BoxID          string        `uri:"box_id" validate:"required"`
 	ToolStatusList []*ToolStatus `json:",inline"`
 }
 
-// ExecuteToolReq 执行工具请求
+// ExecuteToolReq Execute tool request.
 type ExecuteToolReq struct {
-	UserID            string `header:"user_id" validate:"required"` // 用户ID,内部使用
+	UserID            string `header:"user_id" validate:"required"` // User ID, internal use.
 	BoxID             string `uri:"box_id" validate:"required"`
 	ToolID            string `uri:"tool_id" validate:"required"`
-	Timeout           int    `json:"timeout"` // 超时时间，单位秒
+	Timeout           int    `json:"timeout"` // Timeout time in seconds.
 	HTTPRequestParams `json:",inline"`
 }
 
-// ConvertOperatorToToolReq 算子转换成工具请求
+// ConvertOperatorToToolReq operator converts tool request.
 type ConvertOperatorToToolReq struct {
-	UserID           string            `header:"user_id" validate:"required"` // 用户ID,内部使用
+	UserID           string            `header:"user_id" validate:"required"` // User ID, internal use.
 	OperatorID       string            `json:"operator_id" validate:"required"`
 	BoxID            string            `json:"box_id" validate:"required"`
-	UseRule          string            `json:"use_rule"`          // 使用规则
-	ExtendInfo       map[string]string `json:"extend_info"`       // 扩展信息
-	GlobalParameters *ParametersStruct `json:"global_parameters"` // 全局参数
+	UseRule          string            `json:"use_rule"`          // Usage rules.
+	ExtendInfo       map[string]string `json:"extend_info"`       // Extended information.
+	GlobalParameters *ParametersStruct `json:"global_parameters"` // global parameters.
 }
 
-// ConvertOperatorToToolResp 算子转换成工具返回结果
+// ConvertOperatorToToolResp operator is converted into a tool and returns the result.
 type ConvertOperatorToToolResp struct {
 	BoxID  string `json:"box_id"`
-	ToolID string `json:"tool_id"` // 工具ID
+	ToolID string `json:"tool_id"` // Tool ID.
 }
 
-// RegisterOpenApiBundleReq OpenAPI 能力包注册：先注册算子，再 convert 为工具（建立血缘）
+// RegisterOpenApiBundleReq OpenAPI capability package registration: register the operator first, and then convert it into a tool (establishing blood relationship)
 type RegisterOpenApiBundleReq struct {
 	BusinessDomainID       string                  `header:"x-business-domain" validate:"required"`
 	UserID                 string                  `header:"user_id" validate:"required"`
-	BoxID                  string                  `json:"box_id"`                                // 已有工具箱 ID（与 box_name 二选一）
-	BoxName                string                  `json:"box_name"`                              // 新建工具箱名称
-	BoxDesc                string                  `json:"box_desc"`                              // 工具箱描述
-	BoxSvcURL              string                  `json:"box_svc_url" validate:"required"`       // 工具箱服务地址
-	Category               BizCategory             `json:"box_category" default:"other_category"` // 分类
-	UseRule                string                  `json:"use_rule"`                              // 工具使用规则
-	Data                   string                  `json:"data" validate:"required"`              // OpenAPI 3.0 文档
-	Description            string                  `json:"description"`                           // 算子描述
-	DirectPublish          bool                    `json:"direct_publish,omitempty"`              // 注册后直接发布算子
-	OperatorInfo           *OperatorInfo           `json:"operator_info"`                         // 算子信息
-	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control"`              // 算子执行控制
-	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty"`                 // 扩展信息
+	BoxID                  string                  `json:"box_id"`                                // Already has a toolbox ID (optional with box_name)
+	BoxName                string                  `json:"box_name"`                              // New toolbox name.
+	BoxDesc                string                  `json:"box_desc"`                              // Toolbox description.
+	BoxSvcURL              string                  `json:"box_svc_url" validate:"required"`       // Toolbox service address.
+	Category               BizCategory             `json:"box_category" default:"other_category"` // Classification.
+	UseRule                string                  `json:"use_rule"`                              // Tool usage rules.
+	Data                   string                  `json:"data" validate:"required"`              // OpenAPI 3.0 documentation.
+	Description            string                  `json:"description"`                           // Operator description.
+	DirectPublish          bool                    `json:"direct_publish,omitempty"`              // Publish the operator directly after registration.
+	OperatorInfo           *OperatorInfo           `json:"operator_info"`                         // Operator information.
+	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control"`              // Operator execution control.
+	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty"`                 // Extended information.
 }
 
-// OpenApiBundleLink 算子与工具的关联
+// OpenApiBundleLink operator and tool association.
 type OpenApiBundleLink struct {
 	OperatorID string `json:"operator_id"`
 	ToolID     string `json:"tool_id"`
 }
 
-// RegisterOpenApiBundleResp OpenAPI 能力包注册结果
+// RegisterOpenApiBundleResp OpenAPI capability package registration result.
 type RegisterOpenApiBundleResp struct {
 	BoxID        string              `json:"box_id"`
 	ToolIDs      []string            `json:"tool_ids"`
@@ -384,27 +384,27 @@ type RegisterOpenApiBundleResp struct {
 	Failures     []string            `json:"failures,omitempty"`
 }
 
-// UpdateToolBoxStatusReq 更新工具箱状态请求
+// UpdateToolBoxStatusReq Update toolbox status request.
 type UpdateToolBoxStatusReq struct {
-	UserID string    `header:"user_id" validate:"required"` // 用户ID,内部使用
+	UserID string    `header:"user_id" validate:"required"` // User ID, internal use.
 	BoxID  string    `uri:"box_id" validate:"required"`
-	Status BizStatus `json:"status" validate:"required,oneof=unpublish published offline"` // 工具箱状态
+	Status BizStatus `json:"status" validate:"required,oneof=unpublish published offline"` // toolbox status.
 }
 
-// UpdateToolBoxStatusResp 更新工具箱状态响应
+// UpdateToolBoxStatusResp Update toolbox status response.
 type UpdateToolBoxStatusResp struct {
 	BoxID  string    `json:"box_id"`
 	Status BizStatus `json:"status"`
 }
 
-// GetReleaseToolBoxInfoReq 获取工具箱信息请求
+// GetReleaseToolBoxInfoReq Get toolbox information request.
 type GetReleaseToolBoxInfoReq struct {
-	UserID string `header:"user_id"`                 // 用户ID,内部使用
-	BoxIDs string `uri:"box_id" validate:"required"` // 工具箱ID
-	Fields string `uri:"fields" validate:"required"` // 字段
+	UserID string `header:"user_id"`                 // User ID, internal use.
+	BoxIDs string `uri:"box_id" validate:"required"` // Toolbox ID.
+	Fields string `uri:"fields" validate:"required"` // Field.
 }
 
-// GetReleaseToolBoxInfoResp 获取工具箱信息响应
+// GetReleaseToolBoxInfoResp Gets the toolbox information response.
 type GetReleaseToolBoxInfoResp struct {
 	MetadataType MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"`
 	BoxID        string       `json:"box_id" validate:"required"`
@@ -422,49 +422,48 @@ type GetReleaseToolBoxInfoResp struct {
 	ReleaseUser  string       `json:"release_user,omitempty"`
 }
 
-// IToolService 工具箱服务接口
+// IToolService toolbox service interface.
 type IToolService interface {
-	// 工具箱管理
+	// Toolbox management.
 	CreateToolBox(ctx context.Context, req *CreateToolBoxReq) (resp *CreateToolBoxResp, err error)
 	UpdateToolBox(ctx context.Context, req *UpdateToolBoxReq) (resp *UpdateToolBoxResp, err error)
 	GetToolBox(ctx context.Context, req *GetToolBoxReq, isMarket bool) (resp *ToolBoxToolInfo, err error)
 	DeleteBoxByID(ctx context.Context, req *DeleteBoxReq) (resp *DeleteBoxResp, err error)
 	QueryToolBoxList(ctx context.Context, req *QueryToolBoxListReq) (resp *QueryToolBoxListResp, err error)
-	// GetToolBoxNamesByIDs 按工具箱ID批量取名(容错：不存在的ID略过)
+	// GetToolBoxNamesByIDs batch names based on toolbox IDs (fault tolerance: non-existent IDs are ignored)
 	GetToolBoxNamesByIDs(ctx context.Context, ids []string) (resp *BatchNamesResp, err error)
 	QueryMarketToolBoxList(ctx context.Context, req *QueryMarketToolBoxListReq) (resp *QueryToolBoxListResp, err error)
 	UpdateToolBoxStatus(ctx context.Context, req *UpdateToolBoxStatusReq) (resp *UpdateToolBoxStatusResp, err error)
-	// 工具管理
+	// Tool management.
 	CreateTool(ctx context.Context, req *CreateToolReq) (resp *CreateToolResp, err error)
 	UpdateTool(ctx context.Context, req *UpdateToolReq) (resp *UpdateToolResp, err error)
 	GetBoxTool(ctx context.Context, req *GetToolReq) (resp *ToolInfo, err error)
 	DeleteBoxTool(ctx context.Context, req *BatchDeleteToolReq) (resp *BatchDeleteToolResp, err error)
 	QueryToolList(ctx context.Context, req *QueryToolListReq) (resp *QueryToolListResp, err error)
 	UpdateToolStatus(ctx context.Context, req *UpdateToolStatusReq) (resp []*ToolStatus, err error)
-	// 工具调试
+	// Tool debugging.
 	DebugTool(ctx context.Context, req *ExecuteToolReq) (resp *HTTPResponse, err error)
-	// 工具执行
+	// tool execution.
 	ExecuteTool(ctx context.Context, req *ExecuteToolReq) (resp *HTTPResponse, err error)
-	// 工具执行（不包含权限校验和审计日志）
+	// Tool execution (excluding permission verification and audit logs)
 	ExecuteToolCore(ctx context.Context, req *ExecuteToolReq) (resp *HTTPResponse, err error)
-	// 算子转换成工具
+	// Operators converted into tools.
 	ConvertOperatorToTool(ctx context.Context, req *ConvertOperatorToToolReq) (resp *ConvertOperatorToToolResp, err error)
-	// OpenAPI 能力包：算子注册 + convert 工具（统一血缘）
+	// OpenAPI capability package: operator registration + convert tool (unified bloodline)
 	RegisterOpenApiBundle(ctx context.Context, req *RegisterOpenApiBundleReq) (resp *RegisterOpenApiBundleResp, err error)
 	GetReleaseToolBoxInfo(ctx context.Context, req *GetReleaseToolBoxInfoReq) (resp []*GetReleaseToolBoxInfoResp, err error)
-	// 市场接口
-	GetMarketToolList(ctx context.Context, req *QueryMarketToolListReq) (resp *QueryMarketToolListResp, err error) // 获取所有的工具
+	// market interface.
+	GetMarketToolList(ctx context.Context, req *QueryMarketToolListReq) (resp *QueryMarketToolListResp, err error) // Get all the tools.
 
-	// 导入超出
+	// Import exceeds.
 	// Impex[*ToolBoxImpexData]
 	Import(ctx context.Context, tx *sql.Tx, mode ImportType, data *ComponentImpexConfigModel, userID string) (err error)
 	Export(ctx context.Context, req *ExportReq) (data *ComponentImpexConfigModel, err error)
-	// 事件处理
+	// event handling.
 	ToolBoxEventHandler
 }
 
-// ToolBoxEventHandler 事件处理接口
+// ToolBoxEventHandler event handling interface.
 type ToolBoxEventHandler interface {
 	HandleOperatorDeleteEvent(ctx context.Context, message []byte) error
 }
-

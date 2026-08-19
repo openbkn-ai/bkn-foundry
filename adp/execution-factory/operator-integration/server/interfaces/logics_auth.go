@@ -4,36 +4,36 @@ import (
 	"context"
 )
 
-// AccountAuthContext 账户认证上下文
+// AccountAuthContext Account authentication context.
 type AccountAuthContext struct {
-	// AccountID 账户唯一标识符
+	// AccountID account unique identifier.
 	AccountID string `json:"account_id"`
-	// AccountType 账户类型
+	// AccountType account type.
 	AccountType AccessorType `json:"account_type"`
-	// Token信息
+	// Token information.
 	TokenInfo *TokenInfo `json:"token_info"`
 }
 
-// AuthOperationType 操作类型
+// AuthOperationType operation type.
 //
 //go:generate mockgen -source=logics_auth.go -destination=../mocks/auth.go -package=mocks
 type AuthOperationType string
 
 const (
-	AuthOperationTypeCreate       AuthOperationType = "create"        // 新建
-	AuthOperationTypeModify       AuthOperationType = "modify"        // 编辑
-	AuthOperationTypeDelete       AuthOperationType = "delete"        // 删除
-	AuthOperationTypeView         AuthOperationType = "view"          // 查看
-	AuthOperationTypePublish      AuthOperationType = "publish"       // 发布
-	AuthOperationTypeUnpublish    AuthOperationType = "unpublish"     // 下架
-	AuthOperationTypeAuthorize    AuthOperationType = "authorize"     // 权限管理
-	AuthOperationTypePublicAccess AuthOperationType = "public_access" // 公共访问
-	AuthOperationTypeExecute      AuthOperationType = "execute"       // 执行
-	AuthOperationTypeManage       AuthOperationType = "manage"        // 管理（用于超管判定，见 AuthResourceTypeSafeAdmin）
+	AuthOperationTypeCreate       AuthOperationType = "create"        // New.
+	AuthOperationTypeModify       AuthOperationType = "modify"        // Edit.
+	AuthOperationTypeDelete       AuthOperationType = "delete"        // Delete.
+	AuthOperationTypeView         AuthOperationType = "view"          // View.
+	AuthOperationTypePublish      AuthOperationType = "publish"       // publish.
+	AuthOperationTypeUnpublish    AuthOperationType = "unpublish"     // Removed from shelves.
+	AuthOperationTypeAuthorize    AuthOperationType = "authorize"     // Permission management.
+	AuthOperationTypePublicAccess AuthOperationType = "public_access" // public access.
+	AuthOperationTypeExecute      AuthOperationType = "execute"       // execute.
+	AuthOperationTypeManage       AuthOperationType = "manage"        // Management (for super management determination, see AuthResourceTypeSafeAdmin)
 )
 
 var (
-	// 所有者权限
+	// Owner permissions.
 	OwnerPolicyList = []AuthOperationType{
 		AuthOperationTypeCreate,
 		AuthOperationTypeModify,
@@ -47,90 +47,90 @@ var (
 	}
 )
 
-// AuthResourceType 资源类型
+// AuthResourceType resource type.
 type AuthResourceType string
 
-// 支持的资源类型
+// Supported resource types.
 const (
-	AuthResourceTypeToolBox  AuthResourceType = "tool_box" // 工具箱
+	AuthResourceTypeToolBox  AuthResourceType = "tool_box" // toolbox.
 	AuthResourceTypeMCP      AuthResourceType = "mcp"      // MCP
-	AuthResourceTypeOperator AuthResourceType = "operator" // 算子
+	AuthResourceTypeOperator AuthResourceType = "operator" // operator.
 	AuthResourceTypeSkill    AuthResourceType = "skill"    // Skill
 
-	// AuthResourceTypeSafeAdmin 是 bkn-safe 的超管能力位，不是执行工厂自有的资源类型。
-	// bkn-safe 的 Enforcer.CanAdmin 即 Check(accessorID, "safe_admin", "console", "manage")，
-	// 此处复用同一三元组，使执行工厂对「超管」的判定与 bkn-safe 保持单一事实源。
+	// AuthResourceTypeSafeAdmin is the super-management capability bit of bkn-safe, not the execution factory's own resource type.
+	// bkn-safe's Enforcer.CanAdmin is Check(accessorID, "safe_admin", "console", "manage"),
+	// The same triplet is reused here, so that the execution factory's determination of "overrun" and bkn-safe maintain a single source of truth.
 	AuthResourceTypeSafeAdmin AuthResourceType = "safe_admin"
 )
 
-// SafeAdminConsoleResourceID 是 safe_admin 能力位对应的资源 ID，与 bkn-safe 侧取值一致。
+// SafeAdminConsoleResourceID is the resource ID corresponding to the safe_admin capability bit, which is consistent with the value on the bkn-safe side.
 const SafeAdminConsoleResourceID = "console"
 
 func (a AuthResourceType) String() string {
 	return string(a)
 }
 
-// ResourceID 资源ID类型别名
+// ResourceID resource ID type alias.
 type ResourceID = string
 
-// 特殊资源ID常量
+// Special resource ID constant.
 const (
-	ResourceIDAll = "*" // 表示所有资源
+	ResourceIDAll = "*" // Represents all resources.
 )
 
-// QueryOption 查询选项函数类型
+// QueryOption query option function type.
 type QueryOption[T any, PT PtrBizIdentifiable[T]] func() ([]PT, error)
 
-// ResourceListFunc 获取有权限资源ID列表的函数类型
+// ResourceListFunc is a function type that obtains a list of authorized resource IDs.
 type ResourceListFunc func() ([]string, error)
 
-// IAuthorizationService Authorization Service接口
+// IAuthorizationService Authorization Service interface.
 type IAuthorizationService interface {
-	// CheckCreatePermission 检查新建权限
+	// CheckCreatePermission Check new permissions.
 	CheckCreatePermission(ctx context.Context, accessor *AuthAccessor, resourceType AuthResourceType) error
-	// CheckViewPermission 检查查看权限
+	// CheckViewPermission Check view permission.
 	CheckViewPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// CheckModifyPermission 检查编辑权限
+	// CheckModifyPermission Check editing permissions.
 	CheckModifyPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// CheckDeletePermission 检查删除权限
+	// CheckDeletePermission Check delete permission.
 	CheckDeletePermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// CheckPublishPermission 检查发布权限
+	// CheckPublishPermission Check publishing permission.
 	CheckPublishPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// CheckUnpublishPermission 检查下架权限
+	// CheckUnpublishPermission Check the removal permission.
 	CheckUnpublishPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// CheckAuthorizePermission 检查权限管理权限
+	// CheckAuthorizePermission Check permission management permissions.
 	CheckAuthorizePermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// CheckPublicAccessPermission 检查公共访问权限
+	// CheckPublicAccessPermission Check public access permissions.
 	CheckPublicAccessPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// CheckExecutePermission 检查执行权限
+	// CheckExecutePermission Check execution permission.
 	CheckExecutePermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType) error
-	// MultiCheckOperationPermission 多操作权限检查
+	// MultiCheckOperationPermission Multi-operation permission check.
 	MultiCheckOperationPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType, operations ...AuthOperationType) error
-	// CheckAdminPermission 检查超管权限。判定口径与 bkn-safe 的 Enforcer.CanAdmin 一致，
-	// 用于保护返回跨租户数据、不属于任何单一资源的运维观测接口。
+	// CheckAdminPermission checks super-administrative permissions. The judgment semantics is consistent with Enforcer.CanAdmin of bkn-safe.
+	// Used to protect operation and maintenance observation interfaces that return cross-tenant data and do not belong to any single resource.
 	CheckAdminPermission(ctx context.Context, accessor *AuthAccessor) error
 
-	// CreateOwnerPolicy 创建owner权限
+	// CreateOwnerPolicy creates owner permissions.
 	CreateOwnerPolicy(ctx context.Context, accessor *AuthAccessor, authResource *AuthResource) error
-	// CreateIntCompPolicyForAllUsers 创建内部组件权限策略，作用于所有用户
+	// CreateIntCompPolicyForAllUsers creates an internal component permission policy that affects all users.
 	CreateIntCompPolicyForAllUsers(ctx context.Context, authResource *AuthResource) error
 
-	// ResourceFilterIDs 资源过滤
+	// ResourceFilterIDs resource filtering.
 	ResourceFilterIDs(ctx context.Context, accessor *AuthAccessor, resourceIDS []string, resourceType AuthResourceType, operations ...AuthOperationType) ([]string, error)
-	// ResourceListIDs 资源列举
+	// ResourceListIDs resource list.
 	ResourceListIDs(ctx context.Context, accessor *AuthAccessor, resourceType AuthResourceType, operations ...AuthOperationType) ([]string, error)
 
-	// OperationCheckAll AND关系：需要满足所有操作权限
+	// OperationCheckAll AND relationship: all operation permissions need to be satisfied.
 	OperationCheckAll(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType, operations ...AuthOperationType) (bool, error)
-	// OperationCheckAny OR关系，只需满足任意一个操作权限
+	// OperationCheckAny OR relationship, only needs to satisfy any one operation permission.
 	OperationCheckAny(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType, operations ...AuthOperationType) (bool, error)
-	// CreatePolicy 创建策略
+	// CreatePolicy creates a policy.
 	CreatePolicy(ctx context.Context, accessor *AuthAccessor, authResource *AuthResource, allow []AuthOperationType, deny []AuthOperationType) error
-	// DeletePolicy 删除策略
+	// DeletePolicy delete policy.
 	DeletePolicy(ctx context.Context, resourceIDs []string, resourceType AuthResourceType) error
-	// NotifyResourceChange 资源名称变更消息通知
+	// NotifyResourceChange resource name change message notification.
 	NotifyResourceChange(ctx context.Context, authResource *AuthResource) error
 
-	// GetAccessor 获取访问者信息
+	// GetAccessor gets visitor information.
 	GetAccessor(ctx context.Context, userID string) (*AuthAccessor, error)
 }

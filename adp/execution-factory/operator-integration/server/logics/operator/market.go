@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -13,22 +12,23 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// 排序字段与数据库字段映射
+// Sorting field and database field mapping.
 var sortFieldMap = map[string]string{
 	"create_time": "f_create_time",
 	"update_time": "f_update_time",
 	"name":        "f_name",
 }
 
-// QueryOperatorMarketDetail 算子市场查询操作
+// QueryOperatorMarketDetail operator market query operation.
 func (m *operatorManager) QueryOperatorMarketDetail(ctx context.Context, req *interfaces.OperatorMarketDetailReq) (
 	info *interfaces.OperatorDataInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查算子是否存在
+	// Check if the operator exists.
 	exist, releaseDB, err := m.OpReleaseDB.SelectByOpID(ctx, req.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("query operator failed, err: %v", err)
@@ -45,13 +45,13 @@ func (m *operatorManager) QueryOperatorMarketDetail(ctx context.Context, req *in
 		if err != nil {
 			return
 		}
-		// 检查是否有公开访问权限
+		// Check if there is public access.
 		err = m.AuthService.CheckPublicAccessPermission(ctx, accessor, req.OperatorID, interfaces.AuthResourceTypeOperator)
 		if err != nil {
 			return
 		}
 	}
-	// 获取元数据信息
+	// Get metadata information.
 	exists, metadataDB, err := m.MetadataService.CheckMetadataExists(ctx, interfaces.MetadataType(releaseDB.MetadataType), releaseDB.MetadataVersion)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("query metadata failed, err: %v", err)
@@ -61,13 +61,13 @@ func (m *operatorManager) QueryOperatorMarketDetail(ctx context.Context, req *in
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtMetadataNotFound, "metadata not found")
 		return
 	}
-	// 组装算子信息结果
+	// Assembly operator information results.
 	var userIDs []string
 	userIDs, info, err = m.assembleReleaseResult(ctx, releaseDB, metadataDB)
 	if err != nil {
 		return
 	}
-	// 获取用户信息
+	// Get user information.
 	userMap, err := m.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("get users failed, err: %v", err)
@@ -79,10 +79,10 @@ func (m *operatorManager) QueryOperatorMarketDetail(ctx context.Context, req *in
 	return
 }
 
-// QueryOperatorMarketList 算子市场查询操作
+// QueryOperatorMarketList operator market query operation.
 func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *interfaces.PageQueryOperatorMarketReq) (
 	result *interfaces.PageQueryResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	result = &interfaces.PageQueryResponse{
@@ -102,7 +102,7 @@ func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *inte
 	if len(releaseList) == 0 {
 		return
 	}
-	// 获取元数据信息
+	// Get metadata information.
 	sourceMap := map[model.SourceType][]string{}
 	for _, release := range releaseList {
 		switch interfaces.MetadataType(release.MetadataType) {
@@ -116,7 +116,7 @@ func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *inte
 	if err != nil {
 		return
 	}
-	// 组装算子信息结果
+	// Assembly operator information results.
 	var userList []string
 	for _, release := range releaseList {
 		var userIDs []string
@@ -147,7 +147,7 @@ func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *inte
 	return
 }
 
-// 根据请求参数查询并过滤算子发布列表
+// Query and filter operator release list based on request parameters.
 func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *interfaces.PageQueryOperatorMarketReq) (
 	authResp *interfaces.QueryResponse[model.OperatorReleaseDB], resourceToBdMap map[string]string, err error) {
 	filter := make(map[string]interface{})
@@ -155,7 +155,7 @@ func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *int
 	if req.Name != "" {
 		filter["name"] = req.Name
 	}
-	if req.Category != "" { // 检查分类是否合法
+	if req.Category != "" { // Check whether the classification is legal.
 		if !m.CategoryManager.CheckCategory(req.Category) {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCategoryTypeInvalid, "invalid operator category")
 			return
@@ -183,7 +183,7 @@ func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *int
 	if req.MetadataType != "" {
 		filter["metadata_type"] = req.MetadataType
 	}
-	// 构造排序字段
+	// Construct sort field.
 	sort := &ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
 			{
@@ -192,7 +192,7 @@ func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *int
 			},
 		},
 	}
-	// 构建查询执行器
+	// Build query executor.
 	queryTotal := func(newCtx context.Context) (int64, error) {
 		var count int64
 		count, err = m.OpReleaseDB.CountByWhereClause(newCtx, filter)
@@ -219,7 +219,7 @@ func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *int
 			case "name":
 				cursor.Value = cursorValue.Name
 			}
-			// 如果使用游标不需要offset
+			// If using a cursor, offset is not required.
 			offset = 0
 		}
 		filter["limit"] = pageSize
@@ -257,7 +257,7 @@ func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *int
 			return resourceIDs, nil
 		})
 	if common.IsPublicAPIFromCtx(ctx) {
-		// 设置公共访问权限过滤
+		// Set up public access filtering.
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
 			var accessor *interfaces.AuthAccessor
 			accessor, err = m.AuthService.GetAccessor(newCtx, req.UserID)

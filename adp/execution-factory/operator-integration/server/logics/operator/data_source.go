@@ -9,7 +9,7 @@ import (
 )
 
 func checkIsDataSource(ctx context.Context, mode interfaces.ExecutionMode, isDataSourceReq *bool) (isDataSource bool, err error) {
-	// 检查是否为数据源,如果是异步执行,则不支持数据源
+	// Check whether it is a data source. If it is executed asynchronously, the data source is not supported.
 	if isDataSourceReq == nil || !*isDataSourceReq {
 		return
 	}

@@ -3,12 +3,12 @@ package operator
 import (
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 func (op *operatorHandle) QueryOperatorMarketList(c *gin.Context) {
@@ -47,7 +47,7 @@ func (op *operatorHandle) QueryOperatorMarketList(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QueryOperatorMarketDetail 算子历史详情
+// QueryOperatorMarketDetail operator history details.
 func (op *operatorHandle) QueryOperatorMarketDetail(c *gin.Context) {
 	req := &interfaces.OperatorMarketDetailReq{}
 	var err error

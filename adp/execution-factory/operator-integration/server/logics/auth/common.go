@@ -9,18 +9,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// GetAccessor 获取访问者信息
+// GetAccessor gets visitor information.
 func (s *authServiceImpl) GetAccessor(ctx context.Context, userID string) (*interfaces.AuthAccessor, error) {
-	// 从上下文中读取账户认证上下文
+	// Read account authentication context from context.
 	authContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok {
 		authContext = &interfaces.AccountAuthContext{
 			AccountID:   userID,
-			AccountType: interfaces.AccessorTypeUser, // 默认用户类型
+			AccountType: interfaces.AccessorTypeUser, // Default user type.
 		}
 	}
 
-	// 内部接口仅允许实名用户访问
+	// Internal interfaces are only accessible to real-name users.
 	if authContext.AccountID == "" {
 		return nil, oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtCommonUserNotFound, "userID is empty")
 	}
@@ -29,7 +29,7 @@ func (s *authServiceImpl) GetAccessor(ctx context.Context, userID string) (*inte
 	}
 	switch authContext.AccountType {
 	case interfaces.AccessorTypeUser, interfaces.AccessorTypeAnonymous:
-		// 实名用户, 匿名用户
+		// real-name user, anonymous user.
 		userInfos, err := s.userManagement.GetUsersInfo(ctx, []string{authContext.AccountID}, []string{interfaces.DisplayName})
 		if err != nil {
 			return nil, err
@@ -40,7 +40,7 @@ func (s *authServiceImpl) GetAccessor(ctx context.Context, userID string) (*inte
 		accessor.Type = interfaces.AccessorTypeUser
 		accessor.Name = userInfos[0].DisplayName
 	case interfaces.AccessorTypeApp:
-		// 应用账户
+		// application account.
 		appInfo, err := s.userManagement.GetAppInfo(ctx, authContext.AccountID)
 		if err != nil {
 			return nil, err

@@ -24,7 +24,7 @@ class DeleteUser:
 
     # def DeleteUserDoc(self, userId, deleterId):
     #     '''
-    #     删除个人文档库
+    # Delete personal document library.
     #     '''
     #     with tclients.TClient('EFAST', self.efast_ip, timeout_s=1800) as client:
     #         result = ''
@@ -37,7 +37,7 @@ class DeleteUser:
             
     def DeleteUser(self, userId):
         '''
-        删除用户
+        Delete user.
         '''
         with tclients.TClient('ShareMgnt', self.sharemgnt_ip, timeout_s=1800) as client:
             try:
@@ -50,7 +50,7 @@ class DeleteUser:
             
     def DeleteOrganization(self, ip, token, orgId):
         '''
-        删除组织，默认删除该组织下的所有部门
+        Deleting an organization will delete all departments under the organization by default.
         '''
         requrl = 'https://%s/api/user-management/v1/management/departments/%s' % (ip, orgId)
         dict1 = {}
@@ -59,14 +59,14 @@ class DeleteUser:
         if r.status_code == 204:
             return r.status_code
         else:
-            # 尝试解析 JSON，如果失败则返回原始内容
+            # Attempts to parse the JSON, returning the original content if failed.
             try:
                 if r.content:
                     return r.status_code, json.loads(r.content)
                 else:
                     return r.status_code, {"error": "Empty response"}
             except (json.JSONDecodeError, ValueError) as e:
-                # JSON 解析失败，返回状态码和原始内容
+                # JSON parsing fails, returning status code and original content.
                 return r.status_code, {"error": f"Failed to parse JSON: {str(e)}", "content": r.text}
         
 if __name__ == '__main__':

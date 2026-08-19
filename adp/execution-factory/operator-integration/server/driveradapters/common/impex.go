@@ -1,4 +1,4 @@
-// Package common 公共模块操作接口
+// Package common public module operation interface.
 package common
 
 import (
@@ -37,7 +37,7 @@ type impexHandler struct {
 	Validator            interfaces.Validator
 }
 
-// NewImpexHandler 导入导出操作接口
+// NewImpexHandler import and export operation interface.
 func NewImpexHandler() ImpexHandler {
 	impexHandlerOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -50,7 +50,7 @@ func NewImpexHandler() ImpexHandler {
 	return impexH
 }
 
-// Export 导出
+// Export export.
 func (impexH *impexHandler) Export(c *gin.Context) {
 	var err error
 	req := &interfaces.ExportConfigReq{}
@@ -78,7 +78,7 @@ func (impexH *impexHandler) Export(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, config)
 }
 
-// Import 导入
+// Import Import.
 func (impexH *impexHandler) Import(c *gin.Context) {
 	var err error
 	req := &interfaces.ImportConfigReq{}
@@ -90,7 +90,7 @@ func (impexH *impexHandler) Import(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 检查Content-Type
+	// Check Content-Type.
 	if c.ContentType() != "multipart/form-data" {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusUnsupportedMediaType, "Content-Type must be multipart/form-data")
 		rest.ReplyError(c, err)
@@ -111,7 +111,7 @@ func (impexH *impexHandler) Import(c *gin.Context) {
 		return
 	}
 	var fileContent multipart.File
-	// TODO: 检查文件大小
+	// TODO: Check file size.
 	fileContent, err = file.Open()
 	if err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())

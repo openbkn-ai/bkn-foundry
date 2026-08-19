@@ -1,4 +1,4 @@
-// Package impex 导入导出管理模块
+// Package impex import and export management module.
 package impex
 
 import (
@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
@@ -19,6 +18,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/operator"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/toolbox"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 var (
@@ -26,18 +26,18 @@ var (
 	impexManager *componentImpexManager
 )
 
-// 组件导入导出管理
+// Component import and export management.
 type componentImpexManager struct {
 	Logger      interfaces.Logger
 	AuthService interfaces.IAuthorizationService
-	OperatorMgr interfaces.OperatorManager // 新增算子管理
-	ToolboxMgr  interfaces.IToolService    // 新增工具箱管理
-	MCPMgr      interfaces.IMCPService     // 新增MCP管理
-	DBTx        model.DBTx                 // 新增事务支持
+	OperatorMgr interfaces.OperatorManager // Added operator management.
+	ToolboxMgr  interfaces.IToolService    // Added toolbox management.
+	MCPMgr      interfaces.IMCPService     // Added MCP management.
+	DBTx        model.DBTx                 // Added transaction support.
 	Validator   interfaces.Validator
 }
 
-// NewComponentImpexManager 新建组件导入导出管理器
+// NewComponentImpexManager New component import and export manager.
 func NewComponentImpexManager() interfaces.IComponentImpexConfig {
 	mOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -54,9 +54,9 @@ func NewComponentImpexManager() interfaces.IComponentImpexConfig {
 	return impexManager
 }
 
-// ExportConfig 导出组件配置
+// ExportConfig exports component configuration.
 func (m *componentImpexManager) ExportConfig(ctx context.Context, req *interfaces.ExportConfigReq) (data *interfaces.ComponentImpexConfigModel, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	exportReq := &interfaces.ExportReq{
@@ -80,9 +80,9 @@ func (m *componentImpexManager) ExportConfig(ctx context.Context, req *interface
 	return data, nil
 }
 
-// ImportConfig 导入组件配置
+// ImportConfig import component configuration.
 func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *interfaces.ImportConfigReq) (err error) {
-	// 解析数据
+	// Parse data.
 	data := &interfaces.ComponentImpexConfigModel{
 		Operator: &interfaces.OperatorImpexConfig{},
 		Toolbox:  &interfaces.ToolBoxImpexConfig{},
@@ -94,14 +94,14 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "import config failed")
 		return
 	}
-	// 校验数据
+	// Check data.
 	err = m.Validator.ValidatorStruct(ctx, data)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("validate config failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "validate config failed")
 		return
 	}
-	// 检查资源新建权限
+	// Check resource creation permissions.
 	resourceType := convertResourceType(importReq.Type)
 	if resourceType == "" {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "component type not support")
@@ -159,7 +159,7 @@ func (m *componentImpexManager) ImportConfig(ctx context.Context, importReq *int
 	return
 }
 
-// 事务导入
+// Transaction import.
 func (m *componentImpexManager) importConfigWithTx(ctx context.Context, compType interfaces.ComponentType,
 	data *interfaces.ComponentImpexConfigModel, mode interfaces.ImportType, userID string) (err error) {
 	tx, err := m.DBTx.GetTx(ctx)
@@ -189,7 +189,7 @@ func (m *componentImpexManager) importConfigWithTx(ctx context.Context, compType
 	return
 }
 
-// 组件和资源类型转换
+// Component and resource type conversion.
 func convertResourceType(componentType interfaces.ComponentType) interfaces.AuthResourceType {
 	switch componentType {
 	case interfaces.ComponentTypeOperator:

@@ -9,7 +9,7 @@ import (
 
 //go:generate mockgen -source=skill_release.go -destination=../../mocks/model_skill_release.go -package=mocks
 
-// SkillReleaseDB Skill 当前发布态快照
+// SkillReleaseDB Skill current release status snapshot.
 type SkillReleaseDB struct {
 	ID           int64  `json:"id" db:"f_id"`
 	SkillID      string `json:"skill_id" db:"f_skill_id"`
@@ -32,12 +32,12 @@ type SkillReleaseDB struct {
 	ReleaseDesc  string `json:"release_desc" db:"f_release_desc"`
 }
 
-// GetBizID 获取业务 ID
+// GetBizID Get business ID.
 func (s *SkillReleaseDB) GetBizID() string {
 	return s.SkillID
 }
 
-// ISkillReleaseDB Skill 发布表操作接口
+// ISkillReleaseDB Skill publish table operation interface.
 type ISkillReleaseDB interface {
 	Insert(ctx context.Context, tx *sql.Tx, release *SkillReleaseDB) error
 	UpdateBySkillID(ctx context.Context, tx *sql.Tx, release *SkillReleaseDB) error

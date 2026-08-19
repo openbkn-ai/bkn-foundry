@@ -9,13 +9,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// 冒烟测试用例
+// Smoke test cases.
 type smokeClient struct {
 	baseURL string
 	client  interfaces.HTTPClient
 }
 
-// NewPublicSmokeClient 创建一个新的测试客户端
+// NewPublicSmokeClient creates a new test client.
 func NewPublicSmokeClient(host string) *smokeClient {
 	baseURL := fmt.Sprintf("http://%s/api/agent-operator-integration/v1", host)
 	return &smokeClient{
@@ -32,7 +32,7 @@ func NewPrivateSmokeClient(host string) *smokeClient {
 	}
 }
 
-// Register 注册
+// Register.
 func (s *smokeClient) Register(ctx context.Context, req *interfaces.OperatorRegisterReq, token string) (int, interface{}, error) {
 	url := s.baseURL + "/operator/register"
 	header := map[string]string{}

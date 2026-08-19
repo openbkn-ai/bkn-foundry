@@ -1,6 +1,6 @@
-// Package operator 实现算子操作接口
-// @file index.go 初始化
-// @description: 实现算子操作管理
+// Package operator implements the operator operation interface.
+// @file index.go initialization.
+// @description: Implement operator operation management.
 package operator
 
 import (
@@ -43,7 +43,7 @@ var (
 	om   interfaces.OperatorManager
 )
 
-// NewOperatorManager 算子操作接口
+// NewOperatorManager operator operation interface.
 func NewOperatorManager() interfaces.OperatorManager {
 	once.Do(func() {
 		conf := config.NewConfigLoader()

@@ -14,11 +14,11 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// newGatedPublicEngine 按 rest_public_handler.go 的接线方式注册三条受门禁保护的公开面
-// 路由，并模拟 middlewareIntrospectVerify 的产出（公开面标记 + 已校验身份）。
+// newGatedPublicEngine registers three public faces protected by access control according to the wiring method of rest_public_handler.go.
+// route, and emulates the output of middlewareIntrospectVerify (exposed face tag + verified identity).
 //
-// 处理器的其余依赖留空：授权被拒时应当在触达任何业务逻辑之前返回，因此若门禁调用被误删，
-// 请求会继续往下走并因空依赖 panic 或返回非 403，两种情况本用例都会失败。
+// Leave the remaining dependencies of the processor blank: when authorization is denied, it should return before touching any business logic, so if the access control call is accidentally deleted,
+// The request will continue to go down and panic due to empty dependencies or return a non-403. In both cases, this use case will fail.
 func newGatedPublicEngine(authService interfaces.IAuthorizationService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -42,11 +42,11 @@ func newGatedPublicEngine(authService interfaces.IAuthorizationService) *gin.Eng
 	return engine
 }
 
-// TestGatedPublicRoutesRejectUnauthorized 守住门禁的接线点。
+// TestGatedPublicRoutesRejectUnauthorized Guards the gated wiring points.
 //
-// authz_test.go 只覆盖了 requireOperatorTypePermission 这个辅助函数本身；若有人重构
-// proxy.go / ai_generation.go 时删掉了 handler 里的那行调用，那些用例仍会全绿。本用例
-// 走完整的 gin 路由，因此调用点被撤掉时会立刻失败。
+// authz_test.go only covers the requireOperatorTypePermission auxiliary function itself; if someone refactors.
+// When proxy.go / ai_generation.go deletes the call line in handler, those use cases will still be all green. This use case.
+// Takes the full gin route, so it will fail immediately when the call point is removed.
 func TestGatedPublicRoutesRejectUnauthorized(t *testing.T) {
 	type route struct {
 		method string
@@ -97,7 +97,7 @@ func TestGatedPublicRoutesRejectUnauthorized(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		engine.ServeHTTP(recorder, req)
 
-		// 若门禁排在 ShouldBindJSON 之后，这里会是 400 而不是 403。
+		// If the access control comes after ShouldBindJSON, this will be 400 instead of 403.
 		So(recorder.Code, ShouldEqual, http.StatusForbidden)
 	})
 }

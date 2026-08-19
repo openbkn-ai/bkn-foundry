@@ -70,7 +70,7 @@ class CreateUser:
 
     def CreateOrganization(self, orgName):
         '''
-        创建组织
+        Create an organization.
         '''
         addorginfo = ncTAddOrgParam()
         addorginfo.orgName = orgName
@@ -86,7 +86,7 @@ class CreateUser:
 
     def AddDepartment(self, parentId, departName):
         '''
-        新建部门
+        Create new department.
         '''
         adddepartinfo = ncTAddDepartParam()
         adddepartinfo.parentId = parentId
@@ -104,7 +104,7 @@ class CreateUser:
 
     def AddUser(self, loginName, departmentIds, org_id):
         '''
-        新建用户
+        Create new user.
         '''
         with tclients.TClient('ShareMgnt', self.sharemgnt_ip, timeout_s=1800) as client:
             userInfo = ncTUsrmUserInfo(loginName=loginName,
@@ -127,7 +127,7 @@ class CreateUser:
 
     # def AddCustomDocLib(self, admin_token, userid, name):
     #     '''
-    #     创建自定义文档库
+    # Create a custom document library.
     #     '''
     #     req_url = 'https://%s/api/efast/v1/doc-lib/custom' % self.host
     #     owners = [{"id": userid, "type": "user"}]

@@ -4,25 +4,25 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-// ObjectToJSON 将对象转换为JSON字符串
+// ObjectToJSON converts objects to JSON strings.
 func ObjectToJSON(obj interface{}) string {
 	jsonBytes, _ := jsoniter.Marshal(obj)
 	return string(jsonBytes)
 }
 
-// ObjectToByte 将对象转换为字节数组
+// ObjectToByte converts an object to a byte array.
 func ObjectToByte(obj interface{}) []byte {
 	jsonBytes, _ := jsoniter.Marshal(obj)
 	return jsonBytes
 }
 
-// SubtractStrings 返回list1中不包含list2元素的差集（保留list1原始顺序）
+// SubtractStrings returns the difference set that does not contain list2 elements in list1 (retains the original order of list1)
 func SubtractStrings(list1, list2 []string) []string {
 	excludeSet := make(map[string]struct{})
 	for _, s := range list2 {
 		excludeSet[s] = struct{}{}
 	}
-	// 过滤保留不在排除集合中的元素
+	// Filter to keep elements not in the excluded set.
 	var result []string
 	for _, s := range list1 {
 		if _, exists := excludeSet[s]; !exists {
@@ -32,9 +32,9 @@ func SubtractStrings(list1, list2 []string) []string {
 	return result
 }
 
-// UniqueStrings 去重函数
+// UniqueStrings deduplication function.
 func UniqueStrings(input []string) []string {
-	// 创建一个映射来存储唯一的字符串
+	// Create a map to store unique strings.
 	uniqueMap := make(map[string]struct{})
 	var uniqueList []string
 
@@ -43,29 +43,29 @@ func UniqueStrings(input []string) []string {
 			if str == "" {
 				continue
 			}
-			uniqueMap[str] = struct{}{}          // 将字符串标记为已存在
-			uniqueList = append(uniqueList, str) // 添加到结果列表
+			uniqueMap[str] = struct{}{}          // Mark a string as existing.
+			uniqueList = append(uniqueList, str) // Add to results list.
 		}
 	}
 
 	return uniqueList
 }
 
-// StringToObject 将JSON字符串转换为对象
+// StringToObject converts JSON string to object.
 func StringToObject(jsonStr string, obj interface{}) error {
 	err := jsoniter.Unmarshal([]byte(jsonStr), obj)
 	return err
 }
 
-// CompareStringSliceLists 比较两个字符串切片列表，返回不同的元素
+// CompareStringSliceLists compares two string slice lists and returns different elements.
 func CompareStringSliceLists(list1, list2 []string) []string {
 	var result []string
-	// 创建一个映射来存储list1中的元素
+	// Create a map to store the elements in list1.
 	map1 := make(map[string]bool)
 	for _, item := range list1 {
 		map1[item] = true
 	}
-	// 检查list2中的元素是否存在于map1中
+	// Check if the element in list2 exists in map1.
 	for _, item := range list2 {
 		if !map1[item] {
 			result = append(result, item)
@@ -74,17 +74,17 @@ func CompareStringSliceLists(list1, list2 []string) []string {
 	return result
 }
 
-// FindMissingElements 找出list2中缺少的list1元素（假设list2是list1的子集）
+// FindMissingElements finds the missing list1 elements in list2 (assuming list2 is a subset of list1)
 func FindMissingElements(list1, list2 []string) []string {
-	// 创建存在映射表
+	// Create an existence mapping table.
 	present := make(map[string]bool)
 	for _, item := range list2 {
 		present[item] = true
 	}
 
-	// 检查并收集缺失元素
+	// Check and collect missing elements.
 	var missing []string
-	seen := make(map[string]bool) // 用于结果去重
+	seen := make(map[string]bool) // Used to deduplicate results.
 	for _, item := range list1 {
 		if !present[item] && !seen[item] {
 			missing = append(missing, item)
@@ -94,7 +94,7 @@ func FindMissingElements(list1, list2 []string) []string {
 	return missing
 }
 
-// GetDuplicateStrings 获取字符串列表中重复的元素并返回
+// GetDuplicateStrings gets the duplicate elements in the string list and returns.
 func GetDuplicateStrings(strings []string) []string {
 	seen := make(map[string]bool)
 	duplicates := make(map[string]bool)

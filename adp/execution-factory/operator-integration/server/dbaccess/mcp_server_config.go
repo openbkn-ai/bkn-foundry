@@ -7,13 +7,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 type mcpServerConfigDB struct {
@@ -29,11 +29,11 @@ var (
 )
 
 const (
-	// tbMCPServerConfig MCP Server配置表名
+	// tbMCPServerConfig MCP Server configuration table name.
 	tbMCPServerConfig = "t_mcp_server_config"
 )
 
-// NewMCPServerConfigDBSingleton 创建MCP Server配置数据库访问对象单例
+// NewMCPServerConfigDBSingleton creates an MCP Server configuration database access object singleton.
 func NewMCPServerConfigDBSingleton() model.DBMCPServerConfig {
 	confLoader := config.NewConfigLoader()
 	dbPool := db.NewDBPool()
@@ -41,7 +41,7 @@ func NewMCPServerConfigDBSingleton() model.DBMCPServerConfig {
 	logger := confLoader.GetLogger()
 
 	mcOnce.Do(func() {
-		// 使用基本的ORM实例，不包含日志功能
+		// Use a basic ORM instance, no logging functionality included.
 		orm := ormhelper.New(dbPool, dbName)
 
 		mc = &mcpServerConfigDB{
@@ -54,7 +54,7 @@ func NewMCPServerConfigDBSingleton() model.DBMCPServerConfig {
 	return mc
 }
 
-// Insert 插入MCP Server配置
+// Insert Insert MCP Server configuration.
 func (m *mcpServerConfigDB) Insert(ctx context.Context, tx *sql.Tx, config *model.MCPServerConfigDB) (id string, err error) {
 	now := time.Now().UnixNano()
 	MCPID := uuid.New().String()
@@ -62,7 +62,7 @@ func (m *mcpServerConfigDB) Insert(ctx context.Context, tx *sql.Tx, config *mode
 		MCPID = config.MCPID
 	}
 
-	// 默认版本号为1
+	// The default version number is 1.
 	if config.Version == 0 {
 		config.Version = 1
 	}
@@ -75,7 +75,7 @@ func (m *mcpServerConfigDB) Insert(ctx context.Context, tx *sql.Tx, config *mode
 		orm = m.orm.WithTx(tx)
 	}
 
-	// 使用ORM Helper插入数据
+	// Insert data using ORM Helper.
 	_, err = orm.Insert().Into(tbMCPServerConfig).Values(map[string]interface{}{
 		"f_mcp_id":        config.MCPID,
 		"f_name":          config.Name,
@@ -104,7 +104,7 @@ func (m *mcpServerConfigDB) Insert(ctx context.Context, tx *sql.Tx, config *mode
 	return config.MCPID, nil
 }
 
-// SelectByID 根据ID查询MCP Server配置
+// SelectByID queries MCP Server configuration based on ID.
 func (m *mcpServerConfigDB) SelectByID(ctx context.Context, tx *sql.Tx, mcpID string) (config *model.MCPServerConfigDB, err error) {
 	config = &model.MCPServerConfigDB{}
 
@@ -123,7 +123,7 @@ func (m *mcpServerConfigDB) SelectByID(ctx context.Context, tx *sql.Tx, mcpID st
 	return config, nil
 }
 
-// UpdateByID 根据ID更新MCP Server配置
+// UpdateByID updates MCP Server configuration based on ID.
 func (m *mcpServerConfigDB) UpdateByID(ctx context.Context, tx *sql.Tx, config *model.MCPServerConfigDB) error {
 	config.UpdateTime = time.Now().UnixNano()
 
@@ -151,7 +151,7 @@ func (m *mcpServerConfigDB) UpdateByID(ctx context.Context, tx *sql.Tx, config *
 	return err
 }
 
-// UpdateStatus 更新MCP Server配置状态
+// UpdateStatus updates MCP Server configuration status.
 func (m *mcpServerConfigDB) UpdateStatus(ctx context.Context, tx *sql.Tx, mcpID, status, updateUser string, version int) error {
 	orm := m.orm
 	if tx != nil {
@@ -166,7 +166,7 @@ func (m *mcpServerConfigDB) UpdateStatus(ctx context.Context, tx *sql.Tx, mcpID,
 	return err
 }
 
-// DeleteByID 根据ID删除MCP Server配置
+// DeleteByID Delete MCP Server configuration based on ID.
 func (m *mcpServerConfigDB) DeleteByID(ctx context.Context, tx *sql.Tx, mcpID string) error {
 	orm := m.orm
 	if tx != nil {
@@ -177,7 +177,7 @@ func (m *mcpServerConfigDB) DeleteByID(ctx context.Context, tx *sql.Tx, mcpID st
 	return err
 }
 
-// BatchDelete 批量删除MCP Server配置
+// BatchDelete Batch delete MCP Server configuration.
 func (m *mcpServerConfigDB) BatchDelete(ctx context.Context, tx *sql.Tx, ids []string) error {
 	orm := m.orm
 	if tx != nil {
@@ -187,14 +187,14 @@ func (m *mcpServerConfigDB) BatchDelete(ctx context.Context, tx *sql.Tx, ids []s
 	return err
 }
 
-// SelectListPage 分页查询MCP Server配置列表
+// SelectListPage queries the MCP Server configuration list with pagination.
 func (m *mcpServerConfigDB) SelectListPage(ctx context.Context, tx *sql.Tx, filter map[string]interface{}, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (configList []*model.MCPServerConfigDB, err error) {
 	query := m.orm.Select().From(tbMCPServerConfig)
 	query = m.applyFilterConditions(query, filter)
 	if cursor != nil {
 		query = query.Cursor(cursor)
 	}
-	// 处理排序和分页
+	// Handle sorting and pagination.
 	query = query.Sort(sort)
 	if filter["all"] == nil || filter["all"] == false {
 		pageSize, ok := filter["limit"].(int)
@@ -206,13 +206,13 @@ func (m *mcpServerConfigDB) SelectListPage(ctx context.Context, tx *sql.Tx, filt
 			query.Offset(offset)
 		}
 	}
-	// 执行查询
+	// Execute query.
 	configList = []*model.MCPServerConfigDB{}
 	err = query.Get(ctx, &configList)
 	return configList, err
 }
 
-// SelectByName 根据名称查询MCP Server配置
+// SelectByName Query MCP Server configuration based on name.
 func (m *mcpServerConfigDB) SelectByName(ctx context.Context, tx *sql.Tx, name string, status []string) (config *model.MCPServerConfigDB, err error) {
 	config = &model.MCPServerConfigDB{}
 
@@ -235,7 +235,7 @@ func (m *mcpServerConfigDB) SelectByName(ctx context.Context, tx *sql.Tx, name s
 	return config, nil
 }
 
-// CountByWhereClause 根据条件统计数量
+// CountByWhereClause counts quantities based on conditions.
 func (m *mcpServerConfigDB) CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (count int64, err error) {
 	orm := m.orm
 	if tx != nil {
@@ -249,12 +249,12 @@ func (m *mcpServerConfigDB) CountByWhereClause(ctx context.Context, tx *sql.Tx, 
 	return count, err
 }
 
-// applyFilterConditions 应用过滤条件到查询
+// applyFilterConditions applies filter conditions to the query.
 func (m *mcpServerConfigDB) applyFilterConditions(query *ormhelper.SelectBuilder, filter map[string]interface{}) *ormhelper.SelectBuilder {
 	if filter == nil {
 		return query
 	}
-	// 支持的条件查询
+	// Supported query conditions.
 	if filter["name"] != nil {
 		name := filter["name"].(string)
 		query = query.WhereLike("f_name", "%"+name+"%")
@@ -292,7 +292,7 @@ func (m *mcpServerConfigDB) applyFilterConditions(query *ormhelper.SelectBuilder
 	return query
 }
 
-// SelectByIDs 根据ID列表查询MCP Server配置列表
+// SelectByIDs queries the MCP Server configuration list based on the ID list.
 func (m *mcpServerConfigDB) SelectByMCPIDs(ctx context.Context, mcpIDs []string) (configList []*model.MCPServerConfigDB, err error) {
 	orm := m.orm
 	configList = []*model.MCPServerConfigDB{}
@@ -300,7 +300,7 @@ func (m *mcpServerConfigDB) SelectByMCPIDs(ctx context.Context, mcpIDs []string)
 	return configList, err
 }
 
-// SelectListByNamesAndStatus 根据名字及状态批量获取列表
+// SelectListByNamesAndStatus gets lists in batches based on names and statuses.
 func (m *mcpServerConfigDB) SelectListByNamesAndStatus(ctx context.Context, names []string, status ...string) (configList []*model.MCPServerConfigDB, err error) {
 	configList = []*model.MCPServerConfigDB{}
 	query := m.orm.Select().From(tbMCPServerConfig).WhereIn("f_name", utils.SliceToInterface(names)...)

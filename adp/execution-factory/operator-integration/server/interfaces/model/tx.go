@@ -1,6 +1,6 @@
-// Package model 定义数据库操作接口
+// Package model defines database operation interface.
 // @file tx.go
-// @description: 定义数据库事务操作接口
+// @description: Define database transaction operation interface.
 package model
 
 //go:generate mockgen -source=tx.go -destination=../../mocks/model_tx.go -package=mocks

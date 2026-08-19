@@ -39,22 +39,22 @@ func NewManagementHandlerWithService(service sandbox.SandboxManagementService) M
 	return &managementHandler{service: service}
 }
 
-// NewManagementHandlerWithAuth 供测试注入授权服务。
+// NewManagementHandlerWithAuth is used for testing to inject authorization services.
 func NewManagementHandlerWithAuth(service sandbox.SandboxManagementService, authService interfaces.IAuthorizationService) ManagementHandler {
 	return &managementHandler{service: service, authService: authService}
 }
 
-// RegisterPublic 在公开面注册沙箱只读观测接口。
+// RegisterPublic registers the sandbox read-only observation interface on the public side.
 //
-// 这四条接口原本只在 internal-v1 上，而 internal-v1 不校验令牌、身份由 X-Account-ID 头
-// 声明；为了让 Studio 的沙箱运行时页能访问，该前缀被开到了 Ingress（见 #326）。公开面走
-// middlewareIntrospectVerify，可拿到经校验的真实身份，再叠加超管判定收口。
+// These four interfaces were originally only on internal-v1, and internal-v1 does not verify tokens, and the identity is determined by the X-Account-ID header.
+// Disclaimer; this prefix is ​​opened to Ingress in order to make it accessible to Studio's sandbox runtime page (see #326). Walk in public.
+// middlewareIntrospectVerify can obtain the verified true identity, and then superimpose the super-control judgment closure.
 //
-// 响应含 user_id、workspace_path、pod_name、python_package_index_url 等跨租户信息，
-// 因此限定超管可见。
+// The response contains cross-tenant information such as user_id, workspace_path, pod_name, python_package_index_url, etc.
+// Therefore limit the visibility of super pipes.
 func (h *managementHandler) RegisterPublic(engine *gin.RouterGroup) {
-	// 惰性构造：授权服务会加载全局配置，放在构造函数里会让只注册内部面的调用方
-	// （含单元测试）也被迫依赖配置文件。路由注册发生在启动期且仅一次，此处无并发。
+	// Lazy construction: The authorization service will load the global configuration, and placing it in the constructor will only register internal callers.
+	// (including unit tests) are also forced to rely on configuration files. Route registration occurs only once during startup, there is no concurrency here.
 	if h.authService == nil {
 		h.authService = auth.NewAuthServiceImpl()
 	}
@@ -65,7 +65,7 @@ func (h *managementHandler) RegisterPublic(engine *gin.RouterGroup) {
 	group.GET("/sessions/:id", h.GetSessionDetail)
 }
 
-// requireAdmin 拦截非超管调用。判定口径与 bkn-safe 的 Enforcer.CanAdmin 一致。
+// requireAdmin intercepts non-supervisory calls. The judgment semantics is consistent with bkn-safe’s Enforcer.CanAdmin.
 func (h *managementHandler) requireAdmin(c *gin.Context) {
 	ctx := c.Request.Context()
 	authContext, ok := common.GetAccountAuthContextFromCtx(ctx)

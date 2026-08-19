@@ -1,6 +1,6 @@
-// Package model 定义数据库操作接口
+// Package model defines database operation interface.
 // @file op_registry.go
-// @description: 定义t_op_registry表操作接口
+// @description: Define t_op_registry table operation interface.
 package model
 
 //go:generate mockgen -source=op_register.go -destination=../../mocks/model_op_register.go -package=mocks
@@ -11,11 +11,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
-// OperatorRegisterDB 算子注册数据库
+// OperatorRegisterDB operator registration database.
 type OperatorRegisterDB struct {
 	ID              int64  `json:"f_id" db:"f_id"`
 	OperatorID      string `json:"f_op_id" db:"f_op_id"`
-	Name            string `json:"f_name" db:"f_name"` // 算子名称
+	Name            string `json:"f_name" db:"f_name"` // Operator name.
 	MetadataVersion string `json:"f_metadata_version" db:"f_metadata_version"`
 	MetadataType    string `json:"f_metadata_type" db:"f_metadata_type"`
 	Status          string `json:"f_status" db:"f_status"`
@@ -30,42 +30,42 @@ type OperatorRegisterDB struct {
 	UpdateUser      string `json:"f_update_user" db:"f_update_user"`
 	UpdateTime      int64  `json:"f_update_time" db:"f_update_time"`
 	IsInternal      bool   `json:"f_is_internal" db:"f_is_internal"`
-	IsDataSource    bool   `json:"f_is_data_source" db:"f_is_data_source"` // 是否为数据源算子
+	IsDataSource    bool   `json:"f_is_data_source" db:"f_is_data_source"` // Whether it is a data source operator.
 }
 
-// GetBizID 获取业务ID
+// GetBizID Get business ID.
 func (or *OperatorRegisterDB) GetBizID() string {
 	return or.OperatorID
 }
 
-// IOperatorRegisterDB 算子管理数据库
+// IOperatorRegisterDB operator management database.
 type IOperatorRegisterDB interface {
-	// InsertOperator 插入算子
-	// @directUpdate：是否直接更新
+	// InsertOperator insert operator.
+	// @directUpdate: Whether to update directly.
 	InsertOperator(ctx context.Context, tx *sql.Tx, operator *OperatorRegisterDB) (opID string, err error)
-	// SelectByNameAndStatus 根据算子名称获取算子
+	// SelectByNameAndStatus Gets an operator based on its name.
 	SelectByNameAndStatus(ctx context.Context, tx *sql.Tx, name, status string) (has bool, operator *OperatorRegisterDB, err error)
-	// SelectByOperatorIDAndVersion 根据算子ID和版本获取算子
+	// SelectByOperatorIDAndVersion Gets an operator based on operator ID and version.
 	SelectByOperatorIDAndVersion(ctx context.Context, operatorID, version string) (has bool, operator *OperatorRegisterDB, err error)
-	// SelectByOperatorID 根据算子ID
+	// SelectByOperatorID based on operator ID.
 	SelectByOperatorID(ctx context.Context, tx *sql.Tx, operatorID string) (has bool, operator *OperatorRegisterDB, err error)
-	// CountByWhereClause 统计算子数量
+	// CountByWhereClause counts the number of operators.
 	CountByWhereClause(ctx context.Context, conditions map[string]interface{}) (count int64, err error)
-	// SelectListPage 分页查询算子列表
+	// SelectListPage paging query operator list.
 	SelectListPage(ctx context.Context, conditions map[string]interface{}, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (operatorList []*OperatorRegisterDB, err error)
-	// UpdateOperatorStatus 更新算子状态
+	// UpdateOperatorStatus updates operator status.
 	UpdateOperatorStatus(ctx context.Context, tx *sql.Tx, operator *OperatorRegisterDB, userID string) error
-	// UpdateByOperatorID 根据算子ID和版本更新算子
+	// UpdateByOperatorID updates the operator based on the operator ID and version.
 	UpdateByOperatorID(ctx context.Context, tx *sql.Tx, operator *OperatorRegisterDB) error
-	// UpdateNameByOperatorID 根据算子ID更新算子名称
+	// UpdateNameByOperatorID updates the operator name based on the operator ID.
 	UpdateNameByOperatorID(ctx context.Context, tx *sql.Tx, operatorID, name string, updateUser string) error
-	// DeleteByOperatorID 根据算子ID
+	// DeleteByOperatorID based on operator ID.
 	DeleteByOperatorID(ctx context.Context, tx *sql.Tx, operatorID string) error
 	SelectByOperatorIDs(ctx context.Context, operatorIDs []string) (operatorList []*OperatorRegisterDB, err error)
-	// SelectListByNamesAndStatus 根据算子名称和状态获取算子
+	// SelectListByNamesAndStatus Gets an operator based on its name and status.
 	SelectListByNamesAndStatus(ctx context.Context, names []string, status string) (operatorList []*OperatorRegisterDB, err error)
-	// // CountByWhereClauseAndIDs 统计算子数量
+	// // CountByWhereClauseAndIDs counts the number of operators.
 	// CountByWhereClauseAndIDs(ctx context.Context, conditions map[string]interface{}, operatorIDs []string) (count int64, err error)
-	// // SelectListPageByIDs 基于IN分页查询算子列表
+	// // SelectListPageByIDs query operator list based on IN paging.
 	// SelectListPageByIDs(ctx context.Context, pageSize, offset int, conditions map[string]interface{}, operatorIDs []string, orderBy, sortOrder string) (operatorList []*OperatorRegisterDB, err error)
 }

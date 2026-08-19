@@ -14,7 +14,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// 测试API元数据解析
+// Test API metadata parsing.
 func TestSmokeJSONAPIAnalysis(t *testing.T) {
 	Convey("TestSmokeJSONAPIAnalysis:测试Json API文档解析", t, func() {
 		localPath := "../../tests/file/json/full_text_subdoc.json"
@@ -56,11 +56,11 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 		Logger: logger.DefaultLogger(),
 	}
 	type apiAnalysisTestCase struct {
-		Name        string // 测试名称
-		LocalPath   string // 本地文件路径
-		Content     []byte // 文件内容
-		Code        string // 错误码关键字
-		Description string // 错误描述关键字
+		Name        string // test name.
+		LocalPath   string // local file path.
+		Content     []byte // File content.
+		Code        string // Error code keyword.
+		Description string // Error description keyword.
 	}
 
 	testcases := []apiAnalysisTestCase{
@@ -174,7 +174,7 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 }
 
 // func TestMUSTObjectErrorHandling(t *testing.T) {
-// 	Convey("测试MUST be an object类型错误处理", t, func() {
+// Convey("Test MUST be an object type error handling", t, func() {.
 // 		ctx := context.Background()
 
 // 		testCases := []struct {
@@ -184,31 +184,31 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 // 			expectedParams []interface{}
 // 		}{
 // 			{
-// 				name:           "参数必须是对象类型",
+// name: "Parameter must be of object type",
 // 				errorString:    `invalid parameter 'id': value MUST be an object`,
 // 				expectedCode:   myErr.ErrExtOpenAPIInvalidParameter,
 // 				expectedParams: []interface{}{"id"},
 // 			},
 // 			{
-// 				name:           "响应必须是对象类型",
+// name: "Response must be of type object",
 // 				errorString:    `invalid response '200': value MUST be an object`,
 // 				expectedCode:   myErr.ErrExtOpenAPIInvalidResponseDefinition,
 // 				expectedParams: []interface{}{"200"},
 // 			},
 // 			{
-// 				name:           "Schema必须是对象类型",
+// name: "Schema must be of object type",
 // 				errorString:    `invalid schema 'User': value MUST be an object`,
 // 				expectedCode:   myErr.ErrExtOpenAPIInvalidSchemaType,
 // 				expectedParams: []interface{}{"User"},
 // 			},
 // 			{
-// 				name:           "带空格的参数名",
+// name: "Parameter name with spaces",
 // 				errorString:    `invalid parameter 'user id': value MUST be an object`,
 // 				expectedCode:   myErr.ErrExtOpenAPIInvalidParameter,
 // 				expectedParams: []interface{}{"user id"},
 // 			},
 // 			{
-// 				name:           "带特殊字符的响应名",
+// name: "Response name with special characters",
 // 				errorString:    `invalid response '4xx': value MUST be an object`,
 // 				expectedCode:   myErr.ErrExtOpenAPIInvalidResponseDefinition,
 // 				expectedParams: []interface{}{"4xx"},
@@ -217,14 +217,14 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 
 // 		for _, tc := range testCases {
 // 			Convey(tc.name, func() {
-// 				// 创建模拟错误
+// //Create simulated error.
 // 				mockErr := &myErr.HTTPError{
 // 					HTTPCode:    http.StatusBadRequest,
 // 					Code:        tc.expectedCode.String(),
 // 					Description: tc.errorString,
 // 				}
 
-// 				// 解析验证错误
+// // Parse validation errors.
 // 				httpErr := parseOpenAPIValidationError(ctx, mockErr)
 
 // 				So(httpErr, ShouldNotBeNil)
@@ -233,44 +233,44 @@ func TestInvalidAPIAnalysis(t *testing.T) {
 // 			})
 // 		}
 
-// 		Convey("测试不匹配的MUST错误", func() {
-// 			// 测试不包含MUST be an object的错误
+// Convey("Test mismatched MUST error", func() {.
+// // Test for errors that do not contain MUST be an object.
 // 			mockErr := fmt.Errorf(`invalid parameter 'id': value must be string`)
 // 			httpErr := parseOpenAPIValidationError(ctx, mockErr)
 
 // 			So(httpErr, ShouldNotBeNil)
-// 			// 应该回退到默认的错误处理
+// // Should fall back to default error handling.
 // 			So(httpErr.Code, ShouldEqual, myErr.ErrExtOpenAPIInvalidParameter)
 // 		})
 
-// 		Convey("测试正则表达式边界情况", func() {
+// Convey("Testing regular expression edge cases", func() {.
 // 			testCases := []struct {
 // 				name        string
 // 				errorString string
 // 				shouldMatch bool
 // 			}{
 // 				{
-// 					name:        "标准格式",
+// name: "standard format",
 // 					errorString: `invalid parameter 'id': value MUST be an object`,
 // 					shouldMatch: true,
 // 				},
 // 				{
-// 					name:        "带额外空格",
+// name: "With extra spaces",
 // 					errorString: `invalid parameter  'id'  :  value  MUST  be  an  object`,
 // 					shouldMatch: true,
 // 				},
 // 				{
-// 					name:        "单引号",
+// name: "single quote",
 // 					errorString: `invalid parameter "id": value MUST be an object`,
 // 					shouldMatch: true,
 // 				},
 // 				{
-// 					name:        "不包含MUST",
+// name: "Does not contain MUST",
 // 					errorString: `invalid parameter 'id': value should be an object`,
 // 					shouldMatch: false,
 // 				},
 // 				{
-// 					name:        "不包含object",
+// name: "does not contain object",
 // 					errorString: `invalid parameter 'id': value MUST be a string`,
 // 					shouldMatch: false,
 // 				},

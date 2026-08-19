@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -16,20 +15,21 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// GetOperatorInfoByOperatorID 根据算子ID或版本获取算子(外部接口) -- 查询算子详情
+// GetOperatorInfoByOperatorID Gets an operator based on the operator ID or version (external interface) -- Query operator details.
 func (m *operatorManager) GetOperatorInfoByOperatorID(ctx context.Context, req *interfaces.GetOperatorInfoByOperatorIDReq) (result *interfaces.OperatorDataInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 获取算子信息
+	// Get operator information.
 	operator, metadataDB, err := m.getOperatorRegisterInfo(ctx, req.OperatorID)
 	if err != nil {
 		return
 	}
 	if common.IsPublicAPIFromCtx(ctx) {
-		// 检查查看权限
+		// Check viewing permissions.
 		var accessor *interfaces.AuthAccessor
 		accessor, err = m.AuthService.GetAccessor(ctx, req.UserID)
 		if err != nil {
@@ -55,10 +55,10 @@ func (m *operatorManager) GetOperatorInfoByOperatorID(ctx context.Context, req *
 	return
 }
 
-// getOperatorInfo 获取算子信息
+// getOperatorInfo gets operator information.
 func (m *operatorManager) getOperatorRegisterInfo(ctx context.Context, operatorID string) (operator *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, err error) {
-	// 查询算子信息
+	// Query operator information.
 	has, operator, err := m.DBOperatorManager.SelectByOperatorID(ctx, nil, operatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select operator failed, OperatorID: %s, err: %v", operatorID, err)
@@ -69,7 +69,7 @@ func (m *operatorManager) getOperatorRegisterInfo(ctx context.Context, operatorI
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtOperatorNotFound, fmt.Sprintf("operator not found, OperatorID: %s", operatorID))
 		return
 	}
-	// 查询算子元数据信息
+	// Query operator metadata information.
 	metadataDB, err = m.MetadataService.GetMetadataByVersion(ctx, interfaces.MetadataType(operator.MetadataType), operator.MetadataVersion)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select metadata failed, OperatorID: %s, Version: %s, err: %v", err)
@@ -79,8 +79,8 @@ func (m *operatorManager) getOperatorRegisterInfo(ctx context.Context, operatorI
 	return
 }
 
-// GetOperatorNamesByIDs 按算子ID批量取名(轻量只读，复用 SelectByOperatorIDs；不存在的ID略过)
-// 公开面按查看权限过滤：无权限的ID与不存在的ID一样静默略过。
+// GetOperatorNamesByIDs Batch names based on operator IDs (lightweight read-only, reuse SelectByOperatorIDs; non-existing IDs are skipped)
+// The public page is filtered by viewing permissions: IDs without permissions are silently ignored like IDs that do not exist.
 func (m *operatorManager) GetOperatorNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -108,9 +108,9 @@ func (m *operatorManager) GetOperatorNamesByIDs(ctx context.Context, ids []strin
 	return
 }
 
-// GetOperatorQueryPage 获取算子列表
+// GetOperatorQueryPage gets the operator list.
 func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfaces.PageQueryRequest) (result *interfaces.PageQueryResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	result = &interfaces.PageQueryResponse{
@@ -130,7 +130,7 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 		result.Data = []*interfaces.OperatorDataInfo{}
 		return
 	}
-	// 批量遍历
+	// Batch traversal.
 	sourceMap := map[model.SourceType][]string{}
 	var userList []string
 	for _, operator := range operatorList {
@@ -154,16 +154,16 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 	// var userList []string
 	result.Data = []*interfaces.OperatorDataInfo{}
 	for _, operator := range operatorList {
-		// 查询算子元数据信息
+		// Query operator metadata information.
 		var metadataDB interfaces.IMetadataDB
 		var ok bool
 		metadataDB, ok = sourceIDToMetadataMap[operator.MetadataVersion]
 		if !ok {
-			// TODO: 这里需要处理没有元数据的情况,暂时不处理直接跳过
+			// TODO: You need to handle the situation where there is no metadata here. Please skip it without processing it for now.
 			m.Logger.WithContext(ctx).Errorf("metadata not found, query: %v", req)
 			continue
 		}
-		// 组装算子信息结果
+		// Assembly operator information results.
 		var operatorInfo *interfaces.OperatorDataInfo
 		// var userIDs []string
 		_, operatorInfo, err = m.assembleOperatorResult(ctx, operator, metadataDB)
@@ -182,14 +182,14 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 
 func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *interfaces.PageQueryRequest) (
 	authResp *interfaces.QueryResponse[model.OperatorRegisterDB], resourceToBdMap map[string]string, err error) {
-	// 查询算子列表
+	// Query operator list.
 	conditions := map[string]interface{}{}
-	// 将请求参数转换为条件
+	// Convert request parameters into conditions.
 	conditions["all"] = req.All
 	if req.Name != "" {
 		conditions["name"] = req.Name
 	}
-	if req.Category != "" { // 检查分类是否合法
+	if req.Category != "" { // Check whether the classification is legal.
 		if !m.CategoryManager.CheckCategory(req.Category) {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCategoryTypeInvalid, "invalid operator category")
 			return
@@ -209,7 +209,7 @@ func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *inte
 		conditions["is_data_source"] = req.IsDataSource
 	}
 
-	// 构建查询执行器
+	// Build query executor.
 	sortField := sortFieldMap[req.SortBy]
 	sort := &ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
@@ -243,7 +243,7 @@ func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *inte
 			case "f_name":
 				cursor.Value = cursorValue.Name
 			}
-			// 如果使用游标不需要offset
+			// If using a cursor, offset is not required.
 			offset = 0
 		}
 		conditions["limit"] = pageSize
@@ -285,7 +285,7 @@ func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *inte
 		})
 	if common.IsPublicAPIFromCtx(ctx) {
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
-			// 检查查看权限
+			// Check viewing permissions.
 			var accessor *interfaces.AuthAccessor
 			accessor, err = m.AuthService.GetAccessor(newCtx, req.UserID)
 			if err != nil {
@@ -298,7 +298,7 @@ func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *inte
 	return
 }
 
-// 组装算子信息结果
+// Assembly operator information results.
 func (m *operatorManager) assembleOperatorResult(ctx context.Context, operator *model.OperatorRegisterDB, metadataDB interfaces.IMetadataDB) (
 	userIDs []string, result *interfaces.OperatorDataInfo, err error) {
 	executeControl := &interfaces.OperatorExecuteControl{}

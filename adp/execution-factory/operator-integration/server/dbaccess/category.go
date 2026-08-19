@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 type categoryDB struct {
@@ -31,7 +31,7 @@ const (
 	tbCategory = "t_category"
 )
 
-// NewCategoryDBSingleton 创建分类数据库访问对象单例
+// NewCategoryDBSingleton creates a category database access object singleton.
 func NewCategoryDBSingleton() model.DBCategory {
 	confLoader := config.NewConfigLoader()
 	dbPool := db.NewDBPool()
@@ -50,7 +50,7 @@ func NewCategoryDBSingleton() model.DBCategory {
 	return category
 }
 
-// Insert 插入分类
+// Insert insert category.
 func (c *categoryDB) Insert(ctx context.Context, tx *sql.Tx, category *model.CategoryDB) (categoryID string, err error) {
 	now := time.Now().UnixNano()
 
@@ -65,7 +65,7 @@ func (c *categoryDB) Insert(ctx context.Context, tx *sql.Tx, category *model.Cat
 		orm = c.orm.WithTx(tx)
 	}
 
-	// 使用ORM Helper插入数据
+	// Insert data using ORM Helper.
 	_, err = orm.Insert().Into(tbCategory).Values(map[string]interface{}{
 		"f_category_id":   category.CategoryID,
 		"f_category_name": category.CategoryName,
@@ -82,7 +82,7 @@ func (c *categoryDB) Insert(ctx context.Context, tx *sql.Tx, category *model.Cat
 	return category.CategoryID, nil
 }
 
-// UpdateByID 更新分类
+// UpdateByID update classification.
 func (c *categoryDB) UpdateByID(ctx context.Context, tx *sql.Tx, category *model.CategoryDB) error {
 	now := time.Now().UnixNano()
 	category.UpdateTime = now
@@ -101,7 +101,7 @@ func (c *categoryDB) UpdateByID(ctx context.Context, tx *sql.Tx, category *model
 	return err
 }
 
-// SelectList 查询分类列表
+// SelectList Query category list.
 func (c *categoryDB) SelectList(ctx context.Context, tx *sql.Tx) (categoryList []*model.CategoryDB, err error) {
 	orm := c.orm
 	if tx != nil {
@@ -119,7 +119,7 @@ func (c *categoryDB) SelectList(ctx context.Context, tx *sql.Tx) (categoryList [
 	return categoryList, err
 }
 
-// SelectListByCategoryIDOrName 根据分类ID或名称查询分类列表
+// SelectListByCategoryIDOrName Query the category list based on category ID or name.
 func (c *categoryDB) SelectListByCategoryIDOrName(ctx context.Context, tx *sql.Tx, categoryID, categoryName string) (categoryList []*model.CategoryDB, err error) {
 	orm := c.orm
 	if tx != nil {
@@ -140,7 +140,7 @@ func (c *categoryDB) SelectListByCategoryIDOrName(ctx context.Context, tx *sql.T
 	return categoryList, err
 }
 
-// SelectListByCategoryID 根据分类ID查询分类列表
+// SelectListByCategoryID Query the category list based on the category ID.
 func (c *categoryDB) SelectListByCategoryID(ctx context.Context, tx *sql.Tx, categoryID string) (category *model.CategoryDB, err error) {
 	orm := c.orm
 	if tx != nil {
@@ -160,7 +160,7 @@ func (c *categoryDB) SelectListByCategoryID(ctx context.Context, tx *sql.Tx, cat
 	return category, nil
 }
 
-// DeleteByCategoryID 根据分类ID删除分类
+// DeleteByCategoryID Delete a category based on category ID.
 func (c *categoryDB) DeleteByCategoryID(ctx context.Context, tx *sql.Tx, categoryID string) error {
 	orm := c.orm
 	if tx != nil {

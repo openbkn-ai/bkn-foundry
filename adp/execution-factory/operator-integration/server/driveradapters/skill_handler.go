@@ -10,9 +10,9 @@ import (
 )
 
 type SkillRestHandler interface {
-	// RegisterPrivate 注册内部API
+	// RegisterPrivate register internal API.
 	RegisterPrivate(engine *gin.RouterGroup)
-	// RegisterPublic 注册公开API
+	// RegisterPublic Register public API.
 	RegisterPublic(engine *gin.RouterGroup)
 }
 
@@ -37,19 +37,19 @@ func NewSkillRestHandler() SkillRestHandler {
 }
 func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	engine.Use(middlewareBusinessDomain(false, r.businessDomainService))
-	/*市场接口*/
-	// 查询技能市场列表
+	// Market interface.
+	// Query skill market list.
 	engine.GET("/skills/market", r.SkillHandler.QuerySkillMarketList)
-	// 查询技能市场详情
+	// Check skills market details.
 	engine.GET("/skills/market/:skill_id", r.SkillHandler.GetSkillMarketDetail)
-	/*读取接口*/
-	// 查询技能内容
+	// Read interface.
+	// Query skill content.
 	engine.GET("/skills/:skill_id/content", r.SkillHandler.GetSkillContent)
-	// 读取技能文件
+	// Read skill file.
 	engine.POST("/skills/:skill_id/files/read", r.SkillHandler.ReadSkillFile)
-	// 执行技能
+	// executive skills.
 	engine.POST("/skills/:skill_id/execute", r.SkillHandler.ExecuteSkill)
-	/*管理态读接口*/
+	// Management state reading interface.
 	engine.GET("/skills/:skill_id/management/content", r.SkillHandler.GetManagementContent)
 	engine.POST("/skills/:skill_id/management/files/read", r.SkillHandler.ReadManagementFile)
 	engine.GET("/skills/:skill_id/management/download", r.SkillHandler.DownloadManagementSkill)
@@ -57,48 +57,48 @@ func (r *skillRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 
 func (r *skillRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.Use(middlewareBusinessDomain(true, r.businessDomainService))
-	/*管理接口*/
-	// 注册技能
+	// Management interface.
+	// Register skills.
 	engine.POST("/skills", r.SkillHandler.RegisterSkill)
-	// 查询技能列表
+	// Query skill list.
 	engine.GET("/skills", r.SkillHandler.QuerySkillList)
-	// POST /api/agent-operator-integration/v1/skills/names 按技能ID批量取名(前端对象级授权页回显)
+	// POST /api/agent-operator-integration/v1/skills/names Batch names based on skill ID (front-end object-level authorization page echo)
 	engine.POST("/skills/names", r.SkillHandler.QuerySkillNamesByIDs)
-	// 查询技能详情
+	// Query skill details.
 	engine.GET("/skills/:skill_id", r.SkillHandler.GetSkillDetail)
-	// 下载技能
+	// Download skills.
 	engine.GET("/skills/:skill_id/download", r.SkillHandler.DownloadSkill)
-	// 删除技能
+	// Delete skills.
 	engine.DELETE("/skills/:skill_id", r.SkillHandler.DeleteSkill)
-	// 更新状态
+	// update status.
 	engine.PUT("/skills/:skill_id/status", r.SkillHandler.UpdateSkillStatus)
-	// 更新元数据
+	// Update metadata.
 	engine.PUT("/skills/:skill_id/metadata", r.SkillHandler.UpdateSkillMetadata)
-	// 更新技能包
+	// Update skill pack.
 	engine.PUT("/skills/:skill_id/package", r.SkillHandler.UpdateSkillPackage)
-	// 将历史版本回灌到草稿态
+	// Restore historical versions to draft state.
 	engine.POST("/skills/:skill_id/history/republish", r.SkillHandler.RepublishSkillHistory)
-	// 直接发布历史版本
+	// Publish historical version directly.
 	engine.POST("/skills/:skill_id/history/publish", r.SkillHandler.PublishSkillHistory)
-	/*市场接口*/
-	// 查询技能市场列表
+	// Market interface.
+	// Query skill market list.
 	engine.GET("/skills/market", r.SkillHandler.QuerySkillMarketList)
-	// 查询技能市场详情
+	// Check skills market details.
 	engine.GET("/skills/market/:skill_id", r.SkillHandler.GetSkillMarketDetail)
-	/*读取接口*/
-	// 查询技能内容
+	// Read interface.
+	// Query skill content.
 	engine.GET("/skills/:skill_id/content", r.SkillHandler.GetSkillContent)
-	// 读取技能文件
+	// Read skill file.
 	engine.POST("/skills/:skill_id/files/read", r.SkillHandler.ReadSkillFile)
-	// 执行技能
+	// executive skills.
 	engine.POST("/skills/:skill_id/execute", r.SkillHandler.ExecuteSkill)
-	// 查询技能发布历史
+	// Query skill release history.
 	engine.GET("/skills/:skill_id/history", r.SkillHandler.GetSkillReleaseHistory)
-	/*管理态读接口*/
+	// Management state reading interface.
 	engine.GET("/skills/:skill_id/management/content", r.SkillHandler.GetManagementContent)
 	engine.POST("/skills/:skill_id/management/files/read", r.SkillHandler.ReadManagementFile)
 	engine.GET("/skills/:skill_id/management/download", r.SkillHandler.DownloadManagementSkill)
-	/*构建接口*/
+	// Build interface.
 	engine.POST("/skills/index/build", r.SkillHandler.CreateSkillIndexBuildTask)
 	engine.GET("/skills/index/build", r.SkillHandler.QuerySkillIndexBuildTaskList)
 	engine.GET("/skills/index/build/:task_id", r.SkillHandler.GetSkillIndexBuildTask)

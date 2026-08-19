@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -32,7 +32,7 @@ const (
 	tbOutboxMessageTableName = "t_outbox_message"
 )
 
-// NewOutboxMessageDB outbox消息事件表
+// NewOutboxMessageDB outbox message event table.
 func NewOutboxMessageDB() model.IOutboxMessage {
 	outboxMessageOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -49,7 +49,7 @@ func NewOutboxMessageDB() model.IOutboxMessage {
 	return outboxMessage
 }
 
-// Insert 添加消息事件
+// Insert adds message event.
 func (outboxMessage *outboxMessageDB) Insert(ctx context.Context, tx *sql.Tx, message *model.OutboxMessageDB) (eventID string, err error) {
 	if message.EventID == "" {
 		message.EventID = uuid.New().String()
@@ -85,7 +85,7 @@ func (outboxMessage *outboxMessageDB) Insert(ctx context.Context, tx *sql.Tx, me
 	return
 }
 
-// UpdateByEventID 更新消息事件
+// UpdateByEventID update message event.
 func (outboxMessage *outboxMessageDB) UpdateByEventID(ctx context.Context, tx *sql.Tx, message *model.OutboxMessageDB) (err error) {
 	orm := outboxMessage.orm
 	if tx != nil {
@@ -107,7 +107,7 @@ func (outboxMessage *outboxMessageDB) UpdateByEventID(ctx context.Context, tx *s
 	return
 }
 
-// GetByStatus 获取消息事件
+// GetByStatus Gets message events.
 func (outboxMessage *outboxMessageDB) GetByStatus(ctx context.Context, status string, limit int) (messages []*model.OutboxMessageDB, err error) {
 	orm := outboxMessage.orm
 	messages = []*model.OutboxMessageDB{}
@@ -120,7 +120,7 @@ func (outboxMessage *outboxMessageDB) GetByStatus(ctx context.Context, status st
 	return
 }
 
-// DeleteByEventID 删除消息事件
+// DeleteByEventID delete message event.
 func (outboxMessage *outboxMessageDB) DeleteByEventID(ctx context.Context, tx *sql.Tx, eventID string) (err error) {
 	orm := outboxMessage.orm
 	if tx != nil {

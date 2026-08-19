@@ -1,6 +1,6 @@
-// Package drivenadapters 定义驱动适配器
+// Package drivenadapters defines driver adapters.
 // @file hydra.go
-// @description: 实现授权服务接口
+// @description: Implement the authorization service interface.
 package drivenadapters
 
 import (
@@ -31,7 +31,7 @@ var (
 	h    interfaces.Hydra
 )
 
-// Extend 解析拓展信息
+// Extend parses extended information.
 type Extend struct {
 	AccountType string `json:"account_type"`
 	ClientType  string `json:"client_type"`
@@ -42,7 +42,7 @@ type Extend struct {
 	VisitorName string `json:"visitor_name"`
 }
 
-// IntrospectInfo 内省信息
+// IntrospectInfo introspection information.
 type IntrospectInfo struct {
 	Active    bool   `json:"active"`
 	Scope     string `json:"scope"`
@@ -54,7 +54,7 @@ type IntrospectInfo struct {
 
 const introspectURI = "/oauth2/introspect"
 
-// NewHydra 创建授权服务对象
+// NewHydra creates an authorization service object.
 func NewHydra() interfaces.Hydra {
 	if !config.GetAuthEnabled() {
 		return &noopHydra{}
@@ -70,16 +70,16 @@ func NewHydra() interfaces.Hydra {
 	return h
 }
 
-// 获取通用的认证信息
-// 从Header中获取X-Account-Type和X-Account-ID，构建TokenInfo对象
-// 如果X-Account-Type为空，默认设置为AccessorTypeAnonymous
-// 如果X-Account-ID为空，默认设置为空字符串
+// Get common authentication information.
+// Get X-Account-Type and X-Account-ID from Header and build TokenInfo object.
+// If X-Account-Type is empty, the default setting is AccessorTypeAnonymous.
+// If X-Account-ID is empty, the default setting is the empty string.
 
 func (n *noopHydra) GenerateVisitor(c *gin.Context) (info *interfaces.TokenInfo, err error) {
 	xAccountType := c.GetHeader(string(interfaces.HeaderXAccountType))
 	xAccountID := c.GetHeader(string(interfaces.HeaderXAccountID))
 	if xAccountID == "" {
-		// 如果用户未登录，默认设置为管理员
+		// If the user is not logged in, the default is set to Administrator.
 		xAccountID = interfaces.ADMIN_ACCOUNT_ID
 		xAccountType = interfaces.ADMIN_ACCOUNT_TYPE
 	}
@@ -114,7 +114,7 @@ func (h *hydraService) GenerateVisitor(c *gin.Context) (info *interfaces.TokenIn
 	return info, nil
 }
 
-// Introspect token内省
+// Introspect tokenIntrospection.
 func (h *hydraService) Introspect(c *gin.Context) (info *interfaces.TokenInfo, err error) {
 	ctx := c.Request.Context()
 	token := GetToken(c)
@@ -133,48 +133,48 @@ func (h *hydraService) Introspect(c *gin.Context) (info *interfaces.TokenInfo, e
 		return
 	}
 	info = &interfaces.TokenInfo{}
-	// 令牌状态
+	// Token status.
 	info.Active = introspectInfo.Active
 	if !info.Active {
 		err = errors.DefaultHTTPError(ctx, http.StatusUnauthorized, "token is invalid")
 		return
 	}
-	// 访问者ID
+	// Visitor ID.
 	info.VisitorID = introspectInfo.SubID
-	// Scope 权限范围
+	// Scope scope of authority.
 	info.Scope = introspectInfo.Scope
-	// 客户端ID
+	// Client ID.
 	info.ClientID = introspectInfo.ClientID
-	// 客户端凭据模式
+	// Client Credentials Mode.
 	if info.VisitorID == info.ClientID {
 		info.VisitorTyp = interfaces.Business
 		return
 	}
-	// 以下字段 只在非客户端凭据模式时才存在
-	// 访问者类型
+	// The following fields are only present in non-client credentials mode.
+	// Visitor type.
 	info.VisitorTyp = interfaces.VisitorType(introspectInfo.Ext.VisitorType)
 
-	// 匿名用户
+	// anonymous user.
 	if info.VisitorTyp == interfaces.Anonymous {
 		info.PhoneNumber = introspectInfo.Ext.PhoneNumber
 		info.VisitorName = introspectInfo.Ext.VisitorName
 		return
 	}
-	// 实名用户
+	// Real-name user.
 	if info.VisitorTyp == interfaces.RealName {
-		// 登陆IP
+		// Login IP.
 		info.LoginIP = introspectInfo.Ext.LoginIP
-		// 用户名
+		// Username.
 		info.VisitorName = introspectInfo.Ext.VisitorName
-		// 设备ID
+		// Device ID.
 		info.Udid = introspectInfo.Ext.UdID
-		// 登录账号类型
+		// Login account type.
 		info.AccountTyp = interfaces.ReverseAccountTypeMap[introspectInfo.Ext.AccountType]
-		// 设备类型
+		// Device type.
 		info.ClientTyp = interfaces.ReverseClientTypeMap[introspectInfo.Ext.ClientType]
 	}
 	if info.LoginIP == "" {
-		// 若返回IP为空则使用clientIP
+		// If the returned IP is empty, use clientIP.
 		info.LoginIP = c.ClientIP()
 	}
 	info.MAC = c.GetHeader("X-Request-MAC")
@@ -182,8 +182,8 @@ func (h *hydraService) Introspect(c *gin.Context) (info *interfaces.TokenInfo, e
 	return
 }
 
-// GetToken 从请求中提取凭据，依次尝试 Authorization、X-Authorization 两个头，
-// 都为空时回落到 token 查询参数。公开面认证中间件用它判断凭据类型（见 interfaces.AppKeyPrefix）。
+// GetToken extracts the credentials from the request and tries the Authorization and X-Authorization headers in sequence.
+// If both are empty, fall back to the token query parameter. It is used by the public authentication middleware to determine the credential type (see interfaces.AppKeyPrefix).
 func GetToken(c *gin.Context) (token string) {
 	tokenID := c.GetHeader("Authorization")
 	if tokenID == "" {

@@ -4,12 +4,12 @@ import os
 import urllib.parse
 from pathlib import Path
 
-# 从环境变量获取端口，默认为8000
+# Get the port from the environment variable, the default is 8000.
 PORT = int(os.environ.get('PORT', 8000))
 
 class HTMLOnlyHandler(http.server.SimpleHTTPRequestHandler):
     def list_directory(self, path):
-        """自定义目录列表，只显示HTML文件"""
+        """Custom directory list, only display HTML files."""
         try:
             list = os.listdir(path)
         except OSError:
@@ -19,11 +19,11 @@ class HTMLOnlyHandler(http.server.SimpleHTTPRequestHandler):
         list.sort(key=lambda a: a.lower())
         displaypath = urllib.parse.unquote(self.path)
 
-        # 直接发送响应，而不是调用send_head()
+        # Send the response directly instead of calling send_head()
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
         self.end_headers()
-        # 自定义HTML输出
+        # Custom HTML output.
         self.wfile.write(b'<!DOCTYPE html>\n')
         self.wfile.write(b'<meta charset="utf-8">\n')
         self.wfile.write(b'h1 { color: #333; }\n')
@@ -37,22 +37,22 @@ class HTMLOnlyHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(b'<h1>Directory listing for %s</h1>\n' % displaypath.encode('utf-8'))
         self.wfile.write(b'<hr>\n')
         self.wfile.write(b'<table>\n')
-        # 添加返回上级目录链接
+        # Add a link back to the parent directory.
         if displaypath != '/':
             parent_path = os.path.dirname(displaypath.rstrip('/'))
             if parent_path == '':
                 parent_path = '/'
             self.wfile.write(b'<tr><td><a href="%s">Parent Directory</a></td></tr>\n' % parent_path.encode('utf-8'))
-        # 只显示HTML文件和目录
+        # Show only HTML files and directories.
         for name in list:
             fullname = os.path.join(path, name)
             displayname = linkname = name
 
-            # 如果是目录
+            # If it is a directory.
             if os.path.isdir(fullname):
                 self.wfile.write(b'<tr><td><a href="%s/">%s/</a></td></tr>\n' %
                        (urllib.parse.quote(linkname).encode('utf-8'), displayname.encode('utf-8')))
-            # 如果是HTML文件
+            # If it is an HTML file.
             elif name.lower().endswith('.html'):
                 self.wfile.write(b'<tr><td><a href="%s">%s</a></td></tr>\n' %
                        (urllib.parse.quote(linkname).encode('utf-8'), displayname.encode('utf-8')))
@@ -62,32 +62,32 @@ class HTMLOnlyHandler(http.server.SimpleHTTPRequestHandler):
         return None
 
     def translate_path(self, path):
-        """转换路径，确保只能访问指定目录"""
+        """Convert the path to ensure that only the specified directory can be accessed."""
         path = path.split('?',1)[0]
         path = path.split('#',1)[0]
         path = urllib.parse.unquote(path)
 
-        # 移除开头的斜杠
+        # Remove leading slash.
         if path.startswith('/'):
             path = path[1:]
 
-        # 构建完整路径
+        # Build full path.
         path = os.path.join(self.directory, path)
 
-        # 规范化路径
+        # normalized path.
         path = os.path.normpath(path)
 
-        # 确保路径在允许的目录内
+        # Make sure the path is within an allowed directory.
         if not path.startswith(self.directory):
             path = self.directory
 
         return path
 
     def end_headers(self):
-        """添加CORS头部，允许跨域访问"""
+        """Add CORS header to allow cross-domain access."""
         self.send_header('Access-Control-Allow-Origin', '*')
         super().end_headers()
 
-# 启动服务器
+# Start the server.
 Handler = HTMLOnlyHandler
 socketserver.TCPServer(("", PORT), Handler).serve_forever()

@@ -1,6 +1,6 @@
 // Package dbaccess
 // @file api_metadata.go
-// @description: 实现API元数据数据库访问接口
+// @description: Implements API metadata database access interface.
 package dbaccess
 
 import (
@@ -12,11 +12,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +31,7 @@ var (
 	am     model.IAPIMetadataDB
 )
 
-// NewAPIMetadataDB 初始化API元数据DB
+// NewAPIMetadataDB Initialize API metadata DB.
 func NewAPIMetadataDB() model.IAPIMetadataDB {
 	amOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -52,7 +52,7 @@ const tableAPIMetadata = "t_metadata_api"
 var metadataFields = "`f_summary`, `f_version`, `f_description`, " +
 	"`f_path`, `f_svc_url`, `f_method`, `f_api_spec`, `f_create_user`, `f_create_time`,`f_update_user`,`f_update_time`"
 
-// InsertAPIMetadata 插入API元数据
+// InsertAPIMetadata Insert API metadata.
 func (a *apiMetadataDB) InsertAPIMetadata(ctx context.Context, tx *sql.Tx, metadata *model.APIMetadataDB) (version string, err error) {
 	exec := a.dbPool.ExecContext
 	if tx != nil {
@@ -82,7 +82,7 @@ func (a *apiMetadataDB) InsertAPIMetadata(ctx context.Context, tx *sql.Tx, metad
 	return
 }
 
-// InsertAPIMetadatas 批量插入API元数据
+// InsertAPIMetadatas batch insert API metadata.
 func (a *apiMetadataDB) InsertAPIMetadatas(ctx context.Context, tx *sql.Tx, metadatas []*model.APIMetadataDB) (versions []string, err error) {
 	exec := a.dbPool.ExecContext
 	if tx != nil {
@@ -116,7 +116,7 @@ func (a *apiMetadataDB) InsertAPIMetadatas(ctx context.Context, tx *sql.Tx, meta
 	return
 }
 
-// SelectByVersion 根据版本获取API元数据
+// SelectByVersion Gets API metadata based on version.
 func (a *apiMetadataDB) SelectByVersion(ctx context.Context, version string) (has bool, metadata *model.APIMetadataDB, err error) {
 	query := "SELECT `f_summary`, `f_version`, `f_description`, `f_path`, `f_svc_url`, `f_method`, `f_api_spec`, " +
 		"`f_create_user`, `f_create_time`, `f_update_user`, `f_update_time` FROM `%s`.`t_metadata_api` WHERE `f_version` = ?"
@@ -128,7 +128,7 @@ func (a *apiMetadataDB) SelectByVersion(ctx context.Context, version string) (ha
 	return
 }
 
-// UpdateByVersion 根据版本更新API元数据
+// UpdateByVersion updates API metadata based on version.
 func (a *apiMetadataDB) UpdateByVersion(ctx context.Context, tx *sql.Tx, version string, metadata *model.APIMetadataDB) error {
 	exec := a.dbPool.ExecContext
 	if tx != nil {
@@ -166,7 +166,7 @@ func (a *apiMetadataDB) DeleteByVersion(ctx context.Context, tx *sql.Tx, version
 	return err
 }
 
-// DeleteByVersions 根据版本删除API元数据
+// DeleteByVersions Delete API metadata based on version.
 func (a *apiMetadataDB) DeleteByVersions(ctx context.Context, tx *sql.Tx, versions []string) (err error) {
 	exec := a.dbPool.ExecContext
 	if tx != nil {
@@ -191,7 +191,7 @@ func (a *apiMetadataDB) DeleteByVersions(ctx context.Context, tx *sql.Tx, versio
 	return
 }
 
-// SelectListByVersion 查询多个版本
+// SelectListByVersion queries multiple versions.
 func (a *apiMetadataDB) SelectListByVersion(ctx context.Context, versions []string) (list []*model.APIMetadataDB, err error) {
 	orm := a.orm
 	values := []interface{}{}

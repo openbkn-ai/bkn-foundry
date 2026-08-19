@@ -3,15 +3,15 @@ package toolbox
 import (
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// QueryToolBoxPage 查询工具箱分页
+// QueryToolBoxPage query toolbox paging.
 func (h *toolBoxHandler) QueryMarketToolBoxPage(c *gin.Context) {
 	req := &interfaces.QueryMarketToolBoxListReq{}
 	err := c.ShouldBindHeader(req)
@@ -46,7 +46,7 @@ func (h *toolBoxHandler) QueryMarketToolBoxPage(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QueryToolBox 查询工具箱
+// QueryToolBox Query Toolbox.
 func (h *toolBoxHandler) QueryMarketToolBox(c *gin.Context) {
 	req := &interfaces.GetToolBoxReq{}
 	err := c.ShouldBindHeader(req)

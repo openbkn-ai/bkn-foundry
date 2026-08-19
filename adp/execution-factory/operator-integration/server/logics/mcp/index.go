@@ -1,6 +1,6 @@
-// Package mcp 实现MCP Server操作接口
-// @file index.go 初始化
-// @description: 实现MCP Server操作管理
+// Package mcp implements MCP Server operation interface.
+// @file index.go initialization.
+// @description: Implement MCP Server operation management.
 package mcp
 
 import (
@@ -42,7 +42,7 @@ type mcpServiceImpl struct {
 	BusinessDomainService     interfaces.IBusinessDomainService
 }
 
-// NewMCPServiceImpl 初始化MCP服务
+// NewMCPServiceImpl initializes the MCP service.
 func NewMCPServiceImpl() interfaces.IMCPService {
 	mOnce.Do(func() {
 		s := &mcpServiceImpl{

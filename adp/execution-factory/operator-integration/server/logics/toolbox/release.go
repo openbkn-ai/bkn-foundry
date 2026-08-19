@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	infracommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -15,33 +14,34 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// 排序字段与数据库字段映射
+// Sorting field and database field mapping.
 var sortFieldMap = map[string]string{
 	"create_time": "f_create_time",
 	"update_time": "f_update_time",
 	"name":        "f_name",
 }
 
-// GetMarketToolList 获取市场工具列表
+// GetMarketToolList Gets a list of market tools.
 /*
-权限校验：公共访问权限
-查询条件：
-1. 根据工具name、status查询状态
-2. 根据工具箱id，查询全部工具箱信息（已发布的）
-3. 组装信息
+Permission check: public access.
+Query conditions:
+1. Query status by tool name and status.
+2. Query all published toolbox information by toolbox ID.
+3. Assemble information.
 */
 func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces.QueryMarketToolListReq) (resp *interfaces.QueryMarketToolListResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 权限校验
+	// Permission verification.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
 	}
-	// 构造查询条件
+	// Construct query conditions.
 	filter := make(map[string]interface{})
 	filter["all"] = true
 	if req.ToolName != "" {
@@ -52,7 +52,7 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 	}
 	filter["sort_by"] = req.SortBy
 	filter["sort_order"] = req.SortOrder
-	// 查询工具列表
+	// Query tool list.
 	tools, err := s.ToolDB.SelectToolList(ctx, filter)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool list failed, err: %v", err)
@@ -69,7 +69,7 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		}
 		return
 	}
-	// 组装响应数据
+	// Assemble response data.
 	var boxIDs []string
 	toolBoxToolInfo := map[string][]*model.ToolDB{}
 	for _, tool := range tools {
@@ -77,7 +77,7 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		toolBoxToolInfo[tool.BoxID] = append(toolBoxToolInfo[tool.BoxID], tool)
 	}
 
-	// 获取业务域下有权限的资源Id
+	// Get the authorized resource ID under the business domain.
 	businessDomainStr, _ := infracommon.GetBusinessDomainFromCtx(ctx)
 	businessDomainIds := strings.Split(businessDomainStr, ",")
 	resourceToBdMap, err := s.BusinessDomainService.BatchResourceList(ctx, businessDomainIds, interfaces.AuthResourceTypeToolBox)
@@ -85,10 +85,10 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		return
 	}
 
-	// 获取工具箱信息
+	// Get toolbox information.
 	authResp, err := auth.SelectListWithAuth(ctx, req.Page, req.PageSize, req.All, func() ([]*model.ToolboxDB, error) {
 		var boxList []*model.ToolboxDB
-		// 分页查询工具箱信息
+		// Query toolbox information by page.
 		for i := 0; i < len(boxIDs); i += interfaces.DefaultBatchSize {
 			end := i + interfaces.DefaultBatchSize
 			if end > len(boxIDs) {
@@ -131,7 +131,7 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		toolBoxInfo.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, toolBox.BoxID, "")
 		userIDs = append(userIDs, toolBox.CreateUser, toolBox.UpdateUser, toolBox.ReleaseUser)
 		var toolInfos []*interfaces.ToolInfo
-		// 收集当前工具箱下工具的信息
+		// Collect information about tools under the current toolbox.
 		for _, toolDB := range toolBoxToolInfo[toolBox.BoxID] {
 			toolInfo, err := s.toolDBToToolInfo(ctx, toolDB)
 			if err != nil {
@@ -145,7 +145,7 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		toolBoxInfo.Tools = append(toolBoxInfo.Tools, toolInfos...)
 		resp.Data = append(resp.Data, toolBoxInfo)
 	}
-	// 获取用户名称
+	// Get user name.
 	userMap, err := s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return
@@ -164,14 +164,14 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 			metadataDB, ok := sourceIDToMetadataMap[toolIDSourceMap[toolInfo.ToolID]]
 			if !ok {
 				s.Logger.WithContext(ctx).Errorf("metadata not found, toolID: %s", toolInfo.ToolID)
-				// 初始化Metadata
+				// Initialize Metadata.
 				toolInfo.MetadataType = interfaces.MetadataType(toolBox.MetadataType)
 				toolInfo.Metadata = metadata.DefaultMetadataInfo(toolInfo.MetadataType)
 				continue
 			}
-			// 若为OpenAPI类型，ServerURL和工具箱配置的boxSvcURL保持一致
+			// If it is an OpenAPI type, the ServerURL must be consistent with the boxSvcURL configured in the toolbox.
 			metadataDB.SetServerURL(toolBox.BoxSvcURL)
-			// 转换为结构体
+			// Convert to structure.
 			toolInfo.MetadataType = interfaces.MetadataType(metadataDB.GetType())
 			toolInfo.Metadata = metadata.MetadataDBToStruct(metadataDB)
 		}
@@ -211,13 +211,13 @@ func filterToolboxResourceIDs(resourceToBdMap map[string]string, authResourceIDs
 	return utils.CalculateIntersection(resourceIDs, authResourceIDs)
 }
 
-// GetReleaseToolBoxInfo 获取发布工具信息
+// GetReleaseToolBoxInfo Get release tool information.
 func (s *ToolServiceImpl) GetReleaseToolBoxInfo(ctx context.Context, req *interfaces.GetReleaseToolBoxInfoReq) (
 	resp []*interfaces.GetReleaseToolBoxInfoResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 参数校验
+	// Parameter verification.
 	boxIDs := strings.Split(req.BoxIDs, ",")
 	if len(boxIDs) == 0 {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, "box_id is nil")
@@ -229,7 +229,7 @@ func (s *ToolServiceImpl) GetReleaseToolBoxInfo(ctx context.Context, req *interf
 		return
 	}
 	resp = []*interfaces.GetReleaseToolBoxInfoResp{}
-	// 权限过滤
+	// Permission filtering.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -264,7 +264,7 @@ func (s *ToolServiceImpl) GetReleaseToolBoxInfo(ctx context.Context, req *interf
 		fieldMap[field] = true
 	}
 	var userIDs []string
-	// 组织数据
+	// Organize data.
 	for _, toolBox := range toolBoxList {
 		info := &interfaces.GetReleaseToolBoxInfoResp{
 			BoxID:        toolBox.BoxID,
@@ -341,20 +341,20 @@ func (s *ToolServiceImpl) getToolBoxAllToolInfo(ctx context.Context, boxDB *mode
 	return
 }
 
-// QueryMarketToolBoxList 获取市场工具列表
+// QueryMarketToolBoxList Gets a list of market tools.
 func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *interfaces.QueryMarketToolBoxListReq) (
 	resp *interfaces.QueryToolBoxListResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 构造查询条件
+	// Construct query conditions.
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
 	if req.BoxName != "" {
 		filter["name"] = req.BoxName
 	}
 	if req.BoxCategory != "" {
-		// 检查分类是否合法
+		// Check whether the classification is legal.
 		if !s.CategoryManager.CheckCategory(req.BoxCategory) {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxCategoryTypeInvalid,
 				fmt.Sprintf(" %s category not found", req.BoxCategory))
@@ -382,7 +382,7 @@ func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *inter
 	if len(toolBoxList) == 0 {
 		return
 	}
-	// 组装工具箱信息结果
+	// Assembly toolbox information results.
 	toolBoxInfoList, err := s.getToolBoxList(ctx, toolBoxList, resourceToBdMap)
 	if err != nil {
 		return
@@ -402,7 +402,7 @@ func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[str
 			},
 		},
 	}
-	// 构建查询执行器
+	// Build query executor.
 	queryTotal := func(newCtx context.Context) (int64, error) {
 		var count int64
 		count, err = s.ToolBoxDB.CountToolBox(newCtx, filter)
@@ -467,7 +467,7 @@ func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[str
 			}
 			return resourceIDs, nil
 		})
-	// 判断是否是外部接口
+	// Determine whether it is an external interface.
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
 			var accessor *interfaces.AuthAccessor

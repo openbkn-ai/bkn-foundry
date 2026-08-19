@@ -1,4 +1,4 @@
-// Package category 算子分类
+// Package category Operator classification.
 package category
 
 import (

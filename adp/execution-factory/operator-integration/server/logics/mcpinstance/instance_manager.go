@@ -4,13 +4,13 @@ import (
 	"context"
 	"time"
 
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance/deployer"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	"github.com/mark3labs/mcp-go/server"
 )
 
-// InstanceManager 实例管理器
+// InstanceManager instance manager.
 type InstanceManager struct {
 	httpDeployer deployer.Deployer
 	sseDeployer  deployer.Deployer
@@ -25,7 +25,7 @@ func newInstanceManager(executor interfaces.IMCPToolExecutor, logger interfaces.
 	}
 }
 
-// Build 创建 MCP 实例
+// Build creates an MCP instance.
 func (m *InstanceManager) Build(ctx context.Context, cfg *interfaces.MCPRuntimeConfig) (*interfaces.MCPServerInstance, error) {
 	now := time.Now()
 	instance := &interfaces.MCPServerInstance{

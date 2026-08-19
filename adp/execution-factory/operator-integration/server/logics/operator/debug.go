@@ -7,7 +7,6 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -15,14 +14,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// DebugOperator 调试接口
+// DebugOperator debugging interface.
 func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.DebugOperatorReq) (resp *interfaces.HTTPResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查算子是否存在
+	// Check if the operator exists.
 	exist, operator, err := m.DBOperatorManager.SelectByOperatorID(ctx, nil, req.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select operator by id failed, err: %v", err)
@@ -34,7 +34,7 @@ func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.Deb
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtOperatorNotFound, "operator not exist")
 		return
 	}
-	// 校验使用权限
+	// Verify usage rights.
 	accessor, err := m.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -45,7 +45,7 @@ func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.Deb
 	}
 	executionMode := operator.ExecutionMode
 	if operator.MetadataVersion != req.Version {
-		// 查询历史记录
+		// Query history.
 		var historyDB *model.OperatorReleaseHistoryDB
 		exist, historyDB, err = m.OpReleaseHistoryDB.SelectByOpIDAndMetdata(ctx, req.OperatorID, req.Version)
 		if err != nil {
@@ -68,7 +68,7 @@ func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.Deb
 		executionMode = releaseDB.ExecutionMode
 	}
 
-	// 检查执行模式
+	// Check execution mode.
 	if executionMode != string(interfaces.ExecutionModeSync) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtOnlySyncModeDebug, fmt.Sprintf("operator execution mode is %s, not supported", operator.ExecutionMode))
 		return
@@ -84,7 +84,7 @@ func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.Deb
 		m.Logger.WithContext(ctx).Warnf("execute operator failed, err: %v", err)
 		return
 	}
-	// 记录日志
+	// logging.
 	go func() {
 		accountAuth, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -105,9 +105,9 @@ func (m *operatorManager) DebugOperator(ctx context.Context, req *interfaces.Deb
 	return
 }
 
-// ExecuteOperator 执行算子
+// ExecuteOperator execution operator.
 func (m *operatorManager) ExecuteOperator(ctx context.Context, req *interfaces.ExecuteOperatorReq) (resp *interfaces.HTTPResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer func() {
 		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
@@ -117,20 +117,20 @@ func (m *operatorManager) ExecuteOperator(ctx context.Context, req *interfaces.E
 		}))
 		oteltrace.EndSpan(ctx, err)
 	}()
-	// 检查算子是否存在
+	// Check if the operator exists.
 	exist, operator, err := m.OpReleaseDB.SelectByOpID(ctx, req.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select release operator by id failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 检查算子状态
+	// Check operator status.
 	if !exist || operator.Status != string(interfaces.BizStatusPublished) {
 		m.Logger.WithContext(ctx).Warnf("release operator not exist or not published, operator_id: %s", req.OperatorID)
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtOperatorNotFound, "release operator not exist or not published")
 		return
 	}
-	// 校验使用权限
+	// Verify usage rights.
 	accessor, err := m.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -140,7 +140,7 @@ func (m *operatorManager) ExecuteOperator(ctx context.Context, req *interfaces.E
 		return
 	}
 	executionMode := operator.ExecutionMode
-	// 检查执行模式
+	// Check execution mode.
 	if executionMode != string(interfaces.ExecutionModeSync) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtOnlySyncModeDebug, fmt.Sprintf("operator execution mode is %s, not supported", operator.ExecutionMode))
 		return
@@ -155,7 +155,7 @@ func (m *operatorManager) ExecuteOperator(ctx context.Context, req *interfaces.E
 	if err != nil {
 		return
 	}
-	// 记录日志
+	// logging.
 	go func() {
 		accountAuth, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -199,7 +199,7 @@ func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, 
 
 func (m *operatorManager) executeOperator(ctx context.Context, operatorID string, reqParam interfaces.HTTPRequestParams,
 	metadataType interfaces.MetadataType, metadataVersion string, timeout int64) (resp *interfaces.HTTPResponse, err error) {
-	// 获取元数据
+	// Get metadata.
 	exists, metadataDB, err := m.MetadataService.CheckMetadataExists(ctx, metadataType, metadataVersion)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select metadata by id failed, err: %v", err)
@@ -210,7 +210,7 @@ func (m *operatorManager) executeOperator(ctx context.Context, operatorID string
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtMetadataNotFound, fmt.Sprintf("metadata not found, type: %s, version: %s", metadataType, metadataVersion))
 		return
 	}
-	// 执行算子
+	// Execution operator.
 	url := fmt.Sprintf("%s%s", metadataDB.GetServerURL(), metadataDB.GetPath())
 	resp, err = m.Proxy.HandlerRequest(ctx, &interfaces.HTTPRequest{
 		ClientID: operatorID,

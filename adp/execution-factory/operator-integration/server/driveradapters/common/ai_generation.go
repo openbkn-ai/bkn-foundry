@@ -19,10 +19,10 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// AIGenerationHandler AI生成处理接口
+// AIGenerationHandler AI generation processing interface.
 type AIGenerationHandler interface {
 	FunctionAIGeneration(c *gin.Context)
-	// GetPromptTemplate 获取指定类型的提示词模板
+	// GetPromptTemplate Gets the prompt word template of the specified type.
 	GetPromptTemplate(c *gin.Context)
 }
 
@@ -38,7 +38,7 @@ var (
 	aiGenerationH           AIGenerationHandler
 )
 
-// NewAIGenerationHandler 创建 AI 生成处理接口实例
+// NewAIGenerationHandler creates an AI generation processing interface instance.
 func NewAIGenerationHandler() AIGenerationHandler {
 	aiGenerationHandlerOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -52,10 +52,10 @@ func NewAIGenerationHandler() AIGenerationHandler {
 	return aiGenerationH
 }
 
-// FunctionAIGeneration 处理函数 AI 生成请求
+// FunctionAIGeneration handles function AI generation requests.
 //
-// 该接口调用大模型生成函数代码并消耗额度，在公开面要求调用方在算子类型上持有 create
-// 权限——与「生成出来的函数最终落地为算子」保持同一口径（见 #345）。
+// This interface calls a large model to generate function code and consume credits. In the public interface, the caller is required to hold create on the operator type.
+// Permissions - Keep the same semantics as "the generated function will eventually be implemented as an operator" (see #345).
 func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
 	if err := requireOperatorTypePermission(c.Request.Context(), h.AuthService,
 		interfaces.AuthOperationTypeCreate); err != nil {
@@ -97,52 +97,52 @@ func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 设置SSE响应头
+	// Set SSE response headers.
 	c.Header("Content-Type", "text/event-stream")
 	c.Header("Cache-Control", "private, no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("Access-Control-Allow-Origin", "*")
 	c.Header("Access-Control-Allow-Headers", "Cache-Control")
 	c.Header("Access-Control-Allow-Credentials", "false")
-	// SSE 响应
+	// SSE response.
 	var finish bool
 	c.Stream(func(w io.Writer) bool {
 		select {
 		case msg, ok := <-messageChan:
 			if !ok {
-				return false // 消息通道已关闭，结束流
+				return false // The message channel has been closed, ending the flow.
 			}
-			// 检查是否为结束标记
+			// Check if it is a closing tag.
 			if isEndMarker(msg) {
-				// 发送SSE结束标记
+				// Send SSE end tag.
 				fmt.Fprintf(w, "%s\n\n", msg)
 				flushIfSupported(w)
 				return false
 			}
 
-			// 转发前对data内数据检查，如果和预期格式不符合直接报错结束流
+			// Check the data in the data before forwarding. If it does not match the expected format, an error will be reported and the flow will end.
 			if strings.HasPrefix(msg, "data:") {
-				content := strings.TrimPrefix(msg, "data:") // 移除"data:"前缀
-				// 结果预期格式
+				content := strings.TrimPrefix(msg, "data:") // Remove "data:" prefix.
+				// Result expected format.
 				result := &interfaces.ChatCompletionResp{}
 				err = utils.StringToObject(content, result)
 				if err != nil {
-					// 提示模型异常，返回错误
+					// Prompt model exception and return error.
 					h.Logger.WithContext(c.Request.Context()).Error(fmt.Sprintf("invalid SSE data format: %s, err: %s", content, err.Error()))
 					err = errors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, errors.ErrExtFunctionAIGenerateModelFailed, fmt.Sprintf("invalid SSE data format: %s, err: %s", content, err.Error()))
 					c.SSEvent("error", utils.ObjectToJSON(err))
-					flushIfSupported(w) // 确保错误消息立即发送
+					flushIfSupported(w) // Ensure error messages are sent immediately.
 					return false
 				}
 				if len(result.Choices) > 0 && result.Choices[0].FinishReason == "stop" {
 					finish = true
 				}
-				// 检查是否有choices
+				// Check if there are choices.
 				if !finish && len(result.Choices) == 0 && result.Model == "" && result.ID == "" && result.Object == "" {
 					h.Logger.WithContext(c.Request.Context()).Error(fmt.Sprintf("invalid SSE data format: %s", content))
 					err = errors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, errors.ErrExtFunctionAIGenerateModelFailed, fmt.Sprintf("invalid SSE data format: %s", content))
 					c.SSEvent("error", utils.ObjectToJSON(err))
-					flushIfSupported(w) // 确保错误消息立即发送
+					flushIfSupported(w) // Ensure error messages are sent immediately.
 					return false
 				}
 			}
@@ -151,11 +151,11 @@ func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
 			return true
 		case err, ok := <-errorChan:
 			if !ok {
-				return false // 错误通道已关闭，结束流
+				return false // Error channel closed, end stream.
 			}
 			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				c.SSEvent("data", " [DONE]")
-				flushIfSupported(w) // 确保最后一条消息立即发送
+				flushIfSupported(w) // Make sure the last message is sent immediately.
 				return false
 			}
 			if err != io.ErrUnexpectedEOF && err != io.EOF {
@@ -166,25 +166,25 @@ func (h *aiGenerationHandler) FunctionAIGeneration(c *gin.Context) {
 					f.Flush()
 				}
 			}
-			return false // 发生错误，结束流
+			return false // An error occurred, ending the stream.
 		case <-c.Request.Context().Done():
-			// 客户端断开连接或请求被取消
+			// Client disconnected or request canceled.
 			h.Logger.WithContext(c.Request.Context()).Info("SSE connection closed by client")
 			return false
 		}
 	})
 }
 
-// flushIfSupported 确保数据立即发送
+// flushIfSupported ensures data is sent immediately.
 func flushIfSupported(w io.Writer) {
 	if flusher, ok := w.(http.Flusher); ok {
 		flusher.Flush()
 	}
 }
 
-// isEndMarker 检查是否为结束标记
+// isEndMarker checks whether it is an end mark.
 func isEndMarker(line string) bool {
-	// 常见的结束标记模式
+	// Common closing tag patterns.
 	endMarkers := []string{
 		"data: [DONE]",
 		"data: [END]",
@@ -202,7 +202,7 @@ func isEndMarker(line string) bool {
 	return false
 }
 
-// GetPromptTemplate 获取指定类型的提示词模板
+// GetPromptTemplate Gets the prompt word template of the specified type.
 func (h *aiGenerationHandler) GetPromptTemplate(c *gin.Context) {
 	if err := requireOperatorTypePermission(c.Request.Context(), h.AuthService,
 		interfaces.AuthOperationTypeCreate); err != nil {

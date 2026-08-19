@@ -12,7 +12,7 @@ import (
 )
 
 func MockPostRequest(url string, headers map[string]string, body io.Reader, handler func(c *gin.Context)) (recorder *httptest.ResponseRecorder) {
-	// 创建一个带有中间件的路由组
+	// Create a routing group with middleware.
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use()
@@ -20,7 +20,7 @@ func MockPostRequest(url string, headers map[string]string, body io.Reader, hand
 		handler(c)
 		c.Next()
 	})
-	// 创建请求并触发中间件
+	// Create a request and trigger middleware.
 	recorder = httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, url, body)
 	for key, value := range headers {
@@ -36,9 +36,9 @@ func MockGetRequest(path string, headers map[string]string, query map[string]int
 	router.Use()
 
 	router.Handle(http.MethodGet, path, func(c *gin.Context) {
-		// 设置路径参数
+		// Set path parameters.
 		for i, param := range pathParams {
-			paramName := strings.Split(path, "/")[i+1][1:] // 提取 :param 格式的参数名
+			paramName := strings.Split(path, "/")[i+1][1:] // Extract parameter names in :param format.
 			c.Params = append(c.Params, gin.Param{Key: paramName, Value: param})
 		}
 		handler(c)
@@ -46,7 +46,7 @@ func MockGetRequest(path string, headers map[string]string, query map[string]int
 	})
 	formattedPath := path
 	for _, param := range pathParams {
-		// 找到第一个占位符的位置（如 :id）
+		// Find the position of the first placeholder (such as :id)
 		start := strings.Index(formattedPath, ":")
 		if start == -1 {
 			break
@@ -57,10 +57,10 @@ func MockGetRequest(path string, headers map[string]string, query map[string]int
 		} else {
 			end += start
 		}
-		// 替换占位符为实际参数
+		// Replace placeholders with actual parameters.
 		formattedPath = formattedPath[:start] + param + formattedPath[end:]
 	}
-	// 构造请求路径（移除了错误的路径拼接）
+	// Construct request path (removed incorrect path splicing)
 	queryString := url.Values{}
 	for key, value := range query {
 		queryString.Add(key, fmt.Sprintf("%v", value))

@@ -5,18 +5,18 @@ nodeSelector: {}
 namespace: openbkn
 moduleName: agent-operator-integration
 
-# bkn-safe authz。authzProvider: "" | "isf" | "shadow" | "bkn-safe"，可回退。
+# bkn-safe authz. authzProvider: "" | "isf" | "shadow" | "bkn-safe", can be rolled back.
 #
-# 默认取 bkn-safe：ISF 已退役，空值会让 selectAuthz 落到 ISF 适配器
-# （authorization_safe.go:283-286），而授权判定在出错时是 fail-closed
-# （decision.go 的 OperationCheckAll 把错误统一转 403），结果是所有鉴权
-# 一律拒绝。deploy/conf/config.yaml 等实际部署配置本就传 bkn-safe，此处
-# 只是让 chart 默认值与之一致，避免直接 helm install 时踩空。
+# The default value is bkn-safe: ISF has been retired. A null value will cause selectAuthz to fall to the ISF adapter.
+# (authorization_safe.go:283-286), and the authorization judgment is fail-closed when an error occurs.
+# (OperationCheckAll of decision.go turns errors to 403), and the result is that all authentication.
+# Always refuse. The actual deployment configuration such as deploy/conf/config.yaml is passed to bkn-safe, here.
+# Just make the chart default value consistent with it to avoid shortfalls when directly helm install.
 bknSafe:
   authzProvider: "bkn-safe"
   url: ""
 
-# 设置为dev则为开发模式.
+# Set to dev for development mode.
 runMode: release
 
 enableSecurityContext: true
@@ -32,7 +32,7 @@ image:
     pullPolicy: IfNotPresent
 
 service:
-  podID: "POD_ID" # 使用PODID作为machineID, 这里填写podID环境变量名
+  podID: "POD_ID" # Use PODID as machineID, fill in the podID environment variable name here.
   name: "agent-operator-integration"
   machineID: ""
 
@@ -42,15 +42,15 @@ service:
       enabled: true
       interface:
         path:
-          # 只暴露公开面。internal-v1 不校验令牌——身份取自调用方自填的 X-Account-ID 头，
-          # 该头缺失时 hydra.go 会把调用者降级为硬编码管理员——一旦挂上 Ingress，其下约
-          # 40 条写接口（function/exec、impex 导入等）即可从集群外无凭据调用。
-          # 集群内调用方（bkn-agent、agent-retrieval）走 ClusterIP agent-operator-integration:9000，
-          # 不经 Ingress，不受影响。见 #326。
+          # Only the public side is exposed. internal-v1 does not verify the token - the identity is taken from the X-Account-ID header filled in by the caller,
+          # When this header is missing, hydra.go will demote the caller to a hardcoded administrator - once Ingress is mounted, its next.
+          # 40 write interfaces (function/exec, impex import, etc.) can be called from outside the cluster without credentials.
+          # The caller (bkn-agent, agent-retrieval) in the cluster goes to ClusterIP agent-operator-integration:9000,
+          # Without Ingress, it will not be affected. See #326.
           - /api/agent-operator-integration/v1
-          # 能力面：原 capabilities-lab 独立服务的 Ingress 路径。该服务已合并
-          # 进本服务（其 chart 随之删除），路径不变，改由本服务承接。该面同样是
-          # 公开面（走令牌校验），与 internal-v1 的收口（#326 第 3 步）不冲突。
+          # Capability plane: Ingress path of the original capabilities-lab independent service. The service has been merged.
+          # Enter this service (its chart will be deleted accordingly), the path remains unchanged and will be taken over by this service. This side is also.
+          # The public side (token verification) does not conflict with the closure of internal-v1 (#326 step 3).
           - /api/capabilities-lab/v1
   type: ClusterIP
   enableDualStack: false
@@ -76,32 +76,32 @@ service:
     timeoutSeconds: 5
     failureThreshold: 30
   operator:
-    importFileSizeLimit: 2097152 # 导入文件的大小限制2M
-    importOperatorMaxCount: 10 # 批量导入算子的最大数量
-    descriptionLengthLimit: 500 # 算子描述的长度限制，单位字符
+    importFileSizeLimit: 2097152 # Import file size limit is 2M.
+    importOperatorMaxCount: 10 # Maximum number of operators imported in batches.
+    descriptionLengthLimit: 500 # Length limit of operator description, unit character.
   mcp:
-    connTimeout: 30 # 单位: 秒
-    maxInstances: 100 # 最大实例数
-    instanceTTL: 1800 # 单位秒
-    cleanupInterval: 600 # 单位秒
+    connTimeout: 30 # Unit: seconds.
+    maxInstances: 100 # Maximum number of instances.
+    instanceTTL: 1800 # Unit second.
+    cleanupInterval: 600 # Unit second.
   category:
-    initSwitch: true # 是否初始化算子分类
+    initSwitch: true # Whether to initialize operator classification.
   proxyModule:
-    defaultTimeout: 300 # 单位秒
-    maxTimeout: 300 # 单位秒
-    maxClients: 50 # 单位秒
-    clientLifetime: 600 # 单位秒
+    defaultTimeout: 300 # Unit second.
+    maxTimeout: 300 # Unit second.
+    maxClients: 50 # Unit second.
+    clientLifetime: 600 # Unit second.
   skillIndexBuild:
     enablePeriodicFullScan: false
-    periodicFullScanInterval: 168h # 7天
+    periodicFullScanInterval: 168h # 7 days.
     enableTaskCleanup: false
-    taskRetention: 720h # 30天
+    taskRetention: 720h # 30 days.
 
-# 认证开关
+# Authentication switch.
 auth:
   enabled: true
 
-# 业务域开关
+# Business domain switch.
 businessDomain:
   enabled: true
 
@@ -180,7 +180,7 @@ depServices:
     llm:
       model: ""
       maxTokens: 2048
-      temperature: 0.2 # 降低随机性
+      temperature: 0.2 # Reduce randomness.
       topK: 40
       topP: 0.95
       frequencyPenalty: 0.0
@@ -189,12 +189,12 @@ depServices:
     privateHost: "sandbox-control-plane"
     privatePort: 8000
     privateProtocol: "http"
-    templateID: "" # 模板ID,模式使用python-basic
+    templateID: "" # Template ID, pattern uses python-basic.
     sessionResources:
       cpu: 1
       memory: 512Mi
       disk: 1Gi
-      timeout: 3600 # 单位:秒
+      timeout: 3600 # Unit: second.
     maxSessions: 3
     activeSessions: 1
     maxConcurrentTasks: 100
@@ -214,12 +214,12 @@ env:
   language: en_US.UTF-8
   timezone: Asia/Shanghai
 
-# 内部（internal-v1）技能读接口的授权档位：
-#   shadow（默认）——查授权但不拦，判定不通过只打日志，与旧行为等价
-#   enforce      ——按账户强制，无权返回 403
-#   off          ——完全不查（回退档）
-# context-loader 已把 /content 与 /files/read 包成 MCP 工具，skill_id 由调用方自填；
-# 线上观察 shadow 日志确认无误伤后再翻 enforce。
+# Authorization level of internal (internal-v1) skill reading interface:
+# shadow (default) - checks authorization but does not block it, only logs if it is not passed, equivalent to the old behavior.
+# enforce - enforce by account, no right to return 403.
+# off - no checking at all (reverse file)
+# context-loader has packaged /content and /files/read into MCP tools, and skill_id is filled in by the caller;
+# Observe the shadow log online to confirm that there is no accidental damage, and then turn to enforce.
 skill:
   internalReadAuthz: shadow
 

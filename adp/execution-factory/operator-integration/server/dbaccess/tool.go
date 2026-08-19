@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -27,7 +27,7 @@ var (
 	toolDBService model.IToolDB
 )
 
-// NewToolDB 创建工具DB
+// NewToolDB creates tool DB.
 func NewToolDB() model.IToolDB {
 	tOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -47,7 +47,7 @@ const (
 	tbTool = "t_tool"
 )
 
-// InsertTool 添加工具
+// InsertTool Add tool.
 func (t *toolDB) InsertTool(ctx context.Context, tx *sql.Tx, tool *model.ToolDB) (toolID string, err error) {
 	now := time.Now().UnixNano()
 	if tool.ToolID == "" {
@@ -91,7 +91,7 @@ func (t *toolDB) InsertTool(ctx context.Context, tx *sql.Tx, tool *model.ToolDB)
 	return
 }
 
-// InsertTools 批量添加工具
+// InsertTools batch adding tools.
 func (t *toolDB) InsertTools(ctx context.Context, tx *sql.Tx, tools []*model.ToolDB) (toolIDs []string, err error) {
 	orm := t.orm
 	if tx != nil {
@@ -155,7 +155,7 @@ func (t *toolDB) InsertTools(ctx context.Context, tx *sql.Tx, tools []*model.Too
 	return
 }
 
-// UpdateTool 更新工具
+// UpdateTool update tool.
 func (t *toolDB) UpdateTool(ctx context.Context, tx *sql.Tx, tool *model.ToolDB) (err error) {
 	now := time.Now().UnixNano()
 	tool.UpdateTime = now
@@ -190,7 +190,7 @@ func (t *toolDB) UpdateTool(ctx context.Context, tx *sql.Tx, tool *model.ToolDB)
 	return
 }
 
-// SelectTool 查询工具
+// SelectTool query tool.
 func (t *toolDB) SelectTool(ctx context.Context, toolID string) (exist bool, tool *model.ToolDB, err error) {
 	tool = &model.ToolDB{}
 	orm := t.orm
@@ -213,7 +213,7 @@ func buildQueryConditions(query *ormhelper.SelectBuilder, conditions map[string]
 	return query
 }
 
-// CountToolByBoxID 统计工具箱下工具数量
+// CountToolByBoxID counts the number of tools in the toolbox.
 func (t *toolDB) CountToolByBoxID(ctx context.Context, boxID string, filter map[string]interface{}) (count int64, err error) {
 	orm := t.orm
 	queryBuilder := orm.Select().From(tbTool).WhereEq("f_box_id", boxID)
@@ -222,7 +222,7 @@ func (t *toolDB) CountToolByBoxID(ctx context.Context, boxID string, filter map[
 	return
 }
 
-// SelectToolLisByBoxID 查询工具箱下工具列表
+// SelectToolLisByBoxID Query the tool list under the toolbox.
 func (t *toolDB) SelectToolLisByBoxID(ctx context.Context, boxID string, filter map[string]interface{}) (tools []*model.ToolDB, err error) {
 	orm := t.orm
 	queryBuilder := orm.Select().From(tbTool).WhereEq("f_box_id", boxID)
@@ -256,7 +256,7 @@ func (t *toolDB) SelectToolLisByBoxID(ctx context.Context, boxID string, filter 
 		},
 	})
 
-	// 条件查询
+	// Conditional query.
 	if filter["all"] == nil || filter["all"] == false {
 		pageSize := filter["limit"].(int)
 		offset := filter["offset"].(int)
@@ -270,7 +270,7 @@ func (t *toolDB) SelectToolLisByBoxID(ctx context.Context, boxID string, filter 
 	return
 }
 
-// SelectToolList 查询工具列表
+// SelectToolList Query tool list.
 func (t *toolDB) SelectToolList(ctx context.Context, filter map[string]interface{}) (tools []*model.ToolDB, err error) {
 	orm := t.orm
 	queryBuilder := orm.Select().From(tbTool)
@@ -304,7 +304,7 @@ func (t *toolDB) SelectToolList(ctx context.Context, filter map[string]interface
 		},
 	})
 
-	// 条件查询
+	// Conditional query.
 	if filter["all"] == nil || filter["all"] == false {
 		pageSize := filter["limit"].(int)
 		offset := filter["offset"].(int)
@@ -318,7 +318,7 @@ func (t *toolDB) SelectToolList(ctx context.Context, filter map[string]interface
 	return
 }
 
-// SelectToolBoxIDsByFilter 根据查询条件获取工具箱ID列表
+// SelectToolBoxIDsByFilter Gets a list of toolbox IDs based on query conditions.
 func (t *toolDB) SelectToolBoxIDsByFilter(ctx context.Context, filter map[string]interface{}) (boxIDs []string, err error) {
 	orm := t.orm
 	queryBuilder := orm.Select("f_box_id", "f_create_time", "f_update_time").From(tbTool)
@@ -352,7 +352,7 @@ func (t *toolDB) SelectToolBoxIDsByFilter(ctx context.Context, filter map[string
 		},
 	})
 	queryBuilder.GroupBy("f_box_id")
-	// 条件查询
+	// Conditional query.
 	if filter["all"] == nil || filter["all"] == false {
 		pageSize, ok := filter["limit"].(int)
 		if ok {
@@ -376,7 +376,7 @@ func (t *toolDB) SelectToolBoxIDsByFilter(ctx context.Context, filter map[string
 	return
 }
 
-// SelectBoxToolByName 根据名称查询工具
+// SelectBoxToolByName Query tools by name.
 func (t *toolDB) SelectBoxToolByName(ctx context.Context, boxID, name string) (exist bool, tool *model.ToolDB, err error) {
 	orm := t.orm
 	tool = &model.ToolDB{}
@@ -386,7 +386,7 @@ func (t *toolDB) SelectBoxToolByName(ctx context.Context, boxID, name string) (e
 	return
 }
 
-// SelectToolByBoxID 根据工具箱ID查询工具
+// SelectToolByBoxID Query tools based on toolbox ID.
 func (t *toolDB) SelectToolByBoxID(ctx context.Context, boxID string) (tools []*model.ToolDB, err error) {
 	orm := t.orm
 	tools = []*model.ToolDB{}
@@ -397,7 +397,7 @@ func (t *toolDB) SelectToolByBoxID(ctx context.Context, boxID string) (tools []*
 	return
 }
 
-// SelectToolNameListByBoxID 根据工具箱ID查询工具名称列表
+// SelectToolNameListByBoxID Query the tool name list based on the toolbox ID.
 func (t *toolDB) SelectToolNameListByBoxID(ctx context.Context, boxID []string) (toolNameList map[string][]string, err error) {
 	orm := t.orm
 	toolDBs := []*model.ToolDB{}
@@ -405,7 +405,7 @@ func (t *toolDB) SelectToolNameListByBoxID(ctx context.Context, boxID []string) 
 	for _, id := range boxID {
 		arrs = append(arrs, id)
 	}
-	// 检查工具箱ID是否为空
+	// Check if the toolbox ID is empty.
 	if len(arrs) == 0 {
 		toolNameList = map[string][]string{}
 		return
@@ -425,7 +425,7 @@ func (t *toolDB) SelectToolNameListByBoxID(ctx context.Context, boxID []string) 
 	return
 }
 
-// DeleteBoxByIDAndTools 删除
+// DeleteBoxByIDAndTools Delete.
 func (t *toolDB) DeleteBoxByIDAndTools(ctx context.Context, tx *sql.Tx, boxID string, toolIDs []string) (err error) {
 	orm := t.orm
 	if tx != nil {
@@ -444,7 +444,7 @@ func (t *toolDB) DeleteBoxByIDAndTools(ctx context.Context, tx *sql.Tx, boxID st
 	return
 }
 
-// SelectToolBoxByID 获取工具箱内工具信息
+// SelectToolBoxByID Gets tool information in the toolbox.
 func (t *toolDB) SelectToolBoxByID(ctx context.Context, boxID string, toolIDs []string) (tools []*model.ToolDB, err error) {
 	orm := t.orm
 	tools = []*model.ToolDB{}
@@ -459,7 +459,7 @@ func (t *toolDB) SelectToolBoxByID(ctx context.Context, boxID string, toolIDs []
 	return
 }
 
-// UpdateToolStatus 更新工具状态
+// UpdateToolStatus update tool status.
 func (t *toolDB) UpdateToolStatus(ctx context.Context, tx *sql.Tx, toolID, status, userID string) (err error) {
 	now := time.Now().UnixNano()
 	orm := t.orm
@@ -485,7 +485,7 @@ func (t *toolDB) UpdateToolStatus(ctx context.Context, tx *sql.Tx, toolID, statu
 	return
 }
 
-// SelectToolBoxByIDs 根据工具箱ID查询工具
+// SelectToolBoxByIDs Query tools based on toolbox ID.
 func (t *toolDB) SelectToolBoxByIDs(ctx context.Context, boxIDs []string) (tools []*model.ToolDB, err error) {
 	tools = []*model.ToolDB{}
 	args := []interface{}{}
@@ -502,7 +502,7 @@ func (t *toolDB) SelectToolBoxByIDs(ctx context.Context, boxIDs []string) (tools
 	return
 }
 
-// SelectToolBoxByToolIDs 根据工具ID查询工具箱
+// SelectToolBoxByToolIDs Query toolbox based on tool ID.
 func (t *toolDB) SelectToolBoxByToolIDs(ctx context.Context, toolIDs []string) (tools []*model.ToolDB, err error) {
 	tools = []*model.ToolDB{}
 	args := []interface{}{}
@@ -519,7 +519,7 @@ func (t *toolDB) SelectToolBoxByToolIDs(ctx context.Context, toolIDs []string) (
 	return
 }
 
-// SelectToolBySource 根据来源类型和来源ID查询工具
+// SelectToolBySource queries tools based on source type and source ID.
 func (t *toolDB) SelectToolBySource(ctx context.Context, sourceType model.SourceType, sourceID string) (tools []*model.ToolDB, err error) {
 	orm := t.orm
 	tools = []*model.ToolDB{}

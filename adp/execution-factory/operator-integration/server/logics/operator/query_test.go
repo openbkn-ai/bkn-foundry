@@ -1,3 +1,3 @@
 package operator
 
-// 比较两种分页查询结果是否一致
+// Compare the results of two paging queries to see if they are consistent.

@@ -8,15 +8,15 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
-// functionMetadataDB 函数元数据数据库
+// functionMetadataDB is the function metadata database.
 type functionMetadataDB struct {
 	dbPool *sqlx.DB
 	dbName string
@@ -29,7 +29,7 @@ var (
 	tbFunctionMetadata        = "t_metadata_function"
 )
 
-// NewFunctionMetadataDB 创建函数元数据数据库
+// NewFunctionMetadataDB creates a function metadata database.
 func NewFunctionMetadataDB() model.IFunctionMetadataDB {
 	fmOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -45,7 +45,7 @@ func NewFunctionMetadataDB() model.IFunctionMetadataDB {
 	return functionMetadataDBService
 }
 
-// InsertFuncMetadata 插入函数元数据
+// InsertFuncMetadata inserts function metadata.
 func (fm *functionMetadataDB) InsertFuncMetadata(ctx context.Context, tx *sql.Tx, metadata *model.FunctionMetadataDB) (version string, err error) {
 	if metadata.Version == "" {
 		metadata.Version = uuid.New().String()
@@ -88,7 +88,7 @@ func (fm *functionMetadataDB) InsertFuncMetadata(ctx context.Context, tx *sql.Tx
 	return
 }
 
-// UpdateByVersion 更新函数元数据
+// UpdateByVersion updates function metadata.
 func (fm *functionMetadataDB) UpdateByVersion(ctx context.Context, tx *sql.Tx, metadata *model.FunctionMetadataDB) (err error) {
 	now := time.Now().UnixNano()
 	metadata.UpdateTime = now
@@ -124,7 +124,7 @@ func (fm *functionMetadataDB) UpdateByVersion(ctx context.Context, tx *sql.Tx, m
 	return
 }
 
-// SelectByVersion 查询函数元数据
+// SelectByVersion query function metadata.
 func (fm *functionMetadataDB) SelectByVersion(ctx context.Context, version string) (exist bool, metadata *model.FunctionMetadataDB, err error) {
 	metadata = &model.FunctionMetadataDB{}
 	orm := fm.orm
@@ -133,7 +133,7 @@ func (fm *functionMetadataDB) SelectByVersion(ctx context.Context, version strin
 	return
 }
 
-// DeleteByVersion 删除函数元数据
+// DeleteByVersion deletes function metadata.
 func (fm *functionMetadataDB) DeleteByVersion(ctx context.Context, tx *sql.Tx, version string) (err error) {
 	orm := fm.orm
 	if tx != nil {
@@ -154,7 +154,7 @@ func (fm *functionMetadataDB) DeleteByVersion(ctx context.Context, tx *sql.Tx, v
 	return
 }
 
-// DeleteByVersions 删除函数元数据
+// DeleteByVersions deletes function metadata.
 func (fm *functionMetadataDB) DeleteByVersions(ctx context.Context, tx *sql.Tx, versions []string) (err error) {
 	orm := fm.orm
 	if tx != nil {
@@ -173,7 +173,7 @@ func (fm *functionMetadataDB) DeleteByVersions(ctx context.Context, tx *sql.Tx, 
 	return
 }
 
-// InsertFuncMetadatas 插入函数元数据列表
+// InsertFuncMetadatas inserts a function metadata list.
 func (fm *functionMetadataDB) InsertFuncMetadatas(ctx context.Context, tx *sql.Tx, metadatas []*model.FunctionMetadataDB) (versions []string, err error) {
 	orm := fm.orm
 	if tx != nil {
@@ -237,7 +237,7 @@ func (fm *functionMetadataDB) InsertFuncMetadatas(ctx context.Context, tx *sql.T
 	return
 }
 
-// SelectListByVersion 查询函数元数据列表
+// SelectListByVersion Query function metadata list.
 func (fm *functionMetadataDB) SelectListByVersion(ctx context.Context, versions []string) (metadataDBs []*model.FunctionMetadataDB, err error) {
 	metadataDBs = []*model.FunctionMetadataDB{}
 	orm := fm.orm

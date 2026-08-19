@@ -20,7 +20,7 @@ const (
 	debugMetadataVersion = "9b0d2a44-4f4e-4f2f-8a6f-6a4a4d0d1c33"
 )
 
-// debugOperatorFixture 组装算子调试所需的最小依赖，并回传代理实际收到的请求。
+// debugOperatorFixture assembles the minimum dependencies required for operator debugging and returns the actual request received by the agent.
 type debugOperatorFixture struct {
 	manager  *operatorManager
 	captured **interfaces.HTTPRequest
@@ -89,7 +89,7 @@ func newDebugOperatorFixture(t *testing.T) *debugOperatorFixture {
 	}
 }
 
-// debugOperatorRequestJSON 是 Studio 算子调试面板提交的请求体形态：header/query/path/body 四段并列。
+// debugOperatorRequestJSON is the request body form submitted by the Studio operator debugging panel: header/query/path/body four sections in parallel.
 const debugOperatorRequestJSON = `{
 	"timeout": 5,
 	"header": {"X-Api-Key": "secret-key"},
@@ -98,7 +98,7 @@ const debugOperatorRequestJSON = `{
 	"body": {"payload": "p1", "query": "业务字段 query"}
 }`
 
-// TestDebugOperator_ForwardsAllRequestParams 校验算子调试的 header/query/path/body 原样抵达代理层（#216 验收标准 5）。
+// TestDebugOperator_ForwardsAllRequestParams checks that the header/query/path/body of the validation operator arrives at the proxy layer unchanged (#216 Acceptance Criteria 5).
 func TestDebugOperator_ForwardsAllRequestParams(t *testing.T) {
 	Convey("算子调试透传完整请求参数", t, func() {
 		req := &interfaces.DebugOperatorReq{
@@ -116,7 +116,7 @@ func TestDebugOperator_ForwardsAllRequestParams(t *testing.T) {
 			body, ok := req.Body.(map[string]any)
 			So(ok, ShouldBeTrue)
 			So(body["payload"], ShouldEqual, "p1")
-			// body 里的同名业务字段不会被当作调试信封（#216 验收标准 12）
+			// Business fields with the same name in the body will not be treated as debugging envelopes (#216 Acceptance Criteria 12)
 			So(body["query"], ShouldEqual, "业务字段 query")
 		})
 
@@ -144,7 +144,7 @@ func TestDebugOperator_ForwardsAllRequestParams(t *testing.T) {
 	})
 }
 
-// TestExecuteOperator_ForwardsAllRequestParams 校验算子正式执行走同一条透传链路（#216 验收标准 5）。
+// TestExecuteOperator_ForwardsAllRequestParams The verification operator is officially executed through the same transparent transmission link (#216 Acceptance Criteria 5).
 func TestExecuteOperator_ForwardsAllRequestParams(t *testing.T) {
 	Convey("算子执行透传完整请求参数", t, func() {
 		fixture := newDebugOperatorFixture(t)
@@ -164,7 +164,7 @@ func TestExecuteOperator_ForwardsAllRequestParams(t *testing.T) {
 	})
 }
 
-// TestDebugOperator_NoParamsOperatorSendsEmptyEnvelope 校验无入参算子调试时不会凭空造出 path/query/header（#216 验收标准 8 的后端侧）。
+// TestDebugOperator_NoParamsOperatorSendsEmptyEnvelope verifies that path/query/header will not be created out of thin air when debugging the parameterless operator (#216 backend side of Acceptance Criteria 8).
 func TestDebugOperator_NoParamsOperatorSendsEmptyEnvelope(t *testing.T) {
 	Convey("无入参算子调试只发空信封", t, func() {
 		fixture := newDebugOperatorFixture(t)

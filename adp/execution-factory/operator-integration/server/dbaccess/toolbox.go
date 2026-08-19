@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -27,7 +27,7 @@ var (
 	toolboxDBService model.IToolboxDB
 )
 
-// NewToolboxDB 创建工具箱DB
+// NewToolboxDB creates toolbox DB.
 func NewToolboxDB() model.IToolboxDB {
 	bOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -47,7 +47,7 @@ const (
 	tbToolBox = "t_toolbox"
 )
 
-// InsertToolBox 插入工具箱
+// InsertToolBox insert toolbox.
 func (b *toolboxDB) InsertToolBox(ctx context.Context, tx *sql.Tx, toolbox *model.ToolboxDB) (boxID string, err error) {
 	if toolbox.BoxID == "" {
 		toolbox.BoxID = uuid.NewString()
@@ -88,7 +88,7 @@ func (b *toolboxDB) InsertToolBox(ctx context.Context, tx *sql.Tx, toolbox *mode
 	return
 }
 
-// UpdateToolBox 更新工具箱
+// UpdateToolBox update toolbox.
 func (b *toolboxDB) UpdateToolBox(ctx context.Context, tx *sql.Tx, toolbox *model.ToolboxDB) (err error) {
 	now := time.Now().UnixNano()
 	toolbox.UpdateTime = now
@@ -122,7 +122,7 @@ func (b *toolboxDB) UpdateToolBox(ctx context.Context, tx *sql.Tx, toolbox *mode
 	return
 }
 
-// SelectToolBox 查询工具箱
+// SelectToolBox query toolbox.
 func (b *toolboxDB) SelectToolBox(ctx context.Context, boxID string) (exist bool, toolbox *model.ToolboxDB, err error) {
 	toolbox = &model.ToolboxDB{}
 	orm := b.orm
@@ -172,7 +172,7 @@ func (b *toolboxDB) buildQueryConditions(query *ormhelper.SelectBuilder, conditi
 	return query
 }
 
-// CountToolBox 查询工具箱数量
+// CountToolBox queries the number of toolboxes.
 func (b *toolboxDB) CountToolBox(ctx context.Context, filter map[string]interface{}) (count int64, err error) {
 	orm := b.orm
 	queryBuilder := orm.Select().From(tbToolBox)
@@ -181,14 +181,14 @@ func (b *toolboxDB) CountToolBox(ctx context.Context, filter map[string]interfac
 	return
 }
 
-// SelectToolBoxList 查询工具列表
+// SelectToolBoxList Query tool list.
 func (b *toolboxDB) SelectToolBoxList(ctx context.Context, filter map[string]interface{}, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (toolboxList []*model.ToolboxDB, err error) {
 	orm := b.orm
 	queryBuilder := orm.Select().From(tbToolBox)
 	queryBuilder = b.buildQueryConditions(queryBuilder, filter)
 	queryBuilder.Cursor(cursor)
 	queryBuilder.Sort(sort)
-	// 处理分页
+	// Handle pagination.
 	if filter["all"] == nil || filter["all"] == false {
 		pageSize, ok := filter["limit"].(int)
 		if ok {
@@ -207,7 +207,7 @@ func (b *toolboxDB) SelectToolBoxList(ctx context.Context, filter map[string]int
 	return
 }
 
-// SelectToolBoxByName 根据名称查询工具箱
+// SelectToolBoxByName Query toolbox by name.
 func (b *toolboxDB) SelectToolBoxByName(ctx context.Context, name string, status []string) (bool, *model.ToolboxDB, error) {
 	toolbox := &model.ToolboxDB{}
 	orm := b.orm
@@ -220,7 +220,7 @@ func (b *toolboxDB) SelectToolBoxByName(ctx context.Context, name string, status
 	return exist, toolbox, err
 }
 
-// DeleteToolBox 删除工具箱
+// DeleteToolBox delete toolbox.
 func (b *toolboxDB) DeleteToolBox(ctx context.Context, tx *sql.Tx, boxID string) (err error) {
 	orm := b.orm
 	if tx != nil {
@@ -241,7 +241,7 @@ func (b *toolboxDB) DeleteToolBox(ctx context.Context, tx *sql.Tx, boxID string)
 	return
 }
 
-// UpdateToolBoxStatus 更新工具箱状态
+// UpdateToolBoxStatus updates toolbox status.
 func (b *toolboxDB) UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, status, userID string) (err error) {
 	orm := b.orm
 	if tx != nil {
@@ -269,7 +269,7 @@ func (b *toolboxDB) UpdateToolBoxStatus(ctx context.Context, tx *sql.Tx, boxID, 
 	return
 }
 
-// SelectListByBoxIDs 获取工具箱列表
+// SelectListByBoxIDs Get the toolbox list.
 func (b *toolboxDB) SelectListByBoxIDs(ctx context.Context, boxIDs []string, status ...string) (toolboxList []*model.ToolboxDB, err error) {
 	toolboxList = []*model.ToolboxDB{}
 	orm := b.orm
@@ -337,7 +337,7 @@ func (b *toolboxDB) SelectListByBoxIDsFilter(ctx context.Context, boxIDs []strin
 	return
 }
 
-// SelectListByNamesAndStatus 根据名称和状态查询工具箱列表
+// SelectListByNamesAndStatus queries the toolbox list based on name and status.
 func (b *toolboxDB) SelectListByNamesAndStatus(ctx context.Context, names []string, status ...string) (toolboxList []*model.ToolboxDB, err error) {
 	toolboxList = []*model.ToolboxDB{}
 	orm := b.orm

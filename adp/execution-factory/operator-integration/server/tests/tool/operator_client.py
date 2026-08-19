@@ -7,10 +7,10 @@ import os
 import yaml
 
 
-# OperatorClient：封装Operator API调用
+# OperatorClient: encapsulates Operator API calls.
 class OperatorClient:
     def __init__(self, base_url, token):
-        # 读取配置文件
+        # Read configuration file.
         self.BASE_URL = base_url
         self.headers = {
             "Authorization": token,
@@ -30,7 +30,7 @@ class OperatorClient:
                 verify=False
             )
             response.raise_for_status()
-            # 增加校验，如果响应为空，则返回状态码和响应文本
+            # Add verification, if the response is empty, return status code and response text.
             if not response.text.strip():
                 return {"code": response.status_code}
             return json.dumps(
@@ -86,16 +86,16 @@ class OperatorClient:
         return self._send_request('POST', endpoint, data=data)
 
 
-# OperatorOperation 算子操作类
+# OperatorOperation operator operation class.
 class OperatorOperation:
     def __init__(self, client, config):
         self.client = client
         self.config = config
-        # 初始化操作参数
+        # Initialize operating parameters.
         self._init_operation_configs()
 
     def _init_operation_configs(self):
-        """从配置文件中加载各操作参数"""
+        """Load each operating parameter from the configuration file."""
         self.register_config = self.config.get('register', {})
         self.update_config = self.config.get('update', {})
         self.delete_config = self.config.get('delete', {})
@@ -105,7 +105,7 @@ class OperatorOperation:
         self.offline_config = self.config.get('offline', {})
 
     def register_operator(self):
-        """注册算子（使用配置文件参数）"""
+        """Register operator (using configuration file parameters)"""
         payload = {
             "operator_metadata_type": self.register_config.get('metadata_type'),
             "direct_publish": self.register_config.get('direct-publish'),
@@ -121,8 +121,8 @@ class OperatorOperation:
         return self.client.register_operator(payload)
 
     def update_operator(self):
-        """更新算子信息"""
-        # 动态参数优先于配置文件参数
+        """Update operator information."""
+        # Dynamic parameters take precedence over configuration file parameters.
         payload = {
             "operator_id": self.update_config.get('operator_id'),
             "version": self.update_config.get('version'),
@@ -140,30 +140,30 @@ class OperatorOperation:
         return self.client.update_operator(payload)
 
     def list_operators(self):
-        """查询算子列表"""
+        """Query operator list."""
         query_params = {k: v for k, v in self.list_config.items() if v is not None}
         return self.client.list_operators(**query_params)
 
     def detail_operator(self):
-        """查询算子详情"""
+        """Query operator details."""
         operator_id = self.detail_config.get('operator_id')
         version = self.detail_config.get('version')
         return self.client.get_operator_info(operator_id, version)
 
     def publish_operator(self):
-        """发布算子"""
+        """Release operator."""
         operator_id = self.publish_config.get('operator_id')
         version = self.publish_config.get('version')
         return self.client.update_status(operator_id, version, 'published')
 
     def offline_operator(self):
-        """下线算子"""
+        """offline operator."""
         operator_id = self.offline_config.get('operator_id')
         version = self.offline_config.get('version')
         return self.client.update_status(operator_id, version, 'offline')
 
     def delete_operator(self):
-        """删除算子"""
+        """delete operator."""
         operator_id = self.delete_config.get('operator_id')
         version = self.delete_config.get('version')
         return self.client.delete_operator(operator_id, version)
@@ -171,7 +171,7 @@ class OperatorOperation:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Operator Management CLI')
-    # 如果使用配置文件，可以在配置文件中指定义base_url和token
+    # If you use a configuration file, you can define base_url and token in the configuration file.
     parser.add_argument('--config', default="./config.yaml", help='Path to config file')
     subparsers = parser.add_subparsers(dest='command')
     # Register command
@@ -190,24 +190,24 @@ if __name__ == "__main__":
     delete_parser = subparsers.add_parser('delete')
     args = parser.parse_args()
     config = {}
-    if args.config:  # 优先使用--config指定的配置文件
+    if args.config:  # Prioritize using the configuration file specified by --config.
         try:
             with open(args.config, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
         except FileNotFoundError:
             print(f"Error: 配置文件 {args.config} 不存在")
             exit(1)
-    elif os.path.exists('config.yaml'):  # 其次检查默认配置文件
+    elif os.path.exists('config.yaml'):  # Secondly check the default configuration file.
         with open('config.yaml', 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
 
-    # 用配置文件中的值覆盖参数
+    # Override parameters with values from config file.
     if 'base_url' in config:
         args.base_url = config['base_url']
     if 'token' in config:
         args.token = config.get('token')
 
-    # 最终校验token是否配置
+    # Final verification of whether the token is configured.
     if not args.token:
         parser.error("必须通过以下方式之一提供token: \n1. --token 参数\n2. 配置文件(--config指定)\n3. 当前目录的config.json")
 

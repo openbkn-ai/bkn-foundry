@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -27,11 +27,11 @@ var (
 )
 
 const (
-	// tbInternalComponentConfig 表名
+	// tbInternalComponentConfig table name.
 	tbInternalComponentConfig = "t_internal_component_config"
 )
 
-// NewInternalComponentConfigDBSingleton 创建组件配置数据库访问对象单例
+// NewInternalComponentConfigDBSingleton creates a component configuration database access object singleton.
 func NewInternalComponentConfigDBSingleton() model.IInternalComponentConfigDB {
 	icOnce.Do(func() {
 		dbPool := db.NewDBPool()
@@ -69,7 +69,7 @@ func (ic *internalComponentConfigDB) DeleteConfig(ctx context.Context, tx *sql.T
 	return
 }
 
-// SelectConfig 查询配置
+// SelectConfig query configuration.
 func (ic *internalComponentConfigDB) SelectConfig(ctx context.Context, configType, configID string) (exist bool, config *model.InternalComponentConfigDB, err error) {
 	config = &model.InternalComponentConfigDB{}
 	orm := ic.orm

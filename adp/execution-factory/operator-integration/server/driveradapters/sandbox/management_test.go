@@ -24,9 +24,9 @@ func (f *fakeManagementService) GetPool(ctx context.Context) (*logicssandbox.San
 	return &logicssandbox.SandboxPoolResp{MaxSessions: 3, CurrentActiveSessions: 1}, nil
 }
 
-// sentinelWorkspacePath 是跨租户敏感字段的哨兵值。门禁生效时它不应出现在响应里；
-// 若断言改成恒真（例如让 fake 不填该字段，靠 omitempty 让它天然消失），这组用例
-// 就测不出 requireAdmin 是否真的拦住了请求。
+// sentinelWorkspacePath is the sentinel value for cross-tenant sensitive fields. It should not appear in the response when the gate is in effect;
+// If the assertion is changed to always true (for example, let fake not fill in the field and rely on omitempty to make it disappear naturally), this set of use cases.
+// It is impossible to detect whether requireAdmin actually blocks the request.
 const sentinelWorkspacePath = "/workspace/sess_leak_probe"
 
 func (f *fakeManagementService) ListSessions(ctx context.Context, req *logicssandbox.SandboxSessionListReq) (*logicssandbox.SandboxSessionListResp, error) {
@@ -56,7 +56,7 @@ func performRequest(engine *gin.Engine, method, path string) *httptest.ResponseR
 	return recorder
 }
 
-// fakeAuthService 按构造时给定的结果放行或拒绝，用于验证公开面的超管门禁。
+// fakeAuthService allows or rejects based on the results given during construction, and is used to verify super-management access control on the public side.
 type fakeAuthService struct {
 	interfaces.IAuthorizationService
 	adminErr error
@@ -68,7 +68,7 @@ func (f *fakeAuthService) CheckAdminPermission(ctx context.Context, accessor *in
 	return f.adminErr
 }
 
-// newPublicEngine 构造带认证上下文的公开面路由，模拟 middlewareIntrospectVerify 的产出。
+// newPublicEngine constructs a public-side route with authentication context, simulating the output of middlewareIntrospectVerify.
 func newPublicEngine(authService interfaces.IAuthorizationService, accountID string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
@@ -100,7 +100,7 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 			detail := performRequest(engine, http.MethodGet, base+"/sessions/sess_1")
 			So(detail.Code, ShouldEqual, http.StatusOK)
 			So(auth.called, ShouldEqual, 4)
-			// 放行时哨兵字段确实出现在响应里——否则下面「不泄露」的断言恒为真，测不出门禁
+			// The sentinel field does appear in the response when released - otherwise the following assertion of "no leakage" will always be true and the access control will not be detected.
 			So(detail.Body.String(), ShouldContainSubstring, sentinelWorkspacePath)
 		})
 
@@ -111,8 +111,8 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 			for _, path := range []string{"/health", "/pool", "/sessions", "/sessions/sess_1"} {
 				resp := performRequest(engine, http.MethodGet, base+path)
 				So(resp.Code, ShouldEqual, http.StatusForbidden)
-				// fake service 会返回哨兵值，因此这两条断言只有在 requireAdmin
-				// 真的中止了请求时才成立
+				// fake service will return the sentinel value, so these two assertions are only required when requireAdmin.
+				// This is true only when the request is actually aborted.
 				So(resp.Body.String(), ShouldNotContainSubstring, sentinelWorkspacePath)
 				So(resp.Body.String(), ShouldNotContainSubstring, "other-tenant-user")
 			}
@@ -135,10 +135,10 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 	})
 }
 
-// TestInternalFaceNoLongerRegistersSandbox 守住 #326 第 3 步：沙箱观测接口只在公开面
-// 注册。内部面不校验令牌，身份取自调用方自填的 X-Account-ID 头，一旦重新挂上就等于
-// 绕过公开面的超管门禁。ManagementHandler 已不再提供 RegisterPrivate——本用例确认
-// 接口面上不存在该方法，任何重新引入都会在编译期被此断言挡下。
+// TestInternalFaceNoLongerRegistersSandbox Keep #326 Step 3: Sandbox observation interface is only on the public face.
+// Register. The token is not verified internally, and the identity is taken from the X-Account-ID header filled in by the caller. Once it is re-hung, it is equal to.
+// Bypass the public access control. RegisterPrivate is no longer provided by ManagementHandler - this use case confirms.
+// This method does not exist on the interface, and any reintroduction will be blocked by this assertion at compile time.
 func TestInternalFaceNoLongerRegistersSandbox(t *testing.T) {
 	Convey("沙箱处理器不再暴露内部面注册入口", t, func() {
 		var handler ManagementHandler = NewManagementHandlerWithService(&fakeManagementService{})

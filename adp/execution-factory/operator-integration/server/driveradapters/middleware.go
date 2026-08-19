@@ -1,6 +1,6 @@
-// Package driveradapters 定义驱动适配器
+// Package driveradapters defines driver adapters.
 // @file middleware.go
-// @description: 中间件适配器
+// @description: middleware adapter.
 package driveradapters
 
 import (
@@ -32,16 +32,16 @@ type apiLogModel struct {
 	RequestBody  interface{} `json:"requestBodySummary"`
 	ResponseCode int         `json:"responseCode"`
 	ResponseBody interface{} `json:"ResponseBody"`
-	Latency      float64     `json:"latency"` // 单位(ms)
+	Latency      float64     `json:"latency"` // Unit(ms)
 }
 
-// middlewareIntrospectVerify 令牌内省中间件
-// 若未开启认证，则从header中获取accountID和accountType，生成匿名tokenInfo
-// 若开启认证，则从header中获取token，调用hydra.Introspect验证token，若验证失败则返回错误
+// middlewareIntrospectVerify token introspection middleware.
+// If authentication is not enabled, obtain accountID and accountType from the header and generate anonymous tokenInfo.
+// If authentication is turned on, get the token from the header and call hydra.Introspect to verify the token. If the verification fails, an error will be returned.
 //
-// 凭据二选一：以 AppKey 前缀（bak_）开头的交给 bkn-safe 校验（用户自助签发的 API Key），
-// 其余 bearer token 走 hydra 内省。两条路产出同一个 TokenInfo，下游认证上下文一致。
-// appKeys 为 nil 时（AUTH_ENABLED=false 或 BKN_SAFE_URL 未配置）全部走 hydra。
+// Choose one of two credentials: the one starting with the AppKey prefix (bak_) is submitted to bkn-safe for verification (API Key issued by the user),
+// The rest of the bearer token goes hydra introspection. The two paths produce the same TokenInfo, and the downstream authentication context is consistent.
+// When appKeys is nil (AUTH_ENABLED=false or BKN_SAFE_URL is not configured), all use hydra.
 func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKeyVerifier) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -57,15 +57,15 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 			c.Abort()
 			return
 		}
-		// 设置认证上下文到context
+		// Set authentication context to context.
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   tokenInfo.VisitorID,
 			AccountType: tokenInfo.VisitorTyp.ToAccessorType(),
 			TokenInfo:   tokenInfo,
 		}
 		ctx = common.SetAccountAuthContextToCtx(ctx, authContext)
-		ctx = common.SetLanguageToCtx(ctx, common.GetLanguageInfo(c)) // 设置language信息到context
-		ctx = common.SetPublicAPIToCtx(ctx, true)                     // 设置是否为公共API到context
+		ctx = common.SetLanguageToCtx(ctx, common.GetLanguageInfo(c)) // Set language information to context.
+		ctx = common.SetPublicAPIToCtx(ctx, true)                     // Set whether it is a public API to context.
 		c.Request = c.Request.WithContext(ctx)
 		c.Request.Header.Set(string(interfaces.HeaderUserID), tokenInfo.VisitorID)
 		c.Request.Header.Set(string(interfaces.IsPublic), "true")
@@ -73,7 +73,7 @@ func middlewareIntrospectVerify(hydra interfaces.Hydra, appKeys interfaces.AppKe
 	}
 }
 
-// 内部接口Header认证账户信息处理中间件
+// Internal interface Header authentication account information processing middleware.
 func middlewareHeaderAuthContext(hydra interfaces.Hydra) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
@@ -83,7 +83,7 @@ func middlewareHeaderAuthContext(hydra interfaces.Hydra) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
-		// 设置认证上下文到context
+		// Set authentication context to context.
 		authContext := &interfaces.AccountAuthContext{
 			AccountID:   tokenInfo.VisitorID,
 			AccountType: tokenInfo.VisitorTyp.ToAccessorType(),
@@ -183,23 +183,23 @@ func byteToInterface(byt []byte) interface{} {
 	return m
 }
 
-// middlewareBusinessDomain 处理x-business-domain逻辑
+// middlewareBusinessDomain handles x-business-domain logic.
 func middlewareBusinessDomain(isPublic bool, businessDomainService interfaces.IBusinessDomainService) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		businessDomain := businessDomainService.GetBusinessDomainFromHeader(c)
-		// 初始化默认值
-		// 1. 外部接口：如果不传递，默认bd_public
+		// Initialize default value.
+		// 1. External interface: If not passed, the default is bd_public.
 		if isPublic {
 			if businessDomain == "" {
 				businessDomain = interfaces.DefaultBusinessDomain
 				c.Request.Header.Set(string(interfaces.HeaderXBusinessDomain), businessDomain)
 			}
 		}
-		// 设置到context中供后续使用
+		// Set to context for subsequent use.
 		ctx = common.SetBusinessDomainToCtx(ctx, businessDomain)
 		c.Request = c.Request.WithContext(ctx)
-		// 3. 校验业务域是否存在
+		// 3. Verify whether the business domain exists.
 		err := businessDomainService.ValidateBusinessDomain(ctx)
 		if err != nil {
 			rest.ReplyError(c, err)
@@ -210,10 +210,10 @@ func middlewareBusinessDomain(isPublic bool, businessDomainService interfaces.IB
 	}
 }
 
-// middlewareProxyRequest 识别代理请求并设置上下文信息
+// middlewareProxyRequest identifies proxy requests and sets context information.
 func middlewareProxyRequest() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 识别请求类型（同步/流式）及流类型
+		// Identify request type (synchronous/streaming) and stream type.
 		isStreaming := isStreamingRequest(c)
 		if !isStreaming {
 			c.Next()
@@ -221,7 +221,7 @@ func middlewareProxyRequest() gin.HandlerFunc {
 		}
 		executionMode := interfaces.ExecutionModeStream
 		streamingMode := detectStreamingMode(c)
-		// 然后设置上下文和请求头
+		// Then set the context and request headers.
 		ctx := c.Request.Context()
 		ctx = common.SetResponseWriterToCtx(ctx, c.Writer)
 		ctx = common.SetExecutionModeToCtx(ctx, executionMode)
@@ -231,7 +231,7 @@ func middlewareProxyRequest() gin.HandlerFunc {
 	}
 }
 
-// isStreamingRequest 判断是否为流式请求
+// isStreamingRequest determines whether it is a streaming request.
 func isStreamingRequest(c *gin.Context) bool {
 	if c.Query("stream") == "true" {
 		return true
@@ -247,7 +247,7 @@ func isStreamingRequest(c *gin.Context) bool {
 	}
 }
 
-// detectStreamingMode 检测流式模式
+// detectStreamingMode detects streaming mode.
 func detectStreamingMode(c *gin.Context) interfaces.StreamingMode {
 	streamMode := c.Query("mode")
 	switch interfaces.StreamingMode(streamMode) {

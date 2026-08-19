@@ -11,18 +11,18 @@ import (
 )
 
 const (
-	// 清理间隔
+	// Cleanup interval.
 	cleanupInterval = 1 * time.Minute
 )
 
-// 客户端键（用于区分不同客户端实例）
+// Client key (used to distinguish different client instances)
 type clientKey struct {
 	ExecutionMode interfaces.ExecutionMode `json:"execution_mode,omitempty"`
 	StreamingMode interfaces.StreamingMode `json:"streaming_mode,omitempty"`
 	Timeout       time.Duration            `json:"timeout,omitempty"`
 }
 
-// GetClientKey 获取客户端键
+// GetClientKey Gets the client key.
 func GetClientKey(executionMode interfaces.ExecutionMode, streamingMode interfaces.StreamingMode, timeout time.Duration) clientKey {
 	return clientKey{
 		ExecutionMode: executionMode,
@@ -31,15 +31,15 @@ func GetClientKey(executionMode interfaces.ExecutionMode, streamingMode interfac
 	}
 }
 
-// PoolConfig 连接池配置
+// PoolConfig connection pool configuration.
 type PoolConfig struct {
-	MaxClients     int           // 最大客户端数量
-	MaxTimeout     time.Duration // 最大超时时间
-	DefaultTimeout time.Duration // 默认超时时间
-	ClientLifetime time.Duration // 客户端生命周期
+	MaxClients     int           // Maximum number of clients.
+	MaxTimeout     time.Duration // Maximum timeout.
+	DefaultTimeout time.Duration // Default timeout.
+	ClientLifetime time.Duration // Client lifecycle.
 }
 
-// ProxyClient 代理客户端信息
+// ProxyClient proxy client information.
 type ProxyClient struct {
 	*http.Client
 	IsStreaming   bool
@@ -47,8 +47,8 @@ type ProxyClient struct {
 	CreateAt      time.Time
 }
 
-// clientPool 代理客户端池
-// 客户端池结构体
+// clientPool proxy client pool.
+// Client pool structure.
 type clientPool struct {
 	logger      interfaces.Logger
 	mu          sync.Mutex
@@ -62,7 +62,7 @@ var (
 	clientPoolOnce     sync.Once
 )
 
-// NewClientPool 创建新的客户端池
+// NewClientPool creates a new client pool.
 func NewClientPool() *clientPool {
 	clientPoolOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -79,13 +79,13 @@ func NewClientPool() *clientPool {
 			config:      poolConfig,
 			stopCleanup: make(chan struct{}),
 		}
-		// 启动定期清理 goroutine
+		// Start regular cleanup goroutine.
 		go clientPoolInstance.startCleanupTimer()
 	})
 	return clientPoolInstance
 }
 
-// GetClient 获取同步类型客户端
+// GetClient Gets the synchronization type client.
 func (p *clientPool) GetClient(timeout time.Duration) *http.Client {
 	if timeout <= 0 {
 		timeout = p.config.DefaultTimeout
@@ -97,18 +97,18 @@ func (p *clientPool) GetClient(timeout time.Duration) *http.Client {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// 检查客户端是否已存在
+	// Check if the client already exists.
 	if client, exists := p.clients[key]; exists {
-		client.CreateAt = time.Now() // 更新访问时间
+		client.CreateAt = time.Now() // Update access time.
 		return client.Client
 	}
 
-	// 如果达到最大客户端数量，移除最旧的客户端
+	// If the maximum number of clients is reached, remove the oldest client.
 	if len(p.clients) >= p.config.MaxClients {
 		p.removeOldestClient()
 	}
 
-	// 创建新客户端
+	// Create new client.
 	client := &ProxyClient{
 		Client: rest.NewRawHTTPClientWithOptions(rest.HTTPClientOptions{
 			TimeOut: int(timeout.Seconds()),
@@ -121,21 +121,21 @@ func (p *clientPool) GetClient(timeout time.Duration) *http.Client {
 	return client.Client
 }
 
-// getStreamClient 通用流式客户端创建方法
+// getStreamClient universal streaming client creation method.
 func (p *clientPool) GetStreamClient(streamingMode interfaces.StreamingMode, timeout time.Duration) *http.Client {
 	p.logger.Debugf("get stream client, streamingMode: %v, timeout: %v", streamingMode, timeout)
 	key := GetClientKey(interfaces.ExecutionModeStream, streamingMode, timeout)
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// 检查客户端是否已存在
+	// Check if the client already exists.
 	if client, exists := p.clients[key]; exists {
 		p.logger.Debugf("stream client exists, streamingMode: %v, timeout: %v", streamingMode, timeout)
-		client.CreateAt = time.Now() // 更新访问时间
+		client.CreateAt = time.Now() // Update access time.
 		return client.Client
 	}
 	p.logger.Debugf("stream client not exists, streamingMode: %v, timeout: %v", streamingMode, timeout)
-	// 如果达到最大客户端数量，优先移除同步客户端
+	// If the maximum number of clients is reached, synchronization clients will be removed first.
 	if len(p.clients) >= p.config.MaxClients {
 		p.logger.Debugf("stream client not exists, remove oldest client")
 		p.removeOldestClient()
@@ -145,7 +145,7 @@ func (p *clientPool) GetStreamClient(streamingMode interfaces.StreamingMode, tim
 	if timeout > 0 {
 		responseHeaderTimeout = timeout
 	}
-	// 创建新客户端
+	// Create new client.
 	client := &ProxyClient{
 		Client: rest.NewRawHTTPClientWithOptions(rest.HTTPClientOptions{
 			TimeOut:               int(timeout.Seconds()),
@@ -161,12 +161,12 @@ func (p *clientPool) GetStreamClient(streamingMode interfaces.StreamingMode, tim
 	return client.Client
 }
 
-// / 移除最旧的客户端
+// / Remove the oldest client.
 func (p *clientPool) removeOldestClient() {
 	var oldestKey *clientKey
 	oldestTime := time.Time{}
 
-	// 找到最旧的客户端
+	// Find the oldest client.
 	first := true
 	for key, client := range p.clients {
 		if client.IsStreaming {
@@ -178,7 +178,7 @@ func (p *clientPool) removeOldestClient() {
 			first = false
 		}
 	}
-	// 如果全是流式客户端，则移除最旧的
+	// If they are all streaming clients, remove the oldest.
 	if oldestKey == nil {
 		for key, client := range p.clients {
 			if first || client.CreateAt.Before(oldestTime) {
@@ -195,7 +195,7 @@ func (p *clientPool) removeOldestClient() {
 	}
 }
 
-// 定期清理闲置客户端
+// Regularly clean up idle clients.
 func (p *clientPool) startCleanupTimer() {
 	cleanupTicker := time.NewTicker(cleanupInterval)
 	defer cleanupTicker.Stop()
@@ -210,24 +210,24 @@ func (p *clientPool) startCleanupTimer() {
 	}
 }
 
-// 清理闲置客户端
+// Clean up idle clients.
 func (p *clientPool) cleanupIdleClients() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	now := time.Now()
 	for key, client := range p.clients {
 		createdAt := client.CreateAt
-		// 根据连接类型应用不同的超时策略
+		// Apply different timeout policies based on connection type.
 		if key.ExecutionMode == interfaces.ExecutionModeSync &&
 			now.Sub(createdAt) > p.config.ClientLifetime {
 			p.logger.Infof("cleanup idle sync client, key: %v, created at: %v", key, createdAt)
-			client.CloseIdleConnections() // 关闭同步客户端的闲置连接
+			client.CloseIdleConnections() // Close idle connections for sync clients.
 			delete(p.clients, key)
 		}
 	}
 }
 
-// Close 关闭连接池
+// Close closes the connection pool.
 func (p *clientPool) Close() {
 	close(p.stopCleanup)
 }

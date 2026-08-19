@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -13,18 +12,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// CreateTool 工具管理
+// CreateTool tool management.
 func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.CreateToolReq) (resp *interfaces.CreateToolResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"box_id":  req.BoxID,
 		"user_id": req.UserID,
 	})
-	// 权限校验
+	// Permission verification.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -34,7 +34,7 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 	if err != nil {
 		return
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -46,12 +46,12 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 			fmt.Sprintf("toolbox %s not found", req.BoxID))
 		return
 	}
-	// 内置工具箱不允许添加工具
+	// The built-in toolbox does not allow adding tools.
 	if toolBox.IsInternal {
 		err = errors.DefaultHTTPError(ctx, http.StatusForbidden, "internal toolbox cannot add tools")
 		return
 	}
-	// 解析导入数据
+	// Parse imported data.
 	var metadataList []interfaces.IMetadataDB
 	switch req.MetadataType {
 	case interfaces.MetadataTypeFunc:
@@ -64,12 +64,12 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 	if err != nil {
 		return
 	}
-	// 检查导入工具中是否存在重复的工具
+	// Check imported tools for duplicate tools.
 	tools, validatorNameMap, validatorMethodPathMap, err := s.parseOpenAPIToMetadata(ctx, req.BoxID, req.UserID, metadataList, false)
 	if err != nil {
 		return
 	}
-	// 去除掉重复的
+	// Remove duplicates.
 	failuresVailMap, err := s.checkToolConflict(ctx, req.BoxID, validatorNameMap, validatorMethodPathMap)
 	if err != nil {
 		return
@@ -79,19 +79,19 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 		SuccessIDs: []string{},
 		Failures:   []interfaces.CreateToolFailureResult{},
 	}
-	// 组装信息并保存工具
+	// Assemble information and save tools.
 	extendInfo := utils.ObjectToJSON(req.ExtendInfo)
 	globalParameters := utils.ObjectToJSON(req.GlobalParameters)
 	useRule := req.UseRule
 	var detils []metric.AuditLogToolDetil
 	for i, tool := range tools {
-		// 记录失败信息
+		// Record failure information.
 		if failuresVailMap[tool.Name] != nil {
 			resp.FailureCount++
 			resp.Failures = append(resp.Failures, interfaces.CreateToolFailureResult{Error: failuresVailMap[tool.Name], ToolName: tool.Name})
 			continue
 		}
-		// 保存工具
+		// Save tool.
 		tool.ExtendInfo = extendInfo
 		tool.UseRule = useRule
 		tool.Parameters = globalParameters
@@ -101,12 +101,12 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 			resp.Failures = append(resp.Failures, interfaces.CreateToolFailureResult{Error: err, ToolName: tool.Name})
 			continue
 		}
-		// 记录成功信息
+		// Record success information.
 		resp.SuccessCount++
 		resp.SuccessIDs = append(resp.SuccessIDs, toolID)
 		detils = append(detils, metric.AuditLogToolDetil{ToolID: toolID, ToolName: tool.Name})
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -131,17 +131,17 @@ func (s *ToolServiceImpl) CreateTool(ctx context.Context, req *interfaces.Create
 	return resp, nil
 }
 
-// 检查新增工具是否和已存在工具冲突
+// Check whether the new tool conflicts with existing tools.
 func (s *ToolServiceImpl) checkToolConflict(ctx context.Context, boxID string, validatorNameMap, validatorMethodPathMap map[string]bool) (
 	failuresVailMap map[string]error, err error) {
-	// 检查工具是否存在
+	// Check if the tool exists.
 	toolList, err := s.ToolDB.SelectToolByBoxID(ctx, boxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 去除掉重复的
+	// Remove duplicates.
 	failuresVailMap = map[string]error{}
 	for _, tool := range toolList {
 		if validatorNameMap[tool.Name] {
@@ -152,7 +152,7 @@ func (s *ToolServiceImpl) checkToolConflict(ctx context.Context, boxID string, v
 		if tool.SourceType == model.SourceTypeFunction {
 			continue
 		}
-		// 获取元数据
+		// Get metadata.
 		var has bool
 		var metadata interfaces.IMetadataDB
 		has, metadata, err = s.MetadataService.GetMetadataBySource(ctx, tool.SourceID, tool.SourceType)
@@ -173,7 +173,7 @@ func (s *ToolServiceImpl) checkToolConflict(ctx context.Context, boxID string, v
 	return
 }
 
-// saveToolToBox 向工具箱内添加工具
+// saveToolToBox adds a tool to the toolbox.
 func (s *ToolServiceImpl) saveToolToBox(ctx context.Context, tool *model.ToolDB, metadata interfaces.IMetadataDB) (toolID string, err error) {
 	tx, err := s.DBTx.GetTx(ctx)
 	if err != nil {

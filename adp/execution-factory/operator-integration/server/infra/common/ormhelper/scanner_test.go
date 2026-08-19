@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestBuildFieldMap 测试字段映射构建
+// TestBuildFieldMap test field mapping construction.
 func TestBuildFieldMap(t *testing.T) {
 	type TestStruct struct {
 		ID          string `db:"f_id"`
@@ -37,7 +37,7 @@ func TestBuildFieldMap(t *testing.T) {
 	}
 }
 
-// TestPrepareScanTargets 测试扫描目标准备
+// TestPrepareScanTargets test scan target preparation.
 func TestPrepareScanTargets(t *testing.T) {
 	type TestStruct struct {
 		ID          string `db:"f_id"`
@@ -46,25 +46,25 @@ func TestPrepareScanTargets(t *testing.T) {
 		Description string `db:"f_description"`
 	}
 
-	// 创建结构体实例
+	// Create a structure instance.
 	testStruct := TestStruct{}
 	structValue := reflect.ValueOf(&testStruct).Elem()
 
-	// 构建字段映射
+	// Build field mapping.
 	structType := reflect.TypeOf(testStruct)
 	fieldMap := buildFieldMap(structType)
 
-	// 模拟数据库列顺序（与结构体字段顺序不同）
+	// Simulate database column order (different from structure field order)
 	columns := []string{"f_name", "f_description", "f_id", "f_create_time"}
 
-	// 准备扫描目标
+	// Prepare to scan target.
 	scanTargets := prepareScanTargets(structValue, columns, fieldMap)
 
 	if len(scanTargets) != len(columns) {
 		t.Fatalf("扫描目标数量 %d，期望 %d", len(scanTargets), len(columns))
 	}
 
-	// 验证每个扫描目标都不为nil
+	// Verify that each scan target is not nil.
 	for i, target := range scanTargets {
 		if target == nil {
 			t.Errorf("扫描目标 %d (列 %s) 为 nil", i, columns[i])
@@ -74,7 +74,7 @@ func TestPrepareScanTargets(t *testing.T) {
 	t.Logf("成功创建 %d 个扫描目标", len(scanTargets))
 }
 
-// TestFieldMapping 测试字段映射功能
+// TestFieldMapping test field mapping function.
 func TestFieldMapping(t *testing.T) {
 	type TestStruct struct {
 		ID          string `db:"f_id"`
@@ -86,10 +86,10 @@ func TestFieldMapping(t *testing.T) {
 	structType := reflect.TypeOf(TestStruct{})
 	fieldMap := buildFieldMap(structType)
 
-	// 测试不同的列顺序
+	// Test different column orders.
 	testCases := []struct {
 		columns  []string
-		expected []int // 期望的字段索引
+		expected []int // expected field index.
 	}{
 		{
 			columns:  []string{"f_id", "f_name", "f_description", "f_create_time"},

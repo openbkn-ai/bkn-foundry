@@ -9,7 +9,7 @@ import (
 
 //go:generate mockgen -source=skill_repository.go -destination=../../mocks/model_skill_repository.go -package=mocks
 
-// SkillRepositoryDB Skill 主表
+// SkillRepositoryDB Skill main table.
 type SkillRepositoryDB struct {
 	ID           int64  `json:"id" db:"f_id"`
 	SkillID      string `json:"skill_id" db:"f_skill_id"`
@@ -32,18 +32,18 @@ type SkillRepositoryDB struct {
 	DeleteUser   string `json:"delete_user" db:"f_delete_user"`
 }
 
-// GetBizID 获取业务 ID
+// GetBizID Get business ID.
 func (s *SkillRepositoryDB) GetBizID() string {
 	return s.SkillID
 }
 
-// ISkillRepository Skill 主表接口
+// ISkillRepository Skill main table interface.
 type ISkillRepository interface {
 	InsertSkill(ctx context.Context, tx *sql.Tx, skill *SkillRepositoryDB) (skillID string, err error)
 	UpdateSkill(ctx context.Context, tx *sql.Tx, skill *SkillRepositoryDB) error
-	// UpdateSkillStatus 仅更新业务状态字段 f_status，状态值语义与 interfaces.BizStatus 保持一致。
+	// UpdateSkillStatus only updates the business status field f_status, and the status value semantics are consistent with interfaces.BizStatus.
 	UpdateSkillStatus(ctx context.Context, tx *sql.Tx, skillID string, status string, updateUser string) error
-	// UpdateSkillDeleted 更新删除标记 f_is_deleted，不再通过 status 表达删除流程状态。
+	// UpdateSkillDeleted updates the deletion flag f_is_deleted, and no longer expresses the deletion process status through status.
 	UpdateSkillDeleted(ctx context.Context, tx *sql.Tx, skillID string, isDeleted bool, updateUser string) error
 	SelectSkillByID(ctx context.Context, tx *sql.Tx, skillID string) (skill *SkillRepositoryDB, err error)
 	SelectSkillListPage(ctx context.Context, tx *sql.Tx, filter map[string]interface{},
@@ -52,6 +52,6 @@ type ISkillRepository interface {
 	CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (count int64, err error)
 	DeleteSkillByID(ctx context.Context, tx *sql.Tx, skillID string) error
 	SelectSkillByName(ctx context.Context, tx *sql.Tx, name string, status []string) (bool, *SkillRepositoryDB, error)
-	// SelectSkillListByIDs 按 skillID 批量查询(未删除)，空入参返回空列表
+	// SelectSkillListByIDs batch query by skillID (not deleted), empty parameters return an empty list.
 	SelectSkillListByIDs(ctx context.Context, skillIDs []string) (skills []*SkillRepositoryDB, err error)
 }

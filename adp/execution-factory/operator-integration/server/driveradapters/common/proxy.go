@@ -20,19 +20,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// UnifiedProxyHandler 统一代理处理接口
+// UnifiedProxyHandler unified proxy processing interface.
 type UnifiedProxyHandler interface {
 	FunctionExecuteProxy(c *gin.Context)
 	FunctionExecute(c *gin.Context)
-	// 从函数代码推导参数定义
+	// Deriving parameter definitions from function code.
 	FunctionInferSchema(c *gin.Context)
-	// 从Pypi源查询依赖库版本
+	// Query dependency version from PyPI source.
 	QueryPypiVersions(c *gin.Context)
-	// 获取依赖库列表
+	// Get the list of dependent libraries.
 	GetDependencies(c *gin.Context)
 }
 
-// unifiedProxyHandler 代理处理实现
+// unifiedProxyHandler proxy processing implementation.
 type unifiedProxyHandler struct {
 	Logger          interfaces.Logger
 	MetadataService interfaces.IMetadataService
@@ -58,11 +58,11 @@ func NewUnifiedProxyHandler() UnifiedProxyHandler {
 	return proxyHandler
 }
 
-// FunctionExecute 函数执行
+// FunctionExecute function execution.
 //
-// 该接口在沙箱中执行调用方提交的任意代码，因此在公开面要求调用方在算子类型上持有 execute
-// 权限（见 #345）。此前公开面无任何授权判定，任何持有有效令牌的账号——包括权限集为空的
-// 账号——都可借此获得沙箱内的代码执行能力。
+// This interface executes any code submitted by the caller in the sandbox, so the public interface requires the caller to hold execute on the operator type.
+// Permissions (see #345). There has been no authorization determination on the public face before, and any account holding a valid token - including those with empty permission sets.
+// Account - you can use this to gain code execution capabilities in the sandbox.
 func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 	var err error
 	if err = requireOperatorTypePermission(c.Request.Context(), h.AuthService,
@@ -107,16 +107,16 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, newFunctionExecuteResp(resp))
 }
 
-// 执行上下文的全部键。沙箱会话是池化复用的,容器环境里留着上一个调用方的值,
-// 而下发的 env_vars 只是覆盖同名键 —— 漏掉哪个,函数读到的就是别人的身份。
-// 所以每次执行都下发全套,未知的显式置空。
+// All keys of the execution context. The sandbox session is pooled and reused, and the value of the previous caller is retained in the container environment.
+// The issued env_vars only overwrite keys with the same name - if you miss any one, the function will read someone else's identity.
+// Therefore, the full set is issued every time it is executed, and the unknown ones are explicitly blanked.
 func executionEnvKeys() []string {
 	return []string{
 		"source", "task_id", "capability_id", "capability_name",
 		"function_version_id", "user_id", "user_name",
-		// BKN 身份与会话上下文。必须列在这里：newExecutionEnv 靠这份清单把每个键
-		// 预置成空串，从而做到「每次执行下发全套」。漏一个，池化会话里上一个调用方
-		// 的令牌就会留给下一个——而令牌漏的不是标记，是身份。
+		// BKN identity and session context. Must be listed here: newExecutionEnv Rely on this list to put each key.
+		// Preset it as an empty string, so as to achieve "the complete set is delivered every time it is executed". Missing one, the previous caller in the pooled session.
+		// The token will be left for the next one - and what the token misses is not the mark, but the identity.
 		"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID",
 	}
 }
@@ -129,8 +129,8 @@ func newExecutionEnv() map[string]any {
 	return env
 }
 
-// 推导 schema 同样会执行用户代码,身份键必须一并覆盖 ——
-// 少发一个,池化容器里上一个调用方的身份就会被用户代码读到。
+// Deriving the schema will also execute user code, and the identity key must be overwritten as well -.
+// If one is sent less, the identity of the previous caller in the pooled container will be read by the user code.
 func inferSchemaExecutionEnv() map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_infer_schema"
@@ -146,22 +146,22 @@ func buildFunctionProxyExecutionEnv(version string) map[string]any {
 	return env
 }
 
-// FunctionExecuteResp 函数执行响应
+// FunctionExecuteResp function execution response.
 type FunctionExecuteResp struct {
-	Stdout          string `json:"stdout"`                  // 标准输出
-	Stderr          string `json:"stderr"`                  // 标准错误输出
-	Result          any    `json:"result"`                  // 执行结果值
-	Metrics         any    `json:"metrics"`                 // 执行指标
-	ExitCode        int    `json:"exit_code"`               // 退出码,0 表示成功
-	ErrorMessage    string `json:"error_message,omitempty"` // 沙箱侧错误信息
-	ExecutionTimeMS int64  `json:"execution_time_ms"`       // 执行耗时,单位毫秒
-	Artifacts       any    `json:"artifacts,omitempty"`     // 文件制品
-	SessionID       string `json:"session_id,omitempty"`    // 沙箱会话ID,便于排障
+	Stdout          string `json:"stdout"`                  // standard output.
+	Stderr          string `json:"stderr"`                  // standard error output.
+	Result          any    `json:"result"`                  // execution result value.
+	Metrics         any    `json:"metrics"`                 // Execution metrics.
+	ExitCode        int    `json:"exit_code"`               // Exit code, 0 indicates success.
+	ErrorMessage    string `json:"error_message,omitempty"` // Sandbox side error message.
+	ExecutionTimeMS int64  `json:"execution_time_ms"`       // Execution time, unit milliseconds.
+	Artifacts       any    `json:"artifacts,omitempty"`     // Documentation.
+	SessionID       string `json:"session_id,omitempty"`    // Sandbox session ID for easy troubleshooting.
 }
 
-// newFunctionExecuteResp 把沙箱执行结果转成对外响应。
-// 沙箱本身返回了退出码、耗时、制品等信息,调试函数时这些和 stdout/stderr 同样关键,
-// 因此整体透出而不是只保留输出流。
+// newFunctionExecuteResp converts the sandbox execution result into an external response.
+// The sandbox itself returns information such as exit code, time consumption, and artifacts. These are as critical as stdout/stderr when debugging functions.
+// So the whole thing is revealed instead of just keeping the output stream.
 func newFunctionExecuteResp(resp *interfaces.ExecuteCodeResp) *FunctionExecuteResp {
 	return &FunctionExecuteResp{
 		Stdout:          resp.Stdout,
@@ -200,23 +200,23 @@ func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[
 	if req.UserName != "" {
 		env["user_name"] = req.UserName
 	}
-	// BKN 上下文。键名大写并加前缀，与 user_id 那几个追踪标记区分开——那些注释里
-	// 明写「仅作追踪标记，不参与鉴权」，而 bkn_token 是真凭据，不该混进同一命名风格。
-	// 无条件赋值，不传就是空串：这三个键已在 executionEnvKeys 里预置，条件写入会让
-	// 未传的那次留下上一个调用方的值。空串在沙箱侧等同于未配置。
+	// BKN context. The key name is capitalized and prefixed to distinguish it from the user_id tracking tags - in those comments.
+	// It is clearly written "only used as a tracking mark, not involved in authentication", and bkn_token is a real credential and should not be mixed into the same naming style.
+	// Unconditional assignment, if not passed, it will be an empty string: these three keys have been preset in executionEnvKeys, and conditional writing will cause.
+	// The unpassed one leaves the value of the previous caller. An empty string is equivalent to not configured on the sandbox side.
 	env["BKN_TOKEN"] = req.BKNToken
 	env["BKN_CONVERSATION_ID"] = req.BKNConversationID
 	env["BKN_INTERACTION_ID"] = req.BKNInteractionID
 	return env
 }
 
-// FunctionExecuteProxyReq 函数执行代理请求参数
+// FunctionExecuteProxyReq function execution proxy request parameters.
 type FunctionExecuteProxyReq struct {
 	Version string `uri:"version" validate:"required,uuid4"`
-	Timeout int64  `query:"timeout"` // 毫秒
+	Timeout int64  `query:"timeout"` // milliseconds.
 }
 
-// FunctionExecuteProxy 执行代理请求
+// FunctionExecuteProxy executes proxy requests.
 func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 	var err error
 	req := &FunctionExecuteProxyReq{}
@@ -224,7 +224,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 读取请求体
+	// Read request body.
 	event := map[string]any{}
 	if err = c.ShouldBindJSON(&event); err != nil {
 		err = errors.NewHTTPError(c.Request.Context(), http.StatusBadRequest, errors.ErrExtDebugParamsInvalid,
@@ -238,7 +238,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		return
 	}
 
-	// 获取元数据
+	// Get metadata.
 	exists, metadata, err := h.MetadataService.CheckMetadataExists(c.Request.Context(), interfaces.MetadataTypeFunc, req.Version)
 	if err != nil {
 		rest.ReplyError(c, err)
@@ -250,7 +250,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		return
 	}
 
-	// 执行函数
+	// Execute function.
 	scriptType := metadata.GetScriptType()
 	if scriptType != string(interfaces.ScriptTypePython) {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, fmt.Sprintf("script_type %s not supported", scriptType))
@@ -311,7 +311,7 @@ func summarizeExecutionResponse(resp *interfaces.ExecuteCodeResp) map[string]any
 	return summary
 }
 
-// QueryPypiVersions 查询Pypi依赖库版本
+// QueryPyPIVersions Query PyPI dependency version.
 func (h *unifiedProxyHandler) QueryPypiVersions(c *gin.Context) {
 	req := &sandbox.ParsePypiReq{}
 	if err := c.ShouldBindUri(req); err != nil {
@@ -339,7 +339,7 @@ func (h *unifiedProxyHandler) QueryPypiVersions(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// GetDependencies 获取依赖库列表
+// GetDependencies Get the list of dependent libraries.
 func (h *unifiedProxyHandler) GetDependencies(c *gin.Context) {
 	var err error
 	resp, err := h.SessionPool.GetDependencies(c.Request.Context())
@@ -350,31 +350,31 @@ func (h *unifiedProxyHandler) GetDependencies(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// FunctionInferSchemaReq 从函数代码推导参数定义的请求
+// FunctionInferSchemaReq request to derive parameter definitions from function code.
 type FunctionInferSchemaReq struct {
-	Code string `json:"code" validate:"required"` // 用户函数代码
+	Code string `json:"code" validate:"required"` // User function code.
 }
 
-// FunctionInferSchemaResp 推导结果。代码未使用 @tool 时 Supported 为 false，
-// 其余字段为空，调用方据此回退到手工填写。
+// FunctionInferSchemaResp derivation result. Supported is false when the code does not use @tool.
+// The remaining fields are empty, and the caller falls back to filling them in manually.
 type FunctionInferSchemaResp struct {
-	Supported   bool                       `json:"supported"`             // 是否推导出了 @tool 函数
-	Name        string                     `json:"name,omitempty"`        // 函数名
-	Description string                     `json:"description,omitempty"` // 取自 docstring
-	Inputs      []*interfaces.ParameterDef `json:"inputs,omitempty"`      // 输入参数定义
-	Outputs     []*interfaces.ParameterDef `json:"outputs,omitempty"`     // 输出参数定义
+	Supported   bool                       `json:"supported"`             // Whether the @tool function is derived.
+	Name        string                     `json:"name,omitempty"`        // function name.
+	Description string                     `json:"description,omitempty"` // Taken from docstring.
+	Inputs      []*interfaces.ParameterDef `json:"inputs,omitempty"`      // Input parameter definition.
+	Outputs     []*interfaces.ParameterDef `json:"outputs,omitempty"`     // Output parameter definition.
 }
 
-// 探针代码：附在用户代码之后，向 SDK 取它登记的 schema。
+// Probe code: Attached to the user code, obtain its registered schema from the SDK.
 //
-// 在模块级直接打印并退出，不定义 handler：用户代码带 @tool 时，wrapper 会走
-// dispatch 分支去调用用户函数，探针若写成 handler 形态根本不会被执行，而 dispatch
-// 会因为缺少业务入参而失败。
+// Print and exit directly at the module level without defining the handler: when the user code contains @tool, the wrapper will exit.
+// dispatch branch to call the user function. If the probe is written in handler form, it will not be executed at all, and dispatch.
+// It will fail due to lack of business input parameters.
 //
-// 结果按标记包裹。隔离层有两种提取方式：subprocess 取 stdout 里最后一个合法 JSON 行，
-// bwrap 与 macseatbelt 只认 ===SANDBOX_RESULT=== 标记。裸打印在后者下取不到值，
-// 推导会恒为 supported:false —— 带上标记则两种都命中（标记行本身不是合法 JSON，
-// 不影响末行 JSON 的判定）。
+// Results are wrapped by tag. There are two ways to extract the isolation layer: subprocess takes the last legal JSON line in stdout,
+// bwrap and macseatbelt only recognize ===SANDBOX_RESULT=== tags. Naked printing cannot get the value under the latter.
+// The derivation will always be supported:false - if marked, both will be hit (the marked line itself is not legal JSON,
+// Does not affect the judgment of the last line of JSON).
 const inferSchemaProbe = `
 
 import json as _bkn_json, sys as _bkn_sys
@@ -396,13 +396,13 @@ print("===SANDBOX_RESULT_END===")
 _bkn_sys.exit(0)
 `
 
-// FunctionInferSchema 从函数代码推导参数定义。
+// FunctionInferSchema derives parameter definitions from function code.
 //
-// 参数定义本来要用户在界面上再填一遍,而 @tool 函数的签名、类型注解和 docstring
-// 已经描述了同样的信息。这里在沙箱中执行用户代码,向 SDK 取它登记的 schema,
-// 让签名成为唯一事实源。
+// The parameter definition originally required the user to fill it out again on the interface, but the signature, type annotation and docstring of the @tool function.
+// The same information has already been described. Here, the user code is executed in the sandbox and its registered schema is obtained from the SDK.
+// Make the signature the only source of truth.
 //
-// 执行用户代码意味着与 FunctionExecute 同等的能力,因此沿用同一套 execute 授权。
+// Executing user code means the same capability as FunctionExecute, so the same set of execute authorizations is used.
 func (h *unifiedProxyHandler) FunctionInferSchema(c *gin.Context) {
 	ctx := c.Request.Context()
 	if err := requireOperatorTypePermission(ctx, h.AuthService,
@@ -431,8 +431,8 @@ func (h *unifiedProxyHandler) FunctionInferSchema(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	// 用户代码本身有语法错误或 import 失败时推导不出结果,这不是服务端故障,
-	// 按「无法推导」返回,让调用方回退到手工填写。
+	// There are syntax errors in the user code itself or the result cannot be deduced when the import fails. This is not a server-side failure.
+	// Press "Unable to deduce" to return, allowing the caller to fall back to manual filling.
 	if resp.ExitCode != 0 || resp.ReturnValue == nil {
 		h.Logger.WithContext(ctx).Infof("infer schema produced no result, exit_code: %d, stderr: %s",
 			resp.ExitCode, resp.Stderr)

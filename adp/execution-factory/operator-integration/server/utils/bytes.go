@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-// ConvertToBytes  将当前限制转化为 B、KB、MB、GB、TB为单位的字符串
+// ConvertToBytes converts the current limit into a string in units of B, KB, MB, GB, and TB.
 func ConvertToBytes(size int64) string {
 	const (
 		KB int64 = 1024

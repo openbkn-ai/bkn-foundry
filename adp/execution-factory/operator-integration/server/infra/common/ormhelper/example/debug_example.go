@@ -7,7 +7,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
-// MCPServerConfigExample 示例结构体，模拟实际的MCPServerConfigDB
+// MCPServerConfigExample example structure, simulating the actual MCPServerConfigDB.
 type MCPServerConfigExample struct {
 	ID          string `json:"f_id" db:"f_id"`
 	CreateUser  string `json:"f_create_user" db:"f_create_user"`
@@ -27,31 +27,31 @@ type MCPServerConfigExample struct {
 	Source      string `json:"f_source" db:"f_source"`
 }
 
-// DebugFieldMappingExample 演示字段映射调试
+// DebugFieldMappingExample demonstrates field mapping debugging.
 func DebugFieldMappingExample() {
 	config := &MCPServerConfigExample{}
 
 	fmt.Println("=== ORM Helper 字段映射调试示例 ===")
 
-	// 调试结构体字段映射
+	// Debug structure field mapping.
 	ormhelper.DebugFieldMapping(config)
 
-	// 模拟数据库返回的列顺序（可能与结构体字段顺序不同）
+	// Simulates the column order returned by the database (which may differ from the structure field order)
 	columns := []string{
 		"f_id", "f_name", "f_description", "f_mode", "f_url", "f_headers",
 		"f_command", "f_env", "f_args", "f_status", "f_category", "f_source",
 		"f_create_user", "f_create_time", "f_update_user", "f_update_time",
 	}
 
-	// 调试列映射
+	// Debug column mapping.
 	ormhelper.DebugColumnMapping(config, columns)
 }
 
-// ExampleSelectByIDWithDebug 在SelectByID方法中使用调试功能的示例
+// ExampleSelectByIDWithDebug Example of using the debugging feature in the SelectByID method.
 func ExampleSelectByIDWithDebug(ctx context.Context, orm *ormhelper.DB, id string) (*MCPServerConfigExample, error) {
 	config := &MCPServerConfigExample{}
 
-	// 调试：打印字段映射信息
+	// Debugging: Print field mapping information.
 	fmt.Println("调试SelectByID方法:")
 	ormhelper.DebugFieldMapping(config)
 
@@ -63,7 +63,7 @@ func ExampleSelectByIDWithDebug(ctx context.Context, orm *ormhelper.DB, id strin
 	return config, nil
 }
 
-// DemonstrateFixedVsUnfixed 演示修复前后的差异
+// DemonstrateFixedVsUnfixed demonstrates the difference before and after repair.
 func DemonstrateFixedVsUnfixed() {
 	fmt.Println("=== 修复前后对比 ===")
 
@@ -81,10 +81,10 @@ func DemonstrateFixedVsUnfixed() {
 	fmt.Println("- 按数据库列顺序正确映射到结构体字段")
 	fmt.Println()
 
-	// 展示字段映射
+	// Display field mapping.
 	ormhelper.DebugFieldMapping(config)
 
-	// 模拟问题场景：数据库列顺序与结构体字段顺序不同
+	// Simulate problem scenario: database column order is different from structure field order.
 	dbColumns := []string{"f_id", "f_name", "f_description", "f_create_time"}
 	fmt.Printf("数据库列顺序: %v\n", dbColumns)
 	fmt.Printf("结构体字段顺序: ID[0], CreateUser[1], CreateTime[2], UpdateUser[3]...\n")

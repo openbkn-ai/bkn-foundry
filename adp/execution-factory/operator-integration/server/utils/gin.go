@@ -5,19 +5,19 @@ import (
 	"mime/multipart"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 )
 
-// GetBindJSONRaw 获取原始请求体
+// GetBindJSONRaw gets the original request body.
 func GetBindJSONRaw(c *gin.Context, req interface{}) (err error) {
-	// 读取请求体之前先判断是否为空
+	// Before reading the request body, check whether it is empty.
 	if c.Request.Body == nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, "request body is empty")
 		return
 	}
-	// 读取请求体
+	// Read request body.
 	err = c.ShouldBindJSON(req)
 	if err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
@@ -25,24 +25,24 @@ func GetBindJSONRaw(c *gin.Context, req interface{}) (err error) {
 	return
 }
 
-// GetBindMultipartFormRaw 获取原始 multipart/form-data 请求体
+// GetBindMultipartFormRaw Gets the original multipart/form-data request body.
 func GetBindMultipartFormRaw(c *gin.Context, req interface{}, fileKey string, fileSizeLimit int64) (fileBytes []byte, err error) {
-	// 读取请求体之前先判断是否为空
+	// Before reading the request body, check whether it is empty.
 	if c.Request.Body == nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, "request body is empty")
 		return
 	}
-	// 读取请求体
+	// Read request body.
 	err = c.ShouldBindWith(req, binding.Form)
 	if err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		return
 	}
-	// 获取文件
+	// Get file.
 	var file *multipart.FileHeader
 	file, err = c.FormFile(fileKey)
 	if err != nil {
-		// 判断是否是文件不存在的错误
+		// Determine whether the file does not exist error.
 		if err == http.ErrMissingFile || err.Error() == "http: no such file" {
 			err = nil
 		} else {
@@ -50,7 +50,7 @@ func GetBindMultipartFormRaw(c *gin.Context, req interface{}, fileKey string, fi
 		}
 		return
 	}
-	// TODO : 检查文件大小
+	// TODO: Check file size.
 	if fileSizeLimit > 0 && file.Size > fileSizeLimit {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, "file size exceeds limit")
 		return
@@ -64,7 +64,7 @@ func GetBindMultipartFormRaw(c *gin.Context, req interface{}, fileKey string, fi
 	defer func() {
 		_ = fileContent.Close()
 	}()
-	// 读取文件内容
+	// Read file contents.
 	buf := new(bytes.Buffer)
 	if _, err = buf.ReadFrom(fileContent); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
@@ -74,14 +74,14 @@ func GetBindMultipartFormRaw(c *gin.Context, req interface{}, fileKey string, fi
 	return
 }
 
-// GetBindFormRaw 获取原始 application/x-www-form-urlencoded 请求体
+// GetBindFormRaw gets the original application/x-www-form-urlencoded request body.
 func GetBindFormRaw(c *gin.Context, req interface{}) (err error) {
-	// 读取请求体之前先判断是否为空
+	// Before reading the request body, check whether it is empty.
 	if c.Request.Body == nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, "request body is empty")
 		return
 	}
-	// 读取请求体
+	// Read request body.
 	err = c.ShouldBind(req)
 	if err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())

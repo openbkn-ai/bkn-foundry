@@ -5,22 +5,22 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/creasty/defaults"
+	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/validator"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/creasty/defaults"
-	"github.com/gin-gonic/gin"
 )
 
 var (
-	// CodeTemplate 代码模板
-	CodeTemplate = "template.%s" // 代码模板
+	// CodeTemplate code template.
+	CodeTemplate = "template.%s" // code template.
 )
 
-// TemplateHandler 模板处理接口
+// TemplateHandler template processing interface.
 type TemplateHandler interface {
 	GetTemplate(c *gin.Context)
 }
@@ -48,12 +48,12 @@ func NewTemplateHandler() TemplateHandler {
 	return th
 }
 
-// TemplateParams 模板参数
+// TemplateParams template parameters.
 type TemplateParams struct {
 	TemplateType string `uri:"template_type" default:"python" validate:"required,oneof=python"`
 }
 
-// TemplateResponse 模板响应参数
+// TemplateResponse template response parameters.
 type TemplateResponse struct {
 	TemplateType string `json:"template_type"`
 	CodeTemplate string `json:"code_template"`

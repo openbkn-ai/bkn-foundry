@@ -5,11 +5,11 @@ import (
 	"database/sql"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -40,7 +40,7 @@ func NewOperatorReleaseHistoryDB() model.IOperatorReleaseHistoryDB {
 	return rh
 }
 
-// Insert 添加
+// Insert Add.
 func (rh *operatorReleaseHistoryDB) Insert(ctx context.Context, tx *sql.Tx, historyDB *model.OperatorReleaseHistoryDB) (err error) {
 	orm := rh.orm
 	if tx != nil {
@@ -72,7 +72,7 @@ func (rh *operatorReleaseHistoryDB) Insert(ctx context.Context, tx *sql.Tx, hist
 	return
 }
 
-// DeleteByOpID 根据ID删除记录
+// DeleteByOpID Delete records based on ID.
 func (rh *operatorReleaseHistoryDB) DeleteByOpID(ctx context.Context, tx *sql.Tx, opID string) (err error) {
 	orm := rh.orm
 	if tx != nil {
@@ -85,7 +85,7 @@ func (rh *operatorReleaseHistoryDB) DeleteByOpID(ctx context.Context, tx *sql.Tx
 	return
 }
 
-// SelectByOpID 根据算子ID查询发布历史
+// SelectByOpID queries release history based on operator ID.
 func (rh *operatorReleaseHistoryDB) SelectByOpID(ctx context.Context, opID string) (histories []*model.OperatorReleaseHistoryDB, err error) {
 	orm := rh.orm
 	histories = []*model.OperatorReleaseHistoryDB{}
@@ -94,7 +94,7 @@ func (rh *operatorReleaseHistoryDB) SelectByOpID(ctx context.Context, opID strin
 	return
 }
 
-// BatchDeleteByID 批量删除
+// BatchDeleteByID batch delete.
 func (rh *operatorReleaseHistoryDB) BatchDeleteByID(ctx context.Context, tx *sql.Tx, ids []int64) (err error) {
 	orm := rh.orm
 	if tx != nil {
@@ -111,7 +111,7 @@ func (rh *operatorReleaseHistoryDB) BatchDeleteByID(ctx context.Context, tx *sql
 	return
 }
 
-// SelectByOpIDAndMetdata 根据算子ID和元数据版本查询发布历史
+// SelectByOpIDAndMetdata queries release history based on operator ID and metadata version.
 func (rh *operatorReleaseHistoryDB) SelectByOpIDAndMetdata(ctx context.Context, opID, metadataVersion string) (exist bool,
 	historyDB *model.OperatorReleaseHistoryDB, err error) {
 	orm := rh.orm
@@ -122,7 +122,7 @@ func (rh *operatorReleaseHistoryDB) SelectByOpIDAndMetdata(ctx context.Context, 
 	return
 }
 
-// SelectByOpIDAndTag 根据算子ID和版本查询发布历史
+// SelectByOpIDAndTag queries release history based on operator ID and version.
 func (rh *operatorReleaseHistoryDB) SelectByOpIDAndTag(ctx context.Context, opID string,
 	tag int) (exist bool, historyDB *model.OperatorReleaseHistoryDB, err error) {
 	orm := rh.orm
@@ -133,7 +133,7 @@ func (rh *operatorReleaseHistoryDB) SelectByOpIDAndTag(ctx context.Context, opID
 	return
 }
 
-// UpdateReleaseHistoryByID  更新发布历史
+// UpdateReleaseHistoryByID Update release history.
 func (rh *operatorReleaseHistoryDB) UpdateReleaseHistoryByID(ctx context.Context, tx *sql.Tx, historyDB *model.OperatorReleaseHistoryDB) (err error) {
 	orm := rh.orm
 	if tx != nil {

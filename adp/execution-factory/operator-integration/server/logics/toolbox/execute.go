@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -15,11 +14,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// DebugTool 工具调试
+// DebugTool tool debugging.
 func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.ExecuteToolReq) (resp *interfaces.HTTPResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -28,7 +28,7 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 		"user_id": req.UserID,
 	})
 
-	// 权限校验
+	// Permission verification.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -38,7 +38,7 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	if err != nil {
 		return
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed	, err: %v", err)
@@ -49,7 +49,7 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 检查工具是否存在
+	// Check if the tool exists.
 	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
@@ -65,7 +65,7 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	if err != nil {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -95,9 +95,9 @@ func (s *ToolServiceImpl) DebugTool(ctx context.Context, req *interfaces.Execute
 	return
 }
 
-// ExecuteTool 工具执行
+// ExecuteTool tool execution.
 func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.ExecuteToolReq) (resp *interfaces.HTTPResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer func() {
 		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
@@ -200,7 +200,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		}
 		actionClaimed = state.Acquired
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -211,7 +211,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 检查工具是否存在
+	// Check if the tool exists.
 	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
@@ -223,7 +223,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 			fmt.Sprintf("tool %s not found", req.ToolID))
 		return
 	}
-	// 检查工具是否可用
+	// Check if the tool is available.
 	if tool.Status != string(interfaces.ToolStatusTypeEnabled) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotAvailable,
 			"tool not available", tool.Name)
@@ -244,7 +244,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 	if err != nil {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -274,7 +274,7 @@ func (s *ToolServiceImpl) ExecuteTool(ctx context.Context, req *interfaces.Execu
 	return resp, nil
 }
 
-// ExecuteToolCore 执行工具核心逻辑（不包含权限校验和审计日志）
+// ExecuteToolCore executes the core logic of the tool (excluding permission verification and audit logs)
 func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.ExecuteToolReq) (resp *interfaces.HTTPResponse, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer func() {
@@ -286,7 +286,7 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 		}))
 		oteltrace.EndSpan(ctx, err)
 	}()
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -297,7 +297,7 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 检查工具是否存在
+	// Check if the tool exists.
 	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
@@ -309,7 +309,7 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 			fmt.Sprintf("tool %s not found", req.ToolID))
 		return
 	}
-	// 检查工具是否可用
+	// Check if the tool is available.
 	if tool.Status != string(interfaces.ToolStatusTypeEnabled) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolNotAvailable,
 			"tool not available", tool.Name)
@@ -320,7 +320,7 @@ func (s *ToolServiceImpl) ExecuteToolCore(ctx context.Context, req *interfaces.E
 }
 
 func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.ExecuteToolReq, tool *model.ToolDB, toolBoxURL string) (resp *interfaces.HTTPResponse, err error) {
-	// 获取元数据
+	// Get metadata.
 	exist, metadata, err := s.MetadataService.GetMetadataBySource(ctx, tool.SourceID, tool.SourceType)
 	if err != nil {
 		return

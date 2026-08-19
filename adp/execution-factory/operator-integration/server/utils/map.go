@@ -1,6 +1,6 @@
 package utils
 
-// GetValueOrDefault 获取map中key对应的值，如果不存在则返回默认值
+// GetValueOrDefault gets the value corresponding to the key in the map. If it does not exist, it returns the default value.
 func GetValueOrDefault(m map[string]string, key, defaultValue string) string {
 	if key == "" {
 		return defaultValue

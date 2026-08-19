@@ -17,7 +17,7 @@ type businessDomainServiceImpl struct {
 	bdManagement interfaces.BusinessDomainManagement
 }
 
-// NewBusinessDomainService 创建业务域服务实例
+// NewBusinessDomainService creates a business domain service instance.
 func NewBusinessDomainService() interfaces.IBusinessDomainService {
 	if !config.GetBusinessDomainEnabled() {
 		return &noopBusinessDomainService{}
@@ -28,13 +28,13 @@ func NewBusinessDomainService() interfaces.IBusinessDomainService {
 	}
 }
 
-// GetBusinessDomainFromHeader 从Header中获取业务域并校验是否存在
+// GetBusinessDomainFromHeader Gets the business domain from the Header and checks whether it exists.
 func (s *businessDomainServiceImpl) GetBusinessDomainFromHeader(c *gin.Context) (businessDomain string) {
 	businessDomain = c.GetHeader(string(interfaces.HeaderXBusinessDomain))
 	return businessDomain
 }
 
-// ValidateBusinessDomain 校验业务域是否存在
+// ValidateBusinessDomain Verifies whether the business domain exists.
 func (s *businessDomainServiceImpl) ValidateBusinessDomain(ctx context.Context) (err error) {
 	_, ok := infracommon.GetBusinessDomainFromCtx(ctx)
 	if !ok {
@@ -44,7 +44,7 @@ func (s *businessDomainServiceImpl) ValidateBusinessDomain(ctx context.Context) 
 	return nil
 }
 
-// AssociateResource 关联资源到业务域
+// AssociateResource associates resources to business domains.
 func (s *businessDomainServiceImpl) AssociateResource(ctx context.Context, bdId, resourceId string, resourceType interfaces.AuthResourceType) error {
 	req := &interfaces.BusinessDomainResourceAssociateRequest{
 		BDID: bdId,
@@ -64,7 +64,7 @@ func (s *businessDomainServiceImpl) AssociateResource(ctx context.Context, bdId,
 	return nil
 }
 
-// BatchDisassociateResource 批量取消资源与业务域的关联
+// BatchDisassociateResource Disassociates resources from business domains in batches.
 func (s *businessDomainServiceImpl) BatchDisassociateResource(ctx context.Context, bdID string, resourceIds []string, resourceType interfaces.AuthResourceType) (err error) {
 	if len(resourceIds) == 0 {
 		return
@@ -79,7 +79,7 @@ func (s *businessDomainServiceImpl) BatchDisassociateResource(ctx context.Contex
 	return
 }
 
-// DisassociateResource 取消资源与业务域的关联
+// DisassociateResource Disassociates the resource from the business domain.
 func (s *businessDomainServiceImpl) DisassociateResource(ctx context.Context, bdId, resourceId string, resourceType interfaces.AuthResourceType) error {
 	req := &interfaces.BusinessDomainResourceDisassociateRequest{
 		BDID: bdId,
@@ -99,12 +99,12 @@ func (s *businessDomainServiceImpl) DisassociateResource(ctx context.Context, bd
 	return nil
 }
 
-// ResourceList 查询业务域下的资源列表
+// ResourceList Query the resource list under the business domain.
 func (s *businessDomainServiceImpl) ResourceList(ctx context.Context, bdId string, resourceType interfaces.AuthResourceType) ([]string, error) {
 	req := &interfaces.BusinessDomainResourceListRequest{
 		BDID:   bdId,
 		Type:   string(resourceType),
-		Limit:  -1, // 设置为-1表示不分页，获取所有数据
+		Limit:  -1, // Set to -1 to indicate no paging and get all data.
 		Offset: 0,
 	}
 
@@ -115,7 +115,7 @@ func (s *businessDomainServiceImpl) ResourceList(ctx context.Context, bdId strin
 		return nil, err
 	}
 
-	// 提取资源ID列表
+	// Extract resource ID list.
 	resourceIDs := make([]string, 0, len(resp.Items))
 	for _, item := range resp.Items {
 		resourceIDs = append(resourceIDs, item.ID)
@@ -126,22 +126,22 @@ func (s *businessDomainServiceImpl) ResourceList(ctx context.Context, bdId strin
 	return resourceIDs, nil
 }
 
-// BatchResourceList 批量查询多业务域下的资源列表
+// BatchResourceList Batch query resource list under multiple business domains.
 func (s *businessDomainServiceImpl) BatchResourceList(ctx context.Context, bdIds []string, resourceType interfaces.AuthResourceType) (resourceToBdMap map[string]string, err error) {
-	// 初始化返回结果
+	// Initialization return result.
 	resourceToBdMap = make(map[string]string)
 
-	// 遍历所有业务域ID
+	// Traverse all business domain IDs.
 	for _, bdId := range bdIds {
-		// 调用单个业务域的资源列表方法
+		// Call the resource list method of a single business domain.
 		resourceIds, err := s.ResourceList(ctx, bdId, resourceType)
 		if err != nil {
 			s.logger.Errorf("BatchResourceList failed for bdId %s: %v", bdId, err)
-			// 返回错误，不继续处理其他业务域
+			// Return an error and do not continue processing other business domains.
 			return nil, err
 		}
 
-		// 将资源ID和业务域ID的映射关系添加到结果中
+		// Add the mapping relationship between resource ID and business domain ID to the results.
 		for _, resourceId := range resourceIds {
 			resourceToBdMap[resourceId] = bdId
 		}

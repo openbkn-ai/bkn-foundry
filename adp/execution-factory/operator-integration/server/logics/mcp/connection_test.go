@@ -8,7 +8,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// TestGenerateExternalConnectionInfo 复现「自定义型 MCP 被发了一个必然 404 的接入地址」
+// TestGenerateExternalConnectionInfo reproduces "The custom MCP was sent a certain 404 access address".
 func TestGenerateExternalConnectionInfo(t *testing.T) {
 	const mcpID = "43454db8-60c0-4f10-875f-29b3b42f6ae9"
 	s := &mcpServiceImpl{}
@@ -41,7 +41,7 @@ func TestGenerateExternalConnectionInfo(t *testing.T) {
 	})
 }
 
-// TestMCPErrorCodesHaveDescription 复现「缺 i18n 条目导致响应体直接吐 desc.<Key>」
+// TestMCPErrorCodesHaveDescription reproduces "The missing i18n entry causes the response body to spit out desc.<Key> directly".
 func TestMCPErrorCodesHaveDescription(t *testing.T) {
 	codes := []errors.ErrorCode{
 		errors.ErrExtMCPInstanceNotFound,

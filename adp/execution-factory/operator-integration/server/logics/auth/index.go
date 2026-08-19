@@ -35,7 +35,7 @@ func (n *noopAuthService) CheckCreatePermission(ctx context.Context, accessor *i
 	return nil
 }
 
-// CheckAdminPermission 在 AUTH_ENABLED=false 时放行，与本 noop 实现中其余判定一致。
+// CheckAdminPermission is released when AUTH_ENABLED=false, consistent with the rest of the decisions in this noop implementation.
 func (n *noopAuthService) CheckAdminPermission(ctx context.Context, accessor *interfaces.AuthAccessor) error {
 	return nil
 }

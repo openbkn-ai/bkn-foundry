@@ -3,14 +3,14 @@ package operator
 import (
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 )
 
-// QueryOperatorHistory 查询操作符历史
+// QueryOperatorHistory query operator history.
 func (op *operatorHandle) QueryOperatorHistoryDetail(c *gin.Context) {
 	req := &interfaces.OperatorHistoryDetailReq{}
 	if err := c.ShouldBindHeader(req); err != nil {
@@ -40,7 +40,7 @@ func (op *operatorHandle) QueryOperatorHistoryDetail(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// QueryOperatorHistoryList 查询算子历史版本列表
+// QueryOperatorHistoryList Query operator historical version list.
 func (op *operatorHandle) QueryOperatorHistoryList(c *gin.Context) {
 	req := &interfaces.OperatorHistoryListReq{}
 	if err := c.ShouldBindHeader(req); err != nil {

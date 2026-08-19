@@ -9,14 +9,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// requireOperatorTypePermission 校验调用方在算子类型上持有指定操作权限。
+// requireOperatorTypePermission verifies that the caller holds the specified operation permission on the operator type.
 //
-// 用于 /function/execute、/ai_generate/* 这类不隶属于任何已存在资源的端点：它们操作的是
-// 尚未落库的函数代码，没有资源 ID 可判，因此按类型级（ResourceIDAll）判定，口径与
-// logics/auth/decision.go 中 CheckCreatePermission 一致。
+// Used for /function/execute, /ai_generate/* endpoints that are not affiliated with any existing resources: they operate on.
+// Function codes that have not yet been released into the library do not have resource IDs to judge, so they are judged based on the type level (ResourceIDAll), and the semantics is the same as.
+// CheckCreatePermission is consistent in logics/auth/decision.go.
 //
-// 仅在公开面生效。内部面（internal-v1）由服务间调用，身份来自 X-Account-ID 头而非经校验的
-// 令牌，沿用服务内既有惯用法（见 logics/operator/query.go:31）跳过判定，避免打断现有调用方。
+// Valid only on the public side. The internal side (internal-v1) is called between services, and the identity comes from the X-Account-ID header rather than the verified.
+// token, following the existing idiom within the service (see logics/operator/query.go:31) to skip the determination and avoid interrupting existing callers.
 func requireOperatorTypePermission(
 	ctx context.Context,
 	authService interfaces.IAuthorizationService,
@@ -44,7 +44,7 @@ func requireOperatorTypePermission(
 	return nil
 }
 
-// forbiddenCodeFor 返回与操作对应的拒绝错误码，使前端拿到的提示与动作一致。
+// forbiddenCodeFor returns the rejection error code corresponding to the operation, so that the prompt received by the front end is consistent with the action.
 func forbiddenCodeFor(operation interfaces.AuthOperationType) errors.ErrorCode {
 	switch operation {
 	case interfaces.AuthOperationTypeExecute:

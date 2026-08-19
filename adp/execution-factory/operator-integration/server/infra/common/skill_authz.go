@@ -5,30 +5,30 @@ import (
 	"strings"
 )
 
-// SkillReadAuthzMode 内部（internal-v1）技能读接口的授权模式。
+// SkillReadAuthzMode The authorization mode of the internal (internal-v1) skill reading interface.
 //
-// 历史上 GetSkillContent / ReadSkillFile 只在公开接口上做授权，内部接口一律放行——
-// 授权被押给调用方（bkn-agent 只读它自己挂载过的技能）。context-loader 把这两个接口
-// 包成 MCP 工具之后这个前提不再成立：MCP 客户端的 skill_id 是自己填的，内部接口再放行
-// 就等于任意账户可读任意技能全文。
+// Historically, GetSkillContent / ReadSkillFile was only authorized on public interfaces, and all internal interfaces were allowed -.
+// Authorization is pledged to the caller (bkn-agent only reads skills it has mounted). context-loader combines these two interfaces.
+// After being packaged into an MCP tool, this premise is no longer true: the skill_id of the MCP client is filled in by yourself, and the internal interface is released.
+// It means that any account can read the full text of any skill.
 //
-// 直接翻成强制会打断存量调用方（它们未必都带得出账户上下文），所以按三段式走：
-// 先 shadow 只记日志不拦，观察线上没有误伤了再翻 enforce。
+// Translating directly into force will interrupt the existing callers (they may not all bring out the account context), so follow the three-stage approach:
+// First, shadow only records logs without blocking, and then turns to enforce after observing that there are no accidental injuries on the line.
 type SkillReadAuthzMode string
 
 const (
-	// SkillReadAuthzOff 内部接口完全不查授权（翻车时的回退档）。
+	// SkillReadAuthzOff The internal interface does not check authorization at all (the fallback gear when rolling over).
 	SkillReadAuthzOff SkillReadAuthzMode = "off"
-	// SkillReadAuthzShadow 内部接口查授权但不拦，未通过只打日志。默认档。
+	// SkillReadAuthzShadow internal interface checks authorization but does not block it. If it fails, it will only log. Default file.
 	SkillReadAuthzShadow SkillReadAuthzMode = "shadow"
-	// SkillReadAuthzEnforce 内部接口按账户强制授权，未通过返回 403。
+	// SkillReadAuthzEnforce internal interface enforces authorization by account, and returns 403 if failed.
 	SkillReadAuthzEnforce SkillReadAuthzMode = "enforce"
 )
 
-// SkillReadAuthzModeEnv 控制内部技能读接口授权模式的环境变量。
+// SkillReadAuthzModeEnv Environment variable that controls the authorization mode of the internal skill read interface.
 const SkillReadAuthzModeEnv = "SKILL_INTERNAL_READ_AUTHZ"
 
-// GetSkillReadAuthzMode 读取内部技能读接口的授权模式，取值非法时按默认档 shadow。
+// GetSkillReadAuthzMode reads the authorization mode of the internal skill reading interface. If the value is illegal, use the default file shadow.
 func GetSkillReadAuthzMode() SkillReadAuthzMode {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(SkillReadAuthzModeEnv))) {
 	case string(SkillReadAuthzOff):

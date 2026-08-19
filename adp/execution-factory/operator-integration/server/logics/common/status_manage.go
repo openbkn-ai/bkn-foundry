@@ -1,6 +1,6 @@
 // Package common common operator manage
 // @file status_manage.go
-// @description: 统一转台管理器
+// @description: Unified turntable manager.
 package common
 
 import (
@@ -12,32 +12,32 @@ import (
 )
 
 var statusTransitions = map[interfaces.BizStatus][]interfaces.BizStatus{
-	// 从未发布状态的转换
+	// Transition from unpublished state.
 	interfaces.BizStatusUnpublish: {
 		interfaces.BizStatusPublished,
 		interfaces.BizStatusUnpublish,
 	},
 
-	// 从已发布状态的转换
+	// Transition from published state.
 	interfaces.BizStatusPublished: {
 		interfaces.BizStatusOffline,
 		interfaces.BizStatusEditing,
 	},
 
-	// 从已发布编辑中状态的转换
+	// Transition from Published to Editing status.
 	interfaces.BizStatusEditing: {
 		interfaces.BizStatusEditing,
 		interfaces.BizStatusPublished,
 	},
 
-	// 从已下架状态的转换
+	// Transition from delisted status.
 	interfaces.BizStatusOffline: {
 		interfaces.BizStatusPublished,
 		interfaces.BizStatusUnpublish,
 	},
 }
 
-// CheckStatusTransition 检查状态是否可以转换
+// CheckStatusTransition checks whether the status can be transitioned.
 func CheckStatusTransition(fromState, toState interfaces.BizStatus) bool {
 	allowedTargetStates, exists := statusTransitions[fromState]
 	if !exists {
@@ -51,7 +51,7 @@ func CheckStatusTransition(fromState, toState interfaces.BizStatus) bool {
 	return false
 }
 
-// 编辑操作下允许的状态转换
+// Allowed state transitions under edit operations.
 var editStatusTrans = map[interfaces.BizStatus]interfaces.BizStatus{
 	interfaces.BizStatusUnpublish: interfaces.BizStatusUnpublish,
 	interfaces.BizStatusPublished: interfaces.BizStatusEditing,
@@ -64,7 +64,7 @@ var deletableStatus = map[interfaces.BizStatus]bool{
 	interfaces.BizStatusOffline:   true,
 }
 
-// GetEditStatusTrans 获取编辑操作下允许的状态转换
+// GetEditStatusTrans Gets the status transitions allowed under editing operations.
 func GetEditStatusTrans(ctx context.Context, fromState interfaces.BizStatus) (interfaces.BizStatus, error) {
 	targetState, exists := editStatusTrans[fromState]
 	if !exists {
@@ -73,7 +73,7 @@ func GetEditStatusTrans(ctx context.Context, fromState interfaces.BizStatus) (in
 	return targetState, nil
 }
 
-// CanDelete 判断当前业务状态是否允许进入删除流程
+// CanDelete determines whether the current business status allows entry into the deletion process.
 func CanDelete(fromState interfaces.BizStatus) bool {
 	return deletableStatus[fromState]
 }

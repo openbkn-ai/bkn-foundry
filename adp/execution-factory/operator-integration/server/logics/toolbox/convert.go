@@ -1,6 +1,6 @@
-// Package toolbox 工具箱、工具管理
+// Package toolbox toolbox, tool management.
 // @file convert.go
-// @description: 转换算子为工具
+// @description: Convert operator to tool.
 package toolbox
 
 import (
@@ -8,21 +8,21 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// ConvertOperatorToTool 算子转换成工具
+// ConvertOperatorToTool Convert operator to tool.
 func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interfaces.ConvertOperatorToToolReq) (resp *interfaces.ConvertOperatorToToolResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 校验是否拥有所属工具箱的编辑权限
+	// Verify whether you have editing permissions for the toolbox it belongs to.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -32,7 +32,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 	if err != nil {
 		return
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -44,7 +44,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 			fmt.Sprintf("toolbox %s not found", req.BoxID))
 		return
 	}
-	// TODO : 内置工具不允许添加工具
+	// TODO: Built-in tools do not allow adding tools.
 	if toolBox.IsInternal {
 		err = errors.DefaultHTTPError(ctx, http.StatusForbidden, "internal toolbox cannot add tools")
 		return
@@ -53,7 +53,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 	if err != nil {
 		return
 	}
-	// 检查算子元数据类型和工具是否一致
+	// Check whether the operator metadata type and tool are consistent.
 	if toolBox.MetadataType != operatorCheckInfo.Metadata.GetType() {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolConvertMetadataTypeNotMatch,
 			fmt.Sprintf("operator %s metadata type %s not match toolbox metadata type %s", operatorCheckInfo.OperatorID, operatorCheckInfo.Metadata.GetType(), toolBox.MetadataType))
@@ -70,7 +70,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 		if err != nil {
 			return
 		}
-		// 转换算子为工具
+		// Convert operator to tool.
 		tool := &model.ToolDB{
 			BoxID:       req.BoxID,
 			Name:        operatorCheckInfo.Name,
@@ -84,7 +84,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 			CreateUser:  req.UserID,
 			UpdateUser:  req.UserID,
 		}
-		// 插入工具
+		// insert tool.
 		resp.ToolID, err = s.ToolDB.InsertTool(ctx, nil, tool)
 		if err != nil {
 			s.Logger.WithContext(ctx).Warnf("insert tool failed, err: %v", err)
@@ -96,7 +96,7 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 			"only api operators can be published as tools")
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -126,9 +126,9 @@ func (s *ToolServiceImpl) ConvertOperatorToTool(ctx context.Context, req *interf
 	return
 }
 
-// checkBoxToolSame 检查工具箱内是否存在同名工具
+// checkBoxToolSame checks whether a tool with the same name exists in the toolbox.
 func (s *ToolServiceImpl) checkBoxToolSame(ctx context.Context, boxID, name, method, path string) (err error) {
-	// 检查工具是否存在
+	// Check if the tool exists.
 	toolList, err := s.ToolDB.SelectToolByBoxID(ctx, boxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)

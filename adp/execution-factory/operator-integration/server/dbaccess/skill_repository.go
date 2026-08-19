@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -273,12 +273,12 @@ func (s *skillRepositoryDB) applyFilterConditions(query *ormhelper.SelectBuilder
 			query = query.WhereIn("f_skill_id", arr...)
 		}
 	}
-	// 获取未删除的
+	// Get undeleted.
 	query = query.WhereEq("f_is_deleted", false)
 	return query
 }
 
-// SelectSkillListByIDs 按 skillID 批量查询(仅未删除)，仅用于轻量取名场景。空入参短路返回空列表，防止 IN ()。
+// SelectSkillListByIDs batch query by skillID (only not deleted), only used in lightweight naming scenarios. Short-circuiting empty input parameters returns an empty list, preventing IN ().
 func (s *skillRepositoryDB) SelectSkillListByIDs(ctx context.Context, skillIDs []string) (skills []*model.SkillRepositoryDB, err error) {
 	skills = []*model.SkillRepositoryDB{}
 	args := []interface{}{}

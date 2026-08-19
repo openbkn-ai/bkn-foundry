@@ -7,20 +7,20 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// FilterViewableIDs 在公开面按查看权限过滤资源ID，内部面原样返回。
+// FilterViewableIDs filters resource IDs according to viewing permissions on the public side, and returns them unchanged on the internal side.
 //
-// 用于 /operator/names、/tool-box/names、/skills/names 这类批量取名接口：它们本就对不存在的
-// ID 静默略过，因此无权限的 ID 同样略过而不是整体 403——否则 403 与 200 的差异本身就成了
-// 存在性探测信道。
+// Used for batch naming interfaces such as /operator/names, /tool-box/names, /skills/names: they are inherently suitable for non-existent.
+// IDs are silently skipped, so unauthorized IDs are also skipped rather than a total 403 - otherwise the difference between 403 and 200 becomes itself.
+// Presence detection channel.
 //
-// 判定复用 ResourceListIDs：类型级授权（含超管）会直接返回 ResourceIDAll，一次调用即可覆盖
-// 通配场景，无需按 ID 逐个回源。
+// Determine reuse of ResourceListIDs: Type-level authorization (including super management) will directly return ResourceIDAll, which can be overwritten with one call.
+// Wildcard scenarios eliminate the need to return to the source one by one by ID.
 //
-// 刻意只按 view 判定，不含 execute/public_access：names 服务于管理态（对象级授权页的名称
-// 回显），口径与管理态列表一致——skill 列表、工具箱列表、算子列表都只按 view 过滤
-// （见 logics/skill/registry.go:945、logics/toolbox/toolbox.go:199、logics/operator/query.go:294）。
-// 市场态列表走的是另一套口径（只按 public_access，见 logics/operator/market.go:266），
-// 因此若将来市场页要复用批量取名，应另开按 public_access 过滤的入口，而不是放宽这里。
+// Deliberately only judge by view, excluding execute/public_access: names serving the management state (names of object-level authorization pages.
+// echo), the semantics is the same as the management list - the skill list, toolbox list, and operator list are only filtered by view.
+// (See logics/skill/registry.go:945, logics/toolbox/toolbox.go:199, logics/operator/query.go:294).
+// The market status list adopts another set of standards (only public_access, see logics/operator/market.go:266),
+// Therefore, if the market page wants to reuse batch naming in the future, it should open another entrance filtered by public_access instead of relaxing here.
 func FilterViewableIDs(ctx context.Context, authService interfaces.IAuthorizationService, userID string,
 	ids []string, resourceType interfaces.AuthResourceType) ([]string, error) {
 	if !common.IsPublicAPIFromCtx(ctx) || len(ids) == 0 {

@@ -8,13 +8,13 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 const (
@@ -22,9 +22,9 @@ const (
 	defaultPage     = 1
 )
 
-// QueryRelease 查询MCP Server Release列表
+// QueryRelease Query MCP Server Release list.
 func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPServerReleaseListRequest) (result *interfaces.MCPServerReleaseListResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	filter := make(map[string]interface{})
@@ -47,7 +47,7 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 	if req.Mode != "" {
 		filter["mode"] = req.Mode
 	}
-	// 排序字段
+	// sort field.
 	sortField := "f_update_time"
 	if req.SortBy != "" {
 		sortField = sortFieldMap[req.SortBy]
@@ -60,7 +60,7 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 			{Field: sortField, Order: ormhelper.SortOrder(req.SortOrder)},
 		},
 	}
-	// 查询MCP Server Release列表
+	// Query MCP Server Release List.
 	queryTotal := func(newCtx context.Context) (int64, error) {
 		var total int64
 		total, err = s.DBMCPServerRelease.CountByWhereClause(newCtx, nil, filter)
@@ -85,7 +85,7 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 			case "f_name":
 				cursor.Value = cursorValue.Name
 			}
-			// 如果使用游标，offset不需要
+			// If using a cursor, offset is not required.
 			offset = 0
 		}
 		filter["limit"] = pageSize
@@ -141,7 +141,7 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 		data = append(data, s.releaseModelToResponse(config))
 	}
 
-	// 渲染用户名称
+	// Render user name.
 	userMap, err := s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return
@@ -170,12 +170,12 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 	return
 }
 
-// GetReleaseDetail 获取MCP Server Release详情
+// GetReleaseDetail Gets MCP Server Release details.
 func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.MCPServerReleaseDetailRequest) (resp *interfaces.MCPServerReleaseDetailResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查查看权限
+	// Check viewing permissions.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -200,7 +200,7 @@ func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.M
 
 	releaseInfo := s.releaseModelToResponse(release)
 
-	// 渲染用户名称
+	// Render user name.
 	userIDs := []string{release.CreateUser, release.UpdateUser, release.ReleaseUser}
 	userMap, err := s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
@@ -210,7 +210,7 @@ func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.M
 	releaseInfo.UpdateUser = utils.GetValueOrDefault(userMap, release.UpdateUser, interfaces.UnknownUser)
 	releaseInfo.ReleaseUser = utils.GetValueOrDefault(userMap, release.ReleaseUser, interfaces.UnknownUser)
 
-	// 生成MCP Server连接信息
+	// Generate MCP Server connection information.
 	connectionInfo := s.generateExternalConnectionInfo(release.MCPID, interfaces.MCPCreationType(release.CreationType))
 
 	resp = &interfaces.MCPServerReleaseDetailResponse{
@@ -222,9 +222,9 @@ func (s *mcpServiceImpl) GetReleaseDetail(ctx context.Context, req *interfaces.M
 	return
 }
 
-// QueryReleaseBatch 查询MCP Server Release列表
+// QueryReleaseBatch Query MCP Server Release list.
 func (s *mcpServiceImpl) QueryReleaseBatch(ctx context.Context, req *interfaces.MCPServerReleaseBatchRequest) (mapData []map[string]any, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	mcpIDs := strings.Split(req.MCPIDs, ",")
@@ -245,7 +245,7 @@ func (s *mcpServiceImpl) QueryReleaseBatch(ctx context.Context, req *interfaces.
 		columns = append(columns, mcpIDColumn)
 	}
 
-	// 查询MCP Server配置列表
+	// Query MCP Server configuration list.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -273,7 +273,7 @@ func (s *mcpServiceImpl) QueryReleaseBatch(ctx context.Context, req *interfaces.
 		data = append(data, releaseInfo)
 	}
 
-	// 渲染用户名称
+	// Render user name.
 	userMap, err := s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return
@@ -330,11 +330,11 @@ func (s *mcpServiceImpl) publishMCP(ctx context.Context, tx *sql.Tx, mcpConfigDB
 
 	version := mcpConfigDB.Version
 
-	// 如果存在，则更新版本
+	// If it exists, update the version.
 	if release != nil {
 		s.configModelToReleaseModel(mcpConfigDB, release)
 		release.Version = version
-		release.ReleaseUser = userID // 设置发布用户
+		release.ReleaseUser = userID // Set publishing user.
 
 		err = s.DBMCPServerRelease.UpdateByMCPID(ctx, tx, release)
 		if err != nil {
@@ -346,7 +346,7 @@ func (s *mcpServiceImpl) publishMCP(ctx context.Context, tx *sql.Tx, mcpConfigDB
 		return release, nil
 	}
 
-	// 不存在，则创建新版本
+	// If it does not exist, create a new version.
 	release = &model.MCPServerReleaseDB{}
 	s.configModelToReleaseModel(mcpConfigDB, release)
 	release.Version = version

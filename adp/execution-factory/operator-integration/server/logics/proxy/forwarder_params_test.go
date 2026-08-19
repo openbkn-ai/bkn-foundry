@@ -17,7 +17,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// newTestForwarder 手工装配转发器，避免 NewForwarder/NewClientPool 读取配置文件。
+// newTestForwarder manually assembles the forwarder to avoid NewForwarder/NewClientPool from reading the configuration file.
 func newTestForwarder() *forwarder {
 	return &forwarder{
 		pool: &clientPool{
@@ -46,7 +46,7 @@ func readAll(t *testing.T, body io.ReadCloser) string {
 	return string(data)
 }
 
-// TestBuildRequest_PathParams 覆盖 path 参数占位符替换（#216 验收标准 1）。
+// TestBuildRequest_PathParams overrides path parameter placeholder substitution (#216 Acceptance Criterion 1).
 func TestBuildRequest_PathParams(t *testing.T) {
 	f := newTestForwarder()
 
@@ -172,7 +172,7 @@ func TestBuildRequest_PathParams(t *testing.T) {
 	})
 }
 
-// TestBuildRequest_QueryParams 覆盖 query 参数拼接（#216 验收标准 3）。
+// TestBuildRequest_QueryParams overrides query parameter splicing (#216 Acceptance Criterion 3).
 func TestBuildRequest_QueryParams(t *testing.T) {
 	f := newTestForwarder()
 
@@ -255,7 +255,7 @@ func TestBuildRequest_QueryParams(t *testing.T) {
 	})
 }
 
-// TestBuildRequest_Headers 覆盖自定义请求头透传（#216 验收标准 4）。
+// TestBuildRequest_Headers overrides transparent transmission of custom request headers (#216 Acceptance Criteria 4).
 func TestBuildRequest_Headers(t *testing.T) {
 	f := newTestForwarder()
 
@@ -312,7 +312,7 @@ func TestBuildRequest_Headers(t *testing.T) {
 			So(httpReq.Header.Get("Transfer-Encoding"), ShouldEqual, "")
 			So(httpReq.Header.Get("Content-Length"), ShouldEqual, "")
 			So(httpReq.Header.Get("Upgrade"), ShouldEqual, "")
-			// 自定义鉴权头不在拦截范围内
+			// Custom authentication headers are not within the interception range.
 			So(httpReq.Header.Get("X-Company-Token"), ShouldEqual, "keep-me")
 		})
 
@@ -337,7 +337,7 @@ func TestBuildRequest_Headers(t *testing.T) {
 	})
 }
 
-// TestBuildRequest_Body 覆盖请求体编码（#216 验收标准 5）。
+// TestBuildRequest_Body overrides request body encoding (#216 Acceptance Criterion 5).
 func TestBuildRequest_Body(t *testing.T) {
 	f := newTestForwarder()
 
@@ -402,7 +402,7 @@ func TestBuildRequest_Body(t *testing.T) {
 			reader := multipart.NewReader(httpReq.Body, params["boundary"])
 			form, formErr := reader.ReadForm(1 << 20)
 			So(formErr, ShouldBeNil)
-			// 字段值按 JSON 序列化写入（现状），字符串因此带引号
+			// Field values are written as JSON serialized (as is), strings are therefore quoted.
 			So(form.Value["name"][0], ShouldEqual, `"n1"`)
 		})
 
@@ -445,7 +445,7 @@ func TestBuildRequest_Body(t *testing.T) {
 	})
 }
 
-// TestBuildRequest_BusinessFieldsNamedLikeEnvelope 覆盖请求体自带 header/query/path/body 同名业务字段的场景（#216 验收标准 12）。
+// TestBuildRequest_BusinessFieldsNamedLikeEnvelope covers the scenario where the request body comes with header/query/path/body business fields with the same name (#216 Acceptance Criteria 12).
 func TestBuildRequest_BusinessFieldsNamedLikeEnvelope(t *testing.T) {
 	f := newTestForwarder()
 
@@ -469,7 +469,7 @@ func TestBuildRequest_BusinessFieldsNamedLikeEnvelope(t *testing.T) {
 		httpReq, err := f.buildRequest(context.Background(), req)
 
 		So(err, ShouldBeNil)
-		// 业务字段留在 body 里，既不会跑到 URL，也不会变成请求头
+		// Business fields remain in the body and will neither run to the URL nor become request headers.
 		So(httpReq.URL.RawQuery, ShouldEqual, "")
 		So(httpReq.Header.Get("query"), ShouldEqual, "")
 
@@ -482,7 +482,7 @@ func TestBuildRequest_BusinessFieldsNamedLikeEnvelope(t *testing.T) {
 	})
 }
 
-// TestForward_DownstreamReceivesAllParams 端到端校验下游实际收到 header + query + path + body（#216 验收标准 1/3/4/5/10）。
+// TestForward_DownstreamReceivesAllParams end-to-end verifies that the downstream actually receives header + query + path + body (#216 Acceptance Criteria 1/3/4/5/10).
 func TestForward_DownstreamReceivesAllParams(t *testing.T) {
 	f := newTestForwarder()
 

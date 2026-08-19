@@ -1,9 +1,9 @@
-commmon目录放一些提炼的公告函数，下面是一个示例：
+The commmon directory contains some refined announcement functions. Here is an example:
 
-没有优化前的代码：
+Code without optimization:
 ```python
-    # lib目录下某个py文件中的部分函数
-    @allure.step('撤销定密审核')
+# Some functions in a py file in the lib directory.
+@allure.step('Cancel the password review')
     def DeletePendingDetail(self, ip, token, apply_id):
         requrl = 'https://%s/api/document/v1/security_classification_approval/pending_detail/%s' % (ip, apply_id)
         dict1 = {}
@@ -17,7 +17,7 @@ commmon目录放一些提炼的公告函数，下面是一个示例：
         else:
             return r.status_code, json.loads(r.content)
 
-    @allure.step('设置文件密级枚举')
+@allure.step('Set file confidentiality level enumeration')
     def SetConsoleFileClassifications(self, ip, tokenid, body):
         requrl = 'https://%s/api/document/v1/console/file-classifications' % (ip)
         dict1 = {}
@@ -32,7 +32,7 @@ commmon目录放一些提炼的公告函数，下面是一个示例：
         else:
             return r.status_code, json.loads(r.content)
 
-    @allure.step('设置系统密级')
+@allure.step('Set system secret level')
     def SetConsoleSystemClassifications(self, ip, tokenid, body):
         requrl = 'https://%s/api/document/v1/console/system-classification' % (ip)
         dict1 = {}
@@ -47,50 +47,50 @@ commmon目录放一些提炼的公告函数，下面是一个示例：
         else:
             return r.status_code, json.loads(r.content)
 ```
-优化后的代码：
+Optimized code:
 
 ```python
-# common目录下的某个py文件，提炼了一些公共的方法
-@allure.step('API请求')
+# A certain py file in the common directory refines some public methods.
+@allure.step('API request')
 def _make_api_request(self, method, ip, token, endpoint, body=None, path_param=None):
-    """基础API请求方法
+"""Basic API request method.
     
     Args:
-        method (str): 请求方法 (GET, POST, PUT, DELETE等)
-        ip (str): 服务器IP
-        token (str): 认证token
-        endpoint (str): API路径
-        body (dict, optional): 请求体
-        path_param (str, optional): 路径参数
+method (str): request method (GET, POST, PUT, DELETE, etc.)
+ip (str): server IP.
+token (str): authentication token.
+endpoint (str): API path.
+body (dict, optional): request body.
+path_param (str, optional): path parameter.
     
     Returns:
-        int or tuple: 状态码(204)或状态码与响应内容的元组
+int or tuple: status code (204) or tuple of status code and response content.
     """
-    # 构建URL
+# Build URL.
     if path_param:
         requrl = f'https://{ip}/api/document/v1/{endpoint}/{path_param}'
     else:
         requrl = f'https://{ip}/api/document/v1/{endpoint}'
     
-    # 请求头
+# Request header.
     headers = {'Authorization': f"Bearer {token}"}
     
-    # 发送请求
+# Send request.
     r = requests.request(method, requrl, verify=False, json=body, headers=headers)
     
-    # Allure报告附件
+# Allure report attachments.
     allure.attach(r.url, "url", allure.attachment_type.TEXT)
     allure.attach(str(r.status_code), "status_code", allure.attachment_type.TEXT)
     allure.attach(r.content, "content", allure.attachment_type.TEXT)
     
-    # 返回响应
+# Return response.
     if r.status_code == 204:
         return r.status_code
     else:
         return r.status_code, json.loads(r.content)
 
-# 下面是如何使用，还是放在原lib目录下的某个py文件中
-@allure.step('撤销定密审核')
+# Here is how to use it, or put it in a py file in the original lib directory.
+@allure.step('Cancel the password review')
 def DeletePendingDetail(self, ip, token, apply_id):
     return self._make_api_request(
         method='delete',
@@ -101,7 +101,7 @@ def DeletePendingDetail(self, ip, token, apply_id):
     )
 
 
-@allure.step('设置文件密级枚举')
+@allure.step('Set file confidentiality level enumeration')
 def SetConsoleFileClassifications(self, ip, tokenid, body):
     return self._make_api_request(
         method='PUT',
@@ -112,7 +112,7 @@ def SetConsoleFileClassifications(self, ip, tokenid, body):
     )
 
 
-@allure.step('设置系统密级')
+@allure.step('Set system secret level')
 def SetConsoleSystemClassifications(self, ip, tokenid, body):
     return self._make_api_request(
         method='PUT',

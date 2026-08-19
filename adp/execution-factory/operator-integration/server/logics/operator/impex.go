@@ -9,7 +9,6 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -17,14 +16,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// Export 导出算子
+// Export export operator.
 func (m *operatorManager) Export(ctx context.Context, req *interfaces.ExportReq) (data *interfaces.ComponentImpexConfigModel, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 导出预检查
+	// Export pre-check.
 	operatorList, err := m.exportPreCheck(ctx, req)
 	if err != nil {
 		return
@@ -32,14 +32,14 @@ func (m *operatorManager) Export(ctx context.Context, req *interfaces.ExportReq)
 	data = &interfaces.ComponentImpexConfigModel{
 		Operator: &interfaces.OperatorImpexConfig{},
 	}
-	// 导出依赖及追加依赖算子
+	// Export dependencies and append dependency operators.
 	allOperatorDBs, compositeConfigs, err := m.getCompositeOperatorDependencies(ctx, operatorList, req.UserID)
 	if err != nil {
 		return
 	}
 	data.Operator.CompositeConfigs = compositeConfigs
 
-	// 批量获取算子元数据
+	// Obtain operator metadata in batches.
 	items, err := m.batchGetOperatorInfo(ctx, allOperatorDBs)
 	if err != nil {
 		return
@@ -48,16 +48,16 @@ func (m *operatorManager) Export(ctx context.Context, req *interfaces.ExportReq)
 	return
 }
 
-// Import 导入算子
+// Import import operator.
 func (m *operatorManager) Import(ctx context.Context, tx *sql.Tx, mode interfaces.ImportType, data *interfaces.OperatorImpexConfig, userID string) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	if data == nil || len(data.Configs) == 0 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonImportDataEmpty, "operator configs is empty")
 		return
 	}
-	// 导入预备检查
+	// Import preliminary checks.
 	operatorList, err := m.importPreCheck(ctx, mode, data.Configs)
 	if err != nil {
 		return
@@ -69,7 +69,7 @@ func (m *operatorManager) Import(ctx context.Context, tx *sql.Tx, mode interface
 			return
 		}
 	}
-	// 导入算子元数据
+	// Import operator metadata.
 	createMap, updateMap, err := m.batchImportOperatorMetadata(ctx, tx, data.Configs, operatorList, accessor, userID)
 	if err != nil {
 		return
@@ -79,17 +79,17 @@ func (m *operatorManager) Import(ctx context.Context, tx *sql.Tx, mode interface
 	return
 }
 
-// 后置操作：添加权限配置，及审计日志记录
+// Post-operation: Add permission configuration and audit logging.
 func (m *operatorManager) importPostProcess(ctx context.Context, createMap, updateMap map[string]*model.OperatorRegisterDB, accessor *interfaces.AuthAccessor) (err error) {
 	businessDomainID, _ := icommon.GetBusinessDomainFromCtx(ctx)
 	for _, operatorDB := range createMap {
-		// 关联业务域
+		// Associated business domains.
 		err = m.BusinessDomainService.AssociateResource(ctx, businessDomainID, operatorDB.OperatorID, interfaces.AuthResourceTypeOperator)
 		if err != nil {
 			return
 		}
 
-		// 触发新建策略，创建人默认拥有对当前资源的所有操作权限（内部调用不创建）
+		// Triggering a new policy, the creator has all operating permissions on the current resources by default (internal calls will not create)
 		if accessor != nil {
 			err := m.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 				ID:   operatorDB.OperatorID,
@@ -100,7 +100,7 @@ func (m *operatorManager) importPostProcess(ctx context.Context, createMap, upda
 				m.Logger.WithContext(ctx).Warnf("[importPostProcess] CreateOwnerPolicy err :%v", err)
 			}
 		}
-		// 记录设计日志及后续通知（内部调用不记录）
+		// Record design logs and subsequent notifications (internal calls are not recorded)
 		if accessor != nil {
 			go func() {
 				accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
@@ -120,7 +120,7 @@ func (m *operatorManager) importPostProcess(ctx context.Context, createMap, upda
 				})
 			}()
 		}
-		// 内置组件：创建全员授权策略（public_access + execute）
+		// Built-in component: Create a full authorization policy (public_access + execute)
 		if operatorDB.IsInternal {
 			err = m.AuthService.CreateIntCompPolicyForAllUsers(ctx, &interfaces.AuthResource{
 				ID:   operatorDB.OperatorID,
@@ -133,9 +133,9 @@ func (m *operatorManager) importPostProcess(ctx context.Context, createMap, upda
 			}
 		}
 	}
-	// 更新算子
+	// update operator.
 	for _, operatorDB := range updateMap {
-		// 通知资源变更
+		// Notify resource changes.
 		authResource := &interfaces.AuthResource{
 			ID:   operatorDB.OperatorID,
 			Name: operatorDB.Name,
@@ -145,7 +145,7 @@ func (m *operatorManager) importPostProcess(ctx context.Context, createMap, upda
 		if err != nil {
 			m.Logger.WithContext(ctx).Warnf("[importPostProcess] NotifyResourceChange err :%v", err)
 		}
-		// 内置组件：创建全员授权策略（public_access + execute）
+		// Built-in component: Create a full authorization policy (public_access + execute)
 		if operatorDB.IsInternal {
 			policyErr := m.AuthService.CreateIntCompPolicyForAllUsers(ctx, &interfaces.AuthResource{
 				ID:   operatorDB.OperatorID,
@@ -156,7 +156,7 @@ func (m *operatorManager) importPostProcess(ctx context.Context, createMap, upda
 				m.Logger.WithContext(ctx).Warnf("[importPostProcess] CreateIntCompPolicyForAllUsers err:%v", policyErr)
 			}
 		}
-		// 记录设计日志及后续通知（内部调用不记录）
+		// Record design logs and subsequent notifications (internal calls are not recorded)
 		if accessor != nil {
 			go func() {
 				accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
@@ -180,54 +180,54 @@ func (m *operatorManager) importPostProcess(ctx context.Context, createMap, upda
 	return nil
 }
 
-// 导入预备检查
+// Import preliminary checks.
 func (m *operatorManager) importPreCheck(ctx context.Context, mode interfaces.ImportType, items []*interfaces.OperatorImpexItem) (operatorList []*model.OperatorRegisterDB, err error) {
-	// 获取待导入算子ID列表、name列表
+	// Get the operator ID list and name list to be imported.
 	operatorIDs := make([]string, 0)
 	for _, operatorItem := range items {
 		operatorIDs = append(operatorIDs, operatorItem.OperatorID)
-		// 内置算子不允许导入
+		// Built-in operators are not allowed to be imported.
 		if icommon.IsPublicAPIFromCtx(ctx) && operatorItem.IsInternal {
 			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonInternalComponentNotAllowed,
 				fmt.Sprintf("internal operator %v not allowed to import", operatorItem.OperatorID), operatorItem.OperatorName)
 			return
 		}
-		// 算子重名校验
+		// Operator duplicate name verification.
 		err = m.checkDuplicateName(ctx, operatorItem.OperatorName, operatorItem.OperatorID)
 		if err != nil {
 			return
 		}
 	}
 	operatorIDs = utils.UniqueStrings(operatorIDs)
-	// 检查ID资源是否冲突
+	// Check if ID resources conflict.
 	operatorList, err = m.DBOperatorManager.SelectByOperatorIDs(ctx, operatorIDs)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("select operator list err: %v", err.Error())
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 创建模式：如果算子已存在，则返回冲突错误
+	// Creation mode: If the operator already exists, a conflict error is returned.
 	if mode == interfaces.ImportTypeCreate && len(operatorList) > 0 {
 		err = errors.NewHTTPError(ctx, http.StatusConflict, errors.ErrExtCommonResourceIDConflict, "operator id already exists")
 	}
 	return
 }
 
-// 批量导入算子元数据
+// Import operator metadata in batches.
 func (m *operatorManager) batchImportOperatorMetadata(ctx context.Context, tx *sql.Tx, items []*interfaces.OperatorImpexItem, needUpdateOperatorList []*model.OperatorRegisterDB,
 	accessor *interfaces.AuthAccessor, userID string) (createMap, updateMap map[string]*model.OperatorRegisterDB, err error) {
-	// 需要新增的算子列表
+	// List of operators that need to be added.
 	createMap = map[string]*model.OperatorRegisterDB{}
-	// 需要更新的算子列表
+	// List of operators that need to be updated.
 	updateMap = map[string]*model.OperatorRegisterDB{}
 	for _, operatorDB := range needUpdateOperatorList {
-		// 检查算子编辑权限（内部调用不鉴权）
+		// Check operator editing permissions (internal calls are not authenticated)
 		if icommon.IsPublicAPIFromCtx(ctx) {
 			err = m.AuthService.CheckModifyPermission(ctx, accessor, operatorDB.OperatorID, interfaces.AuthResourceTypeOperator)
 			if err != nil {
 				return
 			}
-			// 内置算子不允许更新
+			// Built-in operators are not allowed to be updated.
 			if operatorDB.IsInternal {
 				err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonInternalComponentNotAllowed,
 					fmt.Sprintf("internal operator %v not allowed to update", operatorDB.OperatorID), operatorDB.Name)
@@ -237,7 +237,7 @@ func (m *operatorManager) batchImportOperatorMetadata(ctx context.Context, tx *s
 		updateMap[operatorDB.OperatorID] = operatorDB
 	}
 	for _, operatorItem := range items {
-		// 参数预备检查
+		// Parameter preparation check.
 		var newOperatorDB *model.OperatorRegisterDB
 		var newMetadataDB interfaces.IMetadataDB
 		uid := userID
@@ -249,7 +249,7 @@ func (m *operatorManager) batchImportOperatorMetadata(ctx context.Context, tx *s
 			return
 		}
 		operatorDB, ok := updateMap[newOperatorDB.OperatorID]
-		if ok { // 更新算子
+		if ok { // update operator.
 			err = m.updateOperatorConfig(ctx, tx, operatorDB, newOperatorDB, newMetadataDB)
 			if err != nil {
 				return
@@ -258,13 +258,13 @@ func (m *operatorManager) batchImportOperatorMetadata(ctx context.Context, tx *s
 			if operatorDB.Status == interfaces.BizStatusPublished.String() {
 				err = m.publishRelease(ctx, tx, operatorDB, operatorDB.UpdateUser)
 			}
-		} else { // 新增算子
-			err = m.addOperatorConfig(ctx, tx, newOperatorDB, newMetadataDB) // 新增算子
+		} else { // New operator.
+			err = m.addOperatorConfig(ctx, tx, newOperatorDB, newMetadataDB) // New operator.
 			if err != nil {
 				return
 			}
 			createMap[newOperatorDB.OperatorID] = newOperatorDB
-			// 发布算子
+			// Release operator.
 			if newOperatorDB.Status == interfaces.BizStatusPublished.String() {
 				err = m.publishRelease(ctx, tx, newOperatorDB, newOperatorDB.CreateUser)
 			}
@@ -276,9 +276,9 @@ func (m *operatorManager) batchImportOperatorMetadata(ctx context.Context, tx *s
 	return
 }
 
-// 添加算子配置
+// Add operator configuration.
 func (m *operatorManager) addOperatorConfig(ctx context.Context, tx *sql.Tx, operatorDB *model.OperatorRegisterDB, metadataDB interfaces.IMetadataDB) (err error) {
-	// 检查该版本元数据是否存在，如果存在报错冲突
+	// Check whether the version metadata exists and report an error if there is a conflict.
 	exists, _, err := m.MetadataService.CheckMetadataExists(ctx, interfaces.MetadataType(metadataDB.GetType()), metadataDB.GetVersion())
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("check metadata version exists failed, err: %v", err)
@@ -306,10 +306,10 @@ func (m *operatorManager) addOperatorConfig(ctx context.Context, tx *sql.Tx, ope
 	return
 }
 
-// 更新（升级）算子配置
+// Update (upgrade) operator configuration.
 func (m *operatorManager) updateOperatorConfig(ctx context.Context, tx *sql.Tx, operatorDB,
 	newOperatorDB *model.OperatorRegisterDB, newMetadataDB interfaces.IMetadataDB) (err error) {
-	// 检查元数据类型是否一致
+	// Check whether metadata types are consistent.
 	if operatorDB.MetadataType != newOperatorDB.MetadataType {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonMetadataTypeConflict,
 			fmt.Sprintf("operator %s metadata type conflict, expect %v, got %v", operatorDB.OperatorID, operatorDB.MetadataType, newOperatorDB.MetadataType))
@@ -332,7 +332,7 @@ func (m *operatorManager) updateOperatorConfig(ctx context.Context, tx *sql.Tx, 
 		newMetadataDB.SetVersion(uuid.New().String())
 		operatorDB.MetadataVersion, err = m.MetadataService.RegisterMetadata(ctx, tx, newMetadataDB)
 	case interfaces.BizStatusUnpublish, interfaces.BizStatusEditing:
-		// 检查元数据是否存在
+		// Check if metadata exists.
 		var metadataDB interfaces.IMetadataDB
 		var has bool
 		has, metadataDB, err = m.MetadataService.CheckMetadataExists(ctx, interfaces.MetadataType(newOperatorDB.MetadataType), operatorDB.MetadataVersion)
@@ -375,7 +375,7 @@ func (m *operatorManager) updateOperatorConfig(ctx context.Context, tx *sql.Tx, 
 
 func (m *operatorManager) importCheck(ctx context.Context, item *interfaces.OperatorImpexItem, userID string) (operatorDB *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, err error) {
-	// 校验算子信息
+	// Check operator information.
 	err = m.Validator.ValidateOperatorName(ctx, item.OperatorName)
 	if err != nil {
 		return
@@ -396,16 +396,16 @@ func (m *operatorManager) importCheck(ctx context.Context, item *interfaces.Oper
 			return
 		}
 	}
-	// 如果是数据源算子，只能够是同步算子
+	// If it is a data source operator, it can only be a synchronization operator.
 	isDataSource, err := checkIsDataSource(ctx, item.OperatorInfo.ExecutionMode, item.OperatorInfo.IsDataSource)
 	if err != nil {
 		return
 	}
-	// 检查分类是否存在,不存在设置为默认分类
+	// Check whether the category exists. If it does not exist, set it as the default category.
 	if !m.CategoryManager.CheckCategory(item.OperatorInfo.Category) {
 		item.OperatorInfo.Category = interfaces.CategoryTypeOther
 	}
-	// 检查元数据
+	// Check metadata.
 	if item.Metadata == nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("operator %v metadata is nil", item.OperatorName))
 		return
@@ -463,7 +463,7 @@ func (m *operatorManager) importCheck(ctx context.Context, item *interfaces.Oper
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("operator %v metadata type %v is not supported", item.OperatorName, item.MetadataType))
 		return
 	}
-	// 如果算子描述为空，默认使用算子名称
+	// If the operator description is empty, the operator name is used by default.
 	if metadataDB.GetDescription() == "" {
 		metadataDB.SetDescription(metadataDB.GetSummary())
 	}
@@ -495,15 +495,15 @@ func (m *operatorManager) importCheck(ctx context.Context, item *interfaces.Oper
 	return
 }
 
-// 导出预检查
+// Export pre-check.
 func (m *operatorManager) exportPreCheck(ctx context.Context, req *interfaces.ExportReq) (operatorList []*model.OperatorRegisterDB, err error) {
-	// 批量鉴权
+	// Batch authentication.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = m.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
 	}
-	// 检查查看权限
+	// Check viewing permissions.
 	checkOperatorIDs, err := m.AuthService.ResourceFilterIDs(ctx, accessor, req.IDs,
 		interfaces.AuthResourceTypeOperator, interfaces.AuthOperationTypeView)
 	if err != nil {
@@ -515,7 +515,7 @@ func (m *operatorManager) exportPreCheck(ctx context.Context, req *interfaces.Ex
 			fmt.Sprintf("operator %v not access", clist))
 		return
 	}
-	// 检查算子是否存在
+	// Check if the operator exists.
 	operatorList, err = m.DBOperatorManager.SelectByOperatorIDs(ctx, req.IDs)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("select operator list err: %s", err.Error())
@@ -535,7 +535,7 @@ func (m *operatorManager) exportPreCheck(ctx context.Context, req *interfaces.Ex
 	return
 }
 
-// 拉取组合算子依赖并进行去重
+// Pull the combination operator dependencies and remove duplicates.
 // getCompositeOperatorDependencies returns the operators to export. The dataflow
 // product was removed, so composite operators no longer pull in DAG-derived
 // configs/dependency operators (that path went through flow-automation); the
@@ -546,10 +546,10 @@ func (m *operatorManager) getCompositeOperatorDependencies(_ context.Context, op
 	return
 }
 
-// batchGetOperatorInfo 批量获取算子信息
+// batchGetOperatorInfo obtains operator information in batches.
 func (m *operatorManager) batchGetOperatorInfo(ctx context.Context, operatorDBs []*model.OperatorRegisterDB) (items []*interfaces.OperatorImpexItem, err error) {
 	items = []*interfaces.OperatorImpexItem{}
-	// 收集组合算子流程ID
+	// Collect combination operator process ID.
 	sourceMap := map[model.SourceType][]string{}
 	for _, v := range operatorDBs {
 		if v.IsInternal {
@@ -599,13 +599,13 @@ func (m *operatorManager) batchGetOperatorInfo(ctx context.Context, operatorDBs 
 			sourceMap[model.SourceTypeFunction] = append(sourceMap[model.SourceTypeFunction], v.MetadataVersion)
 		}
 	}
-	// 收集metadata信息
+	// Collect metadata information.
 	sourceIDToMetadataMap, err := m.MetadataService.BatchGetMetadataBySourceIDs(ctx, sourceMap)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("batch get metadata err: %s", err.Error())
 		return
 	}
-	// 填充metadata信息
+	// Fill in metadata information.
 	for _, item := range items {
 		item.Metadata = metadata.MetadataDBToStruct(sourceIDToMetadataMap[item.Version])
 	}

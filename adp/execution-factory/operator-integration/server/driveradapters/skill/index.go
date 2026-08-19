@@ -32,7 +32,7 @@ type SkillHandler interface {
 	GetSkillReleaseHistory(c *gin.Context)
 	ReadSkillFile(c *gin.Context)
 	ExecuteSkill(c *gin.Context)
-	// 管理态读接口
+	// Management read interface.
 	GetManagementContent(c *gin.Context)
 	ReadManagementFile(c *gin.Context)
 	DownloadManagementSkill(c *gin.Context)

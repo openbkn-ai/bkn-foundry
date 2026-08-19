@@ -1,5 +1,5 @@
 // Package logger
-// @description: 定义日志接口
+// @description: Define log interface.
 // @file logger.go
 package logger
 
@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// Level 日志level
+// Level log level.
 type Level int
 
 const (
@@ -32,7 +32,7 @@ const (
 	levelErrorPrefix = "ERR"
 )
 
-// SimpleLogger 默认日志
+// SimpleLogger default log.
 type SimpleLogger struct {
 	level     Level
 	calldepth int
@@ -40,7 +40,7 @@ type SimpleLogger struct {
 	log       *log.Logger
 }
 
-// DefaultLogger 默认log
+// DefaultLogger default log.
 func DefaultLogger() (l *SimpleLogger) {
 	return NewLogger(LevelInfo, DefaultCalldepth)
 }
@@ -50,7 +50,7 @@ const (
 	MaxCalldepth     = 3
 )
 
-// NewLogger 新建logger
+// NewLogger New logger.
 func NewLogger(level Level, calldepth int) (l *SimpleLogger) {
 	l = &SimpleLogger{level: level, writer: os.Stdout, calldepth: calldepth}
 	f := log.Ldate | log.Ltime | log.Lshortfile
@@ -62,13 +62,13 @@ func addLvl(lvl, str string) string {
 	return lvl + " " + str
 }
 
-// WithContext 携带上下文
+// WithContext carries context.
 func (l *SimpleLogger) WithContext(ctx context.Context) interfaces.Logger { //nolint:revive
 	// not support
 	return l
 }
 
-// Output 输出
+// Output.
 func (l *SimpleLogger) Output(calldepth int, s string) error {
 	return log.Output(calldepth, s)
 }

@@ -23,7 +23,7 @@ type skillAssetStore interface {
 
 type ossGatewaySkillAssetStore struct {
 	client interfaces.OSSGatewayBackendClient
-	// 存储前缀
+	// storage prefix.
 	SkillPrefix string
 }
 
@@ -34,7 +34,7 @@ func newOSSGatewaySkillAssetStore() skillAssetStore {
 	}
 }
 
-// Upload 上传技能资产到 OSS 网关后端
+// Upload uploads skill assets to the OSS gateway backend.
 func (s *ossGatewaySkillAssetStore) Upload(ctx context.Context, skillID, version, relPath string, content []byte) (object *interfaces.OssObject, checksum string, err error) {
 	key := s.buildObjectKey(skillID, version, relPath)
 	storageID, err := s.client.CurrentStorageID(ctx)

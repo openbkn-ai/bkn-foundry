@@ -24,7 +24,7 @@ import (
 )
 
 func mockPostRequest(url, contentType string, body io.Reader, handler func(c *gin.Context)) (recorder *httptest.ResponseRecorder) {
-	// 创建一个带有中间件的路由组
+	// Create a routing group with middleware.
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use()
@@ -32,7 +32,7 @@ func mockPostRequest(url, contentType string, body io.Reader, handler func(c *gi
 		handler(c)
 		c.Next()
 	})
-	// 创建请求并触发中间件
+	// Create a request and trigger middleware.
 	recorder = httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, url, body)
 	req.Header.Set("Content-Type", contentType)
@@ -48,7 +48,7 @@ func mockGetRequest(path string, query map[string]interface{}, pathParams []stri
 
 	router.Handle(http.MethodGet, path, func(c *gin.Context) {
 		for i, param := range pathParams {
-			paramName := strings.Split(path, "/")[i+1][1:] // 提取 :param 格式的参数名
+			paramName := strings.Split(path, "/")[i+1][1:] // Extract parameter names in :param format.
 			c.Params = append(c.Params, gin.Param{Key: paramName, Value: param})
 		}
 		handler(c)
@@ -56,7 +56,7 @@ func mockGetRequest(path string, query map[string]interface{}, pathParams []stri
 	})
 	formattedPath := path
 	for _, param := range pathParams {
-		// 找到第一个占位符的位置（如 :id）
+		// Find the position of the first placeholder (such as :id)
 		start := strings.Index(formattedPath, ":")
 		if start == -1 {
 			break
@@ -67,10 +67,10 @@ func mockGetRequest(path string, query map[string]interface{}, pathParams []stri
 		} else {
 			end += start
 		}
-		// 替换占位符为实际参数
+		// Replace placeholders with actual parameters.
 		formattedPath = formattedPath[:start] + param + formattedPath[end:]
 	}
-	// 构造请求路径（移除了错误的路径拼接）
+	// Construct request path (removed incorrect path splicing)
 	queryString := url.Values{}
 	for key, value := range query {
 		queryString.Add(key, fmt.Sprintf("%v", value))
@@ -121,7 +121,7 @@ func TestRegisterOperator(t *testing.T) {
 			mockValidator.EXPECT().ValidatorStruct(gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("ValidatorStruct")).Times(1)
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
-			// 文件部分
+			// file section.
 			part, _ := writer.CreateFormFile("data", "auth.json")
 			data, err := os.ReadFile(localFile)
 			So(err, ShouldBeNil)
@@ -137,13 +137,13 @@ func TestRegisterOperator(t *testing.T) {
 			mockHydra.EXPECT().Introspect(gomock.Any()).Return(nil, errors.New("mock"))
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
-			// 添加必填字段
+			// Add required fields.
 			mustWriteField := func(fieldName, value string) {
 				err := writer.WriteField(fieldName, value)
 				So(err, ShouldBeNil)
 			}
 			mustWriteField("operator_metadata_type", "openapi")
-			// 文件部分
+			// file section.
 			part, _ := writer.CreateFormFile("data", "auth.json")
 			data, err := os.ReadFile(localFile)
 			So(err, ShouldBeNil)
@@ -153,20 +153,20 @@ func TestRegisterOperator(t *testing.T) {
 				body, handler.OperatorRegister)
 			fmt.Println(recorder.Body.String())
 		})
-		// Convey("传参格式为：application/json，MetadataType为空", func() {
+		// Convey("The parameter format is: application/json, MetadataType is empty", func() {.
 		// 	recorder := mockPostRequest(path, applicationJSON, bytes.NewBufferString(utils.ObjectToJSON(&interfaces.OperatorRegisterReq{
 		// 		Data: "{}",
 		// 	})), handler.OperatorRegister)
 		// 	fmt.Println(recorder.Body.String())
 		// 	So(recorder.Code, ShouldEqual, http.StatusBadRequest)
 		// })
-		// Convey("传参格式为：application/json，无效传参", func() {
+		// Convey("Parameter transmission format is: application/json, invalid parameter transmission", func() {.
 		// 	mockValidator.EXPECT().ValidatorStruct(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 		// 	recorder := mockPostRequest(path, applicationJSON, bytes.NewBufferString("nil"), handler.OperatorRegister)
 		// 	fmt.Println(recorder.Body.String())
 		// 	So(recorder.Code, ShouldEqual, http.StatusBadRequest)
 		// })
-		// Convey("无效用户token", func() {
+		// Convey("Invalid user token", func() {.
 		// 	mockValidator.EXPECT().ValidatorStruct(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 		// 	mockHydra.EXPECT().Introspect(gomock.Any(), gomock.Any()).Return(nil, errors.New("mock")).Times(1)
 		// 	recorder := mockPostRequest(path, applicationJSON, bytes.NewBufferString(`{
@@ -176,7 +176,7 @@ func TestRegisterOperator(t *testing.T) {
 		// 	}`), handler.OperatorRegister)
 		// 	fmt.Println(recorder.Body.String())
 		// })
-		// Convey("operator_metadata_type 类型无效", func() {
+		// Convey("operator_metadata_type type is invalid", func() {.
 		// 	mockHydra.EXPECT().Introspect(gomock.Any(), gomock.Any()).Return(&interfaces.TokenInfo{}, nil)
 		// 	recorder := mockPostRequest(path, applicationJSON, bytes.NewBufferString(`{
 		// 		"user_token": "invalid_token",
@@ -227,7 +227,7 @@ func TestOperatorUpdateByOpenAPI(t *testing.T) {
 	mockLogger.EXPECT().Warnf(gomock.Any(), gomock.Any()).Return().AnyTimes()
 	mockOperatorID := "b2d8baf0-e31f-4cac-851d-30ad8c2e4722"
 	mockOperatorVersion := "416278e0-2816-4537-a974-fbe46a3a7720"
-	// 模拟服务起来时主动注册验证器
+	// Actively register the validator when the simulated service is started.
 	mockRegisterValidation()
 	path := "/operator/info/update"
 	localFile := "../../tests/file/json/auth.json"
@@ -246,7 +246,7 @@ func TestOperatorUpdateByOpenAPI(t *testing.T) {
 			mockOperatorManager.EXPECT().UpdateOperatorByOpenAPI(gomock.Any(), gomock.Any(), gomock.Any()).Return([]*interfaces.OperatorRegisterResp{}, nil).AnyTimes()
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
-			// 文件部分
+			// file section.
 			part, _ := writer.CreateFormFile("data", "auth.json")
 			data, err := os.ReadFile(localFile)
 			So(err, ShouldBeNil)
@@ -262,7 +262,7 @@ func TestOperatorUpdateByOpenAPI(t *testing.T) {
 			mockHydra.EXPECT().Introspect(gomock.Any()).Return(nil, errors.New("mock")).AnyTimes()
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
-			// 添加必填字段
+			// Add required fields.
 			mustWriteField := func(fieldName, value string) {
 				err := writer.WriteField(fieldName, value)
 				So(err, ShouldBeNil)
@@ -271,7 +271,7 @@ func TestOperatorUpdateByOpenAPI(t *testing.T) {
 			mustWriteField("operator_id", mockOperatorID)
 			mustWriteField("version", mockOperatorVersion)
 
-			// 文件部分
+			// file section.
 			part, _ := writer.CreateFormFile("data", "auth.json")
 			data, err := os.ReadFile(localFile)
 			So(err, ShouldBeNil)
@@ -402,13 +402,13 @@ func TestOperatorQueryByOperatorIDOrVersion(t *testing.T) {
 // 			Logger:          mockLogger,
 // 		}
 // 		path := "/operator/category"
-// 		Convey("查询成功", func() {
+// Convey("query successful", func() {.
 // 			mockOperatorManager.EXPECT().GetOperatorCategoryList(gomock.Any()).Return([]*interfaces.CategoryInfo{}, nil)
 // 			recorder := mockGetRequest(path, map[string]interface{}{}, []string{}, handler.OperatorCategoryList)
 // 			fmt.Println(recorder.Body.String())
 // 			So(recorder.Code, ShouldEqual, http.StatusOK)
 // 		})
-// 		Convey("查询失败", func() {
+// Convey("Query failed", func() {.
 // 			mockOperatorManager.EXPECT().GetOperatorCategoryList(gomock.Any()).Return(nil, errors.New("mock err"))
 // 			recorder := mockGetRequest(path, map[string]interface{}{}, []string{}, handler.OperatorCategoryList)
 // 			fmt.Println(recorder.Body.String())
@@ -460,7 +460,7 @@ func TestOperatorStatusUpdate(t *testing.T) {
 // 		}
 // 		path := "/operator/info"
 // 		applicationJSON := "application/json"
-// 		Convey("更新成功", func() {
+// Convey("Update successful", func() {.
 // 			reqJSON := `"data": "./resource/openapi/compliant/template.yaml",
 //             "operator_metadata_type": "openapi",
 //             "operator_info": {

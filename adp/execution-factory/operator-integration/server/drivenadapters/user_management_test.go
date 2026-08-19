@@ -42,7 +42,7 @@ func TestGetUsersInfo(t *testing.T) {
 		})
 
 		Convey("404错误-成功解析不存在的用户ID", func() {
-			// 模拟404错误响应
+			// Simulate 404 error response.
 			errorResponse := map[string]interface{}{
 				"cause": "those users are not existing",
 				"detail": map[string]interface{}{
@@ -68,7 +68,7 @@ func TestGetUsersInfo(t *testing.T) {
 		})
 
 		Convey("404错误-解析失败", func() {
-			// 模拟无效的404错误响应
+			// Simulate an invalid 404 error response.
 			invalidErrorResponse := "invalid json"
 			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(404, invalidErrorResponse, fmt.Errorf("not found"))
 
@@ -150,7 +150,7 @@ func TestParseNotFoundUserIDs(t *testing.T) {
 		})
 
 		Convey("JSON反序列化失败", func() {
-			invalidResponse := make(chan int) // 无法序列化的类型
+			invalidResponse := make(chan int) // Unserializable type.
 
 			logger.EXPECT().Warnf(gomock.Any()).Return()
 			userIDs, err := mockClient.parseNotFoundUserIDs(ctx, utils.ObjectToByte(invalidResponse))
@@ -203,12 +203,12 @@ func TestGetUsersName(t *testing.T) {
 		})
 
 		Convey("处理404错误循环逻辑", func() {
-			// 第二次调用返回剩余用户信息
+			// The second call returns the remaining user information.
 			remainingUsers := []*interfaces.UserInfo{
 				{UserID: "user2", DisplayName: "李四"},
 			}
 
-			// 模拟404错误响应包含不存在的用户
+			// Simulate 404 error response containing non-existent user.
 			errorResponse := map[string]interface{}{
 				"detail": map[string]interface{}{
 					"ids": []interface{}{"user1"},
@@ -219,7 +219,7 @@ func TestGetUsersName(t *testing.T) {
 				Body:     utils.ObjectToByte(errorResponse),
 			}
 
-			// 第一次调用返回404错误
+			// The first call returns a 404 error.
 			gomock.InOrder(
 				httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(404, nil, httpErr),
 				httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(200, remainingUsers, nil),

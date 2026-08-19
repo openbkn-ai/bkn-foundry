@@ -15,31 +15,31 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 )
 
-// Pypi源解析器
+// PyPI source parser.
 
 const (
-	DefaultPypiRepo = "https://pypi.org/simple" // 默认Pypi源
+	DefaultPypiRepo = "https://pypi.org/simple" // Default PyPI source.
 )
 
-// 合法的 Python 包名（PEP 508）：字母数字开头结尾，中间可含 -_. 分隔符。
-// 包名会拼进上游 URL，不校验的话空格之类的输入会被转义后原样发出去，
-// 既拿不到结果又把非法输入送到了外部地址。
+// Legal Python package name (PEP 508): starts and ends with alphanumeric characters, and can contain -_. separator in the middle.
+// The package name will be spelled into the upstream URL. If there is no verification, input such as spaces will be escaped and sent as it is.
+// Neither the result can be obtained nor the illegal input is sent to the external address.
 var pypiPackageNamePattern = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$`)
 
-// ParsePypiReq 解析Pypi源请求参数
+// ParsePyPIReq parses PyPI source request parameters.
 type ParsePypiReq struct {
 	PypiRepoURL   string `form:"pypi_repo_url" default:"https://pypi.org/simple" validate:"required,url"`
 	PackageName   string `uri:"package_name" validate:"required"`
 	PythonVersion string `form:"python_version" default:"3.10"`
 }
 
-// ParsePypiResp 解析Pypi源响应参数
+// ParsePyPIResp parses PyPI source response parameters.
 type ParsePypiResp struct {
 	PackageName string   `json:"package_name"`
 	Versions    []string `json:"versions"`
 }
 
-// PypiResponse Pypi源响应参数
+// PyPIResponse PyPI source response parameters.
 type PypiResponse struct {
 	Info struct {
 		Name           string `json:"name"`
@@ -49,7 +49,7 @@ type PypiResponse struct {
 	Releases map[string][]PypiRelease `json:"releases"`
 }
 
-// PypiRelease Pypi源响应参数
+// PyPIRelease PyPI source response parameters.
 type PypiRelease struct {
 	RequiresPython string `json:"requires_python"`
 	Yanked         bool   `json:"yanked"`
@@ -89,8 +89,8 @@ func ParsePypi(ctx context.Context, req *ParsePypiReq) (resp *ParsePypiResp, err
 
 	rsp, err := httpClient.Do(httpReq)
 	if err != nil {
-		// 连不上是网络问题,不是镜像源缺少 JSON API。用错误码区分开,
-		// 否则「请检查镜像源配置」会把排查方向引到配置上。
+		// The failure to connect is a network problem, not a lack of JSON API in the mirror source. Use error codes to distinguish,
+		// Otherwise, "Please check the mirror source configuration" will lead the troubleshooting direction to the configuration.
 		return nil, errors.NewHTTPError(ctx, http.StatusInternalServerError, errors.ErrExtPypiRepoUnavailable,
 			map[string]interface{}{"error": err.Error(), "url": url})
 	}

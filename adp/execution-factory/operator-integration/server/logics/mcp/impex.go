@@ -7,25 +7,25 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// Import 导入MCP
+// Import Import MCP.
 func (s *mcpServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces.ImportType, data *interfaces.ComponentImpexConfigModel, userID string) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	if data == nil || data.MCP == nil || len(data.MCP.Configs) == 0 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonImportDataEmpty, "mcp configs is empty")
 		return
 	}
-	// 导入预检查
+	// Import pre-check.
 	waitUpdataMCPList, err := s.importPreCheck(ctx, mode, data.MCP.Configs)
 	if err != nil {
 		return
@@ -38,7 +38,7 @@ func (s *mcpServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces
 	if err != nil {
 		return
 	}
-	// 导入依赖
+	// Import dependencies.
 	if depToolBoxMap != nil && data.Toolbox != nil && len(data.Toolbox.Configs) > 0 {
 		toolboxImportData := &interfaces.ComponentImpexConfigModel{
 			Toolbox: &interfaces.ToolBoxImpexConfig{
@@ -57,14 +57,14 @@ func (s *mcpServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces
 		}
 	}
 
-	// 导入后置操作：配置权限，添加审计日志
+	// Post-import operations: configure permissions, add audit logs.
 	s.importPostProcess(ctx, createMap, updateMap, accessor)
 	return
 }
 
-// 导入后置操作：配置权限，添加审计日志
+// Post-import operations: configure permissions, add audit logs.
 func (s *mcpServiceImpl) importPostProcess(ctx context.Context, createMCPMap, updateMCPMap map[string]*model.MCPServerConfigDB, accessor *interfaces.AuthAccessor) {
-	// 触发新建策略，创建人默认拥有对当前资源的所有操作权限
+	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	for _, mcpDB := range createMCPMap {
 		err := s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 			ID:   mcpDB.MCPID,
@@ -74,7 +74,7 @@ func (s *mcpServiceImpl) importPostProcess(ctx context.Context, createMCPMap, up
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[importPostProcess] CreateOwnerPolicy err:%v", err)
 		}
-		// 记录设计日志及后续通知
+		// Record design logs and follow-up notifications.
 		go func() {
 			accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 			if !ok {
@@ -93,9 +93,9 @@ func (s *mcpServiceImpl) importPostProcess(ctx context.Context, createMCPMap, up
 			})
 		}()
 	}
-	// 更新
+	// update.
 	for _, mcpDB := range updateMCPMap {
-		// 通知资源变更
+		// Notify resource changes.
 		authResource := &interfaces.AuthResource{
 			ID:   mcpDB.MCPID,
 			Name: mcpDB.Name,
@@ -105,7 +105,7 @@ func (s *mcpServiceImpl) importPostProcess(ctx context.Context, createMCPMap, up
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("[importPostProcess] CreateOwnerPolicy err:%v", err)
 		}
-		// 记录设计日志及后续通知
+		// Record design logs and follow-up notifications.
 		go func() {
 			accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 			if !ok {
@@ -129,17 +129,17 @@ func (s *mcpServiceImpl) importPostProcess(ctx context.Context, createMCPMap, up
 func (s *mcpServiceImpl) batchImportMcpMetadata(ctx context.Context, tx *sql.Tx, items []*interfaces.MCPServersImpexItem, waitUpdataMCPList []*model.MCPServerConfigDB,
 	accessor *interfaces.AuthAccessor) (createMCPMap, updateMCPMap map[string]*model.MCPServerConfigDB,
 	depToolBoxMap map[string]bool, err error) {
-	// 收集需要新增的mcp
+	// Collect the mcp that needs to be added.
 	createMCPMap = map[string]*model.MCPServerConfigDB{}
-	// 收集需要更新的mcp
+	// Collect mcp that need to be updated.
 	updateMCPMap = map[string]*model.MCPServerConfigDB{}
 	for _, mcpDB := range waitUpdataMCPList {
-		// 检查MCP编辑权限
+		// Check MCP editing permissions.
 		err = s.AuthService.CheckModifyPermission(ctx, accessor, mcpDB.MCPID, interfaces.AuthResourceTypeMCP)
 		if err != nil {
 			return
 		}
-		// 内置MCP不允许编辑
+		// Built-in MCP does not allow editing.
 		if mcpDB.IsInternal {
 			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonInternalComponentNotAllowed,
 				fmt.Sprintf("internal toolbox %v not allowed to update", mcpDB.MCPID), mcpDB.Name)
@@ -147,7 +147,7 @@ func (s *mcpServiceImpl) batchImportMcpMetadata(ctx context.Context, tx *sql.Tx,
 		}
 		updateMCPMap[mcpDB.MCPID] = mcpDB
 	}
-	// 检查是否存在依赖工具
+	// Check if dependent tools exist.
 	depToolBoxMap = map[string]bool{}
 	for _, item := range items {
 		var mcpTools []*model.MCPToolDB
@@ -159,7 +159,7 @@ func (s *mcpServiceImpl) batchImportMcpMetadata(ctx context.Context, tx *sql.Tx,
 		if err != nil {
 			return
 		}
-		// 记录依赖工具
+		// Record dependency tool.
 		for _, tool := range mcpTools {
 			depToolBoxMap[tool.BoxID] = true
 		}
@@ -168,11 +168,11 @@ func (s *mcpServiceImpl) batchImportMcpMetadata(ctx context.Context, tx *sql.Tx,
 }
 
 func (s *mcpServiceImpl) importPreCheck(ctx context.Context, mode interfaces.ImportType, items []*interfaces.MCPServersImpexItem) (mcpList []*model.MCPServerConfigDB, err error) {
-	// 收集mcpID、name 检查
+	// Collect mcpID, name check.
 	mcpIDs := []string{}
 	for _, item := range items {
 		mcpIDs = append(mcpIDs, item.MCPID)
-		// 内置MCP不允许导入
+		// Built-in MCP does not allow import.
 		if item.IsInternal {
 			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonInternalComponentNotAllowed,
 				fmt.Sprintf("internal mcp %v not allowed to import", item.MCPID), item.Name)
@@ -183,14 +183,14 @@ func (s *mcpServiceImpl) importPreCheck(ctx context.Context, mode interfaces.Imp
 			return
 		}
 	}
-	// 检查ID资源是否冲突
+	// Check if ID resources conflict.
 	mcpList, err = s.DBMCPServerConfig.SelectByMCPIDs(ctx, mcpIDs)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config by ids error, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err)
 		return
 	}
-	// 创建模式：如果MCP已存在，则返回冲突错误
+	// Create mode: Return conflict error if MCP already exists.
 	if mode == interfaces.ImportTypeCreate && len(mcpList) > 0 {
 		err = errors.NewHTTPError(ctx, http.StatusConflict, errors.ErrExtCommonResourceIDConflict, "mcp id already exists")
 	}
@@ -210,20 +210,20 @@ func (s *mcpServiceImpl) importCheck(ctx context.Context, item *interfaces.MCPSe
 	if err != nil {
 		return
 	}
-	// 校验工具数量不能超过30个
+	// The number of verification tools cannot exceed 30.
 	if len(item.MCPTools) > mcpToolMaxCount {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtMCPToolMaxCount, fmt.Sprintf("mcp tool count must be less than %d", mcpToolMaxCount), mcpToolMaxCount)
 		return
 	}
 	item.IsInternal = false
-	// 检查分类
+	// Check classification.
 	categoryName := s.CategoryManager.GetCategoryName(ctx, interfaces.BizCategory(item.Category))
 	if categoryName == "" {
 		item.Category = interfaces.CategoryTypeOther.String()
 	}
 	toolNames := make(map[string]bool)
 	for _, toolConfig := range item.MCPTools {
-		// 校验工具名称是否重复
+		// Check whether the tool name is duplicated.
 		if toolNames[toolConfig.Name] {
 			return errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtMCPToolNameDuplicate, fmt.Sprintf("mcp tool name %s is duplicate", toolConfig.Name), toolConfig.Name)
 		}
@@ -240,15 +240,15 @@ func (s *mcpServiceImpl) importCheck(ctx context.Context, item *interfaces.MCPSe
 	return nil
 }
 
-// importByCreate 新建
+// importByCreate new.
 func (s *mcpServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, mcpConfigItem *interfaces.MCPServersImpexItem, userID string) (
 	mcpConfigDB *model.MCPServerConfigDB, mcpTools []*model.MCPToolDB, err error) {
-	// 校验导入的MCP Server配置信息
+	// Verify imported MCP Server configuration information.
 	err = s.importCheck(ctx, mcpConfigItem)
 	if err != nil {
 		return
 	}
-	// 导入参数检查
+	// Import parameter check.
 	mcpConfigDB = &model.MCPServerConfigDB{
 		MCPID:        mcpConfigItem.MCPID,
 		Name:         mcpConfigItem.Name,
@@ -270,7 +270,7 @@ func (s *mcpServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, mcpConf
 		UpdateTime:   time.Now().UnixNano(),
 		UpdateUser:   userID,
 	}
-	// 手动创建的MCP Server，需要更新依赖工具
+	// Manually created MCP Server requires updating dependent tools.
 	if mcpConfigDB.CreationType == interfaces.MCPCreationTypeToolImported.String() {
 		mcpConfigDB.URL = s.generateInternalMCPURL(mcpConfigDB.MCPID, mcpConfigDB.Version, interfaces.MCPMode(mcpConfigDB.Mode))
 		toolConfigs := []*interfaces.MCPToolConfigInfo{}
@@ -294,7 +294,7 @@ func (s *mcpServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, mcpConf
 	if err != nil {
 		return
 	}
-	// 发布MCP
+	// Release MCP.
 	if mcpConfigDB.Status == interfaces.BizStatusPublished.String() {
 		_, err = s.publishMCP(ctx, tx, mcpConfigDB, userID)
 		if err != nil {
@@ -304,23 +304,23 @@ func (s *mcpServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, mcpConf
 	return
 }
 
-// importByUpsert 更新或创建
+// importByUpsert update or create.
 func (s *mcpServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, mcpConfigDB *model.MCPServerConfigDB, mcpConfigItem *interfaces.MCPServersImpexItem, userID string) (
 	mcpTools []*model.MCPToolDB, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 校验参数
+	// Check parameters.
 	err = s.importCheck(ctx, mcpConfigItem)
 	if err != nil {
 		return
 	}
-	// 更新版本号
+	// Update version number.
 	currentVersion, err := s.updateMCPConfigVersion(ctx, tx, mcpConfigDB)
 	if err != nil {
 		return
 	}
-	// 更新MCP Server配置，定义哪些字段可以更新
+	// Update the MCP Server configuration to define which fields can be updated.
 	mcpConfigDB.Name = mcpConfigItem.Name
 	mcpConfigDB.Description = mcpConfigItem.Description
 	mcpConfigDB.Source = mcpConfigItem.Source
@@ -336,7 +336,7 @@ func (s *mcpServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, mcpConf
 	mcpConfigDB.Headers = utils.ObjectToJSON(mcpConfigItem.Headers)
 	mcpConfigDB.Env = utils.ObjectToJSON(mcpConfigItem.Env)
 	mcpConfigDB.Status = mcpConfigItem.Status.String()
-	// 手动创建的MCP Server，需要更新依赖工具
+	// Manually created MCP Server requires updating dependent tools.
 	if mcpConfigDB.CreationType == interfaces.MCPCreationTypeToolImported.String() {
 		mcpConfigDB.URL = s.generateInternalMCPURL(mcpConfigDB.MCPID, mcpConfigDB.Version, interfaces.MCPMode(mcpConfigDB.Mode))
 		toolConfigs := []*interfaces.MCPToolConfigInfo{}
@@ -356,14 +356,14 @@ func (s *mcpServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, mcpConf
 			return
 		}
 	}
-	// 状态更新
+	// status update.
 	err = s.DBMCPServerConfig.UpdateByID(ctx, tx, mcpConfigDB)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("update mcp config err: %s", err.Error())
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err)
 		return
 	}
-	// 发布MCP
+	// Release MCP.
 	if mcpConfigDB.Status == interfaces.BizStatusPublished.String() {
 		_, err = s.publishMCP(ctx, tx, mcpConfigDB, userID)
 		if err != nil {
@@ -373,15 +373,15 @@ func (s *mcpServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, mcpConf
 	return
 }
 
-// 导出预检查
+// Export pre-check.
 func (s *mcpServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.ExportReq) (mcpConfigDBs []*model.MCPServerConfigDB, err error) {
-	// 批量鉴权
+	// Batch authentication.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
 	}
-	// 检查查看权限
+	// Check viewing permissions.
 	checkMCPIDs, err := s.AuthService.ResourceFilterIDs(ctx, accessor, req.IDs,
 		interfaces.AuthResourceTypeMCP, interfaces.AuthOperationTypeView)
 	if err != nil {
@@ -393,7 +393,7 @@ func (s *mcpServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Exp
 			fmt.Sprintf("mcp server config %v not access", clist))
 		return
 	}
-	// 检查数据是否存在
+	// Check if the data exists.
 	mcpConfigDBs, err = s.DBMCPServerConfig.SelectByMCPIDs(ctx, req.IDs)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config by ids failed, err: %v", err)
@@ -413,17 +413,17 @@ func (s *mcpServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Exp
 	return
 }
 
-// Export 导出MCP
+// Export export MCP.
 func (s *mcpServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq) (data *interfaces.ComponentImpexConfigModel, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 导出预检查
+	// Export pre-check.
 	mcpConfigDBs, err := s.exportPreCheck(ctx, req)
 	if err != nil {
 		return
 	}
-	// 收集所有的MCP信息
+	// Collect all MCP information.
 	data = &interfaces.ComponentImpexConfigModel{
 		MCP: &interfaces.MCPImpexConfig{},
 	}
@@ -432,7 +432,7 @@ func (s *mcpServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq) 
 		return
 	}
 	data.MCP = configs
-	// 导出依赖
+	// Export dependencies.
 	depToolBoxIDs = utils.UniqueStrings(depToolBoxIDs)
 	if len(depToolBoxIDs) == 0 {
 		return
@@ -454,14 +454,14 @@ func (s *mcpServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq) 
 	return
 }
 
-// 收集导出元数据及其依赖
+// Collect export metadata and its dependencies.
 func (s *mcpServiceImpl) batchGetExportMetadata(ctx context.Context, mcpConfigDBs []*model.MCPServerConfigDB) (config *interfaces.MCPImpexConfig,
 	depToolBoxIDs []string, err error) {
 	config = &interfaces.MCPImpexConfig{}
 	depToolBoxIDs = []string{}
-	// 依赖的工具
+	// Dependent tools.
 	for _, configDB := range mcpConfigDBs {
-		// 内置MCP不允许导出
+		// Built-in MCP does not allow export.
 		if configDB.IsInternal {
 			err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonInternalComponentNotAllowed,
 				fmt.Sprintf("internal mcp %v not allowed to export", configDB.MCPID), configDB.Name)
@@ -472,9 +472,9 @@ func (s *mcpServiceImpl) batchGetExportMetadata(ctx context.Context, mcpConfigDB
 		if err != nil {
 			return
 		}
-		// 如果时工具导入收集
+		// If the tool imports the collection.
 		if configDB.CreationType == interfaces.MCPCreationTypeToolImported.String() {
-			// 获取依赖的工具
+			// Get dependent tools.
 			mcpConfig.MCPTools = []*interfaces.MCPToolItem{}
 			var mcpToolDBs []*model.MCPToolDB
 			mcpToolDBs, err = s.DBMCPTool.SelectListByMCPIDAndVersion(ctx, nil, configDB.MCPID, configDB.Version)
@@ -503,9 +503,9 @@ func (s *mcpServiceImpl) batchGetExportMetadata(ctx context.Context, mcpConfigDB
 	return
 }
 
-// 组装MCPServersImpexModel
+// Assemble MCPServersImpexModel.
 func (s *mcpServiceImpl) assembleMCPServersImpexModel(ctx context.Context, configDB *model.MCPServerConfigDB) (mcpConfig *interfaces.MCPServersImpexItem, err error) {
-	// 收集MCP信息
+	// Collect MCP information.
 	args := []string{}
 	if configDB.Args != "" {
 		err = utils.StringToObject(configDB.Args, &args)

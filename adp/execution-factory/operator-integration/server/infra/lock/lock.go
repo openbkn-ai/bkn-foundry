@@ -9,22 +9,22 @@ import (
 )
 
 const (
-	maxRenewRetryTimes = 3 // 续约失败最大重试次数
+	maxRenewRetryTimes = 3 // Maximum number of retries for failed renewal.
 	connectTimeout     = 5 * time.Second
 	divisor            = 2
 )
 
-// RedisLocker redis分布式锁
+// RedisLocker redis distributed lock.
 type RedisLocker struct {
 	client *redis.Client
 	key    string
 	value  string
-	expiry time.Duration // 锁有效期
+	expiry time.Duration // Lock validity period.
 	ticker *time.Ticker
 	done   chan struct{}
 }
 
-// NewRedisLocker 新建redis分布式锁
+// NewRedisLocker creates a new redis distributed lock.
 func NewRedisLocker(client *redis.Client, key, value string, expiry time.Duration) *RedisLocker {
 	return &RedisLocker{
 		client: client,
@@ -36,7 +36,7 @@ func NewRedisLocker(client *redis.Client, key, value string, expiry time.Duratio
 	}
 }
 
-// Lock 获取锁
+// Lock Get the lock.
 func (l *RedisLocker) Lock(ctx context.Context) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
@@ -50,7 +50,7 @@ func (l *RedisLocker) Lock(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-// Unlock 释放锁
+// Unlock releases the lock.
 func (l *RedisLocker) Unlock(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, connectTimeout)
 	defer cancel()
@@ -99,7 +99,7 @@ func (l *RedisLocker) startRenewal() {
 					retryCh <- struct{}{}
 				}
 			case <-retryCh:
-				// 超过最大重试次数 或者 锁的有效期在本次重试超时之前（如果有效期设置比较小，可能导致无法进行重试）
+				// The maximum number of retries is exceeded or the validity period of the lock is before the current retry times out (if the validity period is set to a small value, retry may not be possible)
 				if retryTimes > maxRenewRetryTimes || l.expiry/divisor < connectTimeout*time.Duration(retryTimes+1) {
 					return
 				}

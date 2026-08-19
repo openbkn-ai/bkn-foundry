@@ -7,29 +7,29 @@ import (
 
 //go:generate mockgen -source=category.go -destination=../../mocks/model_category.go -package=mocks
 
-// CategoryDB 分类表对应的结构体
+// Structure corresponding to CategoryDB classification table.
 type CategoryDB struct {
 	ID           int64  `json:"f_id" db:"f_id"`                       // id
-	CategoryID   string `json:"f_category_id" db:"f_category_id"`     // 分类ID
-	CategoryName string `json:"f_category_name" db:"f_category_name"` // 分类名称
-	CreateUser   string `json:"f_create_user" db:"f_create_user"`     // 创建者
-	CreateTime   int64  `json:"f_create_time" db:"f_create_time"`     // 创建时间
-	UpdateUser   string `json:"f_update_user" db:"f_update_user"`     // 编辑者
-	UpdateTime   int64  `json:"f_update_time" db:"f_update_time"`     // 编辑时间
+	CategoryID   string `json:"f_category_id" db:"f_category_id"`     // Category ID.
+	CategoryName string `json:"f_category_name" db:"f_category_name"` // Category name.
+	CreateUser   string `json:"f_create_user" db:"f_create_user"`     // Creator.
+	CreateTime   int64  `json:"f_create_time" db:"f_create_time"`     // creation time.
+	UpdateUser   string `json:"f_update_user" db:"f_update_user"`     // Editor.
+	UpdateTime   int64  `json:"f_update_time" db:"f_update_time"`     // Edit time.
 }
 
-// DBCategory 分类表数据库操作
+// DBCategory classification table database operations.
 type DBCategory interface {
-	// Insert 插入分类
+	// Insert insert category.
 	Insert(ctx context.Context, tx *sql.Tx, category *CategoryDB) (categoryID string, err error)
-	// UpdateByID 更新分类
+	// UpdateByID update classification.
 	UpdateByID(ctx context.Context, tx *sql.Tx, category *CategoryDB) error
-	// SelectList 查询分类列表
+	// SelectList Query category list.
 	SelectList(ctx context.Context, tx *sql.Tx) (categoryList []*CategoryDB, err error)
-	// SelectListByCategoryIDOrName 根据分类ID或名称查询分类列表
+	// SelectListByCategoryIDOrName Query the category list based on category ID or name.
 	SelectListByCategoryIDOrName(ctx context.Context, tx *sql.Tx, categoryID string, categoryName string) (categoryList []*CategoryDB, err error)
-	// SelectListByCategoryID 根据分类ID查询分类列表
+	// SelectListByCategoryID Query the category list based on the category ID.
 	SelectListByCategoryID(ctx context.Context, tx *sql.Tx, categoryID string) (category *CategoryDB, err error)
-	// DeleteByCategoryID 根据分类ID删除分类
+	// DeleteByCategoryID Delete a category based on category ID.
 	DeleteByCategoryID(ctx context.Context, tx *sql.Tx, categoryID string) error
 }

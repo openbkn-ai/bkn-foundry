@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// buildFieldMap 构建字段映射表
+// buildFieldMap builds a field mapping table.
 func buildFieldMap(structType reflect.Type) map[string]int {
 	fieldMap := make(map[string]int)
 	numField := structType.NumField()
@@ -18,7 +18,7 @@ func buildFieldMap(structType reflect.Type) map[string]int {
 			tag = field.Tag.Get("json")
 		}
 		if tag != "" && tag != "-" {
-			// 处理tag中的选项，只取字段名
+			// Process the options in the tag and only take the field name.
 			if idx := strings.Index(tag, ","); idx != -1 {
 				tag = tag[:idx]
 			}
@@ -28,7 +28,7 @@ func buildFieldMap(structType reflect.Type) map[string]int {
 	return fieldMap
 }
 
-// prepareScanTargets 准备扫描目标
+// prepareScanTargets prepares scanning targets.
 func prepareScanTargets(structValue reflect.Value, columns []string, fieldMap map[string]int) []interface{} {
 	scanTargets := make([]interface{}, len(columns))
 	for i, column := range columns {
@@ -48,22 +48,22 @@ func prepareScanTargets(structValue reflect.Value, columns []string, fieldMap ma
 	return scanTargets
 }
 
-// structScanner 结构体扫描器
+// structScanner structure scanner.
 type structScanner struct{}
 
-// NewScanner 创建新的扫描器
+// NewScanner creates a new scanner.
 func NewScanner() Scanner {
 	return &structScanner{}
 }
 
-// ScanOne 扫描单行到结构体
-// 由于sql.Row没有Columns()方法，无法获取列信息进行字段映射
-// 这个方法现在已废弃，建议使用ScanOneWithColumns
+// ScanOne scans a single line into a structure.
+// Since sql.Row does not have a Columns() method, column information cannot be obtained for field mapping.
+// This method is now deprecated, it is recommended to use ScanOneWithColumns.
 func (s *structScanner) ScanOne(row *sql.Row, dest interface{}) error {
 	return fmt.Errorf("ScanOne method is deprecated due to lack of column information in sql.Row. Use ScanOneWithColumns instead")
 }
 
-// ScanOneWithColumns 扫描单行到结构体（支持字段映射）
+// ScanOneWithColumns scans a single row into a structure (supports field mapping)
 func (s *structScanner) ScanOneWithColumns(row *sql.Row, dest interface{}, columns []string) error {
 	destValue := reflect.ValueOf(dest)
 	if destValue.Kind() != reflect.Ptr {
@@ -77,16 +77,16 @@ func (s *structScanner) ScanOneWithColumns(row *sql.Row, dest interface{}, colum
 
 	destType := destValue.Type()
 
-	// 创建字段映射
+	// Create field mapping.
 	fieldMap := buildFieldMap(destType)
 
-	// 准备扫描目标
+	// Prepare to scan target.
 	scanTargets := prepareScanTargets(destValue, columns, fieldMap)
 
 	return row.Scan(scanTargets...)
 }
 
-// ScanMany 扫描多行到结构体切片
+// ScanMany scans multiple rows into structure slices.
 func (s *structScanner) ScanMany(rows *sql.Rows, dest interface{}) error {
 	destValue := reflect.ValueOf(dest)
 	if destValue.Kind() != reflect.Ptr {
@@ -98,11 +98,11 @@ func (s *structScanner) ScanMany(rows *sql.Rows, dest interface{}) error {
 		return fmt.Errorf("dest must be a pointer to slice")
 	}
 
-	// 获取切片元素类型
+	// Get slice element type.
 	sliceType := destValue.Type()
 	elemType := sliceType.Elem()
 
-	// 如果是指针类型，获取实际的结构体类型
+	// If it is a pointer type, get the actual structure type.
 	structType := elemType
 	isPointer := false
 	if elemType.Kind() == reflect.Ptr {
@@ -114,19 +114,19 @@ func (s *structScanner) ScanMany(rows *sql.Rows, dest interface{}) error {
 		return fmt.Errorf("slice element must be struct or pointer to struct")
 	}
 
-	// 获取列信息
+	// Get column information.
 	columns, err := rows.Columns()
 	if err != nil {
 		return err
 	}
 
-	// 创建字段映射
+	// Create field mapping.
 	fieldMap := buildFieldMap(structType)
 
-	// 扫描所有行
+	// Scan all lines.
 	results := reflect.MakeSlice(sliceType, 0, 0)
 	for rows.Next() {
-		// 创建新的结构体实例
+		// Create a new structure instance.
 		var elemValue reflect.Value
 		if isPointer {
 			elemValue = reflect.New(structType)
@@ -139,7 +139,7 @@ func (s *structScanner) ScanMany(rows *sql.Rows, dest interface{}) error {
 			structValue = elemValue.Elem()
 		}
 
-		// 准备扫描目标
+		// Prepare to scan target.
 		scanTargets := prepareScanTargets(structValue, columns, fieldMap)
 
 		if err := rows.Scan(scanTargets...); err != nil {

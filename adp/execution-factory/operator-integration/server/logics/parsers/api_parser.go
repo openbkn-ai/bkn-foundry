@@ -1,6 +1,6 @@
-// Package parsers 实现API解析器
+// Package parsers implement API parsers.
 // @file api_parser.go
-// @description: 实现API解析器
+// @description: Implement API parser.
 package parsers
 
 import (
@@ -11,19 +11,19 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-playground/validator/v10"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// openAPIParser OpenAPI解析器
-// @description: 实现API解析器
+// openAPIParser OpenAPI parser.
+// @description: Implement API parser.
 type openAPIParser struct {
 	Logger interfaces.Logger
 }
 
-// Type 返回解析器类型
+// Type returns the parser type.
 func (op *openAPIParser) Type() interfaces.MetadataType {
 	return interfaces.MetadataTypeAPI
 }
@@ -40,9 +40,9 @@ func (op *openAPIParser) validate(ctx context.Context, inputValue any) (input *i
 	return
 }
 
-// Parse 解析OpenAPI元数据
+// Parse parses OpenAPI metadata.
 func (op *openAPIParser) Parse(ctx context.Context, inputValue any) (metadata []interfaces.IMetadataDB, err error) {
-	// 记录可观测性
+	// Record observability.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	input, err := op.validate(ctx, inputValue)
@@ -54,7 +54,7 @@ func (op *openAPIParser) Parse(ctx context.Context, inputValue any) (metadata []
 	if err != nil {
 		return nil, err
 	}
-	// 解析路径
+	// parse path.
 	for _, pathItem := range content.PathItems {
 		desc := pathItem.Description
 		if desc == "" {
@@ -89,7 +89,7 @@ func (op *openAPIParser) loadAndValidate(ctx context.Context, content []byte) (d
 		err = parseOpenAPILoadError(ctx, err)
 		return
 	}
-	// 790377 禁用示例验证
+	// 790377 Disable sample validation.
 	validationExamplesOption := openapi3.DisableExamplesValidation()
 	err = doc.Validate(loader.Context, validationExamplesOption)
 	if err != nil {
@@ -99,7 +99,7 @@ func (op *openAPIParser) loadAndValidate(ctx context.Context, content []byte) (d
 	return
 }
 
-// GetAllContent 解析所有内容
+// GetAllContent parses all content.
 func (op *openAPIParser) getAllContent(ctx context.Context, data []byte) (content *interfaces.OpenAPIContent, err error) {
 	doc, err := op.loadAndValidate(ctx, data)
 	if err != nil {
@@ -120,7 +120,7 @@ func (op *openAPIParser) getAllContent(ctx context.Context, data []byte) (conten
 	}
 	for path, pathItem := range doc.Paths.Map() {
 		for method, operation := range pathItem.Operations() {
-			// 收集所有schemas
+			// Collect all schemas.
 			schemas := make(map[string]interface{})
 			if operation.Summary == "" {
 				err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtOpenAPIInvalidSpecificationSummaryEmpty, "summary is empty",
@@ -146,13 +146,13 @@ func (op *openAPIParser) getAllContent(ctx context.Context, data []byte) (conten
 					},
 				},
 			}
-			// 处理参数
+			// Processing parameters.
 			item.APISpec.Parameters = getParameters(operation.Parameters, doc.Components, schemas)
-			// 处理请求体
+			// Process request body.
 			if operation.RequestBody != nil {
 				item.APISpec.RequestBody = getRequestBody(operation.RequestBody, doc.Components, schemas)
 			}
-			// 处理响应
+			// Handle response.
 			item.APISpec.Responses = getResponses(operation.Responses, doc.Components, schemas)
 			err = validator.New().Struct(item)
 			if err != nil {
@@ -176,26 +176,26 @@ func getServerURL(ctx context.Context, servers openapi3.Servers) (serverURL stri
 		return
 	}
 	url := server.URL
-	// 处理路径变量
+	// Handle path variables.
 	if strings.Contains(url, "{") {
-		// 获取所有变量名
+		// Get all variable names.
 		vars := make(map[string]string)
 		for name, variable := range server.Variables {
 			if variable.Default != "" {
 				vars[name] = variable.Default
 			} else {
-				// 如果没有默认值，使用变量名作为占位符
+				// If there is no default value, use the variable name as a placeholder.
 				vars[name] = name
 			}
 		}
 
-		// 替换URL中的变量
+		// Replace variables in URL.
 		for name, value := range vars {
 			url = strings.ReplaceAll(url, "{"+name+"}", value)
 		}
 	}
 
-	// 验证替换后的URL
+	// Verify the replaced URL.
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		err = fmt.Errorf("invalid server URL: must start with http:// or https:// in '%s'", url)
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtOpenAPIInvalidURLFormat, err.Error())
@@ -206,20 +206,20 @@ func getServerURL(ctx context.Context, servers openapi3.Servers) (serverURL stri
 	return
 }
 
-// GetParameters 解析OpenAPI参数
+// GetParameters parses OpenAPI parameters.
 func getParameters(params openapi3.Parameters, components *openapi3.Components,
 	schemas map[string]interface{}) []*interfaces.Parameter {
 	result := make([]*interfaces.Parameter, 0, len(params))
 
 	for _, param := range params {
-		// 处理参数schema
+		// Process parameter schema.
 		if param.Value.Schema != nil {
 			if param.Value.Schema.Ref != "" || param.Value.Schema.Value != nil {
-				// 收集schema引用
+				// Collect schema references.
 				collectSchemaRefs(components, param.Value.Schema, schemas, make(map[string]bool))
 			}
 		}
-		// 创建参数
+		// Create parameters.
 		result = append(result, &interfaces.Parameter{
 			Name:        param.Value.Name,
 			In:          param.Value.In,
@@ -234,20 +234,20 @@ func getParameters(params openapi3.Parameters, components *openapi3.Components,
 	return result
 }
 
-// GetResponses 解析OpenAPI响应
+// GetResponses parses OpenAPI responses.
 func getResponses(responses *openapi3.Responses, components *openapi3.Components, schemas map[string]interface{}) []*interfaces.Response {
 	result := []*interfaces.Response{}
 	for statusCode, resp := range responses.Map() {
-		// 处理响应内容
+		// Process response content.
 		for _, content := range resp.Value.Content {
 			if content.Schema != nil {
 				if content.Schema.Ref != "" || content.Schema.Value != nil {
-					// 收集schema引用
+					// Collect schema references.
 					collectSchemaRefs(components, content.Schema, schemas, make(map[string]bool))
 				}
 			}
 		}
-		// 创建响应
+		// Create response.
 		result = append(result, &interfaces.Response{
 			StatusCode:  statusCode,
 			Description: *resp.Value.Description,
@@ -257,10 +257,10 @@ func getResponses(responses *openapi3.Responses, components *openapi3.Components
 	return result
 }
 
-// GetRequestBody 解析OpenAPI请求体
+// GetRequestBody parses the OpenAPI request body.
 func getRequestBody(requestBody *openapi3.RequestBodyRef, components *openapi3.Components,
 	schemas map[string]interface{}) *interfaces.RequestBody {
-	// 处理请求体内容
+	// Process the request body content.
 	for _, content := range requestBody.Value.Content {
 		if content.Schema != nil {
 			if content.Schema.Ref != "" || content.Schema.Value != nil {
@@ -274,12 +274,12 @@ func getRequestBody(requestBody *openapi3.RequestBodyRef, components *openapi3.C
 	}
 }
 
-// collectSchemaRefs 收集所有schema引用
+// collectSchemaRefs collects all schema references.
 func collectSchemaRefs(components *openapi3.Components, schemaRef *openapi3.SchemaRef, schemas map[string]interface{}, visited map[string]bool) {
 	if schemaRef == nil {
 		return
 	}
-	// 处理直接引用
+	// Handling direct references.
 	if schemaRef.Ref != "" {
 		refKey := strings.TrimPrefix(schemaRef.Ref, "#/components/schemas/")
 		if visited[refKey] {
@@ -287,12 +287,12 @@ func collectSchemaRefs(components *openapi3.Components, schemaRef *openapi3.Sche
 		}
 		visited[refKey] = true
 		defer delete(visited, refKey)
-		// 添加到schemas集合
+		// Add to schemas collection.
 		if _, exists := schemas[refKey]; !exists {
 			if origSchema, exists := components.Schemas[refKey]; exists {
-				// 转换schema为map
+				// Convert schema to map.
 				schemas[refKey] = schemaToMap(origSchema)
-				// 递归处理引用
+				// Handle references recursively.
 				traverseSchema(components, origSchema, schemas, visited)
 			}
 		}
@@ -300,17 +300,17 @@ func collectSchemaRefs(components *openapi3.Components, schemaRef *openapi3.Sche
 	if schemaRef.Value == nil {
 		return
 	}
-	// 处理属性
+	// Handling attributes.
 	if schemaRef.Value.Properties != nil {
 		for _, prop := range schemaRef.Value.Properties {
 			collectSchemaRefs(components, prop, schemas, visited)
 		}
 	}
-	// 处理数组
+	// Processing arrays.
 	if schemaRef.Value.Items != nil {
 		collectSchemaRefs(components, schemaRef.Value.Items, schemas, visited)
 	}
-	// 处理组合类型
+	// Handling combination types.
 	for _, s := range schemaRef.Value.AllOf {
 		collectSchemaRefs(components, s, schemas, visited)
 	}
@@ -322,22 +322,22 @@ func collectSchemaRefs(components *openapi3.Components, schemaRef *openapi3.Sche
 	}
 }
 
-// traverseSchema 递归遍历schema
+// traverseSchema recursively traverses the schema.
 func traverseSchema(components *openapi3.Components, schemaRef *openapi3.SchemaRef, schemas map[string]interface{}, visited map[string]bool) {
 	if schemaRef == nil || schemaRef.Value == nil {
 		return
 	}
-	// 处理属性
+	// Handling attributes.
 	if schemaRef.Value.Properties != nil {
 		for _, prop := range schemaRef.Value.Properties {
 			collectSchemaRefs(components, prop, schemas, visited)
 		}
 	}
-	// 处理数组
+	// Processing arrays.
 	if schemaRef.Value.Items != nil {
 		collectSchemaRefs(components, schemaRef.Value.Items, schemas, visited)
 	}
-	// 处理组合类型
+	// Handling combination types.
 	for _, s := range schemaRef.Value.AllOf {
 		collectSchemaRefs(components, s, schemas, visited)
 	}
@@ -349,17 +349,17 @@ func traverseSchema(components *openapi3.Components, schemaRef *openapi3.SchemaR
 	}
 }
 
-// schemaToMap 将schema转换为map
+// schemaToMap converts schema to map.
 func schemaToMap(schemaRef *openapi3.SchemaRef) map[string]interface{} {
 	result := make(map[string]interface{})
 
-	// 处理引用
+	// Handle references.
 	if schemaRef.Ref != "" {
 		result["$ref"] = schemaRef.Ref
 		return result
 	}
 
-	// 处理基本类型
+	// Handling basic types.
 	if schemaRef.Value == nil {
 		return result
 	}
@@ -375,22 +375,22 @@ func schemaToMap(schemaRef *openapi3.SchemaRef) map[string]interface{} {
 	if schemaRef.Value.Description != "" {
 		result["description"] = schemaRef.Value.Description
 	}
-	// 添加默认值
+	// Add default value.
 	if schemaRef.Value.Default != nil {
 		result["default"] = schemaRef.Value.Default
 	}
 
-	// 添加枚举值
+	// Add enumeration value.
 	if len(schemaRef.Value.Enum) > 0 {
 		result["enum"] = schemaRef.Value.Enum
 	}
 
-	// 添加required字段
+	// Add required fields.
 	if len(schemaRef.Value.Required) > 0 {
 		result["required"] = schemaRef.Value.Required
 	}
 
-	// 处理属性
+	// Handling attributes.
 	if schemaRef.Value.Properties != nil {
 		props := make(map[string]interface{})
 		for name, prop := range schemaRef.Value.Properties {
@@ -399,12 +399,12 @@ func schemaToMap(schemaRef *openapi3.SchemaRef) map[string]interface{} {
 		result["properties"] = props
 	}
 
-	// 处理数组
+	// Processing arrays.
 	if schemaRef.Value.Items != nil {
 		result["items"] = schemaToMap(schemaRef.Value.Items)
 	}
 
-	// 处理组合类型
+	// Handling combination types.
 	if len(schemaRef.Value.AllOf) > 0 {
 		allOf := make([]interface{}, 0, len(schemaRef.Value.AllOf))
 		for _, s := range schemaRef.Value.AllOf {

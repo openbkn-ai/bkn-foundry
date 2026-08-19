@@ -60,9 +60,9 @@ func (op *operatorHandle) OperatorEdit(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// OperatorDelete 删除算子
+// OperatorDelete delete operator.
 func (op *operatorHandle) OperatorDelete(c *gin.Context) {
-	// 定义一个切片来接收请求体
+	// Define a slice to receive the request body.
 	var req interfaces.OperatorDeleteReq
 	var err error
 

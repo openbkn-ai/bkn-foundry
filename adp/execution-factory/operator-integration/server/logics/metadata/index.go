@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -19,9 +18,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/parsers"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// metadataService 统一元数据管理服务
+// metadataService unified metadata management service.
 type metadataService struct {
 	Logger             interfaces.Logger
 	APIMetadataDB      model.IAPIMetadataDB
@@ -35,7 +35,7 @@ var (
 	mManager interfaces.IMetadataService
 )
 
-// NewMetadataService 创建统一元数据管理模块
+// NewMetadataService creates a unified metadata management module.
 func NewMetadataService() interfaces.IMetadataService {
 	mOnce.Do(func() {
 		mManager = &metadataService{
@@ -49,16 +49,16 @@ func NewMetadataService() interfaces.IMetadataService {
 	return mManager
 }
 
-// GetMetadataBySource 根据SourceID、SourceType查询元数据
+// GetMetadataBySource queries metadata based on SourceID and SourceType.
 func (m *metadataService) GetMetadataBySource(ctx context.Context, sourceID string, sourceType model.SourceType) (has bool, metadata interfaces.IMetadataDB, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"source_id":   sourceID,
 		"source_type": string(sourceType),
 	})
-	// 根据SourceType查询元数据
+	// Query metadata based on SourceType.
 	switch sourceType {
 	case model.SourceTypeOpenAPI:
 		has, metadata, err = m.APIMetadataDB.SelectByVersion(ctx, sourceID)
@@ -81,7 +81,7 @@ func (m *metadataService) GetMetadataBySource(ctx context.Context, sourceID stri
 }
 
 func (m *metadataService) BatchGetMetadataBySourceIDs(ctx context.Context, sourceMap map[model.SourceType][]string) (sourceIDToMetadata map[string]interfaces.IMetadataDB, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	sourceIDToMetadata = map[string]interfaces.IMetadataDB{}
@@ -89,9 +89,9 @@ func (m *metadataService) BatchGetMetadataBySourceIDs(ctx context.Context, sourc
 		return
 	}
 	var wg sync.WaitGroup
-	// 添加停止标志
+	// Add stop sign.
 	var stopFlag int32
-	// 使用线程安全的映射
+	// Use thread-safe mapping.
 	resultMutex := sync.Mutex{}
 	errorsMutex := sync.Mutex{}
 	var errList []error
@@ -103,7 +103,7 @@ func (m *metadataService) BatchGetMetadataBySourceIDs(ctx context.Context, sourc
 		go func(st model.SourceType, sourceIDList []string) {
 			defer wg.Done()
 
-			// 检查是否已经需要停止
+			// Check if it needs to be stopped.
 			if atomic.LoadInt32(&stopFlag) == 1 {
 				return
 			}
@@ -166,21 +166,21 @@ func (m *metadataService) BatchGetMetadataBySourceIDs(ctx context.Context, sourc
 					}
 				}
 			}
-			// 处理错误
+			// handling errors.
 			if localErr != nil {
 				errorsMutex.Lock()
 				errList = append(errList, localErr)
 				errorsMutex.Unlock()
-				// 设置停止标志，但不取消上下文
+				// Set stop flag but don't cancel context.
 				atomic.StoreInt32(&stopFlag, 1)
 			}
 		}(sourceType, sourceIDs)
 	}
 
 	wg.Wait()
-	// 处理错误
+	// handling errors.
 	if len(errList) > 0 {
-		// 返回第一个错误作为主要错误
+		// Return the first error as the primary error.
 		err = errList[0]
 		if len(errList) > 1 {
 			m.Logger.WithContext(ctx).Warnf("multiple errors occurred during batch get metadata: %v", errList)
@@ -189,7 +189,7 @@ func (m *metadataService) BatchGetMetadataBySourceIDs(ctx context.Context, sourc
 	return sourceIDToMetadata, err
 }
 
-// ParseMetadata 解析元数据
+// ParseMetadata parses metadata.
 func (m *metadataService) ParseMetadata(ctx context.Context, metadataType interfaces.MetadataType, input any) ([]interfaces.IMetadataDB, error) {
 	parser, err := m.ParserRegistry.Get(metadataType)
 	if err != nil {
@@ -198,13 +198,13 @@ func (m *metadataService) ParseMetadata(ctx context.Context, metadataType interf
 	return parser.Parse(ctx, input)
 }
 
-// ParseRawContent 获取解析后的原始内容
+// ParseRawContent gets the parsed original content.
 func (m *metadataService) ParseRawContent(ctx context.Context, metadataType interfaces.MetadataType, input any) (content any, err error) {
 	parser, err := m.ParserRegistry.Get(metadataType)
 	if err != nil {
 		return nil, err
 	}
-	// 解析原始数据为目标结构
+	// Parse raw data into target structure.
 	content, err = parser.GetAllContent(ctx, input)
 	if err != nil {
 		return nil, err
@@ -212,15 +212,15 @@ func (m *metadataService) ParseRawContent(ctx context.Context, metadataType inte
 	return
 }
 
-// RegisterMetadata 注册单个元数据
+// RegisterMetadata registers a single metadata.
 func (m *metadataService) RegisterMetadata(ctx context.Context, tx *sql.Tx, metadata interfaces.IMetadataDB) (version string, err error) {
-	// 验证元数据
+	// Verify metadata.
 	err = m.ValidateMetadata(ctx, metadata)
 	if err != nil {
 		return
 	}
 
-	// 根据类型存储到对应的表
+	// Store in corresponding table according to type.
 	switch metadata.GetType() {
 	case string(model.SourceTypeOpenAPI):
 		apiMetadata, ok := metadata.(*model.APIMetadataDB)
@@ -258,13 +258,13 @@ func (m *metadataService) RegisterMetadata(ctx context.Context, tx *sql.Tx, meta
 	return
 }
 
-// BatchRegisterMetadata 批量注册元数据
+// BatchRegisterMetadata batch registration metadata.
 func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx, metadatas []interfaces.IMetadataDB) (versions []string, err error) {
 	if len(metadatas) == 0 {
 		return []string{}, nil
 	}
 
-	// 按类型分组
+	// Group by type.
 	apiMetadatas := make([]*model.APIMetadataDB, 0)
 	funcMetadatas := make([]*model.FunctionMetadataDB, 0)
 
@@ -304,7 +304,7 @@ func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx,
 
 	versions = make([]string, 0, len(metadatas))
 
-	// 批量插入API元数据
+	// Insert API metadata in batches.
 	if len(apiMetadatas) > 0 {
 		apiVersions, err := m.APIMetadataDB.InsertAPIMetadatas(ctx, tx, apiMetadatas)
 		if err != nil {
@@ -314,7 +314,7 @@ func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx,
 		versions = append(versions, apiVersions...)
 	}
 
-	// 批量插入Function元数据
+	// Insert Function metadata in batches.
 	if len(funcMetadatas) > 0 {
 		funcVersions, err := m.FuncMetadataDB.InsertFuncMetadatas(ctx, tx, funcMetadatas)
 		if err != nil {
@@ -327,7 +327,7 @@ func (m *metadataService) BatchRegisterMetadata(ctx context.Context, tx *sql.Tx,
 	return versions, nil
 }
 
-// CheckMetadataExists 检查元数据是否存在
+// CheckMetadataExists checks whether metadata exists.
 func (m *metadataService) CheckMetadataExists(ctx context.Context, metadataType interfaces.MetadataType, version string) (exists bool,
 	metadata interfaces.IMetadataDB, err error) {
 	switch metadataType {
@@ -352,7 +352,7 @@ func (m *metadataService) CheckMetadataExists(ctx context.Context, metadataType 
 	return
 }
 
-// GetMetadataByVersion 根据版本查询元数据
+// GetMetadataByVersion Query metadata based on version.
 func (m *metadataService) GetMetadataByVersion(ctx context.Context, metadataType interfaces.MetadataType, version string) (interfaces.IMetadataDB, error) {
 	switch metadataType {
 	case interfaces.MetadataTypeAPI:
@@ -382,16 +382,16 @@ func (m *metadataService) GetMetadataByVersion(ctx context.Context, metadataType
 	}
 }
 
-// BatchGetMetadata 批量查询元数据
+// BatchGetMetadata batch query metadata.
 func (m *metadataService) BatchGetMetadata(ctx context.Context, apiVersions, funcVersions []string) (result []interfaces.IMetadataDB, err error) {
-	// 并发查询API元数据
+	// Concurrent query of API metadata.
 	var apiMetadatas []*model.APIMetadataDB
 	var funcMetadatas []*model.FunctionMetadataDB
 	var apiErr, funcErr error
 	result = []interfaces.IMetadataDB{}
 	var wg sync.WaitGroup
 
-	// 查询OpenAPI元数据
+	// Query OpenAPI metadata.
 	if len(apiVersions) > 0 {
 		apiVersions = utils.UniqueStrings(apiVersions)
 		wg.Add(1)
@@ -401,7 +401,7 @@ func (m *metadataService) BatchGetMetadata(ctx context.Context, apiVersions, fun
 				ctx, apiVersions, interfaces.DefaultBatchSize, m.APIMetadataDB.SelectListByVersion)
 		}()
 	}
-	// 查询Function元数据
+	// Query Function metadata.
 	if len(funcVersions) > 0 {
 		funcVersions = utils.UniqueStrings(funcVersions)
 		wg.Add(1)
@@ -412,16 +412,16 @@ func (m *metadataService) BatchGetMetadata(ctx context.Context, apiVersions, fun
 		}()
 	}
 
-	// 等待所有查询完成
+	// Wait for all queries to complete.
 	wg.Wait()
 
-	// 错误处理
+	// Error handling.
 	if apiErr != nil || funcErr != nil {
 		err = fmt.Errorf("batch get metadata failed, apiErr: %v, funcErr: %v", apiErr, funcErr)
 		return
 	}
 
-	// 合并结果
+	// Merge results.
 	for _, metadata := range apiMetadatas {
 		result = append(result, metadata)
 	}
@@ -431,15 +431,15 @@ func (m *metadataService) BatchGetMetadata(ctx context.Context, apiVersions, fun
 	return result, nil
 }
 
-// UpdateMetadata 更新元数据
+// UpdateMetadata Update metadata.
 func (m *metadataService) UpdateMetadata(ctx context.Context, tx *sql.Tx, metadata interfaces.IMetadataDB) error {
-	// 验证元数据
+	// Verify metadata.
 	err := m.ValidateMetadata(ctx, metadata)
 	if err != nil {
 		return err
 	}
 
-	// 根据类型更新对应的表
+	// Update the corresponding table according to the type.
 	switch metadata.GetType() {
 	case string(model.SourceTypeOpenAPI):
 		apiMetadata, ok := metadata.(*model.APIMetadataDB)
@@ -472,7 +472,7 @@ func (m *metadataService) UpdateMetadata(ctx context.Context, tx *sql.Tx, metada
 	return nil
 }
 
-// DeleteMetadata 删除元数据
+// DeleteMetadata Delete metadata.
 func (m *metadataService) DeleteMetadata(ctx context.Context, tx *sql.Tx, metadataType interfaces.MetadataType, version string) error {
 	switch metadataType {
 	case interfaces.MetadataTypeAPI:
@@ -493,7 +493,7 @@ func (m *metadataService) DeleteMetadata(ctx context.Context, tx *sql.Tx, metada
 	return nil
 }
 
-// BatchDeleteMetadata 批量删除元数据
+// BatchDeleteMetadata Batch delete metadata.
 func (m *metadataService) BatchDeleteMetadata(ctx context.Context, tx *sql.Tx, metadataType interfaces.MetadataType, versions []string) error {
 	if len(versions) == 0 {
 		return nil
@@ -520,7 +520,7 @@ func (m *metadataService) BatchDeleteMetadata(ctx context.Context, tx *sql.Tx, m
 	return nil
 }
 
-// ValidateMetadata 验证元数据格式
+// ValidateMetadata validates metadata format.
 func (m *metadataService) ValidateMetadata(ctx context.Context, metadata interfaces.IMetadataDB) error {
 	if metadata == nil {
 		return fmt.Errorf("metadata is nil")

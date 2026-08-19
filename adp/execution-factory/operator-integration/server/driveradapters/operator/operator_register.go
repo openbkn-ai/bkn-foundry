@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// OperatorUpdateByOpenAPI 【内部接口】算子更新
+// OperatorUpdateByOpenAPI [Internal interface] Operator update.
 func (op *operatorHandle) OperatorUpdateByOpenAPI(c *gin.Context) {
 	req := &interfaces.OperatorUpdateReq{
 		OperatorRegisterReq: &interfaces.OperatorRegisterReq{
@@ -52,7 +52,7 @@ func (op *operatorHandle) OperatorUpdateByOpenAPI(c *gin.Context) {
 		return
 	}
 	if req.MetadataType == interfaces.MetadataTypeAPI {
-		// 检验传参大小
+		// Check the parameter size.
 		if err = op.Validator.ValidateOperatorImportSize(c.Request.Context(), int64(len(req.Data))); err != nil {
 			rest.ReplyError(c, err)
 			return
@@ -66,7 +66,7 @@ func (op *operatorHandle) OperatorUpdateByOpenAPI(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// OperatorRegister 算子注册
+// OperatorRegister operator registration.
 func (op *operatorHandle) OperatorRegister(c *gin.Context) {
 	req := &interfaces.OperatorRegisterReq{
 		OperatorInfo:           &interfaces.OperatorInfo{},
@@ -114,7 +114,7 @@ func (op *operatorHandle) OperatorRegister(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// parseCommonParams 通用参数处理方法
+// parseCommonParams common parameter processing method.
 func (op *operatorHandle) parseCommonParams(c *gin.Context, req interface{}) (data string, err error) {
 	switch c.ContentType() {
 	case "application/json":
@@ -136,7 +136,7 @@ func (op *operatorHandle) parseCommonParams(c *gin.Context, req interface{}) (da
 			err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 			return
 		}
-		// 公共校验和文件读取
+		// Public checksum file reading.
 		if err = op.Validator.ValidateOperatorImportSize(c.Request.Context(), file.Size); err != nil {
 			return
 		}

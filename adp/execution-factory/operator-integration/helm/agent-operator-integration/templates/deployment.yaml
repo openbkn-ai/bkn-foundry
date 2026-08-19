@@ -104,7 +104,7 @@ spec:
             - name: public-port
               containerPort: {{ .Values.service.port }}
           {{- if ne .Values.runMode "dev"}}
-          readinessProbe: # 就绪探针
+          readinessProbe: # Readiness probe.
             httpGet:
               path: /health/ready
               port: public-port
@@ -112,7 +112,7 @@ spec:
             periodSeconds: {{ .Values.service.readinessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.service.readinessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.service.readinessProbe.failureThreshold }}
-          livenessProbe: # 存活探针
+          livenessProbe: # survival probe.
             httpGet:
               path: /health/alive
               port: public-port
@@ -120,7 +120,7 @@ spec:
             periodSeconds: {{ .Values.service.livenessProbe.periodSeconds }}
             timeoutSeconds: {{ .Values.service.livenessProbe.timeoutSeconds }}
             failureThreshold: {{ .Values.service.livenessProbe.failureThreshold }}
-          startupProbe: # 启动探针
+          startupProbe: # Start probe.
             httpGet:
               path: /health/alive
               port: public-port

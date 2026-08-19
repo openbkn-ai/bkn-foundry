@@ -5,26 +5,28 @@ import (
 	"database/sql"
 )
 
-// OutboxMessageDB outbox消息表
+// OutboxMessageDB outbox message table.
 type OutboxMessageDB struct {
-	ID          int64  `json:"id" db:"f_id"`                       // 主键
-	EventID     string `json:"event_id" db:"f_event_id"`           // 事件ID
-	EventType   string `json:"type" db:"f_event_type"`             // 事件类型
-	Topic       string `json:"topic" db:"f_topic"`                 // 消息Topic
-	Payload     string `json:"payload" db:"f_payload"`             // 事件负载内容(message)
-	Status      string `json:"status" db:"f_status"`               // 消息状态(待处理、失败)
-	CreatedAt   int64  `json:"created_at" db:"f_created_at"`       // 创建时间
-	UpdatedAt   int64  `json:"updated_at" db:"f_updated_at"`       // 更新时间
-	NextRetryAt int64  `json:"next_retry_at" db:"f_next_retry_at"` // 下次重试时间
-	RetryCount  int    `json:"retry_count" db:"f_retry_count"`     // 重试次数
+	ID          int64  `json:"id" db:"f_id"`                       // primary key.
+	EventID     string `json:"event_id" db:"f_event_id"`           // Event ID.
+	EventType   string `json:"type" db:"f_event_type"`             // event type.
+	Topic       string `json:"topic" db:"f_topic"`                 // Message Topic.
+	Payload     string `json:"payload" db:"f_payload"`             // Event payload content (message)
+	Status      string `json:"status" db:"f_status"`               // Message status (pending, failed)
+	CreatedAt   int64  `json:"created_at" db:"f_created_at"`       // creation time.
+	UpdatedAt   int64  `json:"updated_at" db:"f_updated_at"`       // Update time.
+	NextRetryAt int64  `json:"next_retry_at" db:"f_next_retry_at"` // Next retry time.
+	RetryCount  int    `json:"retry_count" db:"f_retry_count"`     // Number of retries.
 }
 
 const (
-	OutboxMessageStatusPending string = "pending" // 待处理
-	OutboxMessageStatusFailed  string = "failed"  // 失败
+	OutboxMessageStatusPending string = "pending" // Pending.
+	OutboxMessageStatusFailed  string = "failed"  // failed.
 )
+
+// IOutboxMessage outbox message interface.
+//
 //go:generate mockgen -source=outbox_message.go -destination=../../mocks/model_outbox_message.go -package=mocks
-// IOutboxMessage outbox消息接口
 type IOutboxMessage interface {
 	Insert(ctx context.Context, tx *sql.Tx, message *OutboxMessageDB) (eventID string, err error)
 	UpdateByEventID(ctx context.Context, tx *sql.Tx, message *OutboxMessageDB) error

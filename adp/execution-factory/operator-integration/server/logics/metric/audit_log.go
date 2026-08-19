@@ -1,5 +1,5 @@
 // Package metric
-// @description: 指标模型操作接口
+// @description: Metric model operation interface.
 // @file metric.go
 package metric
 
@@ -16,67 +16,67 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// 常量定义
+// constant definition.
 const (
-	RecorderDIP    = "DIP"                        // 产品
-	PackageName    = "DataOperatorHub"            // 包名
-	OperationType  = "operation"                  // 操作日志类型
-	ServiceName    = "agent-operator-integration" // 服务名
-	ExMsgLimit     = 65535                        // 附加信息最大长度
-	DefaultTimeout = 30 * time.Second             // 默认超时时间
+	RecorderDIP    = "DIP"                        // Products.
+	PackageName    = "DataOperatorHub"            // package name.
+	OperationType  = "operation"                  // Operation log type.
+	ServiceName    = "agent-operator-integration" // Service name.
+	ExMsgLimit     = 65535                        // Maximum length of additional information.
+	DefaultTimeout = 30 * time.Second             // Default timeout.
 )
 
-// AuditLogOperationModel 审计操作日志模型
+// AuditLogOperationModel audit operation log model.
 type AuditLogOperationModel struct {
-	Operation   AuditLogOperationType `json:"operation" validate:"required"`          // 操作类型
-	Description string                `json:"description" validate:"required"`        // 字符串描述，最大长度65,535
-	OpTime      int64                 `json:"op_time" validate:"required"`            // 操作时间（通过mq上报的必需）精确到纳秒
-	Operator    AuditLogOperatorInfo  `json:"operator" validate:"required"`           // 操作者信息
-	Object      AuditLogObject        `json:"object,omitempty"`                       // 操作对象信息
-	LogFrom     LogFrom               `json:"log_from" validate:"required"`           // 日志来源
-	Detail      interface{}           `json:"detail,omitempty"`                       // 细节
-	ExMsg       string                `json:"ex_msg,omitempty"`                       // 附加信息，最大长度65,535
-	Level       LoggerLevel           `json:"level" validate:"required"`              // 日志级别，默认INFO
-	OutBizID    string                `json:"out_biz_id" validate:"required,max=128"` // 外部唯一业务ID，用于防抖，格式不限 最长128
-	Type        string                `json:"type" validate:"required"`               // 日志类型，最大长度128
+	Operation   AuditLogOperationType `json:"operation" validate:"required"`          // Operation type.
+	Description string                `json:"description" validate:"required"`        // String description, maximum length 65,535.
+	OpTime      int64                 `json:"op_time" validate:"required"`            // Operation time (required for reporting through mq) is accurate to nanoseconds.
+	Operator    AuditLogOperatorInfo  `json:"operator" validate:"required"`           // Operator information.
+	Object      AuditLogObject        `json:"object,omitempty"`                       // Operation object information.
+	LogFrom     LogFrom               `json:"log_from" validate:"required"`           // Log source.
+	Detail      interface{}           `json:"detail,omitempty"`                       // Details.
+	ExMsg       string                `json:"ex_msg,omitempty"`                       // Additional information, maximum length 65,535.
+	Level       LoggerLevel           `json:"level" validate:"required"`              // Log level, default INFO.
+	OutBizID    string                `json:"out_biz_id" validate:"required,max=128"` // External unique business ID, used for anti-shake, format is not limited, up to 128.
+	Type        string                `json:"type" validate:"required"`               // Log type, maximum length 128.
 }
 
-// LogFrom 日志来源
+// LogFrom log source.
 type LogFrom struct {
-	Package string      `json:"package" validate:"required"` // 大包名
-	Service ServiceInfo `json:"service" validate:"required"` // 服务信息
+	Package string      `json:"package" validate:"required"` // Big package name.
+	Service ServiceInfo `json:"service" validate:"required"` // Service information.
 }
 
-// ServiceInfo 服务信息
+// ServiceInfo service information.
 type ServiceInfo struct {
-	Name string `json:"name" validate:"required"` // 服务名称
+	Name string `json:"name" validate:"required"` // Service name.
 }
 
-// LoggerLevel 日志级别
+// LoggerLevel log level.
 type LoggerLevel string
 
 const (
-	LoggerLevelInfo LoggerLevel = "INFO" // 信息
-	LoggerLevelWarn LoggerLevel = "WARN" // 警告
+	LoggerLevelInfo LoggerLevel = "INFO" // information.
+	LoggerLevelWarn LoggerLevel = "WARN" // warning.
 )
 
-// AuditLogObjectType 审计日志操作对象类型
+// AuditLogObjectType Audit log operation object type.
 type AuditLogObjectType string
 
 const (
-	AuditLogObjectOperator AuditLogObjectType = "operator" // 算子
-	AuditLogObjectTool     AuditLogObjectType = "tool"     // 工具
+	AuditLogObjectOperator AuditLogObjectType = "operator" // operator.
+	AuditLogObjectTool     AuditLogObjectType = "tool"     // Tools.
 	AuditLogObjectMCP      AuditLogObjectType = "mcp"      // mcp
 )
 
-// AuditLogObject 操作对象信息
+// AuditLogObject operation object information.
 type AuditLogObject struct {
-	Type AuditLogObjectType `json:"type" validate:"required"` // 操作对象类型
-	Name string             `json:"name"`                     // 操作对象名称，最大长度128
-	ID   string             `json:"id"`                       // 操作对象ID，最大长度40
+	Type AuditLogObjectType `json:"type" validate:"required"` // Operate type.
+	Name string             `json:"name"`                     // Operation object name, maximum length 128.
+	ID   string             `json:"id"`                       // Operation object ID, maximum length 40.
 }
 
-// NewAuditLogObject 创建操作对象信息
+// NewAuditLogObject creates operation object information.
 func NewAuditLogObject(typ AuditLogObjectType, name, id string) *AuditLogObject {
 	return &AuditLogObject{
 		Type: typ,
@@ -85,32 +85,32 @@ func NewAuditLogObject(typ AuditLogObjectType, name, id string) *AuditLogObject 
 	}
 }
 
-// AuditLogOperatoAgent 操作者代理信息
+// AuditLogOperatoAgent operator agent information.
 type AuditLogOperatoAgent struct {
-	Type string `json:"type" validate:"required"` // 操作者客户端类型
-	IP   string `json:"ip" validate:"required"`   // 操作者设备IP
-	MAC  string `json:"mac" validate:"required"`  // 操作者设备mac地址
+	Type string `json:"type" validate:"required"` // Operator client type.
+	IP   string `json:"ip" validate:"required"`   // Operator device IP.
+	MAC  string `json:"mac" validate:"required"`  // Operator device mac address.
 }
 
-// AuditLogOperatorInfo 操作者信息
+// AuditLogOperatorInfo operator information.
 type AuditLogOperatorInfo struct {
-	ID    string               `json:"id" validate:"required,max=40"`    // 操作者ID，最大长度40
-	Name  string               `json:"name" validate:"required,max=128"` // 操作者名称，以传入数据为准，最大长度128,type为internal_service必传
-	Type  AuditLogOperatorType `json:"type" validate:"required"`         // 操作者类型
-	Agent AuditLogOperatoAgent `json:"agent" validate:"required"`        // 操作者代理信息
+	ID    string               `json:"id" validate:"required,max=40"`    // Operator ID, maximum length 40.
+	Name  string               `json:"name" validate:"required,max=128"` // Operator name, subject to the incoming data, the maximum length is 128, type is internal_service and must be passed.
+	Type  AuditLogOperatorType `json:"type" validate:"required"`         // Operator type.
+	Agent AuditLogOperatoAgent `json:"agent" validate:"required"`        // Operator agent information.
 }
 
-// AuditLogOperatorType 操作者类型
+// AuditLogOperatorType operator type.
 type AuditLogOperatorType string
 
 const (
-	AuthenticatedUser AuditLogOperatorType = "authenticated_user" // 实名用户
-	AnonymousUser     AuditLogOperatorType = "anonymous_user"     // 匿名用户
-	AppUser           AuditLogOperatorType = "app"                // 应用账户
-	InternalService   AuditLogOperatorType = "internal_service"   // 内部服务
+	AuthenticatedUser AuditLogOperatorType = "authenticated_user" // Real-name user.
+	AnonymousUser     AuditLogOperatorType = "anonymous_user"     // anonymous user.
+	AppUser           AuditLogOperatorType = "app"                // application account.
+	InternalService   AuditLogOperatorType = "internal_service"   // Internal services.
 )
 
-// Validate 校验操作者类型是否合法
+// Validate verifies whether the operator type is legal.
 func (a AuditLogOperatorType) Validate() error {
 	validTypeMap := map[AuditLogOperatorType]struct{}{
 		AuthenticatedUser: {},
@@ -126,19 +126,19 @@ func (a AuditLogOperatorType) Validate() error {
 	return fmt.Errorf("invalid operator type %s", a)
 }
 
-// AuditLogOperationType 审计日志操作类型
+// AuditLogOperationType Audit log operation type.
 type AuditLogOperationType string
 
 const (
-	AuditLogOperationCreate    AuditLogOperationType = "create"    // 新建
-	AuditLogOperationDelete    AuditLogOperationType = "delete"    // 删除
-	AuditLogOperationEdit      AuditLogOperationType = "edit"      // 编辑
-	AuditLogOperationPublish   AuditLogOperationType = "publish"   // 发布
-	AuditLogOperationUnpublish AuditLogOperationType = "unpublish" // 取消发布（下架）
-	AuditLogOperationExecute   AuditLogOperationType = "execute"   // 执行
+	AuditLogOperationCreate    AuditLogOperationType = "create"    // New.
+	AuditLogOperationDelete    AuditLogOperationType = "delete"    // Delete.
+	AuditLogOperationEdit      AuditLogOperationType = "edit"      // Edit.
+	AuditLogOperationPublish   AuditLogOperationType = "publish"   // publish.
+	AuditLogOperationUnpublish AuditLogOperationType = "unpublish" // Unpublish (remove)
+	AuditLogOperationExecute   AuditLogOperationType = "execute"   // execute.
 )
 
-// AuditLogBuilder 审计日志构建器
+// AuditLogBuilder audit log builder.
 type AuditLogBuilder struct {
 	ts                 *localize.I18nTranslator
 	logger             interfaces.Logger
@@ -146,7 +146,7 @@ type AuditLogBuilder struct {
 	outboxMessageEvent interfaces.IOutboxMessageEvent
 }
 
-// NewAuditLogBuilder 创建审计日志构建器
+// NewAuditLogBuilder creates an audit log builder.
 func NewAuditLogBuilder() *AuditLogBuilder {
 	return &AuditLogBuilder{
 		ts:                 localize.NewI18nTranslator(config.NewConfigLoader().Project.Language),
@@ -156,31 +156,31 @@ func NewAuditLogBuilder() *AuditLogBuilder {
 	}
 }
 
-// AuditLogBuilderParams 审计日志构建参数
+// AuditLogBuilderParams audit log building parameters.
 type AuditLogBuilderParams struct {
-	TokenInfo    *interfaces.TokenInfo    // 令牌信息
-	Accessor     *interfaces.AuthAccessor // 访问者信息
-	Operation    AuditLogOperationType    // 操作类型
-	Object       *AuditLogObject          // 操作对象
-	Description  string                   // 描述信息
-	ExMsg        string                   // 异常信息
-	Detils       interface{}              // 操作细节
-	OperatorType AuditLogOperatorType     // 操作者类型
+	TokenInfo    *interfaces.TokenInfo    // Token information.
+	Accessor     *interfaces.AuthAccessor // Visitor information.
+	Operation    AuditLogOperationType    // Operation type.
+	Object       *AuditLogObject          // Operation object.
+	Description  string                   // Description information.
+	ExMsg        string                   // Exception information.
+	Detils       interface{}              // Operation details.
+	OperatorType AuditLogOperatorType     // Operator type.
 }
 
-// AuditLogToolDetil 工具操作细节
+// AuditLogToolDetil tool operation details.
 type AuditLogToolDetil struct {
-	ToolID   string `json:"tool_id"`   // 工具ID
-	ToolName string `json:"tool_name"` // 工具名称
+	ToolID   string `json:"tool_id"`   // Tool ID.
+	ToolName string `json:"tool_name"` // Tool name.
 }
 
-// AuditLogToolDetils 工具操作细节
+// AuditLogToolDetils tool operation details.
 type AuditLogToolDetils struct {
 	Infos         []AuditLogToolDetil `json:",inline"`
 	OperationCode OperationCode
 }
 
-// NewAuditLogToolDetils 创建工具操作细节
+// NewAuditLogToolDetils Create tool operation details.
 func NewAuditLogToolDetils(operationCode OperationCode, infos []AuditLogToolDetil) *AuditLogToolDetils {
 	return &AuditLogToolDetils{
 		Infos:         infos,
@@ -188,26 +188,26 @@ func NewAuditLogToolDetils(operationCode OperationCode, infos []AuditLogToolDeti
 	}
 }
 
-// OperationCode 操作代码
+// OperationCode operation code.
 type OperationCode string
 
-// 工具附加信息
+// Tool additional information.
 const (
-	// "从算子导入工具“%s”成功"
+	// "Import tool "%s" from operator successfully".
 	ImportToolFromOperator OperationCode = "import_tool_from_operator"
-	// "添加工具“%s”到工具箱成功"
+	// "Add tool "%s" to toolbox successfully".
 	AddTool OperationCode = "add_tool"
-	// "编辑工具“%s”成功"
+	// "Editing tool "%s" successful".
 	EditTool OperationCode = "edit_tool"
-	// "从工具箱移除工具“%s”成功"
+	// "Tool "%s" removed from toolbox successfully".
 	DeleteTool OperationCode = "remove_tool"
-	// "更新工具状态“%s”成功"
+	// "Update tool status "%s" successful".
 	UpdateToolStatus OperationCode = "update_tool_status"
-	// "调试工具“%s”成功",
+	// "Debugging tool "%s" successful",
 	DebugTool OperationCode = "debug_tool"
-	// "执行工具“%s”成功"
+	// "Execute tool "%s" successfully".
 	ExecuteTool OperationCode = "execute_tool"
-	// 未知操作
+	// Unknown operation.
 	UnknownOperation OperationCode = "unknown_operation"
 )
 
@@ -251,7 +251,7 @@ func (b *AuditLogBuilder) getToolDetailsAndExMsg(param interface{}) (detils inte
 	return
 }
 
-// GetOperatorType 获取操作者类型
+// GetOperatorType Gets the operator type.
 func (p *AuditLogBuilderParams) GetOperatorType() error {
 	if p.OperatorType != "" {
 		return p.OperatorType.Validate()
@@ -274,7 +274,7 @@ func (p *AuditLogBuilderParams) GetOperatorType() error {
 	return nil
 }
 
-// Build 构建审计日志模型
+// Build build audit log model.
 func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 	if p.TokenInfo == nil {
 		return nil, fmt.Errorf("token info is nil")
@@ -296,7 +296,7 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 	default:
 		return nil, fmt.Errorf("invalid operation type")
 	}
-	// 组织
+	// organization.
 	logObj := &AuditLogOperationModel{
 		Operation:   p.Operation,
 		Description: p.Description,
@@ -318,7 +318,7 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 		OutBizID: uuid.New().String(),
 		Type:     OperationType,
 	}
-	// 内部服务不记录Agent信息
+	// Internal services do not record Agent information.
 	if logObj.Operator.Type == AuthenticatedUser || logObj.Operator.Type == AnonymousUser || logObj.Operator.Type == AppUser {
 		logObj.Operator.Agent = AuditLogOperatoAgent{
 			Type: p.TokenInfo.ClientTyp.String(),
@@ -345,7 +345,7 @@ func (b *AuditLogBuilder) build(p *AuditLogBuilderParams) (interface{}, error) {
 	return logObj, nil
 }
 
-// Logger 记录审计日志
+// Logger records audit logs.
 func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) {
 	if !config.GetAuthEnabled() {
 		return
@@ -354,7 +354,7 @@ func (b *AuditLogBuilder) Logger(ctx context.Context, p *AuditLogBuilderParams) 
 		ctx = context.Background()
 	}
 	newCtx, cancel := context.WithTimeout(ctx, DefaultTimeout)
-	defer cancel() // 确保资源释放
+	defer cancel() // Ensure resource release.
 	logObj, err := b.build(p)
 	if err != nil {
 		b.logger.WithContext(newCtx).Errorf("build audit log failed: %v", err)

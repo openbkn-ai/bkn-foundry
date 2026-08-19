@@ -11,7 +11,7 @@ class GetContent():
     def __init__(self, filename):
         self.filename = filename
 
-    '''读取ini配置文件'''
+    '''Read ini configuration file.'''
     def config(self):
         config = configparser.ConfigParser()
         config.read(self.filename)
@@ -26,7 +26,7 @@ class GetContent():
         #         data[section][key] = value
         # return data
 
-    '''读取json文件'''
+    '''Read json file.'''
     def jsonfile(self):
         with open(self.filename, 'r', encoding="utf-8") as f:
             data = json.load(f)
@@ -35,13 +35,13 @@ class GetContent():
             # data = json.dumps(parsed_data, indent=4, sort_keys=True)
         return data
 
-    '''读取yaml文件'''
+    '''Read yaml file.'''
     def yamlfile(self):
         with open(self.filename, 'r', encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return data
 
 if __name__ == "__main__":
-    # 使用示例
+    # Usage example.
     data = GetContent("./resource/openapi/non-compliant/title_not_exists.yaml").yamlfile()
     print(data)

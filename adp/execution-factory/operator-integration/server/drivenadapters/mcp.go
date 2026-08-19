@@ -12,13 +12,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 const (
@@ -27,14 +27,14 @@ const (
 	defaultConnTimeout = 30 * time.Second
 )
 
-// MCPClient 定义 MCP 客户端
+// MCPClient defines MCP client.
 type MCPClient struct {
 	MCPCoreConfigInfo *interfaces.MCPCoreConfigInfo
 	client            *client.Client
 	serverInitInfo    *mcp.InitializeResult
 }
 
-// NewMCPClient 创建 MCP 客户端
+// NewMCPClient creates MCP client.
 func NewMCPClient(ctx context.Context, mcpCoreInfo *interfaces.MCPCoreConfigInfo) (interfaces.MCPClient, error) {
 	mcpClient := &MCPClient{
 		MCPCoreConfigInfo: mcpCoreInfo,
@@ -45,16 +45,16 @@ func NewMCPClient(ctx context.Context, mcpCoreInfo *interfaces.MCPCoreConfigInfo
 	return mcpClient, nil
 }
 
-// mcpUpstreamStatusPatterns 用于从 mcp-go 的错误文本中提取上游返回的 HTTP 状态码。
-// mcp-go v0.37.0 未导出携带状态码的错误类型：SSE 传输在建连阶段返回
-// "unexpected status code: 401"，streamable HTTP 传输在初始化阶段返回
-// "request failed with status 401: <body>"，只能按文本提取。
+// mcpUpstreamStatusPatterns is used to extract the HTTP status codes returned by upstream from the error text of mcp-go.
+// mcp-go v0.37.0 does not export the error type carrying the status code: SSE transmission returns during the connection establishment phase.
+// "unexpected status code: 401", streamable HTTP transport returned during initialization phase.
+// "request failed with status 401: <body>" can only be extracted by text.
 var mcpUpstreamStatusPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`unexpected status code: (\d{3})`),
 	regexp.MustCompile(`request failed with status (\d{3})`),
 }
 
-// upstreamHTTPStatus 提取上游返回的 HTTP 状态码，提取不到返回 0
+// upstreamHTTPStatus extracts the HTTP status code returned by the upstream, and returns 0 if it cannot be extracted.
 func upstreamHTTPStatus(err error) int {
 	if err == nil {
 		return 0
@@ -72,11 +72,11 @@ func upstreamHTTPStatus(err error) int {
 	return 0
 }
 
-// classifyMCPConnError 区分「凭据问题」与「服务不可达」：
-// 上游返回 401/403/407 说明 MCP 服务本身是通的，只是请求头里的凭据缺失、过期或权限不足，
-// 提示用户去查服务是否运行会把人引到错误方向。
+// classifyMCPConnError distinguishes between "credential issues" and "service unreachable":
+// The upstream returns 401/403/407, indicating that the MCP service itself is normal, but the credentials in the request header are missing, expired, or have insufficient permissions.
+// Prompting users to check whether the service is running can lead people in the wrong direction.
 func classifyMCPConnError(ctx context.Context, url string, err error) error {
-	// initClient 已经给出明确错误（如模式不支持）时原样透传，避免被折叠成不可达
+	// When initClient has given a clear error (such as the mode is not supported), it is transparently transmitted as it is to avoid being folded into unreachable.
 	var httpErr *errors.HTTPError
 	if stderrors.As(err, &httpErr) {
 		return httpErr
@@ -95,7 +95,7 @@ func classifyMCPConnError(ctx context.Context, url string, err error) error {
 		fmt.Sprintf("mcp server %s is not accessible, please check if the MCP server is running, error: %v", url, err))
 }
 
-// NewInProcessMCPClient 创建进程内 MCP 客户端
+// NewInProcessMCPClient creates an in-process MCP client.
 func NewInProcessMCPClient(ctx context.Context, server *server.MCPServer) (interfaces.MCPClient, error) {
 	mcpClient := &MCPClient{
 		MCPCoreConfigInfo: &interfaces.MCPCoreConfigInfo{
@@ -116,7 +116,7 @@ func NewInProcessMCPClient(ctx context.Context, server *server.MCPServer) (inter
 	return mcpClient, nil
 }
 
-// ListTools 列出工具
+// ListTools list tools.
 func (m *MCPClient) ListTools(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error) {
 	serverCapabilities := m.client.GetServerCapabilities()
 	if serverCapabilities.Tools == nil {
@@ -132,7 +132,7 @@ func (m *MCPClient) ListTools(ctx context.Context, req mcp.ListToolsRequest) (*m
 	return result, nil
 }
 
-// CallTool 调用工具
+// CallTool call tool.
 func (m *MCPClient) CallTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	result, err := m.client.CallTool(ctx, req)
 	if err != nil {
@@ -194,7 +194,7 @@ func (m *MCPClient) createHTTPClient() *http.Client {
 	return httpClient
 }
 
-// performHandshake 执行 MCP 握手
+// performHandshake performs MCP handshake.
 func (m *MCPClient) performHandshake(ctx context.Context) error {
 	// 1. Start connection
 	if err := m.client.Start(ctx); err != nil {
@@ -222,7 +222,7 @@ func (m *MCPClient) performHandshake(ctx context.Context) error {
 	return nil
 }
 
-// GetInitInfo 获取初始化信息
+// GetInitInfo gets initialization information.
 func (m *MCPClient) GetInitInfo(ctx context.Context) *mcp.InitializeResult {
 	return m.serverInitInfo
 }

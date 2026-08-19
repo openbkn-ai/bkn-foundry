@@ -18,27 +18,27 @@ import (
 )
 
 const (
-	// RedisTypeSentinel redis哨兵模式
+	// RedisTypeSentinel redis sentinel mode.
 	RedisTypeSentinel = "sentinel"
-	// RedisTypeMasterSlave redis主从模式
+	// RedisTypeMasterSlave redis master-slave mode.
 	RedisTypeMasterSlave = "master-slave"
-	// RedisTypeStandalone redis单机模式
+	// RedisTypeStandalone redis stand-alone mode.
 	RedisTypeStandalone = "standalone"
 	commaSep            = ","
 )
 
-// RedisConfig redis配置
+// RedisConfig redis configuration.
 type RedisConfig struct {
-	ConnectType string           `yaml:"connectType"` // sentinel/master-slave/standalone 对应哨兵、主从、单机三种连接方式
+	ConnectType string           `yaml:"connectType"` // sentinel/master-slave/standalone corresponds to three connection modes: sentinel, master-slave, and stand-alone.
 	ConnectInfo RedisConnectInfo `yaml:"connectInfo"`
 	EnableSSL   bool             `yaml:"enableSSL"`
-	SecretName  string           `yaml:"secretName"` // 当 enableSSL 为 true 需要
-	CaName      string           `yaml:"caName"`     // 当 enableSSL 为 true 需要，表示secret里 ca 证书的名字
-	CertName    string           `yaml:"certName"`   // 当 enableSSL 为 true 需要，表示secret里 cert 证书的名字
-	KeyName     string           `yaml:"keyName"`    // 当 enableSSL 为 true 需要，表示secret里 key 密钥的名字
+	SecretName  string           `yaml:"secretName"` // Required when enableSSL is true.
+	CaName      string           `yaml:"caName"`     // When enableSSL is true, it indicates the name of the ca certificate in secret.
+	CertName    string           `yaml:"certName"`   // When enableSSL is true, it indicates the name of the cert certificate in secret.
+	KeyName     string           `yaml:"keyName"`    // When enableSSL is true, it is required, indicating the name of the key in the secret.
 }
 
-// RedisConnectInfo redis连接配置
+// RedisConnectInfo redis connection configuration.
 type RedisConnectInfo struct {
 	Username         string `yaml:"username"`
 	Password         string `yaml:"password"`
@@ -53,7 +53,7 @@ type RedisConnectInfo struct {
 	SentinelUsername string `yaml:"sentinelUsername"`
 	SentinelPassword string `yaml:"sentinelPassword"`
 	MasterGroupName  string `yaml:"masterGroupName"`
-	PoolSize         int    `yaml:"poolSize" default:"10"` // 连接池大小
+	PoolSize         int    `yaml:"poolSize" default:"10"` // Connection pool size.
 }
 
 var (
@@ -77,7 +77,7 @@ func getCertPool(caName string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// DERToPrivateKey der 转为 私钥
+// DERToPrivateKey der to private key.
 func DERToPrivateKey(der []byte) (key interface{}, err error) {
 	if key, err = x509.ParsePKCS1PrivateKey(der); err == nil {
 		return key, nil
@@ -99,7 +99,7 @@ func DERToPrivateKey(der []byte) (key interface{}, err error) {
 	return nil, errors.New("invalid key type. The DER must contain an rsa.PrivateKey or ecdsa.PrivateKey")
 }
 
-// DecryptPEM 带密码per解密
+// DecryptPEM decrypt with password per.
 func DecryptPEM(pemRaw, passwd []byte) (pemDer []byte, err error) {
 	block, _ := pem.Decode(pemRaw)
 	if block == nil {
@@ -185,7 +185,7 @@ func (conf *RedisConfig) getTLSConfig() (tlsConf *tls.Config, err error) {
 	return
 }
 
-// GetClient 获取Redis客户端
+// GetClient Gets the Redis client.
 func (conf *RedisConfig) GetClient() (cli, readCli *redis.Client, err error) {
 	redisOnce.Do(func() {
 		globalCli, globalReadCli, err = conf.getClient()

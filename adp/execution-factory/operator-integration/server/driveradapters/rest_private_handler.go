@@ -1,6 +1,6 @@
-// Package driveradapters 定义驱动适配器
+// Package driveradapters defines driver adapters.
 // @file rest_private_handler.go
-// @description: 定义rest私有接口适配器
+// @description: Define rest private interface adapter.
 package driveradapters
 
 import (
@@ -26,7 +26,7 @@ type restPrivateHandler struct {
 	Hydra                 interfaces.Hydra
 }
 
-// NewRestPrivateHandler 创建restHandler实例
+// NewRestPrivateHandler creates a restHandler instance.
 func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 	return &restPrivateHandler{
 		OperatorRestHandler:   NewOperatorRestHandler(),
@@ -42,23 +42,23 @@ func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 	}
 }
 
-// RegisterRouter 内部接口注册路由
+// RegisterRouter internal interface register route.
 func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
 	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, middlewareTraceContext, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContext(r.Hydra))
 	engine.Use(mws...)
-	// 算子接口
+	// Operator interface.
 	r.OperatorRestHandler.RegisterPrivate(engine)
-	// 工具箱接口
+	// toolbox interface.
 	r.ToolBoxRestHandler.RegisterPrivate(engine)
-	// MCP 相关接口
+	// MCP related interfaces.
 	r.MCPRestHandler.RegisterPrivate(engine)
-	// 技能接口
+	// Skill interface.
 	r.SkillRestHandler.RegisterPrivate(engine)
-	// 临时升级接口 - 仅在从旧版本升级到5.0.0.3时使用
+	// Temporary upgrade interface - only used when upgrading from an older version to 5.0.0.3.
 	engine.GET("/upgrade/v5003/migrate-history", r.UpgradeHandler.MigrateHistoryData)
-	// V0.6.0 -> V0.7.0升级接口
+	// V0.6.0 -> V0.7.0 upgrade interface.
 	engine.POST("/upgrade/v070/migrate-history", r.UpgradeHandler.UpgradeSkillV070)
-	// 函数沙箱执行
+	// Function sandbox execution.
 	engine.POST("/function/exec/:version", middlewareBusinessDomain(true, r.businessDomainService), r.UnifiedProxyHandler.FunctionExecuteProxy)
 }

@@ -7,22 +7,22 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// requireOperatorTypePermission 校验调用方在算子类型上持有指定操作权限。
+// requireOperatorTypePermission verifies that the caller holds the specified operation permission on the operator type.
 //
-// 分类是全局分类法，不隶属于任何单个算子，没有资源 ID 可判，因此按类型级（ResourceIDAll）
-// 判定，口径与 logics/auth/decision.go 中 CheckCreatePermission 一致。
+// The classification is a global classification method and does not belong to any single operator. There is no resource ID to judge, so it is based on type level (ResourceIDAll)
+// Determination, the semantics is the same as CheckCreatePermission in logics/auth/decision.go.
 //
-// 仅在公开面生效：内部面（internal-v1）由服务间调用，启动期的内置分类灌入走的也是这条路
-// （见 driveradapters/category/init_data.go），沿用服务内既有惯用法跳过判定。
-// 读接口（GetCategoryList）不判：分类法只是名称字典，不含租户数据，收紧会打断非超管前端。
+// It only takes effect on the public side: the internal side (internal-v1) is called between services, and the built-in classification injection during startup also takes this path.
+// (see driveradapters/category/init_data.go), following the existing idiom within the service to skip the determination.
+// The read interface (GetCategoryList) does not judge: the taxonomy is just a name dictionary and does not contain tenant data. Tightening will interrupt the non-super management front end.
 func (c *categoryManager) requireOperatorTypePermission(ctx context.Context, userID string,
 	operation interfaces.AuthOperationType) error {
 	if !common.IsPublicAPIFromCtx(ctx) {
@@ -43,7 +43,7 @@ func (c *categoryManager) requireOperatorTypePermission(ctx context.Context, use
 	return nil
 }
 
-// GetCategoryName 获取分类名称
+// GetCategoryName Gets the category name.
 func (c *categoryManager) GetCategoryName(ctx context.Context, category interfaces.BizCategory) (categoryName string) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, nil)
@@ -56,7 +56,7 @@ func (c *categoryManager) GetCategoryName(ctx context.Context, category interfac
 	case interfaces.CategoryTypeSystem:
 		return c.getCategorySystem(ctx).CategoryName
 	default:
-		// 从缓存中获取分类名称
+		// Get category name from cache.
 		value, ok := c.Cache.Get(category.String())
 		if ok {
 			categoryName = value.(string)
@@ -72,13 +72,13 @@ func (c *categoryManager) GetCategoryName(ctx context.Context, category interfac
 			return ""
 		}
 		categoryName = categoryDB.CategoryName
-		// 将分类名称存入缓存中
+		// Store category names in cache.
 		c.Cache.Set(category.String(), categoryName)
 		return
 	}
 }
 
-// CheckCategory 检查分类是否存在
+// CheckCategory checks whether the category exists.
 func (c *categoryManager) CheckCategory(category interfaces.BizCategory) (isExist bool) {
 	if category == interfaces.CategoryTypeOther || category == interfaces.CategoryTypeSystem {
 		isExist = true
@@ -103,7 +103,7 @@ func (c *categoryManager) GetCategoryList(ctx context.Context) (categoryList []*
 		return
 	}
 
-	// 默认添加内置的"其他"分类
+	// The built-in "Other" category is added by default.
 	categoryList = append(categoryList, c.getCategoryOther(ctx), c.getCategorySystem(ctx))
 
 	for _, categoryDB := range categoryDBList {
@@ -135,37 +135,37 @@ func (c *categoryManager) getCategorySystem(ctx context.Context) *interfaces.Cat
 	}
 }
 
-// UpdateCategory 更新分类
+// UpdateCategory update category.
 func (c *categoryManager) UpdateCategory(ctx context.Context, req *interfaces.UpdateCategoryReq) (resp *interfaces.UpdateCategoryResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	if err = c.requireOperatorTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeModify); err != nil {
 		return
 	}
-	// 校验分类名称
+	// Check classification name.
 	err = c.Validator.ValidatorCategoryName(ctx, req.CategoryName)
 	if err != nil {
 		return
 	}
-	// 检查默认分类是否存在
+	// Check if default category exists.
 	err = c.checkDefaultCategory(ctx, req.CategoryType.String(), req.CategoryName)
 	if err != nil {
 		return
 	}
-	// 检查分类是否存在， 类型ID或类型名称不能重复
+	// Check whether the classification exists. The type ID or type name cannot be repeated.
 	categoryList, err := c.DBCategory.SelectListByCategoryIDOrName(ctx, nil, req.CategoryType.String(), req.CategoryName)
 	if err != nil {
 		return
 	}
 
 	if len(categoryList) == 0 {
-		// 分类不存在，报错资源不存在
+		// The category does not exist and the error resource does not exist.
 		return nil, errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtCategoryNotFound, "category_type: "+req.CategoryType.String()+" not found")
 	} else if len(categoryList) > 1 {
-		// 分类存在多个，报错资源名称重复
+		// There are multiple categories, and the error resource name is repeated.
 		return nil, errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCategoryNameExist, "name: "+req.CategoryName+"  already exists")
 	} else if categoryList[0].CategoryID != req.CategoryType.String() {
-		// 分类ID不匹配，报错资源不存在
+		// Category ID does not match, error resource does not exist.
 		return nil, errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtCategoryNotFound, "category_type: "+req.CategoryType.String()+" not found")
 	}
 
@@ -183,29 +183,29 @@ func (c *categoryManager) UpdateCategory(ctx context.Context, req *interfaces.Up
 		CategoryType: req.CategoryType,
 		CategoryName: req.CategoryName,
 	}
-	// 更新缓存中的分类名称
+	// Update category names in cache.
 	c.Cache.Set(req.CategoryType.String(), req.CategoryName)
 	return
 }
 
-// CreateCategory 创建分类
+// CreateCategory creates a category.
 func (c *categoryManager) CreateCategory(ctx context.Context, req *interfaces.CreateCategoryReq) (resp *interfaces.CreateCategoryResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	if err = c.requireOperatorTypePermission(ctx, req.UserID, interfaces.AuthOperationTypeCreate); err != nil {
 		return
 	}
-	// 校验分类名称
+	// Check classification name.
 	err = c.Validator.ValidatorCategoryName(ctx, req.CategoryName)
 	if err != nil {
 		return
 	}
-	// 检查默认分类是否存在
+	// Check if default category exists.
 	err = c.checkDefaultCategory(ctx, req.CategoryType.String(), req.CategoryName)
 	if err != nil {
 		return
 	}
-	// 检查分类是否存在， 类型ID或类型名称不能重复
+	// Check whether the classification exists. The type ID or type name cannot be repeated.
 	err = c.checkDuplicatedCategory(ctx, req.CategoryType.String(), req.CategoryName)
 	if err != nil {
 		return
@@ -214,12 +214,12 @@ func (c *categoryManager) CreateCategory(ctx context.Context, req *interfaces.Cr
 	if err != nil {
 		return
 	}
-	// 将分类名称存入缓存中
+	// Store category names in cache.
 	c.Cache.Set(req.CategoryType.String(), req.CategoryName)
 	return
 }
 
-// BatchCreateCategory 批量创建分类
+// BatchCreateCategory creates categories in batches.
 func (c *categoryManager) BatchCreateCategory(ctx context.Context, req []*interfaces.CreateCategoryReq) (resp []*interfaces.CreateCategoryResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -236,7 +236,7 @@ func (c *categoryManager) BatchCreateCategory(ctx context.Context, req []*interf
 	}()
 	resp = make([]*interfaces.CreateCategoryResp, 0, len(req))
 	for _, req := range req {
-		// 检查分类是否存在， 类型ID或类型名称不能重复, 如果存在，就跳过
+		// Check whether the classification exists. The type ID or type name cannot be repeated. If it exists, skip it.
 		categoryList, err := c.DBCategory.SelectListByCategoryIDOrName(ctx, nil, req.CategoryType.String(), req.CategoryName)
 		if err != nil {
 			return nil, err
@@ -248,14 +248,14 @@ func (c *categoryManager) BatchCreateCategory(ctx context.Context, req []*interf
 		if err != nil {
 			return nil, err
 		}
-		// 将分类名称存入缓存中
+		// Store category names in cache.
 		c.Cache.Set(req.CategoryType.String(), req.CategoryName)
 		resp = append(resp, respItem)
 	}
 	return
 }
 
-// DeleteCategory 删除分类
+// DeleteCategory Delete category.
 func (c *categoryManager) DeleteCategory(ctx context.Context, req *interfaces.DeleteCategoryReq) (err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -279,7 +279,7 @@ func (c *categoryManager) DeleteCategory(ctx context.Context, req *interfaces.De
 		c.logger.Errorf("[DeleteCategory] delete by category id failed, err: %v", err)
 		return
 	}
-	// 删除缓存中的分类名称
+	// Delete category names from cache.
 	c.Cache.Delete(string(req.CategoryType))
 	return
 }
@@ -304,7 +304,7 @@ func (c *categoryManager) insertCategory(ctx context.Context, tx *sql.Tx, req *i
 	return
 }
 
-// checkDuplicatedCategory 检查分类是否存在， 类型ID或类型名称不能重复
+// checkDuplicatedCategory checks whether the category exists. The type ID or type name cannot be repeated.
 func (c *categoryManager) checkDuplicatedCategory(ctx context.Context, categoryID, categoryName string) (err error) {
 	categoryList, err := c.DBCategory.SelectListByCategoryIDOrName(ctx, nil, categoryID, categoryName)
 	if err != nil {
@@ -325,16 +325,16 @@ func (c *categoryManager) checkDuplicatedCategory(ctx context.Context, categoryI
 	return nil
 }
 
-// checkDefaultCategory 检查默认分类是否存在
+// checkDefaultCategory checks whether the default category exists.
 func (c *categoryManager) checkDefaultCategory(ctx context.Context, categoryID, categoryName string) (err error) {
 	otherCategory := c.getCategoryOther(ctx)
 	if otherCategory.CategoryType.String() == categoryID || otherCategory.CategoryName == categoryName {
-		// 其他分类是系统内置分类，不允许创建
+		// Other categories are built-in categories in the system and are not allowed to be created.
 		return errors.DefaultHTTPError(ctx, http.StatusBadRequest, "category_type: "+interfaces.CategoryTypeOther.String()+" is a built-in system category and cannot be created or modified")
 	}
 	systemCategory := c.getCategorySystem(ctx)
 	if systemCategory.CategoryType.String() == categoryID || systemCategory.CategoryName == categoryName {
-		// 系统内置分类是系统内置分类，不允许创建
+		// System built-in categories are system built-in categories and are not allowed to be created.
 		return errors.DefaultHTTPError(ctx, http.StatusBadRequest, "category_type: "+interfaces.CategoryTypeSystem.String()+" is a built-in system category and cannot be created or modified")
 	}
 	return nil

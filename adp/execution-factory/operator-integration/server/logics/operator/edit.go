@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -17,18 +16,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// EditOperator 编辑算子（仅支持编辑当前版本）
+// EditOperator editing operator (only supports editing the current version)
 func (m *operatorManager) EditOperator(ctx context.Context, req *interfaces.OperatorEditReq) (resp *interfaces.OperatorEditResp, err error) {
-	// 记录可观测性
+	// Record observability.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"operator_id": req.OperatorID,
 		"user_id":     req.UserID,
 	})
-	// 校验数据的合法性
+	// Verify the legality of data.
 	operator, metadataDB, accessor, needUpdateMetadata, err := m.preCheckEdit(ctx, req, false)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("pre check edit failed, err: %v", err)
@@ -47,7 +47,7 @@ func (m *operatorManager) EditOperator(ctx context.Context, req *interfaces.Oper
 		m.Logger.WithContext(ctx).Errorf("edit operator failed, err: %v", err)
 		return
 	}
-	// 异步记录审计日志
+	// Asynchronous recording of audit logs.
 	go func() {
 		accountAuthCtx, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -71,10 +71,10 @@ func (m *operatorManager) EditOperator(ctx context.Context, req *interfaces.Oper
 // editOperator
 func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.OperatorEditReq, operator *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, needUpdateMetadata, directPublish, isDataSource bool) (resp *interfaces.OperatorEditResp, err error) {
-	// 判断名字是否变更
+	// Determine whether the name has changed.
 	var nameChanged bool
 	if req.Name != "" && req.Name != operator.Name {
-		// TODO: 检查名字是否重名
+		// TODO: Check if the name is the same.
 		nameChanged = true
 	}
 	tx, err := m.DBTx.GetTx(ctx)
@@ -107,7 +107,7 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 			operator.Status = string(interfaces.BizStatusPublished)
 		}
 		err = m.upgradeOperatorInfo(ctx, tx, req, operator, metadataDB, needUpdateMetadata, isDataSource)
-	default: // 无效状态
+	default: // Invalid status.
 		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtOperatorUnSupportEdit, "invalid operator status")
 	}
 	if err != nil {
@@ -120,7 +120,7 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 		}
 	}
 	if nameChanged {
-		// 名字变更，通知所有订阅者
+		// Name change, notify all subscribers.
 		err = m.AuthService.NotifyResourceChange(ctx, &interfaces.AuthResource{
 			Type: interfaces.AuthResourceTypeOperator.String(),
 			ID:   operator.OperatorID,
@@ -130,7 +130,7 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 			return
 		}
 	}
-	// 检查名字是否变更，如果变更需要检查是否重名
+	// Check whether the name has changed. If it changes, check whether the name is the same.
 	resp = &interfaces.OperatorEditResp{
 		Status:     interfaces.BizStatus(operator.Status),
 		OperatorID: operator.OperatorID,
@@ -139,11 +139,11 @@ func (m *operatorManager) editOperator(ctx context.Context, req *interfaces.Oper
 	return
 }
 
-// UpdateOperatorStatus 更新算子状态
+// UpdateOperatorStatus updates operator status.
 func (m *operatorManager) UpdateOperatorStatus(ctx context.Context, req *interfaces.OperatorStatusUpdateReq, userID string) (err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 获取事务
+	// Get transaction.
 	tx, err := m.DBTx.GetTx(ctx)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("get tx failed, err: %v", err)
@@ -161,7 +161,7 @@ func (m *operatorManager) UpdateOperatorStatus(ctx context.Context, req *interfa
 			}
 		}
 	}()
-	// 更新算子状态
+	// Update operator status.
 	for _, item := range req.StatusItems {
 		err = m.updateSinglOperatorStatus(ctx, tx, item, userID)
 		if err != nil {
@@ -171,11 +171,11 @@ func (m *operatorManager) UpdateOperatorStatus(ctx context.Context, req *interfa
 	return
 }
 
-// updateSinglOperatorStatus 更新单个算子状态
+// updateSinglOperatorStatus updates the status of a single operator.
 func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql.Tx, itemReq *interfaces.OperatorStatusItem, userID string) (err error) {
 	var has bool
 	var operator *model.OperatorRegisterDB
-	// 获取算子
+	// Get operator.
 	has, operator, err = m.DBOperatorManager.SelectByOperatorID(ctx, tx, itemReq.OperatorID)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select operator failed, OperatorID: %s, err: %v", itemReq.OperatorID, err)
@@ -183,11 +183,11 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 		return err
 	}
 	if !has {
-		// 算子不存在
+		// operator does not exist.
 		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "operator not found")
 		return err
 	}
-	// 验证并执行状态转换
+	// Verify and execute state transitions.
 	if !common.CheckStatusTransition(interfaces.BizStatus(operator.Status), itemReq.Status) {
 		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtOperatorStatusInvalid,
 			fmt.Sprintf("invalid status transition from %s to %s", operator.Status, itemReq.Status.String()))
@@ -198,22 +198,22 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 	if err != nil {
 		return
 	}
-	// 根据状态处理变更操作
+	// Handle change operations based on status.
 	var operation metric.AuditLogOperationType
 	switch interfaces.BizStatus(operator.Status) {
 	case interfaces.BizStatusPublished:
 		operation = metric.AuditLogOperationPublish
-		// 检查发布权限
+		// Check publishing permissions.
 		err = m.AuthService.CheckPublishPermission(ctx, accessor, operator.OperatorID, interfaces.AuthResourceTypeOperator)
 		if err != nil {
 			return
 		}
-		// 检查是否重名
+		// Check if there is a duplicate name.
 		err = m.checkDuplicateName(ctx, operator.Name, operator.OperatorID)
 		if err != nil {
 			return
 		}
-		// 更新配置
+		// Update configuration.
 		err = m.DBOperatorManager.UpdateOperatorStatus(ctx, tx, operator, userID)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("update operator status failed, err: %v")
@@ -221,12 +221,12 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 		}
 		err = m.publishRelease(ctx, tx, operator, userID)
 	case interfaces.BizStatusUnpublish, interfaces.BizStatusEditing:
-		// 检查编辑权限
+		// Check editing permissions.
 		err = m.AuthService.CheckModifyPermission(ctx, accessor, operator.OperatorID, interfaces.AuthResourceTypeOperator)
 		if err != nil {
 			return
 		}
-		// 仅更新状态
+		// Update status only.
 		err = m.DBOperatorManager.UpdateOperatorStatus(ctx, tx, operator, userID)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("update operator status failed, err: %v")
@@ -234,18 +234,18 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 		}
 	case interfaces.BizStatusOffline:
 		operation = metric.AuditLogOperationUnpublish
-		// 检查下架权限
+		// Check removal permissions.
 		err = m.AuthService.CheckUnpublishPermission(ctx, accessor, operator.OperatorID, interfaces.AuthResourceTypeOperator)
 		if err != nil {
 			return
 		}
-		// 更新配置
+		// Update configuration.
 		err = m.DBOperatorManager.UpdateOperatorStatus(ctx, tx, operator, userID)
 		if err != nil {
 			m.Logger.WithContext(ctx).Errorf("update operator status failed, err: %v")
 			return oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		}
-		// 下架
+		// Removed from shelves.
 		err = m.unpublishRelease(ctx, tx, operator, userID)
 	default:
 		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtOperatorStatusInvalid, "invalid operator status")
@@ -256,7 +256,7 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 	if operation == "" {
 		return
 	}
-	// 异步记录审计日志
+	// Asynchronous recording of audit logs.
 	go func() {
 		accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -277,7 +277,7 @@ func (m *operatorManager) updateSinglOperatorStatus(ctx context.Context, tx *sql
 	return
 }
 
-// checkDuplicateName 检查是否重名
+// checkDuplicateName checks whether there is a duplicate name.
 func (m *operatorManager) checkDuplicateName(ctx context.Context, name, operatorID string) (err error) {
 	has, operatorDB, err := m.DBOperatorManager.SelectByNameAndStatus(ctx, nil, name, interfaces.BizStatusPublished.String())
 	if err != nil {
@@ -293,10 +293,10 @@ func (m *operatorManager) checkDuplicateName(ctx context.Context, name, operator
 	return
 }
 
-// 编辑前置检查:校验编辑请求的合法性: 检查数据是否存在、是否合法、是否有权限修改，并返回查询信息
+// Pre-edit check: Verify the legality of the edit request: check whether the data exists, whether it is legal, whether there is permission to modify it, and return the query information.
 func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.OperatorEditReq, directPublish bool) (operatorDB *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, accessor *interfaces.AuthAccessor, needUpdateMetadata bool, err error) {
-	// 获取算子
+	// Get operator.
 	var has bool
 	has, operatorDB, err = m.DBOperatorManager.SelectByOperatorID(ctx, nil, req.OperatorID)
 	if err != nil {
@@ -305,11 +305,11 @@ func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.Oper
 		return
 	}
 	if !has {
-		// 算子不存在
+		// operator does not exist.
 		err = oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "operator not found")
 		return
 	}
-	// 检查参数合法性
+	// Check parameter validity.
 	if req.Name != "" {
 		err = m.Validator.ValidateOperatorName(ctx, req.Name)
 		if err != nil {
@@ -322,7 +322,7 @@ func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.Oper
 			return
 		}
 	}
-	// TODO：理论上系统算子需要增加校验，系统算子发布后不允许编辑(例如，只有系统管理员可以编辑系统算子)
+	// TODO: In theory, system operators need to be verified, and system operators are not allowed to be edited after they are released (for example, only system administrators can edit system operators)
 	accessor, err = m.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -331,20 +331,20 @@ func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.Oper
 		err = m.AuthService.MultiCheckOperationPermission(ctx, accessor, req.OperatorID, interfaces.AuthResourceTypeOperator,
 			interfaces.AuthOperationTypeModify, interfaces.AuthOperationTypePublish)
 	} else {
-		// 检查是否有编辑权限
+		// Check if you have edit permissions.
 		err = m.AuthService.CheckModifyPermission(ctx, accessor, req.OperatorID, interfaces.AuthResourceTypeOperator)
 	}
 	if err != nil {
 		return
 	}
-	// 根据version获取元数据
+	// Get metadata based on version.
 	exists, metadataDB, err := m.MetadataService.CheckMetadataExists(ctx, interfaces.MetadataType(operatorDB.MetadataType), operatorDB.MetadataVersion)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("select api metadata failed, OperatorID: %s, Version: %s, err: %v", operatorDB.OperatorID, operatorDB.MetadataVersion, err)
 		return
 	}
 	if !exists {
-		// 如元数据不存在
+		// If metadata does not exist.
 		err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMetadataNotFound, map[string]any{
 			"operator_id":      req.OperatorID,
 			"metadata_type":    req.MetadataType,
@@ -355,13 +355,13 @@ func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.Oper
 	}
 	var updateMetadataDB interfaces.IMetadataDB
 	updateMetadataDB, err = m.getUpdateMetadataDB(ctx, req, operatorDB, metadataDB)
-	if err != nil { // 不需要更新元数据
+	if err != nil { // No need to update metadata.
 		return
 	}
 	var desc string
 	if updateMetadataDB != nil {
 		if req.MetadataType == interfaces.MetadataTypeFunc {
-			// 更新的函数内容是否有变化
+			// Is there any change in the updated function content?.
 			if updateMetadataDB.GetScriptType() != metadataDB.GetScriptType() {
 				needUpdateMetadata = true
 				metadataDB.SetScriptType(updateMetadataDB.GetScriptType())
@@ -411,10 +411,10 @@ func (m *operatorManager) preCheckEdit(ctx context.Context, req *interfaces.Oper
 	return
 }
 
-// 获取待更新的元数据
+// Get metadata to be updated.
 func (m *operatorManager) getUpdateMetadataDB(ctx context.Context, req *interfaces.OperatorEditReq, operatorDB *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB) (updateMetadataDB interfaces.IMetadataDB, err error) {
-	// 解析传入数据
+	// Parse incoming data.
 	switch req.MetadataType {
 	case interfaces.MetadataTypeAPI:
 		if req.OpenAPIInput == nil || req.Data == nil {
@@ -428,21 +428,21 @@ func (m *operatorManager) getUpdateMetadataDB(ctx context.Context, req *interfac
 		switch interfaces.OperatorType(operatorDB.OperatorType) {
 		case interfaces.OperatorTypeBase:
 			for _, md := range updateMetadataDBs {
-				// 如果是基础算子，根据path和method匹配元数据
+				// If it is a basic operator, match metadata based on path and method.
 				if metadataDB.GetPath() == md.GetPath() && metadataDB.GetMethod() == md.GetMethod() {
 					updateMetadataDB = md
 					break
 				}
 			}
-			// 检查是否有更新
+			// Check for updates.
 			if updateMetadataDB == nil {
-				// 交互设计要求返回指定错误信息：https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968
+				// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
 				err = oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtCommonNoMatchedMethodPath,
 					"no matched method path found or metadata data not exist").WithDescription(oerrors.ErrExtToolNotExistInFile)
 				return
 			}
 		case interfaces.OperatorTypeComposite:
-			// 如果是复合算子，只更新第一个元数据
+			// If it is a composite operator, only the first metadata is updated.
 			updateMetadataDB = updateMetadataDBs[0]
 		}
 	case interfaces.MetadataTypeFunc:
@@ -472,7 +472,7 @@ func (m *operatorManager) getUpdateMetadataDB(ctx context.Context, req *interfac
 	return
 }
 
-// modifyOperatorInfo 修改算子注册配置
+// modifyOperatorInfo Modifies operator registration configuration.
 func (m *operatorManager) modifyOperatorInfo(ctx context.Context, tx *sql.Tx, req *interfaces.OperatorEditReq, operator *model.OperatorRegisterDB,
 	metdataDB interfaces.IMetadataDB, needUpdateMetadata, isDataSource bool) (err error) {
 	err = m.modifyOperator(ctx, tx, req, operator, isDataSource)
@@ -482,7 +482,7 @@ func (m *operatorManager) modifyOperatorInfo(ctx context.Context, tx *sql.Tx, re
 	if !needUpdateMetadata {
 		return
 	}
-	// 更新算子元数据
+	// Update operator metadata.
 	metdataDB.SetUpdateInfo(req.UserID)
 	err = m.MetadataService.UpdateMetadata(ctx, tx, metdataDB)
 	if err != nil {
@@ -491,13 +491,13 @@ func (m *operatorManager) modifyOperatorInfo(ctx context.Context, tx *sql.Tx, re
 	return
 }
 
-// modifyOperator 编辑算子
+// modifyOperator edit operator.
 func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *interfaces.OperatorEditReq,
 	operator *model.OperatorRegisterDB, isDataSource bool) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 更新参数
+	// Update parameters.
 	operator.UpdateUser = req.UserID
 	if req.OperatorInfoEdit != nil {
 		operator.OperatorType = string(req.OperatorInfoEdit.Type)
@@ -512,11 +512,11 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 	if req.ExtendInfo != nil {
 		operator.ExtendInfo = utils.ObjectToJSON(req.ExtendInfo)
 	}
-	// 如果name发生变化，则根据operatorID更新name
-	if req.Name != "" && req.Name != operator.Name { // 检查是否重名
+	// If name changes, update name based on operatorID.
+	if req.Name != "" && req.Name != operator.Name { // Check if there is a duplicate name.
 		err = m.checkDuplicateName(ctx, req.Name, operator.OperatorID)
 		if err != nil {
-			// 交互设计要求返回指定错误信息：https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968
+			// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
 			httErr := &oerrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
 				err = httErr.WithDescription(oerrors.ErrExtCommonNameExists)
@@ -525,7 +525,7 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 		}
 		operator.Name = req.Name
 	}
-	// 更新算子信息
+	// Update operator information.
 	err = m.DBOperatorManager.UpdateByOperatorID(ctx, tx, operator)
 	if err != nil {
 		m.Logger.WithContext(ctx).Warnf("update operator failed, OperatorID: %s, Version: %s, err: %v", operator.OperatorID, operator.MetadataVersion, err)
@@ -534,20 +534,20 @@ func (m *operatorManager) modifyOperator(ctx context.Context, tx *sql.Tx, req *i
 	return
 }
 
-// upgradeOperatorInfo 升级算子信息
+// upgradeOperatorInfo upgrade operator information.
 /*
-	已发布版本元数据出现变更，因此需要生成一条新的元数据记录
-	1. 元数据表中生成一条新的记录
-	2. 更改注册表配置： 包含version，以及本次变更的信息
-	3. 如果 direct_publish 为 true， 则直接发布, 需要向release/release_history中添加一条记录
+	The released version metadata has changed, so a new metadata record must be generated:
+	1. Create a new record in the metadata table.
+	2. Update the registry configuration with the version and change information.
+	3. If direct_publish is true, publish directly and add a record to release/release_history.
 */
 
 func (m *operatorManager) upgradeOperatorInfo(ctx context.Context, tx *sql.Tx, req *interfaces.OperatorEditReq, operator *model.OperatorRegisterDB,
 	metadataDB interfaces.IMetadataDB, needUpdateMetadata, isDataSource bool) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 升级元数据
+	// Upgrade metadata.
 	if needUpdateMetadata {
 		metadataDB.SetVersion(uuid.New().String())
 		metadataDB.SetUpdateInfo(req.UserID)
@@ -558,7 +558,7 @@ func (m *operatorManager) upgradeOperatorInfo(ctx context.Context, tx *sql.Tx, r
 			return
 		}
 	}
-	// 3. 组装算子注册信息， 新增到算子注册表
+	// 3. Assemble operator registration information and add it to the operator registration table.
 	operator.MetadataVersion = metadataDB.GetVersion()
 	err = m.modifyOperator(ctx, tx, req, operator, isDataSource)
 	return

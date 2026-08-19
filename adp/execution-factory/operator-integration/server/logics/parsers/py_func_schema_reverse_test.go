@@ -7,8 +7,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// 参数定义经「展开成 OpenAPI 规格 -> 反解回参数定义」一个来回后应保持原样,
-// 这样调用方读到的形状与提交时一致。
+// The parameter definition should remain the same after a round trip of "Expand to OpenAPI specification -> Deconstruct back to parameter definition".
+// In this way, the shape read by the caller is the same as when submitted.
 func roundTrip(input *interfaces.FunctionInput) (inputs, outputs []*interfaces.ParameterDef) {
 	pathItem := convertToPathItemContent(input)
 	return FunctionParamsFromAPISpec(pathItem.APISpec.ToJSON())
@@ -131,8 +131,8 @@ func TestAPISpecCarriesOnlyDeclaredContract(t *testing.T) {
 	})
 }
 
-// 参数定义要经「展开成 OpenAPI 落库 → 读回来反解」一个来回，调用方拿到的是反解结果。
-// 嵌套越深越容易在某一层丢结构，这里覆盖真实工具会用到的形状。
+// The parameter definition needs to go through a round trip of "expanding it into an OpenAPI library → reading it back and deconstructing it". What the caller gets is the decomposition result.
+// The deeper the nesting, the easier it is to lose structure at a certain level, which covers the shapes that real tools will use.
 func TestNestedParamsSurviveRoundTrip(t *testing.T) {
 	item := func(name string) *interfaces.ParameterDef {
 		return &interfaces.ParameterDef{

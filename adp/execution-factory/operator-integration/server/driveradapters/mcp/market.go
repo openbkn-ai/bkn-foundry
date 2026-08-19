@@ -3,15 +3,15 @@ package mcp
 import (
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// QueryMCPServerMarketList 查询MCP服务市场列表
+// QueryMCPServerMarketList Query MCP service market list.
 func (h *mcpHandle) QueryMCPServerMarketList(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPServerReleaseListRequest{}
@@ -43,7 +43,7 @@ func (h *mcpHandle) QueryMCPServerMarketList(c *gin.Context) {
 	}
 	var result *interfaces.MCPServerReleaseListResponse
 
-	// 查询MCP Server列表
+	// Query the MCP Server list.
 	result, err = h.mcpService.QueryRelease(ctx, req)
 
 	if err != nil {
@@ -53,7 +53,7 @@ func (h *mcpHandle) QueryMCPServerMarketList(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// QueryMCPServerMarketDetail 查询MCP服务市场详情
+// QueryMCPServerMarketDetail Query MCP service market details.
 func (h *mcpHandle) QueryMCPServerMarketDetail(c *gin.Context) {
 	var err error
 	ctx := c.Request.Context()
@@ -86,7 +86,7 @@ func (h *mcpHandle) QueryMCPServerMarketDetail(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// QueryMCPServerMarketBatch 批量查询MCP服务市场详情
+// QueryMCPServerMarketBatch Query MCP service market details in batches.
 func (h *mcpHandle) QueryMCPServerMarketBatch(c *gin.Context) {
 	var err error
 	ctx := c.Request.Context()

@@ -7,8 +7,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// 保存期判定必须与沙箱执行期一致：放行了执行时找不到入口，或拒掉了沙箱支持的写法，
-// 两种错都会让用户在两个环节看到相反的结论。
+// The storage period determination must be consistent with the sandbox execution period: the entry cannot be found when execution is allowed, or the writing method supported by the sandbox is rejected.
+// Both errors will cause users to see opposite conclusions in the two links.
 func TestCheckRegexpHandler(t *testing.T) {
 	ctx := context.Background()
 
@@ -60,17 +60,17 @@ func TestCheckRegexpHandler(t *testing.T) {
 	})
 }
 
-// gpython 钉在 v0.2.0，只到 Python 3.4 级语法。沙箱跑的是 3.11，
-// 这些写法解析不了但完全合法，判定必须放行而不是挡在保存之外。
+// gpython is nailed to v0.2.0, only up to Python 3.4 level syntax. The sandbox is running 3.11,
+// These writing methods cannot be parsed but are completely legal. It is determined that they must be released rather than blocked from preservation.
 func TestEntryPointBeyondGpythonSyntax(t *testing.T) {
 	ctx := context.Background()
 
 	cases := map[string]string{
-		"f-string":        "def handler(event):\n    return f\"hi {event}\"",
-		"async def":       "async def handler(event):\n    return event",
+		"f-string":      "def handler(event):\n    return f\"hi {event}\"",
+		"async def":     "async def handler(event):\n    return event",
 		"pydantic 类体注解": "from sandbox_sdk import tool\nfrom pydantic import BaseModel\nclass Req(BaseModel):\n    name: str\n@tool\ndef f(r: Req) -> dict:\n    return {}",
-		"变量注解":            "x: int = 1\ndef handler(event):\n    return event",
-		"walrus":          "def handler(event):\n    if (n := len(event)) > 0:\n        return n\n    return 0",
+		"变量注解":          "x: int = 1\ndef handler(event):\n    return event",
+		"walrus":        "def handler(event):\n    if (n := len(event)) > 0:\n        return n\n    return 0",
 	}
 
 	Convey("解析不了的新语法仍按有入口放行", t, func() {

@@ -1,6 +1,6 @@
-// Package operator 算子操作适配器
+// Package operator operator operation adapter.
 // @file operator.go
-// @description: 算子操作适配器
+// @description: operator operation adapter.
 package operator
 
 import (
@@ -15,9 +15,9 @@ import (
 	loperator "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/operator"
 )
 
-// OperatorHandler 算子注册接口
+// OperatorHandler operator registration interface.
 type OperatorHandler interface {
-	/*算子管理接口*/
+	// Operator management interface.
 	OperatorRegister(c *gin.Context)
 	OperatorQueryByOperatorID(c *gin.Context)
 	OperatorQueryPage(c *gin.Context)
@@ -29,11 +29,11 @@ type OperatorHandler interface {
 	DebugOperator(c *gin.Context)
 	ExecuteOperator(c *gin.Context)
 
-	/*历史记录查询操作*/
-	QueryOperatorHistoryDetail(c *gin.Context) // 已发布版本详情（从历史记录中查询）
-	QueryOperatorHistoryList(c *gin.Context)   // 历史版本列表
+	// History query operation.
+	QueryOperatorHistoryDetail(c *gin.Context) // Published version details (query from history records)
+	QueryOperatorHistoryList(c *gin.Context)   // Historical version list.
 
-	/*算子市场查询操作*/
+	// Operator market query operation.
 	QueryOperatorMarketList(c *gin.Context)
 	QueryOperatorMarketDetail(c *gin.Context)
 }
@@ -51,7 +51,7 @@ type operatorHandle struct {
 	Validator       interfaces.Validator
 }
 
-// NewOperatorHandler 算子操作接口
+// NewOperatorHandler operator operation interface.
 func NewOperatorHandler() OperatorHandler {
 	once.Do(func() {
 		confLoader := config.NewConfigLoader()

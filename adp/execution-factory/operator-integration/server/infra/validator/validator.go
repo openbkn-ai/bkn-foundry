@@ -1,6 +1,6 @@
-// Package validator 定义接口
+// Package validator definition interface.
 // @file validator.go
-// @description: 初始化验证器
+// @description: Initialize validator.
 package validator
 
 import (
@@ -23,11 +23,11 @@ import (
 )
 
 const (
-	defaultNameMaxLength = 50 // 算子名称最大长度(字符)
+	defaultNameMaxLength = 50 // Maximum length of operator name (characters)
 )
 
 var (
-	// 验证类型
+	// Verification type.
 	validParameterTypes = map[interfaces.ParameterType]bool{
 		interfaces.ParameterTypeString:  true,
 		interfaces.ParameterTypeNumber:  true,
@@ -37,20 +37,20 @@ var (
 	}
 )
 
-// Validator 验证器接口
+// Validator validator interface.
 type validator struct {
 	Validator           *validatorv10.Validate
-	ImportMaxCount      int64 // 算子导入限制(单次导入最大算子数量)
-	NameLimit           int64 // 算子名称限制
-	DescLimit           int64 // 算子描述限制
-	ImportFileSizeLimit int64 // 算子导入限制(单次导入最大文件大小)
+	ImportMaxCount      int64 // Operator import restrictions (maximum number of operators imported at a time)
+	NameLimit           int64 // Operator name restrictions.
+	DescLimit           int64 // Operator description restrictions.
+	ImportFileSizeLimit int64 // Operator import restrictions (maximum file size for a single import)
 }
 
 var (
 	vOnce sync.Once
 	v     interfaces.Validator
 
-	// 仅支持中文、字母、数字、下划线
+	// Only supports Chinese, letters, numbers, and underscores.
 	commonNameReg = `^[[:word:]\p{Han}]+$`
 )
 
@@ -68,19 +68,19 @@ func NewValidator() interfaces.Validator {
 	return v
 }
 
-// init 初始化验证器
+// init initializes the validator.
 func init() {
 	validator := validatorv10.New()
-	// 自定义验证器使用的字段名称标签
+	// Field name labels used by custom validators.
 	validator.RegisterTagNameFunc(func(fld reflect.StructField) string {
-		// 从结构体字段的json标签中获取第一个值（忽略其他选项）
+		// Get the first value from the json tag of the struct field (other options ignored)
 		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0] //nolint:mnd
 
-		// 如果标签设置为"-"则跳过该字段
+		// This field is skipped if label is set to "-".
 		if name == "-" {
 			return ""
 		}
-		// 返回json标签定义的字段名
+		// Returns the field name defined by the json tag.
 		return name
 	})
 	_ = validator.RegisterValidation("uuid4", func(fl validatorv10.FieldLevel) bool {
@@ -88,15 +88,15 @@ func init() {
 	})
 }
 
-// ValidateOperatorName 验证算子名称是否合法
-// 仅支持中英文、数字和键盘上的特殊字符
+// ValidateOperatorName verifies whether the operator name is legal.
+// Only supports Chinese, English, numbers and special characters on the keyboard.
 func (v *validator) ValidateOperatorName(ctx context.Context, name string) (err error) {
 	if name == "" {
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorNameEmpty, "operator name cannot be empty")
 		return
 	}
 
-	// 校验长度（按字符数计算）
+	// Check length (calculated in number of characters)
 	if utf8.RuneCountInString(name) > int(v.NameLimit) {
 		err = fmt.Errorf("operator name %s length exceeds limit [%d]", name, v.NameLimit)
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorNameTooLong, err.Error(),
@@ -117,14 +117,14 @@ func (v *validator) ValidateOperatorName(ctx context.Context, name string) (err 
 	return
 }
 
-// ValidateOperatorDesc 验证算子描述是否合法
+// ValidateOperatorDesc verifies whether the operator description is legal.
 func (v *validator) ValidateOperatorDesc(ctx context.Context, desc string) (err error) {
-	// 算子描述不允许为空
+	// Operator description is not allowed to be empty.
 	if desc == "" {
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorDescEmpty, "operator description cannot be empty")
 		return
 	}
-	// 校验长度（按字符数计算）
+	// Check length (calculated in number of characters)
 	if utf8.RuneCountInString(desc) > int(v.DescLimit) {
 		err = fmt.Errorf("operator description length exceeds limit [%d]", v.DescLimit)
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorDescTooLong, err.Error(), v.DescLimit)
@@ -132,7 +132,7 @@ func (v *validator) ValidateOperatorDesc(ctx context.Context, desc string) (err 
 	return
 }
 
-// 校验算子导入数量是否超过限制
+// Verify whether the number of imported operators exceeds the limit.
 func (v *validator) ValidateOperatorImportCount(ctx context.Context, count int64) (err error) {
 	if count == 0 {
 		err = fmt.Errorf("operator import count %d is zero", count)
@@ -147,17 +147,17 @@ func (v *validator) ValidateOperatorImportCount(ctx context.Context, count int64
 	return
 }
 
-// 校验导入数据的大小是否超过限制
+// Verify whether the size of imported data exceeds the limit.
 func (v *validator) ValidateOperatorImportSize(ctx context.Context, size int64) (err error) {
 	if size == 0 {
 		err = myErr.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("operator import size %d is zero", size))
 		return
 	}
-	// 将文件大小转换为MB
+	// Convert file size to MB.
 	if size < v.ImportFileSizeLimit {
 		return
 	}
-	// 返回提示信息中，将当前限制转化为 B、KB、MB、GB、TB为单位的字符串
+	// In the returned prompt information, convert the current limit into a string in units of B, KB, MB, GB, and TB.
 	sizeStr := utils.ConvertToBytes(v.ImportFileSizeLimit)
 	err = fmt.Errorf("file size %d exceeds limit [%s]", size, sizeStr)
 	err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOperatorImportDataLimit,
@@ -171,7 +171,7 @@ func (v *validator) ValidatorToolBoxName(ctx context.Context, name string) (err 
 		return
 	}
 
-	// 校验长度（按字符数计算）
+	// Check length (calculated in number of characters)
 	if utf8.RuneCountInString(name) > int(v.NameLimit) {
 		err = fmt.Errorf("toolbox name %s length exceeds limit [%d]", name, v.NameLimit)
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtToolBoxNameLimit, err.Error(),
@@ -187,12 +187,12 @@ func (v *validator) ValidatorToolBoxName(ctx context.Context, name string) (err 
 }
 
 func (v *validator) ValidatorToolBoxDesc(ctx context.Context, desc string) (err error) {
-	// 工具箱描述不允许为空
+	// Toolbox description is not allowed to be empty.
 	if desc == "" {
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtToolBoxDescEmpty, "toolbox description cannot be empty")
 		return
 	}
-	// 校验长度（按字符数计算）
+	// Check length (calculated in number of characters)
 	if utf8.RuneCountInString(desc) > int(v.DescLimit) {
 		err = fmt.Errorf("toolbox description length exceeds limit [%d]", v.DescLimit)
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtToolBoxDescLimit, err.Error(),
@@ -218,7 +218,7 @@ func (v *validator) ValidatorToolName(ctx context.Context, name string) (err err
 	return
 }
 func (v *validator) ValidatorToolDesc(ctx context.Context, desc string) (err error) {
-	// 工具描述不允许为空
+	// Tool description is not allowed to be empty.
 	if desc == "" {
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtToolDescEmpty, "tool description cannot be empty")
 		return
@@ -237,7 +237,7 @@ func (v *validator) ValidatorMCPName(ctx context.Context, name string) (err erro
 		return
 	}
 
-	// 校验长度（按字符数计算）
+	// Check length (calculated in number of characters)
 	if utf8.RuneCountInString(name) > int(v.NameLimit) {
 		err = fmt.Errorf("mcp name %s length exceeds limit [%d]", name, v.NameLimit)
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtMCPNameLimit, err.Error(),
@@ -267,7 +267,7 @@ func (v *validator) ValidatorCategoryName(ctx context.Context, name string) (err
 		return
 	}
 
-	// 校验长度（按字符数计算）
+	// Check length (calculated in number of characters)
 	if utf8.RuneCountInString(name) > int(v.NameLimit) {
 		err = fmt.Errorf("category name %s length exceeds limit [%d]", name, v.NameLimit)
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtCategoryNameLimit, err.Error(),
@@ -282,7 +282,7 @@ func (v *validator) ValidatorCategoryName(ctx context.Context, name string) (err
 	return
 }
 
-// ValidatorStruct 验证结构体
+// ValidatorStruct validation structure.
 func (v *validator) ValidatorStruct(ctx context.Context, obj interface{}) (err error) {
 	err = v.Validator.Struct(obj)
 	if err == nil {
@@ -299,7 +299,7 @@ func (v *validator) ValidatorStruct(ctx context.Context, obj interface{}) (err e
 	return
 }
 
-// 验证URL是否符合格式
+// Verify that the URL conforms to the format.
 func (v *validator) ValidatorURL(ctx context.Context, url string) (err error) {
 	if url == "" {
 		err = myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtOpenAPIInvalidURLFormat, "URL cannot be empty")
@@ -313,7 +313,7 @@ func (v *validator) ValidatorURL(ctx context.Context, url string) (err error) {
 	return
 }
 
-// VisitorParameterDef 访问参数定义
+// VisitorParameterDef access parameter definition.
 func (v *validator) VisitorParameterDef(ctx context.Context, paramDef *interfaces.ParameterDef) (err error) {
 	if paramDef == nil {
 		err = myErr.DefaultHTTPError(ctx, http.StatusBadRequest, "parameter def cannot be nil")
@@ -326,7 +326,7 @@ func (v *validator) VisitorParameterDef(ctx context.Context, paramDef *interface
 		return
 	}
 
-	// 验证 SubParameters 只能用于 array 和 object 类型
+	// Verify that SubParameters can only be used for array and object types.
 	if len(paramDef.SubParameters) > 0 {
 		if paramDef.Type != "array" && paramDef.Type != "object" {
 			err = fmt.Errorf("parameter %s type %s is invalid, must be array or object", paramDef.Name, paramDef.Type)
@@ -334,7 +334,7 @@ func (v *validator) VisitorParameterDef(ctx context.Context, paramDef *interface
 			return
 		}
 
-		// 对于 array 类型,SubParameters 应该只有一个元素
+		// For array types, SubParameters should have only one element.
 		if paramDef.Type == "array" && len(paramDef.SubParameters) != 1 {
 			err = fmt.Errorf("parameter %s is array type, sub_parameters must only contain one element to define the structure of array items, current has %d elements",
 				paramDef.Name, len(paramDef.SubParameters))
@@ -342,7 +342,7 @@ func (v *validator) VisitorParameterDef(ctx context.Context, paramDef *interface
 			return
 		}
 
-		// 递归验证所有子参数
+		// Recursively validate all subparameters.
 		for _, subParam := range paramDef.SubParameters {
 			if err = v.VisitorParameterDef(ctx, subParam); err != nil {
 				return
@@ -350,7 +350,7 @@ func (v *validator) VisitorParameterDef(ctx context.Context, paramDef *interface
 		}
 	}
 	if paramDef.Type == "array" && len(paramDef.SubParameters) == 0 {
-		// 为 array 类型添加默认子参数
+		// Add default subparameters for array type.
 		paramDef.SubParameters = []*interfaces.ParameterDef{
 			{
 				Type:        "string",

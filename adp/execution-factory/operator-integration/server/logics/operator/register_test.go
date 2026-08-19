@@ -760,8 +760,8 @@ func TestUpdateOperatorByOpenAPI(t *testing.T) {
 				So(errors.As(err, &httpErr), ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 			})
-			// Convey("组装待更新数据", func() {
-			// 	Convey("元数据不存在", func() {
+			// Convey("Assemble data to be updated", func() {.
+			// Convey("Metadata does not exist", func() {.
 			// 		req.MetadataType = interfaces.MetadataTypeFunc
 			// 		req.FunctionInput = &interfaces.FunctionInput{}
 			// 		metadataDBs := []interfaces.IMetadataDB{

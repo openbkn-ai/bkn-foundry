@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// FunctionMetadataDB 函数元数据数据库
+// FunctionMetadataDB function metadata database.
 type FunctionMetadataDB struct {
 	ID              int64  `json:"f_id" db:"f_id"`
 	Summary         string `json:"f_summary" db:"f_summary"`
@@ -20,14 +20,14 @@ type FunctionMetadataDB struct {
 	CreateTime      int64  `json:"f_create_time" db:"f_create_time"`
 	UpdateUser      string `json:"f_update_user" db:"f_update_user"`
 	UpdateTime      int64  `json:"f_update_time" db:"f_update_time"`
-	ScriptType      string `json:"f_script_type" db:"f_script_type"`   // 脚本类型，如 Python、Node.js
-	Code            string `json:"f_code" db:"f_code"`                 // 函数代码
-	Dependencies    string `json:"f_dependencies" db:"f_dependencies"` // 第三方库依赖，如 Python 中的 requests 库
+	ScriptType      string `json:"f_script_type" db:"f_script_type"`   // Script type, such as Python, Node.js.
+	Code            string `json:"f_code" db:"f_code"`                 // function code.
+	Dependencies    string `json:"f_dependencies" db:"f_dependencies"` // Third-party package dependencies, such as the requests library in Python.
 	DependenciesURL string `json:"f_dependencies_url" db:"f_dependencies_url"`
-	ErrMessage      string `json:"-"` // 错误信息
+	ErrMessage      string `json:"-"` // error message.
 }
 
-// IFunctionMetadataDB 函数元数据数据库接口
+// IFunctionMetadataDB function metadata database interface.
 type IFunctionMetadataDB interface {
 	InsertFuncMetadata(ctx context.Context, tx *sql.Tx, metadata *FunctionMetadataDB) (version string, err error)
 	SelectByVersion(ctx context.Context, version string) (exist bool, metadata *FunctionMetadataDB, err error)
@@ -38,17 +38,17 @@ type IFunctionMetadataDB interface {
 	SelectListByVersion(ctx context.Context, versions []string) ([]*FunctionMetadataDB, error)
 }
 
-// GetType 获取资源类型
+// GetType Gets the resource type.
 func (f *FunctionMetadataDB) GetType() string {
 	return string(SourceTypeFunction)
 }
 
-// GetSummary 获取摘要
+// GetSummary Get summary.
 func (f *FunctionMetadataDB) GetSummary() string {
 	return f.Summary
 }
 
-// GetDescription 获取函数描述
+// GetDescription Get function description.
 func (f *FunctionMetadataDB) GetDescription() string {
 	if f.Description == "" {
 		return f.Summary
@@ -56,7 +56,7 @@ func (f *FunctionMetadataDB) GetDescription() string {
 	return f.Description
 }
 
-// GetVersion 获取版本
+// GetVersion Get version.
 func (f *FunctionMetadataDB) GetVersion() string {
 	return f.Version
 }
@@ -102,7 +102,7 @@ func (f *FunctionMetadataDB) SetServerURL(serverURL string) {
 	f.ServerURL = serverURL
 }
 
-// GetAPISpec 获取API规范
+// GetAPISpec Get API specification.
 func (f *FunctionMetadataDB) GetAPISpec() string {
 	return f.APISpec
 }
@@ -111,7 +111,7 @@ func (f *FunctionMetadataDB) SetAPISpec(apiSpec string) {
 	f.APISpec = apiSpec
 }
 
-// GetUpdateUser 获取更新用户
+// GetUpdateUser Gets the update user.
 func (f *FunctionMetadataDB) GetUpdateUser() (user string) {
 	return f.UpdateUser
 }
@@ -121,12 +121,12 @@ func (f *FunctionMetadataDB) SetUpdateInfo(user string) {
 	f.UpdateTime = time.Now().UnixNano()
 }
 
-// GetCreateUser 获取创建用户
+// GetCreateUser Gets the created user.
 func (f *FunctionMetadataDB) GetCreateUser() (user string) {
 	return f.CreateUser
 }
 
-// SetCreateInfo 设置创建信息
+// SetCreateInfo sets creation information.
 func (f *FunctionMetadataDB) SetCreateInfo(user string) {
 	f.CreateUser = user
 	f.CreateTime = time.Now().UnixNano()

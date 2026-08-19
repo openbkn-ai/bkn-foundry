@@ -7,15 +7,15 @@ import (
 
 //go:generate mockgen -source=logics_intcomp_config.go -destination=../mocks/intcomp_config.go -package=mocks
 
-// ComponentType 组件类型
+// ComponentType component type.
 type ComponentType string
 
 const (
-	// ComponentTypeToolBox 工具箱组件
+	// ComponentTypeToolBox toolbox component.
 	ComponentTypeToolBox ComponentType = "toolbox"
-	// ComponentTypeMCP MCP组件
+	// ComponentTypeMCP MCP component.
 	ComponentTypeMCP ComponentType = "mcp"
-	// ComponentTypeOperator 算子组件
+	// ComponentTypeOperator operator component.
 	ComponentTypeOperator ComponentType = "operator"
 )
 
@@ -23,8 +23,8 @@ func (c ComponentType) String() string {
 	return string(c)
 }
 
-// IIntCompConfigService 内置组件配置服务
+// IIntCompConfigService built-in component configuration service.
 type IIntCompConfigService interface {
-	// DeleteConfig 删除内置组件的配置记录（组件本身被删时的收尾）
+	// DeleteConfig deletes the configuration record of the built-in component (the end when the component itself is deleted)
 	DeleteConfig(ctx context.Context, tx *sql.Tx, configType, configID string) error
 }

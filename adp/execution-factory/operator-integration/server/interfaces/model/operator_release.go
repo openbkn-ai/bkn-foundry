@@ -7,54 +7,54 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
-// OperatorReleaseDB 算子发布表
+// OperatorReleaseDB operator release table.
 //
 //go:generate mockgen -source=operator_release.go -destination=../../mocks/model_operator_release.go -package=mocks
 type OperatorReleaseDB struct {
-	ID              int64  `json:"id" db:"f_id"`                             // 主键
-	OpID            string `json:"op_id" db:"f_op_id"`                       // 算子ID
-	Name            string `json:"name" db:"f_name"`                         // 算子名称
-	MetadataVersion string `json:"metadata_version" db:"f_metadata_version"` // 元数据版本
-	MetadataType    string `json:"metadata_type" db:"f_metadata_type"`       // 元数据类型
-	Status          string `json:"status" db:"f_status"`                     // 元数据状态
-	OperatorType    string `json:"operator_type" db:"f_operator_type"`       // 算子类型
-	ExecutionMode   string `json:"execution_mode" db:"f_execution_mode"`     // 执行模式
-	ExecuteControl  string `json:"execute_control" db:"f_execute_control"`   // 执行控制
-	Category        string `json:"category" db:"f_category"`                 // 算子分类
-	Source          string `json:"source" db:"f_source"`                     // 算子来源
-	ExtendInfo      string `json:"extend_info" db:"f_extend_info"`           // 扩展信息
-	CreateTime      int64  `json:"create_time" db:"f_create_time"`           // 创建时间
-	UpdateTime      int64  `json:"update_time" db:"f_update_time"`           // 更新时间
-	ReleaseTime     int64  `json:"release_time" db:"f_release_time"`         // 发布时间
-	CreateUser      string `json:"create_user" db:"f_create_user"`           // 创建用户
-	UpdateUser      string `json:"update_user" db:"f_update_user"`           // 更新用户
-	ReleaseUser     string `json:"release_user" db:"f_release_user"`         // 发布用户
-	Tag             int    `json:"tag" db:"f_tag"`                           // 版本
-	IsInternal      bool   `json:"is_internal" db:"f_is_internal"`           // 是否为内部算子
-	IsDataSource    bool   `json:"is_data_source" db:"f_is_data_source"`     // 是否为数据源算子
+	ID              int64  `json:"id" db:"f_id"`                             // primary key.
+	OpID            string `json:"op_id" db:"f_op_id"`                       // Operator ID.
+	Name            string `json:"name" db:"f_name"`                         // Operator name.
+	MetadataVersion string `json:"metadata_version" db:"f_metadata_version"` // metadata version.
+	MetadataType    string `json:"metadata_type" db:"f_metadata_type"`       // metadata type.
+	Status          string `json:"status" db:"f_status"`                     // metadata status.
+	OperatorType    string `json:"operator_type" db:"f_operator_type"`       // Operator type.
+	ExecutionMode   string `json:"execution_mode" db:"f_execution_mode"`     // execution mode.
+	ExecuteControl  string `json:"execute_control" db:"f_execute_control"`   // executive control.
+	Category        string `json:"category" db:"f_category"`                 // Operator classification.
+	Source          string `json:"source" db:"f_source"`                     // Operator source.
+	ExtendInfo      string `json:"extend_info" db:"f_extend_info"`           // Extended information.
+	CreateTime      int64  `json:"create_time" db:"f_create_time"`           // creation time.
+	UpdateTime      int64  `json:"update_time" db:"f_update_time"`           // Update time.
+	ReleaseTime     int64  `json:"release_time" db:"f_release_time"`         // Release time.
+	CreateUser      string `json:"create_user" db:"f_create_user"`           // Create user.
+	UpdateUser      string `json:"update_user" db:"f_update_user"`           // Update user.
+	ReleaseUser     string `json:"release_user" db:"f_release_user"`         // publish user.
+	Tag             int    `json:"tag" db:"f_tag"`                           // version.
+	IsInternal      bool   `json:"is_internal" db:"f_is_internal"`           // Whether it is an internal operator.
+	IsDataSource    bool   `json:"is_data_source" db:"f_is_data_source"`     // Whether it is a data source operator.
 }
 
-// GetBizID 获取业务ID
+// GetBizID Get business ID.
 func (ore *OperatorReleaseDB) GetBizID() string {
 	return ore.OpID
 }
 
-// IOperatorReleaseDB 算子发布表操作接口
+// IOperatorReleaseDB operator release table operation interface.
 type IOperatorReleaseDB interface {
-	// BatchInsert 批量插入算子发布信息
+	// BatchInsert batch insertion operator publishes information.
 	BatchInsert(ctx context.Context, tx *sql.Tx, operator []*OperatorReleaseDB) (opIDs []string, err error)
-	// Insert 插入算子发布信息
+	// Insert insertion operator publishes information.
 	Insert(ctx context.Context, tx *sql.Tx, operator *OperatorReleaseDB) (err error)
-	// UpdateByOpID 更新算子发布信息
+	// UpdateByOpID update operator release information.
 	UpdateByOpID(ctx context.Context, tx *sql.Tx, operator *OperatorReleaseDB) error
-	// DeleteByOpID 删除算子发布信息
+	// DeleteByOpID delete operator release information.
 	DeleteByOpID(ctx context.Context, tx *sql.Tx, opID string) error
-	// SelectByOpID 根据算子ID查询算子发布信息
+	// SelectByOpID Query operator release information based on operator ID.
 	SelectByOpID(ctx context.Context, opID string) (exist bool, releaseDB *OperatorReleaseDB, err error)
-	// SelectByName 根据算子名称查询算子发布信息
+	// SelectByName Query operator release information based on operator name.
 	SelectByName(ctx context.Context, tx *sql.Tx, name string) (exist bool, releaseDB *OperatorReleaseDB, err error)
-	// CountByWhereClause 根据条件查询算子发布信息数量
+	// CountByWhereClause queries the number of information released by the operator based on conditions.
 	CountByWhereClause(ctx context.Context, conditions map[string]interface{}) (count int64, err error)
-	// SelectByWhereClause 根据条件查询算子发布信息
+	// SelectByWhereClause publishes information based on conditional query operators.
 	SelectByWhereClause(ctx context.Context, conditions map[string]interface{}, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (releaseList []*OperatorReleaseDB, err error)
 }

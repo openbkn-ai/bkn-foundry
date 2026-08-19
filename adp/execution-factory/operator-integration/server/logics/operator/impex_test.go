@@ -321,7 +321,7 @@ func TestImport(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		})
-		// Convey("更新配置: 更新元数据成功, 通知资源变更失败", func() {
+		// Convey("Update configuration: Update metadata successful, notification of resource changes failed", func() {.
 		// 	operatorDB.Status = interfaces.BizStatusUnpublish.String()
 		// 	mockDBOperatorManager.EXPECT().SelectByNameAndStatus(gomock.Any(), gomock.Any(), gomock.Any(),
 		// 		gomock.Any()).Return(true, operatorDB, nil)
@@ -338,7 +338,7 @@ func TestImport(t *testing.T) {
 		// 	So(err, ShouldBeNil)
 		// 	time.Sleep(100 * time.Millisecond)
 		// })
-		// Convey("更新配置: 更新元数据成功, 通知资源成功，发送审计日志", func() {
+		// Convey("Update configuration: Update metadata successfully, notify resources successfully, send audit log", func() {.
 		// 	operatorDB.Status = interfaces.BizStatusUnpublish.String()
 		// 	mockDBOperatorManager.EXPECT().SelectByNameAndStatus(gomock.Any(), gomock.Any(), gomock.Any(),
 		// 		gomock.Any()).Return(true, operatorDB, nil)
@@ -355,14 +355,14 @@ func TestImport(t *testing.T) {
 		// 	So(err, ShouldBeNil)
 		// 	time.Sleep(100 * time.Millisecond)
 		// })
-		// Convey("添加配置", func() {
+		// Convey("Add configuration", func() {.
 		// 	operatorDB.OperatorID = "mock1"
 		// 	mockDBOperatorManager.EXPECT().SelectByNameAndStatus(gomock.Any(), gomock.Any(), gomock.Any(),
 		// 		gomock.Any()).Return(false, nil, nil)
 		// 	mockDBOperatorManager.EXPECT().SelectByOperatorIDs(gomock.Any(), gomock.Any()).Return([]*model.OperatorRegisterDB{}, nil)
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
-		// 	Convey("添加元数据失败（db）", func() {
+		// Convey("Failed to add metadata (db)", func() {.
 		// 		mockDBAPIMetadataManager.EXPECT().InsertAPIMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("",
 		// 			mocks.MockFuncErr("InsertAPIMetadata"))
 		// 		err := operator.Import(context.TODO(), &sql.Tx{}, interfaces.ImportTypeCreate, importData, "")
@@ -371,7 +371,7 @@ func TestImport(t *testing.T) {
 		// 		So(ok, ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// 	})
-		// 	Convey("添加算子记录失败（db）", func() {
+		// Convey("Failed to add operator record (db)", func() {.
 		// 		mockDBAPIMetadataManager.EXPECT().InsertAPIMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil)
 		// 		mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", mocks.MockFuncErr("InsertOperator"))
 		// 		err := operator.Import(context.TODO(), &sql.Tx{}, interfaces.ImportTypeCreate, importData, "")
@@ -381,7 +381,7 @@ func TestImport(t *testing.T) {
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// 	})
 
-		// 	Convey("发布失败", func() {
+		// Convey("Publishing failed", func() {.
 		// 		importData.Configs[0].Status = interfaces.BizStatusPublished
 		// 		operatorDB.Status = interfaces.BizStatusPublished.String()
 		// 		mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil)
@@ -393,7 +393,7 @@ func TestImport(t *testing.T) {
 		// 		So(ok, ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// 	})
-		// 	Convey("发布成功, 添加所有者权限策略失败", func() {
+		// Convey("Published successfully, failed to add owner permission policy", func() {.
 		// 		operatorDB.Status = interfaces.BizStatusPublished.String()
 		// 		importData.Configs[0].Status = interfaces.BizStatusPublished
 		// 		mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil)
@@ -407,7 +407,7 @@ func TestImport(t *testing.T) {
 		// 		So(err, ShouldBeNil)
 		// 		time.Sleep(100 * time.Millisecond)
 		// 	})
-		// 	Convey("发布成功, 添加所有者权限策略成功，发送审计日志", func() {
+		// Convey("Published successfully, added owner permission policy successfully, sent audit log", func() {.
 		// 		operatorDB.Status = interfaces.BizStatusPublished.String()
 		// 		importData.Configs[0].Status = interfaces.BizStatusPublished
 		// 		mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil)
@@ -512,7 +512,7 @@ func TestExport(t *testing.T) {
 			So(ok, ShouldBeTrue)
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		})
-		// Convey("获取元数据失败（db）", func() {
+		// Convey("Failed to obtain metadata (db)", func() {.
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil).Times(1)
 		// 	mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
 		// 		ids, nil).Times(1)
@@ -524,7 +524,7 @@ func TestExport(t *testing.T) {
 		// 	So(ok, ShouldBeTrue)
 		// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// })
-		// Convey("解析元数据失败", func() {
+		// Convey("Failed to parse metadata", func() {.
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil).Times(1)
 		// 	mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
 		// 		ids, nil).Times(1)
@@ -540,7 +540,7 @@ func TestExport(t *testing.T) {
 		// 	So(ok, ShouldBeTrue)
 		// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// })
-		// Convey("导出成功", func() {
+		// Convey("Export successful", func() {.
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil).Times(1)
 		// 	mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthOperationTypeView).Return(
 		// 		ids, nil).Times(1)

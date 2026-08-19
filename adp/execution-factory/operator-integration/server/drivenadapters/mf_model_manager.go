@@ -21,8 +21,8 @@ var (
 )
 
 var (
-	getPromptByPromptIDPath = "/v1/prompt/%s"
-	listSmallModelPath      = "/v1/small-model/list"
+	getPromptByPromptIDPath  = "/v1/prompt/%s"
+	listSmallModelPath       = "/v1/small-model/list"
 	getDefaultSmallModelPath = "/v1/small-model/get_default"
 )
 
@@ -57,7 +57,7 @@ func (m *mfModelManager) buildHeaders(ctx context.Context) map[string]string {
 	return headers
 }
 
-// GetPromptByPromptID 获取提示词
+// GetPromptByPromptID Get the prompt word.
 func (m *mfModelManager) GetPromptByPromptID(ctx context.Context, promptID string) (resp *interfaces.GetPromptResp, err error) {
 	src := fmt.Sprintf("%s%s", m.baseURL, fmt.Sprintf(getPromptByPromptIDPath, promptID))
 	header := common.GetHeaderFromCtx(ctx)
@@ -67,7 +67,7 @@ func (m *mfModelManager) GetPromptByPromptID(ctx context.Context, promptID strin
 		return nil, err
 	}
 	result := map[string]any{}
-	// 转换为map[string]any
+	// Convert to map[string]any.
 	err = utils.AnyToObject(respData, &result)
 	if err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -84,7 +84,7 @@ func (m *mfModelManager) GetPromptByPromptID(ctx context.Context, promptID strin
 	return resp, nil
 }
 
-// GetEmbeddingModel 获取 embedding 模型信息
+// GetEmbeddingModel Gets embedding model information.
 func (m *mfModelManager) GetEmbeddingModel(ctx context.Context, modelName string, modelType string) (resp *interfaces.EmbeddingModel, err error) {
 	src := fmt.Sprintf("%s%s", m.baseURL, listSmallModelPath)
 	query := url.Values{}
@@ -134,7 +134,7 @@ func (m *mfModelManager) GetEmbeddingModel(ctx context.Context, modelName string
 	return nil, err
 }
 
-// GetDefaultEmbeddingModel 取某 model_type 下的系统默认小模型；未配置默认时接口返回空对象，本方法返回 (nil, nil)。
+// GetDefaultEmbeddingModel gets the system default small model under a certain model_type; when the default is not configured, the interface returns an empty object, and this method returns (nil, nil).
 func (m *mfModelManager) GetDefaultEmbeddingModel(ctx context.Context, modelType string) (resp *interfaces.EmbeddingModel, err error) {
 	src := fmt.Sprintf("%s%s", m.baseURL, getDefaultSmallModelPath)
 	query := url.Values{}
@@ -146,7 +146,7 @@ func (m *mfModelManager) GetDefaultEmbeddingModel(ctx context.Context, modelType
 		return nil, err
 	}
 
-	// 响应可能是扁平模型对象、空对象 {}（未配置默认），或被 res/data 包裹
+	// The response may be a flat model object, an empty object {} (default not configured), or wrapped in res/data.
 	var payload map[string]any
 	if err = utils.AnyToObject(respData, &payload); err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -173,7 +173,7 @@ func (m *mfModelManager) GetDefaultEmbeddingModel(ctx context.Context, modelType
 		m.logger.WithContext(ctx).Errorf("failed to parse default embedding model: %v", err)
 		return nil, err
 	}
-	if model.ModelID == "" { // 未配置默认
+	if model.ModelID == "" { // Not configured default.
 		return nil, nil
 	}
 	return model, nil

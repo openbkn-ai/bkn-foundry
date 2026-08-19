@@ -12,7 +12,7 @@ import (
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
-// OperatorCategoryList 算子分类列表
+// OperatorCategoryList operator classification list.
 func (op *operatorHandle) OperatorCategoryList(c *gin.Context) {
 	ctx := c.Request.Context()
 	result, err := op.CategoryManager.GetCategoryList(ctx)
@@ -24,7 +24,7 @@ func (op *operatorHandle) OperatorCategoryList(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// OperatorCategoryUpdate 算子分类更新
+// OperatorCategoryUpdate operator category update.
 func (op *operatorHandle) OperatorCategoryUpdate(c *gin.Context) {
 	req := &interfaces.UpdateCategoryReq{}
 	err := c.ShouldBindHeader(req)
@@ -60,7 +60,7 @@ func (op *operatorHandle) OperatorCategoryUpdate(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// OperatorCategoryCreate 算子分类创建
+// OperatorCategoryCreate Operator category creation.
 func (op *operatorHandle) OperatorCategoryCreate(c *gin.Context) {
 	req := &interfaces.CreateCategoryReq{}
 	err := c.ShouldBindHeader(req)

@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 type resourceDeployDB struct {
@@ -31,7 +31,7 @@ const (
 	tbResourceDeploy = "t_resource_deploy"
 )
 
-// NewResourceDeployDBSingleton 创建资源部署数据库单例
+// NewResourceDeployDBSingleton creates a resource deployment database singleton.
 func NewResourceDeployDBSingleton() model.DBResourceDeploy {
 	conf := config.NewConfigLoader()
 	dbPool := db.NewDBPool()
@@ -155,7 +155,7 @@ func (r *resourceDeployDB) DeleteByResourceID(ctx context.Context, tx *sql.Tx, r
 	return err
 }
 
-// Exists 查询资源部署是否存在
+// Exists queries whether resource deployment exists.
 func (r *resourceDeployDB) Exists(ctx context.Context, resourceID string, version int) (exists bool, err error) {
 	query := r.orm.Select().From(tbResourceDeploy).WhereEq("f_resource_id", resourceID).WhereEq("f_version", version)
 	exists, err = query.Exists(ctx)

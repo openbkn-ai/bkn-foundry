@@ -15,7 +15,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// createTestClient 创建测试用的业务域管理客户端
+// createTestClient creates a business domain management client for testing.
 func createTestClient(ctrl *gomock.Controller) (*businessDomainManagementClient, *mocks.MockLogger, *mocks.MockHTTPClient) {
 	logger := mocks.NewMockLogger(ctrl)
 	httpClient := mocks.NewMockHTTPClient(ctrl)
@@ -29,7 +29,7 @@ func createTestClient(ctrl *gomock.Controller) (*businessDomainManagementClient,
 	return client, logger, httpClient
 }
 
-// TestAssociateResource 测试资源关联到业务域
+// TestAssociateResource test resource is associated with the business domain.
 func TestAssociateResource(t *testing.T) {
 	Convey("TestAssociateResource", t, func() {
 		ctrl := gomock.NewController(t)
@@ -99,7 +99,7 @@ func TestAssociateResource(t *testing.T) {
 	})
 }
 
-// TestDisassociateResource 测试取消资源与业务域的关联
+// TestDisassociateResource tests to disassociate resources from business domains.
 func TestDisassociateResource(t *testing.T) {
 	Convey("TestDisassociateResource", t, func() {
 		ctrl := gomock.NewController(t)
@@ -126,7 +126,7 @@ func TestDisassociateResource(t *testing.T) {
 			expectedURL := "http://localhost:8080/internal/api/business-system/v1/resource?"
 			httpClient.EXPECT().Delete(gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(ctx context.Context, urlStr string, headers map[string]string) (int, interface{}, error) {
-					// 解析URL并验证查询参数
+					// Parse URL and validate query parameters.
 					parsedURL, err := url.Parse(urlStr)
 					So(err, ShouldBeNil)
 					So(parsedURL.Query().Get("id"), ShouldEqual, "test-resource-id")
@@ -138,7 +138,7 @@ func TestDisassociateResource(t *testing.T) {
 
 			err := client.DisassociateResource(context.Background(), req)
 			So(err, ShouldBeNil)
-			_ = expectedURL // 避免未使用警告
+			_ = expectedURL // Avoid unused warnings.
 		})
 
 		Convey("403 权限不足错误", func() {
@@ -172,7 +172,7 @@ func TestDisassociateResource(t *testing.T) {
 	})
 }
 
-// TestResourceList 测试查询业务域下的资源列表
+// TestResourceList tests the resource list under the query business domain.
 func TestResourceList(t *testing.T) {
 	Convey("TestResourceList", t, func() {
 		ctrl := gomock.NewController(t)
@@ -189,7 +189,7 @@ func TestResourceList(t *testing.T) {
 				Offset: 0,
 			}
 
-			// 模拟返回的资源列表数据
+			// Simulate the resource list data returned.
 			mockResponse := map[string]interface{}{
 				"total": float64(2),
 				"items": []interface{}{
@@ -228,7 +228,7 @@ func TestResourceList(t *testing.T) {
 
 			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(ctx context.Context, urlStr string, queryParams url.Values, headers map[string]string) (int, interface{}, error) {
-					// 验证查询参数
+					// Validate query parameters.
 					So(queryParams.Get("bd_id"), ShouldEqual, "test-domain-id")
 					So(queryParams.Get("id"), ShouldEqual, "specific-id")
 					So(queryParams.Get("type"), ShouldEqual, "tool")
@@ -251,7 +251,7 @@ func TestResourceList(t *testing.T) {
 
 			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				DoAndReturn(func(ctx context.Context, urlStr string, queryParams url.Values, headers map[string]string) (int, interface{}, error) {
-					// offset为0时不应该包含offset参数
+					// The offset parameter should not be included when offset is 0.
 					So(queryParams.Get("offset"), ShouldEqual, "")
 					return http.StatusOK, map[string]interface{}{"total": float64(0), "items": []interface{}{}}, nil
 				})
@@ -308,7 +308,7 @@ func TestResourceList(t *testing.T) {
 				Limit: 10,
 			}
 
-			// 返回无法正确反序列化的数据结构
+			// Returns a data structure that cannot be deserialized correctly.
 			invalidResponse := "invalid json structure"
 
 			httpClient.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).

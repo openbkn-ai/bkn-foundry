@@ -1,4 +1,4 @@
-// Package common 公共模块操作接口
+// Package common public module operation interface.
 package common
 
 import (
@@ -42,24 +42,24 @@ type upgradeHandler struct {
 }
 
 type MigrateHistoryDataRequest struct {
-	ResourceType   interfaces.AuthResourceType `form:"resource_type"`    // 资源类型
-	Page           int                         `form:"page" default:"0"` // 页码
+	ResourceType   interfaces.AuthResourceType `form:"resource_type"`    // Resource type.
+	Page           int                         `form:"page" default:"0"` // Page number.
 	PageSize       int                         `form:"page_size"`
-	ALL            bool                        `form:"all" default:"false"` // 是否迁移所有历史数据
-	CurrentVersion string                      `form:"current_version"`     // 当前版本
-	TargetVersion  string                      `form:"target_version"`      // 目标版本
+	ALL            bool                        `form:"all" default:"false"` // Whether to migrate all historical data.
+	CurrentVersion string                      `form:"current_version"`     // Current version.
+	TargetVersion  string                      `form:"target_version"`      // target version.
 }
 
 type HistoryData struct {
-	Id string `json:"id"` // 历史数据ID
+	Id string `json:"id"` // Historical data ID.
 }
 
 type MigrateHistoryDataResponse struct {
 	Total int64          `json:"total" default:"0"`
-	Items []*HistoryData `json:"items"` // 历史数据列表
+	Items []*HistoryData `json:"items"` // Historical data list.
 }
 
-// NewUpgradeHandler 升级操作接口
+// NewUpgradeHandler upgrade operation interface.
 func NewUpgradeHandler() UpgradeHandler {
 	upgradeHandlerOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -77,7 +77,7 @@ func NewUpgradeHandler() UpgradeHandler {
 	return upgradeH
 }
 
-// UpgradeSkillV060 升级技能V0.6.0 -> V0.7.0
+// UpgradeSkillV060 Upgrade skill V0.6.0 -> V0.7.0.
 func (uh *upgradeHandler) UpgradeSkillV070(c *gin.Context) {
 	var err error
 	req := &MigrateHistoryDataRequest{}
@@ -113,8 +113,8 @@ func (uh *upgradeHandler) UpgradeSkillV070(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// MigrateHistoryData 迁移历史数据
-// 此接口仅在从旧版本升级到5.0.0.3版本时使用，用于迁移历史数据
+// MigrateHistoryData migrates historical data.
+// This interface is only used when upgrading from an old version to version 5.0.0.3 and is used to migrate historical data.
 func (uh *upgradeHandler) MigrateHistoryData(c *gin.Context) {
 	var err error
 	req := &MigrateHistoryDataRequest{}
@@ -175,10 +175,10 @@ func (uh *upgradeHandler) migrateHistoryDataForOperator(ctx context.Context, req
 
 	resp.Total = total
 
-	// 计算实际的offset
+	// Calculate actual offset.
 	actualOffset := int64(req.Page * req.PageSize)
 
-	// 如果offset超过total，直接返回空items
+	// If offset exceeds total, empty items will be returned directly.
 	if actualOffset >= total {
 		return resp, nil
 	}
@@ -211,10 +211,10 @@ func (uh *upgradeHandler) migrateHistoryDataForToolBox(ctx context.Context, req 
 
 	resp.Total = total
 
-	// 计算实际的offset
+	// Calculate actual offset.
 	actualOffset := int64(req.Page * req.PageSize)
 
-	// 如果offset超过total，直接返回空items
+	// If offset exceeds total, empty items will be returned directly.
 	if actualOffset >= total {
 		return resp, nil
 	}
@@ -246,10 +246,10 @@ func (uh *upgradeHandler) migrateHistoryDataForForMcp(ctx context.Context, req *
 
 	resp.Total = total
 
-	// 计算实际的offset
+	// Calculate actual offset.
 	actualOffset := int64(req.Page * req.PageSize)
 
-	// 如果offset超过total，直接返回空items
+	// If offset exceeds total, empty items will be returned directly.
 	if actualOffset >= total {
 		return
 	}
@@ -380,7 +380,7 @@ func (uh *upgradeHandler) migrateSkillReleaseData(ctx context.Context, skill *mo
 	if err != nil {
 		return err
 	}
-	// 如果技能已存在，直接返回
+	// If the skill already exists, return directly.
 	if existingRelease != nil {
 		return nil
 	}

@@ -6,21 +6,21 @@ import (
 	"net/http"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// QueryOperatorHistoryDetail 查询操作历史详情
+// QueryOperatorHistoryDetail Query operation history details.
 func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *interfaces.OperatorHistoryDetailReq) (result *interfaces.OperatorDataInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查算子是否存在
+	// Check if the operator exists.
 	has, historyDB, err := m.OpReleaseHistoryDB.SelectByOpIDAndMetdata(ctx, req.OperatorID, req.Version)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("select operator history failed, err: %v", err)
@@ -31,7 +31,7 @@ func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *i
 		err = errors.DefaultHTTPError(ctx, http.StatusNotFound, "operator versioin not found")
 		return
 	}
-	// 检查查看权限或者公开访问权限
+	// Check viewing permissions or public access permissions.
 	if common.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = m.AuthService.GetAccessor(ctx, req.UserID)
@@ -49,7 +49,7 @@ func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *i
 			return
 		}
 	}
-	// 解析算子数据
+	// Analyze operator data.
 	releaseDB := &model.OperatorReleaseDB{}
 	err = jsoniter.Unmarshal([]byte(historyDB.OpRelease), releaseDB)
 	if err != nil {
@@ -57,7 +57,7 @@ func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *i
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("unmarshal operator failed, err: %v", err))
 		return
 	}
-	// 获取算子元数据
+	// Get operator metadata.
 	exists, metadataDB, err := m.MetadataService.CheckMetadataExists(ctx, interfaces.MetadataType(releaseDB.MetadataType), releaseDB.MetadataVersion)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("select operator metadata failed, err: %v", err)
@@ -67,7 +67,7 @@ func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *i
 		err = errors.NewHTTPError(ctx, http.StatusNotFound, errors.ErrExtMetadataNotFound, nil)
 		return
 	}
-	// 组装算子信息结果
+	// Assembly operator information results.
 	userIDs, result, err := m.assembleReleaseResult(ctx, releaseDB, metadataDB)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("assemble release result failed, err: %v", err)
@@ -83,12 +83,12 @@ func (m *operatorManager) QueryOperatorHistoryDetail(ctx context.Context, req *i
 	return
 }
 
-// QueryOperatorHistoryList 获取历史版本列表
+// QueryOperatorHistoryList Gets a list of historical versions.
 func (m *operatorManager) QueryOperatorHistoryList(ctx context.Context, req *interfaces.OperatorHistoryListReq) (result []*interfaces.OperatorDataInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查算子是否存在
+	// Check if the operator exists.
 	var has bool
 	has, _, err = m.DBOperatorManager.SelectByOperatorID(ctx, nil, req.OperatorID)
 	if err != nil {
@@ -97,12 +97,12 @@ func (m *operatorManager) QueryOperatorHistoryList(ctx context.Context, req *int
 		return
 	}
 	if !has {
-		// 算子不存在
+		// operator does not exist.
 		err = errors.DefaultHTTPError(ctx, http.StatusNotFound, "operator not found")
 		return
 	}
 	if common.IsPublicAPIFromCtx(ctx) {
-		// 检查查看权限或者公开访问权限
+		// Check viewing permissions or public access permissions.
 		var accessor *interfaces.AuthAccessor
 		accessor, err = m.AuthService.GetAccessor(ctx, req.UserID)
 		if err != nil {
@@ -120,7 +120,7 @@ func (m *operatorManager) QueryOperatorHistoryList(ctx context.Context, req *int
 		}
 	}
 
-	// 查询历史数据
+	// Query historical data.
 	result = []*interfaces.OperatorDataInfo{}
 	histories, err := m.OpReleaseHistoryDB.SelectByOpID(ctx, req.OperatorID)
 	if err != nil {
@@ -131,7 +131,7 @@ func (m *operatorManager) QueryOperatorHistoryList(ctx context.Context, req *int
 	if histories == nil {
 		return
 	}
-	// 获取元数据信息
+	// Get metadata information.
 	sourceMap := map[model.SourceType][]string{}
 	for _, history := range histories {
 		switch interfaces.MetadataType(history.MetadataType) {
@@ -180,7 +180,7 @@ func (m *operatorManager) QueryOperatorHistoryList(ctx context.Context, req *int
 	return
 }
 
-// 组装算子信息结果
+// Assembly operator information results.
 func (m *operatorManager) assembleReleaseResult(ctx context.Context, releaseDB *model.OperatorReleaseDB, metadataDB interfaces.IMetadataDB) (
 	userIDs []string, info *interfaces.OperatorDataInfo, err error) {
 	executeControl := &interfaces.OperatorExecuteControl{}

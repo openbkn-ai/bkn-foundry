@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	infracommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -30,6 +29,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/sandbox"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -58,7 +58,7 @@ var (
 
 const maxSkillReleaseHistoryVersions = 10
 
-// NewSkillRegistry 创建技能注册器
+// NewSkillRegistry creates a skill register.
 func NewSkillRegistry() interfaces.SkillRegistry {
 	registryOnce.Do(func() {
 		registryInst = &skillRegistry{
@@ -82,16 +82,16 @@ func NewSkillRegistry() interfaces.SkillRegistry {
 	return registryInst
 }
 
-// RegisterSkill 注册技能
+// RegisterSkill Register skills.
 func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.RegisterSkillReq) (resp *interfaces.RegisterSkillResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
 		"bd_id":   req.BusinessDomainID,
 	})
-	// 检查新建权限
+	// Check new permissions.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 	if err = r.AuthService.CheckCreatePermission(ctx, accessor, interfaces.AuthResourceTypeSkill); err != nil {
 		return nil, err
 	}
-	// 检查分类是否合法
+	// Check whether the classification is legal.
 	if req.Category != "" {
 		if !r.CategoryManager.CheckCategory(req.Category) {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtSkillCategoryNotFound,
@@ -125,7 +125,7 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 			_ = tx.Commit()
 		}
 	}()
-	// 插入技能
+	// Insert skills.
 	skillID, err := r.skillRepo.InsertSkill(ctx, tx, skill)
 	if err != nil {
 		return nil, err
@@ -140,12 +140,12 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 			return nil, err
 		}
 	}
-	// 关联技能到业务域
+	// Associate skills to business domains.
 	err = r.BusinessDomainService.AssociateResource(ctx, req.BusinessDomainID, skillID, interfaces.AuthResourceTypeSkill)
 	if err != nil {
 		return nil, err
 	}
-	// 触发新建策略，创建人默认拥有对当前资源的所有操作权限
+	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = r.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 		ID:   skill.SkillID,
 		Type: string(interfaces.AuthResourceTypeSkill),
@@ -167,11 +167,11 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 		Status:      interfaces.BizStatus(skill.Status),
 		Files:       filePaths,
 	}
-	// TODO: 待接入审计日志
+	// TODO: Audit log to be accessed.
 	return resp, nil
 }
 
-// UpdateSkillMetadata 更新技能元数据
+// UpdateSkillMetadata updates skill metadata.
 func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces.UpdateSkillMetadataReq) (resp *interfaces.UpdateSkillMetadataResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -200,7 +200,7 @@ func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces
 			fmt.Sprintf(" %s category not found", req.Category))
 	}
 
-	// FR-6: 判断元数据是否有变更，决定是否需要重写 OSS SKILL.md
+	// FR-6: Determine whether metadata has changed and determine whether OSS SKILL.md needs to be rewritten.
 	nameChanged := req.Name != skill.Name
 	descChanged := req.Description != skill.Description
 	needsRewrite := nameChanged || descChanged
@@ -219,7 +219,7 @@ func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces
 			if commitErr != nil {
 				r.Logger.WithContext(ctx).Errorf("commit skill metadata update failed, skill_id=%s, err=%v", req.SkillID, commitErr)
 			}
-			// FR-6: 事务提交成功后，重写 OSS SKILL.md 的 frontmatter
+			// FR-6: After the transaction is submitted successfully, rewrite the frontmatter of OSS SKILL.md.
 			if needsRewrite {
 				if rewriteErr := r.rewriteSkillMDFrontmatter(ctx, skill.SkillID, skill.Version, req.Name, req.Description); rewriteErr != nil {
 					r.Logger.WithContext(ctx).Errorf("rewrite SKILL.md frontmatter failed, skill_id=%s, err=%v", skill.SkillID, rewriteErr)
@@ -251,7 +251,7 @@ func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces
 	}, nil
 }
 
-// UpdateSkillPackage 更新技能包
+// UpdateSkillPackage Update skill package.
 func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.UpdateSkillPackageReq) (resp *interfaces.UpdateSkillPackageResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -365,7 +365,7 @@ func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.
 	return resp, nil
 }
 
-// RepublishSkillHistory 将历史版本回灌到草稿态
+// RepublishSkillHistory restores historical versions to draft state.
 func (r *skillRegistry) RepublishSkillHistory(ctx context.Context, req *interfaces.RepublishSkillHistoryReq) (resp *interfaces.RepublishSkillHistoryResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -441,7 +441,7 @@ func (r *skillRegistry) RepublishSkillHistory(ctx context.Context, req *interfac
 	}, nil
 }
 
-// PublishSkillHistory 直接发布历史版本
+// PublishSkillHistory directly publishes historical versions.
 func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces.PublishSkillHistoryReq) (resp *interfaces.PublishSkillHistoryResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -531,9 +531,9 @@ func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces
 	}, nil
 }
 
-// DeleteSkill 删除技能
+// DeleteSkill delete skill.
 func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteSkillReq) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -541,7 +541,7 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 		"user_id":  req.UserID,
 		"bd_id":    req.BusinessDomainID,
 	})
-	// 检查删除权限
+	// Check delete permissions.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return err
@@ -554,12 +554,12 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("select skill by id failed: %s", err.Error()))
 		return
 	}
-	// 技能不存在，或者已经删除
+	// The skill does not exist or has been deleted.
 	if skill == nil || skill.IsDeleted {
 		err = errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("skill not found: %s", req.SkillID))
 		return
 	}
-	// 删除状态校验沿用公共状态管理
+	// Delete status verification and use public status management.
 	if !common.CanDelete(interfaces.BizStatus(skill.Status)) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtSkillUnSupportDelete,
 			fmt.Sprintf("skill can not be deleted in status: %s", skill.Status))
@@ -583,16 +583,16 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 		}
 	}()
 
-	// 将技能标记为删除中，TODO：需要设计一个单独的协程用于处理删除中断的兜底策略
+	// Mark the skill as being deleted, TODO: You need to design a separate coroutine to handle the deletion interruption strategy.
 	if err = r.skillRepo.UpdateSkillDeleted(ctx, tx, req.SkillID, true, req.UserID); err != nil {
 		return err
 	}
-	// 查找索引文件
+	// Find index file.
 	files, err := r.fileRepo.SelectSkillFileBySkillID(ctx, tx, req.SkillID, skill.Version)
 	if err != nil {
 		return err
 	}
-	// 先删除对象存储中的记录，再删除数据库中的记录
+	// Delete records in object storage first, then delete records in database.
 	for _, file := range files {
 		if err = r.assetStore.Delete(ctx, &interfaces.OssObject{
 			StorageID:  file.StorageID,
@@ -618,11 +618,11 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 	if err = r.skillRepo.DeleteSkillByID(ctx, tx, req.SkillID); err != nil {
 		return err
 	}
-	// 取消技能与业务域的关联
+	// Cancel the association between skills and business domains.
 	if err = r.BusinessDomainService.DisassociateResource(ctx, req.BusinessDomainID, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
 		return err
 	}
-	// 删除技能的权限策略
+	// Delete the permission policy of a skill.
 	if err = r.AuthService.DeletePolicy(ctx, []string{req.SkillID}, interfaces.AuthResourceTypeSkill); err != nil {
 		return err
 	}
@@ -634,9 +634,9 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 	return nil
 }
 
-// UpdateSkillStatus 更新技能状态
+// UpdateSkillStatus updates skill status.
 func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.UpdateSkillStatusReq) (resp *interfaces.UpdateSkillStatusResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -645,35 +645,35 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 		"bd_id":    req.BusinessDomainID,
 		"status":   req.Status,
 	})
-	// 获取技能
+	// Acquire skills.
 	skill, err := r.skillRepo.SelectSkillByID(ctx, nil, req.SkillID)
 	if err != nil {
 		return nil, err
 	}
-	// 技能不存在，或者已经删除
+	// The skill does not exist or has been deleted.
 	if skill == nil || skill.IsDeleted {
 		err = errors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("skill not found: %s", req.SkillID))
 		return
 	}
-	// 检查状态变换是否合法
+	// Check whether the state transition is legal.
 	if !common.CheckStatusTransition(interfaces.BizStatus(skill.Status), req.Status) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtSkillStatusInvalid,
 			fmt.Sprintf("skill status can not be updated from %s to %s", skill.Status, req.Status))
 		return
 	}
-	// 检查更新权限
+	// Check update permissions.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return nil, err
 	}
 	switch req.Status {
 	case interfaces.BizStatusPublished:
-		// 检查是否有发布权限
+		// Check if you have publishing permissions.
 		err = r.AuthService.CheckPublishPermission(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill)
 		if err != nil {
 			return nil, err
 		}
-		// 检查是否重名
+		// Check if there is a duplicate name.
 		err = r.checkSkillDuplicateName(ctx, skill.Name, skill.SkillID)
 		if err != nil {
 			return nil, err
@@ -701,7 +701,7 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 			}
 		}
 	}()
-	// 更新技能状态
+	// Update skill status.
 	if err = r.skillRepo.UpdateSkillStatus(ctx, tx, req.SkillID, string(req.Status), req.UserID); err != nil {
 		return nil, err
 	}
@@ -719,7 +719,7 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 		SkillID: req.SkillID,
 		Status:  req.Status,
 	}
-	// 将skill数据写到dataset，但是不阻塞主流程
+	// Write skill data to dataset without blocking the main process.
 	switch req.Status {
 	case interfaces.BizStatusPublished:
 		if r.indexSync != nil {
@@ -737,7 +737,7 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 	return resp, nil
 }
 
-// 重名检查
+// Duplicate name check.
 func (r *skillRegistry) checkSkillDuplicateName(ctx context.Context, name string, skillID string) (err error) {
 	has, skillDB, err := r.skillRepo.SelectSkillByName(ctx, nil, name, []string{string(interfaces.BizStatusPublished)})
 	if err != nil {
@@ -748,15 +748,15 @@ func (r *skillRegistry) checkSkillDuplicateName(ctx context.Context, name string
 	if !has || (skillID != "" && skillDB.SkillID == skillID) {
 		return
 	}
-	// 存在
+	// exist.
 	err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtSkillNameDuplicate,
 		fmt.Sprintf("skill name %s already exists", name), name)
 	return
 }
 
-// DownloadSkill 下载技能
+// DownloadSkill download skills.
 func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.DownloadSkillReq) (resp *interfaces.DownloadSkillResp, err error) {
-	// 记录可观测性
+	// Record observability.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -769,7 +769,7 @@ func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.Downl
 	if err != nil {
 		return nil, err
 	}
-	// 检查是否有查看或者公开访问权限
+	// Check if you have view or public access rights.
 	authorized, err := r.AuthService.OperationCheckAny(ctx, accessor, req.SkillID, interfaces.AuthResourceTypeSkill,
 		interfaces.AuthOperationTypeView, interfaces.AuthOperationTypePublicAccess)
 	if err != nil {
@@ -791,7 +791,7 @@ func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.Downl
 	}, nil
 }
 
-// ExecuteSkill 执行技能
+// ExecuteSkill execution skills.
 func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillReq) (resp *interfaces.ExecuteSkillResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -909,9 +909,9 @@ func (r *skillRegistry) buildSkillArchiveFromSnapshot(ctx context.Context, skill
 	return skill, fmt.Sprintf("%s.zip", skill.Name), buf.Bytes(), nil
 }
 
-// QuerySkillList 查询技能列表（管理接口）
+// QuerySkillList Query skills list (management interface)
 func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.QuerySkillListReq) (resp *interfaces.QuerySkillListResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -925,14 +925,14 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 		},
 		Data: []*interfaces.SkillInfo{},
 	}
-	// 条件构建
+	// Conditional construction.
 	filter := map[string]interface{}{
 		"all":         req.All,
 		"name":        req.Name,
 		"create_user": req.CreateUser,
 		"status":      req.Status.String(),
 	}
-	// 检查分类是否合法
+	// Check whether the classification is legal.
 	if req.Category != "" {
 		if !r.CategoryManager.CheckCategory(req.Category) {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtSkillCategoryNotFound,
@@ -958,7 +958,7 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 	return resp, nil
 }
 
-// 组装技能市场摘要列表
+// Assemble Skill Market Summary List.
 func (r *skillRegistry) assembleMarketSkillInfoList(ctx context.Context, releaseDB []*model.SkillReleaseDB, resourceToBdMap map[string]string) (skillInfos []*interfaces.SkillInfo, err error) {
 	var userIDs []string
 	skillInfos = []*interfaces.SkillInfo{}
@@ -966,7 +966,7 @@ func (r *skillRegistry) assembleMarketSkillInfoList(ctx context.Context, release
 		skillInfos = append(skillInfos, convertSkillMarketDetail(relese, r.CategoryManager.GetCategoryName(ctx, interfaces.BizCategory(relese.Category))))
 		userIDs = append(userIDs, relese.CreateUser, relese.UpdateUser, relese.ReleaseUser)
 	}
-	// 获取用户名称
+	// Get user name.
 	userMap, err := r.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return
@@ -981,7 +981,7 @@ func (r *skillRegistry) assembleMarketSkillInfoList(ctx context.Context, release
 	return
 }
 
-// 组装技能返回信息列表
+// Assembly skills return information list.
 func (r *skillRegistry) assembleSkillInfoList(ctx context.Context, skillDBs []*model.SkillRepositoryDB, resourceToBdMap map[string]string) (skillInfos []*interfaces.SkillInfo, err error) {
 	var userIDs []string
 	skillInfos = []*interfaces.SkillInfo{}
@@ -989,7 +989,7 @@ func (r *skillRegistry) assembleSkillInfoList(ctx context.Context, skillDBs []*m
 		skillInfos = append(skillInfos, convertSkillDetail(skill, r.CategoryManager.GetCategoryName(ctx, interfaces.BizCategory(skill.Category))))
 		userIDs = append(userIDs, skill.CreateUser, skill.UpdateUser)
 	}
-	// 获取用户名称
+	// Get user name.
 	userMap, err := r.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return
@@ -1005,7 +1005,7 @@ func (r *skillRegistry) assembleSkillInfoList(ctx context.Context, skillDBs []*m
 
 func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams, userID string, operations ...interfaces.AuthOperationType) (
 	authResp *interfaces.QueryResponse[model.SkillReleaseDB], resourceToBdMap map[string]string, err error) {
-	// 构建查询执行器
+	// Build query executor.
 	sortField := "f_update_time"
 	switch pageParamsReq.SortBy {
 	case "create_time":
@@ -1018,7 +1018,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 		sortOrder = ormhelper.SortOrderAsc
 	}
 	sort := &ormhelper.SortParams{Fields: []ormhelper.SortField{{Field: sortField, Order: sortOrder}}}
-	// 统计总条数
+	// Total number of statistics.
 	queryTotal := func(newCtx context.Context) (int64, error) {
 		var count int64
 		count, err = r.releaseRepo.CountByWhereClause(ctx, nil, filter)
@@ -1029,7 +1029,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 		}
 		return count, nil
 	}
-	// queryBatch 查询技能列表分页
+	// queryBatch query skill list paging.
 	queryBatch := func(newCtx context.Context, pageSize int, offset int, cursorValue *model.SkillReleaseDB) ([]*model.SkillReleaseDB, error) {
 		var skills []*model.SkillReleaseDB
 		var cursor *ormhelper.CursorParams
@@ -1046,7 +1046,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 			case "f_name":
 				cursor.Value = cursorValue.Name
 			}
-			// 如果使用游标不需要offset
+			// If using a cursor, offset is not required.
 			offset = 0
 		}
 		filter["limit"] = pageSize
@@ -1068,7 +1068,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 	queryBuilder := auth.NewQueryBuilder[model.SkillReleaseDB]().
 		SetPage(pageParamsReq.Page, pageParamsReq.PageSize).SetAll(pageParamsReq.All).
 		SetQueryFunctions(queryTotal, queryBatch).
-		SetFilteredQueryFunctions( // 带过滤条件的查询函数
+		SetFilteredQueryFunctions( // Query function with filter conditions.
 			func(newCtx context.Context, ids []string) (int64, error) {
 				filter["in"] = ids
 				return queryTotal(newCtx)
@@ -1079,7 +1079,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 			},
 		).
 		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			// 从业务域中过滤相关技能
+			// Filter related skills from business domain.
 			resourceIDs := make([]string, 0, len(resourceToBdMap))
 			for resourceID := range resourceToBdMap {
 				resourceIDs = append(resourceIDs, resourceID)
@@ -1087,9 +1087,9 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 			return resourceIDs, nil
 		})
 	if infracommon.IsPublicAPIFromCtx(ctx) {
-		// 如果是外部接口，权限检查
+		// If it is an external interface, permission check.
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
-			// 检查查看权限
+			// Check viewing permissions.
 			var accessor *interfaces.AuthAccessor
 			accessor, err = r.AuthService.GetAccessor(newCtx, userID)
 			if err != nil {
@@ -1104,7 +1104,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 
 func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams, userID string, operations ...interfaces.AuthOperationType) (
 	authResp *interfaces.QueryResponse[model.SkillRepositoryDB], resourceToBdMap map[string]string, err error) {
-	// 构建查询执行器
+	// Build query executor.
 	sortField := "f_update_time"
 	switch pageParamsReq.SortBy {
 	case "create_time":
@@ -1117,7 +1117,7 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 		sortOrder = ormhelper.SortOrderAsc
 	}
 	sort := &ormhelper.SortParams{Fields: []ormhelper.SortField{{Field: sortField, Order: sortOrder}}}
-	// 统计总条数
+	// Total number of statistics.
 	queryTotal := func(newCtx context.Context) (int64, error) {
 		var count int64
 		count, err = r.skillRepo.CountByWhereClause(ctx, nil, filter)
@@ -1128,7 +1128,7 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 		}
 		return count, nil
 	}
-	// queryBatch 查询技能列表分页
+	// queryBatch query skill list paging.
 	queryBatch := func(newCtx context.Context, pageSize int, offset int, cursorValue *model.SkillRepositoryDB) ([]*model.SkillRepositoryDB, error) {
 		var skills []*model.SkillRepositoryDB
 		var cursor *ormhelper.CursorParams
@@ -1145,7 +1145,7 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 			case "f_name":
 				cursor.Value = cursorValue.Name
 			}
-			// 如果使用游标不需要offset
+			// If using a cursor, offset is not required.
 			offset = 0
 		}
 		filter["limit"] = pageSize
@@ -1167,7 +1167,7 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 	queryBuilder := auth.NewQueryBuilder[model.SkillRepositoryDB]().
 		SetPage(pageParamsReq.Page, pageParamsReq.PageSize).SetAll(pageParamsReq.All).
 		SetQueryFunctions(queryTotal, queryBatch).
-		SetFilteredQueryFunctions( // 带过滤条件的查询函数
+		SetFilteredQueryFunctions( // Query function with filter conditions.
 			func(newCtx context.Context, ids []string) (int64, error) {
 				filter["in"] = ids
 				return queryTotal(newCtx)
@@ -1178,7 +1178,7 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 			},
 		).
 		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			// 从业务域中过滤相关技能
+			// Filter related skills from business domain.
 			resourceIDs := make([]string, 0, len(resourceToBdMap))
 			for resourceID := range resourceToBdMap {
 				resourceIDs = append(resourceIDs, resourceID)
@@ -1186,9 +1186,9 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 			return resourceIDs, nil
 		})
 	if infracommon.IsPublicAPIFromCtx(ctx) {
-		// 如果是外部接口，权限检查
+		// If it is an external interface, permission check.
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
-			// 检查查看权限
+			// Check viewing permissions.
 			var accessor *interfaces.AuthAccessor
 			accessor, err = r.AuthService.GetAccessor(newCtx, userID)
 			if err != nil {
@@ -1201,9 +1201,9 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 	return
 }
 
-// QuerySkillMarketList 查询技能市场列表
+// QuerySkillMarketList Query skill market list.
 func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interfaces.QuerySkillMarketListReq) (resp *interfaces.QuerySkillMarketListResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -1218,14 +1218,14 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 		},
 		Data: []*interfaces.SkillInfo{},
 	}
-	// 条件构建
+	// Conditional construction.
 	filter := map[string]interface{}{
 		"all":         req.All,
 		"name":        req.Name,
 		"create_user": req.CreateUser,
 		"status":      interfaces.BizStatusPublished.String(),
 	}
-	// 检查分类是否合法
+	// Check whether the classification is legal.
 	if req.Category != "" {
 		if !r.CategoryManager.CheckCategory(req.Category) {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtSkillCategoryNotFound,
@@ -1252,9 +1252,9 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 	return resp, nil
 }
 
-// GetSkillMarketDetail 获取技能市场详情
+// GetSkillMarketDetail Gets skills market details.
 func (r *skillRegistry) GetSkillMarketDetail(ctx context.Context, req *interfaces.GetSkillMarketDetailReq) (resp *interfaces.SkillInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -1288,9 +1288,9 @@ func (r *skillRegistry) GetSkillMarketDetail(ctx context.Context, req *interface
 	return skillInfo, nil
 }
 
-// GetSkillDetail 获取技能详情
+// GetSkillDetail Gets skill details.
 func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetSkillDetailReq) (resp *interfaces.SkillInfo, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -1313,7 +1313,7 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 		return nil, fmt.Errorf("skill not found: %s", req.SkillID)
 	}
 	skillInfo := convertSkillDetail(skill, r.CategoryManager.GetCategoryName(ctx, interfaces.BizCategory(skill.Category)))
-	// 获取用户信息
+	// Get user information.
 	userNames, err := r.UserMgnt.GetUsersName(ctx, []string{skill.CreateUser, skill.UpdateUser})
 	if err != nil {
 		return nil, err
@@ -1323,8 +1323,8 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 	return skillInfo, nil
 }
 
-// GetSkillNamesByIDs 按技能ID批量取名(轻量只读，不存在的ID略过)
-// 公开面按查看权限过滤：无权限的ID与不存在的ID一样静默略过。
+// GetSkillNamesByIDs batch names based on skill IDs (lightweight read-only, non-existing IDs are ignored)
+// The public page is filtered by viewing permissions: IDs without permissions are silently ignored like IDs that do not exist.
 func (r *skillRegistry) GetSkillNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -1461,7 +1461,7 @@ func (r *skillRegistry) publishSkillSnapshot(ctx context.Context, tx *sql.Tx, sk
 			return err
 		}
 	}
-	// 添加历史记录
+	// add history.
 	existingHistory, err := r.releaseHistoryRepo.SelectBySkillIDAndVersion(ctx, tx, skill.SkillID, skill.Version)
 	if err != nil {
 		return err
@@ -1505,9 +1505,9 @@ func (r *skillRegistry) deletePublishedSkillSnapshot(ctx context.Context, tx *sq
 
 // ========== FR-6: OSS SKILL.md Frontmatter Rewrite ==========
 
-// rewriteSkillMDFrontmatter 重写 OSS 中 SKILL.md 的 name/description
-// 在 UpdateSkillMetadata 事务提交成功后调用
-// 失败只记录日志，不阻塞主流程
+// rewriteSkillMDFrontmatter rewrites the name/description of SKILL.md in OSS.
+// Called after the UpdateSkillMetadata transaction is successfully committed.
+// Failure only records the log and does not block the main process.
 func (r *skillRegistry) rewriteSkillMDFrontmatter(ctx context.Context, skillID, version, newName, newDesc string) error {
 	skillFile, err := r.fileRepo.SelectSkillFileByPath(ctx, nil, skillID, version, SkillMD)
 	if err != nil {
@@ -1537,8 +1537,8 @@ func (r *skillRegistry) rewriteSkillMDFrontmatter(ctx context.Context, skillID, 
 	return nil
 }
 
-// updateFrontmatterNameDesc 只替换 YAML frontmatter 中的 name 和 description
-// 其余所有自定义字段保持不动
+// updateFrontmatterNameDesc only replaces name and description in YAML frontmatter.
+// All remaining custom fields remain unchanged.
 func updateFrontmatterNameDesc(rawMD, newName, newDesc string) (string, error) {
 	parts := strings.SplitN(rawMD, "---", 3)
 	if len(parts) < 3 {

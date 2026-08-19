@@ -7,12 +7,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// GetLanguageFromCtx 从context中获取语言设置
+// GetLanguageFromCtx Gets the language setting from context.
 func GetLanguageFromCtx(ctx context.Context) Language {
 	return GetLanguageByCtx(ctx)
 }
 
-// IsPublicAPIFromCtx 判断是否为公开API
+// IsPublicAPIFromCtx determines whether it is a public API.
 func IsPublicAPIFromCtx(ctx context.Context) bool {
 	if isPublic, ok := ctx.Value(interfaces.IsPublic).(bool); ok {
 		return isPublic
@@ -24,12 +24,12 @@ func SetPublicAPIToCtx(ctx context.Context, isPublic bool) context.Context {
 	return context.WithValue(ctx, interfaces.IsPublic, isPublic)
 }
 
-// SetLanguageToCtx 设置语言到context
+// SetLanguageToCtx sets the language to context.
 func SetLanguageToCtx(ctx context.Context, languageInfo Language) context.Context {
 	return SetLanguageByCtx(ctx, languageInfo)
 }
 
-// SetAccountAuthContextToCtx 设置账户认证上下文到context
+// SetAccountAuthContextToCtx sets the account authentication context to context.
 func SetAccountAuthContextToCtx(ctx context.Context, authContext *interfaces.AccountAuthContext) context.Context {
 	return context.WithValue(ctx, interfaces.KeyAccountAuthContext, authContext)
 }
@@ -39,7 +39,7 @@ func GetAccountAuthContextFromCtx(ctx context.Context) (*interfaces.AccountAuthC
 	return authContext, ok
 }
 
-// GetTokenInfoFromCtx 从context中获取token信息
+// GetTokenInfoFromCtx Gets token information from context.
 // func GetTokenInfoFromCtx(ctx context.Context) (*interfaces.TokenInfo, bool) {
 // 	authContext, ok := GetAccountAuthContextFromCtx(ctx)
 // 	if !ok {
@@ -51,12 +51,12 @@ func GetAccountAuthContextFromCtx(ctx context.Context) (*interfaces.AccountAuthC
 // 	return authContext.TokenInfo, true
 // }
 
-// SetExecutionModeToCtx 设置执行模式到context
+// SetExecutionModeToCtx sets execution mode to context.
 func SetExecutionModeToCtx(ctx context.Context, executionMode interfaces.ExecutionMode) context.Context {
 	return context.WithValue(ctx, interfaces.KeyExecutionMode, executionMode)
 }
 
-// GetExecutionModeFromCtx 从context中获取执行模式
+// GetExecutionModeFromCtx Gets the execution mode from context.
 func GetExecutionModeFromCtx(ctx context.Context) interfaces.ExecutionMode {
 	executionMode, ok := ctx.Value(interfaces.KeyExecutionMode).(interfaces.ExecutionMode)
 	if !ok || executionMode == "" {
@@ -65,29 +65,29 @@ func GetExecutionModeFromCtx(ctx context.Context) interfaces.ExecutionMode {
 	return executionMode
 }
 
-// GetStreamingModeFromCtx 从context中获取流式模式
+// GetStreamingModeFromCtx Gets the streaming mode from context.
 func GetStreamingModeFromCtx(ctx context.Context) (interfaces.StreamingMode, bool) {
 	streamingMode, ok := ctx.Value(interfaces.KeyStreamingMode).(interfaces.StreamingMode)
 	return streamingMode, ok
 }
 
-// SetStreamingModeToCtx 设置流式模式到context
+// SetStreamingModeToCtx sets streaming mode to context.
 func SetStreamingModeToCtx(ctx context.Context, streamingMode interfaces.StreamingMode) context.Context {
 	return context.WithValue(ctx, interfaces.KeyStreamingMode, streamingMode)
 }
 
-// SetResponseWriterToCtx 设置response writer到context
+// SetResponseWriterToCtx sets response writer to context.
 func SetResponseWriterToCtx(ctx context.Context, responseWriter http.ResponseWriter) context.Context {
 	return context.WithValue(ctx, interfaces.KeyResponseWriter, responseWriter)
 }
 
-// GetResponseWriterFromCtx 从context中获取response writer
+// GetResponseWriterFromCtx Gets the response writer from context.
 func GetResponseWriterFromCtx(ctx context.Context) (http.ResponseWriter, bool) {
 	responseWriter, ok := ctx.Value(interfaces.KeyResponseWriter).(http.ResponseWriter)
 	return responseWriter, ok
 }
 
-// GetHeaderFromCtx 请求外部接口时，从context中获取Header参数传递
+// GetHeaderFromCtx When requesting the external interface, obtain the Header parameter from the context and pass it.
 func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	header = map[string]string{}
 	header = MergeTraceHeaders(ctx, header)
@@ -100,12 +100,12 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	return
 }
 
-// SetBusinessDomainToCtx 设置业务域id到context
+// SetBusinessDomainToCtx sets the business domain id to context.
 func SetBusinessDomainToCtx(ctx context.Context, businessDomain string) context.Context {
 	return context.WithValue(ctx, interfaces.XBusinessDomain, businessDomain)
 }
 
-// GetBusinessDomainFromCtx 从context中获取业务域id
+// GetBusinessDomainFromCtx Gets the business domain id from context.
 func GetBusinessDomainFromCtx(ctx context.Context) (string, bool) {
 	businessDomain, ok := ctx.Value(interfaces.XBusinessDomain).(string)
 	return businessDomain, ok

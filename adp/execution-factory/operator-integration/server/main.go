@@ -18,9 +18,9 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/skill"
 )
 
-// Server 服务
+// Server service.
 type Server struct {
-	// 健康检查
+	// health check.
 	httpHealthHandler     interfaces.HTTPRouterInterface
 	restPublicHandler     interfaces.HTTPRouterInterface
 	restPrivateHandler    interfaces.HTTPRouterInterface
@@ -31,7 +31,7 @@ type Server struct {
 	skillIndexBuildWorker interfaces.App
 }
 
-// Start 开启服务
+// Start Start the service.
 func (s *Server) Start() {
 	gin.SetMode(gin.ReleaseMode)
 	err := s.outboxMessageEvent.Start()
@@ -39,7 +39,7 @@ func (s *Server) Start() {
 		s.config.Logger.Errorf("start outbox message event failed, error: %v", err)
 		panic(err)
 	}
-	// 初始化skill索引同步
+	// Initialize skill index synchronization.
 	err = s.skillIndexSyncService.EnsureInitialized(context.Background())
 	if err != nil {
 		s.config.Logger.Errorf("init skill index sync service failed, error: %v", err)
@@ -52,7 +52,7 @@ func (s *Server) Start() {
 		}()
 	}
 
-	// 注册路由 - 健康检查
+	// Register Route - Health Check.
 	go func() {
 		engine := gin.New()
 		engine.Use(gin.Recovery())
@@ -60,18 +60,18 @@ func (s *Server) Start() {
 		routerHealth := engine.Group("/health")
 		s.httpHealthHandler.RegisterRouter(routerHealth)
 
-		// 注册内部接口路由 - 算子相关接口
+		// Register internal interface routing - operator-related interfaces.
 		routerInternalGroup := engine.Group("/api/agent-operator-integration/internal-v1")
 		routerInternalGroup.Use(gin.Recovery())
 		s.restPrivateHandler.RegisterRouter(routerInternalGroup)
 
-		// 注册外部路由 - 算子相关接口
+		// Register external routes - operator related interfaces.
 		routerGroup := engine.Group("/api/agent-operator-integration/v1")
 		routerGroup.Use(gin.Recovery())
 		s.restPublicHandler.RegisterRouter(routerGroup)
 
-		// 注册能力面路由 - 原 capabilities-lab 独立服务，合并后成为本服务的一个
-		// 路由组。路径保持不变，消费方只需改 base URL 的 host。
+		// Register capability plane routing - the original capabilities-lab independent service, after the merger, it became one of this service.
+		// routing group. The path remains unchanged, and the consumer only needs to change the host of the base URL.
 		routerLabGroup := engine.Group("/api/capabilities-lab/v1")
 		routerLabGroup.Use(gin.Recovery())
 		capabilitieslab.RegisterRouter(routerLabGroup)
@@ -82,25 +82,25 @@ func (s *Server) Start() {
 			s.config.Logger.Errorf("start server failed, error: %v", err)
 		}
 	}()
-	// 启动MQ处理
+	// Start MQ processing.
 	go s.MQHandler.Subscribe()
 }
 
-// Stop 停止服务
+// Stop stop service.
 func (s *Server) Stop(ctx context.Context) {
 	s.config.Logger.Info("stop agent-operator-integration server")
-	// sandbox.Close()      // 关闭并销毁沙箱会话池
+	// sandbox.Close() // Close and destroy the sandbox session pool.
 	s.outboxMessageEvent.Stop(ctx)
 	if s.skillIndexBuildWorker != nil {
 		s.skillIndexBuildWorker.Stop(ctx)
 	}
-	mcpinstance.Close() // 关闭实例池
+	mcpinstance.Close() // Shut down the instance pool.
 }
 
 func main() {
-	// 初始化全局配置
+	// Initialize global configuration.
 	config := config.NewConfigLoader()
-	// 设置错误码语言
+	// Set error code language.
 	common.SetLang(config.Project.Language)
 	s := &Server{
 		config:                config,
@@ -118,7 +118,7 @@ func main() {
 	}
 	s.Start()
 	defer s.Stop(context.Background())
-	// 等待信号量
+	// Wait for semaphore.
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT) //nolint
 	<-c

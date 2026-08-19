@@ -1,4 +1,4 @@
-# 多阶段：builder 内编译 Go（原 Azure pipeline 的独立编译阶段已内联），prod 仅留二进制。
+# Multi-stage: Go is compiled within the builder (the independent compilation stage of the original Azure pipeline has been inlined), leaving only the binary for prod.
 ########################### Stage 0: builder ########################
 ARG BUILD_IMAGE=golang:1.25.10
 ARG baseImage=ubuntu:22.04
@@ -22,17 +22,17 @@ WORKDIR /app/operator-integration
 
 COPY --from=builder /out/operator-integration ./operator-integration
 
-# Go 二进制不自带根证书，基础镜像里也没有，任何出网 HTTPS 请求都会以
-# "certificate signed by unknown authority" 失败（例如查询 PyPI 版本）。
+# The Go binary does not come with a root certificate, nor is it included in the base image. Any outbound HTTPS requests will end with.
+# "certificate signed by unknown authority" fails (e.g. querying PyPI version).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# 创建非root用户
+# Create non-root user.
 RUN useradd -m -r -s /bin/bash aishu \
     && chown -R aishu:aishu /app/operator-integration
 
-# 切换到非root用户
+# Switch to non-root user.
 USER aishu
 
 CMD ["./operator-integration"]

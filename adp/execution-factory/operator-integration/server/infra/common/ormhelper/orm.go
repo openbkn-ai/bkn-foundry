@@ -6,16 +6,16 @@ import (
 	"fmt"
 )
 
-// DB ORM核心类
+// DB ORM core class.
 type DB struct {
 	executor Executor
 	scanner  Scanner
 	dbName   string
-	// 为事务支持添加原始执行器引用
+	// Add raw executor reference for transaction support.
 	originalExecutor Executor
 }
 
-// New 创建ORM实例
+// New Create ORM instance.
 func New(executor Executor, dbName string) *DB {
 	return &DB{
 		executor:         executor,
@@ -25,7 +25,7 @@ func New(executor Executor, dbName string) *DB {
 	}
 }
 
-// WithTx 使用事务创建新的ORM实例（推荐方式）
+// WithTx creates a new ORM instance using transactions (recommended way)
 func (db *DB) WithTx(tx *sql.Tx) *DB {
 	return &DB{
 		executor:         tx,
@@ -35,7 +35,7 @@ func (db *DB) WithTx(tx *sql.Tx) *DB {
 	}
 }
 
-// SetExecutor 设置执行器（兼容现有代码模式）
+// SetExecutor sets the executor (compatible with existing code patterns)
 func (db *DB) SetExecutor(ctx context.Context, tx *sql.Tx) *DB {
 	if tx != nil {
 		return db.WithTx(tx)
@@ -43,7 +43,7 @@ func (db *DB) SetExecutor(ctx context.Context, tx *sql.Tx) *DB {
 	return db
 }
 
-// WithTxIfProvided 便民方法：根据tx参数自动选择执行器
+// WithTxIfProvided Convenient method: automatically select the executor based on tx parameters.
 func (db *DB) WithTxIfProvided(tx *sql.Tx) *DB {
 	if tx != nil {
 		return db.WithTx(tx)
@@ -51,7 +51,7 @@ func (db *DB) WithTxIfProvided(tx *sql.Tx) *DB {
 	return db
 }
 
-// Select SELECT语句入口
+// Select SELECT statement entry.
 func (db *DB) Select(columns ...string) *SelectBuilder {
 	return &SelectBuilder{
 		db:      db,
@@ -59,14 +59,14 @@ func (db *DB) Select(columns ...string) *SelectBuilder {
 	}
 }
 
-// Insert INSERT语句入口
+// Insert INSERT statement entry.
 func (db *DB) Insert() *InsertBuilder {
 	return &InsertBuilder{
 		db: db,
 	}
 }
 
-// Update UPDATE语句入口
+// Update UPDATE statement entry.
 func (db *DB) Update(table string) *UpdateBuilder {
 	fullTableName := fmt.Sprintf("`%s`.`%s`", db.dbName, table)
 	return &UpdateBuilder{
@@ -75,19 +75,19 @@ func (db *DB) Update(table string) *UpdateBuilder {
 	}
 }
 
-// Delete DELETE语句入口
+// Delete DELETE statement entry.
 func (db *DB) Delete() *DeleteBuilder {
 	return &DeleteBuilder{
 		db: db,
 	}
 }
 
-// GetExecutor 获取当前执行器（用于原生SQL）
+// GetExecutor gets the current executor (for native SQL)
 func (db *DB) GetExecutor() Executor {
 	return db.executor
 }
 
-// IsInTransaction 检查是否在事务中
+// IsInTransaction checks whether it is in a transaction.
 func (db *DB) IsInTransaction() bool {
 	_, isTx := db.executor.(*sql.Tx)
 	return isTx

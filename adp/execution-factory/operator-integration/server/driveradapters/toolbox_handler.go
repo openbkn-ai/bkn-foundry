@@ -10,12 +10,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
-// ToolBoxRestHandler 工具箱rest接口
+// ToolBoxRestHandler toolbox rest interface.
 type ToolBoxRestHandler interface {
-	// RegisterPrivate 注册内部API
+	// RegisterPrivate register internal API.
 	RegisterPrivate(engine *gin.RouterGroup)
 
-	// RegisterPublic 注册外部API
+	// RegisterPublic Register external API.
 	RegisterPublic(engine *gin.RouterGroup)
 }
 
@@ -42,10 +42,10 @@ func NewToolBoxRestHandler() ToolBoxRestHandler {
 	return tHandler
 }
 
-// RegisterPrivate 注册内部API
+// RegisterPrivate register internal API.
 func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
-	/*工具箱相关接口*/
-	// 查询工具箱信息
+	// Toolbox related interfaces.
+	// Query toolbox information.
 	engine.GET("/tool-box/list", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
 	engine.GET("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.QueryTool)
@@ -53,16 +53,16 @@ func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	engine.POST("/tool-box/:box_id/proxy/:tool_id", middlewareProxyRequest(), r.ToolBoxHandler.ExecuteTool)
 }
 
-// RegisterPublic 注册外部API
+// RegisterPublic Register external API.
 func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.POST("/tool-box", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.CreateToolBox)
 	engine.POST("/tool-box/:box_id", r.ToolBoxHandler.UpdateToolBox)
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
 	engine.DELETE("/tool-box/:box_id", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.DeleteToolBox)
 	engine.GET("/tool-box/list", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
-	// POST /api/agent-operator-integration/v1/tool-box/names 按工具箱ID批量取名(前端对象级授权页回显)
+	// POST /api/agent-operator-integration/v1/tool-box/names Batch names based on toolbox ID (front-end object-level authorization page echo)
 	engine.POST("/tool-box/names", r.ToolBoxHandler.QueryToolBoxNamesByIDs)
-	// 工具
+	// Tools.
 	engine.POST("/tool-box/:box_id/tool", r.ToolBoxHandler.CreateTool)
 	engine.POST("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.UpdateTool)
 	engine.GET("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.QueryTool)
@@ -73,14 +73,14 @@ func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	engine.POST("/tool-box/:box_id/proxy/:tool_id", middlewareProxyRequest(), r.ToolBoxHandler.ExecuteTool)
 	engine.POST("/tool-box/:box_id/status", r.ToolBoxHandler.UpdateToolBoxStatus)
 
-	// 算子转换成工具
+	// Operators converted into tools.
 	engine.POST("/operator/convert/tool", r.ToolBoxHandler.OperatorToTool)
-	// OpenAPI 能力包：算子注册 + convert 工具（统一血缘）
+	// OpenAPI capability package: operator registration + convert tool (unified bloodline)
 	engine.POST("/capabilities/openapi-bundle", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.RegisterOpenApiBundle)
-	// 批量获取已发布工具箱信息
+	// Get published toolbox information in batches.
 	engine.GET("/tool-box/market/:box_id/:fields", r.ToolBoxHandler.GetReleaseToolBoxInfo)
 
-	/*工具箱市场界面*/
+	// Toolbox Market Interface.
 	engine.GET("/tool-box/market", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryMarketToolBoxPage)
 	engine.GET("/tool-box/market/:box_id", r.ToolBoxHandler.QueryMarketToolBox)
 	engine.GET("/tool-box/market/tools", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.GetMarketToolList)

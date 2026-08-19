@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
@@ -20,6 +19,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 type skillManagementReader struct {
@@ -36,7 +36,7 @@ var (
 	mgmtReaderInst interfaces.SkillManagementReader
 )
 
-// NewSkillManagementReader 创建管理态技能读取服务
+// NewSkillManagementReader creates a management skill reading service.
 func NewSkillManagementReader() interfaces.SkillManagementReader {
 	mgmtReaderOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -52,7 +52,7 @@ func NewSkillManagementReader() interfaces.SkillManagementReader {
 	return mgmtReaderInst
 }
 
-// GetManagementContent 获取管理态 SKILL.md 内容
+// GetManagementContent Gets the management state SKILL.md content.
 func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *interfaces.GetManagementContentReq) (resp *interfaces.GetManagementContentResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -100,15 +100,15 @@ func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *i
 		resp.Files = []*interfaces.SkillFileSummary{}
 	}
 
-	// 查询 SKILL.md 的 OSS 记录，供后续使用
+	// Query the OSS records of SKILL.md for subsequent use.
 	skillFile, err := r.fileRepo.SelectSkillFileByPath(ctx, nil, skill.SkillID, skill.Version, SkillMD)
 	if err != nil {
 		return nil, err
 	}
 
-	// 根据 response_mode 决定返回 URL 还是正文内容:
-	//   url(默认) — 填充 url，Content 为空
-	//   content   — 填充 Content，url 为空
+	// Determine whether to return URL or text content based on response_mode:
+	// url (default) — populate url, Content is empty.
+	// content — populate Content, url is empty.
 	switch req.ResponseMode {
 	case "content":
 		if skill.SkillContent != "" {
@@ -125,7 +125,7 @@ func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *i
 			}
 		}
 	default:
-		// url 模式（含默认空值）：填充 URL，Content 保持零值
+		// url pattern (with default empty value): URL is populated, Content remains zero.
 		if skillFile != nil {
 			downloadURL, err := r.assetStore.GetDownloadURL(ctx, &interfaces.OssObject{
 				StorageID:  skillFile.StorageID,
@@ -141,7 +141,7 @@ func (r *skillManagementReader) GetManagementContent(ctx context.Context, req *i
 	return resp, nil
 }
 
-// ReadManagementFile 读取管理态指定文件
+// ReadManagementFile reads the specified file in the management state.
 func (r *skillManagementReader) ReadManagementFile(ctx context.Context, req *interfaces.ReadManagementFileReq) (resp *interfaces.ReadManagementFileResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -228,7 +228,7 @@ func (r *skillManagementReader) ReadManagementFile(ctx context.Context, req *int
 	return resp, nil
 }
 
-// DownloadManagementSkill 下载管理态完整技能包
+// DownloadManagementSkill Download the complete management skills package.
 func (r *skillManagementReader) DownloadManagementSkill(ctx context.Context, req *interfaces.DownloadManagementSkillReq) (resp *interfaces.DownloadSkillResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -280,7 +280,7 @@ func (r *skillManagementReader) DownloadManagementSkill(ctx context.Context, req
 	}, nil
 }
 
-// buildArchiveFromFiles 从文件列表构建 ZIP 归档
+// buildArchiveFromFiles Builds a ZIP archive from a list of files.
 func buildArchiveFromFiles(ctx context.Context, store skillAssetStore, skill *model.SkillRepositoryDB,
 	files []*model.SkillFileIndexDB) (*model.SkillRepositoryDB, string, []byte, error) {
 	var buf bytes.Buffer
@@ -310,8 +310,8 @@ func buildArchiveFromFiles(ctx context.Context, store skillAssetStore, skill *mo
 	return skill, fmt.Sprintf("%s.zip", skill.Name), buf.Bytes(), nil
 }
 
-// detectSkillFileType 从 repository 记录推断注册类型
-// FR-5: content 注册的 manifest 仅有 SKILL.md 一条记录，zip 注册有更多文件
+// detectSkillFileType infers the registration type from the repository record.
+// FR-5: The content registered manifest only has one record of SKILL.md, and the zip registered manifest has more files.
 func detectSkillFileType(skill *model.SkillRepositoryDB) string {
 	manifest := utils.JSONToObject[[]*interfaces.SkillFileSummary](skill.FileManifest)
 	if len(manifest) == 0 {

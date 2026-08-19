@@ -8,7 +8,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// MCPToolArguments MCP工具参数
+// MCPToolArguments MCP tool parameters.
 type MCPToolArguments struct {
 	Headers     map[string]any `json:"header"`
 	Body        any            `json:"body"`
@@ -25,7 +25,7 @@ func (args *MCPToolArguments) ToHTTPRequestParams() map[string]any {
 	}
 }
 
-// MCPRuntimeConfig MCP运行时配置
+// MCPRuntimeConfig MCP runtime configuration.
 type MCPRuntimeConfig struct {
 	MCPID        string                 `json:"mcp_id"`
 	Version      int                    `json:"version"`
@@ -42,7 +42,7 @@ type MCPToolDeployConfig struct {
 	InputSchema json.RawMessage `json:"input_schema"`
 }
 
-// MCPServerInstance MCP Server运行时实例
+// MCPServerInstance MCP Server runtime instance.
 type MCPServerInstance struct {
 	Config           *MCPRuntimeConfig
 	MCPServer        *server.MCPServer
@@ -53,14 +53,14 @@ type MCPServerInstance struct {
 	MessageRoutePath string
 	IsDisabled       bool
 	CreatedAt        *time.Time
-	// ActiveStreamConn / ActiveSSEConn 用于实例池淘汰保护：
-	// 当存在活跃连接时（>0），实例不会被 LRU/TTL 淘汰。
-	// 计数在 driveradapters/mcp 的 HTTP handler 中通过 atomic 维护。
+	// ActiveStreamConn / ActiveSSEConn for instance pool retirement protection:
+	// Instances are not evicted by LRU/TTL when there are active connections (>0).
+	// The count is maintained via atomic in the HTTP handler of driveradapters/mcp.
 	ActiveStreamConn int64
 	ActiveSSEConn    int64
 }
 
-// InstanceService MCP 实例服务接口
+// InstanceService MCP instance service interface.
 type InstanceService interface {
 	CreateMCPInstance(ctx context.Context, req *MCPInstanceCreateRequest) (*MCPInstanceCreateResponse, error)
 	UpdateMCPInstance(ctx context.Context, mcpID string, version int, req *MCPInstanceUpdateRequest) (*MCPInstanceUpdateResponse, error)

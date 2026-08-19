@@ -1,48 +1,48 @@
 # 🚀 ORM Helper
 
-一个轻量级、高性能的Go语言ORM工具库，专为简化数据库操作而设计。支持链式调用、事务管理、日志监控等功能。
+A lightweight, high-performance Go language ORM tool library designed to simplify database operations. Supports chain calls, transaction management, log monitoring and other functions.
 
-## 📋 目录
+## 📋 Table of Contents.
 
-- [✨ 特性](#-特性)
-- [🚀 快速入门](#-快速入门)
-  - [安装](#安装)
-  - [基础使用](#基础使用)
-  - [5分钟上手](#5分钟上手)
-- [📖 基础教程](#-基础教程)
-  - [查询操作](#查询操作)
-  - [插入操作](#插入操作)
-  - [更新操作](#更新操作)
-  - [删除操作](#删除操作)
-- [🔧 高级功能](#-高级功能)
-  - [事务管理](#事务管理)
-  - [日志功能](#日志功能)
-  - [复杂查询](#复杂查询)
-  - [DAO模式集成](#dao模式集成)
-- [⚡ 性能优化](#-性能优化)
-- [🛠️ 最佳实践](#️-最佳实践)
-- [❓ 常见问题](#-常见问题)
-- [🏗️ 架构设计](#️-架构设计)
+- [✨ Features](#-Features)
+- [🚀 Quick Start](#-Quick Start)
+- [Install](#install)
+- [Basic use](#Basic use)
+- [Get started in 5 minutes](#5Minutes to get started)
+- [📖Basic Tutorial](#-Basic Tutorial)
+- [Query operation](#query operation)
+- [insert operation](#insert operation)
+- [Update operation](#update operation)
+- [Delete operation](#delete operation)
+- [🔧 Advanced Features](#-Advanced Features)
+- [Affair Management](#affair management)
+- [Log function](#LOG function)
+- [Complex query](#complex query)
+- [DAO mode integration](#dao mode integration)
+- [⚡Performance Optimization](#-Performance Optimization)
+- [🛠️Best Practices](#️-Best Practices)
+- [❓ FAQ](#-FAQ)
+- [🏗️Architecture Design](#️-Architecture Design)
 
-## ✨ 特性
+## ✨ Features.
 
-- 🔗 **链式调用**：流畅的API设计，代码更简洁
-- 🔄 **事务支持**：完整的事务管理，确保数据一致性
-- 📊 **日志监控**：内置SQL执行日志，支持慢查询检测
-- 🎯 **类型安全**：基于反射的结构体映射，编译时类型检查
-- ⚡ **高性能**：最小化反射使用，优化的SQL构建
-- 🔌 **兼容性强**：支持标准database/sql和sqlx
-- 🧪 **易测试**：支持Mock测试，便于单元测试
+- 🔗 **Chain call**: smooth API design, simpler code.
+- 🔄 **Transaction Support**: Complete transaction management to ensure data consistency.
+- 📊 **Log Monitoring**: Built-in SQL execution log, supports slow query detection.
+- 🎯 **Type safety**: reflection-based structure mapping, compile-time type checking.
+- ⚡ **High Performance**: Minimized reflection usage, optimized SQL builds.
+- 🔌 **Strong compatibility**: supports standard database/sql and sqlx.
+- 🧪 **Easy to Test**: Supports Mock testing for easy unit testing.
 
-## 🚀 快速入门
+## 🚀 Quick Start.
 
-### 安装
+### Installation.
 
 ```bash
 go get github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper
 ```
 
-### 基础使用
+### Basic usage.
 
 ```go
 import (
@@ -50,11 +50,11 @@ import (
     "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 )
 
-// 1. 创建ORM实例
-dbPool := db.NewDBPool() // 你的数据库连接池
+// 1. Create an ORM instance.
+dbPool := db.NewDBPool() // Your database connection pool.
 orm := ormhelper.New(dbPool, "your_database_name")
 
-// 2. 定义数据模型
+// 2. Define data model.
 type User struct {
     ID       string `json:"f_id" db:"f_id"`
     Name     string `json:"f_name" db:"f_name"`
@@ -63,25 +63,25 @@ type User struct {
     CreateTime int64 `json:"f_create_time" db:"f_create_time"`
 }
 
-// 3. 开始使用
+// 3. Get started.
 ctx := context.Background()
 
-// 查询用户
+//Query user.
 user := &User{}
 err := orm.Select().From("t_users").WhereEq("f_id", "123").First(ctx, user)
 
-// 插入用户
+//Insert user.
 _, err = orm.Insert().Into("t_users").Values(map[string]interface{}{
     "f_id":    "new-user-id",
-    "f_name":  "张三",
+"f_name": "Zhang San",
     "f_email": "zhangsan@example.com",
     "f_status": "active",
 }).Execute(ctx)
 ```
 
-### 5分钟上手
+### Get started in 5 minutes.
 
-以下是一个完整的使用示例，展示了ORM Helper的主要功能：
+The following is a complete usage example demonstrating the main features of ORM Helper:
 
 ```go
 package main
@@ -95,7 +95,7 @@ import (
     "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/logger"
 )
 
-// 定义数据模型
+//Define data model.
 type MCPConfig struct {
     ID          string `json:"f_id" db:"f_id"`
     Name        string `json:"f_name" db:"f_name"`
@@ -106,14 +106,14 @@ type MCPConfig struct {
 }
 
 func main() {
-    // 1. 初始化数据库连接和ORM
-    dbPool := initDB() // 你的数据库初始化函数
+// 1. Initialize database connection and ORM.
+dbPool := initDB() // Your database initialization function.
 
-    // 创建带日志的ORM实例
+//Create an ORM instance with logs.
     logger := logger.NewLogger(logger.LevelInfo)
     logConfig := ormhelper.LogConfig{
         Level:              ormhelper.LogLevelInfo,
-        SlowQueryThreshold: 100, // 100毫秒
+SlowQueryThreshold: 100, // 100 milliseconds.
         LogSlowQuery:       true,
         LogAllQueries:      false,
     }
@@ -121,11 +121,11 @@ func main() {
     orm := ormhelper.NewWithLogger(dbPool, "your_database", logger, logConfig)
     ctx := context.Background()
 
-    // 2. 插入数据
+// 2. Insert data.
     newConfig := &MCPConfig{
         ID:          "config-001",
-        Name:        "示例配置",
-        Description: "这是一个示例配置",
+Name: "Example Configuration",
+Description: "This is an example configuration",
         Status:      "active",
         CreateTime:  time.Now().UnixNano(),
         UpdateTime:  time.Now().UnixNano(),
@@ -141,12 +141,12 @@ func main() {
     }).Execute(ctx)
 
     if err != nil {
-        log.Printf("插入失败: %v", err)
+log.Printf("Insertion failed: %v", err)
         return
     }
-    log.Println("✅ 数据插入成功")
+log.Println("✅ Data insertion successful")
 
-    // 3. 查询单条数据
+// 3. Query a single piece of data.
     config := &MCPConfig{}
     err = orm.Select().
         From("t_mcp_server_config").
@@ -154,12 +154,12 @@ func main() {
         First(ctx, config)
 
     if err != nil {
-        log.Printf("查询失败: %v", err)
+log.Printf("Query failed: %v", err)
         return
     }
-    log.Printf("✅ 查询成功: %+v", config)
+log.Printf("✅ Query successful: %+v", config)
 
-    // 4. 查询多条数据
+// 4. Query multiple pieces of data.
     configs := []*MCPConfig{}
     err = orm.Select().
         From("t_mcp_server_config").
@@ -169,109 +169,109 @@ func main() {
         Get(ctx, &configs)
 
     if err != nil {
-        log.Printf("查询列表失败: %v", err)
+log.Printf("Query list failed: %v", err)
         return
     }
-    log.Printf("✅ 查询到 %d 条记录", len(configs))
+log.Printf("✅ %d records found", len(configs))
 
-    // 5. 更新数据
+// 5. Update data.
     _, err = orm.Update("t_mcp_server_config").
-        Set("f_description", "更新后的描述").
+Set("f_description", "Updated description").
         Set("f_update_time", time.Now().UnixNano()).
         WhereEq("f_id", "config-001").
         Execute(ctx)
 
     if err != nil {
-        log.Printf("更新失败: %v", err)
+log.Printf("Update failed: %v", err)
         return
     }
-    log.Println("✅ 数据更新成功")
+log.Println("✅ Data updated successfully")
 
-    // 6. 统计数据
+// 6. Statistics.
     count, err := orm.Select().
         From("t_mcp_server_config").
         WhereEq("f_status", "active").
         Count(ctx)
 
     if err != nil {
-        log.Printf("统计失败: %v", err)
+log.Printf("Statistics failed: %v", err)
         return
     }
-    log.Printf("✅ 活跃配置数量: %d", count)
+log.Printf("✅ Number of active configurations: %d", count)
 
-    // 7. 事务操作
+// 7. Transaction operations.
     tx, err := dbPool.Begin()
     if err != nil {
-        log.Printf("开启事务失败: %v", err)
+log.Printf("Failed to open transaction: %v", err)
         return
     }
     defer tx.Rollback()
 
     txORM := orm.WithTx(tx)
 
-    // 在事务中执行多个操作
+//Perform multiple operations in a transaction.
     _, err = txORM.Update("t_mcp_server_config").
         Set("f_status", "inactive").
         WhereEq("f_id", "config-001").
         Execute(ctx)
 
     if err != nil {
-        log.Printf("事务操作失败: %v", err)
+log.Printf("Transaction operation failed: %v", err)
         return
     }
 
-    // 提交事务
+// Submit transaction.
     if err = tx.Commit(); err != nil {
-        log.Printf("提交事务失败: %v", err)
+log.Printf("Failed to commit transaction: %v", err)
         return
     }
-    log.Println("✅ 事务执行成功")
+log.Println("✅ Transaction executed successfully")
 }
 ```
 
-运行这个示例，你将看到类似以下的日志输出：
+Running this example, you will see log output similar to the following:
 
 ```
-✅ 数据插入成功
-INF SQL执行 | SQL: SELECT f_id, f_name, f_description, f_status, f_create_time, f_update_time FROM `your_database`.`t_mcp_server_config` WHERE f_id = ? LIMIT 1 | 参数: ['config-001'] | 执行时间: 5ms
-✅ 查询成功: &{ID:config-001 Name:示例配置 Description:这是一个示例配置 Status:active CreateTime:1703123456789 UpdateTime:1703123456789}
-✅ 查询到 1 条记录
-✅ 数据更新成功
-✅ 活跃配置数量: 1
-✅ 事务执行成功
+✅ Data inserted successfully.
+INF SQL execution | SQL: SELECT f_id, f_name, f_description, f_status, f_create_time, f_update_time FROM `your_database`.`t_mcp_server_config` WHERE f_id = ? LIMIT 1 | Parameter: ['config-001'] | Execution time: 5ms.
+✅ Query successful: &{ID:config-001 Name:Sample configuration Description:This is a sample configuration Status:active CreateTime:1703123456789 UpdateTime:1703123456789}
+✅ 1 record found.
+✅ Data updated successfully.
+✅ Number of active configurations: 1.
+✅ Transaction executed successfully.
 ```
 
-🎉 **恭喜！** 你已经掌握了ORM Helper的基本用法。接下来可以查看详细的功能介绍和高级用法。
+🎉 **Congratulations! ** You have mastered the basic usage of ORM Helper. Next, you can view detailed function introduction and advanced usage.
 
-## 📖 基础教程
+## 📖 Basic Tutorial.
 
-### 查询操作
+### Query operation.
 
-#### 查询单条记录
+#### Query a single record.
 
 ```go
-// 根据ID查询
+//Query based on ID.
 user := &User{}
 err := orm.Select().From("t_users").WhereEq("f_id", "123").First(ctx, user)
 
-// 查询指定字段
+//Query the specified field.
 user := &User{}
 err := orm.Select("f_id", "f_name", "f_email").
     From("t_users").
     WhereEq("f_id", "123").
     First(ctx, user)
 
-// 处理未找到的情况
+// Handle not found situation.
 if err == sql.ErrNoRows {
-    // 记录不存在
+//The record does not exist.
     return nil, nil
 }
 ```
 
-#### 查询多条记录
+#### Query multiple records.
 
 ```go
-// 查询列表
+//Query list.
 users := []*User{}
 err := orm.Select().
     From("t_users").
@@ -279,37 +279,37 @@ err := orm.Select().
     OrderByDesc("f_create_time").
     Get(ctx, &users)
 
-// 分页查询
+//Paging query.
 users := []*User{}
 err := orm.Select().
     From("t_users").
     WhereEq("f_status", "active").
     OrderByDesc("f_create_time").
     Limit(20).
-    Offset(40). // 第3页，每页20条
+Offset(40). // Page 3, 20 items per page.
     Get(ctx, &users)
 
-// 统计数量
+// count quantity.
 count, err := orm.Select().
     From("t_users").
     WhereEq("f_status", "active").
     Count(ctx)
 ```
 
-#### 复杂查询条件
+#### Complex query conditions.
 
 ```go
-// 多个条件
+//Multiple conditions.
 users := []*User{}
 err := orm.Select().
     From("t_users").
     WhereEq("f_status", "active").
-    WhereLike("f_name", "%张%").
+WhereLike("f_name", "%John%").
     WhereGt("f_create_time", startTime).
     WhereLt("f_create_time", endTime).
     Get(ctx, &users)
 
-// IN 查询
+// IN query.
 userIDs := []interface{}{"id1", "id2", "id3"}
 users := []*User{}
 err := orm.Select().
@@ -317,7 +317,7 @@ err := orm.Select().
     WhereIn("f_id", userIDs...).
     Get(ctx, &users)
 
-// 复杂条件组合
+//Complex condition combination.
 users := []*User{}
 err := orm.Select().
     From("t_users").
@@ -330,15 +330,15 @@ err := orm.Select().
     Get(ctx, &users)
 ```
 
-### 插入操作
+### Insert operation.
 
-#### 单条插入
+#### Single insert.
 
 ```go
-// 使用map插入
+//Insert using map.
 data := map[string]interface{}{
     "f_id":          "user-001",
-    "f_name":        "张三",
+"f_name": "Zhang San",
     "f_email":       "zhangsan@example.com",
     "f_status":      "active",
     "f_create_time": time.Now().UnixNano(),
@@ -349,19 +349,19 @@ if err != nil {
     return err
 }
 
-// 获取插入的行数
+// Get the number of inserted rows.
 rowsAffected, _ := result.RowsAffected()
 ```
 
-#### 批量插入
+#### Batch insert.
 
 ```go
-// 批量插入多条记录
+//Insert multiple records in batches.
 columns := []string{"f_id", "f_name", "f_email", "f_status", "f_create_time"}
 values := [][]interface{}{
-    {"user-001", "张三", "zhangsan@example.com", "active", time.Now().UnixNano()},
-    {"user-002", "李四", "lisi@example.com", "active", time.Now().UnixNano()},
-    {"user-003", "王五", "wangwu@example.com", "active", time.Now().UnixNano()},
+{"user-001", "Zhang San", "zhangsan@example.com", "active", time.Now().UnixNano()},
+{"user-002", "Alice", "alice@example.com", "active", time.Now().UnixNano()},
+{"user-003", "Bob", "bob@example.com", "active", time.Now().UnixNano()},
 }
 
 _, err := orm.Insert().
@@ -370,26 +370,26 @@ _, err := orm.Insert().
     Execute(ctx)
 ```
 
-### 更新操作
+### Update operation.
 
-#### 根据条件更新
+#### Update based on conditions.
 
 ```go
-// 更新单个字段
+//Update a single field.
 _, err := orm.Update("t_users").
     Set("f_status", "inactive").
     WhereEq("f_id", "user-001").
     Execute(ctx)
 
-// 更新多个字段
+//Update multiple fields.
 _, err := orm.Update("t_users").
-    Set("f_name", "新名称").
+Set("f_name", "new name").
     Set("f_email", "newemail@example.com").
     Set("f_update_time", time.Now().UnixNano()).
     WhereEq("f_id", "user-001").
     Execute(ctx)
 
-// 批量更新
+// Batch update.
 affectedRows, err := orm.Update("t_users").
     Set("f_status", "inactive").
     Set("f_update_time", time.Now().UnixNano()).
@@ -397,20 +397,20 @@ affectedRows, err := orm.Update("t_users").
     ExecuteAndReturnAffected(ctx)
 ```
 
-### 删除操作
+### Delete operation.
 
 ```go
-// 根据ID删除
+//Delete based on ID.
 _, err := orm.Delete().From("t_users").WhereEq("f_id", "user-001").Execute(ctx)
 
-// 批量删除
+// Batch delete.
 _, err := orm.Delete().
     From("t_users").
     WhereEq("f_status", "inactive").
     WhereLt("f_create_time", oldTime).
     Execute(ctx)
 
-// 软删除（推荐）
+// Soft delete (recommended)
 _, err := orm.Update("t_users").
     Set("f_status", "deleted").
     Set("f_delete_time", time.Now().UnixNano()).
@@ -418,24 +418,24 @@ _, err := orm.Update("t_users").
     Execute(ctx)
 ```
 
-## 🔧 高级功能
+## 🔧 Advanced features.
 
-### 事务管理
+### Transaction Management.
 
-#### 基础事务使用
+#### Basic transaction usage.
 
 ```go
-// 开启事务
+//Start transaction.
 tx, err := dbPool.Begin()
 if err != nil {
     return err
 }
-defer tx.Rollback() // 确保异常时回滚
+defer tx.Rollback() // Ensure rollback in case of exception.
 
-// 使用事务ORM
+// Use transaction ORM.
 txORM := orm.WithTx(tx)
 
-// 在事务中执行操作
+//Perform operations in transaction.
 _, err = txORM.Insert().Into("t_users").Values(userData).Execute(ctx)
 if err != nil {
     return err
@@ -446,16 +446,16 @@ if err != nil {
     return err
 }
 
-// 提交事务
+// Submit transaction.
 return tx.Commit()
 ```
 
-#### 事务函数封装
+#### Transaction function encapsulation.
 
 ```go
 func (dao *UserDAO) CreateUserWithProfile(ctx context.Context, user *User, profile *UserProfile) error {
     return dao.withTransaction(ctx, func(txORM *ormhelper.DB) error {
-        // 插入用户
+//Insert user.
         _, err := txORM.Insert().Into("t_users").Values(map[string]interface{}{
             "f_id":          user.ID,
             "f_name":        user.Name,
@@ -463,10 +463,10 @@ func (dao *UserDAO) CreateUserWithProfile(ctx context.Context, user *User, profi
             "f_create_time": time.Now().UnixNano(),
         }).Execute(ctx)
         if err != nil {
-            return fmt.Errorf("插入用户失败: %w", err)
+return fmt.Errorf("Failed to insert user: %w", err)
         }
 
-        // 插入用户资料
+//Insert user information.
         _, err = txORM.Insert().Into("t_user_profiles").Values(map[string]interface{}{
             "f_user_id":     user.ID,
             "f_avatar":      profile.Avatar,
@@ -474,14 +474,14 @@ func (dao *UserDAO) CreateUserWithProfile(ctx context.Context, user *User, profi
             "f_create_time": time.Now().UnixNano(),
         }).Execute(ctx)
         if err != nil {
-            return fmt.Errorf("插入用户资料失败: %w", err)
+return fmt.Errorf("Failed to insert user data: %w", err)
         }
 
         return nil
     })
 }
 
-// 事务辅助函数
+//Transaction helper function.
 func (dao *UserDAO) withTransaction(ctx context.Context, fn func(*ormhelper.DB) error) error {
     tx, err := dao.dbPool.Begin()
     if err != nil {
@@ -498,37 +498,37 @@ func (dao *UserDAO) withTransaction(ctx context.Context, fn func(*ormhelper.DB) 
 }
 ```
 
-### 日志功能
+### Log function.
 
-#### 日志配置详解
+#### Detailed explanation of log configuration.
 
 ```go
-// 开发环境配置 - 详细日志
+// Development environment configuration - detailed log.
 devLogger := logger.NewLogger(logger.LevelDebug)
 devLogConfig := ormhelper.LogConfig{
-    Level:              ormhelper.LogLevelDebug, // 记录所有日志
-    SlowQueryThreshold: 50,                      // 50毫秒慢查询阈值
-    LogSlowQuery:       true,                    // 记录慢查询
-    LogAllQueries:      true,                    // 记录所有查询
+Level: ormhelper.LogLevelDebug, // Record all logs.
+SlowQueryThreshold: 50, // 50 millisecond slow query threshold.
+LogSlowQuery: true, // Log slow queries.
+LogAllQueries: true, // Log all queries.
 }
 
-// 生产环境配置 - 精简日志
+//Production environment configuration - streamlined logs.
 prodLogger := logger.NewLogger(logger.LevelWarn)
 prodLogConfig := ormhelper.LogConfig{
-    Level:              ormhelper.LogLevelWarn, // 只记录警告和错误
-    SlowQueryThreshold: 200,                    // 200毫秒慢查询阈值
-    LogSlowQuery:       true,                   // 记录慢查询
-    LogAllQueries:      false,                  // 不记录所有查询
+Level: ormhelper.LogLevelWarn, // Only log warnings and errors.
+SlowQueryThreshold: 200, // 200 milliseconds slow query threshold.
+LogSlowQuery: true, // Log slow queries.
+LogAllQueries: false, // Do not log all queries.
 }
 
-// 创建ORM实例
+//Create ORM instance.
 orm := ormhelper.NewWithLogger(dbPool, "database_name", prodLogger, prodLogConfig)
 ```
 
-#### 动态日志控制
+#### Dynamic log control.
 
 ```go
-// 运行时启用调试日志
+// Enable debug logging at runtime.
 func (dao *UserDAO) EnableDebugLogging() {
     debugLogger := logger.NewLogger(logger.LevelDebug)
     debugConfig := ormhelper.LogConfig{
@@ -538,21 +538,21 @@ func (dao *UserDAO) EnableDebugLogging() {
     dao.orm.EnableLogging(debugLogger, debugConfig)
 }
 
-// 运行时禁用日志
+//Disable logging at runtime.
 func (dao *UserDAO) DisableLogging() {
     dao.orm.DisableLogging()
 }
 
-// 临时启用日志进行调试
+//Temporarily enable logging for debugging.
 func (dao *UserDAO) DebugQuery(ctx context.Context, userID string) (*User, error) {
-    // 临时启用调试日志
+//Temporarily enable debug logging.
     originalEnabled := dao.orm.IsLoggingEnabled()
     if !originalEnabled {
         dao.EnableDebugLogging()
         defer dao.DisableLogging()
     }
 
-    // 执行需要调试的查询
+//Execute the query that needs to be debugged.
     user := &User{}
     err := dao.orm.Select().From("t_users").WhereEq("f_id", userID).First(ctx, user)
 
@@ -560,12 +560,12 @@ func (dao *UserDAO) DebugQuery(ctx context.Context, userID string) (*User, error
 }
 ```
 
-### 复杂查询
+### Complex query.
 
-#### JOIN 查询
+#### JOIN query.
 
 ```go
-// 左连接查询
+//Left join query.
 type UserWithProfile struct {
     UserID     string `db:"user_id"`
     UserName   string `db:"user_name"`
@@ -594,10 +594,10 @@ func (dao *UserDAO) GetUsersWithProfiles(ctx context.Context) ([]*UserWithProfil
 }
 ```
 
-#### 聚合查询
+#### Aggregation query.
 
 ```go
-// 统计查询
+//Statistical query.
 type UserStats struct {
     Status string `db:"status"`
     Count  int64  `db:"count"`
@@ -616,7 +616,7 @@ func (dao *UserDAO) GetUserStatsByStatus(ctx context.Context) ([]*UserStats, err
     return stats, err
 }
 
-// 复杂聚合
+// Complex aggregation.
 func (dao *UserDAO) GetMonthlyUserStats(ctx context.Context, year int) (map[string]int64, error) {
     type MonthlyStats struct {
         Month string `db:"month"`
@@ -639,7 +639,7 @@ func (dao *UserDAO) GetMonthlyUserStats(ctx context.Context, year int) (map[stri
         return nil, err
     }
 
-    // 转换为map
+//Convert to map.
     result := make(map[string]int64)
     for _, stat := range monthlyStats {
         result[stat.Month] = stat.Count
@@ -649,9 +649,9 @@ func (dao *UserDAO) GetMonthlyUserStats(ctx context.Context, year int) (map[stri
 }
 ```
 
-### DAO模式集成
+### DAO mode integration.
 
-#### 完整的DAO实现
+#### Complete DAO implementation.
 
 ```go
 type UserDAO struct {
@@ -663,7 +663,7 @@ type UserDAO struct {
 func NewUserDAO(dbName string, logger interfaces.Logger) *UserDAO {
     dbPool := db.NewDBPool()
 
-    // 配置日志
+//Configuration log.
     logConfig := ormhelper.LogConfig{
         Level:              ormhelper.LogLevelInfo,
         SlowQueryThreshold: 100,
@@ -678,7 +678,7 @@ func NewUserDAO(dbName string, logger interfaces.Logger) *UserDAO {
     }
 }
 
-// 查询方法
+// Query method.
 func (dao *UserDAO) GetByID(ctx context.Context, id string) (*User, error) {
     user := &User{}
     err := dao.orm.Select().From("t_users").WhereEq("f_id", id).First(ctx, user)
@@ -687,18 +687,18 @@ func (dao *UserDAO) GetByID(ctx context.Context, id string) (*User, error) {
         return nil, nil
     }
     if err != nil {
-        dao.logger.Errorf("查询用户失败, id=%s, error=%v", id, err)
-        return nil, fmt.Errorf("查询用户失败: %w", err)
+dao.logger.Errorf("Failed to query user, id=%s, error=%v", id, err)
+return nil, fmt.Errorf("Failed to query user: %w", err)
     }
 
     return user, nil
 }
 
-// 分页查询
+//Paging query.
 func (dao *UserDAO) GetList(ctx context.Context, filters *UserFilters, page, pageSize int) ([]*User, int64, error) {
     query := dao.orm.Select().From("t_users")
 
-    // 动态构建查询条件
+// Dynamically construct query conditions.
     if filters.Status != "" {
         query = query.WhereEq("f_status", filters.Status)
     }
@@ -709,13 +709,13 @@ func (dao *UserDAO) GetList(ctx context.Context, filters *UserFilters, page, pag
         query = query.WhereLike("f_email", "%"+filters.Email+"%")
     }
 
-    // 查询总数
+//Total number of queries.
     total, err := query.Count(ctx)
     if err != nil {
-        return nil, 0, fmt.Errorf("查询用户总数失败: %w", err)
+return nil, 0, fmt.Errorf("Failed to query the total number of users: %w", err)
     }
 
-    // 分页查询
+//Paging query.
     var users []*User
     offset := (page - 1) * pageSize
     err = query.
@@ -725,14 +725,14 @@ func (dao *UserDAO) GetList(ctx context.Context, filters *UserFilters, page, pag
         Get(ctx, &users)
 
     if err != nil {
-        dao.logger.Errorf("分页查询用户失败, page=%d, pageSize=%d, error=%v", page, pageSize, err)
-        return nil, 0, fmt.Errorf("分页查询用户失败: %w", err)
+dao.logger.Errorf("Paging user query failed, page=%d, pageSize=%d, error=%v", page, pageSize, err)
+return nil, 0, fmt.Errorf("Paging user query failed: %w", err)
     }
 
     return users, total, nil
 }
 
-// 创建用户
+//Create user.
 func (dao *UserDAO) Create(ctx context.Context, user *User) error {
     now := time.Now().UnixNano()
     user.CreateTime = now
@@ -748,15 +748,15 @@ func (dao *UserDAO) Create(ctx context.Context, user *User) error {
     }).Execute(ctx)
 
     if err != nil {
-        dao.logger.Errorf("创建用户失败, user=%+v, error=%v", user, err)
-        return fmt.Errorf("创建用户失败: %w", err)
+dao.logger.Errorf("Failed to create user, user=%+v, error=%v", user, err)
+return fmt.Errorf("Failed to create user: %w", err)
     }
 
-    dao.logger.Infof("创建用户成功, id=%s, name=%s", user.ID, user.Name)
+dao.logger.Infof("User created successfully, id=%s, name=%s", user.ID, user.Name)
     return nil
 }
 
-// 更新用户
+// update user.
 func (dao *UserDAO) Update(ctx context.Context, user *User) error {
     user.UpdateTime = time.Now().UnixNano()
 
@@ -769,14 +769,14 @@ func (dao *UserDAO) Update(ctx context.Context, user *User) error {
         Execute(ctx)
 
     if err != nil {
-        dao.logger.Errorf("更新用户失败, user=%+v, error=%v", user, err)
-        return fmt.Errorf("更新用户失败: %w", err)
+dao.logger.Errorf("Failed to update user, user=%+v, error=%v", user, err)
+return fmt.Errorf("Failed to update user: %w", err)
     }
 
     return nil
 }
 
-// 删除用户（软删除）
+// Delete user (soft delete)
 func (dao *UserDAO) Delete(ctx context.Context, id string) error {
     _, err := dao.orm.Update("t_users").
         Set("f_status", "deleted").
@@ -785,41 +785,41 @@ func (dao *UserDAO) Delete(ctx context.Context, id string) error {
         Execute(ctx)
 
     if err != nil {
-        dao.logger.Errorf("删除用户失败, id=%s, error=%v", id, err)
-        return fmt.Errorf("删除用户失败: %w", err)
+dao.logger.Errorf("Failed to delete user, id=%s, error=%v", id, err)
+return fmt.Errorf("Failed to delete user: %w", err)
     }
 
     return nil
 }
 ```
 
-## ⚡ 性能优化
+## ⚡ Performance optimization.
 
-### 查询优化
+### Query optimization.
 
 ```go
-// ✅ 好的做法：使用索引字段
+// ✅ Good practice: use index fields.
 users := []*User{}
 err := orm.Select().
     From("t_users").
-    WhereEq("f_status", "active").    // f_status有索引
-    WhereEq("f_department", "IT").    // f_department有索引
-    OrderByDesc("f_create_time").     // f_create_time有索引
-    Limit(20).                        // 限制结果数量
+WhereEq("f_status", "active"). // f_status has an index.
+WhereEq("f_department", "IT"). // f_department has an index.
+OrderByDesc("f_create_time"). // f_create_time has an index.
+Limit(20). //Limit the number of results.
     Get(ctx, &users)
 
-// ❌ 避免：全表扫描
+// ❌ Avoid: full table scan.
 users := []*User{}
 err := orm.Select().
     From("t_users").
-    WhereLike("f_description", "%keyword%"). // 没有索引的LIKE查询
-    Get(ctx, &users) // 没有LIMIT限制
+WhereLike("f_description", "%keyword%"). // LIKE query without index.
+Get(ctx, &users) // No LIMIT limit.
 ```
 
-### 批量操作优化
+### Batch operation optimization.
 
 ```go
-// ✅ 批量插入
+// ✅ Batch insert.
 columns := []string{"f_id", "f_name", "f_email", "f_create_time"}
 values := make([][]interface{}, 0, len(users))
 for _, user := range users {
@@ -830,7 +830,7 @@ for _, user := range users {
 
 _, err := orm.Insert().Into("t_users").BatchValues(columns, values).Execute(ctx)
 
-// ❌ 避免：循环单条插入
+// ❌ Avoid: Looping single insertion.
 for _, user := range users {
     _, err := orm.Insert().Into("t_users").Values(map[string]interface{}{
         "f_id":          user.ID,
@@ -841,163 +841,163 @@ for _, user := range users {
 }
 ```
 
-### 连接池优化
+### Connection pool optimization.
 
 ```go
-// 数据库连接池配置
+// Database connection pool configuration.
 func setupDBPool() *sqlx.DB {
     db := sqlx.MustConnect("mysql", dsn)
 
-    // 设置连接池参数
-    db.SetMaxOpenConns(100)        // 最大打开连接数
-    db.SetMaxIdleConns(20)         // 最大空闲连接数
-    db.SetConnMaxLifetime(time.Hour) // 连接最大生存时间
-    db.SetConnMaxIdleTime(time.Minute * 30) // 连接最大空闲时间
+//Set connection pool parameters.
+db.SetMaxOpenConns(100) //Maximum number of open connections.
+db.SetMaxIdleConns(20) //Maximum number of idle connections.
+db.SetConnMaxLifetime(time.Hour) // Maximum connection life time.
+db.SetConnMaxIdleTime(time.Minute * 30) //Maximum idle time of connection.
 
     return db
 }
 ```
 
-## 🛠️ 最佳实践
+## 🛠️ Best Practices.
 
-### 错误处理
+### Error handling.
 
 ```go
 func (dao *UserDAO) SafeGetUser(ctx context.Context, id string) (*User, error) {
     if id == "" {
-        return nil, errors.New("用户ID不能为空")
+return nil, errors.New("User ID cannot be empty")
     }
 
     user := &User{}
     err := dao.orm.Select().From("t_users").WhereEq("f_id", id).First(ctx, user)
 
     if err == sql.ErrNoRows {
-        return nil, nil // 明确返回nil表示未找到
+return nil, nil // Explicitly return nil to indicate not found.
     }
 
     if err != nil {
-        dao.logger.Errorf("查询用户失败, id=%s, error=%v", id, err)
-        return nil, fmt.Errorf("查询用户失败: %w", err)
+dao.logger.Errorf("Failed to query user, id=%s, error=%v", id, err)
+return nil, fmt.Errorf("Failed to query user: %w", err)
     }
 
     return user, nil
 }
 ```
 
-### 参数验证
+### Parameter verification.
 
 ```go
 func (dao *UserDAO) CreateUser(ctx context.Context, user *User) error {
-    // 参数验证
+// Parameter validation.
     if user == nil {
-        return errors.New("用户信息不能为空")
+return errors.New("User information cannot be empty")
     }
     if user.Name == "" {
-        return errors.New("用户名不能为空")
+return errors.New("Username cannot be empty")
     }
     if user.Email == "" {
-        return errors.New("邮箱不能为空")
+return errors.New("Mailbox cannot be empty")
     }
 
-    // 检查邮箱格式
+// Check email format.
     if !isValidEmail(user.Email) {
-        return errors.New("邮箱格式不正确")
+return errors.New("The email format is incorrect")
     }
 
-    // 检查用户是否已存在
+// Check if the user already exists.
     existing, err := dao.GetByEmail(ctx, user.Email)
     if err != nil {
-        return fmt.Errorf("检查用户是否存在失败: %w", err)
+return fmt.Errorf("Failed to check if user exists: %w", err)
     }
     if existing != nil {
-        return errors.New("邮箱已被使用")
+return errors.New("Email has been used")
     }
 
-    // 执行创建
+//Execute creation.
     return dao.Create(ctx, user)
 }
 ```
 
-### 日志记录
+### Logging.
 
 ```go
 func (dao *UserDAO) UpdateUserWithLog(ctx context.Context, user *User) error {
     start := time.Now()
 
-    // 记录操作开始
-    dao.logger.Infof("开始更新用户, id=%s, name=%s", user.ID, user.Name)
+//Start recording operation.
+dao.logger.Infof("Start updating user, id=%s, name=%s", user.ID, user.Name)
 
     err := dao.Update(ctx, user)
     duration := time.Since(start)
 
     if err != nil {
-        dao.logger.Errorf("更新用户失败, id=%s, duration=%v, error=%v",
+dao.logger.Errorf("Failed to update user, id=%s, duration=%v, error=%v",
             user.ID, duration, err)
         return err
     }
 
-    dao.logger.Infof("更新用户成功, id=%s, duration=%v", user.ID, duration)
+dao.logger.Infof("Update user successfully, id=%s, duration=%v", user.ID, duration)
     return nil
 }
 ```
 
-## ❓ 常见问题
+## ❓ FAQ.
 
-### Q: 如何处理数据库字段和结构体字段的映射？
+### Q: How to handle the mapping between database fields and structure fields?.
 
-A: 使用`db`标签进行映射：
+A: Use the `db` tag for mapping:
 
 ```go
 type User struct {
-    ID         string `json:"id" db:"f_id"`           // 数据库字段：f_id
-    Name       string `json:"name" db:"f_name"`       // 数据库字段：f_name
-    Email      string `json:"email" db:"f_email"`     // 数据库字段：f_email
+ID string `json:"id" db:"f_id"` // Database field: f_id.
+Name string `json:"name" db:"f_name"` // Database field: f_name.
+Email string `json:"email" db:"f_email"` // Database field: f_email.
     CreateTime int64  `json:"create_time" db:"f_create_time"`
 }
 ```
 
-### Q: 如何处理NULL值？
+### Q: How to deal with NULL values?.
 
-A: 使用指针类型或sql.NullXXX类型：
+A: Use pointer types or sql.NullXXX types:
 
 ```go
 type User struct {
     ID          string         `db:"f_id"`
     Name        string         `db:"f_name"`
-    Description *string        `db:"f_description"`    // 可为NULL
-    Age         sql.NullInt64  `db:"f_age"`           // 可为NULL
+Description *string `db:"f_description"` // Can be NULL.
+Age sql.NullInt64 `db:"f_age"` // Can be NULL.
 }
 ```
 
-### Q: 如何进行数据库迁移？
+### Q: How to perform database migration?.
 
-A: 建议使用专门的迁移工具，ORM Helper专注于数据操作：
+A: It is recommended to use specialized migration tools. ORM Helper focuses on data operations:
 
 ```go
-// 使用golang-migrate或其他迁移工具
-// ORM Helper不提供DDL操作，专注于DML操作
+// Use golang-migrate or other migration tools.
+// ORM Helper does not provide DDL operations and focuses on DML operations.
 ```
 
-### Q: 如何处理复杂的业务逻辑？
+### Q: How to deal with complex business logic?.
 
-A: 在Service层处理业务逻辑，DAO层只负责数据访问：
+A: The Service layer handles business logic, and the DAO layer is only responsible for data access:
 
 ```go
-// Service层
+// Service layer.
 type UserService struct {
     userDAO    *UserDAO
     profileDAO *UserProfileDAO
 }
 
 func (s *UserService) CreateUserWithProfile(ctx context.Context, req *CreateUserRequest) error {
-    // 业务逻辑验证
+//Business logic verification.
     if err := s.validateCreateRequest(req); err != nil {
         return err
     }
 
-    // 使用事务创建用户和资料
+// Create users and profiles using transactions.
     return s.userDAO.withTransaction(ctx, func(txORM *ormhelper.DB) error {
-        // 创建用户
+//Create user.
         user := &User{
             ID:    generateUserID(),
             Name:  req.Name,
@@ -1007,7 +1007,7 @@ func (s *UserService) CreateUserWithProfile(ctx context.Context, req *CreateUser
             return err
         }
 
-        // 创建用户资料
+//Create user profile.
         profile := &UserProfile{
             UserID: user.ID,
             Avatar: req.Avatar,
@@ -1018,13 +1018,13 @@ func (s *UserService) CreateUserWithProfile(ctx context.Context, req *CreateUser
 }
 ```
 
-### Q: 如何进行单元测试？
+### Q: How to perform unit testing?.
 
-A: 使用测试数据库或Mock：
+A: Use test database or Mock:
 
 ```go
 func TestUserDAO_Create(t *testing.T) {
-    // 设置测试数据库
+//Set up test database.
     testDB := setupTestDB()
     defer testDB.Close()
 
@@ -1034,16 +1034,16 @@ func TestUserDAO_Create(t *testing.T) {
     ctx := context.Background()
     user := &User{
         ID:    "test-user-001",
-        Name:  "测试用户",
+Name: "Test User",
         Email: "test@example.com",
         Status: "active",
     }
 
-    // 执行测试
+//Execute test.
     err := dao.Create(ctx, user)
     assert.NoError(t, err)
 
-    // 验证结果
+//Verify results.
     created, err := dao.GetByID(ctx, user.ID)
     assert.NoError(t, err)
     assert.Equal(t, user.Name, created.Name)
@@ -1051,88 +1051,88 @@ func TestUserDAO_Create(t *testing.T) {
 }
 ```
 
-## 🏗️ 架构设计
+## 🏗️ Architecture design.
 
-ORM Helper采用模块化设计，详细的架构说明请参考 [ARCHITECTURE.md](./ARCHITECTURE.md)。
+ORM Helper adopts modular design. For detailed architecture description, please refer to [ARCHITECTURE.md](./ARCHITECTURE.md).
 
-### 核心组件
+### Core components.
 
-- **ORM核心** (`orm.go`) - 主要的ORM类，提供统一的数据库操作接口
-- **查询构建器** (`select.go`) - 负责构建SELECT查询语句
-- **插入构建器** (`insert.go`) - 负责构建INSERT语句
-- **更新构建器** (`update.go`) - 负责构建UPDATE语句
-- **删除构建器** (`delete.go`) - 负责构建DELETE语句
-- **条件构建器** (`where.go`) - 负责构建WHERE条件
-- **结果扫描器** (`scanner.go`) - 负责将查询结果映射到结构体
-- **日志系统** (`logger.go`) - 提供SQL执行日志和性能监控
+- **ORM core** (`orm.go`) - the main ORM class, providing a unified database operation interface.
+- **Query Builder** (`select.go`) - Responsible for building SELECT query statements.
+- **Insert builder** (`insert.go`) - Responsible for building INSERT statements.
+- **Update Builder** (`update.go`) - Responsible for building UPDATE statements.
+- **Delete builder** (`delete.go`) - Responsible for building DELETE statements.
+- **Condition Builder** (`where.go`) - Responsible for building WHERE conditions.
+- **Result Scanner** (`scanner.go`) - Responsible for mapping query results to structures.
+- **Log System** (`logger.go`) - Provides SQL execution logs and performance monitoring.
 
-### 设计原则
+### Design principles.
 
-1. **简单易用** - API设计直观，学习成本低
-2. **完全兼容** - 与现有`sqlx.DB`无缝集成
-3. **非侵入式** - 可渐进式迁移，不影响现有代码
-4. **类型安全** - 编译时检查，减少运行时错误
-5. **高性能** - 最小化性能开销，接近原生SQL性能
+1. **Easy to use** - Intuitive API design, low learning cost.
+2. **Fully Compatible** - Seamless integration with existing `sqlx.DB`
+3. **Non-intrusive** - can be migrated incrementally without affecting existing code.
+4. **Type safety** - compile-time checks to reduce run-time errors.
+5. **High Performance** - Minimize performance overhead, close to native SQL performance.
 
 ---
 
-🎉 **开始使用ORM Helper，让数据库操作变得简单、安全、高效！**
+🎉 **Start using ORM Helper to make database operations simple, safe and efficient! **.
 
-如果你在使用过程中遇到任何问题，欢迎提出Issue或贡献代码。
+If you encounter any problems during use, you are welcome to raise an issue or contribute code.
 
-# ORM Helper - 统一分页和排序功能
+# ORM Helper - Unified paging and sorting functions.
 
-`ormhelper` 包现在提供了统一的分页和排序功能，使得在业务层可以轻松实现一致的数据查询接口。
+The `ormhelper` package now provides unified paging and sorting functions, making it easy to implement a consistent data query interface at the business layer.
 
-## 核心特性
+## Core Features.
 
-### 1. 分页参数 (PaginationParams)
+### 1. Pagination Params.
 
 ```go
 type PaginationParams struct {
-    Page     int `json:"page" validate:"min=1"`              // 页码，从1开始
-    PageSize int `json:"page_size" validate:"min=1,max=100"` // 每页数量
+Page int `json:"page" validate:"min=1"` // Page number, starting from 1.
+PageSize int `json:"page_size" validate:"min=1,max=100"` //Quantity per page.
 }
 ```
 
-### 2. 排序参数 (SortParams)
+### 2. Sort Params (SortParams)
 
 ```go
 type SortOrder string
 
 const (
-    SortOrderAsc  SortOrder = "asc"  // 升序
-    SortOrderDesc SortOrder = "desc" // 降序
+SortOrderAsc SortOrder = "asc" // ascending order.
+SortOrderDesc SortOrder = "desc" // descending order.
 )
 
 type SortField struct {
-    Field string    `json:"field"` // 数据库字段名
-    Order SortOrder `json:"order"` // 排序方向
+Field string `json:"field"` // Database field name.
+Order SortOrder `json:"order"` // Sorting direction.
 }
 
 type SortParams struct {
-    Fields []SortField `json:"fields,omitempty"` // 支持多字段排序
+Fields []SortField `json:"fields,omitempty"` // Supports multi-field sorting.
 }
 ```
 
-### 3. 查询结果 (QueryResult)
+### 3. Query Result (QueryResult)
 
 ```go
 type QueryResult struct {
-    Total      int64 `json:"total"`       // 总记录数
-    Page       int   `json:"page"`        // 当前页码
-    PageSize   int   `json:"page_size"`   // 每页数量
-    TotalPages int   `json:"total_pages"` // 总页数
-    HasNext    bool  `json:"has_next"`    // 是否有下一页
-    HasPrev    bool  `json:"has_prev"`    // 是否有上一页
+Total int64 `json:"total"` // Total number of records.
+Page int `json:"page"` // Current page number.
+PageSize int `json:"page_size"` // Number of pages per page.
+TotalPages int `json:"total_pages"` //Total number of pages.
+HasNext bool `json:"has_next"` // Is there a next page?.
+HasPrev bool `json:"has_prev"` // Whether there is a previous page.
 }
 ```
 
-## SelectBuilder 新增方法
+## SelectBuilder new method.
 
 ### Pagination()
 
-应用分页参数到查询中：
+Apply pagination parameters to the query:
 
 ```go
 func (s *SelectBuilder) Pagination(pagination *PaginationParams) *SelectBuilder
@@ -1140,15 +1140,15 @@ func (s *SelectBuilder) Pagination(pagination *PaginationParams) *SelectBuilder
 
 ### Sort()
 
-应用排序参数到查询中：
+Apply sorting parameters to the query:
 
 ```go
 func (s *SelectBuilder) Sort(sort *SortParams) *SelectBuilder
 ```
 
-## 使用示例
+## Usage example.
 
-### 基本分页查询
+### Basic paging query.
 
 ```go
 paginationParams := &PaginationParams{
@@ -1163,7 +1163,7 @@ err := orm.Select().
     Get(ctx, &results)
 ```
 
-### 带排序的分页查询
+### Paging query with sorting.
 
 ```go
 sortParams := &SortParams{
@@ -1185,24 +1185,24 @@ err := orm.Select().
     Get(ctx, &results)
 ```
 
-### 获取分页信息
+### Get paging information.
 
 ```go
-// 获取总数
+// Get the total number.
 totalCount, err := orm.Select().
     From("t_example").
     Count(ctx)
 
-// 计算分页结果
+// Calculate paging results.
 queryResult := CalculateQueryResult(totalCount, paginationParams)
 
-// queryResult 包含完整的分页信息
-fmt.Printf("总记录数: %d\n", queryResult.Total)
-fmt.Printf("当前页: %d/%d\n", queryResult.Page, queryResult.TotalPages)
-fmt.Printf("是否有下一页: %v\n", queryResult.HasNext)
+// queryResult contains complete paging information.
+fmt.Printf("Total number of records: %d\n", queryResult.Total)
+fmt.Printf("Current page: %d/%d\n", queryResult.Page, queryResult.TotalPages)
+fmt.Printf("Is there a next page: %v\n", queryResult.HasNext)
 ```
 
-### 复杂查询示例
+### Complex query example.
 
 ```go
 sortParams := &SortParams{
@@ -1219,43 +1219,43 @@ paginationParams := &PaginationParams{
 
 err := orm.Select().
     From("t_example").
-    WhereEq("status", "active").         // 条件过滤
-    WhereLike("name", "%test%").         // 模糊查询
-    Sort(sortParams).                    // 多字段排序
-    Pagination(paginationParams).        // 分页
+WhereEq("status", "active"). // Conditional filtering.
+WhereLike("name", "%test%"). // Fuzzy query.
+Sort(sortParams). //Multiple field sorting.
+Pagination(paginationParams). // Pagination.
     Get(ctx, &results)
 ```
 
-## 工具函数
+## Utility functions.
 
 ### CalculateQueryResult()
 
-计算查询结果的分页信息：
+Calculate pagination information for query results:
 
 ```go
 func CalculateQueryResult(total int64, pagination *PaginationParams) *QueryResult
 ```
 
-这个函数会自动计算：
-- 总页数
-- 是否有下一页/上一页
-- 处理边界情况（如分页参数为空或无效）
+This function automatically calculates:
+-Total number of pages.
+- Whether there is next page/previous page.
+- Handle edge cases (such as paging parameters being empty or invalid)
 
-## 注意事项
+## Notes.
 
-1. **字段名安全**: `SortField.Field` 中的字段名应该由调用方确保安全，避免SQL注入
-2. **参数验证**: 建议在业务层对分页和排序参数进行验证
-3. **性能考虑**: 大分页查询时注意性能影响
-4. **索引**: 确保排序字段有适当的数据库索引
+1. **Field name safety**: The field names in `SortField.Field` should be safe by the caller to avoid SQL injection.
+2. **Parameter verification**: It is recommended to verify the paging and sorting parameters at the business layer.
+3. **Performance considerations**: Pay attention to the performance impact when performing large paging queries.
+4. **Index**: Make sure the sort field has an appropriate database index.
 
-## 集成指南
+## Integration Guide.
 
-这些功能设计为不影响现有业务逻辑，您可以：
+These features are designed not to impact existing business logic, allowing you to:
 
-1. 在现有的数据访问层方法中逐步添加分页和排序支持
-2. 保持现有接口不变，通过可选参数方式添加新功能
-3. 利用统一的 `QueryResult` 结构在API层返回一致的分页信息
+1. Gradually add paging and sorting support to existing data access layer methods.
+2. Keep the existing interface unchanged and add new functions through optional parameters.
+3. Use the unified `QueryResult` structure to return consistent paging information at the API layer.
 
-## 示例文件
+## Sample file.
 
-参考 `usage_example.go` 文件了解完整的使用示例。
+Refer to the `usage_example.go` file for a complete usage example.

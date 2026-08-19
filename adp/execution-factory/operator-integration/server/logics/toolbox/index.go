@@ -1,6 +1,6 @@
-// Package toolbox 工具箱、工具管理
+// Package toolbox toolbox, tool management.
 // @file index.go
-// @description: 实现工具箱、工具管理接口
+// @description: Implement toolbox and tool management interface.
 package toolbox
 
 import (
@@ -33,7 +33,7 @@ var (
 	}
 )
 
-// ToolServiceImpl 工具箱
+// ToolServiceImpl toolbox.
 type ToolServiceImpl struct {
 	DBTx                  model.DBTx
 	ToolBoxDB             model.IToolboxDB
@@ -53,7 +53,7 @@ type ToolServiceImpl struct {
 	ActionExecutions      bkntrace.ExecutionGate
 }
 
-// NewToolServiceImpl 创建工具箱服务
+// NewToolServiceImpl creates a toolbox service.
 func NewToolServiceImpl() interfaces.IToolService {
 	tOnce.Do(func() {
 		conf := config.NewConfigLoader()

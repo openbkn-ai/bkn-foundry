@@ -6,12 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -31,7 +31,7 @@ const (
 	tbOperatorRelease = "t_operator_release"
 )
 
-// NewOperatorReleaseDB 创建算子发布数据库
+// NewOperatorReleaseDB creates an operator release database.
 func NewOperatorReleaseDB() model.IOperatorReleaseDB {
 	orOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
@@ -48,7 +48,7 @@ func NewOperatorReleaseDB() model.IOperatorReleaseDB {
 	return or
 }
 
-// BatchInsert 批量插入算子发布信息
+// BatchInsert batch insertion operator publishes information.
 func (or *operatorReleaseDB) BatchInsert(ctx context.Context, tx *sql.Tx, releaseList []*model.OperatorReleaseDB) (opIDs []string, err error) {
 	orm := or.orm
 	if tx != nil {
@@ -118,7 +118,7 @@ func (or *operatorReleaseDB) BatchInsert(ctx context.Context, tx *sql.Tx, releas
 	return
 }
 
-// Insert 插入算子发布信息
+// Insert insertion operator publishes information.
 func (or *operatorReleaseDB) Insert(ctx context.Context, tx *sql.Tx, releaseDB *model.OperatorReleaseDB) (err error) {
 	orm := or.orm
 	if tx != nil {
@@ -162,7 +162,7 @@ func (or *operatorReleaseDB) Insert(ctx context.Context, tx *sql.Tx, releaseDB *
 	return
 }
 
-// UpdateByOpID 更新算子发布信息
+// UpdateByOpID update operator release information.
 func (or *operatorReleaseDB) UpdateByOpID(ctx context.Context, tx *sql.Tx, releaseDB *model.OperatorReleaseDB) (err error) {
 	orm := or.orm
 	if tx != nil {
@@ -193,7 +193,7 @@ func (or *operatorReleaseDB) UpdateByOpID(ctx context.Context, tx *sql.Tx, relea
 	return err
 }
 
-// DeleteByOpID 删除算子发布信息
+// DeleteByOpID delete operator release information.
 func (or *operatorReleaseDB) DeleteByOpID(ctx context.Context, tx *sql.Tx, opID string) (err error) {
 	orm := or.orm
 	if tx != nil {
@@ -206,7 +206,7 @@ func (or *operatorReleaseDB) DeleteByOpID(ctx context.Context, tx *sql.Tx, opID 
 	return
 }
 
-// SelectByOpID 根据算子ID查询算子发布信息
+// SelectByOpID Query operator release information based on operator ID.
 func (or *operatorReleaseDB) SelectByOpID(ctx context.Context, opID string) (exist bool, releaseDB *model.OperatorReleaseDB, err error) {
 	releaseDB = &model.OperatorReleaseDB{}
 	orm := or.orm
@@ -215,7 +215,7 @@ func (or *operatorReleaseDB) SelectByOpID(ctx context.Context, opID string) (exi
 	return
 }
 
-// SelectByName 根据算子名称查询算子发布信息
+// SelectByName Query operator release information based on operator name.
 func (or *operatorReleaseDB) SelectByName(ctx context.Context, tx *sql.Tx, name string) (exist bool, releaseDB *model.OperatorReleaseDB, err error) {
 	releaseDB = &model.OperatorReleaseDB{}
 	orm := or.orm
@@ -227,7 +227,7 @@ func (or *operatorReleaseDB) SelectByName(ctx context.Context, tx *sql.Tx, name 
 	return
 }
 
-// CountByWhereClause 根据条件查询算子发布信息数量
+// CountByWhereClause queries the number of information released by the operator based on conditions.
 func (or *operatorReleaseDB) CountByWhereClause(ctx context.Context, conditions map[string]interface{}) (count int64, err error) {
 	orm := or.orm
 	queryBuilder := orm.Select().From(tbOperatorRelease)
@@ -236,7 +236,7 @@ func (or *operatorReleaseDB) CountByWhereClause(ctx context.Context, conditions 
 	return
 }
 
-// SelectByWhereClause 根据条件查询算子发布信息
+// SelectByWhereClause publishes information based on conditional query operators.
 func (or *operatorReleaseDB) SelectByWhereClause(ctx context.Context, conditions map[string]interface{}, sort *ormhelper.SortParams, cursor *ormhelper.CursorParams) (
 	releaseList []*model.OperatorReleaseDB, err error) {
 	orm := or.orm
@@ -244,7 +244,7 @@ func (or *operatorReleaseDB) SelectByWhereClause(ctx context.Context, conditions
 	queryBuilder = or.buildQueryConditions(queryBuilder, conditions)
 	queryBuilder.Cursor(cursor)
 	queryBuilder.Sort(sort)
-	// 处理分页
+	// Handle pagination.
 	if conditions["all"] == nil || conditions["all"] == false {
 		pageSize, ok := conditions["limit"].(int)
 		if ok {

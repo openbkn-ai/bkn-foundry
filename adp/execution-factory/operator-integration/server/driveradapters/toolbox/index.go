@@ -1,6 +1,6 @@
-// Package toolbox 工具箱操作适配器
+// Package toolbox toolbox operation adapter.
 // @file index.go
-// @description: 工具箱操作适配器
+// @description: toolbox operation adapter.
 package toolbox
 
 import (
@@ -13,9 +13,9 @@ import (
 	ltoolbox "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/toolbox"
 )
 
-// ToolBoxHandler 工具箱操作接口
+// ToolBoxHandler toolbox operation interface.
 type ToolBoxHandler interface {
-	// 工具箱操作接口
+	// Toolbox operation interface.
 	CreateToolBox(c *gin.Context)
 	UpdateToolBox(c *gin.Context)
 	QueryToolBox(c *gin.Context)
@@ -23,7 +23,7 @@ type ToolBoxHandler interface {
 	QueryToolBoxPage(c *gin.Context)
 	QueryToolBoxNamesByIDs(c *gin.Context)
 	UpdateToolBoxStatus(c *gin.Context)
-	// 工具操作接口
+	// Tool operation interface.
 	CreateTool(c *gin.Context)
 	UpdateTool(c *gin.Context)
 	QueryTool(c *gin.Context)
@@ -31,18 +31,18 @@ type ToolBoxHandler interface {
 	QueryBoxToolPage(c *gin.Context)
 	UpdateToolStatus(c *gin.Context)
 	GetMarketToolList(c *gin.Context)
-	// 工具调试
+	// Tool debugging.
 	DebugTool(c *gin.Context)
-	// 工具执行
+	// tool execution.
 	ExecuteTool(c *gin.Context)
-	// 算子转换成工具
+	// Operators converted into tools.
 	OperatorToTool(c *gin.Context)
-	// OpenAPI 能力包
+	// OpenAPI capability package.
 	RegisterOpenApiBundle(c *gin.Context)
-	// 查询工具箱信息
+	// Query toolbox information.
 	GetReleaseToolBoxInfo(c *gin.Context)
 
-	/*工具箱市场*/
+	// Toolbox Market.
 	QueryMarketToolBoxPage(c *gin.Context)
 	QueryMarketToolBox(c *gin.Context)
 }
@@ -58,7 +58,7 @@ type toolBoxHandler struct {
 	Validator   interfaces.Validator
 }
 
-// NewToolBoxHandler 工具操作接口
+// NewToolBoxHandler tool operation interface.
 func NewToolBoxHandler() ToolBoxHandler {
 	once.Do(func() {
 		confLoader := config.NewConfigLoader()

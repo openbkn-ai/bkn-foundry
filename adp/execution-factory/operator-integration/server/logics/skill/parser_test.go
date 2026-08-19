@@ -36,7 +36,7 @@ Use this skill carefully.`),
 		_, parseErr := uuid.Parse(skill.Version)
 		So(parseErr, ShouldBeNil)
 		So(skill.SkillContent, ShouldEqual, "Use this skill carefully.")
-		// FR-5: content 注册也返回 SKILL.md 的 file 和 asset
+		// FR-5: content registration also returns the file and asset of SKILL.md.
 		So(len(files), ShouldEqual, 1)
 		So(files[0].RelPath, ShouldEqual, SkillMD)
 		So(len(assets), ShouldEqual, 1)
@@ -93,14 +93,14 @@ func TestParseRegisterReqZipReturnsAssets(t *testing.T) {
 			}),
 		}
 
-			skill, files, assets, err := parser.parseRegisterReq(req)
-			So(err, ShouldBeNil)
-			So(skill.Name, ShouldEqual, "demo-skill")
-			So(skill.SkillContent, ShouldEqual, "Use this skill carefully.")
-			So(len(files), ShouldEqual, 3)
-			So(len(assets), ShouldEqual, 3)
-		})
-	}
+		skill, files, assets, err := parser.parseRegisterReq(req)
+		So(err, ShouldBeNil)
+		So(skill.Name, ShouldEqual, "demo-skill")
+		So(skill.SkillContent, ShouldEqual, "Use this skill carefully.")
+		So(len(files), ShouldEqual, 3)
+		So(len(assets), ShouldEqual, 3)
+	})
+}
 
 func TestChecksumSHA256(t *testing.T) {
 	Convey("checksumSHA256 returns stable sha256", t, func() {

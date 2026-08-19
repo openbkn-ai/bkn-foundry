@@ -1,6 +1,6 @@
-// Package drivenadapters 定义驱动适配器
+// Package drivenadapters defines driver adapters.
 // @file business_domain_management.go
-// @description: 实现业务域管理服务
+// @description: Implement business domain management services.
 package drivenadapters
 
 import (
@@ -29,7 +29,7 @@ type businessDomainManagementClient struct {
 	httpClient interfaces.HTTPClient
 }
 
-// NewBusinessDomainManagementClient 创建业务域管理服务对象
+// NewBusinessDomainManagementClient creates a business domain management service object.
 func NewBusinessDomainManagementClient() interfaces.BusinessDomainManagement {
 	bdOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -43,7 +43,7 @@ func NewBusinessDomainManagementClient() interfaces.BusinessDomainManagement {
 	return bdm
 }
 
-// AssociateResource 关联资源到业务域
+// AssociateResource associates resources to business domains.
 func (b *businessDomainManagementClient) AssociateResource(ctx context.Context, req *interfaces.BusinessDomainResourceAssociateRequest) error {
 	src := fmt.Sprintf("%s/resource", b.baseURL)
 	// header := common.GetHeaderFromCtx(ctx)
@@ -51,14 +51,14 @@ func (b *businessDomainManagementClient) AssociateResource(ctx context.Context, 
 
 	respCode, _, err := b.httpClient.Post(ctx, src, header, req)
 
-	// 处理 403 权限不足
+	// Handling 403 Insufficient Permissions.
 	if respCode == http.StatusForbidden {
 		b.logger.Errorf("businessDomainManagementClient#AssociateResource failed:%v, url:%v", err, src)
 		err = infraErr.NewHTTPError(ctx, http.StatusForbidden, infraErr.ErrExtBusinessDomainForbidden, err.Error())
 		return err
 	}
 
-	// 处理 409 资源已关联冲突
+	// Handling 409 Resource Already Associated Conflict.
 	if respCode == http.StatusConflict {
 		b.logger.Warnf("businessDomainManagementClient#AssociateResource conflict: resource already connected, resource_id:%s, domain_id:%s", req.ID, req.BDID)
 		err = infraErr.NewHTTPError(ctx, http.StatusConflict, infraErr.ErrExtBusinessDomainResourceConflict, err.Error())
@@ -75,9 +75,9 @@ func (b *businessDomainManagementClient) AssociateResource(ctx context.Context, 
 	return nil
 }
 
-// DisassociateResource 取消资源与业务域的关联
+// DisassociateResource Disassociates the resource from the business domain.
 func (b *businessDomainManagementClient) DisassociateResource(ctx context.Context, req *interfaces.BusinessDomainResourceDisassociateRequest) error {
-	// 构建查询参数
+	// Build query parameters.
 	queryParams := url.Values{}
 	queryParams.Add("id", req.ID)
 	queryParams.Add("type", req.Type)
@@ -102,13 +102,13 @@ func (b *businessDomainManagementClient) DisassociateResource(ctx context.Contex
 	return nil
 }
 
-// ResourceList 查询业务域下的资源列表
+// ResourceList Query the resource list under the business domain.
 func (b *businessDomainManagementClient) ResourceList(ctx context.Context, req *interfaces.BusinessDomainResourceListRequest) (*interfaces.BusinessDomainResourceListResponse, error) {
 	src := fmt.Sprintf("%s/resource", b.baseURL)
 	// header := common.GetHeaderFromCtx(ctx)
 	header := map[string]string{}
 
-	// 构建查询参数
+	// Build query parameters.
 	queryParams := url.Values{}
 	if req.BDID != "" {
 		queryParams.Add("bd_id", req.BDID)

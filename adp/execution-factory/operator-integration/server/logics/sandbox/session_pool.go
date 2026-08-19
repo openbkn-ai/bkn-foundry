@@ -23,32 +23,32 @@ const (
 	defaultMaxConcurrentTasks = 100
 	defaultActiveSessions     = 1
 	defaultContextTimeout     = 30 * time.Second
-	// 最大重试次数
+	// Maximum number of retries.
 	maxRetryCount = 3
-	// 会话运行状态检查间隔
+	// Session health check interval.
 	sessionStatusRunningCheckInterval = time.Second
-	// 等待会话运行超时
+	// Waiting for session to run timed out.
 	waitSessionRunningTimeout = 30 * time.Second
-	// 后台工作器间隔
+	// Background worker interval.
 	backgroundWorkerInterval = time.Minute
 )
 
-// 当前环境依赖库信息
+// Current environment dependency information.
 type DependenciesInfo struct {
 	Dependencies []*interfaces.DependencyInfo `json:"dependencies"`
 	SessionID    string                       `json:"session_id"`
 }
 
-// SessionPool 会话池接口
+// SessionPool session pool interface.
 type SessionPool interface {
 	ExecuteCode(ctx context.Context, req *interfaces.ExecuteCodeReq) (*interfaces.ExecuteCodeResp, error)
-	// 获取依赖库列表
+	// Get the list of dependent libraries.
 	GetDependencies(ctx context.Context) (resp *DependenciesInfo, err error)
 	// Snapshot returns read-only pool status for management and diagnostics.
 	Snapshot() PoolSnapshot
-	// 获取可用会话
+	// Get available sessions.
 	AcquireSession(ctx context.Context) (sessionID string, err error)
-	// 归还会话
+	// Return session.
 	ReleaseSession(sessionID string)
 }
 
@@ -78,7 +78,7 @@ var (
 	poolOnce     sync.Once
 )
 
-// GetSessionPool 获取会话池实例
+// GetSessionPool Gets the session pool instance.
 func GetSessionPool() SessionPool {
 	poolOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -109,14 +109,14 @@ func GetSessionPool() SessionPool {
 			templateID:         conf.SandboxControlPlane.TemplateID,
 			reqConfig:          conf.SandboxControlPlane.SessionResources,
 		}
-		// 打印配置信息
+		// Print configuration information.
 		poolInstance.logger.Infof("SessionPool initialized with maxSessions: %d, maxConcurrentTasks: %d, activeSessions: %d, templateID: %s, sessionResources: %v",
 			poolInstance.maxSessions, poolInstance.maxConcurrentTasks, poolInstance.activeSessions, poolInstance.templateID, poolInstance.reqConfig)
 
-		// 初始化：从控制平面同步已存在的确定性会话，并补足到 activeSessions 数量
+		// Initialization: Synchronize existing deterministic sessions from the control plane and top up the number of activeSessions.
 		poolInstance.initSessions()
 
-		// 启动后台管理任务：健康检查与空闲缩容/预热
+		// Start background management tasks: health check and idle shrink/warm-up.
 		go poolInstance.backgroundWorker()
 	})
 	return poolInstance
@@ -150,9 +150,9 @@ func (p *sessionPoolImpl) GetDependencies(ctx context.Context) (resp *Dependenci
 	return resp, nil
 }
 
-// ExecuteCode 执行代码
+// ExecuteCode execute code.
 func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.ExecuteCodeReq) (resp *interfaces.ExecuteCodeResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -167,7 +167,7 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 	}
 	p.recordExecutionContext(sessionID, req.EnvVars)
 	defer p.ReleaseSession(sessionID)
-	// 安装依赖库
+	// Install dependent libraries.
 	if len(req.Dependencies) > 0 && req.PythonPackageIndexURL != "" {
 		detail, err := p.client.InstallPythonDependencies(ctx, sessionID, &interfaces.InstallDependenciesReq{
 			Dependencies:          req.Dependencies,
@@ -194,7 +194,7 @@ func (p *sessionPoolImpl) ExecuteCode(ctx context.Context, req *interfaces.Execu
 	return resp, nil
 }
 
-// AcquireSession 获取可用会话
+// AcquireSession Get available sessions.
 func (p *sessionPoolImpl) AcquireSession(ctx context.Context) (sessionID string, err error) {
 	return p.acquireSession(ctx, maxRetryCount)
 }
@@ -208,7 +208,7 @@ func (p *sessionPoolImpl) initSessions() {
 	recoveredCount := 0
 	for i := 0; i < p.maxSessions; i++ {
 		id := fmt.Sprintf("%s%d", sessionIDPrefix, i)
-		// 检查会话是否存在且状态为 Running
+		// Check if the session exists and the status is Running.
 		exists, detail, err := p.querySessionAndCache(ctx, id)
 		if err == nil && exists && detail != nil && detail.Status == interfaces.SessionStatusRunning {
 			poolInstance.addSession(id)
@@ -218,38 +218,38 @@ func (p *sessionPoolImpl) initSessions() {
 	}
 	p.logger.Infof("Recovered %d sessions during initialization", recoveredCount)
 
-	// 初始预热，补足到 activeSessions
+	// Initial warm-up, supplemented to activeSessions.
 	p.prewarmSessions()
 }
 
-// acquireSession 从会话池中获取一个会话
+// acquireSession Gets a session from the session pool.
 func (p *sessionPoolImpl) acquireSession(ctx context.Context, retryCount int) (sessionID string, err error) {
 	return p.acquireSessionWithOptions(ctx, retryCount, nil)
 }
 
 func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCount int, envVars map[string]any) (sessionID string, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"retryCount": retryCount,
 	})
-	// 是否需要重试
+	// Do you need to retry?.
 	var needRetry bool
 	defer func(count int) {
-		if !needRetry { // 不需要重试
+		if !needRetry { // No need to retry.
 			return
 		}
-		// 重试次数达到上限
+		// Maximum number of retries reached.
 		if count < 0 {
 			err = fmt.Errorf("[acquireSession] retryCount %d exceeds maxRetryCount %d", count, maxRetryCount)
 			return
 		}
-		// 暂停时间: 每次重试间隔增加 1 秒
+		// Pause time: Add 1 second to each retry interval.
 		time.Sleep(time.Duration(count) * time.Second)
 		sessionID, err = p.acquireSessionWithOptions(ctx, count-1, envVars)
 	}(retryCount)
-	// 1. 堆叠分配策略：寻找负载最高但未满的会话
+	// 1. Stack allocation strategy: Find the session with the highest load but not full.
 	bestSession := p.findBestSession()
 	if bestSession != nil {
 		p.updateRunningTasks(bestSession.ID, 1)
@@ -257,7 +257,7 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 		return
 	}
 
-	// 2. 尝试寻找可创建的槽位
+	// 2. Try to find a slot that can be created.
 	var targetID string
 	for i := 0; i < p.maxSessions; i++ {
 		id := fmt.Sprintf("%s%d", sessionIDPrefix, i)
@@ -267,25 +267,25 @@ func (p *sessionPoolImpl) acquireSessionWithOptions(ctx context.Context, retryCo
 		}
 	}
 
-	// 3. 如果所有槽位都有 Session，但都满了（因为步骤1没找到），则报错
+	// 3. If there are Sessions in all slots but they are all full (because they were not found in step 1), an error will be reported.
 	if targetID == "" {
 		if retryCount == 0 {
 			return "", fmt.Errorf("all %d sessions are at max concurrency (%d)", p.maxSessions, p.maxConcurrentTasks)
 		}
-		// 递归重试：如果当前 ID 创建失败，递归尝试下一个可用 ID
+		// Recursive retry: If creation of the current ID fails, recursively try the next available ID.
 		needRetry = true
 		return
 	}
 
-	// 5. 执行远程创建
+	// 5. Perform remote creation.
 	p.logger.Infof("Creating new session slot: %s", targetID)
 	if err = p.ensureRemoteSessionWithEnv(ctx, targetID, envVars); err != nil {
 		p.logger.Errorf("Failed to create session %s: %v", targetID, err)
-		// 创建失败，移除占位符
-		// 容错重试：如果当前 ID 创建失败，递归尝试下一个可用 ID
-		// 注意：需要先清理当前失败的占位
-		p.removeSession(targetID) // 清理占位符（兜底）
-		// 尝试重试
+		// Creation failed, placeholder removed.
+		// Fault-tolerant retries: If the current ID fails to be created, recursively try the next available ID.
+		// Note: You need to clean up the current failed placeholders first.
+		p.removeSession(targetID) // Clean up placeholders (dark bottom)
+		// Try again.
 		needRetry = true
 		return
 	}
@@ -297,14 +297,14 @@ func (p *sessionPoolImpl) ensureRemoteSession(ctx context.Context, sessionID str
 }
 
 func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessionID string, envVars map[string]any) error {
-	// 创建前检查是否存在
+	// Check existence before creating.
 	exists, _, err := p.querySessionAndCache(ctx, sessionID)
 	if err != nil {
 		p.logger.Errorf("QuerySession failed for session %s: %v", sessionID, err)
 		return err
 	}
 	if !exists {
-		// 执行创建
+		// Execute create.
 		req := &interfaces.CreateSessionReq{
 			ID:         sessionID,
 			TemplateID: p.templateID,
@@ -322,7 +322,7 @@ func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessio
 		}
 	}
 
-	// 等待 Running 状态
+	// Waiting for Running status.
 	err = p.waitForSessionRunning(ctx, sessionID)
 	if err != nil {
 		return err
@@ -331,17 +331,17 @@ func (p *sessionPoolImpl) ensureRemoteSessionWithEnv(ctx context.Context, sessio
 	return nil
 }
 
-// sessionScopedEnvKeys 允许挂到会话上的键，白名单。
+// sessionScopedEnvKeys Keys allowed to be hung on the session, whitelist.
 //
-// 会话级 env 会被控制面存进 t_session.f_env_vars、写进 Pod spec，并由
-// GET /api/v1/sessions/{id} 原样读出，生命周期是会话寿命（默认最长 6 小时），
-// 而不是发起它的那次执行。
+// The session-level env will be stored in t_session.f_env_vars by the control plane, written into the Pod spec, and passed by.
+// GET /api/v1/sessions/{id} is read as is, the lifecycle is the session life (default is up to 6 hours),
+// rather than the execution that initiated it.
 //
-// 用白名单而不是「屏蔽已知凭据」的黑名单：黑名单默认放行，往执行 env 里加一个新的
-// 凭据类键而忘了同步，它就会静默落库；白名单默认拦下，漏登记一个追踪标记顶多是会话
-// 查询里少一个字段，看得见也无害。
+// Use a whitelist instead of a blacklist that "blocks known credentials": the blacklist is allowed by default, add a new one to the execution env.
+// If you forget to synchronize the credential type key, it will be silently dropped from the persisted data; the whitelist blocks it by default, and missing a tracking mark will only cause a session at most.
+// There is no harm in seeing one missing field in the query.
 //
-// 这里列的都是追踪标记——它们的契约文档明写「仅作追踪标记，不参与鉴权」。
+// All listed here are tracking marks - their contract documents clearly state "only used as tracking marks, not involved in authentication.".
 var sessionScopedEnvKeys = map[string]bool{
 	"source":              true,
 	"task_id":             true,
@@ -352,10 +352,10 @@ var sessionScopedEnvKeys = map[string]bool{
 	"user_name":           true,
 }
 
-// sessionScopedEnvVars 取出可以安全地挂在会话上的那部分环境变量。
+// sessionScopedEnvVars retrieves the portion of environment variables that can safely be hung on the session.
 //
-// 过滤掉的键不影响功能：每次执行的 env 另有一条路（ExecuteCodeReq.EnvVars ->
-// executor -> --setenv 进 bwrap），且合并时以本次执行的为准。
+// Filtered out keys do not affect functionality: there is another path to env for each execution (ExecuteCodeReq.EnvVars ->.
+// executor -> --setenv into bwrap), and the one executed this time shall prevail when merging.
 func sessionScopedEnvVars(envVars map[string]any) map[string]any {
 	if len(envVars) == 0 {
 		return nil
@@ -414,12 +414,12 @@ func (p *sessionPoolImpl) waitForSessionRunning(ctx context.Context, sessionID s
 				return err
 			}
 			if !exists {
-				// 会话创建失败
+				// Session creation failed.
 				return fmt.Errorf("session %s failed to create, not found", sessionID)
 			}
 			switch detail.Status {
 			case interfaces.SessionStatusRunning:
-				return nil // 会话已运行，成功
+				return nil // Session ran successfully.
 			case interfaces.SessionStatusFailed, interfaces.SessionStatusTerminated:
 				err := p.client.DeleteSession(ctx, sessionID)
 				if err != nil {
@@ -428,13 +428,13 @@ func (p *sessionPoolImpl) waitForSessionRunning(ctx context.Context, sessionID s
 				}
 				return fmt.Errorf("session %s failed to create, status: %s", sessionID, detail.Status)
 			case interfaces.SessionStatusCreating:
-				// 继续等待
+				// Keep waiting.
 			}
 		}
 	}
 }
 
-// releaseSession 释放会话槽位，允许其他任务使用
+// releaseSession releases the session slot to allow other tasks to use it.
 func (p *sessionPoolImpl) releaseSession(sessionID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -447,14 +447,14 @@ func (p *sessionPoolImpl) releaseSession(sessionID string) {
 	}
 }
 
-// ReleaseSession 归还会话
+// ReleaseSession returns the session.
 func (p *sessionPoolImpl) ReleaseSession(sessionID string) {
 	p.releaseSession(sessionID)
 }
 
-// invalidateSession 从会话池移除会话槽位，同时异步删除远程资源
+// invalidateSession removes the session slot from the session pool and deletes the remote resource asynchronously.
 func (p *sessionPoolImpl) invalidateSession(sessionID string) {
-	// 异步删除远程资源
+	// Asynchronously delete remote resources.
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), defaultContextTimeout)
 		defer cancel()
@@ -475,9 +475,9 @@ func (p *sessionPoolImpl) prewarmSessions() {
 	p.logger.Infof("Pre-warming %d sessions to reach activeSessions limit (%d)", needed, p.activeSessions)
 
 	for i := 0; i < needed; i++ {
-		// 使用 acquireSession 逻辑来查找可用 ID 并创建
-		// 这里我们直接调用内部逻辑或者复用部分逻辑
-		// 简单起见，我们直接尝试寻找空闲槽位并创建
+		// Use acquireSession logic to find available IDs and create.
+		// Here we directly call the internal logic or reuse part of the logic.
+		// For the sake of simplicity, we directly try to find free slots and create.
 		p.mu.Lock()
 		var targetID string
 		for j := 0; j < p.maxSessions; j++ {
@@ -524,14 +524,14 @@ func (p *sessionPoolImpl) backgroundWorker() {
 func (p *sessionPoolImpl) maintainPool() {
 	ctx := context.Background()
 	p.mu.Lock()
-	// 复制一份当前会话列表进行检查，避免长时间持有锁
+	// Make a copy of the current session list for checking to avoid holding locks for a long time.
 	currentSessions := make([]string, 0, len(p.sessions))
 	for id := range p.sessions {
 		currentSessions = append(currentSessions, id)
 	}
 	p.mu.Unlock()
 
-	// 1. 健康检查与修复
+	// 1. Health check and repair.
 	for _, id := range currentSessions {
 		exists, detail, err := p.querySessionAndCache(ctx, id)
 		if err != nil || !exists || (detail.Status != interfaces.SessionStatusRunning && detail.Status != interfaces.SessionStatusCreating) {
@@ -542,10 +542,10 @@ func (p *sessionPoolImpl) maintainPool() {
 		}
 	}
 
-	// 2. 预热管理：补足到 activeSessions
+	// 2. Warm-up management: add to activeSessions.
 	p.prewarmSessions()
 
-	// 3. 空闲管理：根据 activeSessions 配置保留活跃的空闲 session
+	// 3. Idle management: retain active idle sessions according to activeSessions configuration.
 	p.mu.Lock()
 	var idleItems []*sessionItem
 	for _, item := range p.sessions {
@@ -554,8 +554,8 @@ func (p *sessionPoolImpl) maintainPool() {
 		}
 	}
 	if len(idleItems) > p.activeSessions {
-		// 按最后使用时间排序，保留最新的
-		// 简单的做法：除了第一个，其他的都删掉（或者找到最晚使用的保留）
+		// Sort by last use time, keep the latest.
+		// Simple approach: delete all but the first one (or find the latest one to keep)
 		latestIdx := 0
 		for i := 1; i < len(idleItems); i++ {
 			if idleItems[i].LastUsedAt.After(idleItems[latestIdx].LastUsedAt) {
@@ -568,7 +568,7 @@ func (p *sessionPoolImpl) maintainPool() {
 				continue
 			}
 			p.logger.Infof("Scaling down idle session: %s", item.ID)
-			// 从会话池移除会话槽位
+			// Remove session slot from session pool.
 			delete(p.sessions, item.ID)
 			p.invalidateSession(item.ID)
 		}
@@ -576,13 +576,13 @@ func (p *sessionPoolImpl) maintainPool() {
 	p.mu.Unlock()
 }
 
-// Close 关闭全局会话池
+// Close Closes the global session pool.
 func Close() {
 	if poolInstance == nil {
 		return
 	}
 	close(poolInstance.stopCh)
-	// 并发关闭会话池
+	// Concurrently close the session pool.
 	waitGroup := sync.WaitGroup{}
 	for _, pool := range poolInstance.sessions {
 		waitGroup.Add(1)
@@ -595,7 +595,7 @@ func Close() {
 	waitGroup.Wait()
 }
 
-// 添加会话到池
+// Add session to pool.
 func (p *sessionPoolImpl) addSession(sessionID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -606,7 +606,7 @@ func (p *sessionPoolImpl) addSession(sessionID string) {
 	}
 }
 
-// getSessionItem 获取会话项
+// getSessionItem Gets the session item.
 func (p *sessionPoolImpl) getSessionItem(sessionID string) (sessionItem *sessionItem, ok bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -614,15 +614,15 @@ func (p *sessionPoolImpl) getSessionItem(sessionID string) (sessionItem *session
 	return
 }
 
-// 删除会话
+// Delete session.
 func (p *sessionPoolImpl) removeSession(sessionID string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	delete(p.sessions, sessionID)
 }
 
-// 更新运行任务数
-// updateRunningTasks 更新会话运行任务数
+// Update the number of running tasks.
+// updateRunningTasks updates the number of running tasks in the session.
 func (p *sessionPoolImpl) updateRunningTasks(sessionID string, delta int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -632,7 +632,7 @@ func (p *sessionPoolImpl) updateRunningTasks(sessionID string, delta int) {
 	}
 }
 
-// findBestSession 寻找最佳会话: 堆叠分配策略：寻找负载最高但未满的会话
+// findBestSession Finds the best session: Stacked allocation strategy: Finds the session with the highest load but not full.
 func (p *sessionPoolImpl) findBestSession() (bestSession *sessionItem) {
 	p.mu.Lock()
 	type sessionCandidate struct {

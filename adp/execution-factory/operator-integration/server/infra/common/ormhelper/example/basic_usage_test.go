@@ -8,13 +8,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
-// TestBasicUsage 基本使用示例测试
+// TestBasicUsage basic usage example test.
 func TestBasicUsage(t *testing.T) {
-	// 创建模拟的数据库连接（在实际测试中，您可能需要使用真实的数据库或mock）
+	// Create a simulated database connection (in actual testing, you may need to use a real database or a mock)
 	var db *sql.DB
 	orm := ormhelper.New(db, "example_db")
 
-	// 由于没有真实数据库连接，这些测试主要验证SQL构建是否正确
+	// Since there is no real database connection, these tests mainly verify that the SQL is built correctly.
 	t.Run("Insert", func(t *testing.T) {
 		testInsert(t, orm)
 	})
@@ -44,9 +44,9 @@ func TestBasicUsage(t *testing.T) {
 	})
 }
 
-// testInsert 插入数据示例测试
+// testInsert insert data example test.
 func testInsert(t *testing.T, orm *ormhelper.DB) {
-	// 测试单条插入SQL构建
+	// Test single insert SQL build.
 	insertBuilder := orm.Insert().Into("users").Values(map[string]interface{}{
 		"f_id":          "user-001",
 		"f_name":        "张三",
@@ -63,7 +63,7 @@ func testInsert(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Insert SQL: %s, Args: %v", query, args)
 
-	// 测试批量插入SQL构建
+	// Test bulk insert SQL build.
 	columns := []string{"f_id", "f_name", "f_email", "f_create_time"}
 	values := [][]interface{}{
 		{"user-002", "李四", "lisi@example.com", time.Now().Unix()},
@@ -77,9 +77,9 @@ func testInsert(t *testing.T, orm *ormhelper.DB) {
 	t.Logf("Batch Insert SQL: %s, Args: %v", query, args)
 }
 
-// testQuery 查询数据示例测试
+// testQuery query data example test.
 func testQuery(t *testing.T, orm *ormhelper.DB) {
-	// 测试单条查询SQL构建
+	// Test single query SQL construction.
 	selectBuilder := orm.Select().From("users").WhereEq("f_id", "user-001")
 	query, args := selectBuilder.Build()
 	if query == "" {
@@ -87,7 +87,7 @@ func testQuery(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Select Single SQL: %s, Args: %v", query, args)
 
-	// 测试多条查询SQL构建
+	// Test multiple query SQL construction.
 	multiBuilder := orm.Select().From("users").
 		WhereLike("f_name", "%张%").
 		OrderByDesc("f_create_time").
@@ -98,7 +98,7 @@ func testQuery(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Select Multi SQL: %s, Args: %v", query, args)
 
-	// 测试统计查询SQL构建
+	// Test statistical query SQL construction.
 	countBuilder := orm.Select().From("users").WhereEq("f_status", "active")
 	query, args = countBuilder.Build()
 	if query == "" {
@@ -107,9 +107,9 @@ func testQuery(t *testing.T, orm *ormhelper.DB) {
 	t.Logf("Count SQL: %s, Args: %v", query, args)
 }
 
-// testUpdate 更新数据示例测试
+// testUpdate update data example test.
 func testUpdate(t *testing.T, orm *ormhelper.DB) {
-	// 测试单字段更新SQL构建
+	// Test single field update SQL build.
 	updateBuilder := orm.Update("users").
 		Set("f_name", "张三丰").
 		WhereEq("f_id", "user-001")
@@ -119,7 +119,7 @@ func testUpdate(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Update Single SQL: %s, Args: %v", query, args)
 
-	// 测试批量更新SQL构建
+	// Test batch update SQL build.
 	batchUpdateBuilder := orm.Update("users").SetData(map[string]interface{}{
 		"f_status":      "inactive",
 		"f_update_time": time.Now().Unix(),
@@ -130,7 +130,7 @@ func testUpdate(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Batch Update SQL: %s, Args: %v", query, args)
 
-	// 测试字段自增SQL构建
+	// Test field auto-increment SQL construction.
 	incrementBuilder := orm.Update("users").
 		Increment("f_login_count", 1).
 		WhereEq("f_id", "user-001")
@@ -141,9 +141,9 @@ func testUpdate(t *testing.T, orm *ormhelper.DB) {
 	t.Logf("Increment SQL: %s, Args: %v", query, args)
 }
 
-// testDelete 删除数据示例测试
+// testDelete delete data example test.
 func testDelete(t *testing.T, orm *ormhelper.DB) {
-	// 测试单条删除SQL构建
+	// Test single delete SQL build.
 	deleteBuilder := orm.Delete().From("users").WhereEq("f_id", "user-001")
 	query, args := deleteBuilder.Build()
 	if query == "" {
@@ -151,7 +151,7 @@ func testDelete(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Delete Single SQL: %s, Args: %v", query, args)
 
-	// 测试批量删除SQL构建
+	// Test batch delete SQL build.
 	batchDeleteBuilder := orm.Delete().From("users").
 		WhereEq("f_status", "inactive").
 		WhereLt("f_create_time", time.Now().AddDate(0, 0, -30).Unix())
@@ -162,15 +162,15 @@ func testDelete(t *testing.T, orm *ormhelper.DB) {
 	t.Logf("Batch Delete SQL: %s, Args: %v", query, args)
 }
 
-// testPagination 分页查询示例测试
+// testPagination Pagination query example test.
 func testPagination(t *testing.T, orm *ormhelper.DB) {
-	// 测试分页参数
+	// Test paging parameters.
 	pagination := &ormhelper.PaginationParams{
 		Page:     1,
 		PageSize: 10,
 	}
 
-	// 测试排序参数
+	// Test sorting parameters.
 	sort := &ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
 			{Field: "f_create_time", Order: ormhelper.SortOrderDesc},
@@ -178,7 +178,7 @@ func testPagination(t *testing.T, orm *ormhelper.DB) {
 		},
 	}
 
-	// 测试带分页和排序的查询SQL构建
+	// Test query SQL build with paging and sorting.
 	paginationBuilder := orm.Select().From("users").
 		WhereEq("f_status", "active").
 		Sort(sort).
@@ -189,7 +189,7 @@ func testPagination(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Pagination SQL: %s, Args: %v", query, args)
 
-	// 测试总数查询SQL构建
+	// Total number of tests query SQL build.
 	countBuilder := orm.Select().From("users").WhereEq("f_status", "active")
 	query, args = countBuilder.Build()
 	if query == "" {
@@ -197,7 +197,7 @@ func testPagination(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Count for Pagination SQL: %s, Args: %v", query, args)
 
-	// 测试分页结果计算
+	// Test paging result calculation.
 	total := int64(100)
 	result := ormhelper.CalculateQueryResult(total, pagination)
 	if result.TotalPages != 10 {
@@ -206,18 +206,18 @@ func testPagination(t *testing.T, orm *ormhelper.DB) {
 	t.Logf("Pagination Result: %+v", result)
 }
 
-// testTransaction 事务使用示例测试
+// testTransaction transaction usage example test.
 func testTransaction(t *testing.T, orm *ormhelper.DB) {
-	// 模拟事务
-	var tx *sql.Tx // 在实际测试中，您可能需要创建真实的事务或使用mock
+	// simulate transaction.
+	var tx *sql.Tx // In actual testing you may need to create real transactions or use mocks.
 
-	// 测试事务中的ORM使用
+	// ORM usage in test transactions.
 	txOrm := orm.WithTx(tx)
 	if txOrm == nil {
 		t.Error("Transaction ORM should not be nil")
 	}
 
-	// 测试在事务中构建插入SQL
+	// Test building insert SQL within a transaction.
 	insertBuilder := txOrm.Insert().Into("users").Values(map[string]interface{}{
 		"f_id":   "user-tx-001",
 		"f_name": "事务用户",
@@ -228,7 +228,7 @@ func testTransaction(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Transaction Insert SQL: %s, Args: %v", query, args)
 
-	// 测试在事务中构建更新SQL
+	// Test building update SQL within a transaction.
 	updateBuilder := txOrm.Update("users").
 		Set("f_status", "verified").
 		WhereEq("f_id", "user-tx-001")
@@ -239,9 +239,9 @@ func testTransaction(t *testing.T, orm *ormhelper.DB) {
 	t.Logf("Transaction Update SQL: %s, Args: %v", query, args)
 }
 
-// testComplexQuery 复杂查询示例测试
+// testComplexQuery complex query example test.
 func testComplexQuery(t *testing.T, orm *ormhelper.DB) {
-	// 测试复杂查询SQL构建
+	// Test complex query SQL builds.
 	complexBuilder := orm.Select("u.f_id as f_user_id", "u.f_name as f_user_name", "p.f_id as f_profile_id", "p.f_avatar", "u.f_create_time").
 		From("users u").
 		LeftJoin("user_profiles p", "u.f_id = p.f_user_id").
@@ -262,7 +262,7 @@ func testComplexQuery(t *testing.T, orm *ormhelper.DB) {
 	}
 	t.Logf("Complex Query SQL: %s, Args: %v", query, args)
 
-	// 验证SQL包含期望的关键字
+	// Verify that the SQL contains the expected keywords.
 	expectedKeywords := []string{"SELECT", "FROM", "LEFT JOIN", "WHERE", "ORDER BY", "LIMIT"}
 	for _, keyword := range expectedKeywords {
 		if !contains(query, keyword) {
@@ -271,7 +271,7 @@ func testComplexQuery(t *testing.T, orm *ormhelper.DB) {
 	}
 }
 
-// contains 检查字符串是否包含子字符串（简单的辅助函数）
+// contains checks if a string contains a substring (simple helper function)
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && (s[:len(substr)] == substr || s[len(s)-len(substr):] == substr || containsInner(s, substr)))
 }
@@ -285,7 +285,7 @@ func containsInner(s, substr string) bool {
 	return false
 }
 
-// TestSQLBuilder 专门测试SQL构建器的功能
+// TestSQLBuilder specializes in testing the functionality of SQL builders.
 func TestSQLBuilder(t *testing.T) {
 	var db *sql.DB
 	orm := ormhelper.New(db, "test_db")

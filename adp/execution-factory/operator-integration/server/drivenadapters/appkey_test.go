@@ -73,7 +73,7 @@ func TestAppKeyVerify(t *testing.T) {
 			So(info.Active, ShouldBeTrue)
 			So(info.VisitorID, ShouldEqual, "owner-1")
 			So(info.VisitorTyp, ShouldEqual, interfaces.RealName)
-			// 下游 AccountAuthContext 取的是 ToAccessorType()，必须与 OAuth 令牌路径一致
+			// The downstream AccountAuthContext takes ToAccessorType(), which must be consistent with the OAuth token path.
 			So(info.VisitorTyp.ToAccessorType(), ShouldEqual, interfaces.AccessorTypeUser)
 		})
 

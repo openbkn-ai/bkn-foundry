@@ -1,6 +1,6 @@
-// Package errors 定义错误码
+// Package errors define error codes.
 // @file errors.go
-// @description: 错误码统一处理
+// @description: Unified handling of error codes.
 package errors
 
 import (
@@ -8,22 +8,22 @@ import (
 	"fmt"
 	"net/http"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/localize"
-	jsoniter "github.com/json-iterator/go"
 )
 
-// HTTPError HTTP错误
+// HTTPError HTTP error.
 type HTTPError struct {
 	HTTPCode     int         `json:"-"`
 	Language     string      `json:"-"`
 	Code         string      `json:"code,omitempty"`
-	Description  string      `json:"description,omitempty"` // 错误描述
-	Solution     string      `json:"solution,omitempty"`    // 解决方法
-	ErrorLink    string      `json:"link,omitempty"`        // 错误链接
-	ErrorDetails interface{} `json:"details,omitempty"`     // 详细内容
-	// DescriptionTemplateData map[string]any `json:"-"`                     // 错误描述参数
-	// SolutionTemplateData    map[string]any `json:"-"`                     // 解决方法参数
+	Description  string      `json:"description,omitempty"` // Error description.
+	Solution     string      `json:"solution,omitempty"`    // Solution.
+	ErrorLink    string      `json:"link,omitempty"`        // Bad link.
+	ErrorDetails interface{} `json:"details,omitempty"`     // Details.
+	// DescriptionTemplateData map[string]any `json:"-"` // Error description parameter.
+	// SolutionTemplateData map[string]any `json:"-"` // Solution parameters.
 }
 
 func (e *HTTPError) WithDescription(extCode ErrorCode, params ...interface{}) *HTTPError {
@@ -41,7 +41,7 @@ func (e *HTTPError) WithDescription(extCode ErrorCode, params ...interface{}) *H
 	return e
 }
 
-// Error 返回错误信息
+// Error returns error message.
 func (e *HTTPError) Error() string {
 	errBys, _ := jsoniter.Marshal(e)
 	return string(errBys)
@@ -65,7 +65,7 @@ var (
 	}
 )
 
-// DefaultHTTPError 公共错误码
+// DefaultHTTPError public error code.
 func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
 	tr := localize.NewI18nTranslator(language)
@@ -73,16 +73,16 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
 	}
-	// 获取带默认值的解决方案和错误链接
+	// Get solution and error link with default values.
 	solutionKey := "sol." + errCode
 	solution := tr.Trans(solutionKey)
-	if solution == solutionKey { // 没有找到对应翻译时回退通用方案
+	if solution == solutionKey { // Fallback to the general solution when no corresponding translation is found.
 		solution = tr.Trans("sol.Common")
 	}
 
 	errorLinkKey := "link." + errCode
 	errorLink := tr.Trans(errorLinkKey)
-	if errorLink == errorLinkKey { // 没有找到对应翻译时返回"无"
+	if errorLink == errorLinkKey { // Returns "None" when no corresponding translation is found.
 		errorLink = tr.Trans("link.None")
 	}
 
@@ -97,7 +97,7 @@ func DefaultHTTPError(ctx context.Context, httpCode int, details interface{}) *H
 	}
 }
 
-// NewHTTPError 创建 HTTPError @extCode: 拓展错误码
+// NewHTTPError creates HTTPError @extCode: extended error code.
 func NewHTTPError(ctx context.Context, httpCode int, extCode ErrorCode, details interface{}, descParams ...interface{}) *HTTPError {
 	language := common.GetLanguageFromCtx(ctx)
 	tr := localize.NewI18nTranslator(language)
@@ -105,23 +105,23 @@ func NewHTTPError(ctx context.Context, httpCode int, extCode ErrorCode, details 
 	if errCode == "" {
 		errCode = errCodeMap[http.StatusInternalServerError]
 	}
-	// 获取带默认值的解决方案和错误链接
+	// Get solution and error link with default values.
 	solutionKey := "sol." + extCode.String()
 	solution := tr.Trans(solutionKey)
-	if solution == solutionKey { // 没有找到对应翻译时回退通用方案
+	if solution == solutionKey { // Fallback to the general solution when no corresponding translation is found.
 		solution = tr.Trans("sol.Common")
 	}
 
 	errorLinkKey := "link." + extCode.String()
 	errorLink := tr.Trans(errorLinkKey)
-	if errorLink == errorLinkKey { // 没有找到对应翻译时返回"无"
+	if errorLink == errorLinkKey { // Returns "None" when no corresponding translation is found.
 		errorLink = tr.Trans("link.None")
 	}
 	return &HTTPError{
 		HTTPCode:     httpCode,
 		Language:     language,
 		Code:         fmt.Sprintf("%s.%s.%s", errServerName, errCode, extCode),
-		Description:  fmt.Sprintf(tr.Trans("desc."+extCode.String()), descParams...), // 可以处理%d、%s、%v等格式化占位符。
+		Description:  fmt.Sprintf(tr.Trans("desc."+extCode.String()), descParams...), // Can handle formatting placeholders such as %d, %s, and %v.
 		Solution:     solution,
 		ErrorLink:    errorLink,
 		ErrorDetails: details,

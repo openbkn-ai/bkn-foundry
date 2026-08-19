@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-// DebugFieldMapping 调试字段映射信息
+// DebugFieldMapping debug field mapping information.
 func DebugFieldMapping(structPtr interface{}) {
 	if structPtr == nil {
 		fmt.Println("结构体指针为nil")
@@ -57,7 +57,7 @@ func DebugFieldMapping(structPtr interface{}) {
 	fmt.Println("=== 调试信息结束 ===")
 }
 
-// DebugColumnMapping 调试列映射信息
+// DebugColumnMapping debug column mapping information.
 func DebugColumnMapping(structPtr interface{}, columns []string) {
 	if structPtr == nil || len(columns) == 0 {
 		fmt.Println("参数无效")

@@ -1,6 +1,6 @@
-// Package db 数据库连接池
+// Package db database connection pool.
 // @file db.go
-// @description 初始化连接池
+// @description initialize connection pool.
 package db
 
 import (
@@ -11,7 +11,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
 	"github.com/qustavo/sqlhooks/v2"
 
-	// _ 注册openbkn-rds驱动
+	// _ Register openbkn-rds driver.
 	openbknRDS "github.com/openbkn-ai/bkn-foundry/comm-go/db/driver"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
@@ -30,7 +30,7 @@ func initTraceHook() {
 	sql.Register(traceDriverName, sqlhooks.Wrap(new(openbknRDS.RDSDriver), hook))
 }
 
-// NewDBPool 获取数据库连接池
+// NewDBPool gets the database connection pool.
 func NewDBPool() *sqlx.DB {
 	dbOnce.Do(func() {
 		initTraceHook()
@@ -55,7 +55,7 @@ func NewDBPool() *sqlx.DB {
 		var err error
 		dbPool, err = sqlx.NewDB(&connInfo)
 		if err != nil {
-			// 判断err里
+			// Determine err.
 			if err.Error() == "driver must implement driver.ConnBeginTx" {
 				connInfo.CustomDriver = "openbkn-rds"
 				dbPool, err = sqlx.NewDB(&connInfo)

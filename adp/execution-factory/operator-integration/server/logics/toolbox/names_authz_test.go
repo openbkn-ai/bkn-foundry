@@ -13,7 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestGetToolBoxNamesByIDsAuthz 覆盖 #345：批量取名按查看权限过滤，避免枚举全量工具箱名
+// TestGetToolBoxNamesByIDsAuthz covers #345: batch name filtering based on viewing permissions to avoid enumerating all toolbox names.
 func TestGetToolBoxNamesByIDsAuthz(t *testing.T) {
 	Convey("工具箱批量取名授权过滤", t, func() {
 		ctrl := gomock.NewController(t)
@@ -57,7 +57,7 @@ func TestGetToolBoxNamesByIDsAuthz(t *testing.T) {
 		})
 
 		Convey("内部面不过滤", func() {
-			// authService 不设 EXPECT：内部面若发起判定，gomock 会因非预期调用失败
+			// authService does not set EXPECT: if a judgment is initiated internally, gomock will fail due to unexpected calls.
 			toolBoxDB := mocks.NewMockIToolboxDB(ctrl)
 			svc := &ToolServiceImpl{
 				Logger:      logger.DefaultLogger(),

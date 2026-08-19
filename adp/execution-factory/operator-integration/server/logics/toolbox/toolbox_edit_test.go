@@ -16,7 +16,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestUpdateToolBoxMetadataTypeFallback 覆盖编辑请求省略 metadata_type 时回填已存类型的行为。
+// TestUpdateToolBoxMetadataTypeFallback Overrides the behavior of backfilling existing types when metadata_type is omitted in an edit request.
 func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 	Convey("TestUpdateToolBox:编辑请求省略 metadata_type", t, func() {
 		ctrl := gomock.NewController(t)
@@ -43,7 +43,7 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 		defer commitPatch.Reset()
 
 		const boxID = "box_id_1"
-		// 名称不变,避免走重名校验与权限资源变更通知
+		// The name remains unchanged to avoid duplicate name verification and permission resource change notifications.
 		const boxName = "box_name_1"
 		newToolBox := func(metadataType interfaces.MetadataType, serverURL string) *model.ToolboxDB {
 			return &model.ToolboxDB{
@@ -74,7 +74,7 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 		Convey("已存 openapi 工具箱,请求带合法 box_svc_url 应更新成功", func() {
 			stored := newToolBox(interfaces.MetadataTypeAPI, "http://old.example.com")
 			expectPreflight(stored)
-			// 回填后按 openapi 分支走,服务地址仍需校验
+			// After backfilling, follow the openapi branch. The service address still needs to be verified.
 			mockValidator.EXPECT().ValidatorURL(gomock.Any(), "http://new.example.com").Return(nil)
 			mockDBTx.EXPECT().GetTx(gomock.Any()).Return(tx, nil)
 			mockToolBoxDB.EXPECT().UpdateToolBox(gomock.Any(), tx, stored).DoAndReturn(
@@ -90,7 +90,7 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 			resp, err := toolbox.UpdateToolBox(context.TODO(), req)
 			So(err, ShouldBeNil)
 			So(resp.BoxID, ShouldEqual, boxID)
-			// 回填生效:后续分支拿到的是已存类型
+			// Backfill takes effect: subsequent branches get the existing types.
 			So(req.MetadataType, ShouldEqual, interfaces.MetadataTypeAPI)
 		})
 
@@ -110,11 +110,11 @@ func TestUpdateToolBoxMetadataTypeFallback(t *testing.T) {
 		Convey("已存 function 工具箱,请求不带 metadata_type 不应校验服务地址", func() {
 			stored := newToolBox(interfaces.MetadataTypeFunc, "http://function.example.com")
 			expectPreflight(stored)
-			// 未声明 ValidatorURL 期望:一旦被调用 gomock 直接判失败
+			// ValidatorURL is not declared. Expectation: Once called, gomock will directly fail.
 			mockDBTx.EXPECT().GetTx(gomock.Any()).Return(tx, nil)
 			mockToolBoxDB.EXPECT().UpdateToolBox(gomock.Any(), tx, stored).DoAndReturn(
 				func(_ context.Context, _ *sql.Tx, box *model.ToolboxDB) error {
-					// function 分支不碰服务地址,保留原值
+					// The function branch does not touch the service address and retains the original value.
 					So(box.ServerURL, ShouldEqual, "http://function.example.com")
 					So(box.Description, ShouldEqual, "new_desc")
 					return nil

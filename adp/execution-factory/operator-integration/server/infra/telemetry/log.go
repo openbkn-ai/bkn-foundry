@@ -1,28 +1,28 @@
-// Package telemetry 可观测性相关包
+// Package telemetry Observability related packages.
 package telemetry
 
 import (
 	"context"
 	"fmt"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 )
 
-// LogExporterType 日志导出类型
+// LogExporterType log export type.
 type LogExporterType string
 
 const (
-	LogExporterTypeConsole LogExporterType = "console" // 控制台导出
-	LogExporterTypeOTLP    LogExporterType = "http"    // http导出
+	LogExporterTypeConsole LogExporterType = "console" // Console export.
+	LogExporterTypeOTLP    LogExporterType = "http"    // http export.
 )
 
-// SamplerLogger 采样logger
+// SamplerLogger sampling logger.
 type SamplerLogger struct {
 	DefaultLogger interfaces.Logger
 }
 
-// NewSamplerLogger 创建logger
+// NewSamplerLogger creates logger.
 func NewSamplerLogger(defaultLogger interfaces.Logger) interfaces.Logger {
 	s := &SamplerLogger{
 		DefaultLogger: defaultLogger,
@@ -79,7 +79,7 @@ func (l *SamplerLogger) Errorf(format string, v ...interface{}) {
 	s.Errorf(format, v...)
 }
 
-// WithContext 传递context
+// WithContext passes context.
 func (l *SamplerLogger) WithContext(ctx context.Context) interfaces.Logger {
 	return &spanLogger{
 		ctx:   ctx,

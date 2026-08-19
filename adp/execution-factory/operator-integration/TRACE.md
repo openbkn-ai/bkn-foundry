@@ -1,32 +1,32 @@
-# operator-integration BKN Trace 接入规范
+# operator-integration BKN Trace access specification.
 
-> 状态：2.1 Action 因果闭环实施基线
-> 更新时间：2026-07-25
-> 依据：`bkn-docs/docs/foundry/bkn-trace/registry/核心业务事件注册表.md`
+> Status: 2.1 Action Causal Closed Loop Implementation Baseline.
+> Update time: 2026-07-25.
+>Based on: `bkn-docs/docs/foundry/bkn-trace/registry/Core Business Event Registry.md`
 
-## 1. 模块职责
+## 1. Module responsibilities.
 
-- 模块名：`action-execution`；观测服务：`operator-integration`。
-- 运行形态：Go HTTP/MCP/toolbox/sandbox 执行服务。
-- 代码路径：`adp/execution-factory/operator-integration`。
-- Trace span 使用 `1.0.0`，Evidence event 默认写入 `2.1.0`。
-- 本模块只陈述权限决策、执行尝试和执行结果，不代替 Agent 生成行动建议或审批申请。
+- Module name: `action-execution`; Observation service: `operator-integration`.
+- Running form: Go HTTP/MCP/toolbox/sandbox execution service.
+- Code path: `adp/execution-factory/operator-integration`.
+- Trace span uses `1.0.0`, Evidence event is written to `2.1.0` by default.
+- This module only states permission decisions, execution attempts and execution results, and does not generate action suggestions or approval applications on behalf of the Agent.
 
-## 2. Action 事实责任
+## 2. Action factual responsibility.
 
-| 事实 | 责任方 | 本模块行为 |
+| Facts | Responsible party | Behavior of this module |
 | --- | --- | --- |
-| `action.recommended` | Agent、AI 应用或工作流 | 不生成；要求上游先写入 |
-| `action.approval_requested` | Agent、AI 应用或工作流 | 不生成；接收入站事件 ID 作为直接原因 |
-| `action.approved` / `action.rejected` | operator-integration 的真实权限边界 | 权限检查后生成 |
-| `action.executed` | operator-integration | 实际开始执行或执行尝试失败时生成 |
-| `action.result_recorded` | operator-integration | 记录结果哈希及受控 task/artifact ref |
+| `action.recommended` | Agent, AI application or workflow | Not generated; requires upstream to write first |
+| `action.approval_requested` | Agent, AI application, or workflow | Not generated; accepts inbound event ID as direct cause |
+| `action.approved` / `action.rejected` | The real permission boundaries of operator-integration | Generated after permission check |
+| `action.executed` | operator-integration | Generated when execution actually starts or when an execution attempt fails |
+| `action.result_recorded` | operator-integration | Record result hash and controlled task/artifact ref |
 
-上游必须先可靠提交 `recommended -> approval_requested`，再调用执行入口。execution 不根据工具参数猜测建议，不补造缺失的上游状态。
+The upstream must reliably submit `recommended -> approval_requested` before calling the execution entry. execution does not guess suggestions based on tool parameters and does not make up for missing upstream state.
 
-## 3. 入口与上下文
+## 3. Entry and context.
 
-Action 执行复用真实 toolbox `ExecuteTool` 权限与执行边界。除已有身份头外，必须携带：
+Action execution reuses the permissions and execution boundaries of the real toolbox `ExecuteTool`. In addition to your existing identity card, you must bring:
 
 ```text
 traceparent
@@ -47,17 +47,17 @@ x-account-type
 x-business-domain
 ```
 
-- `bkn-action-approval-requested-event-id` 是 `approved/rejected` 的直接原因。
-- `traceparent` 必须是原始合法 W3C 值，并原样进入 2.1 ingest envelope。
-- `x-business-domain` 必须为真实业务域，缺失时不启用 Action evidence，禁止以 account id 代替。
-- `bkn-operation-id` 在重试时保持不变，`bkn-attempt` 递增且进入 event ID。
-- 缺任一必要因果字段时保持原执行行为，但不创建孤立 Action 事件。
-- 当前自动测试策略只接受 `action_type=monitor`、`reversible=true`、`policy_ref=e2e-monitor-auto-approve`。
-- 其他 Action 不得被自动批准，也不得被普通工具调用误判为 Action。
+- `bkn-action-approval-requested-event-id` is the direct cause of `approved/rejected`.
+- `traceparent` must be the original valid W3C value and passed into the 2.1 ingest envelope unchanged.
+- `x-business-domain` must be a real business domain. If it is missing, Action evidence will not be enabled and it is forbidden to replace it with account id.
+- `bkn-operation-id` remains unchanged on retries, `bkn-attempt` is incremented and goes into event ID.
+- The original execution behavior is maintained when any required causal field is missing, but no orphan Action event is created.
+- The current automatic testing policy only accepts `action_type=monitor`, `reversible=true`, `policy_ref=e2e-monitor-auto-approve`.
+- Other Actions must not be automatically approved, nor may they be misjudged as Actions when called by ordinary tools.
 
-## 4. 状态机与幂等
+## 4. State machine and idempotence.
 
-本模块仅接续以下状态：
+This module only continues the following states:
 
 ```text
 approval_requested -> approved | rejected
@@ -65,70 +65,70 @@ approved -> executed
 executed -> result_recorded
 ```
 
-- `rejected` 是终态，拒绝后不得访问工具箱数据库、元数据或执行代理。
-- 权限通过但后续依赖失败时仍记录 `approved -> executed(error) -> result_recorded(error)`。
-- event ID 由 `action_instance_id + operation_id + attempt + event_type` 稳定派生。
-- 同一 attempt 重放相同事件内容必须完全一致；不同 attempt 不得复用 event ID。
-- 权限通过并成功提交 approved 后，必须在真实副作用前通过 Redis `SETNX` 原子取得 `action_instance_id + attempt` 执行权；取得失败不得执行。
-- 执行结果写入持久 gate 后，重试只返回缓存结果并补发终态 evidence，不重复副作用。
-- 各阶段以 approval_requested 时间为基线使用确定性微秒偏移，保证 observed_at 不同且重放稳定。
+- `rejected` is the final state and no access to the toolbox database, metadata or execution agent is allowed after rejection.
+- `approved -> executed(error) -> result_recorded(error)` is still recorded when the permission is passed but subsequent dependencies fail.
+- event ID is stably derived from `action_instance_id + operation_id + attempt + event_type`.
+- The content of the same event replayed in the same attempt must be exactly the same; event IDs must not be reused in different attempts.
+- After the permission is passed and approved is successfully submitted, the execution right of `action_instance_id + attempt` must be obtained through Redis `SETNX` atomically before the actual side effects; failure to obtain it shall not be executed.
+- After the execution results are written to the persistent gate, retry only returns the cached results and reissues the final state evidence without repeating side effects.
+- Each stage uses the approval_requested time as the baseline to use a deterministic microsecond offset to ensure that the observed_at is different and the replay is stable.
 
-## 5. 精确 payload
+## 5. Accurate payload.
 
-| 事件 | 允许字段 |
+| Events | Allowed fields |
 | --- | --- |
 | `action.approved` / `action.rejected` | `action_instance_id`、`actor_ref`、`policy_decision_ref`、`status` |
-| `action.executed` | `action_instance_id`、`invocation_ref` 或 `tool_ref`、`status`、错误时的 `error_category/error_hash` |
-| `action.result_recorded` | `action_instance_id`、`result_hash`、`artifact_ref` 或 `task_ref`、`status` |
+| `action.executed` | `action_instance_id`, `invocation_ref` or `tool_ref`, `status`, `error_category/error_hash` on error |
+| `action.result_recorded` | `action_instance_id`, `result_hash`, `artifact_ref` or `task_ref`, `status` |
 
-所有哈希使用 `sha256:<64 位小写十六进制>`。actor、policy decision、tool、task 均使用不可逆受控引用；不得保存原始用户 ID、工具 ID 或审批意见。
+All hashes use `sha256:<64-bit lowercase hex>`. Actors, policy decisions, tools, and tasks all use irreversible controlled references; the original user ID, tool ID, or approval opinion must not be saved.
 
-## 6. Trace 与传播
+## 6. Trace and propagation.
 
-| 调用目标 | 协议 | 传播字段 | 约束 |
+| Call target | Protocol | Propagation fields | Constraints |
 | --- | --- | --- | --- |
-| toolbox/导入工具 | HTTP | trace、request、account 及受控 Action 上下文 | 不传播原始参数和结果 |
-| MCP server | MCP/HTTP | 当前 `context.Context` 支持的 trace 元数据 | baggage 仅 allowlist |
-| sandbox control plane | HTTP | trace、request、account | 使用既有执行超时 |
-| authorization/bkn-safe | HTTP | trace、request、account | baggage 不放 actor 原始标识 |
+| toolbox/import tool | HTTP | trace, request, account, and controlled Action contexts | Do not propagate raw parameters and results |
+| MCP server | MCP/HTTP | Trace metadata currently supported by `context.Context` | baggage only allowlist |
+| sandbox control plane | HTTP | trace, request, account | Use existing execution timeout |
+| authorization/bkn-safe | HTTP | trace, request, account | baggage does not put the original actor identification |
 
-允许的 baggage 仅为 `bkn.account.type`、`bkn.runtime.env`。
+The allowed baggage is only `bkn.account.type`, `bkn.runtime.env`.
 
-## 7. 敏感数据边界
+## 7. Sensitive data boundaries.
 
-禁止进入 event、普通日志、span 和 Studio 响应：token、Authorization、Cookie、执行凭据、完整工具输入/输出、完整函数代码、stdout/stderr、外部响应、审批意见、SQL、PII、目标系统敏感 payload。
+It is forbidden to enter event, normal log, span and Studio response: token, Authorization, Cookie, execution credentials, complete tool input/output, complete function code, stdout/stderr, external response, approval opinion, SQL, PII, target system sensitive payload.
 
-允许记录：安全枚举、长度/计数、完整 SHA-256、受控 action/tool/task/artifact/policy 引用。错误只记录类别和哈希，不记录错误原文。
+Allowed logging: secure enums, length/count, full SHA-256, controlled action/tool/task/artifact/policy references. Errors only record the category and hash, not the original error text.
 
-## 8. Given-When-Then 验收
+## 8. Given-When-Then Acceptance.
 
-- Given 上游已提交 recommendation 和 approval request，When 权限通过且执行成功，Then 仅新增 approved、executed、result_recorded。
-- Given 权限拒绝，When 进入真实权限边界，Then 仅新增 rejected，且不访问执行依赖。
-- Given 执行失败，When 权限已通过，Then executed/result 的 status 为 error，错误原文不可见。
-- Given 同一 operation/attempt 重放，When 重建事件，Then event ID 与完整内容一致。
-- Given 缺 Action 因果头或不是可撤销 monitor 测试策略，When 调用工具，Then 不生成 Action 事件。
-- Given 多个相同 action/attempt 并发请求，When 抵达副作用边界，Then只有一个取得执行权。
-- Given 副作用已完成但终态 evidence 上报失败，When 客户端重试，Then补发终态 evidence 并返回缓存结果，不再次执行工具。
-- Given ingest 返回非 2xx 或超时，When 提交 Action 事实，Then有界重试并将最终失败返回调用路径。
+- Given that the recommendation and approval request have been submitted by the upstream, when the permission is passed and the execution is successful, Then only approved, executed, and result_recorded are added.
+- Given permission denial, When entering the real permission boundary, Then only adds rejected and does not access execution dependencies.
+- Given execution failed, When permission has been passed, the status of Then executed/result is error, and the original error text is not visible.
+- Given the same operation/attempt replay, When the event is reconstructed, Then the event ID is consistent with the complete content.
+- Given that the Action causality header is missing or the monitor test strategy is not revocable, When the tool is called, the Action event is not generated.
+- Given multiple concurrent requests for the same action/attempt, when the side effect boundary is reached, Then only one gets execution rights.
+- Given that the side effects have been completed but the final state evidence failed to be reported, When the client retries, Then the final state evidence is reissued and the cached result is returned, without executing the tool again.
+- Given ingest returns a non-2xx or timeout, When the Action is submitted fact, Then bounded retries will be returned to the calling path on eventual failure.
 
-## 9. Fixture 与测试
+## 9. Fixture and testing.
 
-- 正向 fixture：`fixtures/bkn-trace/action_2_1_positive.json`。
-- 合同测试：`server/infra/bkntrace/evidence_test.go`。
-- 执行边界测试：`server/logics/toolbox/execute_trace_test.go`。
-- 验证命令：`go test ./server/infra/bkntrace ./server/logics/toolbox`。
+- Positive fixture: `fixtures/bkn-trace/action_2_1_positive.json`.
+- Contract test: `server/infra/bkntrace/evidence_test.go`.
+- Execute boundary testing: `server/logics/toolbox/execute_trace_test.go`.
+- Verification command: `go test ./server/infra/bkntrace ./server/logics/toolbox`.
 
-## 10. 可靠性与当前边界
+## 10. Reliability and current boundaries.
 
-- 本批先接入 toolbox `ExecuteTool`；MCP、operator proxy 和 sandbox 后续复用同一 helper。
-- Action 路径在 emitter 未配置、非 2xx、超时或 approved 未确认时 fail-closed，不执行副作用；普通非 Action 工具调用保持原行为。
-- HTTP emitter 使用有界重试，原始序列化 event 与时间戳不变。
-- Redis gate 不设 TTL，防止重启后重复副作用。若进程在副作用完成后、结果写入 gate 前崩溃，状态会永久停留 `executing` 并拒绝重试，需要人工对账；本批未实现事务型执行日志/outbox。
-- 上游 recommendation/approval request 必须先确认写入；operator 不补造父事实。
-- 完整本地环境必须把 ingest URL 指向 agent-observability 真实地址。
+- This batch is first connected to toolbox `ExecuteTool`; MCP, operator proxy and sandbox will reuse the same helper later.
+- The action path is fail-closed when the emitter is not configured, is not 2xx, times out, or approved is not confirmed, and no side effects are performed; ordinary non-Action tool calls maintain the original behavior.
+- HTTP emitter uses bounded retry, and the original serialized event and timestamp remain unchanged.
+- Redis gate does not set a TTL to prevent repeated side effects after restarting. If the process crashes after the side effects are completed but before the results are written to the gate, the status will remain in `executing` permanently and retry will be refused. Manual reconciliation is required; transactional execution log/outbox is not implemented in this batch.
+- The upstream recommendation/approval request must first confirm the write; the operator does not modify the parent fact.
+- Full local environment must point the ingest URL to the agent-observability real address.
 
-## 11. 责任确认
+## 11. Responsibility confirmation.
 
-- 责任方：OpenBKN Foundry / execution-factory。
-- 评审日期：待定。
-- 兼容风险：中；新增头均为可选，但只有完整 2.1 上下文才启用 Action 证据事件。
+- Responsible party: OpenBKN Foundry/execution-factory.
+- Review date: TBD.
+- Compatibility risk: Medium; new headers are optional, but Action evidence events are only enabled in the full 2.1 context.

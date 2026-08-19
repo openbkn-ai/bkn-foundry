@@ -18,8 +18,8 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// runIntrospectMiddleware 用给定凭据跑一遍公开面认证中间件，
-// 返回响应记录与中间件放行后下游看到的认证上下文（未放行时为 nil）。
+// runIntrospectMiddleware runs the public authentication middleware using the given credentials.
+// Returns the response record and the authentication context seen by the downstream after the middleware is released (nil when not released).
 func runIntrospectMiddleware(
 	hydra interfaces.Hydra,
 	appKeys interfaces.AppKeyVerifier,
@@ -58,7 +58,7 @@ func TestMiddlewareIntrospectVerifyCredentialRouting(t *testing.T) {
 				VisitorID:  "owner-1",
 				VisitorTyp: interfaces.RealName,
 			}, nil).Times(1)
-			// hydra 未设置 EXPECT，被调用即失败
+			// hydra does not set EXPECT and will fail when called.
 
 			w, seen := runIntrospectMiddleware(hydra, appKeys, "Bearer bak_abc")
 			So(w.Code, ShouldEqual, http.StatusOK)
@@ -73,7 +73,7 @@ func TestMiddlewareIntrospectVerifyCredentialRouting(t *testing.T) {
 				VisitorID:  "user-1",
 				VisitorTyp: interfaces.RealName,
 			}, nil).Times(1)
-			// appKeys 未设置 EXPECT，被调用即失败
+			// appKeys EXPECT is not set and will fail when called.
 
 			w, seen := runIntrospectMiddleware(hydra, appKeys, "Bearer ory_at_normal")
 			So(w.Code, ShouldEqual, http.StatusOK)
@@ -104,7 +104,7 @@ func TestMiddlewareIntrospectVerifyCredentialRouting(t *testing.T) {
 		})
 
 		Convey("verifier 为 nil 时 bak_ 凭据回落 hydra，不 panic", func() {
-			// AUTH_ENABLED=false 或 BKN_SAFE_URL 未配置的部署形态
+			// AUTH_ENABLED=false or BKN_SAFE_URL unconfigured deployment mode.
 			hydra.EXPECT().Introspect(gomock.Any()).Return(&interfaces.TokenInfo{
 				Active: true, VisitorID: "fallback-1", VisitorTyp: interfaces.RealName,
 			}, nil).Times(1)

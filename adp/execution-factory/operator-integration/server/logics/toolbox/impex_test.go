@@ -210,7 +210,7 @@ func TestImport(t *testing.T) {
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			})
-			// Convey("校验导入的工具箱信息: 工具元数据解析失败", func() {
+			// Convey("Verify imported toolbox information: Tool metadata parsing failed", func() {.
 			// 	toolInfo.Metadata = nil
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
@@ -230,7 +230,7 @@ func TestImport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			// })
-			// Convey("校验导入的工具箱信息: 工具元数据校验未通过", func() {
+			// Convey("Verify imported toolbox information: Tool metadata verification failed", func() {.
 			// 	toolInfo.Metadata = &interfaces.MetadataInfo{}
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
@@ -246,7 +246,7 @@ func TestImport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			// })
-			// Convey("校验导入的工具箱信息: 工具箱内存在同名工具", func() {
+			// Convey("Verify imported toolbox information: There is a tool with the same name in the toolbox", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
 			// 			ToolInfo:   toolInfo,
@@ -264,7 +264,7 @@ func TestImport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			// })
-			// Convey("importByCreate: 添加工具箱信息失败（db）", func() {
+			// Convey("importByCreate: Failed to add toolbox information (db)", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
 			// 			ToolInfo:   toolInfo,
@@ -279,7 +279,7 @@ func TestImport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			// })
-			// Convey("importByCreate: 批量添加元数据失败（db）", func() {
+			// Convey("importByCreate: Failed to add metadata in batches (db)", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
 			// 			ToolInfo:   toolInfo,
@@ -295,7 +295,7 @@ func TestImport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			// })
-			// Convey("importByCreate: 批量添加工具失败（db）", func() {
+			// Convey("importByCreate: Failed to add tools in batches (db)", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
 			// 			ToolInfo:   toolInfo,
@@ -312,7 +312,7 @@ func TestImport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			// })
-			// Convey("导入依赖失败", func() {
+			// Convey("Failed to import dependencies", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
 			// 			ToolInfo:   toolInfo,
@@ -332,7 +332,7 @@ func TestImport(t *testing.T) {
 			// 	err := toolbox.Import(publicCtx, nil, interfaces.ImportTypeCreate, importData, "")
 			// 	So(err, ShouldNotBeNil)
 			// })
-			// Convey("添加所有者权限失败", func() {
+			// Convey("Failed to add owner permissions", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
 			// 			ToolInfo:   toolInfo,
@@ -355,7 +355,7 @@ func TestImport(t *testing.T) {
 			// 	So(err, ShouldBeNil)
 			// 	time.Sleep(100 * time.Millisecond)
 			// })
-			// Convey("创建模式导入成功，添加审计日志", func() {
+			// Convey("Creation mode imported successfully, audit log added", func() {.
 			// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 			// 		{
 			// 			ToolInfo:   toolInfo,
@@ -373,7 +373,7 @@ func TestImport(t *testing.T) {
 			// 	time.Sleep(100 * time.Millisecond)
 			// })
 		})
-		// Convey("更新模式: 批量导入工具箱及工具元数据", func() {
+		// Convey("Update mode: Batch import toolbox and tool metadata", func() {.
 		// 	importData.Toolbox.Configs[0].Tools = []*interfaces.ToolImpexItem{
 		// 		{
 		// 			ToolInfo:   toolInfo,
@@ -383,13 +383,13 @@ func TestImport(t *testing.T) {
 		// 	mockValidator.EXPECT().ValidatorStruct(gomock.Any(), gomock.Any()).Return(nil).Times(1)
 		// 	mockToolBoxDB.EXPECT().SelectToolBoxByName(gomock.Any(), gomock.Any(), gomock.Any()).Return(false, nil, nil)
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
-		// 	Convey("检查编辑权限失败", func() {
+		// Convey("Failed to check editing permissions", func() {.
 		// 		mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 		// 		mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox).Return(mocks.MockFuncErr("CheckModifyPermission"))
 		// 		err := toolbox.Import(publicCtx, nil, interfaces.ImportTypeUpsert, importData, "")
 		// 		So(err, ShouldNotBeNil)
 		// 	})
-		// 	Convey("内置工具箱不允许编辑", func() {
+		// Convey("The built-in toolbox does not allow editing", func() {.
 		// 		boxList[0].IsInternal = true
 		// 		mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 		// 		mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox).Return(nil)
@@ -399,8 +399,8 @@ func TestImport(t *testing.T) {
 		// 		So(ok, ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusForbidden)
 		// 	})
-		// 	Convey("校验导入的工具箱信息未通过", func() {
-		// 		importData.Toolbox.Configs[0].BoxName = "mock name err 不允许空格"
+		// Convey("Verification of imported toolbox information failed", func() {.
+		// importData.Toolbox.Configs[0].BoxName = "Mock name err does not allow spaces".
 		// 		mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 		// 		mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox).Return(nil)
 		// 		err := toolbox.Import(publicCtx, nil, interfaces.ImportTypeUpsert, importData, "")
@@ -409,7 +409,7 @@ func TestImport(t *testing.T) {
 		// 		So(ok, ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 		// 	})
-		// 	Convey("更新工具箱信息失败（db）", func() {
+		// Convey("Failed to update toolbox information (db)", func() {.
 		// 		importData.Toolbox.Configs[0].Status = interfaces.BizStatusPublished
 		// 		mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 		// 		mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox).Return(nil)
@@ -421,7 +421,7 @@ func TestImport(t *testing.T) {
 		// 		So(ok, ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// 	})
-		// 	Convey("查询工具箱内的工具失败（db）", func() {
+		// Convey("Failed to query the tools in the toolbox (db)", func() {.
 		// 		mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 		// 		mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox).Return(nil)
 		// 		mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
@@ -433,7 +433,7 @@ func TestImport(t *testing.T) {
 		// 		So(ok, ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// 	})
-		// 	Convey("删除工具箱内的工具失败", func() {
+		// Convey("Failed to delete the tool in the toolbox", func() {.
 		// 		mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 		// 		mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox).Return(nil)
 		// 		mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
@@ -446,7 +446,7 @@ func TestImport(t *testing.T) {
 		// 		So(ok, ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// 	})
-		// Convey("添加元数据失败（db）", func() {
+		// Convey("Failed to add metadata (db)", func() {.
 		// 	mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return(boxList, nil)
 		// 	mockAuthService.EXPECT().CheckModifyPermission(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox).Return(nil)
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(false)
@@ -604,7 +604,7 @@ func TestExport(t *testing.T) {
 				So(ok, ShouldBeTrue)
 				So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			})
-			// Convey("查询元数据信息失败（db）", func() {
+			// Convey("Failed to query metadata information (db)", func() {.
 			// 	mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
 			// 	mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("")
 			// 	mockToolDB.EXPECT().SelectToolBoxByIDs(gomock.Any(), gomock.Any()).Return(tools, nil)
@@ -615,7 +615,7 @@ func TestExport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			// })
-			// Convey("解析APISpec失败", func() {
+			// Convey("Failed to parse APISpec", func() {.
 			// 	metadataDB.APISpec = ""
 			// 	mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
 			// 	mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("")
@@ -627,7 +627,7 @@ func TestExport(t *testing.T) {
 			// 	So(ok, ShouldBeTrue)
 			// 	So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 			// })
-			// Convey("批量数据获取成功, 不存在依赖算子", func() {
+			// Convey("Batch data acquisition is successful, there is no dependent operator", func() {.
 			// 	mockToolBoxDB.EXPECT().SelectListByBoxIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolboxDB{toolBoxDB}, nil)
 			// 	mockCategoryManager.EXPECT().GetCategoryName(gomock.Any(), gomock.Any()).Return("")
 			// 	mockToolDB.EXPECT().SelectToolBoxByIDs(gomock.Any(), gomock.Any()).Return([]*model.ToolDB{tools[0]}, nil)
@@ -636,7 +636,7 @@ func TestExport(t *testing.T) {
 			// 	So(err, ShouldBeNil)
 			// })
 		})
-		// Convey("依赖算子导出失败", func() {
+		// Convey("Dependency operator export failed", func() {.
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
 		// 	mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
 		// 		interfaces.AuthOperationTypeView).Return(ids, nil)
@@ -648,7 +648,7 @@ func TestExport(t *testing.T) {
 		// 	_, err := toolbox.Export(publicCtx, exportReq)
 		// 	So(err, ShouldNotBeNil)
 		// })
-		// Convey("导出成功", func() {
+		// Convey("Export successful", func() {.
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(accessor, nil)
 		// 	mockAuthService.EXPECT().ResourceFilterIDs(gomock.Any(), gomock.Any(), gomock.Any(), interfaces.AuthResourceTypeToolBox,
 		// 		interfaces.AuthOperationTypeView).Return(ids, nil)

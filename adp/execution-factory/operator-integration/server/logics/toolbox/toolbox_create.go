@@ -7,20 +7,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// CreateToolBox 工具箱管理
+// CreateToolBox toolbox management.
 func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.CreateToolBoxReq) (resp *interfaces.CreateToolBoxResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查新建权限
+	// Check new permissions.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -30,12 +30,12 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 	if err != nil {
 		return
 	}
-	// 1. 参数解析及校验
+	// 1. Parameter analysis and verification.
 	metadatas, err := s.parseAndInitDefaultValues(ctx, req)
 	if err != nil {
 		return
 	}
-	// 2. 校验工具箱名称是否存在
+	// 2. Verify whether the toolbox name exists.
 	err = s.checkBoxDuplicateName(ctx, req.BoxName, "")
 	if err != nil {
 		return
@@ -53,7 +53,7 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 		}
 	}()
 
-	// 添加工具箱
+	// Add toolbox.
 	toolBox := &model.ToolboxDB{
 		Name:         req.BoxName,
 		Description:  req.BoxDesc,
@@ -74,7 +74,7 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 检查是否存在元数据变更
+	// Check for metadata changes.
 	var detils []metric.AuditLogToolDetil
 	if len(metadatas) > 0 {
 		var tools []*model.ToolDB
@@ -83,14 +83,14 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 			return
 		}
 		for i, tool := range tools {
-			// 添加元数据
+			// Add metadata.
 			tool.SourceID, err = s.MetadataService.RegisterMetadata(ctx, tx, metadatas[i])
 			if err != nil {
 				s.Logger.WithContext(ctx).Errorf("register metadata failed, err: %v", err)
 				err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 				return
 			}
-			// 添加工具
+			// Add tool.
 			var toolID string
 			toolID, err = s.ToolDB.InsertTool(ctx, tx, tool)
 			if err != nil {
@@ -104,12 +104,12 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 			})
 		}
 	}
-	// 关联业务域
+	// Associated business domains.
 	err = s.BusinessDomainService.AssociateResource(ctx, req.BusinessDomainID, boxID, interfaces.AuthResourceTypeToolBox)
 	if err != nil {
 		return
 	}
-	// 触发新建策略，创建人默认拥有对当前资源的所有操作权限
+	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 		ID:   boxID,
 		Type: string(interfaces.AuthResourceTypeToolBox),
@@ -118,7 +118,7 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 	if err != nil {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -146,12 +146,12 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 	return
 }
 
-// 解析并初始化默认值
+// Parse and initialize default values.
 func (s *ToolServiceImpl) parseAndInitDefaultValues(ctx context.Context, req *interfaces.CreateToolBoxReq) (metadatas []interfaces.IMetadataDB, err error) {
 	switch req.MetadataType {
 	case interfaces.MetadataTypeAPI:
 		if req.OpenAPIInput != nil && req.OpenAPIInput.Data != nil {
-			// 解析API数据
+			// Parse API data.
 			var rawContent any
 			rawContent, err = s.MetadataService.ParseRawContent(ctx, req.MetadataType, req.OpenAPIInput)
 			if err != nil {
@@ -174,7 +174,7 @@ func (s *ToolServiceImpl) parseAndInitDefaultValues(ctx context.Context, req *in
 			if req.BoxSvcURL == "" {
 				req.BoxSvcURL = content.SererURL
 			}
-			// 解析元数据
+			// Parse metadata.
 			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, req.OpenAPIInput)
 			if err != nil {
 				s.Logger.WithContext(ctx).Infof("parse openapi failed, err: %v", err)
@@ -191,7 +191,7 @@ func (s *ToolServiceImpl) parseAndInitDefaultValues(ctx context.Context, req *in
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("unsupported metadata type: %s", req.MetadataType))
 		return
 	}
-	// 当描述为空时，默认使用名称
+	// When description is empty, name is used by default.
 	if req.BoxDesc == "" {
 		req.BoxDesc = req.BoxName
 	}
@@ -203,21 +203,21 @@ func (s *ToolServiceImpl) parseAndInitDefaultValues(ctx context.Context, req *in
 	return
 }
 
-// 从元数据中提取工具信息
+// Extract tool information from metadata.
 func (s *ToolServiceImpl) parseOpenAPIToMetadata(ctx context.Context, boxID, userID string,
 	metadatas []interfaces.IMetadataDB, isInternalTool bool) (tools []*model.ToolDB, validatorNameMap, validatorMethodPathMap map[string]bool, err error) {
-	// 检查工具是否重名
+	// Check if the tool has the same name.
 	validatorMethodPathMap = make(map[string]bool)
 	validatorNameMap = make(map[string]bool)
 	for _, metadata := range metadatas {
-		// 检查工具名称
+		// Check tool name.
 		err = s.Validator.ValidatorToolName(ctx, metadata.GetSummary())
 		if err != nil {
 			return
 		}
 		var useRule string
 		description := metadata.GetDescription()
-		// 如果是内置工具，desc超出限制将内容注入到useRule,desc使用summary填充
+		// If it is a built-in tool, desc exceeds the limit and injects content into useRule, and desc is filled with summary.
 		err = s.Validator.ValidatorToolDesc(ctx, description)
 		if err != nil {
 			if !isInternalTool {
@@ -227,24 +227,24 @@ func (s *ToolServiceImpl) parseOpenAPIToMetadata(ctx context.Context, boxID, use
 			useRule = description
 			description = metadata.GetSummary()
 		}
-		// 工具名称是否重复
+		// Are the tool names duplicated?.
 		if validatorNameMap[metadata.GetSummary()] {
 			err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolExists,
 				fmt.Sprintf("tool name %s duplicate", metadata.GetSummary()), metadata.GetSummary())
 			return
 		}
 		validatorNameMap[metadata.GetSummary()] = true
-		// 检查工具路径是否重复是否存在
+		// Check if toolpath duplicates exist.
 		if metadata.GetType() == string(interfaces.MetadataTypeAPI) {
 			val := validatorMethodPath(metadata.GetMethod(), metadata.GetPath())
-			if validatorMethodPathMap[val] { // 重复
+			if validatorMethodPathMap[val] { // Repeat.
 				err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtToolExists,
 					fmt.Sprintf("tool info %s duplicate", val), val)
 				return
 			}
 			validatorMethodPathMap[val] = true
 		}
-		// 添加基础信息
+		// Add basic information.
 		metadata.SetCreateInfo(userID)
 		metadata.SetUpdateInfo(userID)
 		if metadata.GetVersion() == "" {

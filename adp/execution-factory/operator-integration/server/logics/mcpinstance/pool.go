@@ -16,14 +16,14 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// InstancePool 负责 MCP 实例的运行态管理：
-// - 动态按需创建：实例缺失时回源 DB 解析配置并创建
-// - 并发单飞：同一 (mcpID, version) 并发只创建一次
-// - 有界内存：支持最大实例数 (MaxInstances) 的 LRU 淘汰
-// - 过期清理：支持按最近访问时间的 TTL 清理，提供定时清理循环
-// - 活跃保护：有活跃连接 (SSE/Stream) 的实例不参与淘汰/清理
+// InstancePool is responsible for the running state management of MCP instances:
+// - Dynamic on-demand creation: when the instance is missing, return to the source DB to parse the configuration and create it.
+// - Concurrent solo flight: the same (mcpID, version) is created only once concurrently.
+// - Bounded memory: supports LRU eviction for the maximum number of instances (MaxInstances)
+// - Expired cleaning: supports TTL cleaning based on the latest access time, and provides a scheduled cleaning cycle.
+// - Active protection: Instances with active connections (SSE/Stream) do not participate in elimination/cleanup.
 //
-// 该池“不缓存配置”，仅管理运行态实例，配置解析由 resolver 负责。
+// This pool "does not cache configuration" and only manages running instances. The resolver is responsible for configuration resolution.
 var ErrMCPInstanceConfigNotFound = errors.New("mcp instance runtime config not found")
 
 type instanceBuilder interface {
@@ -37,14 +37,14 @@ type createCall struct {
 	err      error
 }
 
-// InstancePoolOptions 池行为配置
+// InstancePoolOptions pool behavior configuration.
 type InstancePoolOptions struct {
-	MaxInstances    int           // 最大保留实例数量 (<=0 表示不限制)
-	InstanceTTL     time.Duration // 最近访问超时阈值 (<=0 表示不启用 TTL 清理)
-	CleanupInterval time.Duration // 定时清理周期 (<=0 表示不启用定时清理)
+	MaxInstances    int           // Maximum number of reserved instances (<=0 means no limit)
+	InstanceTTL     time.Duration // Recent access timeout threshold (<=0 means no TTL scrubbing is enabled)
+	CleanupInterval time.Duration // Scheduled cleaning cycle (<=0 means disabling scheduled cleaning)
 }
 
-// instanceEntry LRU 节点，记录实例与最近访问时间
+// instanceEntry LRU node, records the instance and recent access time.
 type instanceEntry struct {
 	key        string
 	instance   *interfaces.MCPServerInstance
@@ -52,7 +52,7 @@ type instanceEntry struct {
 	element    *list.Element
 }
 
-// InstancePool 实例池
+// InstancePool instance pool.
 type InstancePool struct {
 	logger           interfaces.Logger
 	dbResourceDeploy model.DBResourceDeploy
@@ -71,7 +71,7 @@ var (
 	pool  *InstancePool
 )
 
-// initInstancePool 初始化实例池
+// initInstancePool initializes the instance pool.
 func initInstancePool(executor interfaces.IMCPToolExecutor) *InstancePool {
 	pOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -80,7 +80,7 @@ func initInstancePool(executor interfaces.IMCPToolExecutor) *InstancePool {
 			InstanceTTL:     time.Duration(conf.MCPConfig.InstanceTTL) * time.Second,
 			CleanupInterval: time.Duration(conf.MCPConfig.CleanupInterval) * time.Second,
 		}
-		// 归一化非法配置值
+		// Normalized illegal configuration value.
 		if opts.MaxInstances < 0 {
 			opts.MaxInstances = 0
 		}
@@ -109,7 +109,7 @@ func initInstancePool(executor interfaces.IMCPToolExecutor) *InstancePool {
 	return pool
 }
 
-// GetOrCreate 如果内存没有实例，则通过 resolver 解析配置并创建
+// GetOrCreate If there is no instance in the memory, resolve the configuration through resolver and create it.
 func (p *InstancePool) GetOrCreate(ctx context.Context, mcpID string, version int) (*interfaces.MCPServerInstance, error) {
 	key := p.key(mcpID, version)
 
@@ -143,7 +143,7 @@ func (p *InstancePool) GetOrCreate(ctx context.Context, mcpID string, version in
 	return p.getOrCreateFromConfig(ctx, loaded)
 }
 
-// GetOrCreateWithConfig 使用外部提供的配置创建实例（避免额外 DB 查询）
+// GetOrCreateWithConfig creates an instance using externally provided configuration (avoids extra DB queries)
 func (p *InstancePool) GetOrCreateWithConfig(ctx context.Context, cfg *interfaces.MCPRuntimeConfig) (*interfaces.MCPServerInstance, error) {
 	if cfg == nil {
 		return nil, ErrMCPInstanceConfigNotFound
@@ -202,7 +202,7 @@ func (p *InstancePool) getOrCreateFromConfig(ctx context.Context, cfg *interface
 	return ins, err
 }
 
-// DeleteInstance 主动删除指定实例，并调用生命周期卸载
+// DeleteInstance actively deletes the specified instance and calls lifecycle uninstallation.
 func (p *InstancePool) DeleteInstance(ctx context.Context, mcpID string, version int) error {
 	key := p.key(mcpID, version)
 	p.mu.Lock()
@@ -220,7 +220,7 @@ func (p *InstancePool) DeleteInstance(ctx context.Context, mcpID string, version
 	return p.builder.Shutdown(ctx, ins)
 }
 
-// Close 关闭定时清理循环
+// Close Close the scheduled cleaning cycle.
 func Close() {
 	if pool == nil {
 		return
@@ -234,7 +234,7 @@ func Close() {
 	}
 }
 
-// Cleanup 执行 TTL 清理；跳过有活跃连接的实例
+// Cleanup performs TTL cleanup; skips instances with active connections.
 func (p *InstancePool) cleanup(ctx context.Context) {
 	var victims []*interfaces.MCPServerInstance
 	now := p.now()
@@ -271,7 +271,7 @@ func (p *InstancePool) cleanup(ctx context.Context) {
 	}
 }
 
-// startCleanupLoop 定时触发 Cleanup
+// startCleanupLoop triggers Cleanup regularly.
 func (p *InstancePool) startCleanupLoop() {
 	ticker := time.NewTicker(p.opts.CleanupInterval)
 	defer ticker.Stop()
@@ -285,7 +285,7 @@ func (p *InstancePool) startCleanupLoop() {
 	}
 }
 
-// evictLocked 执行 LRU 淘汰；跳过有活跃连接的实例
+// evictLocked performs LRU eviction; skips instances with active connections.
 func (p *InstancePool) evictLocked() []*interfaces.MCPServerInstance {
 	if p.opts.MaxInstances <= 0 {
 		return nil
@@ -315,7 +315,7 @@ func (p *InstancePool) evictLocked() []*interfaces.MCPServerInstance {
 	return victims
 }
 
-// touchLocked 更新最近访问时间并移动到 LRU 队头
+// touchLocked updates the last access time and moves to the LRU queue head.
 func (p *InstancePool) touchLocked(e *instanceEntry) {
 	if e == nil {
 		return

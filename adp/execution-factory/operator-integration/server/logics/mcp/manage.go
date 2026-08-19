@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	infracommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
@@ -23,9 +22,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// 排序字段与数据库字段映射
+// Sorting field and database field mapping.
 var sortFieldMap = map[string]string{
 	"create_time": "f_create_time",
 	"update_time": "f_update_time",
@@ -36,13 +36,13 @@ const (
 	mcpToolMaxCount = 30
 )
 
-// ParseSSE 解析SSE MCPServer
+// ParseSSE parses SSE MCPServer.
 func (s *mcpServiceImpl) ParseSSE(ctx context.Context, req *interfaces.MCPParseSSERequest) (resp *interfaces.MCPParseSSEResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 解析动作会驱动服务端向调用方给定的 URL 发起出站请求，是新建 MCP Server 的前置步骤，
-	// 因此按与 AddMCPServer 相同的类型级新建权限判定；内部面不受影响。
+	// The parsing action will drive the server to initiate an outbound request to the URL given by the caller. It is a prerequisite step for creating a new MCP Server.
+	// Therefore, new permission decisions are created at the same type level as AddMCPServer; internal aspects are not affected.
 	if icommon.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, "")
@@ -75,15 +75,15 @@ func (s *mcpServiceImpl) ParseSSE(ctx context.Context, req *interfaces.MCPParseS
 	return
 }
 
-// AddMCPServer 添加MCP Server
+// AddMCPServer Add MCP Server.
 func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPServerAddRequest) (resp *interfaces.MCPServerAddResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
 	})
-	// 检查是否有新建权限
+	// Check if there is new permission.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -107,7 +107,7 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 		}
 	}()
 
-	// 默认不是内置, 内置工具调用内置接口
+	// It is not built-in by default. Built-in tools call built-in interfaces.
 	req.IsInternal = false
 	mcpserverConfig := s.registerReqToModel(req)
 
@@ -116,7 +116,7 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 		return
 	}
 
-	// 添加mcp工具配置信息
+	// Add mcp tool configuration information.
 	if req.CreationType == interfaces.MCPCreationTypeToolImported {
 		var mcpTools []*model.MCPToolDB
 		mcpTools, err = s.syncMCPTools(ctx, tx, req.UserID, MCPID, mcpserverConfig.Version, req.ToolConfigs)
@@ -124,14 +124,14 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 			return nil, err
 		}
 
-		// 创建mcp Server实例
+		// Create mcp Server instance.
 		err = s.createMCPServerInstance(ctx, mcpserverConfig, mcpTools)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// 触发新建策略，创建人默认拥有对当前资源的所有操作权限
+	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 		ID:   MCPID,
 		Type: string(interfaces.AuthResourceTypeMCP),
@@ -140,7 +140,7 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 	if err != nil {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -167,7 +167,7 @@ func (s *mcpServiceImpl) AddMCPServer(ctx context.Context, req *interfaces.MCPSe
 }
 
 func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig *model.MCPServerConfigDB) (string, error) {
-	// 参数校验
+	// Parameter verification.
 	err := s.Validator.ValidatorMCPName(ctx, mcpConfig.Name)
 	if err != nil {
 		return "", err
@@ -177,12 +177,12 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 		return "", err
 	}
 
-	// 校验分类
+	// Check classification.
 	if !s.CategoryManager.CheckCategory(interfaces.BizCategory(mcpConfig.Category)) {
 		return "", oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid category")
 	}
 
-	// 根据名称进行校验，名称不能重复
+	// Verify based on name, name cannot be repeated.
 	err = s.checkDuplicateName(ctx, mcpConfig.Name, "")
 	if err != nil {
 		return "", err
@@ -195,7 +195,7 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 		return "", err
 	}
 
-	// 关联业务域
+	// Associated business domains.
 	businessDomainId, _ := icommon.GetBusinessDomainFromCtx(ctx)
 	err = s.BusinessDomainService.AssociateResource(ctx, businessDomainId, MCPID, interfaces.AuthResourceTypeMCP)
 	if err != nil {
@@ -205,9 +205,9 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 	return MCPID, nil
 }
 
-// syncMCPTools 添加MCP工具配置信息
+// syncMCPTools adds MCP tool configuration information.
 func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, mcpID string, mcpVersion int, toolConfigs []*interfaces.MCPToolConfigInfo) (mcpTools []*model.MCPToolDB, err error) {
-	// todo: 校验工具数量不能超过30个
+	// todo: The number of verification tools cannot exceed 30.
 	if len(toolConfigs) > mcpToolMaxCount {
 		return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPToolMaxCount, fmt.Sprintf("mcp tool count must be less than %d", mcpToolMaxCount), mcpToolMaxCount)
 	}
@@ -216,18 +216,18 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 	mcpTools = make([]*model.MCPToolDB, len(toolConfigs))
 	for i, toolConfig := range toolConfigs {
 		if toolConfig.ToolName != "" {
-			// 校验工具名称是否重复
+			// Check whether the tool name is duplicated.
 			if toolNames[toolConfig.ToolName] {
 				return nil, oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPToolNameDuplicate, fmt.Sprintf("mcp tool name %s is duplicate", toolConfig.ToolName), toolConfig.ToolName)
 			}
 			toolNames[toolConfig.ToolName] = true
-			// 校验工具名称是否合法
+			// Verify whether the tool name is legal.
 			err = s.Validator.ValidatorToolName(ctx, toolConfig.ToolName)
 			if err != nil {
 				return nil, err
 			}
 		}
-		// 校验工具描述是否合法
+		// Verify whether the tool description is legal.
 		if toolConfig.ToolDescription != "" {
 			err = s.Validator.ValidatorToolDesc(ctx, toolConfig.ToolDescription)
 			if err != nil {
@@ -248,7 +248,7 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 		}
 	}
 
-	// 先根据mcpID和mcpVersion进行数据删除
+	// First delete data based on mcpID and mcpVersion.
 	err = s.DBMCPTool.DeleteByMCPIDAndVersion(ctx, tx, mcpID, mcpVersion)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("syncMCPTools DeleteByMCPIDAndVersion failed, err: %v", err)
@@ -257,7 +257,7 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 	}
 
 	if len(mcpTools) > 0 {
-		// 批量数据插入
+		// Batch data insertion.
 		err = s.DBMCPTool.BatchInsert(ctx, tx, mcpTools)
 		if err != nil {
 			s.logger.WithContext(ctx).Errorf("syncMCPTools BatchInsert failed, err: %v", err)
@@ -268,16 +268,16 @@ func (s *mcpServiceImpl) syncMCPTools(ctx context.Context, tx *sql.Tx, userID, m
 	return mcpTools, nil
 }
 
-// DeleteMCPServer 删除MCP Server
+// DeleteMCPServer Delete MCP Server.
 func (s *mcpServiceImpl) DeleteMCPServer(ctx context.Context, req *interfaces.MCPServerDeleteRequest) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
 	})
-	// 检查删除权限
+	// Check delete permissions.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -301,39 +301,39 @@ func (s *mcpServiceImpl) DeleteMCPServer(ctx context.Context, req *interfaces.MC
 		}
 	}()
 
-	// 删除MCP Server配置
+	// Delete MCP Server configuration.
 	configDB, err := s.removeMCPConfig(ctx, tx, req.MCPID)
 	if err != nil {
 		return
 	}
 
-	// 删除MCP工具配置信息
+	// Delete MCP tool configuration information.
 	if configDB.CreationType == interfaces.MCPCreationTypeToolImported.String() {
 		err = s.removeMCPTools(ctx, tx, req.MCPID, configDB.Version)
 		if err != nil {
 			return err
 		}
 
-		// 删除mcp Server实例
+		// Delete mcp Server instance.
 		err = s.MCPInstanceService.DeleteAllMCPInstances(ctx, req.MCPID)
 		if err != nil {
 			return err
 		}
 	}
 
-	// 取消关联业务域
+	// Unassociate business domain.
 	businessDomainId, _ := icommon.GetBusinessDomainFromCtx(ctx)
 	err = s.BusinessDomainService.DisassociateResource(ctx, businessDomainId, req.MCPID, interfaces.AuthResourceTypeMCP)
 	if err != nil {
 		return
 	}
 
-	// 触发权限策略删除
+	// Trigger permission policy deletion.
 	err = s.AuthService.DeletePolicy(ctx, []string{req.MCPID}, interfaces.AuthResourceTypeMCP)
 	if err != nil {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := icommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -355,7 +355,7 @@ func (s *mcpServiceImpl) DeleteMCPServer(ctx context.Context, req *interfaces.MC
 }
 
 func (s *mcpServiceImpl) removeMCPConfig(ctx context.Context, tx *sql.Tx, mcpID string) (config *model.MCPServerConfigDB, err error) {
-	// 检查MCP Server配置是否存在
+	// Check if MCP Server configuration exists.
 	config, err = s.DBMCPServerConfig.SelectByID(ctx, tx, mcpID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("removeMCPConfig SelectByID failed, err: %v", err)
@@ -371,14 +371,14 @@ func (s *mcpServiceImpl) removeMCPConfig(ctx context.Context, tx *sql.Tx, mcpID 
 			fmt.Sprintf("current mcp status %s, can not be deleted", config.Status))
 		return
 	}
-	// 删除MCP Server配置
+	// Delete MCP Server configuration.
 	err = s.DBMCPServerConfig.DeleteByID(ctx, tx, mcpID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("delete mcp config failed, err: %v", err)
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 删除MCP Server发布历史
+	// Delete MCP Server release history.
 	err = s.DBMCPServerReleaseHistory.DeleteByMCPID(ctx, tx, mcpID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("delete mcp release history failed, err: %v", err)
@@ -396,9 +396,9 @@ func (s *mcpServiceImpl) removeMCPTools(ctx context.Context, tx *sql.Tx, mcpID s
 	return
 }
 
-// QueryPage 分页查询MCP Server列表
+// QueryPage Query MCP Server list by page.
 func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServerListRequest) (result *interfaces.MCPServerListResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	filter := make(map[string]interface{})
@@ -422,7 +422,7 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		filter["mode"] = req.Mode
 	}
 
-	// 排序字段
+	// sort field.
 	sortField := "f_update_time"
 	if req.SortBy != "" {
 		sortField = sortFieldMap[req.SortBy]
@@ -431,7 +431,7 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 			return
 		}
 	}
-	// 查询MCP Server配置列表
+	// Query MCP Server configuration list.
 	sort := &ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
 			{Field: sortField, Order: ormhelper.SortOrder(req.SortOrder)},
@@ -462,7 +462,7 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 			case "f_name":
 				cursor.Value = cursorValue.Name
 			}
-			// 如果使用游标，offset不需要
+			// If using a cursor, offset is not required.
 			offset = 0
 		}
 		filter["limit"] = pageSize
@@ -517,13 +517,13 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		data = append(data, s.modelToResponse(config))
 	}
 
-	// 获取工具配置信息
+	// Get tool configuration information.
 	toolConfigMap, err := s.getMCPToolConfigs(ctx, configList)
 	if err != nil {
 		return nil, err
 	}
 
-	// 渲染用户名称
+	// Render user name.
 	userMap, err := s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return
@@ -550,12 +550,12 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 	return
 }
 
-// GetDetail 获取MCP Server详情
+// GetDetail Gets MCP Server details.
 func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServerDetailRequest) (resp *interfaces.MCPServerDetailResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
-	// 检查查看权限
+	// Check viewing permissions.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -579,7 +579,7 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 
 	mcpConfig := s.modelToResponse(mcpConfigDB)
 
-	// 渲染用户名称
+	// Render user name.
 	userIDs := []string{mcpConfigDB.CreateUser, mcpConfigDB.UpdateUser}
 	userMap, err := s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
@@ -588,17 +588,17 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 	mcpConfig.CreateUser = utils.GetValueOrDefault(userMap, mcpConfigDB.CreateUser, interfaces.UnknownUser)
 	mcpConfig.UpdateUser = utils.GetValueOrDefault(userMap, mcpConfigDB.UpdateUser, interfaces.UnknownUser)
 
-	// 组装响应结果
+	// Assemble response results.
 	response := &interfaces.MCPServerDetailResponse{
 		BaseInfo: mcpConfig,
 	}
 
-	// 当前状态为发布状态时，生成MCP Server连接信息
+	// When the current status is the publishing status, MCP Server connection information is generated.
 	if mcpConfigDB.Status == string(interfaces.BizStatusPublished) {
 		response.ConnectionInfo = s.generateExternalConnectionInfo(mcpConfigDB.MCPID, mcpConfig.CreationType)
 	}
 
-	// 组装MCP工具配置信息
+	// Assemble MCP tool configuration information.
 	if mcpConfig.CreationType == interfaces.MCPCreationTypeToolImported {
 		toolConfigs, err := s.getMCPToolConfig(ctx, mcpConfig.MCPID, mcpConfig.Version)
 		if err != nil {
@@ -609,16 +609,16 @@ func (s *mcpServiceImpl) GetDetail(ctx context.Context, req *interfaces.MCPServe
 	return response, nil
 }
 
-// UpdateMCPServer 更新MCP Server
+// UpdateMCPServer Update MCP Server.
 func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MCPServerUpdateRequest) (resp *interfaces.MCPServerUpdateResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
 	})
-	// 检查编辑权限
+	// Check editing permissions.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -642,28 +642,28 @@ func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MC
 		}
 	}()
 
-	// 自定义MCP Server更新
+	// Custom MCP Server updates.
 	newMCPConfig := s.mcpUpdateReqToModel(req)
 	config, oldVersion, currentVersion, err := s.updateMCPConfig(ctx, tx, newMCPConfig)
 	if err != nil {
 		return
 	}
 
-	// 同步MCP工具配置信息
+	// Synchronize MCP tool configuration information.
 	if config.CreationType == interfaces.MCPCreationTypeToolImported.String() {
 		mcpTools, err := s.syncMCPTools(ctx, tx, req.UserID, req.MCPID, config.Version, req.ToolConfigs)
 		if err != nil {
 			return nil, err
 		}
 
-		// 更新mcp Server实例
+		// Update mcp Server instance.
 		err = s.refreshMCPServerInstance(ctx, oldVersion, currentVersion, config, mcpTools)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -688,9 +688,9 @@ func (s *mcpServiceImpl) UpdateMCPServer(ctx context.Context, req *interfaces.MC
 	return
 }
 
-// updateMCPConfig 更新MCP Server配置
+// updateMCPConfig updates MCP Server configuration.
 func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCPConfig *model.MCPServerConfigDB) (config *model.MCPServerConfigDB, oldVersion, currentVersion int, err error) {
-	// 参数校验
+	// Parameter verification.
 	err = s.Validator.ValidatorMCPName(ctx, newMCPConfig.Name)
 	if err != nil {
 		return nil, 0, 0, err
@@ -699,51 +699,51 @@ func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCP
 	if err != nil {
 		return nil, 0, 0, err
 	}
-	// 校验分类
+	// Check classification.
 	if !s.CategoryManager.CheckCategory(interfaces.BizCategory(newMCPConfig.Category)) {
 		return nil, 0, 0, oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, "invalid category")
 	}
 
-	// 根据ID获取MCP Server配置
+	// Get MCP Server configuration based on ID.
 	config, err = s.DBMCPServerConfig.SelectByID(ctx, nil, newMCPConfig.MCPID)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("select mcp server config failed: %w", err)
 	}
 
 	if config == nil {
-		// 配置不存在
+		// Configuration does not exist.
 		return nil, 0, 0, oerrors.NewHTTPError(ctx, http.StatusNotFound, oerrors.ErrExtMCPNotFound, "mcp not found")
 	}
 
-	// 新增字段，兼容旧版本
+	// Added new fields, compatible with older versions.
 	if config.CreationType == "" {
 		config.CreationType = interfaces.MCPCreationTypeCustom.String()
 	}
 
-	// 校验状态转换是否合法
+	// Verify whether the state transition is legal.
 	targetState, err := common.GetEditStatusTrans(ctx, interfaces.BizStatus(config.Status))
 	if err != nil {
 		return nil, 0, 0, err
 	}
 
-	// 名字是否有变化
+	// Has the name changed?.
 	isNameChange := config.Name != newMCPConfig.Name
 	if isNameChange {
-		// 当名称有变化时，校验名称是否重复
+		// When the name changes, verify whether the name is duplicated.
 		err = s.checkDuplicateName(ctx, newMCPConfig.Name, config.MCPID)
 		if err != nil {
 			return nil, 0, 0, err
 		}
 	}
 
-	// 更新版本号
+	// Update version number.
 	oldVersion = config.Version
 	currentVersion, err = s.updateMCPConfigVersion(ctx, tx, config)
 	if err != nil {
 		return nil, 0, 0, err
 	}
 
-	// 更新MCP Server配置，定义哪些字段可以更新
+	// Update the MCP Server configuration to define which fields can be updated.
 	config.Name = newMCPConfig.Name
 	config.Description = newMCPConfig.Description
 	config.Source = newMCPConfig.Source
@@ -763,13 +763,13 @@ func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCP
 		config.URL = s.generateInternalMCPURL(config.MCPID, config.Version, interfaces.MCPMode(config.Mode))
 	}
 
-	// 状态更新
+	// status update.
 	err = s.DBMCPServerConfig.UpdateByID(ctx, tx, config)
 	if err != nil {
 		return nil, 0, 0, fmt.Errorf("update mcp server config failed: %w", err)
 	}
 
-	// 如果名称有变化，触发权限资源变更通知
+	// If the name changes, trigger permission resource change notification.
 	if isNameChange {
 		authResource := &interfaces.AuthResource{
 			ID:   config.MCPID,
@@ -785,14 +785,14 @@ func (s *mcpServiceImpl) updateMCPConfig(ctx context.Context, tx *sql.Tx, newMCP
 }
 
 func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.UpdateMCPStatusRequest) (resp *interfaces.UpdateMCPStatusResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
 	})
-	// 检查发布或者下架权限
+	// Check publishing or removal permissions.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -830,7 +830,7 @@ func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.Up
 	if operation == "" {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -853,7 +853,7 @@ func (s *mcpServiceImpl) UpdateMCPStatus(ctx context.Context, req *interfaces.Up
 
 func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *interfaces.UpdateMCPStatusRequest) (mcpConfigDB *model.MCPServerConfigDB,
 	resp *interfaces.UpdateMCPStatusResponse, err error) {
-	// 检查MCP配置信息是否存在
+	// Check whether MCP configuration information exists.
 	mcpConfigDB, err = s.DBMCPServerConfig.SelectByID(ctx, tx, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config failed, err: %v", err)
@@ -865,7 +865,7 @@ func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *i
 		return
 	}
 
-	// 校验状态转换是否合法
+	// Verify whether the state transition is legal.
 	if !common.CheckStatusTransition(interfaces.BizStatus(mcpConfigDB.Status), req.Status) {
 		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtMCPStatusInvalid,
 			fmt.Sprintf("current mcp status %s, can not be transition to %s", mcpConfigDB.Status, req.Status))
@@ -877,38 +877,38 @@ func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *i
 
 	switch req.Status {
 	case interfaces.BizStatusPublished:
-		// 检查是否重名
+		// Check if there is a duplicate name.
 		err = s.checkDuplicateName(ctx, mcpConfigDB.Name, mcpConfigDB.MCPID)
 		if err != nil {
 			return
 		}
 		mcpConfigDB.Status = string(req.Status)
-		// 发布MCP
+		// Release MCP.
 		var mcpReleaseDB *model.MCPServerReleaseDB
 		mcpReleaseDB, err = s.publishMCP(ctx, tx, mcpConfigDB, req.UserID)
 		if err != nil {
 			return
 		}
-		// 新增发布历史记录
+		// Add new release history.
 		err = s.addMCPHistory(ctx, tx, mcpReleaseDB, req.UserID)
 		if err != nil {
 			return
 		}
 	case interfaces.BizStatusOffline:
-		// 下架操作
+		// Removal operation.
 		err = s.unpublishMCP(ctx, tx, mcpConfigDB)
 		if err != nil {
 			return
 		}
 	case interfaces.BizStatusUnpublish, interfaces.BizStatusEditing:
-		// 编辑中或者未发布状态，更新版本号
+		// In editing or unpublished status, update version number.
 		_, err = s.updateMCPConfigVersion(ctx, tx, mcpConfigDB)
 		if err != nil {
 			return
 		}
 	}
 
-	// 更新MCP配置表状态
+	// Update MCP configuration table status.
 	err = s.DBMCPServerConfig.UpdateStatus(ctx, tx, req.MCPID, string(req.Status), req.UserID, mcpConfigDB.Version)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("update mcp server config status failed, err: %v", err)
@@ -923,16 +923,16 @@ func (s *mcpServiceImpl) modifyMCPStatus(ctx context.Context, tx *sql.Tx, req *i
 	return
 }
 
-// DebugTool 调试工具
+// DebugTool debugging tool.
 func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolDebugRequest) (resp *interfaces.MCPToolDebugResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
 	})
-	// 校验使用权限
+	// Verify usage rights.
 	accessor, err := s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
@@ -942,7 +942,7 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 		return
 	}
 
-	// 1. 获取MCP Server配置
+	// 1. Obtain MCP Server configuration.
 	mcpConfigDB, err := s.DBMCPServerConfig.SelectByID(ctx, nil, req.MCPID)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("select mcp server config failed, err: %v", err)
@@ -957,7 +957,7 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 
 	mcpConfig := s.modelToResponse(mcpConfigDB)
 
-	// 2. 调用工具
+	// 2. Call the tool.
 	callToolReq := &CallToolRequest{
 		ListToolsRequest: &ListToolsRequest{
 			CreationType: mcpConfig.CreationType,
@@ -977,7 +977,7 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 		return
 	}
 
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := infracommon.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -1003,7 +1003,7 @@ func (s *mcpServiceImpl) DebugTool(ctx context.Context, req *interfaces.MCPToolD
 	return
 }
 
-// registerReqToModel 将注册请求转换为模型
+// registerReqToModel converts registration request to model.
 func (s *mcpServiceImpl) registerReqToModel(req *interfaces.MCPServerAddRequest) (config *model.MCPServerConfigDB) {
 	config = &model.MCPServerConfigDB{
 		MCPID:        uuid.New().String(),
@@ -1032,7 +1032,7 @@ func (s *mcpServiceImpl) registerReqToModel(req *interfaces.MCPServerAddRequest)
 	return config
 }
 
-// mcpUpdateReqToModel 将更新请求转换为模型
+// mcpUpdateReqToModel Convert update request to model.
 func (s *mcpServiceImpl) mcpUpdateReqToModel(req *interfaces.MCPServerUpdateRequest) *model.MCPServerConfigDB {
 	return &model.MCPServerConfigDB{
 		MCPID:        req.MCPID,
@@ -1053,7 +1053,7 @@ func (s *mcpServiceImpl) mcpUpdateReqToModel(req *interfaces.MCPServerUpdateRequ
 	}
 }
 
-// modelToResponse 将模型转换为响应
+// modelToResponse Convert model to response.
 func (s *mcpServiceImpl) modelToResponse(config *model.MCPServerConfigDB) *interfaces.MCPServerConfigInfo {
 	return &interfaces.MCPServerConfigInfo{
 		MCPCoreConfigInfo: interfaces.MCPCoreConfigInfo{
@@ -1080,9 +1080,9 @@ func (s *mcpServiceImpl) modelToResponse(config *model.MCPServerConfigDB) *inter
 	}
 }
 
-// checkDuplicateName 检查是否重名
+// checkDuplicateName checks whether there is a duplicate name.
 func (s *mcpServiceImpl) checkDuplicateName(ctx context.Context, name, mcpID string) (err error) {
-	// 根据名称进行校验，名称不能重复
+	// Verify based on name, name cannot be repeated.
 	configDB, err := s.DBMCPServerConfig.SelectByName(ctx, nil, name, []string{interfaces.BizStatusPublished.String()})
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("checkDuplicateName count by name failed, name: %s, err: %v", name, err)
@@ -1098,10 +1098,10 @@ func (s *mcpServiceImpl) checkDuplicateName(ctx context.Context, name, mcpID str
 	return
 }
 
-// updateMCPConfigVersion 更新MCP配置表版本号
+// updateMCPConfigVersion updates the MCP configuration table version number.
 func (s *mcpServiceImpl) updateMCPConfigVersion(ctx context.Context, tx *sql.Tx, mcpConfigDB *model.MCPServerConfigDB) (version int, err error) {
 	if mcpConfigDB.Status == string(interfaces.BizStatusPublished) || mcpConfigDB.Status == string(interfaces.BizStatusOffline) {
-		// 为了向下兼容，版本号从发布历史中获取+1
+		// For backward compatibility, the version number is taken +1 from the release history.
 		releaseHistorys, err := s.DBMCPServerReleaseHistory.SelectByMCPID(ctx, tx, mcpConfigDB.MCPID)
 		if err != nil {
 			return 0, err
@@ -1114,9 +1114,9 @@ func (s *mcpServiceImpl) updateMCPConfigVersion(ctx context.Context, tx *sql.Tx,
 	return version, nil
 }
 
-// createMCPServerInstance 创建MCP Server实例
+// createMCPServerInstance creates an MCP Server instance.
 func (s *mcpServiceImpl) createMCPServerInstance(ctx context.Context, mcpConfigDB *model.MCPServerConfigDB, tools []*model.MCPToolDB) (err error) {
-	// 创建mcp Server实例
+	// Create mcp Server instance.
 	req := &interfaces.MCPInstanceCreateRequest{
 		MCPID:        mcpConfigDB.MCPID,
 		Version:      mcpConfigDB.Version,
@@ -1133,12 +1133,12 @@ func (s *mcpServiceImpl) createMCPServerInstance(ctx context.Context, mcpConfigD
 	if err != nil {
 		return err
 	}
-	// todo: 选择更新mcp url
+	// todo: choose to update mcp url.
 	return nil
 }
 
 func (s *mcpServiceImpl) UpgradeMCPInstance(ctx context.Context, mcpID string) (err error) {
-	// 获取MCP配置信息
+	// Get MCP configuration information.
 	mcpConfigDB, err := s.DBMCPServerConfig.SelectByID(ctx, nil, mcpID)
 	if err != nil {
 		return err
@@ -1146,7 +1146,7 @@ func (s *mcpServiceImpl) UpgradeMCPInstance(ctx context.Context, mcpID string) (
 	if mcpConfigDB == nil {
 		return oerrors.DefaultHTTPError(ctx, http.StatusNotFound, fmt.Sprintf("mcp server %s not found", mcpID))
 	}
-	// 获取工具信息
+	// Get tool information.
 	tools, err := s.DBMCPTool.SelectListByMCPIDAndVersion(ctx, nil, mcpID, mcpConfigDB.Version)
 	if err != nil {
 		return err
@@ -1170,18 +1170,18 @@ func (s *mcpServiceImpl) UpgradeMCPInstance(ctx context.Context, mcpID string) (
 	return
 }
 
-// refreshMCPServerInstance 刷新MCP Server实例
+// refreshMCPServerInstance refresh MCP Server instance.
 func (s *mcpServiceImpl) refreshMCPServerInstance(ctx context.Context, oldVersion, currentVersion int, mcpConfigDB *model.MCPServerConfigDB, tools []*model.MCPToolDB) (err error) {
 	if currentVersion > oldVersion {
-		// 创建新的mcp Server实例
+		// Create a new mcp Server instance.
 		return s.createMCPServerInstance(ctx, mcpConfigDB, tools)
 	}
-	// 更新mcp Server实例
+	// Update mcp Server instance.
 	return s.updateMCPServerInstance(ctx, mcpConfigDB, tools)
 }
 
 func (s *mcpServiceImpl) updateMCPServerInstance(ctx context.Context, mcpConfigDB *model.MCPServerConfigDB, tools []*model.MCPToolDB) (err error) {
-	// 更新mcp Server实例
+	// Update mcp Server instance.
 	req := &interfaces.MCPInstanceUpdateRequest{
 		MCPServerName: mcpConfigDB.Name,
 		Instructions:  mcpConfigDB.Description,
@@ -1198,7 +1198,7 @@ func (s *mcpServiceImpl) updateMCPServerInstance(ctx context.Context, mcpConfigD
 	return nil
 }
 
-// getMCPToolDeployConfigs 获取MCP工具部署配置
+// getMCPToolDeployConfigs Gets MCP tool deployment configuration.
 func (s *mcpServiceImpl) getMCPToolDeployConfigs(ctx context.Context, tools []*model.MCPToolDB) ([]*interfaces.MCPToolConfig, error) {
 	toolConfigs := make([]*interfaces.MCPToolConfig, len(tools))
 	for i, tool := range tools {
@@ -1216,7 +1216,7 @@ func (s *mcpServiceImpl) generateMCPToolConfig(ctx context.Context, tool *model.
 		ToolID:      tool.MCPToolID,
 		Description: tool.Description,
 	}
-	// 获取工具箱下工具信息
+	// Get tool information under the toolbox.
 	toolInfo, err := s.ToolService.GetBoxTool(ctx, &interfaces.GetToolReq{
 		BoxID:  tool.BoxID,
 		ToolID: tool.ToolID,
@@ -1240,7 +1240,7 @@ func (s *mcpServiceImpl) generateMCPToolConfig(ctx context.Context, tool *model.
 		toolConfig.Description += "\n use rule:" + tool.UseRule
 	}
 
-	// 将元数据信息转换为json schema
+	// Convert metadata information to json schema.
 	toolConfig.InputSchema, err = s.convertInputSchema(ctx, toolInfo)
 	if err != nil {
 		return nil, err

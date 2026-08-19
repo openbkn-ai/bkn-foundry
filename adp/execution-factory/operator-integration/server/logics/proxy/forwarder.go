@@ -23,13 +23,13 @@ import (
 	"github.com/pkg/errors"
 )
 
-// Forwarder HTTP请求转发器接口
+// Forwarder HTTP request forwarder interface.
 type Forwarder interface {
 	Forward(ctx context.Context, req *interfaces.HTTPRequest) (*interfaces.HTTPResponse, error)
 	ForwardStream(ctx context.Context, req *interfaces.HTTPRequest) (*interfaces.HTTPResponse, error)
 }
 
-// forwarder HTTP请求转发器
+// forwarder HTTP request forwarder.
 type forwarder struct {
 	pool            *clientPool
 	streamProcessor *StreamProcessor
@@ -41,7 +41,7 @@ var (
 	f             Forwarder
 )
 
-// NewForwarder 创建一个新的HTTP请求转发器
+// NewForwarder creates a new HTTP request forwarder.
 func NewForwarder() Forwarder {
 	forwarderOnce.Do(func() {
 		logger := config.NewConfigLoader().GetLogger()
@@ -54,15 +54,15 @@ func NewForwarder() Forwarder {
 	return f
 }
 
-// HTTPStreamForward 处理HTTP流式请求
+// HTTPStreamForward handles HTTP streaming requests.
 func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPRequest) (*interfaces.HTTPResponse, error) {
 	startTime := time.Now()
-	// 验证请求参数
+	// Verify request parameters.
 	streamingMode, ok := common.GetStreamingModeFromCtx(ctx)
 	if !ok {
 		streamingMode = interfaces.StreamingModeHTTP
 	}
-	// 获取响应写入器
+	// Get response writer.
 	headerWriter, ok := common.GetResponseWriterFromCtx(ctx)
 	if !ok {
 		err := fmt.Errorf("response writer not found in context")
@@ -77,24 +77,24 @@ func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPReque
 		err = myErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return nil, err
 	}
-	// 创建不带超时的客户端用于流式请求
+	// Create a client without timeout for streaming requests.
 	streamClient := f.pool.GetStreamClient(streamingMode, req.Timeout)
 
-	// 新添加：为流式请求设置必要的请求头
+	// New Added: Set necessary request headers for streaming requests.
 	prepareStreamRequest(streamingMode, httpReq)
 	now := time.Now()
 	f.logger.Debugf("do stream request, streamingMode: %v, timeout: %v", streamingMode, req.Timeout)
 	resp, err := streamClient.Do(httpReq)
 	if err != nil {
-		// 流式服务端，设置ResponseHeaderTimeout参数为10s, 10s内无请求头返回，认为是超时
-		// 如果服务端不支持流式请求，但是客户端使用流式代理，也认为是超时
-		// 超时错误示例: net/http: timeout awaiting response headers"
+		// On the streaming server, set the ResponseHeaderTimeout parameter to 10s. If no request header is returned within 10s, it is considered a timeout.
+		// If the server does not support streaming requests, but the client uses a streaming proxy, it is also considered a timeout.
+		// Timeout error example: net/http: timeout awaiting response headers".
 		headerWriter.WriteHeader(http.StatusRequestTimeout)
 		if strings.Contains(err.Error(), "timeout awaiting response headers") {
 			err = errors.Wrapf(err, "The server may not support streaming requests, or the server response timed out with no response headers received within 10 seconds")
 			err = myErr.DefaultHTTPError(ctx, http.StatusRequestTimeout, err.Error())
 		} else {
-			// 请求转发失败，返回服务器不可用，请检查是否可用，或稍后重试
+			// The request forwarding failed and the server is reported to be unavailable. Please check whether it is available or try again later.
 			err = errors.Wrapf(err, "Request forwarding failed, please check if the request is correct, or try again later")
 			err = myErr.NewHTTPError(ctx, http.StatusServiceUnavailable, myErr.ErrExtProxyForwardFailed, err.Error())
 		}
@@ -105,7 +105,7 @@ func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPReque
 	defer func() {
 		_ = resp.Body.Close()
 	}()
-	// 复制响应头到原始响应
+	// Copy response headers to original response.
 	var isSSE bool
 	headers := make(map[string]any)
 	for key, values := range resp.Header {
@@ -118,13 +118,13 @@ func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPReque
 		}
 	}
 	preprocessResponseHeaders(streamingMode, headerWriter)
-	// 确保设置正确的状态码
+	// Make sure you set the correct status code.
 	headerWriter.WriteHeader(resp.StatusCode)
-	// 添加这行代码以确保响应头被立即发送
+	// Add this line of code to ensure the response headers are sent immediately.
 	if flusher, ok := headerWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
-	// 根据流式模式处理
+	// Processed according to streaming mode.
 	switch streamingMode {
 	case interfaces.StreamingModeSSE:
 		err = f.streamProcessor.ProcessSSE(ctx, resp.Body, headerWriter, isSSE)
@@ -146,20 +146,20 @@ func (f *forwarder) ForwardStream(ctx context.Context, req *interfaces.HTTPReque
 	}, nil
 }
 
-// Forward 转发HTTP请求
+// Forward forward HTTP request.
 func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*interfaces.HTTPResponse, error) {
 	startTime := time.Now()
 
-	// 获取HTTP客户端
+	// Get HTTP client.
 	client := f.pool.GetClient(req.Timeout)
 
-	// 构建HTTP请求
+	// Build an HTTP request.
 	httpReq, err := f.buildRequest(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build request: %w", err)
 	}
 
-	// 发送请求
+	// Send request.
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return &interfaces.HTTPResponse{
@@ -172,21 +172,21 @@ func (f *forwarder) Forward(ctx context.Context, req *interfaces.HTTPRequest) (*
 		_ = resp.Body.Close()
 	}()
 
-	// 处理响应
+	// Handle response.
 	return f.processResponse(resp, startTime)
 }
 
-// buildRequest 根据请求参数构建HTTP请求
+// buildRequest Builds an HTTP request based on request parameters.
 func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPRequest) (*http.Request, error) {
-	// 处理URL和路径参数
+	// Handle URL and path parameters.
 	requestURL := substitutePathParams(req.URL, req.PathParams)
-	// 路径模板仍有未替换的占位符时直接拒绝，避免把 "/market/{operator_id}" 这类无效 URL 发给下游
+	// If the path template still has unreplaced placeholders, it will be directly rejected to avoid sending invalid URLs such as "/market/{operator_id}" to downstream users.
 	if unresolved := unresolvedPathPlaceholders(requestURL); len(unresolved) > 0 {
 		missing := strings.Join(unresolved, ", ")
 		return nil, myErr.NewHTTPError(ctx, http.StatusBadRequest, myErr.ErrExtProxyPathParamMissing,
 			fmt.Sprintf("unresolved path placeholder(s) [%s] in url %s", missing, requestURL), missing)
 	}
-	// 处理查询参数
+	// Handle query parameters.
 	if len(req.QueryParams) > 0 {
 		parsedURL, err := url.Parse(requestURL)
 		if err != nil {
@@ -202,21 +202,21 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 		requestURL = parsedURL.String()
 	}
 
-	// 处理请求体
+	// Process request body.
 	var reqBody io.Reader
 	var contentType string
-	// forceContentType 表示编码过程重算出的 Content-Type 必须覆盖调用方传入的同名请求头
+	// forceContentType means that the Content-Type recalculated during the encoding process must cover the request header with the same name passed in by the caller.
 	var forceContentType bool
 
-	// GET/HEAD 语义上没有请求体，而调试面板对无 body 的接口固定发 "body": {}，
-	// 直接按普通请求体处理会给下游带上空 JSON 体和 Content-Type，部分服务端会直接拒绝。
+	// GET/HEAD does not have a request body semantically, and the debugging panel always sends "body": {} to interfaces without a body.
+	// Direct processing as a normal request body will bring empty JSON body and Content-Type to the downstream, and some servers will directly reject it.
 	payload := req.Body
 	if isBodylessMethod(req.Method) && isEmptyBody(payload) {
 		payload = nil
 	}
 
 	if payload != nil {
-		// 检查Content-Type头
+		// Check the Content-Type header.
 		contentType = ""
 		if req.Headers != nil {
 			for k, v := range req.Headers {
@@ -226,20 +226,20 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 				}
 			}
 		}
-		// 根据Content-Type处理请求体
+		// Process the request body according to Content-Type.
 		switch {
 		case strings.Contains(contentType, "application/json"):
-			// JSON格式
+			// JSON format.
 			jsonData, err := json.Marshal(payload)
 			if err != nil {
 				return nil, err
 			}
 			reqBody = bytes.NewBuffer(jsonData)
 		case strings.Contains(contentType, "application/x-www-form-urlencoded"):
-			// 表单格式
+			// form format.
 			formData := url.Values{}
 
-			// 尝试将body转换为map
+			// Try converting body to map.
 			if bodyMap, ok := payload.(map[string]interface{}); ok {
 				for key, value := range bodyMap {
 					formData.Add(key, fmt.Sprintf("%v", value))
@@ -247,11 +247,11 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 			}
 			reqBody = strings.NewReader(formData.Encode())
 		case strings.Contains(contentType, "multipart/form-data"):
-			// 多部分表单格式
+			// multipart form format.
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
 
-			// 尝试将body转换为map
+			// Try converting body to map.
 			if bodyMap, ok := payload.(map[string]interface{}); ok {
 				for key, value := range bodyMap {
 					fw, err := writer.CreateFormField(key)
@@ -266,20 +266,20 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 			}
 
 			_ = writer.Close()
-			// writer 生成的 Content-Type 带 boundary，必须覆盖调用方自带的 multipart 头，否则下游无法解析
+			// The Content-Type generated by the writer has boundary and must cover the caller's own multipart header, otherwise the downstream cannot parse it.
 			contentType = writer.FormDataContentType()
 			forceContentType = true
 			reqBody = body
 		case strings.Contains(contentType, "text/plain"):
-			// 文本格式
+			// text format.
 			reqBody = strings.NewReader(fmt.Sprintf("%v", payload))
 		case strings.Contains(contentType, "text/event-stream"):
-			// SSE格式
+			// SSE format.
 			reqBody = strings.NewReader(fmt.Sprintf("%v", payload))
-		case strings.Contains(contentType, "application/stream+json"), // HTTP Streaming格式
-			strings.Contains(contentType, "application/x-ndjson"),      // NDJSON格式
-			strings.Contains(contentType, "application/x-json-stream"): // HTTP Streaming格式
-			// HTTP Streaming格式
+		case strings.Contains(contentType, "application/stream+json"), // HTTP Streaming format.
+			strings.Contains(contentType, "application/x-ndjson"),      // NDJSON format.
+			strings.Contains(contentType, "application/x-json-stream"): // HTTP Streaming format.
+			// HTTP Streaming format.
 			reqBody = strings.NewReader(fmt.Sprintf("%v", payload))
 		default:
 			jsonData, err := json.Marshal(payload)
@@ -295,20 +295,20 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 		reqBody = http.NoBody
 	}
 
-	// 创建HTTP请求
+	// Create HTTP request.
 	httpReq, err := http.NewRequest(req.Method, requestURL, reqBody)
 	if err != nil {
 		err = fmt.Errorf("failed to create request: %v", err)
 		return nil, err
 	}
 
-	// 设置请求头，并用当前请求上下文补齐 trace/request id，保证代理链路可聚合。
-	// 公开接口的 header 由调用方直接填写，身份头必须回填成本次请求的认证账户。
+	// Set the request header and complete the trace/request id with the current request context to ensure that the proxy link can be aggregated.
+	// The header of the public interface is filled in directly by the caller, and the identity header must be backfilled with the authentication account of this request.
 	isPublic := common.IsPublicAPIFromCtx(ctx)
 	auth, _ := common.GetAccountAuthContextFromCtx(ctx)
 	headers := map[string]string{}
 	for key, value := range req.Headers {
-		// 传输层请求头由转发器与 Go HTTP 客户端接管，调用方手填只会让实际请求与预览对不上
+		// The transport layer request header is taken over by the forwarder and Go HTTP client. Manual filling by the caller will only make the actual request and preview inconsistent.
 		if isTransportHeader(key) {
 			if f.logger != nil {
 				f.logger.WithContext(ctx).Debugf("drop transport-layer header from caller: %s", key)
@@ -338,7 +338,7 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	// caller's original Accept-Language preference list.
 	httpReq.Header.Set(sharedrest.AcceptLanguageHeader, sharedrest.GetLanguageByCtx(ctx))
 
-	// 如果Content-Type未在请求头中设置，但我们有确定的类型，则设置它
+	// If Content-Type is not set in the request header but we have a definite type, set it.
 	if contentType != "" && (forceContentType || httpReq.Header.Get("Content-Type") == "") {
 		httpReq.Header.Set("Content-Type", contentType)
 	}
@@ -346,7 +346,7 @@ func (f *forwarder) buildRequest(ctx context.Context, req *interfaces.HTTPReques
 	return httpReq, nil
 }
 
-// transportHeaders 由转发链路自身接管的传输层请求头，调用方传入时一律丢弃。
+// transportHeaders The transport layer request headers taken over by the forwarding link itself will be discarded when passed in by the caller.
 var transportHeaders = map[string]struct{}{
 	"host":              {},
 	"content-length":    {},
@@ -360,16 +360,16 @@ var transportHeaders = map[string]struct{}{
 	"expect":            {},
 }
 
-// isTransportHeader 判断请求头是否属于传输层请求头（大小写不敏感）。
+// isTransportHeader determines whether the request header belongs to the transport layer request header (case insensitive).
 func isTransportHeader(key string) bool {
 	_, ok := transportHeaders[strings.ToLower(strings.TrimSpace(key))]
 	return ok
 }
 
-// identityHeaders 身份请求头：内置工具箱把它们声明成普通 OpenAPI header 参数，
-// 下游 /in 接口不验 token、直接据此判定调用者身份并做 per-account 授权。
-// 公开接口（调试与执行）的 header 完全由调用方填写，放任透传等于允许冒充任意账户，
-// 因此这里统一回填成本次请求认证出来的账户。内部接口维持透传，运行时按 /in 约定注入身份。
+// identityHeaders identity request headers: the built-in toolbox declares them as ordinary OpenAPI header parameters,
+// The downstream /in interface does not verify the token, but directly determines the caller's identity based on it and performs per-account authorization.
+// The header of the public interface (debugging and execution) is completely filled in by the caller. Allowing transparent transmission means allowing any account to be impersonated.
+// Therefore, the account authenticated by this request is backfilled here uniformly. The internal interface maintains transparent transmission, and the identity is injected according to the /in convention during runtime.
 var identityHeaders = map[string]struct{}{
 	"x-account-id":   {},
 	"x-account-type": {},
@@ -377,13 +377,13 @@ var identityHeaders = map[string]struct{}{
 	"x-user-id":      {},
 }
 
-// isIdentityHeader 判断请求头是否属于身份请求头（大小写不敏感）。
+// isIdentityHeader determines whether the request header belongs to the identity request header (case insensitive).
 func isIdentityHeader(key string) bool {
 	_, ok := identityHeaders[strings.ToLower(strings.TrimSpace(key))]
 	return ok
 }
 
-// resolveIdentityHeader 返回身份请求头应有的值；返回 false 表示拿不到认证账户，该请求头必须丢弃。
+// resolveIdentityHeader returns the expected value of the identity request header; returning false means that the authentication account cannot be obtained, and the request header must be discarded.
 func resolveIdentityHeader(key string, auth *interfaces.AccountAuthContext) (string, bool) {
 	if auth == nil || auth.AccountID == "" {
 		return "", false
@@ -397,13 +397,13 @@ func resolveIdentityHeader(key string, auth *interfaces.AccountAuthContext) (str
 	return auth.AccountID, true
 }
 
-// bodylessMethods 语义上不带请求体的方法。
+// bodylessMethods Methods that do not have a request body semantically.
 var bodylessMethods = map[string]struct{}{
 	http.MethodGet:  {},
 	http.MethodHead: {},
 }
 
-// isBodylessMethod 判断方法是否语义上不带请求体（大小写不敏感，空方法按 GET 处理）。
+// isBodylessMethod determines whether the method semantically does not have a request body (case insensitive, empty methods are treated as GET).
 func isBodylessMethod(method string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(method))
 	if normalized == "" {
@@ -413,8 +413,8 @@ func isBodylessMethod(method string) bool {
 	return ok
 }
 
-// isEmptyBody 判断请求体是否为空信封：调试面板对无 body 的接口固定发 "body": {}，
-// 只有空值才当作没有请求体，非空 body 仍按调用方声明的方式编码发出。
+// isEmptyBody determines whether the request body is an empty envelope: the debugging panel always sends "body": {} to interfaces without a body.
+// Only empty values are considered as having no request body, and non-empty bodies are still encoded and sent out in the manner declared by the caller.
 func isEmptyBody(body interface{}) bool {
 	switch value := body.(type) {
 	case nil:
@@ -432,20 +432,20 @@ func isEmptyBody(body interface{}) bool {
 	}
 }
 
-// pathPlaceholderPattern 匹配路径里形如 {name} 的占位符。
+// pathPlaceholderPattern matches placeholders of the form {name} in the path.
 var pathPlaceholderPattern = regexp.MustCompile(`\{([^{}/]+)\}`)
 
-// colonParamPattern 匹配 ":name" 形式的占位符，并要求后面是非标识符字符或结尾。
-// 少了这个边界，参数 id 会把 "/users/:identifier" 里的 ":id" 前缀也换掉，剩下半截 "entifier"。
+// colonParamPattern matches a placeholder of the form ":name" and requires a non-identifier character or trailing character to follow.
+// Without this boundary, the parameter id will also replace the ":id" prefix in "/users/:identifier", leaving half of "entifier".
 func colonParamPattern(key string) *regexp.Regexp {
 	return regexp.MustCompile(`:` + regexp.QuoteMeta(key) + `([^A-Za-z0-9_]|$)`)
 }
 
-// substitutePathParams 把 path 参数按 "{name}"、":{name}"、":name" 三种写法替换进 URL。
+// substitutePathParams replaces the path parameter into the URL in three ways: "{name}", ":{name}", and ":name".
 //
-// 值一律按路径段转义：path 参数在 OpenAPI 里是单个路径段，未转义的 "/"、"?"、"#"
-// 会改变整条 URL 的结构——调用方本想传 ID，却能把下游请求改写成另一个路径、或凭空
-// 追加 query。目标 URL 由工具元数据决定、调试界面不允许改，这里是最后一道闸。
+// Values are always escaped according to path segments: the path parameter in OpenAPI is a single path segment, unescaped "/", "?", "#".
+// Will change the structure of the entire URL - the caller wants to pass the ID, but can rewrite the downstream request to another path, or out of thin air.
+// Append query. The target URL is determined by tool metadata and cannot be changed on the debugging interface. This is the last gate.
 func substitutePathParams(rawURL string, params map[string]string) string {
 	if len(params) == 0 {
 		return rawURL
@@ -453,10 +453,10 @@ func substitutePathParams(rawURL string, params map[string]string) string {
 
 	for key, value := range params {
 		escaped := url.PathEscape(value)
-		// ":{key}" 必须先于 "{key}" 替换，否则会先命中 "{key}" 而在 URL 里留下多余的冒号
+		// ":{key}" must be replaced before "{key}", otherwise "{key}" will be hit first and extra colons will be left in the URL.
 		rawURL = strings.ReplaceAll(rawURL, ":{"+key+"}", escaped)
 		rawURL = strings.ReplaceAll(rawURL, "{"+key+"}", escaped)
-		// 用 Func 版本替换：转义后的值可能含 "$"，走 ReplaceAllString 会被当成分组引用。
+		// Replace with the Func version: the escaped value may contain "$" and will be treated as a grouped reference using ReplaceAllString.
 		rawURL = colonParamPattern(key).ReplaceAllStringFunc(rawURL, func(match string) string {
 			return escaped + match[len(key)+1:]
 		})
@@ -465,8 +465,8 @@ func substitutePathParams(rawURL string, params map[string]string) string {
 	return rawURL
 }
 
-// unresolvedPathPlaceholders 返回 URL 路径中仍未被 path 参数替换的占位符名称。
-// 只检查路径部分：query 与 fragment 里的花括号可能是业务值，冒号形式无法与端口号区分，都不参与判断。
+// unresolvedPathPlaceholders Returns the placeholder names in the URL path that have not yet been replaced by the path parameter.
+// Only the path part is checked: the curly braces in query and fragment may be business values, and the colon form cannot be distinguished from the port number, so it is not involved in the judgment.
 func unresolvedPathPlaceholders(rawURL string) []string {
 	target := rawURL
 	if parsed, err := url.Parse(rawURL); err == nil {
@@ -483,15 +483,15 @@ func unresolvedPathPlaceholders(rawURL string) []string {
 	return names
 }
 
-// processResponse 处理HTTP响应
+// processResponse handles HTTP responses.
 func (f *forwarder) processResponse(resp *http.Response, startTime time.Time) (*interfaces.HTTPResponse, error) {
-	// 读取响应体
+	// Read response body.
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// 解析响应头
+	// Parse response headers.
 	headers := make(map[string]any)
 	for key, values := range resp.Header {
 		if len(values) > 0 {
@@ -499,16 +499,16 @@ func (f *forwarder) processResponse(resp *http.Response, startTime time.Time) (*
 		}
 	}
 
-	// 尝试解析JSON响应
+	// Try to parse JSON response.
 	var responseBody interface{}
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "application/json") {
 		if err := json.Unmarshal(body, &responseBody); err != nil {
-			// 如果解析失败，使用原始响应体
+			// If parsing fails, use the original response body.
 			responseBody = string(body)
 		}
 	} else {
-		// 非JSON响应，使用字符串
+		// Non-JSON response, use string.
 		responseBody = string(body)
 	}
 
@@ -521,41 +521,41 @@ func (f *forwarder) processResponse(resp *http.Response, startTime time.Time) (*
 }
 
 func prepareStreamRequest(streamingMode interfaces.StreamingMode, req *http.Request) {
-	// 设置流类型特定请求头
+	// Set stream type specific request headers.
 	switch streamingMode {
 	case interfaces.StreamingModeSSE:
-		// 兼容处理Accept头: 第一个必须为text/event-stream，使用*/*作为兜底
+		// Compatible processing of Accept header: the first one must be text/event-stream, use */* as a cover.
 		acceptValue := req.Header.Get("Accept")
 		acceptValues := strings.Split(acceptValue, ",")
 		if len(acceptValues) == 0 || acceptValues[0] != "text/event-stream" {
 			acceptValues = append([]string{"text/event-stream"}, acceptValues...)
 		}
 		acceptValues = append(acceptValues, "*/*")
-		// 去重
+		// Remove duplicates.
 		acceptValues = utils.UniqueStrings(acceptValues)
 		req.Header.Set("Accept", strings.Join(acceptValues, ", "))
-		req.Header.Set("Cache-Control", "no-cache") // 禁用缓存
-		req.Header.Set("Connection", "keep-alive")  // 保持连接
+		req.Header.Set("Cache-Control", "no-cache") // Disable caching.
+		req.Header.Set("Connection", "keep-alive")  // stay connected.
 	case interfaces.StreamingModeHTTP:
-		req.Header.Set("Transfer-Encoding", "chunked") // 分块传输
-		req.Header.Set("Connection", "Upgrade")        // 升级连接
+		req.Header.Set("Transfer-Encoding", "chunked") // Chunked transfer.
+		req.Header.Set("Connection", "Upgrade")        // Upgrade connection.
 	}
 }
 
-// 预处理响应头
+// Preprocessing response headers.
 func preprocessResponseHeaders(streamingMode interfaces.StreamingMode, headerWriter http.ResponseWriter) {
-	// 根据流式模式处理
+	// Processed according to streaming mode.
 	switch streamingMode {
 	case interfaces.StreamingModeSSE:
 		headerWriter.Header().Set("Content-Type", "text/event-stream")
 		headerWriter.Header().Set("Cache-Control", privateStreamingCacheControl(headerWriter.Header().Get("Cache-Control")))
 		headerWriter.Header().Set("Connection", "keep-alive")
-		// 移除可能存在的Content-Length头部
+		// Remove possible Content-Length header.
 		headerWriter.Header().Del("Content-Length")
 	case interfaces.StreamingModeHTTP:
 		headerWriter.Header().Set("Transfer-Encoding", "chunked")
 		headerWriter.Header().Set("X-Content-Type-Options", "nosniff")
-		// 移除可能存在的Content-Length头部
+		// Remove possible Content-Length header.
 		headerWriter.Header().Del("Content-Length")
 	}
 }

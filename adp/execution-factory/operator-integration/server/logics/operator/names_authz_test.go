@@ -13,7 +13,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// TestGetOperatorNamesByIDsAuthz 覆盖 #345：批量取名按查看权限过滤，避免枚举全量算子名
+// TestGetOperatorNamesByIDsAuthz covers #345: Batch name selection is filtered by viewing permissions to avoid enumerating all operator names.
 func TestGetOperatorNamesByIDsAuthz(t *testing.T) {
 	Convey("算子批量取名授权过滤", t, func() {
 		ctrl := gomock.NewController(t)
@@ -57,7 +57,7 @@ func TestGetOperatorNamesByIDsAuthz(t *testing.T) {
 		})
 
 		Convey("内部面不过滤", func() {
-			// authService 不设 EXPECT：内部面若发起判定，gomock 会因非预期调用失败
+			// authService does not set EXPECT: if a judgment is initiated internally, gomock will fail due to unexpected calls.
 			operatorDB := mocks.NewMockIOperatorRegisterDB(ctrl)
 			manager := &operatorManager{
 				Logger:            logger.DefaultLogger(),

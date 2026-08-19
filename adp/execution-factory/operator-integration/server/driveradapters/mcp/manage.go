@@ -3,15 +3,15 @@ package mcp
 import (
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// AddMCPServer 添加MCP服务
+// AddMCPServer Add MCP service.
 func (h *mcpHandle) AddMCPServer(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPServerAddRequest{}
@@ -48,7 +48,7 @@ func (h *mcpHandle) AddMCPServer(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// DeleteMCPServer 删除MCP服务
+// DeleteMCPServer Delete MCP service.
 func (h *mcpHandle) DeleteMCPServer(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPServerDeleteRequest{}
@@ -85,7 +85,7 @@ func (h *mcpHandle) DeleteMCPServer(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, nil)
 }
 
-// UpdateMCPServer 更新MCP服务
+// UpdateMCPServer Update MCP service.
 func (h *mcpHandle) UpdateMCPServer(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPServerUpdateRequest{}
@@ -129,7 +129,7 @@ func (h *mcpHandle) UpdateMCPServer(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// QueryMCPServerPage 查询MCP服务列表
+// QueryMCPServerPage Query MCP service list.
 func (h *mcpHandle) QueryMCPServerPage(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPServerListRequest{}
@@ -161,7 +161,7 @@ func (h *mcpHandle) QueryMCPServerPage(c *gin.Context) {
 	}
 	var result *interfaces.MCPServerListResponse
 
-	// 查询MCP Server列表
+	// Query the MCP Server list.
 	result, err = h.mcpService.QueryPage(ctx, req)
 
 	if err != nil {
@@ -171,7 +171,7 @@ func (h *mcpHandle) QueryMCPServerPage(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// QueryMCPServerDetail 查询MCP服务详情
+// QueryMCPServerDetail Query MCP service details.
 func (h *mcpHandle) QueryMCPServerDetail(c *gin.Context) {
 	var err error
 	ctx := c.Request.Context()

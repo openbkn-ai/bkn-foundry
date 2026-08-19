@@ -4,9 +4,9 @@ import (
 	"context"
 	_ "embed"
 
+	jsoniter "github.com/json-iterator/go"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	jsoniter "github.com/json-iterator/go"
 )
 
 //go:embed init.json
@@ -19,7 +19,7 @@ func (h *categoryHandler) initData() {
 		h.Logger.Infof("init category data skip, initSwitch is false")
 		return
 	}
-	// 使用嵌入的init.json文件数据
+	// Using embedded init.json file data.
 	initData := initJSONData
 	var cfg []*interfaces.CreateCategoryReq
 	err := jsoniter.Unmarshal(initData, &cfg)

@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -14,12 +13,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 type CallToolRequest struct {
 	*ListToolsRequest
-	ToolName string         `json:"tool_name"` // 工具名称
-	Params   map[string]any `json:"params"`    // 工具参数
+	ToolName string         `json:"tool_name"` // Tool name.
+	Params   map[string]any `json:"params"`    // Tool parameters.
 }
 
 type CallToolResponse struct {
@@ -38,16 +38,16 @@ type ListToolsResponse struct {
 	ServerInitInfo *mcp.InitializeResult
 }
 
-// GetMCPTools 获取MCP工具列表
+// GetMCPTools Get the list of MCP tools.
 func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPProxyToolListRequest) (resp *interfaces.MCPProxyToolListResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"mcp_id":  req.MCPID,
 		"user_id": req.UserID,
 	})
-	// 如果是公开接口，检查公开访问或者查看权限，内部接口暂时不校验
+	// If it is a public interface, check the public access or viewing permissions. Internal interfaces are not checked temporarily.
 	if common.IsPublicAPIFromCtx(ctx) {
 		var accessor *interfaces.AuthAccessor
 		accessor, err = s.AuthService.GetAccessor(ctx, "")
@@ -100,9 +100,9 @@ func (s *mcpServiceImpl) GetMCPTools(ctx context.Context, req *interfaces.MCPPro
 	return resp, nil
 }
 
-// CallMCPTool 调用MCP工具
+// CallMCPTool calls MCP tool.
 func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPProxyCallToolRequest) (resp *interfaces.MCPProxyCallToolResponse, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer func() {
 		telemetry.SetSpanAttributes(ctx, actionExecutionSpanAttrs(ctx, "action.execute", err, map[string]interface{}{
@@ -152,7 +152,7 @@ func (s *mcpServiceImpl) CallMCPTool(ctx context.Context, req *interfaces.MCPPro
 	if err != nil {
 		return
 	}
-	// 异步记录审计日志
+	// Asynchronous recording of audit logs.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -250,7 +250,7 @@ func (s *mcpServiceImpl) listTools(ctx context.Context, req *ListToolsRequest) (
 	}, nil
 }
 
-// ExecuteTool 执行MCP工具
+// ExecuteTool executes the MCP tool.
 func (s *mcpServiceImpl) ExecuteTool(ctx context.Context, mcpToolID string, params interfaces.HTTPRequestParams) (*interfaces.HTTPResponse, error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	var err error
@@ -260,7 +260,7 @@ func (s *mcpServiceImpl) ExecuteTool(ctx context.Context, mcpToolID string, para
 		}))
 		oteltrace.EndSpan(ctx, err)
 	}()
-	// 获取MCP工具配置信息
+	// Get MCP tool configuration information.
 	tool, err := s.DBMCPTool.SelectByMCPToolID(ctx, nil, mcpToolID)
 	if err != nil {
 		s.logger.Warnf("select mcp tool failed, err: %v", err)
@@ -271,7 +271,7 @@ func (s *mcpServiceImpl) ExecuteTool(ctx context.Context, mcpToolID string, para
 		return nil, oerrors.DefaultHTTPError(ctx, http.StatusNotFound, "mcp tool not found")
 	}
 
-	// 调用工具服务执行工具
+	// Call tool service execution tool.
 	executeToolReq := &interfaces.ExecuteToolReq{
 		BoxID:             tool.BoxID,
 		ToolID:            tool.ToolID,

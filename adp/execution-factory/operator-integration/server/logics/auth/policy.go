@@ -6,7 +6,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
-// CreateOwnerPolicy 创建owner权限
+// CreateOwnerPolicy creates owner permissions.
 func (s *authServiceImpl) CreateOwnerPolicy(ctx context.Context, accessor *interfaces.AuthAccessor, authResource *interfaces.AuthResource) error {
 	return s.CreatePolicy(ctx, accessor, authResource,
 		[]interfaces.AuthOperationType{
@@ -23,14 +23,14 @@ func (s *authServiceImpl) CreateOwnerPolicy(ctx context.Context, accessor *inter
 		[]interfaces.AuthOperationType{})
 }
 
-// CreateIntCompPolicyForAllUsers 创建内部组件权限策略，作用于所有用户
+// CreateIntCompPolicyForAllUsers creates an internal component permission policy that affects all users.
 func (s *authServiceImpl) CreateIntCompPolicyForAllUsers(ctx context.Context, authResource *interfaces.AuthResource) error {
-	// 根部门访问者
+	// root department visitor.
 	rootDepartmentAccessor := &interfaces.AuthAccessor{
 		ID:   interfaces.AccessorRootDepartmentID,
 		Type: interfaces.AccessorTypeDepartment,
 	}
-	// 内置组件默认根部门(所有人)拥有公开访问和执行权限
+	// The default root department (everyone) of built-in components has public access and execution permissions.
 	return s.CreatePolicy(ctx, rootDepartmentAccessor, authResource,
 		[]interfaces.AuthOperationType{
 			interfaces.AuthOperationTypePublicAccess,
@@ -39,7 +39,7 @@ func (s *authServiceImpl) CreateIntCompPolicyForAllUsers(ctx context.Context, au
 		[]interfaces.AuthOperationType{})
 }
 
-// CreatePolicy 创建策略
+// CreatePolicy creates a policy.
 func (s *authServiceImpl) CreatePolicy(
 	ctx context.Context,
 	accessor *interfaces.AuthAccessor,
@@ -72,7 +72,7 @@ func (s *authServiceImpl) CreatePolicy(
 	return s.authorization.CreatePolicy(ctx, req)
 }
 
-// DeletePolicy 删除策略
+// DeletePolicy delete policy.
 func (s *authServiceImpl) DeletePolicy(ctx context.Context, resourceIDs []string, resourceType interfaces.AuthResourceType) error {
 	authDeletePolicyRequest := &interfaces.AuthDeletePolicyRequest{
 		Method:    interfaces.AuthMethodDelete,

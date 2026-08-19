@@ -9,7 +9,6 @@ import (
 
 	"github.com/creasty/defaults"
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
@@ -18,18 +17,19 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// Import 导入
+// Import Import.
 func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interfaces.ImportType, data *interfaces.ComponentImpexConfigModel, userID string) (err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	if data == nil || data.Toolbox == nil || len(data.Toolbox.Configs) == 0 {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonImportDataEmpty, "toolbox configs is empty")
 		return
 	}
-	// 导入预检查
+	// Import pre-check.
 	waitUpdataBoxList, err := s.importPreCheck(ctx, mode, data.Toolbox.Configs)
 	if err != nil {
 		return
@@ -42,13 +42,13 @@ func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interface
 			return
 		}
 	}
-	// 导入工具箱、工具信息
+	// Import toolbox and tool information.
 	createMap, updateMap, err := s.batchImportToolBoxMetadata(ctx, tx, data.Toolbox.Configs, waitUpdataBoxList, accessor, userID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Warnf("[Import] batchImportToolBoxMetadata err:%v", err)
 		return
 	}
-	// 导入依赖
+	// Import dependencies.
 	if data.Operator != nil && len(data.Operator.Configs) > 0 {
 		err = s.OperatorMgnt.Import(ctx, tx, mode, data.Operator, userID)
 		if err != nil {
@@ -56,7 +56,7 @@ func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interface
 			return
 		}
 	}
-	// 导入后置处理
+	// Import post-processing.
 	err = s.importPostProcess(ctx, createMap, updateMap, accessor)
 	if err != nil {
 		s.Logger.WithContext(ctx).Warnf("[Import] importPostProcess err:%v", err)
@@ -64,18 +64,18 @@ func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interface
 	return
 }
 
-// 后置操作：添加权限配置，及审计日志记录
+// Post-operation: Add permission configuration and audit logging.
 func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, updateBoxMap map[string]*model.ToolboxDB, accessor *interfaces.AuthAccessor) (err error) {
 	businessDomainID, _ := icommon.GetBusinessDomainFromCtx(ctx)
 	for _, boxDB := range createBoxMap {
-		// 关联业务域
+		// Associated business domains.
 		err = s.BusinessDomainService.AssociateResource(ctx, businessDomainID, boxDB.BoxID, interfaces.AuthResourceTypeToolBox)
 		if err != nil {
 			s.Logger.WithContext(ctx).Errorf("[importPostProcess] AssociateResource err:%v", err)
 			return
 		}
 
-		// 触发新建策略，创建人默认拥有对当前资源的所有操作权限（内部调用不创建）
+		// Triggering a new policy, the creator has all operating permissions on the current resources by default (internal calls will not create)
 		if accessor != nil {
 			err := s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 				ID:   boxDB.BoxID,
@@ -86,7 +86,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 				s.Logger.WithContext(ctx).Errorf("[importPostProcess] CreateOwnerPolicy err:%v", err)
 			}
 		}
-		// 记录设计日志及后续通知（内部调用不记录）
+		// Record design logs and subsequent notifications (internal calls are not recorded)
 		if accessor != nil {
 			go func() {
 				accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
@@ -106,7 +106,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 				})
 			}()
 		}
-		// 内置组件：创建全员授权策略（public_access + execute）
+		// Built-in component: Create a full authorization policy (public_access + execute)
 		if boxDB.IsInternal {
 			err = s.AuthService.CreateIntCompPolicyForAllUsers(ctx, &interfaces.AuthResource{
 				ID:   boxDB.BoxID,
@@ -119,9 +119,9 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 			}
 		}
 	}
-	// 更新工具箱
+	// Update toolbox.
 	for _, boxDB := range updateBoxMap {
-		// 通知资源变更
+		// Notify resource changes.
 		authResource := &interfaces.AuthResource{
 			ID:   boxDB.BoxID,
 			Name: boxDB.Name,
@@ -131,7 +131,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 		if err != nil {
 			s.Logger.WithContext(ctx).Errorf("[importPostProcess] NotifyResourceChange err:%v", err)
 		}
-		// 内置组件：创建全员授权策略（public_access + execute）
+		// Built-in component: Create a full authorization policy (public_access + execute)
 		if boxDB.IsInternal {
 			policyErr := s.AuthService.CreateIntCompPolicyForAllUsers(ctx, &interfaces.AuthResource{
 				ID:   boxDB.BoxID,
@@ -142,7 +142,7 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 				s.Logger.WithContext(ctx).Errorf("[importPostProcess] CreateIntCompPolicyForAllUsers err:%v", policyErr)
 			}
 		}
-		// 记录设计日志及后续通知（内部调用不记录）
+		// Record design logs and subsequent notifications (internal calls are not recorded)
 		if accessor != nil {
 			go func() {
 				accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
@@ -166,9 +166,9 @@ func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, u
 	return nil
 }
 
-// 导入预备检查
+// Import preliminary checks.
 func (s *ToolServiceImpl) importPreCheck(ctx context.Context, mode interfaces.ImportType, items []*interfaces.ToolBoxImpexItem) (boxList []*model.ToolboxDB, err error) {
-	// 收集工具箱ID，及名字
+	// Collect toolbox ID, and name.
 	boxIDs := []string{}
 	for _, item := range items {
 		boxIDs = append(boxIDs, item.BoxID)
@@ -177,13 +177,13 @@ func (s *ToolServiceImpl) importPreCheck(ctx context.Context, mode interfaces.Im
 				fmt.Sprintf("internal toolbox %v not allowed to import", item.BoxID), item.BoxName)
 			return
 		}
-		// 工具箱重名校验
+		// Toolbox duplicate name verification.
 		err = s.checkBoxDuplicateName(ctx, item.BoxName, item.BoxID)
 		if err != nil {
 			return
 		}
 	}
-	// 检查ID资源是否冲突
+	// Check if ID resources conflict.
 	boxIDs = utils.UniqueStrings(boxIDs)
 	boxList, err = s.ToolBoxDB.SelectListByBoxIDs(ctx, boxIDs)
 	if err != nil {
@@ -191,34 +191,34 @@ func (s *ToolServiceImpl) importPreCheck(ctx context.Context, mode interfaces.Im
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 创建模式：如果工具箱已存在，则返回冲突错误
+	// Create mode: Return conflict error if toolbox already exists.
 	if mode == interfaces.ImportTypeCreate && len(boxList) > 0 {
 		err = errors.NewHTTPError(ctx, http.StatusConflict, errors.ErrExtCommonResourceIDConflict, "toolbox id already exists")
 	}
 	return
 }
 
-// 批量导入工具箱及工具元数据
+// Batch import of toolboxes and tool metadata.
 func (s *ToolServiceImpl) batchImportToolBoxMetadata(ctx context.Context, tx *sql.Tx, items []*interfaces.ToolBoxImpexItem, waitUpdataBoxList []*model.ToolboxDB,
 	accessor *interfaces.AuthAccessor, userID string) (createBoxMap, updateBoxMap map[string]*model.ToolboxDB, err error) {
-	// 收集需要新增的ToolBox
+	// Collect the ToolBoxes that need to be added.
 	createBoxMap = map[string]*model.ToolboxDB{}
-	// 收集需要更新的工具ToolBox
+	// Collect tools ToolBox that need to be updated.
 	updateBoxMap = map[string]*model.ToolboxDB{}
-	// 获取用户ID（内部调用使用传入 userID）
+	// Get user ID (internal call uses incoming userID)
 	uid := userID
 	if accessor != nil {
 		uid = accessor.ID
 	}
-	// 检查是否有更新权限，并收集需要更新的工具箱
+	// Check for update permissions and collect toolboxes that need to be updated.
 	for _, boxDB := range waitUpdataBoxList {
-		// 检查工具箱编辑权限（内部调用不鉴权）
+		// Check toolbox editing permissions (internal calls are not authenticated)
 		if icommon.IsPublicAPIFromCtx(ctx) {
 			err = s.AuthService.CheckModifyPermission(ctx, accessor, boxDB.BoxID, interfaces.AuthResourceTypeToolBox)
 			if err != nil {
 				return
 			}
-			// 内置工具箱不能编辑
+			// Built-in toolbox cannot be edited.
 			if boxDB.IsInternal {
 				err = errors.NewHTTPError(ctx, http.StatusForbidden, errors.ErrExtCommonInternalComponentNotAllowed,
 					fmt.Sprintf("internal toolbox %v not allowed to update", boxDB.BoxID), boxDB.Name)
@@ -227,7 +227,7 @@ func (s *ToolServiceImpl) batchImportToolBoxMetadata(ctx context.Context, tx *sq
 		}
 		updateBoxMap[boxDB.BoxID] = boxDB
 	}
-	// 遍历导入项，根据是否存在工具箱ID判断是新增还是更新
+	// Traverse the imported items and determine whether they are new or updated based on whether the toolbox ID exists.
 	for _, item := range items {
 		if boxDB, ok := updateBoxMap[item.BoxID]; ok {
 			err = s.importByUpsert(ctx, tx, boxDB, item, uid)
@@ -245,14 +245,14 @@ func (s *ToolServiceImpl) batchImportToolBoxMetadata(ctx context.Context, tx *sq
 	return
 }
 
-// importByCreate 导入工具箱
+// importByCreate import toolbox.
 func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *interfaces.ToolBoxImpexItem, userID string) (boxDB *model.ToolboxDB, err error) {
-	// 校验导入的工具箱信息
+	// Verify imported toolbox information.
 	toolDBs, metadataDBs, err := s.importCheck(ctx, item, userID)
 	if err != nil {
 		return
 	}
-	// 添加工具箱
+	// Add toolbox.
 	boxDB = &model.ToolboxDB{
 		BoxID:        item.BoxID,
 		Name:         item.BoxName,
@@ -278,7 +278,7 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 处理元数据
+	// Process metadata.
 	metadataMap := map[string]interfaces.IMetadataDB{}
 	for _, metadataDB := range metadataDBs {
 		version := metadataDB.GetVersion()
@@ -294,7 +294,7 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 		}
 		toolIDs = append(toolIDs, toolDB.ToolID)
 	}
-	// 检查工具是否重复
+	// Check if tools are duplicated.
 	duplicateTools, err := s.ToolDB.SelectToolBoxByToolIDs(ctx, toolIDs)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool by source ids failed, err: %v", err)
@@ -305,7 +305,7 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 		err = errors.NewHTTPError(ctx, http.StatusConflict, errors.ErrExtCommonResourceIDConflict, fmt.Sprintf("tool resource conflict, tool ids: %v", toolIDs))
 		return
 	}
-	// 添加元数据
+	// Add metadata.
 	if len(newMetadataDBs) > 0 {
 		_, err = s.MetadataService.BatchRegisterMetadata(ctx, tx, newMetadataDBs)
 		if err != nil {
@@ -314,7 +314,7 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 			return
 		}
 	}
-	// 添加工具
+	// Add tool.
 	if len(toolDBs) > 0 {
 		_, err = s.ToolDB.InsertTools(ctx, tx, toolDBs)
 		if err != nil {
@@ -326,14 +326,14 @@ func (s *ToolServiceImpl) importByCreate(ctx context.Context, tx *sql.Tx, item *
 	return
 }
 
-// importByUpsert 更新或创建
+// importByUpsert update or create.
 func (s *ToolServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, toolBoxDB *model.ToolboxDB, item *interfaces.ToolBoxImpexItem, userID string) (err error) {
-	// 校验导入的工具箱信息
+	// Verify imported toolbox information.
 	toolDBs, metadataDBs, err := s.importCheck(ctx, item, userID)
 	if err != nil {
 		return
 	}
-	// 检查工具箱元数据是否一致
+	// Check toolbox metadata for consistency.
 	if toolBoxDB.MetadataType != string(item.MetadataType) {
 		err = errors.NewHTTPError(ctx, http.StatusBadRequest, errors.ErrExtCommonMetadataTypeConflict,
 			fmt.Sprintf("toolbox %s metadata type conflict, expect %v, got %v", toolBoxDB.BoxID, toolBoxDB.MetadataType, item.MetadataType))
@@ -357,19 +357,19 @@ func (s *ToolServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, toolBo
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 获取工具箱内的工具
+	// Get the tools in the toolbox.
 	tools, err := s.ToolDB.SelectToolByBoxID(ctx, toolBoxDB.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tools failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 删除工具箱中的工具
+	// Delete a tool from the toolbox.
 	err = s.deleteTools(ctx, tx, toolBoxDB.BoxID, tools)
 	if err != nil {
 		return
 	}
-	// 添加元数据
+	// Add metadata.
 	if len(metadataDBs) > 0 {
 		_, err = s.MetadataService.BatchRegisterMetadata(ctx, tx, metadataDBs)
 		if err != nil {
@@ -378,7 +378,7 @@ func (s *ToolServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, toolBo
 			return
 		}
 	}
-	// 添加工具
+	// Add tool.
 	if len(toolDBs) > 0 {
 		_, err = s.ToolDB.InsertTools(ctx, tx, toolDBs)
 		if err != nil {
@@ -390,10 +390,10 @@ func (s *ToolServiceImpl) importByUpsert(ctx context.Context, tx *sql.Tx, toolBo
 	return
 }
 
-// importCheck 校验导入的工具箱信息
+// importCheck verifies imported toolbox information.
 func (s *ToolServiceImpl) importCheck(ctx context.Context, item *interfaces.ToolBoxImpexItem, userID string) (toolDBs []*model.ToolDB,
 	metadataList []interfaces.IMetadataDB, err error) {
-	// 注入默认值并校验
+	// Inject default value and verify.
 	err = defaults.Set(item)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("set default value failed, err: %v", err)
@@ -404,22 +404,22 @@ func (s *ToolServiceImpl) importCheck(ctx context.Context, item *interfaces.Tool
 	if err != nil {
 		return
 	}
-	// 校验工具箱信息
+	// Verification toolbox information.
 	err = s.Validator.ValidatorToolBoxName(ctx, item.BoxName)
 	if err != nil {
 		return
 	}
-	// 检查desc
+	// check desc.
 	err = s.Validator.ValidatorToolBoxDesc(ctx, item.BoxDesc)
 	if err != nil {
 		return
 	}
-	// 检查分类是否存在
+	// Check if the category exists.
 	if !s.CategoryManager.CheckCategory(interfaces.BizCategory(item.CategoryType)) {
-		// 设置为默认分类
+		// Set as default category.
 		item.CategoryType = interfaces.CategoryTypeOther.String()
 	}
-	// 检查是否为内置
+	// Check if it is built-in.
 	toolDBs = []*model.ToolDB{}
 	toolNames := make(map[string]bool)
 	for _, toolImpexItem := range item.Tools {
@@ -428,7 +428,7 @@ func (s *ToolServiceImpl) importCheck(ctx context.Context, item *interfaces.Tool
 				fmt.Sprintf("tool name %v duplicate", toolImpexItem.Name), toolImpexItem.Name)
 			return
 		}
-		// 校验工具信息
+		// Verification tool information.
 		err = s.Validator.ValidatorToolName(ctx, toolImpexItem.Name)
 		if err != nil {
 			return
@@ -523,15 +523,15 @@ func (s *ToolServiceImpl) importCheck(ctx context.Context, item *interfaces.Tool
 	return
 }
 
-// 导出预检查
+// Export pre-check.
 func (s *ToolServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.ExportReq) (boxDBs []*model.ToolboxDB, err error) {
-	// 批量鉴权
+	// Batch authentication.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
 		return
 	}
-	// 检查查看权限权限
+	// Check view permissions permissions.
 	checkBoxIDs, err := s.AuthService.ResourceFilterIDs(ctx, accessor, req.IDs,
 		interfaces.AuthResourceTypeToolBox, interfaces.AuthOperationTypeView)
 	if err != nil {
@@ -543,7 +543,7 @@ func (s *ToolServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Ex
 			fmt.Sprintf("toolbox %v not access", clist))
 		return
 	}
-	// 检查数据是否存在
+	// Check if the data exists.
 	boxDBs, err = s.ToolBoxDB.SelectListByBoxIDs(ctx, req.IDs)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox list err: %s", err.Error())
@@ -563,9 +563,9 @@ func (s *ToolServiceImpl) exportPreCheck(ctx context.Context, req *interfaces.Ex
 	return
 }
 
-// Export 导出
+// Export export.
 func (s *ToolServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq) (data *interfaces.ComponentImpexConfigModel, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 
@@ -573,7 +573,7 @@ func (s *ToolServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq)
 	if err != nil {
 		return
 	}
-	// 批量获取工具箱内工具信息
+	// Get tool information in the toolbox in batches.
 	toolBoxConfig, depOperatorIDs, err := s.batchGetToolBoxInfo(ctx, boxDBs)
 	if err != nil {
 		return
@@ -581,7 +581,7 @@ func (s *ToolServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq)
 	data = &interfaces.ComponentImpexConfigModel{
 		Toolbox: toolBoxConfig,
 	}
-	// 批量获取算子依赖信息
+	// Obtain operator dependency information in batches.
 	depOperatorIDs = utils.UniqueStrings(depOperatorIDs)
 	if len(depOperatorIDs) == 0 {
 		return
@@ -597,14 +597,14 @@ func (s *ToolServiceImpl) Export(ctx context.Context, req *interfaces.ExportReq)
 	return
 }
 
-// 批量获取工具箱内工具信息
+// Get tool information in the toolbox in batches.
 func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*model.ToolboxDB) (toolBoxInfo *interfaces.ToolBoxImpexConfig,
 	depOperatorIDs []string, err error) {
-	toolsMap := map[string][]*interfaces.ToolImpexItem{} // 工具箱下工具的导出信息
+	toolsMap := map[string][]*interfaces.ToolImpexItem{} // Export information of tools under the toolbox.
 	toolBoxInfo = &interfaces.ToolBoxImpexConfig{
 		Configs: []*interfaces.ToolBoxImpexItem{},
 	}
-	// 组装工具箱信息
+	// Assembly toolbox information.
 	boxIDs := []string{}
 	for _, boxDB := range boxDBs {
 		if boxDB.IsInternal {
@@ -629,19 +629,19 @@ func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*mod
 			UpdateUser:   boxDB.UpdateUser,
 			MetadataType: interfaces.MetadataType(boxDB.MetadataType),
 		})
-		// 收集工具箱ID并初始化工具映射
+		// Collect toolbox IDs and initialize tool mapping.
 		boxIDs = append(boxIDs, boxDB.BoxID)
 		toolsMap[boxDB.BoxID] = []*interfaces.ToolImpexItem{}
 	}
-	// 获取工具箱内的全部工具
+	// Get all the tools in your toolbox.
 	tools, err := s.ToolDB.SelectToolBoxByIDs(ctx, boxIDs)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox by ids:%v, err:%v", boxIDs, err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 组装工具信息并收集带查询元数据信息
-	sourceMap := map[model.SourceType][]string{} // 元数据ID映射
+	// Assemble tool information and collect metadata information with queries.
+	sourceMap := map[model.SourceType][]string{} // Metadata ID mapping.
 	for _, toolDB := range tools {
 		var toolInfo *interfaces.ToolInfo
 		toolInfo, err = s.toolDBToToolInfo(ctx, toolDB)
@@ -665,14 +665,14 @@ func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*mod
 		toolsMap[toolDB.BoxID] = append(toolsMap[toolDB.BoxID], toolImpexItem)
 	}
 
-	// 批量获取元数据
+	// Get metadata in batches.
 	sourceIDToMetadataMap, err := s.MetadataService.BatchGetMetadataBySourceIDs(ctx, sourceMap)
 	if err != nil {
 		return
 	}
-	// 组装工具元数据信息
+	// Assembly tool metadata information.
 	for _, toolBox := range toolBoxInfo.Configs {
-		// 获取工具箱内的工具
+		// Get the tools in the toolbox.
 		for _, toolInfo := range toolsMap[toolBox.BoxID] {
 			metadataDB, ok := sourceIDToMetadataMap[toolInfo.SourceID]
 			if !ok {
@@ -680,7 +680,7 @@ func (s *ToolServiceImpl) batchGetToolBoxInfo(ctx context.Context, boxDBs []*mod
 			}
 			toolInfo.MetadataType = interfaces.MetadataType(metadataDB.GetType())
 			if toolInfo.SourceType != model.SourceTypeOperator {
-				// 算子工具不直接导出元数据, 而是通过算子依赖导出
+				// The operator tool does not directly export metadata, but exports it through operator dependencies.
 				toolInfo.Metadata = metadata.MetadataDBToStruct(metadataDB)
 				dependencies := []interfaces.DependencyInfo{}
 				if metadataDB.GetDependencies() != "" {

@@ -1,6 +1,6 @@
 // Package dbaccess
 // @file common.go
-// @description: 数据库操作公共方法
+// @description: Database operation public methods.
 package dbaccess
 
 import (

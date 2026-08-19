@@ -16,22 +16,22 @@ import (
 
 var (
 	mfModelAPIClientOnce     sync.Once
-	mfModelAPIClientInstance interfaces.MFModelAPIClient // 模型管理API客户端实例
+	mfModelAPIClientInstance interfaces.MFModelAPIClient // Model management API client instance.
 )
 
 var (
-	chatCompletionsPath = "/v1/chat/completions" // 模型调用路径
+	chatCompletionsPath = "/v1/chat/completions" // Model calling path.
 	embeddingsPath      = "/v1/small-model/embeddings"
 )
 
-// mfModelAPIClient 模型管理API客户端
+// mfModelAPIClient model management API client.
 type mfModelAPIClient struct {
 	baseURL    string
 	logger     interfaces.Logger
 	httpClient interfaces.HTTPClient
 }
 
-// NewMFModelAPIClient 创建模型管理API客户端
+// NewMFModelAPIClient creates a model management API client.
 func NewMFModelAPIClient() interfaces.MFModelAPIClient {
 	mfModelAPIClientOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -45,7 +45,7 @@ func NewMFModelAPIClient() interfaces.MFModelAPIClient {
 	return mfModelAPIClientInstance
 }
 
-// ChatCompletion 调用模型
+// ChatCompletion call model.
 func (um *mfModelAPIClient) ChatCompletion(ctx context.Context, req *interfaces.ChatCompletionReq) (resp *interfaces.ChatCompletionResp, err error) {
 	src := fmt.Sprintf("%s%s", um.baseURL, chatCompletionsPath)
 	req.Stream = false
@@ -65,13 +65,13 @@ func (um *mfModelAPIClient) ChatCompletion(ctx context.Context, req *interfaces.
 	return resp, nil
 }
 
-// StreamChatCompletion 调用模型流式返回
+// StreamChatCompletion calls the model and returns it in a streaming manner.
 func (um *mfModelAPIClient) StreamChatCompletion(ctx context.Context, req *interfaces.ChatCompletionReq) (chan string, chan error, error) {
 	src := fmt.Sprintf("%s%s", um.baseURL, chatCompletionsPath)
 	um.logger.WithContext(ctx).Infof("Stream call model: %s", src)
-	// 设置流式请求
+	// Set up streaming requests.
 	req.Stream = true
-	// 创建HTTP请求
+	// Create HTTP request.
 	header := common.GetHeaderFromCtx(ctx)
 	streamCh, errCh, err := um.httpClient.PostStream(ctx, src, header, req)
 	if err != nil {
@@ -81,7 +81,7 @@ func (um *mfModelAPIClient) StreamChatCompletion(ctx context.Context, req *inter
 	return streamCh, errCh, nil
 }
 
-// Embeddings 获取 embedding 向量
+// Embeddings gets embedding vector.
 func (um *mfModelAPIClient) Embeddings(ctx context.Context, req *interfaces.EmbeddingReq) (resp *interfaces.EmbeddingResp, err error) {
 	src := fmt.Sprintf("%s%s", um.baseURL, embeddingsPath)
 	header := common.GetHeaderFromCtx(ctx)

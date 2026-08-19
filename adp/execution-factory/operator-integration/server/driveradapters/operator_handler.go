@@ -10,12 +10,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
-// OperatorRestHandler operator RESTfual API Handler 接口
+// OperatorRestHandler operator RESTful API Handler interface.
 type OperatorRestHandler interface {
-	// RegisterPrivate 注册内部API
+	// RegisterPrivate register internal API.
 	RegisterPrivate(engine *gin.RouterGroup)
 
-	// RegisterPublic 注册外部API
+	// RegisterPublic Register external API.
 	RegisterPublic(engine *gin.RouterGroup)
 }
 
@@ -41,53 +41,53 @@ func NewOperatorRestHandler() OperatorRestHandler {
 	return oHandler
 }
 
-// RegisterPrivate 注册内部API
+// RegisterPrivate register internal API.
 func (o *operatorRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
-	/*算子管理相关接口*/
-	// POST /api/agent-operator-integration/internal-v1/operator/register 注册算子
+	// Operator management related interfaces.
+	// POST /api/agent-operator-integration/internal-v1/operator/register Register operator.
 	engine.POST("/operator/register", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorRegister)
-	// GET /api/agent-operator-integration/internal-v1/operator/info/{operator_id} 获取算子详情
+	// GET /api/agent-operator-integration/internal-v1/operator/info/{operator_id} Get operator details.
 	engine.GET("/operator/info/:operator_id", o.OperatorHandler.OperatorQueryByOperatorID)
-	// GET /api/agent-operator-integration/internal-v1/operator/info/list 获取算子分页列表
+	// GET /api/agent-operator-integration/internal-v1/operator/info/list Get the operator paging list.
 	engine.GET("/operator/info/list", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorQueryPage)
-	// POST /api/agent-operator-integration/internal-v1/operator/info/update 更新算子信息(目前仅Dataflow调用)
+	// POST /api/agent-operator-integration/internal-v1/operator/info/update Update operator information (currently only called by Dataflow)
 	engine.POST("/operator/info/update", o.OperatorHandler.OperatorUpdateByOpenAPI)
-	// POST /api/agent-operator-integration/internal-v1/operator/proxy/:operator_id 执行算子
+	// POST /api/agent-operator-integration/internal-v1/operator/proxy/:operator_id execute operator.
 	engine.POST("/operator/proxy/:operator_id", o.OperatorHandler.ExecuteOperator)
 
-	/*已发布版本详情*/
-	// GET /api/agent-operator-integration/internal-v1/operator/history/:operator_id/:version 获取已发布算子指定版本详情
+	// Published version details.
+	// GET /api/agent-operator-integration/internal-v1/operator/history/:operator_id/:version Get the details of the specified version of the published operator.
 	engine.GET("/operator/history/:operator_id/:version", o.OperatorHandler.QueryOperatorHistoryDetail)
 	// GET /api/agent-operator-integration/internal-v1/operator/history/:operator_id
 	engine.GET("/operator/history/:operator_id", o.OperatorHandler.QueryOperatorHistoryList)
 
-	/*算子市场相关接口*/
-	// GET /api/agent-operator-integration/internal-v1/operator/market 获取算子市场列表，支持分页，排序，及query过滤条件
+	// Operator market related interfaces.
+	// GET /api/agent-operator-integration/internal-v1/operator/market Get the operator market list, support paging, sorting, and query filter conditions.
 	engine.GET("/operator/market", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.QueryOperatorMarketList)
-	// GET /api/agent-operator-integration/internal-v1/operator/market/:operator_id 在算子市场查看详情
+	// GET /api/agent-operator-integration/internal-v1/operator/market/:operator_id View details in the operator market.
 	engine.GET("/operator/market/:operator_id", o.OperatorHandler.QueryOperatorMarketDetail)
 
-	/*算子分类管理*/
-	// GET /api/agent-operator-integration/internal-v1/operator/category //获取算子分类列表
+	// Operator classification management.
+	// GET /api/agent-operator-integration/internal-v1/operator/category //Get the operator classification list.
 	engine.GET("/operator/category", o.CategoryHandler.CategoryList)
-	// POST /api/agent-operator-integration/internal-v1/operator/category // 新建算子分类
+	// POST /api/agent-operator-integration/internal-v1/operator/category // Create a new operator category.
 	engine.POST("/operator/category", o.CategoryHandler.CategoryCreate)
-	// PUT /api/agent-operator-integration/internal-v1/operator/category/:category_type // 更新算子分类
+	// PUT /api/agent-operator-integration/internal-v1/operator/category/:category_type // Update operator classification.
 	engine.PUT("/operator/category/:category_type", o.CategoryHandler.CategoryUpdate)
-	// DELETE /api/agent-operator-integration/internal-v1/operator/category/:category_type // 删除算子分类
+	// DELETE /api/agent-operator-integration/internal-v1/operator/category/:category_type // Delete operator category.
 	engine.DELETE("/operator/category/:category_type", o.CategoryHandler.CategoryDelete)
 }
 
-// RegisterPublic 注册外部API
+// RegisterPublic Register external API.
 func (o *operatorRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	// POST /api/agent-operator-integration/v1/operator/register
 	engine.POST("/operator/register", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorRegister)
-	// 查询算子相关接口
+	// Query operator related interfaces.
 	// GET /api/agent-operator-integration/v1/operator/info/{operator_id}
 	engine.GET("/operator/info/:operator_id", o.OperatorHandler.OperatorQueryByOperatorID)
 	// GET /api/agent-operator-integration/v1/operator/info/list
 	engine.GET("/operator/info/list", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorQueryPage)
-	// POST /api/agent-operator-integration/v1/operator/names 按算子ID批量取名(前端对象级授权页回显)
+	// POST /api/agent-operator-integration/v1/operator/names Batch names based on operator ID (front-end object-level authorization page echo)
 	engine.POST("/operator/names", o.OperatorHandler.OperatorQueryNamesByIDs)
 	// DELETE /api/agent-operator-integration/v1/operator/delete
 	engine.DELETE("/operator/delete", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorDelete)
@@ -100,19 +100,19 @@ func (o *operatorRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	// POST /api/agent-operator-integration/v1/operator/debug
 	engine.POST("/operator/debug", o.OperatorHandler.DebugOperator)
 
-	/*已发布版本详情*/
-	// GET /api/agent-operator-integration/v1/operator/history/:operator_id/:version 获取已发布算子指定版本详情
+	// Published version details.
+	// GET /api/agent-operator-integration/v1/operator/history/:operator_id/:version Get the details of the specified version of the published operator.
 	engine.GET("/operator/history/:operator_id/:version", o.OperatorHandler.QueryOperatorHistoryDetail)
 	// GET /api/agent-operator-integration/v1/operator/history/:operator_id
 	engine.GET("/operator/history/:operator_id", o.OperatorHandler.QueryOperatorHistoryList)
 
-	/*算子市场相关接口*/
-	// GET /api/agent-operator-integration/v1/operator/market 获取算子市场列表，支持分页，排序，及query过滤条件
+	// Operator market related interfaces.
+	// GET /api/agent-operator-integration/v1/operator/market Get the operator market list, supports paging, sorting, and query filter conditions.
 	engine.GET("/operator/market", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.QueryOperatorMarketList)
-	// GET /api/agent-operator-integration/v1/operator/market/:operator_id 在算子市场查看详情
+	// GET /api/agent-operator-integration/v1/operator/market/:operator_id View details in the operator market.
 	engine.GET("/operator/market/:operator_id", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.QueryOperatorMarketDetail)
 
-	/*算子分类管理*/
-	// GET /api/agent-operator-integration/v1/operator/category //获取算子分类列表
+	// Operator classification management.
+	// GET /api/agent-operator-integration/v1/operator/category //Get the operator classification list.
 	engine.GET("/operator/category", o.CategoryHandler.CategoryList)
 }

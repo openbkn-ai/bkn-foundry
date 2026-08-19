@@ -7,12 +7,12 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 )
 
 type mcpToolDB struct {
@@ -28,11 +28,11 @@ var (
 )
 
 const (
-	// tbMCPTool MCP工具表名
+	// tbMCPTool MCP tool table name.
 	tbMCPTool = "t_mcp_tool"
 )
 
-// NewMCPToolDBSingleton 创建MCP工具数据库访问对象单例
+// NewMCPToolDBSingleton creates an MCP tool database access object singleton.
 func NewMCPToolDBSingleton() model.DBMCPTool {
 	confLoader := config.NewConfigLoader()
 	dbPool := db.NewDBPool()

@@ -13,12 +13,12 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
-// expectedRoutes 是原 capabilities-lab 独立服务对外暴露的全部路由，逐条抄自合并前
-// 的 handler.RegisterRoutes。
+// expectedRoutes is all the routes exposed by the original capabilities-lab independent service, copied one by one from before the merger.
+// handler.RegisterRoutes.
 //
-// 合并的唯一回归面就是「路由是否原样注册」——内部实现整体搬迁、未作改动，因此只要
-// 这个集合不变，消费方看到的接口面就不变。任何增删都应当是显式的：改动本表的同时
-// 要说明消费方影响。
+// The only regression aspect of the merger is "whether the route is registered as it is" - the entire internal migration is implemented without any changes, so as long as.
+// This set remains unchanged, and the interface seen by the consumer remains unchanged. Any additions or deletions should be explicit: when changing this table.
+// Explain the impact on the consumer side.
 var expectedRoutes = []string{
 	"DELETE /api/capabilities-lab/v1/capabilities/:id",
 	"GET /api/capabilities-lab/v1/capabilities",
@@ -111,8 +111,8 @@ func TestRegisterRouterPreservesRouteSurface(t *testing.T) {
 
 func TestRegisterRouterIsIdempotentPerGroup(t *testing.T) {
 	Convey("在独立的路由组上重复装配不会相互影响", t, func() {
-		// 主要防回归点：中间件由 engine 级改为 group 级挂载后，同一 engine 上的
-		// 其他路由组不应被 capabilities-lab 的中间件链波及。
+		// Main anti-regression point: After the middleware is changed from engine level to group level mounting, the middleware on the same engine.
+		// Other routing groups should not be affected by capabilities-lab's middleware chain.
 		gin.SetMode(gin.TestMode)
 		engine := gin.New()
 

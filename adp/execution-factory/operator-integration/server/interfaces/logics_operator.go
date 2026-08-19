@@ -1,6 +1,6 @@
-// Package interfaces 定义接口
+// Package interfaces define interfaces.
 // @file operator.go
-// @description: 定义算子操作接口
+// @description: Define operator operation interface.
 package interfaces
 
 //go:generate mockgen -source=logics_operator.go -destination=../mocks/operator.go -package=mocks
@@ -9,147 +9,147 @@ import (
 	"database/sql"
 )
 
-// OperatorStatusItem 单个状态更新项的结构体
+// OperatorStatusItem structure of a single status update item.
 type OperatorStatusItem struct {
 	OperatorID string    `json:"operator_id" validate:"required,uuid4"`
 	Status     BizStatus `json:"status" validate:"required,oneof=unpublish published offline editing"`
 }
 
-// OperatorStatusUpdateReq 状态更新请求
+// OperatorStatusUpdateReq status update request.
 type OperatorStatusUpdateReq struct {
 	UserID      string                `header:"user_id" validate:"required"`
 	StatusItems []*OperatorStatusItem `json:",inline"`
 }
 
-// OperatorDeleteItem 单个删除请求
+// OperatorDeleteItem single delete request.
 type OperatorDeleteItem struct {
 	OperatorID string `json:"operator_id" validate:"required,uuid4"`
 }
 
-// OperatorDeleteReq 删除请求
+// OperatorDeleteReq delete request.
 type OperatorDeleteReq []OperatorDeleteItem
 
-// OperatorUpdateReq 更新请求
+// OperatorUpdateReq update request.
 type OperatorUpdateReq struct {
 	*OperatorRegisterReq `json:",inline"`
 	OperatorID           string `json:"operator_id" form:"operator_id" validate:"required,uuid4"`
 }
 
-// OperatorRegisterReq 注册请求
+// OperatorRegisterReq registration request.
 type OperatorRegisterReq struct {
-	MetadataType           MetadataType            `json:"operator_metadata_type" form:"operator_metadata_type" validate:"required" oneof:"openapi function"` // 算子元数据类型(强制参数)
-	OperatorInfo           *OperatorInfo           `json:"operator_info" form:"operator_info"`                                                                // 算子信息
-	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control" form:"operator_execute_control"`                                          // 控制参数
-	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty" form:"extend_info,omitempty"`                                                // 拓展信息
-	UserToken              string                  `json:"user_token" form:"user_token"`                                                                      // 内部接口传参
-	DirectPublish          bool                    `json:"direct_publish,omitempty" form:"direct_publish,omitempty"`                                          // 直接发布
-	FunctionInput          *FunctionInput          `json:"function_input,omitempty" form:"function_input,omitempty"`                                          // 函数输入参数
-	Data                   string                  `json:"data" form:"data"`                                                                                  // 算子元数据，当算子元数据类型为openapi时必填
-	Description            string                  `json:"description" form:"description"`                                                                    // 算子描述
+	MetadataType           MetadataType            `json:"operator_metadata_type" form:"operator_metadata_type" validate:"required" oneof:"openapi function"` // Operator metadata type (mandatory parameter)
+	OperatorInfo           *OperatorInfo           `json:"operator_info" form:"operator_info"`                                                                // Operator information.
+	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control" form:"operator_execute_control"`                                          // control parameters.
+	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty" form:"extend_info,omitempty"`                                                // Expand information.
+	UserToken              string                  `json:"user_token" form:"user_token"`                                                                      // Internal interface parameter passing.
+	DirectPublish          bool                    `json:"direct_publish,omitempty" form:"direct_publish,omitempty"`                                          // publish directly.
+	FunctionInput          *FunctionInput          `json:"function_input,omitempty" form:"function_input,omitempty"`                                          // Function input parameters.
+	Data                   string                  `json:"data" form:"data"`                                                                                  // Operator metadata, required when the operator metadata type is openapi.
+	Description            string                  `json:"description" form:"description"`                                                                    // Operator description.
 }
 
-// OperatorRegisterResp 单个算子注册结果
+// OperatorRegisterResp Single operator registration result.
 type OperatorRegisterResp struct {
-	Status     ResultStatus `json:"status"`          // 算子注册状态 (failed/success)
-	OperatorID string       `json:"operator_id"`     // 算子ID
-	Version    string       `json:"version"`         // 算子版本
-	Error      error        `json:"error,omitempty"` // 错误信息(需要支持国际化)
+	Status     ResultStatus `json:"status"`          // Operator registration status (failed/success)
+	OperatorID string       `json:"operator_id"`     // Operator ID.
+	Version    string       `json:"version"`         // Operator version.
+	Error      error        `json:"error,omitempty"` // Error message (requires support for internationalization)
 }
 
-// OperatorEditReq 编辑请求
+// OperatorEditReq Edit request.
 type OperatorEditReq struct {
-	UserID                 string                  `header:"user_id" validate:"required"` // 用户ID
+	UserID                 string                  `header:"user_id" validate:"required"` // User ID.
 	Name                   string                  `json:"name" form:"name"`
-	Description            string                  `json:"description" form:"description"`                                       // 算子描述
-	OperatorID             string                  `json:"operator_id" form:"operator_id" validate:"required,uuid4"`             // 算子ID
-	OperatorInfoEdit       *OperatorInfoEdit       `json:"operator_info" form:"operator_info"`                                   // 算子信息
-	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control" form:"operator_execute_control"`             // 执行控制
-	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty" form:"extend_info,omitempty"`                   //	 扩展信息
-	MetadataType           MetadataType            `json:"metadata_type" form:"metadata_type" validate:"oneof=openapi function"` // 元数据类型(可选参数)
-	FunctionInputEdit      *FunctionInputEdit      `json:"function_input,omitempty" form:"function_input,omitempty"`             // 函数输入参数
+	Description            string                  `json:"description" form:"description"`                                       // Operator description.
+	OperatorID             string                  `json:"operator_id" form:"operator_id" validate:"required,uuid4"`             // Operator ID.
+	OperatorInfoEdit       *OperatorInfoEdit       `json:"operator_info" form:"operator_info"`                                   // Operator information.
+	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control" form:"operator_execute_control"`             // executive control.
+	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty" form:"extend_info,omitempty"`                   // Extended information.
+	MetadataType           MetadataType            `json:"metadata_type" form:"metadata_type" validate:"oneof=openapi function"` // Metadata type (optional parameter)
+	FunctionInputEdit      *FunctionInputEdit      `json:"function_input,omitempty" form:"function_input,omitempty"`             // Function input parameters.
 	*OpenAPIInput          `json:",inline"`
 }
 
-// OperatorInfoEdit 算子信息编辑
+// OperatorInfoEdit Operator information editing.
 type OperatorInfoEdit struct {
-	Type          OperatorType  `json:"operator_type" default:"basic" validate:"oneof=basic composite"` // 算子类型(basic/composite)
-	ExecutionMode ExecutionMode `json:"execution_mode" default:"sync"  validate:"oneof=sync async"`     // 执行模式(async/sync)
-	Category      BizCategory   `json:"category" default:"other_category"`                              // 算子分类(data_process/control)
-	Source        string        `json:"source" default:"unknown"`                                       // 算子来源(system/unknown)
-	IsDataSource  *bool         `json:"is_data_source" form:"is_data_source" default:"false"`           // 是否为数据源算子
+	Type          OperatorType  `json:"operator_type" default:"basic" validate:"oneof=basic composite"` // Operator type (basic/composite)
+	ExecutionMode ExecutionMode `json:"execution_mode" default:"sync"  validate:"oneof=sync async"`     // Execution mode (async/sync)
+	Category      BizCategory   `json:"category" default:"other_category"`                              // Operator classification (data_process/control)
+	Source        string        `json:"source" default:"unknown"`                                       // Operator source (system/unknown)
+	IsDataSource  *bool         `json:"is_data_source" form:"is_data_source" default:"false"`           // Whether it is a data source operator.
 }
 
-// OperatorEditResp 编辑响应
+// OperatorEditResp edit response.
 type OperatorEditResp struct {
 	OperatorID string    `json:"operator_id" validate:"required,uuid4"`
 	Version    string    `json:"version" validate:"required,uuid4"`
 	Status     BizStatus `json:"status" validate:"required,oneof=unpublish published offline editing"` // validate:"oneof=asc desc"
 }
 
-// OperatorDataInfo 算子数据
+// OperatorDataInfo operator data.
 type OperatorDataInfo struct {
-	BusinessDomainID       string                  `json:"business_domain_id"` // 业务域ID
-	Name                   string                  `json:"name"`               // 算子名称
+	BusinessDomainID       string                  `json:"business_domain_id"` // Business domain ID.
+	Name                   string                  `json:"name"`               // Operator name.
 	OperatorID             string                  `json:"operator_id" validate:"uuid4"`
 	Version                string                  `json:"version" validate:"uuid4"`
-	Status                 BizStatus               `json:"status" validate:"omitempty,oneof=unpublish published offline editing"` // 状态
-	MetadataType           MetadataType            `json:"metadata_type" default:"openapi" validate:"oneof=openapi function"`     // 算子元数据类型(强制参数)
+	Status                 BizStatus               `json:"status" validate:"omitempty,oneof=unpublish published offline editing"` // Status.
+	MetadataType           MetadataType            `json:"metadata_type" default:"openapi" validate:"oneof=openapi function"`     // Operator metadata type (mandatory parameter)
 	Metadata               *MetadataInfo           `json:"metadata"`
 	ExtendInfo             map[string]interface{}  `json:"extend_info,omitempty"`
-	OperatorInfo           *OperatorInfo           `json:"operator_info"` // 算子信息
+	OperatorInfo           *OperatorInfo           `json:"operator_info"` // Operator information.
 	OperatorExecuteControl *OperatorExecuteControl `json:"operator_execute_control"`
 	CreateUser             string                  `json:"create_user"`
 	CreateTime             int64                   `json:"create_time"`
 	UpdateUser             string                  `json:"update_user"`
 	UpdateTime             int64                   `json:"update_time"`
-	ReleaseUser            string                  `json:"release_user,omitempty"` // 发布人
-	ReleaseTime            int64                   `json:"release_time,omitempty"` // 发布时间
-	Tag                    int                     `json:"tag,omitempty"`          // 版本号
-	IsInternal             bool                    `json:"is_internal"`            // 是否内部算子
+	ReleaseUser            string                  `json:"release_user,omitempty"` // Posted by.
+	ReleaseTime            int64                   `json:"release_time,omitempty"` // Release time.
+	Tag                    int                     `json:"tag,omitempty"`          // version number.
+	IsInternal             bool                    `json:"is_internal"`            // Is it an internal operator?.
 }
 
-// OperatorType 算子类型
+// OperatorType operator type.
 type OperatorType string
 
 const (
-	OperatorTypeBase      OperatorType = "basic"     // 基础算子
-	OperatorTypeComposite OperatorType = "composite" // 组合算子
+	OperatorTypeBase      OperatorType = "basic"     // Basic operators.
+	OperatorTypeComposite OperatorType = "composite" // Combinatorial operator.
 )
 
-// OperatorExecuteControl 算子执行控制
+// OperatorExecuteControl operator execution control.
 type OperatorExecuteControl struct {
-	Timeout     int64               `json:"timeout" form:"timeout" default:"3000"` // 超时时间
-	RetryPolicy OperatorRetryPolicy `json:"retry_policy" form:"retry_policy"`      // 重试策略
+	Timeout     int64               `json:"timeout" form:"timeout" default:"3000"` // timeout.
+	RetryPolicy OperatorRetryPolicy `json:"retry_policy" form:"retry_policy"`      // Retry strategy.
 }
 
-// OperatorRetryPolicy 算子重试策略
+// OperatorRetryPolicy operator retry policy.
 type OperatorRetryPolicy struct {
-	MaxAttempts     int64           `json:"max_attempts" form:"max_attempts" default:"3"`      // 最大重试次数
-	InitialDelay    int64           `json:"initial_delay" form:"initial_delay" default:"1000"` // 初始延迟时间（毫秒）
-	BackoffFactor   int64           `json:"backoff_factor" form:"backoff_factor" default:"2"`  // 指数退避因子
-	MaxDelay        int64           `json:"max_delay" form:"max_delay" default:"6000"`         // 最大延迟时间（毫秒）
-	RetryConditions RetryConditions `json:"retry_conditions" form:"retry_conditions"`          // 重试条件
+	MaxAttempts     int64           `json:"max_attempts" form:"max_attempts" default:"3"`      // Maximum number of retries.
+	InitialDelay    int64           `json:"initial_delay" form:"initial_delay" default:"1000"` // Initial delay time (milliseconds)
+	BackoffFactor   int64           `json:"backoff_factor" form:"backoff_factor" default:"2"`  // exponential backoff factor.
+	MaxDelay        int64           `json:"max_delay" form:"max_delay" default:"6000"`         // Maximum delay time (milliseconds)
+	RetryConditions RetryConditions `json:"retry_conditions" form:"retry_conditions"`          // Retry condition.
 }
 
-// RetryConditions 重试条件
+// RetryConditions retry conditions.
 type RetryConditions struct {
-	StatusCode []int64  `json:"status_code" form:"status_code"` // 状态码
-	ErrorCodes []string `json:"error_codes" form:"error_codes"` // 业务错误码
+	StatusCode []int64  `json:"status_code" form:"status_code"` // status code.
+	ErrorCodes []string `json:"error_codes" form:"error_codes"` // Business error code.
 }
 
-// OperatorInfo 算子信息
+// OperatorInfo operator information.
 type OperatorInfo struct {
-	Type          OperatorType  `json:"operator_type" form:"operator_type" default:"basic" validate:"oneof=basic composite"` // 算子类型(basic/composite)
-	ExecutionMode ExecutionMode `json:"execution_mode" form:"execution_mode"  default:"sync"  validate:"oneof=sync async"`   // 执行模式(async/sync)
-	Category      BizCategory   `json:"category" form:"category" default:"other_category"`                                   // 算子分类(data_process/control)
-	CategoryName  string        `json:"category_name,omitempty" form:"category_name,omitempty"`                              // 算子分类名称(支持国际化)
-	Source        string        `json:"source" form:"source" default:"unknown"`                                              // 算子来源(system/unknown)
-	IsDataSource  *bool         `json:"is_data_source" form:"is_data_source" default:"false"`                                // 是否为数据源算子
+	Type          OperatorType  `json:"operator_type" form:"operator_type" default:"basic" validate:"oneof=basic composite"` // Operator type (basic/composite)
+	ExecutionMode ExecutionMode `json:"execution_mode" form:"execution_mode"  default:"sync"  validate:"oneof=sync async"`   // Execution mode (async/sync)
+	Category      BizCategory   `json:"category" form:"category" default:"other_category"`                                   // Operator classification (data_process/control)
+	CategoryName  string        `json:"category_name,omitempty" form:"category_name,omitempty"`                              // Operator classification name (supports internationalization)
+	Source        string        `json:"source" form:"source" default:"unknown"`                                              // Operator source (system/unknown)
+	IsDataSource  *bool         `json:"is_data_source" form:"is_data_source" default:"false"`                                // Whether it is a data source operator.
 }
 
-// PageQueryRequest 分页查询请求
+// PageQueryRequest paging query request.
 type PageQueryRequest struct {
-	BusinessDomainID string       `header:"x-business-domain" validate:"required"` // 业务域ID
+	BusinessDomainID string       `header:"x-business-domain" validate:"required"` // Business domain ID.
 	UserID           string       `header:"user_id"`
 	Page             int          `form:"page" default:"1" validate:"min=1"`
 	PageSize         int          `form:"page_size" default:"10" validate:"max=100"`
@@ -157,125 +157,125 @@ type PageQueryRequest struct {
 	SortOrder        string       `form:"sort_order" default:"desc" validate:"oneof=asc desc"`
 	Name             string       `form:"name"`
 	Status           BizStatus    `form:"status" validate:"omitempty,oneof=unpublish published offline editing"`
-	CreateUser       string       `form:"create_user"`                                              // 创建人
-	Category         BizCategory  `form:"category"`                                                 // 分类
-	OperatorType     OperatorType `form:"operator_type" validate:"omitempty,oneof=basic composite"` // 算子类型(basic/composite)
+	CreateUser       string       `form:"create_user"`                                              // Creator.
+	Category         BizCategory  `form:"category"`                                                 // Classification.
+	OperatorType     OperatorType `form:"operator_type" validate:"omitempty,oneof=basic composite"` // Operator type (basic/composite)
 	All              bool         `form:"all"`
-	IsDataSource     *bool        `form:"is_data_source"` // 是否为数据源算子
+	IsDataSource     *bool        `form:"is_data_source"` // Whether it is a data source operator.
 }
 
-// PageQueryResponse 分页查询响应
+// PageQueryResponse Pagination query response.
 type PageQueryResponse struct {
 	CommonPageResult `json:",inline"`
-	Data             []*OperatorDataInfo `json:"data"` // 数据列表
+	Data             []*OperatorDataInfo `json:"data"` // Data list.
 }
 
-// OperatorHistoryDetailReq 查询操作历史详情请求
+// OperatorHistoryDetailReq query operation history details request.
 type OperatorHistoryDetailReq struct {
-	UserID     string `header:"user_id"` // 非必填
+	UserID     string `header:"user_id"` // Optional.
 	OperatorID string `uri:"operator_id" validate:"required"`
 	Version    string `uri:"version" validate:"required"`
 	Tag        int    `form:"tag"`
 }
 
-// OperatorMarketDetailReq 算子市场详情查询请求
+// OperatorMarketDetailReq Operator market details query request.
 type OperatorMarketDetailReq struct {
-	UserID     string `header:"user_id"` // 非必填
+	UserID     string `header:"user_id"` // Optional.
 	OperatorID string `uri:"operator_id" validate:"required"`
 }
 
-// DebugOperatorReq 调试请求
+// DebugOperatorReq debugging request.
 type DebugOperatorReq struct {
-	UserID            string `header:"user_id" validate:"required"` // 用户ID,内部使用
+	UserID            string `header:"user_id" validate:"required"` // User ID, internal use.
 	OperatorID        string `json:"operator_id" validate:"required,uuid4"`
 	Version           string `json:"version" validate:"required,uuid4"`
-	Timeout           int    `json:"timeout"` // 超时时间，单位秒
+	Timeout           int    `json:"timeout"` // Timeout time in seconds.
 	HTTPRequestParams `json:",inline"`
 }
 
-// ExecuteOperatorReq 执行请求
+// ExecuteOperatorReq executes the request.
 type ExecuteOperatorReq struct {
-	UserID            string `header:"user_id" validate:"required"`        // 用户ID,内部使用
-	OperatorID        string `uri:"operator_id" validate:"required,uuid4"` // 算子ID
-	Timeout           int    `json:"timeout"`                              // 超时时间，单位秒
+	UserID            string `header:"user_id" validate:"required"`        // User ID, internal use.
+	OperatorID        string `uri:"operator_id" validate:"required,uuid4"` // Operator ID.
+	Timeout           int    `json:"timeout"`                              // Timeout time in seconds.
 	HTTPRequestParams `json:",inline"`
 }
 
-// OperatorHistoryListReq 获取历史版本列表
+// OperatorHistoryListReq gets the historical version list.
 type OperatorHistoryListReq struct {
-	UserID     string `header:"user_id"` // 非必填
+	UserID     string `header:"user_id"` // Optional.
 	OperatorID string `uri:"operator_id" validate:"required"`
 }
 
-// PageQueryOperatorMarketReq 算子市场查询请求
+// PageQueryOperatorMarketReq Operator market query request.
 type PageQueryOperatorMarketReq struct {
-	BusinessDomainID string        `header:"x-business-domain" validate:"required"` // 业务域ID
-	UserID           string        `header:"user_id"`                               // 非必填
+	BusinessDomainID string        `header:"x-business-domain" validate:"required"` // Business domain ID.
+	UserID           string        `header:"user_id"`                               // Optional.
 	Page             int           `form:"page" default:"1" validate:"min=1"`
 	PageSize         int           `form:"page_size" default:"10" validate:"max=100"`
 	SortBy           string        `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"`
 	SortOrder        string        `form:"sort_order" default:"desc" validate:"oneof=asc desc"`
 	All              bool          `form:"all"`
-	Status           BizStatus     `form:"status" validate:"omitempty,oneof=published offline"`       // 状态
-	Name             string        `form:"name"`                                                      // 算子名称
-	CreateUser       string        `form:"create_user"`                                               // 创建人
-	ReleaseUser      string        `form:"release_user"`                                              // 发布人
-	Category         BizCategory   `form:"category"`                                                  // 分类
-	OperatorType     OperatorType  `form:"operator_type" validate:"omitempty,oneof=basic composite"`  // 算子类型(basic/composite)
-	IsDataSource     *bool         `form:"is_data_source"`                                            // 是否为数据源算子
-	ExecutionMode    ExecutionMode `form:"execution_mode" validate:"omitempty,oneof=sync async"`      // 执行模式(async/sync)
-	MetadataType     MetadataType  `form:"metadata_type" validate:"omitempty,oneof=openapi function"` // 元数据类型(openapi/function)
+	Status           BizStatus     `form:"status" validate:"omitempty,oneof=published offline"`       // Status.
+	Name             string        `form:"name"`                                                      // Operator name.
+	CreateUser       string        `form:"create_user"`                                               // Creator.
+	ReleaseUser      string        `form:"release_user"`                                              // Posted by.
+	Category         BizCategory   `form:"category"`                                                  // Classification.
+	OperatorType     OperatorType  `form:"operator_type" validate:"omitempty,oneof=basic composite"`  // Operator type (basic/composite)
+	IsDataSource     *bool         `form:"is_data_source"`                                            // Whether it is a data source operator.
+	ExecutionMode    ExecutionMode `form:"execution_mode" validate:"omitempty,oneof=sync async"`      // Execution mode (async/sync)
+	MetadataType     MetadataType  `form:"metadata_type" validate:"omitempty,oneof=openapi function"` // Metadata type (openapi/function)
 }
 
-// GetOperatorInfoByOperatorIDReq 获取算子信息请求
+// GetOperatorInfoByOperatorIDReq Get operator information request.
 type GetOperatorInfoByOperatorIDReq struct {
-	UserID     string `header:"user_id"` // 非必填
+	UserID     string `header:"user_id"` // Optional.
 	OperatorID string `uri:"operator_id" validate:"required,uuid4"`
 }
 
-// OperatorManager 算子管理接口
+// OperatorManager operator management interface.
 type OperatorManager interface {
 	RegisterOperatorByOpenAPI(ctx context.Context, req *OperatorRegisterReq, userID string) ([]*OperatorRegisterResp, error)
-	// UpdateOperatorStatus 更新算子状态
+	// UpdateOperatorStatus updates operator status.
 	UpdateOperatorStatus(ctx context.Context, req *OperatorStatusUpdateReq, userID string) error
-	// GetOperatorInfoByOperatorID 获取算子信息
+	// GetOperatorInfoByOperatorID Get operator information.
 	GetOperatorInfoByOperatorID(ctx context.Context, req *GetOperatorInfoByOperatorIDReq) (*OperatorDataInfo, error)
 	GetOperatorQueryPage(ctx context.Context, req *PageQueryRequest) (*PageQueryResponse, error)
-	// GetOperatorNamesByIDs 按算子ID批量取名(容错：不存在的ID略过)
+	// GetOperatorNamesByIDs batches names based on operator IDs (fault tolerance: non-existent IDs are ignored)
 	GetOperatorNamesByIDs(ctx context.Context, ids []string) (*BatchNamesResp, error)
-	// EditOperator 编辑算子
+	// EditOperator editing operator.
 	EditOperator(ctx context.Context, req *OperatorEditReq) (*OperatorEditResp, error)
-	// DeleteOperator 删除算子
+	// DeleteOperator delete operator.
 	DeleteOperator(ctx context.Context, req OperatorDeleteReq, userID string) error
 	UpdateOperatorByOpenAPI(ctx context.Context, req *OperatorUpdateReq, userID string) (resultList []*OperatorRegisterResp, err error)
-	// 调试接口
+	// Debug interface.
 	DebugOperator(ctx context.Context, req *DebugOperatorReq) (resp *HTTPResponse, err error)
-	// 执行算子
+	// Execution operator.
 	ExecuteOperator(ctx context.Context, req *ExecuteOperatorReq) (resp *HTTPResponse, err error)
-	// 更具ID，version 获取已经发布版本算子信息
+	// More ID, version to obtain the published version operator information.
 	QueryOperatorHistoryDetail(ctx context.Context, req *OperatorHistoryDetailReq) (*OperatorDataInfo, error)
 	QueryOperatorHistoryList(ctx context.Context, req *OperatorHistoryListReq) ([]*OperatorDataInfo, error)
-	// QueryOperatorMarketList 算子市场查询
+	// QueryOperatorMarketList Operator market query.
 	QueryOperatorMarketList(ctx context.Context, req *PageQueryOperatorMarketReq) (*PageQueryResponse, error)
-	// QueryOperatorMarketDetail 算子市场详情查询
+	// QueryOperatorMarketDetail Operator market details query.
 	QueryOperatorMarketDetail(ctx context.Context, req *OperatorMarketDetailReq) (*OperatorDataInfo, error)
-	/*导入导出*/
+	// Import and export.
 	// Impex[*OperatorImpexData]
 	Export(ctx context.Context, req *ExportReq) (data *ComponentImpexConfigModel, err error)
 	Import(ctx context.Context, tx *sql.Tx, mode ImportType, data *OperatorImpexConfig, userID string) (err error)
-	// 内部操作接口
+	// Internal operating interface.
 	InternalOperatorManager
 }
 
-// CheckAddAsToolResp 检查算子是否允许添加为工具响应
+// CheckAddAsToolResp checks whether the operator is allowed to be added as a tool response.
 type CheckAddAsToolResp struct {
 	OperatorID string      `json:"operator_id"`
 	Name       string      `json:"name"`
 	Metadata   IMetadataDB `json:"metadata"`
 }
 
-// InternalOperatorManager 内部操作接口
+// InternalOperatorManager internal operation interface.
 type InternalOperatorManager interface {
-	// 检查是否允许添加为工具
+	// Check if adding as a tool is allowed.
 	CheckAddAsTool(ctx context.Context, operatorID, userID string) (resp *CheckAddAsToolResp, err error)
 }

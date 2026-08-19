@@ -20,7 +20,7 @@ var (
 	mqHandlerInstance interfaces.MQHandler
 )
 
-// NewMQHandler 创建MQ处理接口
+// NewMQHandler creates MQ processing interface.
 func NewMQHandler() interfaces.MQHandler {
 	mqOnce.Do(func() {
 		conf := config.NewConfigLoader()
@@ -33,12 +33,12 @@ func NewMQHandler() interfaces.MQHandler {
 	return mqHandlerInstance
 }
 
-// 待处理Topic列表
+// To-be-processed Topic list.
 var pendingTopics = []string{
 	interfaces.OperatorDeleteEventTopic,
 }
 
-// Subscribe 订阅事件
+// Subscribe Subscribe to events.
 func (h *mqHandler) Subscribe() {
 	for _, topic := range pendingTopics {
 		switch topic {

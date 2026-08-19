@@ -34,7 +34,7 @@ const (
 	authReaultFilterURI   = "/v1/resource-filter"
 )
 
-// NewAuthorization 创建鉴权服务对象
+// NewAuthorization creates an authentication service object.
 func NewAuthorization() interfaces.Authorization {
 	authOnce.Do(func() {
 		config := config.NewConfigLoader()
@@ -53,7 +53,7 @@ func NewAuthorization() interfaces.Authorization {
 	return selectAuthz(auth, auth.logger)
 }
 
-// OperationCheck 操作鉴权
+// OperationCheck operation authentication.
 func (a *authorization) OperationCheck(ctx context.Context, req *interfaces.AuthOperationCheckRequest) (resp *interfaces.AuthOperationCheckResponse, err error) {
 	url := fmt.Sprintf("%s%s", a.baseURL, authOperationCheckURI)
 	header := map[string]string{"Content-Type": "application/json"}
@@ -72,7 +72,7 @@ func (a *authorization) OperationCheck(ctx context.Context, req *interfaces.Auth
 	return
 }
 
-// ResourceList 资源列举
+// ResourceList resource list.
 func (a *authorization) ResourceList(ctx context.Context, req *interfaces.ResourceListRequest) (resp []*interfaces.AuthResourceResult, err error) {
 	url := fmt.Sprintf("%s%s", a.baseURL, authResourceListURI)
 	header := map[string]string{"Content-Type": "application/json"}
@@ -91,7 +91,7 @@ func (a *authorization) ResourceList(ctx context.Context, req *interfaces.Resour
 	return
 }
 
-// ResourceFilter 资源过滤
+// ResourceFilter resource filtering.
 func (a *authorization) ResourceFilter(ctx context.Context, req *interfaces.AuthResourceFilterRequest) (resp []*interfaces.AuthResourceResult, err error) {
 	url := fmt.Sprintf("%s%s", a.baseURL, authResourceFilterURI)
 	header := map[string]string{"Content-Type": "application/json"}
@@ -110,7 +110,7 @@ func (a *authorization) ResourceFilter(ctx context.Context, req *interfaces.Auth
 	return
 }
 
-// CreatePolicy 创建策略
+// CreatePolicy creates a policy.
 func (a *authorization) CreatePolicy(ctx context.Context, req []*interfaces.AuthCreatePolicyRequest) (err error) {
 	url := fmt.Sprintf("%s%s", a.baseURL, authCreatePolicyURI)
 	header := map[string]string{"Content-Type": "application/json"}
@@ -125,7 +125,7 @@ func (a *authorization) CreatePolicy(ctx context.Context, req []*interfaces.Auth
 	return
 }
 
-// DeletePolicy 删除策略
+// DeletePolicy delete policy.
 func (a *authorization) DeletePolicy(ctx context.Context, req *interfaces.AuthDeletePolicyRequest) (err error) {
 	url := fmt.Sprintf("%s%s", a.baseURL, authDeletePolicyURI)
 	header := map[string]string{"Content-Type": "application/json"}

@@ -22,7 +22,7 @@ func (s *ToolServiceImpl) deleteTools(ctx context.Context, tx *sql.Tx, boxID str
 			funcMetadatas = append(funcMetadatas, tool.SourceID)
 		}
 	}
-	// 删除OpenAPI元数据
+	// Remove OpenAPI metadata.
 	if len(apiMetadatas) > 0 {
 		err = s.MetadataService.BatchDeleteMetadata(ctx, tx, interfaces.MetadataTypeAPI, apiMetadatas)
 		if err != nil {
@@ -31,7 +31,7 @@ func (s *ToolServiceImpl) deleteTools(ctx context.Context, tx *sql.Tx, boxID str
 			return
 		}
 	}
-	// 删除Function元数据
+	// Delete Function metadata.
 	if len(funcMetadatas) > 0 {
 		err = s.MetadataService.BatchDeleteMetadata(ctx, tx, interfaces.MetadataTypeFunc, funcMetadatas)
 		if err != nil {
@@ -40,7 +40,7 @@ func (s *ToolServiceImpl) deleteTools(ctx context.Context, tx *sql.Tx, boxID str
 			return
 		}
 	}
-	// 删除工具
+	// removal tool.
 	if len(toolIDs) > 0 {
 		err = s.ToolDB.DeleteBoxByIDAndTools(ctx, tx, boxID, toolIDs)
 		if err != nil {
@@ -63,14 +63,14 @@ func (s *ToolServiceImpl) deleteToolBox(ctx context.Context, tx *sql.Tx, boxID s
 	if err != nil {
 		return
 	}
-	// 删除工具箱
+	// Delete toolbox.
 	err = s.ToolBoxDB.DeleteToolBox(ctx, tx, boxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("delete toolbox failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 删除配置
+	// Delete configuration.
 	err = s.IntCompConfigSvc.DeleteConfig(ctx, tx, interfaces.ComponentTypeToolBox.String(), boxID)
 	return
 }

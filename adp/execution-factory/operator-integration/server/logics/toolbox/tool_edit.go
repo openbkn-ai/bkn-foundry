@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	oerrors "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/telemetry"
@@ -15,11 +14,12 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/parsers"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// UpdateTool 更新工具
+// UpdateTool update tool.
 func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.UpdateToolReq) (resp *interfaces.UpdateToolResp, err error) {
-	// 记录可观测
+	// record observable.
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
@@ -27,7 +27,7 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 		"user_id": req.UserID,
 		"tool_id": req.ToolID,
 	})
-	// 权限校验
+	// Permission verification.
 	var accessor *interfaces.AuthAccessor
 	accessor, err = s.AuthService.GetAccessor(ctx, req.UserID)
 	if err != nil {
@@ -37,7 +37,7 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	if err != nil {
 		return
 	}
-	// 检查工具箱是否存在
+	// Check if the toolbox exists.
 	exist, toolBox, err := s.ToolBoxDB.SelectToolBox(ctx, req.BoxID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select toolbox failed, err: %v", err)
@@ -48,12 +48,12 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 		err = oerrors.NewHTTPError(ctx, http.StatusBadRequest, oerrors.ErrExtToolBoxNotFound, "toolbox not found")
 		return
 	}
-	// 检查工具元数据类型和请求更新是否一致
+	// Check whether the tool metadata type and requested update are consistent.
 	if toolBox.MetadataType != string(req.MetadataType) {
 		err = oerrors.DefaultHTTPError(ctx, http.StatusBadRequest, fmt.Sprintf("metadata type %s not match", toolBox.MetadataType))
 		return
 	}
-	// 检查工具是否存在
+	// Check if the tool exists.
 	exist, tool, err := s.ToolDB.SelectTool(ctx, req.ToolID)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select tool failed, err: %v", err)
@@ -65,11 +65,11 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 			fmt.Sprintf("tool %s not found", req.ToolID))
 		return
 	}
-	// 检查工具名称是否重名
+	// Check if the tool name has the same name.
 	if tool.Name != req.ToolName {
 		err = s.checkToolNameExist(ctx, req.BoxID, req.ToolName)
 		if err != nil {
-			// 交互设计要求返回指定错误信息：https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968
+			// Interaction design requires returning specified error information: https://confluence.aishu.cn/pages/viewpage.action?pageId=280780968.
 			httErr := &oerrors.HTTPError{}
 			if errors.As(err, &httErr) && httErr.HTTPCode == http.StatusConflict {
 				err = httErr.WithDescription(oerrors.ErrExtCommonNameExists)
@@ -87,12 +87,12 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	if req.GlobalParameters != nil {
 		tool.Parameters = utils.ObjectToJSON(req.GlobalParameters)
 	}
-	// 更新元数据
+	// Update metadata.
 	err = s.updateToolMetadata(ctx, req, tool)
 	if err != nil {
 		return
 	}
-	// 记录审计日志
+	// Record audit log.
 	go func() {
 		accountAuthContext, ok := common.GetAccountAuthContextFromCtx(ctx)
 		if !ok {
@@ -116,7 +116,7 @@ func (s *ToolServiceImpl) UpdateTool(ctx context.Context, req *interfaces.Update
 	return
 }
 
-// 检查工具是否重名
+// Check if the tool has the same name.
 func (s *ToolServiceImpl) checkToolNameExist(ctx context.Context, boxID, toolName string) (err error) {
 	exist, _, err := s.ToolDB.SelectBoxToolByName(ctx, boxID, toolName)
 	if err != nil {
@@ -131,8 +131,8 @@ func (s *ToolServiceImpl) checkToolNameExist(ctx context.Context, boxID, toolNam
 	return
 }
 
-// resolveFunctionCode 取本次编辑要落库的函数代码。
-// 请求没带 code 时说明用户只改依赖或参数定义,沿用已存代码,避免整段元数据更新被跳过。
+// resolveFunctionCode takes the function code to be added to the library for this edit.
+// When the request does not include code, it means that the user only changes the dependencies or parameter definitions and uses the existing code to prevent the entire metadata update from being skipped.
 func (s *ToolServiceImpl) buildFunctionInput(ctx context.Context, req *interfaces.UpdateToolReq,
 	toolDB *model.ToolDB) (*interfaces.FunctionInput, error) {
 	edit := req.FunctionInputEdit
@@ -146,8 +146,8 @@ func (s *ToolServiceImpl) buildFunctionInput(ctx context.Context, req *interface
 		Dependencies:    edit.Dependencies,
 		DependenciesURL: edit.DependenciesURL,
 	}
-	// 元数据是整体重建的,请求没带的字段会被写成空值。编辑只想改其中一项时
-	// （比如只换依赖）,其余字段必须沿用已存值,否则参数定义和依赖会被静默清空。
+	// The metadata is reconstructed as a whole, and fields not included in the request will be written as null values. When the editor only wants to change one of the items.
+	// (For example, only changing dependencies), the remaining fields must use the existing values, otherwise the parameter definitions and dependencies will be silently cleared.
 	if input.Code != "" && input.Inputs != nil && input.Outputs != nil &&
 		input.Dependencies != nil && input.ScriptType != "" && input.DependenciesURL != "" {
 		return input, nil
@@ -173,7 +173,7 @@ func (s *ToolServiceImpl) buildFunctionInput(ctx context.Context, req *interface
 	if input.DependenciesURL == "" {
 		input.DependenciesURL = current.GetDependenciesURL()
 	}
-	// 参数定义落库时展开进了 API 规格,沿用时反解回来
+	// The parameter definition is expanded into the API specification when it is stored, and is decoded back when it is used.
 	if input.Inputs == nil || input.Outputs == nil {
 		storedInputs, storedOutputs := parsers.FunctionParamsFromAPISpec(current.GetAPISpec())
 		if input.Inputs == nil {
@@ -186,15 +186,15 @@ func (s *ToolServiceImpl) buildFunctionInput(ctx context.Context, req *interface
 	return input, nil
 }
 
-// 校验并更新工具元数据
+// Verify and update tool metadata.
 func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interfaces.UpdateToolReq, toolDB *model.ToolDB) (err error) {
 	var needUpdate bool
 	switch req.MetadataType {
 	case interfaces.MetadataTypeAPI:
 		needUpdate = req.OpenAPIInput != nil && req.OpenAPIInput.Data != nil
 	case interfaces.MetadataTypeFunc:
-		// 只改依赖、参数定义而不改代码也是合法编辑,因此不再要求必须带 code。
-		// code 为空时沿用已存代码,见下方 resolveFunctionCode。
+		// Only changing dependencies and parameter definitions without changing the code is also legal editing, so it is no longer required to include code.
+		// When code is empty, the stored code will be used, see resolveFunctionCode below.
 		needUpdate = req.FunctionInputEdit != nil
 	}
 	var metadatas []interfaces.IMetadataDB
@@ -210,7 +210,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 			}
 			metadatas, err = s.MetadataService.ParseMetadata(ctx, req.MetadataType, functionInput)
 		case model.SourceTypeOperator:
-			// 算子转换成的工具不允许直接编辑元数据
+			// The tool converted by the operator does not allow direct editing of metadata.
 			err = oerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, oerrors.ErrExtToolOperatorNotAllowEdit,
 				"operator tool not allow edit metadata")
 		}
@@ -218,7 +218,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 			return
 		}
 	}
-	// 不需要更新元数据
+	// No need to update metadata.
 	if len(metadatas) == 0 {
 		err = s.ToolDB.UpdateTool(ctx, nil, toolDB)
 		if err != nil {
@@ -239,7 +239,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 			_ = tx.Commit()
 		}
 	}()
-	// 获取当前元数据信息
+	// Get current metadata information.
 	has, currentMetadataDB, err := s.MetadataService.GetMetadataBySource(ctx, toolDB.SourceID, toolDB.SourceType)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("select metadata failed, err: %v", err)
@@ -252,10 +252,10 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		return err
 	}
 
-	// 解析并检查元数据
+	// Parse and inspect metadata.
 	switch toolDB.SourceType {
 	case model.SourceTypeOpenAPI:
-		// 解析并检查OpenAPI元数据
+		// Parse and inspect OpenAPI metadata.
 		var metadata interfaces.IMetadataDB
 		for _, value := range metadatas {
 			if value.GetPath() == currentMetadataDB.GetPath() && value.GetMethod() == currentMetadataDB.GetMethod() {
@@ -269,7 +269,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 					currentMetadataDB.GetPath(), currentMetadataDB.GetMethod()))
 			return
 		}
-		// 组装元数据
+		// Assembling metadata.
 		currentMetadataDB.SetSummary(metadata.GetSummary())
 		currentMetadataDB.SetDescription(metadata.GetDescription())
 		currentMetadataDB.SetPath(metadata.GetPath())
@@ -277,7 +277,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		currentMetadataDB.SetServerURL(metadata.GetServerURL())
 		currentMetadataDB.SetAPISpec(metadata.GetAPISpec())
 	case model.SourceTypeFunction:
-		// 函数不支持批量更新
+		// The function does not support batch updates.
 		metadata := metadatas[0]
 		currentMetadataDB.SetSummary(metadata.GetSummary())
 		currentMetadataDB.SetDescription(metadata.GetDescription())
@@ -290,12 +290,12 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		currentMetadataDB.SetDependencies(metadata.GetDependencies())
 		currentMetadataDB.SetDependenciesURL(metadata.GetDependenciesURL())
 	case model.SourceTypeOperator:
-		// 算子转换成的工具不允许直接编辑元数据
+		// The tool converted by the operator does not allow direct editing of metadata.
 		err = oerrors.NewHTTPError(ctx, http.StatusMethodNotAllowed, oerrors.ErrExtToolOperatorNotAllowEdit,
 			"operator tool not allow edit metadata")
 		return
 	}
-	// 更新元数据
+	// Update metadata.
 	currentMetadataDB.SetUpdateInfo(toolDB.UpdateUser)
 	err = s.MetadataService.UpdateMetadata(ctx, tx, currentMetadataDB)
 	if err != nil {
@@ -303,7 +303,7 @@ func (s *ToolServiceImpl) updateToolMetadata(ctx context.Context, req *interface
 		err = oerrors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// 更新工具
+	// Update tool.
 	err = s.ToolDB.UpdateTool(ctx, tx, toolDB)
 	if err != nil {
 		s.Logger.WithContext(ctx).Errorf("update tool failed, err: %v", err)

@@ -15,13 +15,13 @@ class MCP():
         self.config = file.config()
         self.base_url = self.config["requests"]["protocol"] + "://" + self.config["server"]["host"] + ":" + self.config["server"]["port"] + "/api/agent-operator-integration/v1/mcp"
 
-    '''解析SSE MCPServer'''
+    '''Parsing SSE MCPServer.'''
     def ParseSSE(self, data, headers):
         url = f"{self.base_url}/parse/sse"
-        # 使用带超时和重试的方法，超时60秒，最多重试2次
+        # Use the method with timeout and retry, timeout 60 seconds, retry up to 2 times.
         return Request.post_with_retry(self, url, data, headers, timeout=60, max_retries=2)
 
-    '''添加MCP Server配置'''
+    '''Add MCP Server configuration.'''
     def RegisterMCP(self, data, headers):
         url = f"{self.base_url}"
         allure.attach(url, name="Request URL")
@@ -37,60 +37,60 @@ class MCP():
         else:
             return [resp.status_code, resp.json()]
 
-    '''删除MCP Server配置'''
+    '''Delete MCP Server configuration.'''
     def DeleteMCP(self, mcp_id, headers):
         url = f"{self.base_url}/{mcp_id}"
         return Request.delete(self, url, None, headers)
 
-    '''获取MCP Server列表'''
+    '''Get MCP Server list.'''
     def GetMCPList(self, params, headers):
         url = f"{self.base_url}/list"
         return Request.query(self, url, params, headers)
 
-    '''获取MCP Server详情'''
+    '''Get MCP Server details.'''
     def GetMCPDetail(self, mcp_id, headers):
         url = f"{self.base_url}/{mcp_id}"
         return Request.get(self, url, headers)
 
-    '''编辑MCP Server配置'''
+    '''Edit MCP Server configuration.'''
     def EditMCP(self, mcp_id, data, headers):
         url = f"{self.base_url}/{mcp_id}"
         return Request.put(self, url, data, headers)
 
-    '''MCP服务发布操作'''
+    '''MCP service release operation.'''
     def MCPReleaseAction(self, mcp_id, data, headers):
         url = f"{self.base_url}/{ mcp_id}/status"
         return Request.post(self, url, data, headers)
 
-    '''MCP工具调试'''
+    '''MCP tool debugging.'''
     def MCPToolDebug(self, mcp_id, name, data, headers):
         url = f"{self.base_url}/{mcp_id}/tool/{name}/debug"
-        # 使用带超时和重试的方法，超时60秒，最多重试2次
+        # Use the method with timeout and retry, timeout 60 seconds, retry up to 2 times.
         return Request.post_with_retry(self, url, data, headers, timeout=60, max_retries=2)
 
-    '''获取已发布的MCP列表'''
+    '''Get a list of published MCPs.'''
     def GetMCPMarketList(self, params, headers):
         url = f"{self.base_url}/market/list"
         return Request.query(self, url, params, headers)
 
-    '''获取已发布的MCP服务市场详情'''
+    '''Get published MCP service market details.'''
     def GetMCPMarketDetail(self, mcp_id, headers):
         url = f"{self.base_url}/market/{mcp_id}"
         return Request.get(self, url, headers)
 
-    '''获取指定MCP服务下的工具列表'''
+    '''Get the tool list under the specified MCP service.'''
     def GetMCPToolList(self, mcp_id, headers):
         url = f"{self.base_url}/proxy/{mcp_id}/tools"
-        # 使用带超时和重试的方法，超时60秒，最多重试2次
+        # Use the method with timeout and retry, timeout 60 seconds, retry up to 2 times.
         return Request.get_with_retry(self, url, headers, timeout=60, max_retries=2)
 
-    '''调用指定MCP服务下的工具'''
+    '''Call the tool under the specified MCP service.'''
     def CallMCPtool(self, mcp_id, data, headers):
         url = f"{self.base_url}/proxy/{mcp_id}/tool/call"
-        # 使用带超时和重试的方法，超时60秒，最多重试2次
+        # Use the method with timeout and retry, timeout 60 seconds, retry up to 2 times.
         return Request.post_with_retry(self, url, data, headers, timeout=60, max_retries=2)
 
-    '''批量获取已发布的MCP服务市场详情'''
+    '''Obtain published MCP service market details in batches.'''
     def BatchGetMCPMarketDetail(self, mcp_ids, fields, headers):
         url = f"{self.base_url}/market/batch/{mcp_ids}/{fields}"
         return Request.get(self, url, headers)

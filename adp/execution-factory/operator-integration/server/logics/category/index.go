@@ -12,7 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 )
 
-// categoryManager 分类管理器
+// categoryManager category manager.
 type categoryManager struct {
 	logger      interfaces.Logger
 	DBTx        model.DBTx
@@ -22,7 +22,7 @@ type categoryManager struct {
 	AuthService interfaces.IAuthorizationService
 }
 
-// NewCategoryManager 创建分类管理器
+// NewCategoryManager creates a category manager.
 func NewCategoryManager() interfaces.CategoryManager {
 	c := &categoryManager{
 		logger:      config.NewConfigLoader().GetLogger(),
@@ -32,7 +32,7 @@ func NewCategoryManager() interfaces.CategoryManager {
 		Cache:       cache.NewInMemoryCache(),
 		AuthService: auth.NewAuthServiceImpl(),
 	}
-	// 从数据库中加载分类信息到缓存中
+	// Load classification information from the database into the cache.
 	categoryDBList, err := c.DBCategory.SelectList(context.Background(), nil)
 	if err != nil {
 		c.logger.Errorf("load category from db failed, err: %v", err)

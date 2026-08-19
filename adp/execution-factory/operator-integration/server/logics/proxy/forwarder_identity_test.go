@@ -18,7 +18,7 @@ const (
 	testSpoofedID     = "22222222-2222-4222-8222-222222222222"
 )
 
-// publicCtx 构造公开接口的请求上下文：认证中间件会同时写入认证账户与公开接口标记。
+// publicCtx constructs the request context of the public interface: the authentication middleware will write the authentication account and public interface tag at the same time.
 func publicCtx() context.Context {
 	ctx := common.SetPublicAPIToCtx(context.Background(), true)
 	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
@@ -27,7 +27,7 @@ func publicCtx() context.Context {
 	})
 }
 
-// internalCtx 构造内部接口的请求上下文：没有公开接口标记，身份由上游运行时按 /in 约定注入。
+// internalCtx constructs the request context for the internal interface: there is no public interface tag, the identity is injected by the upstream runtime per the /in convention.
 func internalCtx() context.Context {
 	return common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
 		AccountID:   testAuthAccountID,
@@ -35,11 +35,11 @@ func internalCtx() context.Context {
 	})
 }
 
-// TestBuildRequest_IdentityHeaders 覆盖公开接口下身份请求头的回填（#216 P1 安全约束）。
+// TestBuildRequest_IdentityHeaders overrides the backfilling of identity request headers under public interfaces (#216 P1 security constraints).
 //
-// 内置工具箱把 x-account-id / x-account-type 声明成普通 OpenAPI header 参数，下游 /in
-// 接口不验 token、直接据此判定调用者身份，因此公开的调试与执行入口不能把调用方自填的
-// 身份头原样转发出去。
+// The built-in toolbox declares x-account-id / x-account-type as ordinary OpenAPI header parameters, downstream /in.
+// The interface does not verify the token and directly determines the caller's identity based on it. Therefore, the public debugging and execution entrance cannot use the caller's self-filled.
+// The identity header is forwarded as is.
 func TestBuildRequest_IdentityHeaders(t *testing.T) {
 	f := newTestForwarder()
 
@@ -169,7 +169,7 @@ func TestBuildRequest_IdentityHeaders(t *testing.T) {
 	})
 }
 
-// TestBuildRequest_BodylessMethods 覆盖 GET/HEAD 的空 body 信封（#216 验收标准 10）。
+// TestBuildRequest_BodylessMethods overrides the empty body envelope of GET/HEAD (#216 Acceptance Criterion 10).
 func TestBuildRequest_BodylessMethods(t *testing.T) {
 	f := newTestForwarder()
 
@@ -245,7 +245,7 @@ func TestBuildRequest_BodylessMethods(t *testing.T) {
 	})
 }
 
-// TestForward_DownstreamReceivesAuthenticatedIdentity 端到端校验下游收到的是认证账户而非调用方自填值。
+// TestForward_DownstreamReceivesAuthenticatedIdentity end-to-end verifies that the downstream received authenticated account instead of the caller's self-filled value.
 func TestForward_DownstreamReceivesAuthenticatedIdentity(t *testing.T) {
 	f := newTestForwarder()
 

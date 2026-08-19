@@ -8,15 +8,15 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 )
 
-// ExporterType Export类型
+// ExporterType Export type.
 type ExporterType string
 
 const (
-	ExporterTypeOTLP   ExporterType = "otlp"   // otlp导出
-	ExporterTypeJaeger ExporterType = "jaeger" // jaeger导出
+	ExporterTypeOTLP   ExporterType = "otlp"   // otlp export.
+	ExporterTypeJaeger ExporterType = "jaeger" // jaeger export.
 )
 
-// SetSpanAttributes 设置Span属性
+// SetSpanAttributes sets Span attributes.
 func SetSpanAttributes(ctx context.Context, attrs map[string]interface{}) {
 	if attrs == nil || ctx == nil {
 		return

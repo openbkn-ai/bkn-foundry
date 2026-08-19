@@ -1,6 +1,6 @@
 // Package intcomp internal component config
 // @file intcomp_config.go
-// @description: 内置组件配置操作
+// @description: Built-in component configuration operation.
 package intcomp
 
 import (
@@ -42,9 +42,9 @@ func NewIntCompConfigService() interfaces.IIntCompConfigService {
 	return ic
 }
 
-// DeleteConfig 删除配置
+// DeleteConfig delete configuration.
 func (i *intCompConfigImpl) DeleteConfig(ctx context.Context, tx *sql.Tx, configType, configID string) (err error) {
-	// 检查是否存在
+	// Check if exists.
 	exist, _, err := i.IntCompDB.SelectConfig(ctx, configType, configID)
 	if err != nil {
 		i.Logger.WithContext(ctx).Errorf("select config failed, err: %v", err)

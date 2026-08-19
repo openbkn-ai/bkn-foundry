@@ -4,17 +4,17 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
-// GetToolBoxNamesByIDs 按工具箱ID批量取名(轻量只读，复用 SelectListByBoxIDs；不存在的ID略过)
-// 公开面按查看权限过滤：无权限的ID与不存在的ID一样静默略过。
+// GetToolBoxNamesByIDs Batch names based on toolbox IDs (lightweight read-only, reuse SelectListByBoxIDs; non-existent IDs are ignored)
+// The public page is filtered by viewing permissions: IDs without permissions are silently ignored like IDs that do not exist.
 func (s *ToolServiceImpl) GetToolBoxNamesByIDs(ctx context.Context, ids []string) (resp *interfaces.BatchNamesResp, err error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, err)
@@ -87,7 +87,7 @@ func (s *ToolServiceImpl) toolBoxDBToToolBoxToolInfo(ctx context.Context, toolBo
 	return
 }
 
-// toolDB 转换成ToolInfo
+// toolDB converted to ToolInfo.
 func (s *ToolServiceImpl) toolDBToToolInfo(ctx context.Context, toolDB *model.ToolDB) (toolInfo *interfaces.ToolInfo, err error) {
 	globalParameters := &interfaces.ParametersStruct{}
 	if toolDB.Parameters != "" {
@@ -99,7 +99,7 @@ func (s *ToolServiceImpl) toolDBToToolInfo(ctx context.Context, toolDB *model.To
 		}
 	}
 	extendInfo := map[string]interface{}{}
-	// 解析扩展信息
+	// Parse extended information.
 	if toolDB.ExtendInfo != "" {
 		err = utils.StringToObject(toolDB.ExtendInfo, &extendInfo)
 		if err != nil {
@@ -135,7 +135,7 @@ func (s *ToolServiceImpl) toolDBToToolInfo(ctx context.Context, toolDB *model.To
 }
 
 func (s *ToolServiceImpl) getToolBoxList(ctx context.Context, toolBoxDBList []*model.ToolboxDB, resourceToBdMap map[string]string) (toolBoxInfoList []*interfaces.ToolBoxInfo, err error) {
-	// 组装工具箱信息结果
+	// Assembly toolbox information results.
 	toolBoxInfoList = []*interfaces.ToolBoxInfo{}
 	var userIDs, boxIDs []string
 	for _, toolBox := range toolBoxDBList {
@@ -149,7 +149,7 @@ func (s *ToolServiceImpl) getToolBoxList(ctx context.Context, toolBoxDBList []*m
 		if end > len(boxIDs) {
 			end = len(boxIDs)
 		}
-		// 查询工具箱下的工具
+		// Query the tools under the toolbox.
 		var toolNameList map[string][]string
 		toolNameList, err = s.ToolDB.SelectToolNameListByBoxID(ctx, boxIDs[i:end])
 		if err != nil {
@@ -161,7 +161,7 @@ func (s *ToolServiceImpl) getToolBoxList(ctx context.Context, toolBoxDBList []*m
 			toolNameMap[boxID] = toolNames
 		}
 	}
-	// 获取用户名称
+	// Get user name.
 	userMap, err := s.UserMgnt.GetUsersName(ctx, userIDs)
 	if err != nil {
 		return

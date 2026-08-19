@@ -1,4 +1,4 @@
-// Package example 一个简单的使用示例
+// Package example A simple usage example.
 package example
 
 import (
@@ -14,67 +14,67 @@ var (
 	defaultLimit = 10
 )
 
-// BasicUsageExample 基本使用示例
+// BasicUsageExample Basic usage example.
 func BasicUsageExample() {
-	// 假设你已经有了数据库连接
+	// Assuming you already have a database connection.
 	var orm *ormhelper.DB
 	db, _ := sql.Open("mysql", "dsn")
 
-	// 这里使用nil作为示例，实际使用时请传入真实的数据库连接
+	// nil is used as an example here. Please pass in a real database connection when using it in practice.
 	// var db *sql.DB
 	orm = ormhelper.New(db, "example_db")
 
 	ctx := context.Background()
 
-	// 1. 插入数据示例
+	// 1. Insert data example.
 	insertExample(ctx, orm)
 
-	// 2. 查询数据示例
+	// 2. Query data example.
 	queryExample(ctx, orm)
 
-	// 3. 更新数据示例
+	// 3. Update data example.
 	updateExample(ctx, orm)
 
-	// 4. 删除数据示例
+	// 4. Delete data example.
 	deleteExample(ctx, orm)
 
-	// 5. 分页查询示例
+	// 5. Paging query example.
 	paginationExample(ctx, orm)
 
-	// 6. 事务使用示例
+	// 6. Transaction usage examples.
 	transactionExample(ctx, orm)
 }
 
-// 插入数据示例
+// Insert data example.
 func insertExample(ctx context.Context, orm *ormhelper.DB) {
-	// 单条插入
+	// Single insert.
 	_, err := orm.Insert().Into("users").Values(map[string]interface{}{
 		"f_id":          "user-001",
 		"f_name":        "张三",
 		"f_email":       "zhangsan@example.com",
 		"f_create_time": time.Now().Unix(),
 	}).Execute(ctx)
-	if err != nil { // 处理错误
+	if err != nil { // handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 批量插入
+	// Batch insert.
 	columns := []string{"f_id", "f_name", "f_email", "f_create_time"}
 	values := [][]interface{}{
 		{"user-002", "李四", "lisi@example.com", time.Now().Unix()},
 		{"user-003", "王五", "wangwu@example.com", time.Now().Unix()},
 	}
 	_, err = orm.Insert().Into("users").BatchValues(columns, values).Execute(ctx)
-	if err != nil { // 处理错误
+	if err != nil { // handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 }
 
-// 查询数据示例
+// Query data example.
 func queryExample(ctx context.Context, orm *ormhelper.DB) {
-	// 定义结果结构体
+	// Define the result structure.
 	type User struct {
 		ID         string `db:"f_id"`
 		Name       string `db:"f_name"`
@@ -82,15 +82,15 @@ func queryExample(ctx context.Context, orm *ormhelper.DB) {
 		CreateTime int64  `db:"f_create_time"`
 	}
 
-	// 查询单条记录
+	// Query a single record.
 	var user User
 	err := orm.Select().From("users").WhereEq("f_id", "user-001").First(ctx, &user)
-	if err != nil { // 处理错误
+	if err != nil { // handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 查询多条记录
+	// Query multiple records.
 	var users []*User
 	err = orm.Select().From("users").
 		WhereLike("f_name", "%张%").
@@ -98,80 +98,80 @@ func queryExample(ctx context.Context, orm *ormhelper.DB) {
 		Limit(defaultLimit).
 		Get(ctx, &users)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 统计数量
+	// Statistical quantity.
 	count, err := orm.Select().From("users").WhereEq("f_status", "active").Count(ctx)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 	_ = count
 }
 
-// 更新数据示例
+// Update data example.
 func updateExample(ctx context.Context, orm *ormhelper.DB) {
-	// 更新单个字段
+	// Update a single field.
 	_, err := orm.Update("users").
 		Set("f_name", "张三丰").
 		WhereEq("f_id", "user-001").
 		Execute(ctx)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 批量更新
+	// Batch update.
 	_, err = orm.Update("users").SetData(map[string]interface{}{
 		"f_status":      "inactive",
 		"f_update_time": time.Now().Unix(),
 	}).WhereLike("f_email", "%@old-domain.com").Execute(ctx)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 字段自增
+	// Field auto-increment.
 	_, err = orm.Update("users").
 		Increment("f_login_count", 1).
 		WhereEq("f_id", "user-001").
 		Execute(ctx)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 }
 
-// 删除数据示例
+// Delete data example.
 func deleteExample(ctx context.Context, orm *ormhelper.DB) {
-	// 删除单条记录
+	// Delete a single record.
 	_, err := orm.Delete().From("users").WhereEq("f_id", "user-001").Execute(ctx)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 批量删除
+	// Batch delete.
 	_, err = orm.Delete().From("users").
 		WhereEq("f_status", "inactive").
 		WhereLt("f_create_time", time.Now().AddDate(0, 0, -30).Unix()).
 		Execute(ctx)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 }
 
-// 分页查询示例
+// Pagination query example.
 func paginationExample(ctx context.Context, orm *ormhelper.DB) {
 	type User struct {
 		ID         string `db:"f_id"`
@@ -180,13 +180,13 @@ func paginationExample(ctx context.Context, orm *ormhelper.DB) {
 		CreateTime int64  `db:"f_create_time"`
 	}
 
-	// 使用分页参数
+	// Use pagination parameters.
 	pagination := &ormhelper.PaginationParams{
 		Page:     1,
 		PageSize: defaultLimit,
 	}
 
-	// 使用排序参数
+	// Use sort parameters.
 	sort := &ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
 			{Field: "f_create_time", Order: ormhelper.SortOrderDesc},
@@ -201,39 +201,39 @@ func paginationExample(ctx context.Context, orm *ormhelper.DB) {
 		Pagination(pagination).
 		Get(ctx, &users)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 获取总数用于分页计算
+	// Get the total number for paging calculation.
 	total, err := orm.Select().From("users").WhereEq("f_status", "active").Count(ctx)
 	if err != nil {
-		// 处理错误
+		// handling errors.
 		fmt.Printf("err : %s\n", err)
 		return
 	}
 
-	// 计算分页信息
+	// Calculate paging information.
 	result := ormhelper.CalculateQueryResult(total, pagination)
 	_ = result
 }
 
-// 事务使用示例
+// Transaction usage example.
 func transactionExample(ctx context.Context, orm *ormhelper.DB) {
-	// 假设你有一个事务
-	var tx *sql.Tx // 这里使用nil作为示例
+	// Suppose you have a transaction.
+	var tx *sql.Tx // Here nil is used as an example.
 
-	// 在事务中使用ORM
+	// Using ORM in transactions.
 	txOrm := orm.WithTx(tx)
 
-	// 在事务中执行操作
+	// Perform operations within a transaction.
 	_, err := txOrm.Insert().Into("users").Values(map[string]interface{}{
 		"f_id":   "user-tx-001",
 		"f_name": "事务用户",
 	}).Execute(ctx)
 	if err != nil {
-		// 回滚事务
+		// Rollback transaction.
 		_ = tx.Rollback()
 		return
 	}
@@ -243,12 +243,12 @@ func transactionExample(ctx context.Context, orm *ormhelper.DB) {
 		WhereEq("f_id", "user-tx-001").
 		Execute(ctx)
 	if err != nil {
-		// 回滚事务
+		// Rollback transaction.
 		_ = tx.Rollback()
 		return
 	}
 
-	// 提交事务
+	// commit transaction.
 	err = tx.Commit()
 	if err != nil {
 		fmt.Printf("err : %s\n", err)
@@ -256,7 +256,7 @@ func transactionExample(ctx context.Context, orm *ormhelper.DB) {
 	}
 }
 
-// 复杂查询示例
+// Complex query example.
 // func complexQueryExample(ctx context.Context, orm *ormhelper.DB) {
 // 	type UserProfile struct {
 // 		UserID     string `db:"f_user_id"`
@@ -282,6 +282,6 @@ func transactionExample(ctx context.Context, orm *ormhelper.DB) {
 // 		Limit(50).
 // 		Get(ctx, &profiles)
 // 	if err != nil {
-// 		// 处理错误
+// // Handle errors.
 // 	}
 // }

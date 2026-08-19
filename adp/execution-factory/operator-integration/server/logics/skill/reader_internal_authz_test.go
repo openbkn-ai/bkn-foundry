@@ -17,8 +17,8 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/mocks"
 )
 
-// skillInternalCtx 构造内部面上下文：带账户身份，但不是公开接口。
-// context-loader 把技能读接口包成 MCP 工具后走的就是这条路。
+// skillInternalCtx constructs the internal context: with account identity, but not a public interface.
+// This is the path context-loader took after wrapping the skill reading interface into an MCP tool.
 func skillInternalCtx() context.Context {
 	return common.SetAccountAuthContextToCtx(context.Background(), &interfaces.AccountAuthContext{
 		AccountID:   "user-1",
@@ -26,11 +26,11 @@ func skillInternalCtx() context.Context {
 	})
 }
 
-// TestSkillInternalReadAuthzModes 盯住内部技能读接口的三档授权。
+// TestSkillInternalReadAuthzModes focuses on the third-level authorization of the internal skill reading interface.
 //
-// 内部面历史上一律放行（授权押给调用方）。MCP 工具接上来之后 skill_id 由调用方自填，
-// 那个前提不再成立，于是加了这道判定——但直接强制会打断存量调用方，所以默认档是
-// shadow：查了、记了、不拦。这个测试锁的就是「默认不拦、开了才拦」。
+// Internal aspects are always released (authorization is given to the caller). After the MCP tool is connected, the skill_id is filled in by the caller.
+// That premise is no longer true, so this judgment is added - but direct force will interrupt the stock caller, so the default file is.
+// shadow: checked, remembered, did not stop. This test lock is "not blocked by default, blocked only after it is opened.".
 func TestSkillInternalReadAuthzModes(t *testing.T) {
 	Convey("内部面技能读接口的授权分档", t, func() {
 		ctrl := gomock.NewController(t)
@@ -79,7 +79,7 @@ func TestSkillInternalReadAuthzModes(t *testing.T) {
 		Convey("enforce 档：判定不通过直接 403，不碰文件", func() {
 			t.Setenv(common.SkillReadAuthzModeEnv, "enforce")
 			authService := mocks.NewMockIAuthorizationService(ctrl)
-			// fileRepo / assetStore 不设 EXPECT：门禁若失效走到读文件，gomock 会因非预期调用失败。
+			// fileRepo / assetStore does not set EXPECT: if the access control fails and the file is read, gomock will fail due to unexpected calls.
 			expectDenied(authService)
 
 			resp, err := newReader(authService, mocks.NewMockISkillFileIndex(ctrl), mocks.NewMockskillAssetStore(ctrl)).
@@ -92,7 +92,7 @@ func TestSkillInternalReadAuthzModes(t *testing.T) {
 
 		Convey("off 档：完全不查授权", func() {
 			t.Setenv(common.SkillReadAuthzModeEnv, "off")
-			// authService 不设 EXPECT：off 档下一次都不该调。
+			// authService does not set the EXPECT:off file and should not call it next time.
 			authService := mocks.NewMockIAuthorizationService(ctrl)
 			fileRepo := mocks.NewMockISkillFileIndex(ctrl)
 			assetStore := mocks.NewMockskillAssetStore(ctrl)
@@ -108,8 +108,8 @@ func TestSkillInternalReadAuthzModes(t *testing.T) {
 		})
 
 		Convey("越出技能包的路径回 400，不是 500", func() {
-			// 裸 error 会被 rest 层兜成 500，调用方（尤其是模型）会当成服务故障去重试，
-			// 而这本来是它自己传错了路径。VM 实测发现，管理态那条一直是 400。
+			// The naked error will be converted into 500 by the rest layer, and the caller (especially the model) will treat it as a service failure and try again.
+			// This was originally due to its own transmission of the wrong path. VM actual measurement found that the management state is always 400.
 			t.Setenv(common.SkillReadAuthzModeEnv, "off")
 			reader := newReader(mocks.NewMockIAuthorizationService(ctrl),
 				mocks.NewMockISkillFileIndex(ctrl), mocks.NewMockskillAssetStore(ctrl))

@@ -1,4 +1,4 @@
-// Package mq MQ客户端
+// Package mq MQ client.
 package mq
 
 import (
@@ -16,7 +16,7 @@ import (
 
 //go:generate mockgen -package mock -source ./mq.go -destination ./mock/mock_mq.go
 
-// MQClient mq客户端接口
+// MQClient mq client interface.
 type MQClient interface {
 	Subscribe(topic string, channel string, cmd func(context.Context, []byte) error)
 	Publish(ctx context.Context, topic string, message []byte) error
@@ -34,7 +34,7 @@ type msgQueue struct {
 	maxInFlight              int
 }
 
-// NewMQClient 创建消息队列
+// NewMQClient creates a message queue.
 func NewMQClient() MQClient {
 	mqOnce.Do(func() {
 		configLoader := config.NewConfigLoader()
@@ -52,7 +52,7 @@ func NewMQClient() MQClient {
 	return mqClient
 }
 
-// Subscribe 订阅
+// Subscribe Subscribe.
 func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []byte) error) {
 	go func() {
 		var err error
@@ -70,7 +70,7 @@ func (m *msgQueue) Subscribe(topic, channel string, cmd func(context.Context, []
 	}()
 }
 
-// Publish 发布
+// Publish.
 func (m *msgQueue) Publish(ctx context.Context, topic string, message []byte) (err error) {
 	ctx, span := oteltrace.StartNamedProducerSpan(ctx, "mq.publish")
 	span.SetAttributes(attribute.String("messaging.operation", "publish"))

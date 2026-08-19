@@ -10,7 +10,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 )
 
-// MCPConfigTest 测试用的配置结构体
+// MCPConfigTest configuration structure for testing.
 type MCPConfigTest struct {
 	ID          string `json:"f_id" db:"f_id"`
 	Name        string `json:"f_name" db:"f_name"`
@@ -20,17 +20,17 @@ type MCPConfigTest struct {
 	UpdateTime  int64  `json:"f_update_time" db:"f_update_time"`
 }
 
-// ExampleDAO 示例DAO
+// ExampleDAO ExampleDAO.
 type ExampleDAO struct {
 	orm *ormhelper.DB
 }
 
-// NewExampleDAO 创建DAO实例
+// NewExampleDAO creates a DAO instance.
 func NewExampleDAO(orm *ormhelper.DB) *ExampleDAO {
 	return &ExampleDAO{orm: orm}
 }
 
-// Insert 插入配置
+// Insert insert configuration.
 func (dao *ExampleDAO) Insert(ctx context.Context, config *MCPConfigTest) (string, error) {
 	now := time.Now().UnixNano()
 	data := map[string]interface{}{
@@ -45,7 +45,7 @@ func (dao *ExampleDAO) Insert(ctx context.Context, config *MCPConfigTest) (strin
 	return config.ID, err
 }
 
-// UpdateStatus 更新状态
+// UpdateStatus update status.
 func (dao *ExampleDAO) UpdateStatus(ctx context.Context, id, status string) error {
 	_, err := dao.orm.Update("t_mcp_server_config").
 		Set("f_status", status).
@@ -55,26 +55,26 @@ func (dao *ExampleDAO) UpdateStatus(ctx context.Context, id, status string) erro
 	return err
 }
 
-// DeleteByID 根据ID删除
+// DeleteByID Delete based on ID.
 func (dao *ExampleDAO) DeleteByID(ctx context.Context, id string) error {
 	_, err := dao.orm.Delete().From("t_mcp_server_config").WhereEq("f_id", id).Execute(ctx)
 	return err
 }
 
 func TestExampleDAO_Insert(t *testing.T) {
-	// 创建模拟执行器
+	// Create a simulation executor.
 	mockExecutor := NewMockExecutor()
 
-	// 设置期望的SQL执行
+	// Set the desired SQL execution.
 	mockExecutor.ExpectExec(
 		"INSERT INTO `test_db`.`t_mcp_server_config` (f_create_time, f_description, f_id, f_name, f_status, f_update_time) VALUES (?, ?, ?, ?, ?, ?)",
 	).WillReturnResult(1, 1)
 
-	// 创建ORM实例
+	// Create ORM instance.
 	orm := ormhelper.New(mockExecutor, "test_db")
 	dao := NewExampleDAO(orm)
 
-	// 测试数据
+	// test data.
 	config := &MCPConfigTest{
 		ID:          "test-id-1",
 		Name:        "测试配置",
@@ -82,11 +82,11 @@ func TestExampleDAO_Insert(t *testing.T) {
 		Status:      "active",
 	}
 
-	// 执行插入
+	// perform insert.
 	ctx := context.Background()
 	id, err := dao.Insert(ctx, config)
 
-	// 验证结果
+	// Verification results.
 	if err != nil {
 		t.Errorf("Insert failed: %v", err)
 	}
@@ -94,26 +94,26 @@ func TestExampleDAO_Insert(t *testing.T) {
 		t.Errorf("Expected id 'test-id-1', got '%s'", id)
 	}
 
-	// 验证所有期望都被满足
+	// Verify that all expectations are met.
 	if err := mockExecutor.ExpectationsWereMet(); err != nil {
 		t.Errorf("Expectations were not met: %v", err)
 	}
 }
 
 func TestExampleDAO_Insert_Error(t *testing.T) {
-	// 创建模拟执行器
+	// Create a simulation executor.
 	mockExecutor := NewMockExecutor()
 
-	// 设置期望的SQL执行（返回错误）
+	// Sets the desired SQL execution (returns an error)
 	mockExecutor.ExpectExec(
 		"INSERT INTO `test_db`.`t_mcp_server_config` (f_create_time, f_description, f_id, f_name, f_status, f_update_time) VALUES (?, ?, ?, ?, ?, ?)",
 	).WillReturnError(sql.ErrConnDone)
 
-	// 创建ORM实例
+	// Create ORM instance.
 	orm := ormhelper.New(mockExecutor, "test_db")
 	dao := NewExampleDAO(orm)
 
-	// 测试数据
+	// test data.
 	config := &MCPConfigTest{
 		ID:          "test-id-2",
 		Name:        "测试配置2",
@@ -121,11 +121,11 @@ func TestExampleDAO_Insert_Error(t *testing.T) {
 		Status:      "inactive",
 	}
 
-	// 执行插入
+	// perform insert.
 	ctx := context.Background()
 	_, err := dao.Insert(ctx, config)
 
-	// 验证错误
+	// Validation error.
 	if err == nil {
 		t.Error("Expected error, but got nil")
 	}
@@ -133,57 +133,57 @@ func TestExampleDAO_Insert_Error(t *testing.T) {
 		t.Errorf("Expected sql.ErrConnDone, got %v", err)
 	}
 
-	// 验证所有期望都被满足
+	// Verify that all expectations are met.
 	if err := mockExecutor.ExpectationsWereMet(); err != nil {
 		t.Errorf("Expectations were not met: %v", err)
 	}
 }
 
 func TestExampleDAO_UpdateStatus(t *testing.T) {
-	// 创建模拟执行器
+	// Create a simulation executor.
 	mockExecutor := NewMockExecutor()
 
-	// 设置期望的SQL执行
+	// Set the desired SQL execution.
 	mockExecutor.ExpectExec(
 		"UPDATE `test_db`.`t_mcp_server_config` SET f_status = ?, f_update_time = ? WHERE f_id = ?",
 		"published", // status
-		// f_update_time 是动态生成的，我们不验证具体值
+		// f_update_time is dynamically generated, we do not verify the specific value.
 		// "test-id-1", // id
 	).WillReturnResult(0, 1)
 
-	// 创建ORM实例
+	// Create ORM instance.
 	orm := ormhelper.New(mockExecutor, "test_db")
 	dao := NewExampleDAO(orm)
 
-	// 执行更新
+	// perform update.
 	ctx := context.Background()
 	err := dao.UpdateStatus(ctx, "test-id-1", "published")
 
-	// 验证结果
+	// Verification results.
 	if err != nil {
 		t.Errorf("UpdateStatus failed: %v", err)
 	}
 }
 
 func TestExampleDAO_DeleteByID(t *testing.T) {
-	// 创建模拟执行器
+	// Create a simulation executor.
 	mockExecutor := NewMockExecutor()
 
-	// 设置期望的SQL执行
+	// Set the desired SQL execution.
 	mockExecutor.ExpectExec(
 		"DELETE FROM `test_db`.`t_mcp_server_config` WHERE f_id = ?",
 		"test-id-1",
 	).WillReturnResult(0, 1)
 
-	// 创建ORM实例
+	// Create ORM instance.
 	orm := ormhelper.New(mockExecutor, "test_db")
 	dao := NewExampleDAO(orm)
 
-	// 执行删除
+	// perform deletion.
 	ctx := context.Background()
 	err := dao.DeleteByID(ctx, "test-id-1")
 
-	// 验证结果
+	// Verification results.
 	if err != nil {
 		t.Errorf("DeleteByID failed: %v", err)
 	}
@@ -225,12 +225,12 @@ func TestInsertBuilder_Build(t *testing.T) {
 		Values(data).
 		Build()
 
-	// 验证查询包含正确的表名和字段
+	// Verify that the query contains the correct table names and fields.
 	if !contains(query, "INSERT INTO `test_db`.`t_mcp_server_config`") {
 		t.Errorf("Query should contain table name, got: %s", query)
 	}
 
-	// 验证参数数量
+	// Number of verification parameters.
 	if len(args) != 3 {
 		t.Errorf("Expected 3 args, got %d", len(args))
 	}
@@ -298,12 +298,12 @@ func TestWhereBuilder_Complex(t *testing.T) {
 		}).
 		Build()
 
-	// 验证查询包含复杂的WHERE条件
+	// Validate query contains complex WHERE conditions.
 	if !containsSubstring(query, "WHERE") {
 		t.Errorf("Query should contain WHERE clause, got: %s", query)
 	}
 
-	// 验证参数数量（应该有5个参数）
+	// Verify the number of parameters (there should be 5 parameters)
 	if len(args) != 5 {
 		t.Errorf("Expected 5 args, got %d: %v", len(args), args)
 	}
@@ -324,7 +324,7 @@ func TestBatchInsert(t *testing.T) {
 		BatchValues(columns, values).
 		Build()
 
-	// 验证查询包含批量插入语法
+	// Verify query contains bulk insert syntax.
 	if !contains(query, "INSERT INTO `test_db`.`t_mcp_server_config`") {
 		t.Errorf("Query should contain table name, got: %s", query)
 	}
@@ -333,7 +333,7 @@ func TestBatchInsert(t *testing.T) {
 		t.Errorf("Query should contain VALUES, got: %s", query)
 	}
 
-	// 验证参数数量（2行 * 3列 = 6个参数）
+	// Number of validation parameters (2 rows * 3 columns = 6 parameters)
 	if len(args) != 6 {
 		t.Errorf("Expected 6 args, got %d", len(args))
 	}
@@ -343,28 +343,28 @@ func TestTransaction(t *testing.T) {
 	mockExecutor := NewMockExecutor()
 	orm := ormhelper.New(mockExecutor, "test_db")
 
-	// 模拟事务
-	var mockTx *sql.Tx // 在实际测试中，这里应该是真实的事务对象
+	// simulate transaction.
+	var mockTx *sql.Tx // In actual testing, this should be the real transaction object.
 	txORM := orm.WithTx(mockTx)
 
-	// 验证事务ORM实例
+	// Verify transaction ORM instance.
 	if txORM == nil {
 		t.Error("WithTx should return a valid ORM instance")
 	}
 
-	// 验证是否在事务中（这里由于mockTx是nil，所以会返回false）
-	// 在实际使用中，如果传入真实的*sql.Tx，IsInTransaction()会返回true
+	// Verify whether it is in a transaction (since mockTx is nil, false will be returned)
+	// In actual use, if real *sql.Tx is passed in, IsInTransaction() will return true.
 	if txORM.IsInTransaction() {
 		t.Log("Transaction ORM created successfully")
 	}
 }
 
-// 辅助函数
+// Helper function.
 func contains(s, substr string) bool {
 	return strings.Contains(s, substr)
 }
 
-// 辅助函数：检查字符串是否包含子字符串（不区分大小写）
+// Helper function: Check if a string contains a substring (case insensitive)
 func containsSubstring(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

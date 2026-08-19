@@ -1,6 +1,6 @@
-// Package driveradapters 定义驱动适配器
+// Package driveradapters defines driver adapters.
 // @file rest_public_handler.go
-// @description: 定义rest公共适配器
+// @description: Define rest public adapter.
 package driveradapters
 
 import (
@@ -36,7 +36,7 @@ type restPublicHandler struct {
 	auditAuthorization    interfaces.IAuthorizationService
 }
 
-// NewRestPublicHandler 创建restHandler实例
+// NewRestPublicHandler creates a restHandler instance.
 func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 	auditStore := operationaudit.NewStore(db.NewDBPool())
 	return &restPublicHandler{
@@ -59,7 +59,7 @@ func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 	}
 }
 
-// RegisterPublic 注册公共路由
+// RegisterPublic registers public routes.
 func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws := []gin.HandlerFunc{}
 	mws = append(mws,
@@ -72,34 +72,34 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 		OperationAudit(r.auditStore),
 	)
 	engine.Use(mws...)
-	// 算子注册相关接口
+	// Operator registration related interfaces.
 	r.OperatorRestHandler.RegisterPublic(engine)
-	// 工具箱相关接口
+	// Toolbox related interfaces.
 	r.ToolBoxRestHandler.RegisterPublic(engine)
-	// MCP 相关接口
+	// MCP related interfaces.
 	r.MCPRestHandler.RegisterPublic(engine)
-	// Skill 相关接口
+	// Skill related interfaces.
 	r.SkillRestHandler.RegisterPublic(engine)
 	engine.GET("/operation-audits", r.ListOperationAudits)
 	engine.GET("/operation-audits/:event_id", r.GetOperationAudit)
-	// 沙箱运行时只读观测接口（超管可见，见 #326）
+	// Read-only observation interface when running in the sandbox (visible to super pipe, see #326)
 	r.SandboxHandler.RegisterPublic(engine)
-	// 导入导出
+	// Import and export.
 	engine.GET("/impex/export/:type/:id", r.ImpexHandler.Export)
 	engine.POST("/impex/import/:type", middlewareBusinessDomain(true, r.businessDomainService), r.ImpexHandler.Import)
-	// 函数执行
+	// function execution.
 	engine.POST("/function/execute", r.UnifiedProxyHandler.FunctionExecute)
 
-	// 从函数代码推导参数定义（@tool 函数的签名即参数定义）
+	// Deducing parameter definitions from function code (the signature of the @tool function is the parameter definition)
 	engine.POST("/function/infer-schema", r.UnifiedProxyHandler.FunctionInferSchema)
-	// 查询Pypi依赖库版本
+	// Query PyPI dependency version.
 	engine.GET("/function/dependency-versions/:package_name", r.UnifiedProxyHandler.QueryPypiVersions)
-	// 获取依赖库列表
+	// Get the list of dependent libraries.
 	engine.GET("/function/dependencies", r.UnifiedProxyHandler.GetDependencies)
-	// 获取Python模板
+	// Get Python template.
 	engine.GET("/template/:template_type", r.TemplateHandler.GetTemplate)
-	// AI辅助生成
+	// AI-assisted generation.
 	engine.POST("/ai_generate/function/:type", r.AIGenerationHandler.FunctionAIGeneration)
-	// 获取提示词模板
+	// Get prompt word template.
 	engine.GET("/ai_generate/prompt/:type", r.AIGenerationHandler.GetPromptTemplate)
 }

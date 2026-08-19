@@ -244,7 +244,7 @@ func TestEditOperator(t *testing.T) {
 			_, err := m.EditOperator(context.TODO(), mockReq)
 			So(err, ShouldNotBeNil)
 		})
-		// Convey("算子名称不合法", func() {
+		// Convey("Operator name is illegal", func() {.
 		// 	mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 		Return(true, operatorDB, nil)
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(&interfaces.AuthAccessor{}, nil).Times(1)
@@ -253,7 +253,7 @@ func TestEditOperator(t *testing.T) {
 		// 	_, err := m.EditOperator(context.TODO(), mockReq)
 		// 	So(err, ShouldNotBeNil)
 		// })
-		// 	Convey("算子元数据查询报错", func() {
+		// Convey("Operator metadata query error", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				Name:         mockName,
@@ -271,7 +271,7 @@ func TestEditOperator(t *testing.T) {
 		// 		So(errors.As(err, &httpErr), ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusInternalServerError)
 		// 	})
-		// 	Convey("算子元数据不存在", func() {
+		// Convey("Operator metadata does not exist", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				Name:         mockName,
@@ -289,9 +289,9 @@ func TestEditOperator(t *testing.T) {
 		// 		So(errors.As(err, &httpErr), ShouldBeTrue)
 		// 		So(httpErr.HTTPCode, ShouldEqual, http.StatusNotFound)
 		// 	})
-		// 	Convey("检查元数据参数变更,Description不合法", func() {
+		// Convey("Check metadata parameter changes, Description is illegal", func() {.
 		// 		// mockAPIEditReq.Summary = mockName
-		// 		// mockAPIEditReq.Description = "超出默认字符限制,默认10个"
+		// // mockAPIEditReq.Description = "Exceeds the default character limit, default is 10".
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				Name:         mockName,
@@ -306,7 +306,7 @@ func TestEditOperator(t *testing.T) {
 		// 		_, err := m.EditOperator(context.TODO(), mockReq)
 		// 		So(err, ShouldNotBeNil)
 		// 	})
-		// 	Convey("检查元数据参数变更,元数据传参无效", func() {
+		// Convey("Check metadata parameter changes, metadata parameters are invalid", func() {.
 		// 		mockReq.MetadataType = interfaces.MetadataTypeAPI
 		// 		mockReq.Data = []byte(`{"name": "mockName", "description": "mockDesc"}`)
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -325,7 +325,7 @@ func TestEditOperator(t *testing.T) {
 		// 		So(err, ShouldNotBeNil)
 		// 		fmt.Println(err.Error())
 		// 	})
-		// 	Convey("检查元数据参数变更,元数据校验未通过", func() {
+		// Convey("Check metadata parameter changes, metadata verification failed", func() {.
 		// 		mockReq.MetadataType = interfaces.MetadataTypeAPI
 		// 		mockReq.Data = []byte(`{}`)
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
@@ -345,7 +345,7 @@ func TestEditOperator(t *testing.T) {
 		// 		So(err, ShouldNotBeNil)
 		// 	})
 		// })
-		// Convey("TestEditOperator:编辑未发布算子", t, func() {
+		// Convey("TestEditOperator:Edit unpublished operator", t, func() {.
 		// 	p := gomonkey.ApplyFunc((*sql.Tx).Rollback, func(*sql.Tx) error {
 		// 		return nil
 		// 	})
@@ -364,7 +364,7 @@ func TestEditOperator(t *testing.T) {
 		// 	// mockOpenAPIParser.EXPECT().GetPathItemContent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.PathItemContent{
 		// 	// 	Summary: mockName,
 		// 	// }, nil).AnyTimes()
-		// 	Convey("检查算子重名: 查询重名算子失败（db）", func() {
+		// Convey("Checking operators with duplicate names: Failed to query operators with duplicate names (db)", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				UpdateUser:   mockReq.UserID,
@@ -376,7 +376,7 @@ func TestEditOperator(t *testing.T) {
 		// 		_, err := m.EditOperator(context.TODO(), mockReq)
 		// 		So(err, ShouldNotBeNil)
 		// 	})
-		// 	Convey("检查算子重名: 存在重名算子", func() {
+		// Convey("Check operator duplicate name: Duplicate operator exists", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				UpdateUser:   mockReq.UserID,
@@ -387,7 +387,7 @@ func TestEditOperator(t *testing.T) {
 		// 		_, err := m.EditOperator(context.TODO(), mockReq)
 		// 		So(err, ShouldNotBeNil)
 		// 	})
-		// 	Convey("更新算子信息失败", func() {
+		// Convey("Failed to update operator information", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				Name:         mockReq.Name,
@@ -399,7 +399,7 @@ func TestEditOperator(t *testing.T) {
 		// 		_, err := m.EditOperator(context.TODO(), mockReq)
 		// 		So(err, ShouldNotBeNil)
 		// 	})
-		// 	Convey("更新版本信息失败", func() {
+		// Convey("Failed to update version information", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				Name:         mockReq.Name,
@@ -413,7 +413,7 @@ func TestEditOperator(t *testing.T) {
 		// 		So(err, ShouldNotBeNil)
 		// 	})
 		// })
-		// Convey("TestEditOperator:编辑已发布算子", t, func() {
+		// Convey("TestEditOperator:Edit published operator", t, func() {.
 		// 	p := gomonkey.ApplyFunc((*sql.Tx).Rollback, func(*sql.Tx) error {
 		// 		return nil
 		// 	})
@@ -432,7 +432,7 @@ func TestEditOperator(t *testing.T) {
 		// 	// mockOpenAPIParser.EXPECT().GetPathItemContent(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.PathItemContent{
 		// 	// 	Summary: mockName,
 		// 	// }, nil).AnyTimes()
-		// 	Convey("新增元数据信息失败", func() {
+		// Convey("Failed to add metadata information", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				Name:         mockReq.Name,
@@ -444,7 +444,7 @@ func TestEditOperator(t *testing.T) {
 		// 		_, err := m.EditOperator(context.TODO(), mockReq)
 		// 		So(err, ShouldNotBeNil)
 		// 	})
-		// 	Convey("名字变更，通知所有订阅者失败", func() {
+		// Convey("Name change, failure to notify all subscribers", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				UpdateUser:   mockReq.UserID,
@@ -458,7 +458,7 @@ func TestEditOperator(t *testing.T) {
 		// 		_, err := m.EditOperator(context.TODO(), mockReq)
 		// 		So(err, ShouldNotBeNil)
 		// 	})
-		// 	Convey("更新算子信息成功", func() {
+		// Convey("Update operator information successfully", func() {.
 		// 		mockDBOperatorManager.EXPECT().SelectByOperatorID(gomock.Any(), gomock.Any(), gomock.Any()).
 		// 			Return(true, &model.OperatorRegisterDB{
 		// 				UpdateUser:   mockReq.UserID,
@@ -475,7 +475,7 @@ func TestEditOperator(t *testing.T) {
 		// 		So(err, ShouldBeNil)
 		// 	})
 		// })
-		// Convey("TestEditOperator:编辑已下架算子", t, func() {
+		// Convey("TestEditOperator: Edit the removed operator", t, func() {.
 		// 	p := gomonkey.ApplyFunc((*sql.Tx).Rollback, func(*sql.Tx) error {
 		// 		return nil
 		// 	})
@@ -500,7 +500,7 @@ func TestEditOperator(t *testing.T) {
 		// 			MetadataType: string(interfaces.MetadataTypeAPI),
 		// 			Status:       string(interfaces.BizStatusOffline),
 		// 		}, nil)
-		// 	Convey("升级元数据失败（db）", func() {
+		// Convey("Failed to upgrade metadata (db)", func() {.
 		// 		mockDBAPIMetadataManager.EXPECT().InsertAPIMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", mocks.MockFuncErr("InsertAPIMetadata")).Times(1)
 		// 		_, err := m.EditOperator(context.TODO(), mockReq)
 		// 		So(err, ShouldNotBeNil)
@@ -813,7 +813,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 	})
 }
 
-// 组装OpenAPI 3.0 格式文档
+// Assembling OpenAPI 3.0 format documentation.
 // func assembleOpenAPIDoc(editReq *interfaces.APIMetadataEdit) *openapi3.T {
 // 	doc := &openapi3.T{
 // 		OpenAPI: "3.0.0",
@@ -827,7 +827,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 // 		},
 // 	}
 
-// 	// 创建一个PathItemContent实例，使用editReq中的信息
+// //Create a PathItemContent instance and use the information in editReq.
 // 	pathItem := &interfaces.PathItemContent{
 // 		Summary:     editReq.Summary,
 // 		Path:        editReq.Path,
@@ -837,12 +837,12 @@ func TestUpdateOperatorStatus(t *testing.T) {
 // 		ServerURL:   editReq.ServerURL,
 // 	}
 
-// 	// 创建操作对象
+// // Create operation object.
 // 	operation := openapi3.NewOperation()
 // 	operation.Summary = pathItem.Summary
 // 	operation.Description = pathItem.Description
 
-// 	// 添加参数
+// //Add parameters.
 // 	if pathItem.APISpec.Parameters != nil {
 // 		for _, param := range pathItem.APISpec.Parameters {
 // 			openapiParam := &openapi3.Parameter{
@@ -859,7 +859,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 // 		}
 // 	}
 
-// 	// 添加请求体
+// //Add request body.
 // 	if pathItem.APISpec.RequestBody != nil {
 // 		requestBody := &openapi3.RequestBody{
 // 			Description: pathItem.APISpec.RequestBody.Description,
@@ -869,7 +869,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 // 		operation.RequestBody = &openapi3.RequestBodyRef{Value: requestBody}
 // 	}
 
-// 	// 添加响应
+// //Add response.
 // 	if pathItem.APISpec.Responses != nil {
 // 		responses := openapi3.NewResponses()
 // 		for _, resp := range pathItem.APISpec.Responses {
@@ -882,10 +882,10 @@ func TestUpdateOperatorStatus(t *testing.T) {
 // 		operation.Responses = responses
 // 	}
 
-// 	// 创建路径项并添加到文档
+// //Create a path item and add it to the document.
 // 	pathItemObj := &openapi3.PathItem{}
 
-// 	// 根据HTTP方法设置操作
+// //Set operations based on HTTP methods.
 // 	switch pathItem.Method {
 // 	case "GET":
 // 		pathItemObj.Get = operation
@@ -903,7 +903,7 @@ func TestUpdateOperatorStatus(t *testing.T) {
 // 		pathItemObj.Options = operation
 // 	}
 
-// 	// 添加路径项到文档
+// //Add path item to document.
 // 	doc.Paths.Set(pathItem.Path, pathItemObj)
 // 	return doc
 // }

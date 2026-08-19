@@ -13,7 +13,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// 下架操作
+// Removal operation.
 func (m *operatorManager) unpublishRelease(ctx context.Context, tx *sql.Tx, operator *model.OperatorRegisterDB, userID string) (err error) {
 	exist, releaseDB, err := m.OpReleaseDB.SelectByOpID(ctx, operator.OperatorID)
 	if err != nil {
@@ -25,14 +25,14 @@ func (m *operatorManager) unpublishRelease(ctx context.Context, tx *sql.Tx, oper
 		return
 	}
 	releaseDB.Status = interfaces.BizStatusOffline.String()
-	// 下架操作，将当前版本历史记录置为已下架
+	// Delisting operation, set the current version history as delisted.
 	has, historyDB, err := m.OpReleaseHistoryDB.SelectByOpIDAndMetdata(ctx, operator.OperatorID, operator.MetadataVersion)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("select operator history failed, err: %v", err)
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator history failed")
 		return
 	}
-	if has { // 添加历史记录
+	if has { // add history.
 		historyDB.OpRelease = utils.ObjectToJSON(releaseDB)
 		err = m.OpReleaseHistoryDB.UpdateReleaseHistoryByID(ctx, tx, historyDB)
 		if err != nil {
@@ -53,9 +53,9 @@ func (m *operatorManager) unpublishRelease(ctx context.Context, tx *sql.Tx, oper
 	return
 }
 
-// publishRelease 发布操作
+// publishRelease publish operation.
 func (m *operatorManager) publishRelease(ctx context.Context, tx *sql.Tx, operator *model.OperatorRegisterDB, userID string) (err error) {
-	// 检查是否存在已发布版本
+	// Check if a released version exists.
 	exist, releaseDB, err := m.OpReleaseDB.SelectByOpID(ctx, operator.OperatorID)
 	if err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, "select operator release failed")
@@ -63,7 +63,7 @@ func (m *operatorManager) publishRelease(ctx context.Context, tx *sql.Tx, operat
 		return
 	}
 
-	if exist { // 如果存在，更新记录，并将新的发布记录添加到release_history中
+	if exist { // If it exists, update the record and add the new release record to release_history.
 		operatorRegisterToReleaseModel(operator, releaseDB)
 		releaseDB.ReleaseUser = userID
 		releaseDB.Tag++
@@ -73,7 +73,7 @@ func (m *operatorManager) publishRelease(ctx context.Context, tx *sql.Tx, operat
 			err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, fmt.Sprintf("update operator release failed, OperatorID: %s, err: %s", operator.OperatorID, err.Error()))
 			return
 		}
-	} else { // 如果不存在，添加记录到relase/release_history中
+	} else { // If it does not exist, add the record to release/release_history.
 		releaseDB = &model.OperatorReleaseDB{}
 		operatorRegisterToReleaseModel(operator, releaseDB)
 		releaseDB.ReleaseUser = userID
@@ -102,7 +102,7 @@ func (m *operatorManager) addReleaseHistory(ctx context.Context, tx *sql.Tx, rel
 		UpdateTime:      now,
 		UpdateUser:      userID,
 	}
-	// 添加记录到release_history中
+	// Add records to release_history.
 	err = m.OpReleaseHistoryDB.Insert(ctx, tx, historyDB)
 	if err != nil {
 		m.Logger.WithContext(ctx).Errorf("failed to insert release history record, OperatorID: %s, err: %v", releaseDB.OpID, err)
@@ -111,7 +111,7 @@ func (m *operatorManager) addReleaseHistory(ctx context.Context, tx *sql.Tx, rel
 	return
 }
 
-// operatorRegisterToReleaseModel 注册配置到发布
+// operatorRegisterToReleaseModel registers configuration to release.
 func operatorRegisterToReleaseModel(operator *model.OperatorRegisterDB, release *model.OperatorReleaseDB) {
 	release.OpID = operator.OperatorID
 	release.Name = operator.Name

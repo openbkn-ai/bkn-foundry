@@ -13,19 +13,19 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// skillPublicCtx 构造公开面上下文，公开面才做授权判定
+// skillPublicCtx constructs the context of the public face, and only the public face makes authorization determination.
 func skillPublicCtx() context.Context {
 	return common.SetPublicAPIToCtx(context.Background(), true)
 }
 
-// TestSkillIndexBuildAuthz 覆盖 #345：公开面索引构建写接口的类型级门禁
+// TestSkillIndexBuildAuthz Covers #345: Exposing type-level gatekeeping for face index build write interfaces.
 func TestSkillIndexBuildAuthz(t *testing.T) {
 	Convey("Skill 索引构建写接口授权", t, func() {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 
-		// expectDenied 断言类型级 skill:modify 判定为不通过；taskRepo 不设任何 EXPECT，
-		// 一旦门禁失效走到仓储层，gomock 会因非预期调用直接失败。
+		// expectDenied asserts that type-level skill:modify is not passed; taskRepo does not set any EXPECT.
+		// Once the access control fails and reaches the storage layer, gomock will directly fail due to unexpected calls.
 		expectDenied := func(authService *mocks.MockIAuthorizationService) {
 			authService.EXPECT().GetAccessor(gomock.Any(), "user-1").Return(&interfaces.AuthAccessor{ID: "user-1"}, nil)
 			authService.EXPECT().OperationCheckAll(gomock.Any(), gomock.Any(), interfaces.ResourceIDAll,
@@ -101,7 +101,7 @@ func TestSkillIndexBuildAuthz(t *testing.T) {
 		})
 
 		Convey("内部面不判定（调度器与服务间调用）", func() {
-			// authService 不设 EXPECT：内部面若发起判定，gomock 会因非预期调用失败
+			// authService does not set EXPECT: if a judgment is initiated internally, gomock will fail due to unexpected calls.
 			taskRepo := mocks.NewMockISkillIndexBuildTaskDB(ctrl)
 			svc := &skillIndexBuildService{
 				logger:      logger.DefaultLogger(),
@@ -121,7 +121,7 @@ func TestSkillIndexBuildAuthz(t *testing.T) {
 	})
 }
 
-// TestGetSkillReleaseHistoryAuthz 覆盖 #345：发布历史读接口按 skill_id 的对象级门禁
+// TestGetSkillReleaseHistoryAuthz overrides #345: Release history read interface object-level access by skill_id.
 func TestGetSkillReleaseHistoryAuthz(t *testing.T) {
 	Convey("Skill 发布历史授权", t, func() {
 		ctrl := gomock.NewController(t)
@@ -186,7 +186,7 @@ func TestGetSkillReleaseHistoryAuthz(t *testing.T) {
 	})
 }
 
-// TestGetSkillNamesByIDsAuthz 覆盖 #345：批量取名按查看权限过滤，避免枚举全量技能名
+// TestGetSkillNamesByIDsAuthz covers #345: batch name filtering based on viewing permissions to avoid enumerating all skill names.
 func TestGetSkillNamesByIDsAuthz(t *testing.T) {
 	Convey("Skill 批量取名授权过滤", t, func() {
 		ctrl := gomock.NewController(t)

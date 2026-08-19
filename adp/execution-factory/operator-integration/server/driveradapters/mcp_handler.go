@@ -10,10 +10,10 @@ import (
 )
 
 type MCPRestHandler interface {
-	// RegisterPrivate 注册内部API
+	// RegisterPrivate register internal API.
 	RegisterPrivate(engine *gin.RouterGroup)
 
-	// RegisterPublic 注册外部API
+	// RegisterPublic Register external API.
 	RegisterPublic(engine *gin.RouterGroup)
 }
 
@@ -42,49 +42,49 @@ func NewMCPRestHandler() MCPRestHandler {
 func (r *mcpRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	mcpGroup := engine.Group("/mcp")
 
-	// MCP 代理相关接口
+	// MCP proxy related interfaces.
 	mcpProxyGroup := mcpGroup.Group("/proxy")
-	// 获取指定MCP Server的工具列表 GET /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tools
+	// Get the tool list of the specified MCP Server GET /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tools.
 	mcpProxyGroup.GET("/:mcp_id/tools", r.MCPPrivateHandler.GetMCPTools)
-	// 调用指定MCP Server的工具 POST /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/call
+	// Call the tool of the specified MCP Server POST /api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/call.
 	mcpProxyGroup.POST("/:mcp_id/tool/call", r.MCPPrivateHandler.CallMCPTool)
 }
 
 func (r *mcpRestHandler) RegisterPublic(engine *gin.RouterGroup) {
-	// MCP 相关接口
+	// MCP related interfaces.
 	mcpGroup := engine.Group("/mcp")
 
-	// MCP 管理相关接口
-	// MCP服务解析 POST /api/agent-operator-integration/v1/mcp/parse/sse
+	// MCP management related interfaces.
+	// MCP service parsing POST /api/agent-operator-integration/v1/mcp/parse/sse.
 	mcpGroup.POST("/parse/sse", r.MCPPublicHandler.ParseSSE)
-	// 添加MCP Server配置 POST /api/agent-operator-integration/v1/mcp
+	// Add MCP Server configuration POST /api/agent-operator-integration/v1/mcp.
 	mcpGroup.POST("/", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.AddMCPServer)
-	// 删除MCP Server配置 POST /api/agent-operator-integration/v1/mcp/delete
+	// Delete MCP Server configuration POST /api/agent-operator-integration/v1/mcp/delete.
 	mcpGroup.DELETE("/:mcp_id", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.DeleteMCPServer)
-	// 获取MCP Server配置列表 GET /api/agent-operator-integration/v1/mcp/list
+	// Get the MCP Server configuration list GET /api/agent-operator-integration/v1/mcp/list.
 	mcpGroup.GET("/list", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.QueryMCPServerPage)
-	// 获取MCP Server配置详情 GET /api/agent-operator-integration/v1/mcp/{mcp_id}
+	// Get MCP Server configuration details GET /api/agent-operator-integration/v1/mcp/{mcp_id}
 	mcpGroup.GET("/:mcp_id", r.MCPPublicHandler.QueryMCPServerDetail)
-	// 编辑MCP Server配置 POST /api/agent-operator-integration/v1/mcp/{mcp_id}
+	// Edit MCP Server configuration POST /api/agent-operator-integration/v1/mcp/{mcp_id}
 	mcpGroup.PUT("/:mcp_id", r.MCPPublicHandler.UpdateMCPServer)
-	// 更新MCP Server状态 POST /api/agent-operator-integration/v1/mcp/{mcp_id}/status
+	// Update MCP Server status POST /api/agent-operator-integration/v1/mcp/{mcp_id}/status.
 	mcpGroup.POST("/:mcp_id/status", r.MCPPublicHandler.UpdateMCPServerStatus)
-	// MCP工具调试 POST /api/agent-operator-integration/v1/mcp/{mcp_id}/tool/{tool_name}/debug
+	// MCP tool debugging POST /api/agent-operator-integration/v1/mcp/{mcp_id}/tool/{tool_name}/debug.
 	mcpGroup.POST("/:mcp_id/tool/:tool_name/debug", r.MCPPublicHandler.DebugTool)
 
-	// MCP服务市场相关接口
+	// MCP service market related interfaces.
 	mcpGroup.GET("/market/list", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.QueryMCPServerMarketList)
-	// 批量查询MCP服务市场详情 GET /api/agent-operator-integration/v1/mcp/market/{mcp_ids}/{fields}
+	// Batch query MCP service market details GET /api/agent-operator-integration/v1/mcp/market/{mcp_ids}/{fields}
 	mcpGroup.GET("/market/batch/:mcp_ids/:fields", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.QueryMCPServerMarketBatch)
 	mcpGroup.GET("/market/:mcp_id", r.MCPPublicHandler.QueryMCPServerMarketDetail)
 
-	// MCP 代理相关接口
-	// 获取指定MCP Server的工具列表 GET /api/agent-operator-integration/v1/mcp/proxy/{mcp_id}/tools
+	// MCP proxy related interfaces.
+	// Get the tool list of the specified MCP Server GET /api/agent-operator-integration/v1/mcp/proxy/{mcp_id}/tools.
 	mcpGroup.GET("/proxy/:mcp_id/tools", r.MCPPublicHandler.GetMCPTools)
-	// 调用指定MCP Server的工具 POST /api/agent-operator-integration/v1/mcp/proxy/{mcp_id}/tool/call
+	// Call the tool of the specified MCP Server POST /api/agent-operator-integration/v1/mcp/proxy/{mcp_id}/tool/call.
 	mcpGroup.POST("/proxy/:mcp_id/tool/call", r.MCPPublicHandler.CallMCPTool)
 
-	// MCP endpoint 相关接口
+	// MCP endpoint related interfaces.
 	// Streamable Http Endpoint
 	mcpGroup.Any("/app/:mcp_id/mcp", r.MCPPublicHandler.HandleStreamingHttp)
 	// SSE Endpoint

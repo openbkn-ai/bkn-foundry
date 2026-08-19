@@ -36,7 +36,7 @@ func TestSkillIndexSync(t *testing.T) {
 				return &interfaces.VegaCatalog{ID: req.ID}, nil
 			})
 			mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil)
-			// 系统默认未配置 -> 回退按名 "embedding"
+			// The system is not configured by default -> fallback by name "embedding".
 			mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).
 				Return(nil, nil)
 			mockModelManager.EXPECT().GetEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding).
@@ -50,16 +50,16 @@ func TestSkillIndexSync(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(createdCatalog, ShouldNotBeNil)
 			So(createdCatalog.ID, ShouldEqual, executionFactoryCatalogID)
-			// 逻辑目录必须建成 enabled，否则其下 dataset 读写被 vega 409 拒绝
+			// The logical directory must be enabled, otherwise the dataset read and write under it will be rejected by vega 409.
 			So(createdCatalog.Enabled, ShouldBeTrue)
 			So(createdCatalog.Internal, ShouldBeTrue)
-			// internal 标签：Studio 靠它认内置目录（前端不读 internal 字段）
+			// internal tag: Studio relies on it to recognize the built-in directory (the front end does not read the internal field)
 			So(createdCatalog.Tags, ShouldContain, internalCatalogTag)
 			So(createdResource, ShouldNotBeNil)
 			So(createdResource.ID, ShouldEqual, executionFactorySkillDataset)
 			So(createdResource.Status, ShouldEqual, executionFactoryDatasetStatus)
-			// 模型快照进资源级 index_config：tag 会被 vega 的 ':' 校验打回，
-			// 向量属性的 feature config 会被拷进 knn_vector mapping 让建索引失败
+			// The model snapshot enters the resource level index_config: tag will be returned by vega's ':' check.
+			// The feature config of the vector attribute will be copied into knn_vector mapping, causing index creation to fail.
 			for _, tag := range createdResource.Tags {
 				So(tag, ShouldNotContainSubstring, ":")
 			}
@@ -141,7 +141,7 @@ func TestSkillIndexSync(t *testing.T) {
 					ID:          executionFactorySkillDataset,
 					Name:        executionFactorySkillDataset,
 					IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: "text-embedding-v4"},
-					// schema 与 tag 里的旧快照都在，index_config 优先
+					// The old snapshots in schema and tag are all there, index_config takes priority.
 					SchemaDefinition: []interfaces.VegaProperty{{
 						Name: "_vector",
 						Type: "vector",
@@ -169,12 +169,12 @@ func TestSkillIndexSync(t *testing.T) {
 				}, nil)
 			mockVegaClient.EXPECT().EnableCatalog(gomock.Any(), executionFactoryCatalogID).Return(errors.New("vega 500"))
 
-			// disabled 目录下的数据读写会被 vega 409 拒绝，不能带着这个状态标记成已初始化
+			// Data reading and writing in the disabled directory will be rejected by vega 409, and cannot be marked as initialized with this status.
 			So(syncer.Init(context.Background()), ShouldNotBeNil)
 			So(syncer.isInitialized(), ShouldBeFalse)
 		})
 
-		// 数据集挂在别的目录下时，写入受它自己的父目录管辖，disabled 就得启用。
+		// When the data set is hung in another directory, writing is governed by its own parent directory, and disabled must be enabled.
 		Convey("Init enables the dataset's own catalog when it lives elsewhere", func() {
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
 			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}
@@ -239,7 +239,7 @@ func TestSkillIndexSync(t *testing.T) {
 				Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil)
 
 			So(syncer.Init(context.Background()), ShouldBeNil)
-			// 标签超限就别塞，改名这个主目标不能被 400 一起带走
+			// If the tag exceeds the limit, don’t block it. The main goal of changing the name cannot be taken away with 400.
 			So(reconciled, ShouldNotBeNil)
 			So(reconciled.Name, ShouldEqual, executionFactoryCatalogID)
 			So(reconciled.Tags, ShouldResemble, fullTags)
@@ -290,7 +290,7 @@ func TestSkillIndexSync(t *testing.T) {
 			So(syncer.getDatasetID(), ShouldEqual, executionFactorySkillDataset)
 		})
 
-		// 老 dataset 的模型快照只落在 resource tag 上，读路径仍要兜住。
+		// The model snapshot of the old dataset only falls on the resource tag, and the read path still needs to be covered.
 		Convey("Init reads the model snapshot from a tag when nothing else carries it", func() {
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
 			syncer := &skillIndexSync{vegaClient: mockVegaClient, logger: logger.DefaultLogger()}

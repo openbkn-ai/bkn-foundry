@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 )
 
 var (
@@ -14,10 +14,10 @@ var (
 	httpDeployer     Deployer
 )
 
-// streamableHTTPDeployer 可流式传输的 HTTP 部署器
+// streamableHTTPDeployer Streamable HTTP deployer.
 type streamableHTTPDeployer struct{}
 
-// newStreamableHTTPDeployer 创建可流式传输的 HTTP 部署器
+// newStreamableHTTPDeployer creates a streamable HTTP deployer.
 func newStreamableHTTPDeployer() Deployer {
 	httpDeployerOnce.Do(func() {
 		httpDeployer = &streamableHTTPDeployer{}
@@ -25,7 +25,7 @@ func newStreamableHTTPDeployer() Deployer {
 	return httpDeployer
 }
 
-// Deploy 部署 MCP 实例
+// Deploy deploy MCP instance.
 func (d *streamableHTTPDeployer) Deploy(ctx context.Context, instance *interfaces.MCPServerInstance) error {
 	streamPath := fmt.Sprintf("/app/%s/%d/stream", instance.Config.MCPID, instance.Config.Version)
 	streamServer := server.NewStreamableHTTPServer(instance.MCPServer, server.WithEndpointPath(streamPath))
@@ -34,7 +34,7 @@ func (d *streamableHTTPDeployer) Deploy(ctx context.Context, instance *interface
 	return nil
 }
 
-// Undeploy 卸载
+// Undeploy Uninstall.
 func (d *streamableHTTPDeployer) Undeploy(ctx context.Context, instance *interfaces.MCPServerInstance) error {
 	if instance.StreamServer != nil {
 		return instance.StreamServer.Shutdown(ctx)

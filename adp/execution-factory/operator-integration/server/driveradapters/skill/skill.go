@@ -239,7 +239,7 @@ func (h *skillHandler) QuerySkillList(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, resp)
 }
 
-// QuerySkillNamesByIDs 按技能ID批量取名(给前端对象级授权页回显名称用)
+// QuerySkillNamesByIDs batch names based on skill IDs (used to echo names on the front-end object-level authorization page)
 func (h *skillHandler) QuerySkillNamesByIDs(c *gin.Context) {
 	req := &interfaces.BatchNamesReq{}
 	if err := utils.GetBindJSONRaw(c, req); err != nil {

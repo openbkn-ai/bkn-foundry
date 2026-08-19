@@ -12,7 +12,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 )
 
-// ParseSSE 解析SSE类型的MCP服务
+// ParseSSE parses SSE type MCP services.
 func (h *mcpHandle) ParseSSE(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPParseSSERequest{}
@@ -43,7 +43,7 @@ func (h *mcpHandle) ParseSSE(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// DebugTool 工具调试
+// DebugTool tool debugging.
 func (h *mcpHandle) DebugTool(c *gin.Context) {
 	var err error
 	ctx := c.Request.Context()
@@ -61,7 +61,7 @@ func (h *mcpHandle) DebugTool(c *gin.Context) {
 		return
 	}
 
-	// 使用map[string]any接收请求体
+	// Use map[string]any to receive the request body.
 	var body map[string]any
 	if err = c.ShouldBindJSON(&body); err != nil {
 		err = errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
@@ -91,7 +91,7 @@ func (h *mcpHandle) DebugTool(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// GetMCPTools 查询MCP服务工具
+// GetMCPTools query MCP service tool.
 func (h *mcpHandle) GetMCPTools(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPProxyToolListRequest{}
@@ -129,7 +129,7 @@ func (h *mcpHandle) GetMCPTools(c *gin.Context) {
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 
-// CallMCPTool 调用MCP服务工具
+// CallMCPTool calls MCP service tool.
 func (h *mcpHandle) CallMCPTool(c *gin.Context) {
 	var err error
 	req := &interfaces.MCPProxyCallToolRequest{}

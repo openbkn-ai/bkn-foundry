@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/db/sqlx"
 	"github.com/pkg/errors"
 )
 
@@ -30,11 +30,11 @@ var (
 )
 
 const (
-	// tbMCPServerRelease MCP Server发布表名
+	// tbMCPServerRelease MCP Server release table name.
 	tbMCPServerRelease = "t_mcp_server_release"
 )
 
-// NewMCPServerReleaseDBSingleton 创建MCP Server发布数据库访问对象单例
+// NewMCPServerReleaseDBSingleton creates an MCP Server published database access object singleton.
 func NewMCPServerReleaseDBSingleton() model.DBMCPServerRelease {
 	confLoader := config.NewConfigLoader()
 	dbPool := db.NewDBPool()
@@ -53,7 +53,7 @@ func NewMCPServerReleaseDBSingleton() model.DBMCPServerRelease {
 	return mcr
 }
 
-// Insert 插入MCP Server发布
+// Insert inserts MCP Server release.
 func (m *mcpServerReleaseDB) Insert(ctx context.Context, tx *sql.Tx, release *model.MCPServerReleaseDB) (err error) {
 	now := time.Now().UnixNano()
 	release.ReleaseTime = now
@@ -62,7 +62,7 @@ func (m *mcpServerReleaseDB) Insert(ctx context.Context, tx *sql.Tx, release *mo
 	if tx != nil {
 		orm = m.orm.WithTx(tx)
 	}
-	// 插入数据
+	// Insert data.
 	row, err := orm.Insert().Into(tbMCPServerRelease).Values(map[string]interface{}{
 		"f_mcp_id":        release.MCPID,
 		"f_creation_type": release.CreationType,
@@ -101,7 +101,7 @@ func (m *mcpServerReleaseDB) Insert(ctx context.Context, tx *sql.Tx, release *mo
 	return
 }
 
-// UpdateByMCPID 根据mcp_id更新MCP Server发布
+// UpdateByMCPID updates MCP Server release based on mcp_id.
 func (m *mcpServerReleaseDB) UpdateByMCPID(ctx context.Context, tx *sql.Tx, release *model.MCPServerReleaseDB) (err error) {
 	now := time.Now().UnixNano()
 	release.UpdateTime = now
@@ -130,7 +130,7 @@ func (m *mcpServerReleaseDB) UpdateByMCPID(ctx context.Context, tx *sql.Tx, rele
 	return
 }
 
-// DeleteByMCPID 根据mcp_id删除MCP Server发布
+// DeleteByMCPID Delete MCP Server publication based on mcp_id.
 func (m *mcpServerReleaseDB) DeleteByMCPID(ctx context.Context, tx *sql.Tx, mcpID string) (err error) {
 	orm := m.orm
 	if tx != nil {
@@ -140,7 +140,7 @@ func (m *mcpServerReleaseDB) DeleteByMCPID(ctx context.Context, tx *sql.Tx, mcpI
 	return
 }
 
-// SelectListPage 分页查询mcp server发布列表
+// SelectListPage paging query mcp server publishing list.
 func (m *mcpServerReleaseDB) SelectListPage(ctx context.Context, tx *sql.Tx, filter map[string]interface{}, sort *ormhelper.SortParams,
 	cursor *ormhelper.CursorParams) (releaseList []*model.MCPServerReleaseDB, err error) {
 	query := m.orm.Select().From(tbMCPServerRelease)
@@ -150,7 +150,7 @@ func (m *mcpServerReleaseDB) SelectListPage(ctx context.Context, tx *sql.Tx, fil
 		query = query.Cursor(cursor)
 	}
 
-	// 处理排序和分页
+	// Handle sorting and pagination.
 	query = query.Sort(sort)
 	if filter["all"] == nil || filter["all"] == false {
 		pageSize, ok := filter["limit"].(int)
@@ -162,20 +162,20 @@ func (m *mcpServerReleaseDB) SelectListPage(ctx context.Context, tx *sql.Tx, fil
 			query.Offset(offset)
 		}
 	}
-	// 执行查询
+	// Execute query.
 	releaseList = []*model.MCPServerReleaseDB{}
 	err = query.Get(ctx, &releaseList)
 	return releaseList, err
 }
 
-// SelectByMCPIDs 根据mcp_id列表查询MCP Server发布
+// SelectByMCPIDs queries MCP Server publishing based on mcp_id list.
 func (m *mcpServerReleaseDB) SelectByMCPIDs(ctx context.Context, tx *sql.Tx, mcpIDs, fields []string) (releaseList []*model.MCPServerReleaseDB, err error) {
 	query := m.orm.Select(fields...).From(tbMCPServerRelease).WhereIn("f_mcp_id", utils.SliceToInterface(mcpIDs)...)
 	err = query.Get(ctx, &releaseList)
 	return releaseList, err
 }
 
-// SelectByMCPID 根据mcp_id查询MCP Server发布
+// SelectByMCPID queries MCP Server publishing based on mcp_id.
 func (m *mcpServerReleaseDB) SelectByMCPID(ctx context.Context, tx *sql.Tx, mcpID string) (release *model.MCPServerReleaseDB, err error) {
 	release = &model.MCPServerReleaseDB{}
 	orm := m.orm
@@ -193,7 +193,7 @@ func (m *mcpServerReleaseDB) SelectByMCPID(ctx context.Context, tx *sql.Tx, mcpI
 	return release, nil
 }
 
-// CountByWhereClause 根据条件统计数量
+// CountByWhereClause counts quantities based on conditions.
 func (m *mcpServerReleaseDB) CountByWhereClause(ctx context.Context, tx *sql.Tx, filter map[string]interface{}) (count int64, err error) {
 	orm := m.orm
 	if tx != nil {
@@ -211,7 +211,7 @@ func (m *mcpServerReleaseDB) applyFilterConditions(query *ormhelper.SelectBuilde
 	if filter == nil {
 		return query
 	}
-	// 支持的条件查询
+	// Supported query conditions.
 	if filter["name"] != nil {
 		name := filter["name"].(string)
 		query = query.WhereLike("f_name", "%"+name+"%")

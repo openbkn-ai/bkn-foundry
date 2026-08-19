@@ -3,15 +3,15 @@ package operator
 import (
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+	"github.com/go-playground/validator/v10"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
-	"github.com/gin-gonic/gin"
-	"github.com/go-playground/validator/v10"
 )
 
-// UpdateStatus 更新算子状态
+// UpdateStatus update operator status.
 func (op *operatorHandle) OperatorStatusUpdate(c *gin.Context) {
 	var err error
 	req := &interfaces.OperatorStatusUpdateReq{

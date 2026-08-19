@@ -18,7 +18,7 @@ import (
 
 var clearUserPassRe = regexp.MustCompile(`(://)[^/]*@`)
 
-// HTTPRequest 发起HTTP请求
+// HTTPRequest initiates an HTTP request.
 func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Request) (*http.Response, error)) (rsp *http.Response, err error) {
 	tracer := otel.GetTracerProvider()
 	if tracer != nil {
@@ -44,7 +44,7 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 				span.SetAttributes(attribute.Key("http.status_code").Int(rsp.StatusCode))
 				span.SetAttributes(attribute.Key("http.response_content_length").Int64(rsp.ContentLength))
 			}
-			// 400以上的错误记录到trace中
+			// Errors above 400 are recorded in trace.
 			e := err
 			if e == nil {
 				e = recordHTTPErrorBody(rsp)
@@ -57,7 +57,7 @@ func HTTPRequest(ctx context.Context, req *http.Request, fn func(req *http.Reque
 }
 
 func recordHTTPErrorBody(rsp *http.Response) (err error) {
-	// 只记录 400以上错误
+	// Only log errors above 400.
 	if rsp == nil || rsp.Body == nil {
 		return nil
 	}
@@ -68,13 +68,13 @@ func recordHTTPErrorBody(rsp *http.Response) (err error) {
 	if err != nil {
 		return
 	}
-	rsp.Body = io.NopCloser(bytes.NewBuffer(body)) // 将body重新赋值给rsp.Body，后续可以读取
+	rsp.Body = io.NopCloser(bytes.NewBuffer(body)) // Reassign body to rsp.Body, which can be read later.
 	limitBody := body
 	err = errors.New(string(limitBody))
 	return
 }
 
-// BuildUpOperateName 获取TraceOperate名称
+// BuildUpOperateName gets the TraceOperate name.
 func BuildUpOperateName(ops ...string) string {
 	return strings.Join(ops, ".")
 }

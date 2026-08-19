@@ -1,6 +1,6 @@
-// Package interfaces 定义接口
+// Package interfaces define interfaces.
 // @file drivenadapters.go
-// @description: 入站接口定义
+// @description: Inbound interface definition.
 package interfaces
 
 //go:generate mockgen -source=drivenadapters.go -destination=../mocks/drivenadapters.go -package=mocks
@@ -13,23 +13,23 @@ import (
 )
 
 const (
-	// SystemUser 系统
+	// SystemUser system.
 	SystemUser = "system"
-	// UnknownUser 未知
+	// UnknownUser Unknown.
 	UnknownUser = "unknown"
 )
 
-// VisitorType 访问者类型
+// VisitorType visitor type.
 type VisitorType string
 
-// 访问者类型定义
+// Visitor type definition.
 const (
-	RealName  VisitorType = "realname"  // 实名用户
-	Anonymous VisitorType = "anonymous" // 匿名用户
-	Business  VisitorType = "business"  // 应用账户
+	RealName  VisitorType = "realname"  // Real-name user.
+	Anonymous VisitorType = "anonymous" // anonymous user.
+	Business  VisitorType = "business"  // application account.
 )
 
-// ToAccessorType 转换为访问者类型
+// ToAccessorType converts to visitor type.
 func (v VisitorType) ToAccessorType() AccessorType {
 	switch v {
 	case RealName:
@@ -39,31 +39,31 @@ func (v VisitorType) ToAccessorType() AccessorType {
 	case Anonymous:
 		return AccessorTypeAnonymous
 	default:
-		// 未知访问者类型，默认匿名用户
+		// Unknown visitor type, default anonymous user.
 		return AccessorTypeAnonymous
 	}
 }
 
-// AccountType 登录账号类型
+// AccountType Login account type.
 type AccountType int32
 
-// 登录账号类型定义
+// Login account type definition.
 const (
 	Other  AccountType = 0
 	IDCard AccountType = 1
 )
 
 const (
-	// AccessedByUser 实名用户
+	// AccessedByUser real-name user.
 	AccessedByUser string = "accessed_by_users"
-	// AccessedByAnyOne 匿名用户
+	// AccessedByAnyOne anonymous user.
 	AccessedByAnyOne string = "accessed_by_anyone"
 )
 
-// ClientType 设备类型
+// ClientType device type.
 type ClientType int32
 
-// ClientTypeMap 客户端类型表
+// ClientTypeMap client type table.
 var ClientTypeMap = map[ClientType]string{
 	Unknown:      "unknown",
 	IOS:          "ios",
@@ -80,7 +80,7 @@ var ClientTypeMap = map[ClientType]string{
 	APP:          "app",
 }
 
-// ReverseClientTypeMap 客户端类型字符串反查表
+// ReverseClientTypeMap client type string reverse lookup table.
 var ReverseClientTypeMap = map[string]ClientType{
 	"unknown":       Unknown,
 	"ios":           IOS,
@@ -97,13 +97,13 @@ var ReverseClientTypeMap = map[string]ClientType{
 	"app":           APP,
 }
 
-// AccountTypeMap 账户类型表
+// AccountTypeMap account type table.
 var AccountTypeMap = map[AccountType]string{
 	Other:  "other_category",
 	IDCard: "id_card",
 }
 
-// ReverseAccountTypeMap 账户类型字符串反查表
+// ReverseAccountTypeMap account type string reverse lookup table.
 var ReverseAccountTypeMap = map[string]AccountType{
 	"other_category": Other,
 	"id_card":        IDCard,
@@ -117,7 +117,7 @@ func (typ ClientType) String() string {
 	return str
 }
 
-// 设备类型定义
+// Device type definition.
 const (
 	Unknown ClientType = iota
 	IOS
@@ -134,61 +134,61 @@ const (
 	APP
 )
 
-// TokenInfo 授权验证信息
+// TokenInfo authorization verification information.
 type TokenInfo struct {
-	Active     bool        // 令牌状态
-	VisitorID  string      // 访问者ID
-	Scope      string      // 权限范围
-	ClientID   string      // 客户端ID
-	VisitorTyp VisitorType // 访问者类型
-	// 以下字段只在visitorType=realname，即实名用户时才存在
-	LoginIP     string      // 登陆IP
-	Udid        string      // 设备码
-	AccountTyp  AccountType // 账户类型
-	ClientTyp   ClientType  // 设备类型
-	PhoneNumber string      // 匿名用户的电话号码
-	VisitorName string      // 匿名外链，访问者的昵称
-	MAC         string      // MAC地址
-	UserAgent   string      // 代理信息
+	Active     bool        // Token status.
+	VisitorID  string      // Visitor ID.
+	Scope      string      // Scope of authority.
+	ClientID   string      // Client ID.
+	VisitorTyp VisitorType // Visitor type.
+	// The following fields only exist when visitorType=realname, that is, a real-name user.
+	LoginIP     string      // Login IP.
+	Udid        string      // Device code.
+	AccountTyp  AccountType // Account type.
+	ClientTyp   ClientType  // Device type.
+	PhoneNumber string      // Anonymous user's phone number.
+	VisitorName string      // Anonymous external links, visitor’s nickname.
+	MAC         string      // MAC address.
+	UserAgent   string      // Agent information.
 }
 
-// Hydra 授权服务接口
+// Hydra authorization service interface.
 type Hydra interface {
 	Introspect(c *gin.Context) (tokenInfo *TokenInfo, err error)
 	GenerateVisitor(c *gin.Context) (info *TokenInfo, err error)
 }
 
-// AppKeyPrefix 标识用户自助签发的 AppKey（API Key）凭据。
-// 公开面认证中间件按此前缀分流：带该前缀的交 bkn-safe 校验，其余 bearer token 走 hydra 内省。
+// AppKeyPrefix identifies the AppKey (API Key) credential issued by the user self-service.
+// The public authentication middleware is divided according to this prefix: the ones with this prefix are verified by bkn-safe, and the other bearer tokens are verified by hydra introspection.
 const AppKeyPrefix = "bak_"
 
-// AppKeyVerifier 将 AppKey 解析为持有者的 TokenInfo，由 bkn-safe 完成校验。
-// 返回值与 Hydra.Introspect 同构，因此中间件可以把 AppKey 与 OAuth 令牌等价处理，
-// 下游的 AccountAuthContext 与授权判定完全一致。
+// AppKeyVerifier parses AppKey into the holder's TokenInfo, and bkn-safe completes the verification.
+// The return value is isomorphic to Hydra.Introspect, so the middleware can treat AppKey and OAuth tokens equivalently.
+// The downstream AccountAuthContext is exactly the same as the authorization decision.
 type AppKeyVerifier interface {
 	Verify(ctx context.Context, key string) (tokenInfo *TokenInfo, err error)
 }
 
 const (
-	// DisplayName 用户显示名称
+	// DisplayName User display name.
 	DisplayName = "name"
 )
 
-// UserInfo 用户信息
+// UserInfo User information.
 type UserInfo struct {
-	UserID      string   `json:"id"`    // 用户ID
-	DisplayName string   `json:"name"`  // 用户显示名称
-	Roles       []string `json:"roles"` // 角色
+	UserID      string   `json:"id"`    // User ID.
+	DisplayName string   `json:"name"`  // User display name.
+	Roles       []string `json:"roles"` // role.
 	Account     string   `json:"account"`
 }
 
-// AppInfo 应用账号信息
+// AppInfo application account information.
 type AppInfo struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
-// ErrorResponse 错误响应
+// ErrorResponse Error response.
 type ErrorResponse struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -197,7 +197,7 @@ type ErrorResponse struct {
 	} `json:"detail"`
 }
 
-// UserManagement 用户管理接口
+// UserManagement user management interface.
 type UserManagement interface {
 	GetAppInfo(ctx context.Context, appID string) (appInfo *AppInfo, err error)
 	GetUserInfo(ctx context.Context, userID string, fields ...string) (info *UserInfo, err error)
@@ -206,21 +206,21 @@ type UserManagement interface {
 }
 
 type MCPClient interface {
-	// GetInitInfo 获取初始化信息
+	// GetInitInfo gets initialization information.
 	GetInitInfo(ctx context.Context) *mcp.InitializeResult
-	// ListTools 获取工具列表
+	// ListTools Get the list of tools.
 	ListTools(ctx context.Context, req mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
-	// CallTool 调用工具
+	// CallTool call tool.
 	CallTool(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error)
-	// Close 关闭客户端连接
+	// Close closes the client connection.
 	Close() error
 }
 
 type MCPToolConfig struct {
-	ToolID      string          `json:"tool_id"`      // 工具ID
-	Name        string          `json:"name"`         // 工具名称
-	Description string          `json:"description"`  // 工具描述
-	InputSchema json.RawMessage `json:"input_schema"` // 输入模式
+	ToolID      string          `json:"tool_id"`      // Tool ID.
+	Name        string          `json:"name"`         // Tool name.
+	Description string          `json:"description"`  // Tool description.
+	InputSchema json.RawMessage `json:"input_schema"` // input mode.
 }
 
 type MCPInstanceCreateRequest struct {
@@ -251,19 +251,19 @@ type MCPInstanceUpdateResponse struct {
 	SSEURL     string `json:"sse_url"`
 }
 
-// AccessorType 访问类型
+// AccessorType access type.
 type AccessorType string
 
 const (
-	AccessorTypeUser       AccessorType = "user"       // 实名用户
-	AccessorTypeDepartment AccessorType = "department" // 部门
-	AccessorTypeGroup      AccessorType = "group"      // 组织
-	AccessorTypeRole       AccessorType = "role"       // 角色
-	AccessorTypeApp        AccessorType = "app"        // 应用账户
-	AccessorTypeAnonymous  AccessorType = "anonymous"  // 匿名访问
+	AccessorTypeUser       AccessorType = "user"       // Real-name user.
+	AccessorTypeDepartment AccessorType = "department" // Department.
+	AccessorTypeGroup      AccessorType = "group"      // organization.
+	AccessorTypeRole       AccessorType = "role"       // role.
+	AccessorTypeApp        AccessorType = "app"        // application account.
+	AccessorTypeAnonymous  AccessorType = "anonymous"  // Anonymous access.
 )
 
-// ToVisitorType 将AccessorType转换为VisitorType
+// ToVisitorType Convert AccessorType to VisitorType.
 func (a AccessorType) ToVisitorType() VisitorType {
 	switch a {
 	case AccessorTypeUser:
@@ -280,400 +280,400 @@ func (a AccessorType) ToVisitorType() VisitorType {
 }
 
 const (
-	// AccessorRootDepartmentID 根部门ID
+	// AccessorRootDepartmentID root department ID.
 	AccessorRootDepartmentID string = "00000000-0000-0000-0000-000000000000"
 )
 
-// AuthMethod 授权方法
+// AuthMethod authorization method.
 type AuthMethod = string
 
-// 支持的授权方法
+// Supported authorization methods.
 const (
 	AuthMethodGet    AuthMethod = "GET"
 	AuthMethodDelete AuthMethod = "DELETE"
 )
 
-// AuthAccessor 访问者信息
+// AuthAccessor visitor information.
 type AuthAccessor struct {
-	ID   string       `json:"id"`   // 唯一标识ID
-	Type AccessorType `json:"type"` // 访问类型
-	Name string       `json:"name"` // 访问者名称
+	ID   string       `json:"id"`   // Unique identification ID.
+	Type AccessorType `json:"type"` // access type.
+	Name string       `json:"name"` // Visitor name.
 }
 
-// AuthResource 资源信息
+// AuthResource resource information.
 type AuthResource struct {
-	ID   string `json:"id"`   // 唯一标识ID
-	Type string `json:"type"` // 资源类型
-	Name string `json:"name"` // 资源名称
+	ID   string `json:"id"`   // Unique identification ID.
+	Type string `json:"type"` // Resource type.
+	Name string `json:"name"` // Resource name.
 }
 
-// AuthOperationCheckRequest 操作检查请求
+// AuthOperationCheckRequest operation check request.
 type AuthOperationCheckRequest struct {
-	Accessor  *AuthAccessor       `json:"accessor"`  // 访问者信息
-	Resource  *AuthResource       `json:"resource"`  // 资源信息
-	Operation []AuthOperationType `json:"operation"` // 检查的操作
-	Method    string              `json:"method"`    // 方法
+	Accessor  *AuthAccessor       `json:"accessor"`  // Visitor information.
+	Resource  *AuthResource       `json:"resource"`  // Resource information.
+	Operation []AuthOperationType `json:"operation"` // Check the operation.
+	Method    string              `json:"method"`    // method.
 }
 
-// AuthOperationCheckResponse 操作检查响应
+// AuthOperationCheckResponse operation check response.
 type AuthOperationCheckResponse struct {
-	Result bool `json:"result"` // 检查结果
+	Result bool `json:"result"` // Check results.
 }
 
-// ResourceListRequest 资源列举请求
+// ResourceListRequest resource listing request.
 type ResourceListRequest struct {
-	Accessor  *AuthAccessor       `json:"accessor"`  // 访问者信息
-	Resource  *AuthResource       `json:"resource"`  // 资源信息
-	Operation []AuthOperationType `json:"operation"` // 检查的操作
-	Method    string              `json:"method"`    // 方法
+	Accessor  *AuthAccessor       `json:"accessor"`  // Visitor information.
+	Resource  *AuthResource       `json:"resource"`  // Resource information.
+	Operation []AuthOperationType `json:"operation"` // Check the operation.
+	Method    string              `json:"method"`    // method.
 }
 
-// AuthResourceFilterRequest 资源过滤请求
+// AuthResourceFilterRequest resource filtering request.
 type AuthResourceFilterRequest struct {
-	Accessor   *AuthAccessor       `json:"accessor"`  // 访问者信息
-	Resources  []*AuthResource     `json:"resources"` // 资源列表
-	Operations []AuthOperationType `json:"operation"` // 检查的操作列表
-	Method     string              `json:"method"`    // 方法
+	Accessor   *AuthAccessor       `json:"accessor"`  // Visitor information.
+	Resources  []*AuthResource     `json:"resources"` // Resource list.
+	Operations []AuthOperationType `json:"operation"` // List of actions to check.
+	Method     string              `json:"method"`    // method.
 }
 
 type AuthOperation struct {
-	ID   string `json:"id"`   // 唯一标识ID
-	Name string `json:"name"` // 操作名称
+	ID   string `json:"id"`   // Unique identification ID.
+	Name string `json:"name"` // Operation name.
 }
 
 type PolicyOperation struct {
-	Allow []*AuthOperation `json:"allow"` // 允许的操作
-	Deny  []*AuthOperation `json:"deny"`  // 拒绝的操作
+	Allow []*AuthOperation `json:"allow"` // allowed operations.
+	Deny  []*AuthOperation `json:"deny"`  // Denied action.
 }
 
-// AuthCreatePolicyRequest 新建策略请求
+// AuthCreatePolicyRequest New policy request.
 type AuthCreatePolicyRequest struct {
-	Accessor  *AuthAccessor    `json:"accessor"`             // 访问者信息
-	Resource  *AuthResource    `json:"resource"`             // 资源信息
-	Operation *PolicyOperation `json:"operation"`            // 策略操作
-	Condition string           `json:"condition,omitempty"`  // 条件
-	ExpiresAt string           `json:"expires_at,omitempty"` // 到期时间(秒级)，RFC3339格式，UNIX TIME时间纪元(1970-01-01T08:00:00+08:00)表示永久有效
+	Accessor  *AuthAccessor    `json:"accessor"`             // Visitor information.
+	Resource  *AuthResource    `json:"resource"`             // Resource information.
+	Operation *PolicyOperation `json:"operation"`            // Strategy operations.
+	Condition string           `json:"condition,omitempty"`  // Conditions.
+	ExpiresAt string           `json:"expires_at,omitempty"` // Expiration time (second level), RFC3339 format, UNIX TIME time epoch (1970-01-01T08:00:00+08:00) means permanently valid.
 }
 
-// AuthDeletePolicyRequest 删除策略请求
+// AuthDeletePolicyRequest delete policy request.
 type AuthDeletePolicyRequest struct {
-	Method    string          `json:"method"`    // 方法
-	Resources []*AuthResource `json:"resources"` // 资源列表
+	Method    string          `json:"method"`    // method.
+	Resources []*AuthResource `json:"resources"` // Resource list.
 }
 
-// AuthResourceResult 资源结果
+// AuthResourceResult resource result.
 type AuthResourceResult struct {
-	ID string `json:"id"` // 唯一标识ID
+	ID string `json:"id"` // Unique identification ID.
 }
 
-// Authorization 授权服务接口
+// Authorization authorization service interface.
 type Authorization interface {
-	// 单个决策
+	// single decision.
 	OperationCheck(ctx context.Context, req *AuthOperationCheckRequest) (*AuthOperationCheckResponse, error)
-	// 资源过滤
+	// Resource filtering.
 	ResourceFilter(ctx context.Context, req *AuthResourceFilterRequest) ([]*AuthResourceResult, error)
-	// 资源列举
+	// Resource enumeration.
 	ResourceList(ctx context.Context, req *ResourceListRequest) ([]*AuthResourceResult, error)
-	// 新建策略
+	// New strategy.
 	CreatePolicy(ctx context.Context, req []*AuthCreatePolicyRequest) error
-	// 策略删除
+	// Policy deletion.
 	DeletePolicy(ctx context.Context, req *AuthDeletePolicyRequest) error
 }
 
-// AuditLogModel 审计日志模型
+// AuditLogModel audit log model.
 type AuditLogModel struct {
-	Operation   string               `json:"operation" validate:"required"`          // 操作类型
-	Description string               `json:"description" validate:"required"`        // 字符串描述，最大长度65,535
-	OpTime      int64                `json:"op_time" validate:"required"`            // 操作时间（通过mq上报的必需）精确到纳秒
-	Operator    AuditLogOperatorInfo `json:"operator" validate:"required"`           // 操作者信息
-	Object      AuditLogObjectInfo   `json:"object,omitempty"`                       // 操作对象信息
-	LogFrom     LogFrom              `json:"log_from" validate:"required"`           // 日志来源
-	Detail      interface{}          `json:"detail,omitempty"`                       // 细节
-	ExMsg       string               `json:"ex_msg,omitempty"`                       // 附加信息，最大长度65,535
-	Level       LoggerLevel          `json:"level" validate:"required"`              // 日志级别，默认INFO
-	OutBizID    string               `json:"out_biz_id" validate:"required,max=128"` // 外部唯一业务ID，用于防抖，格式不限 最长128
-	Type        AuditLogType         `json:"type" validate:"required"`               // 日志类型，最大长度128
+	Operation   string               `json:"operation" validate:"required"`          // Operation type.
+	Description string               `json:"description" validate:"required"`        // String description, maximum length 65,535.
+	OpTime      int64                `json:"op_time" validate:"required"`            // Operation time (required for reporting through mq) is accurate to nanoseconds.
+	Operator    AuditLogOperatorInfo `json:"operator" validate:"required"`           // Operator information.
+	Object      AuditLogObjectInfo   `json:"object,omitempty"`                       // Operation object information.
+	LogFrom     LogFrom              `json:"log_from" validate:"required"`           // Log source.
+	Detail      interface{}          `json:"detail,omitempty"`                       // Details.
+	ExMsg       string               `json:"ex_msg,omitempty"`                       // Additional information, maximum length 65,535.
+	Level       LoggerLevel          `json:"level" validate:"required"`              // Log level, default INFO.
+	OutBizID    string               `json:"out_biz_id" validate:"required,max=128"` // External unique business ID, used for anti-shake, format is not limited, up to 128.
+	Type        AuditLogType         `json:"type" validate:"required"`               // Log type, maximum length 128.
 }
 
-// LogFrom 日志来源
+// LogFrom log source.
 type LogFrom struct {
-	Package string      `json:"package" validate:"required"` // 大包名
-	Service ServiceInfo `json:"service" validate:"required"` // 服务信息
+	Package string      `json:"package" validate:"required"` // Big package name.
+	Service ServiceInfo `json:"service" validate:"required"` // Service information.
 }
 
-// ServiceInfo 服务信息
+// ServiceInfo service information.
 type ServiceInfo struct {
-	Name string `json:"name" validate:"required"` // 服务名称
+	Name string `json:"name" validate:"required"` // Service name.
 }
 
-// LoggerLevel 日志级别
+// LoggerLevel log level.
 type LoggerLevel string
 
 const (
-	// LoggerLevelInfo 信息
+	// LoggerLevelInfo information.
 	LoggerLevelInfo LoggerLevel = "INFO"
-	// LoggerLevelWarn 警告
+	// LoggerLevelWarn warning.
 	LoggerLevelWarn LoggerLevel = "WARN"
 )
 
-// AuditLogObjectInfo 操作对象信息
+// AuditLogObjectInfo operation object information.
 type AuditLogObjectInfo struct {
-	Type string `json:"type" validate:"required"` // 操作对象类型
-	Name string `json:"name"`                     // 操作对象名称，最大长度128
-	ID   string `json:"id"`                       // 操作对象ID，最大长度40
+	Type string `json:"type" validate:"required"` // Operate type.
+	Name string `json:"name"`                     // Operation object name, maximum length 128.
+	ID   string `json:"id"`                       // Operation object ID, maximum length 40.
 }
 
-// AuditLogOperatoAgent 操作者代理信息
+// AuditLogOperatoAgent operator agent information.
 type AuditLogOperatoAgent struct {
-	Type string `json:"type" validate:"required"` // 操作者客户端类型
-	IP   string `json:"ip" validate:"required"`   // 操作者设备IP
-	MAC  string `json:"mcp" validate:"required"`  // 操作者设备mac地址
+	Type string `json:"type" validate:"required"` // Operator client type.
+	IP   string `json:"ip" validate:"required"`   // Operator device IP.
+	MAC  string `json:"mcp" validate:"required"`  // Operator device mac address.
 }
 
-// AuditLogOperatorInfo 操作者信息
+// AuditLogOperatorInfo operator information.
 type AuditLogOperatorInfo struct {
-	ID    string               `json:"id" validate:"required,max=40"`    // 操作者ID，最大长度40
-	Name  string               `json:"name" validate:"required,max=128"` // 操作者名称，以传入数据为准，最大长度128,type为internal_service必传
-	Type  AuditLogOperatorType `json:"type" validate:"required"`         // 操作者类型
-	Agent AuditLogOperatoAgent `json:"agent" validate:"required"`        // 操作者代理信息
+	ID    string               `json:"id" validate:"required,max=40"`    // Operator ID, maximum length 40.
+	Name  string               `json:"name" validate:"required,max=128"` // Operator name, subject to the incoming data, the maximum length is 128, type is internal_service and must be passed.
+	Type  AuditLogOperatorType `json:"type" validate:"required"`         // Operator type.
+	Agent AuditLogOperatoAgent `json:"agent" validate:"required"`        // Operator agent information.
 }
 
-// AuditLogOperatorType 操作者类型
+// AuditLogOperatorType operator type.
 type AuditLogOperatorType string
 
 const (
-	// AuthenticatedUser 实名用户
+	// AuthenticatedUser real-name user.
 	AuthenticatedUser AuditLogOperatorType = "authenticated_user"
-	// AnonymousUser 匿名用户
+	// AnonymousUser Anonymous user.
 	AnonymousUser AuditLogOperatorType = "anonymous_user"
-	// AppUser 应用账户
+	// AppUser application account.
 	AppUser AuditLogOperatorType = "app"
-	// InternalService 内部服务
+	// InternalService internal service.
 	InternalService AuditLogOperatorType = "internal_service"
 )
 
-// AuditLogOperationType 审计日志操作类型
+// AuditLogOperationType Audit log operation type.
 type AuditLogOperationType string
 
 const (
-	// AuditLogOperationTypeCreate 新建
+	// AuditLogOperationTypeCreate New.
 	AuditLogOperationTypeCreate AuditLogOperationType = "create"
-	// AuditLogOperationTypeDelete 删除
+	// AuditLogOperationTypeDelete Delete.
 	AuditLogOperationTypeDelete AuditLogOperationType = "delete"
-	// AuditLogOperationTypeModify 编辑
+	// AuditLogOperationTypeModify Edit.
 	AuditLogOperationTypeModify AuditLogOperationType = "modify"
-	// AuditLogOperationTypePublish 发布
+	// AuditLogOperationTypePublish Publish.
 	AuditLogOperationTypePublish AuditLogOperationType = "publish"
-	// AuditLogOperationTypeUnpublish 下架
+	// AuditLogOperationTypeUnpublish removed.
 	AuditLogOperationTypeUnpublish AuditLogOperationType = "unpublish"
-	// AuditLogOperationTypeExecute 执行
+	// AuditLogOperationTypeExecute execution.
 	AuditLogOperationTypeExecute AuditLogOperationType = "execute"
 )
 
-// AuditLogType 日志类型
+// AuditLogType log type.
 type AuditLogType string
 
 const (
-	// AuditLogOperation 操作日志
-	AuditLogOperation AuditLogType = "operation" // 操作日志
+	// AuditLogOperation operation log.
+	AuditLogOperation AuditLogType = "operation" // Operation log.
 )
 
-// BusinessDomainResource 业务域资源信息
+// BusinessDomainResource business domain resource information.
 type BusinessDomainResource struct {
-	BDID string `json:"bd_id"` // 业务域ID
-	ID   string `json:"id"`    // 资源ID
-	Type string `json:"type"`  // 资源类型
+	BDID string `json:"bd_id"` // Business domain ID.
+	ID   string `json:"id"`    // Resource ID.
+	Type string `json:"type"`  // Resource type.
 }
 
-// BusinessDomainResourceListRequest 业务域资源列表查询请求
+// BusinessDomainResourceListRequest Business domain resource list query request.
 type BusinessDomainResourceListRequest struct {
-	BDID   string `json:"bd_id"`  // 业务域ID
-	ID     string `json:"id"`     // 资源ID
-	Type   string `json:"type"`   // 资源类型
-	Limit  int    `json:"limit"`  // 数据量，默认：20，-1代表不进行分页，全量查询
-	Offset int    `json:"offset"` // 数据偏移量，默认0
+	BDID   string `json:"bd_id"`  // Business domain ID.
+	ID     string `json:"id"`     // Resource ID.
+	Type   string `json:"type"`   // Resource type.
+	Limit  int    `json:"limit"`  // Data volume, default: 20, -1 means no paging, full query.
+	Offset int    `json:"offset"` // Data offset, default 0.
 }
 
-// BusinessDomainResourceListResponse 业务域资源列表查询响应
+// BusinessDomainResourceListResponse Business domain resource list query response.
 type BusinessDomainResourceListResponse struct {
-	Limit  int                       `json:"limit"`  // 数据量
-	Offset int                       `json:"offset"` // 数据偏移量
-	Total  int                       `json:"total"`  // 数据总数
-	Items  []*BusinessDomainResource `json:"items"`  // 数据内容
+	Limit  int                       `json:"limit"`  // Data volume.
+	Offset int                       `json:"offset"` // data offset.
+	Total  int                       `json:"total"`  // Total data.
+	Items  []*BusinessDomainResource `json:"items"`  // Data content.
 }
 
-// BusinessDomainResourceAssociateRequest 业务域资源关联请求
+// BusinessDomainResourceAssociateRequest Business domain resource association request.
 type BusinessDomainResourceAssociateRequest struct {
-	BDID string `json:"bd_id"` // 业务域ID
-	ID   string `json:"id"`    // 资源ID
-	Type string `json:"type"`  // 资源类型
+	BDID string `json:"bd_id"` // Business domain ID.
+	ID   string `json:"id"`    // Resource ID.
+	Type string `json:"type"`  // Resource type.
 }
 
-// BusinessDomainResourceDisassociateRequest 业务域资源取消关联请求
+// BusinessDomainResourceDisassociateRequest Business domain resource disassociation request.
 type BusinessDomainResourceDisassociateRequest struct {
-	BDID string `json:"bd_id"` // 业务域ID
-	ID   string `json:"id"`    // 资源ID
-	Type string `json:"type"`  // 资源类型
+	BDID string `json:"bd_id"` // Business domain ID.
+	ID   string `json:"id"`    // Resource ID.
+	Type string `json:"type"`  // Resource type.
 }
 
-// BusinessDomainManagement 业务域管理服务接口
+// BusinessDomainManagement business domain management service interface.
 type BusinessDomainManagement interface {
-	// 资源关联
+	// Resource association.
 	AssociateResource(ctx context.Context, req *BusinessDomainResourceAssociateRequest) error
-	// 资源取消关联
+	// Resource disassociation.
 	DisassociateResource(ctx context.Context, req *BusinessDomainResourceDisassociateRequest) error
-	// 资源列表查询
+	// Resource list query.
 	ResourceList(ctx context.Context, req *BusinessDomainResourceListRequest) (*BusinessDomainResourceListResponse, error)
 }
 
-// ExecuteCodeReq 执行代码请求
+// ExecuteCodeReq execute code request.
 type ExecuteCodeReq struct {
-	Code                  string            `json:"code" validate:"required"`                                    // 执行代码
-	Event                 map[string]any    `json:"event,omitempty"`                                             // 事件
-	Language              string            `json:"language" default:"python"`                                   // 执行语言
-	Timeout               int               `json:"timeout,omitempty"`                                           // 超时时间，单位秒
-	WorkingDirectory      string            `json:"working_directory,omitempty"`                                 // 工作目录，相对于 workspace 根目录
-	EnvVars               map[string]any    `json:"env_vars,omitempty"`                                          // 会话业务上下文环境变量
-	Dependencies          []*DependencyInfo `json:"dependencies,omitempty"`                                      // 依赖资源
-	PythonPackageIndexURL string            `json:"python_package_index_url" default:"https://pypi.org/simple/"` // 安装源URL
+	Code                  string            `json:"code" validate:"required"`                                    // Execute code.
+	Event                 map[string]any    `json:"event,omitempty"`                                             // event.
+	Language              string            `json:"language" default:"python"`                                   // execution language.
+	Timeout               int               `json:"timeout,omitempty"`                                           // Timeout time in seconds.
+	WorkingDirectory      string            `json:"working_directory,omitempty"`                                 // Working directory, relative to the workspace root directory.
+	EnvVars               map[string]any    `json:"env_vars,omitempty"`                                          // Session business context environment variables.
+	Dependencies          []*DependencyInfo `json:"dependencies,omitempty"`                                      // Depend on resources.
+	PythonPackageIndexURL string            `json:"python_package_index_url" default:"https://pypi.org/simple/"` // Installation source URL.
 }
 
-// ExecuteCodeResp 执行代码响应
+// ExecuteCodeResp execute code response.
 type ExecuteCodeResp struct {
-	ID            string `json:"id"`             // 执行ID
-	SessionID     string `json:"session_id"`     // 会话ID
-	Code          string `json:"code"`           // 执行代码
-	Language      string `json:"language"`       // 执行语言
-	Timeout       int    `json:"timeout"`        // 超时时间，单位秒
-	ExitCode      int    `json:"exit_code"`      // 退出码
-	ErrorMessage  string `json:"error_message"`  // 错误信息
-	ExecutionTime int64  `json:"execution_time"` // 执行时间，单位毫秒
-	Artifacts     any    `json:"artifacts"`      // 文件制品响应
-	RetryCount    int    `json:"retry_count"`    // 重试次数
-	Stdout        string `json:"stdout"`         // 标准输出
-	Stderr        string `json:"stderr"`         // 标准错误输出
-	Metrics       any    `json:"metrics"`        // 执行指标
-	CreatedAt     string `json:"created_at"`     // 创建时间，单位毫秒
-	StartedAt     string `json:"started_at"`     // 开始时间，单位毫秒
-	CompletedAt   string `json:"completed_at"`   // 完成时间，单位毫秒
-	ReturnValue   any    `json:"return_value"`   // 执行结果值
+	ID            string `json:"id"`             // Execution ID.
+	SessionID     string `json:"session_id"`     // Session ID.
+	Code          string `json:"code"`           // Execute code.
+	Language      string `json:"language"`       // execution language.
+	Timeout       int    `json:"timeout"`        // Timeout time in seconds.
+	ExitCode      int    `json:"exit_code"`      // exit code.
+	ErrorMessage  string `json:"error_message"`  // error message.
+	ExecutionTime int64  `json:"execution_time"` // Execution time in milliseconds.
+	Artifacts     any    `json:"artifacts"`      // Document Artifact Response.
+	RetryCount    int    `json:"retry_count"`    // Number of retries.
+	Stdout        string `json:"stdout"`         // standard output.
+	Stderr        string `json:"stderr"`         // standard error output.
+	Metrics       any    `json:"metrics"`        // Execution metrics.
+	CreatedAt     string `json:"created_at"`     // Creation time in milliseconds.
+	StartedAt     string `json:"started_at"`     // Start time in milliseconds.
+	CompletedAt   string `json:"completed_at"`   // Completion time in milliseconds.
+	ReturnValue   any    `json:"return_value"`   // execution result value.
 }
 
-// QueryPythonPackagesReq 查询Python第三方库请求
+// QueryPythonPackagesReq Query Python third-party package requests.
 type QueryPythonPackagesReq struct {
-	PythonVersion string `json:"python_version"`                              // Python版本
-	PackageName   string `json:"package_name"`                                // 第三方库名称
-	PypiURL       string `json:"pypi_url" default:"https://pypi.org/simple/"` // PyPI URL
+	PythonVersion string `json:"python_version"`                              // Python version.
+	PackageName   string `json:"package_name"`                                // Third-party package name.
+	PyPIURL       string `json:"pypi_url" default:"https://pypi.org/simple/"` // PyPI URL
 }
 
-// QueryPythonPackagesResp 查询Python第三方库响应
+// QueryPythonPackagesResp Query Python third-party package response.
 type QueryPythonPackagesResp struct {
-	PackageName string   `json:"package_name"` // 第三方库名称
-	Versions    []string `json:"versions"`     // 版本列表
+	PackageName string   `json:"package_name"` // Third-party package name.
+	Versions    []string `json:"versions"`     // Version list.
 }
 
-// SandBoxConfigReq 沙箱环境配置请求
+// SandBoxConfigReq sandbox environment configuration request.
 type SandBoxConfigReq struct {
-	Timeout int            `json:"timeout"` // 超时时间，单位秒
-	Body    any            `json:"body"`    // 请求体
-	Headers map[string]any `json:"headers"` // 请求头
-	Code    string         `json:"code"`    // 执行代码
+	Timeout int            `json:"timeout"` // Timeout time in seconds.
+	Body    any            `json:"body"`    // Request body.
+	Headers map[string]any `json:"headers"` // Request header.
+	Code    string         `json:"code"`    // Execute code.
 }
 
-// CreateSessionReq 创建会话请求
+// CreateSessionReq Create session request.
 type CreateSessionReq struct {
-	ID                    string         `json:"id"`                                 // 会话ID
-	TemplateID            string         `json:"template_id"`                        // 模板ID
-	Timeout               int            `json:"timeout"`                            // 超时时间，单位秒
-	CPU                   string         `json:"cpu,omitempty"`                      // CPU 核心数
-	Memory                string         `json:"memory,omitempty"`                   // 内存限制，单位MB
-	Disk                  string         `json:"disk,omitempty"`                     // 磁盘挂载点
-	EnvVars               map[string]any `json:"env_vars,omitempty"`                 // 环境变量
-	Event                 map[string]any `json:"event,omitempty"`                    // 事件数据
-	InstallTimeout        int            `json:"install_timeout,omitempty"`          // 依赖安装超时时间（秒），默认 300
-	FailOnDependencyError bool           `json:"fail_on_dependency_error,omitempty"` // 依赖安装失败是否直接失败会话，默认 true
-	AllowVersionConflicts bool           `json:"allow_version_conflicts,omitempty"`  // 是否允许版本冲突，默认 false
-	// issue #253 新增字段，会话是否已安装依赖库
-	PythonPackageIndexURL string            `json:"python_package_index_url,omitempty"` // Python第三方库索引URL
-	Dependencies          []*DependencyInfo `json:"dependencies,omitempty"`             // 依赖资源
+	ID                    string         `json:"id"`                                 // Session ID.
+	TemplateID            string         `json:"template_id"`                        // Template ID.
+	Timeout               int            `json:"timeout"`                            // Timeout time in seconds.
+	CPU                   string         `json:"cpu,omitempty"`                      // Number of CPU cores.
+	Memory                string         `json:"memory,omitempty"`                   // Memory limit, unit MB.
+	Disk                  string         `json:"disk,omitempty"`                     // Disk mount point.
+	EnvVars               map[string]any `json:"env_vars,omitempty"`                 // environment variables.
+	Event                 map[string]any `json:"event,omitempty"`                    // event data.
+	InstallTimeout        int            `json:"install_timeout,omitempty"`          // Dependency installation timeout (seconds), default 300.
+	FailOnDependencyError bool           `json:"fail_on_dependency_error,omitempty"` // Dependency installation failure will directly fail the session. Default is true.
+	AllowVersionConflicts bool           `json:"allow_version_conflicts,omitempty"`  // Whether to allow version conflicts, default false.
+	// issue #253 Added a new field, whether the session has installed dependent libraries.
+	PythonPackageIndexURL string            `json:"python_package_index_url,omitempty"` // Python third-party package index URL.
+	Dependencies          []*DependencyInfo `json:"dependencies,omitempty"`             // Depend on resources.
 }
 
 type SessionStatus string
 
 const (
-	SessionStatusCreating   SessionStatus = "creating"   // 创建中
-	SessionStatusFailed     SessionStatus = "failed"     // 失败
-	SessionStatusRunning    SessionStatus = "running"    // 运行中
-	SessionStatusTerminated SessionStatus = "terminated" // 已终止
+	SessionStatusCreating   SessionStatus = "creating"   // Creating.
+	SessionStatusFailed     SessionStatus = "failed"     // failed.
+	SessionStatusRunning    SessionStatus = "running"    // Running.
+	SessionStatusTerminated SessionStatus = "terminated" // terminated.
 )
 
-// SessionDetail 会话详情
+// SessionDetail session details.
 type SessionDetail struct {
-	ID             string         `json:"id"`               // 会话ID
-	TemplateID     string         `json:"template_id"`      // 模板ID
-	Status         SessionStatus  `json:"status"`           // 会话状态
-	ResourceLimit  map[string]any `json:"resource_limit"`   // 会话资源配置
-	WorkspacePath  string         `json:"workspace_path"`   // 工作空间路径
-	RuntimeType    string         `json:"runtime_type"`     // 运行时类型
-	RuntimeNode    string         `json:"runtime_node"`     // 运行时节点
-	PodName        string         `json:"pod_name"`         // 容器名称
-	EnvVars        map[string]any `json:"env_vars"`         // 环境变量
-	Timeout        int            `json:"timeout"`          // 超时时间，单位秒
-	CreateAt       string         `json:"created_at"`       // 创建时间
-	UpdateAt       string         `json:"updated_at"`       // 更新时间
-	CompletedAt    string         `json:"completed_at"`     // 完成时间
-	LastActivityAt string         `json:"last_activity_at"` // 最后活动时间
-	// issue #253 新增字段，会话是否已安装依赖库
-	LanguageRuntime              string            `json:"language_runtime"`                          // 执行语言运行时
-	PythonPackageIndexURL        string            `json:"python_package_index_url,omitempty"`        // Python第三方库索引URL
-	RequestedDependencies        []*DependencyInfo `json:"requested_dependencies,omitempty"`          // 请求的依赖资源
-	InstalledDependencies        []*DependencyInfo `json:"installed_dependencies,omitempty"`          // 已安装的依赖资源
-	DependencyInstallStatus      string            `json:"dependency_install_status,omitempty"`       // 依赖安装状态
-	DependencyInstallError       string            `json:"dependency_install_error,omitempty"`        // 依赖安装错误信息
-	DependencyInstallStartedAt   string            `json:"dependency_install_started_at,omitempty"`   // 依赖安装开始时间
-	DependencyInstallCompletedAt string            `json:"dependency_install_completed_at,omitempty"` // 依赖安装完成时间
+	ID             string         `json:"id"`               // Session ID.
+	TemplateID     string         `json:"template_id"`      // Template ID.
+	Status         SessionStatus  `json:"status"`           // session state.
+	ResourceLimit  map[string]any `json:"resource_limit"`   // Session resource configuration.
+	WorkspacePath  string         `json:"workspace_path"`   // workspace path.
+	RuntimeType    string         `json:"runtime_type"`     // Runtime type.
+	RuntimeNode    string         `json:"runtime_node"`     // runtime node.
+	PodName        string         `json:"pod_name"`         // Container name.
+	EnvVars        map[string]any `json:"env_vars"`         // environment variables.
+	Timeout        int            `json:"timeout"`          // Timeout time in seconds.
+	CreateAt       string         `json:"created_at"`       // creation time.
+	UpdateAt       string         `json:"updated_at"`       // Update time.
+	CompletedAt    string         `json:"completed_at"`     // completion time.
+	LastActivityAt string         `json:"last_activity_at"` // Last activity time.
+	// issue #253 Added a new field, whether the session has installed dependent libraries.
+	LanguageRuntime              string            `json:"language_runtime"`                          // Execution language runtime.
+	PythonPackageIndexURL        string            `json:"python_package_index_url,omitempty"`        // Python third-party package index URL.
+	RequestedDependencies        []*DependencyInfo `json:"requested_dependencies,omitempty"`          // Requested dependent resources.
+	InstalledDependencies        []*DependencyInfo `json:"installed_dependencies,omitempty"`          // Installed dependencies.
+	DependencyInstallStatus      string            `json:"dependency_install_status,omitempty"`       // Depends on installation status.
+	DependencyInstallError       string            `json:"dependency_install_error,omitempty"`        // Dependency installation error message.
+	DependencyInstallStartedAt   string            `json:"dependency_install_started_at,omitempty"`   // Depends on installation start time.
+	DependencyInstallCompletedAt string            `json:"dependency_install_completed_at,omitempty"` // Depends on installation completion time.
 }
 
-// 依赖库信息
+// Dependency library information.
 type DependencyInfo struct {
-	Name            string `json:"name"`                       // 第三方库名称
-	Version         string `json:"version"`                    // 版本号
-	InstallLocation string `json:"install_location,omitempty"` // 安装位置
-	InstallTime     string `json:"install_time,omitempty"`     // 安装时间
-	IsFromTemplate  *bool  `json:"is_from_template,omitempty"` // 是否从模板安装
+	Name            string `json:"name"`                       // Third-party package name.
+	Version         string `json:"version"`                    // version number.
+	InstallLocation string `json:"install_location,omitempty"` // Installation location.
+	InstallTime     string `json:"install_time,omitempty"`     // Installation time.
+	IsFromTemplate  *bool  `json:"is_from_template,omitempty"` // Whether to install from a template.
 }
 
-// ListSessionsReq 列举会话请求
+// ListSessionsReq lists session requests.
 type ListSessionsReq struct {
-	Limit  int           `json:"limit"`  // 分页大小
-	Offset int           `json:"offset"` // 分页偏移量
-	Status SessionStatus `json:"status"` // 会话状态
+	Limit  int           `json:"limit"`  // paging size.
+	Offset int           `json:"offset"` // paging offset.
+	Status SessionStatus `json:"status"` // session state.
 }
 
-// ListSessionsResp 列举会话响应
+// ListSessionsResp lists session responses.
 type ListSessionsResp struct {
-	Sessions []*SessionDetail `json:"items"`    // 会话列表
-	Total    int              `json:"total"`    // 会话总数
-	Limit    int              `json:"limit"`    // 分页大小
-	Offset   int              `json:"offset"`   // 分页偏移量
-	HasMore  bool             `json:"has_more"` // 是否还有更多数据
+	Sessions []*SessionDetail `json:"items"`    // Conversation list.
+	Total    int              `json:"total"`    // Total number of sessions.
+	Limit    int              `json:"limit"`    // paging size.
+	Offset   int              `json:"offset"`   // paging offset.
+	HasMore  bool             `json:"has_more"` // Is there more data?.
 }
 
-// InstallDependenciesReq 安装依赖库请求
+// InstallDependenciesReq installation dependency request.
 type InstallDependenciesReq struct {
-	Dependencies []*DependencyInfo `json:"dependencies"` // 依赖资源
-	// 例如pypi的https://pypi.org/simple
-	PythonPackageIndexURL string `json:"python_package_index_url,omitempty"` // Python第三方库索引URL
+	Dependencies []*DependencyInfo `json:"dependencies"` // Depend on resources.
+	// For example pypi https://pypi.org/simple.
+	PythonPackageIndexURL string `json:"python_package_index_url,omitempty"` // Python third-party package index URL.
 }
 
-// UploadSkillArchiveReq 上传 Skill 压缩包请求
+// UploadSkillArchiveReq Upload Skill compressed package request.
 type UploadSkillArchiveReq struct {
-	WorkDir  string `json:"work_dir"`  // 会话工作目录
-	FileName string `json:"file_name"` // 压缩包文件名
-	Content  []byte `json:"content"`   // 压缩包内容
+	WorkDir  string `json:"work_dir"`  // session working directory.
+	FileName string `json:"file_name"` // Compressed package file name.
+	Content  []byte `json:"content"`   // Compressed package contents.
 }
 
-// UploadSkillArchiveResp 上传 Skill 压缩包响应
+// UploadSkillArchiveResp Upload Skill compressed package response.
 type UploadSkillArchiveResp struct {
 	SessionID          string `json:"session_id"`
 	Mode               string `json:"mode,omitempty"`
@@ -686,14 +686,14 @@ type UploadSkillArchiveResp struct {
 	Mocked             bool   `json:"mocked"`
 }
 
-// ExecuteShellReq 执行 shell 请求
+// ExecuteShellReq executes the shell request.
 type ExecuteShellReq struct {
-	WorkDir string `json:"work_dir"` // 会话工作目录
-	Command string `json:"command"`  // shell 命令
-	Timeout int    `json:"timeout"`  // 超时时间，单位秒
+	WorkDir string `json:"work_dir"` // session working directory.
+	Command string `json:"command"`  // shell command.
+	Timeout int    `json:"timeout"`  // Timeout time in seconds.
 }
 
-// ExecuteShellResp 执行 shell 响应
+// ExecuteShellResp execute shell response.
 type ExecuteShellResp struct {
 	SessionID     string `json:"session_id"`
 	WorkDir       string `json:"work_dir"`
@@ -705,97 +705,97 @@ type ExecuteShellResp struct {
 	Mocked        bool   `json:"mocked"`
 }
 
-// SandBoxControlPlane 沙箱控制服务接口
+// SandBoxControlPlane sandbox control service interface.
 type SandBoxControlPlane interface {
-	// 获取模版详情
+	// Get template details.
 	GetTemplateDetail(ctx context.Context, tempID string) (any, error)
-	// 创建会话
+	// Create session.
 	CreateSession(ctx context.Context, req *CreateSessionReq) (any, error)
-	// 查询会话
+	// query session.
 	QuerySession(ctx context.Context, sessionID string) (exists bool, detail *SessionDetail, err error)
-	// 删除会话
+	// Delete session.
 	DeleteSession(ctx context.Context, sessionID string) (err error)
-	// 列举会话
+	// List sessions.
 	ListSessions(ctx context.Context, req *ListSessionsReq) (resp *ListSessionsResp, err error)
-	// 执行函数(同步)
+	// Execute function (synchronous)
 	ExecuteCodeSync(ctx context.Context, sessionID string, req *ExecuteCodeReq) (*ExecuteCodeResp, error)
-	// 增量安装 Python 依赖
+	// Incrementally install Python dependencies.
 	InstallPythonDependencies(ctx context.Context, sessionID string, req *InstallDependenciesReq) (detail *SessionDetail, err error)
-	// 上传 Skill 压缩包
+	// Upload Skill compressed package.
 	UploadSkillArchive(ctx context.Context, sessionID string, req *UploadSkillArchiveReq) (*UploadSkillArchiveResp, error)
-	// 执行 shell 命令
+	// Execute shell command.
 	ExecuteShell(ctx context.Context, sessionID string, req *ExecuteShellReq) (*ExecuteShellResp, error)
 }
 
-// ChatCompletionReq 聊天完成请求
+// ChatCompletionReq chat completion request.
 type ChatCompletionReq struct {
-	Model            string                  `json:"model"`             // 模型名称，当传空字符串（""）并且不传model_id的时候代表调用默认模型（如果admin没有配置全局默认模型，调用会报错）
-	Messages         []ChatCompletionMessage `json:"messages"`          // 消息列表
-	Stream           bool                    `json:"stream"`            // 是否流式返回，默认false
-	TopK             int                     `json:"top_k"`             // 采样池大小，仅从概率最高的前 k 个 token 中选择，k 为整数。限制生成时的候选范围。k=1 时等价于贪心搜索（完全确定）；k=50 时允许更多样性，但可能降低相关性。取值范围1~∞
-	TopP             float64                 `json:"top_p"`             // 核采样，取值范围0~1，平衡生成结果的多样性和质量。值越小，输出越集中（如 0.9 仅保留概率最高的部分）；值越大，输出越随机。
-	FrequencyPenalty float64                 `json:"frequency_penalty"` // 频率惩罚，降低重复出现 token 的概率，范围通常为 -2.0~2.0。抑制重复内容。正值（如 0.5）惩罚重复词；负值鼓励重复（较少使用）
-	PresencePenalty  float64                 `json:"presence_penalty"`  // 存在惩罚，降低已出现过的 token 的概率，范围通常为 -2.0~2.0。鼓励生成新话题或词汇。例如设为 0.2 时，模型会避免重复使用已生成的词语。
-	Temperature      float64                 `json:"temperature"`       // 控制随机性（高=创意，低=严谨），0.1 生成保守结果，1.0 更灵活0~1，部分saas模型不支持0值
-	MaxTokens        int                     `json:"max_tokens"`        // 最大生成长度,，取值范围不可以超出模型最大上下文长度
-	ModelID          string                  `json:"model_id"`          // 模型ID，当传空字符串（""）并且不传model的时候代表调用默认模型（如果admin没有配置全局默认模型，调用会报错）
+	Model            string                  `json:"model"`             // Model name. When an empty string ("") is passed and no model_id is passed, it means calling the default model (if the admin does not configure a global default model, the call will report an error)
+	Messages         []ChatCompletionMessage `json:"messages"`          // Message list.
+	Stream           bool                    `json:"stream"`            // Whether to stream returns, default false.
+	TopK             int                     `json:"top_k"`             // Sampling pool size, select only from the top k tokens with the highest probability, k is an integer. Limit the range of candidates during generation. k=1 is equivalent to a greedy search (completely deterministic); k=50 allows more diversity but may reduce relevance. Value range 1~∞.
+	TopP             float64                 `json:"top_p"`             // Kernel sampling, with a value ranging from 0 to 1, balances the diversity and quality of generated results. The smaller the value, the more concentrated the output (for example, 0.9 only retains the parts with the highest probability); the larger the value, the more random the output.
+	FrequencyPenalty float64                 `json:"frequency_penalty"` // Frequency penalty, which reduces the probability of repeated tokens, usually ranges from -2.0~2.0. Suppress duplicate content. Positive values (such as 0.5) penalize repetition of words; negative values encourage repetition (less used)
+	PresencePenalty  float64                 `json:"presence_penalty"`  // There is a penalty that reduces the probability of tokens that have appeared, usually in the range of -2.0~2.0. Encourage the generation of new topics or vocabulary. For example, when set to 0.2, the model will avoid reusing generated words.
+	Temperature      float64                 `json:"temperature"`       // Control randomness (high = creative, low = rigorous), 0.1 generates conservative results, 1.0 is more flexible, 0~1, some saas models do not support the 0 value.
+	MaxTokens        int                     `json:"max_tokens"`        // Maximum generation length, the value range cannot exceed the maximum context length of the model.
+	ModelID          string                  `json:"model_id"`          // Model ID. When an empty string ("") is passed and no model is passed, it means calling the default model (if the admin does not configure a global default model, the call will report an error)
 }
 
-// ChatCompletionResp 聊天完成响应
+// ChatCompletionResp chat completion response.
 type ChatCompletionResp struct {
-	ID      string                 `json:"id"`      // 响应ID
-	Object  string                 `json:"object"`  // 对象类型，固定值"chat.completion"
-	Created int64                  `json:"created"` // 创建时间戳
-	Model   string                 `json:"model"`   // 模型名称
-	Choices []ChatCompletionChoice `json:"choices"` // 生成结果列表
-	Usage   ChatCompletionUsage    `json:"usage"`   // 消耗统计
+	ID      string                 `json:"id"`      // Response ID.
+	Object  string                 `json:"object"`  // Object type, fixed value "chat.completion".
+	Created int64                  `json:"created"` // Create timestamp.
+	Model   string                 `json:"model"`   // Model name.
+	Choices []ChatCompletionChoice `json:"choices"` // Generate result list.
+	Usage   ChatCompletionUsage    `json:"usage"`   // Consumption statistics.
 }
 
 type ChatCompletionChoice struct {
-	Index        int                   `json:"index"`             // 结果索引
-	Message      ChatCompletionMessage `json:"message,omitempty"` // 消息内容, 流式返回时为空
-	Delta        ChatCompletionMessage `json:"delta,omitempty"`   // 增量消息内容, 非流式返回时为空
-	FinishReason string                `json:"finish_reason"`     // 完成原因
-	Flag         int                   `json:"flag"`              // 标志位
+	Index        int                   `json:"index"`             // Result index.
+	Message      ChatCompletionMessage `json:"message,omitempty"` // Message content, empty when returned by streaming.
+	Delta        ChatCompletionMessage `json:"delta,omitempty"`   // Incremental message content, empty when non-streaming return.
+	FinishReason string                `json:"finish_reason"`     // Completion reason.
+	Flag         int                   `json:"flag"`              // Flag bit.
 }
 
-// ChatCompletionMessage 消息结构体
+// ChatCompletionMessage message structure.
 type ChatCompletionMessage struct {
-	Role    string `json:"role,omitempty"`    // 角色
-	Content string `json:"content,omitempty"` // 内容
+	Role    string `json:"role,omitempty"`    // role.
+	Content string `json:"content,omitempty"` // content.
 }
 
-// ChatCompletionUsage 消耗统计结构体
+// ChatCompletionUsage consumption statistics structure.
 type ChatCompletionUsage struct {
-	PromptTokens        int                       `json:"prompt_tokens"`         // 提示词 token 数
-	CompletionTokens    int                       `json:"completion_tokens"`     // 完成 token 数
-	TotalTokens         int                       `json:"total_tokens"`          // 总 token 数
-	PromptTokensDetails ChatCompletionTokenDetail `json:"prompt_tokens_details"` // 提示词 token 数详情
+	PromptTokens        int                       `json:"prompt_tokens"`         // Prompt word token number.
+	CompletionTokens    int                       `json:"completion_tokens"`     // Complete token count.
+	TotalTokens         int                       `json:"total_tokens"`          // Total number of tokens.
+	PromptTokensDetails ChatCompletionTokenDetail `json:"prompt_tokens_details"` // Prompt word token number details.
 }
 
-// ChatCompletionTokenDetail 提示词 token 数详情结构体
+// ChatCompletionTokenDetail prompt word token number detail structure.
 type ChatCompletionTokenDetail struct {
-	CachedTokens   int `json:"cached_tokens"`   // 缓存 token 数
-	UncachedTokens int `json:"uncached_tokens"` // 未缓存 token 数
+	CachedTokens   int `json:"cached_tokens"`   // Number of cached tokens.
+	UncachedTokens int `json:"uncached_tokens"` // Number of uncached tokens.
 }
 
-// MFModelAPIClient 模型管理API接口
+// MFModelAPIClient model management API interface.
 type MFModelAPIClient interface {
-	// 调用模型
+	// call model.
 	ChatCompletion(ctx context.Context, req *ChatCompletionReq) (resp *ChatCompletionResp, err error)
-	// 调用模型流式返回
+	// Call model streaming return.
 	StreamChatCompletion(ctx context.Context, req *ChatCompletionReq) (chan string, chan error, error)
-	// 获取 embedding 向量
+	// Get embedding vector.
 	Embeddings(ctx context.Context, req *EmbeddingReq) (resp *EmbeddingResp, err error)
 }
 
-// GetPromptResp 获取提示词响应
+// GetPromptResp Gets the prompt word response.
 type GetPromptResp struct {
-	PromptID   string `json:"prompt_id"`   // 提示词ID
-	PromptName string `json:"prompt_name"` // 提示词名称
-	ModelID    string `json:"model_id"`    // 模型ID
-	ModelName  string `json:"model_name"`  // 模型名称
-	Messages   string `json:"messages"`    // 提示词内容
+	PromptID   string `json:"prompt_id"`   // Prompt word ID.
+	PromptName string `json:"prompt_name"` // Prompt word name.
+	ModelID    string `json:"model_id"`    // Model ID.
+	ModelName  string `json:"model_name"`  // Model name.
+	Messages   string `json:"messages"`    // Prompt word content.
 }
 
 const (
@@ -826,13 +826,13 @@ type EmbeddingResp struct {
 	Data []EmbeddingData `json:"data"`
 }
 
-// MFModelManager 模型管理接口
+// MFModelManager model management interface.
 type MFModelManager interface {
-	// 获取提示词
+	// Get prompt words.
 	GetPromptByPromptID(ctx context.Context, promptID string) (resp *GetPromptResp, err error)
-	// 获取 embedding 模型信息
+	// Get embedding model information.
 	GetEmbeddingModel(ctx context.Context, modelName string, modelType string) (resp *EmbeddingModel, err error)
-	// GetDefaultEmbeddingModel 取某 model_type 下的系统默认小模型；未配置默认时返回 (nil, nil)
+	// GetDefaultEmbeddingModel gets the system default small model under a certain model_type; returns (nil, nil) when the default is not configured.
 	GetDefaultEmbeddingModel(ctx context.Context, modelType string) (resp *EmbeddingModel, err error)
 }
 
@@ -861,13 +861,13 @@ type VegaCatalogRequest struct {
 	Name        string   `json:"name"`
 	Tags        []string `json:"tags"`
 	Description string   `json:"description"`
-	// Internal 系统内部目录：在权限服务按 internal_catalog 类型注册，仅超级管理员可见
+	// Internal system internal catalog: registered in the permission service by internal_catalog type, visible only to super administrators.
 	Internal bool `json:"internal"`
-	// Enabled 目录启用状态。逻辑目录若为 false，其下 dataset 的读写会被
-	// vega 以 Catalog.IsDisabled(409) 拒绝，因此内置目录必须建成 enabled。
+	// Enabled Directory enabled status. If the logical directory is false, the reading and writing of the dataset under it will be blocked.
+	// vega is rejected with Catalog.IsDisabled(409), so the built-in catalog must be enabled.
 	Enabled bool `json:"enabled"`
-	// ConnectorType 连接器类型：逻辑目录恒为空。PUT 更新时该字段不可变，
-	// 必须原样回填当前值，否则 vega 返回 400。
+	// ConnectorType Connector type: The logical directory is always empty. This field is immutable when updated by PUT.
+	// The current value must be backfilled unchanged, otherwise vega returns 400.
 	ConnectorType string `json:"connector_type,omitempty"`
 }
 
@@ -881,10 +881,10 @@ type VegaCatalog struct {
 	ConnectorType string   `json:"connector_type"`
 }
 
-// VegaResourceIndexConfig 资源级索引配置。DefaultEmbeddingModel 是 vega 解析向量
-// 字段模型的兜底位置，且不会进 OpenSearch mapping —— 模型快照必须落在这里，不能
-// 放进向量属性的 feature config(那会被原样拷进 knn_vector mapping 并被 OpenSearch
-// 以 unknown parameter 拒绝，索引建不出来)。
+// VegaResourceIndexConfig resource-level index configuration. DefaultEmbeddingModel is a vega parsing vector.
+// The bottom position of the field model, and will not enter OpenSearch mapping - the model snapshot must fall here and cannot.
+// into the feature config of the vector attribute (that will be copied unchanged into knn_vector mapping and used by OpenSearch.
+// Rejected with unknown parameter, the index cannot be built).
 type VegaResourceIndexConfig struct {
 	DefaultEmbeddingModel string `json:"default_embedding_model,omitempty"`
 }
@@ -918,10 +918,10 @@ type VegaResource struct {
 type VegaBackendClient interface {
 	GetCatalogByID(ctx context.Context, id string) (*VegaCatalog, error)
 	CreateCatalog(ctx context.Context, req *VegaCatalogRequest) (*VegaCatalog, error)
-	// UpdateCatalog 更新目录的展示信息(名称/标签/描述)。enabled 与 connector_type
-	// 不可由该接口改动，调用方须原样回填。
+	// UpdateCatalog updates the display information of the catalog (name/label/description). enabled and connector_type.
+	// It cannot be changed by this interface, and the caller must backfill it as it is.
 	UpdateCatalog(ctx context.Context, req *VegaCatalogRequest) error
-	// EnableCatalog 启用目录(vega 的 enabled 只能走该端点，PUT 改会 409)。
+	// EnableCatalog enables the catalog (vega's enabled can only access this endpoint, PUT will be changed to 409).
 	EnableCatalog(ctx context.Context, id string) error
 	GetResourceByID(ctx context.Context, id string) (*VegaResource, error)
 	CreateResource(ctx context.Context, req *VegaResourceRequest) (*VegaResource, error)
@@ -930,13 +930,13 @@ type VegaBackendClient interface {
 	DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error
 }
 
-// OssObject OSS 对象结构体
+// OssObject OSS object structure.
 type OssObject struct {
 	StorageID  string
 	StorageKey string
 }
 
-// OSSGatewayBackendClient OSS 网关后端客户端接口
+// OSSGatewayBackendClient OSS gateway backend client interface.
 type OSSGatewayBackendClient interface {
 	UploadFile(ctx context.Context, object *OssObject, content []byte) error
 	GetDownloadURL(ctx context.Context, object *OssObject) (string, error)

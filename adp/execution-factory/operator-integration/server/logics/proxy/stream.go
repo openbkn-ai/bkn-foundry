@@ -17,25 +17,25 @@ const (
 	defaultBufferSize = 4096
 )
 
-// StreamProcessor 流式处理器
+// StreamProcessor stream processor.
 type StreamProcessor struct {
 	logger interfaces.Logger
 }
 
-// NewStreamProcessor 创建流式处理器
+// NewStreamProcessor creates a stream processor.
 func NewStreamProcessor(logger interfaces.Logger) *StreamProcessor {
 	return &StreamProcessor{
 		logger: logger,
 	}
 }
 
-// ProcessSSE 处理SSE流
+// ProcessSSE processes SSE streams.
 func (p *StreamProcessor) ProcessSSE(ctx context.Context, reader io.Reader, writer io.Writer, isSSE bool) error {
 	bufReader := bufio.NewReader(reader)
 	var (
-		// 记录最后一行是否是结束标记
+		// Record whether the last line is an end tag.
 		receivedDone bool
-		// 记录是否接收到任何数据
+		// Log whether any data was received.
 		receivedData bool
 		buffer       bytes.Buffer
 	)
@@ -45,17 +45,17 @@ func (p *StreamProcessor) ProcessSSE(ctx context.Context, reader io.Reader, writ
 			return fmt.Errorf("read non sse data failed: %w", err)
 		}
 		rawContent := buffer.String()
-		// 将整个响应内容作为单个SSE数据返回
-		// 确保JSON等格式数据不被分割，保持完整性
+		// Return the entire response content as a single SSE data.
+		// Ensure that data in JSON and other formats are not split and maintain integrity.
 		trimmedContent := strings.TrimRight(rawContent, "\n")
-		// 将多行内容压缩为单行，保持JSON完整性
+		// Compress multiple lines of content into a single line, maintaining JSON integrity.
 		singleLineContent := strings.ReplaceAll(trimmedContent, "\n", "")
 		if _, err := fmt.Fprintf(writer, "data: %s\n\n", singleLineContent); err != nil {
 			return err
 		}
 		receivedData = true
 	} else {
-		// 原有流式处理逻辑
+		// Original streaming logic.
 		for {
 			select {
 			case <-ctx.Done():
@@ -73,7 +73,7 @@ func (p *StreamProcessor) ProcessSSE(ctx context.Context, reader io.Reader, writ
 					continue
 				}
 				receivedData = true
-				// 如果包含[data: [DONE]]，则标记为完成
+				// Mark complete if [data: [DONE]] is included.
 				if strings.Contains(string(line), "data: [DONE]") {
 					lineStr := strings.TrimRight(string(line), "\n")
 					if strings.TrimSpace(lineStr) == "data: [DONE]" {
@@ -93,10 +93,10 @@ func (p *StreamProcessor) ProcessSSE(ctx context.Context, reader io.Reader, writ
 	return p.checkReceivedData(writer, receivedData, receivedDone)
 }
 
-// ProcessHTTPStream 处理HTTP流
+// ProcessHTTPStream processes HTTP streams.
 func (p *StreamProcessor) ProcessHTTPStream(ctx context.Context, reader io.Reader, writer io.Writer) error {
-	buffer := make([]byte, defaultBufferSize) // 4KB 缓冲区
-	// 记录是否接收到任何数据
+	buffer := make([]byte, defaultBufferSize) // 4KB buffer.
+	// Log whether any data was received.
 	var receivedData bool
 	for {
 		select {
@@ -125,14 +125,14 @@ func (p *StreamProcessor) ProcessHTTPStream(ctx context.Context, reader io.Reade
 	}
 }
 
-// 检查接收数据
+// Check received data.
 func (p *StreamProcessor) checkReceivedData(writer io.Writer, receivedData, receivedDone bool) (err error) {
 	if !receivedData {
-		// 发送错误消息
+		// Send error message.
 		err = errors.New("server does not support streaming or not data")
 		return
 	}
-	// 流结束时，只有在没有接收到[DONE]标记时才发送
+	// At the end of the stream, sent only if no [DONE] token has been received.
 	if receivedDone {
 		return
 	}

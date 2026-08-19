@@ -1,6 +1,6 @@
-// Package interfaces 定义接口
+// Package interfaces define interfaces.
 // @file infra.go
-// @description: 定义基础设施接口
+// @description: Define infrastructure interface.
 package interfaces
 
 import (
@@ -14,57 +14,57 @@ import (
 type ContextKey string
 
 const (
-	// KeyToken context中token key
+	// token key in KeyToken context.
 	KeyToken ContextKey = "token"
-	// KeyIP context中ip key
+	// ip key in KeyIP context.
 	KeyIP ContextKey = "ip"
-	// OperationID API操作唯一标识
+	// OperationID API operation unique identifier.
 	OperationID ContextKey = "operationID"
-	// FileNameKey 文件名
+	// FileNameKey file name.
 	FileNameKey ContextKey = "FileName"
-	// Headers header 请求参数
+	// Headers header request parameters.
 	Headers ContextKey = "headers"
 	// UserAgent user agent
 	UserAgent ContextKey = "User-Agent"
-	// IsPublic 是否公开
+	// IsPublic Is it public?.
 	IsPublic ContextKey = "is_public"
-	// KeyRequestID 请求ID
+	// KeyRequestID request ID.
 	KeyRequestID ContextKey = "request_id"
-	// 上下文键
-	KeyResponseWriter ContextKey = "response_writer" // 响应写入器
-	KeyExecutionMode  ContextKey = "execution_mode"  // 执行模式
-	KeyStreamingMode  ContextKey = "streaming_mode"  // 流式模式
-	// KeyAccountAuthContext 账户认证上下文
+	// context key.
+	KeyResponseWriter ContextKey = "response_writer" // response writer.
+	KeyExecutionMode  ContextKey = "execution_mode"  // execution mode.
+	KeyStreamingMode  ContextKey = "streaming_mode"  // streaming mode.
+	// KeyAccountAuthContext account authentication context.
 	KeyAccountAuthContext ContextKey = "account_auth_context"
-	// XBusinessDomain 业务域id
+	// XBusinessDomain business domain id.
 	XBusinessDomain ContextKey = "x-business-domain"
 )
 
-// HeaderKey 上下文键
+// HeaderKey context key.
 type HeaderKey string
 
 const (
-	// HeaderXBusinessDomain 业务域id头参数
+	// HeaderXBusinessDomain business domain id header parameter.
 	HeaderXBusinessDomain HeaderKey = "x-business-domain"
-	// HeaderXAccountID 账户ID头参数
+	// HeaderXAccountID Account ID header parameter.
 	HeaderXAccountID HeaderKey = "x-account-id"
-	// HeaderXAccountType 账户类型头参数
+	// HeaderXAccountType account type header parameter.
 	HeaderXAccountType HeaderKey = "x-account-type"
-	// HeaderUserID 用户ID
+	// HeaderUserID User ID.
 	HeaderUserID HeaderKey = "user_id"
 )
 
 const (
-	// DefaultBusinessDomain 默认业务域
+	// DefaultBusinessDomain Default business domain.
 	DefaultBusinessDomain = "bd_public"
 )
 
 const (
-	HTTP  = "http"  // http协议
-	HTTPS = "https" // https协议
+	HTTP  = "http"  // http protocol.
+	HTTPS = "https" // https protocol.
 )
 
-// Logger 日志接口
+// Logger log interface.
 type Logger interface {
 	Debug(v ...interface{})
 	Info(v ...interface{})
@@ -77,7 +77,7 @@ type Logger interface {
 	WithContext(ctx context.Context) Logger
 }
 
-// HTTPClient HTTP客户端服务接口
+// HTTPClient HTTP client service interface.
 type HTTPClient interface {
 	Get(ctx context.Context, url string, queryValues url.Values, headers map[string]string) (respCode int, respData interface{}, err error)
 	GetNoUnmarshal(ctx context.Context, url string, queryValues url.Values, headers map[string]string) (respCode int, respBody []byte, err error)
@@ -92,7 +92,7 @@ type HTTPClient interface {
 	PostStream(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (chan string, chan error, error)
 }
 
-// Cache 缓存接口
+// Cache cache interface.
 type Cache interface {
 	Set(key string, value interface{})
 	Get(key string) (interface{}, bool)
@@ -100,12 +100,12 @@ type Cache interface {
 	Size() int
 }
 
-// MetricLogger 指标日志记录器
+// MetricLogger Metric Logger.
 type MetricLogger interface {
 	Log(ctx context.Context, logType string, params interface{}) (err error)
 }
 
-// Validator 验证接口:用于验证算子名称、描述、单次导入个数、导入数据大小等
+// Validator verification interface: used to verify operator name, description, number of single imports, imported data size, etc.
 type Validator interface {
 	ValidateOperatorName(ctx context.Context, name string) (err error)
 	ValidateOperatorDesc(ctx context.Context, desc string) (err error)

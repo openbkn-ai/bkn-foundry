@@ -1,6 +1,6 @@
-// Package interfaces 定义接口
+// Package interfaces define interfaces.
 // @file logics_aigeneration.go
-// @description: AI生成相关接口
+// @description: AI generation related interfaces.
 package interfaces
 
 import (
@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// PromptTemplate 提示词模板结构
+// PromptTemplate prompt word template structure.
 type PromptTemplate struct {
 	PromptID           string `json:"prompt_id"`
 	Name               string `json:"name" validate:"required"`
@@ -17,30 +17,30 @@ type PromptTemplate struct {
 	UserPromptTemplate string `json:"user_prompt_template" validate:"required"`
 }
 
-// FormatUserPrompt 格式化用户提示词
+// FormatUserPrompt format user prompt word.
 func (p *PromptTemplate) FormatUserPrompt(args ...interface{}) string {
 	return fmt.Sprintf(p.UserPromptTemplate, args...)
 }
 
-// PromptTemplateType 提示词模板类型
+// PromptTemplateType prompt word template type.
 type PromptTemplateType string
 
 const (
-	PythonFunctionGenerator PromptTemplateType = "python_function_generator" // Python函数生成Prompt模板
-	MetadataParamGenerator  PromptTemplateType = "metadata_param_generator"  // 元数据参数生成Prompt模板
+	PythonFunctionGenerator PromptTemplateType = "python_function_generator" // Python function generates Prompt template.
+	MetadataParamGenerator  PromptTemplateType = "metadata_param_generator"  // Metadata parameters generate Prompt template.
 )
 
-// FunctionAIGenerateReq 函数AI生成请求
+// FunctionAIGenerateReq Function AI generation request.
 type FunctionAIGenerateReq struct {
-	Type    PromptTemplateType `uri:"type" validate:"required,oneof=python_function_generator metadata_param_generator"` // 提示词模板类型，必填
-	Query   string             `json:"query"`                                                                            // 用户输入，必填
-	Inputs  []ParameterDef     `json:"inputs,omitempty" form:"inputs"`                                                   // 输入参数列表
+	Type    PromptTemplateType `uri:"type" validate:"required,oneof=python_function_generator metadata_param_generator"` // Prompt word template type, required.
+	Query   string             `json:"query"`                                                                            // User input, required.
+	Inputs  []ParameterDef     `json:"inputs,omitempty" form:"inputs"`                                                   // Input parameter list.
 	Outputs []ParameterDef     `json:"outputs,omitempty" form:"outputs"`
-	Code    string             `json:"code,omitempty" form:"code"`     // 输出参数列表
-	Stream  bool               `json:"stream,omitempty" form:"stream"` // 是否流式返回
+	Code    string             `json:"code,omitempty" form:"code"`     // Output parameter list.
+	Stream  bool               `json:"stream,omitempty" form:"stream"` // Whether to stream the return.
 }
 
-// Validate 校验请求参数
+// Validate verify request parameters.
 func (f *FunctionAIGenerateReq) Validate() error {
 	switch f.Type {
 	case PythonFunctionGenerator:
@@ -57,12 +57,12 @@ func (f *FunctionAIGenerateReq) Validate() error {
 	return nil
 }
 
-// FunctionAIGeneratResp 函数智能生成响应
+// FunctionAIGeneratResp function intelligently generates responses.
 type FunctionAIGeneratResp struct {
-	Content any `json:"content"` // 生成内容
+	Content any `json:"content"` // Generate content.
 }
 
-// AIGeneratMetadataContent AI生成元数据内容
+// AIGeneratMetadataContent AI generated metadata content.
 type AIGeneratMetadataContent struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description"`
@@ -71,17 +71,17 @@ type AIGeneratMetadataContent struct {
 	Outputs     []ParameterDef `json:"outputs"`
 }
 
-// AIGenerationService AI辅助生成接口
+// AIGenerationService AI-assisted generation interface.
 type AIGenerationService interface {
-	// FunctionAIGenerate 函数智能生成
+	// FunctionAIGenerate function intelligent generation.
 	FunctionAIGenerate(ctx context.Context, req *FunctionAIGenerateReq) (*FunctionAIGeneratResp, error)
-	// FunctionAIGenerateStream 函数智能生成流式返回
+	// FunctionAIGenerateStream function intelligently generates streaming returns.
 	FunctionAIGenerateStream(ctx context.Context, req *FunctionAIGenerateReq) (respChan chan string, errChan chan error, err error)
-	// GetPromptTemplate 获取指定类型的提示词模板
+	// GetPromptTemplate Gets the prompt word template of the specified type.
 	GetPromptTemplate(ctx context.Context, tempType PromptTemplateType) (*PromptTemplate, error)
 }
 
-// GetPromptTemplateReq 获取提示词模板请求
+// GetPromptTemplateReq Gets the prompt word template request.
 type GetPromptTemplateReq struct {
-	Type PromptTemplateType `uri:"type" validate:"required,oneof=python_function_generator metadata_param_generator"` // 提示词模板类型，必填
+	Type PromptTemplateType `uri:"type" validate:"required,oneof=python_function_generator metadata_param_generator"` // Prompt word template type, required.
 }

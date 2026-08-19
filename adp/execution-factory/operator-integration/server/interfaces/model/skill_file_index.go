@@ -7,7 +7,7 @@ import (
 
 //go:generate mockgen -source=skill_file_index.go -destination=../../mocks/model_skill_file_index.go -package=mocks
 
-// SkillFileIndexDB Skill 文件索引表
+// SkillFileIndexDB Skill file index table.
 type SkillFileIndexDB struct {
 	ID            int64  `json:"id" db:"f_id"`
 	SkillID       string `json:"skill_id" db:"f_skill_id"`
@@ -23,11 +23,11 @@ type SkillFileIndexDB struct {
 	CreateTime    int64  `json:"create_time" db:"f_create_time"`
 	UpdateTime    int64  `json:"update_time" db:"f_update_time"`
 
-	// Content 仅在注册或回写对象存储时使用，不入库
+	// Content is only used when registering or writing back object storage, and is not stored in the database.
 	Content []byte `json:"-" db:"-"`
 }
 
-// ISkillFileIndex Skill 文件索引接口
+// ISkillFileIndex Skill file index interface.
 type ISkillFileIndex interface {
 	InsertSkillFile(ctx context.Context, tx *sql.Tx, file *SkillFileIndexDB) error
 	BatchInsertSkillFiles(ctx context.Context, tx *sql.Tx, files []*SkillFileIndexDB) error
