@@ -29,7 +29,7 @@
 
 **Step 1:** Link the existing cleanup-script section to the runbook and state that it never runs automatically.
 
-**Step 2:** Describe preview, three-part Owner confirmation, explicit `--confirm`, and zero-count verification.
+**Step 2:** Describe preview, three-part Owner confirmation, explicit `--confirm`, zero-count verification, and the safe `status=absent` handling for an explicitly targeted index that has already been retired.
 
 **Step 3:** State that shared log indexes need a separate reviewed delete-by-query filter and are not cleanup-script targets.
 

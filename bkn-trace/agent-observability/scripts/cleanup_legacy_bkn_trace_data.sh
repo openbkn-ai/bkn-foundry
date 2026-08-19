@@ -70,12 +70,14 @@ mysql_args=(
 )
 
 curl_args=(-fsS)
+query_curl_args=(-sS)
 if [[ -n ${OPENSEARCH_USERNAME:-} || -n ${OPENSEARCH_PASSWORD:-} ]]; then
   if [[ -z ${OPENSEARCH_USERNAME:-} || -z ${OPENSEARCH_PASSWORD:-} ]]; then
     echo "OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD must be provided together" >&2
     exit 2
   fi
   curl_args+=(--user "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD")
+  query_curl_args+=(--user "$OPENSEARCH_USERNAME:$OPENSEARCH_PASSWORD")
 fi
 tables=(
   bkn_trace_operation_call_facts
@@ -105,8 +107,21 @@ for table in "${tables[@]}"; do
   count=$(mysql "${mysql_args[@]}" --execute="SELECT COUNT(*) FROM $table")
   echo "mariadb $table count=$count"
 done
+existing_indices=()
 for index in "${indices[@]}"; do
-  count=$(curl "${curl_args[@]}" "$endpoint/$index/_count" | jq -er '.count')
+  if ! count_response=$(curl "${query_curl_args[@]}" "$endpoint/$index/_count"); then
+    echo "OpenSearch count request failed for $index" >&2
+    exit 1
+  fi
+  if [[ $(jq -r 'if .status == 404 then "absent" else empty end' <<<"$count_response") == "absent" ]]; then
+    echo "opensearch $index status=absent"
+    continue
+  fi
+  if ! count=$(jq -er '.count' <<<"$count_response"); then
+    echo "OpenSearch count response is invalid for $index" >&2
+    exit 1
+  fi
+  existing_indices+=("$index")
   echo "opensearch $index count=$count"
 done
 
@@ -121,7 +136,7 @@ for table in "${existing_tables[@]}"; do
 done
 delete_sql+=" SET FOREIGN_KEY_CHECKS=1;"
 mysql "${mysql_args[@]}" --execute="$delete_sql"
-for index in "${indices[@]}"; do
+for index in "${existing_indices[@]}"; do
   response=$(curl "${curl_args[@]}" -X POST "$endpoint/$index/_delete_by_query?conflicts=proceed&refresh=true" -H 'Content-Type: application/json' --data '{"query":{"match_all":{}}}')
   if ! jq -e '(.failures // []) | length == 0' >/dev/null <<<"$response"; then
     echo "OpenSearch cleanup reported failures for $index" >&2
@@ -136,7 +151,7 @@ for table in "${existing_tables[@]}"; do
     exit 1
   fi
 done
-for index in "${indices[@]}"; do
+for index in "${existing_indices[@]}"; do
   remaining=$(curl "${curl_args[@]}" "$endpoint/$index/_count" | jq -er '.count')
   if [[ $remaining != "0" ]]; then
     echo "OpenSearch cleanup verification failed: index=$index remaining=$remaining" >&2

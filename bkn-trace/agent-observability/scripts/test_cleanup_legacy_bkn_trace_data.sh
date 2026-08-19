@@ -66,6 +66,7 @@ printf '%s\n' \
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'printf "curl %s\n" "$*" >>"$CALL_LOG"' \
+  'if [[ ${MISSING_TRACE_INDEX:-} == 1 && $* == *"ss4o_traces-local/_count"* ]]; then echo "{\"error\":{\"reason\":\"missing\"},\"status\":404}"; exit 0; fi' \
   'if [[ $* == *"_delete_by_query"* ]]; then echo "{\"failures\":[]}"; exit 0; fi' \
   'if [[ -e $FAKE_STATE ]]; then echo "{\"count\":0}"; else echo "{\"count\":3}"; fi' \
   >"$fake_bin/curl"
@@ -83,6 +84,15 @@ if ! legacy_preview=$(env "${common[@]}" PATH="$fake_bin:$PATH" CALL_LOG="$call_
 fi
 if [[ $legacy_preview != *"bkn_trace_operation_call_facts status=absent"* ]]; then
   echo "preview must report an explicitly allowed table that is absent" >&2
+  exit 1
+fi
+
+if ! missing_index_preview=$(env "${common[@]}" PATH="$fake_bin:$PATH" CALL_LOG="$call_log" FAKE_STATE="$fake_state" MISSING_TRACE_INDEX=1 bash "$target" 2>&1); then
+  echo "preview must support an explicitly targeted OpenSearch index that is already absent" >&2
+  exit 1
+fi
+if [[ $missing_index_preview != *"opensearch ss4o_traces-local status=absent"* ]]; then
+  echo "preview must report an explicitly targeted OpenSearch index that is absent" >&2
   exit 1
 fi
 
