@@ -162,9 +162,6 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 		Return(nil).AnyTimes()
 	mockRS.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).
 		Return(nil, true, nil).AnyTimes()
-	// 列表面按可见资源过滤；这里当作持类型级授权，不过滤。
-	mockRS.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).
-		Return(nil, true, nil).AnyTimes()
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	validator := &analyzerValidatingIndexManager{}
 	service := &buildTaskService{
@@ -1560,7 +1557,10 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, lim: mockLIM}
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		service := &buildTaskService{bta: mockBTA, lim: mockLIM, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)

@@ -60,7 +60,7 @@
       "id": "resource",
       "name": "数据资源",
       "_source": "vega",
-      "_note": "数据表只保留读的两个动词(#801)。管理类(改/删/任务/授权)判在所属目录上:vega 先问这张表、拒了再问目录的 resource_manage / task_manage,所以 per-table 例外将来仍有余地。建表(create)连余地都不需要——表必须建在某个目录里,「有权建表」与「有权动这个目录」是同一件事,判的就是目录的 resource_manage",
+      "_note": "数据表只保留读的两个动词(#801)。管理类(改/删/任务/授权)判在所属目录上:vega 先问这张表、拒了再问目录的 resource_manage / task_manage。注意由此产生的两条后果,不要误以为 per-table 例外还留着余地:(1) /object-grants 按本词表校验操作,撤销之后就再也发不出新的 per-table 管理授权,vega 那一问只可能命中升级前留下的旧策略行;(2) SetObjectPermissions 是整组替换,管理员打开某张表的授权页(现在只剩两个动词)一保存,旧的 modify/task_manage 授权就被静默抹掉。真要做「这张表比目录更严」,靠的是 #512 的显式禁止,不是把动词加回来",
       "_parent_note": "不声明 parent_type/parent_operation:回落判定改由 vega 在自己的判定点做——它手上就有 catalog_id,不需要 bkn-safe 知道归属(#817)。bkn-safe 的层级机制(#827/#832/#839)保留但因此休眠:没有声明,那条代码路径一次都不会走。真出现需要服务端解析多级层级的场景,把这两个字段加回来即可",
       "operations": [
         {"id": "view_detail", "name": "查看表结构"},

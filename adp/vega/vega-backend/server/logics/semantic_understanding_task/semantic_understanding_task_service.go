@@ -206,6 +206,22 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 	return task, nil
 }
 
+// checkTaskPermission authorizes an operation on one semantic-understanding task
+// through whatever it was created against: a resource-scoped task is judged on
+// its table, a catalog-scoped one on its catalog.
+//
+// Reads matter as much as writes here. The task's input snapshot holds the
+// table's unmasked sample rows, so an unguarded detail endpoint hands out
+// exactly what the creation guard was added to protect (#571).
+func (suts *semanticUnderstandingTaskService) checkTaskPermission(ctx context.Context,
+	task *interfaces.SemanticUnderstandingTask, op string) error {
+
+	if task.Scope == interfaces.SemanticUnderstandingTaskScopeResource && task.ResourceID != "" {
+		return suts.rs.CheckResourcePermission(ctx, task.ResourceID, op)
+	}
+	return suts.cs.CheckCatalogPermission(ctx, task.CatalogID, op)
+}
+
 func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.GetByID")
 	defer span.End()
@@ -219,6 +235,10 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 	if task == nil {
 		span.SetStatus(codes.Error, "Semantic understanding task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
+	}
+	if err := suts.checkTaskPermission(ctx, task, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+		span.SetStatus(codes.Error, "Permission denied")
+		return nil, err
 	}
 	if err := suts.populateSemanticUnderstandingTaskReferences(ctx, []*interfaces.SemanticUnderstandingTask{task}); err != nil {
 		span.RecordError(err)
@@ -410,6 +430,15 @@ func (suts *semanticUnderstandingTaskService) DeleteByIDs(ctx context.Context, i
 		span.SetStatus(codes.Error, "Get semantic understanding tasks failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
+	}
+
+	// Checked before anything is deleted: a batch is one transaction, so one
+	// unauthorized id stops the whole request rather than deleting the rest.
+	for _, task := range tasks {
+		if err := suts.checkTaskPermission(ctx, task, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+			span.SetStatus(codes.Error, "Permission denied")
+			return err
+		}
 	}
 
 	toDelete := make([]string, 0, len(tasks))

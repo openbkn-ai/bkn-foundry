@@ -898,16 +898,17 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 			missingIDs = append(missingIDs, id)
 			continue
 		}
-		if buildTask.Status == interfaces.BuildTaskStatusRunning || buildTask.Status == interfaces.BuildTaskStatusStopping {
-			runningIDs = append(runningIDs, id)
-			continue
-		}
-		// Checked per task, before anything is deleted: a batch is one transaction,
-		// so one unauthorized id must stop the whole request rather than delete the
-		// rest of it (#472).
+		// Checked before anything is deleted AND before the status verdicts are
+		// reported: a batch is one transaction, so one unauthorized id stops the
+		// whole request; and answering "this one is running" to a caller with no
+		// grant would let it enumerate task ids and their state (#472).
 		if err := bts.rs.CheckResourcePermission(ctx, buildTask.ResourceID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 			span.SetStatus(codes.Error, "Permission denied")
 			return err
+		}
+		if buildTask.Status == interfaces.BuildTaskStatusRunning || buildTask.Status == interfaces.BuildTaskStatusStopping {
+			runningIDs = append(runningIDs, id)
+			continue
 		}
 		resource, err := bts.rs.GetByID(ctx, buildTask.ResourceID)
 		if err != nil {

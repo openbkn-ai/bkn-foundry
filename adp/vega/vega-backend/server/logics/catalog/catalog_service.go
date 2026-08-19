@@ -418,6 +418,11 @@ func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID 
 		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 	}
+	if catalog.Internal && interfaces.IsS2SInternalAccess(ctx) {
+		// Mirrors GetByID: internal catalogs reached over the S2S face belong to
+		// the platform, not to any account.
+		return nil
+	}
 	return cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: catalogAuthResourceType(catalog.Internal),
 		ID:   catalog.ID,

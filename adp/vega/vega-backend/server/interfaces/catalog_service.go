@@ -45,7 +45,6 @@ type CatalogService interface {
 	// ListAuthResources lists catalog auth resources with filters.
 	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
-	// InternalGetByID retrieves a Catalog by ID for internal workers.
 	// CheckCatalogPermission reports whether the caller may perform op on the
 	// catalog. Symmetric with ResourceService.CheckResourcePermission, for task
 	// services whose objects hang off a catalog rather than a table.
@@ -57,6 +56,7 @@ type CatalogService interface {
 	// otherwise be the same empty slice.
 	AuthorizedCatalogIDs(ctx context.Context, op string) (ids []string, unrestricted bool, err error)
 
+	// InternalGetByID retrieves a Catalog by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)
 	// InternalGetByIDs retrieves Catalogs for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)

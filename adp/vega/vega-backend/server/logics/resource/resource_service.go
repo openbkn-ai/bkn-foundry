@@ -604,14 +604,6 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	return resource, nil
 }
 
-// CheckResourcePermission authorizes an operation on one resource for callers
-// that hold only its id — the task services, whose objects all hang off a
-// resource. It resolves the owning catalog itself, so a caller never has to know
-// that the fallback exists.
-//
-// A missing resource is reported as forbidden rather than as "not found": the
-// caller has not proven it may see the resource, and saying which ids exist is
-// itself a disclosure.
 // AuthorizedResourceIDs answers "which resources may I act on", for listings of
 // things that hang off a resource rather than of resources themselves — build
 // tasks above all.
@@ -619,6 +611,13 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 // The type-wide grant is probed first and reported as unrestricted. That is not
 // only an optimisation: most accounts hold resource:*, and resolving a concrete
 // id set for them would mean listing every resource on every page request.
+//
+// Known narrowing gap: only the non-internal wildcard is probed, so a holder of
+// resource:* with nothing on internal_resource is still reported unrestricted and
+// sees tasks belonging to internal-catalog resources. List() does partition those.
+// It is strictly narrower than the previous behaviour — the listing had no
+// authorization at all — and closing it needs an exclusion set carried into the
+// SQL rather than a third boolean.
 //
 // Otherwise the visible set is resolved in one batch. It is deliberately the
 // whole set rather than the page's ids: the caller filters the SQL with it, so
@@ -661,6 +660,14 @@ func (rs *resourceService) AuthorizedResourceIDs(ctx context.Context, op string)
 	return out, false, nil
 }
 
+// CheckResourcePermission authorizes an operation on one resource for callers
+// that hold only its id — the task services, whose objects all hang off a
+// resource. It resolves the owning catalog itself, so a caller never has to know
+// that the fallback exists.
+//
+// A missing resource is reported as forbidden rather than as "not found": the
+// caller has not proven it may see the resource, and saying which ids exist is
+// itself a disclosure.
 func (rs *resourceService) CheckResourcePermission(ctx context.Context, resourceID string, op string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.CheckResourcePermission")
 	defer span.End()
@@ -685,6 +692,14 @@ func (rs *resourceService) CheckResourcePermission(ctx context.Context, resource
 		return err
 	}
 	_, parentInternal := internalCatalogs[resource.CatalogID]
+	if parentInternal && interfaces.IsS2SInternalAccess(ctx) {
+		// Same exemption GetByID makes: an internal-catalog resource reached over
+		// the in-cluster S2S face is infrastructure, never granted to business
+		// roles, so a per-account check there can only refuse a caller that is
+		// acting for the platform itself. Without this the guard would break the
+		// Context Loader's reads of internal datasets.
+		return nil
+	}
 	return rs.checkResourceOrCatalog(ctx, resource.ID, resource.CatalogID, parentInternal, op)
 }
 

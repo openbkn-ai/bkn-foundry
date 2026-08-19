@@ -379,6 +379,14 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 			missingIDs = append(missingIDs, id)
 			continue
 		}
+		// Checked before anything is deleted, and before the status verdicts are
+		// reported: a batch is one transaction, and telling an unauthorized caller
+		// which ids are running is already a disclosure (#269).
+		if err := dts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+			span.SetStatus(codes.Error, "Permission denied")
+			return err
+		}
 		if task.Status == interfaces.DiscoverTaskStatusPending || task.Status == interfaces.DiscoverTaskStatusRunning {
 			runningIDs = append(runningIDs, id)
 			continue

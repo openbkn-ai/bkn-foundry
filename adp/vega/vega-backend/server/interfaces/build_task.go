@@ -140,8 +140,8 @@ type BuildTasksQueryParams struct {
 	// pages do not develop holes.
 	ResourceIDs []string
 	CatalogID   string
-	Statuses   []string // Multi-valued state filtering (IN) Empty means no filtering
-	Mode       string
+	Statuses    []string // Multi-valued state filtering (IN) Empty means no filtering
+	Mode        string
 }
 
 type KeyValue struct {

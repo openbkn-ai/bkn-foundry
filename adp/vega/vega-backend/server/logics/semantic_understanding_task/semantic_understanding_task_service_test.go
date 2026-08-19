@@ -447,7 +447,11 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-	service := &semanticUnderstandingTaskService{suta: taskAccess}
+	permRS := mock_interfaces.NewMockResourceService(ctrl)
+	permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	permCS := mock_interfaces.NewMockCatalogService(ctrl)
+	permCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 	taskAccess.EXPECT().
 		MarkRunning(gomock.Any(), "semantic-task-1", gomock.Any()).
@@ -472,7 +476,11 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService}
+		permRS := mock_interfaces.NewMockResourceService(ctrl)
+		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		permCS := mock_interfaces.NewMockCatalogService(ctrl)
+		permCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService, rs: permRS, cs: permCS}
 		task := &interfaces.SemanticUnderstandingTask{
 			ID:      "semantic-task-1",
 			Creator: interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
@@ -497,7 +505,11 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess}
+		permRS := mock_interfaces.NewMockResourceService(ctrl)
+		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		permCS := mock_interfaces.NewMockCatalogService(ctrl)
+		permCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
 
@@ -513,7 +525,11 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService}
+		permRS := mock_interfaces.NewMockResourceService(ctrl)
+		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		permCS := mock_interfaces.NewMockCatalogService(ctrl)
+		permCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService, rs: permRS, cs: permCS}
 		task := &interfaces.SemanticUnderstandingTask{ID: "semantic-task-2"}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "semantic-task-2").Return(task, nil)
@@ -595,7 +611,11 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess}
+		permRS := mock_interfaces.NewMockResourceService(ctrl)
+		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		permCS := mock_interfaces.NewMockCatalogService(ctrl)
+		permCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "missing", "task-2"}).
@@ -616,7 +636,11 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess}
+		permRS := mock_interfaces.NewMockResourceService(ctrl)
+		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		permCS := mock_interfaces.NewMockCatalogService(ctrl)
+		permCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "task-2"}).
@@ -635,7 +659,11 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		service := &semanticUnderstandingTaskService{suta: taskAccess}
+		permRS := mock_interfaces.NewMockResourceService(ctrl)
+		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		permCS := mock_interfaces.NewMockCatalogService(ctrl)
+		permCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().
 			GetByIDs(gomock.Any(), []string{"task-1", "missing"}).
