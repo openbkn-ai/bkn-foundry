@@ -188,3 +188,65 @@ func mustNoErrSeed(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+// TestSeedPrunesWithdrawnOperations covers the half that upserting cannot do.
+//
+// A withdrawn operation used to survive in every UPGRADED deployment: the seed
+// only ever inserted or updated, so the row stayed, the grant console kept
+// offering the verb, and an administrator could hand out a permission that no
+// code enforces. A fresh install never showed it, which is exactly why it went
+// unnoticed — it was found on a real cluster where knowledge_network carried
+// both data_query and query_data after the rename in #882.
+func TestSeedPrunesWithdrawnOperations(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate what an older seed left behind on an upgraded deployment.
+	stale := []model.Operation{
+		{ResourceTypeID: "knowledge_network", ID: "data_query", Name: "数据查询"},
+		{ResourceTypeID: "resource", ID: "modify", Name: "修改"},
+	}
+	if err := db.Create(&stale).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range stale {
+		var n int64
+		if err := db.Model(&model.Operation{}).
+			Where("resource_type_id = ? AND id = ?", tc.ResourceTypeID, tc.ID).
+			Count(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		if n != 0 {
+			t.Errorf("%s/%s survived the seed — the console would still offer a verb nothing enforces",
+				tc.ResourceTypeID, tc.ID)
+		}
+	}
+
+	// Declared operations are untouched: pruning must not eat the vocabulary.
+	for _, tc := range []struct{ rtype, op string }{
+		{"resource", "view_detail"},
+		{"resource", "query_data"},
+		{"catalog", "resource_manage"},
+		{"knowledge_network", "query_data"},
+	} {
+		var n int64
+		if err := db.Model(&model.Operation{}).
+			Where("resource_type_id = ? AND id = ?", tc.rtype, tc.op).
+			Count(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		if n != 1 {
+			t.Errorf("%s/%s is declared but missing after the seed", tc.rtype, tc.op)
+		}
+	}
+}

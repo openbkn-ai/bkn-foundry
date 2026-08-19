@@ -233,7 +233,9 @@ func seedCatalog(db *gorm.DB) error {
 		}).Create(&rtRow).Error; err != nil {
 			return err
 		}
+		declared := make([]string, 0, len(rt.Operations))
 		for _, op := range rt.Operations {
+			declared = append(declared, op.ID)
 			opRow := model.Operation{
 				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
 				ParentOperationID: op.ParentOperation,
@@ -245,8 +247,31 @@ func seedCatalog(db *gorm.DB) error {
 				return err
 			}
 		}
+		// Drop operations this type no longer declares. Upserting alone leaves a
+		// withdrawn operation in the vocabulary of every UPGRADED deployment
+		// forever — a verb nothing enforces, still offered by the grant console,
+		// so an administrator can hand out a permission that decides nothing.
+		// A fresh install never shows it, which is what makes it easy to miss.
+		//
+		// Safe to delete here because this table has exactly one writer: the
+		// seed. Nothing self-registers into it, so "not in the file" and "no
+		// longer exists" are the same statement.
+		if err := deleteUndeclaredOperations(db, rt.ID, declared); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// deleteUndeclaredOperations removes the operation rows of one resource type
+// that the seeded catalog no longer lists. Passing no declared operations
+// deletes them all, which is what withdrawing a type's whole vocabulary means.
+func deleteUndeclaredOperations(db *gorm.DB, resourceTypeID string, declared []string) error {
+	q := db.Where("resource_type_id = ?", resourceTypeID)
+	if len(declared) > 0 {
+		q = q.Where("id NOT IN ?", declared)
+	}
+	return q.Delete(&model.Operation{}).Error
 }
 
 // validateHierarchy checks the type-level hierarchy declared in catalog.json:
