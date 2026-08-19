@@ -128,7 +128,7 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 		return toolResult, err
 	}
 
-	// status_code 在100-300间才算成功
+	// status_code is considered successful only when it is between 100 and 300.
 	if http.StatusContinue <= toolResult.StatusCode &&
 		toolResult.StatusCode < http.StatusMultipleChoices {
 		return toolResult.Body, nil
@@ -212,7 +212,7 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 		return mcpResult, err
 	}
 
-	// MCP 协议以 is_error 表达工具自身的失败，不存在 HTTP status_code
+	// The MCP protocol uses is_error to express tool-level failures; there is no HTTP status_code.
 	if mcpResult.IsError {
 		return nil, fmt.Errorf("execute MCP failed: %v", mcpResult.normalize())
 	}
@@ -220,23 +220,23 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 	return mcpResult.normalize(), nil
 }
 
-// mcpCallToolResult 对应执行工厂 MCP 代理的返回结构（POST /mcp/proxy/{mcp_id}/tool/call）：
+// mcpCallToolResult matches the response structure of the execution-factory MCP proxy (POST /mcp/proxy/{mcp_id}/tool/call):
 // {"content":[{"type":"text","text":"..."}],"is_error":false}
-// 与 tool-box 代理的 executionResult{status_code,body} 不同，不可混用。
+// It differs from the tool-box proxy executionResult{status_code, body} and must not be mixed with it.
 type mcpCallToolResult struct {
 	Content []map[string]any `json:"content"`
 	IsError bool             `json:"is_error"`
 }
 
-// normalize 把 MCP content 块压成便于下游消费的结果。
+// normalize compacts MCP content blocks into a result that is easier for downstream consumers to handle.
 //
-// 结果恒为 JSON 对象：执行记录落在 OpenSearch 的 results.result 字段上，该字段已按 object
-// 映射（tool 类型返回的是 HTTP body 对象），返回裸标量会触发 mapper_parsing_exception 导致
-// 整条执行记录写不进去。同理，同一字段名在不同执行间必须保持同一类型，故按内容形态分键：
-//   - 全 text 块且拼接后是 JSON 对象：直接返回该对象
-//   - 全 text 块且拼接后是 JSON 数组：{"items": [...]}
-//   - 其余全 text 块（纯文本或 JSON 标量）：{"text": "..."}
-//   - 含非 text 块（图片、资源等）：{"content": [...]}
+// The result is always a JSON object: execution records are stored in the OpenSearch results.result field, which is mapped as object.
+// Tool executions return an HTTP body object; returning a bare scalar triggers mapper_parsing_exception and causes
+// the whole execution record to fail to write. Likewise, the same field name must keep the same type across executions, so keys are split by content shape:
+// - All text blocks whose concatenated content is a JSON object: return that object directly.
+// - All text blocks whose concatenated content is a JSON array: {"items": [...]}
+// - Other all-text blocks, including plain text or JSON scalars: {"text": "..."}
+// - Blocks containing non-text content, such as images or resources: {"content": [...]}
 func (r mcpCallToolResult) normalize() map[string]any {
 	texts := make([]string, 0, len(r.Content))
 	for _, item := range r.Content {

@@ -49,7 +49,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 		omAccess := omock.NewMockOntologyManagerAccess(mockCtrl)
 		ots := omock.NewMockObjectTypeService(mockCtrl)
 
-		// 设置全局变量
+		// Set global variables.
 		logics.OMA = omAccess
 
 		service := &actionTypeService{
@@ -199,7 +199,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 			omAccess.EXPECT().GetActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(actionType, map[string]any{"id": actionType.ATID}, true, nil)
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), objectTypeID).Return(objectType, true, nil)
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
-				// 验证条件是否正确合并
+				// Verify that conditions are merged correctly.
 				So(query.ActualCondition, ShouldNotBeNil)
 				So(query.ActualCondition.Operation, ShouldEqual, "and")
 				return objects, nil
@@ -314,9 +314,9 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 			So(result.Actions[0].DynamicParams["input_param"], ShouldEqual, "user_supplied")
 		})
 
-		// issue #371（#291 regression）：召回/预览路径不再校验动态参数完整性。
-		// get_action_info 走此路，需先拿到 schema 才知道要传哪些动态参数；
-		// 缺参时应成功返回行动定义（缺失的 input 参数值为空），而非 400 死锁。
+		// Issue #371 (#291 regression): the recall/preview path no longer validates dynamic parameter completeness.
+		// get_action_info uses this path and must obtain the schema first to know which dynamic parameters to pass.
+		// When parameters are missing, it should return the action definition successfully with missing input values empty, rather than deadlocking with 400.
 		Convey("成功 - 参数来源为输入但未提供 dynamic_params（召回不校验完整性）", func() {
 			query := &interfaces.ActionQuery{
 				KNID:         knID,
@@ -364,7 +364,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 			result, err := service.GetActionsByActionTypeID(ctx, query)
 			So(err, ShouldBeNil)
 			So(result.TotalCount, ShouldEqual, 1)
-			// 缺失的 input 参数在召回结果中值为空（nil），交由执行阶段填充/校验
+			// Missing input parameters are empty (nil) in recall results and are filled or validated in the execution stage.
 			So(result.Actions[0].DynamicParams["input_param"], ShouldBeNil)
 		})
 
@@ -655,7 +655,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 			actionType := interfaces.ActionType{
 				ATID:         actionTypeID,
 				ATName:       "test_action",
-				ObjectTypeID: "", // 未绑定对象类
+				ObjectTypeID: "", // Unbound object type.
 				ActionSource: interfaces.ActionSource{
 					Type: "tool",
 				},
@@ -684,7 +684,7 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 			actionType := interfaces.ActionType{
 				ATID:         actionTypeID,
 				ATName:       "test_action",
-				ObjectTypeID: "", // 未绑定对象类
+				ObjectTypeID: "", // Unbound object type.
 				ActionSource: interfaces.ActionSource{
 					Type: "tool",
 				},
@@ -739,12 +739,12 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 
 			omAccess.EXPECT().GetActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(actionType, map[string]any{"id": actionType.ATID}, true, nil)
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), objectTypeID).Return(objectType, true, nil)
-			// 第一次查询：仅根据 identities 查询（查询不到）
+			// First query: query only by identities, with no result.
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).Return(interfaces.Objects{Datas: []map[string]any{}}, nil)
 
 			result, err := service.GetActionsByActionTypeID(ctx, query)
 			So(err, ShouldBeNil)
-			// 由于条件评估可能失败，结果可能为空或包含实例
+			// Because condition evaluation may fail, the result may be empty or contain instances.
 			So(result, ShouldNotBeNil)
 		})
 
@@ -789,15 +789,15 @@ func Test_actionTypeService_GetActionsByActionTypeID(t *testing.T) {
 
 			omAccess.EXPECT().GetActionType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(actionType, map[string]any{"id": actionType.ATID}, true, nil)
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), objectTypeID).Return(objectType, true, nil)
-			// 第一次查询：仅根据 identities 查询（查询到）
+			// First query: query only by identities, with a result.
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
-				// 验证是仅根据 identities 的查询
+				// Verify that the query uses only identities.
 				So(query.ActualCondition, ShouldNotBeNil)
 				return interfaces.Objects{Datas: []map[string]any{{"id": "123"}}}, nil
 			})
-			// 第二次查询：按 identities 和行动条件过滤
+			// Second query: filter by identities and action conditions.
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, query *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
-				// 验证条件是否正确合并
+				// Verify that conditions are merged correctly.
 				So(query.ActualCondition, ShouldNotBeNil)
 				So(query.ActualCondition.Operation, ShouldEqual, "and")
 				return objects, nil

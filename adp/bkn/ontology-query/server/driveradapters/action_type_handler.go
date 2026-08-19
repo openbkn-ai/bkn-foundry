@@ -25,7 +25,7 @@ import (
 	"ontology-query/interfaces"
 )
 
-// 基于对象类的对象数据查询(内部)
+// Object data query by object type (internal).
 func (r *restHandler) GetActionsInActionTypeByIn(c *gin.Context) {
 	logger.Debug("Handler GetActionsInActionTypeByIn Start")
 	// Internal endpoints read user_id from the header and defer authorization to the permission check.
@@ -34,7 +34,7 @@ func (r *restHandler) GetActionsInActionTypeByIn(c *gin.Context) {
 	r.GetActionsInActionType(c, visitor)
 }
 
-// 基于对象类的对象数据查询（外部）
+// Object data query by object type (external).
 func (r *restHandler) GetActionsInActionTypeByEx(c *gin.Context) {
 	logger.Debug("Handler GetActionsInActionTypeByEx Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -49,7 +49,7 @@ func (r *restHandler) GetActionsInActionTypeByEx(c *gin.Context) {
 	r.GetActionsInActionType(c, visitor)
 }
 
-// 基于对象类的对象数据查询
+// Object data query by object type.
 func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler GetActionsInActionType Start")
 	startTime := time.Now()
@@ -64,10 +64,10 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API call parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("行动数据查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
 	// Read the kn_id path parameter.
@@ -78,22 +78,22 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	otID := c.Param("at_id")
 	span.SetAttributes(attr.Key("at_id").String(otID))
 
-	// 接受 branch 参数
+	// Accept the branch parameter.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(attr.Key("branch").String(branch))
 
-	// 是否包含行动类信息
+	// Whether to include action type information.
 	includeTypeInfo := c.DefaultQuery("include_type_info", interfaces.DEFAULT_INCLUDE_TYPE_INFO)
-	// 排除系统字段列表
+	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
-	// 校验查询参数
+	// Validate query parameters.
 	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, interfaces.DEFAULT_IGNORING_STORE_CACHE,
 		interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS, excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
@@ -105,7 +105,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -114,7 +114,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 
 		return
 	}
-	// instant query 参数， time（即start 和 end），isInstantQuery, interval = 1
+	// Instant-query parameters: time (start and end), isInstantQuery, and interval = 1.
 	// Bind request parameters.
 	query := interfaces.ActionQuery{}
 	err = c.ShouldBindJSON(&query)
@@ -138,7 +138,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 	err = validateActionQuery(ctx, &query)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -148,11 +148,11 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	// 执行查询
+	// Execute the query.
 	result, err := r.ats.GetActionsByActionTypeID(ctx, &query)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -162,7 +162,7 @@ func (r *restHandler) GetActionsInActionType(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	// 设置 trace 的成功信息的 attributes
+	// Set success attributes on the trace.
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()

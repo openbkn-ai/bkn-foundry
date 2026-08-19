@@ -17,16 +17,16 @@ import (
 )
 
 func Test_downstreamErrorCode(t *testing.T) {
-	// 状态码已经透传对了，错误码也要跟着走：403 贴成「参数错误」会被前端读成用户
-	// 自己没权限，429 贴成「参数错误」会让调用方去改查询而不是重试。
+	// The status code is already passed through correctly, so the error code must follow it: mapping 403 to "parameter error" makes the frontend read it as the user
+	// having no permission, and mapping 429 to "parameter error" makes callers change the query instead of retrying.
 	cases := map[int]string{
 		http.StatusBadRequest:   oerrors.OntologyQuery_ObjectType_InvalidParameter,
 		http.StatusUnauthorized: rest.PublicError_Unauthorized,
 		http.StatusForbidden:    rest.PublicError_Forbidden,
 		http.StatusNotFound:     rest.PublicError_NotFound,
 		http.StatusConflict:     rest.PublicError_Conflict,
-		// 没有语义对应的公共码时退回本服务的参数错误码，而不是 Public.BadRequest
-		// ——后者的 en-US 文案是 "Internal Server Error"。
+		// When there is no semantically corresponding public code, fall back to this service's parameter error code instead of Public.BadRequest.
+		// The latter's en-US message is "Internal Server Error".
 		http.StatusTooManyRequests:       oerrors.OntologyQuery_ObjectType_InvalidParameter,
 		http.StatusRequestEntityTooLarge: oerrors.OntologyQuery_ObjectType_InvalidParameter,
 	}
@@ -37,9 +37,9 @@ func Test_downstreamErrorCode(t *testing.T) {
 	}
 }
 
-// rest.NewHTTPError 对未注册的错误码是 logger.Fatalf——只比对映射表的用例挡不住
-// 「往 switch 里加了一个没进 allErrs 的码」，那种错误要到线上第一次命中才暴露，
-// 而且直接打掉进程。这里把每个码真的构造一遍，并检查两种语言的文案都不为空。
+// rest.NewHTTPError calls logger.Fatalf for unregistered error codes; tests that only compare the mapping table cannot catch
+// a code added to the switch but not to allErrs. That kind of error appears only when it is first hit online,
+// and it terminates the process. Construct each code here and check that messages in both languages are non-empty.
 func Test_downstreamErrorCodeIsRegisteredInEveryLanguage(t *testing.T) {
 	statuses := []int{
 		http.StatusBadRequest,

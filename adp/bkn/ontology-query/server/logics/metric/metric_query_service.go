@@ -214,7 +214,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 	}
 	metricFormula := def.CalculationFormula
 
-	// ot 的 property 变成 map
+	// Convert object type properties into a map.
 	propMap := logics.TransferPropsToPropMap(ot.DataProperties)
 
 	var trend *trendMeta
@@ -226,7 +226,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
 				WithErrorDetails("trend query requires metric time_dimension.property on the definition")
 		}
-		// step 与 time 窗口形态由 handler validateMetricQueryRequest 校验；此处仅归一化日历步长
+		// The step and time window shape are validated by handler validateMetricQueryRequest; only normalize calendar steps here.
 		calStep := strings.TrimSpace(strings.ToLower(*tw.Step))
 		startMs, endMs, err := resolveTrendTimeRangeMS(def, tw)
 		if err != nil {
@@ -240,7 +240,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 				WithErrorDetails(err.Error())
 		}
 		trend = &trendMeta{step: calStep, timeProperty: timeProp, timeResField: timeResField}
-		// range 为左闭右开 [gte, lt)；between 为双闭区间 [gte, lt]
+		// range is left-closed and right-open [gte, lt); between is a closed interval [gte, lt].
 		timeCond = &cond.CondCfg{
 			Operation: cond.OperationBetween,
 			Name:      timeProp,
@@ -278,7 +278,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		}
 	}
 
-	// 处理过滤条件
+	// Handle filter conditions.
 	var reqCond *cond.CondCfg
 	if metricQuery != nil {
 		reqCond = metricQuery.Condition
@@ -302,7 +302,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		FilterCondition: fc,
 	}
 
-	// 处理聚合
+	// Handle aggregation.
 	aggrProp, err := mapDataPropertyToResourceField(ctx, metricFormula.Aggregation.Property, propMap)
 	if err != nil {
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
@@ -334,7 +334,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		}
 	}
 	if trend != nil {
-		// 拼上时间趋势的分组聚合
+		// Append the group aggregation for the time trend.
 		gb = append(gb, map[string]any{
 			"property":          trend.timeResField,
 			"calendar_interval": trend.step, // Calendar interval.
@@ -344,8 +344,8 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		params.GroupBy = gb
 	}
 
-	// 排序：先合并 definition.order_by 与 request.order_by（definition 在前，同 property 以后者为准），
-	// 再逐项将对象类属性名/__value 转为 resource 映射列，组装为 params.Sort 交给执行层 resource 排序。
+	// Sorting: first merge definition.order_by and request.order_by, with definition first and the latter taking precedence for the same property.
+	// Then convert object type property names and __value to resource-mapped columns one by one and assemble params.Sort for resource sorting in the execution layer.
 	var mergedOrder []interfaces.MetricOrderBy
 	if len(metricFormula.OrderBy) > 0 {
 		mergedOrder = append(mergedOrder, metricFormula.OrderBy...)
@@ -354,9 +354,9 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		mergedOrder = append(mergedOrder, metricQuery.OrderBy...)
 	}
 
-	// 时间趋势排序bkn拼不了，因为源不同，排序语法不同，由vega适配
+	// BKN cannot assemble time trend sorting because sources and sort syntax differ; Vega adapts it.
 	// if trend != nil {
-	// 	// 拼接上按时间分组字段排序
+	// Append sorting by the time grouping field.
 	// 	mergedOrder = append(mergedOrder, interfaces.MetricOrderBy{
 	// 		Property:  trend.timeProperty,
 	// 		Direction: interfaces.ASC_DIRECTION,
@@ -371,7 +371,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		params.Sort = resourceSort
 	}
 
-	// 优先用请求的having，请求没有，则用definition的having，都没有，则不加having
+	// Prefer request having; if absent, use definition having; if both are absent, do not add having.
 	if metricQuery != nil && metricQuery.Having != nil {
 		hm, err := metricHavingToResourceMap(metricQuery.Having, ot)
 		if err != nil {
@@ -387,7 +387,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 		}
 		params.Having = hm
 	}
-	// 没有limit，则表示查全部
+	// If limit is absent, query all records.
 	if metricQuery != nil && metricQuery.Limit != nil && *metricQuery.Limit > 0 {
 		params.Limit = *metricQuery.Limit
 	}
@@ -418,8 +418,8 @@ func (s *metricQueryService) handlerVector(ctx context.Context, property *cond.D
 	return s.mfa.GetVector(ctx, model, []string{word})
 }
 
-// metricGroupByDimension 描述 group by 的一个维度：PropertyName 为对象类 data property 名（接口返回 labels 的 key）；
-// ResourceFieldName 为下推到 Vega/resource 的列名（与 buildResourceDataQueryParams 中 group_by 的 "property" 一致）。
+// metricGroupByDimension describes one group-by dimension: PropertyName is the object type data property name and the key returned in labels.
+// ResourceFieldName is the column name pushed down to Vega/resource and matches group_by.property in buildResourceDataQueryParams.
 type metricGroupByDimension struct {
 	PropertyName      string
 	ResourceFieldName string
@@ -747,11 +747,11 @@ func vegaEntriesToMetricData(ctx context.Context, def interfaces.MetricDefinitio
 	return resp, nil
 }
 
-// metricQuery.FillNull 由 handler 从 URL 查询 fill_null 解析写入（json:"-"）。
+// metricQuery.FillNull is parsed from the fill_null URL query by the handler and written here (json:"-").
 func (s *metricQueryService) executeMetric(ctx context.Context, knID string, branch string,
 	def *interfaces.MetricDefinition, metricQuery *interfaces.MetricQueryRequest) (interfaces.MetricData, error) {
 
-	// 获取统计主体-对象类信息
+	// Get metric subject object type information.
 	ot, ok, err := s.oma.GetObjectType(ctx, knID, branch, def.ScopeRef)
 	if err != nil {
 		logger.Errorf("GetObjectType for metric scope: %v", err)
@@ -770,7 +770,7 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 		return interfaces.MetricData{}, err
 	}
 
-	// vega查数, 记录请求的开始结束,返回到接口上
+	// Query data from Vega, record the request start and end, and return them through the API.
 	start := time.Now().UnixMilli()
 	datas, err := s.vba.QueryResourceData(ctx, ot.DataSource.ID, params)
 	if err != nil {
@@ -782,7 +782,7 @@ func (s *metricQueryService) executeMetric(ctx context.Context, knID string, bra
 		return interfaces.MetricData{}, nil
 	}
 
-	// 如果有请求同环比,计算同期对应的时间范围
+	// If a same-period comparison is requested, calculate the corresponding comparison time range.
 	samePeriodDatas := &interfaces.DatasetQueryResponse{}
 	if metricQuery.Metrics != nil && metricQuery.Metrics.Type == interfaces.METRICS_SAMEPERIOD {
 		if metricQuery.Time == nil || metricQuery.Time.Start == nil || metricQuery.Time.End == nil {
@@ -860,7 +860,7 @@ func (s *metricQueryService) QueryMetricData(ctx context.Context, knID string, b
 	if !exist || def == nil {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_Metric_NotFound)
 	}
-	// 指标的统计主体为 对象类
+	// The metric subject is an object type.
 	if def.ScopeType != interfaces.ScopeTypeObjectType {
 		return interfaces.MetricData{}, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_UnsupportedScope)
 	}
@@ -888,9 +888,9 @@ func calcComparisonTime(t time.Time, granlarCfg interfaces.SameperiodConfig) tim
 	case interfaces.METRICS_SAMEPERIOD_TIME_GRANULARITY_DAY:
 		return t.AddDate(0, 0, -granlarCfg.Offset)
 	case interfaces.METRICS_SAMEPERIOD_TIME_GRANULARITY_MONTH:
-		// 月环比, k个月同期
+		// Month-over-month: same period k months ago.
 		newTime := t.AddDate(0, -granlarCfg.Offset, 0)
-		// 处理月末日期不存在的情况
+		// Handle cases where the month-end date does not exist.
 		if t.Day() != newTime.Day() {
 			newTime = common.LastDayOfMonth(newTime)
 			newTime = time.Date(newTime.Year(), newTime.Month(), newTime.Day(),
@@ -898,10 +898,10 @@ func calcComparisonTime(t time.Time, granlarCfg interfaces.SameperiodConfig) tim
 		}
 		return newTime
 	case interfaces.METRICS_SAMEPERIOD_TIME_GRANULARITY_QUARTER:
-		// 上k个季度
+		// Previous k quarters.
 		newTime := t.AddDate(0, -3*granlarCfg.Offset, 0)
 
-		// 处理季度末日期不存在的情况
+		// Handle cases where the quarter-end date does not exist.
 		if t.Day() != newTime.Day() {
 			newTime = common.LastDayOfMonth(newTime)
 			newTime = time.Date(newTime.Year(), newTime.Month(), newTime.Day(),
@@ -909,10 +909,10 @@ func calcComparisonTime(t time.Time, granlarCfg interfaces.SameperiodConfig) tim
 		}
 		return newTime
 	case interfaces.METRICS_SAMEPERIOD_TIME_GRANULARITY_YEAR:
-		// 上k年
+		// Previous k years.
 		newTime := t.AddDate(-granlarCfg.Offset, 0, 0)
 
-		// 处理闰年2月29日的情况
+		// Handle February 29 in leap years.
 		if t.Month() == time.February && t.Day() == 29 && !common.IsLeap(newTime.Year()) {
 			newTime = time.Date(newTime.Year(), time.February, 28,
 				t.Hour(), t.Minute(), t.Second(), t.Nanosecond()/1e6, newTime.Location())
@@ -1082,7 +1082,7 @@ func convert2TimeSeries(ctx context.Context, def interfaces.MetricDefinition, da
 					TimeStrs: allTimeStrs,
 					Values:   make([]any, len(allTimeStrs)),
 				}
-				// 趋势对齐时间轴上无数据的桶：用 nil（JSON null），不补 0
+				// For empty buckets on the trend-aligned timeline, use nil (JSON null) instead of filling 0.
 				for i := range ts.Values {
 					ts.Values[i] = nil
 				}
@@ -1143,7 +1143,7 @@ func toMillisAny(v any) (int64, error) {
 	return int64(f), nil
 }
 
-// lookupSamePeriodBaseValue 在对比期序列中找「同期」桶：与 convert2TimeSeries 一致，优先用日历 timeStr 对齐，避免仅用毫秒相等错配到其它分桶。
+// lookupSamePeriodBaseValue finds the same-period bucket in the comparison series. It matches convert2TimeSeries by preferring calendar timeStr alignment to avoid mismatching other buckets by millisecond equality only.
 func lookupSamePeriodBaseValue(prev interfaces.BknMetricData, compareDateMs int64, step string) (any, bool) {
 	step = strings.TrimSpace(step)
 	if len(prev.Times) == 0 {
@@ -1176,7 +1176,7 @@ func lookupSamePeriodBaseValue(prev interfaces.BknMetricData, compareDateMs int6
 }
 
 // calcSamePeriodValueBkn aligns mdl calcSamePeriodValue for BknMetricData and resource time buckets.
-// 增长值=本期数-同期数：同期取对比查询结果中与本期按 sameperiod_config 映射到同一日历桶的值（非本序列上一索引）。
+// Growth value equals current value minus same-period value. The same-period value is taken from the comparison query result mapped to the same calendar bucket by sameperiod_config, not from the previous index in this series.
 func calcSamePeriodValueBkn(ctx context.Context, currentSeriesMap, previousMap map[string]interfaces.BknMetricData,
 	metrics *interfaces.Metrics, query *interfaces.MetricQueryRequest) ([]interfaces.BknMetricData, error) {
 
@@ -1305,8 +1305,8 @@ func calcProportionValueBkn(ctx context.Context, currentSeriesMap map[string]int
 	return datas, nil
 }
 
-// normalizeMetricCalendarStep 将 day/week/... 及常见别名归一为日历粒度名；非日历步长返回 "", false。
-// 注意：趋势查询合法 step 为 day|week|month|quarter|year（与 validate 一致），不可走 ParseDuration。
+// normalizeMetricCalendarStep normalizes day/week/... and common aliases to calendar granularity names; non-calendar steps return "", false.
+// Note: valid steps for trend queries are day|week|month|quarter|year, consistent with validation, and must not go through ParseDuration.
 func normalizeMetricCalendarStep(raw string) (name string, ok bool) {
 	s := strings.TrimSpace(strings.ToLower(raw))
 	switch s {
@@ -1325,7 +1325,7 @@ func normalizeMetricCalendarStep(raw string) (name string, ok bool) {
 	}
 }
 
-// alignCalendarRangeMillis 与 instant 趋势分桶对齐一致，供 fill_null 时间轴与下推 group_by 共用。
+// alignCalendarRangeMillis matches instant trend bucket alignment and is shared by the fill_null timeline and pushed-down group_by.
 func alignCalendarRangeMillis(startTime, endTime time.Time, cal string, zone *time.Location) (int64, int64) {
 	switch cal {
 	case "day":
@@ -1367,7 +1367,7 @@ func alignCalendarRangeMillis(startTime, endTime time.Time, cal string, zone *ti
 	}
 }
 
-// correctingTime 修正开始时间和结束时间，符合opensearch的分桶区间
+// correctingTime adjusts the start and end times to match OpenSearch bucket intervals.
 func correctingTime(query *interfaces.MetricQueryRequest, zoneLocation *time.Location) (int64, int64) {
 	if query == nil || query.Time == nil || query.Time.Step == nil {
 		return 0, 0
@@ -1375,7 +1375,7 @@ func correctingTime(query *interfaces.MetricQueryRequest, zoneLocation *time.Loc
 	startTime := time.UnixMilli(*query.Time.Start)
 	endTime := time.UnixMilli(*query.Time.End)
 
-	// Calendar interval.：趋势（instant=false）也必须走此分支。误用 ParseDuration("day") 得 step=0 会产生错误时间轴。
+	// Calendar interval: trends (instant=false) must also take this branch. Misusing ParseDuration("day") produces step=0 and an incorrect timeline.
 	if cal, ok := normalizeMetricCalendarStep(*query.Time.Step); ok {
 		return alignCalendarRangeMillis(startTime, endTime, cal, zoneLocation)
 	}
@@ -1407,10 +1407,10 @@ func correctingTime(query *interfaces.MetricQueryRequest, zoneLocation *time.Loc
 	return fixedStart, fixedEnd
 }
 
-// getNextPointTime 获取下一个时间点
+// getNextPointTime gets the next time point.
 func getNextPointTime(query *interfaces.MetricQueryRequest, currentTime int64) int64 {
 
-	// 将时间戳转换为时间对象
+	// Convert the timestamp to a time object.
 	switch *query.Time.Step {
 	case "minute", "1m":
 		return currentTime + time.Minute.Milliseconds()

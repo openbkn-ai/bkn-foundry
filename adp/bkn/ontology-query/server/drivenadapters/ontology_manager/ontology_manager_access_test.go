@@ -24,7 +24,7 @@ import (
 	"ontology-query/interfaces"
 )
 
-// newTestOntologyManagerAccess 创建用于测试的 ontologyManagerAccess，允许注入 mock HTTP 客户端
+// newTestOntologyManagerAccess creates an ontologyManagerAccess for tests and allows injecting a mock HTTP client.
 func newTestOntologyManagerAccess(appSetting *common.AppSetting, httpClient rest.HTTPClient) *ontologyManagerAccess {
 	return &ontologyManagerAccess{
 		appSetting:         appSetting,
@@ -40,7 +40,7 @@ func Test_NewOntologyManagerAccess(t *testing.T) {
 		}
 
 		Convey("成功 - 创建单例实例", func() {
-			// 重置单例
+			// Reset the singleton.
 			omAccessOnce = sync.Once{}
 			omAccess = nil
 
@@ -49,7 +49,7 @@ func Test_NewOntologyManagerAccess(t *testing.T) {
 
 			So(access1, ShouldNotBeNil)
 			So(access2, ShouldNotBeNil)
-			So(access1, ShouldEqual, access2) // 应该是同一个实例
+			So(access1, ShouldEqual, access2) // Should be the same instance.
 		})
 	})
 }

@@ -75,7 +75,7 @@ func AnyToFloat64(value any) (float64, error) {
 	}
 }
 
-// AnyToInt64 尝试将 interface{} 转换为 int64，如果转换失败则返回错误。
+// AnyToInt64 attempts to convert interface{} to int64 and returns an error if conversion fails.
 func AnyToInt64(value any) (int64, error) {
 	v := reflect.ValueOf(value)
 
@@ -93,16 +93,16 @@ func AnyToInt64(value any) (int64, error) {
 	}
 }
 
-// 使用类型断言和标准库进行转换
+// Use type assertions and the standard library for conversion.
 func AnyToBool(value any) (bool, error) {
-	// 检查是否是字符串类型
+	// Check whether it is a string type.
 	if s, ok := value.(string); ok {
-		// 使用 strconv.ParseBool 转换字符串
-		// 它接受 "1", "t", "T", "TRUE", "true", "True" 为真
-		// 接受 "0", "f", "F", "FALSE", "false", "False" 为假 [citation:3][citation:5][citation:8]
+		// Use strconv.ParseBool to convert strings.
+		// It accepts "1", "t", "T", "TRUE", "true", and "True" as true.
+		// It accepts "0", "f", "F", "FALSE", "false", and "False" as false.
 		return strconv.ParseBool(s)
 	}
-	// 检查是否是布尔类型本身，如果是则直接返回
+	// Check whether it is already a bool and return it directly if so.
 	if b, ok := value.(bool); ok {
 		return b, nil
 	}
@@ -130,7 +130,7 @@ func AnyToString(value any) string {
 	}
 }
 
-// ReplaceLikeWildcards，把 like 的通配符替换成正则表达式里的字符
+// ReplaceLikeWildcards replaces like wildcards with regex characters.
 func ReplaceLikeWildcards(input string) string {
 	if input == "" {
 		return input
@@ -144,23 +144,23 @@ func ReplaceLikeWildcards(input string) string {
 		r := runes[i]
 
 		if escaped {
-			// 转义字符后的字符
+			// The character after an escape character.
 			switch r {
 			case '%', '_', '\\':
 				result.WriteRune(r)
 			default:
-				// 如果转义了非特殊字符，保留转义符和字符
+				// If a non-special character is escaped, keep both the escape character and the character.
 				result.WriteRune('\\')
 				result.WriteRune(r)
 			}
 			escaped = false
 		} else if r == '\\' {
-			// 遇到转义符，检查是否是最后一个字符
+			// When an escape character is encountered, check whether it is the last character.
 			if i == len(runes)-1 {
-				// 转义符在末尾，直接输出
+				// If the escape character is at the end, output it directly.
 				result.WriteRune(r)
 			} else {
-				// 标记转义状态，但不立即输出转义符
+				// Mark the escape state without outputting the escape character immediately.
 				escaped = true
 			}
 		} else if r == '%' {
@@ -172,7 +172,7 @@ func ReplaceLikeWildcards(input string) string {
 		}
 	}
 
-	// 处理以转义符结尾的情况
+	// Handle strings ending with an escape character.
 	if escaped {
 		result.WriteRune('\\')
 	}
@@ -180,14 +180,14 @@ func ReplaceLikeWildcards(input string) string {
 	return result.String()
 }
 
-// lastDayOfMonth 返回给定日期所在月份的最后一天
+// lastDayOfMonth returns the last day of the month for the given date.
 func LastDayOfMonth(t time.Time) time.Time {
 	firstOfMonth := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location())
 	nextMonth := firstOfMonth.AddDate(0, 1, 0)
 	return nextMonth.AddDate(0, 0, -1)
 }
 
-// isLeap 判断是否是闰年
+// isLeap checks whether the year is a leap year.
 func IsLeap(year int) bool {
 	return year%400 == 0 || (year%100 != 0 && year%4 == 0)
 }
@@ -306,7 +306,7 @@ func FormatTimeMiliis(ts int64, formatType string) string {
 	case CALENDAR_STEP_DAY:
 		return t.Format("2006-01-02")
 	case CALENDAR_STEP_WEEK:
-		// 周：年-周 (如 2025-46)
+		// Week: year-week, for example 2025-46.
 		year, week := t.ISOWeek()
 		return fmt.Sprintf("%d-%02d", year, week)
 	case CALENDAR_STEP_MONTH:
@@ -403,10 +403,10 @@ func ParseCalendarBucketToMillis(s, formatType string) (int64, error) {
 	}
 }
 
-// 按环境变量中的时区格式化
+// Format using the time zone from environment variables.
 func FormatRFC3339Milli(timestamp int64) string {
 	t := time.UnixMilli(timestamp)
 
-	// 转换为指定时区并格式化
+	// Convert to the specified time zone and format it.
 	return t.In(appLocationOrUTC()).Format(lib_common.RFC3339Milli)
 }

@@ -46,8 +46,8 @@ func validateMetricDefinitionExecutionScope(ctx context.Context, def *interfaces
 	return nil
 }
 
-// validateMetricDefinitionLikeBknSave 与 bkn-backend 保存指标时 ValidateMetricRequest 一致，但跳过 id、name、tags、comment。
-// strictMode 与 bkn 创建接口默认 strict_mode=true 对齐。
+// validateMetricDefinitionLikeBknSave is consistent with bkn-backend ValidateMetricRequest when saving metrics, but skips id, name, tags, and comment.
+// strictMode aligns with the bkn create API default strict_mode=true.
 func validateMetricConfig(ctx context.Context, metric *interfaces.MetricDefinition) error {
 	if metric == nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
@@ -84,7 +84,7 @@ func validateMetricType(ctx context.Context, metricType string) error {
 }
 
 func validateMetricUnits(ctx context.Context, unitType string, unit string) error {
-	// 单位信息可以为空
+	// Unit information may be empty.
 	if unitType != "" {
 		if _, ok := interfaces.ValidMetricUnitTypes[unitType]; !ok {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
@@ -325,12 +325,12 @@ func validateMetricCond(ctx context.Context, cfg *cond.CondCfg) error {
 	return nil
 }
 
-// metricQueryIsTrendTime mirrors logics/metric: instant omitted or false => 趋势查询.
+// metricQueryIsTrendTime mirrors logics/metric: instant omitted or false means a trend query.
 func metricQueryIsTrendTime(tw *interfaces.MetricTimeWindow) bool {
 	return tw != nil && (tw.Instant == nil || !*tw.Instant)
 }
 
-// validateMetricCalendarStep checks trend calendar step (与 resource 下推约定一致).
+// validateMetricCalendarStep checks the trend calendar step and matches the resource pushdown contract.
 func validateMetricCalendarStep(raw string) error {
 	s := strings.TrimSpace(strings.ToLower(raw))
 	switch s {
@@ -348,7 +348,7 @@ func validateMetricQueryRequest(ctx context.Context, body *interfaces.MetricQuer
 		return nil
 	}
 
-	// limit可以不传，
+	// limit may be omitted.
 	if body.Limit != nil {
 		if *body.Limit < 0 || *body.Limit > interfaces.MAX_LIMIT {
 			return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_Metric_InvalidParameter).
@@ -419,6 +419,6 @@ func validateMetricDryRunForExecution(ctx context.Context, body *interfaces.Metr
 		return err
 	}
 
-	// 与 bkn-backend 保存指标时一致（strict 默认 true），不含 id / name / tags / comment
+	// Keep this consistent with bkn-backend metric saves, where strict defaults to true and id/name/tags/comment are excluded.
 	return validateMetricConfig(ctx, body.MetricConfig)
 }

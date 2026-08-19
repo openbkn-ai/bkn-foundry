@@ -26,7 +26,7 @@ func Test_VegaDownstreamError(t *testing.T) {
 		if err.ErrorCode != "VegaBackend.Query.InvalidParameter" {
 			t.Fatalf("downstream error code lost: %q", err.ErrorCode)
 		}
-		// error_details 才是能指导调用方下一步的那句，优先于笼统的 description。
+		// error_details is the message that can guide the caller's next step, so it takes precedence over a generic description.
 		if got := err.Message(); got != "operation match is not supported by the sql query channel; full-text operations need a local index" {
 			t.Fatalf("unexpected message: %q", got)
 		}
@@ -47,8 +47,8 @@ func Test_VegaDownstreamError(t *testing.T) {
 	})
 
 	t.Run("解析不出结构的长报文被截断", func(t *testing.T) {
-		// 4xx 不一定来自 vega：网关在 413/502 时返回整页 HTML，整段回退会让终端
-		// 调用方在 error_details 里收到一坨 HTML 当作错误原因。
+		// 4xx does not necessarily come from Vega: the gateway returns a full HTML page for 413/502, and falling back to the full body would make terminal
+		// callers receive a blob of HTML in error_details as the error reason.
 		html := "<html><body>" + strings.Repeat("x", 4096) + "</body></html>"
 		msg := NewVegaDownstreamError(http.StatusRequestEntityTooLarge, html).Message()
 		if len(msg) > maxRawMessageLen+len("...(truncated)") {
@@ -60,8 +60,8 @@ func Test_VegaDownstreamError(t *testing.T) {
 	})
 
 	t.Run("截断不会切开多字节字符", func(t *testing.T) {
-		// vega 的中文错误体、或本地化的网关错误页超过上限时，按字节切会在 UTF-8
-		// 序列中间断开，调用方拿到的 error_details 里会留下半个字符。
+		// When Vega Chinese error bodies or localized gateway error pages exceed the limit, byte-based truncation can cut in the middle of a UTF-8
+		// sequence and leave a partial character in error_details for callers.
 		raw := strings.Repeat("知识网络查询失败", 200)
 		msg := NewVegaDownstreamError(http.StatusBadGateway, raw).Message()
 		if !utf8.ValidString(msg) {
@@ -78,7 +78,7 @@ func Test_VegaDownstreamError(t *testing.T) {
 		if !ok {
 			t.Fatal("errors.As must find the downstream error through wrapping")
 		}
-		// 404 保持 404：未知资源与参数非法是两种不同的调用方错误，压成 400 会丢掉区别。
+		// Keep 404 as 404: unknown resources and invalid parameters are different caller errors, and collapsing to 400 loses that distinction.
 		if downstream.StatusCode != http.StatusNotFound {
 			t.Fatalf("status code must survive, got %d", downstream.StatusCode)
 		}

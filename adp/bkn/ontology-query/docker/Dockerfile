@@ -37,7 +37,7 @@ COPY --from=builder --chown=$UID:$GID /go/src/bin /opt/ontology-query
 ADD server/config/ontology-query-config.yaml /opt/ontology-query/config/
 ADD server/locale /opt/ontology-query/locale
 
-# 指定工作目录
+# Set the working directory
 WORKDIR /opt/ontology-query/
 
 # Change user
@@ -46,5 +46,5 @@ USER $UID
 # Expose port
 EXPOSE 13018
 
-# 指定启动命令
+# Set the startup command
 ENTRYPOINT [ "./ontology-query-server" ]

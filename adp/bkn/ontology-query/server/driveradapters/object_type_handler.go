@@ -25,7 +25,7 @@ import (
 	"ontology-query/interfaces"
 )
 
-// 基于对象类的对象数据查询(内部)
+// Object data query by object type (internal).
 func (r *restHandler) GetObjectsInObjectTypeByIn(c *gin.Context) {
 	logger.Debug("Handler GetObjectsInObjectTypeByIn Start")
 	// Internal endpoints read user_id from the header and defer authorization to the permission check.
@@ -34,7 +34,7 @@ func (r *restHandler) GetObjectsInObjectTypeByIn(c *gin.Context) {
 	r.GetObjectsInObjectType(c, visitor)
 }
 
-// 基于对象类的对象数据查询（外部）
+// Object data query by object type (external).
 func (r *restHandler) GetObjectsInObjectTypeByEx(c *gin.Context) {
 	logger.Debug("Handler GetObjectsInObjectTypeByEx Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -49,7 +49,7 @@ func (r *restHandler) GetObjectsInObjectTypeByEx(c *gin.Context) {
 	r.GetObjectsInObjectType(c, visitor)
 }
 
-// 基于对象类的对象数据查询
+// Object data query by object type.
 func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler GetObjectsInObjectType Start")
 	startTime := time.Now()
@@ -64,10 +64,10 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API call parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("对象数据查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
 	// Read the kn_id path parameter.
@@ -78,28 +78,28 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	otID := c.Param("ot_id")
 	span.SetAttributes(attr.Key("ot_id").String(otID))
 
-	// 接受 branch 参数
+	// Accept the branch parameter.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(attr.Key("branch").String(branch))
 
-	// todo: 分页查询
+	// todo: paginated query.
 
-	// 是否包含对象类信息
+	// Whether to include object type information.
 	includeTypeInfo := c.DefaultQuery("include_type_info", interfaces.DEFAULT_INCLUDE_TYPE_INFO)
-	// 是否包含逻辑属性计算参数
+	// Whether to include logical-property calculation parameters.
 	IncludeLogicParams := c.DefaultQuery("include_logic_params", interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS)
-	// 是否忽略持久化数据,走虚拟化查询,默认是false,不忽略
+	// Whether to ignore persisted data and use virtual queries; default is false.
 	ignoringStoreCache := c.DefaultQuery("ignoring_store_cache", interfaces.DEFAULT_IGNORING_STORE_CACHE)
-	// 排除系统字段列表
+	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
 
-	// 校验查询参数
+	// Validate query parameters.
 	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo, ignoringStoreCache, IncludeLogicParams, excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
@@ -111,7 +111,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -120,7 +120,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 
 		return
 	}
-	// instant query 参数， time（即start 和 end），isInstantQuery, interval = 1
+	// Instant-query parameters: time (start and end), isInstantQuery, and interval = 1.
 	// Bind request parameters.
 	query := interfaces.ObjectQueryBaseOnObjectType{}
 	err = c.ShouldBindJSON(&query)
@@ -145,7 +145,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 	err = validateObjectSearchRequest(ctx, &query)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -155,11 +155,11 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	// 执行查询
+	// Execute the query.
 	result, err := r.ots.GetObjectsByObjectTypeID(ctx, &query)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -169,7 +169,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	// 设置 trace 的成功信息的 attributes
+	// Set success attributes on the trace.
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()
@@ -178,7 +178,7 @@ func (r *restHandler) GetObjectsInObjectType(c *gin.Context, visitor hydra.Visit
 
 }
 
-// 基于对象类的对象数据查询(内部)
+// Object data query by object type (internal).
 func (r *restHandler) GetObjectsPropertiesByIn(c *gin.Context) {
 	logger.Debug("Handler GetObjectsPropertiesByIn Start")
 	// Internal endpoints read user_id from the header and defer authorization to the permission check.
@@ -187,7 +187,7 @@ func (r *restHandler) GetObjectsPropertiesByIn(c *gin.Context) {
 	r.GetObjectsProperties(c, visitor)
 }
 
-// 基于对象类的对象数据查询（外部）
+// Object data query by object type (external).
 func (r *restHandler) GetObjectsPropertiesByEx(c *gin.Context) {
 	logger.Debug("Handler GetObjectsPropertiesByEx Start")
 	ctx, span := oteltrace.StartServerSpan(c)
@@ -202,7 +202,7 @@ func (r *restHandler) GetObjectsPropertiesByEx(c *gin.Context) {
 	r.GetObjectsProperties(c, visitor)
 }
 
-// 基于对象类的对象数据查询
+// Object data query by object type.
 func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler GetObjectsProperties Start")
 	startTime := time.Now()
@@ -217,10 +217,10 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	// Store account ID in the context.
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// 设置 trace 的相关 api 的属性
+	// Set related API attributes on the trace.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// 记录接口调用参数： c.Request.RequestURI, body
+	// Record API call parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("对象属性值查询请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
 	// Read the kn_id path parameter.
@@ -231,25 +231,25 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	otID := c.Param("ot_id")
 	span.SetAttributes(attr.Key("ot_id").String(otID))
 
-	// 接受 branch 参数
+	// Accept the branch parameter.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 	span.SetAttributes(attr.Key("branch").String(branch))
 
-	// 是否包含对象类信息
+	// Whether to include object type information.
 	includeTypeInfo := c.DefaultQuery("include_type_info", interfaces.DEFAULT_INCLUDE_TYPE_INFO)
-	// 排除系统字段列表
+	// List of system fields to exclude.
 	excludeSystemProperties := c.QueryArray("exclude_system_properties")
 
-	// 校验查询参数
+	// Validate query parameters.
 	objectsQueryParas, err := validateObjectsQueryParameters(ctx, includeTypeInfo,
 		interfaces.DEFAULT_IGNORING_STORE_CACHE,
 		interfaces.DEFAULT_INCLUDE_LOGIC_PARAMS,
 		excludeSystemProperties)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
 
@@ -261,7 +261,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	err = ValidateHeaderMethodOverride(ctx, c.GetHeader(interfaces.HTTP_HEADER_METHOD_OVERRIDE))
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -294,7 +294,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 	err = validateObjectPropertyValueQuery(ctx, &query)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -304,11 +304,11 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 		return
 	}
 
-	// 执行查询
+	// Execute the query.
 	result, err := r.ots.GetObjectPropertyValue(ctx, &query)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
-		// 设置 trace 的错误信息的 attributes
+		// Set error attributes on the trace.
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		otellog.LogError(ctx, fmt.Sprintf("%s. %v", httpErr.BaseError.Description,
 			httpErr.BaseError.ErrorDetails), httpErr)
@@ -318,7 +318,7 @@ func (r *restHandler) GetObjectsProperties(c *gin.Context, visitor hydra.Visitor
 		return
 	}
 
-	// 设置 trace 的成功信息的 attributes
+	// Set success attributes on the trace.
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
 
 	result.OverallMs = time.Now().UnixMilli() - startTime.UnixMilli()

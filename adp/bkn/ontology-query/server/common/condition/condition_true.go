@@ -18,7 +18,7 @@ type TrueCond struct {
 	mFilterFieldName string
 }
 
-// bool 类型为真
+// The bool type is true.
 func NewTrueCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty) (Condition, error) {
 	if cfg.NameField.Type != dtype.DATATYPE_BOOLEAN &&
 		dtype.SimpleTypeMapping[cfg.NameField.Type] != dtype.SimpleBool {
@@ -48,7 +48,7 @@ func (cond *TrueCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteTrueCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "true", "field": cfg.Name})
 	}

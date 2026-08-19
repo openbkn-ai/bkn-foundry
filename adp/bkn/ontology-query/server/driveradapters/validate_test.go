@@ -361,13 +361,13 @@ func Test_validateSubgraphSearchRequest(t *testing.T) {
 					Limit: 0,
 				},
 			}
-			// 注意：这个测试会失败，因为Limit=0时会在验证中返回错误
-			// 但根据代码逻辑，Limit=0会被设置为默认值
-			// 需要先通过其他验证
+			// Note: this test fails because Limit=0 returns an error during validation.
+			// But according to the code logic, Limit=0 is set to the default value.
+			// Other validations must pass first.
 			query.Limit = 0
 			_ = validateSubgraphSearchRequest(ctx, query)
-			// 由于Limit=0会先触发错误，所以这里会失败
-			// 但代码中确实有设置默认值的逻辑
+			// Because Limit=0 triggers an error first, this fails here.
+			// But the code does contain logic that sets the default value.
 		})
 
 		Convey("成功 - 所有方向类型", func() {
@@ -581,7 +581,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 							Edges: []interfaces.TypeEdge{
 								{
 									RelationTypeId:     "rt1",
-									SourceObjectTypeId: "ot3", // 不匹配
+									SourceObjectTypeId: "ot3", // Mismatch.
 									TargetObjectTypeId: "ot2",
 								},
 							},
@@ -608,7 +608,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 								{
 									RelationTypeId:     "rt1",
 									SourceObjectTypeId: "ot1",
-									TargetObjectTypeId: "ot3", // 不匹配
+									TargetObjectTypeId: "ot3", // Mismatch.
 								},
 							},
 						},
@@ -639,7 +639,7 @@ func Test_validateSubgraphQueryByPathRequest(t *testing.T) {
 								},
 								{
 									RelationTypeId:     "rt2",
-									SourceObjectTypeId: "ot4", // 不等于前一条边的终点ot2
+									SourceObjectTypeId: "ot4", // Not equal to the previous edge target ot2.
 									TargetObjectTypeId: "ot3",
 								},
 							},
@@ -801,11 +801,11 @@ func Test_validateObjectSearchRequest(t *testing.T) {
 					Limit: 0,
 				},
 			}
-			// 注意：这个测试会失败，因为Limit=0时会在验证中返回错误
-			// 但根据代码逻辑，Limit=0会被设置为默认值
+			// Note: this test fails because Limit=0 returns an error during validation.
+			// But according to the code logic, Limit=0 is set to the default value.
 			err := validateObjectSearchRequest(ctx, query)
-			// 由于Limit=0会先触发错误，所以这里会失败
-			// 但代码中确实有设置默认值的逻辑
+			// Because Limit=0 triggers an error first, this fails here.
+			// But the code does contain logic that sets the default value.
 			_ = err
 		})
 

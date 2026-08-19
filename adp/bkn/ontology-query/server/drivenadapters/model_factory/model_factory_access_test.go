@@ -24,7 +24,7 @@ import (
 	"ontology-query/interfaces"
 )
 
-// newTestModelFactoryAccess 创建用于测试的 modelFactoryAccess，允许注入 mock HTTP 客户端
+// newTestModelFactoryAccess creates a modelFactoryAccess for tests and allows injecting a mock HTTP client.
 func newTestModelFactoryAccess(appSetting *common.AppSetting, httpClient rest.HTTPClient) *modelFactoryAccess {
 	return &modelFactoryAccess{
 		appSetting:   appSetting,
@@ -42,7 +42,7 @@ func Test_NewModelFactoryAccess(t *testing.T) {
 		}
 
 		Convey("成功 - 创建单例实例", func() {
-			// 重置单例
+			// Reset the singleton.
 			mfAccessOnce = sync.Once{}
 			mfAccess = nil
 
@@ -51,7 +51,7 @@ func Test_NewModelFactoryAccess(t *testing.T) {
 
 			So(access1, ShouldNotBeNil)
 			So(access2, ShouldNotBeNil)
-			So(access1, ShouldEqual, access2) // 应该是同一个实例
+			So(access1, ShouldEqual, access2) // Should be the same instance.
 		})
 	})
 }
@@ -98,7 +98,7 @@ func Test_modelFactoryAccess_GetVector(t *testing.T) {
 			}
 			responseBytes1, _ := sonic.Marshal(response1)
 
-			// 第二次批量请求
+			// Second batch request.
 			vectorResp3 := cond.VectorResp{
 				Vector: []float32{0.7, 0.8, 0.9},
 				Index:  0,
@@ -117,12 +117,12 @@ func Test_modelFactoryAccess_GetVector(t *testing.T) {
 			// 	interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 			// }
 
-			// 第一次批量请求 (words[0:2])
+			// First batch request (words[0:2]).
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(http.StatusOK, responseBytes1, nil)
 
-			// 第二次批量请求 (words[2:3])
+			// Second batch request (words[2:3]).
 			mockHTTPClient.EXPECT().
 				PostNoUnmarshal(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(http.StatusOK, responseBytes2, nil)
@@ -207,7 +207,7 @@ func Test_modelFactoryAccess_GetVector(t *testing.T) {
 			}
 			ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-			// 返回的向量数量少于输入
+			// The returned vector count is less than the input count.
 			response := struct {
 				Data []cond.VectorResp `json:"data"`
 			}{

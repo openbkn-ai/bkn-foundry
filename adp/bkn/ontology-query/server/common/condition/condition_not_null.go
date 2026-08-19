@@ -23,7 +23,7 @@ func NewNotNullCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Dat
 	}, nil
 }
 
-// 检查字段值是否不为空
+// Check whether the field value is not empty.
 func (cond *NotNullCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
 	dslStr := fmt.Sprintf(`
 	{
@@ -41,7 +41,7 @@ func (cond *NotNullCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteNotNullCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "not_null", "field": cfg.Name})
 	}

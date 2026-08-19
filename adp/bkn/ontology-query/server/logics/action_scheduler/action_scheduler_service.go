@@ -225,7 +225,7 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 		ExecutorID:           executor.ID, // deprecated, kept for backward compatibility
 		Executor:             executor,    // full executor info
 		StartTime:            now,
-		ActionTypeSnapshot:   actionTypeSnapshot, // 保存执行时的行动类配置快照
+		ActionTypeSnapshot:   actionTypeSnapshot, // Save the action type configuration snapshot used during execution.
 		InstanceIdentityHash: instanceHash,
 	}
 
@@ -587,9 +587,9 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 	isObjectTypeBound := actionType.ObjectTypeID != ""
 
 	if !isObjectTypeBound {
-		// Case: 未绑定对象类
+		// Case: unbound object type.
 		if len(instanceIdentities) == 0 {
-			// Case 4: 未绑定对象类 + 无 identities → 构造一个临时的虚拟实例
+			// Case 4: unbound object type + without identities → construct a temporary virtual instance.
 			logger.Infof("Action type %s has no bound object type and no identities provided, creating virtual instance", actionType.ATID)
 			virtualInstance := interfaces.ObjectSystemInfo{
 				InstanceIdentity: map[string]any{},
@@ -598,7 +598,7 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 			instances = append(instances, virtualInstance)
 			objDatas = append(objDatas, virtualObjData)
 		} else {
-			// Case 5: 未绑定对象类 + 有 identities → 按 identities 构造实例
+			// Case 5: unbound object type + with identities → construct instances by identities.
 			logger.Infof("Action type %s has no bound object type, constructing instances from identities", actionType.ATID)
 			for _, identity := range instanceIdentities {
 				instanceInfo := interfaces.ObjectSystemInfo{
@@ -615,12 +615,12 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 		return instances, objDatas, nil
 	}
 
-	// Case: 绑定对象类
+	// Case: bound object type.
 	hasIdentities := len(instanceIdentities) > 0
 	isAddAction := actionType.ActionType == "add"
 
 	if !hasIdentities {
-		// Case 1: 绑定对象类 + 无 identities → 扫描满足行动条件的实例
+		// Case 1: bound object type + no identities -> scan instances that satisfy the action condition.
 		logger.Infof("No _instance_identities provided, scanning all matching instances for action type %s", actionType.ATID)
 		condition := actionType.Condition
 
@@ -663,9 +663,9 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 			objDatas = append(objDatas, objData)
 		}
 	} else {
-		// Case: 绑定对象类 + 有 identities
+		// Case: bound object type + with identities.
 		if isAddAction {
-			// Case 2: 绑定对象类 + 有 identities + add → 先查询，查询不到则构造实例并评估条件，查询到则按 identities 和行动条件过滤
+			// Case 2: bound object type + identities + add -> query first; if not found, construct an instance and evaluate conditions; if found, filter by identities and action conditions.
 			logger.Infof("Add action type with identities provided, checking instances first for action type %s", actionType.ATID)
 
 			// First, query instances only by identities (without action condition)
@@ -782,7 +782,7 @@ func (s *actionSchedulerService) getInstancesForAction(ctx context.Context, acti
 				}
 			}
 		} else {
-			// Case 3: 绑定对象类 + 有 identities + update/delete → 按 identities 和行动条件过滤实例
+			// Case 3: bound object type + identities + update/delete -> filter instances by identities and action conditions.
 			logger.Infof("_instance_identities provided, filtering instances by identities and action condition for action type %s", actionType.ATID)
 			var condition *cond.CondCfg
 			instanceCondition := logics.BuildInstanceIdentitiesCondition(instanceIdentities)

@@ -12,7 +12,7 @@ type NotEmptyCond struct {
 }
 
 func NewNotEmptyCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty) (Condition, error) {
-	// 只允许字符串类型
+	// Only string types are allowed.
 	if !dtype.DataType_IsString(cfg.NameField.Type) {
 		return nil, fmt.Errorf("condition [empty] left field %s is not of string type, but %s", cfg.Name, cfg.NameField.Type)
 	}
@@ -44,7 +44,7 @@ func (cond *NotEmptyCond) Convert(ctx context.Context, vectorizer func(ctx conte
 	return dslStr, nil
 }
 
-// sql中没有字段存在的过滤条件,暂时用非空表达
+// SQL has no field-existence filter, so express it as non-empty for now.
 func (cond *NotEmptyCond) Convert2SQL(ctx context.Context) (string, error) {
 	sqlStr := fmt.Sprintf(`"%s" IS NOT NULL AND "%s" <> ''`, cond.mFilterFieldName, cond.mFilterFieldName)
 	return sqlStr, nil
@@ -52,7 +52,7 @@ func (cond *NotEmptyCond) Convert2SQL(ctx context.Context) (string, error) {
 
 func rewriteNotEmptyCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "not_empty", "field": cfg.Name})
 	}

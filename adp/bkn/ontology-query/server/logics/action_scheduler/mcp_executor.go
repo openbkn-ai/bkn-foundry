@@ -33,7 +33,7 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 		toolName = source.ToolID
 	}
 
-	// params 由调用方经 buildExecutionParams + buildMCPParameters 组装好，此处直接使用
+	// params are assembled by the caller through buildExecutionParams + buildMCPParameters and are used directly here.
 	mcpRequest := interfaces.MCPExecutionRequest{
 		McpID:      source.McpID,
 		ToolName:   toolName,
@@ -59,12 +59,12 @@ func ExecuteMCP(ctx context.Context, aoAccess interfaces.AgentOperatorAccess, ac
 	return result, nil
 }
 
-// buildMCPParameters 合并 MCP 工具的调用参数。
+// buildMCPParameters merges MCP tool call parameters.
 //
-// MCP 工具的入参 schema 由工具自身声明（get_action_info 直接把 input_schema 暴露为
-// dynamic_params），行动类不必逐项声明 parameters；因此未声明的 dynamic_params 也要透传，
-// 否则 MCP 工具会收到空参数。行动类声明过的参数（const/property/input 映射结果）优先级更高，
-// 同名时覆盖直通值。MCP 不区分 header/query/path/body，全部平铺。
+// The MCP tool input schema is declared by the tool itself; get_action_info exposes input_schema directly as
+// dynamic_params. The action type does not need to declare parameters one by one, so undeclared dynamic_params must also pass through.
+// Otherwise the MCP tool receives empty parameters. Parameters declared by the action type, including const/property/input mapping results, have higher precedence.
+// When names collide, declared values override pass-through values. MCP does not distinguish header/query/path/body; all parameters are flattened.
 func buildMCPParameters(params map[string]any, dynamicParams map[string]any) map[string]any {
 	merged := make(map[string]any, len(params)+len(dynamicParams))
 	for k, v := range dynamicParams {

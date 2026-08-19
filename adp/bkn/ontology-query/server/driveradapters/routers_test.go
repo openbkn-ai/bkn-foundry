@@ -25,7 +25,7 @@ import (
 	omock "ontology-query/interfaces/mock"
 )
 
-// setGinMode 设置 Gin 为测试模式并返回恢复函数
+// setGinMode sets Gin to test mode and returns a restore function.
 func setGinMode() func() {
 	oldMode := gin.Mode()
 	gin.SetMode(gin.TestMode)
@@ -34,7 +34,7 @@ func setGinMode() func() {
 	}
 }
 
-// MockNewRestHandler 创建用于测试的 restHandler
+// MockNewRestHandler creates a restHandler for tests.
 func MockNewRestHandler(
 	appSetting *common.AppSetting,
 	as interfaces.AuthService,
@@ -100,7 +100,7 @@ func Test_RestHandler_verifyJsonContentType(t *testing.T) {
 
 		handler := MockNewRestHandler(appSetting, as, ats, kns, ots)
 
-		// 注册一个测试路由使用中间件
+		// Register a test route that uses the middleware.
 		engine.POST("/test", handler.verifyJsonContentType(), func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		})
@@ -254,7 +254,7 @@ func Test_NewRestHandler(t *testing.T) {
 			handler := NewRestHandler(appSetting)
 			So(handler, ShouldNotBeNil)
 
-			// 测试 RegisterPublic 不会panic
+			// Test that RegisterPublic does not panic.
 			engine := gin.New()
 			So(func() {
 				handler.RegisterPublic(engine)

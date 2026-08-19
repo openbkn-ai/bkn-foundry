@@ -81,7 +81,7 @@ func (cond *NotPrefixCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteNotPrefixCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "not_prefix", "field": cfg.Name})
 	}

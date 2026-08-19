@@ -12,16 +12,16 @@ import (
 	cond "ontology-query/common/condition"
 )
 
-// Vectorizer 把查询词转成向量，供条件改写与 DSL 转换使用。
+// Vectorizer converts query terms to vectors for condition rewriting and DSL conversion.
 type Vectorizer func(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error)
 
-// MemoizeVectorizer 在一次请求内按 (模型, 文本) 去重向量化。
+// MemoizeVectorizer deduplicates vectorization within one request by (model, text).
 //
-// 一条 OR 条件里每个 knn 子条件都会各自向量化一次，而同一次检索里查询词是同一句、
-// 模型往往也是同一个——向量必然相同，却要多付几次模型调用的往返。对象类字段越多、
-// 建了向量索引的字段越多，这笔浪费越大。
+// Each knn sub-condition in an OR condition would vectorize independently, while in one search the query term is the same sentence
+// and often the same model as well. The vector is necessarily identical, but several extra model-call round trips are paid. The more object type fields
+// and vector-indexed fields there are, the larger this waste becomes.
 //
-// 只在单次请求的闭包里缓存：不做跨请求缓存，免得模型换了之后还发旧向量。
+// Cache only inside the single-request closure. Do not cache across requests to avoid sending stale vectors after the model changes.
 func MemoizeVectorizer(vectorize Vectorizer) Vectorizer {
 	type key struct {
 		model string
@@ -42,7 +42,7 @@ func MemoizeVectorizer(vectorize Vectorizer) Vectorizer {
 		if property.IndexConfig != nil {
 			model = property.IndexConfig.VectorConfig.ModelID
 		}
-		// 模型未知时不缓存：拿不到区分依据，宁可多算也不能把不同模型的向量混用。
+		// Do not cache when the model is unknown. Without a distinguishing key, prefer recalculation over mixing vectors from different models.
 		if model == "" {
 			return vectorize(ctx, property, word)
 		}

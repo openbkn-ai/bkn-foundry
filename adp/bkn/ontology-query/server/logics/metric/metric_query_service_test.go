@@ -633,7 +633,7 @@ func Test_metricQueryService_QueryMetricData(t *testing.T) {
 	})
 }
 
-// 趋势 + 日历 day 曾误走 ParseDuration("day")→step=0，产生 -28800000ms 等错误时间轴；fill_null 须走日历对齐。
+// Trend plus calendar day once incorrectly used ParseDuration("day"), producing step=0 and invalid timelines such as -28800000ms; fill_null must use calendar alignment.
 func Test_correctingTime_trendCalendarDay(t *testing.T) {
 	Convey("correctingTime uses calendar path for trend day (not ParseDuration)\n", t, func() {
 		instant := false
@@ -649,14 +649,14 @@ func Test_correctingTime_trendCalendarDay(t *testing.T) {
 	})
 }
 
-// 同环比「同期」须与 convert2TimeSeries 的日历分桶键一致；仅靠毫秒相等会错配桶，导致增长值=本期-错误的同期。
+// The same-period bucket for period comparison must match convert2TimeSeries calendar bucket keys; millisecond equality alone can mismatch buckets and produce growth as current minus the wrong same-period value.
 func Test_lookupSamePeriodBaseValue_timeStrAlignment(t *testing.T) {
 	Convey("lookupSamePeriodBaseValue matches calendar TimeStr when millis differ\n", t, func() {
 		step := "day"
 		msTarget := int64(1_776_787_200_000)
 		key := common.FormatTimeMiliis(msTarget, step)
 		prev := interfaces.BknMetricData{
-			Times:    []any{int64(0), int64(999)}, // 与分桶毫秒不一致，仅靠 ptm==compareDate 会对不上
+			Times:    []any{int64(0), int64(999)}, // This differs from bucket milliseconds, so ptm == compareDate alone will not match.
 			TimeStrs: []string{"1970-01-01", key},
 			Values:   []any{0.0, 2.0},
 		}

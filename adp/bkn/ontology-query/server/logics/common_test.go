@@ -44,7 +44,7 @@ func Test_BuildViewSort(t *testing.T) {
 			}
 
 			result := BuildViewSort(objectType)
-			So(len(result), ShouldEqual, 3) // _score desc + 2个主键 asc
+			So(len(result), ShouldEqual, 3) // _score desc + two primary keys asc.
 			So(result[0].Field, ShouldEqual, interfaces.SORT_FIELD_SCORE)
 			So(result[0].Direction, ShouldEqual, interfaces.DESC_DIRECTION)
 			So(result[1].Field, ShouldEqual, "id")
@@ -70,7 +70,7 @@ func Test_BuildViewSort(t *testing.T) {
 			}
 
 			result := BuildViewSort(objectType)
-			So(len(result), ShouldEqual, 1) // 只有 _score
+			So(len(result), ShouldEqual, 1) // Only _score.
 			So(result[0].Field, ShouldEqual, interfaces.SORT_FIELD_SCORE)
 		})
 
@@ -91,7 +91,7 @@ func Test_BuildViewSort(t *testing.T) {
 			}
 
 			result := BuildViewSort(objectType)
-			So(len(result), ShouldEqual, 1) // 只有 _score
+			So(len(result), ShouldEqual, 1) // Only _score.
 			So(result[0].Field, ShouldEqual, interfaces.SORT_FIELD_SCORE)
 		})
 
@@ -112,7 +112,7 @@ func Test_BuildViewSort(t *testing.T) {
 			}
 
 			result := BuildViewSort(objectType)
-			So(len(result), ShouldEqual, 1) // 只有 _score
+			So(len(result), ShouldEqual, 1) // Only _score.
 		})
 	})
 }
@@ -213,7 +213,7 @@ func Test_BuildIndexSort(t *testing.T) {
 			}
 
 			result := BuildIndexSort(objectType, propMap)
-			So(len(result), ShouldEqual, 3) // _score desc + 2个主键 asc
+			So(len(result), ShouldEqual, 3) // _score desc + two primary keys asc.
 			So(result[0].Field, ShouldEqual, interfaces.SORT_FIELD_SCORE)
 			So(result[1].Field, ShouldEqual, "id")
 			So(result[2].Field, ShouldEqual, "name."+dtype.KEYWORD_SUFFIX)
@@ -239,7 +239,7 @@ func Test_BuildIndexSort(t *testing.T) {
 			}
 
 			result := BuildIndexSort(objectType, propMap)
-			So(len(result), ShouldEqual, 1) // 只有 _score
+			So(len(result), ShouldEqual, 1) // Only _score.
 			So(result[0].Field, ShouldEqual, interfaces.SORT_FIELD_SCORE)
 		})
 
@@ -326,8 +326,8 @@ func Test_BuildPathKey(t *testing.T) {
 			}
 			nextNodeID := "obj1"
 
-			// 空路径会导致panic，但根据代码逻辑，这种情况不应该发生
-			// 这里测试边界情况
+			// An empty path would cause a panic, but this should not happen according to the code logic.
+			// Test the boundary case here.
 			defer func() {
 				if r := recover(); r != nil {
 					So(r, ShouldNotBeNil)
@@ -351,7 +351,7 @@ func Test_FilterValidPaths(t *testing.T) {
 				{
 					Relations: []interfaces.Relation{
 						{SourceObjectId: "obj1", TargetObjectId: "obj2"},
-						{SourceObjectId: "obj2", TargetObjectId: "obj1"}, // 循环
+						{SourceObjectId: "obj2", TargetObjectId: "obj1"}, // Cycle.
 					},
 				},
 			}
@@ -404,7 +404,7 @@ func Test_IsPathValid(t *testing.T) {
 			path := interfaces.RelationPath{
 				Relations: []interfaces.Relation{
 					{SourceObjectId: "obj1", TargetObjectId: "obj2"},
-					{SourceObjectId: "obj2", TargetObjectId: "obj1"}, // 循环：obj2->obj1，但obj1已经在路径中
+					{SourceObjectId: "obj2", TargetObjectId: "obj1"}, // Cycle: obj2 -> obj1, but obj1 is already in the path.
 				},
 			}
 			visitedNodes := map[string]bool{}
@@ -417,7 +417,7 @@ func Test_IsPathValid(t *testing.T) {
 			path := interfaces.RelationPath{
 				Relations: []interfaces.Relation{
 					{SourceObjectId: "obj1", TargetObjectId: "obj2"},
-					{SourceObjectId: "obj3", TargetObjectId: "obj4"}, // 不连续：obj2 != obj3
+					{SourceObjectId: "obj3", TargetObjectId: "obj4"}, // Discontinuous: obj2 != obj3.
 				},
 			}
 			visitedNodes := map[string]bool{}
@@ -430,7 +430,7 @@ func Test_IsPathValid(t *testing.T) {
 			path := interfaces.RelationPath{
 				Relations: []interfaces.Relation{
 					{SourceObjectId: "obj1", TargetObjectId: "obj2"},
-					{SourceObjectId: "obj1", TargetObjectId: "obj3"}, // obj1重复，且路径不连续
+					{SourceObjectId: "obj1", TargetObjectId: "obj3"}, // obj1 is repeated and the path is discontinuous.
 				},
 			}
 			visitedNodes := map[string]bool{}
@@ -468,7 +468,7 @@ func Test_IsPathValid(t *testing.T) {
 				},
 			}
 			visitedNodes := map[string]bool{
-				"obj1": true, // obj1已经被访问过
+				"obj1": true, // obj1 has already been visited.
 			}
 
 			result := IsPathValid(path, visitedNodes)
@@ -493,7 +493,7 @@ func Test_IsPathValid(t *testing.T) {
 					{SourceObjectId: "obj1", TargetObjectId: "obj2"},
 					{SourceObjectId: "obj2", TargetObjectId: "obj3"},
 					{SourceObjectId: "obj3", TargetObjectId: "obj4"},
-					{SourceObjectId: "obj4", TargetObjectId: "obj2"}, // 循环：回到obj2
+					{SourceObjectId: "obj4", TargetObjectId: "obj2"}, // Cycle: returns to obj2.
 				},
 			}
 			visitedNodes := map[string]bool{}
@@ -564,7 +564,7 @@ func Test_CanGenerate(t *testing.T) {
 				RequestPathTypeNum: 2,
 			}
 			quotaManager.UsedQuota.Store(1, 20)
-			// maxQuota = 100 - 50 = 50, used = 20 < 50, 应该返回true
+			// maxQuota = 100 - 50 = 50, used = 20 < 50, should return true.
 
 			result := CanGenerate(quotaManager, 1)
 			So(result, ShouldBeTrue)
@@ -577,7 +577,7 @@ func Test_CanGenerate(t *testing.T) {
 				RequestPathTypeNum: 2,
 			}
 			quotaManager.UsedQuota.Store(1, 50)
-			// maxQuota = 100 - 50 = 50, used = 50 >= 50, 应该返回false
+			// maxQuota = 100 - 50 = 50, used = 50 >= 50, should return false.
 
 			result := CanGenerate(quotaManager, 1)
 			So(result, ShouldBeFalse)
@@ -601,7 +601,7 @@ func Test_RecordGenerated(t *testing.T) {
 	Convey("Test RecordGenerated", t, func() {
 		Convey("成功 - quotaManager为nil", func() {
 			RecordGenerated(nil, 1, 10)
-			// 不应该panic
+			// Should not panic.
 		})
 
 		Convey("成功 - 记录新路径", func() {
@@ -698,7 +698,7 @@ func Test_GetObjectID(t *testing.T) {
 			}
 			objectData := map[string]any{
 				"id": "123",
-				// name缺失
+				// Missing name.
 			}
 
 			id, uk := GetObjectID(objectData, objectType)
@@ -808,7 +808,7 @@ func Test_BuildDirectBatchConditions(t *testing.T) {
 				{
 					ObjectID:   "obj1",
 					ObjectData: map[string]any{
-						// 缺少映射字段
+						// Missing mapping field.
 					},
 				},
 			}
@@ -825,7 +825,7 @@ func Test_BuildDirectBatchConditions(t *testing.T) {
 
 			conditions, err := BuildDirectBatchConditions(currentLevelObjects, edge, true)
 			So(err, ShouldBeNil)
-			// 当inValue为nil时，不会返回in条件，而是返回普通条件
+			// When inValue is nil, return a normal condition instead of an in condition.
 			So(len(conditions), ShouldBeGreaterThanOrEqualTo, 0)
 		})
 
@@ -1010,7 +1010,7 @@ func Test_CompareValues(t *testing.T) {
 
 		Convey("成功 - 不同类型但值相同", func() {
 			result := CompareValues(123, "123")
-			So(result, ShouldBeTrue) // 转换为字符串后比较
+			So(result, ShouldBeTrue) // Compare after converting to strings.
 		})
 	})
 }
@@ -1251,7 +1251,7 @@ func Test_CheckIndirectMappingConditionsWithViewData(t *testing.T) {
 
 		Convey("失败 - 反向映射源字段缺失", func() {
 			currentObjectData := map[string]any{
-				// target_id缺失
+				// Missing target_id.
 			}
 			nextObject := map[string]any{
 				"id": "123",
@@ -1286,7 +1286,7 @@ func Test_CheckIndirectMappingConditionsWithViewData(t *testing.T) {
 				"target_id": "456",
 			}
 			nextObject := map[string]any{
-				// id缺失
+				// Missing id.
 			}
 			mappingRules := &interfaces.InDirectMapping{
 				SourceMappingRules: []interfaces.Mapping{
@@ -1421,12 +1421,12 @@ func Test_BuildDslQuery(t *testing.T) {
 						},
 					},
 				},
-				// SearchAfter字段在ObjectQueryBaseOnObjectType中不存在，需要移除
+				// SearchAfter does not exist in ObjectQueryBaseOnObjectType and needs to be removed.
 			}
 
 			result, err := BuildDslQuery(ctx, queryStr, query)
 			So(err, ShouldBeNil)
-			// SearchAfter字段在ObjectQueryBaseOnObjectType中不存在，跳过检查
+			// SearchAfter does not exist in ObjectQueryBaseOnObjectType, so skip the check.
 			So(result["size"], ShouldEqual, 10)
 		})
 
@@ -1444,7 +1444,7 @@ func Test_BuildDslQuery(t *testing.T) {
 
 			result, err := BuildDslQuery(ctx, queryStr, query)
 			So(err, ShouldBeNil)
-			// 验证limit被设置为SearchAfter_Limit
+			// Verify that limit is set to SearchAfter_Limit.
 			So(result["size"], ShouldNotBeNil)
 		})
 
@@ -1502,7 +1502,7 @@ func Test_BuildDslQuery(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(result["size"], ShouldEqual, 10)
 			So(result["search_after"], ShouldNotBeNil)
-			So(query.NeedTotal, ShouldBeFalse) // 应该被设置为false
+			So(query.NeedTotal, ShouldBeFalse) // Should be set to false.
 		})
 
 		Convey("成功 - 多个排序字段", func() {

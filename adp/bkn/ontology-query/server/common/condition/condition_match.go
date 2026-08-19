@@ -25,26 +25,26 @@ func NewMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 	var fields []string
 	// When querying * against a view with a partial field scope, replace it with the view field list.
 	if name == AllField {
-		// * 只针对text字段和配了全文索引的属性做全文检索
+		// * Run full-text search only on text fields and properties with a full-text index.
 		for _, fieldInfo := range fieldsMap {
 			fields = append(fields, fieldInfo.Name)
-			// 如果是string类型且配置了全文索引，则字段名为 fieldInfo.Name+"."+dtype.TEXT_SUFFIX
+			// If it is a string type with a full-text index, the field name is fieldInfo.Name + "." + dtype.TEXT_SUFFIX.
 			if fieldInfo.Type == dtype.DATATYPE_STRING &&
 				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
 				fields = append(fields, fieldInfo.Name+"."+dtype.TEXT_SUFFIX)
 			}
 		}
 	} else {
-		// 字段是否做了全文索引
+		// Whether the field has a full-text index.
 		fieldInfo := fieldsMap[name]
 		if fieldInfo.Type == dtype.DATATYPE_TEXT {
-			// text字段直接拼
+			// Append text fields directly.
 			fields = append(fields, name)
 		} else {
 			if fieldInfo.Type == dtype.DATATYPE_STRING &&
 				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
-				// 配置了全文索引的属性,可以做match查询,否则报错,不能进行match查询
-				// string 类型做了fulltext, 则match用 xxx.text 进行过滤
+				// match queries are allowed only for properties with a full-text index; otherwise return an error.
+				// For string fields with full-text enabled, match filters on xxx.text.
 				fields = append(fields, name+"."+dtype.TEXT_SUFFIX)
 			} else {
 				return nil, fmt.Errorf(`the index of property [%s] is not configured for full-text search and cannot be used for [match] filtering. Please check the index configuration of the object type and the current request`, name)
@@ -88,7 +88,7 @@ func (cond *MatchCond) Convert2SQL(ctx context.Context) (string, error) {
 
 func rewriteMatchCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	fieldName := ""
 	if cfg.Name == AllField {
 		fieldName = AllField

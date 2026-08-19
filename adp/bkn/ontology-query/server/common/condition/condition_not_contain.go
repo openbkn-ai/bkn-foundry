@@ -20,7 +20,7 @@ type NotContainCond struct {
 	mFilterFieldName string
 }
 
-// 不包含 not_contain，左侧属性值为数组，右侧值为单个值或数组，如果为数组，意味着数组内的值都应在属性值外
+// not_contain means the left property value is an array, and the right value is a single value or array. If it is an array, all right-side values must be outside the property value.
 func NewNotContainCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty) (Condition, error) {
 	if cfg.ValueFrom != ValueFrom_Const {
 		return nil, fmt.Errorf("condition [not_contain] does not support value_from type '%s'", cfg.ValueFrom)
@@ -52,7 +52,7 @@ func NewNotContainCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*
 }
 
 /*
-如果右侧为数组, 则生成如下dsl:
+If the right side is an array, generate the following DSL:
 
 	{
 	  "bool": {
@@ -75,7 +75,7 @@ func NewNotContainCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*
 	  }
 	}
 
-如果右侧为单个值, 则生成如下dsl:
+If the right side is a single value, generate the following DSL:
 
 	{
 	  "bool": {
@@ -147,42 +147,42 @@ func (cond *NotContainCond) Convert(ctx context.Context, vectorizer func(ctx con
 }
 
 func (cond *NotContainCond) Convert2SQL(ctx context.Context) (string, error) {
-	// 使用json_array_contains函数配合NOT运算符实现not_contain操作
-	// 左侧属性值为数组，右侧值为单个值或数组
-	// 如果右侧为数组，意味着数组内的值都应在属性值外（即所有右侧值都不被包含）
+	// Use json_array_contains with the NOT operator to implement not_contain.
+	// The left property value is an array, and the right value is a single value or array.
+	// If the right side is an array, all values in it must be outside the property value.
 	var sqlStr string
 
 	if cond.IsSliceValue {
-		// 右侧为数组，需要所有值都不在左侧数组中
-		// 为每个值生成一个NOT json_array_contains条件，并用AND连接
+		// When the right side is an array, all values must be absent from the left array.
+		// Generate a NOT json_array_contains condition for each value and join them with AND.
 		conditions := []string{}
 		for _, val := range cond.mSliceValue {
 			var condition string
 			vStr, ok := val.(string)
 			if ok {
-				// 处理字符串值，转义单引号
+				// Handle string values and escape single quotes.
 				escapedVal := strings.ReplaceAll(vStr, "'", "''")
 				condition = fmt.Sprintf(`NOT json_array_contains("%s", '%s')`, cond.mFilterFieldName, escapedVal)
 			} else {
-				// 处理非字符串值
+				// Handle non-string values.
 				condition = fmt.Sprintf(`NOT json_array_contains("%s", %v)`, cond.mFilterFieldName, val)
 			}
 			conditions = append(conditions, condition)
 		}
 
-		// 使用AND连接所有条件，确保所有右侧值都不在左侧数组中
+		// Join all conditions with AND to ensure no right-side value is in the left array.
 		sqlStr = strings.Join(conditions, " AND ")
 
 	} else {
-		// 右侧为单个值
+		// The right side is a single value.
 		val := cond.mValue
 		vStr, ok := val.(string)
 		if ok {
-			// 处理字符串值，转义单引号
+			// Handle string values and escape single quotes.
 			escapedVal := strings.ReplaceAll(vStr, "'", "''")
 			sqlStr = fmt.Sprintf(`NOT json_array_contains("%s", '%s')`, cond.mFilterFieldName, escapedVal)
 		} else {
-			// 处理非字符串值
+			// Handle non-string values.
 			sqlStr = fmt.Sprintf(`NOT json_array_contains("%s", %v)`, cond.mFilterFieldName, val)
 		}
 	}
@@ -191,7 +191,7 @@ func (cond *NotContainCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteNotContainCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "not_contain", "field": cfg.Name})
 	}

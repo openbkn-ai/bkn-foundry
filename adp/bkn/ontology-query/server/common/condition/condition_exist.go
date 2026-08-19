@@ -35,14 +35,14 @@ func (cond *ExistCond) Convert(ctx context.Context, vectorizer func(ctx context.
 	return fmt.Sprintf(dslStr, cond.mfieldName), nil
 }
 
-// sql中没有字段存在的过滤条件,暂时用非空表达
+// SQL has no field-existence filter, so express it as non-empty for now.
 func (cond *ExistCond) Convert2SQL(ctx context.Context) (string, error) {
 	return fmt.Sprintf(`"%s" IS NOT NULL`, cond.mfieldName), nil
 }
 
 func rewriteExistCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "exist", "field": cfg.Name})
 	}

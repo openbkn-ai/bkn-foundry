@@ -20,18 +20,18 @@ type KnnCond struct {
 
 func NewKnnCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap map[string]*DataProperty) (Condition, error) {
 
-	// 校验名称是否存在
+	// Validate whether the name exists.
 	name := getFilterFieldName(cfg.Name, fieldsMap, true)
 	var field string
-	// 如果指定*查询,报错，不支持，因为字段太多，向量耗时太长
+	// Return an error when querying *; it is unsupported because too many fields make vector search too slow.
 	if name == AllField {
 		return nil, fmt.Errorf(`the knn operation does not support the [*] query, please specify the field name explicitly`)
 	} else {
-		// 向量字段做knn查询时需要把向量字段换成 "_vector_"+property.Name
-		// 字段是否做了knn
+		// When running a knn query on a vector field, rewrite it to "_vector_" + property.Name.
+		// Whether the field has knn enabled.
 		fieldInfo := fieldsMap[name]
 		if fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.VectorConfig.Enabled {
-			// 配置了向量化的属性,可以做向量化查询,否则报错,不能进行向量化查询
+			// Vector queries are allowed only for vectorized properties; otherwise return an error.
 			field = "_vector_" + name
 		} else {
 			return nil, fmt.Errorf(`the index of property [%s] is not configured for vectorization and cannot be used for [knn] filtering. Please check the index configuration of the object type and the current request`, name)
@@ -136,8 +136,8 @@ func rewriteKnnCond(ctx context.Context, cfg *CondCfg,
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "knn", "field": cfg.Name})
 	}
 
-	// 资源字段的向量能力由 Vega Resource schema/features 与构建状态决定。
-	// ontology-query 只负责把对象属性名改写为资源字段名，查询词或向量值原样下传。
+	// The vector capability of resource fields is determined by the Vega Resource schema/features and build status.
+	// ontology-query only rewrites object property names to resource field names and passes query terms or vector values through unchanged.
 	return &CondCfg{
 		Name:      cfg.NameField.MappedField.Name,
 		Operation: OperationKNNVector,

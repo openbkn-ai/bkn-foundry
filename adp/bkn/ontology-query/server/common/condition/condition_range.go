@@ -41,7 +41,7 @@ func NewRangeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataP
 	}, nil
 }
 
-// range 左闭右开区间
+// range is a left-closed, right-open interval.
 func (cond *RangeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
 	gte := cond.mValue[0]
 	lt := cond.mValue[1]
@@ -91,11 +91,11 @@ func (cond *RangeCond) Convert(ctx context.Context, vectorizer func(ctx context.
 }
 
 func (cond *RangeCond) Convert2SQL(ctx context.Context) (string, error) {
-	// range表示左闭右开区间 [gte, lt)
+	// range represents the left-closed, right-open interval [gte, lt).
 	gte := cond.mValue[0]
 	lt := cond.mValue[1]
 
-	// 处理字符串类型的值，需要用单引号包裹
+	// Handle string values; wrap them in single quotes.
 	gteStr, ok := gte.(string)
 	if ok {
 		gteStr = Special.Replace(fmt.Sprintf("%q", gteStr))
@@ -110,14 +110,14 @@ func (cond *RangeCond) Convert2SQL(ctx context.Context) (string, error) {
 		ltStr = fmt.Sprintf("%v", lt)
 	}
 
-	// 构建SQL条件：字段名 >= 左边界 AND 字段名 < 右边界
+	// Build the SQL condition: field >= lower_bound AND field < upper_bound.
 	sqlStr := fmt.Sprintf("\"%s\" >= %s AND \"%s\" < %s", cond.mFilterFieldName, gteStr, cond.mFilterFieldName, ltStr)
 	return sqlStr, nil
 }
 
 func rewriteRangeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "range", "field": cfg.Name})
 	}

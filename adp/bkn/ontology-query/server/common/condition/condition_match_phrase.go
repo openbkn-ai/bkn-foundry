@@ -28,18 +28,18 @@ func NewMatchPhraseCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fie
 		// for fieldName := range fieldsMap {
 		// 	fields = append(fields, fieldName)
 		// }
-		// * 只针对配了全文索引的属性
+		// * Only for properties with a full-text index.
 		for _, fieldInfo := range fieldsMap {
 			if fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
-				// 配置了全文索引的属性,可以做match查询,否则报错,不能进行match查询
+				// match queries are allowed only for properties with a full-text index; otherwise return an error.
 				fields = append(fields, name)
 			}
 		}
 	} else {
-		// 字段是否做了全文索引
+		// Whether the field has a full-text index.
 		fieldInfo := fieldsMap[name]
 		if fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
-			// 配置了全文索引的属性,可以做match查询,否则报错,不能进行match查询
+			// match queries are allowed only for properties with a full-text index; otherwise return an error.
 			fields = append(fields, name)
 		} else {
 			return nil, fmt.Errorf(`the index of property [%s] is not configured for full-text search and cannot be used for [match_phrase] filtering. Please check the index configuration of the object type and the current request`, name)
@@ -82,7 +82,7 @@ func (cond *MatchPhraseCond) Convert2SQL(ctx context.Context) (string, error) {
 
 func rewriteMatchPhraseCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	fieldName := ""
 	if cfg.Name == AllField {
 		fieldName = AllField

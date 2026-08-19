@@ -48,14 +48,14 @@ func NewModelFactoryAccess(appSetting *common.AppSetting) interfaces.ModelFactor
 	return mfAccess
 }
 
-// GetVector 根据输入字符串数组获取对应的向量数组
+// GetVector retrieves corresponding vector arrays for input strings.
 // Parameters:
-//   - ctx: 上下文对象
-//   - texts: 输入字符串数组
+// - ctx: context object.
+// - texts: input string array.
 //
-// 返回：
-//   - [][]float32: 等长的向量数组，每个向量对应一个输入字符串
-//   - error: 错误信息
+// Returns:
+// - [][]float32: vector array with the same length, one vector per input string.
+// - error: error information.
 func (mfa *modelFactoryAccess) GetVector(ctx context.Context, model *interfaces.SmallModel,
 	words []string) ([]cond.VectorResp, error) {
 
@@ -95,14 +95,14 @@ func (mfa *modelFactoryAccess) GetVector(ctx context.Context, model *interfaces.
 		}
 		currentWords := words[i:end]
 		for j := 0; j < len(currentWords); j++ {
-			// 计算utf8字符长度
+			// Calculate the UTF-8 character length.
 			runes := []rune(currentWords[j])
 			if len(runes) > maxTokens {
 				currentWords[j] = string(runes[:maxTokens])
 			}
 		}
 
-		// 构建请求体
+		// Build the request body.
 		requestBody := map[string]interface{}{
 			"model":    "",
 			"model_id": modelID,

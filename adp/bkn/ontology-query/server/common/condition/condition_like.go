@@ -44,7 +44,7 @@ func NewLikeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataPr
 }
 
 func (cond *LikeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
-	// 替换 like 里的通配符
+	// Replace wildcards in like.
 	v := common.ReplaceLikeWildcards(cond.mValue)
 	v = fmt.Sprintf("%q", v)
 	dslStr := fmt.Sprintf(`
@@ -72,7 +72,7 @@ func (cond *LikeCond) Convert2SQL(ctx context.Context) (string, error) {
 
 func rewriteLikeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "like", "field": cfg.Name})
 	}
@@ -81,7 +81,7 @@ func rewriteLikeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 		Operation: cfg.Operation,
 		ValueOptCfg: ValueOptCfg{
 			Value:     cfg.Value,
-			RealValue: cfg.Value, // 把本体的like的 value 传到视图的 like 过滤的 real_value
+			RealValue: cfg.Value, // Pass the ontology like value to the real_value of the view like filter.
 		},
 	}, nil
 }

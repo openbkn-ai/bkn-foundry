@@ -6,7 +6,7 @@
 
 package errors
 
-// 指标模型
+// Metric model.
 const (
 	// 400
 	OntologyQuery_ObjectType_InvalidParameter                      = "OntologyQuery.ObjectType.InvalidParameter"

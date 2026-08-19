@@ -454,7 +454,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 				ObjectTypeID: objectTypeID,
 				ObjectQueryInfo: &interfaces.ObjectQueryInfo{
 					InstanceIdentity: []map[string]any{
-						{"id": "123"}, // 缺少 name
+						{"id": "123"}, // Missing name.
 					},
 				},
 			}
@@ -577,7 +577,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 						},
 					},
 					PrimaryKeys: []string{"id"},
-					DataSource:  nil, // 数据源为空
+					DataSource:  nil, // Data source is empty.
 				},
 			}
 
@@ -614,7 +614,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 					},
 					PrimaryKeys: []string{"id"},
 					DataSource: &interfaces.ResourceInfo{
-						ID: "", // ID为空
+						ID: "", // IDempty.
 					},
 				},
 			}
@@ -946,7 +946,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 			result, err := service.GetObjectsByObjectTypeID(ctx, query)
 			So(err, ShouldBeNil)
 			So(len(result.Datas), ShouldEqual, 1)
-			// 不支持的逻辑属性类型不会添加到结果中
+			// Unsupported logical property types are not added to the result.
 		})
 
 		Convey("vega 返回 4xx 时按原状态码透传，不升级为 500", func() {
@@ -986,7 +986,7 @@ func Test_objectTypeService_GetObjectsByObjectTypeID(t *testing.T) {
 
 			httpErr, ok := err.(*rest.HTTPError)
 			So(ok, ShouldBeTrue)
-			// 参数问题报成 500 会让调用方去查服务健康，而真正该做的是改查询或建索引。
+			// Reporting parameter issues as 500 makes callers check service health, while the real fix is changing the query or building the index.
 			So(httpErr.HTTPCode, ShouldEqual, http.StatusBadRequest)
 			So(httpErr.BaseError.ErrorDetails, ShouldEqual, details)
 		})
@@ -1286,8 +1286,8 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 				},
 			}
 
-			// GetObjectPropertyValue 内部会调用 GetObjectsByObjectTypeID
-			// GetObjectsByObjectTypeID 需要这些依赖
+			// GetObjectPropertyValue internally calls GetObjectsByObjectTypeID.
+			// GetObjectsByObjectTypeID needs these dependencies.
 			omAccess.EXPECT().GetObjectType(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, true, nil)
 			vba.EXPECT().QueryResourceData(gomock.Any(), "res1", gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{{"id": "123", "prop1": "value1"}},
@@ -1610,7 +1610,7 @@ func Test_objectTypeService_GetObjectPropertyValue(t *testing.T) {
 					{"id": "123"},
 				},
 				Properties:    []string{"logic_prop1"},
-				DynamicParams: map[string]map[string]any{}, // 缺少动态参数
+				DynamicParams: map[string]map[string]any{}, // Missing dynamic parameters.
 			}
 
 			objectType := interfaces.ObjectType{

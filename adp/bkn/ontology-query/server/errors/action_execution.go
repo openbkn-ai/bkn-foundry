@@ -6,7 +6,7 @@
 
 package errors
 
-// Action Execution 错误码
+// Action execution error codes.
 const (
 	// 400
 	OntologyQuery_ActionExecution_InvalidParameter = "OntologyQuery.ActionExecution.InvalidParameter"

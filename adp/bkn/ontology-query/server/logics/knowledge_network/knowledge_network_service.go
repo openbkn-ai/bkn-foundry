@@ -56,12 +56,12 @@ func NewKnowledgeNetworkService(appSetting *common.AppSetting) interfaces.Knowle
 func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource) (interfaces.ObjectSubGraph, error) {
 
-	// 1.获取对象类信息
+	// 1. Get object type information.
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询对象子图")
 	defer span.End()
 	var resps interfaces.ObjectSubGraph
 
-	// 1. 在指定的业务知识网络下，根据起点对象类、方向、路径长度获取所有路径。
+	// 1. Under the specified business knowledge network, get all paths by source object type, direction, and path length.
 	typePaths, err := kns.omAccess.GetRelationTypePathsBaseOnSource(ctx, query.KNID, query.Branch,
 		interfaces.PathsQueryBaseOnSource{
 			ConceptGroups:     query.ConceptGroups,
@@ -78,7 +78,7 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 			oerrors.OntologyQuery_ObjectType_InternalError_GetObjectTypesByIDFailed).WithErrorDetails(err.Error())
 	}
 
-	// 2. 检索起点对象类的对象实例
+	// 2. Retrieve source object type instances.
 	startObjectQuery := &interfaces.ObjectQueryBaseOnObjectType{
 		ActualCondition: query.ActualCondition,
 		PageQuery:       query.PageQuery,
@@ -96,28 +96,28 @@ func (kns *knowledgeNetworkService) SearchSubgraph(ctx context.Context,
 		startObjectQuery.Limit = interfaces.DEFAULT_LIMIT
 	}
 
-	// 排序字段的校验在获取对象类的对象数据的时候校验，在当前层不用校验
+	// Sort fields are validated when object data is retrieved by object type; no validation is needed at this layer.
 	startObjects, err := kns.ots.GetObjectsByObjectTypeID(ctx, startObjectQuery)
 	if err != nil {
 		return resps, err
 	}
 
-	// 3. 遍历路径，跟起点对象实例沿着路径逐个对象类查询对象实例
+	// 3. Traverse paths and query object instances type by type from the source instances along each path.
 	query.PathQuotaManager = &interfaces.PathQuotaManager{
-		TotalLimit:         query.TotalLimit, // 对象路径总长度
-		GlobalCount:        0,                // 对象路径数量0
+		TotalLimit:         query.TotalLimit, // Total object path length.
+		GlobalCount:        0,                // Object path count starts at 0.
 		UsedQuota:          sync.Map{},
 		RequestPathTypeNum: len(typePaths),
 	}
 
-	// 起点类已经查询完成，limit已经得到，后续的路径探索用系统默认的最大值进行探索
+	// The source type has already been queried and the limit has been obtained; subsequent path exploration uses the system default maximum.
 	query.Limit = interfaces.MAX_PATHS
 	objectGraph, err := kns.buildObjectSubgraph(ctx, query, typePaths, startObjects)
 	if err != nil {
 		return resps, err
 	}
 
-	// 4. 组装最终结果
+	// 4. Assemble the final result.
 	objectGraph.TotalCount = startObjects.TotalCount
 	objectGraph.SearchAfter = startObjects.SearchAfter
 	objectGraph.CuurentPathNumber = len(objectGraph.RelationPaths)
@@ -132,7 +132,7 @@ func (kns *knowledgeNetworkService) SearchSubgraphByTypePath(ctx context.Context
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "查询路径的对象子图")
 	defer span.End()
 
-	// 多个路径，并发查，各查各的，各自有过滤条件
+	// Query multiple paths concurrently; each path runs independently with its own filters.
 	errCh := make(chan error, len(query.Paths.TypePaths))
 
 	typePathsObjectCtx := &typePathsObjectsContext{
@@ -148,7 +148,7 @@ func (kns *knowledgeNetworkService) SearchSubgraphByTypePath(ctx context.Context
 		// kns.buildObjectSubgraphByTypePaths(typePathsObjectCtx, typePathsObjectCtx.wg, query, path, i)
 	}
 
-	// 等待所有goroutine完成
+	// Wait for all goroutines to complete.
 	typePathsObjectCtx.wg.Wait()
 	if len(typePathsObjectCtx.errCh) > 0 {
 		err := <-typePathsObjectCtx.errCh
@@ -157,7 +157,7 @@ func (kns *knowledgeNetworkService) SearchSubgraphByTypePath(ctx context.Context
 		}
 	}
 
-	// 组装结果
+	// Assemble results.
 	graphs := make([]interfaces.ObjectSubGraph, len(query.Paths.TypePaths))
 	for i := range query.Paths.TypePaths {
 		if grahp, exist := typePathsObjectCtx.objectSubGraphMap[i]; exist {
@@ -181,12 +181,12 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 	ctx, span := oteltrace.StartNamedInternalSpan(typePathsObjectCtx.ctx, "查询路径的对象子图")
 	defer span.End()
 
-	// 1. 查各个边的关系类信息，补充 typeEdge 里的 RelationType
+	// 1. Query relation type information for each edge and fill RelationType in typeEdge.
 	typePath := interfaces.RelationTypePath{
 		ObjectTypes: path.ObjectTypes,
 	}
 	for j, edge := range path.Edges {
-		// 获取关系类信息
+		// Get relation type information.
 		relationType, exists, err := kns.omAccess.GetRelationType(ctx, query.KNID, query.Branch, edge.RelationTypeId)
 		if err != nil {
 			span.SetAttributes(attribute.Key("rt_id").String(edge.RelationTypeId))
@@ -209,7 +209,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 			return
 		}
 		path.Edges[j].RelationType = relationType
-		// 记录方向。路径的边的方向和对应关系类的方向一致，则认为是正向，否则反向
+		// Record direction. If the path edge direction matches the corresponding relation type direction, treat it as forward; otherwise reverse.
 		if path.Edges[j].SourceObjectTypeId == path.Edges[j].RelationType.SourceObjectTypeID {
 			path.Edges[j].Direction = interfaces.DIRECTION_FORWARD
 		} else {
@@ -218,7 +218,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 	}
 	typePath.TypeEdges = path.Edges
 
-	// 2. 检索起点对象类的对象实例
+	// 2. Retrieve source object type instances.
 	startObjectQuery := &interfaces.ObjectQueryBaseOnObjectType{
 		ActualCondition: path.ObjectTypes[0].ActualCondition,
 		PageQuery:       path.ObjectTypes[0].PageQuery,
@@ -241,7 +241,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 		return
 	}
 
-	// 3. 构建查询
+	// 3. Build the query.
 	subGraphquery := &interfaces.SubGraphQueryBaseOnSource{
 		KNID:              query.KNID,
 		Branch:            query.Branch,
@@ -252,20 +252,20 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 		},
 		CommonQueryParameters: query.CommonQueryParameters,
 		PathQuotaManager: &interfaces.PathQuotaManager{
-			TotalLimit:         int64(path.Limit), // 对象路径总长度
-			GlobalCount:        0,                 // 对象路径数量0
+			TotalLimit:         int64(path.Limit), // Total object path length.
+			GlobalCount:        0,                 // Object path count starts at 0.
 			UsedQuota:          sync.Map{},
 			RequestPathTypeNum: 1,
-		}, // 共享配额管理器，需要加锁保护
+		}, // Shared quota manager; must be protected by a lock.
 	}
-	// 初始化状态
+	// Initialize state.
 	baseState := &interfaces.BatchQueryState{
-		Visited:   map[string]bool{}, // 用于防止循环路径
-		BatchSize: 50,                // 每批查询的节点数量
+		Visited:   map[string]bool{}, // Used to prevent cyclic paths.
+		BatchSize: 50,                // Number of nodes queried per batch.
 	}
 	subGraphquery.BatchQueryState = *baseState
 
-	// 从起点开始沿着路径构建子图。todo: 需修正。各个对象类的过滤条件需加上
+	// Build the subgraph from the source along the path. TODO: fix this by adding filters for each object type.
 	typePathObjectCtx := &typePathObjectsContext{
 		ctx:           typePathsObjectCtx.ctx,
 		relationPaths: []interfaces.RelationPath{},
@@ -277,7 +277,7 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 
 	kns.buildSingleTypePathObjects(typePathObjectCtx, typePath, subGraphquery, startObjects)
 
-	// 组装当前点的ctx
+	// Assemble the context for the current point.
 	typePathsObjectCtx.objectSubGraphMap[pathIndex] = interfaces.ObjectSubGraph{
 		RelationPaths:     typePathObjectCtx.relationPaths,
 		Objects:           typePathObjectCtx.objectsMap,
@@ -287,10 +287,10 @@ func (kns *knowledgeNetworkService) buildObjectSubgraphByTypePaths(
 	}
 }
 
-// 多条路径下的数据查询
+// Data query across multiple paths.
 type typePathsObjectsContext struct {
 	ctx               context.Context
-	objectSubGraphMap map[int]interfaces.ObjectSubGraph // key是typePath的下标
+	objectSubGraphMap map[int]interfaces.ObjectSubGraph // The key is the typePath index.
 	// relationPathsMap  map[int][]interfaces.RelationPath
 	// objectsMap        map[int]map[string]interfaces.ObjectInfoInSubgraph
 	errCh chan error
@@ -306,7 +306,7 @@ type typePathObjectsContext struct {
 	mu            sync.Mutex
 }
 
-// 从起点对象开始构建所有路径的对象子图
+// Build object subgraphs for all paths from the source object.
 func (kns *knowledgeNetworkService) buildObjectSubgraph(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource,
 	typePaths []interfaces.RelationTypePath,
@@ -326,21 +326,21 @@ func (kns *knowledgeNetworkService) buildObjectSubgraph(ctx context.Context,
 		mu:            sync.Mutex{},
 	}
 
-	// 初始化状态
+	// Initialize state.
 	baseState := &interfaces.BatchQueryState{
-		Visited:   map[string]bool{}, // 用于防止循环路径
-		BatchSize: 50,                // 每批查询的节点数量
+		Visited:   map[string]bool{}, // Used to prevent cyclic paths.
+		BatchSize: 50,                // Number of nodes queried per batch.
 	}
 	query.BatchQueryState = *baseState
 
-	// 为每个概念路径生成对象路径。 可优化，各个概念路径并行运行
+	// Generate object paths for each concept path. This can be optimized by running concept paths in parallel.
 	for i := range typePaths {
 		typePathObjectCtx.wg.Add(1)
 		go kns.buildObjectSubgraphBySource(typePathObjectCtx, typePaths[i], query, startObjects)
 		// kns.buildSingleTypePathObjects(typePathObjectCtx, typePaths[i], query, startObjects)
 	}
 
-	// 等待所有goroutine完成
+	// Wait for all goroutines to complete.
 	typePathObjectCtx.wg.Wait()
 	if len(typePathObjectCtx.errCh) > 0 {
 		err := <-typePathObjectCtx.errCh
@@ -375,13 +375,13 @@ func (kns *knowledgeNetworkService) buildSingleTypePathObjects(
 
 	logger.Debugf("处理概念路径 - ID: %d, 边数: %d", typePath.ID, len(typePath.TypeEdges))
 
-	// 在开始处理前检查全局限制
+	// Check the global limit before processing starts.
 	if !logics.CanGenerate(query.PathQuotaManager, typePath.ID) {
 		logger.Debugf("路径ID %d 已达到限制，跳过处理", typePath.ID)
 		return
 	}
 
-	// 为每个goroutine创建独立的状态副本，避免并发冲突
+	// Create an independent state copy for each goroutine to avoid concurrent conflicts.
 	localState := &interfaces.BatchQueryState{
 		Visited:   make(map[string]bool),
 		BatchSize: query.BatchSize,
@@ -397,7 +397,7 @@ func (kns *knowledgeNetworkService) buildSingleTypePathObjects(
 		Condition:             query.Condition,
 		ActualCondition:       query.ActualCondition,
 		PageQuery:             query.PageQuery,
-		PathQuotaManager:      query.PathQuotaManager, // 共享配额管理器，需要加锁保护
+		PathQuotaManager:      query.PathQuotaManager, // Shared quota manager; must be protected by a lock.
 		BatchQueryState:       *localState,
 		CommonQueryParameters: query.CommonQueryParameters,
 	}
@@ -407,7 +407,7 @@ func (kns *knowledgeNetworkService) buildSingleTypePathObjects(
 		localObjectsMap = make(map[string]interfaces.ObjectInfoInSubgraph)
 	)
 
-	// 批量扩展对象路径
+	// Batch-expand object paths.
 	currentObjectPaths, err := kns.expandObjectPathsBatch(typePathObjectCtx.ctx, localQuery, typePath,
 		startObjects, localObjectsMap)
 	if err != nil {
@@ -415,18 +415,18 @@ func (kns *knowledgeNetworkService) buildSingleTypePathObjects(
 		return
 	}
 
-	// 合并结果到主数据结构（需要加锁）
-	// 合并结果前再次检查，避免在扩展过程中其他goroutine已经达到限制
+	// Merge results into the main data structure; locking is required.
+	// Check again before merging results in case another goroutine reached the limit during expansion.
 	if len(currentObjectPaths) > 0 {
 		typePathObjectCtx.mu.Lock()
 		defer typePathObjectCtx.mu.Unlock()
 
-		// 检查合并后是否会超过限制. 按需合并
+		// Check whether merging would exceed the limit and merge only as needed.
 		currentGlobal := atomic.LoadInt64(&query.GlobalCount)
 		if currentGlobal > query.TotalLimit {
-			// 合并一批超，那么就合并差的那部分进去，直到超
+			// If merging the whole batch exceeds the limit, merge only the remaining capacity.
 			fixedNum := query.TotalLimit - int64(len(typePathObjectCtx.relationPaths))
-			// 限制 fixedNum 不超过当前批次的实际数量，避免数组越界
+			// Limit fixedNum to the actual current batch size to avoid array bounds errors.
 			if fixedNum > int64(len(currentObjectPaths)) {
 				fixedNum = int64(len(currentObjectPaths))
 			}
@@ -448,7 +448,7 @@ func (kns *knowledgeNetworkService) buildSingleTypePathObjects(
 	}
 }
 
-// 批量扩展对象路径
+// Batch-expand object paths.
 func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource,
 	typePath interfaces.RelationTypePath,
@@ -457,18 +457,18 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 
 	var paths []interfaces.RelationPath
 
-	// 使用广度优先搜索进行批量扩展
+	// Use breadth-first search for batch expansion.
 	var bfs func(currentLevelObjects []interfaces.LevelObjectWithPath, depth int) error
 
 	bfs = func(currentLevel []interfaces.LevelObjectWithPath, depth int) error {
-		// 在每一层开始前检查全局限制
+		// Check the global limit before starting each level.
 		if !logics.CanGenerate(query.PathQuotaManager, typePath.ID) {
 			logger.Debugf("达到限制，停止扩展路径，深度: %d", depth)
 			return nil
 		}
 
 		if depth >= len(typePath.TypeEdges) || len(currentLevel) == 0 {
-			// 到达路径终点，保存路径（跳过无任何边的路径，与 IncludeIncompletePath 分支一致）
+			// When the path endpoint is reached, save the path, skipping paths without any edges to match the IncludeIncompletePath branch.
 			totalPathsInThisBatch := 0
 			for _, current := range currentLevel {
 				for _, path := range current.Paths {
@@ -488,18 +488,18 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 			return nil
 		}
 
-		// 获取当前深度的边
+		// Get the edge at the current depth.
 		edge := typePath.TypeEdges[depth]
-		// 获取当前边的终点对象类
+		// Get the target object type of the current edge.
 		objectType := typePath.ObjectTypes[depth+1]
 
-		// 准备批量查询
+		// Prepare the batch query.
 		currentLevelObjects := make([]interfaces.LevelObject, len(currentLevel))
 		for i, obj := range currentLevel {
 			currentLevelObjects[i] = obj.LevelObject
 		}
 
-		// 按对象分批处理，避免单次查询过大
+		// Process objects in batches to avoid oversized single queries.
 		batchSize := query.BatchSize
 		if batchSize <= 0 {
 			batchSize = 50
@@ -507,9 +507,9 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 
 		continueBatch := true
 		for i := 0; i < len(currentLevelObjects) && continueBatch; i += batchSize {
-			// 在每次处理对象前检查限制
+			// Check the limit before processing each object.
 			if !logics.CanGenerate(query.PathQuotaManager, typePath.ID) {
-				// 结束，不再遍历下一批
+				// Stop and do not traverse the next batch.
 				break
 			}
 
@@ -519,15 +519,15 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 			}
 
 			batch := currentLevelObjects[i:end]
-			// 批量查询下一层对象
+			// Batch-query next-layer objects.
 			nextLevelObjects, err := kns.getNextObjectsBatchByRelation(ctx, query, batch, &edge, objectType)
 			if err != nil {
 				return err
 			}
 			if len(nextLevelObjects) == 0 {
-				// 无下一层的对象
+				// No next-layer objects.
 				if query.IncludeIncompletePath {
-					// 如果需要包含不完整路径，将当前批次中所有对象的路径添加到结果中
+					// If incomplete paths should be included, add paths for all objects in the current batch to the result.
 					batchObjectIDs := make(map[string]bool)
 					for _, obj := range batch {
 						batchObjectIDs[obj.ObjectID] = true
@@ -549,24 +549,24 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 							typePath.ID, totalPathsInThisBatch, depth)
 					}
 				}
-				// 继续下一批的遍历
+				// Continue traversing the next batch.
 				continue
 			}
 
-			// 构建下一层对象
+			// Build next-layer objects.
 			var nextLevel []interfaces.LevelObjectWithPath
 
 			for _, currentObj := range currentLevel {
-				// 在每次处理对象前检查限制
+				// Check the limit before processing each object.
 				if !logics.CanGenerate(query.PathQuotaManager, typePath.ID) {
-					// 结束，不再遍历下一批
+					// Stop and do not traverse the next batch.
 					continueBatch = false
 					break
 				}
 
 				nextObjects, exists := nextLevelObjects[currentObj.ObjectID]
 				if !exists {
-					// 当前对象没有找到下一层对象
+					// No next-layer object was found for the current object.
 					if query.IncludeIncompletePath {
 						// Incomplete paths: only keep paths that already have at least one edge (same as batch branch above).
 						totalAdded := 0
@@ -587,7 +587,7 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 				}
 
 				for _, nextObject := range nextObjects.Datas {
-					// 检查限制
+					// Check limits.
 					if !logics.CanGenerate(query.PathQuotaManager, typePath.ID) {
 						break
 					}
@@ -597,7 +597,7 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 						continue
 					}
 
-					// 构建路径键来检测循环
+					// Build a path key to detect cycles.
 					// pathKey := ""
 					// if len(typePath.TypeEdges) == 0 {
 					// 	pathKey = fmt.Sprintf("%s:%s->%s", edge.RelationTypeId, currentObj.ObjectID, nextObjectID)
@@ -605,13 +605,13 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 					// 	pathKey = logics.BuildPathKey(currentPath, nextObjectID)
 					// }
 
-					// 如果对象mapp中没有，则添加
+					// Add the object if it is absent from the object map.
 					// _, exists = objectsMap[currentObj.ObjectID]
 					// if !exists {
 					// 	continue
 					// }
 
-					// 当前对象未被添加过，则添加到对象映射
+					// If the current object has not been added, add it to the object mapping.
 					_, exists = objectsMap[currentObj.ObjectID]
 					if !exists {
 						objInfo := interfaces.ObjectInfoInSubgraph{
@@ -631,7 +631,7 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 						objectsMap[currentObj.ObjectID] = objInfo
 					}
 
-					// 添加下一层对象到对象映射
+					// Add the next-layer object to the object mapping.
 					objInfo := interfaces.ObjectInfoInSubgraph{
 						ObjectTypeId:   nextObjects.ObjectType.OTID,
 						ObjectTypeName: nextObjects.ObjectType.OTName,
@@ -648,13 +648,13 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 					}
 					objectsMap[nextObjectID] = objInfo
 
-					// 为当前对象的所有路径添加新边
+					// Add the new edge to all paths of the current object.
 					newPaths, pathExisted := kns.extendPathsWithNewEdge(query, currentObj.Paths, currentObj.ObjectID, nextObjectID, edge)
 					if pathExisted {
 						continue
 					}
 
-					// 记录下一层对象用于继续扩展（必须带 ObjectType / ObjectUK，后续边如 filtered_cross_join 要再查实例）
+					// Record next-layer objects for continued expansion. They must carry ObjectType/ObjectUK because later edges such as filtered_cross_join need to query instances again.
 					nextLevel = append(nextLevel, interfaces.LevelObjectWithPath{
 						LevelObject: interfaces.LevelObject{
 							ObjectID:   nextObjectID,
@@ -663,13 +663,13 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 							ObjectType: nextObjects.ObjectType,
 							PathFrom:   currentObj.ObjectID,
 						},
-						Paths: newPaths, // 携带扩展后的路径
+						Paths: newPaths, // Carry the expanded paths.
 					})
 
 				}
 			}
 
-			// 当前批在此层的路径已拼完，递归处理下一层
+			// Paths for the current batch at this level are complete; recursively process the next level.
 			if len(nextLevel) > 0 {
 				err = bfs(nextLevel, depth+1)
 				if err != nil {
@@ -677,14 +677,14 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 				}
 				continue
 			}
-			// 当前层的当前批无路径可扩展，则继续扩展下一批数据的路径
+			// If the current batch at this level has no paths to expand, continue expanding paths for the next batch.
 		}
 
-		// 当前层没有扩展到，结束遍历，无路径。
+		// Nothing was expanded at the current level; end traversal with no path.
 		return nil
 	}
 
-	// 初始化第一层对象
+	// Initialize first-level objects.
 	var initialLevel []interfaces.LevelObjectWithPath
 	for _, startObjectData := range startObjects.Datas {
 		startObjectID, startObjectUK := logics.GetObjectID(startObjectData, startObjects.ObjectType)
@@ -692,7 +692,7 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 			continue
 		}
 
-		// 为每个起点对象创建初始路径（空路径）
+		// Create an initial empty path for each source object.
 		initialPath := interfaces.RelationPath{
 			Relations: []interfaces.Relation{},
 			Length:    0,
@@ -710,7 +710,7 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 		})
 	}
 
-	// 开始广度优先搜索
+	// Start breadth-first search.
 	err := bfs(initialLevel, 0)
 	if err != nil {
 		return nil, err
@@ -720,14 +720,14 @@ func (kns *knowledgeNetworkService) expandObjectPathsBatch(ctx context.Context,
 	return paths, nil
 }
 
-// 批量根据关系获取下一层对象
+// Batch-fetch next-layer objects by relation.
 func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource,
 	batch []interfaces.LevelObject,
 	edge *interfaces.TypeEdge,
 	objectType interfaces.ObjectTypeWithKeyField) (map[string]interfaces.Objects, error) {
 
-	// 根据关系方向确定下一个对象类
+	// Determine the next object type from the relation direction.
 	var nextObjectTypeID string
 	isForward := true
 	if edge.Direction == interfaces.DIRECTION_FORWARD {
@@ -748,7 +748,7 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 		return kns.expandFilteredCrossJoin(ctx, query, batch, edge, objectType, isForward, rules)
 	}
 
-	// // 按对象分批处理，避免单次查询过大
+	// Process objects in batches to avoid oversized single queries.
 	// batchSize := query.BatchSize
 	// if batchSize <= 0 {
 	// 	batchSize = 50
@@ -762,13 +762,13 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 
 	// 	batch := currentLevelObjects[i:end]
 
-	// 构建批量查询条件，还需返回间接关联时关联视图的数据
+	// Build batch query conditions and also return associated view data for indirect associations.
 	conditions, viewDataMap, err := kns.buildBatchConditions(ctx, query, batch, edge, isForward)
 	if err != nil {
 		return nil, err
 	}
 	if len(conditions) == 0 {
-		// 通过关系类的映射构建不到过滤条件，那就跳过。
+		// Skip when filter conditions cannot be built from the relation type mapping.
 		// continue
 		return nil, nil
 	}
@@ -781,7 +781,7 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 			IncludeTypeInfo:    true,
 			IncludeLogicParams: query.IncludeLogicParams,
 			IgnoringStore:      query.IgnoringStore,
-			// ExcludeSystemProperties: query.ExcludeSystemProperties, 子图查询的系统字段在子图查询中生成，不需要对象实例自己生成
+			// ExcludeSystemProperties: query.ExcludeSystemProperties. System fields for subgraph queries are generated by the subgraph query and do not need to be generated by object instances.
 		},
 	}
 
@@ -794,21 +794,21 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 		nextObjectQuery.ActualCondition = conditions[0]
 	}
 
-	// 把对象类身上配置的过滤条件加上
+	// Add filter conditions configured on the object type.
 	if objectType.ActualCondition != nil {
 		nextObjectQuery.ActualCondition = &cond.CondCfg{
 			Operation: "and", // Combine object constraints with AND.
 			SubConds:  []*cond.CondCfg{nextObjectQuery.ActualCondition, objectType.ActualCondition},
 		}
 	}
-	// 分页和排序信息
+	// Pagination and sorting information.
 	if len(objectType.Sort) > 0 {
 		nextObjectQuery.Sort = objectType.Sort
 	}
 	if objectType.Limit > 0 {
 		nextObjectQuery.Limit = objectType.Limit
 	} else {
-		nextObjectQuery.Limit = query.Limit // 适当调整限制
+		nextObjectQuery.Limit = query.Limit // Adjust the limit as needed.
 	}
 
 	nextObjects, err := kns.ots.GetObjectsByObjectTypeID(ctx, nextObjectQuery)
@@ -817,20 +817,20 @@ func (kns *knowledgeNetworkService) getNextObjectsBatchByRelation(ctx context.Co
 	}
 	// logger.Debugf("从对象类[%s]中获取到的数据条数为[%d]", nextObjectTypeID, len(nextObjects.Datas))
 
-	// 根据映射规则将结果映射回各个对象
+	// Map results back to each object according to mapping rules.
 	kns.mapResultsToObjects(batch, nextObjects, result, edge, isForward, viewDataMap)
 	// }
 
 	return result, nil
 }
 
-// 将查询结果映射回各个对象
+// Map query results back to each object.
 func (kns *knowledgeNetworkService) mapResultsToObjects(currentLevelObjects []interfaces.LevelObject,
 	nextObjects interfaces.Objects, result map[string]interfaces.Objects,
 	edge *interfaces.TypeEdge, isForward bool,
 	viewDataMap map[string][]map[string]any) {
 
-	// 根据映射规则过滤属于每个对象的下一层对象
+	// Filter next-layer objects that belong to each object according to mapping rules.
 	for _, levelObj := range currentLevelObjects {
 		filteredObjects := interfaces.Objects{
 			Datas:       []map[string]any{},
@@ -840,7 +840,7 @@ func (kns *knowledgeNetworkService) mapResultsToObjects(currentLevelObjects []in
 		}
 
 		for _, nextObj := range nextObjects.Datas {
-			// 获取该对象的视图数据（如果是间接映射）
+			// Get view data for this object when using indirect mapping.
 			var objectViewData []map[string]any
 			if _, isIndirect := edge.RelationType.MappingRules.(*interfaces.InDirectMapping); isIndirect {
 				objectViewData = viewDataMap[levelObj.ObjectID]
@@ -858,19 +858,19 @@ func (kns *knowledgeNetworkService) mapResultsToObjects(currentLevelObjects []in
 	}
 }
 
-// 判断对象是否关联（根据映射规则）
+// Determine whether objects are associated according to mapping rules.
 func (kns *knowledgeNetworkService) isObjectRelated(currentObjectData map[string]any,
 	nextObject map[string]any, edge *interfaces.TypeEdge, isForward bool,
 	viewData []map[string]any) bool {
 
 	switch mappingRules := edge.RelationType.MappingRules.(type) {
 	case []interfaces.Mapping:
-		// 检查直接映射条件是否满足
+		// Check whether direct mapping conditions are satisfied.
 		return logics.CheckDirectMappingConditions(currentObjectData, nextObject, mappingRules, isForward)
 
 	case *interfaces.InDirectMapping:
-		// 间接映射的检查逻辑
-		// 需要根据具体业务实现
+		// Indirect mapping check logic.
+		// Needs to be implemented according to specific business rules.
 		return logics.CheckIndirectMappingConditionsWithViewData(currentObjectData, nextObject, mappingRules, isForward, viewData)
 
 	case *interfaces.FilteredCrossJoinMapping:
@@ -881,7 +881,7 @@ func (kns *knowledgeNetworkService) isObjectRelated(currentObjectData map[string
 	return false
 }
 
-// 构建批量查询条件
+// Build batch query conditions.
 func (kns *knowledgeNetworkService) buildBatchConditions(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource,
 	currentLevelObjects []interfaces.LevelObject,
@@ -891,7 +891,7 @@ func (kns *knowledgeNetworkService) buildBatchConditions(ctx context.Context,
 	var conditions []*cond.CondCfg
 	viewDataMap := make(map[string][]map[string]any) // objectID -> []viewData
 
-	// 先处理直接映射的情况
+	// Handle direct mappings first.
 	directObjects := make([]interfaces.LevelObject, 0)
 	indirectObjects := make([]interfaces.LevelObject, 0)
 
@@ -904,7 +904,7 @@ func (kns *knowledgeNetworkService) buildBatchConditions(ctx context.Context,
 		}
 	}
 
-	// 处理直接映射
+	// Handle direct mappings.
 	if len(directObjects) > 0 {
 		directConditions, err := logics.BuildDirectBatchConditions(directObjects, edge, isForward)
 		if err != nil {
@@ -913,7 +913,7 @@ func (kns *knowledgeNetworkService) buildBatchConditions(ctx context.Context,
 		conditions = append(conditions, directConditions...)
 	}
 
-	// 处理间接映射 - 批量查询视图数据
+	// Handle indirect mappings by batch-querying view data.
 	if len(indirectObjects) > 0 {
 		indirectConditions, indirectViewData, err := kns.buildIndirectBatchConditions(ctx, query, indirectObjects, edge, isForward)
 		if err != nil {
@@ -921,7 +921,7 @@ func (kns *knowledgeNetworkService) buildBatchConditions(ctx context.Context,
 		}
 		conditions = append(conditions, indirectConditions...)
 
-		// 合并视图数据映射
+		// Merge view data mappings.
 		for k, v := range indirectViewData {
 			viewDataMap[k] = v
 		}
@@ -930,7 +930,7 @@ func (kns *knowledgeNetworkService) buildBatchConditions(ctx context.Context,
 	return conditions, viewDataMap, nil
 }
 
-// 构建间接映射的批量条件，并返回视图数据映射
+// Build batch conditions for indirect mappings and return view data mappings.
 func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource,
 	currentLevelObjects []interfaces.LevelObject,
@@ -941,13 +941,13 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 	mappingRules := edge.RelationType.MappingRules.(*interfaces.InDirectMapping)
 
 	if mappingRules.BackingDataSource.ID == "" {
-		// 视图为空，返回异常，不请求
+		// If the view is empty, return an error without sending a request.
 		return nil, nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_ObjectType_InvalidParameter).
 			WithErrorDetails(locale.ValidationDetail(ctx, "RelationViewIDRequired", map[string]any{"relationType": edge.RelationType.RTName}))
 	}
 
-	// 视图到目标对象的映射关系
+	// Mapping relationship from view to target object.
 	var targetMappingRules []interfaces.Mapping
 	if isForward {
 		targetMappingRules = mappingRules.TargetMappingRules
@@ -955,7 +955,7 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 		targetMappingRules = mappingRules.SourceMappingRules
 	}
 
-	// 批量查询所有对象的视图数据
+	// Batch-query view data for all objects.
 	batchViewData, err := kns.batchGetViewData(ctx, query, edge, currentLevelObjects, mappingRules, isForward)
 	if err != nil {
 		return nil, nil, err
@@ -963,17 +963,17 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 
 	var inValues []any
 	var inField string
-	// 为每个对象构建查询条件
+	// Build query conditions for each object.
 	for _, levelObj := range currentLevelObjects {
 		objectViewData, exists := batchViewData[levelObj.ObjectID]
 		if !exists || len(objectViewData) == 0 {
 			continue
 		}
 
-		// 保存视图数据映射，用于后续的对象关联判断
+		// Save view data mappings for later object association checks.
 		viewDataMap[levelObj.ObjectID] = objectViewData
 
-		// 遍历视图数据，逐个构建过过滤条件，最后用or连接
+		// Traverse view data, build filter conditions one by one, and finally join them with OR.
 		multiConds := []*cond.CondCfg{}
 		for _, viewData := range objectViewData {
 			viewConditions, targetField, inValue := logics.BuildCondition(nil, targetMappingRules, isForward, viewData)
@@ -1007,7 +1007,7 @@ func (kns *knowledgeNetworkService) buildIndirectBatchConditions(ctx context.Con
 	return conditions, viewDataMap, nil
 }
 
-// 批量获取视图数据
+// Batch-fetch view data.
 func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnSource,
 	edge *interfaces.TypeEdge,
@@ -1015,7 +1015,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 	mappingRules *interfaces.InDirectMapping, isForward bool) (map[string][]map[string]any, error) {
 
 	result := make(map[string][]map[string]any)
-	batchSize := 50 // 视图查询的批次大小
+	batchSize := 50 // Batch size for view queries.
 	var mappingRulesToUse []interfaces.Mapping
 	if isForward {
 		mappingRulesToUse = mappingRules.SourceMappingRules
@@ -1023,7 +1023,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		mappingRulesToUse = mappingRules.TargetMappingRules
 	}
 
-	// 按批次处理对象
+	// Process objects by batch.
 	for i := 0; i < len(currentLevelObjects); i += batchSize {
 		end := i + batchSize
 		if end > len(currentLevelObjects) {
@@ -1032,9 +1032,9 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 
 		batch := currentLevelObjects[i:end]
 
-		// 为批次内的所有对象构建组合查询条件
+		// Build combined query conditions for all objects in the batch.
 		batchConditions := []*cond.CondCfg{}
-		objectMapping := make(map[int]string) // 条件索引到对象ID的映射
+		objectMapping := make(map[int]string) // Mapping from condition index to object ID.
 		var inValues []any
 		var inField string
 		for _, levelObj := range batch {
@@ -1059,10 +1059,10 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 		// 	continue
 		// }
 
-		// 构建视图查询
+		// Build the view query.
 		viewQuery := &interfaces.ViewQuery{
 			NeedTotal: query.NeedTotal,
-			Limit:     interfaces.MAX_LIMIT, // 查关系表时，不限制条数，所有关系都查出来
+			Limit:     interfaces.MAX_LIMIT, // When querying the relation table, do not limit the count; fetch all relations.
 		}
 
 		if len(mappingRulesToUse) == 1 && len(inValues) > 0 {
@@ -1085,7 +1085,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 			}
 		}
 
-		// 构建排序，按关联字段排序
+		// Build sorting by association fields.
 		sort := []*interfaces.SortParams{}
 		for _, mapping := range mappingRulesToUse {
 			targetName := mapping.TargetProp.Name
@@ -1137,7 +1137,7 @@ func (kns *knowledgeNetworkService) batchGetViewData(ctx context.Context,
 	return result, nil
 }
 
-// 将视图数据映射回各个对象
+// Map view data back to each object.
 func (kns *knowledgeNetworkService) mapViewDataToObjects(viewData []map[string]any,
 	batchConditions []*cond.CondCfg,
 	objectMapping map[int]string,
@@ -1146,7 +1146,7 @@ func (kns *knowledgeNetworkService) mapViewDataToObjects(viewData []map[string]a
 	result map[string][]map[string]any) {
 
 	for _, data := range viewData {
-		// 找出这个视图数据属于哪个对象
+		// Find which object this view data belongs to.
 		for condIndex, objectID := range objectMapping {
 			if condIndex >= len(batchConditions) {
 				continue
@@ -1159,19 +1159,19 @@ func (kns *knowledgeNetworkService) mapViewDataToObjects(viewData []map[string]a
 				mappingRulesToUse = mappingRules.TargetMappingRules
 			}
 
-			// 检查视图数据是否满足该对象的查询条件
+			// Check whether view data satisfies this object's query conditions.
 			if logics.CheckViewDataMatchesCondition(data, batchConditions[condIndex], mappingRulesToUse, isForward) {
 				if result[objectID] == nil {
 					result[objectID] = make([]map[string]any, 0)
 				}
 				result[objectID] = append(result[objectID], data)
-				break // 一个视图记录只属于一个对象
+				break // One view record belongs to only one object.
 			}
 		}
 	}
 }
 
-// 为路径集合添加新边以及检查是否存在重复路径
+// Add a new edge to the path set and check for duplicate paths.
 func (kns *knowledgeNetworkService) extendPathsWithNewEdge(query *interfaces.SubGraphQueryBaseOnSource,
 	paths []interfaces.RelationPath,
 	sourceObjectID string, targetObjectID string, edge interfaces.TypeEdge) ([]interfaces.RelationPath, bool) {
@@ -1180,19 +1180,19 @@ func (kns *knowledgeNetworkService) extendPathsWithNewEdge(query *interfaces.Sub
 	var pathExisted bool
 
 	for _, path := range paths {
-		// 检查这个路径是否以 sourceObjectID 结尾
+		// Check whether this path ends with sourceObjectID.
 		if !kns.isPathEndsWith(path, sourceObjectID) {
 			continue
 		}
 
-		// 创建新路径（深拷贝）
+		// Create a new path by deep copy.
 		newPath := interfaces.RelationPath{
 			Relations: make([]interfaces.Relation, len(path.Relations)),
 			Length:    path.Length + 1,
 		}
 		copy(newPath.Relations, path.Relations)
 
-		// 添加新边
+		// Add the new edge.
 		newPath.Relations = append(newPath.Relations, interfaces.Relation{
 			RelationTypeId:   edge.RelationTypeId,
 			RelationTypeName: edge.RelationType.RTName,
@@ -1200,7 +1200,7 @@ func (kns *knowledgeNetworkService) extendPathsWithNewEdge(query *interfaces.Sub
 			TargetObjectId:   targetObjectID,
 		})
 
-		// 构建路径键来检测循环
+		// Build a path key to detect cycles.
 		pathKey := ""
 		for _, edge := range newPath.Relations {
 			pathKey = fmt.Sprintf("%s-%s:%s->%s", pathKey, edge.RelationTypeId, edge.SourceObjectId, edge.TargetObjectId)
@@ -1217,20 +1217,20 @@ func (kns *knowledgeNetworkService) extendPathsWithNewEdge(query *interfaces.Sub
 	return newPaths, pathExisted
 }
 
-// 检查路径是否以指定对象ID结尾
+// Check whether the path ends with the specified object ID.
 func (kns *knowledgeNetworkService) isPathEndsWith(path interfaces.RelationPath, objectID string) bool {
 	if len(path.Relations) == 0 {
-		// 空路径，检查是否是起点对象
-		// 这里需要额外的逻辑来跟踪起点对象，暂时返回true
+		// For an empty path, check whether it is the source object.
+		// Additional logic is needed here to track the source object; return true for now.
 		return true
 	}
 
-	// 检查最后一条边的目标对象是否匹配
+	// Check whether the target object of the last edge matches.
 	lastEdge := path.Relations[len(path.Relations)-1]
 	return lastEdge.TargetObjectId == objectID
 }
 
-// 基于一组对象实例组织关系子图
+// Build a relation subgraph from a set of object instances.
 func (kns *knowledgeNetworkService) SearchSubgraphByObjects(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects) (interfaces.ObjectSubGraph, error) {
 
@@ -1242,7 +1242,7 @@ func (kns *knowledgeNetworkService) SearchSubgraphByObjects(ctx context.Context,
 	result.IsolatedObjects = make(map[string]interfaces.ObjectInfoInSubgraph)
 	result.RelationPaths = []interfaces.RelationPath{}
 
-	// 1. 处理输入对象实例，验证并查询对象数据
+	// 1. Handle input object instances, then validate and query object data.
 	objectsByType, objectTypeMap, err := kns.processInputObjects(ctx, query)
 	if err != nil {
 		return result, err
@@ -1252,40 +1252,40 @@ func (kns *knowledgeNetworkService) SearchSubgraphByObjects(ctx context.Context,
 		return result, nil
 	}
 
-	// 2. 发现相关关系类
+	// 2. Discover related relation types.
 	allRelationTypes, err := kns.discoverRelationTypes(ctx, query, objectTypeMap)
 	if err != nil {
 		return result, err
 	}
 
-	// 3. 匹配关系
+	// 3. Match relations.
 	relations, objectsInRelations, err := kns.matchRelations(ctx, query, objectsByType, allRelationTypes)
 	if err != nil {
 		return result, err
 	}
 
-	// 4. 构建子图
+	// 4. Build the subgraph.
 	result = kns.buildSubgraphFromObjects(query, objectsByType, relations, objectsInRelations)
 
 	return result, nil
 }
 
-// 处理输入对象实例，验证并查询对象数据
+// Handle input object instances, then validate and query object data.
 func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects) (map[string][]interfaces.LevelObject, map[string]*interfaces.ObjectType, error) {
 
 	objectsByType := make(map[string][]interfaces.LevelObject)
 	objectTypeMap := make(map[string]*interfaces.ObjectType)
 
-	// 按对象类型分组输入对象
+	// Group input objects by object type.
 	typeGroups := make(map[string][]interfaces.InputObjectInstance)
 	for _, entry := range query.Entries {
 		typeGroups[entry.ObjectTypeID] = append(typeGroups[entry.ObjectTypeID], entry)
 	}
 
-	// 对每个对象类型，批量查询对象数据
+	// For each object type, batch-query object data.
 	for otID, entries := range typeGroups {
-		// 获取对象类型信息
+		// Get object type information.
 		objectType, exists, err := kns.omAccess.GetObjectType(ctx, query.KNID, query.Branch, otID)
 		if err != nil {
 			return nil, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -1299,14 +1299,14 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 		}
 		objectTypeMap[otID] = &objectType
 
-		// 构建唯一标识条件
+		// Build the unique identity condition.
 		instanceIdentities := make([]map[string]any, len(entries))
 		for i, entry := range entries {
 			instanceIdentities[i] = entry.InstanceIdentity
 		}
 		ukCond := logics.BuildInstanceIdentitiesCondition(instanceIdentities)
 
-		// 查询对象数据
+		// Queryobject data.
 		objectQuery := &interfaces.ObjectQueryBaseOnObjectType{
 			ActualCondition: ukCond,
 			PageQuery: interfaces.PageQuery{
@@ -1328,7 +1328,7 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 			return nil, nil, err
 		}
 
-		// 构建LevelObject列表
+		// Build the LevelObject list.
 		levelObjects := make([]interfaces.LevelObject, 0, len(objects.Datas))
 		for _, objData := range objects.Datas {
 			objectID, uk := logics.GetObjectID(objData, objects.ObjectType)
@@ -1348,17 +1348,17 @@ func (kns *knowledgeNetworkService) processInputObjects(ctx context.Context,
 	return objectsByType, objectTypeMap, nil
 }
 
-// 发现与输入对象类型相关的关系类
+// Discover relation types related to the input object types.
 func (kns *knowledgeNetworkService) discoverRelationTypes(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects, objectTypeMap map[string]*interfaces.ObjectType) (map[string]interfaces.RelationType, error) {
 
-	// 提取所有对象类型ID集合
+	// Extract the set of all object type IDs.
 	objectTypeIDs := make([]string, 0, len(objectTypeMap))
 	for otID := range objectTypeMap {
 		objectTypeIDs = append(objectTypeIDs, otID)
 	}
 
-	// 一次性查询所有相关关系类
+	// Query all related relation types at once.
 	relationTypes, err := kns.omAccess.ListRelationTypes(ctx, query.KNID, query.Branch, interfaces.RelationTypesQuery{
 		SourceObjectTypeIDs: objectTypeIDs,
 		TargetObjectTypeIDs: objectTypeIDs,
@@ -1367,10 +1367,10 @@ func (kns *knowledgeNetworkService) discoverRelationTypes(ctx context.Context,
 		return nil, err
 	}
 
-	// 收集并过滤关系类（确保源和目标都在输入集合中）
+	// Collect and filter relation types, ensuring both source and target are in the input set.
 	allRelationTypes := make(map[string]interfaces.RelationType) // key: relationTypeID
 	for _, rt := range relationTypes {
-		// 确保源和目标都在输入集合中
+		// Ensure both source and target are in the input set.
 		if _, exists := objectTypeMap[rt.SourceObjectTypeID]; !exists {
 			continue
 		}
@@ -1383,16 +1383,16 @@ func (kns *knowledgeNetworkService) discoverRelationTypes(ctx context.Context,
 	return allRelationTypes, nil
 }
 
-// 匹配对象实例之间的关系
+// Match relations between object instances.
 func (kns *knowledgeNetworkService) matchRelations(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects,
 	objectsByType map[string][]interfaces.LevelObject,
 	allRelationTypes map[string]interfaces.RelationType) ([]interfaces.Relation, map[string]bool, error) {
 
 	relations := []interfaces.Relation{}
-	objectsInRelations := make(map[string]bool) // 记录参与关系的对象ID
+	objectsInRelations := make(map[string]bool) // Record object IDs that participate in relations.
 
-	// 直接遍历所有关系类
+	// Directly iterate over all relation types.
 	for _, relationType := range allRelationTypes {
 
 		logger.Debugf("匹配关系类: %s, 源对象类型: %s, 目标对象类型: %s", relationType.RTID, relationType.SourceObjectTypeID, relationType.TargetObjectTypeID)
@@ -1407,7 +1407,7 @@ func (kns *knowledgeNetworkService) matchRelations(ctx context.Context,
 			continue
 		}
 
-		// 构建TypeEdge用于复用现有逻辑
+		// Build TypeEdge to reuse existing logic.
 		edge := &interfaces.TypeEdge{
 			RelationTypeId:     relationType.RTID,
 			RelationType:       relationType,
@@ -1416,14 +1416,14 @@ func (kns *knowledgeNetworkService) matchRelations(ctx context.Context,
 			Direction:          interfaces.DIRECTION_FORWARD,
 		}
 
-		// 用关系类的起点对象集和终点对象集去匹配关系，返回匹配到的关系
+		// Use the relation type source and target object sets to match relations and return matched relations.
 		matchedRelations, err := kns.matchRelationsForPair(ctx, query, sourceObjects, targetObjects, edge)
 		if err != nil {
 			logger.Warnf("匹配关系失败: relationType=%s, error=%v", relationType.RTID, err)
 			continue
 		}
 
-		// 添加到结果中
+		// Add to the result.
 		for _, rel := range matchedRelations {
 			relations = append(relations, rel)
 			objectsInRelations[rel.SourceObjectId] = true
@@ -1434,21 +1434,21 @@ func (kns *knowledgeNetworkService) matchRelations(ctx context.Context,
 	return relations, objectsInRelations, nil
 }
 
-// 匹配一对对象类型之间的关系
+// Match relations between a pair of object types.
 func (kns *knowledgeNetworkService) matchRelationsForPair(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects,
 	sourceObjects []interfaces.LevelObject,
 	targetObjects []interfaces.LevelObject,
 	edge *interfaces.TypeEdge) ([]interfaces.Relation, error) {
 
-	// 判断关系类型，分别处理直接关联和间接关联
+	// Determine the relation type and handle direct and indirect associations separately.
 	switch edge.RelationType.MappingRules.(type) {
 	case []interfaces.Mapping:
-		// 直接关联：直接使用已有的 targetObjects 进行匹配，避免数据库查询
+		// Direct association: match directly with existing targetObjects to avoid database queries.
 		return kns.matchDirectRelations(sourceObjects, targetObjects, edge)
 
 	case *interfaces.InDirectMapping:
-		// 间接关联：需要查询视图数据，但只匹配输入的目标对象
+		// Indirect association: query view data, but match only input target objects.
 		return kns.matchIndirectRelations(ctx, query, sourceObjects, targetObjects, edge)
 
 	case *interfaces.FilteredCrossJoinMapping:
@@ -1458,7 +1458,7 @@ func (kns *knowledgeNetworkService) matchRelationsForPair(ctx context.Context,
 	return []interfaces.Relation{}, nil
 }
 
-// 匹配直接关联关系（无需查询数据库）
+// Match direct associations without querying the database.
 func (kns *knowledgeNetworkService) matchDirectRelations(
 	sourceObjects []interfaces.LevelObject,
 	targetObjects []interfaces.LevelObject,
@@ -1467,7 +1467,7 @@ func (kns *knowledgeNetworkService) matchDirectRelations(
 	relations := []interfaces.Relation{}
 	mappingRules := edge.RelationType.MappingRules.([]interfaces.Mapping)
 
-	// 直接遍历源对象和目标对象进行匹配
+	// Directly iterate over source and target objects for matching.
 	for _, sourceObj := range sourceObjects {
 		for _, targetObj := range targetObjects {
 			if logics.CheckDirectMappingConditions(sourceObj.ObjectData, targetObj.ObjectData, mappingRules, true) {
@@ -1484,7 +1484,7 @@ func (kns *knowledgeNetworkService) matchDirectRelations(
 	return relations, nil
 }
 
-// 匹配间接关联关系（需要查询视图数据，但只匹配输入的目标对象）
+// Match indirect associations; view data must be queried, but only input target objects are matched.
 func (kns *knowledgeNetworkService) matchIndirectRelations(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects,
 	sourceObjects []interfaces.LevelObject,
@@ -1493,13 +1493,13 @@ func (kns *knowledgeNetworkService) matchIndirectRelations(ctx context.Context,
 
 	relations := []interfaces.Relation{}
 
-	// 查询视图数据（这是必要的，因为视图数据不在输入对象中）
+	// Query view data; this is necessary because view data is not in the input objects.
 	_, viewDataMap, err := kns.buildBatchConditionsForObjects(ctx, query, sourceObjects, edge, true)
 	if err != nil {
 		return nil, err
 	}
 
-	// 直接使用输入的目标对象进行匹配（而不是查询数据库）
+	// Match directly with input target objects instead of querying the database.
 	for _, sourceObj := range sourceObjects {
 		objectViewData := viewDataMap[sourceObj.ObjectID]
 
@@ -1524,7 +1524,7 @@ func (kns *knowledgeNetworkService) matchIndirectRelations(ctx context.Context,
 	return relations, nil
 }
 
-// 为对象构建批量查询条件（适配SubGraphQueryBaseOnObjects）
+// Build batch query conditions for objects, adapted for SubGraphQueryBaseOnObjects.
 func (kns *knowledgeNetworkService) buildBatchConditionsForObjects(ctx context.Context,
 	query *interfaces.SubGraphQueryBaseOnObjects,
 	currentLevelObjects []interfaces.LevelObject,
@@ -1534,7 +1534,7 @@ func (kns *knowledgeNetworkService) buildBatchConditionsForObjects(ctx context.C
 	var conditions []*cond.CondCfg
 	viewDataMap := make(map[string][]map[string]any)
 
-	// 先处理直接映射的情况
+	// Handle direct mappings first.
 	directObjects := make([]interfaces.LevelObject, 0)
 	indirectObjects := make([]interfaces.LevelObject, 0)
 
@@ -1547,7 +1547,7 @@ func (kns *knowledgeNetworkService) buildBatchConditionsForObjects(ctx context.C
 		}
 	}
 
-	// 处理直接映射
+	// Handle direct mappings.
 	if len(directObjects) > 0 {
 		directConditions, err := logics.BuildDirectBatchConditions(directObjects, edge, isForward)
 		if err != nil {
@@ -1556,9 +1556,9 @@ func (kns *knowledgeNetworkService) buildBatchConditionsForObjects(ctx context.C
 		conditions = append(conditions, directConditions...)
 	}
 
-	// 处理间接映射 - 批量查询视图数据
+	// Handle indirect mappings by batch-querying view data.
 	if len(indirectObjects) > 0 {
-		// 构建一个临时的SubGraphQueryBaseOnSource用于调用buildIndirectBatchConditions
+		// Build a temporary SubGraphQueryBaseOnSource to call buildIndirectBatchConditions.
 		tempQuery := &interfaces.SubGraphQueryBaseOnSource{
 			KNID:   query.KNID,
 			Branch: query.Branch,
@@ -1576,7 +1576,7 @@ func (kns *knowledgeNetworkService) buildBatchConditionsForObjects(ctx context.C
 		}
 		conditions = append(conditions, indirectConditions...)
 
-		// 合并视图数据映射
+		// Merge view data mappings.
 		for k, v := range indirectViewData {
 			viewDataMap[k] = v
 		}
@@ -1585,7 +1585,7 @@ func (kns *knowledgeNetworkService) buildBatchConditionsForObjects(ctx context.C
 	return conditions, viewDataMap, nil
 }
 
-// 构建子图
+// Build the subgraph.
 func (kns *knowledgeNetworkService) buildSubgraphFromObjects(query *interfaces.SubGraphQueryBaseOnObjects,
 	objectsByType map[string][]interfaces.LevelObject,
 	relations []interfaces.Relation,
@@ -1597,7 +1597,7 @@ func (kns *knowledgeNetworkService) buildSubgraphFromObjects(query *interfaces.S
 		RelationPaths:   []interfaces.RelationPath{},
 	}
 
-	// 构建对象映射表
+	// Build the object mapping table.
 	for _, levelObjects := range objectsByType {
 		for _, levelObj := range levelObjects {
 			objInfo := interfaces.ObjectInfoInSubgraph{
@@ -1615,7 +1615,7 @@ func (kns *knowledgeNetworkService) buildSubgraphFromObjects(query *interfaces.S
 				objInfo.Display = levelObj.ObjectData[levelObj.ObjectType.DisplayKey]
 			}
 
-			// 判断是否为孤立对象
+			// Determine whether it is an isolated object.
 			if objectsInRelations[levelObj.ObjectID] {
 				result.Objects[levelObj.ObjectID] = objInfo
 			} else {
@@ -1624,7 +1624,7 @@ func (kns *knowledgeNetworkService) buildSubgraphFromObjects(query *interfaces.S
 		}
 	}
 
-	// 构建关系路径（长度为1）
+	// Build relation paths with length 1.
 	for _, rel := range relations {
 		result.RelationPaths = append(result.RelationPaths, interfaces.RelationPath{
 			Relations: []interfaces.Relation{rel},

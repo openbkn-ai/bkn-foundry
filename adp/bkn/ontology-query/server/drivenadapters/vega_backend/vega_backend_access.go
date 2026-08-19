@@ -51,7 +51,7 @@ func (v *vegaBackendAccess) buildHeaders(ctx context.Context) map[string]string 
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
-	// 用当前token的用户去访问vega
+	// Access Vega as the user represented by the current token.
 	return common.MergeTraceHeadersForChildOperation(ctx, map[string]string{
 		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,

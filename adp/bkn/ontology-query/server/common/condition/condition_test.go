@@ -569,7 +569,7 @@ func Test_getFilterFieldName(t *testing.T) {
 
 		Convey("成功 - 脱敏字段", func() {
 			result := getFilterFieldName("name", fieldsMap, false)
-			// 由于存在 name_desensitize，应该返回脱敏字段名
+			// Because name_desensitize exists, the desensitized field name should be returned.
 			So(result, ShouldContainSubstring, "name")
 		})
 	})
@@ -643,7 +643,7 @@ func Test_RewriteCondition(t *testing.T) {
 					},
 				},
 			}
-			// 需要先设置 NameField
+			// NameField must be set first.
 			for _, subCond := range cfg.SubConds {
 				if field, ok := fieldsMap[subCond.Name]; ok {
 					subCond.NameField = field
@@ -675,7 +675,7 @@ func Test_RewriteCondition(t *testing.T) {
 					},
 				},
 			}
-			// 需要先设置 NameField
+			// NameField must be set first.
 			for _, subCond := range cfg.SubConds {
 				if field, ok := fieldsMap[subCond.Name]; ok {
 					subCond.NameField = field

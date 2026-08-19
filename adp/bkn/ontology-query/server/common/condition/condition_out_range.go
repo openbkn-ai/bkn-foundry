@@ -117,11 +117,11 @@ func (cond *OutRangeCond) Convert(ctx context.Context, vectorizer func(ctx conte
 }
 
 func (cond *OutRangeCond) Convert2SQL(ctx context.Context) (string, error) {
-	// out_range表示 (-inf, value[0]) || [value[1], +inf)
+	// out_range represents (-inf, value[0]) || [value[1], +inf).
 	lt := cond.mValue[0]
 	gte := cond.mValue[1]
 
-	// 处理字符串类型的值，需要用单引号包裹
+	// Handle string values; wrap them in single quotes.
 	ltStr, ok := lt.(string)
 	if ok {
 		ltStr = Special.Replace(fmt.Sprintf("%q", ltStr))
@@ -136,14 +136,14 @@ func (cond *OutRangeCond) Convert2SQL(ctx context.Context) (string, error) {
 		gteStr = fmt.Sprintf("%v", gte)
 	}
 
-	// 构建SQL条件：字段名 < 左边界 OR 字段名 >= 右边界
+	// Build the SQL condition: field < lower_bound OR field >= upper_bound.
 	sqlStr := fmt.Sprintf("(\"%s\" < %s OR \"%s\" >= %s)", cond.mFilterFieldName, ltStr, cond.mFilterFieldName, gteStr)
 	return sqlStr, nil
 }
 
 func rewriteOutRangeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
 
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "out_range", "field": cfg.Name})
 	}

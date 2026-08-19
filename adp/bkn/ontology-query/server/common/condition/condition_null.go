@@ -23,11 +23,11 @@ func NewNullCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataPr
 	}, nil
 }
 
-// 检查字段值是否 IS NULL， OpenSearch 默认不会对 null 值进行索引，
-// 因此 IS NULL 的逻辑等同于查找"该字段不存在索引值"的文档，查询会匹配以下情况：
-// 1. 文档中完全没有这个字段
-// 2. 该字段在 JSON 中被显示设为 null
-// 3. 该字段是一个空数组
+// Check whether the field value IS NULL. OpenSearch does not index null values by default,
+// so IS NULL is equivalent to finding documents where the field has no indexed value. The query matches:
+// 1. The document does not contain this field.
+// 2. The field is explicitly set to null in JSON.
+// 3. The field is an empty array.
 func (cond *NullCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
 	dslStr := fmt.Sprintf(`
 	{
@@ -49,7 +49,7 @@ func (cond *NullCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteNullCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "null", "field": cfg.Name})
 	}

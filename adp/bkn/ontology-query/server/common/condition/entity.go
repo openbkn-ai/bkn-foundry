@@ -11,7 +11,7 @@ import (
 	"reflect"
 )
 
-// 字段范围
+// Field scope.
 const (
 	CUSTOM uint8 = iota
 	ALL
@@ -158,9 +158,9 @@ type CondCfg struct {
 	NameField *DataProperty `json:"-" mapstructure:"-"`
 }
 
-// MarshalJSON 自定义 JSON 序列化，将 RemainCfg 中的内容平铺到顶层
+// MarshalJSON customizes JSON serialization by flattening RemainCfg into the top level.
 func (c *CondCfg) MarshalJSON() ([]byte, error) {
-	// 创建一个临时结构体，用于序列化标准字段
+	// Create a temporary struct to serialize standard fields.
 	type Alias CondCfg
 	aux := &struct {
 		*Alias
@@ -168,29 +168,29 @@ func (c *CondCfg) MarshalJSON() ([]byte, error) {
 		Alias: (*Alias)(c),
 	}
 
-	// 先序列化标准字段
+	// Serialize standard fields first.
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
 	}
 
-	// 解析为标准map
+	// Parse into a standard map.
 	var result map[string]any
 	if err := json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}
 
-	// 将 RemainCfg 中的内容平铺到顶层
+	// Flatten RemainCfg into the top level.
 	if c.RemainCfg != nil {
 		for k, v := range c.RemainCfg {
-			// 避免覆盖已存在的字段
+			// Avoid overwriting existing fields.
 			if _, exists := result[k]; !exists {
 				result[k] = v
 			}
 		}
 	}
 
-	// 移除 nil 值
+	// Remove nil values.
 	for k, v := range result {
 		if v == nil {
 			delete(result, k)

@@ -22,7 +22,7 @@ type BeforeCond struct {
 }
 
 func NewBeforeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty) (Condition, error) {
-	// 检查是否为日期/时间类型
+	// Check whether the value is a date/time type.
 	simpleType := dtype.SimpleTypeMapping[cfg.NameField.Type]
 	if simpleType != dtype.SimpleDate && simpleType != dtype.SimpleDatetime && simpleType != dtype.SimpleTime {
 		return nil, fmt.Errorf("condition [before] left field is not a date/time field: %s:%s", cfg.NameField.Name, cfg.NameField.Type)
@@ -46,7 +46,7 @@ func NewBeforeCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Data
 }
 
 func (cond *BeforeCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
-	// before 操作符主要用于 SQL，OpenSearch DSL 暂不实现
+	// The before operator is mainly used for SQL; OpenSearch DSL is not implemented yet.
 	unitMap := map[string]string{
 		"year":   "y",
 		"month":  "M",
@@ -59,10 +59,10 @@ func (cond *BeforeCond) Convert(ctx context.Context, vectorizer func(ctx context
 
 	unit, ok := unitMap[cond.mUnit]
 	if !ok {
-		unit = cond.mUnit // 如果已经缩写过则直接用
+		unit = cond.mUnit // Use the unit directly if it has already been abbreviated.
 	}
 
-	// 统一处理数值类型
+	// Handle numeric types uniformly.
 	var val = cond.mValue
 	if f, ok := val.(float64); ok {
 		val = int64(f)
@@ -73,7 +73,7 @@ func (cond *BeforeCond) Convert(ctx context.Context, vectorizer func(ctx context
 }
 
 func (cond *BeforeCond) Convert2SQL(ctx context.Context) (string, error) {
-	// 获取时区，默认为 UTC
+	// Get the time zone, defaulting to UTC.
 	tz := os.Getenv("TZ")
 	if tz == "" {
 		tz = "UTC"
@@ -86,7 +86,7 @@ func (cond *BeforeCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteBeforeCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField == nil || cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "before", "field": cfg.Name})
 	}

@@ -85,7 +85,7 @@ func Test_GenerateUniqueKey(t *testing.T) {
 				"key2": "value2",
 			}
 			result := GenerateUniqueKey("id1", label)
-			// 由于map遍历顺序不确定，只检查包含关键部分
+			// Because map iteration order is nondeterministic, only check that key parts are included.
 			So(result, ShouldContainSubstring, "id1-")
 			So(result, ShouldContainSubstring, "key1:value1")
 			So(result, ShouldContainSubstring, "key2:value2")
@@ -103,7 +103,7 @@ func Test_GenerateUniqueKey(t *testing.T) {
 				"a": "value2",
 			}
 			result := GenerateUniqueKey("id1", label)
-			// 应该按字母顺序排序
+			// Should be sorted alphabetically.
 			So(result, ShouldContainSubstring, "a:value2")
 			So(result, ShouldContainSubstring, "z:value1")
 		})
@@ -336,8 +336,8 @@ func Test_RandStringRunes(t *testing.T) {
 		Convey("成功 - 两次生成结果不同", func() {
 			result1 := RandStringRunes(10)
 			result2 := RandStringRunes(10)
-			// 虽然理论上可能相同，但概率极低
-			// 这里只检查长度
+			// They could theoretically be equal, but the probability is extremely low.
+			// Only check the length here.
 			So(len(result1), ShouldEqual, 10)
 			So(len(result2), ShouldEqual, 10)
 		})

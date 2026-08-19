@@ -255,7 +255,7 @@ func Test_rewriteAndCondition(t *testing.T) {
 					},
 				},
 			}
-			// 设置 NameField
+			// Set NameField.
 			for _, subCond := range cfg.SubConds {
 				if field, ok := fieldsMap[subCond.Name]; ok {
 					subCond.NameField = field

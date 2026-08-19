@@ -47,12 +47,12 @@ func NewOntologyManagerAccess(appSetting *common.AppSetting) interfaces.Ontology
 	return omAccess
 }
 
-// 获取对象类信息
+// Get object type information.
 func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string, branch string, otID string) (interfaces.ObjectType, bool, error) {
 
 	httpUrl := fmt.Sprintf("%s/%s/object-types/%s?branch=%s", oma.ontologyManagerUrl, knID, otID, branch)
-	// http client 发送请求时，在 RoundTrip 时是用 transport 在 RoundTrip，此时的 transport 是 otelhttp.NewTransport 的，
-	// otelhttp.NewTransport 的 RoundTrip 时会对 propagator 做 inject, 即 t.propagators.Inject
+	// When the HTTP client sends a request, RoundTrip uses transport; at this point the transport is otelhttp.NewTransport.
+	// otelhttp.NewTransport injects the propagator during RoundTrip, that is, t.propagators.Inject.
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 ontology-manager 获取对象类信息")
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
 		HttpUrl:         httpUrl,
@@ -77,14 +77,14 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
-	// httpClient 的请求新增参数支持上下文的处理请求的函数
+	// Add a request handler to httpClient that supports context parameters.
 	respCode, result, err = oma.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 
 	var emptyObjectType interfaces.ObjectType
 	if err != nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Get Failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get object type request failed: %v", err), err)
 
 		return emptyObjectType, false, fmt.Errorf("get request method failed: %v", err)
@@ -93,9 +93,9 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 	if respCode == http.StatusNotFound {
 		logger.Errorf("object type %s not exists", otID)
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		// 记录模型不存在的日志
+		// Log that the model does not exist.
 		otellog.LogWarn(ctx, fmt.Sprintf("Metric model [%s] not found", otID))
 
 		return emptyObjectType, false, nil
@@ -106,27 +106,27 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		var baseError rest.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
-			// 添加异常时的 trace 属性
+			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
-			// 记录异常日志
+			// Log the exception.
 			otellog.LogError(ctx, fmt.Sprintf("Unmalshal BaesError failed: %v", err), err)
 
 			return emptyObjectType, false, err
 		}
 		httpErr := &rest.HTTPError{HTTPCode: respCode, BaseError: baseError}
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get object type failed: %v", httpErr), httpErr)
 
 		return emptyObjectType, false, fmt.Errorf("get object type failed: %v", httpErr.Error())
 	}
 
 	if result == nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		// 记录模型不存在的日志
+		// Log that the model does not exist.
 		otellog.LogWarn(ctx, "Http response body is null")
 
 		return emptyObjectType, false, nil
@@ -140,9 +140,9 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 
 	if err = sonic.Unmarshal(result, &response); err != nil {
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal object type info failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Unmalshal object type info failed: %v", err), err)
 
 		return emptyObjectType, false, err
@@ -152,13 +152,13 @@ func (oma *ontologyManagerAccess) GetObjectType(ctx context.Context, knID string
 		return emptyObjectType, false, nil
 	}
 
-	// 添加成功时的 trace 属性
+	// Add trace attributes for success.
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 
 	return response.ObjectTypes[0], true, nil
 }
 
-// GetMetricDefinition 获取指标详情（与 GetObjectType 相同 bkn-backend 基址与鉴权头）
+// GetMetricDefinition gets metric details using the same bkn-backend base URL and auth headers as GetObjectType.
 func (oma *ontologyManagerAccess) GetMetricDefinition(ctx context.Context, knID string, branch string,
 	metricID string) (*interfaces.MetricDefinition, bool, error) {
 
@@ -270,9 +270,9 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		url, headers, query, respCode, err, time.Now().UnixMilli()-start)
 
 	if err != nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Get Failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type paths request failed: %v", err), err)
 
 		return nil, fmt.Errorf("get request method failed: %v", err)
@@ -283,9 +283,9 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		var baseError rest.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
-			// 添加异常时的 trace 属性
+			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
-			// 记录异常日志
+			// Log the exception.
 			otellog.LogError(ctx, fmt.Sprintf("Unmalshal BaesError failed: %v", err), err)
 
 			return nil, err
@@ -293,18 +293,18 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 
 		httpErr := &rest.HTTPError{HTTPCode: respCode, BaseError: baseError}
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type paths failed: %v", httpErr), httpErr)
 
 		return nil, fmt.Errorf("get relation type paths failed: %v", httpErr.Error())
 	}
 
 	if result == nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		// 记录模型不存在的日志
+		// Log that the model does not exist.
 		otellog.LogWarn(ctx, "Http response body is null")
 
 		return nil, nil
@@ -317,9 +317,9 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 	}
 	if err = sonic.Unmarshal(result, &response); err != nil {
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal object type info failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Unmalshal relation type paths info failed: %v", err), err)
 
 		return nil, err
@@ -329,9 +329,9 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		return nil, nil
 	}
 
-	// 对关系类的映射在这转
+	// Convert relation type mappings here.
 	for i := range response.TypePaths {
-		// 生成路径id，简单编号即可，在当前查询中唯一即可，为后续的路径配额使用
+		// Generate path IDs with simple numbers; they only need to be unique within the current query for later path quotas.
 		response.TypePaths[i].ID = i
 		for j := range response.TypePaths[i].TypeEdges {
 			switch response.TypePaths[i].TypeEdges[j].RelationType.Type {
@@ -361,7 +361,7 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 		}
 	}
 
-	// 添加成功时的 trace 属性
+	// Add trace attributes for success.
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 
 	return response.TypePaths, nil
@@ -371,8 +371,8 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 	branch string, rtID string) (interfaces.RelationType, bool, error) {
 
 	httpUrl := fmt.Sprintf("%s/%s/relation-types/%s?branch=%s", oma.ontologyManagerUrl, knID, rtID, branch)
-	// http client 发送请求时，在 RoundTrip 时是用 transport 在 RoundTrip，此时的 transport 是 otelhttp.NewTransport 的，
-	// otelhttp.NewTransport 的 RoundTrip 时会对 propagator 做 inject, 即 t.propagators.Inject
+	// When the HTTP client sends a request, RoundTrip uses transport; at this point the transport is otelhttp.NewTransport.
+	// otelhttp.NewTransport injects the propagator during RoundTrip, that is, t.propagators.Inject.
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 ontology-manager 获取关系类信息")
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
 		HttpUrl:         httpUrl,
@@ -397,14 +397,14 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
-	// httpClient 的请求新增参数支持上下文的处理请求的函数
+	// Add a request handler to httpClient that supports context parameters.
 	respCode, result, err = oma.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 
 	var emptyRelationType interfaces.RelationType
 	if err != nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Get Failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type request failed: %v", err), err)
 
 		return emptyRelationType, false, fmt.Errorf("get request method failed: %v", err)
@@ -413,9 +413,9 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 	if respCode == http.StatusNotFound {
 		logger.Errorf("relation type %s not exists", rtID)
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		// 记录模型不存在的日志
+		// Log that the model does not exist.
 		otellog.LogWarn(ctx, fmt.Sprintf("relation type [%s] not found", rtID))
 
 		return emptyRelationType, false, nil
@@ -426,9 +426,9 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		var baseError rest.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
-			// 添加异常时的 trace 属性
+			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
-			// 记录异常日志
+			// Log the exception.
 			otellog.LogError(ctx, fmt.Sprintf("Unmalshal BaesError failed: %v", err), err)
 
 			return emptyRelationType, false, err
@@ -436,18 +436,18 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 
 		httpErr := &rest.HTTPError{HTTPCode: respCode, BaseError: baseError}
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get relation type failed: %v", httpErr), httpErr)
 
 		return emptyRelationType, false, fmt.Errorf("get relation type failed: %v", httpErr.Error())
 	}
 
 	if result == nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		// 记录模型不存在的日志
+		// Log that the model does not exist.
 		otellog.LogWarn(ctx, "Http response body is null")
 
 		return emptyRelationType, false, nil
@@ -460,9 +460,9 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 	}
 	if err = sonic.Unmarshal(result, &response); err != nil {
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal relation type info failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Unmalshal relation type info failed: %v", err), err)
 
 		return emptyRelationType, false, err
@@ -497,7 +497,7 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 		response.RelationTypes[0].MappingRules = &fcj
 	}
 
-	// 添加成功时的 trace 属性
+	// Add trace attributes for success.
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 
 	return response.RelationTypes[0], true, nil
@@ -508,7 +508,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 
 	httpUrl := fmt.Sprintf("%s/%s/relation-types?branch=%s&limit=-1", oma.ontologyManagerUrl, knID, branch)
 
-	// 支持多个对象类型ID查询
+	// Support querying multiple object type IDs.
 	if len(query.SourceObjectTypeIDs) > 0 {
 		for _, otID := range query.SourceObjectTypeIDs {
 			httpUrl += fmt.Sprintf("&source_object_type_id=%s", otID)
@@ -590,7 +590,7 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 		return []interfaces.RelationType{}, nil
 	}
 
-	// 转换每个关系类的MappingRules
+	// Convert MappingRules for each relation type.
 	for i := range response.RelationTypes {
 		switch response.RelationTypes[i].Type {
 		case interfaces.RELATION_TYPE_DIRECT:
@@ -626,8 +626,8 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	branch string, atID string) (interfaces.ActionType, map[string]any, bool, error) {
 
 	httpUrl := fmt.Sprintf("%s/%s/action-types/%s?branch=%s", oma.ontologyManagerUrl, knID, atID, branch)
-	// http client 发送请求时，在 RoundTrip 时是用 transport 在 RoundTrip，此时的 transport 是 otelhttp.NewTransport 的，
-	// otelhttp.NewTransport 的 RoundTrip 时会对 propagator 做 inject, 即 t.propagators.Inject
+	// When the HTTP client sends a request, RoundTrip uses transport; at this point the transport is otelhttp.NewTransport.
+	// otelhttp.NewTransport injects the propagator during RoundTrip, that is, t.propagators.Inject.
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求 ontology-manager 获取行动类信息")
 	oteltrace.AddAttrs4InternalHttp(span, oteltrace.TraceAttrs{
 		HttpUrl:         httpUrl,
@@ -652,14 +652,14 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
 		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
-	// httpClient 的请求新增参数支持上下文的处理请求的函数
+	// Add a request handler to httpClient that supports context parameters.
 	respCode, result, err = oma.httpClient.GetNoUnmarshal(ctx, httpUrl, nil, headers)
 
 	var emptyActionType interfaces.ActionType
 	if err != nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http Get Failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get action type request failed: %v", err), err)
 
 		return emptyActionType, nil, false, fmt.Errorf("get request method failed: %v", err)
@@ -668,9 +668,9 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 	if respCode == http.StatusNotFound {
 		logger.Errorf("action type %s not exists", atID)
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		// 记录模型不存在的日志
+		// Log that the model does not exist.
 		otellog.LogWarn(ctx, fmt.Sprintf("action type [%s] not found", atID))
 
 		return emptyActionType, nil, false, nil
@@ -681,9 +681,9 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 		var baseError rest.BaseError
 		if err = sonic.Unmarshal(result, &baseError); err != nil {
 
-			// 添加异常时的 trace 属性
+			// Add trace attributes for the exception.
 			oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal BaesError failed")
-			// 记录异常日志
+			// Log the exception.
 			otellog.LogError(ctx, fmt.Sprintf("Unmalshal BaesError failed: %v", err), err)
 
 			return emptyActionType, nil, false, err
@@ -691,32 +691,32 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 
 		httpErr := &rest.HTTPError{HTTPCode: respCode, BaseError: baseError}
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Http status is not 200")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Get action type failed: %v", httpErr), httpErr)
 
 		return emptyActionType, nil, false, fmt.Errorf("get action type failed: %v", httpErr.Error())
 	}
 
 	if result == nil {
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
-		// 记录模型不存在的日志
+		// Log that the model does not exist.
 		otellog.LogWarn(ctx, "Http response body is null")
 
 		return emptyActionType, nil, false, nil
 	}
 
-	// 处理返回结果 result - 解析为结构体
+	// Handle the returned result by parsing it into a struct.
 	var response struct {
 		ActionTypes []interfaces.ActionType `json:"entries"`
 	}
 	if err = sonic.Unmarshal(result, &response); err != nil {
 
-		// 添加异常时的 trace 属性
+		// Add trace attributes for the exception.
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmalshal action type info failed")
-		// 记录异常日志
+		// Log the exception.
 		otellog.LogError(ctx, fmt.Sprintf("Unmalshal action type info failed: %v", err), err)
 
 		return emptyActionType, nil, false, err
@@ -726,13 +726,13 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 		return emptyActionType, nil, false, nil
 	}
 
-	// 同时解析原始 JSON 为 map[string]any，保留完整数据
+	// Also parse the raw JSON into map[string]any to keep the full data.
 	var rawResponse struct {
 		Entries []map[string]any `json:"entries"`
 	}
 	if err = sonic.Unmarshal(result, &rawResponse); err != nil {
 		logger.Errorf("unmalshal raw action type info failed: %v\n", err)
-		// 仍然返回解析后的结构体，但原始数据为 nil
+		// Still return the parsed struct, but leave raw data as nil.
 		oteltrace.AddHttpAttrs4Ok(span, respCode)
 		return response.ActionTypes[0], nil, true, nil
 	}
@@ -742,13 +742,13 @@ func (oma *ontologyManagerAccess) GetActionType(ctx context.Context, knID string
 		rawActionType = rawResponse.Entries[0]
 	}
 
-	// 添加成功时的 trace 属性
+	// Add trace attributes for success.
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
 
 	return response.ActionTypes[0], rawActionType, true, nil
 }
 
-// GetRiskTypesByIDs 按 ID 批量获取风险类（调用 bkn-backend 内部 API）
+// GetRiskTypesByIDs fetches risk types by ID in batch through the bkn-backend internal API.
 func (oma *ontologyManagerAccess) GetRiskTypesByIDs(ctx context.Context, knID string, branch string, riskTypeIDs []string) ([]interfaces.RiskType, error) {
 	if len(riskTypeIDs) == 0 {
 		return []interfaces.RiskType{}, nil

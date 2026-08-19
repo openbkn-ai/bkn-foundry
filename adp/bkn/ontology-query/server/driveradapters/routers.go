@@ -77,15 +77,15 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		apiV1.POST("/trace/outbox/:outbox_id/retry", r.verifyJsonContentType(), r.RetryTraceOutbox)
 		apiV1.POST("/trace/outbox/:outbox_id/abandon", r.verifyJsonContentType(), r.AbandonTraceOutbox)
 
-		// 查询指定对象类的对象数据
+		// Query object data for the specified object type.
 		apiV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.GetObjectsInObjectTypeByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id/properties", r.verifyJsonContentType(), r.GetObjectsPropertiesByEx)
-		// 基于起点、方向和路径长度获取对象子图
+		// Get an object subgraph by start point, direction, and path length.
 		apiV1.POST("/knowledge-networks/:kn_id/subgraph", r.verifyJsonContentType(), r.GetObjectsSubgraphByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/subgraph/objects", r.verifyJsonContentType(), r.GetObjectsSubgraphByObjectsByEx)
 		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.GetActionsInActionTypeByEx)
 
-		// 行动执行相关 API
+		// Action execution APIs.
 		apiV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.verifyJsonContentType(), r.ExecuteActionByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByEx)
 		apiV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByEx)
@@ -102,12 +102,12 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 		// Knowledge networks.
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id", r.verifyJsonContentType(), r.GetObjectsInObjectTypeByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/object-types/:ot_id/properties", r.verifyJsonContentType(), r.GetObjectsPropertiesByIn)
-		// 基于起点、方向和路径长度获取对象子图
+		// Get an object subgraph by start point, direction, and path length.
 		apiInV1.POST("/knowledge-networks/:kn_id/subgraph", r.verifyJsonContentType(), r.GetObjectsSubgraphByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/subgraph/objects", r.verifyJsonContentType(), r.GetObjectsSubgraphByObjectsByIn)
 		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id", r.verifyJsonContentType(), r.GetActionsInActionTypeByIn)
 
-		// 行动执行相关 API (内部)
+		// Action execution APIs (internal).
 		apiInV1.POST("/knowledge-networks/:kn_id/action-types/:at_id/execute", r.verifyJsonContentType(), r.ExecuteActionByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-executions/:execution_id", r.GetActionExecutionByIn)
 		apiInV1.GET("/knowledge-networks/:kn_id/action-logs", r.QueryActionLogsByIn)
@@ -152,7 +152,7 @@ func (r *restHandler) verifyJsonContentType() gin.HandlerFunc {
 }
 
 // LanguageMiddleware resolves Accept-Language once and stores it in request context.
-// 注册顺序必须在 TracingMiddleware 之后，这样 language ctx 叠加在 trace ctx 上。
+// Registration order must be after TracingMiddleware so the language context is layered on top of the trace context.
 func (r *restHandler) LanguageMiddleware() gin.HandlerFunc {
 	return rest.LanguageMiddleware()
 }
@@ -166,7 +166,7 @@ func (r *restHandler) TraceContextMiddleware() gin.HandlerFunc {
 	}
 }
 
-// gin中间件 访问日志
+// Gin middleware access log.
 func (r *restHandler) AccessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		beginTime := time.Now()

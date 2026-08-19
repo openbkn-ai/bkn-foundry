@@ -24,7 +24,7 @@ import (
 	"ontology-query/interfaces"
 )
 
-// PostMetricDataByEx 外部：POST .../metrics/:metric_id/data
+// PostMetricDataByEx external: POST .../metrics/:metric_id/data.
 func (r *restHandler) PostMetricDataByEx(c *gin.Context) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -36,7 +36,7 @@ func (r *restHandler) PostMetricDataByEx(c *gin.Context) {
 	r.postMetricData(c, vis)
 }
 
-// PostMetricDataByIn 内部：POST .../metrics/:metric_id/data
+// PostMetricDataByIn internal: POST .../metrics/:metric_id/data.
 func (r *restHandler) PostMetricDataByIn(c *gin.Context) {
 	r.postMetricData(c, visitor.GenerateVisitor(c))
 }
@@ -54,7 +54,7 @@ func (r *restHandler) postMetricData(c *gin.Context, vis hydra.Visitor) {
 	metricID := c.Param("metric_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 
-	// fill_null 范围查询时,对于缺失的步长点是否补空
+	// For fill_null range queries, whether to fill missing step points with null.
 	fillNullStr := c.DefaultQuery("fill_null", interfaces.DefaultFillNullQuery)
 	fillNull, err := strconv.ParseBool(fillNullStr)
 	if err != nil {
@@ -97,7 +97,7 @@ func (r *restHandler) postMetricData(c *gin.Context, vis hydra.Visitor) {
 	rest.ReplyOK(c, http.StatusOK, out)
 }
 
-// PostMetricDryRunByEx 外部：POST .../metrics/dry-run
+// PostMetricDryRunByEx external: POST .../metrics/dry-run.
 func (r *restHandler) PostMetricDryRunByEx(c *gin.Context) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
@@ -109,7 +109,7 @@ func (r *restHandler) PostMetricDryRunByEx(c *gin.Context) {
 	r.postMetricDryRun(c, vis)
 }
 
-// PostMetricDryRunByIn 内部：POST .../metrics/dry-run
+// PostMetricDryRunByIn internal: POST .../metrics/dry-run.
 func (r *restHandler) PostMetricDryRunByIn(c *gin.Context) {
 	r.postMetricDryRun(c, visitor.GenerateVisitor(c))
 }
@@ -126,7 +126,7 @@ func (r *restHandler) postMetricDryRun(c *gin.Context, vis hydra.Visitor) {
 	knID := c.Param("kn_id")
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 
-	// fill_null 范围查询时,对于缺失的步长点是否补空
+	// For fill_null range queries, whether to fill missing step points with null.
 	fillNullStr := c.DefaultQuery("fill_null", interfaces.DefaultFillNullQuery)
 	fillNull, err := strconv.ParseBool(fillNullStr)
 	if err != nil {

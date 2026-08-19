@@ -435,7 +435,7 @@ func Test_ActionSource_Types(t *testing.T) {
 func Test_ActionExecution_Snapshot(t *testing.T) {
 	Convey("Test ActionExecution with ActionTypeSnapshot", t, func() {
 		Convey("should store action type snapshot", func() {
-			// 模拟从 manager 获取的原始行动类配置
+			// Mock the raw action type configuration obtained from manager.
 			actionTypeSnapshot := map[string]any{
 				"id":             "at_001",
 				"name":           "restart_pod",
@@ -491,7 +491,7 @@ func Test_ActionExecution_Snapshot(t *testing.T) {
 				ActionTypeID:       "at_001",
 				ActionTypeName:     "restart_pod",
 				Status:             interfaces.ExecutionStatusCompleted,
-				ActionTypeSnapshot: nil, // 旧数据可能没有快照
+				ActionTypeSnapshot: nil, // Old data may not have a snapshot.
 			}
 
 			So(execution.ActionTypeSnapshot, ShouldBeNil)
@@ -655,7 +655,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 			Status: interfaces.ExecutionStatusRunning,
 		}, nil).AnyTimes()
 
-		// 核心断言：7 个目标实例只产生 1 次工具调用
+		// Core assertion: seven target instances produce only one tool call.
 		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
 			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
 				return map[string]any{"message_id": "m_1"}, nil
@@ -672,7 +672,7 @@ func Test_executeAsync_AggregatedInvokesToolOnce(t *testing.T) {
 		So(ok, ShouldBeTrue)
 		So(len(results), ShouldEqual, 1)
 		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
-		// 目标实例不丢失
+		// Target instances are not lost.
 		So(len(results[0].Targets), ShouldEqual, 7)
 		So(results[0].Parameters["text"], ShouldEqual, "订单编号,订单状态,下单时间\n...")
 	})
@@ -735,7 +735,7 @@ func Test_executeAsync_AggregatedCancelledBeforeInvocation(t *testing.T) {
 			Status: interfaces.ExecutionStatusCancelled,
 		}, nil).AnyTimes()
 
-		// 已取消，工具一次也不能调
+		// After cancellation, the tool must not be called at all.
 		aoAccess.EXPECT().ExecuteTool(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		service.executeAsync(execution, actionType, req)
@@ -770,7 +770,7 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 				return nil
 			}).AnyTimes()
 
-		// 调用发出前仍是 running，调用返回后已被取消
+		// It is still running before the call is sent and is canceled after the call returns.
 		gomock.InOrder(
 			logsService.EXPECT().GetExecution(gomock.Any(), gomock.Any()).Return(&interfaces.ActionExecution{
 				Status: interfaces.ExecutionStatusRunning,
@@ -787,7 +787,7 @@ func Test_executeAsync_AggregatedCancelledDuringInvocation(t *testing.T) {
 
 		So(finalUpdate, ShouldNotBeNil)
 		So(finalUpdate["status"], ShouldEqual, interfaces.ExecutionStatusCancelled)
-		// 副作用已经发生，结果必须留痕
+		// The side effect has already occurred, so the result must be recorded.
 		results, ok := finalUpdate["results"].([]interfaces.ObjectExecutionResult)
 		So(ok, ShouldBeTrue)
 		So(results[0].Status, ShouldEqual, interfaces.ObjectStatusSuccess)
@@ -1208,7 +1208,7 @@ func Test_ExecuteAction_UnboundObjectType(t *testing.T) {
 			actionType := interfaces.ActionType{
 				ATID:         actionTypeID,
 				ATName:       "test_action",
-				ObjectTypeID: "", // 未绑定对象类
+				ObjectTypeID: "", // Unbound object type.
 				ActionSource: interfaces.ActionSource{
 					Type:   interfaces.ActionSourceTypeTool,
 					BoxID:  "box_001",
@@ -1251,7 +1251,7 @@ func Test_ExecuteAction_UnboundObjectType(t *testing.T) {
 			actionType := interfaces.ActionType{
 				ATID:         actionTypeID,
 				ATName:       "test_action",
-				ObjectTypeID: "", // 未绑定对象类
+				ObjectTypeID: "", // Unbound object type.
 				ActionSource: interfaces.ActionSource{
 					Type:   interfaces.ActionSourceTypeTool,
 					BoxID:  "box_001",

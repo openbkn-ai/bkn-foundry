@@ -6,7 +6,7 @@
 
 package errors
 
-// 指标模型
+// Metric model.
 const (
 	// 400
 	OntologyQuery_KnowledgeNetwork_NullParameter_Direction             = "OntologyQuery.KnowledgeNetwork.NullParameter.Direction"

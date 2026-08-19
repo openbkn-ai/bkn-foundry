@@ -58,7 +58,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 
 	var resps interfaces.Actions
 
-	// 1. 先获取行动类信息
+	// 1. Get action type information first.
 	actionType, _, exists, err := ats.omAccess.GetActionType(ctx, query.KNID, query.Branch, query.ActionTypeID)
 	if err != nil {
 		span.SetAttributes(attribute.Key("at_id").String(query.ActionTypeID))
@@ -77,16 +77,16 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		return resps, httpErr
 	}
 
-	// 注意：行动召回/预览路径（get_action_info 走此路）不校验动态参数完整性。
-	// 该阶段目的是返回行动的可执行定义与参数 schema，Agent 需先读到 schema 才知道要传哪些动态参数；
-	// 若此处强制校验会造成死锁（见 issue #371，#291 regression）。动态参数完整性校验只在执行阶段（ExecuteAction）进行。
+	// Note: the action recall/preview path, used by get_action_info, does not validate dynamic parameter completeness.
+	// This stage returns the executable action definition and parameter schema. The agent must read the schema first to know which dynamic parameters to pass.
+	// Forcing validation here would cause a deadlock; see issue #371 and the #291 regression. Dynamic parameter completeness is validated only during ExecuteAction.
 
-	// 2. 检查是否绑定了对象类
+	// 2. Check whether an object type is bound.
 	isObjectTypeBound := actionType.ObjectTypeID != ""
 	var objectType interfaces.ObjectType
 
 	if isObjectTypeBound {
-		// 获取对象类信息（用于条件评估）
+		// Get object type information for condition evaluation.
 		var exists bool
 		var err error
 		objectType, exists, err = ats.omAccess.GetObjectType(ctx, query.KNID, query.Branch, actionType.ObjectTypeID)
@@ -100,10 +100,10 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			return resps, rest.NewHTTPError(ctx, http.StatusNotFound, oerrors.OntologyQuery_ObjectType_ObjectTypeNotFound)
 		}
 	} else {
-		// 未绑定对象类的情况
+		// Unbound object type case.
 		logger.Infof("Action type %s has no bound object type", actionType.ATID)
 		if len(query.InstanceIdentities) == 0 {
-			// Case 4: 未绑定对象类 + 无 identities → 构造一个临时的虚拟实例
+			// Case 4: unbound object type + without identities → construct a temporary virtual instance.
 			logger.Infof("No identities provided, creating virtual instance for action type %s", actionType.ATID)
 			virtualAction, err := buildActionFromInstanceData(map[string]any{}, &actionType, query.DynamicParams)
 			if err != nil {
@@ -124,7 +124,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 
 			return respActions, nil
 		} else {
-			// Case 5: 未绑定对象类 + 有 identities → 按 identities 构造实例
+			// Case 5: unbound object type + with identities → construct instances by identities.
 			logger.Infof("Constructing instances from identities for action type %s", actionType.ATID)
 			actions := []interfaces.ActionParam{}
 			for _, identity := range query.InstanceIdentities {
@@ -152,9 +152,9 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		}
 	}
 
-	// 3. 处理 add 行动类型的特殊逻辑
+	// 3. Handle special logic for add actions.
 	if actionType.ActionType == "add" && len(query.InstanceIdentities) > 0 {
-		// 先仅根据 _instance_identities 查询对象实例（不包含行动条件）
+		// First query object instances only by _instance_identities, without action conditions.
 		instanceCondition := logics.BuildInstanceIdentitiesCondition(query.InstanceIdentities)
 		instanceQuery := &interfaces.ObjectQueryBaseOnObjectType{
 			ActualCondition: instanceCondition,
@@ -179,13 +179,13 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			return resps, err
 		}
 
-		// 如果查询结果为空，将 _instance_identities 视为新实例，评估是否满足行动条件
+		// If the query result is empty, treat _instance_identities as new instances and evaluate whether they satisfy the action condition.
 		if len(instanceObjects.Datas) == 0 {
-			// Case 2a: 都搜索不到，则按identites构造实例，再套用行动条件，满足，产生实例
+			// Case 2a: if nothing is found, construct instances by identities, apply action conditions, and produce instances when they match.
 			logger.Infof("No instances found by identities for add action, constructing instances and evaluating condition")
 			actions := []interfaces.ActionParam{}
 			for _, instanceIdentity := range query.InstanceIdentities {
-				// 评估实例是否满足行动条件
+				// Evaluate whether the instance satisfies the action condition.
 				if actionType.Condition != nil {
 					satisfies, err := logics.EvaluateInstanceAgainstCondition(ctx, instanceIdentity, actionType.Condition, &objectType)
 					if err != nil {
@@ -193,12 +193,12 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 						continue
 					}
 					if !satisfies {
-						// 不满足条件，跳过
+						// Skip when the condition is not satisfied.
 						continue
 					}
 				}
 
-				// 满足条件，构造行动数据
+				// When the condition is satisfied, build action data.
 				action, err := buildActionFromInstanceData(instanceIdentity, &actionType, query.DynamicParams)
 				if err != nil {
 					logger.Errorf("Error building action from instance data: %v", err)
@@ -221,13 +221,13 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 
 			return respActions, nil
 		}
-		// Case 2b: 搜索得到，就按identites和行动条件过滤出来的实例（继续执行后续逻辑）
+		// Case 2b: if found, filter instances by identities and action conditions, then continue the later logic.
 		logger.Infof("Instances found by identities for add action, filtering by identities and action condition")
 	}
 
-	// 4. 根据行动条件+请求的唯一标识，去请求对象类的对象实例数据（当前行动条件只能选绑定的对象类的，不能选其他类，所以当前就直接拼，认为这些条件都在作用在这个对象类上）
-	// 条件转换，唯一标识换成主键过滤，各个对象之间用or连接，主键间用and连接，然后再跟行动条件and去请求对象类的对象数据
-	// 可接受instance_identities为空
+	// 4. Query object instances by action conditions plus requested unique identities. Action conditions can only target the bound object type, so combine them directly and treat them as applying to this object type.
+	// Convert conditions by rewriting unique identities to primary-key filters: join objects with OR, primary keys with AND, then AND the result with action conditions to query object data.
+	// instance_identities may be empty.
 	condition := logics.BuildInstanceIdentitiesCondition(query.InstanceIdentities)
 
 	if actionType.Condition != nil {
@@ -237,11 +237,11 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		}
 	}
 
-	// 5. 根据行动条件和唯一标识组成的条件检索起点对象类的对象实例
+	// 5. Retrieve source object type instances using conditions built from action conditions and unique identities.
 	objectQuery := &interfaces.ObjectQueryBaseOnObjectType{
 		ActualCondition: condition,
 		PageQuery: interfaces.PageQuery{
-			Limit:     interfaces.MAX_LIMIT, // 不限制条数，要符合条件的所有,视图最大支持1w，所以就设置1w
+			Limit:     interfaces.MAX_LIMIT, // Do not limit the count; fetch all matching records. The view supports up to 10k, so use 10k.
 			NeedTotal: true,
 		},
 		KNID:         query.KNID,
@@ -261,7 +261,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		return resps, err
 	}
 
-	// 6. 获得的对象是满足条件的对象，这些对象都应该实例化为行动
+	// 6. Retrieved objects satisfy the condition and should each be instantiated as an action.
 	actions := []interfaces.ActionParam{}
 	for _, object := range objects.Datas {
 		paramsJson := "{}"
@@ -314,7 +314,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			DynamicParams: dynamicParams,
 		}
 
-		// 已经在对象数据查询是指定了排除字段，返回的已经是按排除字段处理后的数据，所以字段存在就添加。
+		// Excluded fields were already specified in the object data query, so returned data is already filtered; add a field if it exists.
 		if _, exist := object[interfaces.SYSTEM_PROPERTY_INSTANCE_ID]; exist {
 			action.InstanceID = object[interfaces.SYSTEM_PROPERTY_INSTANCE_ID]
 		}
@@ -325,7 +325,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			action.Display = object[interfaces.SYSTEM_PROPERTY_DISPLAY]
 		}
 
-		// 返回的对象数据已经按查询参数生成和排除系统字段了，此时就是按需添加
+		// Returned object data has already been generated by query parameters and system fields have been excluded, so add fields as needed.
 		actions = append(actions, action)
 	}
 

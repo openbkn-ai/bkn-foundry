@@ -263,14 +263,14 @@ func Test_knowledgeNetworkService_SearchSubgraph(t *testing.T) {
 
 			omAccess.EXPECT().GetRelationTypePathsBaseOnSource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(typePaths, nil)
 
-			// 第一次调用：获取起点对象（在 SearchSubgraph 中）
+			// First call: get the source object in SearchSubgraph.
 			ots.EXPECT().GetObjectsByObjectTypeID(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, q *interfaces.ObjectQueryBaseOnObjectType) (interfaces.Objects, error) {
 				switch q.ObjectTypeID {
 				case sourceObjectTypeID:
-					// 获取起点对象
+					// Get the source object.
 					return startObjects, nil
 				case "ot2":
-					// 在 buildObjectSubgraph -> getNextObjectsBatchByRelation 中获取下一层对象，返回错误
+					// Get next-layer objects in buildObjectSubgraph -> getNextObjectsBatchByRelation and return an error.
 					return interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError)
 				}
 				return interfaces.Objects{}, rest.NewHTTPError(ctx, http.StatusInternalServerError, oerrors.OntologyQuery_InternalError)
@@ -458,7 +458,7 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 							Edges: []interfaces.TypeEdge{
 								{
 									RelationTypeId:     "rt1",
-									SourceObjectTypeId: "ot2", // 反向：路径的源是关系类的目标
+									SourceObjectTypeId: "ot2", // Reverse: the path source is the relation type target.
 									TargetObjectTypeId: "ot1",
 								},
 							},
@@ -470,8 +470,8 @@ func Test_knowledgeNetworkService_SearchSubgraphByTypePath(t *testing.T) {
 			relationType := interfaces.RelationType{
 				RTID:               "rt1",
 				RTName:             "relation1",
-				SourceObjectTypeID: "ot1", // 关系类的源是 ot1
-				TargetObjectTypeID: "ot2", // 关系类的目标是 ot2
+				SourceObjectTypeID: "ot1", // The relation type source is ot1.
+				TargetObjectTypeID: "ot2", // The relation type target is ot2.
 			}
 
 			startObjects := interfaces.Objects{
@@ -535,7 +535,7 @@ func Test_knowledgeNetworkService_isPathEndsWith(t *testing.T) {
 			}
 
 			result := service.isPathEndsWith(path, "obj1")
-			So(result, ShouldBeTrue) // 空路径返回true
+			So(result, ShouldBeTrue) // An empty path returns true.
 		})
 	})
 }
@@ -635,12 +635,12 @@ func Test_knowledgeNetworkService_extendPathsWithNewEdge(t *testing.T) {
 				},
 			}
 
-			// 先添加一次路径
+			// Add the path once first.
 			newPaths1, pathExisted1 := service.extendPathsWithNewEdge(query, paths, "obj2", "obj3", edge)
 			So(len(newPaths1), ShouldEqual, 1)
 			So(pathExisted1, ShouldBeFalse)
 
-			// 再次添加相同路径，应该检测到重复
+			// Add the same path again; duplication should be detected.
 			newPaths2, pathExisted2 := service.extendPathsWithNewEdge(query, paths, "obj2", "obj3", edge)
 			So(len(newPaths2), ShouldEqual, 1)
 			So(pathExisted2, ShouldBeTrue)
@@ -1782,7 +1782,7 @@ func Test_knowledgeNetworkService_buildIndirectBatchConditions(t *testing.T) {
 				{
 					ObjectID: "obj1",
 					ObjectData: map[string]any{
-						"target_id": "456", // 反向映射时，batchGetViewData 使用 TargetMappingRules，需要 target_id 字段
+						"target_id": "456", // For reverse mapping, batchGetViewData uses TargetMappingRules and needs the target_id field.
 					},
 				},
 			}
@@ -2046,7 +2046,7 @@ func Test_knowledgeNetworkService_batchGetViewData(t *testing.T) {
 				KNID: knID,
 			}
 
-			// 创建超过批次大小的对象列表（批次大小为50）
+			// Create an object list larger than the batch size, where the batch size is 50.
 			currentLevelObjects := make([]interfaces.LevelObject, 60)
 			for i := 0; i < 60; i++ {
 				currentLevelObjects[i] = interfaces.LevelObject{
@@ -2219,7 +2219,7 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 
 			objectMapping := map[int]string{
 				0: "obj1",
-				5: "obj2", // 索引5超出batchConditions长度
+				5: "obj2", // Index 5 exceeds batchConditions length.
 			}
 
 			mappingRules := &interfaces.InDirectMapping{
@@ -2240,7 +2240,7 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 		Convey("成功 - 反向映射规则", func() {
 			viewData := []map[string]any{
 				{
-					"id":             "123", // 反向映射时，CheckViewDataMatchesCondition 使用 SourceProp.Name，即 "id"
+					"id":             "123", // For reverse mapping, CheckViewDataMatchesCondition uses SourceProp.Name, which is "id".
 					"view_id":        "123",
 					"view_target_id": "456",
 				},
@@ -2248,7 +2248,7 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 
 			batchConditions := []*cond.CondCfg{
 				{
-					Name:      "id", // 条件字段名应该对应 SourceProp.Name
+					Name:      "id", // The condition field name should correspond to SourceProp.Name.
 					Operation: "==",
 					ValueOptCfg: cond.ValueOptCfg{
 						Value: "123",
@@ -2263,7 +2263,7 @@ func Test_knowledgeNetworkService_mapViewDataToObjects(t *testing.T) {
 			mappingRules := &interfaces.InDirectMapping{
 				TargetMappingRules: []interfaces.Mapping{
 					{
-						SourceProp: interfaces.SimpleProperty{Name: "id"}, // 反向映射时使用 SourceProp.Name
+						SourceProp: interfaces.SimpleProperty{Name: "id"}, // Use SourceProp.Name for reverse mapping.
 						TargetProp: interfaces.SimpleProperty{Name: "view_id"},
 					},
 				},

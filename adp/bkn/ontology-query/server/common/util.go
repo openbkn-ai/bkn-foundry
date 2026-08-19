@@ -16,10 +16,10 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 )
 
-// CE 条件表达式函数（泛型版本）
-// condition: 条件表达式
-// trueVal: 条件为真时返回的值
-// falseVal: 条件为假时返回的值
+// CE condition expression function (generic version).
+// condition: condition expression.
+// trueVal: value returned when the condition is true.
+// falseVal: value returned when the condition is false.
 func CE[T any](condition bool, trueVal, falseVal T) T {
 	if condition {
 		return trueVal
@@ -27,7 +27,7 @@ func CE[T any](condition bool, trueVal, falseVal T) T {
 	return falseVal
 }
 
-// 给字符串加双引号
+// Add double quotes to a string.
 func QuotationMark(s string) string {
 	if strings.HasPrefix(s, "\"") || strings.HasSuffix(s, "\"") { // Avoid quoting a value that has already been joined.
 		return s

@@ -92,22 +92,22 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		return resps, httpErr
 	}
 
-	// /排序字段可以是对象类的数据属性, _score
+	// Sort fields can be object type data properties or _score.
 
-	// 3.1 处理对象类，转成view field 到 object type property的映射
-	// 视图字段到对象类属性的映射
+	// 3.1 Process the object type and convert it into a view-field to object-type-property mapping.
+	// Mapping from view fields to object type properties.
 	viewFieldPropMap := map[string]string{
-		interfaces.SORT_FIELD_SCORE: interfaces.SORT_FIELD_SCORE, //  _score 字段
+		interfaces.SORT_FIELD_SCORE: interfaces.SORT_FIELD_SCORE, // _score field.
 	}
-	// 对象类属性名到属性名的映射，便于case到索引查询时使用。对象索引的字段名与属性名保持一直
+	// Mapping from object type property names to property names for use in case-to-index queries. Object index field names stay consistent with property names.
 	indexPropMap := map[string]string{
-		interfaces.SORT_FIELD_SCORE: interfaces.SORT_FIELD_SCORE, //  _score 字段
+		interfaces.SORT_FIELD_SCORE: interfaces.SORT_FIELD_SCORE, // _score field.
 	}
-	// 对象类数据属性名到对象类数据属性的映射
+	// Mapping from object type data property names to object type data properties.
 	propMap := map[string]cond.DataProperty{}
 	for _, prop := range objectType.DataProperties {
 		propMap[prop.Name] = prop
-		if len(query.Properties) == 0 { // 未指定属性集时，认为是拿全部属性
+		if len(query.Properties) == 0 { // When no property set is specified, treat it as fetching all properties.
 			viewFieldPropMap[prop.MappedField.Name] = prop.Name
 			indexPropMap[prop.Name] = prop.Name
 		} else {
@@ -176,20 +176,20 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 		return resps, logics.UnsupportedObjectTypeDataSourceError(ctx, objectType.OTID, dataSourceType)
 	}
 
-	// 2. 构造排序字段
+	// 2. Build sort fields.
 	if query.Sort == nil {
-		// 给默认值, 默认按 _score desc，主键 asc
+		// Set default values: _score desc and primary key asc.
 		query.Sort = logics.BuildViewSort(objectType)
 	}
-	// 3. 请求 vega Resource 获取数据
+	// 3. Request Vega Resource to get data.
 	err = ots.getObjectsFromResource(ctx, query, objectType, &resps, viewFieldPropMap)
 	if err != nil {
 		return resps, err
 	}
 
-	// 4. 组装逻辑属性
+	// 4. Assemble logical properties.
 	if query.IncludeLogicParams && len(objectType.LogicProperties) > 0 {
-		// 逐个对象处理对象的逻辑属性,并把逻辑属性设置到对象上
+		// Process each object's logical properties and set them on the object.
 		err = ots.processLogicProperties(ctx, &resps, objectType)
 		if err != nil {
 			return resps, err
@@ -207,13 +207,13 @@ func (ots *objectTypeService) GetObjectsByObjectTypeID(ctx context.Context,
 	return resps, nil
 }
 
-// 逐个对象处理对象的逻辑属性,并把逻辑属性设置到对象上
+// Process each object's logical properties and set them on the object.
 func (*objectTypeService) processLogicProperties(ctx context.Context, resps *interfaces.Objects,
 	objectType interfaces.ObjectType) error {
 
 	var err error
 
-	// 逐个对象处理对象的逻辑属性,并把逻辑属性设置到对象上
+	// Process each object's logical properties and set them on the object.
 	for i, object := range resps.Datas {
 		// loop logic prop
 		for _, logicProp := range objectType.LogicProperties {
@@ -231,7 +231,7 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 							Value:     value,
 						})
 					case interfaces.LOGIC_PARAMS_VALUE_FROM_CONST:
-						// 固定参数且
+						// Fixed parameter and.
 						filters = append(filters, interfaces.Filter{
 							Name:      param.Name,
 							Operation: "==",
@@ -314,11 +314,11 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 }
 
 // getObjectsFromResource queries vega-backend resource data (same row mapping as view path).
-// downstreamErrorCode 按下游状态码选错误码。
+// downstreamErrorCode selects the error code by downstream status code.
 //
-// 状态码透传对了，错误码却全贴 InvalidParameter，就把 403（无权访问该资源）、
-// 409（catalog 已停用）、429（并发超限）都说成了「参数错误」：前端读到 403 会
-// 当成用户自己没权限，调用方读到 429 会去改查询而不是重试。错误码要跟着状态码走。
+// If the status code is passed through but every error code is mapped to InvalidParameter, then 403 (no permission for the resource),
+// 409 (catalog disabled), and 429 (concurrency exceeded) are all described as "parameter error". When the frontend reads 403, it may
+// treat it as the user lacking permission; when callers read 429, they may change the query instead of retrying. Error codes must follow status codes.
 func downstreamErrorCode(statusCode int) string {
 	switch statusCode {
 	case http.StatusBadRequest:
@@ -332,11 +332,11 @@ func downstreamErrorCode(statusCode int) string {
 	case http.StatusConflict:
 		return rest.PublicError_Conflict
 	default:
-		// 其余 4xx（405/413/422/429 等）没有语义对应的公共错误码。这里不能退回
-		// rest.PublicError_BadRequest：它的 en-US 文案是 "Internal Server Error"，
-		// 英文调用方会在一条 429 上读到「内部服务错误」，正是本次要消除的误导。
-		// 退回本服务的参数错误码——两种语言的文案都正确，且与改动前一致；真正的
-		// 语义由如实透传的状态码与下游给出的原因承载。
+		// Other 4xx statuses (405/413/422/429, etc.) do not have semantically corresponding public error codes. Do not fall back here to
+		// rest.PublicError_BadRequest: its en-US message is "Internal Server Error",
+		// English callers would read "Internal Server Error" for a 429, which is exactly the misleading behavior this change avoids.
+		// Fall back to this service's parameter error code: messages in both languages are correct and behavior stays consistent with before. The real
+		// semantics are carried by the faithfully passed-through status code and the reason returned by downstream.
 		return oerrors.OntologyQuery_ObjectType_InvalidParameter
 	}
 }
@@ -394,9 +394,9 @@ func (ots *objectTypeService) getObjectsFromResource(ctx context.Context, query 
 	}
 	resp, err := ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, params)
 	if err != nil {
-		// 下游认定是请求侧问题（4xx）时按原状态码透传，并把它给出的原因带上来。
-		// 一律升成 500 会让「算子不支持」「资源没建索引」这类可自纠的问题看起来
-		// 像服务故障，调用方既无法自纠，人工排查也会被引向错误方向。
+		// When downstream identifies a caller-side issue (4xx), pass through the original status code and carry its reason upward.
+		// Upgrading everything to 500 makes self-correctable problems such as unsupported operators or resources without built indexes look
+		// like service failures, preventing callers from self-correcting and sending manual investigation in the wrong direction.
 		if downstream, ok := interfaces.AsVegaDownstreamError(err); ok && downstream.IsClientError() {
 			return rest.NewHTTPError(ctx, downstream.StatusCode,
 				downstreamErrorCode(downstream.StatusCode)).WithErrorDetails(downstream.Message())
@@ -491,22 +491,22 @@ func (ots *objectTypeService) getObjectsFromObjectIndex(ctx context.Context, que
 		resps.TotalCount = total
 	}
 
-	// 把每行数据拼接到结果中
+	// Append each data row to the result.
 	for _, hit := range osHits {
-		// 一行是一个对象
+		// One row is one object.
 		object := map[string]any{}
 		for k, v := range hit.Source {
-			// k 是视图的字段名，v是此字段的字段值
+			// k is the view field name, and v is this field's value.
 			if propName, exists := indexPropMap[k]; exists {
-				// 字段属于请求的properties才set
-				// 存在映射，则组装到对象属性中
+				// Set the field only when it belongs to requested properties.
+				// If a mapping exists, assemble it into object properties.
 				object[propName] = v
 			}
 		}
-		// 添加_score字段
+		// Add the _score field.
 		object[interfaces.SORT_FIELD_SCORE] = hit.Score
 
-		// 为对象添加 _instance_id, _instance_identity, _display 字段
+		// Add _instance_id, _instance_identity, and _display fields to the object.
 		instanceID, instanceIdentity := logics.GetObjectID(object, &objectType)
 		displayValue := object[objectType.DisplayKey]
 
@@ -577,11 +577,11 @@ func (ots *objectTypeService) GetTotal(ctx context.Context, index string, dsl ma
 	return total, nil
 }
 
-// 对查询语句向量化
+// Vectorize the query statement.
 func (ots *objectTypeService) handlerVector(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
 
-	// 不需要判断打开与否，不用knn操作符即可
-	// 系统配置打开向量模型才可使用knn查询, 没打开,请求了knn,则报错
+	// There is no need to check whether it is enabled; just avoid using the knn operator.
+	// knn queries are allowed only when the vector model is enabled in system configuration; return an error if knn is requested while disabled.
 	// if !ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
 	// 	err := errors.New("defaultSmallModelEnabled is false, does not support knn condition")
 	// 	return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -589,7 +589,7 @@ func (ots *objectTypeService) handlerVector(ctx context.Context, property *cond.
 	// 		WithErrorDetails(err.Error())
 	// }
 
-	// 先根据向量索引配置的小模型id获取一次模型的配置,获取不到就报错
+	// First fetch the model configuration by the small model ID in vector index configuration; return an error if it cannot be found.
 	model, err := ots.mfa.GetModelByID(ctx, property.IndexConfig.VectorConfig.ModelID)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -618,21 +618,21 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 	var resps interfaces.Objects
 
-	// 1. 根据唯一标识构建过滤条件
+	// 1. Build filter conditions from unique identities.
 	ukCond := logics.BuildInstanceIdentitiesCondition(query.InstanceIdentities)
-	// 2. 根据唯一标识组成的条件检索对象类的对象实例
+	// 2. Retrieve object type instances using conditions built from unique identities.
 	objectQuery := &interfaces.ObjectQueryBaseOnObjectType{
 		ActualCondition: ukCond,
 		PageQuery: interfaces.PageQuery{
-			Limit:     interfaces.MAX_LIMIT, // 不限制条数，要符合条件的所有,视图最大支持1w，所以就设置1w
+			Limit:     interfaces.MAX_LIMIT, // Do not limit the count; fetch all matching records. The view supports up to 10k, so use 10k.
 			NeedTotal: true,
 		},
 		KNID:         query.KNID,
 		Branch:       query.Branch,
 		ObjectTypeID: query.ObjectTypeID,
 		CommonQueryParameters: interfaces.CommonQueryParameters{
-			IncludeTypeInfo:         true, // 需要把对象类信息返回
-			IncludeLogicParams:      true, // 需要把逻辑属性的计算参数返回
+			IncludeTypeInfo:         true, // Object type information needs to be returned.
+			IncludeLogicParams:      true, // Logical-property calculation parameters need to be returned.
 			ExcludeSystemProperties: query.ExcludeSystemProperties,
 		},
 		ObjectQueryInfo: &interfaces.ObjectQueryInfo{
@@ -645,7 +645,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 		return resps, err
 	}
 
-	// 把对象类的属性转成map
+	// Convert object type properties into a map.
 	dataProperties := map[string]cond.DataProperty{}
 	for _, prop := range objects.ObjectType.DataProperties {
 		dataProperties[prop.Name] = prop
@@ -655,31 +655,31 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 		logicProperties[prop.Name] = prop
 	}
 
-	// 目标属性
+	// Target property.
 	propertyNames := map[string]bool{}
 	for _, propName := range query.Properties {
 		propertyNames[propName] = true
 	}
-	// 添加主键
+	// Add the primary key.
 	for _, key := range objects.ObjectType.PrimaryKeys {
 		propertyNames[key] = true
 	}
 
 	datas := make([]map[string]any, len(objects.Datas))
-	// 第一步：同步处理所有对象的数据属性
+	// Step 1: synchronously process data properties for all objects.
 	for i, object := range objects.Datas {
 		newObject := make(map[string]any)
 		for prop, value := range object {
 			if !propertyNames[prop] {
 				continue
 			}
-			// 数据属性直接赋值
+			// Assign data properties directly.
 			if _, exist := dataProperties[prop]; exist {
 				newObject[prop] = value
 			}
 		}
 
-		// 已经在对象数据查询是指定了排除字段，返回的已经是按排除字段处理后的数据，所以字段存在就添加。
+		// Excluded fields were already specified in the object data query, so returned data is already filtered; add a field if it exists.
 		if _, exist := object[interfaces.SYSTEM_PROPERTY_INSTANCE_ID]; exist {
 			newObject[interfaces.SYSTEM_PROPERTY_INSTANCE_ID] = object[interfaces.SYSTEM_PROPERTY_INSTANCE_ID]
 		}
@@ -692,10 +692,10 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 		datas[i] = newObject
 	}
-	// 第二步：并发处理所有对象的所有逻辑属性
+	// Step 2: concurrently process all logical properties for all objects.
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	errChan := make(chan error, len(objects.Datas)*len(logicProperties)) // 足够大的缓冲
+	errChan := make(chan error, len(objects.Datas)*len(logicProperties)) // Large enough buffer.
 
 	for i, object := range objects.Datas {
 		for prop, value := range object {
@@ -703,7 +703,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 				continue
 			}
 
-			// 只处理逻辑属性
+			// Process only logical properties.
 			if logicProp, exist := logicProperties[prop]; exist {
 				wg.Add(1)
 				go func(objIndex int, propName string, propValue any, logicProp *interfaces.LogicProperty) {
@@ -721,7 +721,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 						return
 					}
 
-					// 安全地写入结果到对应的对象
+					// Safely write the result to the corresponding object.
 					mu.Lock()
 					datas[objIndex][propName] = resultValue
 					mu.Unlock()
@@ -731,11 +731,11 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 		}
 	}
 
-	// 等待所有逻辑属性处理完成
+	// Wait for all logical-property processing to complete.
 	wg.Wait()
 	close(errChan)
 
-	// 检查错误
+	// Check errors.
 	if len(errChan) > 0 {
 		var errors []string
 		for err := range errChan {
@@ -751,7 +751,7 @@ func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,
 
 }
 
-// processLogicProperty 处理单个逻辑属性（封装了原有的处理逻辑）
+// processLogicProperty handles a single logical property and wraps the original processing logic.
 func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 	knID, branch, otID string,
 	propName string,
@@ -770,7 +770,7 @@ func (ots *objectTypeService) processLogicProperty(ctx context.Context,
 	}
 }
 
-// handleMetricProperty 处理指标类型逻辑属性（KN MetricDefinition + Vega 算值内核）
+// handleMetricProperty handles metric-type logical properties using KN MetricDefinition plus the Vega value-computation kernel.
 func (ots *objectTypeService) handleMetricProperty(ctx context.Context,
 	knID, branch, otID string,
 	propName string,
@@ -911,19 +911,19 @@ func generateToolExecutionRequest(configParams []interfaces.Parameter, parameter
 		Path:   map[string]any{},
 	}
 
-	// 首先处理所有参数，构建基础结构
+	// First process all parameters and build the base structure.
 	for _, param := range configParams {
 		var value any
 
 		if param.ValueFrom == interfaces.VALUE_FROM_INPUT {
-			// 动态输入参数从dynamicParameterMap获取
+			// Dynamic input parameters are obtained from dynamicParameterMap.
 			value = getNestedValue(dynamicParams, param.Name)
 		} else {
-			// 固定值参数从parameterMap获取
+			// Fixed-value parameters are obtained from parameterMap.
 			value = getNestedValue(parameters, param.Name)
 		}
 
-		// 根据source分配到不同的组
+		// Assign to different groups by source.
 		switch strings.ToLower(param.Source) {
 		case interfaces.PARAMETER_HEADER:
 			setNestedValue(toolExecRequest.Header, param.Name, value)
@@ -938,24 +938,24 @@ func generateToolExecutionRequest(configParams []interfaces.Parameter, parameter
 	return toolExecRequest
 }
 
-// getNestedValue 从map中获取嵌套字段的值
+// getNestedValue gets the value of a nested field from a map.
 func getNestedValue(data map[string]any, key string) any {
 	if data == nil {
 		return nil
 	}
 
-	// 如果key包含点号，表示嵌套字段
+	// If the key contains dots, it represents a nested field.
 	if strings.Contains(key, ".") {
 		parts := strings.Split(key, ".")
 		current := data
 
 		for i, part := range parts {
 			if i == len(parts)-1 {
-				// 最后一个部分，返回值
+				// Last part; return the value.
 				return current[part]
 			}
 
-			// 中间部分，继续深入
+			// Middle part; continue descending.
 			if next, ok := current[part].(map[string]any); ok {
 				current = next
 			} else {
@@ -967,40 +967,40 @@ func getNestedValue(data map[string]any, key string) any {
 	return data[key]
 }
 
-// setNestedValue 设置嵌套字段的值到map中
+// setNestedValue sets a nested field value in a map.
 func setNestedValue(target map[string]any, key string, value any) {
 	if value == nil {
 		return
 	}
 
-	// 如果key包含点号，表示需要设置嵌套字段
+	// If the key contains dots, a nested field needs to be set.
 	if strings.Contains(key, ".") {
 		parts := strings.Split(key, ".")
 		current := target
 
 		for i, part := range parts {
 			if i == len(parts)-1 {
-				// 最后一个部分，设置值
+				// Last part; set the value.
 				current[part] = value
 				return
 			}
 
-			// 中间部分，确保map存在
+			// Middle part; ensure the map exists.
 			if _, exists := current[part]; !exists {
 				current[part] = make(map[string]any)
 			}
 
-			// 类型断言，继续深入
+			// Type assert and continue descending.
 			if next, ok := current[part].(map[string]any); ok {
 				current = next
 			} else {
-				// 如果类型不匹配，覆盖为新的map
+				// If the type does not match, overwrite it with a new map.
 				current[part] = make(map[string]any)
 				current = current[part].(map[string]any)
 			}
 		}
 	} else {
-		// 简单字段直接设置
+		// Set simple fields directly.
 		target[key] = value
 	}
 }

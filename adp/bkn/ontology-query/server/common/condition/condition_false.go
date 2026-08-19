@@ -30,7 +30,7 @@ func NewFalseCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataP
 	}, nil
 }
 
-// term 查询逻辑等于 字段存在 + 相等
+// The term query logic equals field existence plus equality.
 func (cond *FalseCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
 	dslStr := fmt.Sprintf(`
 	{
@@ -48,7 +48,7 @@ func (cond *FalseCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteFalseCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "false", "field": cfg.Name})
 	}

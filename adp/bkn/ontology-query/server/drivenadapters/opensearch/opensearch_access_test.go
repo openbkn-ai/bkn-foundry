@@ -27,7 +27,7 @@ var (
 	testCtx = rest.WithLanguage(context.Background(), rest.DefaultLanguage)
 )
 
-// mockTransport 用于模拟 OpenSearch HTTP 响应
+// mockTransport simulates OpenSearch HTTP responses.
 type mockTransport struct {
 	roundTripFunc func(*http.Request) (*http.Response, error)
 }
@@ -47,7 +47,7 @@ func MockNewOpenSearchAccess(appSetting *common.AppSetting, transport *mockTrans
 		transport = &mockTransport{}
 	}
 
-	// 创建 OpenSearch 客户端配置，使用自定义 Transport
+	// Create OpenSearch client configuration with a custom Transport.
 	cfg := opensearch.Config{
 		Addresses: []string{"http://localhost:9200"},
 		Transport: transport,
@@ -581,7 +581,7 @@ func Test_openSearchAccess_BulkDeleteData(t *testing.T) {
 		Convey("BulkDeleteData Failed - marshal error\n", func() {
 			osa2, _ := MockNewOpenSearchAccess(appSetting, &mockTransport{
 				roundTripFunc: func(req *http.Request) (*http.Response, error) {
-					// 读取请求体后返回错误，模拟序列化问题
+					// Return an error after reading the request body to simulate a serialization issue.
 					return nil, errors.New("marshal error")
 				},
 			})

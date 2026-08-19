@@ -23,7 +23,7 @@ type CurrentCond struct {
 }
 
 func NewCurrentCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty) (Condition, error) {
-	// 检查是否为日期/时间类型
+	// Check whether the value is a date/time type.
 	simpleType := dtype.SimpleTypeMapping[cfg.NameField.Type]
 	if simpleType != dtype.SimpleDate && simpleType != dtype.SimpleDatetime && simpleType != dtype.SimpleTime {
 		return nil, fmt.Errorf("condition [current] left field is not a date/time field: %s:%s", cfg.NameField.Name, cfg.NameField.Type)
@@ -59,18 +59,18 @@ func NewCurrentCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*Dat
 }
 
 func (cond *CurrentCond) Convert(ctx context.Context, vectorizer func(ctx context.Context, property *DataProperty, word string) ([]VectorResp, error)) (string, error) {
-	// current 操作符主要用于 SQL，OpenSearch DSL 暂不实现
+	// The current operator is mainly used for SQL; OpenSearch DSL is not implemented yet.
 	return "", nil
 }
 
 func (cond *CurrentCond) Convert2SQL(ctx context.Context) (string, error) {
-	// 获取时区，默认为 UTC
+	// Get the time zone, defaulting to UTC.
 	tz := os.Getenv("TZ")
 	if tz == "" {
 		tz = "UTC"
 	}
 
-	// 加载时区
+	// Load the time zone.
 	location, err := time.LoadLocation(tz)
 	if err != nil {
 		location = time.UTC
@@ -87,11 +87,11 @@ func (cond *CurrentCond) Convert2SQL(ctx context.Context) (string, error) {
 		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, location)
 		end = start.AddDate(0, 1, 0)
 	case "week":
-		// 计算本周的周一
+		// Calculate Monday of the current week.
 		weekday := now.Weekday()
 		offset := int(time.Monday - weekday)
 		if offset > 0 {
-			offset -= 7 // 如果今天是周日，需要减去7天
+			offset -= 7 // If today is Sunday, subtract 7 days.
 		}
 		start = time.Date(now.Year(), now.Month(), now.Day()+offset, 0, 0, 0, 0, location)
 		end = start.AddDate(0, 0, 7)
@@ -114,7 +114,7 @@ func (cond *CurrentCond) Convert2SQL(ctx context.Context) (string, error) {
 }
 
 func rewriteCurrentCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "current", "field": cfg.Name})
 	}

@@ -50,11 +50,11 @@ type AppSetting struct {
 
 	BKNBackendUrl  string
 	VegaBackendUrl string
-	// 算子执行 url
+	// Operator execution URL.
 	AgentOperatorUrl string
-	// 工具箱执行 url
+	// Toolbox execution URL.
 	ToolBoxUrl string
-	// MCP 执行 url
+	// MCP execution URL.
 	MCPUrl string
 	// model factory url
 	ModelFactoryManagerUrl string
@@ -84,7 +84,7 @@ var (
 
 	settingOnce sync.Once
 
-	// 当前系统时区
+	// Current system time zone.
 	APP_LOCATION *time.Location
 )
 
@@ -128,7 +128,7 @@ func loadSetting(vp *viper.Viper) {
 		logger.Fatalf("err:%s\n", err)
 	}
 
-	// 加载时区
+	// Load the time zone.
 	loc, err := time.LoadLocation(os.Getenv("TZ"))
 	if err != nil {
 		loc = time.Local

@@ -20,7 +20,7 @@ type BetweenCond struct {
 }
 
 func NewBetweenCond(ctx context.Context, cfg *CondCfg, fieldsMap map[string]*DataProperty) (Condition, error) {
-	// 检查是否为数值或时间类型
+	// Check whether the value is a numeric or time type.
 	simpleType := dtype.SimpleTypeMapping[cfg.NameField.Type]
 	isNumeric := simpleType == dtype.SimpleInt || simpleType == dtype.SimpleFloat || simpleType == dtype.SimpleDecimal
 	isTime := simpleType == dtype.SimpleDate || simpleType == dtype.SimpleDatetime || simpleType == dtype.SimpleTime
@@ -57,7 +57,7 @@ func (cond *BetweenCond) Convert(ctx context.Context, vectorizer func(ctx contex
 	start := cond.mValue[0]
 	end := cond.mValue[1]
 
-	// 处理字符串类型的值
+	// Handle string values.
 	if _, ok := start.(string); ok {
 		start = fmt.Sprintf("%q", start)
 		end = fmt.Sprintf("%q", end)
@@ -106,11 +106,11 @@ func (cond *BetweenCond) Convert(ctx context.Context, vectorizer func(ctx contex
 }
 
 func (cond *BetweenCond) Convert2SQL(ctx context.Context) (string, error) {
-	// between表示双闭区间 [start, end]
+	// between represents the closed interval [start, end].
 	start := cond.mValue[0]
 	end := cond.mValue[1]
 
-	// 处理字符串类型的值，需要用单引号包裹
+	// Handle string values; wrap them in single quotes.
 	startStr, ok := start.(string)
 	if ok {
 		startStr = Special.Replace(fmt.Sprintf("%q", startStr))
@@ -125,13 +125,13 @@ func (cond *BetweenCond) Convert2SQL(ctx context.Context) (string, error) {
 		endStr = fmt.Sprintf("%v", end)
 	}
 
-	// 构建SQL条件：字段名 BETWEEN 左边界 AND 右边界
+	// Build the SQL condition: field BETWEEN lower_bound AND upper_bound.
 	sqlStr := fmt.Sprintf(`"%s" BETWEEN %s AND %s`, cond.mFilterFieldName, startStr, endStr)
 	return sqlStr, nil
 }
 
 func rewriteBetweenCond(ctx context.Context, cfg *CondCfg) (*CondCfg, error) {
-	// 过滤条件中的属性字段换成映射的视图字段
+	// Replace property fields in filter conditions with mapped view fields.
 	if cfg.NameField.Name == "" {
 		return nil, validationError(ctx, "OperatorFieldNotFound", map[string]any{"operation": "between", "field": cfg.Name})
 	}

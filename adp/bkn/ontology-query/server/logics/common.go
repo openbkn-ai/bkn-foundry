@@ -31,7 +31,7 @@ import (
 	"ontology-query/locale"
 )
 
-// 构建视图的默认的排序
+// Build the default sort for views.
 func BuildViewSort(objectType interfaces.ObjectType) []*interfaces.SortParams {
 	sorts := []*interfaces.SortParams{
 		{
@@ -39,7 +39,7 @@ func BuildViewSort(objectType interfaces.ObjectType) []*interfaces.SortParams {
 			Direction: interfaces.DESC_DIRECTION,
 		},
 	}
-	// 属性到视图的映射。主键是属性名，需要找到主键属性再找到其映射的视图字段名
+	// Property-to-view mapping. Primary keys are property names, so find the primary key property and then its mapped view field name.
 	propFieldMap := map[string]string{}
 	for _, prop := range objectType.DataProperties {
 		propFieldMap[prop.Name] = prop.MappedField.Name
@@ -47,9 +47,9 @@ func BuildViewSort(objectType interfaces.ObjectType) []*interfaces.SortParams {
 
 	for _, pri := range objectType.PrimaryKeys {
 		if fieldName, exists := propFieldMap[pri]; exists {
-			// 如果主键映射的字段为空，则不拼排序
+			// If the field mapped from the primary key is empty, do not add sorting.
 			if fieldName != "" {
-				// 存在映射，则组装到对象属性中
+				// If a mapping exists, assemble it into object properties.
 				sorts = append(sorts, &interfaces.SortParams{
 					Field:     pri,
 					Direction: interfaces.ASC_DIRECTION,
@@ -92,7 +92,7 @@ func MapSortFieldsForDataView(ctx context.Context, sort []*interfaces.SortParams
 	return out, nil
 }
 
-// 构建对象索引的默认的排序
+// Build the default sort for object indexes.
 func BuildIndexSort(objectType interfaces.ObjectType, propMap map[string]cond.DataProperty) []*interfaces.SortParams {
 	sorts := []*interfaces.SortParams{
 		{
@@ -102,10 +102,10 @@ func BuildIndexSort(objectType interfaces.ObjectType, propMap map[string]cond.Da
 	}
 
 	for _, pri := range objectType.PrimaryKeys {
-		// 存在映射，则组装到对象属性中. 字段还需设置有关键字索引才能进行排序，否则不参与排序
+		// If a mapping exists, assemble it into object properties. The field also needs a keyword index to be sortable; otherwise it is excluded from sorting.
 
-		// text类型的字段需要看其下有没有配置keyword索引，配了就用 xxx.keyword 进行排序。否则不纳入排序
-		// string类型的字段直接支持排序，若其有全文索引，则在字段的 keyword 下有 text。
+		// For text fields, check whether a keyword index is configured underneath; use xxx.keyword for sorting when present, otherwise exclude it from sorting.
+		// String fields support sorting directly. If full-text indexing is enabled, text exists under the field's keyword.
 		if propMap[pri].Type == dtype.DATATYPE_TEXT {
 			if propMap[pri].IndexConfig != nil && propMap[pri].IndexConfig.KeywordConfig.Enabled {
 				sorts = append(sorts, &interfaces.SortParams{
@@ -124,7 +124,7 @@ func BuildIndexSort(objectType interfaces.ObjectType, propMap map[string]cond.Da
 	return sorts
 }
 
-// 构建路径键用于循环检测
+// Build a path key for cycle detection.
 func BuildPathKey(path interfaces.RelationPath, nextNodeID string) string {
 	key := fmt.Sprintf("%s:%s", path.Relations[0].RelationTypeId, path.Relations[0].SourceObjectId)
 	for i := 0; i < len(path.Relations); i++ {
@@ -134,7 +134,7 @@ func BuildPathKey(path interfaces.RelationPath, nextNodeID string) string {
 	return key
 }
 
-// 过滤有效路径（排除包含循环的路径）
+// Filter valid paths by excluding paths that contain cycles.
 func FilterValidPaths(paths []interfaces.RelationPath, visitedNodes map[string]bool) []interfaces.RelationPath {
 	var validPaths []interfaces.RelationPath
 
@@ -147,7 +147,7 @@ func FilterValidPaths(paths []interfaces.RelationPath, visitedNodes map[string]b
 	return validPaths
 }
 
-// 检查路径是否有效（无循环）
+// Check whether the path is valid and acyclic.
 func IsPathValid(path interfaces.RelationPath, visitedNodes map[string]bool) bool {
 	if len(path.Relations) == 0 {
 		return true
@@ -156,9 +156,9 @@ func IsPathValid(path interfaces.RelationPath, visitedNodes map[string]bool) boo
 	nodeSet := make(map[string]bool)
 	var prevTargetId string
 
-	// 检查路径中的每个节点是否唯一，同时检查路径连续性
+	// Check whether each node in the path is unique and whether the path is continuous.
 	for i, relation := range path.Relations {
-		// 检查路径连续性：除了第一条边外，前一条边的目标节点应该等于当前边的源节点
+		// Check path continuity: except for the first edge, the previous edge's target node should equal the current edge's source node.
 		if i > 0 {
 			if prevTargetId != relation.SourceObjectId {
 				logger.Debugf("检测到路径不连续 - 前一条边的目标节点[%s]不等于当前边的源节点[%s]", prevTargetId, relation.SourceObjectId)
@@ -166,7 +166,7 @@ func IsPathValid(path interfaces.RelationPath, visitedNodes map[string]bool) boo
 			}
 		}
 
-		// 对于第一条边：检查源节点是否已访问（不应重复）
+		// For the first edge, check whether the source node has already been visited; it should not repeat.
 		if i == 0 {
 			if nodeSet[relation.SourceObjectId] {
 				logger.Debugf("检测到路径起始节点重复: %s", relation.SourceObjectId)
@@ -175,14 +175,14 @@ func IsPathValid(path interfaces.RelationPath, visitedNodes map[string]bool) boo
 			nodeSet[relation.SourceObjectId] = true
 		}
 
-		// 对于所有边：检查目标节点是否已访问（如果已访问，说明形成了循环）
+		// For all edges, check whether the target node has already been visited; if so, a cycle has formed.
 		if nodeSet[relation.TargetObjectId] {
 			logger.Debugf("检测到循环路径 - 重复节点: %s", relation.TargetObjectId)
 			return false
 		}
 		nodeSet[relation.TargetObjectId] = true
 
-		// 检查是否与已访问的节点冲突（如果提供了visitedNodes参数）
+		// Check for conflicts with visited nodes when visitedNodes is provided.
 		if visitedNodes != nil {
 			if visitedNodes[relation.SourceObjectId] || visitedNodes[relation.TargetObjectId] {
 				logger.Debugf("检测到路径与已访问节点冲突")
@@ -196,13 +196,13 @@ func IsPathValid(path interfaces.RelationPath, visitedNodes map[string]bool) boo
 	return true
 }
 
-// 检查限制
+// Check limits.
 func CanGenerate(quotaManager *interfaces.PathQuotaManager, pathID int) bool {
 	if quotaManager == nil {
 		return true
 	}
 
-	// 检查全局限制
+	// Check the global limit.
 	currentGlobal := atomic.LoadInt64(&quotaManager.GlobalCount)
 	if currentGlobal >= quotaManager.TotalLimit {
 		logger.Debugf("达到全局限制: %d/%d", currentGlobal, quotaManager.TotalLimit)
@@ -217,25 +217,25 @@ func CanGenerate(quotaManager *interfaces.PathQuotaManager, pathID int) bool {
 	}
 
 	if quotaManager.RequestPathTypeNum > 1 {
-		// 动态配额：根据权重和剩余总量计算
+		// Dynamic quota: calculate from weight and remaining total.
 		maxQuota := quotaManager.TotalLimit - quotaManager.GlobalCount
 		return int64(used) < maxQuota
 	} else {
-		// 总数小于限制数，可添加
+		// The total is below the limit, so more can be added.
 		return quotaManager.GlobalCount < quotaManager.TotalLimit
 	}
 }
 
-// RecordGenerated 记录已生成的路径
+// RecordGenerated records generated paths.
 func RecordGenerated(quotaManager *interfaces.PathQuotaManager, typePathID int, cnt int) {
 	if quotaManager == nil {
 		return
 	}
 
-	// 原子操作增加全局计数
+	// Atomically increment the global count.
 	newGlobalCount := atomic.AddInt64(&quotaManager.GlobalCount, int64(cnt))
 
-	// 更新特定路径类型的配额使用情况
+	// Update quota usage for a specific path type.
 	if value, exist := quotaManager.UsedQuota.Load(typePathID); !exist {
 		quotaManager.UsedQuota.Store(typePathID, cnt)
 	} else {
@@ -245,13 +245,13 @@ func RecordGenerated(quotaManager *interfaces.PathQuotaManager, typePathID int, 
 		typePathID, cnt, newGlobalCount, quotaManager.TotalLimit)
 }
 
-// 从对象数据中提取对象ID
+// Extract the object ID from object data.
 func GetObjectID(objectData map[string]any, objectType *interfaces.ObjectType) (string, map[string]any) {
 	if objectType == nil || len(objectType.PrimaryKeys) == 0 {
 		return "", nil
 	}
 
-	// 使用主键构建对象ID
+	// Build the object ID from the primary key.
 	var idParts []string
 	uk := map[string]any{}
 	for _, pk := range objectType.PrimaryKeys {
@@ -270,7 +270,7 @@ func GetObjectID(objectData map[string]any, objectType *interfaces.ObjectType) (
 	return objectType.OTID + "-" + strings.Join(idParts, "_"), uk
 }
 
-// 构建直接映射的批量条件
+// Build batch conditions for direct mappings.
 func BuildDirectBatchConditions(currentLevelObjects []interfaces.LevelObject,
 	edge *interfaces.TypeEdge, isForward bool) ([]*cond.CondCfg, error) {
 
@@ -280,16 +280,16 @@ func BuildDirectBatchConditions(currentLevelObjects []interfaces.LevelObject,
 	mappingRules := edge.RelationType.MappingRules.([]interfaces.Mapping)
 
 	for _, levelObj := range currentLevelObjects {
-		// 按关联关系构建了过滤子句。
-		// 多个字段关联，需用and连接各个对象的过滤条件，然后再用or拼接各个对象的过滤条件
-		// 1个关联字段，则对多个对象的过滤条件采用in操作
+		// Build filter clauses by association relationship.
+		// For multi-field associations, join each object's filter conditions with AND, then join filters for different objects with OR.
+		// For one association field, use an IN operation for filters across multiple objects.
 		objectConditions, targetField, inValue := BuildCondition(nil, mappingRules, isForward, levelObj.ObjectData)
 		if inValue != nil {
 			inValues = append(inValues, inValue)
 		}
 		inField = targetField
 
-		// 一个对象下如果是多个过滤子句，则用and关联
+		// If an object has multiple filter clauses, join them with AND.
 		if len(objectConditions) > 1 {
 			conditions = append(conditions, &cond.CondCfg{
 				Operation: "and",
@@ -322,7 +322,7 @@ func BuildCondition(viewQuery *interfaces.ViewQuery, mappingRules []interfaces.M
 	conditions := []*cond.CondCfg{}
 	var inValue any
 	var targetField string
-	// 视图作为中间表时，查询视图数据按 _score desc, 关联字段 asc
+	// When a view acts as an intermediate table, query view data by _score desc and association fields asc.
 	sort := []*interfaces.SortParams{
 		{
 			Field:     interfaces.SORT_FIELD_SCORE,
@@ -331,25 +331,25 @@ func BuildCondition(viewQuery *interfaces.ViewQuery, mappingRules []interfaces.M
 	}
 
 	for _, mapping := range mappingRules {
-		// 默认先取正向的，若是反向，再修改起终点字段
+		// Use the forward direction by default; if reverse, rewrite source and target fields.
 		targetName := mapping.TargetProp.Name
 		sourceName := mapping.SourceProp.Name
 		if !isForward {
 			targetName = mapping.SourceProp.Name
 			sourceName = mapping.TargetProp.Name
 		}
-		// 一个关联字段，则取字段值作为in的过滤条件
+		// For one association field, use field values as the IN filter condition.
 		if len(mappingRules) == 1 {
 			inValue = currentObjectData[sourceName]
 			targetField = targetName
 		}
-		// 多个字段关联，则构造多个过滤条件，在上层用and连接
+		// For multi-field associations, build multiple filter conditions and join them with AND at the upper layer.
 		conditions = append(conditions, &cond.CondCfg{
-			Name:      targetName, // 注意正向反向的差别
+			Name:      targetName, // Pay attention to the difference between forward and reverse directions.
 			Operation: "==",       // Relationships only support equality here.
 			ValueOptCfg: cond.ValueOptCfg{
 				ValueFrom: "const",
-				Value:     currentObjectData[sourceName], // 从起点对象中获取的起点属性
+				Value:     currentObjectData[sourceName], // Source property obtained from the source object.
 			},
 		})
 		sort = append(sort, &interfaces.SortParams{
@@ -371,7 +371,7 @@ func BuildCondition(viewQuery *interfaces.ViewQuery, mappingRules []interfaces.M
 	return conditions, targetField, inValue
 }
 
-// 检查直接映射条件
+// Check direct mapping conditions.
 func CheckDirectMappingConditions(currentObjectData map[string]any,
 	nextObject map[string]any, mappingRules []interfaces.Mapping, isForward bool) bool {
 
@@ -380,7 +380,7 @@ func CheckDirectMappingConditions(currentObjectData map[string]any,
 		var ok bool
 
 		if isForward {
-			// 正向：currentObject -> nextObject
+			// Forward：currentObject -> nextObject.
 			sourceValue, ok = currentObjectData[mapping.SourceProp.Name]
 			if !ok {
 				return false
@@ -390,7 +390,7 @@ func CheckDirectMappingConditions(currentObjectData map[string]any,
 				return false
 			}
 		} else {
-			// 反向：nextObject -> currentObject
+			// Reverse：nextObject -> currentObject.
 			sourceValue, ok = nextObject[mapping.SourceProp.Name]
 			if !ok {
 				return false
@@ -401,7 +401,7 @@ func CheckDirectMappingConditions(currentObjectData map[string]any,
 			}
 		}
 
-		// 比较值是否相等
+		// Compare whether values are equal.
 		if !CompareValues(sourceValue, targetValue) {
 			return false
 		}
@@ -410,7 +410,7 @@ func CheckDirectMappingConditions(currentObjectData map[string]any,
 	return true
 }
 
-// 比较两个值是否相等（处理不同类型的情况）
+// Compare whether two values are equal while handling different types.
 func CompareValues(a, b interface{}) bool {
 	if a == nil && b == nil {
 		return true
@@ -419,18 +419,18 @@ func CompareValues(a, b interface{}) bool {
 		return false
 	}
 
-	// 转换为字符串比较，避免类型不匹配的问题
+	// Convert to strings for comparison to avoid type mismatch issues.
 	aStr := fmt.Sprintf("%v", a)
 	bStr := fmt.Sprintf("%v", b)
 
 	return aStr == bStr
 }
 
-// 检查视图数据是否满足查询条件
+// Check whether view data satisfies query conditions.
 func CheckViewDataMatchesCondition(viewData map[string]any,
 	condition *cond.CondCfg, mappingRules []interfaces.Mapping, isForward bool) bool {
 
-	// 简化实现：根据映射规则检查视图数据
+	// Simplified implementation: check view data by mapping rules.
 	for _, mapping := range mappingRules {
 		var fieldName string
 		if isForward {
@@ -444,8 +444,8 @@ func CheckViewDataMatchesCondition(viewData map[string]any,
 			return false
 		}
 
-		// 比较值是否相等。因为关系关联都是等于的关系，直接取值比较
-		// 从条件里取值，不能只取一个，还需要考虑多字段关联的情况
+		// Compare values for equality. Relation associations are equality relations, so compare values directly.
+		// Read values from conditions; do not take only one value, because multi-field associations must also be considered.
 		conditionValue := condition.Value
 		if !CompareValues(expectedValue, conditionValue) {
 			return false
@@ -455,14 +455,14 @@ func CheckViewDataMatchesCondition(viewData map[string]any,
 	return true
 }
 
-// 使用视图数据检查间接映射条件
+// Use view data to check indirect mapping conditions.
 func CheckIndirectMappingConditionsWithViewData(currentObjectData map[string]any,
 	nextObject map[string]any, mappingRules *interfaces.InDirectMapping, isForward bool,
 	viewData []map[string]any) bool {
 
-	// 检查是否存在一个视图记录能够连接当前对象和下一层对象
+	// Check whether a view record can connect the current object and the next-layer object.
 	for _, viewRecord := range viewData {
-		// 检查当前对象 -> 视图记录的映射
+		// Check the current object -> view record mapping.
 		var sourceMapping []interfaces.Mapping
 		if isForward {
 			sourceMapping = mappingRules.SourceMappingRules
@@ -492,7 +492,7 @@ func CheckIndirectMappingConditionsWithViewData(currentObjectData map[string]any
 			continue
 		}
 
-		// 检查视图记录 -> 下一层对象的映射
+		// Check the view record -> next-layer object mapping.
 		var targetMapping []interfaces.Mapping
 		if isForward {
 			targetMapping = mappingRules.TargetMappingRules
@@ -528,7 +528,7 @@ func CheckIndirectMappingConditionsWithViewData(currentObjectData map[string]any
 	return false
 }
 
-// 根据对象唯一标识构建对象查询的过滤条件
+// Build object query filter conditions from object unique identities.
 func BuildInstanceIdentitiesCondition(uks []map[string]any) *cond.CondCfg {
 
 	if len(uks) == 0 {
@@ -536,9 +536,9 @@ func BuildInstanceIdentitiesCondition(uks []map[string]any) *cond.CondCfg {
 	}
 
 	ukSubConds := []*cond.CondCfg{}
-	for _, uk := range uks { // 多个对象
+	for _, uk := range uks { // Multiple objects.
 		conds := []*cond.CondCfg{}
-		for k, v := range uk { // 联合主键
+		for k, v := range uk { // Composite primary key.
 			conds = append(conds, &cond.CondCfg{
 				Name:      k,
 				Operation: "==",
@@ -568,17 +568,17 @@ func TransferPropsToPropMap(props []cond.DataProperty) map[string]*cond.DataProp
 	propMap := map[string]*cond.DataProperty{}
 	for _, prop := range props {
 		propMap[prop.Name] = &prop
-		// 后面计划:若修改了索引配置,则把索引状态设置为不可用,那么就走虚拟化查询,不走持久化.所以查询这里可以认为是准确的
+		// Future plan: if index configuration changes, mark the index status unavailable so queries use virtualization instead of persisted data. Therefore this query result can be considered accurate.
 		// if prop.IndexConfig != nil && prop.IndexConfig.FulltextConfig.Enabled {
-		// 	// 配置了全文索引的,字段类型定义为text
+		// If full-text indexing is configured, define the field type as text.
 		// 	propMap[prop.Name] = prop
 		// } else if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled {
-		// 	// 配置了向量化的字段
+		// Vectorized field.
 		// 	propMap[prop.Name] = prop
 
 		// 	propMap[prop.Name] = prop
 		// } else {
-		// 	// 其他情况
+		// Other cases.
 		// 	propMap[prop.Name] = prop
 		// }
 	}
@@ -586,7 +586,7 @@ func TransferPropsToPropMap(props []cond.DataProperty) map[string]*cond.DataProp
 	return propMap
 }
 
-// 构建dsl的query
+// Build the DSL query.
 func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.ObjectQueryBaseOnObjectType) (map[string]any, error) {
 
 	var dslMap map[string]any
@@ -597,11 +597,11 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Objec
 			WithErrorDetails(fmt.Sprintf("failed to unMarshal dslStr to map, %s", err.Error()))
 	}
 
-	// 处理 sort
+	// Handle sort.
 	sort := []map[string]any{}
 	for _, sp := range query.Sort {
-		// 不做排序字段参数校验了，如果排序字段不存在，opensearch会报错，由opensearch来报错
-		// _score 是传递给视图的字段,这里是直接查opensearch,那么这个_score需要改为_score
+		// Do not validate sort field parameters here. If the sort field does not exist, OpenSearch will return the error.
+		// _score is the field passed to views; because this queries OpenSearch directly, this _score must remain _score.
 		// if sp.Field == interfaces.SORT_FIELD_SCORE {
 		// 	sort = append(sort, map[string]any{
 		// 		"_score": sp.Direction,
@@ -617,7 +617,7 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Objec
 		query.NeedTotal = false
 	}
 
-	// 如果没传 limit，传了 search_after 参数，设置默认limit 10000
+	// If limit is omitted but search_after is provided, set the default limit to 10000.
 	if query.Limit == 0 && query.SearchAfter != nil && len(query.SearchAfter) > 0 {
 		query.Limit = interfaces.SearchAfter_Limit
 	}
@@ -631,7 +631,7 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Objec
 		dsl["query"] = dslMap
 	}
 
-	// 存在search after时需加上search_after
+	// Add search_after when search after exists.
 	if query.SearchAfter != nil {
 		dsl["search_after"] = query.SearchAfter
 	}
@@ -639,7 +639,7 @@ func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.Objec
 	return dsl, nil
 }
 
-// shouldExcludeSystemProperty 检查是否应该排除指定的系统字段
+// shouldExcludeSystemProperty checks whether the specified system field should be excluded.
 func ShouldExcludeSystemProperty(fieldName string, excludeList []string) bool {
 	if len(excludeList) == 0 {
 		return false
@@ -671,10 +671,10 @@ func EvaluateInstanceAgainstCondition(ctx context.Context,
 	return evaluateConditionRecursive(ctx, instanceData, condition, propMap)
 }
 
-// EvaluateDataAgainstCondition 判断 data 是否满足 condition
-// data: 待评估数据，key 为字段名
-// condition: 条件配置
-// paramDefs: 参数定义，用于类型推断（可为 nil，则 fieldType 为空）
+// EvaluateDataAgainstCondition determines whether data satisfies condition.
+// data: data to evaluate, with field names as keys.
+// Condition: conditionconfiguration.
+// paramDefs: parameter definitions for type inference; if nil, fieldType is empty.
 func EvaluateDataAgainstCondition(ctx context.Context,
 	data map[string]any,
 	condition *cond.CondCfg,
