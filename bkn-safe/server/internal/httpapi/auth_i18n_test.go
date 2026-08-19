@@ -235,6 +235,35 @@ func TestAuthPagesUseRequestLanguage(t *testing.T) {
 	}
 }
 
+func TestChangePasswordLocaleLinksDoNotExposeAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.Use(sharedrest.LanguageMiddleware())
+	router.GET("/change-password", showChangePassword)
+
+	request := httptest.NewRequest(http.MethodGet, "/change-password?login_challenge=test&account=user@example.com", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		`href="/change-password?lang=zh-CN&amp;login_challenge=test"`,
+		`href="/change-password?lang=en-US&amp;login_challenge=test"`,
+		`<input type="hidden" name="account" value="user@example.com">`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("body does not contain %q", expected)
+		}
+	}
+	if strings.Contains(body, `account=user`) || strings.Contains(body, `account%40`) {
+		t.Error("change-password locale links expose the account in the query string")
+	}
+}
+
 func TestShowLoginUsesOIDCUILocalesAndAllowsExplicitOverride(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

@@ -113,9 +113,6 @@ func loginAuthPageData(c *gin.Context, challenge string) authPageData {
 
 func changePasswordAuthPageData(c *gin.Context, challenge, account string) authPageData {
 	values := url.Values{"login_challenge": {challenge}}
-	if account != "" {
-		values.Set("account", account)
-	}
 	data := localizedAuthPageDataFor(c, "/change-password", values)
 	data.Challenge = challenge
 	data.Account = account
