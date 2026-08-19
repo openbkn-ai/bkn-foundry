@@ -55,7 +55,7 @@ depServices:
     connectType: sentinel
     enableSSL: false
     connectInfo:
-      sentinelHost: kg-redis-cluster-proton-redis-sentinel.resource.svc.cluster.local
+      sentinelHost: redis-sentinel.resource.svc.cluster.local
       sentinelPort: 26379
       username: root
       password: password

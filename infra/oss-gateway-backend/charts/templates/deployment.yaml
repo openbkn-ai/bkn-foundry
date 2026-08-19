@@ -20,7 +20,7 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
       # Reduce ndots from the ClusterFirst default of 5 to 1. Sentinel returns
-      # a four-dot FQDN such as redis-proton-redis-announce-0.resource.svc.cluster.local.
+      # a four-dot FQDN such as redis-redis-announce-0.resource.svc.cluster.local.
       # With ndots=5, libc first appends every search domain and each attempt can
       # spend about one second on NXDOMAIN. Redis Sentinel repeats the lookup at
       # startup, causing minute-long hangs and startup-probe CrashLoops. ndots=1

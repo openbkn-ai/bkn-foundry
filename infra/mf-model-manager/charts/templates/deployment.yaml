@@ -20,7 +20,7 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum | trunc 10 | quote }}
     spec:
       # Lower ndots from the ClusterFirst default of 5 to 1: sentinel returns
-      # redis-proton-redis-announce-0.resource.svc.cluster.local, which is an
+      # redis-redis-announce-0.resource.svc.cluster.local, which is an
       # FQDN with 4 dots. ndots=5 makes libc try every search-domain suffix first
       # (openbkn.svc.cluster.local / svc.cluster.local / cluster.local /
       # localdomain); each returns NXDOMAIN after about 1s, so FQDN resolution

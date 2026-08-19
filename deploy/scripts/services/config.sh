@@ -122,11 +122,10 @@ STORAGE_EOF
     local redis_ns="${REDIS_NAMESPACE}"
     local redis_release_name="redis"
     
-    # Try to get actual StatefulSet name. The bundled chart is proton-redis, so
-    # its StatefulSet is {release-name}-proton-redis; plain "redis" covers a
-    # release whose chart names the StatefulSet after the release only.
+    # The bundled chart names its StatefulSet {release-name}-redis; plain
+    # "redis" covers a release whose StatefulSet matches the release name.
     local redis_sts_name=""
-    for sts_name in "${redis_release_name}-proton-redis" "${redis_release_name}-redis" "redis"; do
+    for sts_name in "${redis_release_name}-redis" "redis"; do
         if kubectl -n "${redis_ns}" get statefulset "${sts_name}" >/dev/null 2>&1; then
             redis_sts_name="${sts_name}"
             break
@@ -167,14 +166,13 @@ STORAGE_EOF
     # Try to get password from secret (check multiple possible secret names)
     # For redis chart: secret name is {release-name}-redis-secret (e.g., redis-secret)
     local redis_secret_names=(
-        "${redis_release_name}-proton-redis-secret"    # bundled proton-redis chart
         "${redis_release_name}-redis-secret"          # redis chart naming
         "${redis_release_name}-secret"                # generic naming
         "redis-auth"                                  # fallback
     )
     local redis_secret_password=""
-    # nonEncrpt-password is checked first: the bundled proton-redis chart keeps
-    # BOTH keys, and its "password" is not the value clients authenticate with.
+    # nonEncrpt-password is checked first because it is the client-authentication
+    # credential used by the bundled chart.
     for secret_name in "${redis_secret_names[@]}"; do
         for secret_key in nonEncrpt-password password; do
             # get_secret_b64_key already base64-decodes the Secret field, so this
@@ -199,7 +197,6 @@ STORAGE_EOF
     # For redis chart: service name is {release-name}-redis-sentinel
     # If release name is "redis", service is "redis-sentinel"
     local sentinel_svc_names=(
-        "${redis_release_name}-proton-redis-sentinel"   # bundled proton-redis chart
         "${redis_release_name}-redis-sentinel"          # redis chart naming
         "${redis_release_name}-sentinel"               # generic naming
         "redis-sentinel"                                # fallback

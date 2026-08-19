@@ -49,12 +49,8 @@ spec:
       {{- end }}
       containers:
         - name: {{ .Release.Name }}
-          {{- if ne .Values.runMode "dev" }}
           image: "{{ .Values.image.registry }}/{{ .Values.image.service.repository }}:{{ .Values.image.service.tag }}"
           imagePullPolicy: {{ .Values.image.service.pullPolicy }}
-          {{- else}}
-          image: "acr.aishu.cn/client/godevenv:1.16.2"
-          {{- end}}
 
           env:
             # bkn-safe (ISF replacement) authz cutover; empty = ISF, revertible.
