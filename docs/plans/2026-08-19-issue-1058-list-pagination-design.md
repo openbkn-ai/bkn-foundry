@@ -16,10 +16,13 @@ Projection 现有文档是 receipt 粒度，而 Conversation 列表是 receipt �
 1. Trace 列表在 Projection 查询中使用 `(started_at, trace_id)` 的稳定 cursor / `search_after`
    边界，查询 `page_size + 1` 个 Trace 候选。canonical identity、span 统计与 artifact
    扩展只作用于返回页。
-2. Conversation 列表写入并读取 Conversation 粒度的列表投影，使用
+2. Trace 列表读模型由 Receipt / 调用事实的权威变化派生为
+   `trace-list:<trace_id>` 快照；它不是新的事实来源。每次相关事实变化更新同一
+   Trace 快照，以便按 `(started_at, trace_id)` 查询。
+3. Conversation 列表写入并读取 Conversation 粒度的列表投影，使用
    `(started_at, conversation_id)` 分页。当前页之外不读取 receipt，也不做 canonical
    session 补全。
-3. `total` 通过独立 count / aggregation 取得；不得以读取全部候选计算。
+4. `total` 通过独立 count / aggregation 取得；不得以读取全部候选计算。
 
 ## 契约与边界
 

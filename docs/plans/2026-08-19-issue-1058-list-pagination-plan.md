@@ -38,7 +38,7 @@
 
 **Step 2:** Run the adapter tests and verify failure before adding the read model.
 
-**Step 3:** Emit authoritative trace-list snapshots from the Core projection path and make the mapping expose the required keyword/date fields. Do not alter rebuild supervisor or alias-switch behavior.
+**Step 3:** Derive `trace-list:<trace_id>` snapshots from authoritative Receipt / call-fact changes and make the mapping expose the required keyword/date fields. Do not alter rebuild supervisor or alias-switch behavior.
 
 **Step 4:** Implement page query/count methods; only an OpenSearch `404`/transport error remains an adapter error, never an in-memory fallback scan.
 
