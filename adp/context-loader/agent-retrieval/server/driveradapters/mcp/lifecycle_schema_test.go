@@ -223,7 +223,7 @@ func TestStartInteractionRequiresBoundedStableAgentName(t *testing.T) {
 		t.Fatalf("decode start schema: %v", err)
 	}
 	agentName, ok := schema.Properties["agent_name"]
-	if !ok || agentName.Type != "string" || agentName.MaxLength != 128 || agentName.Description != "当前 Agent 的固定名称。同一 conversation_id 中每次调用都传入相同值。" {
+	if !ok || agentName.Type != "string" || agentName.MaxLength != 128 || agentName.Description != "The current Agent's stable name. Provide the same value on every call in the same conversation_id." {
 		t.Fatalf("agent_name must be a required bounded stable declaration: %s", input)
 	}
 	if !containsString(schema.Required, "agent_name") {

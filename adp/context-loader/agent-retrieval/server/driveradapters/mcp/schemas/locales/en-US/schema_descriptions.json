@@ -1,7 +1,4 @@
 {
-  "bkn_start_interaction": {
-    "input_schema.properties.agent_name.description": "The current Agent's stable name. Provide the same value on every call in the same conversation_id."
-  },
   "describe_resource": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.resource_id.description": "Data resource id returned by list_resources.",
