@@ -95,9 +95,10 @@ func (s *Service) ListConversations(ctx context.Context, options evidencevo.Summ
 	if page, handled, err := s.listConversationIdentityPage(ctx, options); handled || err != nil {
 		return page, err
 	}
+	candidateLimit := summaryCandidateLimit(options)
 	loadOptions := options
 	loadOptions.Status = ""
-	requests, _, metadata, err := s.loadExecutionSummaries(ctx, loadOptions)
+	requests, _, metadata, err := s.loadExecutionSummariesWithCandidateLimit(ctx, loadOptions, candidateLimit)
 	if err != nil {
 		return evidencevo.ConversationSummaryPage{}, err
 	}
@@ -163,9 +164,10 @@ func (s *Service) ListInteractions(ctx context.Context, options evidencevo.Summa
 			return page, err
 		}
 	}
+	candidateLimit := summaryCandidateLimit(options)
 	loadOptions := options
 	loadOptions.Status = ""
-	requests, _, metadata, err := s.loadExecutionSummaries(ctx, loadOptions)
+	requests, _, metadata, err := s.loadExecutionSummariesWithCandidateLimit(ctx, loadOptions, candidateLimit)
 	if err != nil {
 		return evidencevo.InteractionSummaryPage{}, err
 	}
@@ -1713,6 +1715,10 @@ func mergeTraceBatches(batches []evidencevo.NormalizedTrace) []evidencevo.Normal
 }
 
 func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo.SummaryQueryOptions) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {
+	return s.loadExecutionSummariesWithCandidateLimit(ctx, options, summaryCandidateLimit(options))
+}
+
+func (s *Service) loadExecutionSummariesWithCandidateLimit(ctx context.Context, options evidencevo.SummaryQueryOptions, candidateLimit int) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {
 	if !trustedQueryScope(options.Scope) {
 		return []evidencevo.RequestSummary{}, []evidencevo.TraceSummary{}, summaryLoadMetadata{}, nil
 	}
@@ -1723,7 +1729,7 @@ func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo
 		Scope: options.Scope, From: options.From, To: options.To,
 		BusinessDomain: options.BusinessDomain, Status: options.Status,
 		TraceID: options.TraceID, InteractionID: options.InteractionID,
-		Limit: summaryCandidateLimit(options),
+		Limit: candidateLimit,
 	})
 	if err != nil {
 		return nil, nil, summaryLoadMetadata{}, err

@@ -1651,6 +1651,37 @@ func TestSummaryCandidateLimitUsesPageBudgetOnlyWithoutContentFilters(t *testing
 	}
 }
 
+func TestStatusFilteredAggregateListsPreserveCompatibilityWindow(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		list func(*Service) error
+	}{
+		{name: "conversations", list: func(service *Service) error {
+			_, err := service.ListConversations(context.Background(), evidencevo.SummaryQueryOptions{
+				Scope: summaryScope("acct_demo"), Status: "failed", Limit: 50,
+			})
+			return err
+		}},
+		{name: "interactions", list: func(service *Service) error {
+			_, err := service.ListInteractions(context.Background(), evidencevo.SummaryQueryOptions{
+				Scope: summaryScope("acct_demo"), Status: "failed", Limit: 50,
+			})
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := &capturingProjectionSource{}
+			service := NewWithProjectionSource(evidencestore.New(), source)
+			if err := test.list(service); err != nil {
+				t.Fatal(err)
+			}
+			if len(source.queries) != 1 || source.queries[0].Limit != MaxSummaryScanEntries || source.queries[0].Status != "" {
+				t.Fatalf("status must stay post-filtered without shrinking candidates: %+v", source.queries)
+			}
+		})
+	}
+}
+
 func TestListInteractionsPushesExactInteractionIDToProjection(t *testing.T) {
 	trace := evidencevo.NormalizedTrace{
 		TraceID: "trace_interaction_target", RequestID: "req_interaction_target",
