@@ -72,7 +72,54 @@ func TestOpenBKNLogoAssetIsCacheable(t *testing.T) {
 	}
 }
 
-func TestLoginPageReferencesExternalLogo(t *testing.T) {
+func TestLoginBackgroundAssetIsCacheable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	hydra := auth.NewHydraAdmin("http://hydra.invalid")
+	registerAuth(router, auth.NewProvider(nil, hydra, nil), hydra, nil)
+
+	request := httptest.NewRequest(http.MethodGet, loginBackgroundPath, nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Header().Get("Content-Type"); got != "image/jpeg" {
+		t.Errorf("Content-Type = %q, want image/jpeg", got)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Errorf("Cache-Control = %q, want long-lived immutable caching", got)
+	}
+	if got := response.Header().Get("ETag"); got != loginBackgroundETag {
+		t.Errorf("ETag = %q, want %q", got, loginBackgroundETag)
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256(loginBackgroundJPG))
+	if loginBackgroundETag != `"`+digest+`"` {
+		t.Errorf("background ETag does not match embedded JPEG digest %q", digest)
+	}
+	if !strings.Contains(loginBackgroundPath, digest[:12]) {
+		t.Errorf("background path %q does not contain content fingerprint %q", loginBackgroundPath, digest[:12])
+	}
+	if !bytes.Equal(response.Body.Bytes(), loginBackgroundJPG) {
+		t.Error("response body does not match the embedded login background")
+	}
+
+	request = httptest.NewRequest(http.MethodGet, loginBackgroundPath, nil)
+	request.Header.Set("If-None-Match", loginBackgroundETag)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotModified {
+		t.Fatalf("conditional request status = %d, want %d", response.Code, http.StatusNotModified)
+	}
+	if response.Body.Len() != 0 {
+		t.Errorf("304 response body size = %d, want 0", response.Body.Len())
+	}
+}
+
+func TestLoginPageReferencesExternalAssets(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	router := gin.New()
@@ -88,6 +135,7 @@ func TestLoginPageReferencesExternalLogo(t *testing.T) {
 	}
 	body := response.Body.String()
 	for _, expected := range []string{
+		`url("` + loginBackgroundPath + `")`,
 		`src="` + openBKNLogoPath + `"`,
 		`width="244"`,
 		`height="84"`,

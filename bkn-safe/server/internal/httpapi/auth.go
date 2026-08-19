@@ -28,6 +28,7 @@ import (
 // requested scopes with explicit Authorize/Decline.
 func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessStore *accesslog.Store) {
 	r.GET(openBKNLogoPath, serveOpenBKNLogo)
+	r.GET(loginBackgroundPath, serveLoginBackground)
 	r.GET("/login", func(c *gin.Context) { showLogin(c, h) })
 	r.POST("/login", func(c *gin.Context) { doLogin(c, p, accessStore) })
 	r.GET("/change-password", showChangePassword)
@@ -40,18 +41,20 @@ func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessSto
 }
 
 // pageCSS is the shared light shell (centered card), following the BKN Studio
-// console design language: #2563eb primary, soft radial-gradient backdrop,
-// white 20px-radius card, AntD-like 8px fields/buttons, and the OpenBKN logo.
+// console design language: #2563eb primary, light product backdrop, white
+// 20px-radius card, AntD-like 8px fields/buttons, and the OpenBKN logo.
 const pageCSS = `<style>
 :root{color-scheme:light}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(circle at top left,rgba(55,114,255,.12),transparent 24%),
-    radial-gradient(circle at right center,rgba(243,192,91,.12),transparent 22%),
-    linear-gradient(180deg,#f7f9fc 0%,#edf1f7 100%);
+  position:relative;isolation:isolate;background:#f7f9fc;
   color:#152239;font:15px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
   -webkit-font-smoothing:antialiased}
-.card{position:relative;width:min(380px,calc(100vw - 32px));box-sizing:border-box;background:#fff;border:1px solid rgba(22,40,73,.08);
-  border-radius:20px;padding:36px 32px;box-shadow:0 18px 48px rgba(22,40,73,.10)}
+body:before{content:"";position:fixed;inset:0;z-index:-2;background-image:
+  linear-gradient(90deg,rgba(248,250,252,.96) 0%,rgba(248,250,252,.82) 38%,rgba(248,250,252,.18) 100%),
+  url("` + loginBackgroundPath + `");background-size:cover;background-position:center;background-repeat:no-repeat}
+.card{position:relative;width:min(380px,calc(100vw - 32px));box-sizing:border-box;background:rgba(255,255,255,.93);
+  border:1px solid rgba(22,40,73,.08);border-radius:20px;padding:36px 32px;
+  box-shadow:0 18px 52px rgba(22,40,73,.13);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 .locale-switch{position:absolute;top:14px;right:18px;display:flex;align-items:center;gap:6px;
   color:#a0aabd;font-size:12px;line-height:1}
 .locale-switch a{border-radius:4px;color:#72819b;text-decoration:none;padding:4px 2px}
@@ -92,25 +95,39 @@ button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
 form{margin:0}
+@media (max-width:640px){body:before{background-position:60% center}.card{padding:34px 24px}}
 </style>`
 
 //go:embed assets/openbkn-logo.svg
 var openBKNLogoSVG []byte
 
+//go:embed assets/login-background.jpg
+var loginBackgroundJPG []byte
+
 const (
-	openBKNLogoPath = "/login/assets/openbkn-logo-5175503c14ed.svg"
-	openBKNLogoETag = `"5175503c14ed4a59773aa337b07e333a632285468bba53b8bbe594ff8a5afc48"`
+	openBKNLogoPath     = "/login/assets/openbkn-logo-5175503c14ed.svg"
+	openBKNLogoETag     = `"5175503c14ed4a59773aa337b07e333a632285468bba53b8bbe594ff8a5afc48"`
+	loginBackgroundPath = "/login/assets/login-background-2c76122b3960.jpg"
+	loginBackgroundETag = `"2c76122b39608ab1be202d1f3009ed26a09d8a0e721d4a20b297bbb449a6bb91"`
 )
 
 func serveOpenBKNLogo(c *gin.Context) {
+	serveCacheableAuthAsset(c, "image/svg+xml; charset=utf-8", openBKNLogoETag, openBKNLogoSVG)
+}
+
+func serveLoginBackground(c *gin.Context) {
+	serveCacheableAuthAsset(c, "image/jpeg", loginBackgroundETag, loginBackgroundJPG)
+}
+
+func serveCacheableAuthAsset(c *gin.Context, contentType, etag string, body []byte) {
 	c.Header("Cache-Control", "public, max-age=31536000, immutable")
-	c.Header("ETag", openBKNLogoETag)
+	c.Header("ETag", etag)
 	c.Header("X-Content-Type-Options", "nosniff")
-	if c.GetHeader("If-None-Match") == openBKNLogoETag {
+	if c.GetHeader("If-None-Match") == etag {
 		c.Status(http.StatusNotModified)
 		return
 	}
-	c.Data(http.StatusOK, "image/svg+xml; charset=utf-8", openBKNLogoSVG)
+	c.Data(http.StatusOK, contentType, body)
 }
 
 // brand renders the brand row (mark + wordmark) shown atop each card. Web
