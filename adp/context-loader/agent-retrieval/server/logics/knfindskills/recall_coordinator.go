@@ -8,6 +8,7 @@ package knfindskills
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -479,6 +480,12 @@ func float64FromMap(m map[string]interface{}, key string) float64 {
 			return float64(val)
 		case int64:
 			return float64(val)
+		case json.Number:
+			// UseNumber decoders hand back json.Number; see
+			// drivenadapters.precisionJSON.
+			if parsed, err := val.Float64(); err == nil {
+				return parsed
+			}
 		}
 	}
 	return 0

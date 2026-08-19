@@ -8,6 +8,7 @@ package knlogicpropertyresolver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -651,6 +652,18 @@ func (s *knLogicPropertyResolverService) validateTimestamp(
 		if v < 946684800000 || v > 4102444800000 {
 			return fmt.Errorf("metric property %s: param '%s' timestamp %d is out of reasonable range",
 				propertyName, paramName, v)
+		}
+		return nil
+	case json.Number:
+		// UseNumber decoders hand back json.Number; see drivenadapters.precisionJSON.
+		timestamp, convErr := v.Int64()
+		if convErr != nil {
+			return fmt.Errorf("metric property %s: param '%s' timestamp %s is not an integer",
+				propertyName, paramName, v.String())
+		}
+		if timestamp < 946684800000 || timestamp > 4102444800000 {
+			return fmt.Errorf("metric property %s: param '%s' timestamp %d is out of reasonable range",
+				propertyName, paramName, timestamp)
 		}
 		return nil
 	case float64:

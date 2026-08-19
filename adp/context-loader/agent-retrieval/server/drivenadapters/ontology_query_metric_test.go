@@ -37,10 +37,10 @@ func TestQueryMetricData_EscapesIDsIntoPath(t *testing.T) {
 		}
 
 		var got string
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, []byte, error) {
 				got = target
-				return 200, map[string]any{"datas": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
 			})
 
 		_, err := client.QueryMetricData(context.Background(), "kn1",
@@ -74,10 +74,10 @@ func TestQueryMetricData_ForwardsFillNull(t *testing.T) {
 		}
 
 		var got string
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, []byte, error) {
 				got = target
-				return 200, map[string]any{"datas": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
 			})
 
 		_, err := client.QueryMetricData(context.Background(), "kn1", "m1", true, nil)

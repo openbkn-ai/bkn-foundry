@@ -991,8 +991,34 @@ func intValue(value any, fallback int) int {
 		return typed
 	case float64:
 		return int(typed)
+	case json.Number:
+		// Downstream bodies are decoded with UseNumber so that wide integers keep
+		// their digits; see drivenadapters.precisionJSON.
+		if parsed, err := typed.Int64(); err == nil {
+			return int(parsed)
+		}
+		return fallback
 	default:
 		return fallback
+	}
+}
+
+// floatValue reads a JSON number that may have been decoded either as float64
+// (plain encoding/json) or as json.Number (the UseNumber decoders that keep wide
+// integers intact).
+func floatValue(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case int:
+		return float64(typed), true
+	case int64:
+		return float64(typed), true
+	case json.Number:
+		parsed, err := typed.Float64()
+		return parsed, err == nil
+	default:
+		return 0, false
 	}
 }
 
@@ -1252,9 +1278,9 @@ func firstString(item map[string]any, keys ...string) string {
 }
 
 func scoreBucket(item map[string]any) string {
-	score, ok := item["_score"].(float64)
+	score, ok := floatValue(item["_score"])
 	if !ok {
-		score, ok = item["score"].(float64)
+		score, ok = floatValue(item["score"])
 	}
 	if !ok {
 		return "unknown"

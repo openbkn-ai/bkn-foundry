@@ -259,11 +259,8 @@ func TestCallMCPTool_Success(t *testing.T) {
 		}
 
 		// Mock a successful HTTP response.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]interface{}{
-				"result": "success",
-				"data":   "test data",
-			}, nil)
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, []byte(`{"result":"success","data":"test data"}`), nil)
 
 		resp, err := client.CallMCPTool(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
@@ -301,7 +298,7 @@ func TestCallMCPTool_HTTPError(t *testing.T) {
 		}
 
 		// Mock an HTTP error.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
 		_, err := client.CallMCPTool(ctx, req)

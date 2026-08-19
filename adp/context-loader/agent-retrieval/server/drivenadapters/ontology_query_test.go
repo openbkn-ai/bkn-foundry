@@ -47,11 +47,11 @@ func TestQueryObjectInstances_Success(t *testing.T) {
 		}
 
 		// Mock a successful HTTP response.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]interface{}{
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]interface{}{
 				"datas":       []interface{}{},
 				"object_type": map[string]interface{}{},
-			}, nil)
+			}), nil)
 
 		resp, err := client.QueryObjectInstances(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
@@ -87,7 +87,7 @@ func TestQueryObjectInstances_HTTPError(t *testing.T) {
 		}
 
 		// Mock an HTTP error.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
 		_, err := client.QueryObjectInstances(ctx, req)
@@ -122,12 +122,12 @@ func TestQueryLogicProperties_Success(t *testing.T) {
 		}
 
 		// Mock a successful HTTP response.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]interface{}{
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]interface{}{
 				"datas": []interface{}{
 					map[string]interface{}{"prop1": "value1"},
 				},
-			}, nil)
+			}), nil)
 
 		resp, err := client.QueryLogicProperties(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
@@ -162,7 +162,7 @@ func TestQueryLogicProperties_HTTPError(t *testing.T) {
 		}
 
 		// Mock an HTTP error.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
 		_, err := client.QueryLogicProperties(ctx, req)
@@ -196,8 +196,8 @@ func TestQueryActions_Success(t *testing.T) {
 		}
 
 		// Mock a successful HTTP response.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]interface{}{
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]interface{}{
 				"action_source": map[string]interface{}{
 					"type":    "tool",
 					"box_id":  "box-001",
@@ -210,7 +210,7 @@ func TestQueryActions_Success(t *testing.T) {
 				},
 				"total_count": 1,
 				"overall_ms":  100,
-			}, nil)
+			}), nil)
 
 		resp, err := client.QueryActions(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
@@ -246,7 +246,7 @@ func TestQueryActions_HTTPError(t *testing.T) {
 		}
 
 		// Mock an HTTP error.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
 		_, err := client.QueryActions(ctx, req)
@@ -281,10 +281,10 @@ func TestQueryInstanceSubgraph_Success(t *testing.T) {
 		}
 
 		// Mock a successful HTTP response.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]interface{}{
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]interface{}{
 				"entries": []interface{}{},
-			}, nil)
+			}), nil)
 
 		resp, err := client.QueryInstanceSubgraph(ctx, req)
 		convey.So(err, convey.ShouldBeNil)
@@ -317,7 +317,7 @@ func TestQueryInstanceSubgraph_HTTPError(t *testing.T) {
 		}
 
 		// Mock an HTTP error.
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(0, nil, errors.New("connection refused"))
 
 		_, err := client.QueryInstanceSubgraph(ctx, req)
@@ -352,7 +352,7 @@ func TestQueryObjectInstances_DownstreamBadRequestRemappedToBadRequest(t *testin
 		// ontology-query message flattened into CommonExternalServerError.
 		detail := "OntologyQuery.InvalidParameter.Condition: condition [knn] left field is not a vector field: child_name:string"
 		wrapped := infraErr.NewHTTPError(ctx, http.StatusBadRequest, infraErr.ErrExtCommonExternalServerError, detail)
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(http.StatusBadRequest, nil, wrapped)
 
 		_, err := client.QueryObjectInstances(ctx, req)
@@ -386,7 +386,7 @@ func TestQueryObjectInstances_DownstreamNotFoundKeepsCode(t *testing.T) {
 		req := &interfaces.QueryObjectInstancesReq{KnID: "missing", OtID: "ot-001", Limit: 10}
 
 		wrapped := infraErr.NewHTTPError(ctx, http.StatusNotFound, infraErr.ErrExtCommonExternalServerError, "knowledge network not found")
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(http.StatusNotFound, nil, wrapped)
 
 		_, err := client.QueryObjectInstances(ctx, req)
@@ -421,7 +421,7 @@ func TestExecuteActions_PreservesConflictStatus(t *testing.T) {
 
 		wrapped := infraErr.NewHTTPError(ctx, http.StatusConflict, infraErr.ErrExtCommonExternalServerError,
 			`{"error_code":"OntologyQuery.ActionExecution.DuplicateExecution"}`)
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(http.StatusConflict, nil, wrapped)
 
 		_, err := client.ExecuteActions(ctx, req)
@@ -450,7 +450,7 @@ func TestQueryObjectInstances_DownstreamServerErrorUntouched(t *testing.T) {
 		req := &interfaces.QueryObjectInstancesReq{KnID: "kn-001", OtID: "ot-001", Limit: 10}
 
 		wrapped := infraErr.NewHTTPError(ctx, http.StatusInternalServerError, infraErr.ErrExtCommonExternalServerError, "boom")
-		mockHTTPClient.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTPClient.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(http.StatusInternalServerError, nil, wrapped)
 
 		_, err := client.QueryObjectInstances(ctx, req)

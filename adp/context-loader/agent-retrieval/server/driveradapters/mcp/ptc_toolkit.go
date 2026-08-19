@@ -6,6 +6,7 @@
 package mcp
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -164,7 +165,14 @@ func ptcParams(raw json.RawMessage) []ptcParam {
 		} `json:"properties"`
 		Required []string `json:"required"`
 	}
-	if len(raw) == 0 || json.Unmarshal(raw, &schema) != nil {
+	if len(raw) == 0 {
+		return nil
+	}
+	// UseNumber: a default wider than float64's mantissa must reach pyLiteral with
+	// its digits intact, not as 9.223372036854776e+18 baked into generated Python.
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if decoder.Decode(&schema) != nil {
 		return nil
 	}
 	required := make(map[string]bool, len(schema.Required))
@@ -213,6 +221,10 @@ func pyLiteral(v any) string {
 		return "False"
 	case string:
 		return "'" + strings.ReplaceAll(t, "'", "\\'") + "'"
+	case json.Number:
+		// UseNumber decoders keep the original digits; emit them verbatim so a
+		// BIGINT key does not become 9.223372036854776e+18 in generated code.
+		return t.String()
 	case float64:
 		if t == float64(int64(t)) {
 			return fmt.Sprintf("%d", int64(t))

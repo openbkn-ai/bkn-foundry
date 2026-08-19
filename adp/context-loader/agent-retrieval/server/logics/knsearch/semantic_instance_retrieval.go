@@ -12,6 +12,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -776,6 +777,12 @@ func (s *localSearchImpl) convertToKnSearchNode(objType *interfaces.KnSearchObje
 			node.Score = v
 		case int:
 			node.Score = float64(v)
+		case json.Number:
+			// Instance bodies are decoded with UseNumber so wide integers survive;
+			// see drivenadapters.precisionJSON.
+			if parsed, err := v.Float64(); err == nil {
+				node.Score = parsed
+			}
 		}
 	}
 

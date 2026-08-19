@@ -11,6 +11,7 @@ package knrerank
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"sort"
@@ -369,7 +370,7 @@ func (r *KnowledgeReranker) formatIntentsText(intents []interface{}) string {
 		var parts []string
 		parts = append(parts, fmt.Sprintf("意图%d是关于'%s'", i+1, querySegment))
 
-		if confidence, ok := intentMap["confidence"].(float64); ok && confidence > 0 {
+		if confidence, ok := confidenceValue(intentMap["confidence"]); ok && confidence > 0 {
 			parts = append(parts, fmt.Sprintf("置信度为%v", confidence))
 		}
 
@@ -498,4 +499,18 @@ func (r *KnowledgeReranker) parseNumberList(s string) ([]int, error) {
 		}
 	}
 	return indices, nil
+}
+
+// confidenceValue reads an intent confidence that may arrive as float64 or, from
+// the UseNumber decoders, as json.Number. See drivenadapters.precisionJSON.
+func confidenceValue(value any) (float64, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return typed, true
+	case json.Number:
+		parsed, err := typed.Float64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
 }
