@@ -1447,7 +1447,7 @@ func TestListRequestsReportsBoundedProjectionTruncationAndPushdownQuery(t *testi
 
 	page, err := service.ListRequests(context.Background(), evidencevo.SummaryQueryOptions{
 		Scope: summaryScope("acct_demo"), From: from, To: to,
-		Status: "running", BusinessDomain: "bd_demo", Keyword: "capped",
+		Status: "running", BusinessDomain: "bd_demo", Keyword: "capped", Limit: 20,
 	})
 
 	if err != nil || len(page.Entries) != 1 || !page.Truncated || !page.Partial ||
@@ -1458,7 +1458,7 @@ func TestListRequestsReportsBoundedProjectionTruncationAndPushdownQuery(t *testi
 		t.Fatalf("expected one bounded source call, got %+v", source.queries)
 	}
 	query := source.queries[0]
-	if query.Limit != MaxSummaryScanEntries || !query.From.Equal(from) || !query.To.Equal(to) ||
+	if query.Limit != 401 || !query.From.Equal(from) || !query.To.Equal(to) ||
 		query.BusinessDomain != "bd_demo" || query.Status != "running" {
 		t.Fatalf("reliable filters and cap must be pushed to source: %+v", query)
 	}

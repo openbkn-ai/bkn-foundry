@@ -90,6 +90,16 @@ func (tx memoryTransaction) PeekConversation(conversationID string) (sessionvo.C
 	return tx.FindConversation(conversationID)
 }
 
+func (tx memoryTransaction) ListConversationsByIDs(conversationIDs []string) map[string]sessionvo.Conversation {
+	result := make(map[string]sessionvo.Conversation, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if conversation, found := tx.s.conversations[conversationID]; found {
+			result[conversationID] = conversation
+		}
+	}
+	return result
+}
+
 func (tx memoryTransaction) FindIdempotency(
 	scope string,
 	owner sessionvo.Owner,

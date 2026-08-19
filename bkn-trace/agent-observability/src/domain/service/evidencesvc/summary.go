@@ -21,6 +21,7 @@ const (
 	DefaultSummaryQueryLimit = 50
 	MaxSummaryQueryLimit     = 200
 	MaxSummaryScanEntries    = 2000
+	maxReceiptsPerSummary    = 20
 )
 
 var ErrSummaryCursorInvalid = errors.New("BKN_TRACE_SUMMARY_CURSOR_INVALID")
@@ -698,8 +699,13 @@ func (s *Service) applyCanonicalConversationState(
 		return nil
 	}
 	return s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
+		conversationIDs := make([]string, 0, len(entries))
+		for _, entry := range entries {
+			conversationIDs = append(conversationIDs, entry.ConversationID)
+		}
+		conversations := tx.ListConversationsByIDs(conversationIDs)
 		for index := range entries {
-			conversation, found := tx.PeekConversation(entries[index].ConversationID)
+			conversation, found := conversations[entries[index].ConversationID]
 			if !found {
 				continue
 			}
@@ -969,20 +975,19 @@ func (s *Service) applyCanonicalRequestIdentity(ctx context.Context, requests []
 		return nil
 	}
 	return s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-		byConversation := map[string]sessionvo.Conversation{}
+		conversationIDs := make([]string, 0, len(requests))
+		for _, request := range requests {
+			conversationIDs = append(conversationIDs, request.ConversationID)
+		}
+		byConversation := tx.ListConversationsByIDs(conversationIDs)
 		for index := range requests {
 			conversationID := requests[index].ConversationID
 			if conversationID == "" {
 				continue
 			}
-			conversation, cached := byConversation[conversationID]
-			if !cached {
-				var found bool
-				conversation, found = tx.PeekConversation(conversationID)
-				if !found {
-					continue
-				}
-				byConversation[conversationID] = conversation
+			conversation, found := byConversation[conversationID]
+			if !found {
+				continue
 			}
 			requests[index].AgentName = conversation.AgentName
 			requests[index].ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
@@ -1003,10 +1008,11 @@ func (s *Service) applyCanonicalTraceIdentity(ctx context.Context, traces []evid
 		return nil
 	}
 	return s.sessionStore.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
-		byConversation := map[string]sessionvo.Conversation{}
+		conversationIDs := make([]string, 0, len(traces))
 		traceIDs := make([]string, 0, len(traces))
 		seenTraceIDs := map[string]struct{}{}
 		for _, trace := range traces {
+			conversationIDs = append(conversationIDs, trace.ConversationID)
 			if trace.TraceID == "" {
 				continue
 			}
@@ -1016,18 +1022,12 @@ func (s *Service) applyCanonicalTraceIdentity(ctx context.Context, traces []evid
 			seenTraceIDs[trace.TraceID] = struct{}{}
 			traceIDs = append(traceIDs, trace.TraceID)
 		}
+		byConversation := tx.ListConversationsByIDs(conversationIDs)
 		sourceModulesByTraceID := tx.ListFirstOperationSourceModulesByTraceIDs(traceIDs)
 		for index := range traces {
 			conversationID := traces[index].ConversationID
 			if conversationID != "" {
-				conversation, cached := byConversation[conversationID]
-				if !cached {
-					var found bool
-					conversation, found = tx.PeekConversation(conversationID)
-					if found {
-						byConversation[conversationID] = conversation
-					}
-				}
+				conversation := byConversation[conversationID]
 				if conversation.ID != "" {
 					traces[index].AgentName = conversation.AgentName
 					traces[index].ApplicationPrincipalID = conversation.Owner.ApplicationPrincipalID
@@ -1521,7 +1521,7 @@ func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo
 		Scope: options.Scope, From: options.From, To: options.To,
 		BusinessDomain: options.BusinessDomain, Status: options.Status,
 		TraceID: options.TraceID, InteractionID: options.InteractionID,
-		Limit: MaxSummaryScanEntries,
+		Limit: summaryCandidateLimit(options),
 	})
 	if err != nil {
 		return nil, nil, summaryLoadMetadata{}, err
@@ -1539,6 +1539,19 @@ func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo
 	}
 	s.enrichTraceStats(ctx, traceSummaries)
 	return requests, traceSummaries, metadata, nil
+}
+
+func summaryCandidateLimit(options evidencevo.SummaryQueryOptions) int {
+	limit := normalizeSummaryLimit(options.Limit)
+	page := normalizeSummaryPage(options.Page)
+	if options.Cursor != "" {
+		page = 1
+	}
+	candidates := page*limit*maxReceiptsPerSummary + 1
+	if candidates > MaxSummaryScanEntries {
+		return MaxSummaryScanEntries
+	}
+	return candidates
 }
 
 func (s *Service) loadRequestExecutionSummaries(ctx context.Context, requestID string, scope evidencevo.QueryScope) ([]evidencevo.RequestSummary, []evidencevo.TraceSummary, summaryLoadMetadata, error) {

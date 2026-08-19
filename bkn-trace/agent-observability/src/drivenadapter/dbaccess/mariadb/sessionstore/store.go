@@ -175,6 +175,51 @@ func (t *transaction) PeekConversation(conversationID string) (sessionvo.Convers
 		WHERE conversation_id=?`, conversationID))
 }
 
+func (t *transaction) ListConversationsByIDs(conversationIDs []string) map[string]sessionvo.Conversation {
+	result := make(map[string]sessionvo.Conversation, len(conversationIDs))
+	if t.err != nil || len(conversationIDs) == 0 {
+		return result
+	}
+	uniqueIDs := make([]string, 0, len(conversationIDs))
+	seen := make(map[string]struct{}, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if conversationID == "" {
+			continue
+		}
+		if _, found := seen[conversationID]; found {
+			continue
+		}
+		seen[conversationID] = struct{}{}
+		uniqueIDs = append(uniqueIDs, conversationID)
+	}
+	if len(uniqueIDs) == 0 {
+		return result
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(uniqueIDs)), ",")
+	args := make([]any, len(uniqueIDs))
+	for index, conversationID := range uniqueIDs {
+		args[index] = conversationID
+	}
+	rows, err := t.tx.QueryContext(t.ctx, conversationSelect+` WHERE conversation_id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		conversation, scanErr := scanConversationRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		result[conversation.ID] = conversation
+	}
+	if err := rows.Err(); err != nil {
+		t.err = err
+	}
+	return result
+}
+
 func (t *transaction) FindIdempotency(
 	scope string,
 	owner sessionvo.Owner,
