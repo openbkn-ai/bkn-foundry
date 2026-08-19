@@ -11,6 +11,9 @@ import (
 	v016 "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/migrations/mariadb/v016"
 )
 
+// Migration is immutable once released. Every statement in SQL must be safe to
+// re-run because MariaDB DDL commits before its ledger row can be recorded.
+// Add schema changes as a new version; never edit an existing migration file.
 type Migration struct {
 	Version  string
 	Checksum string

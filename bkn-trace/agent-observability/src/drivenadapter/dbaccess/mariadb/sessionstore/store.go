@@ -54,7 +54,7 @@ func (s *Store) EnsureSchema(ctx context.Context, allowMigrate bool) error {
 	if err != nil {
 		return fmt.Errorf("open BKN Trace schema migration connection: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	var databaseName string
 	if err := conn.QueryRowContext(ctx, "SELECT DATABASE()").Scan(&databaseName); err != nil {
@@ -149,7 +149,7 @@ func loadAppliedSchemaMigrations(ctx context.Context, conn *sql.Conn) (map[strin
 	if err != nil {
 		return nil, fmt.Errorf("read BKN Trace schema migration ledger: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	applied := make(map[string]string)
 	for rows.Next() {
 		var version, checksum string
