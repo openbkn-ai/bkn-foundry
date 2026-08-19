@@ -219,6 +219,10 @@ async def recover_stale_tasks(session: AsyncSession) -> int:
         .where(TaskRow.f_status.in_(("pending", "running")))
         .values(
             f_status="failed",
+            # This persisted, client-visible text stays in the service default
+            # locale until #826 P4 carries effective_locale into async task
+            # envelopes. Replacing it with English here would change the
+            # response contract instead of performing an internal-text cleanup.
             f_failure_detail="服务重启中断：任务未持久化执行状态，进程重启无法恢复，请重试。",
             f_update_time=now,
         )

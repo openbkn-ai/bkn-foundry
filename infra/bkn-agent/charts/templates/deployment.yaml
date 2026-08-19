@@ -1,8 +1,10 @@
-{{- /* 单实例约束：任务恢复扫描与 thread 并发写都假设全局唯一副本，
-多副本会互相误回收任务、并发写同一 thread。多副本支持推迟到 #246，
-在此之前把 replicaCount 钉死在 1，防 --set 覆盖。 */}}
+{{- /* Single-replica constraint: task recovery scans and concurrent thread
+writes both assume one globally unique replica. Multiple replicas could reclaim
+one another's tasks or write the same thread concurrently. Multi-replica
+support is deferred to #246; until then, pin replicaCount to 1 so --set cannot
+override it. */}}
 {{- if ne (int .Values.replicaCount) 1 }}
-{{- fail (printf "bkn-agent 目前仅支持单副本（多副本见 #246），replicaCount 必须为 1，当前为 %v" .Values.replicaCount) }}
+{{- fail (printf "bkn-agent currently supports only one replica (see #246 for multi-replica support); replicaCount must be 1, got %v" .Values.replicaCount) }}
 {{- end }}
 apiVersion: apps/v1
 kind: Deployment

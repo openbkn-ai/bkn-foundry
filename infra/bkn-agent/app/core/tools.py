@@ -120,7 +120,7 @@ async def _agent_tool(
         raise bad_request("BknAgent.ToolRef.AgentNotTask", agent_id=agent_id, mode=sub_agent.mode)
 
     async def call_sub_agent(message: str) -> str:
-        """调用子 agent 完成一次性任务，返回其最终回复。"""
+        """Call a child agent for a one-shot task and return its final response."""
         async with SessionLocal() as session:
             task = await dao.create_task(
                 session, sub_agent.agent_id, {"message": message}, account_id, parent_thread_id
@@ -156,7 +156,10 @@ async def _agent_tool(
         return output
 
     name = _derive_agent_tool_name(ref, sub_agent.name, sub_agent.agent_id)
-    description = ref.get("description") or f"调用子 agent「{sub_agent.name}」完成一次性任务。"
+    description = (
+        ref.get("description")
+        or f"Call the child agent '{sub_agent.name}' for a one-shot task."
+    )
     return StructuredTool.from_function(coroutine=call_sub_agent, name=name, description=description)
 
 
@@ -178,8 +181,10 @@ def _derive_agent_tool_name(ref: dict, agent_name: str, agent_id: str) -> str:
 
 def _read_skill_file_tool(account_id: str, account_type: str) -> StructuredTool:
     async def read_skill_file(skill_id: str, path: str) -> str:
-        """读取已挂载技能的附属文件（渐进式加载，大文件不常驻上下文）。
-        skill_id 与 path 取 system prompt 中该技能条目列出的值。"""
+        """Read an attached file from a mounted skill using progressive loading.
+
+        Use a skill_id and path listed for that skill in the system prompt.
+        """
         sid = normalize_skill_id(skill_id)
         url = f"{config.OPERATOR_INTEGRATION_BASE}/internal-v1/skills/{sid}/files/read"
         headers = {"x-account-id": account_id, "x-account-type": account_type, **observability.outbound_headers()}
@@ -194,7 +199,7 @@ def _read_skill_file_tool(account_id: str, account_type: str) -> StructuredTool:
             # Two hops, as in load_skills: the published surface returns a presigned URL, not the body
             async with session.get(meta["url"]) as resp:
                 if resp.status != 200:
-                    return f"read_skill_file failed: 对象存储 HTTP {resp.status}"
+                    return f"read_skill_file failed: object storage HTTP {resp.status}"
                 return await resp.text()
 
     return StructuredTool.from_function(coroutine=read_skill_file, name="read_skill_file")

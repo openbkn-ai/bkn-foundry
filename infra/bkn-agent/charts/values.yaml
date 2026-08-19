@@ -1,10 +1,15 @@
-# 必须保持 1。bkn-agent 当前有进程内状态、不跨副本：
-#   - 一次性任务是进程内 asyncio 任务（重启回收见 dao.recover_stale_tasks）
-#   - 同 thread 并发保护 _busy_threads 是进程内集合
-#   - 算子工厂全量同步在进程内串行
-# 多副本会导致：启动回收误杀别的副本活跃任务 / 同 thread 落不同副本并发写
-# checkpoint / 同步互相覆盖。真·多副本需分布式协调（任务租约+分布式锁+同步选主），
-# 见 issue #246。配合 deployment 的 maxSurge=0（滚动无重叠），单副本语义安全。
+# Must remain 1. bkn-agent currently keeps state in process and does not share
+# it across replicas:
+#   - One-shot jobs are in-process asyncio tasks (see dao.recover_stale_tasks
+#     for restart recovery).
+#   - The per-thread concurrency guard, _busy_threads, is an in-process set.
+#   - Full execution-factory synchronization is serialized in process.
+# Multiple replicas would let startup recovery reclaim another replica's live
+# jobs, allow concurrent writes when one thread reaches different replicas, and
+# overwrite checkpoints or synchronization results. True multi-replica support
+# requires distributed coordination (job leases, distributed locks, and sync
+# leader election); see issue #246. Together with maxSurge=0 in the deployment
+# (no overlap during rolling updates), one-replica semantics are safe.
 replicaCount: 1
 
 namespace: openbkn
@@ -22,9 +27,9 @@ service:
     port: 30800
     targetPort: 30800
 
-# 仅面向平台内部（Epic #202 硬约束）：本 chart 不含 ingress 模板，
-# 网关不得为 bkn-agent 开终端用户入口。产品面需要 agent 能力时
-# 由其后端以服务身份代理调用。
+# Platform-internal only (a hard constraint from Epic #202): this chart has no
+# ingress template, and the gateway must not expose bkn-agent to end-user
+# traffic. Product backends proxy agent requests with a service identity.
 
 depServices:
   rds:
@@ -36,16 +41,18 @@ depServices:
 
 runtime:
   mfModelApiPrivateBase: "http://mf-model-api:9898/api/private/mf-model-api/v1"
-  # 工具面与技能面统一走这里（#322）
+  # Both the tool and skill surfaces use this endpoint (#322).
   operatorIntegrationBase: "http://agent-operator-integration:9000/api/agent-operator-integration"
-  # Context Loader 的 MCP 面（ToolRef type=context_loader 由此装载）。这是公开面：
-  # 它挂 introspect，只认真实令牌，不吃 /in 的头部身份。
+  # The Context Loader MCP surface (loaded by ToolRef type=context_loader).
+  # This is a public surface with introspection: it accepts real tokens, not
+  # the header identity used by /in.
   contextLoaderMcpUrl: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
   defaultModel: ""
   checkpointerBackend: "mysql"
-  # 建表统一归 migrations/bkn-agent/（core-data-migrator）。
-  # checkpointer 三张表（langgraph-checkpoint-mysql 固定表名）当前由首启
-  # 一次性开启此开关建出，后续固化进迁移后关回 false。
+  # Table creation belongs in migrations/bkn-agent/ (core-data-migrator).
+  # For now, enable this flag once on the first startup to create the three
+  # checkpointer tables (fixed names from langgraph-checkpoint-mysql), then set
+  # it back to false after the tables are captured in a migration.
   checkpointerAllowRuntimeDdl: "false"
 
 observability:
@@ -54,8 +61,9 @@ observability:
   bknTraceEvidenceIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
   bknTraceArtifactIngestUrl: "http://agent-observability:8080/api/agent-observability/v1/evidence/artifacts"
   bknTraceEvidenceTimeoutS: "3"
-  # 接入受保护的 agent-observability evidence/artifact 写入端点时必须配置为
-  # 该服务使用的既有 Secret 名称；留空只适用于未部署 Trace 的环境。
+  # When using protected agent-observability evidence/artifact ingest
+  # endpoints, set this to the existing Secret used by that service. Leave it
+  # empty only in environments without Trace.
   bknTraceEvidenceIngestTokenSecretName: ""
   bknTraceEvidenceIngestTokenSecretKey: "ingest-token"
 

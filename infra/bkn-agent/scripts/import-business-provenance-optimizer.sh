@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 导入或更新业务溯源优化 Agent。脚本不保存任何凭据；调用方显式提供自己的
-# BKN Agent 管理端点与身份头，适用于本地、测试和正式环境。
+# Import or update the business-provenance optimization agent. This script
+# stores no credentials; callers explicitly provide their own BKN Agent
+# management endpoint and identity headers for local, test, or production use.
 : "${BKN_AGENT_URL:?set BKN_AGENT_URL, for example http://127.0.0.1:30800/api/bkn-agent/v1}"
 : "${BKN_ACCOUNT_ID:?set BKN_ACCOUNT_ID}"
 

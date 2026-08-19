@@ -102,6 +102,7 @@ def test_read_skill_file_uses_rel_path():
     from app.core.tools import _read_skill_file_tool
 
     tool = _read_skill_file_tool("acc", "user")
+    assert "Read an attached file from a mounted skill" in tool.description
     sess = _FakeSession()
 
     import app.core.tools as tools_mod

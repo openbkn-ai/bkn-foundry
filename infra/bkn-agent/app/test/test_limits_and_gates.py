@@ -161,6 +161,7 @@ def test_agent_as_tool_accepts_published_task(monkeypatch):
     monkeypatch.setattr(dao, "get_agent", get_agent)
     t = asyncio.run(tools._agent_tool({"type": "agent", "agent_id": "sub-1"}, "u", "user", 0, None))
     assert t.name == "agent_sub_agent"
+    assert t.description == "Call the child agent 'sub_agent' for a one-shot task."
 
 
 def test_busy_thread_slot_released_on_setup_failure():

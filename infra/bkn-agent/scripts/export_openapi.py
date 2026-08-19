@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-"""导出冻结契约 docs/api/bkn-agent/bkn-agent.yaml（#212 spec 先行流程）。
+"""Export the frozen docs/api/bkn-agent/bkn-agent.yaml contract (#212).
 
-用法（infra/bkn-agent 下）：python scripts/export_openapi.py
-改 API 后必须重跑本脚本并将 spec diff 一并提交，否则 test_contract.py 红。
+Run from infra/bkn-agent with ``python scripts/export_openapi.py``. After an API
+change, rerun this script and commit the spec diff or test_contract.py will fail.
 """
 import json
 import sys
