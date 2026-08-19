@@ -399,8 +399,8 @@ func TestCatalogAccessUpdate(t *testing.T) {
 		catalog := sampleCatalog()
 		catalog.Name = "Updated Catalog"
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_connector_config = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
-			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, `{"host":"127.0.0.1"}`, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID, catalog.UpdateTime).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_catalog SET f_name = ?, f_tags = ?, f_description = ?, f_connector_config = ?, f_health_check_status = ?, f_last_check_time = ?, f_health_check_result = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
+			WithArgs(catalog.Name, `"tag-a","tag-b"`, catalog.Description, `{"host":"127.0.0.1"}`, catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime, catalog.ID, catalog.UpdateTime).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
 		rowsAffected, err := access.Update(context.Background(), nil, catalog, catalog.UpdateTime)

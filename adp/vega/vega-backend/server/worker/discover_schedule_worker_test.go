@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
@@ -136,7 +137,11 @@ func TestDiscoverScheduleWorkerRunSchedule(t *testing.T) {
 		schedule := dueDiscoverSchedule("schedule-1")
 		schedule.NextRun = time.Now().Add(-time.Minute).UnixMilli()
 		schedule.EndTime = time.Now().Add(-time.Second).UnixMilli()
-		dss.EXPECT().UpdateEnabled(gomock.Any(), schedule, false).Return(nil)
+		schedule.Creator = interfaces.AccountInfo{ID: "schedule-creator", Type: "user"}
+		dss.EXPECT().UpdateEnabled(gomock.Any(), schedule, false).DoAndReturn(func(ctx context.Context, _ *interfaces.DiscoverSchedule, _ bool) error {
+			assert.Equal(t, schedule.Creator, ctx.Value(interfaces.ACCOUNT_INFO_KEY))
+			return nil
+		})
 
 		newTestDiscoverScheduleWorker(nil, dss).runSchedule(context.Background(), schedule)
 	})

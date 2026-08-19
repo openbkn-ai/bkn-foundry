@@ -908,6 +908,86 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
 	})
 
+	t.Run("successful connection test updates health check status", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64) (int64, error) {
+				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, catalog.HealthCheckStatus)
+				assert.Greater(t, catalog.LastCheckTime, int64(111))
+				assert.Equal(t, "Connection test succeeded.", catalog.HealthCheckResult)
+				return 1, nil
+			},
+		)
+
+		cs := &catalogService{appSetting: &common.AppSetting{}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory}
+		err = cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "physical-catalog",
+			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusUnchecked,
+				LastCheckTime:     111,
+				HealthCheckResult: "awaiting scheduled health check",
+			},
+		}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, true)
+
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("allowed unhealthy connection test updates health check status", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New("connection refused"))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64) (int64, error) {
+				assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, catalog.HealthCheckStatus)
+				assert.Greater(t, catalog.LastCheckTime, int64(0))
+				assert.Equal(t, connectionTestFailedResult, catalog.HealthCheckResult)
+				return 1, nil
+			},
+		)
+
+		cs := &catalogService{appSetting: &common.AppSetting{}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory}
+		err = cs.Update(context.Background(), &interfaces.Catalog{ID: "catalog-1", Name: "physical-catalog"}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, true)
+
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
 	t.Run("uses transaction when extensions are omitted", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)

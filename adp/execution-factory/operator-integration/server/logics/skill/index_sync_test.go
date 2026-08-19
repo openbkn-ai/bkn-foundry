@@ -226,10 +226,11 @@ func TestSkillIndexSync(t *testing.T) {
 			fullTags := []string{"a", "b", "c", "d", "e"}
 			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
 				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    "stale_display_name",
-					Tags:    fullTags,
-					Enabled: true,
+					ID:         executionFactoryCatalogID,
+					Name:       "stale_display_name",
+					Tags:       fullTags,
+					Enabled:    true,
+					UpdateTime: 123,
 				}, nil)
 			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
 				reconciled = req
@@ -243,6 +244,7 @@ func TestSkillIndexSync(t *testing.T) {
 			So(reconciled, ShouldNotBeNil)
 			So(reconciled.Name, ShouldEqual, executionFactoryCatalogID)
 			So(reconciled.Tags, ShouldResemble, fullTags)
+			So(reconciled.ExpectedUpdateTime, ShouldEqual, int64(123))
 		})
 
 		Convey("Init backfills the internal tag when only the tag is missing", func() {
@@ -254,10 +256,11 @@ func TestSkillIndexSync(t *testing.T) {
 			}
 			mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).
 				Return(&interfaces.VegaCatalog{
-					ID:      executionFactoryCatalogID,
-					Name:    executionFactoryCatalogID,
-					Tags:    []string{"execution-factory", "索引"},
-					Enabled: true,
+					ID:         executionFactoryCatalogID,
+					Name:       executionFactoryCatalogID,
+					Tags:       []string{"execution-factory", "索引"},
+					Enabled:    true,
+					UpdateTime: 456,
 				}, nil)
 			mockVegaClient.EXPECT().UpdateCatalog(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, req *interfaces.VegaCatalogRequest) error {
 				reconciled = req
@@ -270,6 +273,7 @@ func TestSkillIndexSync(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(reconciled, ShouldNotBeNil)
 			So(reconciled.Tags, ShouldResemble, []string{"execution-factory", "索引", internalCatalogTag})
+			So(reconciled.ExpectedUpdateTime, ShouldEqual, int64(456))
 		})
 
 		Convey("Init survives a failed catalog rename, which is cosmetic", func() {

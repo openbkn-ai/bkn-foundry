@@ -87,6 +87,7 @@ func (dsw *DiscoverScheduleWorker) runSchedule(ctx context.Context, schedule *in
 			logger.Errorf("Run discover schedule panicked: catalog_id=%s, schedule_id=%s, error=%v", catalogID, schedule.ID, recovered)
 		}
 	}()
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, schedule.Creator)
 
 	now := time.Now()
 	if !schedule.Enabled || schedule.NextRun > now.UnixMilli() {

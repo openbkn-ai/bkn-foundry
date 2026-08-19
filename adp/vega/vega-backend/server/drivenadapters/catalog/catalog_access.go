@@ -825,6 +825,9 @@ func (ca *catalogAccess) Update(ctx context.Context, tx *sql.Tx, catalog *interf
 		Set("f_tags", tagsStr).
 		Set("f_description", catalog.Description).
 		Set("f_connector_config", connectorConfigStr).
+		Set("f_health_check_status", catalog.HealthCheckStatus).
+		Set("f_last_check_time", catalog.LastCheckTime).
+		Set("f_health_check_result", catalog.HealthCheckResult).
 		Set("f_updater", catalog.Updater.ID).
 		Set("f_updater_type", catalog.Updater.Type).
 		Set("f_update_time", catalog.UpdateTime).
