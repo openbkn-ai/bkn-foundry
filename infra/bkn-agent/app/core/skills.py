@@ -71,10 +71,12 @@ async def _fetch_skill_content(session: aiohttp.ClientSession, capability_id: st
     # learns which files it may read and which skill_id read_skill_file needs.
     # Without it progressive loading is invisible to the model, which is the
     # same as not having it.
-    # The scaffolding text below is model-facing and intentionally stays as it
-    # is. What language the agent thinks and answers in is an open platform
-    # design question (#826, "Agent / LLM output language"); switching it would
-    # change model behaviour, not the API contract.
+    # Text injected into the system prompt stays as it is. The tool
+    # descriptions in core/tools.py are English, but those only tell the model
+    # what a tool does; this text tells it how to answer, and what language an
+    # agent thinks and answers in is still an open platform design question
+    # (#826, "Agent / LLM output language"). Changing it moves model behaviour,
+    # not the API contract, so it waits for that decision.
     others = [f["rel_path"] for f in (meta.get("files") or []) if f["rel_path"].upper() != "SKILL.MD"]
     header = f"## 技能 {skill_id}\n"
     if others:

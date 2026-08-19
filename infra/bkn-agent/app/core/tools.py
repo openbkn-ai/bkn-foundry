@@ -377,8 +377,9 @@ def apply_tool_call_cap(
                 # The wording has to be categorical: with a mere "just answer"
                 # the model keeps probing with retries and burns turns (observed
                 # on the VM: nine empty turns before it converged).
-                # This notice is model-facing and intentionally stays as it
-                # is; see the note in core/skills.py and #826.
+                # This steers how the model should answer next, so it follows
+                # the system-prompt boundary rather than the tool-description
+                # one above; see the note in core/skills.py and #826.
                 return (
                     f"tool call budget exhausted: 已用完本次执行的工具调用配额"
                     f"（max_tool_calls={max_tool_calls}）。禁止再调用任何工具——"

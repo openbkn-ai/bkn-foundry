@@ -139,8 +139,9 @@ async def structured_extract_with_path(
     # model with no tools bound, so a model that follows that instruction answers
     # in natural language instead of JSON and burns the single retry; if it does
     # so twice the whole task fails.
-    # This instruction is model-facing and intentionally stays as it is; see the
-    # note in core/skills.py and #826 ("Agent / LLM output language").
+    # An instruction about how to answer, so it follows the system-prompt
+    # boundary rather than the tool-description one; see the note in
+    # core/skills.py and #826 ("Agent / LLM output language").
     instr = (
         "请只输出一个 JSON 对象，严格符合下面的 JSON Schema。"
         "本次调用不提供任何工具，请仅基于以上对话内容作答，不要请求调用工具。"
