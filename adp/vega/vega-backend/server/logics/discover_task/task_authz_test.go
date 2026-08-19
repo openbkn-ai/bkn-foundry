@@ -108,3 +108,23 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		assert.Zero(t, total)
 	})
 }
+
+// TestDiscoverTaskDeleteStopsTheWholeBatch: 批量删除是整体事务,一条没权限就整批
+// 停下;而且判定排在「不存在 / 运行中」这两个判断之前——先回 404/409 等于把 id
+// 和运行状态告诉一个还没证明自己能看的调用方。
+func TestDiscoverTaskDeleteStopsTheWholeBatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	cs := vmock.NewMockCatalogService(ctrl)
+	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+	svc := &discoverTaskService{cs: cs, dta: dta}
+
+	denied := errors.New("forbidden")
+	dta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
+		ID: "task-1", CatalogID: "cat-1", Status: interfaces.DiscoverTaskStatusRunning,
+	}, nil)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
+	// dta.DeleteByIDs 未被期望；运行中也不该先冒出 409。
+
+	assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
+}

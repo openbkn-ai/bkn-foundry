@@ -217,9 +217,36 @@ func (suts *semanticUnderstandingTaskService) checkTaskPermission(ctx context.Co
 	task *interfaces.SemanticUnderstandingTask, op string) error {
 
 	if task.Scope == interfaces.SemanticUnderstandingTaskScopeResource && task.ResourceID != "" {
-		return suts.rs.CheckResourcePermission(ctx, task.ResourceID, op)
+		resource, err := suts.rs.InternalGetByID(ctx, task.ResourceID)
+		if err != nil {
+			return err
+		}
+		if resource != nil {
+			return suts.rs.CheckResourcePermission(ctx, task.ResourceID, op)
+		}
+		// 表已被删除,任务不随之级联删除、只会被 worker 标成 cancelled。此时判在
+		// 已消失的父上会永远 403——任务既看不了也删不掉,永久滞留在列表里。往上
+		// 退到它所属的目录。
 	}
-	return suts.cs.CheckCatalogPermission(ctx, task.CatalogID, op)
+	if task.CatalogID != "" {
+		catalog, err := suts.cs.InternalGetByID(ctx, task.CatalogID, false)
+		if err != nil {
+			return err
+		}
+		if catalog != nil {
+			return suts.cs.CheckCatalogPermission(ctx, task.CatalogID, op)
+		}
+	}
+	// 父都不在了。这类孤儿只剩清理价值,交给持类型级授权的人——它已经能看到该
+	// 类型下的全部对象,多看一条没有父的任务不构成新的暴露,而没有这条出路,
+	// 孤儿任务就是永久滞留。
+	if _, unrestricted, err := suts.rs.AuthorizedResourceIDs(ctx, op); err != nil {
+		return err
+	} else if unrestricted {
+		return nil
+	}
+	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 }
 
 func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {
