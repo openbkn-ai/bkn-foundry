@@ -5,7 +5,10 @@
 package httpapi
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +19,90 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
+
+func TestOpenBKNLogoAssetIsCacheable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	hydra := auth.NewHydraAdmin("http://hydra.invalid")
+	registerAuth(router, auth.NewProvider(nil, hydra, nil), hydra, nil)
+
+	request := httptest.NewRequest(http.MethodGet, openBKNLogoPath, nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	if got := response.Header().Get("Content-Type"); got != "image/svg+xml; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want image/svg+xml; charset=utf-8", got)
+	}
+	if got := response.Header().Get("Cache-Control"); got != "public, max-age=31536000, immutable" {
+		t.Errorf("Cache-Control = %q, want long-lived immutable caching", got)
+	}
+	if got := response.Header().Get("ETag"); got != openBKNLogoETag {
+		t.Errorf("ETag = %q, want %q", got, openBKNLogoETag)
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256(openBKNLogoSVG))
+	if openBKNLogoETag != `"`+digest+`"` {
+		t.Errorf("logo ETag does not match embedded SVG digest %q", digest)
+	}
+	if !strings.Contains(openBKNLogoPath, digest[:12]) {
+		t.Errorf("logo path %q does not contain content fingerprint %q", openBKNLogoPath, digest[:12])
+	}
+	if !bytes.Equal(response.Body.Bytes(), openBKNLogoSVG) {
+		t.Error("response body does not match the embedded OpenBKN logo")
+	}
+	for _, forbidden := range []string{"<script", "<image", "data:image", "foreignObject"} {
+		if bytes.Contains(response.Body.Bytes(), []byte(forbidden)) {
+			t.Errorf("SVG contains forbidden content %q", forbidden)
+		}
+	}
+
+	request = httptest.NewRequest(http.MethodGet, openBKNLogoPath, nil)
+	request.Header.Set("If-None-Match", openBKNLogoETag)
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNotModified {
+		t.Fatalf("conditional request status = %d, want %d", response.Code, http.StatusNotModified)
+	}
+	if response.Body.Len() != 0 {
+		t.Errorf("304 response body size = %d, want 0", response.Body.Len())
+	}
+}
+
+func TestLoginPageReferencesExternalLogo(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.Use(sharedrest.LanguageMiddleware())
+	router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
+
+	request := httptest.NewRequest(http.MethodGet, "/login?login_challenge=test", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		`src="` + openBKNLogoPath + `"`,
+		`width="244"`,
+		`height="84"`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("body does not contain %q", expected)
+		}
+	}
+	if strings.Contains(body, "data:image") {
+		t.Error("login page still embeds the logo as a data URI")
+	}
+	if response.Body.Len() >= 32*1024 {
+		t.Errorf("login page size = %d bytes, want less than 32 KiB", response.Body.Len())
+	}
+}
 
 func TestAuthPagesUseRequestLanguage(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -65,13 +152,13 @@ func TestAuthPagesUseRequestLanguage(t *testing.T) {
 		t.Run(language, func(t *testing.T) {
 			router := gin.New()
 			router.Use(sharedrest.LanguageMiddleware())
-			router.GET("/login", showLogin)
+			router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
 			router.GET("/change-password", showChangePassword)
 			router.GET("/device", showDevice)
 			router.GET("/device/success", showDeviceSuccess)
 			router.GET("/consent-preview", func(c *gin.Context) {
-				data := localizedAuthPageData(c)
-				data.Challenge = "test"
+				applyAuthLocale(c, "")
+				data := consentAuthPageData(c, "test")
 				data.ClientName = "Example App"
 				renderHTML(c, consentPage, data)
 			})
@@ -87,6 +174,9 @@ func TestAuthPagesUseRequestLanguage(t *testing.T) {
 				}
 				assertLocalizedAuthHeaders(t, response, language)
 				body := response.Body.String()
+				if !strings.Contains(body, `<html lang="`+language+`">`) {
+					t.Errorf("GET %s html lang does not match %q", page.path, language)
+				}
 				for _, expected := range page.want[language] {
 					if !strings.Contains(body, expected) {
 						t.Errorf("GET %s body does not contain %q", page.path, expected)
@@ -94,6 +184,145 @@ func TestAuthPagesUseRequestLanguage(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestShowLoginUsesOIDCUILocalesAndAllowsExplicitOverride(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	hydraServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/admin/oauth2/auth/requests/login" {
+			t.Errorf("hydra path = %q, want login request path", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if got := r.URL.Query().Get("login_challenge"); got != "test-challenge" {
+			t.Errorf("login_challenge = %q, want test-challenge", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"challenge": "test-challenge",
+			"client": map[string]any{
+				"client_id": "openbkn-studio",
+			},
+			"request_url":                     "https://openbkn.example/oauth2/auth?client_id=openbkn-studio&ui_locales=en-US%20zh-CN",
+			"requested_access_token_audience": []string{},
+			"requested_scope":                 []string{"openid"},
+			"skip":                            false,
+			"subject":                         "",
+		})
+	}))
+	defer hydraServer.Close()
+
+	router := gin.New()
+	router.Use(sharedrest.LanguageMiddleware())
+	router.GET("/login", func(c *gin.Context) { showLogin(c, auth.NewHydraAdmin(hydraServer.URL)) })
+
+	for _, testCase := range []struct {
+		name         string
+		path         string
+		wantLanguage string
+		wantText     string
+	}{
+		{
+			name:         "OIDC locale overrides request header",
+			path:         "/login?login_challenge=test-challenge",
+			wantLanguage: "en-US",
+			wantText:     `placeholder="Account"`,
+		},
+		{
+			name:         "explicit selector overrides OIDC locale",
+			path:         "/login?login_challenge=test-challenge&lang=zh-CN",
+			wantLanguage: "zh-CN",
+			wantText:     `placeholder="账号"`,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, testCase.path, nil)
+			request.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+			}
+			assertLocalizedAuthHeaders(t, response, testCase.wantLanguage)
+			body := response.Body.String()
+			for _, expected := range []string{
+				`<html lang="` + testCase.wantLanguage + `">`,
+				`name="lang" value="` + testCase.wantLanguage + `"`,
+				testCase.wantText,
+				`href="/login?lang=zh-CN&amp;login_challenge=test-challenge"`,
+				`href="/login?lang=en-US&amp;login_challenge=test-challenge"`,
+			} {
+				if !strings.Contains(body, expected) {
+					t.Errorf("body does not contain %q", expected)
+				}
+			}
+			assertAuthLocaleCookie(t, response, testCase.wantLanguage)
+		})
+	}
+}
+
+func TestShowLoginUsesSharedLocaleCookieBeforeAcceptLanguage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.Use(sharedrest.LanguageMiddleware())
+	router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
+
+	request := httptest.NewRequest(http.MethodGet, "/login?login_challenge=test", nil)
+	request.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+	request.AddCookie(&http.Cookie{Name: authLocaleCookieName, Value: "en-US"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	assertLocalizedAuthHeaders(t, response, "en-US")
+	if !strings.Contains(response.Body.String(), `placeholder="Account"`) {
+		t.Error("locale cookie did not select the English login page")
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/login?login_challenge=test&lang=fr-FR", nil)
+	request.Header.Set(sharedrest.AcceptLanguageHeader, "zh-CN")
+	request.AddCookie(&http.Cookie{Name: authLocaleCookieName, Value: "en-US"})
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("invalid locale status = %d, want %d", response.Code, http.StatusOK)
+	}
+	assertLocalizedAuthHeaders(t, response, "en-US")
+	if !strings.Contains(response.Body.String(), `placeholder="Account"`) {
+		t.Error("invalid explicit locale did not safely fall back to the locale cookie")
+	}
+}
+
+func TestShowLoginFallsBackWhenHydraLocaleLookupFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	hydraServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+	}))
+	defer hydraServer.Close()
+
+	router := gin.New()
+	router.Use(sharedrest.LanguageMiddleware())
+	router.GET("/login", func(c *gin.Context) { showLogin(c, auth.NewHydraAdmin(hydraServer.URL)) })
+
+	request := httptest.NewRequest(http.MethodGet, "/login?login_challenge=test", nil)
+	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body = %s", response.Code, http.StatusOK, response.Body.String())
+	}
+	assertLocalizedAuthHeaders(t, response, "en-US")
+	if !strings.Contains(response.Body.String(), `placeholder="Account"`) {
+		t.Error("Hydra lookup failure blocked the Accept-Language fallback")
 	}
 }
 
@@ -163,6 +392,7 @@ func TestAuthValidationMessagesUseRequestLanguage(t *testing.T) {
 
 			form := url.Values{
 				"login_challenge":  {"test"},
+				"lang":             {testCase.language},
 				"account":          {"user"},
 				"old_password":     {"old"},
 				"new_password":     {"new"},
@@ -170,7 +400,7 @@ func TestAuthValidationMessagesUseRequestLanguage(t *testing.T) {
 			}
 			request := httptest.NewRequest(http.MethodPost, "/change-password", strings.NewReader(form.Encode()))
 			request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			request.Header.Set(sharedrest.AcceptLanguageHeader, testCase.language)
+			request.Header.Set(sharedrest.AcceptLanguageHeader, oppositeAuthLanguage(testCase.language))
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 
@@ -180,6 +410,9 @@ func TestAuthValidationMessagesUseRequestLanguage(t *testing.T) {
 			assertLocalizedAuthHeaders(t, response, testCase.language)
 			if !strings.Contains(response.Body.String(), testCase.message) {
 				t.Errorf("body does not contain localized validation message %q", testCase.message)
+			}
+			if !strings.Contains(response.Body.String(), `name="lang" value="`+testCase.language+`"`) {
+				t.Errorf("body does not preserve form language %q", testCase.language)
 			}
 		})
 	}
@@ -218,7 +451,7 @@ func TestAuthMissingParameterTextUsesRequestLanguage(t *testing.T) {
 			t.Run(testCase.name+"/"+language, func(t *testing.T) {
 				router := gin.New()
 				router.Use(sharedrest.LanguageMiddleware())
-				router.GET("/login", showLogin)
+				router.GET("/login", func(c *gin.Context) { showLogin(c, nil) })
 				router.GET("/consent", func(c *gin.Context) { showConsent(c, nil) })
 				router.POST("/device", func(c *gin.Context) { doDevice(c, nil) })
 
@@ -257,4 +490,28 @@ func assertLocalizedAuthHeaders(t *testing.T, response *httptest.ResponseRecorde
 	if vary := strings.Join(response.Header().Values("Vary"), ","); !strings.Contains(vary, sharedrest.AcceptLanguageHeader) {
 		t.Fatalf("Vary = %q, want %s", vary, sharedrest.AcceptLanguageHeader)
 	}
+}
+
+func assertAuthLocaleCookie(t *testing.T, response *httptest.ResponseRecorder, language string) {
+	t.Helper()
+	for _, cookie := range response.Result().Cookies() {
+		if cookie.Name != authLocaleCookieName {
+			continue
+		}
+		if cookie.Value != language {
+			t.Fatalf("%s cookie = %q, want %q", authLocaleCookieName, cookie.Value, language)
+		}
+		if cookie.Path != "/" || cookie.SameSite != http.SameSiteLaxMode || cookie.HttpOnly {
+			t.Fatalf("unexpected locale cookie attributes: %#v", cookie)
+		}
+		return
+	}
+	t.Fatalf("response did not set %s cookie", authLocaleCookieName)
+}
+
+func oppositeAuthLanguage(language string) string {
+	if language == sharedrest.SimplifiedChinese {
+		return sharedrest.AmericanEnglish
+	}
+	return sharedrest.SimplifiedChinese
 }
