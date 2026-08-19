@@ -473,51 +473,15 @@ func filterConversationSummaries(
 ) []evidencevo.ConversationSummary {
 	filtered := make([]evidencevo.ConversationSummary, 0, len(entries))
 	for _, entry := range entries {
-		if !matchesConversationSummaryFilters(entry, options) {
+		if options.Status != "" && entry.Status != options.Status {
+			continue
+		}
+		if options.EvidenceCompleteness != "" && entry.EvidenceCompleteness != options.EvidenceCompleteness {
 			continue
 		}
 		filtered = append(filtered, entry)
 	}
 	return filtered
-}
-
-func matchesConversationSummaryFilters(
-	entry evidencevo.ConversationSummary,
-	options evidencevo.SummaryQueryOptions,
-) bool {
-	if options.ConversationID != "" && entry.ConversationID != options.ConversationID {
-		return false
-	}
-	if options.Status != "" && entry.Status != options.Status {
-		return false
-	}
-	if options.EvidenceCompleteness != "" && entry.EvidenceCompleteness != options.EvidenceCompleteness {
-		return false
-	}
-	if options.AgentOrApp != "" && entry.AgentOrApp != options.AgentOrApp && entry.AgentName != options.AgentOrApp &&
-		entry.ApplicationPrincipalID != options.AgentOrApp && entry.EffectiveSubjectID != options.AgentOrApp {
-		return false
-	}
-	if options.BusinessDomain != "" && entry.BusinessDomain != options.BusinessDomain {
-		return false
-	}
-	if options.KnowledgeNetwork != "" && !containsSummaryValue(entry.KnowledgeNetworks, options.KnowledgeNetwork) {
-		return false
-	}
-	if !matchesTimeRange(entry.StartedAt, options.From, options.To) {
-		return false
-	}
-	if keyword := strings.ToLower(strings.TrimSpace(options.Keyword)); keyword != "" {
-		haystack := strings.ToLower(strings.Join([]string{
-			entry.ConversationID, entry.QuestionPreview, entry.ResultPreview,
-			entry.AgentOrApp, entry.AgentName, entry.ApplicationPrincipalID, entry.EffectiveSubjectID,
-			entry.BusinessDomain, entry.ErrorSummary,
-		}, "\n"))
-		if !strings.Contains(haystack, keyword) {
-			return false
-		}
-	}
-	return true
 }
 
 func filterInteractionSummaries(
