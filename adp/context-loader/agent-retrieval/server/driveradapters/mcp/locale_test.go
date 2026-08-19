@@ -168,6 +168,30 @@ func TestServerInstructionsLeadWithManagedInteractionLifecycle(t *testing.T) {
 	}
 }
 
+func TestStartInteractionDescriptionGuidesStableAgentIdentity(t *testing.T) {
+	tests := []struct {
+		locale string
+		want   string
+	}{
+		{
+			locale: "zh-CN",
+			want:   "为当前用户问题开始一次受管 Interaction。传入完整的用户问题和当前 Agent 的固定名称；首次不传 conversation_id，后续传入当前对话的 conversation_id。返回本轮后续工具调用的 bkn_context 所需的 conversation_id 和 interaction_id。",
+		},
+		{
+			locale: "en-US",
+			want:   "Start a managed Interaction for the current user question. Provide the complete user question and the current Agent's stable name; omit conversation_id on the first turn, then provide the conversation_id for the current conversation. It returns the conversation_id and interaction_id required in bkn_context for subsequent tool calls in this turn.",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			if got := loadMCPLocaleBundle(test.locale).ToolMeta("bkn_start_interaction").Description; got != test.want {
+				t.Fatalf("start description for %s = %q, want %q", test.locale, got, test.want)
+			}
+		})
+	}
+}
+
 func getNestedString(root map[string]any, path []string) (string, bool) {
 	var current any = root
 	for _, segment := range path {

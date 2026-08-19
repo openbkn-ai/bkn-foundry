@@ -13,7 +13,7 @@
     "group": "lifecycle",
     "group_title": "会话生命周期",
     "order": 10,
-    "description": "Start one managed Interaction. Omit conversation_id on the first turn; reuse the returned conversation_id on later turns."
+    "description": "为当前用户问题开始一次受管 Interaction。传入完整的用户问题和当前 Agent 的固定名称；首次不传 conversation_id，后续传入当前对话的 conversation_id。返回本轮后续工具调用的 bkn_context 所需的 conversation_id 和 interaction_id。"
   },
   "search_schema": {
     "name": "search_schema",
