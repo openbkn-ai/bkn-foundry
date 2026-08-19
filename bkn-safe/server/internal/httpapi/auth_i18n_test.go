@@ -401,6 +401,32 @@ func TestShowLoginUsesSharedLocaleCookieBeforeAcceptLanguage(t *testing.T) {
 	}
 }
 
+func TestAuthContinuationKeepsLoginSelectorCookieBeforeOIDCUILocales(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	router := gin.New()
+	router.Use(sharedrest.LanguageMiddleware())
+	router.GET("/continuation", func(c *gin.Context) {
+		applyAuthContinuationLocale(c, "https://openbkn.example/oauth2/auth?client_id=openbkn-studio&ui_locales=en-US")
+		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingConsentChallenge")
+	})
+
+	request := httptest.NewRequest(http.MethodGet, "/continuation", nil)
+	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-US")
+	request.AddCookie(&http.Cookie{Name: authLocaleCookieName, Value: "zh-CN"})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+	}
+	assertLocalizedAuthHeaders(t, response, "zh-CN")
+	assertAuthLocaleCookie(t, response, "zh-CN")
+	if got := response.Body.String(); got != "缺少 consent_challenge 参数。" {
+		t.Errorf("body = %q, want Chinese missing-consent message", got)
+	}
+}
+
 func TestShowLoginFallsBackWhenHydraLocaleLookupFails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

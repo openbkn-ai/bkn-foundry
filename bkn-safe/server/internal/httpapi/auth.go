@@ -493,7 +493,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
-	applyAuthLocale(c, cr.RequestURL)
+	applyAuthContinuationLocale(c, cr.RequestURL)
 	if firstPartyClients[cr.ClientID] {
 		redirectTo, err := p.Consent(c.Request.Context(), challenge, c.ClientIP(), auth.ClientTypeWeb, false)
 		if err != nil {

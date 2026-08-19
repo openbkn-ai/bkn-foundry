@@ -30,7 +30,17 @@ const (
 // language already selected from Accept-Language by the shared middleware.
 func applyAuthLocale(c *gin.Context, requestURL string) string {
 	language := setAuthLocaleContext(c, requestURL)
+	writeAuthLocaleCookie(c, language)
+	return language
+}
 
+func applyAuthContinuationLocale(c *gin.Context, requestURL string) string {
+	language := setAuthContinuationLocaleContext(c, requestURL)
+	writeAuthLocaleCookie(c, language)
+	return language
+}
+
+func writeAuthLocaleCookie(c *gin.Context, language string) {
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     authLocaleCookieName,
 		Value:    language,
@@ -40,11 +50,16 @@ func applyAuthLocale(c *gin.Context, requestURL string) string {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   requestIsHTTPS(c.Request),
 	})
-	return language
 }
 
 func setAuthLocaleContext(c *gin.Context, requestURL string) string {
 	language := resolveAuthLocale(c, requestURL)
+	c.Request = c.Request.WithContext(sharedrest.WithLanguage(c.Request.Context(), language))
+	return language
+}
+
+func setAuthContinuationLocaleContext(c *gin.Context, requestURL string) string {
+	language := resolveAuthContinuationLocale(c, requestURL)
 	c.Request = c.Request.WithContext(sharedrest.WithLanguage(c.Request.Context(), language))
 	return language
 }
@@ -64,6 +79,25 @@ func resolveAuthLocale(c *gin.Context, requestURL string) string {
 		if language, ok := normalizeAuthLocale(cookie.Value); ok {
 			return language
 		}
+	}
+	return sharedrest.GetLanguageByCtx(c.Request.Context())
+}
+
+func resolveAuthContinuationLocale(c *gin.Context, requestURL string) string {
+	explicit := c.Query("lang")
+	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+		explicit = c.PostForm("lang")
+	}
+	if language, ok := normalizeAuthLocale(explicit); ok {
+		return language
+	}
+	if cookie, err := c.Request.Cookie(authLocaleCookieName); err == nil {
+		if language, ok := normalizeAuthLocale(cookie.Value); ok {
+			return language
+		}
+	}
+	if language, ok := authLocaleFromRequestURL(requestURL); ok {
+		return language
 	}
 	return sharedrest.GetLanguageByCtx(c.Request.Context())
 }
