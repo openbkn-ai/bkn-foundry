@@ -13,7 +13,7 @@ import (
 
 func (s *Store) ListTraceSummaryIdentities(ctx context.Context, query isessionstore.SummaryPageQuery) (isessionstore.SummaryIdentityPage, error) {
 	where, args := summaryOwnerWhere("r", query)
-	where = append(where, "r.trace_id IS NOT NULL", "r.trace_id<>''")
+	where = append(where, usableSummaryReceiptPredicates("r")...)
 	if !query.From.IsZero() {
 		where, args = append(where, "r.issued_at>=?"), append(args, query.From.UTC())
 	}
@@ -55,13 +55,8 @@ func (s *Store) ListTraceSummaryIdentities(ctx context.Context, query isessionst
 
 func (s *Store) ListConversationSummaryIdentities(ctx context.Context, query isessionstore.SummaryPageQuery) (isessionstore.SummaryIdentityPage, error) {
 	where, args := summaryOwnerWhere("c", query)
-	where = append(where, "EXISTS (SELECT 1 FROM bkn_trace_receipts r WHERE r.conversation_id=c.conversation_id)")
-	if !query.From.IsZero() {
-		where, args = append(where, "c.created_at>=?"), append(args, query.From.UTC())
-	}
-	if !query.To.IsZero() {
-		where, args = append(where, "c.created_at<=?"), append(args, query.To.UTC())
-	}
+	receiptExists, receiptArgs := conversationSummaryReceiptExists(query)
+	where, args = append(where, receiptExists), append(args, receiptArgs...)
 	clause := strings.Join(where, " AND ")
 	var total int
 	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM bkn_trace_conversations c WHERE "+clause, args...).Scan(&total); err != nil {
@@ -91,6 +86,28 @@ func (s *Store) ListConversationSummaryIdentities(ctx context.Context, query ise
 		return isessionstore.SummaryIdentityPage{}, fmt.Errorf("scan conversation summary identities: %w", err)
 	}
 	return isessionstore.SummaryIdentityPage{Entries: entries.values, Total: total, HasMore: entries.hasMore}, nil
+}
+
+func conversationSummaryReceiptExists(query isessionstore.SummaryPageQuery) (string, []any) {
+	where := []string{
+		"r.conversation_id=c.conversation_id",
+	}
+	where = append(where, usableSummaryReceiptPredicates("r")...)
+	args := make([]any, 0, 2)
+	if !query.From.IsZero() {
+		where, args = append(where, "r.issued_at>=?"), append(args, query.From.UTC())
+	}
+	if !query.To.IsZero() {
+		where, args = append(where, "r.issued_at<=?"), append(args, query.To.UTC())
+	}
+	return "EXISTS (SELECT 1 FROM bkn_trace_receipts r WHERE " + strings.Join(where, " AND ") + ")", args
+}
+
+func usableSummaryReceiptPredicates(alias string) []string {
+	return []string{
+		alias + ".trace_id IS NOT NULL", alias + ".trace_id<>''",
+		alias + ".request_id IS NOT NULL", alias + ".request_id<>''",
+	}
 }
 
 func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]string, []any) {

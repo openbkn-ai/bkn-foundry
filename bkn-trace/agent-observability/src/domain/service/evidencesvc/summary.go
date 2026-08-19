@@ -1601,9 +1601,13 @@ func canUseSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {
 		(options.BusinessDomain == "" || options.BusinessDomain == options.Scope.BusinessDomain) &&
 		(options.Scope.AccessProfile == nil || !evidencevo.NeedsCrossAccountCandidates(options.Scope) || evidencevo.HasTenantWideTraceAccess(*options.Scope.AccessProfile)) &&
 		options.TraceID == "" && options.ConversationID == "" && options.InteractionID == "" &&
-		options.Status == "" && options.AgentOrApp == "" && options.ExcludeAgentOrApp == "" &&
-		options.Service == "" && options.Tool == "" && options.ErrorKeyword == "" &&
-		options.KnowledgeNetwork == "" && options.EvidenceCompleteness == "" && options.Keyword == ""
+		!hasSummaryContentFilters(options)
+}
+
+func hasSummaryContentFilters(options evidencevo.SummaryQueryOptions) bool {
+	return options.Status != "" || options.AgentOrApp != "" || options.ExcludeAgentOrApp != "" ||
+		options.Service != "" || options.Tool != "" || options.ErrorKeyword != "" ||
+		options.KnowledgeNetwork != "" || options.EvidenceCompleteness != "" || options.Keyword != ""
 }
 
 func summaryAccessBoundaryMatches(scope evidencevo.QueryScope) bool {
@@ -1740,6 +1744,9 @@ func (s *Service) loadExecutionSummaries(ctx context.Context, options evidencevo
 }
 
 func summaryCandidateLimit(options evidencevo.SummaryQueryOptions) int {
+	if hasSummaryContentFilters(options) {
+		return MaxSummaryScanEntries
+	}
 	limit := normalizeSummaryLimit(options.Limit)
 	page := normalizeSummaryPage(options.Page)
 	if options.Cursor != "" {

@@ -144,6 +144,12 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		size = query.Limit + 1
 	}
 	must := []map[string]any{{"exists": map[string]any{"field": "receipt_id"}}}
+	if hasBatchIdentitySelector(query) {
+		must = append(must,
+			map[string]any{"exists": map[string]any{"field": "trace_id"}},
+			map[string]any{"exists": map[string]any{"field": "request_id"}},
+		)
+	}
 	for field, value := range map[string]string{
 		"owner.tenant_id":          query.Scope.TenantID,
 		"owner.business_domain_id": firstNonEmpty(query.BusinessDomain, query.Scope.BusinessDomain),

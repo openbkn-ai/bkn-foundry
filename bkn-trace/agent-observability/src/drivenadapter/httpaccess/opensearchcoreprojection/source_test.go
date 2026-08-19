@@ -82,6 +82,11 @@ func TestSourceCollapsesBatchCandidatesPerSelectedTrace(t *testing.T) {
 			!strings.Contains(query, `"size":20`) {
 			t.Fatalf("batch query must reserve an inner receipt budget per trace: %s", query)
 		}
+		for _, field := range []string{`"field":"trace_id"`, `"field":"request_id"`} {
+			if !strings.Contains(query, field) {
+				t.Fatalf("batch query must exclude pending receipts without %s: %s", field, query)
+			}
+		}
 		_, _ = io.WriteString(w, `{"hits":{"hits":[
 			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":25},"hits":[{"_source":{"receipt_id":"receipt-heavy","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-heavy","conversation_id":"conv-heavy","interaction_id":"interaction-heavy","request_id":"request-heavy","issued_at":"2026-08-19T09:00:00Z"}}]}}}},
 			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":1},"hits":[{"_source":{"receipt_id":"receipt-next","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-next","conversation_id":"conv-next","interaction_id":"interaction-next","request_id":"request-next","issued_at":"2026-08-19T08:59:00Z"}}]}}}}

@@ -1636,9 +1636,18 @@ func TestListRequestsReportsBoundedProjectionTruncationAndPushdownQuery(t *testi
 		t.Fatalf("expected one bounded source call, got %+v", source.queries)
 	}
 	query := source.queries[0]
-	if query.Limit != 401 || !query.From.Equal(from) || !query.To.Equal(to) ||
+	if query.Limit != MaxSummaryScanEntries || !query.From.Equal(from) || !query.To.Equal(to) ||
 		query.BusinessDomain != "bd_demo" || query.Status != "running" {
-		t.Fatalf("reliable filters and cap must be pushed to source: %+v", query)
+		t.Fatalf("content-filter compatibility queries must keep the historical scan window: %+v", query)
+	}
+}
+
+func TestSummaryCandidateLimitUsesPageBudgetOnlyWithoutContentFilters(t *testing.T) {
+	if got := summaryCandidateLimit(evidencevo.SummaryQueryOptions{Page: 1, Limit: 20}); got != 401 {
+		t.Fatalf("ordinary page candidate limit=%d", got)
+	}
+	if got := summaryCandidateLimit(evidencevo.SummaryQueryOptions{Page: 1, Limit: 20, Keyword: "needle"}); got != MaxSummaryScanEntries {
+		t.Fatalf("content-filter candidate limit=%d", got)
 	}
 }
 

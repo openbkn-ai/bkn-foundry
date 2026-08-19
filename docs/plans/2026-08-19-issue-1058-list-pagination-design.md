@@ -6,8 +6,8 @@
 
 ## 决策
 
-1. Trace 以 Core Receipt 为身份事实源，在 MariaDB 按 `(MIN(issued_at) desc, trace_id asc)` 使用 keyset cursor 选择 `page_size + 1` 个身份。Evidence 写入失败的 degraded execution 仍可进入列表。
-2. Conversation 以 canonical Conversation 与其 Core Receipt 的存在关系为身份事实源，按 `(created_at desc, conversation_id asc)` 使用相同的 keyset cursor。并发插入新记录不会改变后续 cursor 的边界。
+1. Trace 以具备 `trace_id`、`request_id` 的可投影 Core Receipt 为身份事实源，在 MariaDB 按 `(MIN(issued_at) desc, trace_id asc)` 使用 keyset cursor 选择 `page_size + 1` 个身份。Evidence 写入失败的 degraded execution 仍可进入列表。
+2. Conversation 以 canonical Conversation 与其可投影 Core Receipt（`trace_id`、`request_id` 均已产生）的存在关系为身份事实源，按 `(created_at desc, conversation_id asc)` 使用相同的 keyset cursor。pending/abandoned Receipt 不进入列表身份全集；`from/to` 仍作用于 Receipt `issued_at`，保持兼容路径语义。
 3. 身份选择完成后，将当前页 Trace ID 或 Conversation ID 通过 `terms` 一次性下推到 Core/Evidence Projection。Core Receipt 查询按身份 `collapse`，每个身份保留独立的受控 `inner_hits` 预算，避免单个长 Trace/Conversation 吃掉整页候选；canonical 补全仍对整页执行一次集合查询。
 4. Trace 使用独立 `COUNT(DISTINCT trace_id)`；Conversation 使用独立精确 `COUNT(*)`，不通过候选窗口或近似聚合计算总数。
 5. Conversation、Interaction、Assembly Revision、Operation 与 Trace source module 的 canonical 数据均采用集合查询，禁止页内逐 ID SQL。
@@ -15,7 +15,7 @@
 ## 契约与边界
 
 - 保持既有 HTTP 返回结构、授权边界、排序方向和 cursor 不透明性。
-- 只有可完整下推到身份索引的普通列表条件启用 fast path；复杂内容筛选继续使用兼容路径，避免改变筛选语义。
+- 只有可完整下推到身份索引的普通列表条件启用 fast path；复杂内容筛选继续使用兼容路径及原有 2,000 候选窗口，避免改变筛选语义或 Total。
 - MariaDB 身份已提交但 Core Projection 尚未刷新时返回 `BKN_TRACE_SUMMARY_PROJECTION_LAG`，不返回短页、不生成或推进 cursor；调用方重试后从同一边界读取，避免跨存储可见性造成永久漏项。
 - 身份查询复用现有 MariaDB 表和索引；不新增数据库表、OpenSearch mapping、Projection rebuild 文档或 alias 行为。
 - 不执行部署、索引重建、数据删除、Schema migration 或生产配置修改。
