@@ -672,7 +672,6 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 	for _, key := range order {
 		e := byKey[key]
 		e.node.Score = e.score * norm
-		e.node.RRFScore = e.node.Score
 		fused = append(fused, e.node)
 	}
 	return fused
@@ -836,8 +835,8 @@ func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchN
 		}
 
 		node.Score = fallbackNodeScore(query, node, searchable, config)
-		// Named separately from RRFScore on purpose: the two do not share a scale, and a caller that
-		// cannot tell them apart would read a 0.85 tier hit as weaker than any first-place fusion row.
+		// Also stamped on its own field: Score carries the fusion scale on the index-backed path and the
+		// tier scale here, and without this marker a caller could not tell which of the two it is reading.
 		node.HeuristicScore = node.Score
 	}
 }

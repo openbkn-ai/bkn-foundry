@@ -6,7 +6,9 @@
 package knsearch
 
 import (
+	"encoding/json"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -45,11 +47,11 @@ func TestFuseByRRF_KeepsBothChannelScores(t *testing.T) {
 		t.Errorf("knn_score lost: %v", node.KnnScore)
 	}
 	// First place in both channels is the 2.0 anchor.
-	if math.Abs(node.RRFScore-2.0) > 1e-9 {
-		t.Errorf("expected rrf_score 2.0, got %v", node.RRFScore)
+	if math.Abs(node.Score-2.0) > 1e-9 {
+		t.Errorf("expected score 2.0, got %v", node.Score)
 	}
-	if math.Abs(node.RRFScore-node.Score) > 1e-9 {
-		t.Errorf("score must stay an alias of rrf_score: %v vs %v", node.Score, node.RRFScore)
+	if node.HeuristicScore != 0 {
+		t.Errorf("index-backed rows must not be marked as heuristically scored: %v", node.HeuristicScore)
 	}
 }
 
@@ -77,14 +79,14 @@ func TestFuseByRRF_ScoreDecodesToChannelRanks(t *testing.T) {
 	}
 	// 61*(1/61 + 1/63): rank 0 in one channel, rank 2 in the other.
 	want := 61.0 * (1.0/61.0 + 1.0/63.0)
-	if math.Abs(target.RRFScore-want) > 1e-9 {
-		t.Errorf("expected rrf_score %.12f, got %.12f", want, target.RRFScore)
+	if math.Abs(target.Score-want) > 1e-9 {
+		t.Errorf("expected score %.12f, got %.12f", want, target.Score)
 	}
 }
 
-// Rows scored by the local fallback must not claim an rrf_score: the two scales do not line up, and
-// a caller comparing 0.85 against a fusion 2.0 would read the wrong conclusion.
-func TestScoreNodes_TagsHeuristicScoreOnly(t *testing.T) {
+// score carries the fusion scale on the index-backed path and the tier scale on the fallback path.
+// heuristic_score is the marker that says which of the two a caller is looking at.
+func TestScoreNodes_MarksTheHeuristicScale(t *testing.T) {
 	svc := &localSearchImpl{logger: &mockLogger{}}
 	config := DefaultSemanticInstanceRetrievalConfig()
 	nodes := []*interfaces.KnSearchNode{{InstanceName: "青岛啤酒"}}
@@ -94,10 +96,33 @@ func TestScoreNodes_TagsHeuristicScoreOnly(t *testing.T) {
 	if nodes[0].HeuristicScore <= 0 {
 		t.Fatalf("expected a heuristic score, got %v", nodes[0].HeuristicScore)
 	}
-	if nodes[0].RRFScore != 0 {
-		t.Errorf("fallback rows must not carry an rrf_score: %v", nodes[0].RRFScore)
-	}
 	if math.Abs(nodes[0].HeuristicScore-nodes[0].Score) > 1e-9 {
-		t.Errorf("score must stay an alias of heuristic_score: %v vs %v", nodes[0].Score, nodes[0].HeuristicScore)
+		t.Errorf("score must carry the heuristic value on this path: %v vs %v", nodes[0].Score, nodes[0].HeuristicScore)
+	}
+}
+
+// recall_score is an internal working value (channel pruning, duplicate merging, tie-breaking) and
+// must not reach the caller: it keeps only the larger of the two channels' raw scores, so on the
+// wire it would read as a single relevance number while silently being whichever channel won.
+func TestKnSearchNode_RecallScoreStaysOffTheWire(t *testing.T) {
+	payload, err := json.Marshal(&interfaces.KnSearchNode{
+		ObjectTypeID: "brand",
+		Rank:         1,
+		Score:        1.97,
+		RecallScore:  16.02,
+		BM25Score:    16.02,
+		KnnScore:     0.46,
+	})
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	body := string(payload)
+	if strings.Contains(body, "recall_score") {
+		t.Errorf("recall_score leaked into the response: %s", body)
+	}
+	for _, field := range []string{`"rank":1`, `"score":1.97`, `"bm25_score":16.02`, `"knn_score":0.46`} {
+		if !strings.Contains(body, field) {
+			t.Errorf("expected %s in the response, got %s", field, body)
+		}
 	}
 }

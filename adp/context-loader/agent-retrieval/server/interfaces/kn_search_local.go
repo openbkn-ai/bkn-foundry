@@ -206,24 +206,25 @@ type KnSearchNode struct {
 	// should order by. Which score decided that position depends on the request (fusion, or the reranker
 	// when one ran), so re-sorting by any single score field can silently produce a different order.
 	Rank int `json:"rank,omitempty"`
-	// Score relevance score. **Without omitempty**: 0 points is a meaningful value (local scoring does not allow overlap.
-	// When it is 0), omitting a field will make it difficult for the caller to distinguish between "there is no such field" and "when it is 0".
-	//
-	// Deprecated: it repeats RRFScore (index-backed path) or HeuristicScore (fallback path) without saying
-	// which one it is. Kept because trace evidence reads it; new consumers should read the named fields.
-	Score float64 `json:"score"`
-	// RecallScore is the raw recall-phase _score.
-	//
-	// Deprecated: lossy by construction. When both channels recall the same row it keeps only the larger
-	// raw score, and BM25 is unbounded while cosine similarity is 0~1, so the vector evidence is the one
-	// that disappears. Read BM25Score and KnnScore instead, which say which channel each number came from.
-	RecallScore float64 `json:"recall_score,omitempty"`
-
-	// RRFScore is the fused rank score: sum over channels of weight/(k+rank+1), normalized by 2(k+1) so
+	// Score is the fused rank score: sum over channels of weight/(k+rank+1), normalized by 2(k+1) so
 	// that "first place in one channel" is 1.0 and "first place in both" is 2.0. It expresses agreement
 	// between channels, not absolute relevance — a channel's top row scores 1.0 even when the whole
-	// object type is unrelated to the query. Absent on the local-fallback path.
-	RRFScore float64 `json:"rrf_score,omitempty"`
+	// object type is unrelated to the query.
+	//
+	// On the local-fallback path it carries the heuristic tiers instead, on a different scale (0~0.85);
+	// HeuristicScore is then also set, so a caller can tell which scale it is reading.
+	//
+	// **Without omitempty**: 0 is a meaningful value, and omitting the field would make "no such field"
+	// indistinguishable from "scored zero".
+	Score float64 `json:"score"`
+	// RecallScore is the raw recall-phase _score, kept off the wire (json:"-").
+	//
+	// It stays as an internal working value — channel-level ratio pruning, duplicate merging and
+	// same-score tie-breaking all read it — but it is lossy as an output: when both channels recall the
+	// same row it keeps only the larger raw score, and BM25 is unbounded while cosine similarity is
+	// 0~1, so the vector evidence is the one that always disappeared. BM25Score and KnnScore replace it
+	// for callers, each saying which channel its number came from.
+	RecallScore float64 `json:"-"`
 	// BM25Score is the full-text channel's raw OpenSearch _score. Unbounded, and it shifts with corpus
 	// size, document length and query length, so it is evidence for reading a result, never a threshold
 	// to compare across queries or knowledge networks.
