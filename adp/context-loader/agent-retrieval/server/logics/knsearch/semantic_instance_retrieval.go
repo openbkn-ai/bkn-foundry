@@ -89,6 +89,13 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Retrieved %d instances from %d object types, max_score=%.4f",
 		len(allNodes), len(objectTypes), maxScore)
 
+	// Order across object types, not just inside each one. Until now the rows were returned in the
+	// order the object types happened to be recalled in, so a row scoring 2.0 could sit below a 1.94
+	// from an object type that was simply processed earlier -- and the caller had no way to tell that
+	// the sequence carried no meaning. The RRF anchor (first place in one channel = 1.0, in both = 2.0)
+	// is what makes rows from different object types comparable in the first place.
+	sortNodesByScore(allNodes)
+
 	// Global score filtering.
 	if boolValue(instanceConfig.EnableGlobalFinalScoreRatioFilter) && maxScore > 0 && len(allNodes) > 0 {
 		threshold := maxScore * instanceConfig.GlobalFinalScoreRatio
@@ -114,6 +121,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	// Property filtering.
 	if boolValue(propertyConfig.EnablePropertyFilter) {
 		allNodes = s.filterNodeProperties(allNodes, propertyConfig)
+	}
+
+	// Stamp the final order last, after every step that can reorder or drop rows. rank is what the
+	// caller sorts by; which score produced it (fusion, heuristic, or the reranker) is evidence.
+	for i, node := range allNodes {
+		node.Rank = i + 1
 	}
 
 	result := &interfaces.KnSearchSemanticInstanceResult{
@@ -267,6 +280,14 @@ func (s *localSearchImpl) fetchChannel(
 		}
 		node := s.convertToKnSearchNode(objType, dataMap)
 		node.RecallScore = node.Score
+		// Record which channel produced this number while that is still known: after fusion the row
+		// carries scores from both channels and one raw float can no longer say where it came from.
+		switch ch.name {
+		case channelMatch:
+			node.BM25Score = node.Score
+		case channelKnn:
+			node.KnnScore = node.Score
+		}
 		out.nodes = append(out.nodes, node)
 	}
 
@@ -632,6 +653,15 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 				// Only the larger original recall score is retained for observation.
 				e.node.RecallScore = node.RecallScore
 			}
+			// Both channels' raw scores survive the merge, each under its own name. They live on
+			// different scales, so keeping the larger one (what RecallScore does) drops the vector
+			// evidence every time BM25 also hit.
+			if node.BM25Score > e.node.BM25Score {
+				e.node.BM25Score = node.BM25Score
+			}
+			if node.KnnScore > e.node.KnnScore {
+				e.node.KnnScore = node.KnnScore
+			}
 			e.score += weightOf(weights, o.name) / float64(k+rank+1)
 		}
 	}
@@ -642,6 +672,7 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 	for _, key := range order {
 		e := byKey[key]
 		e.node.Score = e.score * norm
+		e.node.RRFScore = e.node.Score
 		fused = append(fused, e.node)
 	}
 	return fused
@@ -800,10 +831,14 @@ func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchN
 
 		if strings.TrimSpace(query) == "" {
 			node.Score = 0
+			node.HeuristicScore = 0
 			continue
 		}
 
 		node.Score = fallbackNodeScore(query, node, searchable, config)
+		// Named separately from RRFScore on purpose: the two do not share a scale, and a caller that
+		// cannot tell them apart would read a 0.85 tier hit as weaker than any first-place fusion row.
+		node.HeuristicScore = node.Score
 	}
 }
 

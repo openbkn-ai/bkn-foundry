@@ -202,15 +202,43 @@ type KnSearchNode struct {
 	InstanceName     string         `json:"instance_name,omitempty"`
 	UniqueIdentities map[string]any `json:"unique_identities,omitempty"`
 	Properties       map[string]any `json:"properties,omitempty"`
+	// Rank is the 1-based position of this row in the returned list, and it is the only field a caller
+	// should order by. Which score decided that position depends on the request (fusion, or the reranker
+	// when one ran), so re-sorting by any single score field can silently produce a different order.
+	Rank int `json:"rank,omitempty"`
 	// Score relevance score. **Without omitempty**: 0 points is a meaningful value (local scoring does not allow overlap.
 	// When it is 0), omitting a field will make it difficult for the caller to distinguish between "there is no such field" and "when it is 0".
+	//
+	// Deprecated: it repeats RRFScore (index-backed path) or HeuristicScore (fallback path) without saying
+	// which one it is. Kept because trace evidence reads it; new consumers should read the named fields.
 	Score float64 `json:"score"`
-	// RecallScore retains the original _score (OpenSearch relevance) of the recall phase. Score on RRF path.
-	// It will be covered by fusion points. The two dimensions are different and need to be visible at the same time when troubleshooting.
+	// RecallScore is the raw recall-phase _score.
+	//
+	// Deprecated: lossy by construction. When both channels recall the same row it keeps only the larger
+	// raw score, and BM25 is unbounded while cosine similarity is 0~1, so the vector evidence is the one
+	// that disappears. Read BM25Score and KnnScore instead, which say which channel each number came from.
 	RecallScore float64 `json:"recall_score,omitempty"`
-	// RerankScore Relevance score given by cross-encoder. Score is it when mode=on;
-	// When mode=shadow, Score is still a fusion score, and this field is brought out separately for comparison.
-	RerankScore float64 `json:"rerank_score,omitempty"`
+
+	// RRFScore is the fused rank score: sum over channels of weight/(k+rank+1), normalized by 2(k+1) so
+	// that "first place in one channel" is 1.0 and "first place in both" is 2.0. It expresses agreement
+	// between channels, not absolute relevance — a channel's top row scores 1.0 even when the whole
+	// object type is unrelated to the query. Absent on the local-fallback path.
+	RRFScore float64 `json:"rrf_score,omitempty"`
+	// BM25Score is the full-text channel's raw OpenSearch _score. Unbounded, and it shifts with corpus
+	// size, document length and query length, so it is evidence for reading a result, never a threshold
+	// to compare across queries or knowledge networks.
+	BM25Score float64 `json:"bm25_score,omitempty"`
+	// KnnScore is the vector channel's similarity, 0~1 under a fixed embedding model. This is the one
+	// raw score that is roughly comparable across queries.
+	KnnScore float64 `json:"knn_score,omitempty"`
+	// RerankerScore is the cross-encoder's relevance judgement, 0~1. Present only when a reranker ran and
+	// scored this row; rows past the rerank window keep their fusion order and carry no such score.
+	// Its presence is also the only way to tell a real rerank from a silent degrade to fusion order.
+	RerankerScore float64 `json:"reranker_score,omitempty"`
+	// HeuristicScore is the local fallback score (0/0.3/0.5/0.85 tiers) used when no channel returned an
+	// index _score, so ranks are meaningless. Present only on that path; it does not share a scale with
+	// RRFScore.
+	HeuristicScore float64 `json:"heuristic_score,omitempty"`
 }
 
 // ==================== Internal Structures ====================

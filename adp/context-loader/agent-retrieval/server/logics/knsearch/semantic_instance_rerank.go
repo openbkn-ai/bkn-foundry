@@ -109,7 +109,7 @@ func (s *localSearchImpl) rerankInstances(
 		if result.Index < 0 || result.Index >= len(head) {
 			continue
 		}
-		head[result.Index].RerankScore = result.RelevanceScore
+		head[result.Index].RerankerScore = result.RelevanceScore
 		applied++
 	}
 	if applied == 0 {
@@ -120,8 +120,8 @@ func (s *localSearchImpl) rerankInstances(
 	fusionOrder := append([]*interfaces.KnSearchNode(nil), head...)
 	reranked := append([]*interfaces.KnSearchNode(nil), head...)
 	sort.SliceStable(reranked, func(i, j int) bool {
-		if reranked[i].RerankScore != reranked[j].RerankScore {
-			return reranked[i].RerankScore > reranked[j].RerankScore
+		if reranked[i].RerankerScore != reranked[j].RerankerScore {
+			return reranked[i].RerankerScore > reranked[j].RerankerScore
 		}
 		return reranked[i].Score > reranked[j].Score
 	})
