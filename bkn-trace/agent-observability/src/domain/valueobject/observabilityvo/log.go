@@ -77,6 +77,7 @@ type LogQuery struct {
 	EventNames       []string
 	BusinessDomain   string
 	ActorID          string
+	ActorQuery       string
 	ApplicationID    string
 	ResourceType     string
 	ResourceID       string
