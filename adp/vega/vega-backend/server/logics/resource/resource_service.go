@@ -103,7 +103,6 @@ func resourceAuthResourceType(internal bool) string {
 var resourceOpOnCatalog = map[string]string{
 	interfaces.OPERATION_TYPE_VIEW_DETAIL: interfaces.OPERATION_TYPE_VIEW_DETAIL,
 	interfaces.OPERATION_TYPE_QUERY_DATA:  interfaces.OPERATION_TYPE_QUERY_DATA,
-	interfaces.OPERATION_TYPE_CREATE:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
 	interfaces.OPERATION_TYPE_MODIFY:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
 	interfaces.OPERATION_TYPE_DELETE:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
 	interfaces.OPERATION_TYPE_TASK_MANAGE: interfaces.OPERATION_TYPE_TASK_MANAGE,

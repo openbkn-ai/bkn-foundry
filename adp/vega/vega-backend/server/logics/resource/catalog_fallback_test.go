@@ -29,7 +29,10 @@ import (
 func TestResourceOpOnCatalogTranslation(t *testing.T) {
 	assert.Equal(t, interfaces.OPERATION_TYPE_RESOURCE_MANAGE, resourceOpOnCatalog[interfaces.OPERATION_TYPE_MODIFY])
 	assert.Equal(t, interfaces.OPERATION_TYPE_RESOURCE_MANAGE, resourceOpOnCatalog[interfaces.OPERATION_TYPE_DELETE])
-	assert.Equal(t, interfaces.OPERATION_TYPE_RESOURCE_MANAGE, resourceOpOnCatalog[interfaces.OPERATION_TYPE_CREATE])
+	// create 不在表里:建表根本不走这张表——它直接判目标目录，因为「这张表建在
+	// 哪个目录」是通配对象答不了的问题。留一条永不触发的映射就是一句谎话。
+	_, createMapped := resourceOpOnCatalog[interfaces.OPERATION_TYPE_CREATE]
+	assert.False(t, createMapped)
 	assert.Equal(t, interfaces.OPERATION_TYPE_VIEW_DETAIL, resourceOpOnCatalog[interfaces.OPERATION_TYPE_VIEW_DETAIL])
 	assert.Equal(t, interfaces.OPERATION_TYPE_QUERY_DATA, resourceOpOnCatalog[interfaces.OPERATION_TYPE_QUERY_DATA])
 	assert.Equal(t, interfaces.OPERATION_TYPE_TASK_MANAGE, resourceOpOnCatalog[interfaces.OPERATION_TYPE_TASK_MANAGE])
