@@ -94,7 +94,7 @@ button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:9px;padding:
 .ghost{background:transparent;color:#64748d;font-weight:500}
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
-form{margin:0}
+form{width:min(464px,100%);margin:0 auto}
 @media (max-width:640px){body:before{background-position:60% center}.card{padding:36px 24px}.locale-switch{right:18px}}
 </style>`
 
