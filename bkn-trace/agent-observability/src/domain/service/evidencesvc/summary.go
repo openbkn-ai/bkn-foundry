@@ -389,6 +389,13 @@ func firstConversationInteractionPreview(requests []evidencevo.RequestSummary) (
 			byInteraction[request.InteractionID] = append(byInteraction[request.InteractionID], request)
 		}
 	}
+	// Contract versions before interaction IDs were mandatory still contribute a
+	// coherent request-level preview. Do not use this fallback once any
+	// interaction exists, because that would reintroduce cross-interaction pairs.
+	if len(byInteraction) == 0 {
+		base, _ := aggregateRequestGroup(requests)
+		return base.QuestionPreview, base.ResultPreview
+	}
 
 	var question, result, firstAt, firstID string
 	for interactionID, interactionRequests := range byInteraction {

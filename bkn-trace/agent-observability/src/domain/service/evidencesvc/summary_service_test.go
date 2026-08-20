@@ -464,6 +464,20 @@ func TestBuildConversationSummaryDoesNotPairInitialQuestionWithLaterResultOnlyIn
 	}
 }
 
+func TestBuildConversationSummaryUsesLegacyPreviewWhenNoInteractionIDExists(t *testing.T) {
+	summary := buildConversationSummary("conversation_legacy", []evidencevo.RequestSummary{
+		{
+			RequestID: "req_legacy", StartedAt: "2026-08-07T08:00:00Z", CompletedAt: "2026-08-07T08:00:01Z",
+			Status: "completed", EvidenceCompleteness: "complete",
+			QuestionPreview: "存量会话的问题", ResultPreview: "存量会话的结果",
+		},
+	})
+
+	if summary.QuestionPreview != "存量会话的问题" || summary.ResultPreview != "存量会话的结果" {
+		t.Fatalf("legacy requests without interaction IDs must retain their existing preview: %+v", summary)
+	}
+}
+
 func TestBuildConversationSummarySkipsUnavailableFirstInteractionPreview(t *testing.T) {
 	summary := buildConversationSummary("conversation_supply", []evidencevo.RequestSummary{
 		{
