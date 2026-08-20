@@ -664,7 +664,7 @@ func operationAuditSources(sources []Source) []Source {
 			observabilityvo.CategoryAccessUser,
 			observabilityvo.CategoryAuditAdmin,
 			observabilityvo.CategoryAuditSecurity,
-		}) || source.ID() == "bkn-trace-core" {
+		}) || source.ID() == "bkn-trace-core" || source.ID() == "bkn-trace-runtime" {
 			result = append(result, source)
 		}
 	}

@@ -60,7 +60,7 @@ func (source partialCountSource) Search(context.Context, observabilityvo.LogQuer
 }
 
 type capturingSource struct {
-	query observabilityvo.LogQuery
+	query   observabilityvo.LogQuery
 	records []observabilityvo.LogRecord
 }
 
@@ -266,6 +266,25 @@ func (source *categorizedSource) Search(
 	return observabilityvo.SourcePage{
 		Records: validTestRecords(source.records), Count: int64(len(source.records)), CountAccuracy: "exact",
 	}, nil
+}
+
+func TestOperationAuditModeQueriesReceiptRuntimeSource(t *testing.T) {
+	source := &categorizedSource{
+		id: "bkn-trace-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness},
+		records: []observabilityvo.LogRecord{{
+			LogID: "bkn-trace-runtime:receipt-a", Category: observabilityvo.CategoryRuntimeBusiness,
+			EventName: "operation.executed", TraceID: "trace-a", TenantID: "tenant-a", BusinessDomain: "domain-a",
+			EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core",
+		}},
+	}
+	service := NewWithOptions([]Source{source}, Options{OperationAuditOnly: true, CursorKey: []byte("runtime-source-test")})
+	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{TraceID: "trace-a"})
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if source.queries != 1 || len(result.Records) != 1 {
+		t.Fatalf("receipt runtime source was not reachable: queries=%d result=%+v", source.queries, result)
+	}
 }
 
 func TestListRejectsGlobalSearchForNormalUserButAllowsOwnedTraceDrilldown(t *testing.T) {

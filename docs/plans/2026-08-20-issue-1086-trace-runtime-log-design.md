@@ -1,106 +1,84 @@
-# Issue 1086: Trace Runtime Log Projection Design
+# Issue 1086: Receipt-backed Trace Runtime Logs
 
 ## Intent
 
-Restore the Trace-to-Log investigation path without treating a Conversation as
-the owner of a Trace. A conversation can contain many interactions and many
-traces; the durable unit of runtime observability is an operation attempt.
+Restore the Trace-to-Log investigation path using the durable Receipt that BKN
+Trace already writes. A Conversation may contain multiple interactions and
+multiple traces, so a Conversation record must not be used to infer Trace
+ownership.
 
 ## Decision
 
-Add a BKN Trace runtime-log projection whose document identity is the operation
-attempt. It contains the stable correlation and authorization metadata required
-to search logs by Trace, Request, Conversation, Interaction, Operation, and
-Span. The projection is written with the existing Core projection outbox and is
-recreated by projection rebuild.
+Reuse `ReceiptProjectionDocument` in the existing Core projection alias as the
+only runtime-log source. Do not introduce another projection document, outbox
+event, database table, payload copy, or rebuild path.
 
-The runtime-log OpenSearch document is a search index, not a second evidence
-store. Its payload contains only identity, ownership, timing, status, tool and
-protocol metadata, plus a stable reference to the authoritative operation fact,
-receipt, and evidence artifacts. The existing Trace detail endpoint remains the
-full-evidence view for the selected Trace. No business payload is lost: it
-remains available through that existing Trace evidence path, without duplicating
-up to 1 MiB inline payloads per operation in the log index.
+A terminal Receipt already contains the identifiers and authorization data
+needed for runtime investigation:
 
-`conversation.created` remains a business audit event. It is not a runtime
-Trace event and is never used to infer a Trace ID.
+- tenant, business domain, application principal and effective subject;
+- knowledge-network IDs derived from the Receipt business references;
+- request, trace, conversation, interaction and operation IDs;
+- receipt status, tool name, attempt number and terminal timestamp.
 
-## Data Model
+The log adapter turns each completed or failed Receipt into one registered
+`runtime.business` event named `operation.executed`. Pending Receipts are not
+execution results and are excluded.
 
-One document is emitted for each `(operation_id, attempt)` and has a stable
-document ID such as `runtime_operation_log:<operation_id>:<attempt>`.
+## Query Contract
 
-Required fields:
+The adapter pushes exact Receipt filters to OpenSearch for Trace, Request,
+Conversation, Interaction and Operation IDs. Text fields use their `.keyword`
+subfields; `operation_id` uses its keyword mapping. Tenant and business-domain
+scope are always required. When record-level authorization is required, the
+adapter also pushes the effective-subject, application-principal and managed
+knowledge-network candidates.
 
-- owner scope: tenant, business domain, application principal, effective
-  subject, and knowledge-network IDs;
-- correlation: request, trace, span, conversation, interaction, operation and
-  receipt IDs;
-- execution facts: tool, source module, protocol, attempt status, retryable,
-  started, finished and observed timestamps;
-- retrieval references: operation-attempt identity, receipt ID and artifact
-  references/counts.
+Results use a stable keyset order:
 
-The document excludes `OperationCallFact.Input`, `Output`, and `Error` bodies.
-Their existing payload envelopes and referenced artifacts remain authoritative
-and are loaded only for the selected detail/Trace view.
+1. `terminal_at` descending;
+2. `receipt_id.keyword` ascending.
 
-## Query and Count Contract
+The source consumes and returns the corresponding `search_after` tuple. It
+reports an exact count only when OpenSearch reports `hits.total.relation=eq`
+and no free-text filtering remains local; otherwise count accuracy is partial.
 
-The new runtime-log source pushes its supported correlation filters directly to
-OpenSearch: trace ID, request ID, conversation ID, interaction ID, operation
-ID, span ID, owner scope and time window. Its `Count` therefore describes the
-same result set as its records.
+Filters that cannot match this fixed event shape return an exact empty page.
+This includes Span ID: Receipt does not persist Span ID, and Span correlation
+is explicitly outside Issue 1086 rather than being fabricated from another
+identifier.
 
-Sources that cannot represent a selected correlation filter must return an
-exact empty page rather than a broad page to be rejected by `logsvc`. The common
-log service must never expose a raw-source total after local filtering; when a
-source cannot provide a final total it returns the visible lower bound with
-`accuracy=partial`.
+## Log Projection
 
-## Projection Lifecycle
+The public log record is metadata derived from the Receipt. It supplies the
+operation-audit contract (`module`, action, target and actor snapshots, auth
+method and source channel), correlation IDs, outcome/severity, and Receipt
+identity. It does not remove or duplicate Receipt evidence. Full input, output,
+error and artifact evidence remains available through the existing Trace and
+Receipt detail paths.
 
-The write path emits an updated runtime-log projection whenever an operation
-attempt is created or reaches a terminal state. Its outbox event uses the
-operation row version, so a terminal update replaces the earlier document.
+`GET /api/observability/v1/logs/{log_id}` resolves
+`bkn-trace-runtime:<receipt_id>` through a tenant- and business-domain-scoped
+Receipt lookup, so every list item has a corresponding detail view.
 
-The MariaDB authoritative rebuild scanner joins the operation call fact to its
-conversation and receipt to recreate the same document and owner snapshot. It
-includes runtime-operation-log documents in its authoritative count. A rebuild
-therefore repairs historical records that already have operation facts and
-Trace IDs without any manual database migration or backfill.
+## Lifecycle and Compatibility
 
-## API Behaviour
+Receipt lifecycle writes, projection outbox delivery and authoritative rebuild
+already cover these documents. Historical terminal Receipts become searchable
+through the same alias; no data migration or independent backfill is required.
 
-`GET /api/observability/v1/logs?trace_id=...` returns one or more
-`operation.executed` runtime records for the Trace when its operation facts
-exist. Every result returns correlation identifiers matching the Trace detail.
-
-The list and log-detail endpoints return compact runtime-record metadata and
-the correlation IDs needed to navigate to the Trace. The existing Trace detail
-endpoint resolves the authoritative operation fact, receipt and evidence
-artifacts to expose the complete execution context to callers already
-authorized for that Trace.
-
-## Compatibility and Failure Behaviour
-
-Existing Conversation audit logs and their identifiers remain unchanged. The
-runtime source has a separate source ID and cursor domain. Missing or malformed
-legacy operation facts do not create a fabricated association; they simply do
-not yield runtime-log documents after rebuild.
-
-During the alias-based rebuild, the old index continues serving until the new
-version validates and switches. Capacity planning must account for both index
-versions temporarily, but the new documents avoid duplicating payload bodies.
+`conversation.created` remains unchanged and continues to describe creation of
+a business conversation. It returns an exact empty page for correlation fields
+that the Conversation document cannot represent, so it cannot inflate Trace
+runtime counts.
 
 ## Acceptance Criteria
 
-1. A Trace with persisted operation facts is discoverable through log search by
-   its Trace ID and returns matching correlation fields.
-2. Request-ID search returns the same operation records.
-3. Two Trace IDs within one Conversation return only their own records.
-4. The runtime source pushes correlation filters into OpenSearch and reports a
-   count matching the final result set.
-5. A projection rebuild retains historical runtime associations.
-6. Trace detail retains access to full input, output, error and artifact
-   evidence without copying those bodies into the search index.
+1. Log search by Trace or Request ID returns only matching terminal Receipts.
+2. Conversation, Interaction and Operation correlation filters are exact.
+3. Runtime records survive operation-audit source selection and validation.
+4. Pagination is stable beyond 200 hits and detail lookup resolves list IDs.
+5. Record-scope authorization is applied before the result window is selected.
+6. Counts disclose partial accuracy when OpenSearch or local filtering cannot
+   provide an exact total.
+7. No new projection, write path, evidence copy or Span association is added.

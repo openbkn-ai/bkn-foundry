@@ -121,6 +121,7 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 	addTerm("owner.business_domain_id.keyword", query.AuthorizedBusinessDomain)
 	addTerm("owner.effective_subject_id.keyword", query.ActorID)
 	addTerm("conversation_id.keyword", firstNonEmpty(query.ConversationID, query.TargetID))
+	addTerm("creation_request_id.keyword", query.RequestID)
 	if query.TimeFrom != nil || query.TimeTo != nil {
 		bounds := map[string]any{}
 		if query.TimeFrom != nil {

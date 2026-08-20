@@ -104,6 +104,22 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyReceiptQuery(t *testing.T) 
 	if !ok || requestID["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
 		t.Fatalf("request_id must retain the exact keyword subfield used by summary queries: %#v", requestID)
 	}
+	creationRequestID, ok := properties["creation_request_id"].(map[string]any)
+	if !ok {
+		t.Fatalf("creation_request_id must be explicitly mapped: %#v", creationRequestID)
+	}
+	creationRequestFields, ok := creationRequestID["fields"].(map[string]any)
+	if !ok || creationRequestFields["keyword"].(map[string]any)["type"] != "keyword" {
+		t.Fatalf("creation_request_id must retain the exact keyword subfield used by conversation logs: %#v", creationRequestID)
+	}
+	receiptStatus, ok := properties["receipt_status"].(map[string]any)
+	if !ok || receiptStatus["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
+		t.Fatalf("receipt_status must retain the exact keyword subfield used by runtime logs: %#v", receiptStatus)
+	}
+	terminalAt, ok := properties["terminal_at"].(map[string]any)
+	if !ok || terminalAt["type"] != "date" {
+		t.Fatalf("terminal_at must be mapped as date for runtime-log sorting: %#v", terminalAt)
+	}
 }
 
 func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testing.T) {

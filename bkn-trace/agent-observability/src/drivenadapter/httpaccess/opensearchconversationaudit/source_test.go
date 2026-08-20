@@ -43,7 +43,8 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 	source := New(backend, "openbkn-core-projection")
 
 	page, err := source.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a", ConversationID: "conv-a", Limit: 20,
+		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a", ConversationID: "conv-a",
+		RequestID: "req-create-a", Limit: 20,
 	})
 	if err != nil {
 		t.Fatalf("search conversation audit: %v", err)
@@ -67,7 +68,7 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 		t.Fatalf("decode search query: %v", err)
 	}
 	encoded, _ := json.Marshal(query)
-	for _, expected := range []string{"owner.tenant_id.keyword", "owner.business_domain_id.keyword", "external_conversation_key", "conversation_id.keyword"} {
+	for _, expected := range []string{"owner.tenant_id.keyword", "owner.business_domain_id.keyword", "external_conversation_key", "conversation_id.keyword", "creation_request_id.keyword"} {
 		if !containsString(string(encoded), expected) {
 			t.Fatalf("trusted projection filter %q missing from %s", expected, encoded)
 		}
