@@ -214,6 +214,7 @@ func (service *Service) listPage(
 		limit = 200
 	}
 	sourceQuery := query
+	filterQuery := sourceQuery
 	sourceQuery.ActorQuery = ""
 	sourceQuery.Cursor = ""
 	sourceQuery.Limit = 200
@@ -283,11 +284,11 @@ func (service *Service) listPage(
 			}
 			if validProjection &&
 				contains(effectiveCategories, record.Category) && afterSourcePosition(record, pageBefore) &&
-				matchesQuery(record, sourceQuery) && canReadLog(profile, capabilities, record, query.IsAssociatedDrilldown()) {
+				matchesQuery(record, filterQuery) && canReadLog(profile, capabilities, record, query.IsAssociatedDrilldown()) {
 				candidates = append(candidates, logCandidate{record: record, adapterSourceID: source.ID()})
 			}
 		}
-		if rejectedProjections > 0 || normalizedAccuracy(page.CountAccuracy) != "exact" {
+		if rejectedProjections > 0 || filterQuery.ActorQuery != "" || normalizedAccuracy(page.CountAccuracy) != "exact" {
 			// Source totals describe its raw result set. Once the public contract
 			// rejects records or an adapter has already filtered its source result,
 			// retaining that raw total produces an impossible UI (for example “5
