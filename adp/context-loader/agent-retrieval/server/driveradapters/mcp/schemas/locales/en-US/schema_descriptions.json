@@ -408,6 +408,6 @@
     "output_schema.properties.object_types.items.properties.comment.description": "Description text, usually including the property table of the type.",
     "output_schema.properties.object_types.items.properties.data_source.description": "Bound data resource {type, id, name}; the id works as the {{.<resource_id>}} placeholder in run_sql.",
     "output_schema.properties.object_types.items.properties.data_properties.description": "Data properties [{name, type, condition_operations}]; condition_operations decides whether the property can be filtered with match or knn.",
-    "output_schema.properties.message.description": "Present only when nothing was hit, explaining why the result is empty."
+    "output_schema.properties.message.description": "A note from retrieval, present in two cases: (1) there was no hit, and this says why it is empty; (2) **there are results but the results themselves need explaining** — for example the deployment configured a relevance threshold that could not run because the reranker was unavailable, so the instances below are unfiltered recall. **Read this field even when nodes is non-empty**: it is what separates a filtered result from one that could not be filtered."
   }
 }
