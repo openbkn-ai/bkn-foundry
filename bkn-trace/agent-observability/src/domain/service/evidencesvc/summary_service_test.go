@@ -422,6 +422,48 @@ func TestBuildConversationSummaryUsesFirstCoherentInteractionAndHidesChildCallEr
 	}
 }
 
+func TestBuildConversationSummaryKeepsInitialQuestionWhenItsResultIsUnavailable(t *testing.T) {
+	summary := buildConversationSummary("conversation_supply", []evidencevo.RequestSummary{
+		{
+			RequestID: "req_initial", InteractionID: "interaction_initial",
+			StartedAt: "2026-08-07T08:00:00Z", CompletedAt: "2026-08-07T08:00:01Z",
+			Status: "error", EvidenceCompleteness: "partial",
+			InteractionQuestion: "分析 6 月份的需求满足情况",
+		},
+		{
+			RequestID: "req_continue", InteractionID: "interaction_continue",
+			StartedAt: "2026-08-07T08:02:00Z", CompletedAt: "2026-08-07T08:02:01Z",
+			Status: "completed", EvidenceCompleteness: "complete",
+			InteractionQuestion: "请继续", InteractionResult: "后续分析已完成",
+		},
+	})
+
+	if summary.QuestionPreview != "分析 6 月份的需求满足情况" || summary.ResultPreview != "" {
+		t.Fatalf("conversation preview must preserve the initial intent without borrowing a later result: %+v", summary)
+	}
+}
+
+func TestBuildConversationSummaryDoesNotPairInitialQuestionWithLaterResultOnlyInteraction(t *testing.T) {
+	summary := buildConversationSummary("conversation_supply", []evidencevo.RequestSummary{
+		{
+			RequestID: "req_initial", InteractionID: "interaction_initial",
+			StartedAt: "2026-08-07T08:00:00Z", CompletedAt: "2026-08-07T08:00:01Z",
+			Status: "completed", EvidenceCompleteness: "partial",
+			InteractionQuestion: "分析 6 月份的需求满足情况",
+		},
+		{
+			RequestID: "req_result", InteractionID: "interaction_result",
+			StartedAt: "2026-08-07T08:02:00Z", CompletedAt: "2026-08-07T08:02:01Z",
+			Status: "completed", EvidenceCompleteness: "partial",
+			InteractionResult: "这是另一轮产生的结果",
+		},
+	})
+
+	if summary.QuestionPreview != "分析 6 月份的需求满足情况" || summary.ResultPreview != "" {
+		t.Fatalf("conversation preview must keep question and result in the same interaction: %+v", summary)
+	}
+}
+
 func TestBuildConversationSummarySkipsUnavailableFirstInteractionPreview(t *testing.T) {
 	summary := buildConversationSummary("conversation_supply", []evidencevo.RequestSummary{
 		{

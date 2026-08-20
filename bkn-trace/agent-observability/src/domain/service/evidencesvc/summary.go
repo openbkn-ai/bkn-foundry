@@ -393,10 +393,9 @@ func firstConversationInteractionPreview(requests []evidencevo.RequestSummary) (
 	var question, result, firstAt, firstID string
 	for interactionID, interactionRequests := range byInteraction {
 		summary, _ := aggregateRequestGroup(interactionRequests)
-		// A list preview must remain a usable question/result pair. If the
-		// earliest interaction lost either artifact, prefer the next complete
-		// interaction; aggregateRequestGroup remains the all-incomplete fallback.
-		if summary.QuestionPreview == "" || summary.ResultPreview == "" {
+		// The question represents the user's intent. Keep its result scoped to
+		// the same interaction even when that result is unavailable.
+		if summary.QuestionPreview == "" {
 			continue
 		}
 		at := firstPresentSummary(summary.StartedAt, summary.CompletedAt)
@@ -407,8 +406,7 @@ func firstConversationInteractionPreview(requests []evidencevo.RequestSummary) (
 	if firstID != "" {
 		return question, result
 	}
-	base, _ := aggregateRequestGroup(requests)
-	return base.QuestionPreview, base.ResultPreview
+	return "", ""
 }
 
 // assignInteractionRoundNumbers preserves chronological meaning independently
