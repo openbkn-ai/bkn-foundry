@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -127,4 +129,52 @@ func TestSafeFilterResourcesIsBulk(t *testing.T) {
 			t.Fatalf("want r1 granted and r0 empty, got %+v", got)
 		}
 	})
+}
+
+// TestFilterResourcesReportsCandidateOperations 钉住可见性与回报是两个轴:
+// 一张表因为「看得见」而进结果,跟着它回去的操作却应该是候选集里它真正持有的
+// 那些。只解析可见性动词的话,operations 恒等于 view_detail,界面上除了「查看」
+// 之外每个按钮都是暗的——持有取数权与目录管理权的账号也一样。
+func TestFilterResourcesReportsCandidateOperations(t *testing.T) {
+	held := map[string]bool{
+		interfaces.OPERATION_TYPE_VIEW_DETAIL: true,
+		interfaces.OPERATION_TYPE_QUERY_DATA:  true,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Resource  struct{ ID string } `json:"resource"`
+			Operation string              `json:"operation"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/check") {
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"allowed":%t}`, held[body.Operation])))
+			return
+		}
+		_, _ = w.Write([]byte(`{"resources":[]}`))
+	}))
+	defer srv.Close()
+
+	pa := &safePermissionAccess{safe: newSafeClient(srv.URL)}
+	got, err := pa.FilterResources(context.Background(), interfaces.PermissionResourcesFilter{
+		Accessor:   interfaces.PermissionAccessor{ID: "u-1", Type: "user"},
+		Resources:  []interfaces.PermissionResource{{Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "r-1"}},
+		Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL},
+		CandidateOperations: []string{
+			interfaces.OPERATION_TYPE_VIEW_DETAIL,
+			interfaces.OPERATION_TYPE_QUERY_DATA,
+			interfaces.OPERATION_TYPE_DELETE,
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	entry, ok := got["r-1"]
+	if !ok {
+		t.Fatal("看得见的表应该在结果里")
+	}
+	want := []string{interfaces.OPERATION_TYPE_VIEW_DETAIL, interfaces.OPERATION_TYPE_QUERY_DATA}
+	if !reflect.DeepEqual(entry.Operations, want) {
+		t.Fatalf("operations = %v, want %v(候选集里持有的那些,不含没授的 delete)", entry.Operations, want)
+	}
 }

@@ -155,11 +155,15 @@ type PermissionResource struct {
 
 // Filter/Delete
 type PermissionResourcesFilter struct {
-	Accessor       PermissionAccessor   `json:"accessor,omitempty"`
-	Resources      []PermissionResource `json:"resources,omitempty"`
-	Operations     []string             `json:"operation,omitempty"`
-	AllowOperation bool                 `json:"allow_operation"`
-	Method         string               `json:"method,omitempty"`
+	Accessor   PermissionAccessor   `json:"accessor,omitempty"`
+	Resources  []PermissionResource `json:"resources,omitempty"`
+	Operations []string             `json:"operation,omitempty"`
+	// CandidateOperations is what the answer should report on, as opposed to what
+	// makes a resource visible. Callers render buttons from it, so leaving it
+	// unset means the answer can only ever name the visibility operation itself.
+	CandidateOperations []string `json:"candidate_operations,omitempty"`
+	AllowOperation      bool     `json:"allow_operation"`
+	Method              string   `json:"method,omitempty"`
 }
 
 // Set permissions

@@ -174,9 +174,10 @@ func (ps *PermissionServiceImpl) FilterResources(ctx context.Context, resourceTy
 			ID:   accountInfo.ID,
 			Type: accountInfo.Type,
 		},
-		Resources:      resources,
-		Operations:     ops,
-		AllowOperation: allowOperation,
+		Resources:           resources,
+		Operations:          ops,
+		CandidateOperations: fullOps,
+		AllowOperation:      allowOperation,
 	})
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,

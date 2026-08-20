@@ -195,13 +195,42 @@ func (s *safePermissionAccess) resolveFilter(ctx context.Context,
 		if _, done := byType[r.Type]; done {
 			continue
 		}
-		access, err := s.resolveOps(ctx, filter.Accessor.ID, r.Type, filter.Operations)
+		access, err := s.resolveOps(ctx, filter.Accessor.ID, r.Type, filterOps(filter))
 		if err != nil {
 			return nil, err
 		}
 		byType[r.Type] = access
 	}
 	return byType, nil
+}
+
+// filterOps is every operation the answer has to know about: the ones that
+// decide visibility, plus the ones the answer reports on. They are separate
+// axes — a resource is listed because the caller may view it, while the
+// operations travelling back with it are what the caller may then do — so
+// resolving only the first leaves the second empty and every button dark.
+func filterOps(filter interfaces.PermissionResourcesFilter) []string {
+	out := make([]string, 0, len(filter.Operations)+len(filter.CandidateOperations))
+	seen := make(map[string]bool, cap(out))
+	for _, group := range [][]string{filter.Operations, filter.CandidateOperations} {
+		for _, op := range group {
+			if seen[op] {
+				continue
+			}
+			seen[op] = true
+			out = append(out, op)
+		}
+	}
+	return out
+}
+
+// reportOps is the set the answer names back. Callers that state no candidates
+// get the visibility operations, which is what they asked about.
+func reportOps(filter interfaces.PermissionResourcesFilter) []string {
+	if len(filter.CandidateOperations) > 0 {
+		return filter.CandidateOperations
+	}
+	return filter.Operations
 }
 
 // allowedFrom selects the actual operations held on the resource from each op authorization that has been parsed.
@@ -222,8 +251,14 @@ func (s *safePermissionAccess) FilterResources(ctx context.Context, filter inter
 	}
 	out := map[string]interfaces.PermissionResourceOps{}
 	for _, r := range filter.Resources {
-		if ops := allowedFrom(byType[r.Type], filter.Operations, r.ID); len(ops) > 0 {
-			out[r.ID] = interfaces.PermissionResourceOps{ResourceID: r.ID, Operations: ops}
+		// Visibility and reporting are decided separately: the first says whether
+		// the resource belongs in the answer at all, the second says what comes
+		// back with it.
+		if visible := allowedFrom(byType[r.Type], filter.Operations, r.ID); len(visible) > 0 {
+			out[r.ID] = interfaces.PermissionResourceOps{
+				ResourceID: r.ID,
+				Operations: allowedFrom(byType[r.Type], reportOps(filter), r.ID),
+			}
 		}
 	}
 	return out, nil
@@ -238,7 +273,7 @@ func (s *safePermissionAccess) GetResourcesOperations(ctx context.Context, filte
 	for _, r := range filter.Resources {
 		out[r.ID] = interfaces.PermissionResourceOps{
 			ResourceID: r.ID,
-			Operations: allowedFrom(byType[r.Type], filter.Operations, r.ID),
+			Operations: allowedFrom(byType[r.Type], reportOps(filter), r.ID),
 		}
 	}
 	return out, nil
