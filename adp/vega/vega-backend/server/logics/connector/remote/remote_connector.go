@@ -9,9 +9,13 @@ package remote
 
 import (
 	"context"
+	"errors"
+	"fmt"
 
 	"vega-backend/interfaces"
 )
+
+var ErrFieldConfigNotImplemented = errors.New("remote connector field config is not implemented")
 
 // ============================================
 // RemoteConnector is a basic remote connector
@@ -30,6 +34,16 @@ func NewRemoteConnector(ct *interfaces.ConnectorType) *RemoteConnector {
 		enabled:  ct.Enabled,
 		connType: ct,
 	}
+}
+
+// GetFieldConfig reports that runtime field definitions for remote
+// connectors are not implemented yet. Registration metadata is deliberately
+// not used as a fallback.
+func GetFieldConfig(_ context.Context, ct *interfaces.ConnectorType) (map[string]interfaces.ConnectorFieldConfig, error) {
+	if ct == nil {
+		return nil, fmt.Errorf("connector type is nil")
+	}
+	return nil, fmt.Errorf("remote connector %s: %w", ct.Type, ErrFieldConfigNotImplemented)
 }
 
 // GetType returns the connector type
