@@ -113,6 +113,14 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	InstanceRerankMode string `json:"instance_rerank_mode" default:"off"`
 	// InstanceRerankModel overrides fine-ranking small model names; leave blank to use the default reranker configured by model management (#842).
 	InstanceRerankModel string `json:"instance_rerank_model,omitempty"`
+	// ObjectTypeConcurrency caps how many object types are queried at once. Each one costs at least
+	// one downstream query, and with a vector channel it also costs one embedding call, so a serial
+	// walk made latency the sum of every object type's round trip.
+	//
+	// Bounded rather than unbounded: the fan-out lands on ontology-query, OpenSearch and the embedding
+	// model, and a query that recalled twenty object types would otherwise open twenty concurrent
+	// conversations with each of them.
+	ObjectTypeConcurrency int `json:"object_type_concurrency" default:"6"`
 	// MinRerankerScore drops instances the reranker scored below it. A request may override the
 	// deployment-calibrated value; 0 means "take the deployment's", and a deployment value of 0 leaves
 	// the gate off. Setting it implies reranking: a relevance gate without the model has nothing to

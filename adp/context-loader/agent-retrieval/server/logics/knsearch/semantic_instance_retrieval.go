@@ -67,6 +67,21 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	instanceConfig := config.SemanticInstanceRetrieval
 	propertyConfig := config.PropertyFilter
 
+	// Hold instance recall to the number of object types the caller asked for.
+	//
+	// Concept recall deliberately returns more than top_k: it pulls in the endpoints of the relations
+	// it selected so the schema it hands back has no dangling references, which can double the list.
+	// That is right for the schema half of the answer and wrong for this half — every extra object
+	// type here is at least one more downstream query, and with a vector channel one more embedding
+	// call. Left uncapped, max_object_types=10 issued queries against 20 object types, so the knob
+	// that is supposed to bound the cost understated it by half.
+	if limit := conceptTopK(config); limit > 0 && len(objectTypes) > limit {
+		s.logger.WithContext(ctx).Debugf(
+			"[SemanticInstanceRetrieval] Capping instance recall at max_object_types=%d (concept recall selected %d)",
+			limit, len(objectTypes))
+		objectTypes = objectTypes[:limit]
+	}
+
 	// The relevance gate: a request may override the deployment's calibrated threshold.
 	minRerankerScore := instanceConfig.MinRerankerScore
 	if minRerankerScore <= 0 && s.config != nil {
@@ -94,24 +109,51 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 		searchableByType[objType.ConceptID] = findSemanticSearchableFields(objType)
 	}
 
+	// Query the object types concurrently, bounded. Serially, latency was the sum of every object
+	// type's round trip: each one issues its channel queries and, where a vector channel applies,
+	// waits on its own embedding call for the same query string.
+	//
+	// Results are collected per position, not appended as they arrive, so the response does not depend
+	// on which object type happened to answer first.
+	perType := make([][]*interfaces.KnSearchNode, len(objectTypes))
+	concurrency := instanceConfig.ObjectTypeConcurrency
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+	if concurrency > len(objectTypes) {
+		concurrency = len(objectTypes)
+	}
+
+	var wg sync.WaitGroup
+	slots := make(chan struct{}, concurrency)
+	for i, objType := range objectTypes {
+		wg.Add(1)
+		go func(idx int, objType *interfaces.KnSearchObjectType) {
+			defer wg.Done()
+			slots <- struct{}{}
+			defer func() { <-slots }()
+
+			nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, knnAllowedFor(objType, instanceConfig))
+			if err != nil {
+				// One object type failing keeps the others: a single bad index or a knn 400 on a field
+				// whose declared operators lie must not empty the whole result.
+				s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Failed to retrieve instances for %s: %v",
+					objType.ConceptID, err)
+				return
+			}
+			perType[idx] = nodes
+		}(i, objType)
+	}
+	wg.Wait()
+
 	var allNodes []*interfaces.KnSearchNode
 	var maxScore float64
-
-	for _, objType := range objectTypes {
-		nodes, err := s.retrieveInstancesForObjectType(ctx, req, objType, instanceConfig, knnAllowedFor(objType, instanceConfig))
-		if err != nil {
-			s.logger.WithContext(ctx).Warnf("[SemanticInstanceRetrieval] Failed to retrieve instances for %s: %v",
-				objType.ConceptID, err)
-			continue
-		}
-
-		// Update high score.
+	for _, nodes := range perType {
 		for _, node := range nodes {
 			if node.Score > maxScore {
 				maxScore = node.Score
 			}
 		}
-
 		allNodes = append(allNodes, nodes...)
 	}
 
@@ -164,6 +206,15 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	}
 
 	return result, nil
+}
+
+// conceptTopK reports how many object types the caller allowed into instance recall, or 0 when the
+// request carries no concept retrieval config to read it from.
+func conceptTopK(config *interfaces.KnSearchRetrievalConfig) int {
+	if config == nil || config.ConceptRetrieval == nil {
+		return 0
+	}
+	return config.ConceptRetrieval.TopK
 }
 
 // applyRelevanceGate drops the instances the reranker scored below the threshold, and returns the

@@ -46,6 +46,7 @@ func DefaultSemanticInstanceRetrievalConfig() *interfaces.KnSearchSemanticInstan
 		RRFK:                              60,
 		KnnWeight:                         float64Ptr(0.5),
 		InstanceRerankMode:                InstanceRerankModeOff,
+		ObjectTypeConcurrency:             6,
 		RerankTopN:                        50,
 		RerankFieldCharLimit:              200,
 	}
@@ -190,6 +191,9 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	}
 	if user.MinRerankerScore > 0 {
 		base.MinRerankerScore = user.MinRerankerScore
+	}
+	if user.ObjectTypeConcurrency > 0 {
+		base.ObjectTypeConcurrency = user.ObjectTypeConcurrency
 	}
 	if user.RerankTopN > 0 {
 		base.RerankTopN = user.RerankTopN

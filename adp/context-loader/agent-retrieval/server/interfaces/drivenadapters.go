@@ -270,6 +270,7 @@ type SemanticInstanceRetrievalConfig struct {
 	ExactNameMatchScore               float64 `json:"exact_name_match_score,omitempty"`                 // Default0.85.
 	InstanceRerankMode                string  `json:"instance_rerank_mode,omitempty"`                   // off (default) / on / shadow.
 	MinRerankerScore                  float64 `json:"min_reranker_score,omitempty"`                     // 0 keeps the deployment's value.
+	ObjectTypeConcurrency             int     `json:"object_type_concurrency,omitempty"`                // Default 6.
 }
 
 // RetrievalConfig retrieveconfiguration.
