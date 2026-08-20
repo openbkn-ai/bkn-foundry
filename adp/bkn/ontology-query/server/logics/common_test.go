@@ -654,7 +654,7 @@ func Test_GetObjectID(t *testing.T) {
 			So(uk["id"], ShouldEqual, "123")
 		})
 
-		Convey("成功 - 大整数主键保持精度", func() {
+		Convey("success - large integer primary key preserves precision", func() {
 			objectType := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
 					OTID:        "ot1",

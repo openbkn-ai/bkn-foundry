@@ -181,7 +181,7 @@ func Test_AnyToInt64(t *testing.T) {
 			So(result, ShouldEqual, 42)
 		})
 
-		Convey("成功 - json.Number类型", func() {
+		Convey("success - json.Number type", func() {
 			result, err := AnyToInt64(json.Number("9223372036854775807"))
 			So(err, ShouldBeNil)
 			So(result, ShouldEqual, int64(9223372036854775807))
