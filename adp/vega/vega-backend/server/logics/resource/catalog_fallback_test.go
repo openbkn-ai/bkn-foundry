@@ -418,7 +418,7 @@ func TestAuthorizedResourcesExcludesInternalResources(t *testing.T) {
 		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
 	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(errors.New("denied"))
 
-	cs.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"int-cat"}, nil)
+	cs.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"int-cat"}, nil).AnyTimes()
 	ra.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return([]string{"int-a", "int-b"}, nil)
 	// int-b 被单独授过权,留在可见范围里;int-a 没有,进排除集。
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
@@ -426,6 +426,13 @@ func TestAuthorizedResourcesExcludesInternalResources(t *testing.T) {
 		Return(map[string]interfaces.PermissionResourceOps{
 			"int-b": {ResourceID: "int-b"},
 		}, nil)
+	// 资源侧没批的那张要再问一次它所在的内部目录,这里目录也没批。
+	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"int-a"}).Return([]*interfaces.Resource{
+		{ID: "int-a", CatalogID: "int-cat"},
+	}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+		[]string{"int-cat"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
 	scope, err := rs.AuthorizedResources(context.Background(), interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	require.NoError(t, err)
@@ -452,4 +459,53 @@ func TestAuthorizedResourcesInternalWildcardNeedsNoExclusion(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, scope.Unfiltered())
 	assert.Empty(t, scope.Excluded)
+}
+
+// TestAuthorizedResourcesKeepsResourcesOfAGrantedInternalCatalog 是这一刀的边界:
+// 「发一个目录就能到底下所有表」这条规则对内部目录同样成立。持 resource:* 的人
+// 若被单独授予某个内部目录的 view_detail,那个目录下的表就在他的可见范围里——
+// 排除集只算「资源侧和目录侧都没批」的那些,否则会把刚发出去的授权又藏回去。
+func TestAuthorizedResourcesKeepsResourcesOfAGrantedInternalCatalog(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := vmock.NewMockPermissionService(ctrl)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ps: ps, ra: ra, cs: cs}
+
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(errors.New("denied"))
+
+	cs.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"granted-cat", "other-cat"}, nil).AnyTimes()
+	ra.EXPECT().ListIDs(gomock.Any(), interfaces.ResourcesQueryParams{CatalogID: "granted-cat"}).
+		Return([]string{"in-granted"}, nil)
+	ra.EXPECT().ListIDs(gomock.Any(), interfaces.ResourcesQueryParams{CatalogID: "other-cat"}).
+		Return([]string{"in-other"}, nil)
+
+	// 两张表在资源侧都没有直授。
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+		[]string{"in-granted", "in-other"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil)
+	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"in-granted", "in-other"}).Return([]*interfaces.Resource{
+		{ID: "in-granted", CatalogID: "granted-cat"},
+		{ID: "in-other", CatalogID: "other-cat"},
+	}, nil)
+	// 目录侧只批了 granted-cat。
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+		[]string{"granted-cat", "other-cat"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"granted-cat": {ResourceID: "granted-cat",
+				Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+		}, nil)
+
+	scope, err := rs.AuthorizedResources(context.Background(), interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	require.NoError(t, err)
+	assert.True(t, scope.All)
+	assert.Equal(t, []string{"in-other"}, scope.Excluded,
+		"被授权目录下的那张表不能进排除集,否则任务列表会把刚发出去的授权藏回去")
+	assert.True(t, scope.Allows("in-granted"))
+	assert.False(t, scope.Allows("in-other"))
 }

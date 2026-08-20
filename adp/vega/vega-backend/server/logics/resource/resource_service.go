@@ -692,6 +692,13 @@ func (rs *resourceService) AuthorizedResources(ctx context.Context, op string) (
 // unreachableInternalResources lists the internal-catalog resources a holder of
 // resource:* may not act on. Empty when the caller also holds internal_resource:*,
 // which is the super-administrator and the platform's own S2S identity.
+//
+// The question goes through filterResourcePermissions rather than straight to
+// the permission service, so it is answered by the same two steps every other
+// listing uses: ask the resource, then ask the catalog it lives in. Asking only
+// for a direct grant would contradict the rule this whole change rests on — a
+// grant on one internal catalog reaches the resources inside it, and excluding
+// them would hide tasks the caller was deliberately given.
 func (rs *resourceService) unreachableInternalResources(ctx context.Context, op string) ([]string, error) {
 	if err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
@@ -711,8 +718,7 @@ func (rs *resourceService) unreachableInternalResources(ctx context.Context, op 
 		internalIDs = append(internalIDs, id)
 	}
 	sort.Strings(internalIDs) // 集合无序，排一下让 SQL 与用例可比对
-	granted, err := rs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
-		internalIDs, []string{op}, true, interfaces.COMMON_OPERATIONS)
+	granted, err := rs.filterResourcePermissions(ctx, internalIDs, internalSet, []string{op}, true)
 	if err != nil {
 		return nil, err
 	}

@@ -163,6 +163,31 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("被单独授权的内部目录,它下面的任务仍要列出来", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}
+
+		// resource:* 之外还单独拿到了某个内部目录的 view_detail:那个目录下的表
+		// 不在排除集里,它们的构建任务照常可见。排除集只装两侧都没批的。
+		rs.EXPECT().AuthorizedResources(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"in-other"}}, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Equal(t, []string{"in-other"}, params.ExcludeResourceIDs)
+				assert.NotContains(t, params.ExcludeResourceIDs, "in-granted",
+					"目录已经授权了,它下面的表不该被排除")
+				return []*interfaces.BuildTaskSummary{}, 0, nil
+			})
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		_, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
+		require.NoError(t, err)
+	})
+
 	t.Run("问一张被排除的内部资源,直接空", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
