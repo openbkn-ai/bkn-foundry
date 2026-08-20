@@ -984,6 +984,9 @@ func TestListDoesNotPushActorNameQueryToSources(t *testing.T) {
 	if source.query.ActorQuery != "" {
 		t.Fatalf("display-name filter must be applied after source retrieval: %+v", source.query)
 	}
+	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.ObservedBefore == nil {
+		t.Fatalf("source query must retain the frozen time window and watermark: %+v", source.query)
+	}
 	if len(result.Records) != 1 || result.Count != 1 || result.CountExact {
 		t.Fatalf("actor-name filtering must return a visible lower-bound count: %+v", result)
 	}

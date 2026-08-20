@@ -214,7 +214,6 @@ func (service *Service) listPage(
 		limit = 200
 	}
 	sourceQuery := query
-	filterQuery := sourceQuery
 	sourceQuery.ActorQuery = ""
 	sourceQuery.Cursor = ""
 	sourceQuery.Limit = 200
@@ -232,6 +231,8 @@ func (service *Service) listPage(
 		[]string(nil), profile.ManagedKnowledgeNetworkIDs...,
 	)
 	sourceQuery.ObservedBefore = &queryWatermark
+	filterQuery := sourceQuery
+	filterQuery.ActorQuery = query.ActorQuery
 	succeeded := 0
 	failed := 0
 	coveragePartial := false
