@@ -113,6 +113,14 @@ type KnSearchSemanticInstanceRetrievalConfig struct {
 	InstanceRerankMode string `json:"instance_rerank_mode" default:"off"`
 	// InstanceRerankModel overrides fine-ranking small model names; leave blank to use the default reranker configured by model management (#842).
 	InstanceRerankModel string `json:"instance_rerank_model,omitempty"`
+	// MinObjectTypeScoreRatio drops an object type from instance recall when concept recall scored it
+	// below this fraction of the best-scoring object type in the same recall. 0 (the default) keeps
+	// every object type concept recall selected.
+	//
+	// Relative rather than absolute because the score comes from BKN's own concept search and carries
+	// no fixed scale; relative to the best of the same pass is the one comparison it supports. The
+	// best-scoring object type is always kept, so the filter can narrow a query but never empty it.
+	MinObjectTypeScoreRatio float64 `json:"min_object_type_score_ratio,omitempty"`
 	// ObjectTypeConcurrency caps how many object types are queried at once. Each one costs at least
 	// one downstream query, and with a vector channel it also costs one embedding call, so a serial
 	// walk made latency the sum of every object type's round trip.
@@ -163,6 +171,13 @@ type KnSearchObjectType struct {
 	LogicProperties []*KnSearchLogicProperty `json:"logic_properties,omitempty"`
 	PrimaryKeys     []string                 `json:"primary_keys,omitempty"`
 	SampleData      map[string]any           `json:"sample_data,omitempty"`
+	// Score is concept recall's relevance score for this object type, kept off the wire (json:"-").
+	//
+	// It exists so instance recall can skip object types the query has nothing to do with, before
+	// paying a downstream query for them. It is not a response field: it is comparable only within
+	// one concept recall (BKN scores the whole candidate set in one pass), which is exactly the scope
+	// that uses it, and publishing it would invite comparisons across queries that do not hold.
+	Score float64 `json:"-"`
 }
 
 // KnSearchDataProperty data property (local response shape)

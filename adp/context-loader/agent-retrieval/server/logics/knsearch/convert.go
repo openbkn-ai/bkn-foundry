@@ -127,6 +127,7 @@ func retrievalConfigStructToLocal(rc *interfaces.RetrievalConfig) *interfaces.Kn
 			InstanceRerankMode:                s.InstanceRerankMode,
 			MinRerankerScore:                  s.MinRerankerScore,
 			ObjectTypeConcurrency:             s.ObjectTypeConcurrency,
+			MinObjectTypeScoreRatio:           s.MinObjectTypeScoreRatio,
 			EnableGlobalFinalScoreRatioFilter: boolPtr(s.EnableGlobalFinalScoreRatioFilter),
 			GlobalFinalScoreRatio:             s.GlobalFinalScoreRatio,
 			ExactNameMatchScore:               s.ExactNameMatchScore,

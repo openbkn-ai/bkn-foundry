@@ -195,6 +195,9 @@ func mergeSemanticInstanceRetrievalConfig(base, user *interfaces.KnSearchSemanti
 	if user.ObjectTypeConcurrency > 0 {
 		base.ObjectTypeConcurrency = user.ObjectTypeConcurrency
 	}
+	if user.MinObjectTypeScoreRatio > 0 {
+		base.MinObjectTypeScoreRatio = user.MinObjectTypeScoreRatio
+	}
 	if user.RerankTopN > 0 {
 		base.RerankTopN = user.RerankTopN
 	}

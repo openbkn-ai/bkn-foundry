@@ -164,6 +164,14 @@ type KnInstanceSearchConfig struct {
 	// and 0.74 on the other for the same kind of query. A caller cannot know which deployment it is
 	// talking to, so it cannot pick this value; whoever calibrated the deployment can.
 	MinRerankerScore float64 `yaml:"min_reranker_score"`
+	// MinObjectTypeScoreRatio skips an object type whose concept-recall score is below this fraction
+	// of the best-scoring object type of the same recall, before instance recall issues a query for
+	// it. 0 (the default) leaves the pre-filter off.
+	//
+	// Off by default for want of a portable value: concept recall has already kept only its best
+	// matches, so the spread among survivors is narrow — the worst one scored 0.21 and 0.27 of the
+	// best on two of our own networks. A ratio that trims one of them barely touches the other.
+	MinObjectTypeScoreRatio float64 `yaml:"min_object_type_score_ratio"`
 }
 
 // MFModelAPI configuration uses a unified PrivateBaseConfig structure.

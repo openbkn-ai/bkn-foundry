@@ -1015,6 +1015,7 @@ func (s *localSearchImpl) convertObjectTypesToLocal(objects []*interfaces.Object
 			Tags:        tags,
 			DataSource:  dataSource,
 			PrimaryKeys: primaryKeys,
+			Score:       obj.Score,
 		}
 
 		if len(obj.DataProperties) > 0 {

@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -66,6 +67,14 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 
 	instanceConfig := config.SemanticInstanceRetrieval
 	propertyConfig := config.PropertyFilter
+
+	// Drop the object types the query has nothing to do with before paying for them. A request may
+	// override the deployment's calibrated ratio, the same way it may override the relevance gate.
+	objectTypeRatio := instanceConfig.MinObjectTypeScoreRatio
+	if objectTypeRatio <= 0 && s.config != nil {
+		objectTypeRatio = s.config.InstanceSearchConfig.MinObjectTypeScoreRatio
+	}
+	objectTypes = s.filterObjectTypesByScore(ctx, objectTypes, objectTypeRatio)
 
 	// Hold instance recall to the number of object types the caller asked for.
 	//
@@ -219,6 +228,77 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	}
 
 	return result, nil
+}
+
+// filterObjectTypesByScore drops object types concept recall scored far below its best one.
+//
+// Every object type kept here costs at least one downstream query, and one embedding call where a
+// vector channel applies, so the cheapest instance query is the one never issued. The scores come
+// from BKN's concept search and have no fixed scale, which is why the threshold is a fraction of the
+// best score of the same recall rather than an absolute number: that is the one comparison this
+// signal supports.
+//
+// Two guards keep the filter from turning a narrow answer into no answer:
+//   - no scores at all (every object type at 0) means concept recall had no signal to give, not that
+//     nothing is relevant, so nothing is dropped;
+//   - the best-scoring object type is always kept, so the filter can narrow a query, never empty it.
+//
+// It logs what it saw either way: the spread between the best and worst object type is what a
+// deployment needs in order to choose a ratio, and it is not visible from the response.
+func (s *localSearchImpl) filterObjectTypesByScore(
+	ctx context.Context,
+	objectTypes []*interfaces.KnSearchObjectType,
+	ratio float64,
+) []*interfaces.KnSearchObjectType {
+	if len(objectTypes) <= 1 {
+		return objectTypes
+	}
+
+	best, worst := 0.0, math.Inf(1)
+	for _, objType := range objectTypes {
+		if objType == nil {
+			continue
+		}
+		if objType.Score > best {
+			best = objType.Score
+		}
+		if objType.Score < worst {
+			worst = objType.Score
+		}
+	}
+	if best <= 0 {
+		s.logger.WithContext(ctx).Debugf(
+			"[ObjectTypePreFilter] Concept recall scored no object type, keeping all %d", len(objectTypes))
+		return objectTypes
+	}
+	s.logger.WithContext(ctx).Debugf(
+		"[ObjectTypePreFilter] Object type scores across %d types: best=%.4f worst=%.4f ratio=%.4f",
+		len(objectTypes), best, worst, ratio)
+	if ratio <= 0 {
+		return objectTypes
+	}
+
+	threshold := best * ratio
+	kept := make([]*interfaces.KnSearchObjectType, 0, len(objectTypes))
+	dropped := make([]string, 0)
+	for _, objType := range objectTypes {
+		if objType == nil {
+			continue
+		}
+		// Keep the best one whatever the threshold says: a query that recalled something should not
+		// come back empty because every candidate sat just under the bar.
+		if objType.Score >= threshold || objType.Score == best {
+			kept = append(kept, objType)
+			continue
+		}
+		dropped = append(dropped, objType.ConceptID)
+	}
+	if len(dropped) > 0 {
+		s.logger.WithContext(ctx).Infof(
+			"[ObjectTypePreFilter] Skipped %d object types below %.4f (best=%.4f): %v",
+			len(dropped), threshold, best, dropped)
+	}
+	return kept
 }
 
 // conceptTopK reports how many object types the caller allowed into instance recall, or 0 when the

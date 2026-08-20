@@ -20,6 +20,7 @@ data:
       knn_k: {{ .Values.service.concept_search_config.knn_k }}
     instance_search_config:
       min_reranker_score: {{ .Values.service.instance_search_config.min_reranker_score }}
+      min_object_type_score_ratio: {{ .Values.service.instance_search_config.min_object_type_score_ratio }}
     oauth:
       public_host: {{ .Values.depServices.hydra.publicHost | quote }}
       public_port: {{ .Values.depServices.hydra.publicPort }}

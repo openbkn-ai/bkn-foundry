@@ -34,8 +34,8 @@ func gatedNodes(scores ...float64) []*interfaces.KnSearchNode {
 	out := make([]*interfaces.KnSearchNode, 0, len(scores))
 	for i, score := range scores {
 		out = append(out, &interfaces.KnSearchNode{
-			InstanceName: string(rune('a' + i)),
-			Score:        1,
+			InstanceName:  string(rune('a' + i)),
+			Score:         1,
 			RerankerScore: score,
 		})
 	}

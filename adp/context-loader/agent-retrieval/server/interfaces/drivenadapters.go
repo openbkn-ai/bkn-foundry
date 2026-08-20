@@ -271,6 +271,7 @@ type SemanticInstanceRetrievalConfig struct {
 	InstanceRerankMode                string  `json:"instance_rerank_mode,omitempty"`                   // off (default) / on / shadow.
 	MinRerankerScore                  float64 `json:"min_reranker_score,omitempty"`                     // 0 keeps the deployment's value.
 	ObjectTypeConcurrency             int     `json:"object_type_concurrency,omitempty"`                // Default 6.
+	MinObjectTypeScoreRatio           float64 `json:"min_object_type_score_ratio,omitempty"`            // 0 disables the object type pre-filter.
 }
 
 // RetrievalConfig retrieveconfiguration.

@@ -17,6 +17,12 @@ instance_search_config:
   # environments those bands sit an order of magnitude apart, and in different places.
   # Setting it above 0 makes every instance query pay for one reranker call.
   min_reranker_score: 0
+  # Skip an object type whose concept-recall score is below this fraction of the best-scoring one,
+  # before instance recall pays a downstream query for it. 0 leaves the pre-filter off.
+  # Measured spreads are narrow — concept recall has already kept only its top matches, so the worst
+  # survivor scored 0.21 and 0.27 of the best on two of our networks. Pick a value from the
+  # [ObjectTypePreFilter] debug line on your own data; the best-scoring object type is always kept.
+  min_object_type_score_ratio: 0
 oauth: # Corresponds to the Hydra service.
   public_host: "hydra-public.openbkn"
   public_port: 4444
