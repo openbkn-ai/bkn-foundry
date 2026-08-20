@@ -9,6 +9,7 @@ from app.core.config import base_config
 class PymysqlPool(object):
     yamlConfig = None
     _instance_lock = threading.Lock()
+    _pool = None
 
     def __new__(cls, *args, **kwargs):
         if not hasattr(cls, '_instance'):
@@ -19,6 +20,18 @@ class PymysqlPool(object):
 
     @classmethod
     def get_pool(cls):
+        # A pool owns its idle connections. Creating one per DAO call defeats
+        # pooling and eagerly opens mincached physical connections every time.
+        if cls._pool is not None:
+            return cls._pool
+
+        with cls._instance_lock:
+            if cls._pool is None:
+                cls._pool = cls._create_pool()
+        return cls._pool
+
+    @classmethod
+    def _create_pool(cls):
         DB_MINCACHED = 2
         DB_MAXCACHED = 5
         DB_MAXSHARED = 5
@@ -54,3 +67,11 @@ class PymysqlPool(object):
         )
 
         return op
+
+    @classmethod
+    def close_pool(cls):
+        """Release idle database connections during application shutdown."""
+        with cls._instance_lock:
+            pool, cls._pool = cls._pool, None
+        if pool is not None:
+            pool.close()

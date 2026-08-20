@@ -7,6 +7,7 @@
 package common
 
 import (
+	"encoding/json"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -59,6 +60,27 @@ func Test_Convert_GiBToBytes(t *testing.T) {
 		Convey("GiBToBytes3", func() {
 			actual := GiBToBytes(0)
 			So(actual, ShouldEqual, 0)
+		})
+	})
+}
+
+func Test_Convert_AnyToFloat64(t *testing.T) {
+	Convey("Test AnyToFloat64", t, func() {
+		Convey("json.Number", func() {
+			actual, err := AnyToFloat64(json.Number("0.95"))
+			So(err, ShouldBeNil)
+			So(actual, ShouldAlmostEqual, 0.95)
+		})
+
+		Convey("legacy float64", func() {
+			actual, err := AnyToFloat64(float64(0.95))
+			So(err, ShouldBeNil)
+			So(actual, ShouldAlmostEqual, 0.95)
+		})
+
+		Convey("invalid value", func() {
+			_, err := AnyToFloat64([]int{1})
+			So(err, ShouldNotBeNil)
 		})
 	})
 }

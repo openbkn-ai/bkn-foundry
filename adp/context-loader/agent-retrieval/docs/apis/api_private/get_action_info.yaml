@@ -186,6 +186,11 @@ components:
                 type: string
               parameters:
                 type: object
+              output_schema:
+                type: object
+                description: >-
+                  执行结果的 JSON Schema（result 字段的形状，即工具 2xx 响应体本身）。
+                  工具未声明输出契约、或行动源为 MCP 时该字段不出现。
               api_url:
                 type: string
               fixed_params:

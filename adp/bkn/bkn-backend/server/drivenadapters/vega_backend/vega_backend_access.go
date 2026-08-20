@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"sync"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -24,8 +25,9 @@ import (
 )
 
 var (
-	vbAccessOnce sync.Once
-	vbAccess     interfaces.VegaBackendAccess
+	vbAccessOnce     sync.Once
+	vbAccess         interfaces.VegaBackendAccess
+	vegaResponseJSON = sonic.Config{UseNumber: true}.Froze()
 )
 
 type vegaBackendAccess struct {
@@ -400,7 +402,8 @@ func (vba *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID 
 	}
 
 	var response interfaces.DatasetQueryResponse
-	if err := json.Unmarshal([]byte(respData), &response); err != nil {
+	// Dynamic resource fields must keep their original JSON number representation.
+	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
 		common.LogSafeError(ctx, "Failed to unmarshal QueryDatasetData response", err)
 		oteltrace.AddHttpAttrs4Error(span, respCode, "InternalError", "Unmarshal QueryDatasetData response failed")
 		return nil, fmt.Errorf("failed to unmarshal QueryDatasetData response: %v", err)

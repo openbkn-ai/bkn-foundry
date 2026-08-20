@@ -37,7 +37,7 @@
       },
       "_dynamic_tools": {
         "type": "array",
-        "description": "动态工具定义列表",
+        "description": "动态工具定义列表。每项含 parameters（入参 schema，动态参数在 parameters.properties.dynamic_params 下）；工具声明了输出契约时还含 output_schema，即执行成功后 result 字段的形状，用它把执行结果复述成自然语言。",
         "items": {
           "type": "object",
           "additionalProperties": true

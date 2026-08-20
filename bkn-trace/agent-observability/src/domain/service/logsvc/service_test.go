@@ -61,6 +61,7 @@ func (source partialCountSource) Search(context.Context, observabilityvo.LogQuer
 
 type capturingSource struct {
 	query observabilityvo.LogQuery
+	records []observabilityvo.LogRecord
 }
 
 type blockingSource struct {
@@ -106,7 +107,7 @@ func (source *capturingSource) ID() string { return "capturing" }
 
 func (source *capturingSource) Search(_ context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
 	source.query = query
-	return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
+	return observabilityvo.SourcePage{Records: validTestRecords(source.records), Count: int64(len(source.records)), CountAccuracy: "exact"}, nil
 }
 
 type fakeDetailSource struct {
@@ -579,7 +580,10 @@ func TestNotIntegratedAuthorizedSourcesAreDisclosedWithoutFalseHealth(t *testing
 }
 
 func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
-	source := &capturingSource{}
+	source := &capturingSource{records: []observabilityvo.LogRecord{{
+		LogID: "administrator-log", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
+		TenantID: "tenant-a", ActorID: "audit-a", EffectiveSubjectID: "audit-a", ActorNameSnapshot: "Administrator", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+	}}}
 	service := New([]Source{source})
 	profile := activeProfile("builder-a", "network_builder")
 	profile.ManagedKnowledgeNetworkIDs = []string{"kn-a", "kn-b"}
@@ -947,6 +951,44 @@ func TestMatchesQueryFiltersOperationAuditBusinessFields(t *testing.T) {
 				t.Fatalf("%s mismatch was accepted", name)
 			}
 		})
+	}
+}
+
+func TestMatchesQueryMatchesActorNameSnapshot(t *testing.T) {
+	record := observabilityvo.LogRecord{
+		ActorID: "266c6a42-6131-4d62-8f39-853e7093701c", ActorNameSnapshot: "Administrator",
+	}
+	if !matchesQuery(record, observabilityvo.LogQuery{ActorQuery: "administrator"}) {
+		t.Fatal("actor display name must be accepted case-insensitively")
+	}
+	if !matchesQuery(record, observabilityvo.LogQuery{ActorID: "266c6a42-6131-4d62-8f39-853e7093701c"}) {
+		t.Fatal("actor technical ID must remain accepted")
+	}
+	if matchesQuery(record, observabilityvo.LogQuery{ActorQuery: "operator"}) {
+		t.Fatal("unrelated actor display name must not match")
+	}
+}
+
+func TestListDoesNotPushActorNameQueryToSources(t *testing.T) {
+	source := &capturingSource{records: []observabilityvo.LogRecord{{
+		LogID: "administrator-log", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
+		TenantID: "tenant-a", ActorID: "audit-a", EffectiveSubjectID: "audit-a", ActorNameSnapshot: "Administrator", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+	}}}
+	service := New([]Source{source})
+	result, err := service.List(context.Background(), activeProfile("audit-a", "audit"), observabilityvo.LogQuery{
+		ActorQuery: "Administrator", Categories: []string{observabilityvo.CategoryAuditAdmin},
+	})
+	if err != nil {
+		t.Fatalf("list audit logs: %v", err)
+	}
+	if source.query.ActorQuery != "" {
+		t.Fatalf("display-name filter must be applied after source retrieval: %+v", source.query)
+	}
+	if source.query.TimeFrom == nil || source.query.TimeTo == nil || source.query.ObservedBefore == nil {
+		t.Fatalf("source query must retain the frozen time window and watermark: %+v", source.query)
+	}
+	if len(result.Records) != 1 || result.Count != 1 || result.CountExact {
+		t.Fatalf("actor-name filtering must return a visible lower-bound count: %+v", result)
 	}
 }
 

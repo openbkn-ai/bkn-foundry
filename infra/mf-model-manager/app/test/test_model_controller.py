@@ -371,9 +371,11 @@ class TestEditModel(TestCase):
 class TestSourceModel(TestCase):
     def setUp(self) -> None:
         self.get_data_from_model_list_by_name_fuzzy = llm_model_dao.get_data_from_model_list_by_name_fuzzy
+        self.count_data_from_model_list_by_name_fuzzy = llm_model_dao.count_data_from_model_list_by_name_fuzzy
 
     def tearDown(self) -> None:
         llm_model_dao.get_data_from_model_list_by_name_fuzzy = self.get_data_from_model_list_by_name_fuzzy
+        llm_model_dao.count_data_from_model_list_by_name_fuzzy = self.count_data_from_model_list_by_name_fuzzy
         StandLogger.stand_log_shutdown()
 
     def _row(self):
@@ -400,14 +402,17 @@ class TestSourceModel(TestCase):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         llm_model_dao.get_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=[self._row()])
+        llm_model_dao.count_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=1)
         res = loop.run_until_complete(
             llm_controller.source_model("111", "zh", "1", "10", "", "desc", "all", "update_time", "AIshuReader", None, 0))
         self.assertEqual(json.loads(res.body)["data"][0]["model_id"], "111")
+        llm_model_dao.count_data_from_model_list_by_name_fuzzy.assert_called_once_with("", "AIshuReader", None)
 
     def test_source_model_success2(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         llm_model_dao.get_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=[self._row()])
+        llm_model_dao.count_data_from_model_list_by_name_fuzzy = mock.Mock(return_value=1)
         res = loop.run_until_complete(
             llm_controller.source_model("111", "zh", "1", "10", "", "desc", "aishu", "update_time", "AIshuReader", None, 0))
         self.assertEqual(json.loads(res.body)["data"][0]["model_id"], "111")

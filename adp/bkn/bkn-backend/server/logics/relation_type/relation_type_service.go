@@ -971,8 +971,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			if len(rtIDMap) == 0 || rtIDMap[relationType.RTID] {
 				// Extract _score when present.
 				if scoreVal, ok := entry["_score"]; ok {
-					if scoreFloat, ok := scoreVal.(float64); ok {
-						score := float64(scoreFloat)
+					if score, err := common.AnyToFloat64(scoreVal); err == nil {
 						relationType.Score = &score
 					}
 				}

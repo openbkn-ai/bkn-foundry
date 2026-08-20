@@ -14,13 +14,15 @@ import (
 // ConnectorFactory defines connector registration lifecycle operations used by
 // connector type management.
 type ConnectorFactory interface {
-	ResolveConnectorTypeRegistration(ctx context.Context, ct *ConnectorType) (*ConnectorType, error)
+	ValidateConnectorTypeRegistration(ct *ConnectorType) error
 	RegisterConnector(ctx context.Context, tp string, ct *ConnectorType) error
 	DeleteConnector(tp string)
 	SetConnectorEnabled(tp string, enabled bool)
+
 	CreateConnectorInstance(ctx context.Context, tp string, cfg ConnectorConfig) (Connector, error)
 
 	IsConnectorAvailable(tp string) bool
 
+	GetConnectorFieldConfig(ctx context.Context, ct *ConnectorType) (map[string]ConnectorFieldConfig, error)
 	GetSensitiveFields(tp string) []string
 }

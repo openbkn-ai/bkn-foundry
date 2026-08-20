@@ -72,7 +72,7 @@
     "properties": {
       "nodes": {
         "type": "array",
-        "description": "命中的实例，按对象类分组返回；组内按相关性降序。跨对象类之间没有全局排序，不要按出现次序判断哪个对象类更相关。",
+        "description": "命中的实例，**按相关性全局降序**排列，跨对象类统一排序，不再按对象类分组。消费时请按返回顺序（或 rank 字段）；各个分数字段是解释这个顺序的证据，量纲彼此不同，不要拿来自行重排。",
         "items": {
           "type": "object",
           "properties": {
@@ -88,13 +88,29 @@
               "additionalProperties": true,
               "description": "实例属性。字段含义见 search_schema / get_object_types 返回的对象类定义。"
             },
+            "rank": {
+              "type": "integer",
+              "description": "本条在返回列表中的位次，从 1 开始。**排序请只按 rank**：哪一个分数决定了这个位次取决于请求（融合分，或者精排开启时的模型分），按任何单一分数字段自行重排都可能得到与服务端不同的顺序。"
+            },
             "score": {
               "type": "number",
-              "description": "该实例在其所属对象类内部的相关性分。不同对象类之间不可比。"
+              "description": "相关性分，也是默认排序依据。索引召回路径上它是 RRF 融合的名次分：「某一路排第一」=1.0，「两路都第一」=2.0，表达两条召回通道的一致程度，**不是绝对相关度**——某通道的第一名恒得 1.0，哪怕整个对象类都与 query 无关。所有通道都拿不到索引分时改走本地兜底档位（0/0.3/0.5/0.85），此时同时带 heuristic_score 作标记，两种刻度不可互相比较。 运维逃生档 enable_rrf_fusion=false 下不做融合，score 是 OpenSearch 原始索引分（无上界）：该对象类没有向量字段时它就是纯 BM25，会同时写进 bm25_score；两类算子进了同一条查询时它是两种量纲相加，归不到任何一路，此时 bm25_score 与 knn_score 都不出现——这正是该档只作逃生用的原因之一。"
             },
-            "rerank_score": {
+            "bm25_score": {
               "type": "number",
-              "description": "精排小模型给出的相关性分。仅在部署开启实例精排、且该条被模型打过分时出现。精排只改返回顺序，不改 score——开启后请按返回顺序消费，不要自行按 score 重排。"
+              "description": "全文通道的原始 OpenSearch `_score`（BM25）。**无上界**，且随语料规模、文档长度、query 长度漂移，只能用于解读单次结果，不能跨 query、跨知识网络比较，也不能当相关性阈值。"
+            },
+            "knn_score": {
+              "type": "number",
+              "description": "向量通道的相似度，同一 embedding 模型下取值 0~1。它是唯一一个跨 query 大致可比的原始分。"
+            },
+            "reranker_score": {
+              "type": "number",
+              "description": "cross-encoder 精排模型给出的相关度，0~1。仅当精排真的跑过并给这一条打了分时才出现——精排窗口（默认前 50 条）之外的行保持融合序、不带此字段。**这个字段是否存在，也是判断「精排生效」还是「模型不可用静默退回融合序」的唯一依据。**"
+            },
+            "heuristic_score": {
+              "type": "number",
+              "description": "本地兜底打分（0/0.3/0.5/0.85 档），仅在所有通道都没拿到索引 `_score`、名次无意义时出现。出现时 score 携带的就是这个档位分，与融合分不共享刻度，不要互相比较。"
             }
           },
           "additionalProperties": true

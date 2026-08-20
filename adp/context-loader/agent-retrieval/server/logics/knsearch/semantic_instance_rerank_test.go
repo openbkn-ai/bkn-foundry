@@ -62,8 +62,8 @@ func TestRerankInstances_OnReordersByModelScore(t *testing.T) {
 	if got[0].InstanceName != "欠款单" {
 		t.Fatalf("expected the model to promote 欠款单, got %s", got[0].InstanceName)
 	}
-	if math.Abs(got[0].RerankScore-0.94) > 1e-9 {
-		t.Errorf("rerank_score must be carried out, got %.4f", got[0].RerankScore)
+	if math.Abs(got[0].RerankerScore-0.94) > 1e-9 {
+		t.Errorf("rerank_score must be carried out, got %.4f", got[0].RerankerScore)
 	}
 	// Fine sorting only changes the order and does not cover score: there can only be one ruler in one response. Fusion points are comparable across object types,
 	// After covering, the unscored candidates and the tails outside top_n will be mixed into the same list with another dimension.
@@ -120,8 +120,8 @@ func TestRerankInstances_ShadowKeepsOrderButRecordsScores(t *testing.T) {
 	if math.Abs(got[0].Score-1.0) > 1e-9 {
 		t.Errorf("shadow must not overwrite the fusion score, got %.4f", got[0].Score)
 	}
-	if math.Abs(got[1].RerankScore-0.94) > 1e-9 {
-		t.Errorf("expected the model score to be recorded, got %.4f", got[1].RerankScore)
+	if math.Abs(got[1].RerankerScore-0.94) > 1e-9 {
+		t.Errorf("expected the model score to be recorded, got %.4f", got[1].RerankerScore)
 	}
 
 	var line string

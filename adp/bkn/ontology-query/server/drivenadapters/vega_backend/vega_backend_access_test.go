@@ -2,11 +2,13 @@ package vega_backend
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/bytedance/sonic"
 	rmock "github.com/openbkn-ai/bkn-foundry/comm-go/rest/mock"
 	"github.com/smartystreets/goconvey/convey"
 	"go.opentelemetry.io/otel"
@@ -131,5 +133,69 @@ func TestNormalizeResourceDataQueryParams(t *testing.T) {
 			},
 		})
 		convey.So(got.Paging.Limit, convey.ShouldEqual, 50)
+	})
+}
+
+func TestVegaBackendAccessQueryResourceDataPreservesLargeIntegers(t *testing.T) {
+	convey.Convey("QueryResourceData preserves dynamic JSON number literals", t, func() {
+		mockCtrl := gomock.NewController(t)
+		mockHTTPClient := rmock.NewMockHTTPClient(mockCtrl)
+		mockHTTPClient.EXPECT().
+			PostNoUnmarshal(gomock.Any(), "http://vega/resources/resource-1/data", gomock.Any(), gomock.Any()).
+			Return(http.StatusOK, []byte(`{
+				"entries":[{
+					"int64_max":9223372036854775807,
+					"int64_over":9223372036854775808,
+					"uint64_max":18446744073709551615,
+					"int64_min":-9223372036854775808,
+					"safe":42,
+					"ratio":1.5,
+					"text":"00123",
+					"flag":true,
+					"nothing":null,
+					"nested":{"uint64_max":18446744073709551615}
+				}],
+				"total_count":1,
+				"search_after":[18446744073709551615]
+			}`), nil)
+
+		access := &vegaBackendAccess{
+			httpClient: mockHTTPClient,
+			baseURL:    "http://vega",
+		}
+		response, err := access.QueryResourceData(context.Background(), "resource-1", &interfaces.ResourceDataQueryParams{})
+		convey.So(err, convey.ShouldBeNil)
+		convey.So(response.Entries, convey.ShouldHaveLength, 1)
+		convey.So(response.TotalCount, convey.ShouldEqual, int64(1))
+
+		expected := map[string]string{
+			"int64_max":  "9223372036854775807",
+			"int64_over": "9223372036854775808",
+			"uint64_max": "18446744073709551615",
+			"int64_min":  "-9223372036854775808",
+			"safe":       "42",
+			"ratio":      "1.5",
+		}
+		for field, literal := range expected {
+			number, ok := response.Entries[0][field].(json.Number)
+			convey.So(ok, convey.ShouldBeTrue)
+			convey.So(number.String(), convey.ShouldEqual, literal)
+		}
+		convey.So(response.Entries[0]["text"], convey.ShouldEqual, "00123")
+		convey.So(response.Entries[0]["flag"], convey.ShouldEqual, true)
+		convey.So(response.Entries[0]["nothing"], convey.ShouldBeNil)
+		nested, ok := response.Entries[0]["nested"].(map[string]any)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(nested["uint64_max"], convey.ShouldResemble, json.Number("18446744073709551615"))
+		searchAfter, ok := response.SearchAfter[0].(json.Number)
+		convey.So(ok, convey.ShouldBeTrue)
+		convey.So(searchAfter.String(), convey.ShouldEqual, "18446744073709551615")
+
+		wire, err := sonic.Marshal(response)
+		convey.So(err, convey.ShouldBeNil)
+		for _, literal := range expected {
+			convey.So(strings.Contains(string(wire), literal), convey.ShouldBeTrue)
+		}
+		convey.So(strings.Contains(string(wire), "e+"), convey.ShouldBeFalse)
 	})
 }

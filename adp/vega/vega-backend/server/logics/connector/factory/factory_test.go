@@ -92,7 +92,6 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 		local := vmock.NewMockConnector(ctrl)
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
-		local.EXPECT().GetFieldConfig().Return(testConnectorFieldConfig())
 		local.EXPECT().SetEnabled(true)
 		cf := &connectorFactory{
 			connectors: map[string]interfaces.Connector{
@@ -101,23 +100,22 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 		}
 
 		err := cf.RegisterConnector(ctx, "localdb", &interfaces.ConnectorType{
-			Type:        "localdb",
-			Name:        "localdb",
-			Mode:        interfaces.ConnectorModeLocal,
-			Category:    interfaces.ConnectorCategoryTable,
-			FieldConfig: testConnectorFieldConfig(),
-			Enabled:     true,
+			Type:     "localdb",
+			Name:     "localdb",
+			Mode:     interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+			Enabled:  true,
 		})
 
 		require.NoError(t, err)
 	})
 
-	t.Run("returns error instead of exiting for mismatched local field config", func(t *testing.T) {
+	t.Run("ignores stale local field config", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		local := vmock.NewMockConnector(ctrl)
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
-		local.EXPECT().GetFieldConfig().Return(testConnectorFieldConfig())
+		local.EXPECT().SetEnabled(false)
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
 
 		err := cf.RegisterConnector(ctx, "localdb", &interfaces.ConnectorType{
@@ -128,8 +126,7 @@ func TestConnectorFactoryRegisterConnector(t *testing.T) {
 			FieldConfig: map[string]interfaces.ConnectorFieldConfig{"stale": {Type: "string"}},
 		})
 
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "field config mismatch")
+		require.NoError(t, err)
 	})
 
 	t.Run("rejects mode change for existing connector", func(t *testing.T) {
@@ -235,34 +232,26 @@ func TestConnectorFactoryValidateConnectorRegistration(t *testing.T) {
 	})
 }
 
-func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
-	ctx := context.Background()
+func TestConnectorFactoryValidateConnectorTypeRegistration(t *testing.T) {
 
-	t.Run("uses code definition for local connector", func(t *testing.T) {
+	t.Run("validates local registration", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		local := vmock.NewMockConnector(ctrl)
 		local.EXPECT().GetMode().Return(interfaces.ConnectorModeLocal)
 		local.EXPECT().GetCategory().Return(interfaces.ConnectorCategoryTable)
-		local.EXPECT().GetFieldConfig().Return(testConnectorFieldConfig())
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{"localdb": local}}
 		request := &interfaces.ConnectorType{
-			Type:        "localdb",
-			Name:        "Local DB",
-			Mode:        interfaces.ConnectorModeLocal,
-			Category:    interfaces.ConnectorCategoryTable,
-			FieldConfig: map[string]interfaces.ConnectorFieldConfig{"stale": {Type: "string"}},
-			Enabled:     true,
+			Type:     "localdb",
+			Name:     "Local DB",
+			Mode:     interfaces.ConnectorModeLocal,
+			Category: interfaces.ConnectorCategoryTable,
+			Enabled:  true,
 		}
 
-		got, err := cf.ResolveConnectorTypeRegistration(ctx, request)
+		err := cf.ValidateConnectorTypeRegistration(request)
 
 		require.NoError(t, err)
-		assert.NotSame(t, request, got)
-		assert.Equal(t, interfaces.ConnectorModeLocal, got.Mode)
-		assert.Equal(t, interfaces.ConnectorCategoryTable, got.Category)
-		assert.Equal(t, testConnectorFieldConfig(), got.FieldConfig)
-		assert.Contains(t, request.FieldConfig, "stale")
 	})
 
 	t.Run("supports mysql registration through mariadb implementation", func(t *testing.T) {
@@ -271,28 +260,24 @@ func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
 		request := &interfaces.ConnectorType{
 			Type: interfaces.ConnectorTypeMySQL, Name: "MySQL", Mode: interfaces.ConnectorModeLocal,
 			Category: interfaces.ConnectorCategoryTable, Enabled: true,
-			FieldConfig: map[string]interfaces.ConnectorFieldConfig{"stale": {Type: "string"}},
 		}
 
-		resolved, err := cf.ResolveConnectorTypeRegistration(ctx, request)
+		err := cf.ValidateConnectorTypeRegistration(request)
 
 		require.NoError(t, err)
-		assert.Equal(t, "MySQL", resolved.Name)
-		assert.Equal(t, cf.connectors[interfaces.ConnectorTypeMySQL].GetFieldConfig(), resolved.FieldConfig)
-		require.NoError(t, cf.RegisterConnector(ctx, resolved.Type, resolved))
+		require.NoError(t, cf.RegisterConnector(context.Background(), request.Type, request))
 	})
 
 	t.Run("rejects local connector missing from binary", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
 
-		got, err := cf.ResolveConnectorTypeRegistration(ctx, &interfaces.ConnectorType{
+		err := cf.ValidateConnectorTypeRegistration(&interfaces.ConnectorType{
 			Type: "future-local",
 			Name: "Future Local",
 			Mode: interfaces.ConnectorModeLocal,
 		})
 
 		require.Error(t, err)
-		assert.Nil(t, got)
 		assert.ErrorIs(t, err, ErrConnectorUnavailable)
 	})
 
@@ -313,30 +298,28 @@ func TestConnectorFactoryResolveConnectorTypeRegistration(t *testing.T) {
 			Enabled:     true,
 		}
 
-		got, err := cf.ResolveConnectorTypeRegistration(ctx, request)
+		err := cf.ValidateConnectorTypeRegistration(request)
 
 		require.Error(t, err)
-		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "mode mismatch")
 	})
 
-	t.Run("keeps non-local user definition", func(t *testing.T) {
+	t.Run("reports unimplemented remote field definition", func(t *testing.T) {
 		cf := &connectorFactory{connectors: map[string]interfaces.Connector{}}
 		request := &interfaces.ConnectorType{
-			Type:        "remote-api",
-			Name:        "Remote API",
-			Mode:        interfaces.ConnectorModeRemote,
-			Category:    interfaces.ConnectorCategoryAPI,
-			Endpoint:    "https://connector.example",
-			FieldConfig: testConnectorFieldConfig(),
-			Enabled:     true,
+			Type:     "remote-api",
+			Name:     "Remote API",
+			Mode:     interfaces.ConnectorModeRemote,
+			Category: interfaces.ConnectorCategoryAPI,
+			Endpoint: "https://connector.example",
+			Enabled:  true,
 		}
 
-		got, err := cf.ResolveConnectorTypeRegistration(ctx, request)
+		got, err := cf.GetConnectorFieldConfig(context.Background(), request)
 
-		require.NoError(t, err)
-		assert.NotSame(t, request, got)
-		assert.Equal(t, request, got)
+		require.Error(t, err)
+		assert.Nil(t, got)
+		assert.Contains(t, err.Error(), "not implemented")
 	})
 }
 

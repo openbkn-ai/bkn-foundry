@@ -14,7 +14,6 @@ import (
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
-	"github.com/bytedance/sonic"
 	libCommon "github.com/openbkn-ai/bkn-foundry/comm-go/common"
 	libdb "github.com/openbkn-ai/bkn-foundry/comm-go/db"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -54,7 +53,6 @@ func connectorTypeColumns() []string {
 		"f_mode",
 		"f_category",
 		"f_endpoint",
-		"f_field_config",
 		"f_enabled",
 	}
 }
@@ -62,7 +60,6 @@ func connectorTypeColumns() []string {
 func scanConnectorType(scanner connectorTypeScanner) (*interfaces.ConnectorType, error) {
 	ct := &interfaces.ConnectorType{}
 	var tagsStr string
-	var fieldConfigStr string
 
 	err := scanner.Scan(
 		&ct.Type,
@@ -72,7 +69,6 @@ func scanConnectorType(scanner connectorTypeScanner) (*interfaces.ConnectorType,
 		&ct.Mode,
 		&ct.Category,
 		&ct.Endpoint,
-		&fieldConfigStr,
 		&ct.Enabled,
 	)
 	if err != nil {
@@ -80,12 +76,6 @@ func scanConnectorType(scanner connectorTypeScanner) (*interfaces.ConnectorType,
 	}
 
 	ct.Tags = libCommon.TagString2TagSlice(tagsStr)
-
-	if fieldConfigStr != "" {
-		if err := sonic.UnmarshalString(fieldConfigStr, &ct.FieldConfig); err != nil {
-			return nil, err
-		}
-	}
 
 	return ct, nil
 }
@@ -113,13 +103,6 @@ func (cta *connectorTypeAccess) Create(ctx context.Context, ct *interfaces.Conne
 	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(ct.Tags)
 
-	// Serialize FieldConfig to JSON
-	fieldConfigStr, err := sonic.MarshalString(ct.FieldConfig)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to marshal field config", err)
-		return err
-	}
-
 	sqlStr, vals, err := sq.Insert(CONNECTOR_TYPE_TABLE_NAME).
 		Columns(connectorTypeColumns()...).
 		Values(
@@ -130,7 +113,6 @@ func (cta *connectorTypeAccess) Create(ctx context.Context, ct *interfaces.Conne
 			string(ct.Mode),
 			string(ct.Category),
 			ct.Endpoint,
-			fieldConfigStr,
 			ct.Enabled,
 		).ToSql()
 	if err != nil {
@@ -364,13 +346,6 @@ func (cta *connectorTypeAccess) Update(ctx context.Context, ct *interfaces.Conne
 	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(ct.Tags)
 
-	// Serialize FieldConfig to JSON
-	fieldConfigStr, err := sonic.MarshalString(ct.FieldConfig)
-	if err != nil {
-		span.SetStatus(codes.Error, "Marshal field config failed")
-		return err
-	}
-
 	sqlStr, vals, err := sq.Update(CONNECTOR_TYPE_TABLE_NAME).
 		Set("f_name", ct.Name).
 		Set("f_tags", tagsStr).
@@ -378,7 +353,6 @@ func (cta *connectorTypeAccess) Update(ctx context.Context, ct *interfaces.Conne
 		Set("f_mode", string(ct.Mode)).
 		Set("f_category", string(ct.Category)).
 		Set("f_endpoint", ct.Endpoint).
-		Set("f_field_config", fieldConfigStr).
 		Set("f_enabled", ct.Enabled).
 		Where(sq.Eq{"f_type": ct.Type}).
 		ToSql()

@@ -34,7 +34,7 @@ func TestDefaultAgentLifecycleSurfaceIsTwoTools(t *testing.T) {
 	}
 }
 
-func TestStartInteractionSchemaExposesQuestionConversationAndOptionalAgentName(t *testing.T) {
+func TestStartInteractionSchemaRequiresQuestionAndAgentName(t *testing.T) {
 	input, _ := loadToolSchemas("bkn_start_interaction")
 	var schema struct {
 		Properties map[string]json.RawMessage `json:"properties"`
@@ -43,7 +43,7 @@ func TestStartInteractionSchemaExposesQuestionConversationAndOptionalAgentName(t
 	if err := json.Unmarshal(input, &schema); err != nil {
 		t.Fatal(err)
 	}
-	if !sameStringSet(schema.Required, []string{"question"}) {
+	if !sameStringSet(schema.Required, []string{"question", "agent_name"}) {
 		t.Fatalf("start required fields = %v", schema.Required)
 	}
 	want := []string{"agent_name", "conversation_id", "question"}

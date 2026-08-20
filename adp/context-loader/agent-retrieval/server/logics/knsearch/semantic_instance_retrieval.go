@@ -160,6 +160,13 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	s.logger.WithContext(ctx).Infof("[SemanticInstanceRetrieval] Retrieved %d instances from %d object types, max_score=%.4f",
 		len(allNodes), len(objectTypes), maxScore)
 
+	// Order across object types, not just inside each one. Until now the rows were returned in the
+	// order the object types happened to be recalled in, so a row scoring 2.0 could sit below a 1.94
+	// from an object type that was simply processed earlier -- and the caller had no way to tell that
+	// the sequence carried no meaning. The RRF anchor (first place in one channel = 1.0, in both = 2.0)
+	// is what makes rows from different object types comparable in the first place.
+	sortNodesByScore(allNodes)
+
 	// Global score filtering.
 	if boolValue(instanceConfig.EnableGlobalFinalScoreRatioFilter) && maxScore > 0 && len(allNodes) > 0 {
 		threshold := maxScore * instanceConfig.GlobalFinalScoreRatio
@@ -190,6 +197,12 @@ func (s *localSearchImpl) semanticInstanceRetrieval(
 	// Property filtering.
 	if boolValue(propertyConfig.EnablePropertyFilter) {
 		allNodes = s.filterNodeProperties(allNodes, propertyConfig)
+	}
+
+	// Stamp the final order last, after every step that can reorder or drop rows. rank is what the
+	// caller sorts by; which score produced it (fusion, heuristic, or the reranker) is evidence.
+	for i, node := range allNodes {
+		node.Rank = i + 1
 	}
 
 	result := &interfaces.KnSearchSemanticInstanceResult{
@@ -248,7 +261,7 @@ func (s *localSearchImpl) applyRelevanceGate(
 
 	kept := make([]*interfaces.KnSearchNode, 0, len(nodes))
 	for _, node := range nodes {
-		if node.RerankScore >= threshold {
+		if node.RerankerScore >= threshold {
 			kept = append(kept, node)
 		}
 	}
@@ -408,6 +421,14 @@ func (s *localSearchImpl) fetchChannel(
 		}
 		node := s.convertToKnSearchNode(objType, dataMap)
 		node.RecallScore = node.Score
+		// Record which channel produced this number while that is still known: after fusion the row
+		// carries scores from both channels and one raw float can no longer say where it came from.
+		switch ch.name {
+		case channelMatch:
+			node.BM25Score = node.Score
+		case channelKnn:
+			node.KnnScore = node.Score
+		}
 		out.nodes = append(out.nodes, node)
 	}
 
@@ -484,6 +505,12 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 		if dataMap, ok := data.(map[string]any); ok {
 			node := s.convertToKnSearchNode(objType, dataMap)
 			node.RecallScore = node.Score
+			// This path issues one OR query carrying both operators, so a scored row's number is a
+			// BM25 score and a similarity added together by OpenSearch — attributable to neither
+			// channel. Only when no vector condition went out can the score be named.
+			if !allowKnn {
+				node.BM25Score = node.Score
+			}
 			nodes = append(nodes, node)
 		}
 	}
@@ -773,6 +800,15 @@ func fuseByRRF(outcomes []channelOutcome, k int, weights map[string]float64) []*
 				// Only the larger original recall score is retained for observation.
 				e.node.RecallScore = node.RecallScore
 			}
+			// Both channels' raw scores survive the merge, each under its own name. They live on
+			// different scales, so keeping the larger one (what RecallScore does) drops the vector
+			// evidence every time BM25 also hit.
+			if node.BM25Score > e.node.BM25Score {
+				e.node.BM25Score = node.BM25Score
+			}
+			if node.KnnScore > e.node.KnnScore {
+				e.node.KnnScore = node.KnnScore
+			}
 			e.score += weightOf(weights, o.name) / float64(k+rank+1)
 		}
 	}
@@ -874,6 +910,18 @@ func sortNodesByScore(nodes []*interfaces.KnSearchNode) {
 		if nodes[i].Score != nodes[j].Score {
 			return nodes[i].Score > nodes[j].Score
 		}
+		// Ties are the common case, not the exception: first place in one channel is exactly 1.0 for
+		// every object type, so two rows from different object types tie all the time.
+		//
+		// The raw recall score may only break a tie between rows of the same object type, where it
+		// came from the same index, the same query and the same operator. Across object types it is a
+		// BM25 magnitude on one side and a cosine similarity on the other, and BM25 also drifts with
+		// corpus and document length — ordering by it would dress an artefact up as relevance.
+		if nodes[i].ObjectTypeID != nodes[j].ObjectTypeID {
+			// Neither row outranks the other. The stable sort then keeps them in the order instance
+			// recall produced, which follows concept recall's own ranking of the object types.
+			return false
+		}
 		if nodes[i].RecallScore != nodes[j].RecallScore {
 			return nodes[i].RecallScore > nodes[j].RecallScore
 		}
@@ -947,10 +995,14 @@ func (s *localSearchImpl) scoreNodes(query string, nodes []*interfaces.KnSearchN
 
 		if strings.TrimSpace(query) == "" {
 			node.Score = 0
+			node.HeuristicScore = 0
 			continue
 		}
 
 		node.Score = fallbackNodeScore(query, node, searchable, config)
+		// Also stamped on its own field: Score carries the fusion scale on the index-backed path and the
+		// tier scale here, and without this marker a caller could not tell which of the two it is reading.
+		node.HeuristicScore = node.Score
 	}
 }
 

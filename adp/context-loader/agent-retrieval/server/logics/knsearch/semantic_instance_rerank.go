@@ -115,7 +115,7 @@ func (s *localSearchImpl) rerankInstances(
 		if result.Index < 0 || result.Index >= len(head) {
 			continue
 		}
-		head[result.Index].RerankScore = result.RelevanceScore
+		head[result.Index].RerankerScore = result.RelevanceScore
 		applied++
 	}
 	if applied == 0 {
@@ -126,11 +126,11 @@ func (s *localSearchImpl) rerankInstances(
 	outcome := rerankOutcome{scored: true}
 	minScore, maxScore := math.Inf(1), math.Inf(-1)
 	for _, node := range head {
-		if node.RerankScore < minScore {
-			minScore = node.RerankScore
+		if node.RerankerScore < minScore {
+			minScore = node.RerankerScore
 		}
-		if node.RerankScore > maxScore {
-			maxScore = node.RerankScore
+		if node.RerankerScore > maxScore {
+			maxScore = node.RerankerScore
 		}
 	}
 	outcome.top = maxScore
@@ -139,8 +139,8 @@ func (s *localSearchImpl) rerankInstances(
 	fusionOrder := append([]*interfaces.KnSearchNode(nil), head...)
 	reranked := append([]*interfaces.KnSearchNode(nil), head...)
 	sort.SliceStable(reranked, func(i, j int) bool {
-		if reranked[i].RerankScore != reranked[j].RerankScore {
-			return reranked[i].RerankScore > reranked[j].RerankScore
+		if reranked[i].RerankerScore != reranked[j].RerankerScore {
+			return reranked[i].RerankerScore > reranked[j].RerankerScore
 		}
 		return reranked[i].Score > reranked[j].Score
 	})

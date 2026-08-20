@@ -1,8 +1,37 @@
 import json
+import logging
 import os
+import time
 
 import aiohttp
 from app.core.config import base_config
+
+
+_DIRECTORY_TIMEOUT = aiohttp.ClientTimeout(total=3, sock_connect=1, sock_read=2)
+_DIRECTORY_CACHE_TTL_SECONDS = 60
+_directory_session = None
+_directory_name_cache = {}
+_logger = logging.getLogger(__name__)
+
+
+async def _get_directory_session():
+    global _directory_session
+    if _directory_session is None or _directory_session.closed:
+        _directory_session = aiohttp.ClientSession(timeout=_DIRECTORY_TIMEOUT)
+    return _directory_session
+
+
+async def close_directory_session():
+    """Close the reusable bkn-safe directory client at application shutdown."""
+    global _directory_session
+    if _directory_session is not None and not _directory_session.closed:
+        await _directory_session.close()
+    _directory_session = None
+
+
+def clear_directory_name_cache():
+    """Test and lifecycle helper; names are never authorization decisions."""
+    _directory_name_cache.clear()
 from app.commons.errors import UserManagementError
 from app.commons.locale import internal_request_headers
 from app.core.config import base_config
@@ -12,19 +41,30 @@ async def _resolve_names_bkn_safe(bkn_safe_url, user_ids):
     """bkn-safe directory name resolution: app accounts are User rows, so a
     single /names call with the ids as both user_ids and app_ids resolves
     everything; merge the two name arrays into {id: name}."""
-    out = {}
-    async with aiohttp.ClientSession() as session:
-        async with session.post(
-                f"{bkn_safe_url}/api/safe/v1/directory/names",
-                json={"user_ids": user_ids, "app_ids": user_ids},
-                headers=internal_request_headers({"Content-Type": "application/json"})) as resp:
-            if resp.status != 200:
-                raise Exception("bkn-safe directory service error,please check")
-            data = json.loads(await resp.text())
-            for item in data.get("user_names", []):
-                out[item["id"]] = item["name"]
-            for item in data.get("app_names", []):
-                out[item["id"]] = item["name"]
+    now = time.monotonic()
+    out = {user_id: cached[1] for user_id in user_ids
+           if (cached := _directory_name_cache.get(user_id)) and cached[0] > now}
+    missing_ids = [user_id for user_id in user_ids if user_id not in out]
+    if not missing_ids:
+        return out
+
+    session = await _get_directory_session()
+    lookup_started_at = time.perf_counter()
+    async with session.post(
+            f"{bkn_safe_url}/api/safe/v1/directory/names",
+            json={"user_ids": missing_ids, "app_ids": missing_ids},
+            headers=internal_request_headers({"Content-Type": "application/json"})) as resp:
+        if resp.status != 200:
+            raise Exception("bkn-safe directory service error,please check")
+        data = json.loads(await resp.text())
+        for item in data.get("user_names", []):
+            out[item["id"]] = item["name"]
+        for item in data.get("app_names", []):
+            out[item["id"]] = item["name"]
+    _logger.info("bkn-safe directory name lookup completed in %.2f ms for %d uncached IDs",
+                 (time.perf_counter() - lookup_started_at) * 1000, len(missing_ids))
+    expires_at = now + _DIRECTORY_CACHE_TTL_SECONDS
+    _directory_name_cache.update({user_id: (expires_at, name) for user_id, name in out.items()})
     return out
 
 
