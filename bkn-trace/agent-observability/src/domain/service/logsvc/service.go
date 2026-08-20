@@ -855,7 +855,7 @@ func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQue
 		matchesOptional(record.TraceID, query.TraceID) && matchesOptional(record.SpanID, query.SpanID) &&
 		matchesOptional(record.RequestID, query.RequestID) && matchesOptional(record.ConversationID, query.ConversationID) &&
 		matchesOptional(record.InteractionID, query.InteractionID) && matchesOptional(record.OperationID, query.OperationID) &&
-		matchesOptional(record.BusinessDomain, query.BusinessDomain) && matchesOptional(record.ActorID, query.ActorID) &&
+		matchesOptional(record.BusinessDomain, query.BusinessDomain) && matchesActor(record, query.ActorID) &&
 		matchesOptional(record.BusinessModule, query.BusinessModule) && matchesOptional(record.Action, query.Action) &&
 		matchesOptional(record.TargetType, query.TargetType) && matchesOptional(record.TargetID, query.TargetID) &&
 		matchesSet(record.Outcome, query.Outcomes) &&
@@ -867,6 +867,12 @@ func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQue
 }
 
 func matchesOptional(actual, expected string) bool { return expected == "" || actual == expected }
+
+func matchesActor(record observabilityvo.LogRecord, expected string) bool {
+	return expected == "" || record.ActorID == expected || strings.Contains(
+		strings.ToLower(record.ActorNameSnapshot), strings.ToLower(expected),
+	)
+}
 
 func matchesSet(actual string, expected []string) bool {
 	return len(expected) == 0 || contains(expected, actual)

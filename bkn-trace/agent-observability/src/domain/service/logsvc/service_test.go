@@ -950,6 +950,21 @@ func TestMatchesQueryFiltersOperationAuditBusinessFields(t *testing.T) {
 	}
 }
 
+func TestMatchesQueryMatchesActorNameSnapshot(t *testing.T) {
+	record := observabilityvo.LogRecord{
+		ActorID: "266c6a42-6131-4d62-8f39-853e7093701c", ActorNameSnapshot: "Administrator",
+	}
+	if !matchesQuery(record, observabilityvo.LogQuery{ActorID: "administrator"}) {
+		t.Fatal("actor display name must be accepted case-insensitively")
+	}
+	if !matchesQuery(record, observabilityvo.LogQuery{ActorID: "266c6a42-6131-4d62-8f39-853e7093701c"}) {
+		t.Fatal("actor technical ID must remain accepted")
+	}
+	if matchesQuery(record, observabilityvo.LogQuery{ActorID: "operator"}) {
+		t.Fatal("unrelated actor display name must not match")
+	}
+}
+
 func TestOperationAuditOnlyRejectsIncompletePublicProjection(t *testing.T) {
 	record := validTestRecord(observabilityvo.LogRecord{
 		LogID: "audit-invalid", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
