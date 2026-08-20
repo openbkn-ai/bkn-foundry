@@ -364,6 +364,12 @@ func (s *localSearchImpl) retrieveInstancesSingleQuery(
 		if dataMap, ok := data.(map[string]any); ok {
 			node := s.convertToKnSearchNode(objType, dataMap)
 			node.RecallScore = node.Score
+			// This path issues one OR query carrying both operators, so a scored row's number is a
+			// BM25 score and a similarity added together by OpenSearch — attributable to neither
+			// channel. Only when no vector condition went out can the score be named.
+			if !allowKnn {
+				node.BM25Score = node.Score
+			}
 			nodes = append(nodes, node)
 		}
 	}
@@ -762,6 +768,18 @@ func sortNodesByScore(nodes []*interfaces.KnSearchNode) {
 	sort.SliceStable(nodes, func(i, j int) bool {
 		if nodes[i].Score != nodes[j].Score {
 			return nodes[i].Score > nodes[j].Score
+		}
+		// Ties are the common case, not the exception: first place in one channel is exactly 1.0 for
+		// every object type, so two rows from different object types tie all the time.
+		//
+		// The raw recall score may only break a tie between rows of the same object type, where it
+		// came from the same index, the same query and the same operator. Across object types it is a
+		// BM25 magnitude on one side and a cosine similarity on the other, and BM25 also drifts with
+		// corpus and document length — ordering by it would dress an artefact up as relevance.
+		if nodes[i].ObjectTypeID != nodes[j].ObjectTypeID {
+			// Neither row outranks the other. The stable sort then keeps them in the order instance
+			// recall produced, which follows concept recall's own ranking of the object types.
+			return false
 		}
 		if nodes[i].RecallScore != nodes[j].RecallScore {
 			return nodes[i].RecallScore > nodes[j].RecallScore

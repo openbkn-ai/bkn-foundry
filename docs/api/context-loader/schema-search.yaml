@@ -468,6 +468,9 @@ components:
             - `heuristic_score` 仅在所有通道都没拿到索引 `_score` 时出现；出现时 `score`
               携带的就是这个档位分，与融合分不共享刻度。
 
+            `enable_rrf_fusion=false`（运维逃生档）下不做融合，`score` 是原始索引分：**无上界**，
+            且两类算子同查询时是两种量纲相加，不带 `bm25_score` / `knn_score`。这一档只作逃生用。
+
             `recall_score` 已移除：两路都命中时它只留较大的那个，向量分会被吞掉；改读
             `bm25_score` 与 `knn_score`。
 
