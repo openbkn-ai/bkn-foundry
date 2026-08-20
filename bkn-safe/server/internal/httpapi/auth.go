@@ -148,6 +148,8 @@ type authPageText struct {
 	PasswordPlaceholder        string
 	LoginButton                string
 	ChangePasswordTitle        string
+	PasswordUpdatedTitle       string
+	PasswordUpdatedExpiredNote string
 	FirstLoginPrompt           string
 	CurrentPasswordPlaceholder string
 	NewPasswordPlaceholder     string
@@ -195,6 +197,8 @@ func localizedAuthPageData(c *gin.Context) authPageData {
 		PasswordPlaceholder:        message("PasswordPlaceholder"),
 		LoginButton:                message("LoginButton"),
 		ChangePasswordTitle:        message("ChangePasswordTitle"),
+		PasswordUpdatedTitle:       message("PasswordUpdatedTitle"),
+		PasswordUpdatedExpiredNote: message("PasswordUpdatedExpiredNote"),
 		FirstLoginPrompt:           message("FirstLoginPrompt"),
 		CurrentPasswordPlaceholder: message("CurrentPasswordPlaceholder"),
 		NewPasswordPlaceholder:     message("NewPasswordPlaceholder"),
@@ -248,6 +252,11 @@ var changePasswordPage = template.Must(template.New("changepw").Parse(`<!doctype
   <input name="confirm_password" type="password" placeholder="{{.Text.ConfirmPasswordPlaceholder}}" autocomplete="new-password">
   <button class="primary" type="submit">{{.Text.ChangeAndLoginButton}}</button>
 </form></div></body></html>`))
+
+var changePasswordExpiredPage = template.Must(template.New("changepwexpired").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
+<div class="card">` + localeSwitcher + brand("BKN Studio") + `<h3>{{.Text.PasswordUpdatedTitle}}</h3>
+<div class="note">{{.Text.PasswordUpdatedExpiredNote}}</div>
+</div></body></html>`))
 
 var consentPage = template.Must(template.New("consent").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
 <div class="card">` + localeSwitcher + brand("BKN Studio") + `<h3>{{.Text.AuthorizeClient}} {{.ClientName}}</h3>
@@ -438,7 +447,8 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.S
 		}
 		slog.Error("change-password: failed", "err", err)
 		if isExpiredLoginRequest(err) {
-			reRender("LoginRequestExpired")
+			clearChangePasswordAccount(c)
+			renderHTML(c, changePasswordExpiredPage, localizedAuthPageDataFor(c, "/change-password", nil))
 			return
 		}
 		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
