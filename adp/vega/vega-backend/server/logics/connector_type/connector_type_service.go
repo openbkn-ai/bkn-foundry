@@ -132,10 +132,14 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 	}
 	ct.Available = cts.cf.IsConnectorAvailable(ct.Type)
+	if !ct.Available {
+		span.SetStatus(codes.Ok, "")
+		return ct, nil
+	}
 	ct.FieldConfig, err = cts.cf.GetConnectorFieldConfig(ctx, ct)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get connector field config failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_ConnectorType_InternalError_GetFailed).
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable).
 			WithErrorDetails(err.Error())
 	}
 

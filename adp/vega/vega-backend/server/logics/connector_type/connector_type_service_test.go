@@ -9,12 +9,15 @@ package connector_type
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -164,6 +167,51 @@ func TestConnectorTypeServiceGetByType(t *testing.T) {
 		require.Error(t, err)
 		assert.Nil(t, got)
 		assert.Contains(t, err.Error(), "VegaBackend.ConnectorType.NotFound")
+	})
+
+	t.Run("returns unavailable connector metadata without runtime field config", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		connectorType := &interfaces.ConnectorType{Type: "sqlserver", Name: "SQL Server"}
+		mockConnectorAvailability(t, service, map[string]bool{"sqlserver": false})
+
+		cta.EXPECT().GetByType(gomock.Any(), "sqlserver").Return(connectorType, nil)
+		ps.EXPECT().
+			FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"sqlserver": {Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+			}, nil)
+
+		got, err := service.GetByType(context.Background(), "sqlserver")
+
+		require.NoError(t, err)
+		assert.Same(t, connectorType, got)
+		assert.False(t, got.Available)
+		assert.Nil(t, got.FieldConfig)
+	})
+
+	t.Run("returns a dedicated error when runtime field config is unavailable", func(t *testing.T) {
+		service, cta, ps := newTestConnectorTypeService(t)
+		connectorType := &interfaces.ConnectorType{Type: "remote-api", Name: "Remote API"}
+		mockConnectorAvailability(t, service, map[string]bool{"remote-api": true})
+
+		cta.EXPECT().GetByType(gomock.Any(), "remote-api").Return(connectorType, nil)
+		ps.EXPECT().
+			FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(map[string]interfaces.PermissionResourceOps{
+				"remote-api": {Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
+			}, nil)
+		service.cf.(*vmock.MockConnectorFactory).EXPECT().
+			GetConnectorFieldConfig(gomock.Any(), connectorType).
+			Return(nil, errors.New("field config is unavailable"))
+
+		got, err := service.GetByType(context.Background(), "remote-api")
+
+		require.Nil(t, got)
+		require.Error(t, err)
+		httpErr, ok := err.(*rest.HTTPError)
+		require.True(t, ok)
+		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable, httpErr.BaseError.ErrorCode)
 	})
 
 	t.Run("returns forbidden when permission filter excludes resource", func(t *testing.T) {

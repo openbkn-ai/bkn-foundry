@@ -58,6 +58,11 @@ Description = "Connector type internal error"
 Solution = "Please contact the administrator"
 ErrorLink = ""
 
+[VegaBackend.ConnectorType.FieldConfigUnavailable]
+Description = "Connector field configuration is unavailable"
+Solution = "Ensure the connector implementation is available, then try again"
+ErrorLink = ""
+
 [VegaBackend.ConnectorType.InternalError.RegisterFailed]
 Description = "Failed to reqister connector type"
 Solution = "Please contact the administrator"

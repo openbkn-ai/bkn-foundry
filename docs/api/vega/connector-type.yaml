@@ -159,7 +159,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
-          description: 运行时连接器定义不可用（例如 remote connector 尚未实现字段定义）
+          description: 运行时连接器字段定义不可用（例如 remote connector 尚未实现字段定义）。错误码为 `VegaBackend.ConnectorType.FieldConfigUnavailable`。
           content:
             application/json:
               schema:
@@ -377,7 +377,7 @@ components:
           items:
             type: string
     ConnectorType:
-      description: 连接器类型详情；field_config 为运行时读取的字段语义。
+      description: 连接器类型详情；field_config 为运行时读取的字段语义。available 为 false 时不返回 field_config。
       type: object
       required:
         - type
