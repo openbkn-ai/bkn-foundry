@@ -186,6 +186,10 @@ func TestEnrichIndexMetadataPreservesBusinessMetadata(t *testing.T) {
 			Features: []interfaces.PropertyFeature{{
 				FeatureName: "fulltext",
 				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}, {
+				FeatureName: "title.legacy",
+				FeatureType: interfaces.PropertyFeatureType_Keyword,
+				IsNative:    true,
 			}},
 		}},
 	}
@@ -198,6 +202,11 @@ func TestEnrichIndexMetadataPreservesBusinessMetadata(t *testing.T) {
 					Name:       "title",
 					Type:       "text",
 					Attributes: map[string]any{"type": "text", "analyzer": "standard"},
+					SubFields: []interfaces.IndexSubFieldMeta{{
+						Name:       "keyword",
+						Type:       "keyword",
+						Attributes: map[string]any{"ignore_above": 256},
+					}},
 				},
 			}
 			return nil
@@ -215,6 +224,12 @@ func TestEnrichIndexMetadataPreservesBusinessMetadata(t *testing.T) {
 			assert.Equal(t, []interfaces.PropertyFeature{{
 				FeatureName: "fulltext",
 				FeatureType: interfaces.PropertyFeatureType_Fulltext,
+			}, {
+				FeatureName: "title.keyword",
+				DisplayName: "title.keyword",
+				FeatureType: interfaces.PropertyFeatureType_Keyword,
+				IsNative:    true,
+				Config:      map[string]any{"ignore_above": 256},
 			}}, field.Features)
 			return nil
 		})

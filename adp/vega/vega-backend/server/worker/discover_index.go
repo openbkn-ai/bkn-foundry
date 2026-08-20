@@ -241,7 +241,7 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 			if existing, ok := existingProperties[field.Name]; ok {
 				property.DisplayName = existing.DisplayName
 				property.Description = resolveSourceDescription(existing.Description, existing.OriginalDescription, field.Description)
-				property.Features = existing.Features
+				property.Features = mergeIndexFeatures(existing.Features, property.Features)
 			}
 			props = append(props, property)
 		}
@@ -285,6 +285,21 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 		}
 	}
 	return nil
+}
+
+// mergeIndexFeatures preserves business features and refreshes native features from the source mapping.
+func mergeIndexFeatures(existing, native []interfaces.PropertyFeature) []interfaces.PropertyFeature {
+	features := make([]interfaces.PropertyFeature, 0, len(existing)+len(native))
+	for _, feature := range existing {
+		if !feature.IsNative {
+			features = append(features, feature)
+		}
+	}
+	features = append(features, native...)
+	if len(features) == 0 {
+		return nil
+	}
+	return features
 }
 
 // osSubFieldTypeToFeatureType maps supported OpenSearch multi-field types to VEGA feature types.
