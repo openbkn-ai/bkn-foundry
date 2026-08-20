@@ -281,8 +281,19 @@ func (s *localSearchImpl) filterObjectTypesByScore(
 	threshold := best * ratio
 	kept := make([]*interfaces.KnSearchObjectType, 0, len(objectTypes))
 	dropped := make([]string, 0)
+	unscored := 0
 	for _, objType := range objectTypes {
 		if objType == nil {
+			continue
+		}
+		// Zero is not a low score, it is no score. An object type reaches the candidate set without
+		// ever being scored in several ordinary ways: concept search only scores what it matched, the
+		// endpoints of a selected relation are completed in afterwards, and object_types pinned by the
+		// caller are applied before scoring runs at all. Dropping those would silently skip the very
+		// object type a caller named by hand.
+		if objType.Score <= 0 {
+			unscored++
+			kept = append(kept, objType)
 			continue
 		}
 		// Keep the best one whatever the threshold says: a query that recalled something should not
@@ -292,6 +303,10 @@ func (s *localSearchImpl) filterObjectTypesByScore(
 			continue
 		}
 		dropped = append(dropped, objType.ConceptID)
+	}
+	if unscored > 0 {
+		s.logger.WithContext(ctx).Debugf(
+			"[ObjectTypePreFilter] Kept %d object types concept recall never scored", unscored)
 	}
 	if len(dropped) > 0 {
 		s.logger.WithContext(ctx).Infof(

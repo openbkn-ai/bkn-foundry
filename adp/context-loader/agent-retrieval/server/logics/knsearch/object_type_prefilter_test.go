@@ -149,3 +149,56 @@ func TestSemanticInstanceRetrieval_CostScalesWithObjectTypes(t *testing.T) {
 		})
 	}
 }
+
+// Zero means concept recall never scored this object type, not that it scored badly. It reaches the
+// candidate set unscored in ordinary ways: concept search scores only what it matched, relation
+// endpoints are completed in afterwards, and object_types pinned by the caller are applied before
+// scoring runs. Dropping those would silently skip an object type the caller named by hand.
+func TestFilterObjectTypesByScore_KeepsUnscoredObjectTypes(t *testing.T) {
+	svc := &localSearchImpl{logger: &mockLogger{}}
+	types := scoredObjectTypes(5.0, 0, 0.2)
+	types[1].ConceptID = "shipment" // pulled in as a relation endpoint, never scored
+
+	kept := svc.filterObjectTypesByScore(context.Background(), types, 0.3)
+
+	var sawShipment bool
+	for _, objType := range kept {
+		if objType.ConceptID == "shipment" {
+			sawShipment = true
+		}
+	}
+	if !sawShipment {
+		t.Fatalf("an unscored object type was dropped as if it had scored low: %v", keptConceptIDs(kept))
+	}
+	// The genuinely low-scoring one still goes.
+	for _, objType := range kept {
+		if objType.ConceptID == "ot_02" {
+			t.Errorf("expected the scored-but-low object type to be dropped: %v", keptConceptIDs(kept))
+		}
+	}
+}
+
+// End to end: an unscored object type still gets its downstream query.
+func TestSemanticInstanceRetrieval_PreFilterQueriesUnscoredObjectTypes(t *testing.T) {
+	queried := map[string]bool{}
+	mockQuery := &mockOntologyQuery{
+		instancesFunc: func(req *interfaces.QueryObjectInstancesReq) (*interfaces.QueryObjectInstancesResp, error) {
+			queried[req.OtID] = true
+			return rowsToResp([]map[string]any{instanceRow(req.OtID, 9)}), nil
+		},
+	}
+	svc := &localSearchImpl{logger: &mockLogger{}, ontologyQuery: mockQuery}
+	config := DefaultRetrievalConfig()
+	config.SemanticInstanceRetrieval.MinObjectTypeScoreRatio = 0.3
+
+	types := scoredObjectTypes(5.0, 0)
+	types[1].ConceptID = "shipment"
+
+	if _, err := svc.semanticInstanceRetrieval(context.Background(),
+		&interfaces.KnSearchLocalRequest{KnID: "129", Query: "q"}, types, config); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !queried["shipment"] {
+		t.Fatal("no instance query was issued for the unscored object type")
+	}
+}
