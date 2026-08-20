@@ -392,13 +392,21 @@ func (cs *catalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []st
 // Only one caller needs it: a task whose parent catalog has been deleted has no
 // object left to judge, and leaving those unreachable would strand them forever.
 func (cs *catalogService) HasTypeWideGrant(ctx context.Context, op string) (bool, error) {
-	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{op}); err != nil {
+	}, []string{op})
+	if err == nil {
+		return true, nil
+	}
+	// A refusal answers "no", but anything else is the authorization service
+	// failing to answer at all. Reading that as "no" would turn an outage into a
+	// silent permission decision, so it goes back up.
+	var httpErr *rest.HTTPError
+	if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden {
 		return false, nil
 	}
-	return true, nil
+	return false, err
 }
 
 // CheckCatalogPermission authorizes an operation on one catalog for callers that

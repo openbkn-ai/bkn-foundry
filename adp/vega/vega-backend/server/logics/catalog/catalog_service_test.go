@@ -1729,3 +1729,48 @@ func newS2SCatalogService(t *testing.T) (
 	cs := &catalogService{ca: ca, ps: ps, ums: ums}
 	return cs, ca, ps, ums
 }
+
+// TestHasTypeWideGrantSeparatesRefusalFromFailure: 只有「被拒」才答 no。鉴权服务
+// 本身出错时把 false 报上去,等于让一次故障静悄悄变成一个权限判定——孤儿任务的
+// 清理路径正好压在这条上。
+func TestHasTypeWideGrantSeparatesRefusalFromFailure(t *testing.T) {
+	t.Run("拒绝答 no", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		cs := &catalogService{ps: ps}
+
+		ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+			Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: interfaces.RESOURCE_ID_ALL,
+		}, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}).
+			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+
+		got, err := cs.HasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
+		require.NoError(t, err)
+		assert.False(t, got)
+	})
+
+	t.Run("调用失败要上抛", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		cs := &catalogService{ps: ps}
+
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(rest.NewHTTPError(context.Background(), http.StatusInternalServerError, rest.PublicError_InternalServerError))
+
+		got, err := cs.HasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
+		require.Error(t, err, "鉴权服务挂了不能当成「没有权限」")
+		assert.False(t, got)
+	})
+
+	t.Run("放行答 yes", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		ps := mock_interfaces.NewMockPermissionService(ctrl)
+		cs := &catalogService{ps: ps}
+
+		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+
+		got, err := cs.HasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
+		require.NoError(t, err)
+		assert.True(t, got)
+	})
+}
