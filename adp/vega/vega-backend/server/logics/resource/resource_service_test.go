@@ -805,6 +805,27 @@ func TestResourceServiceCreate(t *testing.T) {
 	})
 }
 
+// expectDeleteGrantedByCatalog 把「有权删这批表」这件事装配成它现在真实的样子:
+// delete 已经从资源类型的词表里撤掉,资源侧一次都不问,权限来自表所在的目录。
+// newTestService 已经默认 stub 了 ListInternalIDs(无内部目录),这里不再重复声明。
+func expectDeleteGrantedByCatalog(mockRA *vmock.MockResourceAccess,
+	mockPS *vmock.MockPermissionService, ids []string, catalogID string) {
+
+	resources := make([]*interfaces.Resource, 0, len(ids))
+	granted := make(map[string]interfaces.PermissionResourceOps, 1)
+	for _, id := range ids {
+		resources = append(resources, &interfaces.Resource{ID: id, CatalogID: catalogID})
+	}
+	granted[catalogID] = interfaces.PermissionResourceOps{
+		ResourceID: catalogID,
+		Operations: []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE},
+	}
+	mockRA.EXPECT().GetByIDsBasic(gomock.Any(), ids).Return(resources, nil)
+	mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		[]string{catalogID}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}, true, gomock.Any()).
+		Return(granted, nil)
+}
+
 func TestResourceServiceDeleteByIDs(t *testing.T) {
 	t.Run("delete by ids empty", func(t *testing.T) {
 		rs, _, _, _, _, _, _ := newTestService(t)
@@ -815,11 +836,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("delete by ids success", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
-		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			[]string{"r1"}, gomock.Any(), true, gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{
-				"r1": {ResourceID: "r1"},
-			}, nil)
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
@@ -836,9 +853,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockLIM := vmock.NewMockLocalIndexManager(ctrl)
 		rs.lim = mockLIM
-		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			[]string{"r1"}, gomock.Any(), true, gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
 		// 一个已完成任务 t1 → 期望 drop 其索引并删任务行
@@ -854,9 +869,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 	})
 	t.Run("delete by ids refuses when task running", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
-		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-			[]string{"r1"}, gomock.Any(), true, gomock.Any()).
-			Return(map[string]interfaces.PermissionResourceOps{"r1": {ResourceID: "r1"}}, nil)
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table"}}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).

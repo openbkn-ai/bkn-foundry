@@ -352,6 +352,17 @@ func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []
 
 	normalIDs, internalIDs := partitionResourceIDs(ids, internalSet)
 
+	// Same rule the single check follows: only ask the resource about verbs it
+	// still declares. A batch asked about a withdrawn one would be answered by
+	// pre-convergence p-lines alone, which is how a legacy role kept deleting
+	// tables through this path while the single check already refused it.
+	askResource := make([]string, 0, len(ops))
+	for _, op := range ops {
+		if resourceOwnOperations[op] {
+			askResource = append(askResource, op)
+		}
+	}
+
 	result := make(map[string]interfaces.PermissionResourceOps, len(ids))
 	for _, group := range []struct {
 		authType string
@@ -360,10 +371,10 @@ func (rs *resourceService) filterResourcePermissions(ctx context.Context, ids []
 		{interfaces.AUTH_RESOURCE_TYPE_RESOURCE, normalIDs},
 		{interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, internalIDs},
 	} {
-		if len(group.ids) == 0 {
+		if len(group.ids) == 0 || len(askResource) == 0 {
 			continue
 		}
-		matched, err := rs.ps.FilterResources(ctx, group.authType, group.ids, ops,
+		matched, err := rs.ps.FilterResources(ctx, group.authType, group.ids, askResource,
 			allowOperation, interfaces.COMMON_OPERATIONS)
 		if err != nil {
 			return nil, err
