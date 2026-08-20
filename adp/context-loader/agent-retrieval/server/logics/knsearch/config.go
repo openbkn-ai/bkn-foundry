@@ -23,6 +23,10 @@ func DefaultConceptRetrievalConfig() *interfaces.KnSearchConceptRetrievalConfig 
 		EnablePropertyBrief:    boolPtr(true),
 		PerObjectPropertyTopK:  8,
 		GlobalPropertyTopK:     30,
+		// 200 is well above any network we have seen (the largest is a few dozen object types), so in
+		// practice every object type is reranked; it exists to keep a pathological network from
+		// sending an unbounded document list to the model.
+		ObjectRerankCandidateLimit: 200,
 	}
 }
 

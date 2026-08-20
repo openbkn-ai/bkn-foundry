@@ -53,7 +53,12 @@ func buildObjectRankingNetwork() *interfaces.KnowledgeNetworkDetail {
 	return detail
 }
 
-// objectRankingRerank ranks the relationship with "employee" to the bottom.
+// objectRankingRerank ranks the relation hanging off "employee" to the bottom while keeping the
+// employee object type itself at the top - which is the whole point of the scenario: the query is
+// about employees, and relation ranking must not be able to bury the object type the query names.
+//
+// The two document kinds are told apart by the "-" in every relation name of this fixture; the
+// reranker only ever sees flat strings, so the fixture has to carry the distinction itself.
 type objectRankingRerank struct{}
 
 func (d *objectRankingRerank) Rerank(ctx context.Context, query string, documents []string, model string) (*interfaces.RerankResp, error) {
@@ -61,7 +66,11 @@ func (d *objectRankingRerank) Rerank(ctx context.Context, query string, document
 	for i, doc := range documents {
 		score := 0.9 - float64(i)*0.01
 		if strings.Contains(doc, "员工") {
-			score = 0.5
+			if strings.Contains(doc, "-") {
+				score = 0.5 // the lone relation on 员工: least relevant of all relations
+			} else {
+				score = 0.99 // the 员工 object type: what the query is actually about
+			}
 		}
 		resp.Results = append(resp.Results, interfaces.RerankResult{Index: i, RelevanceScore: score})
 	}
@@ -240,8 +249,13 @@ func buildEndpointsLastNetwork() *interfaces.KnowledgeNetworkDetail {
 	return detail
 }
 
-// When scoring is unavailable (BKN retrieval fails), it must be degraded gracefully: no error is reported, no null is returned,
-// And the order returns to the "relationship endpoint first" before the repair, and cannot be changed to the definition order out of thin air.
+// When no relevance signal is available at all - the BKN coarse pass fails AND the reranker is
+// down - it must degrade gracefully: no error, no null, and the order falls back to the
+// "relation endpoints first" behaviour that predates #778 rather than to definition order.
+//
+// Both sources have to be knocked out for this to be the degraded path: object types are reranked
+// now, so a working reranker still yields relevance when the coarse pass fails. That laddering is
+// asserted by TestObjectRelevanceSurvivesCoarseFailure.
 func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	net := buildEndpointsLastNetwork()
 	backend := &mockBknBackend{
@@ -251,7 +265,7 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	svc := &localSearchImpl{
 		logger:       &mockLogger{},
 		bknBackend:   backend,
-		rerankClient: &objectRankingRerank{},
+		rerankClient: &mockRerankClient{rerankError: fmt.Errorf("reranker unavailable")},
 	}
 
 	cfg := DefaultConceptRetrievalConfig()

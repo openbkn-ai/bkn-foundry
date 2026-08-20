@@ -79,15 +79,18 @@ func (s *localSearchImpl) conceptRetrieval(
 		}
 	}
 
-	// 3. Object class correlation scoring. Coarse recall only works in very large networks (relationship number >= CoarseMinRelationCount)
-	// Triggered, most real networks cannot reach it, and there is no query signal on the object side, and can only be passively brought out by the relationship endpoint.
-	// This channel is added here so that the correlation of object types can independently participate in subsequent sorting.
+	// 3. Coarse object type scoring (BM25 + kNN). Coarse recall only fires on very large networks
+	// (relation count >= CoarseMinRelationCount) and most real networks never reach it, so without
+	// this channel object types carry no query signal at all and can only be brought out passively
+	// by a relation endpoint. It is also the first stage of the two-stage object ranking: it decides
+	// which object types are worth handing to the reranker in step 4.
 	if !coarseScored {
 		s.scoreObjectTypes(ctx, req.KnID, req.Query, networkDetail.ObjectTypes, config)
 	}
 
-	// 4. Sort relationship types (based on semantic relevance) and select Top-K.
-	rankedRelations := s.rankRelationTypes(ctx, req.Query, networkDetail.ObjectTypes, networkDetail.RelationTypes, config.TopK, req.EnableRerank, req.RerankModel)
+	// 4. Rank relation types and score object types against the query, in one rerank call.
+	rankedRelations := s.rankConcepts(ctx, req.Query, networkDetail.ObjectTypes, networkDetail.RelationTypes,
+		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
 	s.logger.WithContext(ctx).Debugf("[ConceptRetrieval] Ranked relations: %d -> top_k=%d", len(networkDetail.RelationTypes), len(rankedRelations))
 
 	// 5. Object type selection: Sort by self-relevance, relationship endpoints are incorporated as schema self-consistent constraints.
@@ -199,7 +202,8 @@ func (s *localSearchImpl) conceptRetrievalByGroups(
 	relations, actions = scope.applyToConcepts(objects, relations, actions)
 	s.logScopeOutcome(ctx, "[Groups]", scope, objects, unmatchedObjectTypes)
 
-	rankedRelations := s.rankRelationTypes(ctx, req.Query, objects, relations, config.TopK, req.EnableRerank, req.RerankModel)
+	rankedRelations := s.rankConcepts(ctx, req.Query, objects, relations,
+		config.TopK, req.EnableRerank, req.RerankModel, config.ObjectRerankCandidateLimit)
 	selectedObjects := s.selectObjectTypesForConceptRetrieval(objects, rankedRelations, config.TopK)
 
 	brief := boolValue(config.SchemaBrief)
@@ -629,7 +633,7 @@ func (s *localSearchImpl) buildCoarseRecallQuery(knID, query string, limit int, 
 }
 
 // rankRelationTypes semantically ranks relationship types and takes Top-K.
-// Semantic ranking using the Rerank service.
+// Semantic ranking using the Rerank service. Object types keep their coarse score.
 func (s *localSearchImpl) rankRelationTypes(
 	ctx context.Context,
 	query string,
@@ -639,18 +643,129 @@ func (s *localSearchImpl) rankRelationTypes(
 	enableRerank bool,
 	rerankModel string,
 ) []*interfaces.RelationType {
-	if len(relations) == 0 {
+	return s.rankConcepts(ctx, query, objectTypes, relations, topK, enableRerank, rerankModel, 0)
+}
+
+// rankConcepts ranks relation types and scores object types against the query in a single rerank
+// call. Both concept recall paths enter here.
+//
+// Object types used to reach the response on their coarse score alone, and that score cannot carry
+// the job: it is BM25 over ten equally weighted fields summed with a kNN channel whose 0..1 score
+// is dwarfed by unbounded BM25, so lexical noise decides the order and the vector channel cannot
+// correct it. A query carrying schema meta-words ("<entity> object type field") therefore ranked a
+// long-commented object type above the one actually named after the entity. The reranker is the
+// only component in this pipeline that can tell a meta-word from a business term, so object types
+// now go through it too.
+//
+// The two categories share one call instead of paying for two round trips, and sharing buys a
+// second property: scores from one rerank invocation are comparable, so an object type and a
+// relation type can be reasoned about on the same scale.
+//
+// objectCandidateLimit caps how many object types enter the call; 0 leaves object types on their
+// coarse score, which is what the relation-only entry point wants.
+//
+// Relation ranking keeps its contract exactly: same Top-K cut, same downgrade chain.
+func (s *localSearchImpl) rankConcepts(
+	ctx context.Context,
+	query string,
+	objectTypes []*interfaces.ObjectType,
+	relations []*interfaces.RelationType,
+	topK int,
+	enableRerank bool,
+	rerankModel string,
+	objectCandidateLimit int,
+) []*interfaces.RelationType {
+	objectCandidates := objectRerankCandidates(objectTypes, objectCandidateLimit)
+
+	if len(relations) == 0 && len(objectCandidates) == 0 {
 		return relations
 	}
 
-	// When Rerank is not enabled: keep original order, only truncate Top-K (for alignment with Python's current concept recall behavior)
+	// When Rerank is not enabled: keep original order, only truncate Top-K (for alignment with
+	// Python's current concept recall behavior). Object types keep their coarse score for the same
+	// reason - the caller opted out of paying for the model.
 	if !enableRerank {
-		if topK <= 0 || topK >= len(relations) {
-			return relations
-		}
-		return relations[:topK]
+		return truncateRelations(relations, topK)
 	}
 
+	documents := make([]string, 0, len(objectCandidates)+len(relations))
+	for _, obj := range objectCandidates {
+		documents = append(documents, buildObjectText(obj))
+	}
+	objectDocCount := len(documents)
+	documents = append(documents, s.buildRelationDocuments(objectTypes, relations)...)
+
+	// Call the Rerank service; model is the default reranker checked in the empty model management (#842)
+	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, rerankModel)
+	if err != nil {
+		// Graceful downgrade: Relevance is not lost when the reranker is unavailable (not registered/NameNotExist).
+		// Prioritize sorting by coarse recall BM25 _score (existing correlation signal, zero additional delay);
+		// Only fall back to pure name matching if _score is all 0 (if coarse recall is not enabled).
+		// Object types keep whatever the coarse pass gave them, which is the pre-rerank behaviour.
+		s.logger.WithContext(ctx).Warnf("[RankConcepts] Rerank unavailable (%v); degrading to coarse-recall _score order", err)
+		if ranked, ok := rankRelationTypesByScore(relations, topK); ok {
+			return ranked
+		}
+		s.logger.WithContext(ctx).Warnf("[RankConcepts] coarse-recall _score all zero; falling back to simple name match")
+		return s.rankRelationTypesBySimpleMatch(query, relations, topK)
+	}
+
+	objectScores := make([]float64, objectDocCount)
+	relationScores := make([]float64, len(relations))
+	for _, result := range rerankResp.Results {
+		switch {
+		case result.Index < 0 || result.Index >= len(documents):
+		case result.Index < objectDocCount:
+			objectScores[result.Index] = result.RelevanceScore
+		default:
+			relationScores[result.Index-objectDocCount] = result.RelevanceScore
+		}
+	}
+
+	if objectDocCount > 0 {
+		// The rerank score replaces the coarse score instead of blending with it: the two are not on
+		// one scale (BM25 is unbounded, the reranker answers in 0..1), so an object type still holding
+		// a coarse score would sort above every reranked one. Object types that missed the candidate
+		// cut are zeroed for that same reason - they already lost on the coarse signal.
+		for _, obj := range objectTypes {
+			if obj != nil {
+				obj.Score = 0
+			}
+		}
+		for i, obj := range objectCandidates {
+			obj.Score = objectScores[i]
+		}
+		s.logger.WithContext(ctx).Debugf("[RankConcepts] Reranked %d/%d object types", objectDocCount, len(objectTypes))
+	}
+
+	ranked := rankRelationsByScores(relations, relationScores, topK)
+	s.logger.WithContext(ctx).Debugf("[RankConcepts] Rerank completed, top_k=%d", len(ranked))
+	return ranked
+}
+
+// objectRerankCandidates picks the object types that go into the rerank call, best coarse score
+// first. The coarse BM25/kNN pass stays in front of the model as the cheap first stage: reranking
+// every object type of a large network would blow the model's input budget, and the coarse score is
+// the only signal available to choose the candidates with. Object types the coarse pass never
+// scored still ride along while there is room, so a network whose coarse recall returned nothing at
+// all is reranked whole rather than not at all.
+func objectRerankCandidates(objectTypes []*interfaces.ObjectType, limit int) []*interfaces.ObjectType {
+	if limit <= 0 || len(objectTypes) == 0 {
+		return nil
+	}
+	ranked := sortObjectTypesByScore(objectTypes)
+	if len(ranked) > limit {
+		ranked = ranked[:limit]
+	}
+	return ranked
+}
+
+// buildRelationDocuments renders each relation for the reranker, holding index alignment with the
+// input slice: a nil relation still occupies its slot.
+func (s *localSearchImpl) buildRelationDocuments(
+	objectTypes []*interfaces.ObjectType,
+	relations []*interfaces.RelationType,
+) []string {
 	objectNameByID := make(map[string]string, len(objectTypes))
 	for _, obj := range objectTypes {
 		if obj == nil || obj.ID == "" {
@@ -676,22 +791,15 @@ func (s *localSearchImpl) rankRelationTypes(
 		}
 		documents[i] = buildRelationText(sourceName, relationName, targetName, rel.Comment)
 	}
+	return documents
+}
 
-	// Call the Rerank service; model is the default reranker checked in the empty model management (#842)
-	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, rerankModel)
-	if err != nil {
-		// Graceful downgrade: Relevance is not lost when the reranker is unavailable (not registered/NameNotExist).
-		// Prioritize sorting by coarse recall BM25 _score (existing correlation signal, zero additional delay);
-		// Only fall back to pure name matching if _score is all 0 (if coarse recall is not enabled).
-		s.logger.WithContext(ctx).Warnf("[RankRelationTypes] Rerank unavailable (%v); degrading to coarse-recall _score order", err)
-		if ranked, ok := rankRelationTypesByScore(relations, topK); ok {
-			return ranked
-		}
-		s.logger.WithContext(ctx).Warnf("[RankRelationTypes] coarse-recall _score all zero; falling back to simple name match")
-		return s.rankRelationTypesBySimpleMatch(query, relations, topK)
+// rankRelationsByScores orders relations by the given per-index scores and takes Top-K.
+func rankRelationsByScores(relations []*interfaces.RelationType, scores []float64, topK int) []*interfaces.RelationType {
+	if len(relations) == 0 {
+		return relations
 	}
 
-	// Sort by Rerank score.
 	type scoredRelation struct {
 		relation *interfaces.RelationType
 		score    float64
@@ -699,22 +807,17 @@ func (s *localSearchImpl) rankRelationTypes(
 
 	scored := make([]scoredRelation, len(relations))
 	for i, rel := range relations {
-		scored[i] = scoredRelation{
-			relation: rel,
-			score:    0,
+		score := 0.0
+		if i < len(scores) {
+			score = scores[i]
 		}
-	}
-	for _, result := range rerankResp.Results {
-		if result.Index >= 0 && result.Index < len(relations) {
-			scored[result.Index].score = result.RelevanceScore
-		}
+		scored[i] = scoredRelation{relation: rel, score: score}
 	}
 
 	sort.SliceStable(scored, func(i, j int) bool {
 		return scored[i].score > scored[j].score
 	})
 
-	// Take Top-K.
 	if topK > len(scored) {
 		topK = len(scored)
 	}
@@ -723,10 +826,33 @@ func (s *localSearchImpl) rankRelationTypes(
 	for i := 0; i < topK; i++ {
 		result[i] = scored[i].relation
 	}
-
-	s.logger.WithContext(ctx).Debugf("[RankRelationTypes] Rerank completed, top_k=%d", len(result))
-
 	return result
+}
+
+// truncateRelations keeps the incoming order and cuts to Top-K.
+func truncateRelations(relations []*interfaces.RelationType, topK int) []*interfaces.RelationType {
+	if topK <= 0 || topK >= len(relations) {
+		return relations
+	}
+	return relations[:topK]
+}
+
+// buildObjectText renders an object type for the reranker. The name carries the identity and the
+// comment carries what it is for; properties are left out on purpose - they multiply the document
+// by the width of the table for a signal the name and comment already carry.
+func buildObjectText(obj *interfaces.ObjectType) string {
+	if obj == nil {
+		return ""
+	}
+	name := strings.TrimSpace(obj.Name)
+	if name == "" {
+		name = obj.ID
+	}
+	comment := strings.TrimSpace(obj.Comment)
+	if comment == "" {
+		return name
+	}
+	return name + "，" + comment
 }
 
 func buildRelationText(sourceName, relationName, targetName, relationComment string) string {

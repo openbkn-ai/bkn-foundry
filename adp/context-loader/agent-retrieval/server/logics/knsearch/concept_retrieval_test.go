@@ -3,6 +3,7 @@ package knsearch
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -97,11 +98,19 @@ func TestConceptRetrieval_MainFlow(t *testing.T) {
 			}(),
 			mockSetup: func(m *mockBknBackend, r *mockRerankClient) {
 				m.networkDetail = mockDetail
-				r.rerankResp = &interfaces.RerankResp{
-					Results: []interfaces.RerankResult{
-						{Index: 0, RelevanceScore: 0.1},
-						{Index: 1, RelevanceScore: 0.9},
-					},
+				// Score by document content rather than a fixed index. The rerank call carries
+				// object type documents ahead of the relation ones, so a hardcoded index names
+				// whichever slot the layout happens to put there, not the relation under test.
+				r.rerankFunc = func(query string, documents []string, model string) (*interfaces.RerankResp, error) {
+					resp := &interfaces.RerankResp{}
+					for i, doc := range documents {
+						score := 0.1
+						if strings.Contains(doc, "关系_1") {
+							score = 0.9
+						}
+						resp.Results = append(resp.Results, interfaces.RerankResult{Index: i, RelevanceScore: score})
+					}
+					return resp, nil
 				}
 			},
 			checkResult: func(t *testing.T, res *interfaces.KnSearchConceptResult, err error) {

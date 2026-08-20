@@ -58,6 +58,15 @@ type KnSearchConceptRetrievalConfig struct {
 	EnablePropertyBrief    *bool    `json:"enable_property_brief" default:"true"`
 	PerObjectPropertyTopK  int      `json:"per_object_property_top_k" default:"8"`
 	GlobalPropertyTopK     int      `json:"global_property_top_k" default:"30"`
+	// ObjectRerankCandidateLimit caps how many object types the concept rerank call carries, best
+	// coarse score first. It bounds one model call, not the response: everything below the cut keeps
+	// its place in the schema, it just cannot outrank a reranked object type. 0 turns object
+	// reranking off and leaves object types on the coarse BM25/kNN score.
+	//
+	// Deliberately not on the wire: retrieval_config is documented as a compatibility shim that
+	// absorbs only top_k and schema_brief, so a caller-settable field here would advertise a knob
+	// the contract says does nothing. It is a safety cap for pathological networks, not a tunable.
+	ObjectRerankCandidateLimit int `json:"-" default:"200"`
 }
 
 // KnSearchSemanticInstanceRetrievalConfig semantic instance recall configuration parameters.

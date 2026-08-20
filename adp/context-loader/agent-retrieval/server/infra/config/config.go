@@ -171,6 +171,10 @@ type KnInstanceSearchConfig struct {
 	// Off by default for want of a portable value: concept recall has already kept only its best
 	// matches, so the spread among survivors is narrow — the worst one scored 0.21 and 0.27 of the
 	// best on two of our own networks. A ratio that trims one of them barely touches the other.
+	//
+	// Those two numbers were measured when the concept-recall score was raw BM25. It is the
+	// reranker's 0..1 relevance now, so a deployment that did calibrate this value has to measure
+	// again — the ratios are not comparable across the two scales.
 	MinObjectTypeScoreRatio float64 `yaml:"min_object_type_score_ratio"`
 }
 
