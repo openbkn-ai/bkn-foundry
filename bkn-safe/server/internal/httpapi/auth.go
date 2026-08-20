@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	hydra "github.com/ory/hydra-client-go/v2"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/accesslog"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
@@ -307,8 +308,17 @@ func isExpiredLoginRequest(err error) bool {
 	if err == nil {
 		return false
 	}
+	var hydraErr *hydra.GenericOpenAPIError
+	if errors.As(err, &hydraErr) {
+		oauthErr, ok := hydraErr.Model().(hydra.ErrorOAuth2)
+		if !ok || oauthErr.GetError() != "request_unauthorized" {
+			return false
+		}
+		reason, _ := oauthErr.AdditionalProperties["reason"].(string)
+		return strings.Contains(strings.ToLower(reason), "login request has expired")
+	}
 	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "request_unauthorized") ||
+	return strings.Contains(msg, "request_unauthorized") &&
 		strings.Contains(msg, "login request has expired")
 }
 
