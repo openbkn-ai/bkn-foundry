@@ -77,10 +77,10 @@ func ConnectorNoticeHandler(c driver.Connector) (f func(*Error)) {
 //
 // 注意:通知处理程序为同步执行，在返回之前不会继续处理命令
 func ConnectorWithNoticeHandler(c driver.Connector, handler func(*Error)) (nhc *NoticeHandlerConnector) {
-	if c, ok := c.(*NoticeHandlerConnector); ok {
-		c.noticeHandler = handler
-		return c
-	} else {
-		return &NoticeHandlerConnector{Connector: c, noticeHandler: handler}
+	nhc = &NoticeHandlerConnector{Connector: c, noticeHandler: handler}
+	if wrapped, ok := c.(*NoticeHandlerConnector); ok {
+		wrapped.noticeHandler = handler
+		nhc = wrapped
 	}
+	return nhc
 }
