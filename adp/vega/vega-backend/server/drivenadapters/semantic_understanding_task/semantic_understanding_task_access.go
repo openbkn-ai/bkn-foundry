@@ -404,7 +404,11 @@ func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
 		// is what keeps total_count honest.
 		alternatives := sq.Or{}
 		if v.AllResources {
-			alternatives = append(alternatives, sq.Eq{"f_scope": SemanticScopeResource})
+			resourceBranch := sq.And{sq.Eq{"f_scope": SemanticScopeResource}}
+			if len(v.ExcludedResourceIDs) > 0 {
+				resourceBranch = append(resourceBranch, sq.NotEq{"f_resource_id": v.ExcludedResourceIDs})
+			}
+			alternatives = append(alternatives, resourceBranch)
 		} else if len(v.ResourceIDs) > 0 {
 			alternatives = append(alternatives, sq.And{
 				sq.Eq{"f_scope": SemanticScopeResource},
@@ -412,7 +416,11 @@ func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
 			})
 		}
 		if v.AllCatalogs {
-			alternatives = append(alternatives, sq.Eq{"f_scope": SemanticScopeCatalog})
+			catalogBranch := sq.And{sq.Eq{"f_scope": SemanticScopeCatalog}}
+			if len(v.ExcludedCatalogIDs) > 0 {
+				catalogBranch = append(catalogBranch, sq.NotEq{"f_catalog_id": v.ExcludedCatalogIDs})
+			}
+			alternatives = append(alternatives, catalogBranch)
 		} else if len(v.CatalogIDs) > 0 {
 			alternatives = append(alternatives, sq.And{
 				sq.Eq{"f_scope": SemanticScopeCatalog},

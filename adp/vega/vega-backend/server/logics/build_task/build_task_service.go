@@ -631,32 +631,26 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	// A task is visible through the table it builds (#472). The filter is applied
 	// in SQL rather than to the fetched page so that total_count matches what the
 	// caller may actually see and pages keep their size.
-	visible, unrestricted, err := bts.rs.AuthorizedResourceIDs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	scope, err := bts.rs.AuthorizedResources(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		span.SetStatus(codes.Error, "Resolve authorized resources failed")
 		return nil, 0, err
 	}
-	if !unrestricted {
-		if len(visible) == 0 {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.BuildTaskSummary{}, 0, nil
-		}
+	if scope.Empty() {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.BuildTaskSummary{}, 0, nil
+	}
+	if !scope.Unfiltered() {
 		// An explicit resource_id filter is intersected rather than replaced: asking
 		// about one resource must not widen what the caller may see.
 		if params.ResourceID != "" {
-			allowed := false
-			for _, id := range visible {
-				if id == params.ResourceID {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
+			if !scope.Allows(params.ResourceID) {
 				span.SetStatus(codes.Ok, "")
 				return []*interfaces.BuildTaskSummary{}, 0, nil
 			}
 		} else {
-			params.ResourceIDs = visible
+			params.ResourceIDs = scope.IDs
+			params.ExcludeResourceIDs = scope.Excluded
 		}
 	}
 

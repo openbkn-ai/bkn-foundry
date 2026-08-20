@@ -109,11 +109,15 @@ type DiscoverTaskQueryParams struct {
 	CatalogID string `form:"catalog_id" json:"catalog_id"`
 	// CatalogIDs narrows the listing to a set of catalogs. It carries the
 	// authorization filter into the SQL so that the count and the page agree.
-	CatalogIDs  []string `form:"-" json:"-"`
-	ScheduleID  string   `form:"schedule_id" json:"schedule_id"`
-	Statuses    []string `form:"status" json:"status"`
-	Strategy    string   `form:"strategy" json:"strategy"`
-	TriggerType string   `form:"trigger_type" json:"trigger_type"`
+	CatalogIDs []string `form:"-" json:"-"`
+	// ExcludeCatalogIDs removes a set of catalogs from the listing — the other
+	// half of the same filter, for a holder of catalog:* who is not enumerated
+	// id by id but still may not reach the internal directories.
+	ExcludeCatalogIDs []string `form:"-" json:"-"`
+	ScheduleID        string   `form:"schedule_id" json:"schedule_id"`
+	Statuses          []string `form:"status" json:"status"`
+	Strategy          string   `form:"strategy" json:"strategy"`
+	TriggerType       string   `form:"trigger_type" json:"trigger_type"`
 }
 
 type CreateDiscoverTaskRequest struct {

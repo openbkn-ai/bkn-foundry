@@ -65,8 +65,8 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		ums := vmock.NewMockUserMgmtService(ctrl)
 		svc := &discoverTaskService{cs: cs, dta: dta, ums: ums}
 
-		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
-			Return([]string{"cat-1"}, false, nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(interfaces.AuthorizedScope{IDs: []string{"cat-1"}}, nil)
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
 				assert.Equal(t, []string{"cat-1"}, params.CatalogIDs, "可见目录集必须下推到查询里")
@@ -84,7 +84,7 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 		svc := &discoverTaskService{cs: cs, dta: dta}
 
-		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{}, nil)
 
 		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 		require.NoError(t, err)
@@ -98,8 +98,8 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 		svc := &discoverTaskService{cs: cs, dta: dta}
 
-		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).
-			Return([]string{"cat-1"}, false, nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: []string{"cat-1"}}, nil)
 
 		tasks, total, err := svc.List(context.Background(),
 			interfaces.DiscoverTaskQueryParams{CatalogID: "cat-other"})

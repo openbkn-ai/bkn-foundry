@@ -177,30 +177,24 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 
 	// 过滤下推到 SQL,与构建任务列表同一口径:count 与 list 共用条件,total 才是
 	// 调用方真正能看到的数量（#269 / #472）。
-	visible, unrestricted, err := dts.cs.AuthorizedCatalogIDs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	scope, err := dts.cs.AuthorizedCatalogs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
 		return nil, 0, err
 	}
-	if !unrestricted {
-		if len(visible) == 0 {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.DiscoverTaskSummary{}, 0, nil
-		}
+	if scope.Empty() {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.DiscoverTaskSummary{}, 0, nil
+	}
+	if !scope.Unfiltered() {
 		if params.CatalogID != "" {
-			allowed := false
-			for _, id := range visible {
-				if id == params.CatalogID {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
+			if !scope.Allows(params.CatalogID) {
 				span.SetStatus(codes.Ok, "")
 				return []*interfaces.DiscoverTaskSummary{}, 0, nil
 			}
 		} else {
-			params.CatalogIDs = visible
+			params.CatalogIDs = scope.IDs
+			params.ExcludeCatalogIDs = scope.Excluded
 		}
 	}
 

@@ -243,9 +243,9 @@ func (suts *semanticUnderstandingTaskService) checkTaskPermission(ctx context.Co
 	//
 	// 问的是 catalog:* 而不是 resource:*——后者在本次收敛里只剩两个读动词,拿它
 	// 判 task_manage 会永远为假,兜底就又成了死代码。
-	if _, unrestricted, err := suts.cs.AuthorizedCatalogIDs(ctx, op); err != nil {
+	if scope, err := suts.cs.AuthorizedCatalogs(ctx, op); err != nil {
 		return err
-	} else if unrestricted {
+	} else if scope.All {
 		return nil
 	}
 	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
@@ -307,26 +307,28 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 
 	// A task is listed through the parent it was created against (#269). The
 	// filter goes into the SQL so the count and the page agree.
-	visibleResources, allResources, err := suts.rs.AuthorizedResourceIDs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	resources, err := suts.rs.AuthorizedResources(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		span.SetStatus(codes.Error, "Resolve authorized resources failed")
 		return nil, 0, err
 	}
-	visibleCatalogs, allCatalogs, err := suts.cs.AuthorizedCatalogIDs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	catalogs, err := suts.cs.AuthorizedCatalogs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
 		return nil, 0, err
 	}
-	if !allResources || !allCatalogs {
-		if !allResources && !allCatalogs && len(visibleResources) == 0 && len(visibleCatalogs) == 0 {
+	if !resources.Unfiltered() || !catalogs.Unfiltered() {
+		if resources.Empty() && catalogs.Empty() {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.SemanticUnderstandingTaskSummary{}, 0, nil
 		}
 		params.Visibility = &interfaces.TaskVisibility{
-			ResourceIDs:  visibleResources,
-			AllResources: allResources,
-			CatalogIDs:   visibleCatalogs,
-			AllCatalogs:  allCatalogs,
+			ResourceIDs:         resources.IDs,
+			AllResources:        resources.All,
+			ExcludedResourceIDs: resources.Excluded,
+			CatalogIDs:          catalogs.IDs,
+			AllCatalogs:         catalogs.All,
+			ExcludedCatalogIDs:  catalogs.Excluded,
 		}
 	}
 

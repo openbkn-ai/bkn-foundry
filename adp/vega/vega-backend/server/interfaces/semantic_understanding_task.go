@@ -222,8 +222,13 @@ type SemanticUnderstandingCatalogAgentInputOptions struct {
 type TaskVisibility struct {
 	ResourceIDs  []string
 	AllResources bool
-	CatalogIDs   []string
-	AllCatalogs  bool
+	// ExcludedResourceIDs is meaningful only with AllResources: a holder of
+	// resource:* is admitted wholesale, minus the internal-catalog tables its
+	// grant does not reach. Same for catalogs below.
+	ExcludedResourceIDs []string
+	CatalogIDs          []string
+	AllCatalogs         bool
+	ExcludedCatalogIDs  []string
 }
 
 type SemanticUnderstandingTaskQueryParams struct {

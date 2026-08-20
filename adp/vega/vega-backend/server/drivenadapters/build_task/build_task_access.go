@@ -509,6 +509,9 @@ func applyBuildTaskFilters(builder sq.SelectBuilder,
 	if params.ResourceID != "" {
 		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})
 	}
+	if len(params.ExcludeResourceIDs) > 0 {
+		builder = builder.Where(sq.NotEq{"f_resource_id": params.ExcludeResourceIDs})
+	}
 	if len(params.ResourceIDs) > 0 {
 		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceIDs})
 	}

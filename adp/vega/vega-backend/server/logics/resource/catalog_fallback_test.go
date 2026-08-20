@@ -399,3 +399,57 @@ func TestCheckResourcePermissionHidesUnknownResources(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode,
 		"查不到就报 404 会把「哪些 id 存在」告诉一个还没证明自己能看的调用方")
 }
+
+// TestAuthorizedResourcesExcludesInternalResources 是「通配授权不是通行证」的
+// 证据:resource:* 发在业务类型上,平台自己的表坐在 internal_resource 上。把
+// 前者当成「看得见一切」,挂在内部表底下的构建任务与语义任务就会跟着列出去。
+func TestAuthorizedResourcesExcludesInternalResources(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := vmock.NewMockPermissionService(ctrl)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ps: ps, ra: ra, cs: cs}
+
+	// 业务类型放行、内部类型不放行。
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(nil)
+	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(errors.New("denied"))
+
+	cs.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"int-cat"}, nil)
+	ra.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return([]string{"int-a", "int-b"}, nil)
+	// int-b 被单独授过权,留在可见范围里;int-a 没有,进排除集。
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+		[]string{"int-a", "int-b"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{
+			"int-b": {ResourceID: "int-b"},
+		}, nil)
+
+	scope, err := rs.AuthorizedResources(context.Background(), interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	require.NoError(t, err)
+	assert.True(t, scope.All)
+	assert.Equal(t, []string{"int-a"}, scope.Excluded)
+	assert.False(t, scope.Unfiltered(), "有排除项就不能声称无需过滤")
+	assert.False(t, scope.Allows("int-a"))
+	assert.True(t, scope.Allows("int-b"))
+	assert.True(t, scope.Allows("business-table"))
+}
+
+// TestAuthorizedResourcesInternalWildcardNeedsNoExclusion: 两个类型都持通配的
+// 才是真的「看得见一切」——超管与平台自己的 S2S 身份。这条同时钉住不该为它
+// 多付一次内部资源枚举。
+func TestAuthorizedResourcesInternalWildcardNeedsNoExclusion(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := vmock.NewMockPermissionService(ctrl)
+	rs := &resourceService{ps: ps, ra: vmock.NewMockResourceAccess(ctrl), cs: vmock.NewMockCatalogService(ctrl)}
+
+	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+	// ListInternalIDs / ListIDs 未被期望:多问一次就会失败。
+
+	scope, err := rs.AuthorizedResources(context.Background(), interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	require.NoError(t, err)
+	assert.True(t, scope.Unfiltered())
+	assert.Empty(t, scope.Excluded)
+}

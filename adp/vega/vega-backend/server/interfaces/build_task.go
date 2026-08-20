@@ -139,9 +139,14 @@ type BuildTasksQueryParams struct {
 	// applied to the count and the page together, so total_count stays honest and
 	// pages do not develop holes.
 	ResourceIDs []string
-	CatalogID   string
-	Statuses    []string // Multi-valued state filtering (IN) Empty means no filtering
-	Mode        string
+	// ExcludeResourceIDs removes a set of resources from the listing. It carries
+	// the other half of the authorization filter: a holder of resource:* is not
+	// enumerated id by id, so the ids its grant does not reach — the internal
+	// catalogs' tables — arrive as an exclusion instead.
+	ExcludeResourceIDs []string
+	CatalogID          string
+	Statuses           []string // Multi-valued state filtering (IN) Empty means no filtering
+	Mode               string
 }
 
 type KeyValue struct {

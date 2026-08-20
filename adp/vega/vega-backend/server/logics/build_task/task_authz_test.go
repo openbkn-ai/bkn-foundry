@@ -125,8 +125,8 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
 		svc := &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}
 
-		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
-			Return([]string{"res-1"}, false, nil)
+		rs.EXPECT().AuthorizedResources(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(interfaces.AuthorizedScope{IDs: []string{"res-1"}}, nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Equal(t, []string{"res-1"}, params.ResourceIDs, "可见资源集必须下推到查询里")
@@ -138,13 +138,55 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("持 resource:* 也看不到内部目录下的任务", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}
+
+		// 类型级放行是发在 resource 上的,internal_resource 是另一个类型:业务角色
+		// 拿不到平台自己的表,它们的构建任务也不能从这条列表里漏出去。
+		rs.EXPECT().AuthorizedResources(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"internal-1", "internal-2"}}, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Equal(t, []string{"internal-1", "internal-2"}, params.ExcludeResourceIDs,
+					"排除集必须下推到 SQL,否则内部资源的任务会跟着列出来")
+				assert.Empty(t, params.ResourceIDs, "通配放行不该被展开成 id 清单")
+				return []*interfaces.BuildTaskSummary{}, 0, nil
+			})
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+		_, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
+		require.NoError(t, err)
+	})
+
+	t.Run("问一张被排除的内部资源,直接空", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		rs := mock_interfaces.NewMockResourceService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs}
+
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"internal-1"}}, nil)
+		// bta.List 不该被调用。
+
+		tasks, total, err := svc.List(context.Background(),
+			interfaces.BuildTasksQueryParams{ResourceID: "internal-1"})
+		require.NoError(t, err)
+		assert.Empty(t, tasks)
+		assert.Zero(t, total)
+	})
+
 	t.Run("一个都看不见就直接空，不查库", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		rs := mock_interfaces.NewMockResourceService(ctrl)
 		svc := &buildTaskService{bta: bta, rs: rs}
 
-		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{}, nil)
 		// bta.List 未被期望。
 
 		tasks, total, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -159,8 +201,8 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		rs := mock_interfaces.NewMockResourceService(ctrl)
 		svc := &buildTaskService{bta: bta, rs: rs}
 
-		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).
-			Return([]string{"res-1"}, false, nil)
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: []string{"res-1"}}, nil)
 		// 问的是看不见的那张表，bta.List 不该被调用。
 
 		tasks, total, err := svc.List(context.Background(),
@@ -178,7 +220,7 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
 		svc := &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}
 
-		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, true, nil)
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{All: true}, nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
 				assert.Empty(t, params.ResourceIDs, "持类型级授权时不该下推 id 集——那会把「看得见全部」变成「只看得见当时列出来的那些」")

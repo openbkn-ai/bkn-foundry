@@ -31,8 +31,8 @@ func newTestDiscoverTaskService(t *testing.T) (*discoverTaskService, *vmock.Mock
 	// 探查任务的授权判在它所属的目录上（#269）；这些用例验的是别的东西，统一放行。
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
-	cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).
-		Return(nil, true, nil).AnyTimes()
+	cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+		Return(interfaces.AuthorizedScope{All: true}, nil).AnyTimes()
 
 	return &discoverTaskService{
 		cs:  cs,
@@ -185,8 +185,8 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	ums := vmock.NewMockUserMgmtService(ctrl)
 	// 列表按可见目录过滤（#269）；这条用例验的是名称回填，当作持类型级授权。
-	cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).
-		Return(nil, true, nil).AnyTimes()
+	cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+		Return(interfaces.AuthorizedScope{All: true}, nil).AnyTimes()
 	cs.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
 	service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
@@ -224,8 +224,8 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 		cs := vmock.NewMockCatalogService(ctrl)
 		ums := vmock.NewMockUserMgmtService(ctrl)
-		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).
-			Return(nil, true, nil).AnyTimes()
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true}, nil).AnyTimes()
 		service := &discoverTaskService{dta: dta, cs: cs, ums: ums}
 		tasks := []*interfaces.DiscoverTaskSummary{{ID: "task-4", CatalogID: "catalog-3"}}
 
