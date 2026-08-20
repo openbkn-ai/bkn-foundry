@@ -357,9 +357,10 @@ jobs:
                       continue
                   if assoc in ALLOWED:
                       dismissed |= set(DISMISS_RE.findall(str(body or "")))
-          # 上限 10：遗留清单每轮都要过一遍复核，无上限会让 verify 的轮次预算被历史
-          # 拖垮。真攒到 10 条以上说明这个 PR 该拆，不该靠评审兜。
-          carried = [c for c in carried if c.get("key") not in dismissed][:10]
+          # 上限 12：遗留清单每轮都要过一遍复核，无上限会让 verify 的轮次预算被历史
+          # 拖垮。真攒到 12 条以上说明这个 PR 该拆，不该靠评审兜。
+          # 必须与 verdict 里写状态块的 STATE_CAP 一致。
+          carried = [c for c in carried if c.get("key") not in dismissed][:12]
           print("carried=" + json.dumps(carried, ensure_ascii=False))
           print("dismissed=" + json.dumps(sorted(dismissed)))
 
@@ -535,19 +536,30 @@ jobs:
           fetch() {
             gh api "repos/${GH_REPO}/$1" --paginate | jq -s "[.[][] | $2] | .[-100:]"
           }
+          # `fetch ... || echo '[]'` 不是干净的兜底：gh --paginate 取到第二页才失败时，
+          # 前面的页已经被 jq 输出，再追加一个 `[]` 得到的是解析不了的 JSON——下游拿到
+          # 这种文件会当成「没有可读的评论」，作者写过的「不采纳」就此读不到。
+          # 先落临时文件，整条流水线成功了才拼进去。
+          emit() {
+            if fetch "$1" "$2" > "${RUNNER_TEMP:-/tmp}/fetch.json"; then
+              cat "${RUNNER_TEMP:-/tmp}/fetch.json"
+            else
+              echo '[]'
+            fi
+          }
           {
             echo '{"issue_comments":'
-            fetch "issues/${PR_NUMBER}/comments" \
-              '{user: .user.login, created_at, body}' || echo '[]'
+            emit "issues/${PR_NUMBER}/comments" \
+              '{user: .user.login, created_at, body}'
             echo ',"review_comments":'
-            fetch "pulls/${PR_NUMBER}/comments" \
-              '{path, line, user: .user.login, created_at, body}' || echo '[]'
+            emit "pulls/${PR_NUMBER}/comments" \
+              '{path, line, user: .user.login, created_at, body}'
             # 上一轮的结论正文在 /pulls/N/reviews，与 inline 评论是两个端点。待确认项
             # 只存在于正文里，不取就等于每轮从零开始——实测 #683 连续三轮各报十条互不
             # 重叠的待确认项，正是因为看不见自己上一轮说过什么。
             echo ',"prior_verdicts":'
-            fetch "pulls/${PR_NUMBER}/reviews" \
-              '{user: .user.login, state, submitted_at, body}' || echo '[]'
+            emit "pulls/${PR_NUMBER}/reviews" \
+              '{user: .user.login, state, submitted_at, body}'
             echo '}'
           } > prior-comments.json || echo '{"issue_comments":[],"review_comments":[],"prior_verdicts":[]}' \
             > prior-comments.json
@@ -1042,6 +1054,7 @@ jobs:
               items.append({
                   "id": "carry#%d" % i,
                   "carried": True,
+                  "verified": bool(c.get("verified")),
                   "shard": c.get("shard", ""),
                   "file": c.get("file", ""),
                   "line": c.get("line"),
@@ -1072,13 +1085,24 @@ jobs:
           fetch() {
             gh api "repos/${GH_REPO}/$1" --paginate | jq -s "[.[][] | $2] | .[-100:]"
           }
+          # `fetch ... || echo '[]'` 不是干净的兜底：gh --paginate 取到第二页才失败时，
+          # 前面的页已经被 jq 输出，再追加一个 `[]` 得到的是解析不了的 JSON——下游拿到
+          # 这种文件会当成「没有可读的评论」，作者写过的「不采纳」就此读不到。
+          # 先落临时文件，整条流水线成功了才拼进去。
+          emit() {
+            if fetch "$1" "$2" > "${RUNNER_TEMP:-/tmp}/fetch.json"; then
+              cat "${RUNNER_TEMP:-/tmp}/fetch.json"
+            else
+              echo '[]'
+            fi
+          }
           {
             echo '{"issue_comments":'
-            fetch "issues/${PR_NUMBER}/comments" \
-              '{user: .user.login, created_at, body}' || echo '[]'
+            emit "issues/${PR_NUMBER}/comments" \
+              '{user: .user.login, created_at, body}'
             echo ',"review_comments":'
-            fetch "pulls/${PR_NUMBER}/comments" \
-              '{path, line, user: .user.login, created_at, body}' || echo '[]'
+            emit "pulls/${PR_NUMBER}/comments" \
+              '{path, line, user: .user.login, created_at, body}'
             echo '}'
           } > author-replies.json || echo '{"issue_comments":[],"review_comments":[]}' \
             > author-replies.json
@@ -1136,6 +1160,10 @@ jobs:
 
             找不到证据说明它被修了、作者也没回应过，就保持 `refuted: false`。这里的默认
             方向与上面新报的阻塞项**正好相反**，别套错：新报的默认不成立，遗留的默认成立。
+
+            **例外：`carried: true` 但 `verified: false` 的，按新报的规则办**（默认
+            `refuted: true`，核实通过才保留）。这类条目是上一轮复核环节整个挂掉时带过来的，
+            从没有人验过它——立场反过来等于把一条没验过的结论提拔成默认阻断。
 
             ## 轮次预算
 
@@ -1317,15 +1345,11 @@ jobs:
                   c["key"] = fkey(c.get("file"), c.get("what"))
               carried.append((CARRY, c))
 
-          # 作者撤销掉的不再报。同位置的新报条目按重复处理，留遗留那条——它带着轮次
-          # 计数和作者已经见过的措辞，换个说法重报一遍只会让同一个问题占两行。
-          seen_loc = {(str(c.get("file") or ""), c.get("line")) for _, c in carried}
+          # 作者撤销掉的不再报。同位置去重不在这里做——见下面复核分组之后那段。
           fresh = []
           for s_, b in blockers:
               b["key"] = fkey(b.get("file"), b.get("what"))
               if b["key"] in dismissed:
-                  continue
-              if (str(b.get("file") or ""), b.get("line")) in seen_loc:
                   continue
               fresh.append((s_, b))
           blockers = fresh + carried
@@ -1356,6 +1380,7 @@ jobs:
                "detail": "各分片的影响范围与未覆盖面",
                "more_unconf": "另有 %d 条待确认项已省略，以免正文过长；详见各分片日志。",
                "carried": "（**上一轮遗留**，已挂 %d 轮未处理）",
+               "state_trunc": "另有 %d 条阻塞项未进入跨轮跟踪（状态块上限 %d 条），下一轮不会自动带回来——本轮请一并处理。",
                "dismiss": "认为其中某条是误报：回复 `/dismiss 编号`（每条前面那串 8 位编号）撤销它，或者直接说明为什么不采纳——复核环节会读你的回复。想让撤销当场生效，在同一条评论里带上 `/review`。",
                "unconf": "待确认项（不阻断放行）", "missing": "未产出结论的分片",
                "missing_body": "下面这些分片没有产出结论，**这些文件本轮未经评审**：",
@@ -1391,6 +1416,19 @@ jobs:
 
           # 未复核的仍然当阻塞项报，但在正文里标出来——复核缺席是降可信度，不是免罪。
           blockers = [(s_, b) for s_, b, _ in survived + unreviewed]
+
+          # 同位置去重：本轮新报的条目若与某条**仍然存活的**遗留项落在同一 file:line，
+          # 按重复丢掉，留遗留那条——它带着轮次计数和作者已经见过的措辞。
+          #
+          # 这一步必须排在复核分组**之后**。排在之前的话，遗留项这一轮被判成已关闭
+          # （作者原地改掉、行号没变）时，同位置那条本轮新报、且已通过复核的阻塞项会跟着
+          # 一起消失：既不进阻塞清单也不进折叠区，正文里一个字都没有；若它是本轮唯一
+          # 一条，action 直接算成 approve。
+          kept_loc = {(str(b.get("file") or ""), b.get("line"))
+                      for s_, b in blockers if s_ is CARRY}
+          blockers = [(s_, b) for s_, b in blockers
+                      if s_ is CARRY
+                      or (str(b.get("file") or ""), b.get("line")) not in kept_loc]
 
           if blockers:
               lines.append("## %s\n" % T["block"])
@@ -1512,9 +1550,17 @@ jobs:
           # 隐藏状态块：这一轮仍然成立的阻塞项原样带给下一轮。没有它，作者只修一部分时
           # 剩下的会在下一轮 findings 里消失，action 算成 approve 放行。
           # `-->` 出现在正文里会提前截断这个块，转成 JSON 的 \u003e 转义（json.loads
-          # 解回来仍是 `-->`）。总量截到 10 条：与 plan 的读取上限一致。
+          # 解回来仍是 `-->`）。
+          #
+          # 遗留项排在前面：截断从尾部切，按 `fresh + carried` 的原顺序会让挂了好几轮的
+          # 老问题被本轮新报的挤出状态块——下一轮读不回来就此消失，正是这个机制要消掉的
+          # 失败模式。真被截掉时在正文里点明，不做静默截断。
+          # STATE_CAP 必须与 plan 读取时的上限一致。
+          STATE_CAP = 12
+          ordered = ([x for x in blockers if x[0] is CARRY]
+                     + [x for x in blockers if x[0] is not CARRY])
           state = []
-          for s_, b in blockers:
+          for s_, b in ordered:
               state.append({
                   "key": b.get("key", ""),
                   "shard": b.get("shard") or s_["label"],
@@ -1524,8 +1570,16 @@ jobs:
                   "scenario": clip(b.get("scenario", ""), 300),
                   "evidence": [str(e) for e in (b.get("evidence") or [])][:4],
                   "rounds": max(0, int(b.get("rounds") or 0)) + 1,
+                  # 这一条是否真的过过复核。verify 整个挂掉那轮的阻塞项照样进 PR（标
+                  # 「未复核」），也照样进状态块——不然它下一轮就静默消失了。但它不能因此
+                  # 白拿「默认仍然成立」的待遇：那等于把一条从没验过的结论提拔成默认阻断，
+                  # 只能靠 /dismiss 摘。下游 verify 按这个字段选立场。
+                  # 一旦在任何一轮过了复核就永久为真，后续某轮 verify 挂了也不回退。
+                  "verified": bool(verdicts.get(b["id"])) or bool(b.get("verified")),
               })
-          blob = json.dumps({"v": 1, "open": state[:10]}, ensure_ascii=False)
+          if len(state) > STATE_CAP:
+              lines.append(T["state_trunc"] % (len(state) - STATE_CAP, STATE_CAP) + "\n")
+          blob = json.dumps({"v": 1, "open": state[:STATE_CAP]}, ensure_ascii=False)
           lines.append("\n<!-- claude-review-state: %s -->" % blob.replace("-->", "--\\u003e"))
 
           pathlib.Path("verdict.md").write_text("\n".join(lines), encoding="utf-8")
