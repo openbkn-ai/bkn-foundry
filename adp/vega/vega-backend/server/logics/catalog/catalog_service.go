@@ -321,9 +321,9 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	// The creator also gets resource_manage and query_data (#801): both are now
 	// judged on the catalog, so without them they could not add a table to the
 	// catalog they just created — and the connection config and credentials are
-	// theirs to begin with.
-	catalogCreatorOps := append(append([]string{}, interfaces.COMMON_OPERATIONS...),
-		interfaces.OPERATION_TYPE_RESOURCE_MANAGE, interfaces.OPERATION_TYPE_QUERY_DATA)
+	// theirs to begin with. Both are in COMMON_OPERATIONS, so the whole set is
+	// what the creator receives.
+	catalogCreatorOps := append([]string{}, interfaces.COMMON_OPERATIONS...)
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
 		Type: authType,

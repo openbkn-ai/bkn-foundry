@@ -47,6 +47,11 @@ const (
 )
 
 var (
+	// COMMON_OPERATIONS is the set every authorization answer is asked to report
+	// on. It grants nothing by itself — a verb missing here is simply never
+	// mentioned back, which is how query_data and resource_manage stayed
+	// invisible to the caller after #801 introduced them: the API kept answering
+	// that nobody held either, including the accounts that did.
 	COMMON_OPERATIONS = []string{
 		OPERATION_TYPE_VIEW_DETAIL,
 		OPERATION_TYPE_CREATE,
@@ -54,6 +59,8 @@ var (
 		OPERATION_TYPE_DELETE,
 		OPERATION_TYPE_AUTHORIZE,
 		OPERATION_TYPE_TASK_MANAGE,
+		OPERATION_TYPE_QUERY_DATA,
+		OPERATION_TYPE_RESOURCE_MANAGE,
 	}
 )
 
