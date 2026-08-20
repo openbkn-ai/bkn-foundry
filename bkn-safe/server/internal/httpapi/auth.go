@@ -80,21 +80,21 @@ body:before{content:"";position:fixed;inset:0;z-index:-2;background-image:
 .note{font-size:13px;color:#64748d;background:#f9fbff;border:1px solid rgba(15,30,54,.08);
   border-radius:10px;padding:12px;margin:16px 0}
 input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d9d9d9;border-radius:9px;
-  padding:13px 14px;color:rgba(0,0,0,.88);font-size:15px;margin:7px 0;outline:none;
+  height:48px;padding:0 14px;color:rgba(0,0,0,.88);font-size:15px;margin:8px 0;outline:none;
   transition:border-color .2s,box-shadow .2s}
 input::placeholder{color:rgba(0,0,0,.35)}
 input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.1)}
 ul{list-style:none;padding:0;margin:14px 0}
 li{padding:6px 0;font-size:14px;color:#152239}li:before{content:"✓ ";color:#2563eb}
-button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:9px;padding:14px;
-  font:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;
+button,.btn{width:100%;height:48px;box-sizing:border-box;border:0;border-radius:9px;padding:0 16px;
+  display:inline-flex;align-items:center;justify-content:center;font:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px;
   transition:background .2s,color .2s}
 .primary{background:#2563eb;color:#fff;box-shadow:0 2px 0 rgba(37,99,235,.1)}
 .primary:hover{background:#1d4ed8}
 .ghost{background:transparent;color:#64748d;font-weight:500}
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
-form{width:min(464px,100%);margin:0 auto}
+form{width:min(400px,100%);margin:0 auto}
 @media (max-width:640px){body:before{background-position:60% center}.card{padding:36px 24px}.locale-switch{right:18px}}
 </style>`
 
