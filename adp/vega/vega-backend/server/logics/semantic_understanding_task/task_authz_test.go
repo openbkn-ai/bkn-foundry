@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
@@ -99,8 +100,10 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(nil, nil)
-		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).Return(nil, nil)
-		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
+		// 目录已删:InternalGetByID 返回的是 404 错误,不是 (nil, nil)。
+		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
+			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
+		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
 			Return(nil, true, nil)
 		suta.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).Return(int64(1), nil)
 
@@ -117,8 +120,9 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(nil, nil)
-		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).Return(nil, nil)
-		rs.EXPECT().AuthorizedResourceIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
+			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
+		cs.EXPECT().AuthorizedCatalogIDs(gomock.Any(), gomock.Any()).Return(nil, false, nil)
 
 		err := svc.DeleteByIDs(context.Background(), []string{"task-1"}, false)
 		require.Error(t, err)

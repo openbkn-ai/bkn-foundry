@@ -370,30 +370,22 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	_, parentInternal := internalCatalogs[req.CatalogID]
 	authType := resourceAuthResourceType(parentInternal)
 
-	// Creating a table is authorised by the target catalog's resource_manage, or
-	// by the legacy resource:* + create — legacy first, short-circuit (#801).
+	// Creating a table is authorised by the target catalog's resource_manage
+	// (#801). A table is always created INSIDE a catalog, so "may create a table"
+	// and "may act on this catalog" are the same question — and the old check
+	// could not answer it: it asked resource:* + create, and a wildcard object
+	// does not say which catalog the table lands in, so whoever held it could
+	// create a table anywhere.
 	//
-	// A table is always created INSIDE a catalog, so "may create a table" and
-	// "may act on this catalog" are the same question, and the legacy check
-	// cannot answer it: a wildcard object does not say which catalog the table
-	// lands in, so whoever holds it can create a table anywhere.
-	//
-	// The legacy verb is nonetheless asked FIRST and kept. Dropping it looks like
-	// tidying and is a breaking change: the seed rebuilds only the built-in roles,
-	// so a CUSTOM role created through the admin console still carries
-	// resource:*/create and nothing migrates it. Those roles would start getting
-	// 403 on an upgrade. Retiring it belongs with the seed convergence (#513),
-	// which owns the migration story.
+	// The legacy verb is deliberately NOT asked as a second chance. A custom role
+	// still carrying resource:*/create loses table creation on upgrade, and that
+	// is the intended outcome: it is the grant that could not name a catalog.
+	// Re-grant those roles resource_manage on the catalogs they should manage.
 	if err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: authType,
-		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_CREATE}); err != nil {
-		if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-			Type: catalogAuthResourceType(parentInternal),
-			ID:   req.CatalogID,
-		}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err2 != nil {
-			return nil, err // the legacy error, so client-visible codes do not change
-		}
+		Type: catalogAuthResourceType(parentInternal),
+		ID:   req.CatalogID,
+	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}); err != nil {
+		return nil, err
 	}
 
 	// Get account info from context

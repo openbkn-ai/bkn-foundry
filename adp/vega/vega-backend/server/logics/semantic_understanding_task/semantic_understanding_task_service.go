@@ -229,18 +229,21 @@ func (suts *semanticUnderstandingTaskService) checkTaskPermission(ctx context.Co
 		// 退到它所属的目录。
 	}
 	if task.CatalogID != "" {
+		// InternalGetByID 对不存在的目录返回 404 错误而不是 (nil, nil),所以这里
+		// 要按「取不到就是没了」处理,不能把错误直接抛出去——否则删掉整个目录之后,
+		// 它下面的任务连兜底那一级都走不到,谁都读不了也删不掉。
 		catalog, err := suts.cs.InternalGetByID(ctx, task.CatalogID, false)
-		if err != nil {
-			return err
-		}
-		if catalog != nil {
+		if err == nil && catalog != nil {
 			return suts.cs.CheckCatalogPermission(ctx, task.CatalogID, op)
 		}
 	}
-	// 父都不在了。这类孤儿只剩清理价值,交给持类型级授权的人——它已经能看到该
-	// 类型下的全部对象,多看一条没有父的任务不构成新的暴露,而没有这条出路,
+	// 父都不在了。这类孤儿只剩清理价值,判在目录类型的通配授权上:持有它的人本来
+	// 就看得见每一个目录,多看一条没有父的任务不构成新的暴露,而没有这条出路,
 	// 孤儿任务就是永久滞留。
-	if _, unrestricted, err := suts.rs.AuthorizedResourceIDs(ctx, op); err != nil {
+	//
+	// 问的是 catalog:* 而不是 resource:*——后者在本次收敛里只剩两个读动词,拿它
+	// 判 task_manage 会永远为假,兜底就又成了死代码。
+	if _, unrestricted, err := suts.cs.AuthorizedCatalogIDs(ctx, op); err != nil {
 		return err
 	} else if unrestricted {
 		return nil

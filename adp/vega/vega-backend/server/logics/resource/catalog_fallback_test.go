@@ -263,13 +263,12 @@ func TestMergeCatalogPermissionsIgnoresUnmappedOps(t *testing.T) {
 	assert.Empty(t, result)
 }
 
-// TestCreateFallsBackToCatalogResourceManage 钉住建表判定的形状:老动词在前、
-// 短路,拒了才问目标目录的 resource_manage。
+// TestCreateJudgesTheCatalogOnly 钉住建表只问目标目录的 resource_manage。
 //
-// 保留老动词不是恋旧。种子只重建内置角色,管理台建的自定义角色手上还是
-// resource:*/create,没有任何东西迁移它们——直接切成只判目录,那些角色升级即 403。
-// 收紧留给 #513,那条线自带迁移。
-func TestCreateFallsBackToCatalogResourceManage(t *testing.T) {
+// 老动词不再作为第二次机会:resource:* 这个通配对象答不了「这张表要建在哪个目录」,
+// 持有它的人可以往任意目录里建表——那正是要去掉的东西。mock 只允许目录那一问,
+// 多问一次就会失败。
+func TestCreateJudgesTheCatalogOnly(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ra := vmock.NewMockResourceAccess(ctrl)
 	ps := vmock.NewMockPermissionService(ctrl)
@@ -278,11 +277,6 @@ func TestCreateFallsBackToCatalogResourceManage(t *testing.T) {
 	expectResourceServiceTransaction(t, rs, true)
 
 	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
-	// 老动词先问，这里让它拒，回落到目录。
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
-		ID:   interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_CREATE}).Return(errors.New("denied")).Times(1)
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   "c-1",
