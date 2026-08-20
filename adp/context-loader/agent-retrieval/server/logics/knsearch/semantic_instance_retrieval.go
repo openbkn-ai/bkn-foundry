@@ -291,6 +291,12 @@ func (s *localSearchImpl) filterObjectTypesByScore(
 		// endpoints of a selected relation are completed in afterwards, and object_types pinned by the
 		// caller are applied before scoring runs at all. Dropping those would silently skip the very
 		// object type a caller named by hand.
+		//
+		// Narrower than it used to be: concept recall reranks every object type it carries, so an
+		// endpoint-completed or caller-pinned one now arrives with a real relevance score and is
+		// filtered on it like any other. This branch is what is left when the reranker was
+		// unavailable - and a pinned object type can then be dropped on relevance alone, which is
+		// worth revisiting for whoever turns this ratio on.
 		if objType.Score <= 0 {
 			unscored++
 			kept = append(kept, objType)

@@ -697,32 +697,40 @@ func (s *localSearchImpl) rankConcepts(
 
 	// Call the Rerank service; model is the default reranker checked in the empty model management (#842)
 	rerankResp, err := s.rerankClient.Rerank(ctx, query, documents, rerankModel)
-	if err != nil {
-		// Graceful downgrade: Relevance is not lost when the reranker is unavailable (not registered/NameNotExist).
-		// Prioritize sorting by coarse recall BM25 _score (existing correlation signal, zero additional delay);
-		// Only fall back to pure name matching if _score is all 0 (if coarse recall is not enabled).
-		// Object types keep whatever the coarse pass gave them, which is the pre-rerank behaviour.
+	if err != nil || rerankResp == nil {
 		s.logger.WithContext(ctx).Warnf("[RankConcepts] Rerank unavailable (%v); degrading to coarse-recall _score order", err)
-		if ranked, ok := rankRelationTypesByScore(relations, topK); ok {
-			return ranked
-		}
-		s.logger.WithContext(ctx).Warnf("[RankConcepts] coarse-recall _score all zero; falling back to simple name match")
-		return s.rankRelationTypesBySimpleMatch(query, relations, topK)
+		return s.degradeRelationRanking(ctx, query, relations, topK)
 	}
 
 	objectScores := make([]float64, objectDocCount)
 	relationScores := make([]float64, len(relations))
+	objectApplied, relationApplied := 0, 0
 	for _, result := range rerankResp.Results {
 		switch {
 		case result.Index < 0 || result.Index >= len(documents):
 		case result.Index < objectDocCount:
 			objectScores[result.Index] = result.RelevanceScore
+			objectApplied++
 		default:
 			relationScores[result.Index-objectDocCount] = result.RelevanceScore
+			relationApplied++
 		}
 	}
 
-	if objectDocCount > 0 {
+	// A 200 carrying no usable index is the reranker being unavailable in a way that never surfaces
+	// as an error - an unregistered model answered through an error envelope, a vendor that returned
+	// an empty list. Taking it at face value would clear every coarse score and leave nothing in its
+	// place, which is strictly worse than not having called the model at all. Instance reranking
+	// guards this the same way.
+	if objectApplied == 0 && relationApplied == 0 {
+		s.logger.WithContext(ctx).Warnf("[RankConcepts] Rerank returned no usable index; degrading to coarse-recall _score order")
+		return s.degradeRelationRanking(ctx, query, relations, topK)
+	}
+
+	// Write back per category, and only where the model actually answered. A vendor that returns
+	// only its top N can come back with relation scores and no object score at all; zeroing the
+	// object types on the strength of that would bury them for a reason the model never gave.
+	if objectApplied > 0 {
 		// The rerank score replaces the coarse score instead of blending with it: the two are not on
 		// one scale (BM25 is unbounded, the reranker answers in 0..1), so an object type still holding
 		// a coarse score would sort above every reranked one. Object types that missed the candidate
@@ -735,12 +743,36 @@ func (s *localSearchImpl) rankConcepts(
 		for i, obj := range objectCandidates {
 			obj.Score = objectScores[i]
 		}
-		s.logger.WithContext(ctx).Debugf("[RankConcepts] Reranked %d/%d object types", objectDocCount, len(objectTypes))
+		s.logger.WithContext(ctx).Debugf("[RankConcepts] Reranked %d/%d object types", objectApplied, len(objectTypes))
+	} else if objectDocCount > 0 {
+		s.logger.WithContext(ctx).Warnf("[RankConcepts] Rerank scored no object type; keeping coarse-recall order for %d", objectDocCount)
+	}
+
+	if relationApplied == 0 && len(relations) > 0 {
+		s.logger.WithContext(ctx).Warnf("[RankConcepts] Rerank scored no relation type; keeping recall order for %d", len(relations))
 	}
 
 	ranked := rankRelationsByScores(relations, relationScores, topK)
 	s.logger.WithContext(ctx).Debugf("[RankConcepts] Rerank completed, top_k=%d", len(ranked))
 	return ranked
+}
+
+// degradeRelationRanking is the relation ranking used whenever the reranker gives nothing usable.
+// Relevance is not lost when the reranker is unavailable (not registered / NameNotExist): sort by
+// the coarse recall BM25 _score first, which is an existing signal at zero extra latency, and fall
+// back to pure name matching only when _score is all zero (coarse recall off). Object types keep
+// whatever the coarse pass gave them, which is the pre-rerank behaviour.
+func (s *localSearchImpl) degradeRelationRanking(
+	ctx context.Context,
+	query string,
+	relations []*interfaces.RelationType,
+	topK int,
+) []*interfaces.RelationType {
+	if ranked, ok := rankRelationTypesByScore(relations, topK); ok {
+		return ranked
+	}
+	s.logger.WithContext(ctx).Warnf("[RankConcepts] coarse-recall _score all zero; falling back to simple name match")
+	return s.rankRelationTypesBySimpleMatch(query, relations, topK)
 }
 
 // objectRerankCandidates picks the object types that go into the rerank call, best coarse score

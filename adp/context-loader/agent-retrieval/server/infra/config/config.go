@@ -175,6 +175,11 @@ type KnInstanceSearchConfig struct {
 	// Those two numbers were measured when the concept-recall score was raw BM25. It is the
 	// reranker's 0..1 relevance now, so a deployment that did calibrate this value has to measure
 	// again — the ratios are not comparable across the two scales.
+	//
+	// Worse, both scales can reach this threshold in one deployment: enable_rerank=false leaves
+	// object types on the coarse BM25 score and enable_rerank=true replaces it with the reranker's,
+	// so the same ratio filters the two request paths with different strength. Calibrate against the
+	// path the callers actually use.
 	MinObjectTypeScoreRatio float64 `yaml:"min_object_type_score_ratio"`
 }
 

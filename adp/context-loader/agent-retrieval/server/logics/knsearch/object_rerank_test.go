@@ -89,6 +89,11 @@ func metaWordAwareRerank() *mockRerankClient {
 
 func runMetaWordQuery(t *testing.T, enableRerank bool) []string {
 	t.Helper()
+	return runMetaWordQueryWith(t, metaWordAwareRerank(), enableRerank)
+}
+
+func runMetaWordQueryWith(t *testing.T, rerank interfaces.DrivenMFModelAPIClient, enableRerank bool) []string {
+	t.Helper()
 
 	net := buildMetaWordQueryNetwork()
 	svc := &localSearchImpl{
@@ -98,7 +103,7 @@ func runMetaWordQuery(t *testing.T, enableRerank bool) []string {
 			objectTypesResp:   &interfaces.ObjectTypeConcepts{Entries: coarseScoresFavouringDecoy(net)},
 			relationTypesResp: &interfaces.RelationTypeConcepts{Entries: net.RelationTypes},
 		},
-		rerankClient: metaWordAwareRerank(),
+		rerankClient: rerank,
 	}
 
 	cfg := DefaultConceptRetrievalConfig()
@@ -283,5 +288,62 @@ func TestObjectRerankCandidateLimitBoundsDocuments(t *testing.T) {
 	if len(docs) != want {
 		t.Errorf("expected %d documents (%d object candidates + %d relation types), got %d",
 			want, cfg.ObjectRerankCandidateLimit, len(net.RelationTypes), len(docs))
+	}
+}
+
+// A reranker can fail without returning an error: an unregistered model answered through an error
+// envelope, a vendor that came back with an empty list. Taking that at face value would clear every
+// coarse score and put nothing in its place, leaving object types worse ordered than if the model
+// had never been called - the #778 regression, reintroduced through a success path.
+func TestRerankReturningNoUsableIndexKeepsCoarseOrder(t *testing.T) {
+	cases := []struct {
+		name   string
+		client *mockRerankClient
+	}{
+		{"empty results", &mockRerankClient{rerankResp: &interfaces.RerankResp{}}},
+		{"nil response", &mockRerankClient{}},
+		{"every index out of range", &mockRerankClient{rerankResp: &interfaces.RerankResp{
+			Results: []interfaces.RerankResult{{Index: 999, RelevanceScore: 0.9}, {Index: -1, RelevanceScore: 0.9}},
+		}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			names := runMetaWordQueryWith(t, tc.client, true)
+			t.Logf("%s -> %v", tc.name, names)
+			if len(names) == 0 {
+				t.Fatalf("expected object types, got none")
+			}
+			// Coarse order is what BM25 gave: the decoy first. Worse than a working reranker, but it
+			// is the honest answer and it is what the caller got before this change.
+			if names[0] != decoyObjectName {
+				t.Errorf("expected coarse order preserved (%q first), got %v", decoyObjectName, names)
+			}
+		})
+	}
+}
+
+// Vendors that return only their top N can answer with relation scores and no object score at all.
+// Zeroing the object types on the strength of that would bury them for a reason the model never
+// gave, so each category is written back only where the model actually answered.
+func TestRerankScoringOnlyRelationsKeepsObjectCoarseOrder(t *testing.T) {
+	net := buildMetaWordQueryNetwork()
+	objectCount := len(net.ObjectTypes)
+	client := &mockRerankClient{
+		rerankFunc: func(query string, documents []string, model string) (*interfaces.RerankResp, error) {
+			resp := &interfaces.RerankResp{}
+			for i := objectCount; i < len(documents); i++ {
+				resp.Results = append(resp.Results, interfaces.RerankResult{Index: i, RelevanceScore: 0.7})
+			}
+			return resp, nil
+		},
+	}
+
+	names := runMetaWordQueryWith(t, client, true)
+	t.Logf("relations-only rerank -> %v", names)
+	if len(names) == 0 {
+		t.Fatalf("expected object types, got none")
+	}
+	if names[0] != decoyObjectName {
+		t.Errorf("expected object coarse order preserved (%q first), got %v", decoyObjectName, names)
 	}
 }
