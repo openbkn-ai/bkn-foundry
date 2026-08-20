@@ -113,8 +113,14 @@ func FilterSearchInstanceResp(resp *interfaces.KnSearchResp, includeObjectTypes 
 	if includeObjectTypes {
 		out.ObjectTypes = objectTypesOfNodes(toAnySlice(resp.ObjectTypes), out.Nodes)
 	}
-	// message is only meaningful when there is no hit: if there is a result, it is just noise.
-	if len(out.Nodes) == 0 && resp.Message != nil {
+	// Pass the message through whenever retrieval wrote one, empty result or not.
+	//
+	// It used to be forwarded only for empty results, on the grounds that an explanation next to rows
+	// is noise. That stopped being true once retrieval could say something about rows it did return:
+	// "the relevance gate was configured but could not run, so these are unfiltered" is exactly the
+	// case where the caller has rows in hand and needs to know what they are not. Whether a message is
+	// worth sending is retrieval's call, not this layer's.
+	if resp.Message != nil {
 		out.Message = strings.TrimSpace(*resp.Message)
 	}
 	return out

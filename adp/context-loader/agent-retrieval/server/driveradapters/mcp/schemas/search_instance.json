@@ -44,7 +44,7 @@
         "type": "integer",
         "default": 10,
         "minimum": 1,
-        "description": "参与实例召回的对象类数量上限。调大能覆盖更多对象类，代价是每多一个对象类多一轮下游查询。"
+        "description": "参与实例召回的对象类数量上限。调大能覆盖更多对象类，代价是每多一个对象类多一轮下游查询。 这是**严格上限**：概念召回为保持 Schema 自洽会多带回一些对象类（关系端点补齐），它们仍会出现在 object_types 里，但不会被发起实例查询。"
       },
       "max_instances_per_type": {
         "type": "integer",

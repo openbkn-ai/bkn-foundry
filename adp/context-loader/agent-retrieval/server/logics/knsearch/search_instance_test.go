@@ -135,8 +135,27 @@ func TestFilterSearchInstanceResp_KeepsOnlyHitObjectTypes(t *testing.T) {
 	if id := out.ObjectTypes[0].(map[string]any)["concept_id"]; id != "ot1" {
 		t.Errorf("expected ot1, got %v", id)
 	}
-	if out.Message != "" {
-		t.Errorf("message belongs to the empty case only, got %q", out.Message)
+	if out.Message != msg {
+		t.Errorf("retrieval's message must reach the caller, got %q", out.Message)
+	}
+}
+
+// The relevance gate can have something to say about rows it did return: "configured but unable to
+// run, so these are unfiltered". Dropping that left the caller unable to tell a filtered result from
+// an unfiltered one.
+func TestFilterSearchInstanceResp_KeepsMessageAlongsideRows(t *testing.T) {
+	msg := "相关性阈值 min_reranker_score=0.3000 未生效：精排模型不可用"
+	out := FilterSearchInstanceResp(&interfaces.KnSearchResp{
+		ObjectTypes: []any{map[string]any{"concept_id": "ot1"}},
+		Nodes:       []any{map[string]any{"object_type_id": "ot1", "score": 1.0}},
+		Message:     &msg,
+	}, true)
+
+	if len(out.Nodes) != 1 {
+		t.Fatalf("expected the row to survive, got %d", len(out.Nodes))
+	}
+	if out.Message != msg {
+		t.Fatalf("the warning was dropped because the result was non-empty: %q", out.Message)
 	}
 }
 

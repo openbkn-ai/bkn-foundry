@@ -388,7 +388,13 @@ components:
                   type: integer
                   minimum: 1
                   default: 10
-                  description: 兼容映射到候选规模上限。
+                  description: |
+                    候选规模上限，**同时是实例召回真正查询的对象类数量上限**。
+
+                    概念召回本身会返回更多：它把入选关系的端点一并补齐，好让回给你的 Schema
+                    没有断头引用，数量可达 `top_k` 的两倍。响应里的 `object_types` 仍然列出
+                    补齐后的全部对象类；但只有前 `top_k` 个会被发起实例查询——每多一个对象类
+                    至少多一次下游查询，有向量通道时还多一次 embedding 调用。
                 schema_brief:
                   type: boolean
                   default: false
