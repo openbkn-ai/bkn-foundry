@@ -400,112 +400,73 @@ func TestCheckResourcePermissionHidesUnknownResources(t *testing.T) {
 		"查不到就报 404 会把「哪些 id 存在」告诉一个还没证明自己能看的调用方")
 }
 
-// TestAuthorizedResourcesExcludesInternalResources 是「通配授权不是通行证」的
-// 证据:resource:* 发在业务类型上,平台自己的表坐在 internal_resource 上。把
-// 前者当成「看得见一切」,挂在内部表底下的构建任务与语义任务就会跟着列出去。
-func TestAuthorizedResourcesExcludesInternalResources(t *testing.T) {
+// TestFilterAuthorizedResourcesRunsTheTwoQuestions 钉住批量过滤走的是同一套判定:
+// 先问这张表,拒了再问它所在的目录。内部目录下的表按 internal_resource 类型问,
+// 所以持业务 resource:* 的人答不上——平台自己的表不会从任务列表里漏出去;而被
+// 单独授过那个内部目录的人,通过目录回落照样看得到。
+func TestFilterAuthorizedResourcesRunsTheTwoQuestions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := vmock.NewMockPermissionService(ctrl)
 	ra := vmock.NewMockResourceAccess(ctrl)
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
-
-	// 业务类型放行、内部类型不放行。
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(nil)
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(errors.New("denied"))
 
 	cs.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"int-cat"}, nil).AnyTimes()
-	ra.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return([]string{"int-a", "int-b"}, nil)
-	// int-b 被单独授过权,留在可见范围里;int-a 没有,进排除集。
+	ra.EXPECT().ListIDs(gomock.Any(), interfaces.ResourcesQueryParams{CatalogID: "int-cat"}).
+		Return([]string{"int-a"}, nil)
+
+	// 业务表按 resource 类型问,内部表按 internal_resource 类型问——分型不能混。
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		[]string{"biz-a", "biz-b"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{"biz-a": {ResourceID: "biz-a"}}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
-		[]string{"int-a", "int-b"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{
-			"int-b": {ResourceID: "int-b"},
-		}, nil)
-	// 资源侧没批的那张要再问一次它所在的内部目录,这里目录也没批。
-	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"int-a"}).Return([]*interfaces.Resource{
+		[]string{"int-a"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil)
+
+	// 资源侧没批的两张再问各自的目录:业务目录没批,内部目录批了。
+	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"biz-b", "int-a"}).Return([]*interfaces.Resource{
+		{ID: "biz-b", CatalogID: "biz-cat"},
 		{ID: "int-a", CatalogID: "int-cat"},
 	}, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		[]string{"biz-cat"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
 		[]string{"int-cat"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{}, nil)
-
-	scope, err := rs.AuthorizedResources(context.Background(), interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	require.NoError(t, err)
-	assert.True(t, scope.All)
-	assert.Equal(t, []string{"int-a"}, scope.Excluded)
-	assert.False(t, scope.Unfiltered(), "有排除项就不能声称无需过滤")
-	assert.False(t, scope.Allows("int-a"))
-	assert.True(t, scope.Allows("int-b"))
-	assert.True(t, scope.Allows("business-table"))
-}
-
-// TestAuthorizedResourcesInternalWildcardNeedsNoExclusion: 两个类型都持通配的
-// 才是真的「看得见一切」——超管与平台自己的 S2S 身份。这条同时钉住不该为它
-// 多付一次内部资源枚举。
-func TestAuthorizedResourcesInternalWildcardNeedsNoExclusion(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	ps := vmock.NewMockPermissionService(ctrl)
-	rs := &resourceService{ps: ps, ra: vmock.NewMockResourceAccess(ctrl), cs: vmock.NewMockCatalogService(ctrl)}
-
-	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
-	// ListInternalIDs / ListIDs 未被期望:多问一次就会失败。
-
-	scope, err := rs.AuthorizedResources(context.Background(), interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	require.NoError(t, err)
-	assert.True(t, scope.Unfiltered())
-	assert.Empty(t, scope.Excluded)
-}
-
-// TestAuthorizedResourcesKeepsResourcesOfAGrantedInternalCatalog 是这一刀的边界:
-// 「发一个目录就能到底下所有表」这条规则对内部目录同样成立。持 resource:* 的人
-// 若被单独授予某个内部目录的 view_detail,那个目录下的表就在他的可见范围里——
-// 排除集只算「资源侧和目录侧都没批」的那些,否则会把刚发出去的授权又藏回去。
-func TestAuthorizedResourcesKeepsResourcesOfAGrantedInternalCatalog(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	ps := vmock.NewMockPermissionService(ctrl)
-	ra := vmock.NewMockResourceAccess(ctrl)
-	cs := vmock.NewMockCatalogService(ctrl)
-	rs := &resourceService{ps: ps, ra: ra, cs: cs}
-
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(nil)
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, ID: interfaces.RESOURCE_ID_ALL,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(errors.New("denied"))
-
-	cs.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"granted-cat", "other-cat"}, nil).AnyTimes()
-	ra.EXPECT().ListIDs(gomock.Any(), interfaces.ResourcesQueryParams{CatalogID: "granted-cat"}).
-		Return([]string{"in-granted"}, nil)
-	ra.EXPECT().ListIDs(gomock.Any(), interfaces.ResourcesQueryParams{CatalogID: "other-cat"}).
-		Return([]string{"in-other"}, nil)
-
-	// 两张表在资源侧都没有直授。
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
-		[]string{"in-granted", "in-other"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
-		Return(map[string]interfaces.PermissionResourceOps{}, nil)
-	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"in-granted", "in-other"}).Return([]*interfaces.Resource{
-		{ID: "in-granted", CatalogID: "granted-cat"},
-		{ID: "in-other", CatalogID: "other-cat"},
-	}, nil)
-	// 目录侧只批了 granted-cat。
-	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
-		[]string{"granted-cat", "other-cat"}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
-			"granted-cat": {ResourceID: "granted-cat",
+			"int-cat": {ResourceID: "int-cat",
 				Operations: []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}},
 		}, nil)
 
-	scope, err := rs.AuthorizedResources(context.Background(), interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	allowed, err := rs.FilterAuthorizedResources(context.Background(),
+		[]string{"biz-a", "biz-b", "int-a"}, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	require.NoError(t, err)
-	assert.True(t, scope.All)
-	assert.Equal(t, []string{"in-other"}, scope.Excluded,
-		"被授权目录下的那张表不能进排除集,否则任务列表会把刚发出去的授权藏回去")
-	assert.True(t, scope.Allows("in-granted"))
-	assert.False(t, scope.Allows("in-other"))
+	assert.True(t, allowed["biz-a"], "表上直接授过权")
+	assert.False(t, allowed["biz-b"], "表和目录都没批")
+	assert.True(t, allowed["int-a"], "内部目录授过权,它下面的表就该看得见")
+}
+
+// TestFilterAuthorizedResourcesDeduplicatesAndShortCircuits: 同一张表在一页里出现
+// 多次只问一次;一个 id 都没有时一次请求都不发。
+func TestFilterAuthorizedResourcesDeduplicatesAndShortCircuits(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := vmock.NewMockPermissionService(ctrl)
+	ra := vmock.NewMockResourceAccess(ctrl)
+	cs := vmock.NewMockCatalogService(ctrl)
+	rs := &resourceService{ps: ps, ra: ra, cs: cs}
+
+	// 空输入:ListInternalIDs 都不该被调用。
+	allowed, err := rs.FilterAuthorizedResources(context.Background(), nil, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	require.NoError(t, err)
+	assert.Empty(t, allowed)
+
+	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		[]string{"res-1"}, gomock.Any(), true, gomock.Any()).
+		Return(map[string]interfaces.PermissionResourceOps{"res-1": {ResourceID: "res-1"}}, nil).Times(1)
+
+	allowed, err = rs.FilterAuthorizedResources(context.Background(),
+		[]string{"res-1", "res-1", "", "res-1"}, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]bool{"res-1": true}, allowed)
 }

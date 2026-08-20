@@ -628,29 +628,27 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
 	defer span.End()
 
-	// A task is visible through the table it builds (#472). The filter is applied
-	// in SQL rather than to the fetched page so that total_count matches what the
-	// caller may actually see and pages keep their size.
-	scope, err := bts.rs.AuthorizedResources(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Resolve authorized resources failed")
-		return nil, 0, err
-	}
-	if scope.Empty() {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.BuildTaskSummary{}, 0, nil
-	}
-	if !scope.Unfiltered() {
-		// An explicit resource_id filter is intersected rather than replaced: asking
-		// about one resource must not widen what the caller may see.
-		if params.ResourceID != "" {
-			if !scope.Allows(params.ResourceID) {
-				span.SetStatus(codes.Ok, "")
-				return []*interfaces.BuildTaskSummary{}, 0, nil
-			}
-		} else {
-			params.ResourceIDs = scope.IDs
-			params.ExcludeResourceIDs = scope.Excluded
+	// A task is visible through the table it builds (#472). The page is fetched
+	// first and filtered here, asking the authorization service only about the
+	// tables actually on it. Resolving the visible set up front and pushing it
+	// into the SQL would put every id an account was granted into an IN list on
+	// every page request.
+	//
+	// The consequence is that total counts the rows matching the query, not the
+	// rows this caller may read.
+	if params.ResourceID != "" {
+		// An explicit resource_id filter is checked before the query rather than
+		// intersected after it: asking about one table must not widen what the
+		// caller may see, and refusing here costs no query at all.
+		allowed, err := bts.rs.FilterAuthorizedResources(ctx,
+			[]string{params.ResourceID}, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter authorized resources failed")
+			return nil, 0, err
+		}
+		if !allowed[params.ResourceID] {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.BuildTaskSummary{}, 0, nil
 		}
 	}
 
@@ -660,6 +658,25 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
+	if params.ResourceID == "" {
+		resourceIDs := make([]string, 0, len(buildTasks))
+		for _, bt := range buildTasks {
+			resourceIDs = append(resourceIDs, bt.ResourceID)
+		}
+		allowed, err := bts.rs.FilterAuthorizedResources(ctx, resourceIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter authorized resources failed")
+			return nil, 0, err
+		}
+		visible := make([]*interfaces.BuildTaskSummary, 0, len(buildTasks))
+		for _, bt := range buildTasks {
+			if allowed[bt.ResourceID] {
+				visible = append(visible, bt)
+			}
+		}
+		buildTasks = visible
+	}
+
 	if err := bts.populateBuildTaskSummaryReferences(ctx, buildTasks); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate build task references: %v", err)

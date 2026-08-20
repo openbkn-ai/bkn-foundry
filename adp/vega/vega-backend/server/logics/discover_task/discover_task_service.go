@@ -175,26 +175,21 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.List")
 	defer span.End()
 
-	// 过滤下推到 SQL,与构建任务列表同一口径:count 与 list 共用条件,total 才是
-	// 调用方真正能看到的数量（#269 / #472）。
-	scope, err := dts.cs.AuthorizedCatalogs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
-		return nil, 0, err
-	}
-	if scope.Empty() {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.DiscoverTaskSummary{}, 0, nil
-	}
-	if !scope.Unfiltered() {
-		if params.CatalogID != "" {
-			if !scope.Allows(params.CatalogID) {
-				span.SetStatus(codes.Ok, "")
-				return []*interfaces.DiscoverTaskSummary{}, 0, nil
-			}
-		} else {
-			params.CatalogIDs = scope.IDs
-			params.ExcludeCatalogIDs = scope.Excluded
+	// 与构建任务列表同一口径:先取页,再只就页上出现的目录问一次鉴权。把可见集
+	// 提前解析、整个塞进 SQL 的 IN 列表,会让逐个授权的账号每翻一页就带上它被
+	// 授权过的全部 id（#269 / #472）。
+	//
+	// 代价是 total 表示「匹配查询的行数」,不是「这个调用方能读的行数」。
+	if params.CatalogID != "" {
+		allowed, err := dts.cs.FilterAuthorizedCatalogs(ctx,
+			[]string{params.CatalogID}, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
+			return nil, 0, err
+		}
+		if !allowed[params.CatalogID] {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.DiscoverTaskSummary{}, 0, nil
 		}
 	}
 
@@ -204,6 +199,25 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
+	if params.CatalogID == "" {
+		catalogIDs := make([]string, 0, len(tasks))
+		for _, t := range tasks {
+			catalogIDs = append(catalogIDs, t.CatalogID)
+		}
+		allowed, err := dts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
+			return nil, 0, err
+		}
+		visible := make([]*interfaces.DiscoverTaskSummary, 0, len(tasks))
+		for _, t := range tasks {
+			if allowed[t.CatalogID] {
+				visible = append(visible, t)
+			}
+		}
+		tasks = visible
+	}
+
 	if err := dts.populateDiscoverTaskSummaryReferences(ctx, tasks); err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate discover task references: %v", err)

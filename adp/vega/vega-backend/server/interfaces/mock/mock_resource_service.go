@@ -42,21 +42,6 @@ func (m *MockResourceService) EXPECT() *MockResourceServiceMockRecorder {
 	return m.recorder
 }
 
-// AuthorizedResources mocks base method.
-func (m *MockResourceService) AuthorizedResources(ctx context.Context, op string) (interfaces.AuthorizedScope, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AuthorizedResources", ctx, op)
-	ret0, _ := ret[0].(interfaces.AuthorizedScope)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AuthorizedResources indicates an expected call of AuthorizedResources.
-func (mr *MockResourceServiceMockRecorder) AuthorizedResources(ctx, op any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizedResources", reflect.TypeOf((*MockResourceService)(nil).AuthorizedResources), ctx, op)
-}
-
 // CheckExistByCategories mocks base method.
 func (m *MockResourceService) CheckExistByCategories(ctx context.Context, catalogID string, categories []string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -143,6 +128,21 @@ func (m *MockResourceService) DeleteByIDs(ctx context.Context, ids []string) err
 func (mr *MockResourceServiceMockRecorder) DeleteByIDs(ctx, ids any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockResourceService)(nil).DeleteByIDs), ctx, ids)
+}
+
+// FilterAuthorizedResources mocks base method.
+func (m *MockResourceService) FilterAuthorizedResources(ctx context.Context, ids []string, op string) (map[string]bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FilterAuthorizedResources", ctx, ids, op)
+	ret0, _ := ret[0].(map[string]bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FilterAuthorizedResources indicates an expected call of FilterAuthorizedResources.
+func (mr *MockResourceServiceMockRecorder) FilterAuthorizedResources(ctx, ids, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterAuthorizedResources", reflect.TypeOf((*MockResourceService)(nil).FilterAuthorizedResources), ctx, ids, op)
 }
 
 // GetByCatalogID mocks base method.

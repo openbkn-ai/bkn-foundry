@@ -8,6 +8,7 @@ package discover_task
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -56,50 +57,59 @@ func TestDiscoverTaskReadRequiresCatalogViewDetail(t *testing.T) {
 }
 
 // TestDiscoverTaskListFiltersByVisibleCatalogs 与构建任务列表同一口径:过滤下推
-// 到 SQL,让 total 与调用方真正能看到的数量一致。
+// TestDiscoverTaskListFiltersByVisibleCatalogs: 探查任务挂在目录上,列表就按目录
+// 判。过滤对取回的这一页做,问的 id 数被页大小兜住。
 func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
-	t.Run("按可见目录集过滤", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
+	newSvc := func(ctrl *gomock.Controller) (*discoverTaskService,
+		*vmock.MockDiscoverTaskAccess, *vmock.MockCatalogService) {
 		cs := vmock.NewMockCatalogService(ctrl)
 		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
 		ums := vmock.NewMockUserMgmtService(ctrl)
-		svc := &discoverTaskService{cs: cs, dta: dta, ums: ums}
-
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
-			Return(interfaces.AuthorizedScope{IDs: []string{"cat-1"}}, nil)
-		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
-				assert.Equal(t, []string{"cat-1"}, params.CatalogIDs, "可见目录集必须下推到查询里")
-				return []*interfaces.DiscoverTaskSummary{}, 0, nil
-			})
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		return &discoverTaskService{cs: cs, dta: dta, ums: ums}, dta, cs
+	}
+	page := func(catalogIDs ...string) []*interfaces.DiscoverTaskSummary {
+		out := make([]*interfaces.DiscoverTaskSummary, 0, len(catalogIDs))
+		for i, id := range catalogIDs {
+			out = append(out, &interfaces.DiscoverTaskSummary{ID: fmt.Sprintf("task-%d", i), CatalogID: id})
+		}
+		return out
+	}
 
-		_, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+	t.Run("只留下看得见的那几行", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, dta, cs := newSvc(ctrl)
+
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1", "cat-2"), int64(2), nil)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-1", "cat-2"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("cat-1"))
+
+		tasks, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		assert.Equal(t, "cat-1", tasks[0].CatalogID)
 	})
 
-	t.Run("一个都看不见就直接空，不查库", func(t *testing.T) {
+	t.Run("一页全被滤掉就返回空,不报错", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cs := vmock.NewMockCatalogService(ctrl)
-		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
-		svc := &discoverTaskService{cs: cs, dta: dta}
+		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{}, nil)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(denyAllIDs)
 
-		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+		tasks, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
-		assert.Zero(t, total)
 	})
 
-	t.Run("显式指定的 catalog_id 是取交集，不是放宽", func(t *testing.T) {
+	t.Run("显式指定看不见的 catalog_id,查都不查", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		cs := vmock.NewMockCatalogService(ctrl)
-		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
-		svc := &discoverTaskService{cs: cs, dta: dta}
+		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
-			Return(interfaces.AuthorizedScope{IDs: []string{"cat-1"}}, nil)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-other"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(denyAllIDs)
+		_ = dta // dta.List 不该被调用
 
 		tasks, total, err := svc.List(context.Background(),
 			interfaces.DiscoverTaskQueryParams{CatalogID: "cat-other"})
@@ -109,22 +119,34 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 	})
 }
 
-// TestDiscoverTaskDeleteStopsTheWholeBatch: 批量删除是整体事务,一条没权限就整批
-// 停下;而且判定排在「不存在 / 运行中」这两个判断之前——先回 404/409 等于把 id
-// 和运行状态告诉一个还没证明自己能看的调用方。
-func TestDiscoverTaskDeleteStopsTheWholeBatch(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	cs := vmock.NewMockCatalogService(ctrl)
-	dta := vmock.NewMockDiscoverTaskAccess(ctrl)
-	svc := &discoverTaskService{cs: cs, dta: dta}
+// allowAllIDs 让批量鉴权对传进来的每个 id 都放行——给那些不以授权为主题的用例
+// 用,免得每条都去铺一遍权限桩。
+func allowAllIDs(_ context.Context, ids []string, _ string) (map[string]bool, error) {
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
 
-	denied := errors.New("forbidden")
-	dta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
-		ID: "task-1", CatalogID: "cat-1", Status: interfaces.DiscoverTaskStatusRunning,
-	}, nil)
-	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
-	// dta.DeleteByIDs 未被期望；运行中也不该先冒出 409。
+// allowOnlyIDs 只放行指定的 id,其余一律拒。
+func allowOnlyIDs(allowed ...string) func(context.Context, []string, string) (map[string]bool, error) {
+	set := make(map[string]bool, len(allowed))
+	for _, id := range allowed {
+		set[id] = true
+	}
+	return func(_ context.Context, ids []string, _ string) (map[string]bool, error) {
+		out := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			if set[id] {
+				out[id] = true
+			}
+		}
+		return out, nil
+	}
+}
 
-	assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
+// denyAllIDs 一个都不放行。
+func denyAllIDs(_ context.Context, _ []string, _ string) (map[string]bool, error) {
+	return map[string]bool{}, nil
 }

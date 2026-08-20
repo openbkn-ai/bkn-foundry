@@ -41,21 +41,6 @@ func (m *MockCatalogService) EXPECT() *MockCatalogServiceMockRecorder {
 	return m.recorder
 }
 
-// AuthorizedCatalogs mocks base method.
-func (m *MockCatalogService) AuthorizedCatalogs(ctx context.Context, op string) (interfaces.AuthorizedScope, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AuthorizedCatalogs", ctx, op)
-	ret0, _ := ret[0].(interfaces.AuthorizedScope)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// AuthorizedCatalogs indicates an expected call of AuthorizedCatalogs.
-func (mr *MockCatalogServiceMockRecorder) AuthorizedCatalogs(ctx, op any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizedCatalogs", reflect.TypeOf((*MockCatalogService)(nil).AuthorizedCatalogs), ctx, op)
-}
-
 // CheckCatalogPermission mocks base method.
 func (m *MockCatalogService) CheckCatalogPermission(ctx context.Context, catalogID, op string) error {
 	m.ctrl.T.Helper()
@@ -129,6 +114,21 @@ func (mr *MockCatalogServiceMockRecorder) DeleteByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByID", reflect.TypeOf((*MockCatalogService)(nil).DeleteByID), ctx, id)
 }
 
+// FilterAuthorizedCatalogs mocks base method.
+func (m *MockCatalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []string, op string) (map[string]bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FilterAuthorizedCatalogs", ctx, ids, op)
+	ret0, _ := ret[0].(map[string]bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// FilterAuthorizedCatalogs indicates an expected call of FilterAuthorizedCatalogs.
+func (mr *MockCatalogServiceMockRecorder) FilterAuthorizedCatalogs(ctx, ids, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterAuthorizedCatalogs", reflect.TypeOf((*MockCatalogService)(nil).FilterAuthorizedCatalogs), ctx, ids, op)
+}
+
 // GetByID mocks base method.
 func (m *MockCatalogService) GetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
 	m.ctrl.T.Helper()
@@ -172,6 +172,21 @@ func (m *MockCatalogService) GetDeletionImpact(ctx context.Context, id string) (
 func (mr *MockCatalogServiceMockRecorder) GetDeletionImpact(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeletionImpact", reflect.TypeOf((*MockCatalogService)(nil).GetDeletionImpact), ctx, id)
+}
+
+// HasTypeWideGrant mocks base method.
+func (m *MockCatalogService) HasTypeWideGrant(ctx context.Context, op string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasTypeWideGrant", ctx, op)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasTypeWideGrant indicates an expected call of HasTypeWideGrant.
+func (mr *MockCatalogServiceMockRecorder) HasTypeWideGrant(ctx, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasTypeWideGrant", reflect.TypeOf((*MockCatalogService)(nil).HasTypeWideGrant), ctx, op)
 }
 
 // InternalGetByID mocks base method.

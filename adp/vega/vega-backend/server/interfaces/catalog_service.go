@@ -50,10 +50,15 @@ type CatalogService interface {
 	// services whose objects hang off a catalog rather than a table.
 	CheckCatalogPermission(ctx context.Context, catalogID string, op string) error
 
-	// AuthorizedCatalogs reports which catalogs the caller may perform op on.
-	// See AuthorizedScope: a type-wide grant answers All with the internal
-	// directories it does not reach listed in Excluded.
-	AuthorizedCatalogs(ctx context.Context, op string) (AuthorizedScope, error)
+	// FilterAuthorizedCatalogs keeps the ids the caller may perform op on.
+	// Symmetric with ResourceService.FilterAuthorizedResources and bounded the
+	// same way — by the page, not by the size of the grant.
+	FilterAuthorizedCatalogs(ctx context.Context, ids []string, op string) (map[string]bool, error)
+
+	// HasTypeWideGrant reports a grant written against the catalog type itself
+	// (catalog:*). It exists for the one case that has no object to judge: a task
+	// whose parent has been deleted, which only a type-wide holder may clean up.
+	HasTypeWideGrant(ctx context.Context, op string) (bool, error)
 
 	// InternalGetByID retrieves a Catalog by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)

@@ -103,8 +103,7 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 		// 目录已删:InternalGetByID 返回的是 404 错误,不是 (nil, nil)。
 		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
 			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
-			Return(interfaces.AuthorizedScope{All: true}, nil)
+		cs.EXPECT().HasTypeWideGrant(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).Return(true, nil)
 		suta.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).Return(int64(1), nil)
 
 		require.NoError(t, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
@@ -122,7 +121,7 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(nil, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
 			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{}, nil)
+		cs.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(false, nil)
 
 		err := svc.DeleteByIDs(context.Background(), []string{"task-1"}, false)
 		require.Error(t, err)
@@ -132,8 +131,9 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 	})
 }
 
-// TestSemanticTaskListFiltersByVisibleParents: 任务是双 scope 的,所以可见性是
-// 析取——资源级任务看它那张表,目录级任务看它那个目录,不能合成一个 id 集。
+// TestSemanticTaskListFiltersByVisibleParents: 任务挂在父对象上,列表就按父对象
+// 判——资源域的问表,目录域的问目录。过滤对取回的这一页做,问的 id 数被页大小
+// 兜住,而不是被这个账号被授权过的数量兜住。
 func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 	newSvc := func(ctrl *gomock.Controller) (*semanticUnderstandingTaskService,
 		*mock_interfaces.MockSemanticUnderstandingTaskAccess,
@@ -143,120 +143,130 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
 		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		rs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		return &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs, ums: ums}, suta, rs, cs
 	}
+	resourceTask := func(id, resourceID string) *interfaces.SemanticUnderstandingTaskSummary {
+		return &interfaces.SemanticUnderstandingTaskSummary{
+			ID: id, Scope: interfaces.SemanticUnderstandingTaskScopeResource, ResourceID: resourceID,
+		}
+	}
+	catalogTask := func(id, catalogID string) *interfaces.SemanticUnderstandingTaskSummary {
+		return &interfaces.SemanticUnderstandingTaskSummary{
+			ID: id, Scope: interfaces.SemanticUnderstandingTaskScopeCatalog, CatalogID: catalogID,
+		}
+	}
+	ids := func(tasks []*interfaces.SemanticUnderstandingTaskSummary) []string {
+		out := make([]string, 0, len(tasks))
+		for _, t := range tasks {
+			out = append(out, t.ID)
+		}
+		return out
+	}
 
-	t.Run("两边的可见集都下推", func(t *testing.T) {
+	t.Run("两个域各按各的父对象过滤", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
 
-		rs.EXPECT().AuthorizedResources(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
-			Return(interfaces.AuthorizedScope{IDs: []string{"res-1"}}, nil)
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
-			Return(interfaces.AuthorizedScope{IDs: []string{"cat-1"}}, nil)
-		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
-				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
-				require.NotNil(t, p.Visibility)
-				assert.Equal(t, []string{"res-1"}, p.Visibility.ResourceIDs)
-				assert.Equal(t, []string{"cat-1"}, p.Visibility.CatalogIDs)
-				assert.False(t, p.Visibility.AllResources)
-				assert.False(t, p.Visibility.AllCatalogs)
-				return nil, 0, nil
-			})
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
+			resourceTask("t-res-ok", "res-1"),
+			resourceTask("t-res-no", "res-2"),
+			catalogTask("t-cat-ok", "cat-1"),
+			catalogTask("t-cat-no", "cat-2"),
+		}, int64(4), nil)
+		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-1", "res-2"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("res-1"))
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-1", "cat-2"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("cat-1"))
 
-		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		tasks, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
 		require.NoError(t, err)
+		assert.Equal(t, []string{"t-res-ok", "t-cat-ok"}, ids(tasks))
 	})
 
-	t.Run("两边的通配放行都要带上各自够不到的内部对象", func(t *testing.T) {
+	t.Run("资源域的任务不会拿目录 id 去问,反之亦然", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
 
-		// resource:* 与 catalog:* 都是业务类型上的授权,平台自己的表与目录分别坐在
-		// internal_resource / internal_catalog 上。任务挂在父对象上,父看不见,任务
-		// 也不该出现在列表里。
-		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
-			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"internal-res"}}, nil)
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
-			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"internal-cat"}}, nil)
-		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
-				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
-				require.NotNil(t, p.Visibility, "两边都有排除项时不能省掉可见性条件")
-				assert.True(t, p.Visibility.AllResources)
-				assert.True(t, p.Visibility.AllCatalogs)
-				assert.Equal(t, []string{"internal-res"}, p.Visibility.ExcludedResourceIDs)
-				assert.Equal(t, []string{"internal-cat"}, p.Visibility.ExcludedCatalogIDs)
-				return nil, 0, nil
-			})
+		// 一条资源域任务上同时带着 catalog_id:判定必须按 scope 走,不能两边都问。
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
+			{ID: "t-1", Scope: interfaces.SemanticUnderstandingTaskScopeResource,
+				ResourceID: "res-1", CatalogID: "cat-1"},
+		}, int64(1), nil)
+		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-1"}, gomock.Any()).
+			DoAndReturn(denyAllIDs)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{}, gomock.Any()).
+			DoAndReturn(allowAllIDs)
 
-		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		tasks, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
 		require.NoError(t, err)
+		assert.Empty(t, tasks, "资源侧拒了就该滤掉,不能靠目录侧捡回来")
 	})
 
-	t.Run("两边都是无排除的通配放行才可以不带可见性条件", func(t *testing.T) {
+	t.Run("内部对象下的任务看不见就滤掉", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
 
-		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{All: true}, nil)
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{All: true}, nil)
-		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
-				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
-				assert.Nil(t, p.Visibility, "谁都看得见时不该白付一次过滤")
-				return nil, 0, nil
-			})
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
+			resourceTask("t-biz", "biz-1"),
+			resourceTask("t-internal", "internal-1"),
+			catalogTask("t-internal-cat", "internal-cat"),
+		}, int64(3), nil)
+		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowOnlyIDs("biz-1"))
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(denyAllIDs)
 
-		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		tasks, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
 		require.NoError(t, err)
+		assert.Equal(t, []string{"t-biz"}, ids(tasks))
 	})
 
-	t.Run("一边是类型级授权也要如实带上，不能当成空集", func(t *testing.T) {
+	t.Run("一页全被滤掉就返回空,不报错", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
 
-		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{All: true}, nil)
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{}, nil)
-		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
-				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
-				require.NotNil(t, p.Visibility)
-				assert.True(t, p.Visibility.AllResources, "持 resource:* 的人应看到全部资源级任务")
-				return nil, 0, nil
-			})
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
+			resourceTask("t-1", "res-1"),
+		}, int64(1), nil)
+		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(denyAllIDs)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(denyAllIDs)
 
-		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
-		require.NoError(t, err)
-	})
-
-	t.Run("两边都看不见就直接空，不查库", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc, _, rs, cs := newSvc(ctrl)
-
-		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{}, nil)
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{}, nil)
-
-		tasks, total, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		tasks, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
-		assert.Zero(t, total)
 	})
+}
 
-	t.Run("两边都是类型级授权则完全不过滤", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc, suta, rs, cs := newSvc(ctrl)
+// allowAllIDs 让批量鉴权对传进来的每个 id 都放行——给那些不以授权为主题的用例
+// 用,免得每条都去铺一遍权限桩。
+func allowAllIDs(_ context.Context, ids []string, _ string) (map[string]bool, error) {
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
 
-		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{All: true}, nil)
-		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).Return(interfaces.AuthorizedScope{All: true}, nil)
-		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
-				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
-				assert.Nil(t, p.Visibility, "看得见全部时不该带过滤条件")
-				return nil, 0, nil
-			})
+// allowOnlyIDs 只放行指定的 id,其余一律拒。
+func allowOnlyIDs(allowed ...string) func(context.Context, []string, string) (map[string]bool, error) {
+	set := make(map[string]bool, len(allowed))
+	for _, id := range allowed {
+		set[id] = true
+	}
+	return func(_ context.Context, ids []string, _ string) (map[string]bool, error) {
+		out := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			if set[id] {
+				out[id] = true
+			}
+		}
+		return out, nil
+	}
+}
 
-		_, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
-		require.NoError(t, err)
-	})
+// denyAllIDs 一个都不放行。
+func denyAllIDs(_ context.Context, _ []string, _ string) (map[string]bool, error) {
+	return map[string]bool{}, nil
 }
