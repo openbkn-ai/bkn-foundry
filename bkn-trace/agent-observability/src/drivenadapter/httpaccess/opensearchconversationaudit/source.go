@@ -54,7 +54,7 @@ func (source *Source) Metadata() observabilityvo.SourceStatus {
 }
 
 func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
-	if !matchesFixedFilters(query) || query.TraceID != "" || query.SpanID != "" || query.InteractionID != "" || query.OperationID != "" {
+	if !matchesFixedFilters(query) || query.TraceID != "" || query.SpanID != "" || query.RequestID != "" || query.InteractionID != "" || query.OperationID != "" {
 		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
 	}
 	body, err := json.Marshal(buildQuery(query))
@@ -121,7 +121,6 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 	addTerm("owner.business_domain_id.keyword", query.AuthorizedBusinessDomain)
 	addTerm("owner.effective_subject_id.keyword", query.ActorID)
 	addTerm("conversation_id.keyword", firstNonEmpty(query.ConversationID, query.TargetID))
-	addTerm("creation_request_id.keyword", query.RequestID)
 	if query.TimeFrom != nil || query.TimeTo != nil {
 		bounds := map[string]any{}
 		if query.TimeFrom != nil {

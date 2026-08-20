@@ -13,9 +13,11 @@ type fakeSearchClient struct {
 	index  string
 	body   []byte
 	result []byte
+	calls  int
 }
 
 func (client *fakeSearchClient) Search(_ context.Context, index string, body []byte) ([]byte, error) {
+	client.calls++
 	client.index, client.body = index, append([]byte(nil), body...)
 	return client.result, nil
 }
@@ -43,8 +45,7 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 	source := New(backend, "openbkn-core-projection")
 
 	page, err := source.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a", ConversationID: "conv-a",
-		RequestID: "req-create-a", Limit: 20,
+		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a", ConversationID: "conv-a", Limit: 20,
 	})
 	if err != nil {
 		t.Fatalf("search conversation audit: %v", err)
@@ -68,10 +69,20 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 		t.Fatalf("decode search query: %v", err)
 	}
 	encoded, _ := json.Marshal(query)
-	for _, expected := range []string{"owner.tenant_id.keyword", "owner.business_domain_id.keyword", "external_conversation_key", "conversation_id.keyword", "creation_request_id.keyword"} {
+	for _, expected := range []string{"owner.tenant_id.keyword", "owner.business_domain_id.keyword", "external_conversation_key", "conversation_id.keyword"} {
 		if !containsString(string(encoded), expected) {
 			t.Fatalf("trusted projection filter %q missing from %s", expected, encoded)
 		}
+	}
+}
+
+func TestSearchReturnsExactEmptyForRequestRuntimeCorrelation(t *testing.T) {
+	backend := &fakeSearchClient{}
+	page, err := New(backend, "openbkn-core-projection").Search(context.Background(), observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a", RequestID: "req-a",
+	})
+	if err != nil || backend.calls != 0 || len(page.Records) != 0 || page.Count != 0 || page.CountAccuracy != "exact" {
+		t.Fatalf("page=%+v calls=%d err=%v", page, backend.calls, err)
 	}
 }
 

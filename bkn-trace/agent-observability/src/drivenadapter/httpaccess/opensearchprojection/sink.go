@@ -20,7 +20,6 @@ const receiptProjectionIndexMapping = `{
       "conversation_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "interaction_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "request_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-      "creation_request_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "trace_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "operation_id": {"type": "keyword"},
       "receipt_status": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
