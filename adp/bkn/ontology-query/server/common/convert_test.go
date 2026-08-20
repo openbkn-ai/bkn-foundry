@@ -7,6 +7,7 @@
 package common
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -92,6 +93,14 @@ func Test_Convert_GiBToBytes(t *testing.T) {
 	})
 }
 
+func Test_AnyToFloat64(t *testing.T) {
+	Convey("Test AnyToFloat64 with json.Number", t, func() {
+		result, err := AnyToFloat64(json.Number("0.95"))
+		So(err, ShouldBeNil)
+		So(result, ShouldAlmostEqual, 0.95)
+	})
+}
+
 func Test_AnyToInt64(t *testing.T) {
 	Convey("Test AnyToInt64", t, func() {
 		Convey("成功 - int类型", func() {
@@ -170,6 +179,12 @@ func Test_AnyToInt64(t *testing.T) {
 			result, err := AnyToInt64("42")
 			So(err, ShouldBeNil)
 			So(result, ShouldEqual, 42)
+		})
+
+		Convey("成功 - json.Number类型", func() {
+			result, err := AnyToInt64(json.Number("9223372036854775807"))
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, int64(9223372036854775807))
 		})
 
 		Convey("失败 - string类型无效", func() {

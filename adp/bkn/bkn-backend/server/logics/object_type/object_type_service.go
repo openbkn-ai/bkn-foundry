@@ -1728,8 +1728,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				}
 				// Extract _score when present.
 				if scoreVal, ok := entry["_score"]; ok {
-					if scoreFloat, ok := scoreVal.(float64); ok {
-						score := float64(scoreFloat)
+					if score, err := common.AnyToFloat64(scoreVal); err == nil {
 						objectType.Score = &score
 					}
 				}

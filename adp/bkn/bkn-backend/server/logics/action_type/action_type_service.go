@@ -1134,8 +1134,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			if len(atIDMap) == 0 || atIDMap[actionType.ATID] {
 				// Extract _score when present.
 				if scoreVal, ok := entry["_score"]; ok {
-					if scoreFloat, ok := scoreVal.(float64); ok {
-						score := float64(scoreFloat)
+					if score, err := common.AnyToFloat64(scoreVal); err == nil {
 						actionType.Score = &score
 					}
 				}
