@@ -100,6 +100,18 @@ func resourceAuthResourceType(internal bool) string {
 //
 // Intentional absence of authorize: The person holding the authorization right of the directory should not be granted the right to delegate each table under the directory as a result
 // Ability. Operations without entries stop here and do not ask upwards.
+// resourceOwnOperations is what the permission service still declares on the
+// resource type. The management verbs were withdrawn when they converged onto
+// the catalog, so a p-line that still answers one can only be residue from
+// before the convergence: the grant console no longer offers those verbs, which
+// means it can neither hand them out nor take them back. Asking the resource
+// about a withdrawn verb would let that residue keep deciding, invisibly and
+// irrevocably — so those questions go straight to the catalog.
+var resourceOwnOperations = map[string]bool{
+	interfaces.OPERATION_TYPE_VIEW_DETAIL: true,
+	interfaces.OPERATION_TYPE_QUERY_DATA:  true,
+}
+
 var resourceOpOnCatalog = map[string]string{
 	interfaces.OPERATION_TYPE_VIEW_DETAIL: interfaces.OPERATION_TYPE_VIEW_DETAIL,
 	interfaces.OPERATION_TYPE_QUERY_DATA:  interfaces.OPERATION_TYPE_QUERY_DATA,
@@ -127,22 +139,34 @@ func catalogAuthResourceType(internal bool) string {
 func (rs *resourceService) checkResourceOrCatalog(ctx context.Context,
 	resourceID, catalogID string, parentInternal bool, op string) error {
 
-	err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: resourceAuthResourceType(parentInternal),
-		ID:   resourceID,
-	}, []string{op})
-	if err == nil {
-		return nil
+	// err stays nil when the resource is never asked, which is how the code below
+	// tells "the resource refused" from "the resource was not entitled to answer".
+	var err error
+	if resourceOwnOperations[op] {
+		err = rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+			Type: resourceAuthResourceType(parentInternal),
+			ID:   resourceID,
+		}, []string{op})
+		if err == nil {
+			return nil
+		}
 	}
 	catalogOp, ok := resourceOpOnCatalog[op]
 	if !ok || catalogID == "" {
-		return err
+		if err != nil {
+			return err
+		}
+		return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 	}
 	if err2 := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: catalogAuthResourceType(parentInternal),
 		ID:   catalogID,
 	}, []string{catalogOp}); err2 != nil {
-		return err // Return the error of the old caliber and keep the existing error message semantics unchanged
+		if err != nil {
+			return err // Return the error of the old caliber and keep the existing error message semantics unchanged
+		}
+		return err2
 	}
 	return nil
 }

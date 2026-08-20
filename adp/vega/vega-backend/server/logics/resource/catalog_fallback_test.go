@@ -43,6 +43,9 @@ func TestResourceOpOnCatalogTranslation(t *testing.T) {
 
 // TestCheckResourceOrCatalogShortCircuits 是「纯放宽」的证据:资源侧批了就到此
 // 为止,一次鉴权请求,常态下的开销与改动前一字不差。
+//
+// 用 view_detail 而不是 modify:资源类型如今只声明两个读动词,管理动词不再向
+// 资源侧发问,短路只可能发生在读上。
 func TestCheckResourceOrCatalogShortCircuits(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := vmock.NewMockPermissionService(ctrl)
@@ -50,11 +53,44 @@ func TestCheckResourceOrCatalogShortCircuits(t *testing.T) {
 
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "r-1",
-	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(nil).Times(1)
+	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}).Return(nil).Times(1)
 	// 目录侧一次都不该被问到。
 
 	require.NoError(t, rs.checkResourceOrCatalog(context.Background(), "r-1", "c-1", false,
-		interfaces.OPERATION_TYPE_MODIFY))
+		interfaces.OPERATION_TYPE_VIEW_DETAIL))
+}
+
+// TestCheckResourceOrCatalogNeverAsksTheResourceForManageVerbs 钉住这一刀真正
+// 的边界:管理动词已经从资源类型的词表里撤掉,控制台既发不出也收不回,只有
+// 收敛之前留下的存量 p-line 还能答应它。若还按同名去问资源,那批存量就成了
+// 一份看不见也撤不掉的常驻权限——实测中它足以删掉一张真实的表。
+func TestCheckResourceOrCatalogNeverAsksTheResourceForManageVerbs(t *testing.T) {
+	for _, op := range []string{
+		interfaces.OPERATION_TYPE_MODIFY,
+		interfaces.OPERATION_TYPE_DELETE,
+		interfaces.OPERATION_TYPE_TASK_MANAGE,
+	} {
+		t.Run(op, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			ps := vmock.NewMockPermissionService(ctrl)
+			rs := &resourceService{ps: ps}
+
+			// 只允许目录那一问。多问一次 mock 就会失败。
+			ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
+				Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "c-1",
+			}, []string{resourceOpOnCatalog[op]}).Return(nil).Times(1)
+
+			require.NoError(t, rs.checkResourceOrCatalog(context.Background(), "r-1", "c-1", false, op))
+		})
+	}
+}
+
+// TestResourceOwnOperations 钉住资源侧还肯回答哪些动词——它必须与 bkn-safe
+// 词表里 resource 剩下的那两个一致,否则判定与授权面会各说各话。
+func TestResourceOwnOperations(t *testing.T) {
+	assert.True(t, resourceOwnOperations[interfaces.OPERATION_TYPE_VIEW_DETAIL])
+	assert.True(t, resourceOwnOperations[interfaces.OPERATION_TYPE_QUERY_DATA])
+	assert.Len(t, resourceOwnOperations, 2)
 }
 
 // TestCheckResourceOrCatalogFallsBack 是这一刀的主张:目录上有 resource_manage
@@ -65,9 +101,6 @@ func TestCheckResourceOrCatalogFallsBack(t *testing.T) {
 	rs := &resourceService{ps: ps}
 
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE, ID: "r-1",
-	}, []string{interfaces.OPERATION_TYPE_MODIFY}).Return(errors.New("denied"))
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG, ID: "c-1",
 	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(nil)
 
@@ -77,6 +110,8 @@ func TestCheckResourceOrCatalogFallsBack(t *testing.T) {
 
 // TestCheckResourceOrCatalogKeepsTheLegacyError: 两问都拒时返回第一问的错误,
 // 客户端看到的错误码与提示因此一字不变。
+//
+// 只有资源侧真被问到过才有「第一问」可留——读动词就是这种情形。
 func TestCheckResourceOrCatalogKeepsTheLegacyError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := vmock.NewMockPermissionService(ctrl)
@@ -87,24 +122,40 @@ func TestCheckResourceOrCatalogKeepsTheLegacyError(t *testing.T) {
 	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("catalog says no"))
 
 	err := rs.checkResourceOrCatalog(context.Background(), "r-1", "c-1", false,
-		interfaces.OPERATION_TYPE_MODIFY)
+		interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	assert.Same(t, legacy, err)
 }
 
-// TestCheckResourceOrCatalogDoesNotFallBackForAuthorize: 没有翻译项的操作到此
-// 为止，连问都不问。
-func TestCheckResourceOrCatalogDoesNotFallBackForAuthorize(t *testing.T) {
+// TestCheckResourceOrCatalogSurfacesTheCatalogError: 管理动词没有第一问,拒绝
+// 的理由只能来自目录那一问——不能因为没有旧错误可留就把 nil 当作放行。
+func TestCheckResourceOrCatalogSurfacesTheCatalogError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := vmock.NewMockPermissionService(ctrl)
 	rs := &resourceService{ps: ps}
 
-	denied := errors.New("denied")
-	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(),
-		[]string{interfaces.OPERATION_TYPE_AUTHORIZE}).Return(denied).Times(1)
+	catalogErr := errors.New("catalog says no")
+	ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(catalogErr).Times(1)
+
+	err := rs.checkResourceOrCatalog(context.Background(), "r-1", "c-1", false,
+		interfaces.OPERATION_TYPE_DELETE)
+	assert.Same(t, catalogErr, err)
+}
+
+// TestCheckResourceOrCatalogDoesNotFallBackForAuthorize: authorize 两头都无路
+// 可走——资源类型不再声明它,目录侧也有意不给它翻译项——所以一次鉴权请求都
+// 不发,直接 403。这是全篇唯一「谁都答不了」的动词。
+func TestCheckResourceOrCatalogDoesNotFallBackForAuthorize(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := vmock.NewMockPermissionService(ctrl) // 任何调用都会让 gomock 报错
+	rs := &resourceService{ps: ps}
 
 	err := rs.checkResourceOrCatalog(context.Background(), "r-1", "c-1", false,
 		interfaces.OPERATION_TYPE_AUTHORIZE)
-	assert.Same(t, denied, err)
+
+	require.Error(t, err)
+	var httpErr *rest.HTTPError
+	require.True(t, errors.As(err, &httpErr), "want an HTTPError, got %v", err)
+	assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
 }
 
 // TestCheckResourceOrCatalogUsesInternalCatalogType: 内部目录下的资源回落到
@@ -114,9 +165,6 @@ func TestCheckResourceOrCatalogUsesInternalCatalogType(t *testing.T) {
 	ps := vmock.NewMockPermissionService(ctrl)
 	rs := &resourceService{ps: ps}
 
-	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
-		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE, ID: "r-1",
-	}, gomock.Any()).Return(errors.New("denied"))
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG, ID: "c-1",
 	}, []string{interfaces.OPERATION_TYPE_RESOURCE_MANAGE}).Return(nil)

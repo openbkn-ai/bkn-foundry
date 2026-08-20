@@ -979,9 +979,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
-			Name:     "updated",
-			Category: interfaces.ResourceCategoryTable,
+		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+			CatalogID: "cat1",
+			Name:      "updated",
+			Category:  interfaces.ResourceCategoryTable,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1000,7 +1001,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 				return 0, nil
 			})
 
-		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+			CatalogID:          "cat1",
 			Name:               "updated",
 			Category:           interfaces.ResourceCategoryTable,
 			ExpectedUpdateTime: expectedUpdateTime,
@@ -1018,9 +1020,10 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockCS.EXPECT().CheckExistByID(gomock.Any(), gomock.Any()).Return(true, nil)
 		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(0), nil)
 
-		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
-			Name:     "updated",
-			Category: interfaces.ResourceCategoryTable,
+		err := rs.Update(context.Background(), &interfaces.Resource{ID: "r1", CatalogID: "cat1", Name: "updated", Category: interfaces.ResourceCategoryTable}, &interfaces.ResourceRequest{
+			CatalogID: "cat1",
+			Name:      "updated",
+			Category:  interfaces.ResourceCategoryTable,
 		})
 
 		var httpErr *rest.HTTPError
@@ -1430,8 +1433,9 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		err := rs.Update(context.Background(), &interfaces.Resource{
-			ID:       "r1",
-			Category: interfaces.ResourceCategoryDataset,
+			ID:        "r1",
+			CatalogID: "cat1",
+			Category:  interfaces.ResourceCategoryDataset,
 		}, &interfaces.ResourceRequest{})
 
 		httpErr, ok := err.(*rest.HTTPError)
@@ -1447,8 +1451,9 @@ func TestResourceServiceUpdate(t *testing.T) {
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 		err := rs.Update(context.Background(), &interfaces.Resource{
-			ID:       "r1",
-			Category: interfaces.ResourceCategoryDataset,
+			ID:        "r1",
+			CatalogID: "cat1",
+			Category:  interfaces.ResourceCategoryDataset,
 		}, &interfaces.ResourceRequest{
 			Category: interfaces.ResourceCategoryTable,
 		})
