@@ -281,10 +281,10 @@ func TestEnrichTableMetadataSynchronizesSourceDescriptions(t *testing.T) {
 	dh := &DiscoverTaskWorker{rs: rs}
 	resource := &interfaces.Resource{
 		ID:               "r1",
-		Description:      "",
+		Description:      "旧源端表注释",
 		SourceIdentifier: "public.departments",
 		SourceMetadata: map[string]any{
-			"original_description": "",
+			"original_description": "旧源端表注释",
 		},
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "empty_description", Description: "", OriginalDescription: ""},

@@ -227,15 +227,15 @@ func TestEnrichIndexMetadataPreservesBusinessMetadata(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestEnrichIndexMetadataSynchronizesSourceDescriptions(t *testing.T) {
+func TestEnrichIndexMetadataSynchronizesFieldDescriptions(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	rs := vmock.NewMockResourceService(ctrl)
 	dh := &DiscoverTaskWorker{rs: rs}
 	resource := &interfaces.Resource{
 		ID:          "r1",
-		Description: "旧索引说明",
+		Description: "人工索引说明",
 		SourceMetadata: map[string]any{
-			"original_description": "旧索引说明",
+			"original_description": "",
 		},
 		SchemaDefinition: []*interfaces.Property{
 			{Name: "empty", Description: ""},
@@ -247,7 +247,6 @@ func TestEnrichIndexMetadataSynchronizesSourceDescriptions(t *testing.T) {
 	connector.EXPECT().
 		GetIndexMeta(gomock.Any(), &interfaces.IndexMeta{Name: "products"}).
 		DoAndReturn(func(_ context.Context, index *interfaces.IndexMeta) error {
-			index.Description = "新索引说明"
 			index.MappingMeta = map[string]any{"description": "新 mapping 说明", "owner": "search-team"}
 			index.Mapping = map[string]interfaces.IndexFieldMeta{
 				"empty":  {Name: "empty", Type: "keyword", Description: "新字段说明"},
@@ -259,8 +258,8 @@ func TestEnrichIndexMetadataSynchronizesSourceDescriptions(t *testing.T) {
 	connector.EXPECT().MapType("keyword").Return(interfaces.DataType_String).Times(3)
 	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
-			assert.Equal(t, "新索引说明", updated.Description)
-			assert.Equal(t, "新索引说明", updated.SourceMetadata["original_description"])
+			assert.Equal(t, "人工索引说明", updated.Description)
+			assert.Equal(t, "", updated.SourceMetadata["original_description"])
 			assert.Equal(t, map[string]any{"description": "新 mapping 说明", "owner": "search-team"}, updated.SourceMetadata["mapping_meta"])
 			fields := make(map[string]*interfaces.Property, len(updated.SchemaDefinition))
 			for _, field := range updated.SchemaDefinition {
