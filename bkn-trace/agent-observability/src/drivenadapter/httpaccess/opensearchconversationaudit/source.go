@@ -54,7 +54,7 @@ func (source *Source) Metadata() observabilityvo.SourceStatus {
 }
 
 func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
-	if !matchesFixedFilters(query) {
+	if !matchesFixedFilters(query) || query.TraceID != "" || query.SpanID != "" || query.InteractionID != "" || query.OperationID != "" {
 		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
 	}
 	body, err := json.Marshal(buildQuery(query))

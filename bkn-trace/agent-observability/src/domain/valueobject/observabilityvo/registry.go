@@ -28,6 +28,7 @@ var registeredEventCategories = map[string]string{
 	"service.started":             CategoryRuntimeSystem,
 	"dependency.failed":           CategoryRuntimeSystem,
 	"conversation.created":        CategoryRuntimeBusiness,
+	"operation.executed":          CategoryRuntimeBusiness,
 	"conversation.closed":         CategoryRuntimeBusiness,
 	"conversation.expired":        CategoryRuntimeBusiness,
 	"interaction.started":         CategoryRuntimeBusiness,
