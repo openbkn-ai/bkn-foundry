@@ -453,8 +453,9 @@ func TestResourceAccessUpdateDiscoveryMetadata(t *testing.T) {
 	resource.LastDiscoverStatus = interfaces.DiscoverStatusUpdated
 	expectedUpdateTime := resource.UpdateTime - 1
 
-	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_status_message = ?, f_source_metadata = ?, f_schema_definition = ?, f_last_discover_status = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_description = ?, f_status_message = ?, f_source_metadata = ?, f_schema_definition = ?, f_last_discover_status = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
 		WithArgs(
+			resource.Description,
 			resource.StatusMessage,
 			`{"properties":{"row_count":42}}`,
 			`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,

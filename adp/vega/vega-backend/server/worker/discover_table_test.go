@@ -207,7 +207,11 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 	dh := &DiscoverTaskWorker{rs: rs}
 	resource := &interfaces.Resource{
 		ID:               "r1",
+		Description:      "人工资源说明",
 		SourceIdentifier: "public.departments",
+		SourceMetadata: map[string]any{
+			"original_description": "旧源端表注释",
+		},
 		SchemaDefinition: []*interfaces.Property{
 			{
 				Name:                "department_id",
@@ -227,6 +231,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 	connector.EXPECT().
 		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}).
 		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+			table.Description = "最新源端表注释"
 			table.Columns = []interfaces.TableColumnMeta{
 				{Name: "department_id", Type: "varchar", Description: "源端最新部门编号注释"},
 				{Name: "department_name", Type: "varchar", Description: "部门名称"},
@@ -236,6 +241,7 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 	connector.EXPECT().MapType("varchar").Return(interfaces.DataType_String).Times(2)
 	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
 		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
+			assert.Equal(t, "人工资源说明", updated.Description)
 			require.Len(t, updated.SchemaDefinition, 2)
 
 			existing := updated.SchemaDefinition[0]
@@ -267,4 +273,76 @@ func TestEnrichTableMetadataPreservesBusinessMetadata(t *testing.T) {
 	}}, &interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
 
 	require.NoError(t, err)
+}
+
+func TestEnrichTableMetadataSynchronizesSourceDescriptions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	rs := vmock.NewMockResourceService(ctrl)
+	dh := &DiscoverTaskWorker{rs: rs}
+	resource := &interfaces.Resource{
+		ID:               "r1",
+		Description:      "",
+		SourceIdentifier: "public.departments",
+		SourceMetadata: map[string]any{
+			"original_description": "",
+		},
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "empty_description", Description: "", OriginalDescription: ""},
+			{Name: "source_description", Description: "旧源端字段注释", OriginalDescription: "旧源端字段注释"},
+			{Name: "business_description", Description: "人工字段说明", OriginalDescription: "旧源端字段注释"},
+		},
+	}
+	connector := vmock.NewMockTableConnector(ctrl)
+	connector.EXPECT().
+		GetTableMeta(gomock.Any(), &interfaces.TableMeta{Name: "departments", Schema: "public"}).
+		DoAndReturn(func(_ context.Context, table *interfaces.TableMeta) error {
+			table.Description = "最新源端表注释"
+			table.Columns = []interfaces.TableColumnMeta{
+				{Name: "empty_description", Type: "varchar", Description: "最新空字段注释"},
+				{Name: "source_description", Type: "varchar", Description: "最新源端字段注释"},
+				{Name: "business_description", Type: "varchar", Description: "最新源端字段注释"},
+			}
+			return nil
+		})
+	connector.EXPECT().MapType("varchar").Return(interfaces.DataType_String).Times(3)
+	rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+		DoAndReturn(func(_ context.Context, _ *sql.Tx, updated *interfaces.Resource, _ int64) error {
+			assert.Equal(t, "最新源端表注释", updated.Description)
+			assert.Equal(t, "最新源端表注释", updated.SourceMetadata["original_description"])
+			require.Len(t, updated.SchemaDefinition, 3)
+			assert.Equal(t, "最新空字段注释", updated.SchemaDefinition[0].Description)
+			assert.Equal(t, "最新源端字段注释", updated.SchemaDefinition[1].Description)
+			assert.Equal(t, "人工字段说明", updated.SchemaDefinition[2].Description)
+			for _, property := range updated.SchemaDefinition {
+				assert.NotEmpty(t, property.OriginalDescription)
+			}
+			return nil
+		})
+
+	err := dh.enrichTableMetadata(context.Background(), &interfaces.DiscoverTask{}, connector, []tableDiscoverItem{{
+		resource: resource,
+		tableMeta: &interfaces.TableMeta{
+			Name: "departments", Schema: "public",
+		},
+	}}, &interfaces.DiscoverResult{}, &discoverTaskReconcileProgress{lastProgress: 95})
+
+	require.NoError(t, err)
+}
+
+func TestResolveSourceDescription(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		description           string
+		originalDescription   string
+		discoveredDescription string
+		want                  string
+	}{
+		{name: "empty business description", description: "", originalDescription: "旧源端注释", discoveredDescription: "新源端注释", want: "新源端注释"},
+		{name: "unchanged source description", description: "旧源端注释", originalDescription: "旧源端注释", discoveredDescription: "新源端注释", want: "新源端注释"},
+		{name: "manual business description", description: "人工说明", originalDescription: "旧源端注释", discoveredDescription: "新源端注释", want: "人工说明"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, resolveSourceDescription(tc.description, tc.originalDescription, tc.discoveredDescription))
+		})
+	}
 }

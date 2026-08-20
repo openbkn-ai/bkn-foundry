@@ -100,7 +100,9 @@ func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.In
 		}
 
 		indices = append(indices, &interfaces.IndexMeta{
-			Name: idx.Index,
+			Name:        idx.Index,
+			Description: "",
+			MappingMeta: map[string]any{},
 			Properties: map[string]any{
 				"docs.count": idx.DocsCount,
 				"store.size": idx.StoreSize,
@@ -110,33 +112,22 @@ func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.In
 	return indices, nil
 }
 
-// GetIndexMeta retrieves index metadata (mappings, settings).
-// GetIndexMeta obtains the metadata information of the specified index, including mapping and Settings
-// Parameter
-//
-//	-ctx: Context information, used to control the timeout and cancellation of requests
-//	-index: A pointer to the interface IndexMeta, used to store the obtained metadata
-//
-// Return value:
-//
-//	-error: If an error occurs during the operation, return an error message
+// GetIndexMeta retrieves an index's mappings and settings.
 func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interfaces.IndexMeta) error {
-	// First, make sure the connector is connected to the OpenSearch service
 	if err := c.Connect(ctx); err != nil {
 		return err
 	}
 
-	// Check if the attribute mapping of the index is empty. If it is empty, initialize an empty map
 	if index.Properties == nil {
 		index.Properties = make(map[string]any)
 	}
+	index.Description = ""
+	index.MappingMeta = make(map[string]any)
 
-	// 1. Get Mappings
 	if err := c.fetchMappings(ctx, index); err != nil {
 		return fmt.Errorf("failed to fetch mappings: %w", err)
 	}
 
-	// 2. Get Settings
 	if err := c.fetchSettings(ctx, index); err != nil {
 		return fmt.Errorf("failed to fetch settings: %w", err)
 	}
@@ -158,48 +149,28 @@ func (c *OpenSearchConnector) fetchMappings(ctx context.Context, index *interfac
 	if resp.IsError() {
 		return fmt.Errorf("opensearch API error: %s", resp.String())
 	}
-	//{
-	//	"product_index" : {
-	//	"mappings" : {
-	//		"properties" : {
-	//			"age" : {
-	//				"type" : "integer"
-	//			},
-	//			"create_time" : {
-	//				"type" : "date"
-	//			},
-	//			"description" : {
-	//				"type" : "text",
-	//				"fields" : {
-	//					"keyword" : {
-	//						"type" : "keyword",
-	//						"ignore_above" : 256
-	//					}
-	//				}
-	//			}
-	//		}
-	//	}
-	//}
-	//}
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	// Mapping structure definition
 	var dataMapping map[string]struct {
 		Mappings struct {
+			Meta       map[string]any      `json:"_meta"`
 			Properties map[string]Property `json:"properties"`
 		} `json:"mappings"`
 	}
-	// Parse JSON
 	err = sonic.Unmarshal(bodyBytes, &dataMapping)
 	if err != nil {
-		panic(err)
+		return fmt.Errorf("failed to parse mappings: %w", err)
 	}
 
 	fieldMap := make(map[string]interfaces.IndexFieldMeta)
+	index.MappingMeta = make(map[string]any)
 	if idxData, ok := dataMapping[index.Name]; ok {
+		if idxData.Mappings.Meta != nil {
+			index.MappingMeta = idxData.Mappings.Meta
+		}
 		parseProperties("", idxData.Mappings.Properties, fieldMap)
 	}
 	index.Mapping = fieldMap
@@ -217,23 +188,20 @@ type Property struct {
 
 // UnmarshalJSON custom deserialization method
 func (p *Property) UnmarshalJSON(data []byte) error {
-	// Parse all fields to a temporary map
 	var raw map[string]any
 	if err := sonic.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 
-	// Initialize Attributes
 	if p.Attributes == nil {
 		p.Attributes = make(map[string]any)
 	}
 
-	// Handle the "type" field
 	if typeVal, ok := raw["type"]; ok {
 		p.Type = fmt.Sprintf("%v", typeVal)
 	}
 
-	// Copy all fields except type, properties, and Fields to Attributes
+	// Preserve mapping parameters other than nested and multi-field definitions.
 	for key, value := range raw {
 		switch key {
 		case "properties", "fields":
@@ -242,7 +210,6 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 			p.Attributes[key] = value
 		}
 	}
-	// Handle the properties field (recursive parsing)
 	if propsVal, ok := raw["properties"].(map[string]any); ok {
 		p.Properties = make(map[string]Property)
 		for propName, propValue := range propsVal {
@@ -253,7 +220,6 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	// Handle the fields field (recursive parsing)
 	if fieldsVal, ok := raw["fields"].(map[string]any); ok {
 		p.Fields = make(map[string]Property)
 		for fieldName, fieldValue := range fieldsVal {
@@ -268,33 +234,44 @@ func (p *Property) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// Recursively parse the field: Flatten the nested object into a dot path and directly produce the IndexFieldMeta;
-// multi-fields SubFields are attached to the subfields of their parent fields in alphabetical order. Silently skip non-Object fields without type.
+// parseProperties flattens nested objects and retains multi-fields on their parent fields.
 func parseProperties(parentPath string, props map[string]Property, out map[string]interfaces.IndexFieldMeta) {
 	for name, prop := range props {
 		currentPath := name
 		if parentPath != "" {
 			currentPath = parentPath + "." + name
 		}
-		// Only fields that are not object but have a type will result
 		if prop.Type != "object" && prop.Type != "" {
 			out[currentPath] = interfaces.IndexFieldMeta{
-				Name:       currentPath,
-				Type:       prop.Type,
-				Searchable: true,
-				Attributes: prop.Attributes,
-				SubFields:  collectSubFields(prop),
+				Name:        currentPath,
+				Description: descriptionFromFieldMeta(prop.Attributes),
+				Type:        prop.Type,
+				Searchable:  isSearchable(prop.Attributes),
+				Attributes:  prop.Attributes,
+				SubFields:   collectSubFields(prop),
 			}
 		}
-		// Recursively parse nested fields of object
 		if len(prop.Properties) > 0 {
 			parseProperties(currentPath, prop.Properties, out)
 		}
 	}
 }
 
-// collectSubFields extracts the multi-fields subfields in alphabetical order of Name into IndexSubfield meta slices.
-// type is stripped from Attributes and inserted into the Type field.
+func descriptionFromFieldMeta(attributes map[string]any) string {
+	meta, ok := attributes["meta"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	description, _ := meta["description"].(string)
+	return description
+}
+
+func isSearchable(attributes map[string]any) bool {
+	searchable, ok := attributes["index"].(bool)
+	return !ok || searchable
+}
+
+// collectSubFields returns multi-fields in name order for stable serialization.
 func collectSubFields(p Property) []interfaces.IndexSubFieldMeta {
 	if len(p.Fields) == 0 {
 		return nil

@@ -115,18 +115,21 @@ type MetricValue struct {
 
 // IndexMeta represents search index metadata.
 type IndexMeta struct {
-	Name       string                    `json:"name"`
-	Properties map[string]any            `json:"properties"`
-	Mapping    map[string]IndexFieldMeta `json:"mapping"`
+	Name        string                    `json:"name"`
+	Description string                    `json:"description"`
+	Properties  map[string]any            `json:"properties"`
+	Mapping     map[string]IndexFieldMeta `json:"mapping"`
+	MappingMeta map[string]any            `json:"mapping_meta"`
 }
 
 // IndexFieldMeta represents index field metadata.
 type IndexFieldMeta struct {
-	Name       string         `json:"name"`
-	Type       string         `json:"type"`
-	Analyzer   string         `json:"analyzer,omitempty"`
-	Searchable bool           `json:"searchable"`
-	Attributes map[string]any `json:"attributes"`
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Type        string         `json:"type"`
+	Analyzer    string         `json:"analyzer,omitempty"`
+	Searchable  bool           `json:"searchable"`
+	Attributes  map[string]any `json:"attributes"`
 	// SubFields (multi-fields) are arranged in alphabetical order by Name to ensure stable serialization
 	SubFields []IndexSubFieldMeta `json:"sub_fields,omitempty"`
 }

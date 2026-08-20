@@ -1012,6 +1012,7 @@ func (ra *resourceAccess) UpdateDiscoveryMetadata(ctx context.Context,
 	}
 
 	builder := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_description", resource.Description).
 		Set("f_status_message", resource.StatusMessage).
 		Set("f_source_metadata", string(sourceMetadataBytes)).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).

@@ -22,29 +22,15 @@ type indexDiscoverItem struct {
 	markAfterEnrich bool
 }
 
-// discoverIndexResources discovers index resources from an index connector.
-// discoverIndexResources obtains and discovers indexes from the connector.
-// Then coordinate with the existing resources and finally enrich the metadata information of the index
-// Parameter
-//
-//	-ctx: Context information, used to control the timeout and cancellation of requests
-//	-catalog: Catalog interface, containing relevant information about the catalog
-//	- connector: Connector interface, used for interacting with data sources
-//
-// Return value:
-//   - * interfaces. DiscoverResult: findings, including a new resource, outdated and not change resources statistics
-//     -error: Error message, returned if an error occurs during the discovery process
 func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context,
 	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, connector interfaces.Connector,
 	progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
 
-	// Check whether the connector implements the IndexConnector interface
 	indexConnector, ok := connector.(interfaces.IndexConnector)
 	if !ok {
 		return nil, fmt.Errorf("connector does not support index discover")
 	}
 
-	// Step 1: List Indices: Obtain all indices
 	sourceIndices, err := indexConnector.ListIndexes(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list indices: %w", err)
@@ -56,14 +42,12 @@ func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context,
 	}
 	logger.Infof("Discovered %d indices from source", len(sourceIndices))
 
-	// Step 2: Get Existing Resources: Find out if the db already exists and then do the comparison
 	existingResources, err := dtw.rs.GetByCatalogID(ctx, catalog.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get existing resources: %w", err)
 	}
 	logger.Infof("Loaded %d existing resources for index discovery", len(existingResources))
 
-	// Step 3: Reconcile: get the index data and insert it:
 	result, items, err := dtw.reconcileIndexResources(ctx, task, catalog, sourceIndices, existingResources)
 	if err != nil {
 		return nil, fmt.Errorf("failed to reconcile resources: %w", err)
@@ -75,7 +59,6 @@ func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context,
 	}
 	logger.Infof("Reconciled %d index resources", len(items))
 
-	// Step 4: Enrich: Enrich the metadata information for index entries
 	if err := dtw.enrichIndexMetadata(ctx, task, indexConnector, items, result, progress); err != nil {
 		return nil, fmt.Errorf("failed to enrich index metadata: %w", err)
 	}
@@ -92,33 +75,18 @@ func (dtw *DiscoverTaskWorker) discoverIndexResources(ctx context.Context,
 	return result, nil
 }
 
-// reconcileIndexResources reconciles source indices with existing resources.
-// reconcileIndexResources coordinates index resources and handles new resources, existing resources, and expired resources
-// Parameter
-//
-//	-ctx: Context information, used to control the timeout and cancellation of requests
-//	-catalog: Directory information, including metadata such as ID
-//	-sourceIndices: List of source index metadata
-//	-Existing Resources: A list of existingResources
-//
-// Return value:
-//   - * interfaces. DiscoverResult: findings, including the directory ID and the statistics of all kinds of resources
-//   - []indexDiscoverItem: A list of indexDiscoveritems, including resources and index metadata
-//     -error: Error message, returned if an error occurs during processing
-func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, task *interfaces.DiscoverTask,
-	catalog *interfaces.Catalog, sourceIndices []*interfaces.IndexMeta,
+func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context,
+	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, sourceIndices []*interfaces.IndexMeta,
 	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []indexDiscoverItem, error) {
 
 	actions := task.DiscoverActions
 
-	// Initialize the discovery results and set the directory ID
 	result := &interfaces.DiscoverResult{
 		CatalogID: catalog.ID,
 	}
 
-	var items []indexDiscoverItem // Index to discover the list of items
+	var items []indexDiscoverItem
 
-	// Create a mapping of an existing resource with the source identifier as the key
 	existingMap := make(map[string]*interfaces.Resource)
 	for _, r := range existingResources {
 		if r.Category != interfaces.ResourceCategoryIndex {
@@ -126,15 +94,14 @@ func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, task
 		}
 		existingMap[r.SourceIdentifier] = r
 	}
-	// Create a source index mapping and name the index as the key
+
 	sourceMap := make(map[string]*interfaces.IndexMeta)
 	for _, idx := range sourceIndices {
 		sourceMap[idx.Name] = idx
 	}
 
-	// Handle new and existing
 	for _, idx := range sourceIndices {
-		sourceIdentifier := idx.Name //test-index
+		sourceIdentifier := idx.Name
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
 			if actions != nil && actions.Refresh {
@@ -174,7 +141,6 @@ func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, task
 		}
 	}
 
-	// Handle stale
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
@@ -193,17 +159,19 @@ func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context, task
 }
 
 // createIndexResource creates a new resource for an index.
-func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context, catalog *interfaces.Catalog, index *interfaces.IndexMeta) (*interfaces.Resource, error) {
+func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context,
+	catalog *interfaces.Catalog, index *interfaces.IndexMeta) (*interfaces.Resource, error) {
 
 	req := &interfaces.ResourceRequest{
 		CatalogID:        catalog.ID,
 		Name:             index.Name,
+		Description:      index.Description,
 		Category:         interfaces.ResourceCategoryIndex,
 		Status:           interfaces.ResourceStatusActive,
 		SourceIdentifier: index.Name,
 		SourceMetadata: map[string]any{
 			"original_name":        index.Name,
-			"original_description": "",
+			"original_description": index.Description,
 		},
 	}
 	resource, err := dtw.rs.Create(ctx, req)
@@ -214,65 +182,82 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context, catalog 
 	return resource, nil
 }
 
-// enrichIndexMetadata enriches index resources with detailed metadata.
-// enriches the metadata information for index entries
-// Parameter
-//
-//	-ctx: Context information, used to control the timeout and cancellation of requests
-//	-indexConnector: Index connector, used to obtain the metadata of the index
-//	-items: List of index items that require rich metadata
-//
-// Return value:
-//
-//	-error: If an error occurs during processing, return an error message
+// enrichIndexMetadata refreshes source metadata while preserving business metadata.
 func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *interfaces.DiscoverTask,
 	indexConnector interfaces.IndexConnector, items []indexDiscoverItem, result *interfaces.DiscoverResult,
 	progress *discoverTaskReconcileProgress) error {
+
 	progress.SetMetadataTotal(len(items))
 
-	// Traverse all the index entries that need to be processed
 	for _, item := range items {
 		idx := item.indexMeta
 		resource := item.resource
 		beforeHash := sourceSnapshotHash(resource)
 
-		// Get detailed metadata (mappings) : Obtain detailed information about the index
 		if err := indexConnector.GetIndexMeta(ctx, idx); err != nil {
 			logger.Warnf("Failed to get metadata for index %s: %v", idx.Name, err)
-			return err
+			resource.LastDiscoverStatus = interfaces.DiscoverStatusError
+			resource.StatusMessage = fmt.Sprintf("discover metadata failed: %v", err)
+			updateDiscoverResultForEnrichStatus(result, interfaces.DiscoverStatusError)
+			expectedUpdateTime := resource.UpdateTime
+			resource.Updater = task.Creator
+			resource.UpdateTime = time.Now().UnixMilli()
+			if updateErr := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); updateErr != nil {
+				logger.Errorf("Failed to update discover error for index %s: %v", idx.Name, updateErr)
+				return updateErr
+			}
+			if current, changed := progress.AdvanceMetadata(); changed {
+				message := fmt.Sprintf("resource metadata enriched: %d/%d", progress.metadataProcessed, progress.metadataTotal)
+				if err := dtw.updateProgress(ctx, task.ID, current, message); err != nil {
+					return err
+				}
+			}
+			continue
 		}
 
-		// Map fields to SchemaDefinition
-		var columns []*interfaces.Property
+		existingProperties := make(map[string]*interfaces.Property, len(resource.SchemaDefinition))
+		for _, property := range resource.SchemaDefinition {
+			if property != nil {
+				existingProperties[property.Name] = property
+			}
+		}
+
+		var props []*interfaces.Property
 		for _, field := range idx.Mapping {
-			// For {"ignore_above":256,"type":"keyword"}, remove type.
 			delete(field.Attributes, "type")
 
-			columns = append(columns, &interfaces.Property{
+			property := &interfaces.Property{
 				Name:        field.Name,
 				DisplayName: field.Name,
-				Type:        field.Type,
-				Description: "",
+				Type:        indexConnector.MapType(field.Type),
+				Description: field.Description,
 
 				OriginalName:        field.Name,
 				OriginalType:        field.Type,
-				OriginalDescription: "",
+				OriginalDescription: field.Description,
 				Attributes:          field.Attributes,
 				Features:            buildSubFieldFeatures(field.Name, field.SubFields),
-			})
+			}
+			if existing, ok := existingProperties[field.Name]; ok {
+				property.DisplayName = existing.DisplayName
+				property.Description = resolveSourceDescription(existing.Description, existing.OriginalDescription, field.Description)
+				property.Features = existing.Features
+			}
+			props = append(props, property)
 		}
-		resource.SchemaDefinition = columns
+		resource.SchemaDefinition = props
 
-		// Populate SourceMetadata
+		resource.Description = resolveSourceDescription(resource.Description, sourceOriginalDescription(resource.SourceMetadata), idx.Description)
+
 		sourceMetadata := make(map[string]any)
 		if resource.SourceMetadata != nil {
 			sourceMetadata = resource.SourceMetadata
 		}
-
+		sourceMetadata["original_name"] = idx.Name
+		sourceMetadata["original_description"] = idx.Description
 		sourceMetadata["properties"] = idx.Properties
 		sourceMetadata["mapping"] = idx.Mapping
-		sourceMetadata["original_name"] = idx.Name
-		sourceMetadata["original_description"] = ""
+		sourceMetadata["mapping_meta"] = idx.MappingMeta
 		resource.SourceMetadata = sourceMetadata
 
 		discoverStatus := resource.LastDiscoverStatus
@@ -281,8 +266,8 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 			updateDiscoverResultForEnrichStatus(result, discoverStatus)
 		}
 
-		// Update Resource
 		resource.LastDiscoverStatus = discoverStatus
+		resource.StatusMessage = ""
 		expectedUpdateTime := resource.UpdateTime
 		resource.Updater = task.Creator
 		resource.UpdateTime = time.Now().UnixMilli()
@@ -291,9 +276,7 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 			return err
 		}
 
-		// Wait a bit to avoid overwhelming the server? No, it's fine for now.
-		// Just logging
-		logger.Infof("Enriched index %s: fields=%d", idx.Name, len(columns))
+		logger.Debugf("Enriched index %s: fields=%d", idx.Name, len(props))
 		if current, changed := progress.AdvanceMetadata(); changed {
 			message := fmt.Sprintf("resource metadata enriched: %d/%d", progress.metadataProcessed, progress.metadataTotal)
 			if err := dtw.updateProgress(ctx, task.ID, current, message); err != nil {
@@ -304,8 +287,7 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 	return nil
 }
 
-// osSubFieldTypeToFeatureType maps OpenSearch multi-field type to VEGA PropertyFeature type.
-// If no other type is recognized and an empty string is returned, the caller should skip it and mark it as warn.
+// osSubFieldTypeToFeatureType maps supported OpenSearch multi-field types to VEGA feature types.
 func osSubFieldTypeToFeatureType(osType string) string {
 	switch osType {
 	case "keyword":
@@ -319,8 +301,7 @@ func osSubFieldTypeToFeatureType(osType string) string {
 	}
 }
 
-// buildSubFieldFeatures converts OpenSearch multi-field subfields to VEGA PropertyFeature.
-// parentName: The full name of the parent field (such as "user.name"); subFields: Metadata of subfields that have been arranged in alphabetical order by Name.
+// buildSubFieldFeatures converts OpenSearch multi-fields to VEGA property features.
 func buildSubFieldFeatures(parentName string, subFields []interfaces.IndexSubFieldMeta) []interfaces.PropertyFeature {
 	if len(subFields) == 0 {
 		return nil

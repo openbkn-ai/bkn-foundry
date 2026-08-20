@@ -81,6 +81,124 @@ func (dtw *DiscoverTaskWorker) discoverTableResources(ctx context.Context,
 	return result, nil
 }
 
+// reconcileTableResources reconciles source tables with existing resources.
+func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
+	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
+	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
+
+	actions := task.DiscoverActions
+
+	result := &interfaces.DiscoverResult{
+		CatalogID: catalog.ID,
+	}
+
+	// Used for returning Discover Items
+	var items []tableDiscoverItem
+
+	// Build a map of the existing resources (indexed by SourceIdentifier)
+	existingMap := make(map[string]*interfaces.Resource)
+	for _, r := range existingResources {
+		if r.Category != interfaces.ResourceCategoryTable {
+			continue
+		}
+		existingMap[r.SourceIdentifier] = r
+	}
+
+	// Build the map of the source table
+	sourceMap := make(map[string]*interfaces.TableMeta)
+	for _, t := range sourceTables {
+		sourceIdentifier := dtw.buildSourceIdentifier(t)
+		sourceMap[sourceIdentifier] = t
+	}
+
+	// Handle newly added and retained resources
+	for _, table := range sourceTables {
+		sourceIdentifier := dtw.buildSourceIdentifier(table)
+
+		if resource, ok := existingMap[sourceIdentifier]; ok {
+			// Existing. Check the status
+			if actions != nil && actions.Refresh {
+				markAfterEnrich := true
+				if resource.Status == interfaces.ResourceStatusStale {
+					// Previously marked as stale, now reactivated
+					if err := dtw.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
+						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
+					} else {
+						dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
+						resource.Status = interfaces.ResourceStatusActive
+						resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
+						result.RestoredCount++
+						markAfterEnrich = false
+					}
+				}
+				items = append(items, tableDiscoverItem{
+					resource:        resource,
+					tableMeta:       table,
+					markAfterEnrich: markAfterEnrich,
+				})
+			}
+		} else {
+			// New resources - Only processed when the policy allows create
+			if actions != nil && actions.Create {
+				resource, err := dtw.createTableResource(ctx, catalog, table, sourceIdentifier)
+				if err != nil {
+					logger.Errorf("Failed to create resource %s: %v", sourceIdentifier, err)
+				} else {
+					dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
+					resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
+					result.NewCount++
+					items = append(items, tableDiscoverItem{
+						resource:  resource,
+						tableMeta: table,
+					})
+				}
+			}
+		}
+	}
+
+	// Handle deleted resources (marked as stale) - only handle when the policy allows mark_stale
+	if actions != nil && actions.MarkStale {
+		for sourceIdentifier, existing := range existingMap {
+			if _, ok := sourceMap[sourceIdentifier]; !ok {
+				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
+				if existing.Status == interfaces.ResourceStatusActive {
+					if err := dtw.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
+						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
+					} else {
+						result.StaleCount++
+					}
+				}
+			}
+		}
+	}
+	return result, items, nil
+}
+
+// createTableResource creates a new resource.
+func (dtw *DiscoverTaskWorker) createTableResource(ctx context.Context, catalog *interfaces.Catalog,
+	table *interfaces.TableMeta, sourceIdentifier string) (*interfaces.Resource, error) {
+
+	req := &interfaces.ResourceRequest{
+		CatalogID:        catalog.ID,
+		Name:             sourceIdentifier,
+		Description:      table.Description,
+		Category:         interfaces.ResourceCategoryTable,
+		Status:           interfaces.ResourceStatusActive,
+		Schema:           table.Schema,
+		SourceIdentifier: sourceIdentifier,
+		SourceMetadata: map[string]any{
+			"original_name":        sourceIdentifier,
+			"original_description": table.Description,
+		},
+	}
+	resource, err := dtw.rs.Create(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resource, nil
+}
+
 // add details to the table metadata
 // Parameter
 //
@@ -104,8 +222,7 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 		beforeHash := sourceSnapshotHash(resource)
 
 		// Obtain detailed metadata
-		err := tableConnector.GetTableMeta(ctx, table)
-		if err != nil {
+		if err := tableConnector.GetTableMeta(ctx, table); err != nil {
 			logger.Warnf("Failed to get metadata for table %s: %v", table.Name, err)
 			resource.LastDiscoverStatus = interfaces.DiscoverStatusError
 			resource.StatusMessage = fmt.Sprintf("discover metadata failed: %v", err)
@@ -134,7 +251,8 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 				existingProperties[property.Name] = property
 			}
 		}
-		resource.SchemaDefinition = make([]*interfaces.Property, 0, len(table.Columns))
+
+		var props []*interfaces.Property
 		for _, column := range table.Columns {
 			property := &interfaces.Property{
 				Name:        column.Name,
@@ -147,22 +265,24 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 				OriginalDescription: column.Description,
 			}
 			if existing, ok := existingProperties[column.Name]; ok {
-				// display_name, description and features can all be maintained by users or semantic understanding.
-				// Probing only refreshes the physical metadata at the source end and cannot overwrite these business metadata.
 				property.DisplayName = existing.DisplayName
-				property.Description = existing.Description
+				property.Description = resolveSourceDescription(existing.Description, existing.OriginalDescription, column.Description)
 				property.Features = existing.Features
 			}
-			resource.SchemaDefinition = append(resource.SchemaDefinition, property)
+			props = append(props, property)
 		}
+		resource.SchemaDefinition = props
+
+		resource.Description = resolveSourceDescription(resource.Description, sourceOriginalDescription(resource.SourceMetadata), table.Description)
+
 		// Fill in the Resource metadata: source_metadata field
 		sourceMetadata := make(map[string]any)
 		if resource.SourceMetadata != nil {
 			sourceMetadata = resource.SourceMetadata
 		}
-		sourceMetadata["columns"] = table.Columns
 		sourceMetadata["original_name"] = resource.SourceIdentifier
 		sourceMetadata["original_description"] = table.Description
+		sourceMetadata["columns"] = table.Columns
 		if table.TableType != "" {
 			sourceMetadata["table_type"] = table.TableType
 		}
@@ -208,97 +328,6 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 	return nil
 }
 
-// reconcileTableResources reconciles source tables with existing resources.
-func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
-	task *interfaces.DiscoverTask, catalog *interfaces.Catalog, sourceTables []*interfaces.TableMeta,
-	existingResources []*interfaces.Resource) (*interfaces.DiscoverResult, []tableDiscoverItem, error) {
-
-	actions := task.DiscoverActions
-	result := &interfaces.DiscoverResult{
-		CatalogID: catalog.ID,
-	}
-
-	// Used for returning Discover Items
-	var items []tableDiscoverItem
-
-	// Build a map of the existing resources (indexed by SourceIdentifier)
-	existingMap := make(map[string]*interfaces.Resource)
-	for _, r := range existingResources {
-		if r.Category != interfaces.ResourceCategoryTable {
-			continue
-		}
-		existingMap[r.SourceIdentifier] = r
-	}
-
-	// Build the map of the source table
-	sourceMap := make(map[string]*interfaces.TableMeta)
-	for _, t := range sourceTables {
-		sourceIdentifier := dtw.buildSourceIdentifier(t)
-		sourceMap[sourceIdentifier] = t
-	}
-	// Handle newly added and retained resources
-	for _, table := range sourceTables {
-		sourceIdentifier := dtw.buildSourceIdentifier(table)
-
-		if resource, ok := existingMap[sourceIdentifier]; ok {
-			// Existing. Check the status
-			if actions != nil && actions.Refresh {
-				markAfterEnrich := true
-				if resource.Status == interfaces.ResourceStatusStale {
-					// Previously marked as stale, now reactivated
-					if err := dtw.rs.UpdateStatus(ctx, resource.ID, interfaces.ResourceStatusActive, ""); err != nil {
-						logger.Errorf("Failed to reactivate resource %s: %v", resource.ID, err)
-					} else {
-						dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusRestored)
-						resource.Status = interfaces.ResourceStatusActive
-						resource.LastDiscoverStatus = interfaces.DiscoverStatusRestored
-						result.RestoredCount++
-						markAfterEnrich = false
-					}
-				}
-				items = append(items, tableDiscoverItem{
-					resource:        resource,
-					tableMeta:       table,
-					markAfterEnrich: markAfterEnrich,
-				})
-			}
-		} else {
-			// New resources - Only processed when the policy allows create
-			if actions != nil && actions.Create {
-				resource, err := dtw.createResource(ctx, catalog, table, sourceIdentifier)
-				if err != nil {
-					logger.Errorf("Failed to create resource %s: %v", sourceIdentifier, err)
-				} else {
-					dtw.markDiscover(ctx, resource.ID, interfaces.DiscoverStatusNew)
-					resource.LastDiscoverStatus = interfaces.DiscoverStatusNew
-					result.NewCount++
-					items = append(items, tableDiscoverItem{
-						resource:  resource,
-						tableMeta: table,
-					})
-				}
-			}
-		}
-	}
-
-	// Handle deleted resources (marked as stale) - only handle when the policy allows mark_stale
-	if actions != nil && actions.MarkStale {
-		for sourceIdentifier, existing := range existingMap {
-			if _, ok := sourceMap[sourceIdentifier]; !ok {
-				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
-				if existing.Status == interfaces.ResourceStatusActive {
-					if err := dtw.rs.UpdateStatus(ctx, existing.ID, interfaces.ResourceStatusStale, ""); err != nil {
-						logger.Errorf("Failed to mark resource %s as stale: %v", existing.ID, err)
-					} else {
-						result.StaleCount++
-					}
-				}
-			}
-		}
-	}
-	return result, items, nil
-}
-
 // buildSourceIdentifier builds the source identifier for a table.
 func (dtw *DiscoverTaskWorker) buildSourceIdentifier(table *interfaces.TableMeta) string {
 	identifier := table.Name
@@ -311,26 +340,10 @@ func (dtw *DiscoverTaskWorker) buildSourceIdentifier(table *interfaces.TableMeta
 	return identifier
 }
 
-// createResource creates a new resource.
-func (dtw *DiscoverTaskWorker) createResource(ctx context.Context, catalog *interfaces.Catalog, table *interfaces.TableMeta, sourceIdentifier string) (*interfaces.Resource, error) {
-
-	req := &interfaces.ResourceRequest{
-		CatalogID:        catalog.ID,
-		Name:             sourceIdentifier,
-		Description:      table.Description,
-		Category:         interfaces.ResourceCategoryTable,
-		Status:           interfaces.ResourceStatusActive,
-		Schema:           table.Schema,
-		SourceIdentifier: sourceIdentifier,
-		SourceMetadata: map[string]any{
-			"original_name":        sourceIdentifier,
-			"original_description": table.Description,
-		},
+// resolveSourceDescription keeps a business description unless it is absent or still matches the previous source description.
+func resolveSourceDescription(description, originalDescription, discoveredDescription string) string {
+	if description == "" || description == originalDescription {
+		return discoveredDescription
 	}
-	resource, err := dtw.rs.Create(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
-	return resource, nil
+	return description
 }
