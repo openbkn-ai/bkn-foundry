@@ -97,6 +97,12 @@ concurrency:
 #     上下文里模型对自己刚推出来的结论天然高估。verify 换一份干净上下文、默认立场
 #     是驳回，照 evidence 去原地验。误报的代价不对称：放过一个待确认项作者自己会
 #     看到，报一个假阻塞项则挂住 PR、逼作者证伪一个不存在的问题。
+#   - **阻塞项只能被修掉或被显式撤销，不能靠没人再提它而消失**。复评 prompt 为了收敛
+#     只让评审看新增提交，于是上一轮报 5 条、作者修 3 条时，剩下 2 条不再出现在本轮
+#     findings 里，verdict 从本轮 findings 算出来的 action 就成了 approve——PR 带着两条
+#     已知阻塞项过了合并门，页面上还看不出有东西没动。所以结论正文里携带一个隐藏状态
+#     块，仍然成立的阻塞项跨轮传递，每轮由 verify 重判「现在还成立吗」，作者用
+#     `/dismiss <编号>` 或在回复里讲清不采纳的理由来关掉。
 #
 # 静默是最坏的结果：跑挂了 PR 上什么都没有，与「压根没触发」无法区分（#671 首轮就是
 # 这样被当成没触发的）。verdict 挂 if: always()，回填占位保证「跑了但没产出」可见，
@@ -145,6 +151,8 @@ jobs:
       has_shards: ${{ steps.plan.outputs.has_shards }}
       skip_round: ${{ steps.plan.outputs.skip_round }}
       prior_rounds: ${{ steps.plan.outputs.prior_rounds }}
+      carried: ${{ steps.plan.outputs.carried }}
+      dismissed: ${{ steps.plan.outputs.dismissed }}
       file_total: ${{ steps.plan.outputs.file_total }}
       file_listed: ${{ steps.plan.outputs.file_listed }}
     env:
@@ -176,7 +184,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import collections, json, os, pathlib, subprocess
+          import collections, json, os, pathlib, re, subprocess
 
           pr = os.environ["PR_NUMBER"]
           repo = os.environ["GH_REPO"]
@@ -283,19 +291,77 @@ jobs:
           print("has_shards=" + ("true" if shards else "false"))
           # 已有过几轮结论。分片与 verdict 共用这一个数来收紧配额，免得各自从评论历史
           # 里推断「这是第几轮」还推出不同结果。
-          # 历史结论：轮数用来收紧配额，最后一轮的表态用来决定这次要不要跑。
+          # 历史结论：轮数用来收紧配额，最后一轮的表态用来决定这次要不要跑，正文里
+          # 那条隐藏状态块用来把上一轮没修完的阻塞项带到这一轮。
           prior = subprocess.run(
-              ["gh", "api", "repos/%s/pulls/%s/reviews" % (os.environ["GH_REPO"], pr),
-               "--paginate", "--jq", '[.[] | select((.body // "") != "") | .state] | @json'],
+              ["gh", "api", "repos/%s/pulls/%s/reviews" % (repo, pr),
+               "--paginate", "--jq",
+               '[.[] | select((.body // "") != "") | {state, body}] | @json'],
               capture_output=True, text=True)
-          states = []
+          rounds = []
           if prior.returncode == 0:
               for chunk in prior.stdout.splitlines():
                   try:
-                      states += json.loads(chunk)
+                      rounds += json.loads(chunk)
                   except ValueError:
                       pass
+          rounds = [r for r in rounds if isinstance(r, dict)]
+          states = [r.get("state") for r in rounds]
           print("prior_rounds=%d" % len(states))
+
+          # 未修完的阻塞项必须跨轮存活。此前 verdict 只从本轮 findings 收集阻塞项：
+          # 上一轮报 5 条、作者修 3 条，第二轮 findings 里就只剩那 3 条的复查（复评
+          # prompt 明令不许重列已提过的问题），剩下 2 条既不复述也不计票，action 算出来
+          # 是 approve——PR 带着两条已知阻塞项过了合并门。
+          #
+          # 状态放结论正文的隐藏块，不放 artifact：artifact 只留 7 天且要按 run id 反查，
+          # 而结论正文是 PR 自带的、任何一轮都读得回的持久载体。倒着找第一条带块的正文
+          # ——空转轮与被取消轮不落表态、不写块，自然被跳过。
+          STATE_RE = re.compile(r"<!-- claude-review-state:\s*(\{.*?\})\s*-->", re.S)
+          carried = []
+          for r in reversed(rounds):
+              m = STATE_RE.search(str(r.get("body") or ""))
+              if not m:
+                  continue
+              try:
+                  blob = json.loads(m.group(1))
+              except ValueError:
+                  break
+              if isinstance(blob, dict):
+                  carried = [x for x in (blob.get("open") or []) if isinstance(x, dict)]
+              break
+
+          # 逃生口。遗留项默认一直阻断，误报若没有撤销通道就会把 PR 永久挂死。两条路：
+          # 作者写 `/dismiss <编号>`（这里认），或在回复里讲清为什么不采纳（verify 认，
+          # 见下游 prompt）。口令限定 OWNER/MEMBER/COLLABORATOR，与本 workflow 的触发
+          # 判据同一套——否则外部人员一句评论就能摘掉阻塞项。排除 Bot 作者：结论正文
+          # 里印着各条的编号与这句提示，自己贴的文字不能反过来把自己的结论撤掉。
+          #
+          # `/dismiss` 不在触发口令里，单发不起一轮；提示语让作者跟 `/review` 写在同一
+          # 条评论里，一条评论既撤销又复评。
+          ALLOWED = {"OWNER", "MEMBER", "COLLABORATOR"}
+          DISMISS_RE = re.compile(r"/dismiss\s+`?([0-9a-f]{8})`?")
+          dismissed = set()
+          for endpoint in ("issues/%s/comments" % pr, "pulls/%s/comments" % pr):
+              got = subprocess.run(
+                  ["gh", "api", "repos/%s/%s" % (repo, endpoint), "--paginate", "--jq",
+                   '.[] | select((.user.type // "") != "Bot") '
+                   '| [.author_association, .body] | @json'],
+                  capture_output=True, text=True)
+              if got.returncode != 0:
+                  continue
+              for ln in got.stdout.splitlines():
+                  try:
+                      assoc, body = json.loads(ln)
+                  except (ValueError, TypeError):
+                      continue
+                  if assoc in ALLOWED:
+                      dismissed |= set(DISMISS_RE.findall(str(body or "")))
+          # 上限 10：遗留清单每轮都要过一遍复核，无上限会让 verify 的轮次预算被历史
+          # 拖垮。真攒到 10 条以上说明这个 PR 该拆，不该靠评审兜。
+          carried = [c for c in carried if c.get("key") not in dismissed][:10]
+          print("carried=" + json.dumps(carried, ensure_ascii=False))
+          print("dismissed=" + json.dumps(sorted(dismissed)))
 
           # 已经 approve 过之后，作者多半在打磨（补测试、改注释、rebase）。本周实测：
           # 首次 approve 之后的重复 approve 占全部结论轮的 18%，#683 与 #695 各浪费四五轮，
@@ -313,9 +379,11 @@ jobs:
           # 文件清单被 FILE_CAP 截断时不跳过：截掉的那部分里可能正有 migrations
           # 或 helm 改动，按「未触及高危面」放过就是拿看不见的东西赌。
           truncated = total > len(paths)
+          # `not carried` 是兜底：approve 轮本就不该留下遗留项，真留下了说明状态块与
+          # 表态不一致，此时跳过等于把它永久藏起来。
           skip = (os.environ.get("GITHUB_EVENT_NAME") == "pull_request"
                   and states and states[-1] == "APPROVED"
-                  and not risky and not truncated)
+                  and not risky and not truncated and not carried)
           # 这个块的 stdout 整个重定向进 $GITHUB_OUTPUT，任何不含 = 的行都会让 runner
           # 以 Invalid format 报错、plan 步骤失败——所以 ::notice:: 不能从这里打，
           # 落成文件由下面的 shell 发出。
@@ -603,6 +671,10 @@ jobs:
               完美，更不要凭「可能」把同一条追问第二遍。
             - 上面的触发式深挖只在首轮做；复评的范围限定在上一轮之后新增的提交与文件。
             - 第二轮起，除非发现你能说清失效场景的确定阻断项，否则不要再报阻塞项。
+            - **上一轮报过、作者还没修的阻塞项不用你再列一遍**：它们由复核环节按编号
+              逐轮跟踪——改没改、作者认不认，那边判，判完照样进结论、照样阻断。你重列
+              一次只会让同一条问题在正文里出现两遍（拼装脚本按 file:line 去重，重复的
+              那条会被直接丢掉，等于白花轮次）。
             - **写 findings 之前，最后再拉一次顶层评论**，逐字发这一条：
               `gh pr view ${{ env.PR_NUMBER }} --json comments --jq '[.comments[-30:][] | {author: .author.login, body}]'`
               PR 号已在 YAML 层插成字面量：allowedTools 是前缀白名单，命令里出现
@@ -884,6 +956,7 @@ jobs:
     env:
       CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
       PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
+      CARRIED: ${{ needs.plan.outputs.carried }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -928,7 +1001,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json, pathlib
+          import json, os, pathlib
 
           items = []
           for path in sorted(pathlib.Path("findings").glob("*.json")):
@@ -943,6 +1016,7 @@ jobs:
                       continue
                   items.append({
                       "id": "%s#%d" % (key, i),
+                      "carried": False,
                       "shard": data.get("shard", key),
                       "file": b.get("file", ""),
                       "line": b.get("line"),
@@ -951,10 +1025,63 @@ jobs:
                       "evidence": b.get("evidence") or [],
                   })
 
+          # 上一轮遗留、作者还没关掉的阻塞项也进来复核，问题换成「现在还成立吗」。
+          # 它们不在本轮 findings 里（复评 prompt 明令不许重列已提过的问题），由 plan
+          # 从上一轮结论正文的状态块里读回来。id 走 carry# 命名空间，与分片的
+          # `<key>#<序号>` 不会撞；verdict 用**逐字相同**的顺序与跳过规则重算一遍
+          # ——id 是复核结论的唯一对齐依据，两端错位会把结论贴到别的项上。
+          try:
+              carried = json.loads(os.environ.get("CARRIED") or "[]")
+          except ValueError:
+              carried = []
+          if not isinstance(carried, list):
+              carried = []
+          for i, c in enumerate(carried):
+              if not isinstance(c, dict):
+                  continue
+              items.append({
+                  "id": "carry#%d" % i,
+                  "carried": True,
+                  "shard": c.get("shard", ""),
+                  "file": c.get("file", ""),
+                  "line": c.get("line"),
+                  "what": c.get("what", ""),
+                  "scenario": c.get("scenario", ""),
+                  "evidence": c.get("evidence") or [],
+              })
+
           pathlib.Path("blockers.json").write_text(
               json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
           print("count=%d" % len(items))
+          print("carried=%d" % sum(1 for x in items if x["carried"]))
           PY
+
+      # 遗留项的第二条撤销通道：作者在评论里讲清为什么不采纳。复核环节必须读得到这些话，
+      # 否则「模型不认作者的理由」就成了死锁——PR 会被一条它自己认定的问题永久挂住。
+      # 与分片一样由 shell 预取：verify 的 allowedTools 里没有 `gh api`（全方法通配能
+      # POST /pulls/N/reviews，破坏「表态只能有一次」）。
+      - name: Prefetch author replies
+        if: steps.collect.outputs.carried != '0' && steps.prbranch.outputs.skip != 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # --paginate 逐页应用 --jq，多页时输出不是合法数组；先取原始页再 jq -s 合并。
+          fetch() {
+            gh api "repos/${GH_REPO}/$1" --paginate | jq -s "[.[][] | $2] | .[-100:]"
+          }
+          {
+            echo '{"issue_comments":'
+            fetch "issues/${PR_NUMBER}/comments" \
+              '{user: .user.login, created_at, body}' || echo '[]'
+            echo ',"review_comments":'
+            fetch "pulls/${PR_NUMBER}/comments" \
+              '{path, line, user: .user.login, created_at, body}' || echo '[]'
+            echo '}'
+          } > author-replies.json || echo '{"issue_comments":[],"review_comments":[]}' \
+            > author-replies.json
 
       - name: Verify blockers
         if: steps.collect.outputs.count != '0' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
@@ -967,9 +1094,11 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ env.PR_NUMBER }}
 
-            上一环节的评审报了若干**阻塞项**，全部列在
-            `${{ github.workspace }}/blockers.json`（**必须用这个绝对路径读**，工具不接受相对路径）。你的
-            工作是逐条**尝试驳回**它们，只让站得住的那些进 PR。
+            待复核的**阻塞项**全部列在
+            `${{ github.workspace }}/blockers.json`（**必须用这个绝对路径读**，工具不接受相对路径）。
+            里面有两类，靠 `carried` 字段区分：`false` 是本轮新报的，你的工作是逐条
+            **尝试驳回**，只让站得住的那些进 PR；`true` 是上一轮遗留、至今没关掉的，
+            判据完全相反，见下面单独一节。
 
             你不是在复述别人的结论，也不是在补充新问题。发现新问题不归你管，写进
             notes 即可，不要加进 verdicts。
@@ -990,6 +1119,23 @@ jobs:
 
             拿不准就驳回。放过一个真问题，作者和后续的 CI 还有机会拦；放行一个假问题，
             PR 被挂住、作者花时间证伪一个不存在的东西，几次之后没人再信这个评审。
+
+            ## `carried: true` 的那几条：立场相反
+
+            id 形如 `carry#N` 的，是**上一轮就报过、已经过了一次复核、作者至今没关掉**的
+            阻塞项。它们不是新结论，不需要再证一遍——**默认 `refuted: false`（仍然成立）**，
+            只有下面两种情况才翻成 `refuted: true`：
+
+            1. **已经修了。** 去当前工作树读那个位置：代码改了，或者失效场景里的某一环
+               现在被挡掉了。`reason` 写清你读的 file:line 和它现在长什么样。
+            2. **作者明确不采纳并给了理由。** `${{ github.workspace }}/author-replies.json`
+               里是本 PR 的顶层评论与 inline 回复（文件不存在就是没有可读的回复）。作者
+               说了「这条不改」「设计如此」「不在本 PR 范围」之类且给出了对得上的理由，
+               就判 `refuted: true`，`reason` 里引用他的原话。**你不认同他的理由也照判**
+               ——采纳与否是作者的决定，不是你的。只有他压根没回应过这一条时才继续保留。
+
+            找不到证据说明它被修了、作者也没回应过，就保持 `refuted: false`。这里的默认
+            方向与上面新报的阻塞项**正好相反**，别套错：新报的默认不成立，遗留的默认成立。
 
             ## 轮次预算
 
@@ -1022,7 +1168,7 @@ jobs:
           claude_args: |
             --model claude-opus-5
             --effort xhigh
-            --max-turns 40
+            --max-turns 80
             --allowedTools "Read,Grep,Glob,LS,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git grep:*)"
 
       - name: Upload verification
@@ -1049,6 +1195,8 @@ jobs:
       PR_NUMBER: ${{ needs.plan.outputs.pr_number }}
       SHARDS: ${{ needs.plan.outputs.shards }}
       PRIOR_ROUNDS: ${{ needs.plan.outputs.prior_rounds }}
+      CARRIED: ${{ needs.plan.outputs.carried }}
+      DISMISSED: ${{ needs.plan.outputs.dismissed }}
       FILE_TOTAL: ${{ needs.plan.outputs.file_total }}
       FILE_LISTED: ${{ needs.plan.outputs.file_listed }}
       GH_TOKEN: ${{ github.token }}
@@ -1083,7 +1231,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import collections, json, os, pathlib, subprocess
+          import collections, json, os, pathlib, subprocess, zlib
 
           repo, pr = os.environ["GH_REPO"], os.environ["PR_NUMBER"]
           shards = json.loads(os.environ["SHARDS"])
@@ -1133,6 +1281,55 @@ jobs:
               print("action=none")
               raise SystemExit(0)
 
+          # 上一轮遗留、这一轮既没修也没被撤销的阻塞项，重新出现在结论里并继续阻断。
+          # 它们不在本轮 findings 里（复评 prompt 明令不许重列已提过的问题），由 plan
+          # 从上一轮结论正文的隐藏状态块读回来。遍历顺序与跳过规则必须与 verify 的
+          # collect 步骤逐字相同——id 是复核结论的唯一对齐依据。
+          # 注意这里**不再按 dismissed 过滤 carried**：plan 已经滤过一遍，这里再滤会让
+          # 序号与 verify 那端错位。
+          CARRY = {"key": "carry", "label": "遗留"}
+          try:
+              carried_raw = json.loads(os.environ.get("CARRIED") or "[]")
+          except ValueError:
+              carried_raw = []
+          if not isinstance(carried_raw, list):
+              carried_raw = []
+          try:
+              dismissed = set(json.loads(os.environ.get("DISMISSED") or "[]"))
+          except ValueError:
+              dismissed = set()
+
+          def fkey(file_, what):
+              # 跨轮身份。每轮的 id 是按位置算的，条数一变就指向别的项，不能拿给作者
+              # 写 `/dismiss`。改用内容散列：位置 + 措辞归一化，同一条问题跨轮稳定。
+              # 用 crc32 不用 hashlib：这里只要一个稳定短标识，不是防篡改摘要，而
+              # zlib 是纯 stdlib、不牵扯 OpenSSL 动态库，本机也跑得起来好验。
+              raw = "%s\n%s" % (str(file_ or "").strip(),
+                                " ".join(str(what or "").split()).lower())
+              return "%08x" % (zlib.crc32(raw.encode("utf-8")) & 0xffffffff)
+
+          carried = []
+          for i, c in enumerate(carried_raw):
+              if not isinstance(c, dict):
+                  continue
+              c = dict(c, id="carry#%d" % i)
+              if not c.get("key"):
+                  c["key"] = fkey(c.get("file"), c.get("what"))
+              carried.append((CARRY, c))
+
+          # 作者撤销掉的不再报。同位置的新报条目按重复处理，留遗留那条——它带着轮次
+          # 计数和作者已经见过的措辞，换个说法重报一遍只会让同一个问题占两行。
+          seen_loc = {(str(c.get("file") or ""), c.get("line")) for _, c in carried}
+          fresh = []
+          for s_, b in blockers:
+              b["key"] = fkey(b.get("file"), b.get("what"))
+              if b["key"] in dismissed:
+                  continue
+              if (str(b.get("file") or ""), b.get("line")) in seen_loc:
+                  continue
+              fresh.append((s_, b))
+          blockers = fresh + carried
+
           # 复核结论：refuted 的阻塞项不进 PR，只留在折叠区里备查——全部丢掉的话，
           # 复核环节把真问题误杀了也没人看得见。
           verdicts = {}
@@ -1152,11 +1349,14 @@ jobs:
                "verified": "以下每一条都经过一轮独立复核（默认驳回，核实通过才保留）。",
                "unrev": "（**未复核**，复核环节未产出结论）",
                "scen": "失效场景：",
-               "dropped": "复核未通过、已丢弃的 %d 条", "why": "驳回理由：",
+               "dropped": "复核未通过或已关闭的 %d 条", "why": "结论：",
+               "closed": "（**遗留项已关闭**）",
                "byshard": "各分片结论", "impact": "影响范围：", "notcov": "未覆盖：",
                "clean": "_（无问题）_", "counts": "_（阻塞 %d，待确认 %d）_",
                "detail": "各分片的影响范围与未覆盖面",
                "more_unconf": "另有 %d 条待确认项已省略，以免正文过长；详见各分片日志。",
+               "carried": "（**上一轮遗留**，已挂 %d 轮未处理）",
+               "dismiss": "认为其中某条是误报：回复 `/dismiss 编号`（每条前面那串 8 位编号）撤销它，或者直接说明为什么不采纳——复核环节会读你的回复。想让撤销当场生效，在同一条评论里带上 `/review`。",
                "unconf": "待确认项（不阻断放行）", "missing": "未产出结论的分片",
                "missing_body": "下面这些分片没有产出结论，**这些文件本轮未经评审**：",
                "reason_no_output": "跑完了但没落下结论（多半是撞轮次上限或提前收尾）",
@@ -1164,7 +1364,7 @@ jobs:
                "reason_malformed": "写出的结论文件解析不了",
                "trunc": "文件清单被截断",
                "trunc_body": "本 PR 共 %s 个改动文件，分片只拿到 %s 个（评审的文件清单上限 500），**其余 %d 个未进入任何分片、本轮未经评审**。",
-               "footer": "改完请推新提交，或回复 `/review` 要一轮复评。",
+               "footer": "改完请推新提交，或回复 `/review` 要一轮复评。**没修完的阻塞项会带到下一轮**，不会因为下一轮没再提它而消失。",
                "footer_ok": "有异议或想再评一轮，请回复 `/review`——普通回帖不会触发复评，且回帖人需为本仓 OWNER/MEMBER/COLLABORATOR。"}
 
           # 模型不一定听话，长度要有确定性兜底——与「模型输出是不可信输入」同一思路。
@@ -1200,17 +1400,28 @@ jobs:
                   if b.get("line"):
                       loc += ":%s" % b["line"]
                   mark = "" if verdicts.get(b["id"]) else T["unrev"]
-                  lines.append("- **%s%s** — %s%s"
-                               % (tag(s_["label"]), loc, clip(b.get("what", ""), 300), mark))
+                  if s_ is CARRY:
+                      # 轮次含这一轮：状态块里存的是「此前报过几轮」，报到第二遍时
+                      # 存的是 1，显示要写 2。写状态块那段用同一个式子。
+                      mark += T["carried"] % (max(0, int(b.get("rounds") or 0)) + 1)
+                  # 编号前置：它是作者写 `/dismiss` 时要抄的东西，藏在行尾没人找得到。
+                  lines.append("- `%s` **%s%s** — %s%s"
+                               % (b.get("key", ""), tag(s_["label"]), loc,
+                                  clip(b.get("what", ""), 300), mark))
                   if b.get("scenario"):
                       lines.append("  %s%s" % (T["scen"], clip(b["scenario"], 300)))
               lines.append("")
+              lines.append(T["dismiss"] + "\n")
 
           if refuted:
               lines.append("<details><summary>" + (T["dropped"] % len(refuted)) + "</summary>\n")
               for s_, b, v in refuted:
-                  lines.append("- **%s%s** — %s" % (tag(s_["label"]), b.get("file", ""),
-                                                    clip(b.get("what", ""), 200)))
+                  # 遗留项走到这里多半是「作者修好了」或「作者说明了不采纳」，不是
+                  # 「这条是误报」。同一个折叠区里两种含义并排，措辞必须分得开。
+                  lines.append("- **%s%s** — %s%s"
+                               % (tag(s_["label"]), b.get("file", ""),
+                                  clip(b.get("what", ""), 200),
+                                  T["closed"] if s_ is CARRY else ""))
                   lines.append("  %s%s" % (T["why"], clip(v.get("reason", ""), 200)))
               lines.append("\n</details>\n")
 
@@ -1297,6 +1508,25 @@ jobs:
           # approve 之后作者仍可能想争一句，而普通回帖不触发复评（评论正文必须含
           # /review 或 @claude）。不写这句，他没有别的途径知道这件事。
           lines.append(T["footer"] if blockers else T["footer_ok"])
+
+          # 隐藏状态块：这一轮仍然成立的阻塞项原样带给下一轮。没有它，作者只修一部分时
+          # 剩下的会在下一轮 findings 里消失，action 算成 approve 放行。
+          # `-->` 出现在正文里会提前截断这个块，转成 JSON 的 \u003e 转义（json.loads
+          # 解回来仍是 `-->`）。总量截到 10 条：与 plan 的读取上限一致。
+          state = []
+          for s_, b in blockers:
+              state.append({
+                  "key": b.get("key", ""),
+                  "shard": b.get("shard") or s_["label"],
+                  "file": str(b.get("file") or ""),
+                  "line": b.get("line"),
+                  "what": clip(b.get("what", ""), 300),
+                  "scenario": clip(b.get("scenario", ""), 300),
+                  "evidence": [str(e) for e in (b.get("evidence") or [])][:4],
+                  "rounds": max(0, int(b.get("rounds") or 0)) + 1,
+              })
+          blob = json.dumps({"v": 1, "open": state[:10]}, ensure_ascii=False)
+          lines.append("\n<!-- claude-review-state: %s -->" % blob.replace("-->", "--\\u003e"))
 
           pathlib.Path("verdict.md").write_text("\n".join(lines), encoding="utf-8")
           print("action=" + ("request-changes" if blockers else "approve"))
