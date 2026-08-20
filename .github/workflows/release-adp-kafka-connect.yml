@@ -1,4 +1,4 @@
-name: release-adp-vega-backend
+name: release-adp-kafka-connect
 
 on:
   push:
@@ -6,8 +6,8 @@ on:
       - 'v*'
     branches: ['**']
     paths:
-      - 'adp/vega/vega-backend/**'
-      - '.github/workflows/release-adp-vega-backend.yml'
+      - 'adp/vega/kafka-connect/**'
+      - '.github/workflows/release-adp-kafka-connect.yml'
       - '.github/workflows/reusable-*.yml'
       # 版本冻结提交（release/<x.y.z> 分支）触发全量重建
       - 'VERSION'
@@ -25,29 +25,29 @@ jobs:
   test:
     uses: ./.github/workflows/reusable-test.yml
     with:
-      service-path: adp/vega/vega-backend
+      service-path: adp/vega/kafka-connect
       stack: chart-only
 
-  build-vega-backend:
+  build-kafka-connect:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
     secrets: inherit
     with:
-      service-path: adp/vega/vega-backend
+      service-path: adp/vega/kafka-connect
       dockerfile: docker/Dockerfile
-      context: '.'
-      image-name: vega-backend
+      context: docker
+      image-name: kafka-connect
       version: ${{ needs.test.outputs.version }}
-      build-args: |
-        SERVER_VERSION=${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      build-args: |
+        BASE_IMAGE=bitnamilegacy/kafka:3.9.0-debian-12-r10
 
-  chart-vega-backend:
-    needs: [test, build-vega-backend]
+  chart-kafka-connect:
+    needs: [test, build-kafka-connect]
     uses: ./.github/workflows/reusable-chart.yml
     with:
-      service-path: adp/vega/vega-backend
-      chart-path: helm/vega-backend
-      chart-name: vega-backend
+      service-path: adp/vega/kafka-connect
+      chart-path: helm
+      chart-name: kafka-connect
       version: ${{ needs.test.outputs.version }}
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
