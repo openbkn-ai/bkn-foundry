@@ -39,6 +39,14 @@ func validateID(ctx context.Context, ID string) error {
 	return nil
 }
 
+func validateExpectedUpdateTime(ctx context.Context, expectedUpdateTime int64) error {
+	if expectedUpdateTime <= 0 {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails("expected_update_time is required and must be greater than 0")
+	}
+	return nil
+}
+
 // Name legitimacy verification
 func validateName(ctx context.Context, name string) error {
 	if name == "" {

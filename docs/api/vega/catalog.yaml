@@ -73,6 +73,7 @@ info:
     - `POST /catalogs/{id}/discover`（手动发现一次） → 见 `discover-task.yaml`
     - `GET /catalogs/{ids}/resources`（按 catalog 列资源） → 见 `resource.yaml`
     - `GET /catalogs/{cid}/discover-schedules`（按 catalog 列调度） → 见 `discover-schedule.yaml`
+    - `GET/PUT /catalogs/{id}/health-check-schedule`（健康检查计划） → 见 `catalog-health-check-schedule.yaml`
 
     每个外部接口都有一一对应的内部版本，路径前缀为 `/api/vega-backend/in/v1`，请求体与
     响应结构与外部完全一致；区别仅在于鉴权方式：外部走 OAuth Token 校验，内部从请求头
@@ -347,6 +348,9 @@ paths:
 
         `name` 改动后若新名称已被其它 catalog 占用，返回 409 `VegaBackend.Catalog.NameExists`。
 
+        必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
+        `update_time`；若 catalog 已被其他请求更新，返回 409 `VegaBackend.Catalog.UpdateConflict`。
+
         `enabled` 不能通过 PUT 切换；请求体中的 `enabled` 必须与当前 catalog 状态一致。
         如需启用/禁用，使用 `POST /catalogs/{id}/enable` 或 `POST /catalogs/{id}/disable`。
 
@@ -372,7 +376,12 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CatalogRequest"
+              allOf:
+                - $ref: "#/components/schemas/CatalogRequest"
+                - type: object
+                  required:
+                    - id
+                    - expected_update_time
       responses:
         "204":
           description: 更新成功
@@ -390,6 +399,7 @@ paths:
             - `VegaBackend.Catalog.IDMismatch`
             - `VegaBackend.Catalog.NameExists`
             - `VegaBackend.Catalog.InvalidParameter`（尝试通过 PUT 切换 enabled）
+            - `VegaBackend.Catalog.UpdateConflict`（`expected_update_time` 与当前 `update_time` 不一致）
           content:
             application/json:
               schema:
@@ -540,65 +550,6 @@ paths:
           $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
-  /catalogs/{id}/health-check-schedule:
-    parameters:
-      - name: id
-        description: physical Catalog ID
-        in: path
-        required: true
-        schema:
-          type: string
-    get:
-      summary: 获取 Catalog 健康检查计划
-      description: |
-        仅 physical Catalog 支持；需要该 Catalog 的 `view_detail` 权限。Catalog 的详情与列表响应不会内嵌该对象。
-      responses:
-        "200":
-          description: ok
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CatalogHealthCheckSchedule"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
-    put:
-      summary: 修改 Catalog 健康检查计划
-      description: |
-        仅 physical Catalog 支持，需要该 Catalog 的 `modify` 权限。不支持 DELETE 或单独的启停接口：
-        使用 `mode=inherit`、`enabled`、`disabled` 完成全量状态切换。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CatalogHealthCheckScheduleRequest"
-      responses:
-        "200":
-          description: 更新后的计划
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CatalogHealthCheckSchedule"
-        "400":
-          $ref: "#/components/responses/BadRequest"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "406":
-          $ref: "#/components/responses/NotAcceptable"
-        "500":
-          $ref: "#/components/responses/InternalServerError"
 components:
   securitySchemes:
     OAuth2:
@@ -636,7 +587,9 @@ components:
           schema:
             $ref: "../_shared/errors.yaml#/components/schemas/Error"
     Conflict:
-      description: 当前依赖状态不允许删除
+      description: |
+        Catalog 操作冲突。常见情形：
+        - 当前依赖状态不允许删除
       content:
         application/json:
           schema:
@@ -868,6 +821,11 @@ components:
           type: string
           pattern: "^[a-z0-9][a-z0-9\\-_]{0,39}$"
           maxLength: 40
+        expected_update_time:
+          description: 仅 PUT 使用的必填乐观锁版本，取自最近一次查询响应的 `update_time`
+          type: integer
+          format: int64
+          minimum: 1
         name:
           description: catalog 名称，必填，全局唯一，最大长度 255
           type: string
@@ -923,56 +881,8 @@ components:
                 `mode=inherit` 的计划。提供对象时 `mode` 必填；仅 `mode=enabled` 时 `cron_expr` 必填；
                 创建失败时整个 Catalog 创建请求回滚。
               oneOf:
-                - $ref: "#/components/schemas/CatalogHealthCheckScheduleRequest"
+                - $ref: "catalog-health-check-schedule.yaml#/components/schemas/CatalogHealthCheckScheduleRequest"
                 - type: "null"
-    CatalogHealthCheckScheduleRequest:
-      description: Catalog 健康检查计划配置；可在创建 physical Catalog 时组合提交，或通过 PUT 独立修改
-      type: object
-      required:
-        - mode
-      properties:
-        mode:
-          description: "`inherit` 使用 ConfigMap 的平台默认 Cron 并清空自定义 Cron，`enabled` 使用本请求的 Cron，`disabled` 停用。PUT 设置为 `disabled` 时保留已有自定义 Cron。"
-          type: string
-          enum: [inherit, enabled, disabled]
-        cron_expr:
-          description: 仅当 `mode=enabled` 时必填的健康检查 Cron 表达式；相邻两次执行的间隔不得短于 1 小时。PUT 的 `mode=disabled` 忽略该字段并保留已有自定义 Cron
-          type: string
-          minLength: 1
-    CatalogHealthCheckSchedule:
-      description: physical Catalog 的独立健康检查计划及最近调度元数据
-      type: object
-      required:
-        - catalog_id
-        - mode
-        - last_run
-        - next_run
-      properties:
-        catalog_id:
-          type: string
-        mode:
-          type: string
-          enum: [inherit, enabled, disabled]
-        cron_expr:
-          type: string
-        last_run:
-          description: 最近一次计划执行时间，Unix 毫秒时间戳；健康检查结果存放于 Catalog，而非本对象
-          type: integer
-          format: int64
-        next_run:
-          description: 下次计划执行时间，Unix 毫秒时间戳；`disabled` 时为 0，创建或切换为 `inherit` 时按平台全局 Cron 计算为未来时间
-          type: integer
-          format: int64
-        creator:
-          $ref: "#/components/schemas/AccountInfo"
-        create_time:
-          type: integer
-          format: int64
-        updater:
-          $ref: "#/components/schemas/AccountInfo"
-        update_time:
-          type: integer
-          format: int64
     ListCatalogs:
       description: catalog 列表
       type: object

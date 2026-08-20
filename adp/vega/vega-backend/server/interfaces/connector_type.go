@@ -77,17 +77,17 @@ type ConnectorFieldConfig struct {
 
 // ConnectorType represents a registered connector type.
 type ConnectorType struct {
-	Type        string                          `json:"type"`
-	Name        string                          `json:"name"`         // mysql, postgresql, kafka...
-	Tags        []string                        `json:"tags"`         // Tag
-	Description string                          `json:"description"`  // Type description
-	Mode        string                          `json:"mode"`         // local | remote
-	Category    string                          `json:"category"`     // table | index | topic | file | fileset | metric | api
-	Endpoint    string                          `json:"endpoint"`     // Only remote mode, remote service address
-	FieldConfig map[string]ConnectorFieldConfig `json:"field_config"` // Field configuration (compatible with JSON Schema properties)
-	Enabled     bool                            `json:"enabled"`      // Whether to enable
+	Type        string   `json:"type"`
+	Name        string   `json:"name"`        // mysql, postgresql, kafka...
+	Tags        []string `json:"tags"`        // Tag
+	Description string   `json:"description"` // Type description
+	Mode        string   `json:"mode"`        // local | remote
+	Category    string   `json:"category"`    // table | index | topic | file | fileset | metric | api
+	Endpoint    string   `json:"endpoint"`    // Only remote mode, remote service address
+	Enabled     bool     `json:"enabled"`     // Whether to enable
 
-	Available bool `json:"available"` // Whether the current binary contains the implementation of this connector
+	Available   bool                            `json:"available"`              // Whether the current binary contains the implementation of this connector
+	FieldConfig map[string]ConnectorFieldConfig `json:"field_config,omitempty"` // Runtime field configuration (compatible with JSON Schema properties)
 
 	Operations []string `json:"operations"`
 }
@@ -105,13 +105,12 @@ type ConnectorTypesQueryParams struct {
 
 // ConnectorTypeReq indicates a request to create or update the connector type
 type ConnectorTypeReq struct {
-	Type        string                          `json:"type"`
-	Name        string                          `json:"name"`         // mysql, postgresql, kafka...
-	Tags        []string                        `json:"tags"`         // Tag
-	Description string                          `json:"description"`  // Type description
-	Mode        string                          `json:"mode"`         // local | remote
-	Category    string                          `json:"category"`     // table | index | topic | file | fileset | metric | api
-	Endpoint    string                          `json:"endpoint"`     // Only remote mode, remote service address
-	FieldConfig map[string]ConnectorFieldConfig `json:"field_config"` // Field configuration (compatible with JSON Schema properties)
-	Enabled     bool                            `json:"enabled"`      // Whether to enable
+	Type        string   `json:"type"`
+	Name        string   `json:"name"`        // mysql, postgresql, kafka...
+	Tags        []string `json:"tags"`        // Tag
+	Description string   `json:"description"` // Type description
+	Mode        string   `json:"mode"`        // local | remote
+	Category    string   `json:"category"`    // table | index | topic | file | fileset | metric | api
+	Endpoint    string   `json:"endpoint"`    // Only remote mode, remote service address
+	Enabled     bool     `json:"enabled"`     // Whether to enable
 }

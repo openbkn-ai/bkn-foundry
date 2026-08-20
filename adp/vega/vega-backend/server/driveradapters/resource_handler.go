@@ -384,6 +384,12 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	if err := r.rs.Update(ctx, resource, &req); err != nil {
 		httpErr := err.(*rest.HTTPError)

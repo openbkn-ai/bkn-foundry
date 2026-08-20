@@ -27,6 +27,7 @@ type CatalogHealthCheckSchedule struct {
 
 // CatalogHealthCheckScheduleRequest is the writable Schedule configuration.
 type CatalogHealthCheckScheduleRequest struct {
-	Mode     string `json:"mode"`
-	CronExpr string `json:"cron_expr,omitempty"`
+	Mode               string `json:"mode"`
+	CronExpr           string `json:"cron_expr,omitempty"`
+	ExpectedUpdateTime int64  `json:"expected_update_time,omitempty"`
 }

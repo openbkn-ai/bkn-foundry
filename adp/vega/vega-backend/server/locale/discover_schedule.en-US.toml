@@ -57,3 +57,8 @@ ErrorLink = ""
 Description = "Failed to get account names"
 Solution = "Please contact the administrator"
 ErrorLink = ""
+
+[VegaBackend.DiscoverSchedule.UpdateConflict]
+Description = "The discover schedule was updated after it was read"
+Solution = "Reload the discover schedule and retry the update"
+ErrorLink = ""

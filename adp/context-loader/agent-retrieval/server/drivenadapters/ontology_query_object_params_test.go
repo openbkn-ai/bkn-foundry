@@ -49,10 +49,10 @@ func TestQueryObjectInstances_AlwaysAsksForTotal(t *testing.T) {
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
 
 		var body *interfaces.QueryObjectInstancesReq
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
 				body = payload.(*interfaces.QueryObjectInstancesReq)
-				return 200, map[string]any{"datas": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10}
@@ -92,8 +92,8 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]any{"datas": []any{}}, nil)
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]any{"datas": []any{}}), nil)
 
 		resp, err := client.QueryObjectInstances(context.Background(),
 			&interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10})
@@ -106,8 +106,8 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]any{"datas": []any{map[string]any{"id": "i1"}}}, nil)
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]any{"datas": []any{map[string]any{"id": "i1"}}}), nil)
 
 		resp, err := client.QueryObjectInstances(context.Background(),
 			&interfaces.QueryObjectInstancesReq{
@@ -121,8 +121,8 @@ func TestQueryObjectInstances_ResolvesAbsentTotalFromRequest(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, map[string]any{"datas": []any{}, "total_count": 42}, nil)
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(map[string]any{"datas": []any{}, "total_count": 42}), nil)
 
 		resp, err := client.QueryObjectInstances(context.Background(),
 			&interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10})
@@ -166,10 +166,10 @@ func TestQueryObjectInstances_ForwardsSort(t *testing.T) {
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
 
 		var body *interfaces.QueryObjectInstancesReq
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
 				body = payload.(*interfaces.QueryObjectInstancesReq)
-				return 200, map[string]any{"datas": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{
@@ -199,11 +199,11 @@ func TestQueryObjectInstances_InternalParamsGoToQueryStringNotBody(t *testing.T)
 
 		var got string
 		var bodyJSON []byte
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, target string, _ map[string]string, payload any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, target string, _ map[string]string, payload any) (int, []byte, error) {
 				got = target
 				bodyJSON, _ = json.Marshal(payload)
-				return 200, map[string]any{"datas": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{
@@ -238,10 +238,10 @@ func TestQueryObjectInstances_OmitsInternalParamsWhenUnset(t *testing.T) {
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
 
 		var got string
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, []byte, error) {
 				got = target
-				return 200, map[string]any{"datas": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{KnID: "kn1", OtID: "ot1", Limit: 10}
@@ -269,10 +269,10 @@ func TestQueryObjectInstances_EscapesIDsIntoPath(t *testing.T) {
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
 
 		var got string
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, []byte, error) {
 				got = target
-				return 200, map[string]any{"datas": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"datas": []any{}}), nil
 			})
 
 		req := &interfaces.QueryObjectInstancesReq{

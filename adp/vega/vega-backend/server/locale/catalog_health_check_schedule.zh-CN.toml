@@ -1,0 +1,29 @@
+[VegaBackend.CatalogHealthCheckSchedule.InvalidParameter]
+Description = "目录健康检查计划参数无效"
+Solution = "请检查计划模式和 Cron 配置，并确认目标目录为物理目录"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.NotFound]
+Description = "目录健康检查计划不存在"
+Solution = "请检查目录 ID 及其健康检查计划是否存在"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.UpdateConflict]
+Description = "目录健康检查计划在读取后已被更新"
+Solution = "请重新加载目录健康检查计划后再提交修改"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.InternalError]
+Description = "目录健康检查计划服务内部错误"
+Solution = "请联系管理员"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.InternalError.GetFailed]
+Description = "获取目录健康检查计划失败"
+Solution = "请联系管理员"
+ErrorLink = ""
+
+[VegaBackend.CatalogHealthCheckSchedule.InternalError.UpdateFailed]
+Description = "更新目录健康检查计划失败"
+Solution = "请联系管理员"
+ErrorLink = ""

@@ -22,12 +22,10 @@ type DiscoverScheduleService interface {
 	Update(ctx context.Context, current *DiscoverSchedule, req *DiscoverScheduleRequest) error
 	// Delete deletes a discover schedule by ID.
 	Delete(ctx context.Context, id string) error
-	// Enable enables a discover schedule.
-	Enable(ctx context.Context, id string) error
-	// Disable disables a discover schedule.
-	Disable(ctx context.Context, id string) error
+	// UpdateEnabled updates the enabled state of a discover schedule.
+	UpdateEnabled(ctx context.Context, schedule *DiscoverSchedule, enabled bool) error
 	// UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
-	UpdateRunMetadata(ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64) error
+	UpdateRunMetadata(ctx context.Context, id string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error)
 	// ExecuteSchedule executes a discover schedule.
 	ExecuteSchedule(ctx context.Context, schedule *DiscoverSchedule) error
 }

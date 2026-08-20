@@ -630,8 +630,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			}
 
 			if scoreVal, ok := entry["_score"]; ok {
-				if scoreFloat, ok := scoreVal.(float64); ok {
-					score := float64(scoreFloat)
+				if score, err := common.AnyToFloat64(scoreVal); err == nil {
 					riskType.Score = &score
 				}
 			}

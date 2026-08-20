@@ -30,7 +30,6 @@ type vegaAccess struct {
 var (
 	vegaAccessOnce sync.Once
 	vegaAccessInst interfaces.DrivenVega
-	vegaJSON       = sonic.Config{UseNumber: true}.Froze()
 )
 
 // NewVegaAccess creates a Vega backend access object for read-only queries.
@@ -68,7 +67,7 @@ func (v *vegaAccess) RawQuery(ctx context.Context, req *interfaces.VegaRawQueryR
 	if len(respBody) == 0 {
 		return resp, nil
 	}
-	if err := vegaJSON.Unmarshal(respBody, resp); err != nil {
+	if err := unmarshalPrecise(respBody, resp); err != nil {
 		v.logger.WithContext(ctx).Errorf("[VegaAccess] RawQuery unmarshal failed: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			fmt.Sprintf("parse vega raw query response failed: %v", err))

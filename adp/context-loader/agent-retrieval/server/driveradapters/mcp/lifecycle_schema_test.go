@@ -209,12 +209,13 @@ func TestStartInteractionHidesCoreLeaseField(t *testing.T) {
 	}
 }
 
-func TestStartInteractionDeclaresOptionalBoundedAgentName(t *testing.T) {
+func TestStartInteractionRequiresBoundedStableAgentName(t *testing.T) {
 	input, _ := loadToolSchemas("bkn_start_interaction")
 	var schema struct {
 		Properties map[string]struct {
-			Type      string `json:"type"`
-			MaxLength int    `json:"maxLength"`
+			Type        string `json:"type"`
+			MaxLength   int    `json:"maxLength"`
+			Description string `json:"description"`
 		} `json:"properties"`
 		Required []string `json:"required"`
 	}
@@ -222,11 +223,11 @@ func TestStartInteractionDeclaresOptionalBoundedAgentName(t *testing.T) {
 		t.Fatalf("decode start schema: %v", err)
 	}
 	agentName, ok := schema.Properties["agent_name"]
-	if !ok || agentName.Type != "string" || agentName.MaxLength != 128 {
-		t.Fatalf("agent_name must be an optional bounded display declaration: %s", input)
+	if !ok || agentName.Type != "string" || agentName.MaxLength != 128 || agentName.Description != "The current Agent's stable name. Provide the same value on every call in the same conversation_id." {
+		t.Fatalf("agent_name must be a required bounded stable declaration: %s", input)
 	}
-	if containsString(schema.Required, "agent_name") {
-		t.Fatalf("agent_name must remain optional: %s", input)
+	if !containsString(schema.Required, "agent_name") {
+		t.Fatalf("agent_name must be required: %s", input)
 	}
 }
 
@@ -375,9 +376,9 @@ func TestLifecycleSwaggerPathsRequestsAndResponsesAreStructurallyFrozen(t *testi
 	}
 }
 
-func TestLifecycleMCPInputRequiredFieldsMatchCorePathAndBody(t *testing.T) {
+func TestLifecycleMCPInputRequiredFieldsFollowAgentFacadeContract(t *testing.T) {
 	expected := map[string][]string{
-		"bkn_start_interaction":  {"question"},
+		"bkn_start_interaction":  {"question", "agent_name"},
 		"bkn_finish_interaction": {"interaction_id", "outcome"},
 	}
 	for tool, want := range expected {

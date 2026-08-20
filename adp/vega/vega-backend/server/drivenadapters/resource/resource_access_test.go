@@ -326,14 +326,11 @@ func TestResourceAccessUpdate(t *testing.T) {
 		res.LocalIndexName = "vega-build-resource-1-task-1"
 		res.StatusMessage = "discover metadata failed: table metadata not found or inaccessible: public.orders"
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_catalog_id = ?, f_name = ?, f_tags = ?, f_description = ?, f_status_message = ?, f_source_metadata = ?, f_schema_definition = ?, f_index_config = ?, f_logic_type = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ?, f_local_index_name = ?, f_last_discover_status = ? WHERE f_id = ?")).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_tags = ?, f_description = ?, f_schema_definition = ?, f_index_config = ?, f_logic_type = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
 			WithArgs(
-				res.CatalogID,
 				res.Name,
 				`"pii","core"`,
 				res.Description,
-				res.StatusMessage,
-				`{"properties":{"row_count":42}}`,
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
 				`{"build_key_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				"",
@@ -341,13 +338,30 @@ func TestResourceAccessUpdate(t *testing.T) {
 				res.Updater.ID,
 				res.Updater.Type,
 				res.UpdateTime,
-				res.LocalIndexName,
-				res.LastDiscoverStatus,
 				res.ID,
+				res.UpdateTime,
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.Update(context.Background(), nil, res))
+		rowsAffected, err := access.Update(context.Background(), nil, res, res.UpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns zero affected rows for a stale resource", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		res := sampleResource()
+		expectedUpdateTime := res.UpdateTime - 1
+
+		mock.ExpectExec("UPDATE t_resource SET .* WHERE f_id = \\? AND f_update_time = \\?").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		rowsAffected, err := access.Update(context.Background(), nil, res, expectedUpdateTime)
+
+		require.NoError(t, err)
+		assert.Zero(t, rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -389,20 +403,25 @@ func TestResourceAccessUpdateSemanticMetadata(t *testing.T) {
 		defer cleanup()
 		resource := sampleResource()
 		resource.LocalIndexName = "vega-build-resource-1-task-1"
+		expectedUpdateTime := resource.UpdateTime - 1
 
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_schema_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_schema_definition = ?, f_logic_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
 			WithArgs(
 				resource.Name,
 				resource.Description,
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+				"[]",
 				resource.Updater.ID,
 				resource.Updater.Type,
 				resource.UpdateTime,
 				resource.ID,
+				expectedUpdateTime,
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateSemanticMetadata(context.Background(), nil, resource))
+		rowsAffected, err := access.UpdateSemanticMetadata(context.Background(), nil, resource, expectedUpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -414,14 +433,44 @@ func TestResourceAccessUpdateSemanticMetadata(t *testing.T) {
 		mock.ExpectBegin()
 		tx, err := access.db.BeginTx(context.Background(), nil)
 		require.NoError(t, err)
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_name = ?, f_description = ?, f_schema_definition = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
+		mock.ExpectExec("UPDATE t_resource SET .* WHERE f_id = \\?").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateSemanticMetadata(context.Background(), tx, resource))
+		rowsAffected, err := access.UpdateSemanticMetadata(context.Background(), tx, resource, resource.UpdateTime)
+		require.NoError(t, err)
+		assert.Equal(t, int64(1), rowsAffected)
 		mock.ExpectCommit()
 		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestResourceAccessUpdateDiscoveryMetadata(t *testing.T) {
+	access, mock, cleanup := newResourceAccessMock(t)
+	defer cleanup()
+	resource := sampleResource()
+	resource.StatusMessage = ""
+	resource.LastDiscoverStatus = interfaces.DiscoverStatusUpdated
+	expectedUpdateTime := resource.UpdateTime - 1
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_status_message = ?, f_source_metadata = ?, f_schema_definition = ?, f_last_discover_status = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ? AND f_update_time = ?")).
+		WithArgs(
+			resource.StatusMessage,
+			`{"properties":{"row_count":42}}`,
+			`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
+			resource.LastDiscoverStatus,
+			resource.Updater.ID,
+			resource.Updater.Type,
+			resource.UpdateTime,
+			resource.ID,
+			expectedUpdateTime,
+		).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	rowsAffected, err := access.UpdateDiscoveryMetadata(context.Background(), nil, resource, expectedUpdateTime)
+	require.NoError(t, err)
+	assert.Zero(t, rowsAffected)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestResourceAccessAttachListExtensions(t *testing.T) {

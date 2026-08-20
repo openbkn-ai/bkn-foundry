@@ -810,9 +810,8 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 					WithErrorDetails(fmt.Sprintf("failed to Unmarshal dataset entry to MetricDefinition, %s", err.Error()))
 			}
 			if scoreVal, ok := entry["_score"]; ok {
-				if scoreFloat, ok := scoreVal.(float64); ok {
-					s := float64(scoreFloat)
-					m.Score = &s
+				if score, err := common.AnyToFloat64(scoreVal); err == nil {
+					m.Score = &score
 				}
 			}
 			m.Vector = nil

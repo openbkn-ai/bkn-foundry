@@ -58,6 +58,11 @@ Description = "连接器类型内部错误"
 Solution = "请联系管理员"
 ErrorLink = ""
 
+[VegaBackend.ConnectorType.FieldConfigUnavailable]
+Description = "连接器字段配置暂不可用"
+Solution = "请确认连接器实现可用后重试"
+ErrorLink = ""
+
 [VegaBackend.ConnectorType.InternalError.RegisterFailed]
 Description = "注册连接器类型失败"
 Solution = "请联系管理员"

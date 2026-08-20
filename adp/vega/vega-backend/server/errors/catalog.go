@@ -30,6 +30,7 @@ const (
 	VegaBackend_Catalog_HasAssets              = "VegaBackend.Catalog.HasAssets"
 	VegaBackend_Catalog_IsDisabled             = "VegaBackend.Catalog.IsDisabled"
 	VegaBackend_Catalog_EnabledFieldNotAllowed = "VegaBackend.Catalog.EnabledFieldNotAllowed"
+	VegaBackend_Catalog_UpdateConflict         = "VegaBackend.Catalog.UpdateConflict"
 
 	// 500 Internal Server Error
 	VegaBackend_Catalog_InternalError                       = "VegaBackend.Catalog.InternalError"
@@ -65,6 +66,7 @@ var CatalogErrCodeList = []string{
 	VegaBackend_Catalog_HasAssets,
 	VegaBackend_Catalog_IsDisabled,
 	VegaBackend_Catalog_EnabledFieldNotAllowed,
+	VegaBackend_Catalog_UpdateConflict,
 
 	// 500 Internal Server Error
 	VegaBackend_Catalog_InternalError,

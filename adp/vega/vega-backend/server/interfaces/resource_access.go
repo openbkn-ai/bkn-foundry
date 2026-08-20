@@ -34,11 +34,13 @@ type ResourceAccess interface {
 	// ListIDs lists Resource IDs with filters.
 	ListIDs(ctx context.Context, params ResourcesQueryParams) ([]string, error)
 	// Update updates a Resource.
-	Update(ctx context.Context, tx *sql.Tx, resource *Resource) error
+	Update(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateLocalIndexName updates only a Resource's local index name.
 	UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
 	// UpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
-	UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource) error
+	UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
+	// UpdateDiscoveryMetadata updates only Resource metadata owned by discovery.
+	UpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateStatus updates a Resource's status, using tx when provided.
 	UpdateStatus(ctx context.Context, tx *sql.Tx, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.

@@ -103,68 +103,51 @@ func NewDiscoverScheduleAccess(appSetting *common.AppSetting) interfaces.Discove
 	return dsAccess
 }
 
-func (dsa *discoverScheduleAccess) Enable(ctx context.Context, id string, nextRun int64) error {
-	_, span := oteltrace.StartNamedClientSpan(ctx, "Enable discover_schedule")
+func (dsa *discoverScheduleAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, nextRun *int64,
+	expectedUpdateTime, updateTime int64, updater interfaces.AccountInfo) (int64, error) {
+	_, span := oteltrace.StartNamedClientSpan(ctx, "Update enabled discover_schedule")
 	defer span.End()
 
 	span.SetAttributes(
 		attr.Key("schedule_id").String(id),
-		attr.Key("next_run").Int64(nextRun),
+		attr.Key("enabled").Bool(enabled),
 	)
 
-	// Build update SQL
-	sqlStr, vals, err := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
-		Set("f_enabled", 1).
-		Set("f_next_run", nextRun).
+	updateBuilder := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
+		Set("f_enabled", enabled)
+	if enabled && nextRun != nil {
+		span.SetAttributes(attr.Key("next_run").Int64(*nextRun))
+		updateBuilder = updateBuilder.Set("f_next_run", *nextRun)
+	}
+	updateBuilder = updateBuilder.
+		Set("f_updater", updater.ID).
+		Set("f_updater_type", updater.Type).
+		Set("f_update_time", updateTime).
 		Where(sq.Eq{"f_id": id}).
-		ToSql()
+		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+
+	sqlStr, vals, err := updateBuilder.ToSql()
 	if err != nil {
-		otellog.LogError(ctx, "Failed to build enable discover_schedule sql", err)
-		return err
+		otellog.LogError(ctx, "Failed to build update enabled discover_schedule sql", err)
+		return 0, err
 	}
 
-	otellog.LogInfo(ctx, fmt.Sprintf("Enable discover_schedule SQL: %s", sqlStr))
+	otellog.LogInfo(ctx, fmt.Sprintf("Update enabled discover_schedule SQL: %s", sqlStr))
 
-	// Execute update
-	_, err = dsa.db.ExecContext(ctx, sqlStr, vals...)
+	result, err := dsa.db.ExecContext(ctx, sqlStr, vals...)
 	if err != nil {
-		otellog.LogError(ctx, "Enable discover_schedule failed", err)
-		return err
+		otellog.LogError(ctx, "Update enabled discover_schedule failed", err)
+		return 0, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get rows affected failed")
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	logger.Infof("Enabled discover schedule: id=%s, next_run=%d", id, nextRun)
-	return nil
-}
-
-func (dsa *discoverScheduleAccess) Disable(ctx context.Context, id string) error {
-	_, span := oteltrace.StartNamedClientSpan(ctx, "Disable discover_schedule")
-	defer span.End()
-
-	span.SetAttributes(attr.Key("schedule_id").String(id))
-
-	// Build update SQL
-	sqlStr, vals, err := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
-		Set("f_enabled", 0).
-		Where(sq.Eq{"f_id": id}).
-		ToSql()
-	if err != nil {
-		otellog.LogError(ctx, "Failed to build disable discover_schedule sql", err)
-		return err
-	}
-
-	otellog.LogInfo(ctx, fmt.Sprintf("Disable discover_schedule SQL: %s", sqlStr))
-
-	// Execute update
-	_, err = dsa.db.ExecContext(ctx, sqlStr, vals...)
-	if err != nil {
-		otellog.LogError(ctx, "Disable discover_schedule failed", err)
-		return err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	logger.Infof("Disabled discover schedule: id=%s", id)
-	return nil
+	logger.Infof("Updated discover schedule enabled state: id=%s, enabled=%t", id, enabled)
+	return rowsAffected, nil
 }
 
 /**
@@ -197,6 +180,9 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 			"f_creator",
 			"f_creator_type",
 			"f_create_time",
+			"f_updater",
+			"f_updater_type",
+			"f_update_time",
 		).
 		Values(
 			schedule.ID,
@@ -212,6 +198,9 @@ func (dsa *discoverScheduleAccess) Create(ctx context.Context, schedule *interfa
 			schedule.Creator.ID,
 			schedule.Creator.Type,
 			schedule.CreateTime,
+			schedule.Updater.ID,
+			schedule.Updater.Type,
+			schedule.UpdateTime,
 		).ToSql()
 	if err != nil {
 		otellog.LogError(ctx, "Failed to build insert discover_schedule sql", err)
@@ -364,7 +353,7 @@ func (dsa *discoverScheduleAccess) List(ctx context.Context, params interfaces.D
 }
 
 // Update updates a discover schedule.
-func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfaces.DiscoverSchedule) error {
+func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfaces.DiscoverSchedule, expectedUpdateTime int64) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update discover_schedule")
 	defer span.End()
 
@@ -373,22 +362,21 @@ func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfa
 	// Build update SQL - only update non-zero value fields
 	updateBuilder := sq.Update(DISCOVER_SCHEDULE_TABLE_NAME).
 		Set("f_name", schedule.Name).
-		Set("f_catalog_id", schedule.CatalogID).
 		Set("f_cron_expr", schedule.CronExpr).
 		Set("f_start_time", schedule.StartTime).
 		Set("f_end_time", schedule.EndTime).
 		Set("f_strategy", schedule.Strategy).
 		Set("f_next_run", schedule.NextRun).
-		Set("f_enabled", schedule.Enabled).
 		Set("f_updater", schedule.Updater.ID).
 		Set("f_updater_type", schedule.Updater.Type).
 		Set("f_update_time", schedule.UpdateTime).
-		Where(sq.Eq{"f_id": schedule.ID})
+		Where(sq.Eq{"f_id": schedule.ID}).
+		Where(sq.Eq{"f_update_time": expectedUpdateTime})
 
 	sqlStr, vals, err := updateBuilder.ToSql()
 	if err != nil {
 		otellog.LogError(ctx, "Failed to build update discover_schedule sql", err)
-		return err
+		return 0, err
 	}
 
 	otellog.LogInfo(ctx, fmt.Sprintf("Update discover_schedule SQL: %s", sqlStr))
@@ -397,7 +385,7 @@ func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfa
 	result, err := dsa.db.ExecContext(ctx, sqlStr, vals...)
 	if err != nil {
 		otellog.LogError(ctx, "Update discover_schedule failed", err)
-		return err
+		return 0, err
 	}
 
 	// Check if any rows were affected
@@ -405,15 +393,12 @@ func (dsa *discoverScheduleAccess) Update(ctx context.Context, schedule *interfa
 	if err != nil {
 		logger.Errorf("Failed to get rows affected: %v", err)
 		span.SetStatus(codes.Error, "Get rows affected failed")
-		return err
-	}
-	if rowsAffected == 0 {
-		logger.Warnf("No rows affected when updating discover_schedule: id=%s", schedule.ID)
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
 	logger.Infof("Updated discover_schedule: id=%s", schedule.ID)
-	return nil
+	return rowsAffected, nil
 }
 
 // Delete deletes a discover schedule by ID.
@@ -527,16 +512,15 @@ func (dsa *discoverScheduleAccess) ListDue(ctx context.Context, now int64) ([]*i
 }
 
 // UpdateRunMetadata atomically advances run metadata when the schedule has not changed.
-func (dsa *discoverScheduleAccess) UpdateRunMetadata(
-	ctx context.Context, id string, scheduleUpdateTime, scheduleNextRun, lastRun, nextRun int64,
-) error {
+func (dsa *discoverScheduleAccess) UpdateRunMetadata(ctx context.Context, id string,
+	expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update run metadata for discover_schedule")
 	defer span.End()
 
 	span.SetAttributes(
 		attr.Key("schedule_id").String(id),
-		attr.Key("schedule_update_time").Int64(scheduleUpdateTime),
-		attr.Key("schedule_next_run").Int64(scheduleNextRun),
+		attr.Key("expected_update_time").Int64(expectedUpdateTime),
+		attr.Key("expected_next_run").Int64(expectedNextRun),
 		attr.Key("last_run").Int64(lastRun),
 		attr.Key("next_run").Int64(nextRun),
 	)
@@ -545,31 +529,28 @@ func (dsa *discoverScheduleAccess) UpdateRunMetadata(
 		Set("f_last_run", lastRun).
 		Set("f_next_run", nextRun).
 		Where(sq.Eq{"f_id": id}).
-		Where(sq.Eq{"f_update_time": scheduleUpdateTime}).
-		Where(sq.Eq{"f_next_run": scheduleNextRun}).
+		Where(sq.Eq{"f_update_time": expectedUpdateTime}).
+		Where(sq.Eq{"f_next_run": expectedNextRun}).
 		Where(sq.Eq{"f_enabled": true}).
 		ToSql()
 	if err != nil {
 		otellog.LogError(ctx, "Failed to build update run metadata discover_schedule sql", err)
-		return err
+		return 0, err
 	}
 
 	result, err := dsa.db.ExecContext(ctx, sqlStr, vals...)
 	if err != nil {
 		otellog.LogError(ctx, "Update run metadata discover_schedule failed", err)
-		return err
+		return 0, err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		logger.Errorf("Get affected rows after updating discover schedule run metadata failed: %v", err)
 		span.SetStatus(codes.Error, "Get rows affected failed")
-		return err
-	}
-	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return rowsAffected, nil
 }

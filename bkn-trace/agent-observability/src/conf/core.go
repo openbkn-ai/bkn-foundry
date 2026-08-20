@@ -1,6 +1,7 @@
 package conf
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ type CoreConfig struct {
 	EvidenceCollectionState    string
 }
 
-func NewCoreConfig() CoreConfig {
+func NewCoreConfig() (CoreConfig, error) {
 	store := strings.ToLower(strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_STORE")))
 	if store == "" {
 		store = "memory"
@@ -38,7 +39,14 @@ func NewCoreConfig() CoreConfig {
 			oneShotIdleTTL = parsed
 		}
 	}
-	autoMigrate, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_AUTO_MIGRATE")))
+	autoMigrate := strings.EqualFold(store, "mariadb")
+	if configured := strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_AUTO_MIGRATE")); configured != "" {
+		parsed, err := strconv.ParseBool(configured)
+		if err != nil {
+			return CoreConfig{}, fmt.Errorf("parse BKN_TRACE_CORE_AUTO_MIGRATE: %w", err)
+		}
+		autoMigrate = parsed
+	}
 	projectionEnabled, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_ENABLED")))
 	projectionInterval := time.Second
 	if configured := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_INTERVAL")); configured != "" {
@@ -63,5 +71,5 @@ func NewCoreConfig() CoreConfig {
 		ProjectionBootstrapVersion: projectionBootstrapVersion,
 		ProjectionRebuildVersion:   projectionRebuildVersion,
 		EvidenceCollectionState:    strings.TrimSpace(os.Getenv("BKN_TRACE_EVIDENCE_COLLECTION_STATE")),
-	}
+	}, nil
 }

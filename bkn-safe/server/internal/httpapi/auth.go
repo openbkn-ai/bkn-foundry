@@ -6,7 +6,6 @@ package httpapi
 
 import (
 	_ "embed"
-	"encoding/base64"
 	"errors"
 	"html/template"
 	"log/slog"
@@ -28,7 +27,9 @@ import (
 // device shows the user_code to confirm, consent shows the requesting client +
 // requested scopes with explicit Authorize/Decline.
 func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessStore *accesslog.Store) {
-	r.GET("/login", showLogin)
+	r.GET(openBKNLogoPath, serveOpenBKNLogo)
+	r.GET(loginBackgroundPath, serveLoginBackground)
+	r.GET("/login", func(c *gin.Context) { showLogin(c, h) })
 	r.POST("/login", func(c *gin.Context) { doLogin(c, p, accessStore) })
 	r.GET("/change-password", showChangePassword)
 	r.POST("/change-password", func(c *gin.Context) { doChangePassword(c, p, accessStore) })
@@ -39,21 +40,29 @@ func registerAuth(r *gin.Engine, p *auth.Provider, h *auth.HydraAdmin, accessSto
 	r.GET("/device/success", showDeviceSuccess)
 }
 
-// pageCSS is the shared light shell (centered card), following the BKN Studio
-// console design language: #2563eb primary, soft radial-gradient backdrop,
-// white 20px-radius card, AntD-like 8px fields/buttons, and the OpenBKN logo.
+// pageCSS is the shared light shell (centered panel), following the BKN Studio
+// console design language: #2563eb primary, light product backdrop, white
+// 20px-radius panel, AntD-like 8px fields/buttons, and the OpenBKN logo.
 const pageCSS = `<style>
 :root{color-scheme:light}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(circle at top left,rgba(55,114,255,.12),transparent 24%),
-    radial-gradient(circle at right center,rgba(243,192,91,.12),transparent 22%),
-    linear-gradient(180deg,#f7f9fc 0%,#edf1f7 100%);
+  position:relative;isolation:isolate;background:#f7f9fc;
   color:#152239;font:15px/1.5 "Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
   -webkit-font-smoothing:antialiased}
-.card{width:380px;box-sizing:border-box;background:#fff;border:1px solid rgba(22,40,73,.08);
-  border-radius:20px;padding:36px 32px;box-shadow:0 18px 48px rgba(22,40,73,.10)}
-.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:18px}
-.brand-logo{display:block;width:244px;height:84px;object-fit:contain}
+body:before{content:"";position:fixed;inset:0;z-index:-2;background-image:
+  linear-gradient(90deg,rgba(248,250,252,.96) 0%,rgba(248,250,252,.82) 38%,rgba(248,250,252,.18) 100%),
+  url("` + loginBackgroundPath + `");background-size:cover;background-position:center;background-repeat:no-repeat}
+.card{position:relative;width:min(600px,calc(100vw - 32px));box-sizing:border-box;background:rgba(255,255,255,.94);
+  border:1px solid rgba(22,40,73,.08);border-radius:22px;padding:38px 74px 42px;
+  box-shadow:0 22px 64px rgba(22,40,73,.14);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.locale-switch{position:absolute;top:18px;right:28px;display:flex;align-items:center;gap:6px;
+  color:#a0aabd;font-size:12px;line-height:1}
+.locale-switch a{border-radius:4px;color:#72819b;text-decoration:none;padding:4px 2px}
+.locale-switch a:hover{color:#2563eb}
+.locale-switch a.active{color:#2563eb;font-weight:600}
+.locale-switch a:focus-visible{outline:2px solid rgba(37,99,235,.35);outline-offset:2px}
+.brand{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:20px}
+.brand-logo{display:block;width:272px;height:94px;object-fit:contain}
 .brand-mark{position:relative;width:40px;height:40px;border-radius:14px;
   background:linear-gradient(145deg,rgba(37,99,235,.16),rgba(37,99,235,.04)),#fff;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 10px 24px rgba(37,99,235,.14)}
@@ -70,35 +79,63 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
 .label{font-size:12px;color:#72819b;text-align:center;margin-bottom:4px}
 .note{font-size:13px;color:#64748d;background:#f9fbff;border:1px solid rgba(15,30,54,.08);
   border-radius:10px;padding:12px;margin:16px 0}
-input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d9d9d9;border-radius:8px;
-  padding:10px 12px;color:rgba(0,0,0,.88);font-size:14px;margin:6px 0;outline:none;
+input{width:100%;box-sizing:border-box;background:#fff;border:1px solid #d9d9d9;border-radius:9px;
+  height:48px;padding:0 14px;color:rgba(0,0,0,.88);font-size:15px;margin:8px 0;outline:none;
   transition:border-color .2s,box-shadow .2s}
 input::placeholder{color:rgba(0,0,0,.35)}
 input:focus{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.1)}
 ul{list-style:none;padding:0;margin:14px 0}
 li{padding:6px 0;font-size:14px;color:#152239}li:before{content:"✓ ";color:#2563eb}
-button,.btn{width:100%;box-sizing:border-box;border:0;border-radius:8px;padding:11px;
-  font:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:8px;
+button,.btn{width:100%;height:48px;box-sizing:border-box;border:0;border-radius:9px;padding:0 16px;
+  display:inline-flex;align-items:center;justify-content:center;font:inherit;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px;
   transition:background .2s,color .2s}
 .primary{background:#2563eb;color:#fff;box-shadow:0 2px 0 rgba(37,99,235,.1)}
 .primary:hover{background:#1d4ed8}
 .ghost{background:transparent;color:#64748d;font-weight:500}
 .ghost:hover{color:#dc2626}
 .err{color:#dc2626;font-size:13px;text-align:center;margin:8px 0 0}
-form{margin:0}
+form{width:min(400px,100%);margin:0 auto}
+@media (max-width:640px){body:before{background-position:60% center}.card{padding:36px 24px}.locale-switch{right:18px}}
 </style>`
 
-//go:embed assets/openbkn-logo.png
-var openBKNLogoPNG []byte
+//go:embed assets/openbkn-logo.svg
+var openBKNLogoSVG []byte
 
-var openBKNLogoDataURI = "data:image/png;base64," + base64.StdEncoding.EncodeToString(openBKNLogoPNG)
+//go:embed assets/login-background.jpg
+var loginBackgroundJPG []byte
+
+const (
+	openBKNLogoPath     = "/login/assets/openbkn-logo-5175503c14ed.svg"
+	openBKNLogoETag     = `"5175503c14ed4a59773aa337b07e333a632285468bba53b8bbe594ff8a5afc48"`
+	loginBackgroundPath = "/login/assets/login-background-2c76122b3960.jpg"
+	loginBackgroundETag = `"2c76122b39608ab1be202d1f3009ed26a09d8a0e721d4a20b297bbb449a6bb91"`
+)
+
+func serveOpenBKNLogo(c *gin.Context) {
+	serveCacheableAuthAsset(c, "image/svg+xml; charset=utf-8", openBKNLogoETag, openBKNLogoSVG)
+}
+
+func serveLoginBackground(c *gin.Context) {
+	serveCacheableAuthAsset(c, "image/jpeg", loginBackgroundETag, loginBackgroundJPG)
+}
+
+func serveCacheableAuthAsset(c *gin.Context, contentType, etag string, body []byte) {
+	c.Header("Cache-Control", "public, max-age=31536000, immutable")
+	c.Header("ETag", etag)
+	c.Header("X-Content-Type-Options", "nosniff")
+	if c.GetHeader("If-None-Match") == etag {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	c.Data(http.StatusOK, contentType, body)
+}
 
 // brand renders the brand row (mark + wordmark) shown atop each card. Web
 // login pages carry the BKN Studio wordmark; the device-flow pages (CLI /
 // platform-level login) carry BKN Foundry.
 func brand(name string) string {
 	if name == "BKN Studio" {
-		return `<div class="brand"><img class="brand-logo" src="` + openBKNLogoDataURI + `" alt="OpenBKN"></div>`
+		return `<div class="brand"><img class="brand-logo" src="` + openBKNLogoPath + `" alt="OpenBKN" width="272" height="94"></div>`
 	}
 	return `<div class="brand"><span class="brand-mark"><i class="core"></i><i class="orbit orbit-l"></i><i class="orbit orbit-r"></i></span><strong>` + name + `</strong></div>`
 }
@@ -127,6 +164,9 @@ type authPageText struct {
 	ConfirmButton              string
 	LoginSuccessTitle          string
 	DeviceAuthorizedNote       string
+	LanguageSelectorLabel      string
+	ChineseLanguageLabel       string
+	EnglishLanguageLabel       string
 }
 
 type authPageData struct {
@@ -136,6 +176,9 @@ type authPageData struct {
 	Scopes     []string
 	UserCode   string
 	Error      string
+	Language   string
+	ChineseURL string
+	EnglishURL string
 	Text       authPageText
 }
 
@@ -146,7 +189,7 @@ func localizedAuthMessage(c *gin.Context, key string) string {
 
 func localizedAuthPageData(c *gin.Context) authPageData {
 	message := func(key string) string { return localizedAuthMessage(c, key) }
-	return authPageData{Text: authPageText{
+	return authPageData{Language: sharedrest.GetLanguageByCtx(c.Request.Context()), Text: authPageText{
 		AccountPlaceholder:         message("AccountPlaceholder"),
 		PasswordPlaceholder:        message("PasswordPlaceholder"),
 		LoginButton:                message("LoginButton"),
@@ -168,63 +211,77 @@ func localizedAuthPageData(c *gin.Context) authPageData {
 		ConfirmButton:              message("ConfirmButton"),
 		LoginSuccessTitle:          message("LoginSuccessTitle"),
 		DeviceAuthorizedNote:       message("DeviceAuthorizedNote"),
+		LanguageSelectorLabel:      message("LanguageSelectorLabel"),
+		ChineseLanguageLabel:       message("ChineseLanguageLabel"),
+		EnglishLanguageLabel:       message("EnglishLanguageLabel"),
 	}}
 }
 
-var loginPage = template.Must(template.New("login").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Studio") + `
+const localeSwitcher = `<nav class="locale-switch" aria-label="{{.Text.LanguageSelectorLabel}}">
+  <a class="{{if eq .Language "zh-CN"}}active{{end}}" href="{{.ChineseURL}}" lang="zh-CN" hreflang="zh-CN">{{.Text.ChineseLanguageLabel}}</a>
+  <span aria-hidden="true">/</span>
+  <a class="{{if eq .Language "en-US"}}active{{end}}" href="{{.EnglishURL}}" lang="en-US" hreflang="en-US">{{.Text.EnglishLanguageLabel}}</a>
+</nav>`
+
+var loginPage = template.Must(template.New("login").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
+<div class="card">` + localeSwitcher + brand("BKN Studio") + `
 <form method="post" action="/login">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
+  <input type="hidden" name="lang" value="{{.Language}}">
   <input name="account" placeholder="{{.Text.AccountPlaceholder}}" value="{{.Account}}" autofocus autocomplete="username">
   <input name="password" type="password" placeholder="{{.Text.PasswordPlaceholder}}" autocomplete="current-password">
   {{if .Error}}<div class="err">{{.Error}}</div>{{end}}
   <button class="primary" type="submit">{{.Text.LoginButton}}</button>
-</form></div></body>`))
+</form></div></body></html>`))
 
-var changePasswordPage = template.Must(template.New("changepw").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Studio") + `<h3>{{.Text.ChangePasswordTitle}}</h3>
+var changePasswordPage = template.Must(template.New("changepw").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
+<div class="card">` + localeSwitcher + brand("BKN Studio") + `<h3>{{.Text.ChangePasswordTitle}}</h3>
 <div class="label">{{.Text.FirstLoginPrompt}}</div>
 {{if .Error}}<div class="note">{{.Error}}</div>{{end}}
 <form method="post" action="/change-password">
   <input type="hidden" name="login_challenge" value="{{.Challenge}}">
   <input type="hidden" name="account" value="{{.Account}}">
+  <input type="hidden" name="lang" value="{{.Language}}">
   <input name="old_password" type="password" placeholder="{{.Text.CurrentPasswordPlaceholder}}" autofocus autocomplete="current-password">
   <input name="new_password" type="password" placeholder="{{.Text.NewPasswordPlaceholder}}" autocomplete="new-password">
   <input name="confirm_password" type="password" placeholder="{{.Text.ConfirmPasswordPlaceholder}}" autocomplete="new-password">
   <button class="primary" type="submit">{{.Text.ChangeAndLoginButton}}</button>
-</form></div></body>`))
+</form></div></body></html>`))
 
-var consentPage = template.Must(template.New("consent").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Studio") + `<h3>{{.Text.AuthorizeClient}} {{.ClientName}}</h3>
+var consentPage = template.Must(template.New("consent").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
+<div class="card">` + localeSwitcher + brand("BKN Studio") + `<h3>{{.Text.AuthorizeClient}} {{.ClientName}}</h3>
 <div class="label">{{.Text.ApplicationPermissions}}</div>
 <ul>{{range .Scopes}}<li>{{.}}</li>{{else}}<li>{{$.Text.BasicLogin}}</li>{{end}}</ul>
 <form method="post" action="/consent">
   <input type="hidden" name="consent_challenge" value="{{.Challenge}}">
+  <input type="hidden" name="lang" value="{{.Language}}">
   <button class="primary" name="decision" value="allow" type="submit">{{.Text.AllowButton}}</button>
   <button class="ghost" name="decision" value="deny" type="submit">{{.Text.DenyButton}}</button>
-</form></div></body>`))
+</form></div></body></html>`))
 
-var devicePage = template.Must(template.New("device").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Foundry") + `<h3>{{.Text.DeviceAuthorizationTitle}}</h3>
+var devicePage = template.Must(template.New("device").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
+<div class="card">` + localeSwitcher + brand("BKN Foundry") + `<h3>{{.Text.DeviceAuthorizationTitle}}</h3>
 <div class="label">{{.Text.DeviceCodeLabel}}</div>
 <div class="code">{{if .UserCode}}{{.UserCode}}{{else}}— — — —{{end}}</div>
 <form method="post" action="/device">
   <input type="hidden" name="device_challenge" value="{{.Challenge}}">
+  <input type="hidden" name="lang" value="{{.Language}}">
   {{if not .UserCode}}<input name="user_code" placeholder="{{.Text.DeviceCodePlaceholder}}" autofocus>{{else}}<input type="hidden" name="user_code" value="{{.UserCode}}">{{end}}
   <div class="note">{{.Text.DeviceConfirmationNote}}</div>
   <button class="primary" type="submit">{{.Text.ConfirmButton}}</button>
-</form></div></body>`))
+</form></div></body></html>`))
 
-var deviceSuccessPage = template.Must(template.New("devicesuccess").Parse(pageCSS + `<!doctype html><meta charset="utf-8"><body>
-<div class="card">` + brand("BKN Foundry") + `<h3>{{.Text.LoginSuccessTitle}}</h3>
+var deviceSuccessPage = template.Must(template.New("devicesuccess").Parse(`<!doctype html><html lang="{{.Language}}"><head><meta charset="utf-8">` + pageCSS + `</head><body>
+<div class="card">` + localeSwitcher + brand("BKN Foundry") + `<h3>{{.Text.LoginSuccessTitle}}</h3>
 <div class="note">{{.Text.DeviceAuthorizedNote}}</div>
-</div></body>`))
+</div></body></html>`))
 
 // showDeviceSuccess is hydra's URLS_DEVICE_SUCCESS target: shown after the device
 // authorization is approved (the token is already issued to the CLI). Replaces
 // hydra's bare fallback page. Static — no challenge needed.
 func showDeviceSuccess(c *gin.Context) {
-	renderHTML(c, deviceSuccessPage, localizedAuthPageData(c))
+	applyAuthLocale(c, "")
+	renderHTML(c, deviceSuccessPage, localizedAuthPageDataFor(c, "/device/success", nil))
 }
 
 func renderHTML(c *gin.Context, t *template.Template, data any) {
@@ -255,18 +312,31 @@ func isExpiredLoginRequest(err error) bool {
 		strings.Contains(msg, "login request has expired")
 }
 
-func showLogin(c *gin.Context) {
+func showLogin(c *gin.Context, h *auth.HydraAdmin) {
 	challenge := c.Query("login_challenge")
 	if challenge == "" {
+		applyAuthLocale(c, "")
 		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingLoginChallenge")
 		return
 	}
-	data := localizedAuthPageData(c)
-	data.Challenge = challenge
+	requestURL := ""
+	if h != nil {
+		loginRequest, err := h.GetLogin(c.Request.Context(), challenge)
+		if err != nil {
+			// Locale enrichment is presentation-only. A temporary Hydra read
+			// failure must not make an otherwise renderable login page fail.
+			slog.Debug("login: locale request lookup failed", "err", err)
+		} else {
+			requestURL = loginRequest.RequestURL
+		}
+	}
+	applyAuthLocale(c, requestURL)
+	data := loginAuthPageData(c, challenge)
 	renderHTML(c, loginPage, data)
 }
 
 func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
+	applyAuthLocale(c, "")
 	challenge := c.PostForm("login_challenge")
 	account := c.PostForm("account")
 	password := c.PostForm("password")
@@ -280,9 +350,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 			// Credentials are valid but a password change is required first.
 			// Render the change-password page directly (no server session); the
 			// form re-carries the challenge + account and re-collects the old pw.
-			data := localizedAuthPageData(c)
-			data.Challenge = challenge
-			data.Account = account
+			data := changePasswordAuthPageData(c, challenge, account)
 			renderHTML(c, changePasswordPage, data)
 			return
 		}
@@ -290,8 +358,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 			recordLogin(c, accessStore, nil, account, "failure", loginFailureCode(err))
 			// Re-render the login form with an inline error instead of a bare
 			// error page, keeping the entered account and the same challenge.
-			data := localizedAuthPageData(c)
-			data.Challenge = challenge
+			data := loginAuthPageData(c, challenge)
 			data.Account = account
 			data.Error = localizedAuthMessage(c, "InvalidCredentials")
 			renderHTMLStatus(c, http.StatusUnauthorized, loginPage, data)
@@ -299,8 +366,7 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 		}
 		slog.Error("login: accept failed", "err", err)
 		if isExpiredLoginRequest(err) {
-			data := localizedAuthPageData(c)
-			data.Challenge = challenge
+			data := loginAuthPageData(c, challenge)
 			data.Account = account
 			data.Error = localizedAuthMessage(c, "LoginRequestExpired")
 			renderHTMLStatus(c, http.StatusUnauthorized, loginPage, data)
@@ -317,22 +383,22 @@ func doLogin(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
 // first-login branch in doLogin (which renders it directly) or a direct GET
 // carrying login_challenge + account.
 func showChangePassword(c *gin.Context) {
+	applyAuthLocale(c, "")
 	challenge := c.Query("login_challenge")
 	if challenge == "" {
 		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingLoginChallenge")
 		return
 	}
-	data := localizedAuthPageData(c)
-	data.Challenge = challenge
-	data.Account = c.Query("account")
+	data := changePasswordAuthPageData(c, challenge, c.Query("account"))
 	renderHTML(c, changePasswordPage, data)
 }
 
 // doChangePassword re-verifies the current password, sets the new one, and
 // completes the hydra login. Validation errors re-render the page with a note.
 func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.Store) {
+	applyAuthLocale(c, "")
 	challenge := c.PostForm("login_challenge")
-	account := c.PostForm("account")
+	account := resolveChangePasswordAccount(c, c.PostForm("account"))
 	oldPw := c.PostForm("old_password")
 	newPw := c.PostForm("new_password")
 	confirm := c.PostForm("confirm_password")
@@ -341,9 +407,7 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.S
 		return
 	}
 	reRender := func(messageKey string) {
-		data := localizedAuthPageData(c)
-		data.Challenge = challenge
-		data.Account = account
+		data := changePasswordAuthPageData(c, challenge, account)
 		data.Error = localizedAuthMessage(c, messageKey)
 		renderHTML(c, changePasswordPage, data)
 	}
@@ -371,6 +435,7 @@ func doChangePassword(c *gin.Context, p *auth.Provider, accessStore *accesslog.S
 		return
 	}
 	recordLogin(c, accessStore, user, account, "success", "")
+	clearChangePasswordAccount(c)
 	c.Redirect(http.StatusFound, redirectTo)
 }
 
@@ -416,6 +481,7 @@ var firstPartyClients = map[string]bool{
 // + Authorize/Decline) for third-party clients. First-party clients are
 // auto-accepted without a page, mirroring a standard first-party OAuth UX.
 func showConsent(c *gin.Context, p *auth.Provider) {
+	setAuthLocaleContext(c, "")
 	challenge := c.Query("consent_challenge")
 	if challenge == "" {
 		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingConsentChallenge")
@@ -427,6 +493,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 		replyLocalizedAuthText(c, http.StatusInternalServerError, "BknSafe.InternalError.Description")
 		return
 	}
+	applyAuthContinuationLocale(c, cr.RequestURL)
 	if firstPartyClients[cr.ClientID] {
 		redirectTo, err := p.Consent(c.Request.Context(), challenge, c.ClientIP(), auth.ClientTypeWeb, false)
 		if err != nil {
@@ -441,8 +508,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 	if name == "" {
 		name = cr.ClientID
 	}
-	data := localizedAuthPageData(c)
-	data.Challenge = challenge
+	data := consentAuthPageData(c, challenge)
 	data.ClientName = name
 	data.Scopes = cr.RequestedScope
 	renderHTML(c, consentPage, data)
@@ -451,6 +517,7 @@ func showConsent(c *gin.Context, p *auth.Provider) {
 // doConsent applies the user's decision: allow -> grant scope + inject ext
 // claims; deny -> reject.
 func doConsent(c *gin.Context, p *auth.Provider) {
+	applyAuthLocale(c, "")
 	challenge := c.PostForm("consent_challenge")
 	if challenge == "" {
 		replyLocalizedAuthText(c, http.StatusBadRequest, authMessagePrefix+"MissingConsentChallenge")
@@ -473,9 +540,8 @@ func doConsent(c *gin.Context, p *auth.Provider) {
 }
 
 func showDevice(c *gin.Context) {
-	data := localizedAuthPageData(c)
-	data.Challenge = c.Query("device_challenge")
-	data.UserCode = c.Query("user_code") // prefilled from verification_uri_complete
+	applyAuthLocale(c, "")
+	data := deviceAuthPageData(c, c.Query("device_challenge"), c.Query("user_code"))
 	renderHTML(c, devicePage, data)
 }
 
@@ -497,6 +563,7 @@ func normalizeUserCode(s string) string {
 }
 
 func doDevice(c *gin.Context, h *auth.HydraAdmin) {
+	applyAuthLocale(c, "")
 	challenge := c.PostForm("device_challenge")
 	userCode := normalizeUserCode(c.PostForm("user_code"))
 	if challenge == "" {

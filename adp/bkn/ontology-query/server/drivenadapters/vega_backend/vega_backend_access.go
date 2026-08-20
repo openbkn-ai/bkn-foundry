@@ -8,12 +8,12 @@ package vega_backend
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"sync"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -24,8 +24,9 @@ import (
 )
 
 var (
-	vbOnce sync.Once
-	vb     interfaces.VegaBackendAccess
+	vbOnce           sync.Once
+	vb               interfaces.VegaBackendAccess
+	vegaResponseJSON = sonic.Config{UseNumber: true}.Froze()
 )
 
 type vegaBackendAccess struct {
@@ -77,7 +78,8 @@ func (v *vegaBackendAccess) QueryResourceData(ctx context.Context, resourceID st
 		return nil, interfaces.NewVegaDownstreamError(respCode, string(respData))
 	}
 	var response interfaces.DatasetQueryResponse
-	if err := json.Unmarshal([]byte(respData), &response); err != nil {
+	// Dynamic resource fields must keep their original JSON number representation.
+	if err := vegaResponseJSON.Unmarshal(respData, &response); err != nil {
 		return nil, fmt.Errorf("unmarshal QueryResourceData response: %w", err)
 	}
 	return &response, nil

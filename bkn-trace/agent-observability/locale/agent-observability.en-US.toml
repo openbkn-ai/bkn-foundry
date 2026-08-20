@@ -92,6 +92,7 @@
 "failed to query evidence chain" = "failed to query evidence chain"
 "failed to query evidence node" = "failed to query evidence node"
 "failed to query execution summaries" = "failed to query execution summaries"
+"execution summary projection is catching up; retry the same page" = "execution summary projection is catching up; retry the same page"
 "failed to query operation facts" = "failed to query operation facts"
 "failed to query snapshot preview" = "failed to query snapshot preview"
 "failed to query trace spans" = "failed to query trace spans"

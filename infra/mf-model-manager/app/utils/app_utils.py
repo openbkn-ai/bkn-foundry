@@ -18,6 +18,8 @@ from app.commons.locale import (
 from app.core.config import base_config, server_info, observability_config
 from app.logs import log_init, sys_log
 from app.mydb.ConnectUtil import get_redis_util
+from app.mydb.pymysql_pool import PymysqlPool
+from app.commons.get_user_info import close_directory_session
 from app.routers import router_init
 from app.utils.comment_utils import write_log
 from app.utils.model_monitor import vllm_monitor_task, delete_monitor_data_task, delete_model_quota_data_task
@@ -60,6 +62,8 @@ async def start_event():
 
 async def shutdown_event():
     await write_log(msg='系统关闭')
+    await close_directory_session()
+    PymysqlPool.close_pool()
     # Shut down observability integrations.
     shutdown_observability()
 

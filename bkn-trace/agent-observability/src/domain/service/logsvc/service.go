@@ -214,6 +214,7 @@ func (service *Service) listPage(
 		limit = 200
 	}
 	sourceQuery := query
+	sourceQuery.ActorQuery = ""
 	sourceQuery.Cursor = ""
 	sourceQuery.Limit = 200
 	if err := applyLogTimeWindow(&sourceQuery, queryWatermark); err != nil {
@@ -230,6 +231,8 @@ func (service *Service) listPage(
 		[]string(nil), profile.ManagedKnowledgeNetworkIDs...,
 	)
 	sourceQuery.ObservedBefore = &queryWatermark
+	filterQuery := sourceQuery
+	filterQuery.ActorQuery = query.ActorQuery
 	succeeded := 0
 	failed := 0
 	coveragePartial := false
@@ -282,11 +285,11 @@ func (service *Service) listPage(
 			}
 			if validProjection &&
 				contains(effectiveCategories, record.Category) && afterSourcePosition(record, pageBefore) &&
-				matchesQuery(record, sourceQuery) && canReadLog(profile, capabilities, record, query.IsAssociatedDrilldown()) {
+				matchesQuery(record, filterQuery) && canReadLog(profile, capabilities, record, query.IsAssociatedDrilldown()) {
 				candidates = append(candidates, logCandidate{record: record, adapterSourceID: source.ID()})
 			}
 		}
-		if rejectedProjections > 0 || normalizedAccuracy(page.CountAccuracy) != "exact" {
+		if rejectedProjections > 0 || filterQuery.ActorQuery != "" || normalizedAccuracy(page.CountAccuracy) != "exact" {
 			// Source totals describe its raw result set. Once the public contract
 			// rejects records or an adapter has already filtered its source result,
 			// retaining that raw total produces an impossible UI (for example “5
@@ -855,7 +858,7 @@ func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQue
 		matchesOptional(record.TraceID, query.TraceID) && matchesOptional(record.SpanID, query.SpanID) &&
 		matchesOptional(record.RequestID, query.RequestID) && matchesOptional(record.ConversationID, query.ConversationID) &&
 		matchesOptional(record.InteractionID, query.InteractionID) && matchesOptional(record.OperationID, query.OperationID) &&
-		matchesOptional(record.BusinessDomain, query.BusinessDomain) && matchesOptional(record.ActorID, query.ActorID) &&
+		matchesOptional(record.BusinessDomain, query.BusinessDomain) && matchesOptional(record.ActorID, query.ActorID) && matchesActor(record, query.ActorQuery) &&
 		matchesOptional(record.BusinessModule, query.BusinessModule) && matchesOptional(record.Action, query.Action) &&
 		matchesOptional(record.TargetType, query.TargetType) && matchesOptional(record.TargetID, query.TargetID) &&
 		matchesSet(record.Outcome, query.Outcomes) &&
@@ -867,6 +870,13 @@ func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQue
 }
 
 func matchesOptional(actual, expected string) bool { return expected == "" || actual == expected }
+
+func matchesActor(record observabilityvo.LogRecord, expected string) bool {
+	expected = strings.TrimSpace(expected)
+	return expected == "" || record.ActorID == expected || strings.Contains(
+		strings.ToLower(record.ActorNameSnapshot), strings.ToLower(expected),
+	)
+}
 
 func matchesSet(actual string, expected []string) bool {
 	return len(expected) == 0 || contains(expected, actual)

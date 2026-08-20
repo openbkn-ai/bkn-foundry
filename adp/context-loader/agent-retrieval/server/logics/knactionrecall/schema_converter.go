@@ -24,6 +24,9 @@ const (
 	// - 2 layers: suitable for simple scenarios (such as tree structures)
 	// - 3 layers: suitable for complex scenarios (multi-layer nesting)
 	MaxSchemaDepth = 3
+
+	// responseStatusOK is the response status code preferred when deriving the output schema.
+	responseStatusOK = "200"
 )
 
 // ==================== Universal Schema reference parser ====================.
@@ -803,40 +806,10 @@ func (s *knActionRecallServiceImpl) convertToolSchemaToActionDriver(ctx context.
 // convertMCPSchemaToActionDriver Converts MCP Schema to action-driven request structure.
 // Use the parsed MCP input_schema directly as the schema of dynamic_params.
 func (s *knActionRecallServiceImpl) convertMCPSchemaToActionDriver(ctx context.Context, inputSchema map[string]any) (map[string]any, error) {
-	visitedRefs := make(map[string]bool)
-
-	// Extract $defs.
-	rootDefs := make(map[string]any)
-	if defs, ok := inputSchema["$defs"].(map[string]any); ok {
-		rootDefs = defs
-	}
-
-	// Building an MCP-specific reference resolver.
-	mcpRefResolver := func(refPath string) (map[string]any, error) {
-		prefix := "#/$defs/"
-		if !strings.HasPrefix(refPath, prefix) {
-			return nil, fmt.Errorf("unsupported MCP $ref path format: %s (only #/$defs/* is supported)", refPath)
-		}
-		name := strings.TrimPrefix(refPath, prefix)
-		if def, ok := rootDefs[name].(map[string]any); ok {
-			return def, nil
-		}
-		return nil, fmt.Errorf("MCP schema definition not found: %s", name)
-	}
-
-	// Parse the schema using a universal parser.
-	resolvedSchema, err := s.resolveSchemaWithResolver(ctx, inputSchema, mcpRefResolver, visitedRefs, 0)
+	resolvedSchema, err := s.resolveMCPSchema(ctx, inputSchema)
 	if err != nil {
 		return nil, err
 	}
-
-	// Make sure you have type=object.
-	if _, ok := resolvedSchema["type"]; !ok {
-		resolvedSchema["type"] = "object"
-	}
-
-	// Remove $defs.
-	delete(resolvedSchema, "$defs")
 
 	// Construct dynamic_params schema: use the parsed MCP schema as dynamic_params.
 	dynamicParamsSchema := map[string]any{
@@ -874,4 +847,134 @@ func (s *knActionRecallServiceImpl) wrapActionDriverParameters(ctx context.Conte
 			},
 		},
 	}
+}
+
+// resolveMCPSchema resolves an MCP schema: it inlines #/$defs/* references, defaults the
+// type to object and drops $defs. Input and output schemas share this one path so the
+// reference resolution is not written twice.
+func (s *knActionRecallServiceImpl) resolveMCPSchema(ctx context.Context, schema map[string]any) (map[string]any, error) {
+	visitedRefs := make(map[string]bool)
+
+	rootDefs := make(map[string]any)
+	if defs, ok := schema["$defs"].(map[string]any); ok {
+		rootDefs = defs
+	}
+
+	mcpRefResolver := func(refPath string) (map[string]any, error) {
+		prefix := "#/$defs/"
+		if !strings.HasPrefix(refPath, prefix) {
+			return nil, fmt.Errorf("unsupported MCP $ref path format: %s (only #/$defs/* is supported)", refPath)
+		}
+		name := strings.TrimPrefix(refPath, prefix)
+		if def, ok := rootDefs[name].(map[string]any); ok {
+			return def, nil
+		}
+		return nil, fmt.Errorf("MCP schema definition not found: %s", name)
+	}
+
+	resolved, err := s.resolveSchemaWithResolver(ctx, schema, mcpRefResolver, visitedRefs, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, ok := resolved["type"]; !ok {
+		resolved["type"] = "object"
+	}
+	delete(resolved, "$defs")
+
+	return resolved, nil
+}
+
+// extractToolOutputSchema derives the shape of the action result from the tool's OpenAPI spec.
+//
+// It takes the application/json schema of a 2xx response (200 first) and expands $ref through
+// the same resolver used for input parameters. The response body is used as-is, including the
+// {stdout, stderr, result, metrics} envelope of a function tool: ontology-query stores the whole
+// body as the execution result (see ExecuteTool in agent_operator_access.go), so unwrapping the
+// envelope here would describe a level that the result never has.
+//
+// Returns nil when nothing usable is found so the caller omits the field entirely: an empty
+// object reads as "this action returns nothing" when the truth is "the output shape is unknown".
+func (s *knActionRecallServiceImpl) extractToolOutputSchema(ctx context.Context, apiSpec map[string]any) map[string]any {
+	response := s.pickSuccessResponse(apiSpec)
+	if response == nil {
+		return nil
+	}
+
+	content, ok := response["content"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	appJSON, ok := content["application/json"].(map[string]any)
+	if !ok {
+		s.logger.WithContext(ctx).Debugf("[KnActionRecall#extractToolOutputSchema] Success response has no application/json content")
+		return nil
+	}
+	rawSchema, ok := appJSON["schema"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	resolved, err := s.resolveSchema(ctx, rawSchema, apiSpec, make(map[string]bool), 0)
+	if err != nil {
+		s.logger.WithContext(ctx).Warnf("[KnActionRecall#extractToolOutputSchema] Failed to resolve output schema: %v", err)
+		return nil
+	}
+
+	return s.finalizeOutputSchema(ctx, resolved)
+}
+
+// pickSuccessResponse picks the response definition that describes the output: 200 first,
+// then any other 2xx.
+func (s *knActionRecallServiceImpl) pickSuccessResponse(apiSpec map[string]any) map[string]any {
+	responses, ok := apiSpec["responses"].([]any)
+	if !ok {
+		return nil
+	}
+
+	var fallback map[string]any
+	for _, item := range responses {
+		response, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		statusCode, _ := response["status_code"].(string)
+		if statusCode == responseStatusOK {
+			return response
+		}
+		if fallback == nil && strings.HasPrefix(statusCode, "2") {
+			fallback = response
+		}
+	}
+	return fallback
+}
+
+// finalizeOutputSchema fills in the default type and description, and returns nil when the
+// schema carries no usable shape.
+func (s *knActionRecallServiceImpl) finalizeOutputSchema(ctx context.Context, schema map[string]any) map[string]any {
+	if len(schema) == 0 {
+		return nil
+	}
+
+	_, hasType := schema["type"]
+	_, hasProps := schema["properties"]
+	if !hasType && !hasProps {
+		return nil
+	}
+	if !hasType {
+		schema["type"] = "object"
+	}
+
+	// An object without a single property says nothing; omit it rather than return it.
+	if schema["type"] == "object" {
+		if props, ok := schema["properties"].(map[string]any); !ok || len(props) == 0 {
+			return nil
+		}
+	}
+
+	if _, ok := schema["description"].(string); !ok {
+		schema["description"] = infraerrors.LocalizedDetail(ctx, "ActionOutputSchema")
+	}
+
+	return schema
 }

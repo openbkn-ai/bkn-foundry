@@ -109,6 +109,7 @@
     "ActionParamQuery": "URL 查询参数。",
     "ActionParamBody": "请求体参数。",
     "ActionDynamicParams": "行动执行动态参数。",
+    "ActionOutputSchema": "行动执行结果的结构。执行成功后 result 字段按此形状返回，可据此把结果复述为自然语言。",
     "ActionInstanceIdentities": "目标实例标识列表。为空时由行动驱动按条件扫描；如需指定实例，请提供动态属性键值对，例如 [{\"id\": \"123\"}, {\"name\": \"test_instance\"}]。",
     "ActionInstanceIdentity": "包含动态属性键值对的实例标识对象。",
     "SubgraphQueryResponseInvalid": "子图查询响应无效。",

@@ -197,7 +197,6 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		rs.EXPECT().InternalUpdate(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, id, indexName string) error {
 				assert.Equal(t, "r1", id)

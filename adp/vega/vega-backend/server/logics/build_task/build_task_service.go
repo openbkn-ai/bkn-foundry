@@ -884,8 +884,7 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 	}
 	if deleteActiveIndex {
 		for taskID, resource := range activeResources {
-			resource.LocalIndexName = ""
-			if err := bts.rs.UpdateResource(ctx, resource); err != nil {
+			if err := bts.rs.InternalUpdateLocalIndexName(ctx, nil, resource.ID, ""); err != nil {
 				span.SetStatus(codes.Error, "Clear active local index failed")
 				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 					WithErrorDetails(map[string]any{

@@ -8,7 +8,9 @@ package logics
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
+	"time"
 
 	cond "ontology-query/common/condition"
 	oerrors "ontology-query/errors"
@@ -652,6 +654,20 @@ func Test_GetObjectID(t *testing.T) {
 			So(uk["id"], ShouldEqual, "123")
 		})
 
+		Convey("success - large integer primary key preserves precision", func() {
+			objectType := &interfaces.ObjectType{
+				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
+					OTID:        "ot1",
+					PrimaryKeys: []string{"id"},
+				},
+			}
+			largeID := json.Number("9223372036854775808")
+
+			id, uk := GetObjectID(map[string]any{"id": largeID}, objectType)
+			So(id, ShouldEqual, "ot1-9223372036854775808")
+			So(uk["id"], ShouldResemble, largeID)
+		})
+
 		Convey("成功 - 多主键", func() {
 			objectType := &interfaces.ObjectType{
 				ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
@@ -705,6 +721,24 @@ func Test_GetObjectID(t *testing.T) {
 			So(id, ShouldEqual, "ot1-123___NULL__")
 			So(uk["id"], ShouldEqual, "123")
 		})
+	})
+}
+
+func Test_JSONNumberCompatibility(t *testing.T) {
+	Convey("json.Number remains compatible with local condition evaluation", t, func() {
+		value := json.Number("1700000000")
+		parsed, err := parseTime(value)
+		So(err, ShouldBeNil)
+		So(parsed, ShouldResemble, time.Unix(1700000000, 0))
+		parsed, err = parseTime(json.Number("1700000000.9"))
+		So(err, ShouldBeNil)
+		So(parsed, ShouldResemble, time.Unix(1700000000, 0))
+		So(isNumeric(json.Number("0.95")), ShouldBeTrue)
+		So(toFloat64(json.Number("0.95")), ShouldAlmostEqual, 0.95)
+
+		matched, err := compareValues(json.Number("2"), float64(1), ">", "")
+		So(err, ShouldBeNil)
+		So(matched, ShouldBeTrue)
 	})
 }
 

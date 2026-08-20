@@ -20,6 +20,7 @@ const (
 	VegaBackend_DiscoverSchedule_IdMismatch             = "VegaBackend.DiscoverSchedule.IdMismatch"
 	VegaBackend_DiscoverSchedule_CatalogMismatch        = "VegaBackend.DiscoverSchedule.CatalogMismatch"
 	VegaBackend_DiscoverSchedule_EnabledFieldNotAllowed = "VegaBackend.DiscoverSchedule.EnabledFieldNotAllowed"
+	VegaBackend_DiscoverSchedule_UpdateConflict         = "VegaBackend.DiscoverSchedule.UpdateConflict"
 
 	// 500 Internal Server Error
 	VegaBackend_DiscoverSchedule_InternalError_GetFailed             = "VegaBackend.DiscoverSchedule.InternalError.GetFailed"
@@ -42,6 +43,7 @@ var DiscoverScheduleErrCodeList = []string{
 	VegaBackend_DiscoverSchedule_IdMismatch,
 	VegaBackend_DiscoverSchedule_CatalogMismatch,
 	VegaBackend_DiscoverSchedule_EnabledFieldNotAllowed,
+	VegaBackend_DiscoverSchedule_UpdateConflict,
 
 	// 500 Internal Server Error
 	VegaBackend_DiscoverSchedule_InternalError_GetFailed,

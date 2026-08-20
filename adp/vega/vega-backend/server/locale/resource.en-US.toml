@@ -127,3 +127,8 @@ ErrorLink = ""
 Description = "Failed to get account names"
 Solution = "Please contact the administrator"
 ErrorLink = ""
+
+[VegaBackend.Resource.UpdateConflict]
+Description = "The resource was updated after it was read"
+Solution = "Reload the resource and retry the update"
+ErrorLink = ""

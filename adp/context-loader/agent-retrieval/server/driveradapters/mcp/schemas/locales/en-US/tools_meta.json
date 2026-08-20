@@ -5,7 +5,8 @@
   },
   "bkn_start_interaction": {
     "title": "Start Interaction",
-    "group_title": "Session Lifecycle"
+    "group_title": "Session Lifecycle",
+    "description": "Start a managed Interaction for the current user question. Provide the complete user question and the current Agent's stable name; omit conversation_id on the first turn, then provide the conversation_id for the current conversation. It returns the conversation_id and interaction_id required in bkn_context for subsequent tool calls in this turn."
   },
   "search_schema": {
     "title": "Explore Schema",
@@ -45,7 +46,7 @@
   "get_action_info": {
     "title": "Action Info",
     "group_title": "Actions",
-    "description": "Return executable action definitions for object instances, including dynamic tool schemas that an agent can call."
+    "description": "Return executable action definitions for object instances, including the input schema and, when the tool declares one, output_schema: the shape of the execution result."
   },
   "execute_action": {
     "title": "Execute Action",

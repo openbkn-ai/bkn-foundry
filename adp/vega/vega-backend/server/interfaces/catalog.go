@@ -125,6 +125,8 @@ type CatalogRequest struct {
 
 	// HealthCheckSchedule only takes effect when the physical directory is created; Create the default Schedule of the inherit mode when nil.
 	HealthCheckSchedule *CatalogHealthCheckScheduleRequest `json:"health_check_schedule,omitempty"`
+
+	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
 }
 
 // CatalogConnectionTestRequest represents an unpersisted physical catalog connection test.

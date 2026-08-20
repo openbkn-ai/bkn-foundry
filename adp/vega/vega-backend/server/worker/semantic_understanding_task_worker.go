@@ -455,12 +455,12 @@ func parseBknAgentResult(agentTask *interfaces.BknAgentTask) (string, float64, s
 			detail[key] = value
 		}
 	}
-	detailJSON, err := sonic.Marshal(detail)
+	detailStr, err := sonic.MarshalString(detail)
 	if err != nil {
 		return "", 0, "", fmt.Errorf("marshal confidence detail failed: %w", err)
 	}
 
-	return string(result), confidence, string(detailJSON), nil
+	return string(result), confidence, detailStr, nil
 }
 
 // assessResourceSemanticResultQuality records when an otherwise valid agent
@@ -552,11 +552,11 @@ func appendResourceSemanticQuality(payload string, quality interfaces.SemanticUn
 	}
 	object["warnings"] = warningsJSON
 	object["quality"] = qualityJSON
-	result, err := sonic.Marshal(object)
+	resultStr, err := sonic.MarshalString(object)
 	if err != nil {
 		return "", fmt.Errorf("marshal resource semantic understanding quality payload failed: %w", err)
 	}
-	return string(result), nil
+	return resultStr, nil
 }
 
 func extractBknAgentResultJSON(result []byte) ([]byte, error) {
@@ -634,13 +634,13 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResult(ctx context.Context, ta
 }
 
 func skippedApplyResult(detail interfaces.SemanticUnderstandingSkippedApplyDetail) (*interfaces.SemanticUnderstandingApplyResult, error) {
-	detailBytes, err := sonic.Marshal(detail)
+	detailStr, err := sonic.MarshalString(detail)
 	if err != nil {
 		return nil, fmt.Errorf("marshal semantic understanding skipped apply detail failed: %w", err)
 	}
 	return &interfaces.SemanticUnderstandingApplyResult{
 		Applied:    false,
-		DetailJSON: string(detailBytes),
+		DetailJSON: detailStr,
 	}, nil
 }
 
@@ -760,11 +760,18 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 	resourceUpdated := len(updatedResource) > 0
 	if !resourceUpdated && len(updatedFields) == 0 {
 		if len(skippedFields) > 0 {
-			detailBytes, err := sonic.Marshal(interfaces.SemanticUnderstandingResourceApplyDetail{SkippedFields: skippedFields, FieldDetails: fieldDetails})
+			detailStr, err := sonic.MarshalString(
+				interfaces.SemanticUnderstandingResourceApplyDetail{
+					SkippedFields: skippedFields,
+					FieldDetails:  fieldDetails,
+				})
 			if err != nil {
 				return nil, fmt.Errorf("marshal resource semantic understanding apply detail failed: %w", err)
 			}
-			return &interfaces.SemanticUnderstandingApplyResult{Applied: false, DetailJSON: string(detailBytes)}, nil
+			return &interfaces.SemanticUnderstandingApplyResult{
+				Applied:    false,
+				DetailJSON: detailStr,
+			}, nil
 		}
 		return skippedApplyResult(interfaces.SemanticUnderstandingSkippedApplyDetail{
 			Reason:    "no_resource_changes",
@@ -773,14 +780,15 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 		})
 	}
 
+	expectedUpdateTime := resourceInfo.UpdateTime
 	resourceInfo.Updater = task.Creator
 	resourceInfo.UpdateTime = time.Now().UnixMilli()
-	err = sutw.rs.InternalUpdateSemanticMetadata(ctx, tx, resourceInfo)
+	err = sutw.rs.InternalUpdateSemanticMetadata(ctx, tx, resourceInfo, expectedUpdateTime)
 	if err != nil {
 		return nil, err
 	}
 
-	detailBytes, err := sonic.Marshal(interfaces.SemanticUnderstandingResourceApplyDetail{
+	detailStr, err := sonic.MarshalString(interfaces.SemanticUnderstandingResourceApplyDetail{
 		ResourceUpdated: resourceUpdated,
 		UpdatedResource: updatedResource,
 		UpdatedFields:   updatedFields,
@@ -793,7 +801,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyResourceResult(ctx context.Con
 
 	return &interfaces.SemanticUnderstandingApplyResult{
 		Applied:    true,
-		DetailJSON: string(detailBytes),
+		DetailJSON: detailStr,
 	}, nil
 }
 
@@ -917,6 +925,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 			}
 		case "update":
 			current := logicViewByID[view.TargetResourceID]
+			expectedUpdateTime := current.UpdateTime
 			nextDescription := current.Description
 			applyStringByMode(task.ApplyMode, &nextDescription, view.Description, false)
 			nextLogicDefinition := current.LogicDefinition
@@ -924,24 +933,25 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				nextLogicDefinition = view.LogicDefinition
 			}
 			next := &interfaces.ResourceRequest{
-				ID:              current.ID,
-				CatalogID:       current.CatalogID,
-				Name:            current.Name,
-				Tags:            current.Tags,
-				Description:     nextDescription,
-				Category:        current.Category,
-				Status:          current.Status,
-				Schema:          current.Schema,
-				SourceMetadata:  current.SourceMetadata,
-				IndexConfig:     current.IndexConfig,
-				LogicDefinition: nextLogicDefinition,
+				ID:                 current.ID,
+				CatalogID:          current.CatalogID,
+				Name:               current.Name,
+				Tags:               current.Tags,
+				Description:        nextDescription,
+				Category:           current.Category,
+				Status:             current.Status,
+				Schema:             current.Schema,
+				SourceMetadata:     current.SourceMetadata,
+				IndexConfig:        current.IndexConfig,
+				LogicDefinition:    nextLogicDefinition,
+				ExpectedUpdateTime: expectedUpdateTime,
 			}
 			if tx != nil {
 				current.Description = nextDescription
 				current.LogicDefinition = nextLogicDefinition
 				current.Updater = task.Creator
 				current.UpdateTime = time.Now().UnixMilli()
-				err = sutw.rs.InternalUpdate(ctx, tx, current)
+				err = sutw.rs.InternalUpdateSemanticMetadata(ctx, tx, current, expectedUpdateTime)
 			} else {
 				err = sutw.rs.Update(ctx, current, next)
 			}
@@ -981,13 +991,13 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 		})
 	}
 
-	detailBytes, err := sonic.Marshal(detail)
+	detailStr, err := sonic.MarshalString(detail)
 	if err != nil {
 		return nil, fmt.Errorf("marshal catalog semantic understanding apply detail failed: %w", err)
 	}
 	return &interfaces.SemanticUnderstandingApplyResult{
 		Applied:    true,
-		DetailJSON: string(detailBytes),
+		DetailJSON: detailStr,
 	}, nil
 }
 

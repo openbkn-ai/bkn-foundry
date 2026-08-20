@@ -1141,6 +1141,16 @@ func parseTime(value any) (time.Time, error) {
 		return time.Unix(v, 0), nil
 	case float64:
 		return time.Unix(int64(v), 0), nil
+	case json.Number:
+		timestamp, err := v.Int64()
+		if err != nil {
+			floatTimestamp, floatErr := v.Float64()
+			if floatErr != nil {
+				return time.Time{}, fmt.Errorf("unable to parse JSON number as time: %s", v)
+			}
+			timestamp = int64(floatTimestamp)
+		}
+		return time.Unix(timestamp, 0), nil
 	case string:
 		// Try parsing as RFC3339
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
@@ -1264,6 +1274,8 @@ func isNumeric(value any) bool {
 		return true
 	case float32, float64:
 		return true
+	case json.Number:
+		return true
 	}
 	return false
 }
@@ -1295,6 +1307,9 @@ func toFloat64(value any) float64 {
 		return float64(v)
 	case float64:
 		return v
+	case json.Number:
+		result, _ := v.Float64()
+		return result
 	}
 	return 0
 }

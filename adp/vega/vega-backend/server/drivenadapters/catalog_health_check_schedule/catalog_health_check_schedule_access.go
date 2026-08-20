@@ -252,13 +252,13 @@ func (chcsa *catalogHealthCheckScheduleAccess) UpdateInheritedNextRun(ctx contex
 	return nil
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) Update(ctx context.Context, s *interfaces.CatalogHealthCheckSchedule) error {
+func (chcsa *catalogHealthCheckScheduleAccess) Update(ctx context.Context, s *interfaces.CatalogHealthCheckSchedule, expectedUpdateTime int64) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog health check schedule")
 	defer span.End()
 
 	span.SetAttributes(attr.Key("catalog_id").String(s.CatalogID))
 
-	query, args, err := sq.Update(tableName).
+	builder := sq.Update(tableName).
 		Set("f_mode", s.Mode).
 		Set("f_cron_expr", s.CronExpr).
 		Set("f_next_run", s.NextRun).
@@ -266,44 +266,40 @@ func (chcsa *catalogHealthCheckScheduleAccess) Update(ctx context.Context, s *in
 		Set("f_updater_type", s.Updater.Type).
 		Set("f_update_time", s.UpdateTime).
 		Where(sq.Eq{"f_catalog_id": s.CatalogID}).
-		ToSql()
+		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+	query, args, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build update SQL failed")
 		otellog.LogError(ctx, "Build catalog health check schedule update SQL failed", err)
-		return err
+		return 0, err
 	}
 
 	result, err := chcsa.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		otellog.LogError(ctx, "Update catalog health check schedule failed", err)
-		return err
+		return 0, err
 	}
 	affected, err := result.RowsAffected()
 	if err != nil {
 		span.SetStatus(codes.Error, "Get affected rows failed")
 		otellog.LogError(ctx, "Get updated catalog health check schedule rows failed", err)
-		return err
-	}
-	if affected == 0 {
-		span.SetStatus(codes.Error, "Schedule not found")
-		otellog.LogError(ctx, "Update catalog health check schedule failed", sql.ErrNoRows)
-		return sql.ErrNoRows
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return affected, nil
 }
 
-func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(
-	ctx context.Context, catalogID string, scheduleUpdateTime, lastRun, nextRun int64,
-) error {
+func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(ctx context.Context,
+	catalogID string, expectedUpdateTime, expectedNextRun, lastRun, nextRun int64) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update catalog health check schedule run metadata")
 	defer span.End()
 
 	span.SetAttributes(
 		attr.Key("catalog_id").String(catalogID),
-		attr.Key("schedule_update_time").Int64(scheduleUpdateTime),
+		attr.Key("expected_update_time").Int64(expectedUpdateTime),
+		attr.Key("expected_next_run").Int64(expectedNextRun),
 		attr.Key("last_run").Int64(lastRun),
 		attr.Key("next_run").Int64(nextRun),
 	)
@@ -312,32 +308,34 @@ func (chcsa *catalogHealthCheckScheduleAccess) UpdateRunMetadata(
 		Set("f_last_run", lastRun).
 		Set("f_next_run", nextRun).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
-		Where(sq.Eq{"f_update_time": scheduleUpdateTime}).
+		Where(sq.Eq{"f_update_time": expectedUpdateTime}).
+		Where(sq.Eq{"f_next_run": expectedNextRun}).
+		Where(sq.Eq{"f_mode": []string{
+			interfaces.CatalogHealthCheckScheduleModeInherit,
+			interfaces.CatalogHealthCheckScheduleModeEnabled,
+		}}).
 		ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build run metadata update SQL failed")
 		otellog.LogError(ctx, "Build catalog health check schedule run metadata update SQL failed", err)
-		return err
+		return 0, err
 	}
 
 	result, err := chcsa.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
 		otellog.LogError(ctx, "Update catalog health check schedule run metadata failed", err)
-		return err
+		return 0, err
 	}
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		span.SetStatus(codes.Error, "Get affected rows failed")
 		otellog.LogError(ctx, "Get affected rows after updating catalog health check schedule run metadata failed", err)
-		return err
-	}
-	if rowsAffected == 0 {
-		return sql.ErrNoRows
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return rowsAffected, nil
 }
 
 func (chcsa *catalogHealthCheckScheduleAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, catalogID string) error {

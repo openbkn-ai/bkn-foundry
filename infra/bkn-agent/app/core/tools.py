@@ -16,6 +16,22 @@ from app.errors import bad_request
 logger = logging.getLogger("bkn-agent.tools")
 
 
+def _mcp_result_body_and_content(result: Any) -> tuple[dict[str, Any] | None, Any]:
+    """Extract MCP structured content while preserving the model-visible content."""
+    if isinstance(result, dict):
+        return result, result
+    if not isinstance(result, tuple) or len(result) != 2:
+        return None, result
+    content, artifact = result
+    if not isinstance(artifact, dict):
+        return None, content
+    for key in ("structured_content", "structuredContent"):
+        structured = artifact.get(key)
+        if isinstance(structured, dict):
+            return structured, content
+    return None, content
+
+
 def _context_loader_allowed_tools(tool_refs: list[dict]) -> set[str] | None:
     """Merge the allowlists of the Context Loader references.
 
@@ -285,7 +301,16 @@ def instrument_tool_calls(tools: list[Any], account_id: str, account_type: str) 
         tool_name = str(getattr(tool, "name", "tool"))
         tool_id = str(metadata.get("bkn_tool_id") or tool_name)
 
-        async def _traced(__inner=inner, __tool_name=tool_name, __tool_id=tool_id, **kwargs):
+        async def _traced(
+            __inner=inner,
+            __tool_name=tool_name,
+            __tool_id=tool_id,
+            __trust_mcp_receipt=(
+                metadata.get("bkn_context_loader_trust_token")
+                is context_loader._MCP_RECEIPT_TRUST_TOKEN
+            ),
+            **kwargs,
+        ):
             operation_id, parent_event_id = evidence.new_operation()
             called = evidence.tool_called(
                 tool_id=__tool_id,
@@ -318,6 +343,7 @@ def instrument_tool_calls(tools: list[Any], account_id: str, account_type: str) 
                 raise
             finally:
                 observability.reset_operation_headers(header_token)
+            result_body, result_content = _mcp_result_body_and_content(result)
             result_text = result if isinstance(result, str) else str(result)
             observed = evidence.tool_result_observed(
                 tool_id=__tool_id,
@@ -333,8 +359,9 @@ def instrument_tool_calls(tools: list[Any], account_id: str, account_type: str) 
             )
             evidence.record_fact_receipt(
                 operation_id=operation_id,
-                body=result if isinstance(result, dict) else None,
-                context_hash=evidence.tool_message_context_hash(result),
+                body=result_body,
+                context_hash=evidence.tool_message_context_hash(result_content),
+                trust_mcp_receipt=__trust_mcp_receipt,
             )
             await evidence.submit_events([event for event in (called, observed) if event], account_id, account_type)
             return result

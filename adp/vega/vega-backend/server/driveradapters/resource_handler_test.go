@@ -252,7 +252,7 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 	defer restoreGinMode()
 
 	const url = "/api/vega-backend/in/v1/resources/res-1"
-	body := `{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`
+	body := `{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}],"expected_update_time":1}`
 
 	t.Run("updates resource", func(t *testing.T) {
 		engine, _, rs := setupResourceHandlerTest(t)
@@ -271,6 +271,21 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("rejects missing expected update time", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		current := &interfaces.Resource{ID: "res-1", CatalogID: "catalog-1", Name: "dataset", Category: interfaces.ResourceCategoryDataset}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(current, nil)
+
+		req := httptest.NewRequest(http.MethodPut, url, strings.NewReader(`{"catalog_id":"catalog-1","name":"dataset-new","category":"dataset","schema_definition":[{"name":"title","type":"string"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "expected_update_time is required")
 	})
 
 	t.Run("rejects dataset ref property", func(t *testing.T) {

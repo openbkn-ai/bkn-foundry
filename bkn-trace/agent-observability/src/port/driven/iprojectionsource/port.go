@@ -8,14 +8,16 @@ import (
 )
 
 type Query struct {
-	Scope          evidencevo.QueryScope
-	From           time.Time
-	To             time.Time
-	BusinessDomain string
-	Status         string
-	RequestID      string
-	TraceID        string
-	InteractionID  string
+	Scope           evidencevo.QueryScope
+	From            time.Time
+	To              time.Time
+	BusinessDomain  string
+	Status          string
+	RequestID       string
+	TraceID         string
+	TraceIDs        []string
+	ConversationIDs []string
+	InteractionID   string
 	// AuthorizedInteractionIDs is an internal handoff from the Core projection.
 	// It carries an Interaction-level authorization decision to its artifact reader.
 	AuthorizedInteractionIDs []string

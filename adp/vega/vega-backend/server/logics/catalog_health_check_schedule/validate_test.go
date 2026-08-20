@@ -23,6 +23,7 @@ func TestValidateRequest(t *testing.T) {
 		{name: "accepts inherit", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit}},
 		{name: "accepts enabled cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled, CronExpr: "0 * * * *"}},
 		{name: "accepts disabled with retained cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeDisabled, CronExpr: "*/5 * * * *"}},
+		{name: "ignores expected update time for shared create validation", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit, ExpectedUpdateTime: -1}},
 		{name: "rejects nil request", wantErr: "required"},
 		{name: "rejects inherit cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeInherit, CronExpr: "*/5 * * * *"}, wantErr: "must be empty"},
 		{name: "rejects missing enabled cron", req: &interfaces.CatalogHealthCheckScheduleRequest{Mode: interfaces.CatalogHealthCheckScheduleModeEnabled}, wantErr: "required"},

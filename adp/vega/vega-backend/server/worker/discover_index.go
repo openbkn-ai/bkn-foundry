@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
@@ -282,7 +283,10 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 
 		// Update Resource
 		resource.LastDiscoverStatus = discoverStatus
-		if err := dtw.rs.UpdateResource(ctx, resource); err != nil {
+		expectedUpdateTime := resource.UpdateTime
+		resource.Updater = task.Creator
+		resource.UpdateTime = time.Now().UnixMilli()
+		if err := dtw.rs.InternalUpdateDiscoveryMetadata(ctx, nil, resource, expectedUpdateTime); err != nil {
 			logger.Errorf("Failed to update metadata for index %s: %v", idx.Name, err)
 			return err
 		}

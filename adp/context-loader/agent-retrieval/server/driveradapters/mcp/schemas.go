@@ -114,8 +114,9 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 		required = append(required, "question")
 		properties["agent_name"] = map[string]any{
 			"type": "string", "maxLength": 128,
-			"description": "Optionally declare a display name on the first turn; do not change it later.",
+			"description": "The current Agent's stable name. Provide the same value on every call in the same conversation_id.",
 		}
+		required = append(required, "agent_name")
 	case "bkn_finish_interaction":
 		properties["interaction_id"] = map[string]any{
 			"type": "string", "description": "Use the exact interaction_id returned by start.",

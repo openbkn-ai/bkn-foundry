@@ -14,6 +14,7 @@ import (
 )
 
 const maxProjectionDocuments = 10000
+const maxReceiptsPerSelectedIdentity = 20
 
 type Source struct {
 	client    *opensearch.Client
@@ -79,6 +80,25 @@ func (s *Source) loadReceipts(ctx context.Context, query iprojectionsource.Query
 	if err != nil {
 		return nil, nil, false, err
 	}
+	if hasBatchIdentitySelector(query) {
+		result := make([]receiptDocument, 0, len(candidates))
+		interactionSet := make(map[string]struct{})
+		for _, receipt := range candidates {
+			if !receiptMatchesScope(receipt, query.Scope) || !matchesReceiptQuery(receipt, query) {
+				continue
+			}
+			result = append(result, receipt)
+			if receipt.InteractionID != "" {
+				interactionSet[receipt.InteractionID] = struct{}{}
+			}
+		}
+		interactions := make([]string, 0, len(interactionSet))
+		for interactionID := range interactionSet {
+			interactions = append(interactions, interactionID)
+		}
+		sort.Strings(interactions)
+		return result, interactions, truncated, nil
+	}
 	interactionIDs := receiptInteractionIDs(candidates)
 	interactionReceipts, interactionTruncated, err := s.loadInteractionReceipts(ctx, query, interactionIDs)
 	if err != nil {
@@ -124,6 +144,12 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		size = query.Limit + 1
 	}
 	must := []map[string]any{{"exists": map[string]any{"field": "receipt_id"}}}
+	if hasBatchIdentitySelector(query) {
+		must = append(must,
+			map[string]any{"exists": map[string]any{"field": "trace_id"}},
+			map[string]any{"exists": map[string]any{"field": "request_id"}},
+		)
+	}
 	for field, value := range map[string]string{
 		"owner.tenant_id":          query.Scope.TenantID,
 		"owner.business_domain_id": firstNonEmpty(query.BusinessDomain, query.Scope.BusinessDomain),
@@ -134,6 +160,12 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		if value != "" {
 			must = append(must, exactKeywordQuery(field, value))
 		}
+	}
+	if len(query.TraceIDs) > 0 {
+		must = append(must, map[string]any{"terms": map[string]any{"trace_id.keyword": query.TraceIDs}})
+	}
+	if len(query.ConversationIDs) > 0 {
+		must = append(must, map[string]any{"terms": map[string]any{"conversation_id.keyword": query.ConversationIDs}})
 	}
 	if applyScopeCandidates {
 		must = append(must, receiptScopeCandidates(query.Scope)...)
@@ -148,11 +180,24 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		}
 		must = append(must, map[string]any{"range": map[string]any{"issued_at": bounds}})
 	}
-	body, err := json.Marshal(map[string]any{
+	queryBody := map[string]any{
 		"size":  size,
 		"query": map[string]any{"bool": map[string]any{"must": must}},
 		"sort":  []map[string]any{{"issued_at": map[string]any{"order": "desc"}}, {"_id": map[string]any{"order": "desc"}}},
-	})
+	}
+	innerHitName := ""
+	if field, identityCount := batchIdentityCollapse(query); identityCount > 1 {
+		innerHitName = "selected_receipts"
+		queryBody["size"] = identityCount
+		queryBody["collapse"] = map[string]any{
+			"field": field,
+			"inner_hits": map[string]any{
+				"name": innerHitName, "size": maxReceiptsPerSelectedIdentity,
+				"sort": []map[string]any{{"issued_at": map[string]any{"order": "desc"}}, {"_id": map[string]any{"order": "desc"}}},
+			},
+		}
+	}
+	body, err := json.Marshal(queryBody)
 	if err != nil {
 		return nil, false, err
 	}
@@ -163,7 +208,17 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 	var response struct {
 		Hits struct {
 			Hits []struct {
-				Source receiptDocument `json:"_source"`
+				Source    receiptDocument `json:"_source"`
+				InnerHits map[string]struct {
+					Hits struct {
+						Total struct {
+							Value int `json:"value"`
+						} `json:"total"`
+						Hits []struct {
+							Source receiptDocument `json:"_source"`
+						} `json:"hits"`
+					} `json:"hits"`
+				} `json:"inner_hits"`
 			} `json:"hits"`
 		} `json:"hits"`
 	}
@@ -171,8 +226,22 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		return nil, false, fmt.Errorf("decode Core receipt projection: %w", err)
 	}
 	result := make([]receiptDocument, 0, len(response.Hits.Hits))
+	truncated := false
 	for _, hit := range response.Hits.Hits {
+		if innerHitName != "" {
+			inner := hit.InnerHits[innerHitName].Hits
+			for _, innerHit := range inner.Hits {
+				result = append(result, innerHit.Source)
+			}
+			if inner.Total.Value > len(inner.Hits) {
+				truncated = true
+			}
+			continue
+		}
 		result = append(result, hit.Source)
+	}
+	if innerHitName != "" {
+		return result, truncated, nil
 	}
 	return result, len(response.Hits.Hits) >= size, nil
 }
@@ -192,6 +261,12 @@ func (s *Source) loadInteractionReceipts(ctx context.Context, query iprojections
 
 func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iprojectionsource.Query, interactionIDs []string) ([]receiptDocument, bool, error) {
 	size := maxProjectionDocuments
+	if query.Limit > 0 && query.Limit < size {
+		// Keep the follow-up expansion within the same caller-owned candidate
+		// budget as the initial receipt search.  A list request must never turn
+		// a page-sized candidate query into a fixed 10k OpenSearch read.
+		size = query.Limit + 1
+	}
 	must := []map[string]any{{"exists": map[string]any{"field": "receipt_id"}}}
 	for field, value := range map[string]string{
 		"owner.tenant_id":          query.Scope.TenantID,
@@ -232,7 +307,22 @@ func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iproje
 }
 
 func hasExactReceiptSelector(query iprojectionsource.Query) bool {
-	return query.RequestID != "" || query.TraceID != "" || query.InteractionID != ""
+	return query.RequestID != "" || query.TraceID != "" || query.InteractionID != "" ||
+		len(query.TraceIDs) > 0 || len(query.ConversationIDs) > 0
+}
+
+func hasBatchIdentitySelector(query iprojectionsource.Query) bool {
+	return len(query.TraceIDs) > 0 || len(query.ConversationIDs) > 0
+}
+
+func batchIdentityCollapse(query iprojectionsource.Query) (string, int) {
+	if len(query.TraceIDs) > 0 {
+		return "trace_id.keyword", len(query.TraceIDs)
+	}
+	if len(query.ConversationIDs) > 0 {
+		return "conversation_id.keyword", len(query.ConversationIDs)
+	}
+	return "", 0
 }
 
 func receiptInteractionIDs(receipts []receiptDocument) []string {
@@ -290,6 +380,8 @@ func interactionMatchesScope(receipts []receiptDocument, scope evidencevo.QueryS
 func matchesReceiptQuery(receipt receiptDocument, query iprojectionsource.Query) bool {
 	if query.RequestID != "" && receipt.RequestID != query.RequestID ||
 		query.TraceID != "" && receipt.TraceID != query.TraceID ||
+		len(query.TraceIDs) > 0 && !containsProjectionID(query.TraceIDs, receipt.TraceID) ||
+		len(query.ConversationIDs) > 0 && !containsProjectionID(query.ConversationIDs, receipt.ConversationID) ||
 		query.InteractionID != "" && receipt.InteractionID != query.InteractionID ||
 		query.BusinessDomain != "" && receipt.Owner.BusinessDomainID != query.BusinessDomain {
 		return false
@@ -303,6 +395,15 @@ func matchesReceiptQuery(receipt receiptDocument, query iprojectionsource.Query)
 	}
 	return (query.From.IsZero() || !issuedAt.Before(query.From)) &&
 		(query.To.IsZero() || !issuedAt.After(query.To))
+}
+
+func containsProjectionID(values []string, candidate string) bool {
+	for _, value := range values {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func exactKeywordQuery(field string, value string) map[string]any {

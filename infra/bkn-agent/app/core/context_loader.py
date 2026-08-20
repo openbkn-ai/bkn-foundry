@@ -48,6 +48,9 @@ logger = logging.getLogger("bkn-agent.context-loader")
 _LIFECYCLE_TOOLS = {"bkn_start_interaction", "bkn_finish_interaction"}
 
 _CONNECTION_NAME = "context_loader"
+# Metadata originating from an MCP server is not a trust boundary.  This token
+# is created only by _bind_context and checked by tools.instrument_tool_calls.
+_MCP_RECEIPT_TRUST_TOKEN = object()
 
 # The session for this execution. load_tools sets it while loading, and the
 # runner or graph takes the real ids out of it for evidence.begin_interaction so
@@ -174,7 +177,15 @@ def _bind_context(tool: Any, session: ContextLoaderSession) -> Any:
         name=tool.name,
         description=tool.description,
         args_schema=tool.args_schema,
-        metadata={**(getattr(tool, "metadata", None) or {}), "bkn_context_loader": True},
+        # Context Loader MCP tools return (content, artifact).  Keep that
+        # contract through the context-injection wrapper so LangChain emits the
+        # same ToolMessage content the evidence receipt was hashed against.
+        response_format=getattr(tool, "response_format", "content"),
+        metadata={
+            **(getattr(tool, "metadata", None) or {}),
+            "bkn_context_loader": True,
+            "bkn_context_loader_trust_token": _MCP_RECEIPT_TRUST_TOKEN,
+        },
     )
 
 

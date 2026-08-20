@@ -14,7 +14,7 @@ Agent Retrieval 是 ADP context-loader 中的检索服务组件，面向知识�
 2. **kn_schema_search**：知识网络 Schema 搜索
 3. **query_object_instance**：按对象类型查询知识网络中的实例
 4. **query_instance_subgraph**：按深度与关系配置查询实例周边子图
-5. **get_action_info**：获取行动元数据与 Schema，供算子/智能体工具使用
+5. **get_action_info**：获取行动元数据、入参 Schema 与执行结果 Schema（`output_schema`），供算子/智能体工具使用
 6. **get_logic_properties_values**：解析逻辑属性并获取属性值
 7. **Context Loader MCP Server**：对外提供上述六个工具，供 Cursor、Claude Desktop 等 MCP 客户端调用
 

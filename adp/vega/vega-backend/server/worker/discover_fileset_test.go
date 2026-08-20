@@ -7,6 +7,7 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -89,8 +90,10 @@ func TestEnrichFilesetMetadata(t *testing.T) {
 			SourceMetadata:     map[string]any{"keep": "value"},
 		}
 
-		rs.EXPECT().UpdateResource(gomock.Any(), gomock.AssignableToTypeOf(&interfaces.Resource{})).
-			DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
+		rs.EXPECT().InternalUpdateDiscoveryMetadata(gomock.Any(), nil, gomock.AssignableToTypeOf(&interfaces.Resource{}), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, expected int64) error {
+				assert.Equal(t, int64(0), expected)
+				assert.Greater(t, got.UpdateTime, expected)
 				assert.Equal(t, "value", got.SourceMetadata["keep"])
 				assert.Equal(t, "Docs", got.SourceMetadata["original_name"])
 				assert.Equal(t, "", got.SourceMetadata["original_description"])

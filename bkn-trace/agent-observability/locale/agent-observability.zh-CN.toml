@@ -92,6 +92,7 @@
 "failed to query evidence chain" = "证据链查询失败"
 "failed to query evidence node" = "证据节点查询失败"
 "failed to query execution summaries" = "执行摘要查询失败"
+"execution summary projection is catching up; retry the same page" = "执行摘要投影正在追平，请重试当前页"
 "failed to query operation facts" = "操作事实查询失败"
 "failed to query snapshot preview" = "快照预览查询失败"
 "failed to query trace spans" = "Trace Span 查询失败"

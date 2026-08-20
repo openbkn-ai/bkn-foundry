@@ -22,7 +22,6 @@ import (
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
 
 type ontologyQueryClient struct {
@@ -158,17 +157,16 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	header := common.GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
-	_, respBody, err := o.httpClient.Post(ctx, target, header, req)
+	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#QueryObjectInstances] QueryObjectInstances request failed, err: %v", err)
 		err = classifyQueryError(ctx, err)
 		return
 	}
 	resp = &interfaces.QueryObjectInstancesResp{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, resp)
+	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryObjectInstances] Unmarshal %s err:%v", string(resultByt), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryObjectInstances] Unmarshal %s err:%v", string(respBody), err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -258,15 +256,14 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
-	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
+	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("  └─ [ontology-query 响应] ❌ 请求失败: %v", err)
 		return nil, err
 	}
 
 	resp = &interfaces.QueryLogicPropertiesResp{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, resp)
+	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("  └─ [ontology-query 响应] ❌ JSON 解析失败: %v", err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
@@ -298,7 +295,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
-	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
+	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Request failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
@@ -306,10 +303,9 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	}
 
 	resp = &interfaces.QueryActionsResponse{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, resp)
+	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "ActionQueryResponseInvalid"))
 		return nil, err
@@ -347,7 +343,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	header := common.GetHeaderForChildOperation(ctx, "ontology.action.execute", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
-	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
+	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Request failed, err: %v", err)
 		// Preserve 4xx (e.g. 409 DuplicateExecution) so Agents see "duplicate rejected"
@@ -356,10 +352,9 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	}
 
 	resp = &interfaces.ExecuteActionsResponse{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, resp)
+	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExecuteActions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "ActionExecutionResponseInvalid"))
 		return nil, err
@@ -382,7 +377,7 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 	header := common.GetHeaderForChildOperation(ctx, "ontology.action_execution.get", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
-	_, respBody, err := o.httpClient.Get(ctx, reqURL, nil, header)
+	_, respBody, err := o.httpClient.GetBytes(ctx, reqURL, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Request failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
@@ -390,9 +385,8 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 	}
 
 	result := map[string]any{}
-	resultByt := utils.ObjectToByte(respBody)
-	if err = json.Unmarshal(resultByt, &result); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+	if err = unmarshalPrecise(respBody, &result); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "ActionExecutionLookupResponseInvalid"))
 	}
@@ -444,7 +438,7 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	header := common.GetHeaderForChildOperation(ctx, "ontology.action_execution.list", 1)
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 
-	_, respBody, err := o.httpClient.Get(ctx, reqURL, query, header)
+	_, respBody, err := o.httpClient.GetBytes(ctx, reqURL, query, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Request failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
@@ -452,9 +446,8 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	}
 
 	result := map[string]any{}
-	resultByt := utils.ObjectToByte(respBody)
-	if err = json.Unmarshal(resultByt, &result); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+	if err = unmarshalPrecise(respBody, &result); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "ActionExecutionHistoryResponseInvalid"))
 	}
@@ -496,7 +489,7 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExploreSubgraph] URL: %s", target)
 
-	_, respBody, err := o.httpClient.Post(ctx, target, header, req)
+	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#ExploreSubgraph] request failed, err: %v", err)
 		// The starting object type does not exist, the direction is illegal, and path_length exceeds 3. It is the fault of the caller, and 400/404 will be returned downstream.
@@ -505,9 +498,8 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	}
 
 	resp = &interfaces.ExploreSubgraphResp{}
-	resultByt := utils.ObjectToByte(respBody)
-	if err = json.Unmarshal(resultByt, resp); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExploreSubgraph] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+	if err = unmarshalPrecise(respBody, resp); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ExploreSubgraph] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SubgraphQueryResponseInvalid"))
 	}
@@ -553,7 +545,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	header["x-http-method-override"] = "GET"
 
 	// Send the request.
-	_, respBody, err := o.httpClient.Post(ctx, url, header, body)
+	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] Request failed, err: %v", err)
 		return nil, err
@@ -561,10 +553,9 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 
 	// Parse the response directly into any.
 	resp = &interfaces.QueryInstanceSubgraphResp{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, resp)
+	err = unmarshalPrecise(respBody, resp)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryInstanceSubgraph] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SubgraphQueryResponseInvalid"))
 		return nil, err
@@ -594,7 +585,7 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 	if req == nil {
 		req = &interfaces.MetricQueryDownstreamReq{}
 	}
-	_, respBody, err := o.httpClient.Post(ctx, target, header, req)
+	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#QueryMetricData] kn=%s metric=%s failed: %v", knID, metricID, err)
 		// The metric does not exist/the parameters are invalid. It is the caller's fault. Don't mix dependency faults into it.
@@ -602,9 +593,8 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 	}
 
 	resp = &interfaces.MetricQueryDownstreamResp{}
-	resultByt := utils.ObjectToByte(respBody)
-	if err = json.Unmarshal(resultByt, resp); err != nil {
-		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryMetricData] Unmarshal %s err:%v", string(resultByt), err)
+	if err = unmarshalPrecise(respBody, resp); err != nil {
+		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryMetricData] Unmarshal %s err:%v", string(respBody), err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 	}
 	return resp, nil

@@ -1274,16 +1274,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "r1").Return(resource, nil)
-		mockRS.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, got *interfaces.Resource) error {
-				if got.ID != "r1" {
-					require.Equal(t, "r1", got.ID)
-				}
-				if got.LocalIndexName != "" {
-					require.Empty(t, got.LocalIndexName)
-				}
-				return nil
-			})
+		mockRS.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", "").Return(nil)
 		mockLIM.EXPECT().DeleteIndex(gomock.Any(), idx).Return(nil)
 		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
@@ -1301,7 +1292,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
 			Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
-		mockRS.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(errors.New("update failed"))
+		mockRS.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", "").Return(errors.New("update failed"))
 		// Clearing LocalIndexName failed, so the index and task row must remain untouched.
 
 		err := service.DeleteByIDs(context.Background(), []string{"t1"}, false, true)

@@ -78,7 +78,7 @@ Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会
 | `query_object_instance` | 条件查询对象实例 |
 | `query_instance_subgraph` | 沿关系类路径查询实例子图 |
 | `get_logic_properties_values` | 计算逻辑属性（派生字段）取值 |
-| `get_action_info` | 取行动类信息与参数 Schema |
+| `get_action_info` | 取行动类信息、入参 Schema 与执行结果 Schema（`output_schema`） |
 | `execute_action` | 执行行动类 |
 | `get_action_execution` / `list_action_executions` | 查询行动执行状态与历史 |
 | `find_skills` | 按对象类召回可用 Skill |

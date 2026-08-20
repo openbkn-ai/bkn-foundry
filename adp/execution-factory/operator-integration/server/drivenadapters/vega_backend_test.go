@@ -52,7 +52,7 @@ func TestVegaBackendClient(t *testing.T) {
 
 		Convey("gets catalog from entries response", func() {
 			httpClient.EXPECT().GetNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", gomock.Nil(), headers).
-				Return(http.StatusOK, []byte(`{"entries":[{"id":"bkn_execution_factory_catalog","name":"bkn_execution_factory_catalog","enabled":false}]}`), nil)
+				Return(http.StatusOK, []byte(`{"entries":[{"id":"bkn_execution_factory_catalog","name":"bkn_execution_factory_catalog","enabled":false,"update_time":123}]}`), nil)
 
 			resp, err := client.GetCatalogByID(ctx, "bkn_execution_factory_catalog")
 			So(err, ShouldBeNil)
@@ -60,6 +60,7 @@ func TestVegaBackendClient(t *testing.T) {
 			So(resp.ID, ShouldEqual, "bkn_execution_factory_catalog")
 			So(resp.Name, ShouldEqual, "bkn_execution_factory_catalog")
 			So(resp.Enabled, ShouldBeFalse)
+			So(resp.UpdateTime, ShouldEqual, int64(123))
 		})
 
 		Convey("ignores entries that do not match the requested catalog id", func() {
@@ -82,11 +83,12 @@ func TestVegaBackendClient(t *testing.T) {
 
 		Convey("updates catalog in place via PUT", func() {
 			req := &interfaces.VegaCatalogRequest{
-				ID:       "bkn_execution_factory_catalog",
-				Name:     "bkn_execution_factory_catalog",
-				Tags:     []string{"execution-factory", "索引"},
-				Internal: true,
-				Enabled:  true,
+				ID:                 "bkn_execution_factory_catalog",
+				Name:               "bkn_execution_factory_catalog",
+				Tags:               []string{"execution-factory", "索引"},
+				ExpectedUpdateTime: 123,
+				Internal:           true,
+				Enabled:            true,
 			}
 			httpClient.EXPECT().PutNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/catalogs/bkn_execution_factory_catalog", headers, req).
 				Return(http.StatusNoContent, []byte{}, nil)

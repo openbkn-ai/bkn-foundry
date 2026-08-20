@@ -33,6 +33,7 @@ class _FakeSession:
     def __init__(self, status, body):
         self._status = status
         self._body = body
+        self.closed = False
 
     async def __aenter__(self):
         return self
@@ -43,6 +44,9 @@ class _FakeSession:
     def post(self, url, json=None, headers=None):
         _FakeSession.captured = {"url": url, "json": json, "headers": headers}
         return _FakeResp(self._status, self._body)
+
+    async def close(self):
+        self.closed = True
 
 
 def _patch(session):
@@ -57,6 +61,14 @@ _NAMES_BODY = (
 
 
 class TestGetUsernameByIdsBknSafe(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        await get_user_info.close_directory_session()
+        get_user_info.clear_directory_name_cache()
+
+    async def asyncTearDown(self):
+        await get_user_info.close_directory_session()
+        get_user_info.clear_directory_name_cache()
+
     async def test_bkn_safe_merges_user_and_app_names(self):
         token = set_effective_locale("en-US")
         try:
@@ -87,6 +99,17 @@ class TestGetUsernameByIdsBknSafe(unittest.IsolatedAsyncioTestCase):
                                              "BKN_SAFE_URL": "http://safe:8080"}):
             with self.assertRaises(Exception):
                 await get_user_info.get_username_by_ids(["u1"])
+
+    async def test_bkn_safe_reuses_client_and_caches_names(self):
+        session = _FakeSession(200, _NAMES_BODY)
+        with mock.patch.object(get_user_info.base_config, "DEBUG", False), \
+                _patch(session) as client_session, \
+                mock.patch.dict(os.environ, {"DIRECTORY_PROVIDER": "bkn-safe",
+                                             "BKN_SAFE_URL": "http://safe:8080"}):
+            self.assertEqual(await get_user_info.get_username_by_ids(["u1"]), {"u1": "Alice"})
+            self.assertEqual(await get_user_info.get_username_by_ids(["u1"]), {"u1": "Alice"})
+
+        client_session.assert_called_once()
 
     async def test_user_management_uses_the_frozen_locale(self):
         token = set_effective_locale("en-US")

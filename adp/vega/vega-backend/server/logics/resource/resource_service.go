@@ -972,11 +972,24 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := rs.ra.Update(ctx, tx, resource); err != nil {
+	rowsAffected, err := rs.ra.Update(ctx, tx, resource, req.ExpectedUpdateTime)
+	if err != nil {
 		span.SetStatus(codes.Error, "Update resource failed")
 		otellog.LogError(ctx, "Update resource failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
 			WithErrorDetails("failed to update resource")
+	}
+	if rowsAffected == 0 {
+		span.SetStatus(codes.Error, "Resource update conflict")
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
+	if buildRelevantChanged {
+		if err := rs.ra.UpdateLocalIndexName(ctx, tx, resource.ID, ""); err != nil {
+			span.SetStatus(codes.Error, "Clear resource local index name failed")
+			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+				verrors.VegaBackend_Resource_InternalError_UpdateFailed).
+				WithErrorDetails("failed to clear resource local index name")
+		}
 	}
 
 	if req.Extensions != nil {
@@ -1146,28 +1159,6 @@ func (rs *resourceService) CheckExistByName(ctx context.Context, catalogID strin
 	return resource != nil, nil
 }
 
-// UpdateResource updates a Resource directly.
-func (rs *resourceService) UpdateResource(ctx context.Context, resource *interfaces.Resource) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource")
-	defer span.End()
-
-	if err := rs.ra.Update(ctx, nil, resource); err != nil {
-		span.SetStatus(codes.Error, "Update resource failed")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return nil
-}
-
-func (rs *resourceService) InternalUpdate(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdate")
-	defer span.End()
-
-	return rs.ra.Update(ctx, tx, resource)
-}
-
 func (rs *resourceService) InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateLocalIndexName")
 	defer span.End()
@@ -1175,11 +1166,34 @@ func (rs *resourceService) InternalUpdateLocalIndexName(ctx context.Context, tx 
 	return rs.ra.UpdateLocalIndexName(ctx, tx, id, localIndexName)
 }
 
-func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
+	tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateSemanticMetadata")
 	defer span.End()
 
-	return rs.ra.UpdateSemanticMetadata(ctx, tx, resource)
+	rowsAffected, err := rs.ra.UpdateSemanticMetadata(ctx, tx, resource, expectedUpdateTime)
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
+	return nil
+}
+
+func (rs *resourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource,
+	expectedUpdateTime int64) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateDiscoveryMetadata")
+	defer span.End()
+
+	rowsAffected, err := rs.ra.UpdateDiscoveryMetadata(ctx, tx, resource, expectedUpdateTime)
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
+	}
+	return nil
 }
 
 func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *interfaces.ResourceRequest) (*interfaces.Resource, error) {
@@ -1258,7 +1272,11 @@ func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx cont
 	return nil
 }
 
-func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) (bool, error) {
+func (rs *resourceService) validateResourceUpdateScope(ctx context.Context,
+	resource *interfaces.Resource, req *interfaces.ResourceRequest) (bool, error) {
+	if req.CatalogID != resource.CatalogID {
+		return false, unsupportedResourceUpdateError(ctx, "catalog_id cannot be updated")
+	}
 	if req.Category == "" {
 		return false, unsupportedResourceUpdateError(ctx, "category is required")
 	}
@@ -1267,15 +1285,6 @@ func (rs *resourceService) validateResourceUpdateScope(ctx context.Context, reso
 	}
 	if resource.Category == interfaces.ResourceCategoryLogicView {
 		return req.LogicDefinition != nil && !reflect.DeepEqual(resource.LogicDefinition, req.LogicDefinition), nil
-	}
-	if req.Schema != "" && resource.Schema != req.Schema {
-		return false, unsupportedResourceUpdateError(ctx, "schema is managed by discover and cannot be updated directly")
-	}
-	if req.SourceIdentifier != "" && resource.SourceIdentifier != req.SourceIdentifier {
-		return false, unsupportedResourceUpdateError(ctx, "source_identifier is managed by discover and cannot be updated directly")
-	}
-	if req.SourceMetadata != nil && !reflect.DeepEqual(resource.SourceMetadata, req.SourceMetadata) {
-		return false, unsupportedResourceUpdateError(ctx, "source_metadata is managed by discover and cannot be updated directly")
 	}
 	indexConfigChanged := req.IndexConfig != nil && !reflect.DeepEqual(resource.IndexConfig, req.IndexConfig)
 	if req.SchemaDefinition == nil {

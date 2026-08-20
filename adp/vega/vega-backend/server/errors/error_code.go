@@ -116,6 +116,7 @@ func init() {
 	locale.Register()
 	rest.Register(commonErrCodeList)
 	rest.Register(CatalogErrCodeList)
+	rest.Register(CatalogHealthCheckScheduleErrCodeList)
 	rest.Register(ResourceErrCodeList)
 	rest.Register(ConnectorTypeErrCodeList)
 	rest.Register(BuildTaskErrCodeList)

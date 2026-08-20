@@ -127,3 +127,8 @@ ErrorLink = ""
 Description = "获取账户名称失败"
 Solution = "请联系管理员"
 ErrorLink = ""
+
+[VegaBackend.Resource.UpdateConflict]
+Description = "资源在读取后已被更新"
+Solution = "请重新加载资源后再提交修改"
+ErrorLink = ""

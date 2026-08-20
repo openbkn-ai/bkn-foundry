@@ -206,13 +206,14 @@ func (s *skillIndexSync) reconcileCatalog(ctx context.Context, catalog *interfac
 	}
 	if catalog.Name != executionFactoryCatalogID || len(tags) != len(catalog.Tags) {
 		req := &interfaces.VegaCatalogRequest{
-			ID:            catalog.ID,
-			Name:          executionFactoryCatalogID,
-			Tags:          tags,
-			Description:   catalog.Description,
-			Internal:      true,
-			Enabled:       catalog.Enabled,
-			ConnectorType: catalog.ConnectorType,
+			ID:                 catalog.ID,
+			Name:               executionFactoryCatalogID,
+			Tags:               tags,
+			Description:        catalog.Description,
+			ExpectedUpdateTime: catalog.UpdateTime,
+			Internal:           true,
+			Enabled:            catalog.Enabled,
+			ConnectorType:      catalog.ConnectorType,
 		}
 		if err := s.vegaClient.UpdateCatalog(ctx, req); err != nil {
 			s.logger.WithContext(ctx).Warnf("reconcile catalog failed, catalog_id=%s, name=%s, err=%v", catalog.ID, executionFactoryCatalogID, err)

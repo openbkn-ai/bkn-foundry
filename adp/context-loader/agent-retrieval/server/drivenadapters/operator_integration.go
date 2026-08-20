@@ -143,7 +143,11 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 		"parameters": req.Parameters,
 	}
 
-	_, respBody, err := o.httpClient.Post(ctx, url, header, reqBody)
+	// PostBytes, not Post: a tool's output is arbitrary business data — a SQL tool
+	// hands back whatever the customer's columns hold — and Post's interface{} hop
+	// would round every integer past float64's mantissa. See
+	// openbkn-ai/bkn-studio#464.
+	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, reqBody)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Request failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
@@ -151,10 +155,9 @@ func (o *operatorIntegrationClient) CallMCPTool(ctx context.Context, req *interf
 	}
 
 	var result map[string]interface{}
-	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, &result)
+	err = unmarshalPrecise(respBody, &result)
 	if err != nil {
-		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
+		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#CallMCPTool] Unmarshal failed, body: %s, err: %v", string(respBody), err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "MCPToolCallResponseInvalid"))
 	}

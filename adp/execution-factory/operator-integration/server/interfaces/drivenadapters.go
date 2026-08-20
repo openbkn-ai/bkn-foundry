@@ -869,6 +869,8 @@ type VegaCatalogRequest struct {
 	// ConnectorType Connector type: The logical directory is always empty. This field is immutable when updated by PUT.
 	// The current value must be backfilled unchanged, otherwise vega returns 400.
 	ConnectorType string `json:"connector_type,omitempty"`
+
+	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
 }
 
 type VegaCatalog struct {
@@ -879,6 +881,7 @@ type VegaCatalog struct {
 	Type          string   `json:"type"`
 	Enabled       bool     `json:"enabled"`
 	ConnectorType string   `json:"connector_type"`
+	UpdateTime    int64    `json:"update_time"`
 }
 
 // VegaResourceIndexConfig resource-level index configuration. DefaultEmbeddingModel is a vega parsing vector.

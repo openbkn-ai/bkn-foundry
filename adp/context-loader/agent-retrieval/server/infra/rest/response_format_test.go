@@ -8,6 +8,7 @@ package rest
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -177,4 +178,64 @@ func TestMarshalResponse_NilBody(t *testing.T) {
 		convey.So(ct, convey.ShouldEqual, ContentTypeJSON) // When nil, response_format does not change the contentType logic.
 		convey.So(b, convey.ShouldBeNil)
 	})
+}
+
+// toon-go normalizes json.Number through float64
+// (internal/codec.normalizeNumberString), so the formatter converts wide
+// integers to decimal strings first — the same contract VegaRawQueryResp's
+// TOONValue already followed. Without it, MCP responses (which default to TOON)
+// rendered 9223372036854775808 as 9223372036854776000. See
+// openbkn-ai/bkn-studio#464.
+func TestMarshalTOONKeepsWideIntegersFromStructResponses(t *testing.T) {
+	type response struct {
+		Datas []any `json:"datas"`
+	}
+	body := &response{Datas: []any{map[string]any{
+		"id":    json.Number("9223372036854775808"),
+		"safe":  json.Number("42"),
+		"ratio": json.Number("1.5"),
+		"name":  "S003",
+	}}}
+
+	_, out, err := MarshalResponse(FormatTOON, body)
+	if err != nil {
+		t.Fatalf("MarshalResponse() error = %v", err)
+	}
+	rendered := string(out)
+	if !strings.Contains(rendered, "9223372036854775808") {
+		t.Errorf("TOON output %q lost the wide integer", rendered)
+	}
+	if strings.Contains(rendered, "9223372036854776000") {
+		t.Errorf("TOON output %q kept the rounded value", rendered)
+	}
+	// Values inside the safe range must stay bare numbers, not become strings.
+	if !strings.Contains(rendered, "42") || strings.Contains(rendered, `"42"`) {
+		t.Errorf("TOON output %q quoted a safe integer", rendered)
+	}
+	if !strings.Contains(rendered, "1.5") {
+		t.Errorf("TOON output %q lost the float", rendered)
+	}
+}
+
+func TestMarshalTOONKeepsWideIntegersFromPlainMaps(t *testing.T) {
+	_, out, err := MarshalResponse(FormatTOON, map[string]any{
+		"id":   json.Number("18446744073709551615"),
+		"safe": json.Number("7"),
+	})
+	if err != nil {
+		t.Fatalf("MarshalResponse() error = %v", err)
+	}
+	if !strings.Contains(string(out), "18446744073709551615") {
+		t.Errorf("TOON output %q lost the wide integer", out)
+	}
+}
+
+func TestMarshalJSONKeepsWideIntegers(t *testing.T) {
+	_, out, err := MarshalResponse(FormatJSON, map[string]any{"id": json.Number("9223372036854775808")})
+	if err != nil {
+		t.Fatalf("MarshalResponse() error = %v", err)
+	}
+	if string(out) != `{"id":9223372036854775808}` {
+		t.Errorf("JSON output = %s", out)
+	}
 }

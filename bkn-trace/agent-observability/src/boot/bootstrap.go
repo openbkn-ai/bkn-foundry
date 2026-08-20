@@ -107,7 +107,10 @@ func NewApp() (*App, error) {
 	if resolverConfig.Enabled {
 		resolver = businessresolver.New(resolverConfig.BKNBaseURL, resolverConfig.VegaBaseURL, localizedHTTPClient(resolverConfig.Timeout))
 	}
-	coreConfig := conf.NewCoreConfig()
+	coreConfig, err := conf.NewCoreConfig()
+	if err != nil {
+		return nil, err
+	}
 	metrics := coremetrics.New()
 	sessionStore, ledgerStore, closeDatabase, err := newCoreStores(coreConfig)
 	if err != nil {
@@ -321,11 +324,9 @@ func newCoreStores(config conf.CoreConfig) (isessionstore.Store, ievidenceledger
 		return nil, nil, nil, fmt.Errorf("connect BKN Trace MariaDB: %w", err)
 	}
 	store := mariadbsessionstore.New(db)
-	if config.AutoMigrate {
-		if err := store.Migrate(context.Background()); err != nil {
-			_ = db.Close()
-			return nil, nil, nil, err
-		}
+	if err := store.EnsureSchema(context.Background(), config.AutoMigrate); err != nil {
+		_ = db.Close()
+		return nil, nil, nil, err
 	}
 	return store, store, db.Close, nil
 }

@@ -96,6 +96,14 @@ type HTTPClient interface {
 	DeleteNoUnmarshal(ctx context.Context, url string, headers map[string]string) (respCode int, respBody []byte, err error)
 	Post(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error)
 	PostNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error)
+	// PostBytes status-checks the response exactly like Post but returns the raw
+	// body instead of unmarshalling it into an interface{}. Responses carrying
+	// business data must use this: Post's interface{} hop rounds every JSON
+	// integer past float64's 53-bit mantissa (MySQL BIGINT / BIGINT UNSIGNED, ID
+	// card numbers, snowflake IDs). See openbkn-ai/bkn-studio#464.
+	PostBytes(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error)
+	// GetBytes is PostBytes' counterpart for GET.
+	GetBytes(ctx context.Context, url string, queryValues url.Values, headers map[string]string) (respCode int, respBody []byte, err error)
 	Put(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error)
 	PutNoUnmarshal(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error)
 	Patch(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error)

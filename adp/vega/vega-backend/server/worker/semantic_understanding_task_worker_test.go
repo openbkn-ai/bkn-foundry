@@ -275,8 +275,9 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resourceInfo, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+			InternalUpdateSemanticMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, expected int64) error {
+				assert.Equal(t, int64(0), expected)
 				assert.Equal(t, "Business Resource", got.Name)
 				assert.Equal(t, "business resource", got.Description)
 				require.Len(t, got.SchemaDefinition, 1)
@@ -693,8 +694,8 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resource, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "商品ID", got.SchemaDefinition[0].DisplayName)
 				return nil
 			})
@@ -811,8 +812,8 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resource, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "商品评价汇总视图", got.Name)
 				return nil
 			})
@@ -850,8 +851,8 @@ func TestSemanticUnderstandingTaskWorkerApplyResourceResult(t *testing.T) {
 			GetByID(gomock.Any(), "resource-1").
 			Return(resource, nil)
 		resourceService.EXPECT().
-			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource).
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource) error {
+			InternalUpdateSemanticMetadata(gomock.Any(), nil, resource, gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, got *interfaces.Resource, _ int64) error {
 				assert.Equal(t, "AI resource description", got.Description)
 				assert.Equal(t, "AI field description", got.SchemaDefinition[0].Description)
 				return nil

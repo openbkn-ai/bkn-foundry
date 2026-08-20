@@ -137,16 +137,11 @@ class ModelDao():
     @connect_execute_close_db
     def get_data_from_model_list_by_name_fuzzy(self, name, page, size, order, rule, api_model, model_type,
                                                connection, cursor):
-        name = "%" + name + "%"
+        where_sql, value_list = self._fuzzy_model_filters(name, api_model, model_type)
         sql = """select f_create_by,f_create_time,f_model,f_model_config,f_model_id,
                                      f_model_name,f_model_series,f_model_type,f_update_by,f_update_time,
                                       f_max_model_len, f_model_parameters,f_quota,f_default from
-                                     t_llm_model where (f_model_name like %s or f_model like %s or f_model_config like %s)"""
-        value_list = [name, name, name]
-        if api_model != "":
-            sql += " and f_model = '%s' " % api_model
-        if model_type != "":
-            sql += " and f_model_type = '%s' " % model_type
+                                     t_llm_model where """ + where_sql
         if rule != "":
             sql += " order by f_" + rule
         if order == "desc":
@@ -155,6 +150,26 @@ class ModelDao():
         cursor.execute(sql, value_list)
         res = cursor.fetchall()
         return res
+
+    @connect_execute_close_db
+    def count_data_from_model_list_by_name_fuzzy(self, name, api_model, model_type, connection, cursor):
+        """Count the same result set as the paginated administrator list."""
+        where_sql, value_list = self._fuzzy_model_filters(name, api_model, model_type)
+        cursor.execute("select count(*) as total from t_llm_model where " + where_sql, value_list)
+        return cursor.fetchall()[0]["total"]
+
+    @staticmethod
+    def _fuzzy_model_filters(name, api_model, model_type):
+        name = "%" + name + "%"
+        where_sql = "(f_model_name like %s or f_model like %s or f_model_config like %s)"
+        value_list = [name, name, name]
+        if api_model != "":
+            where_sql += " and f_model = %s"
+            value_list.append(api_model)
+        if model_type != "":
+            where_sql += " and f_model_type = %s"
+            value_list.append(model_type)
+        return where_sql, value_list
 
     @connect_execute_close_db
     def get_data_from_model_list_by_name_fuzzy_and_series(self, name, series, page, size, order, rule,

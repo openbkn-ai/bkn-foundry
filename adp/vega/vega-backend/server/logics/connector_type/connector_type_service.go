@@ -74,10 +74,9 @@ func (cts *connectorTypeService) Register(ctx context.Context, req *interfaces.C
 		Mode:        req.Mode,
 		Category:    req.Category,
 		Endpoint:    req.Endpoint,
-		FieldConfig: req.FieldConfig,
 		Enabled:     req.Enabled,
 	}
-	ct, err = cts.cf.ResolveConnectorTypeRegistration(ctx, ct)
+	err = cts.cf.ValidateConnectorTypeRegistration(ct)
 	if err != nil {
 		otellog.LogError(ctx, "Validate connector type registration failed", err)
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_BadRequest).
@@ -133,6 +132,16 @@ func (cts *connectorTypeService) GetByType(ctx context.Context, tp string) (*int
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", interfaces.OPERATION_TYPE_VIEW_DETAIL))
 	}
 	ct.Available = cts.cf.IsConnectorAvailable(ct.Type)
+	if !ct.Available {
+		span.SetStatus(codes.Ok, "")
+		return ct, nil
+	}
+	ct.FieldConfig, err = cts.cf.GetConnectorFieldConfig(ctx, ct)
+	if err != nil {
+		span.SetStatus(codes.Error, "Get connector field config failed")
+		return nil, rest.NewHTTPError(ctx, http.StatusServiceUnavailable, verrors.VegaBackend_ConnectorType_FieldConfigUnavailable).
+			WithErrorDetails(err.Error())
+	}
 
 	span.SetStatus(codes.Ok, "")
 	return ct, nil
@@ -169,6 +178,7 @@ func (cts *connectorTypeService) List(ctx context.Context, params interfaces.Con
 		// Only keep the models with permission
 		if resrc, exist := matchResoucesMap[c.Type]; exist {
 			c.Available = cts.cf.IsConnectorAvailable(c.Type)
+			c.FieldConfig = nil
 			if params.Available != nil && c.Available != *params.Available {
 				continue
 			}
@@ -324,24 +334,23 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 		Mode:        req.Mode,
 		Category:    req.Category,
 		Endpoint:    req.Endpoint,
-		FieldConfig: req.FieldConfig,
 		Enabled:     req.Enabled,
 	}
 
-	resolved, err := cts.cf.ResolveConnectorTypeRegistration(ctx, updated)
+	err = cts.cf.ValidateConnectorTypeRegistration(updated)
 	if err != nil {
 		otellog.LogError(ctx, "Validate connector type update failed", err)
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_ConnectorType_BadRequest).
 			WithErrorDetails(err.Error())
 	}
 
-	if err := cts.cta.Update(ctx, resolved); err != nil {
+	if err := cts.cta.Update(ctx, updated); err != nil {
 		span.SetStatus(codes.Error, "Update connector type failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_UpdateFailed).
 			WithErrorDetails(err.Error())
 	}
 
-	if err := cts.cf.RegisterConnector(ctx, resolved.Type, resolved); err != nil {
+	if err := cts.cf.RegisterConnector(ctx, updated.Type, updated); err != nil {
 		otellog.LogError(ctx, "Register connector type failed", err)
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_ConnectorType_InternalError_RegisterFailed).
 			WithErrorDetails(err.Error())
@@ -350,9 +359,9 @@ func (cts *connectorTypeService) Update(ctx context.Context, ct *interfaces.Conn
 	// Request the interface to update the resource name, update the resource name
 	if nameModified {
 		err = cts.ps.UpdateResource(ctx, interfaces.PermissionResource{
-			ID:   resolved.Type,
+			ID:   updated.Type,
 			Type: interfaces.AUTH_RESOURCE_TYPE_CONNECTOR_TYPE,
-			Name: resolved.Name,
+			Name: updated.Name,
 		})
 		if err != nil {
 			return err

@@ -410,6 +410,12 @@ func (r *restHandler) updateCatalog(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	allowUnhealthy, err := parseAllowUnhealthy(ctx, c)
 	if err != nil {

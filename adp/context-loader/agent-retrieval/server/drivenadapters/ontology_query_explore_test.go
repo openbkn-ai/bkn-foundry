@@ -29,10 +29,10 @@ func TestExploreSubgraph_UsesEmptyQueryType(t *testing.T) {
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
 
 		var got string
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, target string, _ map[string]string, _ any) (int, []byte, error) {
 				got = target
-				return 200, map[string]any{"objects": map[string]any{}, "relation_paths": []any{}}, nil
+				return 200, jsonBytes(map[string]any{"objects": map[string]any{}, "relation_paths": []any{}}), nil
 			})
 
 		_, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
@@ -59,10 +59,10 @@ func TestExploreSubgraph_AlwaysAsksForTotal(t *testing.T) {
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
 
 		var body *interfaces.ExploreSubgraphReq
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, _ string, _ map[string]string, payload any) (int, []byte, error) {
 				body = payload.(*interfaces.ExploreSubgraphReq)
-				return 200, map[string]any{"objects": map[string]any{}}, nil
+				return 200, jsonBytes(map[string]any{"objects": map[string]any{}}), nil
 			})
 
 		_, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
@@ -80,8 +80,8 @@ func TestExploreSubgraph_TotalCountThreeState(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		client, mockHTTP := newObjectQueryClient(t, ctrl)
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(200, downstream, nil)
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(200, jsonBytes(downstream), nil)
 		resp, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
 			KnID: "kn1", SourceObjectTypeID: "ot1", Direction: "forward", PathLength: 1,
 			Limit: 10, SearchAfter: cursor,
@@ -137,11 +137,11 @@ func TestExploreSubgraph_InternalParamsAndEscaping(t *testing.T) {
 
 		var got string
 		var bodyJSON []byte
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, target string, _ map[string]string, payload any) (int, any, error) {
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, target string, _ map[string]string, payload any) (int, []byte, error) {
 				got = target
 				bodyJSON, _ = json.Marshal(payload)
-				return 200, map[string]any{"objects": map[string]any{}}, nil
+				return 200, jsonBytes(map[string]any{"objects": map[string]any{}}), nil
 			})
 
 		_, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{
@@ -184,7 +184,7 @@ func TestExploreSubgraph_PreservesDownstreamClientError(t *testing.T) {
 
 		downstream := infraErr.DefaultHTTPError(context.Background(), http.StatusBadRequest,
 			"路径长度不能超过3, 当前路径长度为5")
-		mockHTTP.EXPECT().Post(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		mockHTTP.EXPECT().PostBytes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(400, nil, downstream)
 
 		_, err := client.ExploreSubgraph(context.Background(), &interfaces.ExploreSubgraphReq{

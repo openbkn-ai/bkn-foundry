@@ -260,6 +260,22 @@ func (mr *MockHTTPClientMockRecorder) Get(ctx, arg1, queryValues, headers any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockHTTPClient)(nil).Get), ctx, arg1, queryValues, headers)
 }
 
+// GetBytes mocks base method.
+func (m *MockHTTPClient) GetBytes(ctx context.Context, arg1 string, queryValues url.Values, headers map[string]string) (int, []byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBytes", ctx, arg1, queryValues, headers)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].([]byte)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetBytes indicates an expected call of GetBytes.
+func (mr *MockHTTPClientMockRecorder) GetBytes(ctx, arg1, queryValues, headers any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBytes", reflect.TypeOf((*MockHTTPClient)(nil).GetBytes), ctx, arg1, queryValues, headers)
+}
+
 // GetNoUnmarshal mocks base method.
 func (m *MockHTTPClient) GetNoUnmarshal(ctx context.Context, arg1 string, queryValues url.Values, headers map[string]string) (int, []byte, error) {
 	m.ctrl.T.Helper()
@@ -322,6 +338,22 @@ func (m *MockHTTPClient) Post(ctx context.Context, arg1 string, headers map[stri
 func (mr *MockHTTPClientMockRecorder) Post(ctx, arg1, headers, reqParam any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Post", reflect.TypeOf((*MockHTTPClient)(nil).Post), ctx, arg1, headers, reqParam)
+}
+
+// PostBytes mocks base method.
+func (m *MockHTTPClient) PostBytes(ctx context.Context, arg1 string, headers map[string]string, reqParam any) (int, []byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PostBytes", ctx, arg1, headers, reqParam)
+	ret0, _ := ret[0].(int)
+	ret1, _ := ret[1].([]byte)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// PostBytes indicates an expected call of PostBytes.
+func (mr *MockHTTPClientMockRecorder) PostBytes(ctx, arg1, headers, reqParam any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PostBytes", reflect.TypeOf((*MockHTTPClient)(nil).PostBytes), ctx, arg1, headers, reqParam)
 }
 
 // PostNoUnmarshal mocks base method.

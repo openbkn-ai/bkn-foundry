@@ -135,10 +135,13 @@ func (chcw *CatalogHealthCheckWorker) runSchedule(ctx context.Context, schedule 
 	// Advance the running time in the database before creating a task. Skip this trigger when the task creation fails and during the service downtime
 	// Missed historical cycles will not be made up for one by one after recovery.
 	nextRun := cronSchedule.Next(now)
-	if err := chcw.chcsa.UpdateRunMetadata(ctx, schedule.CatalogID,
-		schedule.UpdateTime, now.UnixMilli(), nextRun.UnixMilli(),
-	); err != nil {
+	rowsAffected, err := chcw.chcsa.UpdateRunMetadata(ctx, schedule.CatalogID,
+		schedule.UpdateTime, schedule.NextRun, now.UnixMilli(), nextRun.UnixMilli())
+	if err != nil {
 		logger.Errorf("Update catalog health check run metadata failed: catalog_id=%s, error=%v", schedule.CatalogID, err)
+		return
+	}
+	if rowsAffected == 0 {
 		return
 	}
 

@@ -2,7 +2,9 @@ package sessionstore
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +18,14 @@ import (
 )
 
 const transactionRetries = 4
+
+const schemaMigrationLedgerDDL = `
+CREATE TABLE IF NOT EXISTS bkn_trace_schema_migrations (
+    migration_version VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    checksum CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+    applied_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (migration_version)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`
 
 const listInteractionsOrderBy = " ORDER BY ordinal_no ASC, interaction_id ASC"
 const listInteractionPageOrderBy = " ORDER BY ordinal_no DESC, interaction_id ASC"
@@ -33,16 +43,245 @@ func New(db *sql.DB) *Store {
 func (s *Store) Database() *sql.DB { return s.db }
 
 func (s *Store) Migrate(ctx context.Context) error {
-	for _, statement := range strings.Split(SchemaSQL(), ";") {
-		statement = strings.TrimSpace(statement)
-		if statement == "" {
-			continue
+	return s.EnsureSchema(ctx, true)
+}
+
+// EnsureSchema validates the database against the embedded image manifest. When
+// allowMigrate is false it performs no DDL and refuses a database behind the
+// image instead of deferring the failure to a lifecycle write.
+func (s *Store) EnsureSchema(ctx context.Context, allowMigrate bool) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("open BKN Trace schema migration connection: %w", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	var databaseName string
+	if err := conn.QueryRowContext(ctx, "SELECT DATABASE()").Scan(&databaseName); err != nil {
+		return fmt.Errorf("read BKN Trace schema database name: %w", err)
+	}
+	lockName := schemaMigrationLockName(databaseName)
+	var acquired int
+	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 30)", lockName).Scan(&acquired); err != nil {
+		return fmt.Errorf("acquire BKN Trace schema migration lock: %w", err)
+	}
+	if acquired != 1 {
+		return errors.New("acquire BKN Trace schema migration lock: timed out")
+	}
+	defer func() {
+		var released int
+		_ = conn.QueryRowContext(context.Background(), "SELECT RELEASE_LOCK(?)", lockName).Scan(&released)
+	}()
+
+	ledgerExists, err := schemaMigrationLedgerExists(ctx, conn)
+	if err != nil {
+		return err
+	}
+	if !ledgerExists {
+		legacyTables, err := legacyTraceTablesExist(ctx, conn)
+		if err != nil {
+			return err
 		}
-		if _, err := s.db.ExecContext(ctx, statement); err != nil {
-			return fmt.Errorf("apply BKN Trace migration: %w", err)
+		if legacyTables {
+			return errors.New("BKN Trace schema migration ledger is missing from a non-empty bkn_trace database; back up and clean legacy Trace data before initializing 0.1.4 schema")
+		}
+		if !allowMigrate {
+			return errors.New("BKN Trace schema migration ledger is missing; set BKN_TRACE_CORE_AUTO_MIGRATE=true or initialize a clean bkn_trace database")
+		}
+		if _, err := conn.ExecContext(ctx, schemaMigrationLedgerDDL); err != nil {
+			return fmt.Errorf("create BKN Trace schema migration ledger: %w", err)
+		}
+	}
+
+	applied, err := loadAppliedSchemaMigrations(ctx, conn)
+	if err != nil {
+		return err
+	}
+	plan, err := migrationPlan(Migrations(), applied)
+	if err != nil {
+		return err
+	}
+	if len(plan) == 0 {
+		return nil
+	}
+	if !allowMigrate {
+		return fmt.Errorf("BKN Trace schema is behind this image (missing migration %s); set BKN_TRACE_CORE_AUTO_MIGRATE=true before startup", plan[0].Version)
+	}
+	for _, migration := range plan {
+		if err := applySchemaMigration(ctx, conn, migration); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+func schemaMigrationLockName(databaseName string) string {
+	sum := sha256.Sum256([]byte(databaseName))
+	return "bkn_trace_schema_" + hex.EncodeToString(sum[:16])
+}
+
+func schemaMigrationLedgerExists(ctx context.Context, conn *sql.Conn) (bool, error) {
+	var count int
+	err := conn.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_schema = DATABASE() AND table_name = 'bkn_trace_schema_migrations'`).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check BKN Trace schema migration ledger: %w", err)
+	}
+	return count == 1, nil
+}
+
+func legacyTraceTablesExist(ctx context.Context, conn *sql.Conn) (bool, error) {
+	var count int
+	err := conn.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_schema = DATABASE()
+		  AND table_name LIKE CONCAT('bkn', CHAR(95), 'trace', CHAR(95), '%')
+		  AND table_name <> 'bkn_trace_schema_migrations'`).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("check legacy BKN Trace tables: %w", err)
+	}
+	return count > 0, nil
+}
+
+func loadAppliedSchemaMigrations(ctx context.Context, conn *sql.Conn) (map[string]string, error) {
+	rows, err := conn.QueryContext(ctx, `SELECT migration_version, checksum FROM bkn_trace_schema_migrations`)
+	if err != nil {
+		return nil, fmt.Errorf("read BKN Trace schema migration ledger: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	applied := make(map[string]string)
+	for rows.Next() {
+		var version, checksum string
+		if err := rows.Scan(&version, &checksum); err != nil {
+			return nil, fmt.Errorf("scan BKN Trace schema migration ledger: %w", err)
+		}
+		applied[version] = checksum
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate BKN Trace schema migration ledger: %w", err)
+	}
+	return applied, nil
+}
+
+func migrationPlan(manifest []Migration, applied map[string]string) ([]Migration, error) {
+	expected := make(map[string]Migration, len(manifest))
+	for index, migration := range manifest {
+		if migration.Version == "" || migration.Checksum == "" || migration.SQL == "" {
+			return nil, fmt.Errorf("BKN Trace migration manifest entry %d is incomplete", index)
+		}
+		if index > 0 && manifest[index-1].Version >= migration.Version {
+			return nil, errors.New("BKN Trace migration manifest versions must be unique and strictly ordered")
+		}
+		expected[migration.Version] = migration
+	}
+	for version, checksum := range applied {
+		migration, found := expected[version]
+		if !found {
+			return nil, fmt.Errorf("BKN Trace schema migration %s is newer than this BKN Trace image", version)
+		}
+		if checksum != migration.Checksum {
+			return nil, fmt.Errorf("BKN Trace schema migration %s checksum mismatch", version)
+		}
+	}
+	appliedCount := 0
+	for _, migration := range manifest {
+		if _, found := applied[migration.Version]; !found {
+			break
+		}
+		appliedCount++
+	}
+	if appliedCount != len(applied) {
+		return nil, errors.New("BKN Trace schema migration ledger is not a contiguous prefix of the image manifest")
+	}
+	plan := make([]Migration, 0, len(manifest))
+	for _, migration := range manifest {
+		if _, found := applied[migration.Version]; !found {
+			plan = append(plan, migration)
+		}
+	}
+	return plan, nil
+}
+
+func applySchemaMigration(ctx context.Context, conn *sql.Conn, migration Migration) error {
+	statements, err := splitSQLStatements(migration.SQL)
+	if err != nil {
+		return fmt.Errorf("parse BKN Trace migration %s: %w", migration.Version, err)
+	}
+	for _, statement := range statements {
+		if _, err := conn.ExecContext(ctx, statement); err != nil {
+			return fmt.Errorf("apply BKN Trace migration %s: %w", migration.Version, err)
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `
+		INSERT INTO bkn_trace_schema_migrations (migration_version, checksum, applied_at)
+		VALUES (?, ?, UTC_TIMESTAMP(6))`, migration.Version, migration.Checksum); err != nil {
+		return fmt.Errorf("record BKN Trace migration %s: %w", migration.Version, err)
+	}
+	return nil
+}
+
+func splitSQLStatements(sqlText string) ([]string, error) {
+	var statements []string
+	start := 0
+	var quote byte
+	lineComment := false
+	blockComment := false
+	for index := 0; index < len(sqlText); index++ {
+		current := sqlText[index]
+		if lineComment {
+			if current == '\n' {
+				lineComment = false
+			}
+			continue
+		}
+		if blockComment {
+			if current == '*' && index+1 < len(sqlText) && sqlText[index+1] == '/' {
+				index++
+				blockComment = false
+			}
+			continue
+		}
+		if quote != 0 {
+			if current == '\\' && index+1 < len(sqlText) {
+				index++
+				continue
+			}
+			if current == quote {
+				if index+1 < len(sqlText) && sqlText[index+1] == quote {
+					index++
+					continue
+				}
+				quote = 0
+			}
+			continue
+		}
+		if current == '#' || (current == '-' && index+1 < len(sqlText) && sqlText[index+1] == '-' && (index+2 == len(sqlText) || sqlText[index+2] == ' ' || sqlText[index+2] == '\t')) {
+			lineComment = true
+			continue
+		}
+		if current == '/' && index+1 < len(sqlText) && sqlText[index+1] == '*' {
+			blockComment = true
+			index++
+			continue
+		}
+		switch current {
+		case '\'', '"', '`':
+			quote = current
+		case ';':
+			if statement := strings.TrimSpace(sqlText[start:index]); statement != "" {
+				statements = append(statements, statement)
+			}
+			start = index + 1
+		}
+	}
+	if quote != 0 || blockComment {
+		return nil, errors.New("unterminated quoted SQL literal")
+	}
+	if statement := strings.TrimSpace(sqlText[start:]); statement != "" {
+		statements = append(statements, statement)
+	}
+	return statements, nil
 }
 
 func (s *Store) WithinTransaction(ctx context.Context, fn func(isessionstore.Transaction) error) error {
@@ -173,6 +412,51 @@ func (t *transaction) PeekConversation(conversationID string) (sessionvo.Convers
 	}
 	return t.scanConversation(t.tx.QueryRowContext(t.ctx, conversationSelect+`
 		WHERE conversation_id=?`, conversationID))
+}
+
+func (t *transaction) ListConversationsByIDs(conversationIDs []string) map[string]sessionvo.Conversation {
+	result := make(map[string]sessionvo.Conversation, len(conversationIDs))
+	if t.err != nil || len(conversationIDs) == 0 {
+		return result
+	}
+	uniqueIDs := make([]string, 0, len(conversationIDs))
+	seen := make(map[string]struct{}, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if conversationID == "" {
+			continue
+		}
+		if _, found := seen[conversationID]; found {
+			continue
+		}
+		seen[conversationID] = struct{}{}
+		uniqueIDs = append(uniqueIDs, conversationID)
+	}
+	if len(uniqueIDs) == 0 {
+		return result
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(uniqueIDs)), ",")
+	args := make([]any, len(uniqueIDs))
+	for index, conversationID := range uniqueIDs {
+		args[index] = conversationID
+	}
+	rows, err := t.tx.QueryContext(t.ctx, conversationSelect+` WHERE conversation_id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		conversation, scanErr := scanConversationRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		result[conversation.ID] = conversation
+	}
+	if err := rows.Err(); err != nil {
+		t.err = err
+	}
+	return result
 }
 
 func (t *transaction) FindIdempotency(
@@ -398,6 +682,47 @@ func (t *transaction) PeekInteraction(interactionID string) (sessionvo.Interacti
 		WHERE interaction_id=?`, interactionID))
 }
 
+func (t *transaction) ListInteractionsByIDs(interactionIDs []string) map[string]sessionvo.Interaction {
+	result := make(map[string]sessionvo.Interaction, len(interactionIDs))
+	if t.err != nil {
+		return result
+	}
+	ids := make([]string, 0, len(interactionIDs))
+	seen := make(map[string]struct{}, len(interactionIDs))
+	for _, id := range interactionIDs {
+		if id != "" {
+			if _, found := seen[id]; !found {
+				seen[id] = struct{}{}
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return result
+	}
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	rows, err := t.tx.QueryContext(t.ctx, interactionSelect+` WHERE interaction_id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		value, scanErr := scanInteractionRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		result[value.ID] = value
+	}
+	t.err = rows.Err()
+	return result
+}
+
 func (t *transaction) NextInteractionOrdinal(conversationID string) uint64 {
 	if t.err != nil {
 		return 0
@@ -481,6 +806,37 @@ func (t *transaction) PeekOperation(operationID string) (sessionvo.Operation, bo
 	}
 	return t.scanOperation(t.tx.QueryRowContext(t.ctx, operationSelect+`
 		WHERE operation_id=?`, operationID))
+}
+
+func (t *transaction) ListOperationsByIDs(operationIDs []string) map[string]sessionvo.Operation {
+	result := make(map[string]sessionvo.Operation, len(operationIDs))
+	if t.err != nil {
+		return result
+	}
+	ids := uniqueStoreIDs(operationIDs)
+	if len(ids) == 0 {
+		return result
+	}
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	rows, err := t.tx.QueryContext(t.ctx, operationSelect+` WHERE operation_id IN (`+storePlaceholders(len(ids))+`)`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		value, scanErr := scanOperationRows(rows)
+		if scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		result[value.ID] = value
+	}
+	t.err = rows.Err()
+	return result
 }
 
 func (t *transaction) ListOperations(interactionID string) []sessionvo.Operation {
@@ -1044,6 +1400,67 @@ func (t *transaction) ListAssemblyRevisions(interactionID string) []sessionvo.As
 	}
 	t.err = rows.Err()
 	return result
+}
+
+func (t *transaction) ListAssemblyRevisionsByInteractionIDs(interactionIDs []string) map[string][]sessionvo.AssemblyRevision {
+	result := make(map[string][]sessionvo.AssemblyRevision, len(interactionIDs))
+	if t.err != nil {
+		return result
+	}
+	ids := uniqueStoreIDs(interactionIDs)
+	if len(ids) == 0 {
+		return result
+	}
+	args := make([]any, len(ids))
+	for index, id := range ids {
+		args[index] = id
+	}
+	rows, err := t.tx.QueryContext(t.ctx, `
+		SELECT revision_id, revision_no, COALESCE(parent_revision_id, ''), interaction_id,
+			completion_manifest_version, included_receipt_ids, included_event_ids,
+			artifact_manifest_hash, assembly_completeness, COALESCE(partial_reasons, ''),
+			trigger_type, created_at
+		FROM bkn_trace_assembly_revisions
+		WHERE interaction_id IN (`+storePlaceholders(len(ids))+`) ORDER BY interaction_id, revision_no`, args...)
+	if err != nil {
+		t.err = err
+		return result
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var value sessionvo.AssemblyRevision
+		var receipts, events, reasons string
+		if scanErr := rows.Scan(&value.ID, &value.RevisionNo, &value.ParentRevisionID, &value.InteractionID, &value.CompletionManifestVersion, &receipts, &events, &value.ArtifactManifestHash, &value.Completeness, &reasons, &value.Trigger, &value.CreatedAt); scanErr != nil {
+			t.err = scanErr
+			return result
+		}
+		unmarshalJSON(receipts, &value.IncludedReceiptIDs)
+		unmarshalJSON(events, &value.IncludedEventIDs)
+		unmarshalJSON(reasons, &value.PartialReasons)
+		result[value.InteractionID] = append(result[value.InteractionID], value)
+	}
+	t.err = rows.Err()
+	return result
+}
+
+func uniqueStoreIDs(values []string) []string {
+	result := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, found := seen[value]; found {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
+}
+
+func storePlaceholders(count int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
 }
 
 func (t *transaction) SaveAssemblyRevision(revision sessionvo.AssemblyRevision) {

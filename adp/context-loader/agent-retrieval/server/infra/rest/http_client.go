@@ -127,6 +127,11 @@ func (c *httpClient) PostNoUnmarshal(ctx context.Context, url string, headers ma
 	return c.httpDoNoUnmarshal(ctx, http.MethodPost, url, headers, reqParam)
 }
 
+// Post, pass in the serialized object and return the raw body, status-checked.
+func (c *httpClient) PostBytes(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respBody []byte, err error) {
+	return c.httpDoBytes(ctx, http.MethodPost, url, headers, reqParam)
+}
+
 // Put, pass in the serialized object and return the serialized object.
 func (c *httpClient) Put(ctx context.Context, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	return c.httpDo(ctx, http.MethodPut, url, headers, reqParam)
@@ -157,6 +162,17 @@ func (c *httpClient) PatchNoUnmarshal(ctx context.Context, url string, headers m
 	return c.httpDoNoUnmarshal(ctx, http.MethodPatch, url, headers, reqParam)
 }
 
+// Get, return the raw body, status-checked.
+func (c *httpClient) GetBytes(ctx context.Context, rawURL string, queryValues url.Values,
+	headers map[string]string,
+) (respCode int, respBody []byte, err error) {
+	uri, err := c.generateURL(rawURL, queryValues)
+	if err != nil {
+		return 0, nil, err
+	}
+	return c.httpDoBytes(ctx, http.MethodGet, uri.String(), headers, nil)
+}
+
 // Deserialize return content.
 func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map[string]string, reqParam interface{}) (respCode int, respData interface{}, err error) {
 	respCode, respBody, err := c.httpDoNoUnmarshal(ctx, mtehod, url, headers, reqParam)
@@ -179,6 +195,42 @@ func (c *httpClient) httpDo(ctx context.Context, mtehod, url string, headers map
 		// Exception when calling external service.
 		err = infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
 			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", mtehod, url, respCode, respStr))
+		return
+	}
+	return
+}
+
+// httpDoBytes is httpDo without the deserialization: same status checking and
+// same error type, but the body is handed back as raw JSON so the caller can
+// decode it itself.
+//
+// httpDo cannot be used for responses that carry business data. It unmarshals
+// into an interface{}, where sonic's default configuration turns every JSON
+// number into a float64 — anything past float64's 53-bit mantissa is silently
+// rounded, and 9223372036854775808 re-serializes as 9.223372036854776e+18.
+// Object instance properties are arbitrary business data (MySQL BIGINT /
+// BIGINT UNSIGNED columns, ID card numbers, snowflake IDs), so the rounding is
+// not hypothetical: see openbkn-ai/bkn-studio#464.
+//
+// Non-2xx handling is deliberately identical to httpDo — callers such as
+// ontology_query.classifyQueryError match on the *infraErr.HTTPError it
+// produces, so this must keep returning the same error type carrying the same
+// HTTP code.
+func (c *httpClient) httpDoBytes(ctx context.Context, method, url string, headers map[string]string,
+	reqParam interface{},
+) (respCode int, respBody []byte, err error) {
+	respCode, respBody, err = c.httpDoNoUnmarshal(ctx, method, url, headers, reqParam)
+	if err != nil {
+		c.logger.Error(err.Error())
+		return
+	}
+	if (respCode < http.StatusOK) || (respCode >= http.StatusMultipleChoices) {
+		respStr := string(respBody)
+		c.logger.Errorf("Exception(http do error, method: %s, url: %s, headers: %v, reqParam: %v, respCode: %d, error: %s)",
+			method, url, utils.ObjectToJSON(headers), utils.ObjectToJSON(reqParam), respCode, respStr)
+		// Exception when calling external service.
+		err = infraErr.NewHTTPError(ctx, respCode, infraErr.ErrExtCommonExternalServerError,
+			fmt.Sprintf("Exception(http do error, method: %s, url: %s,  http status: %d, error: %s)", method, url, respCode, respStr))
 		return
 	}
 	return

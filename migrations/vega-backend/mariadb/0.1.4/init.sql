@@ -251,9 +251,6 @@ CREATE TABLE IF NOT EXISTS t_connector_type (
     -- Remote 模式专用字段
     f_endpoint                VARCHAR(512) NOT NULL DEFAULT '' COMMENT '远程服务地址 (仅remote模式)',
 
-    -- 字段配置列表（JSON数组格式）
-    f_field_config            MEDIUMTEXT NOT NULL COMMENT '字段配置列表（JSON数组格式，定义连接配置的结构）',
-
     -- 状态
     f_enabled                 BOOLEAN NOT NULL DEFAULT TRUE COMMENT '是否启用',
 
@@ -269,86 +266,28 @@ CREATE TABLE IF NOT EXISTS t_connector_type (
 -- ==========================================
 -- 6. 初始化内置 Local Connector
 -- ==========================================
-INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_field_config, f_enabled)
-SELECT 'mariadb', 'mariadb', 'MariaDB 关系型数据库连接器', 'local', 'table',
-    '{
-        "host":      {"name":"主机地址","type":"string","description":"数据库服务器主机地址","required":true,"encrypted":false},
-        "port":      {"name":"端口号","type":"integer","description":"数据库服务器端口","required":true,"encrypted":false},
-        "username":  {"name":"用户名","type":"string","description":"数据库用户名","required":true,"encrypted":false},
-        "password":  {"name":"密码","type":"string","description":"数据库密码","required":true,"encrypted":true},
-        "databases": {"name":"数据库列表","type":"array","description":"数据库名称列表（可选，为空则连接实例级别）","required":false,"encrypted":false},
-        "options":   {"name":"连接参数","type":"object","description":"连接参数（如 charset, timeout 等）","required":false,"encrypted":false}
-    }',
-    TRUE
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'mariadb', 'mariadb', 'MariaDB 关系型数据库连接器', 'local', 'table', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'mariadb' );
 
-INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_field_config, f_enabled)
-SELECT 'mysql', 'mysql', 'MySQL 关系型数据库连接器', 'local', 'table',
-       '{
-           "host":      {"name":"主机地址","type":"string","description":"数据库服务器主机地址","required":true,"encrypted":false},
-           "port":      {"name":"端口号","type":"integer","description":"数据库服务器端口","required":true,"encrypted":false},
-           "username":  {"name":"用户名","type":"string","description":"数据库用户名","required":true,"encrypted":false},
-           "password":  {"name":"密码","type":"string","description":"数据库密码","required":true,"encrypted":true},
-           "databases": {"name":"数据库列表","type":"array","description":"数据库名称列表（可选，为空则连接实例级别）","required":false,"encrypted":false},
-           "options":   {"name":"连接参数","type":"object","description":"连接参数（如 charset, timeout 等）","required":false,"encrypted":false}
-       }',
-       TRUE
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'mysql', 'mysql', 'MySQL 关系型数据库连接器', 'local', 'table', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'mysql' );
 
-INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_field_config, f_enabled)
-SELECT 'opensearch', 'opensearch', 'OpenSearch 搜索引擎连接器', 'local', 'index',
-    '{
-        "host":          {"name":"主机地址","type":"string","description":"OpenSearch 服务器主机地址","required":true,"encrypted":false},
-        "port":          {"name":"端口号","type":"integer","description":"OpenSearch 服务器端口","required":true,"encrypted":false},
-        "username":      {"name":"用户名","type":"string","description":"认证用户名","required":false,"encrypted":false},
-        "password":      {"name":"密码","type":"string","description":"认证密码","required":false,"encrypted":true},
-        "index_pattern": {"name":"索引模式","type":"string","description":"索引匹配模式（可选，如 log-*）","required":false,"encrypted":false}
-    }',
-    TRUE
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'opensearch', 'opensearch', 'OpenSearch 搜索引擎连接器', 'local', 'index', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'opensearch' );
 
-INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_field_config, f_enabled)
-SELECT 'postgresql', 'postgresql', 'PostgreSQL 关系型数据库连接器', 'local', 'table',
-       '{
-           "host":      {"name":"主机地址","type":"string","description":"数据库服务器主机地址","required":true,"encrypted":false},
-           "port":      {"name":"端口号","type":"integer","description":"数据库服务器端口","required":true,"encrypted":false},
-           "username":  {"name":"用户名","type":"string","description":"数据库用户名","required":true,"encrypted":false},
-           "password":  {"name":"密码","type":"string","description":"数据库密码","required":true,"encrypted":true},
-           "database":  {"name":"数据库名","type":"string","description":"PostgreSQL 连接目标 database","required":true,"encrypted":false},
-           "schemas":   {"name":"Schema 列表","type":"array","description":"可选；为空则扫描当前库下除系统 schema 外的用户 schema；非空则仅扫描列出的 schema","required":false,"encrypted":false},
-           "options":   {"name":"连接参数","type":"object","description":"连接参数（如 sslmode、connect_timeout 等）","required":false,"encrypted":false}
-       }',
-       TRUE
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'postgresql', 'postgresql', 'PostgreSQL 关系型数据库连接器', 'local', 'table', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'postgresql' );
 
-INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_field_config, f_enabled)
-SELECT 'sqlserver', 'sqlserver', 'Microsoft SQL Server 关系型数据库连接器', 'local', 'table',
-       '{
-           "host": {"name":"主机地址","type":"string","description":"SQL Server 服务器主机地址","required":true,"encrypted":false},
-           "port": {"name":"端口号","type":"integer","description":"SQL Server TCP 端口","required":true,"encrypted":false},
-           "username": {"name":"用户名","type":"string","description":"SQL Server 登录用户名","required":true,"encrypted":false},
-           "password": {"name":"密码","type":"string","description":"SQL Server 登录密码","required":true,"encrypted":true},
-           "database": {"name":"数据库名","type":"string","description":"SQL Server 连接目标数据库","required":true,"encrypted":false},
-           "schemas": {"name":"Schema 列表","type":"array","description":"可选；为空时扫描所有可访问的非系统 schema","required":false,"encrypted":false},
-           "options": {"name":"连接参数","type":"object","description":"连接参数，如 encrypt、trustservercertificate、connection timeout","required":false,"encrypted":false}
-       }',
-       TRUE
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'sqlserver', 'sqlserver', 'Microsoft SQL Server 关系型数据库连接器', 'local', 'table', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'sqlserver' );
 
-INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_field_config, f_enabled)
-SELECT 'anyshare', 'anyshare', 'AnyShare 连接器', 'local', 'fileset',
-    '{
-        "protocol":     {"name":"协议","type":"string","description":"http 或 https","required":true,"encrypted":false},
-        "host":         {"name":"主机地址","type":"string","description":"AnyShare 服务主机","required":true,"encrypted":false},
-        "port":         {"name":"端口","type":"integer","description":"服务端口","required":true,"encrypted":false},
-        "auth_type":    {"name":"认证方式","type":"integer","description":"1=访问令牌 Token，2=AppID/AppSecret","required":true,"encrypted":false},
-        "token":        {"name":"访问令牌","type":"string","description":"auth_type=1 时必填","required":false,"encrypted":true},
-        "app_id":       {"name":"应用账户 ID","type":"string","description":"auth_type=2 时必填","required":false,"encrypted":false},
-        "app_secret":   {"name":"应用密钥","type":"string","description":"auth_type=2 时必填","required":false,"encrypted":true},
-        "doc_lib_type": {"name":"文档库类型","type":"integer","description":"1=知识库，2=文档库","required":true,"encrypted":false},
-        "paths":        {"name":"路径列表","type":"array","description":"可选；按文档库名称路径解析起点，空则按文档库类型枚举","required":false,"encrypted":false}
-    }',
-    TRUE
+INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
+SELECT 'anyshare', 'anyshare', 'AnyShare 连接器', 'local', 'fileset', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'anyshare' );
 
 -- ==========================================

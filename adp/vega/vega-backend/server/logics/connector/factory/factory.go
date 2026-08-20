@@ -11,7 +11,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"reflect"
 	"sync"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -98,12 +97,6 @@ func (cf *connectorFactory) RegisterConnector(ctx context.Context, tp string, ct
 			return err
 		}
 		if ct.Mode == interfaces.ConnectorModeLocal {
-			// Verify the consistency of FieldConfig (the code is from a single source of truth
-			codeFieldConfig := connector.GetFieldConfig()
-			if !reflect.DeepEqual(codeFieldConfig, ct.FieldConfig) {
-				return fmt.Errorf("field config mismatch for local connector %s: code=%+v, registered=%+v",
-					tp, codeFieldConfig, ct.FieldConfig)
-			}
 			connector.SetEnabled(ct.Enabled)
 		} else {
 			connector := remote.NewRemoteConnector(ct)
@@ -137,14 +130,13 @@ func (cf *connectorFactory) validateConnectorRegistration(tp string, ct *interfa
 	return nil
 }
 
-// ResolveConnectorTypeRegistration validates a connector type registration
-// against the implementations assembled in the running binary. Only local
-// connector definitions come from code; non-local definitions remain exactly
-// as supplied by the caller.
-func (cf *connectorFactory) ResolveConnectorTypeRegistration(_ context.Context,
-	ct *interfaces.ConnectorType) (*interfaces.ConnectorType, error) {
+// ValidateConnectorTypeRegistration validates a connector type registration
+// against the implementations assembled in the running binary. Field
+// definitions are intentionally not resolved here; they are read on demand by
+// GetConnectorFieldConfig.
+func (cf *connectorFactory) ValidateConnectorTypeRegistration(ct *interfaces.ConnectorType) error {
 	if ct == nil {
-		return nil, fmt.Errorf("connector type registration is nil")
+		return fmt.Errorf("connector type registration is nil")
 	}
 
 	cf.mu.RLock()
@@ -153,21 +145,40 @@ func (cf *connectorFactory) ResolveConnectorTypeRegistration(_ context.Context,
 	connector, exists := cf.connectors[ct.Type]
 	if exists {
 		if err := cf.validateConnectorRegistration(ct.Type, ct, connector); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	if ct.Mode != interfaces.ConnectorModeLocal {
-		resolved := *ct
-		return &resolved, nil
+	if ct.Mode == interfaces.ConnectorModeRemote {
+		return nil
 	}
 
 	if !exists {
-		return nil, fmt.Errorf("local connector %s:%s not implemented: %w", ct.Type, ct.Name, ErrConnectorUnavailable)
+		return fmt.Errorf("local connector %s:%s not implemented: %w", ct.Type, ct.Name, ErrConnectorUnavailable)
 	}
 
-	resolved := *ct
-	resolved.FieldConfig = connector.GetFieldConfig()
-	return &resolved, nil
+	return nil
+}
+
+// GetConnectorFieldConfig returns runtime field semantics without applying
+// registration validation or mutating connector registration state.
+func (cf *connectorFactory) GetConnectorFieldConfig(ctx context.Context, ct *interfaces.ConnectorType) (map[string]interfaces.ConnectorFieldConfig, error) {
+	if ct == nil {
+		return nil, fmt.Errorf("connector type is nil")
+	}
+	if ct.Mode == interfaces.ConnectorModeRemote {
+		return remote.GetFieldConfig(ctx, ct)
+	}
+
+	cf.mu.RLock()
+	defer cf.mu.RUnlock()
+	connector, exists := cf.connectors[ct.Type]
+	if !exists {
+		return nil, fmt.Errorf("local connector %s:%s not implemented: %w", ct.Type, ct.Name, ErrConnectorUnavailable)
+	}
+	if err := cf.validateConnectorRegistration(ct.Type, ct, connector); err != nil {
+		return nil, err
+	}
+	return connector.GetFieldConfig(), nil
 }
 
 // DeleteConnector deletes the connector builder

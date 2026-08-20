@@ -194,6 +194,25 @@ Context Loader 携带 tenant、business domain、application principal、effecti
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
+### MariaDB Schema 版本账本与升级
+
+启用 `core.store=mariadb` 时，服务以镜像内嵌的迁移清单管理 `bkn_trace`。数据库中的
+`bkn_trace_schema_migrations` 保存已应用版本及 SHA-256 校验和；启动时服务在 MariaDB
+建议锁内校验账本，再只应用缺少版本。多副本不会并发执行 DDL。
+
+`BKN_TRACE_CORE_AUTO_MIGRATE` 对 MariaDB 默认是 `true`，并且只能取 Go 布尔值。拼写错误
+会让服务在就绪前失败，不能再静默退化为“不迁移”。显式设为 `false` 时，服务仍会校验账本：
+数据库缺少账本、落后于镜像、校验和不一致，或版本比镜像新都会拒绝启动并给出原因。
+
+已发布的 `migrations/mariadb/vNNN/init.sql` 是不可变合同，不能就地追加或修改 SQL；所有
+Schema 变更必须新增下一个版本目录。每条迁移中的每一句也必须可重入（例如使用
+`IF EXISTS` / `IF NOT EXISTS`），因为 MariaDB DDL 在账本行写入前会隐式提交，进程中断后
+服务需要安全重试该版本。
+
+遇到旧部署没有账本且需要保留运行现场时，不要通过回滚单个镜像绕过启动失败；先完成
+数据库备份并按完整升级链路验收。0.1.3 的历史 Trace/日志数据不在 0.1.4 受管事实与投影
+合同内：切换验收后应按部署清理指南清除旧索引和旧 Trace 数据，再由 0.1.4 重新写入。
+
 从旧版升级时，生命周期入口由 8080 迁移到内部 8081。自定义 agent-retrieval values 必须同步更新 `observability.lifecycle.core_url`；标准安装器会同时更新两端。两次 Helm rollout 之间旧 retrieval Pod 可能短暂访问已移除的 8080 生命周期路由，因此生产升级应在维护或流量排空窗口内完成 Observability 与 Retrieval 的连续升级，再恢复第三方 Agent 流量。NetworkPolicy 暂时同时接受旧 `app=agent-retrieval` 与新稳定标签，待所有 retrieval 工作负载完成滚动后再移除旧选择器。
 
 安装器会把 Chart 的 `namespace` value 对齐到目标命名空间。升级前应核对 Helm release 命名空间、既有资源命名空间和历史 values；若三者存在漂移，应先明确迁移资源，避免升级时在新命名空间重建 Service 或 NetworkPolicy。

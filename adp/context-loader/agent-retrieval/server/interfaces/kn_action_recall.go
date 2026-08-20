@@ -54,6 +54,10 @@ type KnDynamicTool struct {
 	Parameters      map[string]any `json:"parameters"`                // OpenAI Function Call Schema
 	APIURL          string         `json:"api_url"`                   // Tool Execution Proxy URL
 	OriginalSchema  map[string]any `json:"original_schema,omitempty"` // Original OpenAPI Definition
+	// OutputSchema describes the shape of the action result payload, as JSON Schema.
+	// Omitted entirely when the upstream tool declares no output: an empty object would
+	// read as "this action returns nothing" instead of "the output shape is unknown".
+	OutputSchema map[string]any `json:"output_schema,omitempty"`
 	FixedParams     any            `json:"fixed_params"`              // Fixed Parameters (KnFixedParams or map[string]any)
 	APICallStrategy string         `json:"api_call_strategy"`         // Result Processing Strategy, fixed value: kn_action_recall
 }

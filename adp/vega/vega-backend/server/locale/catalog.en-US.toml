@@ -122,3 +122,8 @@ ErrorLink = ""
 Description = "Sensitive field is not properly encrypted"
 Solution = "Please encrypt the sensitive field with the public key before submitting"
 ErrorLink = ""
+
+[VegaBackend.Catalog.UpdateConflict]
+Description = "The catalog configuration was updated after it was read"
+Solution = "Reload the catalog configuration and retry the update"
+ErrorLink = ""

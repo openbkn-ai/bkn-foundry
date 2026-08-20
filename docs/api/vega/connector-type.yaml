@@ -6,9 +6,10 @@ info:
     Vega Backend 连接器类型（ConnectorType）相关 API。
 
     连接器类型描述一个可注册的数据源驱动（如 mysql、postgresql、opensearch 等），
-    提供其元信息、字段配置（field_config，兼容 JSON Schema properties）以及
-    启用状态。Mode 区分本地（local，进程内运行）与远程（remote，独立服务通过
-    HTTP 调用），Category 区分数据源大类。
+    提供其注册元信息以及启用状态。字段配置（field_config，兼容 JSON Schema
+    properties）只在详情接口中按运行时实现获取：local 由当前进程中的实现提供；
+    remote 的运行时字段定义尚未实现。Mode 区分本地（local，进程内运行）与远程
+    （remote，独立服务通过 HTTP 调用），Category 区分数据源大类。
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -18,7 +19,7 @@ paths:
   /connector-types:
     get:
       summary: 获取连接器类型列表
-      description: 分页获取已注册的连接器类型；支持按 name、tag、mode、category、enabled、available 过滤。
+      description: 分页获取已注册的连接器类型摘要；不返回 field_config。支持按 name、tag、mode、category、enabled、available 过滤。
       parameters:
         - name: name
           description: 按名称模糊过滤，匹配名称中包含该值的连接器类型
@@ -157,6 +158,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          description: 运行时连接器字段定义不可用（例如 remote connector 尚未实现字段定义）。错误码为 `VegaBackend.ConnectorType.FieldConfigUnavailable`。
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
@@ -322,8 +329,55 @@ components:
           description: 是否需要加密存储（自定义扩展）
           type: boolean
           default: false
+    ConnectorTypeSummary:
+      description: 已注册连接器类型的摘要；不含运行时字段定义。
+      type: object
+      required:
+        - type
+        - name
+        - mode
+        - category
+        - enabled
+        - available
+      properties:
+        type:
+          description: 连接器类型标识，全局唯一
+          type: string
+        name:
+          description: 连接器类型显示名
+          type: string
+        tags:
+          description: 标签
+          type: array
+          items:
+            type: string
+        description:
+          description: 类型描述
+          type: string
+        mode:
+          description: 运行模式
+          type: string
+          enum: [local, remote]
+        category:
+          description: 分类
+          type: string
+          enum: [table, index, topic, file, fileset, metric, api]
+        endpoint:
+          description: 仅 remote 模式下的远程服务地址
+          type: string
+        enabled:
+          description: 是否启用
+          type: boolean
+        available:
+          description: 当前运行的二进制是否包含该连接器实现
+          type: boolean
+        operations:
+          description: 当前用户可对该连接器类型执行的操作集合
+          type: array
+          items:
+            type: string
     ConnectorType:
-      description: 已注册的连接器类型
+      description: 连接器类型详情；field_config 为运行时读取的字段语义。available 为 false 时不返回 field_config。
       type: object
       required:
         - type
@@ -390,7 +444,8 @@ components:
         - `type` 在 POST 与 PUT 中都**必填**，且必须自描述资源主键。
         - POST：全局唯一，已存在返回 409 `VegaBackend.ConnectorType.TypeExists`。
         - POST/PUT 注册或更新 `local` 连接器时，当前二进制必须包含对应注册 key 的实现；
-          `name` 可修改，`mode`、`category` 必须与代码定义一致，`field_config` 以代码定义为准。
+          `name` 可修改，`mode`、`category` 必须与代码定义一致。
+        - 字段定义不属于注册请求，也不会持久化；通过详情接口读取运行时定义。
         - PUT：必须与路径参数 `type` **完全一致**，缺失返回 400 `VegaBackend.ConnectorType.InvalidParameter.Type`，不一致返回 409 `VegaBackend.ConnectorType.TypeMismatch`。
       type: object
       required:
@@ -433,11 +488,6 @@ components:
         endpoint:
           description: 仅 remote 模式下的远程服务地址
           type: string
-        field_config:
-          description: 字段配置（兼容 JSON Schema properties），key 为字段标识；POST/PUT 注册或更新 local 连接器时忽略请求值并使用后端代码定义
-          type: object
-          additionalProperties:
-            $ref: "#/components/schemas/ConnectorFieldConfig"
         enabled:
           description: 是否启用
           type: boolean
@@ -453,7 +503,7 @@ components:
           description: 条目列表
           type: array
           items:
-            $ref: "#/components/schemas/ConnectorType"
+            $ref: "#/components/schemas/ConnectorTypeSummary"
         total_count:
           description: 总条数
           type: integer

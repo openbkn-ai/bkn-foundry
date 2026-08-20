@@ -78,9 +78,17 @@ func (r *VegaRawQueryResp) TOONValue() any {
 	return &copy
 }
 
+// TOONSafeValue is toonSafeValue for callers outside this package: the response
+// formatter applies it to every TOON body, so responses whose dynamic data is
+// plain map/slice do not each need a TOONValue method.
+func TOONSafeValue(value any) (any, bool) {
+	return toonSafeValue(value)
+}
+
 // toonSafeValue copies only branches that contain integer json.Number values
 // outside the IEEE 754 safe range. toon-go currently normalizes json.Number
-// through float64, so those values must be rendered as strings.
+// through float64 (internal/codec.normalizeNumberString), so those values must
+// be rendered as strings.
 func toonSafeValue(value any) (any, bool) {
 	switch v := value.(type) {
 	case json.Number:

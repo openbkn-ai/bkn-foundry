@@ -136,10 +136,11 @@ func (h *HydraAdmin) patchRedirectURIs(ctx context.Context, clientID string, mut
 
 // LoginRequest is the subset of hydra's login challenge bkn-safe needs.
 type LoginRequest struct {
-	Challenge string
-	Subject   string // set if hydra remembers a prior session (skip re-auth)
-	Skip      bool   // hydra can skip showing the login UI
-	ClientID  string
+	Challenge  string
+	Subject    string // set if hydra remembers a prior session (skip re-auth)
+	Skip       bool   // hydra can skip showing the login UI
+	ClientID   string
+	RequestURL string // original OAuth2 authorization URL, including ui_locales
 }
 
 // GetLogin fetches the login request for a challenge.
@@ -148,7 +149,7 @@ func (h *HydraAdmin) GetLogin(ctx context.Context, challenge string) (*LoginRequ
 	if err != nil {
 		return nil, fmt.Errorf("get login request: %w", err)
 	}
-	lr := &LoginRequest{Challenge: challenge}
+	lr := &LoginRequest{Challenge: challenge, RequestURL: req.RequestUrl}
 	if req.Subject != "" {
 		lr.Subject = req.Subject
 	}
@@ -181,6 +182,7 @@ type ConsentRequest struct {
 	Audience       []string
 	ClientID       string // requesting OAuth2 client (shown on the consent page)
 	ClientName     string
+	RequestURL     string // original OAuth2 authorization URL, including ui_locales
 }
 
 // GetConsent fetches the consent request for a challenge.
@@ -189,7 +191,11 @@ func (h *HydraAdmin) GetConsent(ctx context.Context, challenge string) (*Consent
 	if err != nil {
 		return nil, fmt.Errorf("get consent request: %w", err)
 	}
-	cr := &ConsentRequest{Challenge: challenge, RequestedScope: req.RequestedScope}
+	cr := &ConsentRequest{
+		Challenge:      challenge,
+		RequestedScope: req.RequestedScope,
+		RequestURL:     req.GetRequestUrl(),
+	}
 	if req.Client != nil {
 		if req.Client.ClientId != nil {
 			cr.ClientID = *req.Client.ClientId

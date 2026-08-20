@@ -57,3 +57,8 @@ ErrorLink = ""
 Description = "获取账户名称失败"
 Solution = "请联系管理员"
 ErrorLink = ""
+
+[VegaBackend.DiscoverSchedule.UpdateConflict]
+Description = "发现调度在读取后已被更新"
+Solution = "请重新加载发现调度后再提交修改"
+ErrorLink = ""

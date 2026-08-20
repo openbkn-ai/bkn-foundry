@@ -24,7 +24,10 @@ db_types:
 databases:
   - openbkn
   - safe # bkn-safe（ISF 替代鉴权服务）库；schema 由 bkn-safe 启动时 GORM AutoMigrate 建表，但库本身需 migrator 预建，否则首装报 Unknown database 'safe'
-  - bkn_trace # BKN Trace Core 持久化库；必须在 agent-observability 启动前创建
+  # BKN Trace Core 持久化库；必须在 agent-observability 启动前创建。
+  # 表结构由 agent-observability 内嵌的、带账本和 MariaDB 锁的迁移清单自管，
+  # 因而有意不列入下面 services: 的 data-migrator SQL 规则范围。
+  - bkn_trace
 
 check_rules:
   check_type: 3 # CheckLatest = 1, CheckRecently = 2, CheckAll = 3

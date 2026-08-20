@@ -34,10 +34,24 @@ func (m *mockLogger) WithContext(ctx context.Context) interfaces.Logger         
 func (m *mockLogger) WithField(key string, value interface{}) interfaces.Logger  { return m }
 func (m *mockLogger) WithFields(fields map[string]interface{}) interfaces.Logger { return m }
 
+// jsonBytes renders a fixture as the raw response body the client now receives.
+func jsonBytes(v any) []byte {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return raw
+}
+
 // mockHTTPClient is a mock HTTP client for tests.
 type mockHTTPClient struct {
 	handlerFunc         func(ctx context.Context, method, url string, header map[string]string, body interface{}) (int, interface{}, error)
 	postNoUnmarshalFunc func(ctx context.Context, url string, header map[string]string, body interface{}) (int, []byte, error)
+	// bytesFunc serves PostBytes/GetBytes with a raw body. Tests that care about
+	// the exact JSON text — the big-integer cases — must set it, because handing
+	// back a Go value instead would re-introduce the very interface{} hop the
+	// production code was changed to avoid.
+	bytesFunc func(ctx context.Context, method, url string, header map[string]string, body interface{}) (int, []byte, error)
 }
 
 func (m *mockHTTPClient) Get(ctx context.Context, rawURL string, params url.Values, header map[string]string) (statusCode int, resp interface{}, err error) {
@@ -54,6 +68,31 @@ func (m *mockHTTPClient) Put(ctx context.Context, url string, header map[string]
 
 func (m *mockHTTPClient) Delete(ctx context.Context, url string, header map[string]string) (statusCode int, resp interface{}, err error) {
 	return m.handlerFunc(ctx, "DELETE", url, header, nil)
+}
+
+// doBytes backs PostBytes/GetBytes. With no bytesFunc set it falls back to
+// handlerFunc and marshals its result, so the pre-existing tests keep working.
+func (m *mockHTTPClient) doBytes(ctx context.Context, method, rawURL string, header map[string]string, body interface{}) (int, []byte, error) {
+	if m.bytesFunc != nil {
+		return m.bytesFunc(ctx, method, rawURL, header, body)
+	}
+	code, resp, err := m.handlerFunc(ctx, method, rawURL, header, body)
+	if err != nil || resp == nil {
+		return code, nil, err
+	}
+	raw, marshalErr := json.Marshal(resp)
+	if marshalErr != nil {
+		return code, nil, marshalErr
+	}
+	return code, raw, nil
+}
+
+func (m *mockHTTPClient) PostBytes(ctx context.Context, rawURL string, header map[string]string, body interface{}) (int, []byte, error) {
+	return m.doBytes(ctx, "POST", rawURL, header, body)
+}
+
+func (m *mockHTTPClient) GetBytes(ctx context.Context, rawURL string, params url.Values, header map[string]string) (int, []byte, error) {
+	return m.doBytes(ctx, "GET", rawURL, header, nil)
 }
 
 func (m *mockHTTPClient) GetNoUnmarshal(ctx context.Context, rawURL string, params url.Values, header map[string]string) (statusCode int, resp []byte, err error) {

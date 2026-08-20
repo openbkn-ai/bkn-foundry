@@ -908,6 +908,86 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "Connection test failed")
 	})
 
+	t.Run("successful connection test updates health check status", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(nil)
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64) (int64, error) {
+				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, catalog.HealthCheckStatus)
+				assert.Greater(t, catalog.LastCheckTime, int64(111))
+				assert.Equal(t, "Connection test succeeded.", catalog.HealthCheckResult)
+				return 1, nil
+			},
+		)
+
+		cs := &catalogService{appSetting: &common.AppSetting{}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory}
+		err = cs.Update(context.Background(), &interfaces.Catalog{
+			ID:   "catalog-1",
+			Name: "physical-catalog",
+			CatalogHealthCheckStatus: interfaces.CatalogHealthCheckStatus{
+				HealthCheckStatus: interfaces.CatalogHealthStatusUnchecked,
+				LastCheckTime:     111,
+				HealthCheckResult: "awaiting scheduled health check",
+			},
+		}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, true)
+
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("allowed unhealthy connection test updates health check status", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		connector := mock_interfaces.NewMockConnector(ctrl)
+		connectorFactory := mock_interfaces.NewMockConnectorFactory(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectCommit()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		connectorFactory.EXPECT().GetSensitiveFields("mariadb").Return(nil)
+		connectorFactory.EXPECT().CreateConnectorInstance(gomock.Any(), "mariadb", gomock.Any()).Return(connector, nil)
+		connector.EXPECT().TestConnection(gomock.Any()).Return(errors.New("connection refused"))
+		connector.EXPECT().Close(gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, _ int64) (int64, error) {
+				assert.Equal(t, interfaces.CatalogHealthStatusUnhealthy, catalog.HealthCheckStatus)
+				assert.Greater(t, catalog.LastCheckTime, int64(0))
+				assert.Equal(t, connectionTestFailedResult, catalog.HealthCheckResult)
+				return 1, nil
+			},
+		)
+
+		cs := &catalogService{appSetting: &common.AppSetting{}, db: db, ca: mockCA, ps: mockPS, cf: connectorFactory}
+		err = cs.Update(context.Background(), &interfaces.Catalog{ID: "catalog-1", Name: "physical-catalog"}, &interfaces.CatalogRequest{
+			Name:          "physical-catalog",
+			ConnectorType: "mariadb",
+		}, true)
+
+		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
 	t.Run("uses transaction when extensions are omitted", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
@@ -919,7 +999,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectCommit()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
 
 		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
 		err = cs.Update(context.Background(), &interfaces.Catalog{
@@ -928,6 +1008,61 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		}, &interfaces.CatalogRequest{Name: "catalog"}, false)
 
 		require.NoError(t, err)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("returns conflict for stale catalog", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		expectedUpdateTime := int64(42)
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), expectedUpdateTime).
+			DoAndReturn(func(_ context.Context, _ *sql.Tx, catalog *interfaces.Catalog, expected int64) (int64, error) {
+				assert.Equal(t, expectedUpdateTime, expected)
+				assert.Greater(t, catalog.UpdateTime, expectedUpdateTime)
+				return 0, nil
+			})
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		err = cs.Update(context.Background(), &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}, &interfaces.CatalogRequest{
+			Name:               "catalog",
+			ExpectedUpdateTime: expectedUpdateTime,
+		}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
+		require.NoError(t, sqlMock.ExpectationsWereMet())
+	})
+
+	t.Run("returns conflict when no catalog is updated", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
+		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
+		db, sqlMock, err := sqlmock.New()
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = db.Close() })
+
+		sqlMock.ExpectBegin()
+		sqlMock.ExpectRollback()
+		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(0), nil)
+
+		cs := &catalogService{db: db, ca: mockCA, ps: mockPS}
+		err = cs.Update(context.Background(), &interfaces.Catalog{ID: "catalog-1", Name: "catalog"}, &interfaces.CatalogRequest{Name: "catalog"}, false)
+
+		var httpErr *rest.HTTPError
+		require.ErrorAs(t, err, &httpErr)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		assert.Equal(t, verrors.VegaBackend_Catalog_UpdateConflict, httpErr.BaseError.ErrorCode)
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
@@ -957,7 +1092,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		sqlMock.ExpectBegin()
 		sqlMock.ExpectRollback()
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
+		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
 
 		extensionValues := map[string]string{"owner": "team-a"}
 		cs := &catalogService{

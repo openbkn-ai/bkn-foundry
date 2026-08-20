@@ -276,6 +276,12 @@ func (r *restHandler) updateDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if err := validateExpectedUpdateTime(ctx, req.ExpectedUpdateTime); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// Strict checks: catalog_id / enabled are read-only here.
 	if req.CatalogID != current.CatalogID {
@@ -371,13 +377,13 @@ func (r *restHandler) EnableDiscoverScheduleByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.toggleDiscoverSchedule(c, visitor, true)
+	r.setDiscoverScheduleEnabled(c, visitor, true)
 }
 
 // EnableDiscoverScheduleByIn handles POST /api/vega-backend/in/v1/discover-schedules/:id/enable (Internal).
 func (r *restHandler) EnableDiscoverScheduleByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	r.toggleDiscoverSchedule(c, visitor, true)
+	r.setDiscoverScheduleEnabled(c, visitor, true)
 }
 
 // DisableDiscoverScheduleByEx handles POST /api/vega-backend/v1/discover-schedules/:id/disable (External).
@@ -386,18 +392,18 @@ func (r *restHandler) DisableDiscoverScheduleByEx(c *gin.Context) {
 	if err != nil {
 		return
 	}
-	r.toggleDiscoverSchedule(c, visitor, false)
+	r.setDiscoverScheduleEnabled(c, visitor, false)
 }
 
 // DisableDiscoverScheduleByIn handles POST /api/vega-backend/in/v1/discover-schedules/:id/disable (Internal).
 func (r *restHandler) DisableDiscoverScheduleByIn(c *gin.Context) {
 	visitor := visitor.GenerateVisitor(c)
-	r.toggleDiscoverSchedule(c, visitor, false)
+	r.setDiscoverScheduleEnabled(c, visitor, false)
 }
 
-// toggleDiscoverSchedule shared logic for enable / disable.
-// Idempotent: re-enable an enabled schedule (or re-disable a disabled one) returns 204 without error.
-func (r *restHandler) toggleDiscoverSchedule(c *gin.Context, visitor hydra.Visitor, enable bool) {
+// setDiscoverScheduleEnabled 封装启用和禁用调度的公共逻辑。
+// 重复设置相同状态时仍通过 update_time 校验读取后的并发更新。
+func (r *restHandler) setDiscoverScheduleEnabled(c *gin.Context, visitor hydra.Visitor, enabled bool) {
 	ctx, span := oteltrace.StartServerSpan(c)
 	defer span.End()
 
@@ -421,27 +427,11 @@ func (r *restHandler) toggleDiscoverSchedule(c *gin.Context, visitor hydra.Visit
 		return
 	}
 
-	if current.Enabled == enable {
-		// Idempotent no-op.
-		oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
-		rest.ReplyOK(c, http.StatusNoContent, nil)
+	if err := r.dss.UpdateEnabled(ctx, current, enabled); err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
 		return
-	}
-
-	if enable {
-		if err := r.dss.Enable(ctx, id); err != nil {
-			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-	} else {
-		if err := r.dss.Disable(ctx, id); err != nil {
-			httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_DiscoverSchedule_InternalError_UpdateFailed)
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
 	}
 
 	op := audit.UPDATE

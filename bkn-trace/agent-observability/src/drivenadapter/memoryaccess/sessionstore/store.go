@@ -90,6 +90,16 @@ func (tx memoryTransaction) PeekConversation(conversationID string) (sessionvo.C
 	return tx.FindConversation(conversationID)
 }
 
+func (tx memoryTransaction) ListConversationsByIDs(conversationIDs []string) map[string]sessionvo.Conversation {
+	result := make(map[string]sessionvo.Conversation, len(conversationIDs))
+	for _, conversationID := range conversationIDs {
+		if conversation, found := tx.s.conversations[conversationID]; found {
+			result[conversationID] = conversation
+		}
+	}
+	return result
+}
+
 func (tx memoryTransaction) FindIdempotency(
 	scope string,
 	owner sessionvo.Owner,
@@ -157,6 +167,16 @@ func (tx memoryTransaction) FindInteraction(interactionID string) (sessionvo.Int
 
 func (tx memoryTransaction) PeekInteraction(interactionID string) (sessionvo.Interaction, bool) {
 	return tx.FindInteraction(interactionID)
+}
+
+func (tx memoryTransaction) ListInteractionsByIDs(interactionIDs []string) map[string]sessionvo.Interaction {
+	result := make(map[string]sessionvo.Interaction, len(interactionIDs))
+	for _, interactionID := range interactionIDs {
+		if interaction, found := tx.s.interactions[interactionID]; found {
+			result[interactionID] = interaction
+		}
+	}
+	return result
 }
 
 func (tx memoryTransaction) ListInteractions(conversationID string) []sessionvo.Interaction {
@@ -343,6 +363,16 @@ func (tx memoryTransaction) PeekOperation(operationID string) (sessionvo.Operati
 	return tx.FindOperation(operationID)
 }
 
+func (tx memoryTransaction) ListOperationsByIDs(operationIDs []string) map[string]sessionvo.Operation {
+	result := make(map[string]sessionvo.Operation, len(operationIDs))
+	for _, operationID := range operationIDs {
+		if operation, found := tx.s.operations[operationID]; found {
+			result[operationID] = operation
+		}
+	}
+	return result
+}
+
 func (tx memoryTransaction) ListOperations(interactionID string) []sessionvo.Operation {
 	var result []sessionvo.Operation
 	for _, operation := range tx.s.operations {
@@ -524,6 +554,25 @@ func (tx memoryTransaction) ListAssemblyRevisions(interactionID string) []sessio
 		}
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].RevisionNo < result[j].RevisionNo })
+	return result
+}
+
+func (tx memoryTransaction) ListAssemblyRevisionsByInteractionIDs(interactionIDs []string) map[string][]sessionvo.AssemblyRevision {
+	requested := make(map[string]struct{}, len(interactionIDs))
+	for _, interactionID := range interactionIDs {
+		if interactionID != "" {
+			requested[interactionID] = struct{}{}
+		}
+	}
+	result := make(map[string][]sessionvo.AssemblyRevision, len(requested))
+	for _, revision := range tx.s.revisions {
+		if _, found := requested[revision.InteractionID]; found {
+			result[revision.InteractionID] = append(result[revision.InteractionID], revision)
+		}
+	}
+	for interactionID := range result {
+		sort.Slice(result[interactionID], func(i, j int) bool { return result[interactionID][i].RevisionNo < result[interactionID][j].RevisionNo })
+	}
 	return result
 }
 

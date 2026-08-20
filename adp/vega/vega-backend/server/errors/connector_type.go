@@ -28,6 +28,9 @@ const (
 	VegaBackend_ConnectorType_NameExists   = "VegaBackend.ConnectorType.NameExists"
 	VegaBackend_ConnectorType_TypeMismatch = "VegaBackend.ConnectorType.TypeMismatch"
 
+	// 503 Service Unavailable
+	VegaBackend_ConnectorType_FieldConfigUnavailable = "VegaBackend.ConnectorType.FieldConfigUnavailable"
+
 	// 500 Internal Server Error
 	VegaBackend_ConnectorType_InternalError                = "VegaBackend.ConnectorType.InternalError"
 	VegaBackend_ConnectorType_InternalError_RegisterFailed = "VegaBackend.ConnectorType.InternalError.RegisterFailed"
@@ -55,6 +58,9 @@ var ConnectorTypeErrCodeList = []string{
 	VegaBackend_ConnectorType_TypeExists,
 	VegaBackend_ConnectorType_NameExists,
 	VegaBackend_ConnectorType_TypeMismatch,
+
+	// 503 Service Unavailable
+	VegaBackend_ConnectorType_FieldConfigUnavailable,
 
 	// 500 Internal Server Error
 	VegaBackend_ConnectorType_InternalError,

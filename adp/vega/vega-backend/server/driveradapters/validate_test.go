@@ -120,6 +120,12 @@ func TestValidateID(t *testing.T) {
 	}
 }
 
+func TestValidateExpectedUpdateTime(t *testing.T) {
+	ctx := context.Background()
+	require.Error(t, validateExpectedUpdateTime(ctx, 0))
+	require.NoError(t, validateExpectedUpdateTime(ctx, 1))
+}
+
 func TestValidateCatalogRequestID(t *testing.T) {
 	ctx := context.Background()
 

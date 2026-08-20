@@ -832,7 +832,8 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 }
 
 // Update updates ra Resource.
-func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
+	resource *interfaces.Resource, expectedUpdateTime int64) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource")
 	defer span.End()
 
@@ -841,11 +842,7 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *inte
 	// Convert tags to string format
 	tagsStr := libCommon.TagSlice2TagString(resource.Tags)
 
-	// Serialize Source Data, Scheme Definition, and logicDefinition
-	sourceMetadataBytes, _ := sonic.Marshal(resource.SourceMetadata)
-	if resource.SourceMetadata == nil {
-		sourceMetadataBytes = []byte("{}")
-	}
+	// Serialize schema definition, index config, and logic definition.
 	schemaDefinitionBytes, _ := sonic.Marshal(resource.SchemaDefinition)
 	if resource.SchemaDefinition == nil {
 		schemaDefinitionBytes = []byte("[]")
@@ -860,12 +857,9 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *inte
 	}
 
 	builder := sq.Update(RESOURCE_TABLE_NAME).
-		Set("f_catalog_id", resource.CatalogID).
 		Set("f_name", resource.Name).
 		Set("f_tags", tagsStr).
 		Set("f_description", resource.Description).
-		Set("f_status_message", resource.StatusMessage).
-		Set("f_source_metadata", string(sourceMetadataBytes)).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).
 		Set("f_index_config", string(indexConfigBytes)).
 		Set("f_logic_type", resource.LogicType).
@@ -873,30 +867,33 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx, resource *inte
 		Set("f_updater", resource.Updater.ID).
 		Set("f_updater_type", resource.Updater.Type).
 		Set("f_update_time", resource.UpdateTime).
-		Set("f_local_index_name", resource.LocalIndexName).
-		Where(sq.Eq{"f_id": resource.ID})
-	if resource.LastDiscoverStatus != "" {
-		builder = builder.Set("f_last_discover_status", resource.LastDiscoverStatus)
-	}
+		Where(sq.Eq{"f_id": resource.ID}).
+		Where(sq.Eq{"f_update_time": expectedUpdateTime})
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+		return 0, err
 	}
 
+	var result sql.Result
 	if tx != nil {
-		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
 	} else {
-		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+		result, err = ra.db.ExecContext(ctx, sqlStr, vals...)
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
-		return err
+		return 0, err
+	}
+	rowsAffected, rowsErr := result.RowsAffected()
+	if rowsErr != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		return 0, rowsErr
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return rowsAffected, nil
 }
 
 // UpdateLocalIndexName updates only the local index name so asynchronous build
@@ -929,9 +926,10 @@ func (ra *resourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, 
 	return nil
 }
 
-// UpdateSemanticMetadata updates only fields owned by semantic understanding so
-// a stale semantic snapshot cannot overwrite a local index name written by build.
-func (ra *resourceAccess) UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource) error {
+// UpdateSemanticMetadata updates only fields owned by semantic understanding
+// and guards the write with the resource version read by the worker.
+func (ra *resourceAccess) UpdateSemanticMetadata(ctx context.Context,
+	tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) (int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource semantic metadata")
 	defer span.End()
 
@@ -939,37 +937,114 @@ func (ra *resourceAccess) UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx
 	schemaDefinitionBytes, err := sonic.Marshal(resource.SchemaDefinition)
 	if err != nil {
 		span.SetStatus(codes.Error, "Marshal schema definition failed")
-		return err
+		return 0, err
 	}
 	if resource.SchemaDefinition == nil {
 		schemaDefinitionBytes = []byte("[]")
 	}
-	sqlStr, vals, err := sq.Update(RESOURCE_TABLE_NAME).
+	logicDefinitionBytes, err := sonic.Marshal(resource.LogicDefinition)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal logic definition failed")
+		return 0, err
+	}
+	if resource.LogicDefinition == nil {
+		logicDefinitionBytes = []byte("[]")
+	}
+	builder := sq.Update(RESOURCE_TABLE_NAME).
 		Set("f_name", resource.Name).
 		Set("f_description", resource.Description).
 		Set("f_schema_definition", string(schemaDefinitionBytes)).
+		Set("f_logic_definition", string(logicDefinitionBytes)).
 		Set("f_updater", resource.Updater.ID).
 		Set("f_updater_type", resource.Updater.Type).
 		Set("f_update_time", resource.UpdateTime).
 		Where(sq.Eq{"f_id": resource.ID}).
-		ToSql()
+		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		span.SetStatus(codes.Error, "Build sql failed")
-		return err
+		return 0, err
 	}
 
+	var result sql.Result
 	if tx != nil {
-		_, err = tx.ExecContext(ctx, sqlStr, vals...)
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
 	} else {
-		_, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+		result, err = ra.db.ExecContext(ctx, sqlStr, vals...)
 	}
 	if err != nil {
 		span.SetStatus(codes.Error, "Update failed")
-		return err
+		return 0, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		return 0, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return nil
+	return rowsAffected, nil
+}
+
+// UpdateDiscoveryMetadata updates only fields owned by discovery and guards the
+// write with the resource version read by the worker.
+func (ra *resourceAccess) UpdateDiscoveryMetadata(ctx context.Context,
+	tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) (int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource discovery metadata")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("resource_id").String(resource.ID))
+	sourceMetadataBytes, err := sonic.Marshal(resource.SourceMetadata)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal source metadata failed")
+		return 0, err
+	}
+	if resource.SourceMetadata == nil {
+		sourceMetadataBytes = []byte("{}")
+	}
+	schemaDefinitionBytes, err := sonic.Marshal(resource.SchemaDefinition)
+	if err != nil {
+		span.SetStatus(codes.Error, "Marshal schema definition failed")
+		return 0, err
+	}
+	if resource.SchemaDefinition == nil {
+		schemaDefinitionBytes = []byte("[]")
+	}
+
+	builder := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_status_message", resource.StatusMessage).
+		Set("f_source_metadata", string(sourceMetadataBytes)).
+		Set("f_schema_definition", string(schemaDefinitionBytes)).
+		Set("f_last_discover_status", resource.LastDiscoverStatus).
+		Set("f_updater", resource.Updater.ID).
+		Set("f_updater_type", resource.Updater.Type).
+		Set("f_update_time", resource.UpdateTime).
+		Where(sq.Eq{"f_id": resource.ID}).
+		Where(sq.Eq{"f_update_time": expectedUpdateTime})
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return 0, err
+	}
+
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		result, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return 0, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		return 0, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return rowsAffected, nil
 }
 
 // GetByCatalogID retrieves all Resources under a Catalog.

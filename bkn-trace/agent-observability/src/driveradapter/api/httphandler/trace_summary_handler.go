@@ -133,5 +133,9 @@ func writeSummaryQueryError(w http.ResponseWriter, r *http.Request, err error) {
 		writeJSON(w, r, http.StatusBadRequest, rdto.ErrorResponse{Code: "INVALID_ARGUMENT", Message: "cursor is invalid"})
 		return
 	}
+	if errors.Is(err, evidencesvc.ErrSummaryProjectionLag) {
+		writeJSON(w, r, http.StatusServiceUnavailable, rdto.ErrorResponse{Code: "PROJECTION_LAG", Message: "execution summary projection is catching up; retry the same page"})
+		return
+	}
 	writeJSON(w, r, http.StatusInternalServerError, rdto.ErrorResponse{Code: "QUERY_FAILED", Message: "failed to query execution summaries"})
 }

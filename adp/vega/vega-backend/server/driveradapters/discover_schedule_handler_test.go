@@ -14,11 +14,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -284,7 +286,7 @@ func Test_DiscoverScheduleRestHandler_UpdateDiscoverSchedule(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	body := `{"name":"daily-new","catalog_id":"catalog-1","cron_expr":"0 1 * * *","strategy":"full_sync","enabled":false}`
+	body := `{"name":"daily-new","catalog_id":"catalog-1","cron_expr":"0 1 * * *","strategy":"full_sync","enabled":false,"expected_update_time":1}`
 
 	t.Run("updates disabled discover schedule", func(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
@@ -305,12 +307,27 @@ func Test_DiscoverScheduleRestHandler_UpdateDiscoverSchedule(t *testing.T) {
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
 	})
 
+	t.Run("rejects missing expected update time", func(t *testing.T) {
+		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
+		current := &interfaces.DiscoverSchedule{ID: "schedule-1", Name: "daily", CatalogID: "catalog-1", Enabled: false}
+		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(current, nil)
+
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/discover-schedules/schedule-1", strings.NewReader(`{"name":"daily-new","catalog_id":"catalog-1","cron_expr":"0 1 * * *","strategy":"full_sync","enabled":false}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "expected_update_time is required")
+	})
+
 	t.Run("rejects catalog change", func(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
 		current := &interfaces.DiscoverSchedule{ID: "schedule-1", Name: "daily", CatalogID: "catalog-1", Enabled: false}
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(current, nil)
 
-		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/discover-schedules/schedule-1", strings.NewReader(`{"name":"daily","catalog_id":"catalog-2","cron_expr":"0 1 * * *","strategy":"full_sync","enabled":false}`))
+		req := httptest.NewRequest(http.MethodPut, "/api/vega-backend/in/v1/discover-schedules/schedule-1", strings.NewReader(`{"name":"daily","catalog_id":"catalog-2","cron_expr":"0 1 * * *","strategy":"full_sync","enabled":false,"expected_update_time":1}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 
@@ -358,8 +375,10 @@ func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 
 	t.Run("enable already enabled schedule is idempotent", func(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
+		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true, UpdateTime: 123}
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
-			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true}, nil)
+			Return(current, nil)
+		dss.EXPECT().UpdateEnabled(gomock.Any(), current, true).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/enable", nil)
 		w := httptest.NewRecorder()
@@ -371,8 +390,10 @@ func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 
 	t.Run("disable already disabled schedule is idempotent", func(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
+		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false, UpdateTime: 456}
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
-			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false}, nil)
+			Return(current, nil)
+		dss.EXPECT().UpdateEnabled(gomock.Any(), current, false).Return(nil)
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/disable", nil)
 		w := httptest.NewRecorder()
@@ -385,8 +406,8 @@ func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 	t.Run("enables disabled schedule", func(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
-			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false}, nil)
-		dss.EXPECT().Enable(gomock.Any(), "schedule-1").Return(nil)
+			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false, UpdateTime: 123}, nil)
+		dss.EXPECT().UpdateEnabled(gomock.Any(), gomock.Any(), true).Return(nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/enable", nil)
 		w := httptest.NewRecorder()
 
@@ -398,13 +419,47 @@ func Test_DiscoverScheduleRestHandler_ToggleDiscoverSchedule(t *testing.T) {
 	t.Run("disables enabled schedule", func(t *testing.T) {
 		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
 		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
-			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true}, nil)
-		dss.EXPECT().Disable(gomock.Any(), "schedule-1").Return(nil)
+			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true, UpdateTime: 456}, nil)
+		dss.EXPECT().UpdateEnabled(gomock.Any(), gomock.Any(), false).Return(nil)
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/disable", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("returns conflict when schedule changes before enabling", func(t *testing.T) {
+		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
+		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").
+			Return(&interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: false, UpdateTime: 123}, nil)
+		dss.EXPECT().UpdateEnabled(gomock.Any(), gomock.Any(), true).Return(
+			rest.NewHTTPError(context.Background(), http.StatusConflict,
+				verrors.VegaBackend_DiscoverSchedule_UpdateConflict))
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/enable", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
+	})
+
+	t.Run("returns conflict when an already enabled schedule changes after reading", func(t *testing.T) {
+		engine, _, dss := setupDiscoverScheduleHandlerTest(t)
+		current := &interfaces.DiscoverSchedule{ID: "schedule-1", CatalogID: "catalog-1", Enabled: true, UpdateTime: 789}
+		dss.EXPECT().GetByID(gomock.Any(), "schedule-1").Return(current, nil)
+		dss.EXPECT().UpdateEnabled(gomock.Any(), current, true).Return(
+			rest.NewHTTPError(context.Background(), http.StatusConflict,
+				verrors.VegaBackend_DiscoverSchedule_UpdateConflict))
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/discover-schedules/schedule-1/enable", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), verrors.VegaBackend_DiscoverSchedule_UpdateConflict)
 	})
 }
