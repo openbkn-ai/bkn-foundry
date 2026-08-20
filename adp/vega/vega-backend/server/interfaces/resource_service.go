@@ -52,6 +52,12 @@ type ResourceService interface {
 	// task is authorized by the table it belongs to rather than by nothing at all.
 	CheckResourcePermission(ctx context.Context, resourceID string, op string) error
 
+	// AuthorizedResources resolves the whole visible set up front, for listings
+	// that can push it into their SQL. Small sets are worth pushing down: the
+	// count and the page then agree, which is what lets a narrowly granted
+	// account page to its own rows at all.
+	AuthorizedResources(ctx context.Context, op string) (AuthorizedScope, error)
+
 	// FilterAuthorizedResources keeps the ids the caller may perform op on, for
 	// listings of things that hang off a resource — build tasks above all. The
 	// caller passes the ids on the page it has already fetched, so the question

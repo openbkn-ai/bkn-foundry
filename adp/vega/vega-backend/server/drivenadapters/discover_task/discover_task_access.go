@@ -364,6 +364,12 @@ func applyDiscoverTaskFilters(builder sq.SelectBuilder,
 	if params.ScheduleID != "" {
 		builder = builder.Where(sq.Eq{"f_schedule_id": params.ScheduleID})
 	}
+	if len(params.ExcludeCatalogIDs) > 0 {
+		builder = builder.Where(sq.NotEq{"f_catalog_id": params.ExcludeCatalogIDs})
+	}
+	if len(params.CatalogIDs) > 0 {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogIDs})
+	}
 	if len(params.Statuses) > 0 {
 		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
 	}

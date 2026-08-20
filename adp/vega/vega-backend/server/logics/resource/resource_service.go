@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -628,6 +629,106 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
+}
+
+// AuthorizedResources answers "which resources may I act on", for listings of
+// things that hang off a resource rather than of resources themselves — build
+// tasks above all.
+//
+// The type-wide grant is probed first. That is not only an optimisation: most
+// accounts hold resource:*, and resolving a concrete id set for them would mean
+// listing every resource on every page request.
+//
+// But resource:* is a grant on the business type, and the platform's own tables
+// live under internal_resource. A holder of one and not the other must not see
+// the other's tasks, so the wide answer carries an exclusion set rather than
+// claiming to cover everything. Internal resources granted one by one stay in.
+//
+// Otherwise the visible set is resolved in one batch. It is deliberately the
+// whole set rather than the page's ids: the caller filters the SQL with it, so
+// the count and the page agree. Filtering a page after the fact would leave
+// total_count too high and pages unevenly sized.
+func (rs *resourceService) AuthorizedResources(ctx context.Context, op string) (interfaces.AuthorizedScope, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.AuthorizedResources")
+	defer span.End()
+
+	if err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{op}); err == nil {
+		excluded, err := rs.unreachableInternalResources(ctx, op)
+		if err != nil {
+			return interfaces.AuthorizedScope{}, err
+		}
+		return interfaces.AuthorizedScope{All: true, Excluded: excluded}, nil
+	}
+
+	ids, err := rs.ra.ListIDs(ctx, interfaces.ResourcesQueryParams{})
+	if err != nil {
+		span.SetStatus(codes.Error, "List resource ids failed")
+		return interfaces.AuthorizedScope{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if len(ids) == 0 {
+		return interfaces.AuthorizedScope{}, nil
+	}
+	internalResources, err := rs.internalResourceIDSet(ctx)
+	if err != nil {
+		return interfaces.AuthorizedScope{}, err
+	}
+	allowed, err := rs.filterResourcePermissions(ctx, ids, internalResources, []string{op}, true)
+	if err != nil {
+		return interfaces.AuthorizedScope{}, err
+	}
+	out := make([]string, 0, len(allowed))
+	for _, id := range ids { // 保持 ListIDs 的顺序，便于比对
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return interfaces.AuthorizedScope{IDs: out}, nil
+}
+
+// unreachableInternalResources lists the internal-catalog resources a holder of
+// resource:* may not act on. Empty when the caller also holds internal_resource:*,
+// which is the super-administrator and the platform's own S2S identity.
+//
+// The question goes through filterResourcePermissions rather than straight to
+// the permission service, so it is answered by the same two steps every other
+// listing uses: ask the resource, then ask the catalog it lives in. Asking only
+// for a direct grant would contradict the rule this whole change rests on — a
+// grant on one internal catalog reaches the resources inside it, and excluding
+// them would hide tasks the caller was deliberately given.
+func (rs *resourceService) unreachableInternalResources(ctx context.Context, op string) ([]string, error) {
+	if err := rs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{op}); err == nil {
+		return nil, nil
+	}
+	internalSet, err := rs.internalResourceIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(internalSet) == 0 {
+		return nil, nil
+	}
+	internalIDs := make([]string, 0, len(internalSet))
+	for id := range internalSet {
+		internalIDs = append(internalIDs, id)
+	}
+	sort.Strings(internalIDs) // 集合无序，排一下让 SQL 与用例可比对
+	granted, err := rs.filterResourcePermissions(ctx, internalIDs, internalSet, []string{op}, true)
+	if err != nil {
+		return nil, err
+	}
+	excluded := make([]string, 0, len(internalIDs))
+	for _, id := range internalIDs {
+		if _, ok := granted[id]; !ok {
+			excluded = append(excluded, id)
+		}
+	}
+	return excluded, nil
 }
 
 // FilterAuthorizedResources keeps the ids the caller may perform op on.

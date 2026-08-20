@@ -64,6 +64,69 @@ var (
 	}
 )
 
+// AuthorizedScope answers "which objects of this type may I act on", in the two
+// shapes a listing query can consume: an explicit allow-list, or "everything
+// except these".
+//
+// Two shapes rather than one boolean, because a type-wide grant is written
+// against the business type alone. `resource:*` says nothing about
+// `internal_resource`, so reporting its holder as "sees everything" hands the
+// platform's own tables to any business role — which is how the build and
+// semantic task listings leaked internal-catalog tasks (#472).
+type AuthorizedScope struct {
+	// All reports a type-wide grant on the business type. IDs is then empty and
+	// Excluded carries the internal objects the grant does not reach.
+	All bool
+	// IDs is the explicit allow-list, meaningful only when All is false. Empty
+	// there means the caller sees nothing — which is why this cannot collapse
+	// into a plain slice: "sees everything" and "sees nothing" would look alike.
+	IDs []string
+	// Excluded is meaningful only when All is true.
+	Excluded []string
+}
+
+// Empty reports that the scope admits nothing, so a listing may answer with an
+// empty page without querying at all.
+func (s AuthorizedScope) Empty() bool { return !s.All && len(s.IDs) == 0 }
+
+// Unfiltered reports that the scope admits everything, so a listing needs no
+// visibility predicate.
+func (s AuthorizedScope) Unfiltered() bool { return s.All && len(s.Excluded) == 0 }
+
+// Allows reports whether one id falls inside the scope.
+func (s AuthorizedScope) Allows(id string) bool {
+	if s.All {
+		for _, excluded := range s.Excluded {
+			if excluded == id {
+				return false
+			}
+		}
+		return true
+	}
+	for _, allowed := range s.IDs {
+		if allowed == id {
+			return true
+		}
+	}
+	return false
+}
+
+// visibilityPushdownLimit is where a resolved visible set stops being worth
+// pushing into the SQL. Below it the ids travel with the query, which keeps the
+// count and the page honest; above it the listing filters the page it fetched
+// instead, because an IN list of that size costs more on every page request
+// than it saves — and an account granted that many objects sees most rows
+// anyway, so the page loses little.
+//
+// The number is a judgement, not a measurement: a few hundred ids is a normal
+// IN list, a few thousand is not. The largest set observed on a live deployment
+// is 731, roughly half of which point at objects that no longer exist.
+const visibilityPushdownLimit = 500
+
+// ShouldPushDownVisibility reports whether a visible set of this size belongs in
+// the query rather than in a pass over the fetched page.
+func ShouldPushDownVisibility(size int) bool { return size <= visibilityPushdownLimit }
+
 // Check permissions
 type PermissionCheck struct {
 	Accessor   PermissionAccessor `json:"accessor"`

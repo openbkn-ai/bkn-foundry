@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -350,6 +351,94 @@ func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql
 }
 
 // Get retrieves a Catalog by ID.
+// AuthorizedCatalogs answers "which catalogs may I act on", for listings of
+// things that hang off a catalog rather than of catalogs themselves — discover
+// tasks above all.
+//
+// The type-wide grant is probed first: most accounts hold catalog:*, and
+// resolving a concrete id set for them would list every catalog on every page
+// request. But catalog:* is a grant on the business type; the platform's own
+// directories live under internal_catalog, so the wide answer carries the
+// internal ids it does not reach. Symmetric with ResourceService.AuthorizedResources.
+//
+// Otherwise the whole visible set is resolved in one pass so the caller can push
+// it into the SQL, keeping the count and the page in agreement.
+func (cs *catalogService) AuthorizedCatalogs(ctx context.Context, op string) (interfaces.AuthorizedScope, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.AuthorizedCatalogs")
+	defer span.End()
+
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{op}); err == nil {
+		excluded, err := cs.unreachableInternalCatalogs(ctx, op)
+		if err != nil {
+			return interfaces.AuthorizedScope{}, err
+		}
+		return interfaces.AuthorizedScope{All: true, Excluded: excluded}, nil
+	}
+
+	ids, err := cs.ca.ListIDs(ctx, interfaces.CatalogsQueryParams{})
+	if err != nil {
+		span.SetStatus(codes.Error, "List catalog ids failed")
+		return interfaces.AuthorizedScope{}, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if len(ids) == 0 {
+		return interfaces.AuthorizedScope{}, nil
+	}
+	internalSet, err := cs.internalCatalogIDSet(ctx)
+	if err != nil {
+		return interfaces.AuthorizedScope{}, err
+	}
+	allowed, err := cs.filterCatalogResources(ctx, ids, internalSet, []string{op}, true)
+	if err != nil {
+		return interfaces.AuthorizedScope{}, err
+	}
+	out := make([]string, 0, len(allowed))
+	for _, id := range ids {
+		if _, ok := allowed[id]; ok {
+			out = append(out, id)
+		}
+	}
+	return interfaces.AuthorizedScope{IDs: out}, nil
+}
+
+// unreachableInternalCatalogs lists the internal directories a holder of
+// catalog:* may not act on. Empty when the caller also holds internal_catalog:*.
+func (cs *catalogService) unreachableInternalCatalogs(ctx context.Context, op string) ([]string, error) {
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{op}); err == nil {
+		return nil, nil
+	}
+	internalSet, err := cs.internalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(internalSet) == 0 {
+		return nil, nil
+	}
+	internalIDs := make([]string, 0, len(internalSet))
+	for id := range internalSet {
+		internalIDs = append(internalIDs, id)
+	}
+	sort.Strings(internalIDs) // 集合无序，排一下让 SQL 与用例可比对
+	granted, err := cs.ps.FilterResources(ctx, interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+		internalIDs, []string{op}, true, interfaces.COMMON_OPERATIONS)
+	if err != nil {
+		return nil, err
+	}
+	excluded := make([]string, 0, len(internalIDs))
+	for _, id := range internalIDs {
+		if _, ok := granted[id]; !ok {
+			excluded = append(excluded, id)
+		}
+	}
+	return excluded, nil
+}
+
 // FilterAuthorizedCatalogs keeps the ids the caller may perform op on. Symmetric
 // with ResourceService.FilterAuthorizedResources: the ids come from a page the
 // caller already fetched, so the question stays bounded by the page rather than

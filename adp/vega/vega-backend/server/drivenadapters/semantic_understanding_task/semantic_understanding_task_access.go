@@ -398,6 +398,42 @@ func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
 	if params.Applied != nil {
 		builder = builder.Where(sq.Eq{"f_applied": *params.Applied})
 	}
+	if v := params.Visibility; v != nil {
+		// A task is visible through the parent it was created against, so the two
+		// branches are alternatives. Applied to the count and the page alike, which
+		// is what keeps total_count honest.
+		alternatives := sq.Or{}
+		if v.AllResources {
+			resourceBranch := sq.And{sq.Eq{"f_scope": SemanticScopeResource}}
+			if len(v.ExcludedResourceIDs) > 0 {
+				resourceBranch = append(resourceBranch, sq.NotEq{"f_resource_id": v.ExcludedResourceIDs})
+			}
+			alternatives = append(alternatives, resourceBranch)
+		} else if len(v.ResourceIDs) > 0 {
+			alternatives = append(alternatives, sq.And{
+				sq.Eq{"f_scope": SemanticScopeResource},
+				sq.Eq{"f_resource_id": v.ResourceIDs},
+			})
+		}
+		if v.AllCatalogs {
+			catalogBranch := sq.And{sq.Eq{"f_scope": SemanticScopeCatalog}}
+			if len(v.ExcludedCatalogIDs) > 0 {
+				catalogBranch = append(catalogBranch, sq.NotEq{"f_catalog_id": v.ExcludedCatalogIDs})
+			}
+			alternatives = append(alternatives, catalogBranch)
+		} else if len(v.CatalogIDs) > 0 {
+			alternatives = append(alternatives, sq.And{
+				sq.Eq{"f_scope": SemanticScopeCatalog},
+				sq.Eq{"f_catalog_id": v.CatalogIDs},
+			})
+		}
+		if len(alternatives) == 0 {
+			// Nothing is visible. Say so in SQL rather than returning everything.
+			builder = builder.Where(sq.Expr("1 = 0"))
+		} else {
+			builder = builder.Where(alternatives)
+		}
+	}
 	return builder
 }
 

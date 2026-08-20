@@ -8,6 +8,7 @@ package semantic_understanding_task
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -132,8 +133,8 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 }
 
 // TestSemanticTaskListFiltersByVisibleParents: 任务挂在父对象上,列表就按父对象
-// 判——资源域的问表,目录域的问目录。过滤对取回的这一页做,问的 id 数被页大小
-// 兜住,而不是被这个账号被授权过的数量兜住。
+// 判——资源域的问表,目录域的问目录。过滤放在哪一侧按可见集大小分流:小集合下推
+// 进 SQL(total 与分页才对得上),大集合改在取回的页上过滤(问的 id 数被页大小兜住)。
 func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 	newSvc := func(ctrl *gomock.Controller) (*semanticUnderstandingTaskService,
 		*mock_interfaces.MockSemanticUnderstandingTaskAccess,
@@ -157,6 +158,18 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 			ID: id, Scope: interfaces.SemanticUnderstandingTaskScopeCatalog, CatalogID: catalogID,
 		}
 	}
+	// forceMemoryFilter 把两侧都铺成「大可见集」,逼服务走页内过滤那条分支——
+	// 下面几条用例考的是过滤逻辑本身,不是分流决策。
+	forceMemoryFilter := func(rs *mock_interfaces.MockResourceService, cs *mock_interfaces.MockCatalogService) {
+		big := make([]string, 0, 600)
+		for i := 0; i < 600; i++ {
+			big = append(big, fmt.Sprintf("id-%d", i))
+		}
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: big}, nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: big}, nil)
+	}
 	ids := func(tasks []*interfaces.SemanticUnderstandingTaskSummary) []string {
 		out := make([]string, 0, len(tasks))
 		for _, t := range tasks {
@@ -168,6 +181,7 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 	t.Run("两个域各按各的父对象过滤", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
+		forceMemoryFilter(rs, cs)
 
 		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
 			resourceTask("t-res-ok", "res-1"),
@@ -188,6 +202,7 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 	t.Run("资源域的任务不会拿目录 id 去问,反之亦然", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
+		forceMemoryFilter(rs, cs)
 
 		// 一条资源域任务上同时带着 catalog_id:判定必须按 scope 走,不能两边都问。
 		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
@@ -207,6 +222,7 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 	t.Run("内部对象下的任务看不见就滤掉", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
+		forceMemoryFilter(rs, cs)
 
 		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
 			resourceTask("t-biz", "biz-1"),
@@ -226,6 +242,7 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 	t.Run("一页全被滤掉就返回空,不报错", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, suta, rs, cs := newSvc(ctrl)
+		forceMemoryFilter(rs, cs)
 
 		suta.EXPECT().List(gomock.Any(), gomock.Any()).Return([]*interfaces.SemanticUnderstandingTaskSummary{
 			resourceTask("t-1", "res-1"),
@@ -236,6 +253,67 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 		tasks, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
+	})
+
+	t.Run("两侧都是小可见集时下推进查询", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, suta, rs, cs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: []string{"res-1"}}, nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"internal-cat"}}, nil)
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
+				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+				require.NotNil(t, p.Visibility)
+				assert.Equal(t, []string{"res-1"}, p.Visibility.ResourceIDs)
+				assert.True(t, p.Visibility.AllCatalogs)
+				assert.Equal(t, []string{"internal-cat"}, p.Visibility.ExcludedCatalogIDs)
+				return []*interfaces.SemanticUnderstandingTaskSummary{resourceTask("t-1", "res-1")}, 1, nil
+			})
+		// 已经下推了就不该再对页问一遍。
+
+		tasks, total, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		require.NoError(t, err)
+		assert.Len(t, tasks, 1)
+		assert.EqualValues(t, 1, total, "下推之后 total 是过滤后的计数")
+	})
+
+	t.Run("两侧都是无排除的通配放行时,既不下推也不过滤", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, suta, rs, cs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true}, nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true}, nil)
+		suta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, p interfaces.SemanticUnderstandingTaskQueryParams) (
+				[]*interfaces.SemanticUnderstandingTaskSummary, int64, error) {
+				assert.Nil(t, p.Visibility, "谁都看得见时不该白付一次过滤")
+				return []*interfaces.SemanticUnderstandingTaskSummary{resourceTask("t-1", "res-1")}, 1, nil
+			})
+
+		tasks, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		require.NoError(t, err)
+		assert.Len(t, tasks, 1)
+	})
+
+	t.Run("一个都看不见就直接空,不查库", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, suta, rs, cs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{}, nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{}, nil)
+		_ = suta // suta.List 不该被调用
+
+		tasks, total, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
+		require.NoError(t, err)
+		assert.Empty(t, tasks)
+		assert.Zero(t, total)
 	})
 }
 

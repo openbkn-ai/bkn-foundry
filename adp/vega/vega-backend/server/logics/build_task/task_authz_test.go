@@ -115,9 +115,10 @@ func TestBuildTaskCreateRequiresTaskManage(t *testing.T) {
 
 // TestBuildTaskListFiltersByVisibleResources 是 #472 的标题项：列表曾经返回全量。
 //
-// 过滤对取回的这一页做,只就页上出现的表问一次鉴权。把可见集提前解析、整个塞进
-// SQL,会让逐个授权的账号每翻一页都带上它被授权过的全部 id。代价写在 List 的
-// 注释里:total 是「匹配查询的行数」,不是「能读的行数」。
+// 过滤放在哪一侧按可见集的大小分流,两种形态各有各的坏法,所以两边都要钉住:
+// 小集合下推进 SQL——total 与分页才对得上,只被授了两张表的账号否则会拿到一个
+// 空首页配上五位数的 total,自己的任务翻不到;大集合不下推——几千个 id 每翻一页
+// 都带一遍不值当,而被授到那个量的账号本来就看得见绝大多数行。
 func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 	newSvc := func(ctrl *gomock.Controller) (*buildTaskService,
 		*mock_interfaces.MockBuildTaskAccess, *mock_interfaces.MockResourceService) {
@@ -126,7 +127,6 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		// 摘要里的名字回填与授权无关,这里一律放空。
 		rs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		cs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		return &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}, bta, rs
@@ -138,80 +138,113 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		}
 		return out
 	}
-	returned := func(tasks []*interfaces.BuildTaskSummary) []string {
-		out := make([]string, 0, len(tasks))
-		for _, t := range tasks {
-			out = append(out, t.ResourceID)
+	manyIDs := func(n int) []string {
+		out := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, fmt.Sprintf("res-%d", i))
 		}
 		return out
 	}
 
-	t.Run("只留下看得见的那几行", func(t *testing.T) {
+	t.Run("小可见集下推进查询", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, rs := newSvc(ctrl)
 
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("res-1", "res-2"), int64(2), nil)
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-1", "res-2"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("res-1"))
-
-		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
-		require.NoError(t, err)
-		assert.Equal(t, []string{"res-1"}, returned(tasks))
-	})
-
-	t.Run("只就这一页上的表问鉴权,不是全量 id", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
-
+		rs.EXPECT().AuthorizedResources(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(interfaces.AuthorizedScope{IDs: []string{"res-1", "res-2"}}, nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
 			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
-				return page("res-1", "res-1", "res-2"), 3, nil
+				assert.Equal(t, []string{"res-1", "res-2"}, params.ResourceIDs,
+					"小集合必须下推,否则 total 与分页都不对")
+				return page("res-1"), 1, nil
 			})
-		// 问的是这一页上的表,而不是这个账号被授权过的全部 id——后者才是要避免的
-		// 那个大数组。去重在 FilterAuthorizedResources 里做。
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-1", "res-1", "res-2"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowAllIDs).Times(1)
+		// 已经下推了就不该再对页问一遍:多问一次 mock 会失败。
+
+		tasks, total, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
+		require.NoError(t, err)
+		assert.Len(t, tasks, 1)
+		assert.EqualValues(t, 1, total, "下推之后 total 是过滤后的计数")
+	})
+
+	t.Run("通配放行带排除集时,排除集下推", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, bta, rs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"internal-1"}}, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Equal(t, []string{"internal-1"}, params.ExcludeResourceIDs,
+					"内部资源的排除集恒定很小,永远值得下推")
+				assert.Empty(t, params.ResourceIDs)
+				return nil, 0, nil
+			})
 
 		_, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.NoError(t, err)
 	})
 
-	t.Run("内部目录下的任务不看不见就滤掉", func(t *testing.T) {
+	t.Run("大可见集改为在取回的页上过滤", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, rs := newSvc(ctrl)
 
-		// 判定问的是 internal_resource 类型,持业务 resource:* 的人答不上,于是滤掉;
-		// 单独授过那个内部目录的人则通过目录回落留下来。
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("biz-1", "internal-1"), int64(2), nil)
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(allowOnlyIDs("biz-1"))
+		big := manyIDs(600) // 超过下推阈值
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: big}, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Empty(t, params.ResourceIDs, "大集合不该塞进 IN 列表")
+				return page("res-0", "res-999"), 2, nil
+			})
+		// 只就这一页上的两张表问一次,而不是 600 个 id。
+		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-0", "res-999"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("res-0")).Times(1)
 
 		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.NoError(t, err)
-		assert.Equal(t, []string{"biz-1"}, returned(tasks))
+		require.Len(t, tasks, 1)
+		assert.Equal(t, "res-0", tasks[0].ResourceID)
 	})
 
-	t.Run("一页全被滤掉就返回空,不报错", func(t *testing.T) {
+	t.Run("类型级放行且无排除集时,两侧都不过滤", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, rs := newSvc(ctrl)
 
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("res-1"), int64(1), nil)
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(denyAllIDs)
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true}, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Empty(t, params.ResourceIDs)
+				assert.Empty(t, params.ExcludeResourceIDs)
+				return page("res-1"), 1, nil
+			})
 
 		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
+		require.NoError(t, err)
+		assert.Len(t, tasks, 1)
+	})
+
+	t.Run("一个都看不见就直接空,不查库", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, bta, rs := newSvc(ctrl)
+
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{}, nil)
+		_ = bta // bta.List 不该被调用
+
+		tasks, total, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
+		assert.Zero(t, total)
 	})
 
-	t.Run("显式指定看不见的 resource_id,查都不查", func(t *testing.T) {
+	t.Run("显式指定的 resource_id 是取交集,不是放宽", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, rs := newSvc(ctrl)
 
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-other"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(denyAllIDs)
-		// bta.List 不该被调用:先判再查,拒掉就不用付这次查询。
-		_ = bta
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: []string{"res-1"}}, nil)
+		_ = bta // 问的是看不见的那张表,不该查库
 
 		tasks, total, err := svc.List(context.Background(),
 			interfaces.BuildTasksQueryParams{ResourceID: "res-other"})
@@ -220,14 +253,19 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		assert.Zero(t, total)
 	})
 
-	t.Run("显式指定看得见的 resource_id,这一页不再逐行复判", func(t *testing.T) {
+	t.Run("显式指定看得见的 resource_id,不再额外过滤", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, bta, rs := newSvc(ctrl)
 
-		// 只允许一次鉴权调用:参数已经限定在这张表上,再对整页问一遍是白花钱。
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-1"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowAllIDs).Times(1)
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("res-1"), int64(1), nil)
+		rs.EXPECT().AuthorizedResources(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: manyIDs(600)}, nil)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
+				assert.Empty(t, params.ResourceIDs, "查询已经钉在这一张表上了")
+				return page("res-1"), 1, nil
+			})
+		// 参数已限定在一张已判过的表上,再对整页问一遍是白花钱:FilterAuthorizedResources
+		// 不该被调用。
 
 		tasks, _, err := svc.List(context.Background(),
 			interfaces.BuildTasksQueryParams{ResourceID: "res-1"})

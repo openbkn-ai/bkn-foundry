@@ -106,11 +106,15 @@ type DiscoverTaskResultSummary struct {
 // DiscoverTaskQueryParams holds discover task list query parameters.
 type DiscoverTaskQueryParams struct {
 	PaginationQueryParams
-	CatalogID   string   `form:"catalog_id" json:"catalog_id"`
-	ScheduleID  string   `form:"schedule_id" json:"schedule_id"`
-	Statuses    []string `form:"status" json:"status"`
-	Strategy    string   `form:"strategy" json:"strategy"`
-	TriggerType string   `form:"trigger_type" json:"trigger_type"`
+	CatalogID string `form:"catalog_id" json:"catalog_id"`
+	// CatalogIDs / ExcludeCatalogIDs carry the authorization filter into the SQL
+	// when the set is small enough to be worth pushing down.
+	CatalogIDs        []string `form:"-" json:"-"`
+	ExcludeCatalogIDs []string `form:"-" json:"-"`
+	ScheduleID        string   `form:"schedule_id" json:"schedule_id"`
+	Statuses          []string `form:"status" json:"status"`
+	Strategy          string   `form:"strategy" json:"strategy"`
+	TriggerType       string   `form:"trigger_type" json:"trigger_type"`
 }
 
 type CreateDiscoverTaskRequest struct {

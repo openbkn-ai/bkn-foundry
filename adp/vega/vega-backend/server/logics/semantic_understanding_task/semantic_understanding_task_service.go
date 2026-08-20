@@ -307,52 +307,60 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 
 	// A task is listed through the parent it was created against (#269): a
 	// resource-scoped one through its table, a catalog-scoped one through its
-	// catalog. The page is fetched first and filtered here, so the authorization
-	// question covers only the parents actually on it rather than every id the
-	// account was ever granted.
+	// catalog. Which side the filter runs on depends on how much was granted —
+	// the same trade the build task listing makes, and for the same reason: a
+	// small set pushed into the SQL keeps total honest and keeps a narrowly
+	// granted account able to page to its own rows, while a large one is not
+	// worth carrying into every page request.
 	//
-	// The consequence is that total counts the rows matching the query, not the
-	// rows this caller may read.
+	// Both sides must agree on where to filter. Mixing them would put one branch
+	// of the disjunction in the SQL and the other in a pass over the page, and a
+	// row kept by the first would then have to survive the second.
+	resources, err := suts.rs.AuthorizedResources(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve authorized resources failed")
+		return nil, 0, err
+	}
+	catalogs, err := suts.cs.AuthorizedCatalogs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
+		return nil, 0, err
+	}
+	if resources.Empty() && catalogs.Empty() {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.SemanticUnderstandingTaskSummary{}, 0, nil
+	}
+	filterAfterFetch := false
+	switch {
+	case resources.Unfiltered() && catalogs.Unfiltered():
+		// Everything is visible; no predicate and no pass over the page.
+	case interfaces.ShouldPushDownVisibility(len(resources.IDs)) &&
+		interfaces.ShouldPushDownVisibility(len(catalogs.IDs)):
+		params.Visibility = &interfaces.TaskVisibility{
+			ResourceIDs:         resources.IDs,
+			AllResources:        resources.All,
+			ExcludedResourceIDs: resources.Excluded,
+			CatalogIDs:          catalogs.IDs,
+			AllCatalogs:         catalogs.All,
+			ExcludedCatalogIDs:  catalogs.Excluded,
+		}
+	default:
+		filterAfterFetch = true
+	}
+
 	tasks, total, err := suts.suta.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List semantic understanding tasks failed")
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
 	}
-	resourceIDs := make([]string, 0, len(tasks))
-	catalogIDs := make([]string, 0, len(tasks))
-	for _, t := range tasks {
-		if t.Scope == interfaces.SemanticUnderstandingTaskScopeResource && t.ResourceID != "" {
-			resourceIDs = append(resourceIDs, t.ResourceID)
-			continue
-		}
-		if t.CatalogID != "" {
-			catalogIDs = append(catalogIDs, t.CatalogID)
+	if filterAfterFetch {
+		tasks, err = suts.filterTasksByParent(ctx, tasks)
+		if err != nil {
+			span.SetStatus(codes.Error, "Filter tasks by parent failed")
+			return nil, 0, err
 		}
 	}
-	allowedResources, err := suts.rs.FilterAuthorizedResources(ctx, resourceIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter authorized resources failed")
-		return nil, 0, err
-	}
-	allowedCatalogs, err := suts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Filter authorized catalogs failed")
-		return nil, 0, err
-	}
-	visible := make([]*interfaces.SemanticUnderstandingTaskSummary, 0, len(tasks))
-	for _, t := range tasks {
-		if t.Scope == interfaces.SemanticUnderstandingTaskScopeResource && t.ResourceID != "" {
-			if allowedResources[t.ResourceID] {
-				visible = append(visible, t)
-			}
-			continue
-		}
-		if t.CatalogID != "" && allowedCatalogs[t.CatalogID] {
-			visible = append(visible, t)
-		}
-	}
-	tasks = visible
 
 	if err := suts.populateSemanticUnderstandingTaskSummaryReferences(ctx, tasks); err != nil {
 		span.RecordError(err)
@@ -1005,4 +1013,45 @@ func accountInfoFromContext(ctx context.Context) interfaces.AccountInfo {
 		}
 	}
 	return interfaces.AccountInfo{}
+}
+
+// filterTasksByParent keeps the tasks whose parent the caller may read, asking
+// only about the parents on this page. Used when the visible set was too large
+// to push into the query.
+func (suts *semanticUnderstandingTaskService) filterTasksByParent(ctx context.Context,
+	tasks []*interfaces.SemanticUnderstandingTaskSummary) ([]*interfaces.SemanticUnderstandingTaskSummary, error) {
+
+	resourceIDs := make([]string, 0, len(tasks))
+	catalogIDs := make([]string, 0, len(tasks))
+	for _, t := range tasks {
+		if t.Scope == interfaces.SemanticUnderstandingTaskScopeResource && t.ResourceID != "" {
+			resourceIDs = append(resourceIDs, t.ResourceID)
+			continue
+		}
+		if t.CatalogID != "" {
+			catalogIDs = append(catalogIDs, t.CatalogID)
+		}
+	}
+	allowedResources, err := suts.rs.FilterAuthorizedResources(ctx, resourceIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return nil, err
+	}
+	allowedCatalogs, err := suts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		return nil, err
+	}
+	visible := make([]*interfaces.SemanticUnderstandingTaskSummary, 0, len(tasks))
+	for _, t := range tasks {
+		if t.Scope == interfaces.SemanticUnderstandingTaskScopeResource && t.ResourceID != "" {
+			if allowedResources[t.ResourceID] {
+				visible = append(visible, t)
+			}
+			continue
+		}
+		if t.CatalogID != "" && allowedCatalogs[t.CatalogID] {
+			visible = append(visible, t)
+		}
+	}
+	tasks = visible
+	return visible, nil
 }

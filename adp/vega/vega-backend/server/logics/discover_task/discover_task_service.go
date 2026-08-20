@@ -175,22 +175,31 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.List")
 	defer span.End()
 
-	// 与构建任务列表同一口径:先取页,再只就页上出现的目录问一次鉴权。把可见集
-	// 提前解析、整个塞进 SQL 的 IN 列表,会让逐个授权的账号每翻一页就带上它被
-	// 授权过的全部 id（#269 / #472）。
-	//
-	// 代价是 total 表示「匹配查询的行数」,不是「这个调用方能读的行数」。
-	if params.CatalogID != "" {
-		allowed, err := dts.cs.FilterAuthorizedCatalogs(ctx,
-			[]string{params.CatalogID}, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-		if err != nil {
-			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
-			return nil, 0, err
-		}
-		if !allowed[params.CatalogID] {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.DiscoverTaskSummary{}, 0, nil
-		}
+	// 与构建任务列表同一口径:按可见集的大小决定过滤放在哪一侧（#269 / #472）。
+	// 小集合下推,total 与分页才对得上——只被授了一两个目录的账号否则会拿到一
+	// 个空首页配上一个五位数的 total,自己的任务翻不到。大集合不下推,免得每翻
+	// 一页都带上几千个 id;而被授到那个量的账号本来就看得见绝大多数行。
+	scope, err := dts.cs.AuthorizedCatalogs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
+		return nil, 0, err
+	}
+	if scope.Empty() {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.DiscoverTaskSummary{}, 0, nil
+	}
+	if params.CatalogID != "" && !scope.Allows(params.CatalogID) {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.DiscoverTaskSummary{}, 0, nil
+	}
+	filterAfterFetch := false
+	switch {
+	case scope.Unfiltered() || params.CatalogID != "":
+	case interfaces.ShouldPushDownVisibility(len(scope.IDs)):
+		params.CatalogIDs = scope.IDs
+		params.ExcludeCatalogIDs = scope.Excluded
+	default:
+		filterAfterFetch = true
 	}
 
 	tasks, total, err := dts.dta.List(ctx, params)
@@ -199,7 +208,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	if params.CatalogID == "" {
+	if filterAfterFetch {
 		catalogIDs := make([]string, 0, len(tasks))
 		for _, t := range tasks {
 			catalogIDs = append(catalogIDs, t.CatalogID)

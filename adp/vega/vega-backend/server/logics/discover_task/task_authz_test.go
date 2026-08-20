@@ -56,9 +56,8 @@ func TestDiscoverTaskReadRequiresCatalogViewDetail(t *testing.T) {
 	assert.Same(t, denied, err)
 }
 
-// TestDiscoverTaskListFiltersByVisibleCatalogs 与构建任务列表同一口径:过滤下推
 // TestDiscoverTaskListFiltersByVisibleCatalogs: 探查任务挂在目录上,列表就按目录
-// 判。过滤对取回的这一页做,问的 id 数被页大小兜住。
+// 判,与构建任务列表同一分流口径——小可见集下推进 SQL,大的改在取回的页上过滤。
 func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 	newSvc := func(ctrl *gomock.Controller) (*discoverTaskService,
 		*vmock.MockDiscoverTaskAccess, *vmock.MockCatalogService) {
@@ -76,12 +75,43 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		}
 		return out
 	}
+	manyIDs := func(n int) []string {
+		out := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			out = append(out, fmt.Sprintf("cat-%d", i))
+		}
+		return out
+	}
 
-	t.Run("只留下看得见的那几行", func(t *testing.T) {
+	t.Run("小可见集下推进查询", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1", "cat-2"), int64(2), nil)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(interfaces.AuthorizedScope{IDs: []string{"cat-1"}}, nil)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+				assert.Equal(t, []string{"cat-1"}, params.CatalogIDs)
+				return page("cat-1"), 1, nil
+			})
+
+		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		assert.EqualValues(t, 1, total, "下推之后 total 是过滤后的计数")
+	})
+
+	t.Run("大可见集改为在取回的页上过滤", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, dta, cs := newSvc(ctrl)
+
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: manyIDs(600)}, nil)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+				assert.Empty(t, params.CatalogIDs, "大集合不该塞进 IN 列表")
+				return page("cat-1", "cat-2"), 2, nil
+			})
 		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-1", "cat-2"},
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("cat-1"))
 
@@ -91,24 +121,42 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		assert.Equal(t, "cat-1", tasks[0].CatalogID)
 	})
 
-	t.Run("一页全被滤掉就返回空,不报错", func(t *testing.T) {
+	t.Run("通配放行带排除集时,排除集下推", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
-		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(denyAllIDs)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{All: true, Excluded: []string{"internal-cat"}}, nil)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+				assert.Equal(t, []string{"internal-cat"}, params.ExcludeCatalogIDs)
+				return nil, 0, nil
+			})
 
-		tasks, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+		_, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+		require.NoError(t, err)
+	})
+
+	t.Run("一个都看不见就直接空,不查库", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, dta, cs := newSvc(ctrl)
+
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{}, nil)
+		_ = dta // dta.List 不该被调用
+
+		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
+		assert.Zero(t, total)
 	})
 
 	t.Run("显式指定看不见的 catalog_id,查都不查", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-other"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(denyAllIDs)
+		cs.EXPECT().AuthorizedCatalogs(gomock.Any(), gomock.Any()).
+			Return(interfaces.AuthorizedScope{IDs: []string{"cat-1"}}, nil)
 		_ = dta // dta.List 不该被调用
 
 		tasks, total, err := svc.List(context.Background(),
