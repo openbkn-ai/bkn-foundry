@@ -56,6 +56,11 @@ const docTemplate = `{
         },
         "/conversations": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -64,6 +69,13 @@ const docTemplate = `{
                 ],
                 "summary": "List managed Conversations in the authorized owner scope",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "integer",
                         "description": "Page size, 1..100",
@@ -95,10 +107,21 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             },
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -110,6 +133,13 @@ const docTemplate = `{
                 ],
                 "summary": "Create or return the current managed Conversation",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "description": "Managed Conversation request",
                         "name": "request",
@@ -156,12 +186,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/conversations/{conversation_id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -170,6 +211,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get one managed Conversation",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -208,12 +256,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/conversations/{conversation_id}/close": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -225,6 +284,13 @@ const docTemplate = `{
                 ],
                 "summary": "Close one managed Conversation",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -284,12 +350,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/conversations/{conversation_id}/interactions": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -301,6 +378,13 @@ const docTemplate = `{
                 ],
                 "summary": "Start one managed Interaction",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -360,12 +444,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/conversations/{conversation_id}/interactions/{interaction_id}/operations:ensure": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -377,6 +472,13 @@ const docTemplate = `{
                 ],
                 "summary": "Ensure an idempotent Operation intent and durable Receipt",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -443,12 +545,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/conversations:create-new-generation": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -460,6 +573,13 @@ const docTemplate = `{
                 ],
                 "summary": "Create a new managed Conversation generation",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "description": "New generation request",
                         "name": "request",
@@ -506,12 +626,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/conversations:ensure-current": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -523,6 +654,13 @@ const docTemplate = `{
                 ],
                 "summary": "Ensure the current managed Conversation",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "description": "Managed Conversation request",
                         "name": "request",
@@ -569,12 +707,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/conversations:resume-by-id": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -586,6 +735,13 @@ const docTemplate = `{
                 ],
                 "summary": "Resume an active managed Conversation by Core ID",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "description": "Conversation resume request",
                         "name": "request",
@@ -635,6 +791,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
@@ -831,6 +993,11 @@ const docTemplate = `{
         },
         "/interactions/{interaction_id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -839,6 +1006,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get one managed Interaction",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Interaction ID",
@@ -874,6 +1048,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
@@ -930,6 +1110,11 @@ const docTemplate = `{
         },
         "/interactions/{interaction_id}/cancel": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -943,6 +1128,13 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1006,12 +1198,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/interactions/{interaction_id}/complete": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -1025,86 +1228,11 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Interaction ID",
-                        "name": "interaction_id",
-                        "in": "path",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
                         "required": true
                     },
-                    {
-                        "description": "Terminal closure manifest",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.terminalInteractionRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/sessionvo.Interaction"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
-                        }
-                    },
-                    "422": {
-                        "description": "Unprocessable Entity",
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
-                        }
-                    }
-                }
-            }
-        },
-        "/interactions/{interaction_id}/fail": {
-            "post": {
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "lifecycle"
-                ],
-                "summary": "Fail one managed Interaction",
-                "parameters": [
                     {
                         "type": "string",
                         "description": "Interaction ID",
@@ -1170,12 +1298,123 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    }
+                }
+            }
+        },
+        "/interactions/{interaction_id}/fail": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "lifecycle"
+                ],
+                "summary": "Fail one managed Interaction",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Interaction ID",
+                        "name": "interaction_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Terminal closure manifest",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.terminalInteractionRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/sessionvo.Interaction"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "422": {
+                        "description": "Unprocessable Entity",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/interactions/{interaction_id}/finish": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "description": "Derives the current lease and closure manifest from authoritative Operations and Receipts. Ordinary Agents do not submit concurrency or closure internals.",
                 "consumes": [
                     "application/json"
@@ -1188,6 +1427,13 @@ const docTemplate = `{
                 ],
                 "summary": "Finish one Interaction through the Agent-facing facade",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Interaction ID",
@@ -1253,12 +1499,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/interactions/{interaction_id}/handoff": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -1270,6 +1527,13 @@ const docTemplate = `{
                 ],
                 "summary": "Hand off one managed Interaction",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Interaction ID",
@@ -1335,12 +1599,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/interactions/{interaction_id}/operations": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1349,6 +1624,13 @@ const docTemplate = `{
                 ],
                 "summary": "List raw Operation call facts for one Interaction",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Interaction ID",
@@ -1387,12 +1669,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/operations/{operation_id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1401,6 +1694,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get one Operation",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1439,12 +1739,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/operations/{operation_id}/attempts": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -1456,6 +1767,13 @@ const docTemplate = `{
                 ],
                 "summary": "Start the next retry attempt for an Operation",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1515,12 +1833,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/operations/{operation_id}/attempts/{attempt}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1529,6 +1858,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get one authorized Operation attempt call fact",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1580,12 +1916,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/operations/{operation_id}/attempts/{attempt}:complete": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -1597,6 +1944,13 @@ const docTemplate = `{
                 ],
                 "summary": "Complete one Operation attempt",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1663,12 +2017,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/operations/{operation_id}/attempts/{attempt}:fail": {
             "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "consumes": [
                     "application/json"
                 ],
@@ -1680,6 +2045,13 @@ const docTemplate = `{
                 ],
                 "summary": "Fail one Operation attempt",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1746,12 +2118,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/receipts/{receipt_id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1760,6 +2143,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get one durable Receipt",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Receipt ID",
@@ -1804,12 +2194,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/requests": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1818,6 +2219,13 @@ const docTemplate = `{
                 ],
                 "summary": "List request projections from durable Receipts",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "integer",
                         "description": "Page size, 1..100",
@@ -1849,12 +2257,23 @@ const docTemplate = `{
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
                     }
                 }
             }
         },
         "/requests/{request_id}": {
             "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1863,6 +2282,13 @@ const docTemplate = `{
                 ],
                 "summary": "Get one request projection from durable Receipts",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Deployment-approved business domain",
+                        "name": "x-business-domain",
+                        "in": "header",
+                        "required": true
+                    },
                     {
                         "type": "string",
                         "description": "Request ID",
@@ -1898,6 +2324,12 @@ const docTemplate = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
                         "schema": {
                             "$ref": "#/definitions/httphandler.lifecycleErrorEnvelope"
                         }
@@ -3258,6 +3690,7 @@ const docTemplate = `{
                         "closure_manifest_invalid",
                         "feature_not_installed",
                         "trace_core_unavailable",
+                        "authorization_unavailable",
                         "evidence_capture_denied",
                         "evidence_capture_failed",
                         "capability_not_licensed",
@@ -4696,6 +5129,14 @@ const docTemplate = `{
                     "$ref": "#/definitions/evidencevo.TraceSummary"
                 }
             }
+        }
+    },
+    "securityDefinitions": {
+        "BearerAuth": {
+            "description": "Active OAuth bearer token. Lifecycle owner identity is derived by the server.",
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }`

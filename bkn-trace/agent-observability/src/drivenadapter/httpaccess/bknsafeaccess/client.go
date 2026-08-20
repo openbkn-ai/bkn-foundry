@@ -78,22 +78,22 @@ func (c *Client) Resolve(
 ) (evidencevo.AccessProfile, error) {
 	if c.baseURL == "" || strings.TrimSpace(authorization) == "" ||
 		identity.TenantID == "" || identity.ActorID == "" || identity.EffectiveSubjectID == "" {
-		return evidencevo.AccessProfile{}, errors.New("trusted authorization identity is incomplete")
+		return evidencevo.AccessProfile{}, fmt.Errorf("%w: trusted authorization identity is incomplete", iauthorizationscope.ErrDenied)
 	}
 
 	var me meResponse
 	if err := c.get(ctx, "/api/safe/v1/me", authorization, &me); err != nil {
-		return evidencevo.AccessProfile{}, fmt.Errorf("resolve current BKN Safe identity: %w", err)
+		return evidencevo.AccessProfile{}, classifyResolveError("resolve current BKN Safe identity", err)
 	}
 	if !me.Enabled || strings.TrimSpace(me.ID) == "" || me.ID != identity.ActorID {
-		return evidencevo.AccessProfile{}, errors.New("current BKN Safe identity is disabled or does not match the trusted actor")
+		return evidencevo.AccessProfile{}, fmt.Errorf("%w: current BKN Safe identity is disabled or does not match the trusted actor", iauthorizationscope.ErrDenied)
 	}
 
 	var grants knowledgeNetworkGrantsResponse
 	if err := c.get(ctx, "/api/safe/v1/me/knowledge-network-grants", authorization, &grants); err != nil {
 		var statusErr responseStatusError
 		if !errors.As(err, &statusErr) || statusErr.status != http.StatusNotFound {
-			return evidencevo.AccessProfile{}, fmt.Errorf("resolve current BKN Safe knowledge-network grants: %w", err)
+			return evidencevo.AccessProfile{}, classifyResolveError("resolve current BKN Safe knowledge-network grants", err)
 		}
 	}
 
@@ -113,6 +113,14 @@ func (c *Client) Resolve(
 		AccountActive: true, TenantActive: true,
 		Fingerprint: accessScopeFingerprint(input),
 	}, nil
+}
+
+func classifyResolveError(operation string, err error) error {
+	var statusErr responseStatusError
+	if errors.As(err, &statusErr) && (statusErr.status == http.StatusUnauthorized || statusErr.status == http.StatusForbidden) {
+		return fmt.Errorf("%w: %s: %v", iauthorizationscope.ErrDenied, operation, err)
+	}
+	return fmt.Errorf("%w: %s: %v", iauthorizationscope.ErrUnavailable, operation, err)
 }
 
 func (c *Client) get(ctx context.Context, path, authorization string, target any) error {

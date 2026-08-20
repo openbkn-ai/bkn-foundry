@@ -3,6 +3,7 @@ package httphandler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,12 @@ type fakeAccessScopeResolver struct {
 	calls           int
 	authorization   string
 	trustedIdentity iauthorizationscope.TrustedIdentity
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }
 
 func (f *fakeAccessScopeResolver) Resolve(
@@ -107,6 +114,244 @@ func TestInternalLifecycleIdentityRequiresInternalListenerNotSharedToken(t *test
 	}))(trusted, request)
 	if trusted.Code != http.StatusNoContent {
 		t.Fatalf("internal lifecycle request = %d, want %d: %s", trusted.Code, http.StatusNoContent, trusted.Body.String())
+	}
+}
+
+func TestPublicLifecycleIdentityDerivesOwnerFromOAuth(t *testing.T) {
+	tests := []struct {
+		name           string
+		introspection  string
+		accountType    string
+		subjectType    string
+		subjectID      string
+		applicationID  string
+		resolverAppID  string
+		businessDomain string
+	}{
+		{
+			name:          "user",
+			introspection: `{"active":true,"sub":"user-1","client_id":"openbkn-cli","ext":{"visitor_type":"user"}}`,
+			accountType:   "user", subjectType: "user", subjectID: "user-1", applicationID: "openbkn-cli",
+			resolverAppID: "", businessDomain: "domain-a",
+		},
+		{
+			name:          "application",
+			introspection: `{"active":true,"sub":"agent-app","client_id":"agent-app","ext":{"visitor_type":"app"}}`,
+			accountType:   "app", subjectType: "service", subjectID: "agent-app", applicationID: "agent-app",
+			resolverAppID: "agent-app", businessDomain: "domain-b",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
+				TenantID: "tenant-a", BusinessDomain: test.businessDomain, ActorID: test.subjectID,
+				EffectiveSubjectID: test.subjectID, ApplicationPrincipalID: test.resolverAppID,
+				AccountActive: true, TenantActive: true,
+			}}
+			handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+				HydraAdminURL: "http://hydra.test", DeploymentTenantID: "tenant-a",
+				PublicLifecycleBusinessDomains: "domain-a,domain-b",
+				QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+					if request.URL.Path != "/admin/oauth2/introspect" {
+						t.Fatalf("unexpected OAuth introspection path: %s", request.URL.Path)
+					}
+					return &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     make(http.Header),
+						Body:       io.NopCloser(strings.NewReader(test.introspection)),
+					}, nil
+				})},
+				AuthorizationScopeResolver: resolver,
+			})
+			request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+			request.Header.Set("Authorization", "Bearer lifecycle-token")
+			request.Header.Set("x-business-domain", test.businessDomain)
+			response := httptest.NewRecorder()
+			nextCalled := false
+
+			handler.RequirePublicLifecycleIdentity(func(w http.ResponseWriter, r *http.Request) {
+				nextCalled = true
+				owner, ok := trustedOwnerFromRequest(r)
+				if !ok {
+					t.Fatalf("public lifecycle owner is incomplete: %+v", owner)
+				}
+				if owner.TenantID != "tenant-a" || owner.BusinessDomainID != test.businessDomain ||
+					owner.ApplicationPrincipalID != test.applicationID ||
+					string(owner.EffectiveSubjectType) != test.subjectType ||
+					owner.EffectiveSubjectID != test.subjectID {
+					t.Fatalf("unexpected public lifecycle owner: %+v", owner)
+				}
+				w.WriteHeader(http.StatusNoContent)
+			})(response, request)
+
+			if response.Code != http.StatusNoContent || !nextCalled {
+				t.Fatalf("public lifecycle identity = %d, want 204: %s", response.Code, response.Body.String())
+			}
+			if resolver.trustedIdentity.ApplicationPrincipalID != test.resolverAppID ||
+				resolver.trustedIdentity.EffectiveSubjectID != test.subjectID ||
+				request.Header.Get("x-account-type") != test.accountType {
+				t.Fatalf("unexpected authorized identity: scope=%+v headers=%v", resolver.trustedIdentity, request.Header)
+			}
+		})
+	}
+}
+
+func TestPublicLifecycleIdentityRejectsAnonymousQueryCompatibilityMode(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		AllowUnauthenticatedQuery: true,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("x-account-id", "forged-user")
+	request.Header.Set("x-account-type", "user")
+	request.Header.Set("x-tenant-id", "forged-tenant")
+	request.Header.Set("x-business-domain", "forged-domain")
+	response := httptest.NewRecorder()
+	nextCalled := false
+
+	handler.RequirePublicLifecycleIdentity(func(http.ResponseWriter, *http.Request) {
+		nextCalled = true
+	})(response, request)
+
+	if response.Code != http.StatusUnauthorized || nextCalled {
+		t.Fatalf("anonymous compatibility mode authorized public lifecycle: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestPublicLifecycleIdentityUsesLifecycleAuthenticationErrorContract(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: "http://hydra.test", DeploymentTenantID: "tenant-a",
+		PublicLifecycleBusinessDomains: "domain-a,domain-b",
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("X-Request-ID", "request-auth")
+	response := httptest.NewRecorder()
+
+	handler.RequirePublicLifecycleIdentity(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("unauthenticated lifecycle request reached handler")
+	})(response, request)
+
+	var envelope lifecycleErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode lifecycle authentication error: %v: %s", err, response.Body.String())
+	}
+	if response.Code != http.StatusUnauthorized || envelope.Error.Code != "permission_denied" ||
+		envelope.Error.Retryable || envelope.Error.RequiredAction != "request_authorization" ||
+		envelope.Error.RequestID != "request-auth" {
+		t.Fatalf("unexpected lifecycle authentication error: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestPublicLifecycleIdentityRejectsUnapprovedBusinessDomain(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "forged-domain", ActorID: "user-1",
+		EffectiveSubjectID: "user-1", AccountActive: true, TenantActive: true,
+	}}
+	handler := newPublicLifecycleTestHandler(t, resolver)
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("x-business-domain", "forged-domain")
+	response := httptest.NewRecorder()
+
+	handler.RequirePublicLifecycleIdentity(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("unapproved business domain reached lifecycle handler")
+	})(response, request)
+
+	var envelope lifecycleErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode domain authorization error: %v: %s", err, response.Body.String())
+	}
+	if response.Code != http.StatusForbidden || envelope.Error.Code != "permission_denied" || resolver.calls != 0 {
+		t.Fatalf("unapproved domain was not rejected before Safe resolution: status=%d calls=%d body=%s", response.Code, resolver.calls, response.Body.String())
+	}
+}
+
+func TestPublicLifecycleIdentityReportsScopeResolverUnavailableAsRetryable(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{err: errors.New("BKN Safe connection refused")}
+	handler := newPublicLifecycleTestHandler(t, resolver)
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("x-business-domain", "domain-a")
+	response := httptest.NewRecorder()
+
+	handler.RequirePublicLifecycleIdentity(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("unavailable authorization dependency reached lifecycle handler")
+	})(response, request)
+
+	var envelope lifecycleErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode authorization dependency error: %v: %s", err, response.Body.String())
+	}
+	if response.Code != http.StatusServiceUnavailable || envelope.Error.Code != "authorization_unavailable" ||
+		!envelope.Error.Retryable {
+		t.Fatalf("unexpected authorization dependency error: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestPublicLifecycleIdentityReportsScopeResolverDenial(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{err: iauthorizationscope.ErrDenied}
+	handler := newPublicLifecycleTestHandler(t, resolver)
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("x-business-domain", "domain-a")
+	response := httptest.NewRecorder()
+
+	handler.RequirePublicLifecycleIdentity(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("denied authorization scope reached lifecycle handler")
+	})(response, request)
+
+	var envelope lifecycleErrorEnvelope
+	if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode authorization denial: %v: %s", err, response.Body.String())
+	}
+	if response.Code != http.StatusForbidden || envelope.Error.Code != "permission_denied" || envelope.Error.Retryable {
+		t.Fatalf("unexpected authorization denial: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func newPublicLifecycleTestHandler(t *testing.T, resolver iauthorizationscope.Resolver) *EvidenceHandler {
+	t.Helper()
+	return NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: "http://hydra.test", DeploymentTenantID: "tenant-a",
+		PublicLifecycleBusinessDomains: "domain-a,domain-b",
+		QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(
+				`{"active":true,"sub":"user-1","client_id":"openbkn-cli","ext":{"visitor_type":"user"}}`,
+			))}, nil
+		})},
+		AuthorizationScopeResolver: resolver,
+	})
+}
+
+func TestPublicLifecycleIdentityRejectsMismatchedAccessProfileBoundary(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
+		TenantID: "other-tenant", BusinessDomain: "other-domain", ActorID: "user-1",
+		EffectiveSubjectID: "user-1", AccountActive: true, TenantActive: true,
+	}}
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: "http://hydra.test", DeploymentTenantID: "tenant-a",
+		PublicLifecycleBusinessDomains: "domain-a,domain-b",
+		QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK, Header: make(http.Header),
+				Body: io.NopCloser(strings.NewReader(
+					`{"active":true,"sub":"user-1","client_id":"openbkn-cli","ext":{"visitor_type":"user"}}`,
+				)),
+			}, nil
+		})},
+		AuthorizationScopeResolver: resolver,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("x-business-domain", "domain-a")
+	response := httptest.NewRecorder()
+	nextCalled := false
+
+	handler.RequirePublicLifecycleIdentity(func(http.ResponseWriter, *http.Request) {
+		nextCalled = true
+	})(response, request)
+
+	if response.Code != http.StatusForbidden || nextCalled {
+		t.Fatalf("mismatched access profile authorized public lifecycle: %d %s", response.Code, response.Body.String())
 	}
 }
 

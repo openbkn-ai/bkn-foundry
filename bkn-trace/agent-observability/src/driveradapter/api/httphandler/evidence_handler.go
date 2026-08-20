@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -27,26 +28,29 @@ const evidenceIngestTokenHeader = "X-BKN-Trace-Ingest-Token"
 const evidenceAllowUnauthenticatedQueryEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY"
 const evidenceHydraAdminURLEnv = "BKN_TRACE_HYDRA_ADMIN_URL"
 const evidenceDeploymentTenantIDEnv = "BKN_TRACE_DEPLOYMENT_TENANT_ID"
+const publicLifecycleBusinessDomainsEnv = "BKN_TRACE_PUBLIC_LIFECYCLE_BUSINESS_DOMAINS"
 
 type EvidenceHandlerSecurityConfig struct {
-	IngestToken                string
-	HydraAdminURL              string
-	DeploymentTenantID         string
-	QueryHTTPClient            *http.Client
-	AllowUnauthenticatedIngest bool
-	AllowUnauthenticatedQuery  bool
-	AuthorizationScopeResolver iauthorizationscope.Resolver
+	IngestToken                    string
+	HydraAdminURL                  string
+	DeploymentTenantID             string
+	PublicLifecycleBusinessDomains string
+	QueryHTTPClient                *http.Client
+	AllowUnauthenticatedIngest     bool
+	AllowUnauthenticatedQuery      bool
+	AuthorizationScopeResolver     iauthorizationscope.Resolver
 }
 
 type EvidenceHandler struct {
-	evidenceService            *evidencesvc.Service
-	ingestToken                string
-	hydraAdminURL              string
-	deploymentTenantID         string
-	queryHTTPClient            *http.Client
-	allowUnauthenticatedIngest bool
-	allowUnauthenticatedQuery  bool
-	authorizationScopeResolver iauthorizationscope.Resolver
+	evidenceService                *evidencesvc.Service
+	ingestToken                    string
+	hydraAdminURL                  string
+	deploymentTenantID             string
+	publicLifecycleBusinessDomains map[string]struct{}
+	queryHTTPClient                *http.Client
+	allowUnauthenticatedIngest     bool
+	allowUnauthenticatedQuery      bool
+	authorizationScopeResolver     iauthorizationscope.Resolver
 }
 
 type trustedQueryScopeContextKey struct{}
@@ -68,12 +72,13 @@ func NewEvidenceHandlerWithAuthorizationScopeResolver(
 	allowUnauthenticated := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedIngestEnv)), "true")
 	allowUnauthenticatedQuery := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedQueryEnv)), "true")
 	return NewEvidenceHandlerWithSecurityConfig(evidenceService, EvidenceHandlerSecurityConfig{
-		IngestToken:                os.Getenv(evidenceIngestTokenEnv),
-		HydraAdminURL:              os.Getenv(evidenceHydraAdminURLEnv),
-		DeploymentTenantID:         os.Getenv(evidenceDeploymentTenantIDEnv),
-		AllowUnauthenticatedIngest: allowUnauthenticated,
-		AllowUnauthenticatedQuery:  allowUnauthenticatedQuery,
-		AuthorizationScopeResolver: resolver,
+		IngestToken:                    os.Getenv(evidenceIngestTokenEnv),
+		HydraAdminURL:                  os.Getenv(evidenceHydraAdminURLEnv),
+		DeploymentTenantID:             os.Getenv(evidenceDeploymentTenantIDEnv),
+		PublicLifecycleBusinessDomains: os.Getenv(publicLifecycleBusinessDomainsEnv),
+		AllowUnauthenticatedIngest:     allowUnauthenticated,
+		AllowUnauthenticatedQuery:      allowUnauthenticatedQuery,
+		AuthorizationScopeResolver:     resolver,
 	})
 }
 
@@ -94,14 +99,15 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 	}
 	queryHTTPClient = observabilitylocale.WrapHTTPClient(queryHTTPClient)
 	return &EvidenceHandler{
-		evidenceService:            evidenceService,
-		ingestToken:                strings.TrimSpace(config.IngestToken),
-		hydraAdminURL:              strings.TrimRight(strings.TrimSpace(config.HydraAdminURL), "/"),
-		deploymentTenantID:         strings.TrimSpace(config.DeploymentTenantID),
-		queryHTTPClient:            queryHTTPClient,
-		allowUnauthenticatedIngest: config.AllowUnauthenticatedIngest,
-		allowUnauthenticatedQuery:  config.AllowUnauthenticatedQuery,
-		authorizationScopeResolver: config.AuthorizationScopeResolver,
+		evidenceService:                evidenceService,
+		ingestToken:                    strings.TrimSpace(config.IngestToken),
+		hydraAdminURL:                  strings.TrimRight(strings.TrimSpace(config.HydraAdminURL), "/"),
+		deploymentTenantID:             strings.TrimSpace(config.DeploymentTenantID),
+		publicLifecycleBusinessDomains: parsePublicLifecycleBusinessDomains(config.PublicLifecycleBusinessDomains),
+		queryHTTPClient:                queryHTTPClient,
+		allowUnauthenticatedIngest:     config.AllowUnauthenticatedIngest,
+		allowUnauthenticatedQuery:      config.AllowUnauthenticatedQuery,
+		authorizationScopeResolver:     config.AuthorizationScopeResolver,
 	}
 }
 
@@ -809,6 +815,109 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 	}
 }
 
+// RequirePublicLifecycleIdentity derives an immutable lifecycle owner from an
+// active OAuth identity and its current BKN Safe access profile. Unlike query
+// compatibility mode, public lifecycle calls always require OAuth and never
+// trust caller-supplied owner headers.
+func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if failure := h.applyOAuthIdentity(r); failure != nil {
+			writeLifecycleAuthorizationFailure(w, r, failure)
+			return
+		}
+		businessDomain := strings.TrimSpace(r.Header.Get("x-business-domain"))
+		if h.deploymentTenantID == "" || len(h.publicLifecycleBusinessDomains) == 0 || h.authorizationScopeResolver == nil {
+			writeLifecycleError(w, r, http.StatusServiceUnavailable, "authorization_unavailable", "public lifecycle authorization scope is not configured")
+			return
+		}
+		if _, approved := h.publicLifecycleBusinessDomains[businessDomain]; businessDomain == "" || !approved {
+			writeLifecycleError(w, r, http.StatusForbidden, "permission_denied", "requested business domain is not approved for public lifecycle writes")
+			return
+		}
+		accountID := strings.TrimSpace(r.Header.Get("x-account-id"))
+		accountType := strings.TrimSpace(r.Header.Get("x-account-type"))
+		effectiveSubjectID := accountID
+		resolverApplicationPrincipalID := ""
+		if accountType == "app" || accountType == "service" {
+			resolverApplicationPrincipalID = accountID
+		}
+		profile, err := h.authorizationScopeResolver.Resolve(r.Context(), strings.TrimSpace(r.Header.Get("Authorization")), iauthorizationscope.TrustedIdentity{
+			TenantID: h.deploymentTenantID, BusinessDomain: businessDomain, ActorID: accountID,
+			EffectiveSubjectID: effectiveSubjectID, ApplicationPrincipalID: resolverApplicationPrincipalID,
+		})
+		if err != nil {
+			if errors.Is(err, iauthorizationscope.ErrDenied) {
+				writeLifecycleError(w, r, http.StatusForbidden, "permission_denied", "current account could not be authorized for public lifecycle writes")
+				return
+			}
+			writeLifecycleError(w, r, http.StatusServiceUnavailable, "authorization_unavailable", "public lifecycle authorization is temporarily unavailable")
+			return
+		}
+		subjectType, ok := publicLifecycleSubjectType(accountType)
+		applicationPrincipalID := profile.ApplicationPrincipalID
+		if applicationPrincipalID == "" {
+			applicationPrincipalID = strings.TrimSpace(r.Header.Get("X-BKN-Authenticated-Client-ID"))
+		}
+		if !ok || !profile.AccountActive || !profile.TenantActive ||
+			profile.TenantID == "" || profile.BusinessDomain == "" ||
+			applicationPrincipalID == "" || profile.EffectiveSubjectID == "" {
+			writeLifecycleError(
+				w, r, http.StatusForbidden, "permission_denied",
+				"authenticated lifecycle owner identity is incomplete",
+			)
+			return
+		}
+		if profile.TenantID != h.deploymentTenantID || profile.BusinessDomain != businessDomain {
+			writeLifecycleError(
+				w, r, http.StatusForbidden, "permission_denied",
+				"authenticated lifecycle owner scope does not match the authorized request",
+			)
+			return
+		}
+
+		r.Header.Set("X-BKN-Tenant-ID", profile.TenantID)
+		r.Header.Set("X-Business-Domain-ID", profile.BusinessDomain)
+		r.Header.Set("X-BKN-Application-Principal-ID", applicationPrincipalID)
+		r.Header.Set("X-BKN-Effective-Subject-Type", subjectType)
+		r.Header.Set("X-BKN-Effective-Subject-ID", profile.EffectiveSubjectID)
+		if profile.DelegationID == "" {
+			r.Header.Del("X-BKN-Delegation-ID")
+		} else {
+			r.Header.Set("X-BKN-Delegation-ID", profile.DelegationID)
+		}
+
+		scope := evidencevo.QueryScope{
+			TenantID: profile.TenantID, BusinessDomain: profile.BusinessDomain,
+			AccountID: profile.EffectiveSubjectID, AccountType: accountType,
+			Authorization: strings.TrimSpace(r.Header.Get("Authorization")), View: evidencevo.AccessViewBusiness,
+			AccessProfile: &profile,
+		}
+		ctx := context.WithValue(r.Context(), trustedQueryScopeContextKey{}, scope)
+		next(w, r.WithContext(ctx))
+	}
+}
+
+func parsePublicLifecycleBusinessDomains(value string) map[string]struct{} {
+	domains := make(map[string]struct{})
+	for _, domain := range strings.Split(value, ",") {
+		if domain = strings.TrimSpace(domain); domain != "" {
+			domains[domain] = struct{}{}
+		}
+	}
+	return domains
+}
+
+func publicLifecycleSubjectType(accountType string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(accountType)) {
+	case "user":
+		return "user", true
+	case "app", "service":
+		return "service", true
+	default:
+		return "", false
+	}
+}
+
 func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !isTrustedInternalCaller(r.Context()) {
@@ -885,56 +994,70 @@ type hydraIntrospectionResponse struct {
 	} `json:"ext"`
 }
 
+type oauthAuthorizationFailure struct {
+	status  int
+	code    string
+	message string
+}
+
 func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Request) bool {
+	failure := h.applyOAuthIdentity(r)
+	if failure != nil {
+		writeQueryAuthorizationError(w, r, failure.status, failure.code, failure.message)
+		return false
+	}
+	return true
+}
+
+func writeLifecycleAuthorizationFailure(w http.ResponseWriter, r *http.Request, failure *oauthAuthorizationFailure) {
+	if failure.status == http.StatusServiceUnavailable {
+		writeLifecycleError(w, r, failure.status, "authorization_unavailable", failure.message)
+		return
+	}
+	writeLifecycleError(w, r, failure.status, "permission_denied", failure.message)
+}
+
+func (h *EvidenceHandler) applyOAuthIdentity(r *http.Request) *oauthAuthorizationFailure {
 	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
 	if len(authorization) <= len("Bearer ") || !strings.EqualFold(authorization[:len("Bearer ")], "Bearer ") {
-		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required")
-		return false
+		return &oauthAuthorizationFailure{http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required"}
 	}
 	token := strings.TrimSpace(authorization[len("Bearer "):])
 	if token == "" {
-		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required")
-		return false
+		return &oauthAuthorizationFailure{http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required"}
 	}
 
 	form := url.Values{"token": []string{token}}.Encode()
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, h.hydraAdminURL+"/admin/oauth2/introspect", bytes.NewBufferString(form))
 	if err != nil {
-		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
-		return false
+		return &oauthAuthorizationFailure{http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable"}
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := h.queryHTTPClient.Do(req)
 	if err != nil {
-		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
-		return false
+		return &oauthAuthorizationFailure{http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable"}
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
-		return false
+		return &oauthAuthorizationFailure{http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable"}
 	}
 
 	var introspection hydraIntrospectionResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&introspection); err != nil {
-		writeQueryAuthorizationError(w, r, http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable")
-		return false
+		return &oauthAuthorizationFailure{http.StatusServiceUnavailable, "QUERY_OAUTH_UNAVAILABLE", "OAuth introspection is unavailable"}
 	}
 	accountID := strings.TrimSpace(introspection.Subject)
 	accountType := normalizedOAuthAccountType(introspection)
 	if !introspection.Active || accountID == "" || accountType == "" {
-		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required")
-		return false
+		return &oauthAuthorizationFailure{http.StatusUnauthorized, "QUERY_OAUTH_REQUIRED", "active OAuth bearer token is required"}
 	}
 	if supplied := strings.TrimSpace(r.Header.Get("x-account-id")); supplied != "" && supplied != accountID {
-		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request identity does not match OAuth token")
-		return false
+		return &oauthAuthorizationFailure{http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request identity does not match OAuth token"}
 	}
 	if supplied := strings.TrimSpace(r.Header.Get("x-account-type")); supplied != "" && !strings.EqualFold(supplied, accountType) {
-		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request identity does not match OAuth token")
-		return false
+		return &oauthAuthorizationFailure{http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request identity does not match OAuth token"}
 	}
 	expectedApplicationPrincipalID := ""
 	if accountType == "app" || accountType == "service" {
@@ -949,8 +1072,7 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 		{header: "X-BKN-Delegation-ID", expected: ""},
 	} {
 		if supplied := strings.TrimSpace(r.Header.Get(identity.header)); supplied != "" && supplied != identity.expected {
-			writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request delegation identity does not match OAuth token")
-			return false
+			return &oauthAuthorizationFailure{http.StatusUnauthorized, "QUERY_IDENTITY_MISMATCH", "request delegation identity does not match OAuth token"}
 		}
 	}
 	r.Header.Set("x-account-id", accountID)
@@ -963,7 +1085,7 @@ func (h *EvidenceHandler) authorizeOAuthQuery(w http.ResponseWriter, r *http.Req
 	}
 	r.Header.Del("X-BKN-Delegation-ID")
 	r.Header.Set("X-BKN-Authenticated-Client-ID", strings.TrimSpace(introspection.ClientID))
-	return true
+	return nil
 }
 
 func writeQueryAuthorizationError(w http.ResponseWriter, r *http.Request, status int, code, message string) {

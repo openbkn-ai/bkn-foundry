@@ -514,6 +514,7 @@ func newAppWithArchive(
 	enterpriseroute.Mount(mux, enterpriseReader, func(next http.Handler) http.Handler {
 		return http.HandlerFunc(readAuth(next.ServeHTTP))
 	})
+	httphandler.RegisterSessionRoutes(mux, APIBasePath, sessionHandler, evidenceHandler.RequirePublicLifecycleIdentity)
 	mux.Handle(APIBasePath+"/swagger/", httpSwagger.Handler(
 		httpSwagger.URL(APIBasePath+"/swagger/doc.json"),
 	))

@@ -15,6 +15,10 @@ import (
 // @version 1.0
 // @description APIs for querying agent traces from OpenSearch.
 // @BasePath /api/agent-observability/v1
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Active OAuth bearer token. Lifecycle owner identity is derived by the server.
 func main() {
 	app, err := boot.NewApp()
 	if err != nil {

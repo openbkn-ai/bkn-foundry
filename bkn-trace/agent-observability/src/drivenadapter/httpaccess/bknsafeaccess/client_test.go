@@ -2,13 +2,22 @@ package bknsafeaccess
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iauthorizationscope"
 )
+
+type safeRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f safeRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
 func TestResolveBuildsProfileFromCurrentSafeIdentityAndNetworkGrants(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -135,6 +144,35 @@ func TestResolveFailsClosedForDisabledOrMismatchedIdentity(t *testing.T) {
 		if err == nil {
 			t.Fatalf("disabled or mismatched current identity must fail closed: %s", body)
 		}
+	}
+}
+
+func TestResolveClassifiesSafeDenialAndUnavailable(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		status int
+		want   error
+	}{
+		{name: "denied", status: http.StatusForbidden, want: iauthorizationscope.ErrDenied},
+		{name: "unavailable", status: http.StatusInternalServerError, want: iauthorizationscope.ErrUnavailable},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &http.Client{Transport: safeRoundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: test.status, Header: make(http.Header),
+					Body: io.NopCloser(strings.NewReader("")),
+				}, nil
+			})}
+			_, err := New("http://safe.test", client).Resolve(
+				context.Background(), "Bearer token", iauthorizationscope.TrustedIdentity{
+					TenantID: "tenant-a", BusinessDomain: "domain-a",
+					ActorID: "actor-a", EffectiveSubjectID: "actor-a",
+				},
+			)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("Resolve error = %v, want classification %v", err, test.want)
+			}
+		})
 	}
 }
 

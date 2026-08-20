@@ -1,7 +1,10 @@
 package boot
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,11 +16,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/logsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/service/sessionsvc"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/evidencestore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/ledgerstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/driveradapter/api/httphandler"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/extension/enterpriseroute"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iauthorizationscope"
 )
 
 func TestWriteRoutesKeepLifecycleAndEvidenceOnSeparateListeners(t *testing.T) {
@@ -39,7 +44,7 @@ func TestWriteRoutesKeepLifecycleAndEvidenceOnSeparateListeners(t *testing.T) {
 		path       string
 		wantStatus int
 	}{
-		{name: "public lifecycle is absent", server: app.server, path: APIBasePath + "/conversations", wantStatus: http.StatusNotFound},
+		{name: "public lifecycle requires OAuth identity", server: app.server, path: APIBasePath + "/conversations", wantStatus: http.StatusUnauthorized},
 		{name: "internal evidence events are absent", server: app.internalServer, path: APIBasePath + "/evidence/events", wantStatus: http.StatusNotFound},
 		{name: "internal evidence artifacts are absent", server: app.internalServer, path: APIBasePath + "/evidence/artifacts", wantStatus: http.StatusNotFound},
 		{name: "internal lifecycle requires owner", server: app.internalServer, path: APIBasePath + "/conversations", wantStatus: http.StatusUnauthorized},
@@ -55,6 +60,169 @@ func TestWriteRoutesKeepLifecycleAndEvidenceOnSeparateListeners(t *testing.T) {
 				t.Fatalf("POST %s = %d, want %d: %s", test.path, response.Code, test.wantStatus, response.Body.String())
 			}
 		})
+	}
+}
+
+func TestPublicManagedLifecycleFlowUsesServerDerivedOwner(t *testing.T) {
+	sessionStore := sessionstore.New()
+	evidenceHandler := httphandler.NewEvidenceHandlerWithSecurityConfig(
+		evidencesvc.New(evidencestore.New()),
+		httphandler.EvidenceHandlerSecurityConfig{
+			HydraAdminURL:                  "http://hydra.test",
+			DeploymentTenantID:             "openbkn-local",
+			PublicLifecycleBusinessDomains: "customer-service,inventory",
+			QueryHTTPClient: &http.Client{Transport: routeBoundaryRoundTrip(func(request *http.Request) (*http.Response, error) {
+				if request.URL.Path != "/admin/oauth2/introspect" {
+					t.Fatalf("unexpected OAuth introspection path: %s", request.URL.Path)
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     make(http.Header),
+					Body: io.NopCloser(strings.NewReader(
+						`{"active":true,"sub":"user-1","client_id":"openbkn-cli","ext":{"visitor_type":"user"}}`,
+					)),
+				}, nil
+			})},
+			AuthorizationScopeResolver: routeBoundaryScopeResolver{},
+		},
+	)
+	app := newApp(
+		conf.HTTPServerConfig{}, nil, evidenceHandler, nil,
+		httphandler.NewSessionHandler(sessionsvc.New(sessionStore, sessionsvc.Options{})),
+		httphandler.NewLedgerHandler(ledgersvc.New(ledgerstore.New()), httphandler.LedgerSecurityConfig{}),
+		nil,
+	)
+
+	var conversation sessionvo.Conversation
+	publicLifecycleRequest(t, app.server, http.MethodPost, APIBasePath+"/conversations:ensure-current", map[string]any{
+		"external_conversation_key": "customer-order-a123",
+		"idempotency_key":           "ensure-order-a123",
+	}, http.StatusCreated, &conversation)
+	assertPublicLifecycleOwner(t, conversation.Owner)
+
+	var interaction sessionvo.Interaction
+	publicLifecycleRequest(t, app.server, http.MethodPost, APIBasePath+"/conversations/"+conversation.ID+"/interactions", map[string]any{
+		"idempotency_key": "interaction-order-a123",
+		"agent_name":      "customer-service-agent",
+		"lease_seconds":   60,
+	}, http.StatusCreated, &interaction)
+
+	var ensured struct {
+		Operation sessionvo.Operation `json:"operation"`
+		Receipt   sessionvo.Receipt   `json:"receipt"`
+	}
+	publicLifecycleRequest(t, app.server, http.MethodPost,
+		APIBasePath+"/conversations/"+conversation.ID+"/interactions/"+interaction.ID+"/operations:ensure",
+		map[string]any{
+			"operation_key": "query-order-a123", "tool_name": "orders.get", "protocol": "sdk",
+			"source_module": "managed-trace-sdk", "required": true,
+			"lease_token": interaction.LeaseToken, "lease_epoch": interaction.LeaseEpoch,
+			"input": map[string]any{
+				"mode": "inline", "media_type": "application/json", "byte_length": 2,
+				"inline": map[string]any{},
+			},
+		}, http.StatusCreated, &ensured)
+	assertPublicLifecycleOwner(t, ensured.Receipt.Owner)
+
+	var completed struct {
+		Receipt sessionvo.Receipt `json:"receipt"`
+	}
+	publicLifecycleRequest(t, app.server, http.MethodPost,
+		APIBasePath+"/operations/"+ensured.Operation.ID+"/attempts/1:complete",
+		map[string]any{
+			"receipt_id": ensured.Receipt.ID, "evidence_durability": "durable",
+			"request_id": "request-order-a123", "trace_id": "0123456789abcdef0123456789abcdef",
+			"output": map[string]any{
+				"mode": "inline", "media_type": "application/json", "byte_length": 2,
+				"inline": map[string]any{},
+			},
+		}, http.StatusOK, &completed)
+
+	var readReceipt sessionvo.Receipt
+	publicLifecycleRequest(t, app.server, http.MethodGet,
+		APIBasePath+"/receipts/"+ensured.Receipt.ID, nil, http.StatusOK, &readReceipt)
+	assertPublicLifecycleOwner(t, readReceipt.Owner)
+	if readReceipt.Status != sessionvo.ReceiptCompleted || readReceipt.ID != completed.Receipt.ID {
+		t.Fatalf("unexpected durable receipt: %+v", readReceipt)
+	}
+
+	var completedInteraction sessionvo.Interaction
+	publicLifecycleRequest(t, app.server, http.MethodPost,
+		APIBasePath+"/interactions/"+interaction.ID+"/complete",
+		map[string]any{
+			"terminal_idempotency_key": "complete-order-a123",
+			"lease_token":              interaction.LeaseToken, "lease_epoch": interaction.LeaseEpoch,
+			"completion_manifest_version": "3.0.0", "completion_reason": "answer_completed",
+			"expected_operations": []map[string]any{{"operation_id": ensured.Operation.ID, "required": true}},
+			"expected_receipts":   []map[string]any{{"receipt_id": ensured.Receipt.ID, "required": true}},
+		}, http.StatusOK, &completedInteraction)
+	if completedInteraction.ExecutionStatus != sessionvo.InteractionCompleted {
+		t.Fatalf("public interaction was not completed: %+v", completedInteraction)
+	}
+}
+
+type routeBoundaryRoundTrip func(*http.Request) (*http.Response, error)
+
+func (f routeBoundaryRoundTrip) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+type routeBoundaryScopeResolver struct{}
+
+func (routeBoundaryScopeResolver) Resolve(
+	_ context.Context,
+	_ string,
+	identity iauthorizationscope.TrustedIdentity,
+) (evidencevo.AccessProfile, error) {
+	return evidencevo.AccessProfile{
+		TenantID: identity.TenantID, BusinessDomain: identity.BusinessDomain,
+		ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
+		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
+		AccountActive: true, TenantActive: true,
+	}, nil
+}
+
+func publicLifecycleRequest(
+	t *testing.T,
+	handler http.Handler,
+	method string,
+	path string,
+	body any,
+	wantStatus int,
+	target any,
+) {
+	t.Helper()
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("encode public lifecycle request: %v", err)
+		}
+		reader = bytes.NewReader(encoded)
+	}
+	request := httptest.NewRequest(method, path, reader)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("x-business-domain", "customer-service")
+	response := httptest.NewRecorder()
+
+	handler.ServeHTTP(response, request)
+
+	if response.Code != wantStatus {
+		t.Fatalf("%s %s = %d, want %d: %s", method, path, response.Code, wantStatus, response.Body.String())
+	}
+	if target != nil {
+		if err := json.Unmarshal(response.Body.Bytes(), target); err != nil {
+			t.Fatalf("decode %s %s response: %v: %s", method, path, err, response.Body.String())
+		}
+	}
+}
+
+func assertPublicLifecycleOwner(t *testing.T, owner sessionvo.Owner) {
+	t.Helper()
+	if owner.TenantID != "openbkn-local" || owner.BusinessDomainID != "customer-service" ||
+		owner.ApplicationPrincipalID != "openbkn-cli" ||
+		owner.EffectiveSubjectType != sessionvo.SubjectUser || owner.EffectiveSubjectID != "user-1" {
+		t.Fatalf("lifecycle owner was not derived from OAuth: %+v", owner)
 	}
 }
 

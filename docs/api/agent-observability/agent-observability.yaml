@@ -811,6 +811,7 @@ definitions:
         - closure_manifest_invalid
         - feature_not_installed
         - trace_core_unavailable
+        - authorization_unavailable
         - evidence_capture_denied
         - evidence_capture_failed
         - capability_not_licensed
@@ -1861,6 +1862,11 @@ paths:
   /conversations:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Page size, 1..100
         in: query
         name: limit
@@ -1884,6 +1890,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: List managed Conversations in the authorized owner scope
       tags:
       - lifecycle
@@ -1891,6 +1903,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Managed Conversation request
         in: body
         name: request
@@ -1924,12 +1941,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Create or return the current managed Conversation
       tags:
       - lifecycle
   /conversations/{conversation_id}:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -1958,6 +1986,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Get one managed Conversation
       tags:
       - lifecycle
@@ -1966,6 +2000,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -2008,6 +2047,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Close one managed Conversation
       tags:
       - lifecycle
@@ -2016,6 +2061,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -2058,6 +2108,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Start one managed Interaction
       tags:
       - lifecycle
@@ -2066,6 +2122,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -2113,6 +2174,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Ensure an idempotent Operation intent and durable Receipt
       tags:
       - lifecycle
@@ -2121,6 +2188,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: New generation request
         in: body
         name: request
@@ -2154,6 +2226,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Create a new managed Conversation generation
       tags:
       - lifecycle
@@ -2162,6 +2240,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Managed Conversation request
         in: body
         name: request
@@ -2195,6 +2278,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Ensure the current managed Conversation
       tags:
       - lifecycle
@@ -2203,6 +2292,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Conversation resume request
         in: body
         name: request
@@ -2240,6 +2334,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Resume an active managed Conversation by Core ID
       tags:
       - lifecycle
@@ -2372,6 +2472,11 @@ paths:
   /interactions/{interaction_id}:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2400,6 +2505,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Get one managed Interaction
       tags:
       - lifecycle
@@ -2442,6 +2553,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2488,6 +2604,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Cancel one managed Interaction
       tags:
       - lifecycle
@@ -2496,6 +2618,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2542,6 +2669,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Complete one managed Interaction
       tags:
       - lifecycle
@@ -2550,6 +2683,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2596,6 +2734,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Fail one managed Interaction
       tags:
       - lifecycle
@@ -2607,6 +2751,11 @@ paths:
         Operations and Receipts. Ordinary Agents do not submit concurrency or closure
         internals.
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2653,6 +2802,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Finish one Interaction through the Agent-facing facade
       tags:
       - lifecycle
@@ -2661,6 +2816,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2707,12 +2867,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Hand off one managed Interaction
       tags:
       - lifecycle
   /interactions/{interaction_id}/operations:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2741,12 +2912,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: List raw Operation call facts for one Interaction
       tags:
       - lifecycle
   /operations/{operation_id}:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -2775,6 +2957,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Get one Operation
       tags:
       - lifecycle
@@ -2783,6 +2971,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -2825,12 +3018,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Start the next retry attempt for an Operation
       tags:
       - lifecycle
   /operations/{operation_id}/attempts/{attempt}:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -2868,6 +3072,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Get one authorized Operation attempt call fact
       tags:
       - lifecycle
@@ -2876,6 +3086,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -2923,6 +3138,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Complete one Operation attempt
       tags:
       - lifecycle
@@ -2931,6 +3152,11 @@ paths:
       consumes:
       - application/json
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -2978,12 +3204,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Fail one Operation attempt
       tags:
       - lifecycle
   /receipts/{receipt_id}:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Receipt ID
         in: path
         name: receipt_id
@@ -3016,12 +3253,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Get one durable Receipt
       tags:
       - lifecycle
   /requests:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Page size, 1..100
         in: query
         name: limit
@@ -3045,12 +3293,23 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: List request projections from durable Receipts
       tags:
       - lifecycle
   /requests/{request_id}:
     get:
       parameters:
+      - description: Deployment-approved business domain
+        in: header
+        name: x-business-domain
+        required: true
+        type: string
       - description: Request ID
         in: path
         name: request_id
@@ -3079,6 +3338,12 @@ paths:
           description: Internal Server Error
           schema:
             $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/httphandler.lifecycleErrorEnvelope'
+      security:
+      - BearerAuth: []
       summary: Get one request projection from durable Receipts
       tags:
       - lifecycle
@@ -3190,4 +3455,11 @@ paths:
       summary: Get one typed technical trace
       tags:
       - traces
+securityDefinitions:
+  BearerAuth:
+    description: Active OAuth bearer token. Lifecycle owner identity is derived by
+      the server.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"

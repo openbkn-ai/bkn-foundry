@@ -169,7 +169,7 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 ### Evidence 写入安全边界
 
-受管 Conversation、Interaction、Operation 生命周期只监听于集群内部的 `agent-observability-internal:8081`，不依赖共享生命周期 token。Evidence Ledger 与 Artifact 保留在 8080 的已发布生产者接口，并继续校验独立的 `bkn-trace-evidence-ingest` token，以兼容 bkn-agent、Vega、BKN Backend、ontology-query 和 Context Loader。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认只允许带稳定 `app.kubernetes.io/name=agent-retrieval` 标签的 Pod 访问 8081，其他部署可通过 `networkPolicy.allowedClients` 显式扩展。
+受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，并限制在部署方配置的 tenant 与 business domain 白名单内，不接受客户端伪造 owner。Evidence Ledger 与 Artifact 保留在 8080 的已发布生产者接口，并继续校验独立的 `bkn-trace-evidence-ingest` token，以兼容 bkn-agent、Vega、BKN Backend、ontology-query 和 Context Loader。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认只允许带稳定 `app.kubernetes.io/name=agent-retrieval` 标签的 Pod 访问 8081，其他部署可通过 `networkPolicy.allowedClients` 显式扩展。
 
 该 NetworkPolicy 依赖 Kubernetes 1.23 或更高版本。离线执行 `helm template` 时应显式传入 `--kube-version 1.23.0` 或实际目标集群版本；连接集群的 `helm install/upgrade` 会按目标集群能力校验。
 
@@ -190,7 +190,7 @@ helm upgrade --install agent-observability charts/agent-observability \
   -n observability
 ```
 
-Context Loader 携带 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。若请求未从内部监听器进入，生命周期接口拒绝写入，不得 fail-open。证据生产者则必须携带 ingest token；内部网络身份不能绕过该校验。
+Context Loader 通过内部监听器携带 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。公开监听器不信任这些 owner 请求头，而是从 OAuth、BKN Safe 和部署批准的 tenant/business domain 重新构造 owner；任一授权依赖不可用时均拒绝写入，不得 fail-open。证据生产者则必须携带 ingest token；内部网络身份不能绕过该校验。
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
