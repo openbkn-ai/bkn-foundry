@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -348,13 +349,13 @@ func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql
 	return err
 }
 
-// FilterAuthorizedCatalogs keeps the ids the caller may perform op on. The ids
+// filterAuthorizedCatalogs keeps the ids the caller may perform op on. The ids
 // come from a page the caller already fetched, so the question stays bounded by
 // the page rather than by the size of the grant.
-func (cs *catalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []string,
+func (cs *catalogService) filterAuthorizedCatalogs(ctx context.Context, ids []string,
 	op string) (map[string]bool, error) {
 
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.FilterAuthorizedCatalogs")
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.filterAuthorizedCatalogs")
 	defer span.End()
 
 	unique := make([]string, 0, len(ids))
@@ -385,6 +386,91 @@ func (cs *catalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []st
 	return out, nil
 }
 
+// AuthorizedCatalogsForTasks resolves the catalogs a listing may show.
+//
+// The set goes into the query rather than over the fetched page, because the
+// alternative gets pagination wrong in a way callers cannot work around: total
+// would count rows the caller may not see, and a page could come back empty
+// while later pages still hold visible ones. Stopping on an empty page then
+// loses data, and paging to total requests pages that are entirely filtered.
+//
+// It is affordable here precisely because the task surface judges catalogs. A
+// deployment has tens of catalogs, not thousands of tables — the largest set
+// observed on a live cluster is 12, against 731 for per-table grants.
+func (cs *catalogService) AuthorizedCatalogsForTasks(ctx context.Context,
+	op string) (ids []string, unrestricted bool, excluded []string, err error) {
+
+	typeWide, err := cs.hasTypeWideGrant(ctx, op)
+	if err != nil {
+		return nil, false, nil, err
+	}
+	if typeWide {
+		// catalog:* is a grant on the business type; the platform's own
+		// directories are a separate type, so they are excluded unless granted
+		// there too. Bounded by the number of internal catalogs, which is a
+		// handful.
+		excluded, err = cs.unreachableInternalCatalogs(ctx, op)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		return nil, true, excluded, nil
+	}
+
+	all, err := cs.ca.ListIDs(ctx, interfaces.CatalogsQueryParams{})
+	if err != nil {
+		return nil, false, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if len(all) == 0 {
+		return nil, false, nil, nil
+	}
+	allowed, err := cs.filterAuthorizedCatalogs(ctx, all, op)
+	if err != nil {
+		return nil, false, nil, err
+	}
+	out := make([]string, 0, len(allowed))
+	for _, id := range all {
+		if allowed[id] {
+			out = append(out, id)
+		}
+	}
+	return out, false, nil, nil
+}
+
+// unreachableInternalCatalogs lists the internal directories a holder of
+// catalog:* may not act on.
+func (cs *catalogService) unreachableInternalCatalogs(ctx context.Context, op string) ([]string, error) {
+	if err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
+		Type: interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
+		ID:   interfaces.RESOURCE_ID_ALL,
+	}, []string{op}); err == nil {
+		return nil, nil
+	}
+	internalSet, err := cs.internalCatalogIDSet(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(internalSet) == 0 {
+		return nil, nil
+	}
+	internalIDs := make([]string, 0, len(internalSet))
+	for id := range internalSet {
+		internalIDs = append(internalIDs, id)
+	}
+	sort.Strings(internalIDs) // 集合无序,排一下让 SQL 与用例可比对
+	granted, err := cs.filterAuthorizedCatalogs(ctx, internalIDs, op)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(internalIDs))
+	for _, id := range internalIDs {
+		if !granted[id] {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
 // CheckTaskPermission authorizes an operation on something that hangs off a
 // catalog — a build, discover or semantic task — and is the only check those
 // three should use.
@@ -400,11 +486,16 @@ func (cs *catalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []st
 // discloses nothing further; without this it is simply stranded.
 func (cs *catalogService) CheckTaskPermission(ctx context.Context, catalogID string, op string) error {
 	if catalogID != "" {
-		// InternalGetByID answers a 404 error rather than (nil, nil) for a catalog
-		// that is gone, so any failure here is read as "gone" — otherwise deleting
-		// a catalog would make its tasks unreachable through this path too.
-		if catalog, err := cs.InternalGetByID(ctx, catalogID, false); err == nil && catalog != nil {
+		catalog, err := cs.InternalGetByID(ctx, catalogID, false)
+		switch {
+		case err == nil && catalog != nil:
 			return cs.checkCatalogPermission(ctx, catalogID, op)
+		case err != nil && !isCatalogNotFound(err):
+			// Only "the catalog is gone" opens the fallback below. A database or
+			// service failure must travel up instead: stepping up to the type-wide
+			// grant there would hide the fault behind a permission decision, and
+			// hand a catalog:* holder an answer the real state might contradict.
+			return err
 		}
 	}
 	typeWide, err := cs.hasTypeWideGrant(ctx, op)
@@ -436,6 +527,18 @@ func (cs *catalogService) hasTypeWideGrant(ctx context.Context, op string) (bool
 		return false, nil
 	}
 	return false, err
+}
+
+// isCatalogNotFound reports the one error that means the catalog is gone, as
+// opposed to the read having failed. InternalGetByID answers a 404 HTTPError
+// rather than (nil, nil) for a missing catalog.
+func isCatalogNotFound(err error) bool {
+	var httpErr *rest.HTTPError
+	if !errors.As(err, &httpErr) {
+		return false
+	}
+	return httpErr.HTTPCode == http.StatusNotFound ||
+		httpErr.BaseError.ErrorCode == verrors.VegaBackend_Catalog_NotFound
 }
 
 // checkCatalogPermission authorizes an operation on one catalog for callers that

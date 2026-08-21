@@ -135,8 +135,13 @@ type BuildTasksQueryParams struct {
 	PaginationQueryParams
 	ResourceID string
 	CatalogID  string
-	Statuses   []string // Multi-valued state filtering (IN) Empty means no filtering
-	Mode       string
+	// CatalogIDs / ExcludeCatalogIDs carry the authorization filter into the
+	// query. Both are bounded by the number of catalogs, so the count and the
+	// page agree without an IN list that grows with the table count.
+	CatalogIDs        []string
+	ExcludeCatalogIDs []string
+	Statuses          []string // Multi-valued state filtering (IN) Empty means no filtering
+	Mode              string
 }
 
 type KeyValue struct {

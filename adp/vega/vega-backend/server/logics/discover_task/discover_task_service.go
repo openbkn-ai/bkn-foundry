@@ -175,14 +175,12 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.List")
 	defer span.End()
 
-	// 与构建任务列表同一口径:过滤对取回的这一页做,不把可见集塞进查询(#269 /
-	// #472)。代价一并写明:total 是未过滤的计数,某一页可能短于 page_size 甚至为
-	// 空,而后面的页仍有可见行——调用方要一直翻到没有为止,不能只看 total。
+	// 与构建任务列表同一口径:可见集下推进查询,而不是对取回的页过滤。页内过滤会
+	// 让 total 计入看不到的行,还会出现中间空页而后面仍有可见行——按空页停会漏
+	// 数据,按 total 翻又会请求大量全被滤掉的页(#269 / #472)。
 	if params.CatalogID != "" {
 		if err := dts.cs.CheckTaskPermission(ctx, params.CatalogID,
 			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
-			// 只有「拒绝」才意味着没有任务。其余是鉴权服务或数据库答不上来,把它
-			// 报成空页会让一次故障看起来像一个成功请求。
 			if !interfaces.IsPermissionRefusal(err) {
 				span.SetStatus(codes.Error, "Check catalog permission failed")
 				return nil, 0, err
@@ -190,6 +188,19 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.DiscoverTaskSummary{}, 0, nil
 		}
+	} else {
+		visible, unrestricted, excluded, err := dts.cs.AuthorizedCatalogsForTasks(ctx,
+			interfaces.OPERATION_TYPE_TASK_MANAGE)
+		if err != nil {
+			span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
+			return nil, 0, err
+		}
+		if !unrestricted && len(visible) == 0 {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.DiscoverTaskSummary{}, 0, nil
+		}
+		params.CatalogIDs = visible
+		params.ExcludeCatalogIDs = excluded
 	}
 
 	tasks, total, err := dts.dta.List(ctx, params)
@@ -197,24 +208,6 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		span.SetStatus(codes.Error, "List discover tasks failed")
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
-	}
-	if params.CatalogID == "" {
-		catalogIDs := make([]string, 0, len(tasks))
-		for _, t := range tasks {
-			catalogIDs = append(catalogIDs, t.CatalogID)
-		}
-		allowed, err := dts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
-		if err != nil {
-			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
-			return nil, 0, err
-		}
-		visible := make([]*interfaces.DiscoverTaskSummary, 0, len(tasks))
-		for _, t := range tasks {
-			if allowed[t.CatalogID] {
-				visible = append(visible, t)
-			}
-		}
-		tasks = visible
 	}
 
 	if err := dts.populateDiscoverTaskSummaryReferences(ctx, tasks); err != nil {

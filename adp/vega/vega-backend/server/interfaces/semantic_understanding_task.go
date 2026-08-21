@@ -217,9 +217,12 @@ type SemanticUnderstandingTaskQueryParams struct {
 	Scope      string
 	CatalogID  string
 	ResourceID string
-	Statuses   []string
-	ApplyMode  string
-	Applied    *bool
+	// CatalogIDs / ExcludeCatalogIDs carry the authorization filter into the query.
+	CatalogIDs        []string
+	ExcludeCatalogIDs []string
+	Statuses          []string
+	ApplyMode         string
+	Applied           *bool
 }
 
 type SemanticUnderstandingApplyResult struct {

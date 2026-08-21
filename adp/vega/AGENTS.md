@@ -35,35 +35,34 @@
 
 ### 规则
 
-**查询里不带任何权限条件。取回一页之后，在 service 层收集这一页上的 catalog id，一次批量判权，再在内存里过滤。**
+**可见的目录集在 service 层解析出来，下推进查询；不要对取回的页做过滤。**
 
 ```go
-tasks, total, err := xxa.List(ctx, params)   // 查询里没有权限条件
-catalogIDs := collectCatalogIDs(tasks)       // 收集这一页的目录 id，去重
-allowed, err := cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
-tasks = keepAllowed(tasks, allowed)          // 内存过滤
+visible, unrestricted, excluded, err := cs.AuthorizedCatalogsForTasks(ctx, interfaces.OPERATION_TYPE_TASK_MANAGE)
+if !unrestricted && len(visible) == 0 {
+    return empty, 0, nil            // 一个目录都看不见,不必查库
+}
+params.CatalogIDs = visible         // 通配放行时为空
+params.ExcludeCatalogIDs = excluded // 通配放行够不到的内部目录
+tasks, total, err := xxa.List(ctx, params)
 ```
 
-判定落在**目录**上：数据表的管理权已经收敛到它所在的目录（#801），任务是目录下的产物，跟随目录即可。任务行上本来就带 `f_catalog_id`，不需要回查资源表。
+判定落在**目录**上：数据表的管理权已经收敛到它所在的目录（#801），任务是目录下的产物。任务行上本来就带 `f_catalog_id`，不需要回查资源表。
 
 动词**一律是 `task_manage`**，读和写都一样，包括列表过滤与按 id 读详情。任务属于管理面，看得到一张表不等于该看到它的构建历史——只持目录 `view_detail` 的只读用户看不到任何任务，这是预期。用两个动词还会重新制造「列表判 A、详情判 B」那类不一致。
 
-### 为什么不把 id 下推进 SQL
+### 为什么下推，而不是过滤取回的页
 
-可见集的大小取决于这个账号被授权过多少对象，跑久了的部署能到几千——线上实测单账号 731 个，其中 397 个还指向已删除的资源。把它当 `IN` 列表随每次翻页发给数据库，代价比省下的多。按页收集则有天然上限：页大小。
+页内过滤会让分页失去意义：`total` 计入调用方看不到的行，而且会出现**中间空页、后面仍有可见行**。调用方按空页停就漏数据，按 `total` 翻又会请求大量全被滤掉的页。两种用法都错，且不报错。
 
-### 必须交代的代价
-
-写接口文档和对接说明时要写清楚，否则调用方会静默少数据：
-
-- `total` 是**未过滤**的计数，不等于调用方能看到的行数；
-- 某一页可能短于 `page_size` 甚至为空，而后面的页仍有可见行；
-- 调用方必须一直翻到没有数据为止，不能用 `total` 判断何时停止，也不能把空页当作结束条件。
+下推在这里可负担，恰恰因为判的是**目录**而不是表——线上实测单账号最多被授权 12 个目录（全库 15 个），而按表算是 731 个。目录是数据源连接，几十个量级，不随建表增长。**如果以后有列表要按表的 id 过滤，这个结论不成立，要重新算。**
 
 ### 两条例外
 
-- **调用方显式传了 `catalog_id` / `resource_id`**：在查库**之前**单独判这一个 id，判过之后不再对整页复判。
+- **调用方显式传了 `catalog_id`**：在查库**之前**用 `CheckTaskPermission` 单独判这一个 id，不再解析整个可见集。
 - **判权返回错误**：只有 **403** 算「拒绝」（返回空列表），其余一律上抛。把鉴权服务不可达或数据库失败报成 200 空页，会让界面显示「这里没有数据」而监控看到一次成功请求。用 `interfaces.IsPermissionRefusal(err)` 区分。
+
+同一条原则也适用于**读目录本身**：`CheckTaskPermission` 只在目录确实**查不到**（404）时才退到类型级授权兜底，读取失败要原样上抛。把库故障当成「目录被删了」，等于用一次不可用换一个权限决定。
 
 ## 测试要求
 

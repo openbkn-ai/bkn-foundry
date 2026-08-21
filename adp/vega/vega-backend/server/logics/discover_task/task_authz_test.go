@@ -8,7 +8,6 @@ package discover_task
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -18,7 +17,6 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
-	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -60,9 +58,9 @@ func TestDiscoverTaskReadRequiresCatalogViewDetail(t *testing.T) {
 	assert.Same(t, denied, err)
 }
 
-// TestDiscoverTaskListFiltersByVisibleCatalogs: 探查任务挂在目录上,列表就按目录
-// 判。与构建任务同一口径——过滤对取回的这一页做,问的 id 数被页大小兜住。
-func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
+// TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery: 与构建任务同一口径
+// ——可见目录集进查询,而不是对取回的页过滤,这样 total 与分页才成立。
+func TestDiscoverTaskListPushesTheVisibleCatalogsIntoTheQuery(t *testing.T) {
 	newSvc := func(ctrl *gomock.Controller) (*discoverTaskService,
 		*vmock.MockDiscoverTaskAccess, *vmock.MockCatalogService) {
 		cs := vmock.NewMockCatalogService(ctrl)
@@ -72,85 +70,52 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		cs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		return &discoverTaskService{cs: cs, dta: dta, ums: ums}, dta, cs
 	}
-	page := func(catalogIDs ...string) []*interfaces.DiscoverTaskSummary {
-		out := make([]*interfaces.DiscoverTaskSummary, 0, len(catalogIDs))
-		for i, id := range catalogIDs {
-			out = append(out, &interfaces.DiscoverTaskSummary{ID: fmt.Sprintf("task-%d", i), CatalogID: id})
-		}
-		return out
-	}
 
-	t.Run("只留下看得见的那几行", func(t *testing.T) {
+	t.Run("可见目录集下推进查询", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1", "cat-2"), int64(2), nil)
-		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-1", "cat-2"},
-			interfaces.OPERATION_TYPE_TASK_MANAGE).DoAndReturn(allowOnlyIDs("cat-1"))
+		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
+			Return([]string{"cat-1"}, false, nil, nil)
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
+			func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, int64, error) {
+				assert.Equal(t, []string{"cat-1"}, params.CatalogIDs)
+				return []*interfaces.DiscoverTaskSummary{{ID: "t-1", CatalogID: "cat-1"}}, 1, nil
+			})
 
-		tasks, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 		require.NoError(t, err)
-		require.Len(t, tasks, 1)
-		assert.Equal(t, "cat-1", tasks[0].CatalogID)
+		assert.Len(t, tasks, 1)
+		assert.EqualValues(t, 1, total)
 	})
 
-	t.Run("一页全被滤掉就返回空,不报错", func(t *testing.T) {
+	t.Run("一个目录都看不见就直接空,不查库", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
-		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(denyAllIDs)
+		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).
+			Return(nil, false, nil, nil)
+		_ = dta
 
-		tasks, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+		tasks, total, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
+		assert.Zero(t, total)
 	})
 
 	t.Run("显式指定看不见的 catalog_id,查都不查", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-other",
-			interfaces.OPERATION_TYPE_TASK_MANAGE).
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-other", interfaces.OPERATION_TYPE_TASK_MANAGE).
 			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
-		_ = dta // dta.List 不该被调用
+		_ = dta
 
 		tasks, total, err := svc.List(context.Background(),
 			interfaces.DiscoverTaskQueryParams{CatalogID: "cat-other"})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
 		assert.Zero(t, total)
-	})
-
-	t.Run("鉴权服务答不上来要报错,不能报成空页", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc, dta, cs := newSvc(ctrl)
-
-		boom := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
-			verrors.VegaBackend_InternalError_FilterResourcesFailed)
-		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1", gomock.Any()).Return(boom)
-		_ = dta // dta.List 不该被调用
-
-		_, _, err := svc.List(context.Background(),
-			interfaces.DiscoverTaskQueryParams{CatalogID: "cat-1"})
-		require.Error(t, err, "鉴权故障必须上抛")
-		var httpErr *rest.HTTPError
-		require.True(t, errors.As(err, &httpErr))
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-	})
-
-	t.Run("显式指定看得见的 catalog_id,这一页不再逐行复判", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc, dta, cs := newSvc(ctrl)
-
-		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
-		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
-
-		tasks, _, err := svc.List(context.Background(),
-			interfaces.DiscoverTaskQueryParams{CatalogID: "cat-1"})
-		require.NoError(t, err)
-		assert.Len(t, tasks, 1)
 	})
 }
 

@@ -40,7 +40,7 @@ func TestBuildTaskServiceInternalMarkRunning(t *testing.T) {
 		Return(nil).AnyTimes()
 	mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
-	mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+	mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 	service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 	mockBTA.EXPECT().MarkRunning(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
 
@@ -60,7 +60,7 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		syncedCount := int64(10)
 		syncedMark := `{"id":10}`
@@ -86,7 +86,7 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkFailed(gomock.Any(), "task-1", "execution failed", gomock.Any()).
 			Return(true, nil)
@@ -107,7 +107,7 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkCancelled(gomock.Any(), "task-1", "resource deleted", gomock.Any()).
 			Return(true, nil)
@@ -128,7 +128,7 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).
 			Return(true, nil)
@@ -148,7 +148,7 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkCompleted(gomock.Any(), nil, "task-1", gomock.Any()).
 			Return(true, nil)
@@ -174,7 +174,7 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 		Return(nil).AnyTimes()
 	mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
-	mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+	mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	validator := &analyzerValidatingIndexManager{}
 	service := &buildTaskService{
@@ -280,7 +280,7 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		tasks := []*interfaces.BuildTaskSummary{
@@ -315,7 +315,7 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}
@@ -344,7 +344,7 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		tasks := []*interfaces.BuildTaskSummary{{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}}
@@ -373,7 +373,7 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		task := &interfaces.BuildTask{ID: "task-2"}
@@ -400,7 +400,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -425,7 +425,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -450,7 +450,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -479,7 +479,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -505,7 +505,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{cs: mockCS, rs: mockRS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
@@ -531,7 +531,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -564,7 +564,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{
 			cs:         mockCS,
@@ -608,7 +608,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
@@ -635,7 +635,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -709,7 +709,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -773,7 +773,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -838,7 +838,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -921,7 +921,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -995,7 +995,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{
 			cs:         mockCS,
@@ -1042,7 +1042,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -1083,7 +1083,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1108,7 +1108,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1133,7 +1133,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 				Return(nil).AnyTimes()
 			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil).AnyTimes()
-			mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+			mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1153,7 +1153,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1189,7 +1189,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -1226,7 +1226,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -1281,7 +1281,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -1324,7 +1324,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		validator := &analyzerValidatingIndexManager{}
 		service := &buildTaskService{
@@ -1404,7 +1404,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1422,7 +1422,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1440,7 +1440,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1461,7 +1461,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 				Return(nil).AnyTimes()
 			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(nil).AnyTimes()
-			mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+			mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1485,7 +1485,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
@@ -1508,7 +1508,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
@@ -1533,7 +1533,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
@@ -1558,7 +1558,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
@@ -1584,7 +1584,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
@@ -1606,7 +1606,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 

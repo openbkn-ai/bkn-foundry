@@ -512,6 +512,12 @@ func applyBuildTaskFilters(builder sq.SelectBuilder,
 	if params.CatalogID != "" {
 		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
 	}
+	if len(params.ExcludeCatalogIDs) > 0 {
+		builder = builder.Where(sq.NotEq{"f_catalog_id": params.ExcludeCatalogIDs})
+	}
+	if len(params.CatalogIDs) > 0 {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogIDs})
+	}
 	if len(params.Statuses) > 0 {
 		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
 	}

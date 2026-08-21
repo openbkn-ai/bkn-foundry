@@ -275,24 +275,29 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "SemanticUnderstandingTaskService.List")
 	defer span.End()
 
-	// A task is listed through the parent it was created against (#269): a
-	// resource-scoped one through its table, a catalog-scoped one through its
-	// catalog. Both are decided over the page that came back rather than inside
-	// the query, for the same reason the build task listing does it — and with
-	// the same consequence: total is unfiltered and pages may come back short.
+	// A task is listed through the catalog it belongs to (#269), with the same
+	// verb every other task endpoint uses. The visible set goes into the query so
+	// that total counts what the caller can see and pages keep their size —
+	// filtering after LIMIT breaks both, and the set is small enough to push down
+	// because it is catalogs rather than tables.
+	visible, unrestricted, excluded, err := suts.cs.AuthorizedCatalogsForTasks(ctx,
+		interfaces.OPERATION_TYPE_TASK_MANAGE)
+	if err != nil {
+		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
+		return nil, 0, err
+	}
+	if !unrestricted && len(visible) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []*interfaces.SemanticUnderstandingTaskSummary{}, 0, nil
+	}
+	params.CatalogIDs = visible
+	params.ExcludeCatalogIDs = excluded
 
 	tasks, total, err := suts.suta.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List semantic understanding tasks failed")
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
-	}
-	{
-		tasks, err = suts.filterTasksByParent(ctx, tasks)
-		if err != nil {
-			span.SetStatus(codes.Error, "Filter tasks by parent failed")
-			return nil, 0, err
-		}
 	}
 
 	if err := suts.populateSemanticUnderstandingTaskSummaryReferences(ctx, tasks); err != nil {
@@ -946,32 +951,4 @@ func accountInfoFromContext(ctx context.Context) interfaces.AccountInfo {
 		}
 	}
 	return interfaces.AccountInfo{}
-}
-
-// filterTasksByParent keeps the tasks whose parent the caller may read, asking
-// only about the parents on this page. Used when the visible set was too large
-// to push into the query.
-func (suts *semanticUnderstandingTaskService) filterTasksByParent(ctx context.Context,
-	tasks []*interfaces.SemanticUnderstandingTaskSummary) ([]*interfaces.SemanticUnderstandingTaskSummary, error) {
-
-	// 判定统一落在目录上:表的管理权已经收敛到它所在的目录,任务是目录下的产物。
-	// 资源域的任务落库时也写了 f_catalog_id,所以两种 scope 走同一条路,不需要
-	// 回查资源表。
-	catalogIDs := make([]string, 0, len(tasks))
-	for _, t := range tasks {
-		if t.CatalogID != "" {
-			catalogIDs = append(catalogIDs, t.CatalogID)
-		}
-	}
-	allowed, err := suts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
-	if err != nil {
-		return nil, err
-	}
-	visible := make([]*interfaces.SemanticUnderstandingTaskSummary, 0, len(tasks))
-	for _, t := range tasks {
-		if t.CatalogID != "" && allowed[t.CatalogID] {
-			visible = append(visible, t)
-		}
-	}
-	return visible, nil
 }

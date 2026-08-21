@@ -41,6 +41,23 @@ func (m *MockCatalogService) EXPECT() *MockCatalogServiceMockRecorder {
 	return m.recorder
 }
 
+// AuthorizedCatalogsForTasks mocks base method.
+func (m *MockCatalogService) AuthorizedCatalogsForTasks(ctx context.Context, op string) ([]string, bool, []string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthorizedCatalogsForTasks", ctx, op)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].([]string)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// AuthorizedCatalogsForTasks indicates an expected call of AuthorizedCatalogsForTasks.
+func (mr *MockCatalogServiceMockRecorder) AuthorizedCatalogsForTasks(ctx, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthorizedCatalogsForTasks", reflect.TypeOf((*MockCatalogService)(nil).AuthorizedCatalogsForTasks), ctx, op)
+}
+
 // CheckExistByID mocks base method.
 func (m *MockCatalogService) CheckExistByID(ctx context.Context, id string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -112,21 +129,6 @@ func (m *MockCatalogService) DeleteByID(ctx context.Context, id string) error {
 func (mr *MockCatalogServiceMockRecorder) DeleteByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByID", reflect.TypeOf((*MockCatalogService)(nil).DeleteByID), ctx, id)
-}
-
-// FilterAuthorizedCatalogs mocks base method.
-func (m *MockCatalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []string, op string) (map[string]bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "FilterAuthorizedCatalogs", ctx, ids, op)
-	ret0, _ := ret[0].(map[string]bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// FilterAuthorizedCatalogs indicates an expected call of FilterAuthorizedCatalogs.
-func (mr *MockCatalogServiceMockRecorder) FilterAuthorizedCatalogs(ctx, ids, op any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FilterAuthorizedCatalogs", reflect.TypeOf((*MockCatalogService)(nil).FilterAuthorizedCatalogs), ctx, ids, op)
 }
 
 // GetByID mocks base method.

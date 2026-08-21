@@ -374,6 +374,12 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 
 func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
 	params interfaces.SemanticUnderstandingTaskQueryParams) sq.SelectBuilder {
+	if len(params.ExcludeCatalogIDs) > 0 {
+		builder = builder.Where(sq.NotEq{"f_catalog_id": params.ExcludeCatalogIDs})
+	}
+	if len(params.CatalogIDs) > 0 {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogIDs})
+	}
 	if params.Scope != "" {
 		builder = builder.Where(sq.Eq{"f_scope": params.Scope})
 	}

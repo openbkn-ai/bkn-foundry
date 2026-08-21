@@ -633,38 +633,17 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 
 	// A task is judged on the catalog it belongs to, with task_manage (#472) —
 	// reading a task is reading the catalog's management surface, so the same
-	// verb decides the listing and every single-task endpoint. The filter runs over
-	// the page that came back, not inside the query: the visible set can reach
-	// into the thousands on a busy deployment, and carrying it as an IN list on
-	// every page request costs the database more than it saves.
+	// verb decides the listing and every single-task endpoint.
 	//
-	// The consequence is deliberate and worth stating: total is the unfiltered
-	// count, and a page may come back shorter than page_size — or empty — while
-	// later pages still hold visible rows. Callers must page on until the rows
-	// run out rather than trusting either number.
-	//
-	// An explicit resource_id is answered on its own, before the query runs, so
-	// asking about one table never widens what the caller may see.
-	if params.ResourceID != "" {
-		// Decided on the table's catalog, the same object the page filter below
-		// asks about. Asking the resource here instead would make naming an id
-		// more permissive than listing: a holder of resource:*/view_detail would
-		// read the tasks of a table whose catalog refuses it, while the listing
-		// hid exactly those rows.
-		resource, err := bts.rs.InternalGetByID(ctx, params.ResourceID)
-		if err != nil {
-			span.SetStatus(codes.Error, "Get resource failed")
-			return nil, 0, err
-		}
-		if resource == nil {
-			span.SetStatus(codes.Ok, "")
-			return []*interfaces.BuildTaskSummary{}, 0, nil
-		}
-		if err := bts.cs.CheckTaskPermission(ctx, resource.CatalogID,
+	// The visible set goes into the query, not over the fetched page. Filtering
+	// after LIMIT would leave total counting rows the caller may not see and let
+	// a page come back empty while later ones still hold visible rows — a caller
+	// stopping on the empty page loses data, one paging to total asks for pages
+	// that are entirely filtered. It is affordable because the set is catalogs:
+	// tens per deployment, against hundreds of tables.
+	if params.CatalogID != "" {
+		if err := bts.cs.CheckTaskPermission(ctx, params.CatalogID,
 			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
-			// Only a refusal means "no tasks". Anything else is the authorization
-			// service or the database failing to answer, and reporting that as an
-			// empty page would hide a running task behind a successful request.
 			if !interfaces.IsPermissionRefusal(err) {
 				span.SetStatus(codes.Error, "Check catalog permission failed")
 				return nil, 0, err
@@ -672,6 +651,19 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.BuildTaskSummary{}, 0, nil
 		}
+	} else {
+		visible, unrestricted, excluded, err := bts.cs.AuthorizedCatalogsForTasks(ctx,
+			interfaces.OPERATION_TYPE_TASK_MANAGE)
+		if err != nil {
+			span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
+			return nil, 0, err
+		}
+		if !unrestricted && len(visible) == 0 {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.BuildTaskSummary{}, 0, nil
+		}
+		params.CatalogIDs = visible
+		params.ExcludeCatalogIDs = excluded
 	}
 
 	buildTasks, total, err := bts.bta.List(ctx, params)
@@ -679,24 +671,6 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		span.SetStatus(codes.Error, "List build tasks failed")
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
-	}
-	if params.ResourceID == "" {
-		catalogIDs := make([]string, 0, len(buildTasks))
-		for _, bt := range buildTasks {
-			catalogIDs = append(catalogIDs, bt.CatalogID)
-		}
-		allowed, err := bts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
-		if err != nil {
-			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
-			return nil, 0, err
-		}
-		visible := make([]*interfaces.BuildTaskSummary, 0, len(buildTasks))
-		for _, bt := range buildTasks {
-			if allowed[bt.CatalogID] {
-				visible = append(visible, bt)
-			}
-		}
-		buildTasks = visible
 	}
 
 	if err := bts.populateBuildTaskSummaryReferences(ctx, buildTasks); err != nil {
