@@ -26,6 +26,18 @@ from app.utils.verify_utils import llm_test
 from sse_starlette import EventSourceResponse
 import re
 
+
+async def can_manage_default_llm(user_id, role):
+    """Check the same wildcard modify grant used for default-model management."""
+    return await permission_manager.check_single_permission(
+        user_id=user_id,
+        resource_id="*",
+        operations="modify",
+        resource_type="large_model",
+        role=role,
+    )
+
+
 # Save a large model configuration.
 async def add_model(schema_para, userId, language, role=""):
     global redis_util
@@ -51,6 +63,8 @@ async def add_model(schema_para, userId, language, role=""):
             "ModelFactory.Validation.BooleanParameter",
             parameter="default")
         return JSONResponse(status_code=400, content=error_dict)
+    if requested_default and not await can_manage_default_llm(userId, role):
+        return JSONResponse(status_code=403, content=NotPermissionError)
     content = await llm_add_verify(schema_para, userId)
     if content:
         StandLogger.error(content)
@@ -66,12 +80,6 @@ async def add_model(schema_para, userId, language, role=""):
                 config["ClientId"] = model_configs.get("ClientId", "")
                 config["OperationCode"] = model_configs.get("OperationCode", "")
             model_id = worker.get_id()
-            is_default = llm_model_dao.add_data_with_default(
-                model_id, schema_para["model_series"], schema_para.get("model_type", "llm"),
-                schema_para["model_name"], model_configs["api_model"], userId, json.dumps(config),
-                schema_para["max_model_len"], schema_para.get("model_parameters", None), quota,
-                requested_default,
-            )
             # Grant the new model instance to its creator; add_permission bypasses administrators.
             if base_config.AUTH_ENABLED:
                 user_infos = await get_username_by_ids([userId])
@@ -83,6 +91,17 @@ async def add_model(schema_para, userId, language, role=""):
                 resource_type="large_model", user_name=user_name, role=role)
             if not grant_ok:
                 raise Exception("add permission failed")
+            try:
+                is_default = await asyncio.to_thread(
+                    llm_model_dao.add_data_with_default,
+                    model_id, schema_para["model_series"], schema_para.get("model_type", "llm"),
+                    schema_para["model_name"], model_configs["api_model"], userId, json.dumps(config),
+                    schema_para["max_model_len"], schema_para.get("model_parameters", None), quota,
+                    requested_default,
+                )
+            except Exception:
+                await permission_manager.delete_permission("large_model", [str(model_id)])
+                raise
             # Return Snowflake IDs as strings because 19-digit values exceed JavaScript's safe integer range.
             # Numeric JSON would lose precision and make the returned resource impossible to query or delete.
             content = {"status": "ok", "id": str(model_id), "default": is_default}
@@ -987,9 +1006,9 @@ async def get_monitor_data(userId, language, model_id, role=""):
         return JSONResponse(status_code=500, content=DataBaseError)
 
 
-async def edit_default_model(model_para, userId, language):
+async def edit_default_model(model_para, userId, language, role=""):
     global redis_util
-    if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
+    if not await can_manage_default_llm(userId, role):
         error_dict = error_with_message(
             ModelFactory_Router_ParamError_TypeError_Error,
             "ModelFactory.ModelController.EditDefaultModel.PermissionDenied")

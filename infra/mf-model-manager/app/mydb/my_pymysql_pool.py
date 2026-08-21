@@ -76,8 +76,15 @@ def advisory_lock_transaction(lock_name, timeout=10):
             try:
                 cursor.execute("SELECT RELEASE_LOCK(%s)", (lock_name,))
             except Exception:
-                # The transaction result is already known; closing the
-                # connection also releases an advisory lock as a fallback.
-                pass
+                # ``connection.close()`` returns a pooled connection and can
+                # leave its MariaDB session (and therefore its advisory lock)
+                # alive.  Close the physical connection before returning the
+                # wrapper to the pool so it cannot be reused with this lock.
+                physical_connection = getattr(connection, "_con", None)
+                if physical_connection is not None:
+                    try:
+                        physical_connection.close()
+                    except Exception:
+                        pass
         cursor.close()
         connection.close()

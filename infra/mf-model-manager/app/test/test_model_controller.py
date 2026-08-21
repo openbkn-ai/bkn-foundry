@@ -132,12 +132,18 @@ class TestAddModel(TestCase):
         self.get_model_by_name = llm_model_dao.get_model_by_name
         self.check_model_unique = llm_model_dao.check_model_unique
         self.redis_util = llm_controller.redis_util
+        self.check_single_permission = llm_controller.permission_manager.check_single_permission
+        self.add_permission = llm_controller.permission_manager.add_permission
+        self.delete_permission = llm_controller.permission_manager.delete_permission
 
     def tearDown(self) -> None:
         llm_model_dao.add_data_with_default = self.add_data_with_default
         llm_model_dao.get_model_by_name = self.get_model_by_name
         llm_model_dao.check_model_unique = self.check_model_unique
         llm_controller.redis_util = self.redis_util
+        llm_controller.permission_manager.check_single_permission = self.check_single_permission
+        llm_controller.permission_manager.add_permission = self.add_permission
+        llm_controller.permission_manager.delete_permission = self.delete_permission
         StandLogger.stand_log_shutdown()
 
     def test_add_model_success(self):
@@ -166,6 +172,79 @@ class TestAddModel(TestCase):
         self.assertEqual(isinstance(json.loads(res.body)["id"], str), True)
         self.assertTrue(json.loads(res.body)["default"])
         self.assertFalse(llm_model_dao.add_data_with_default.call_args.args[-1])
+
+    def test_add_model_rejects_explicit_default_without_modify_permission(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        request = {
+            "model_config": {
+                "api_model": "qianxun-l-128k",
+                "api_url": "https://qianxun.rcrai.com/open/qianxun/v1",
+                "api_key": "ckm-652a0795c43b8abca48ce7627d65e910",
+                "api_type": "openai"
+            },
+            "model_series": "openai",
+            "model_name": "qianxun-l-128k",
+            "model_type": "llm",
+            "max_model_len": 128,
+            "default": True,
+        }
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, False])
+        llm_model_dao.add_data_with_default = mock.Mock()
+
+        res = loop.run_until_complete(llm_controller.add_model(request, "111", "zh"))
+
+        self.assertEqual(res.status_code, 403)
+        llm_model_dao.add_data_with_default.assert_not_called()
+
+    def test_add_model_does_not_create_default_when_permission_grant_fails(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        request = {
+            "model_config": {
+                "api_model": "qianxun-l-128k",
+                "api_url": "https://qianxun.rcrai.com/open/qianxun/v1",
+                "api_key": "ckm-652a0795c43b8abca48ce7627d65e910",
+                "api_type": "openai"
+            },
+            "model_series": "openai",
+            "model_name": "qianxun-l-128k",
+            "model_type": "llm",
+            "max_model_len": 128,
+        }
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=True)
+        llm_controller.permission_manager.add_permission = mock.AsyncMock(return_value=False)
+        llm_model_dao.add_data_with_default = mock.Mock()
+
+        res = loop.run_until_complete(llm_controller.add_model(request, "111", "zh"))
+
+        self.assertEqual(res.status_code, 500)
+        llm_model_dao.add_data_with_default.assert_not_called()
+
+    def test_add_model_removes_grant_when_database_write_fails(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        request = {
+            "model_config": {
+                "api_model": "qianxun-l-128k",
+                "api_url": "https://qianxun.rcrai.com/open/qianxun/v1",
+                "api_key": "ckm-652a0795c43b8abca48ce7627d65e910",
+                "api_type": "openai"
+            },
+            "model_series": "openai",
+            "model_name": "qianxun-l-128k",
+            "model_type": "llm",
+            "max_model_len": 128,
+        }
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=True)
+        llm_controller.permission_manager.add_permission = mock.AsyncMock(return_value=True)
+        llm_controller.permission_manager.delete_permission = mock.AsyncMock(return_value=True)
+        llm_model_dao.add_data_with_default = mock.Mock(side_effect=RuntimeError("database unavailable"))
+
+        res = loop.run_until_complete(llm_controller.add_model(request, "111", "zh"))
+
+        self.assertEqual(res.status_code, 500)
+        llm_controller.permission_manager.delete_permission.assert_awaited_once()
 
 
 # test_model
@@ -454,12 +533,14 @@ class TestEditDefaultModel(TestCase):
         self.get_default_model = llm_model_dao.get_default_model
         self.update_model_default_status = llm_model_dao.update_model_default_status
         self.redis_util = llm_controller.redis_util
+        self.check_single_permission = llm_controller.permission_manager.check_single_permission
 
     def tearDown(self) -> None:
         llm_model_dao.check_model_is_exist = self.check_model_is_exist
         llm_model_dao.get_default_model = self.get_default_model
         llm_model_dao.update_model_default_status = self.update_model_default_status
         llm_controller.redis_util = self.redis_util
+        llm_controller.permission_manager.check_single_permission = self.check_single_permission
         StandLogger.stand_log_shutdown()
 
     def _redis_mock(self):
@@ -471,6 +552,7 @@ class TestEditDefaultModel(TestCase):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         llm_controller.redis_util = self._redis_mock()
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=True)
         llm_model_dao.check_model_is_exist = mock.Mock(return_value=True)
         llm_model_dao.get_default_model = mock.Mock(return_value=[{"f_model_id": "111"}])
         llm_model_dao.update_model_default_status = mock.Mock(return_value=None)
@@ -488,6 +570,7 @@ class TestEditDefaultModel(TestCase):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         llm_controller.redis_util = self._redis_mock()
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=True)
         llm_model_dao.check_model_is_exist = mock.Mock(return_value=True)
         llm_model_dao.get_default_model = mock.Mock(return_value=[{"f_model_id": "111"}])
         llm_model_dao.update_model_default_status = mock.Mock(return_value=None)
@@ -496,6 +579,20 @@ class TestEditDefaultModel(TestCase):
             llm_controller.edit_default_model({"model_id": "111", "default": True}, "111", "zh"))
 
         self.assertEqual(res.status_code, 400)
+        llm_model_dao.update_model_default_status.assert_not_called()
+
+    def test_edit_default_model_requires_type_wide_modify_permission(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(return_value=False)
+        llm_model_dao.check_model_is_exist = mock.Mock(return_value=True)
+        llm_model_dao.update_model_default_status = mock.Mock(return_value=None)
+
+        res = loop.run_until_complete(
+            llm_controller.edit_default_model({"model_id": "111", "default": False}, "111", "zh"))
+
+        self.assertEqual(res.status_code, 403)
+        llm_model_dao.check_model_is_exist.assert_not_called()
         llm_model_dao.update_model_default_status.assert_not_called()
 
 

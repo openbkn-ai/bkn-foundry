@@ -162,7 +162,7 @@ async def monitor_llm(request: Request, model_id):
 @llm_route.post("/llm/default/edit")
 async def edit_default_llm(request: Request, model_para: dict = Body(...)):
     userId, language, role = await get_user_info(request)
-    return await edit_default_model(model_para, userId, language)
+    return await edit_default_model(model_para, userId, language, role)
 
 
 @llm_route.get("/llm/monitor/overview")

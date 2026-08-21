@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi.responses import JSONResponse
 
 from app.commons.errors.codes import ParamValidationErrors
@@ -14,6 +16,17 @@ from app.utils.reshape_utils import *
 from fastapi import Response, status
 from app.mydb.ConnectUtil import redis_util, get_redis_util
 from app.utils.permission_manager import PermissionManager, permission_manager
+
+
+async def can_manage_default_small_model(user_id, role):
+    """Require the type-wide modify grant before replacing a small-model default."""
+    return await permission_manager.check_single_permission(
+        user_id=user_id,
+        resource_id="*",
+        operations="modify",
+        resource_type="small_model",
+        role=role,
+    )
 
 
 async def add_model(request: logics.AddExternalSmallModel, userId, language, role, private=False):
@@ -51,6 +64,8 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
                                                                       role=role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
+        if request.default and not await can_manage_default_small_model(userId, role):
+            return JSONResponse(status_code=403, content=NotPermissionError)
         if base_config.AUTH_ENABLED:
             user_infos = await get_username_by_ids([userId])
             user_name = user_infos.get(userId, "")
@@ -66,7 +81,13 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
         )
         if not status:
             raise Exception("add permission failed")
-        is_default = small_model_dao.add_model_with_default(config_info, userId, request.default)
+        try:
+            is_default = await asyncio.to_thread(
+                small_model_dao.add_model_with_default, config_info, userId, request.default,
+            )
+        except Exception:
+            await permission_manager.delete_permission("small_model", [model_id])
+            raise
         content = {"status": "ok", "id": model_id, "default": is_default}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
