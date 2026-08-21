@@ -134,15 +134,9 @@ type StartBuildTaskRequest struct {
 type BuildTasksQueryParams struct {
 	PaginationQueryParams
 	ResourceID string
-	// ResourceIDs narrows the listing to a set of resources, and ExcludeResourceIDs
-	// removes one. Together they carry the authorization filter into the SQL, so
-	// the count and the page agree. Only sets small enough to be worth a round
-	// trip travel this way — see visibilityPushdownLimit.
-	ResourceIDs        []string
-	ExcludeResourceIDs []string
-	CatalogID          string
-	Statuses           []string // Multi-valued state filtering (IN) Empty means no filtering
-	Mode               string
+	CatalogID  string
+	Statuses   []string // Multi-valued state filtering (IN) Empty means no filtering
+	Mode       string
 }
 
 type KeyValue struct {

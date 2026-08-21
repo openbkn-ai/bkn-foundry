@@ -307,46 +307,9 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 
 	// A task is listed through the parent it was created against (#269): a
 	// resource-scoped one through its table, a catalog-scoped one through its
-	// catalog. Which side the filter runs on depends on how much was granted —
-	// the same trade the build task listing makes, and for the same reason: a
-	// small set pushed into the SQL keeps total honest and keeps a narrowly
-	// granted account able to page to its own rows, while a large one is not
-	// worth carrying into every page request.
-	//
-	// Both sides must agree on where to filter. Mixing them would put one branch
-	// of the disjunction in the SQL and the other in a pass over the page, and a
-	// row kept by the first would then have to survive the second.
-	resources, err := suts.rs.AuthorizedResources(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Resolve authorized resources failed")
-		return nil, 0, err
-	}
-	catalogs, err := suts.cs.AuthorizedCatalogs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
-		return nil, 0, err
-	}
-	if resources.Empty() && catalogs.Empty() {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.SemanticUnderstandingTaskSummary{}, 0, nil
-	}
-	filterAfterFetch := false
-	switch {
-	case resources.Unfiltered() && catalogs.Unfiltered():
-		// Everything is visible; no predicate and no pass over the page.
-	case interfaces.ShouldPushDownVisibility(len(resources.IDs)) &&
-		interfaces.ShouldPushDownVisibility(len(catalogs.IDs)):
-		params.Visibility = &interfaces.TaskVisibility{
-			ResourceIDs:         resources.IDs,
-			AllResources:        resources.All,
-			ExcludedResourceIDs: resources.Excluded,
-			CatalogIDs:          catalogs.IDs,
-			AllCatalogs:         catalogs.All,
-			ExcludedCatalogIDs:  catalogs.Excluded,
-		}
-	default:
-		filterAfterFetch = true
-	}
+	// catalog. Both are decided over the page that came back rather than inside
+	// the query, for the same reason the build task listing does it — and with
+	// the same consequence: total is unfiltered and pages may come back short.
 
 	tasks, total, err := suts.suta.List(ctx, params)
 	if err != nil {
@@ -354,7 +317,7 @@ func (suts *semanticUnderstandingTaskService) List(ctx context.Context, params i
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).
 			WithErrorDetails(err.Error())
 	}
-	if filterAfterFetch {
+	{
 		tasks, err = suts.filterTasksByParent(ctx, tasks)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter tasks by parent failed")

@@ -212,29 +212,8 @@ type SemanticUnderstandingCatalogAgentInputOptions struct {
 	ConfidenceThreshold float64 `json:"confidence_threshold"`
 }
 
-// TaskVisibility carries the authorization filter into the query. A
-// semantic-understanding task is scoped to either a resource or a catalog, so
-// the two sets are alternatives rather than a single id list: a task is visible
-// when the parent it was actually created against is.
-//
-// AllResources / AllCatalogs mark a type-wide grant, which is not the same as an
-// empty slice — "sees everything" and "sees nothing" would otherwise look alike.
-type TaskVisibility struct {
-	ResourceIDs  []string
-	AllResources bool
-	// ExcludedResourceIDs is meaningful only with AllResources: a holder of
-	// resource:* is admitted wholesale, minus the internal-catalog tables its
-	// grant does not reach. Same for catalogs below.
-	ExcludedResourceIDs []string
-	CatalogIDs          []string
-	AllCatalogs         bool
-	ExcludedCatalogIDs  []string
-}
-
 type SemanticUnderstandingTaskQueryParams struct {
 	PaginationQueryParams
-	// Visibility is nil when the listing filters the fetched page instead.
-	Visibility *TaskVisibility
 	Scope      string
 	CatalogID  string
 	ResourceID string

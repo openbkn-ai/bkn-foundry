@@ -175,31 +175,15 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DiscoverTaskService.List")
 	defer span.End()
 
-	// 与构建任务列表同一口径:按可见集的大小决定过滤放在哪一侧（#269 / #472）。
-	// 小集合下推,total 与分页才对得上——只被授了一两个目录的账号否则会拿到一
-	// 个空首页配上一个五位数的 total,自己的任务翻不到。大集合不下推,免得每翻
-	// 一页都带上几千个 id;而被授到那个量的账号本来就看得见绝大多数行。
-	scope, err := dts.cs.AuthorizedCatalogs(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Resolve authorized catalogs failed")
-		return nil, 0, err
-	}
-	if scope.Empty() {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.DiscoverTaskSummary{}, 0, nil
-	}
-	if params.CatalogID != "" && !scope.Allows(params.CatalogID) {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.DiscoverTaskSummary{}, 0, nil
-	}
-	filterAfterFetch := false
-	switch {
-	case scope.Unfiltered() || params.CatalogID != "":
-	case interfaces.ShouldPushDownVisibility(len(scope.IDs)):
-		params.CatalogIDs = scope.IDs
-		params.ExcludeCatalogIDs = scope.Excluded
-	default:
-		filterAfterFetch = true
+	// 与构建任务列表同一口径:过滤对取回的这一页做,不把可见集塞进查询(#269 /
+	// #472)。代价一并写明:total 是未过滤的计数,某一页可能短于 page_size 甚至为
+	// 空,而后面的页仍有可见行——调用方要一直翻到没有为止,不能只看 total。
+	if params.CatalogID != "" {
+		if err := dts.cs.CheckCatalogPermission(ctx, params.CatalogID,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.DiscoverTaskSummary{}, 0, nil
+		}
 	}
 
 	tasks, total, err := dts.dta.List(ctx, params)
@@ -208,7 +192,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	if filterAfterFetch {
+	if params.CatalogID == "" {
 		catalogIDs := make([]string, 0, len(tasks))
 		for _, t := range tasks {
 			catalogIDs = append(catalogIDs, t.CatalogID)

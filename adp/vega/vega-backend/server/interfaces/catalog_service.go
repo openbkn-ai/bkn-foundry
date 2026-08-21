@@ -50,10 +50,6 @@ type CatalogService interface {
 	// services whose objects hang off a catalog rather than a table.
 	CheckCatalogPermission(ctx context.Context, catalogID string, op string) error
 
-	// AuthorizedCatalogs resolves the whole visible set up front. Symmetric with
-	// ResourceService.AuthorizedResources.
-	AuthorizedCatalogs(ctx context.Context, op string) (AuthorizedScope, error)
-
 	// FilterAuthorizedCatalogs keeps the ids the caller may perform op on.
 	// Symmetric with ResourceService.FilterAuthorizedResources and bounded the
 	// same way — by the page, not by the size of the grant.

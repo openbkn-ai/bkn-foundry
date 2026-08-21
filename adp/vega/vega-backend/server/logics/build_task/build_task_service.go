@@ -628,46 +628,24 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
 	defer span.End()
 
-	// A task is visible through the table it builds (#472). Which way the filter
-	// is applied depends on how much the caller was granted, because the two
-	// shapes fail in opposite directions.
+	// A task is visible through the table it builds (#472). The filter runs over
+	// the page that came back, not inside the query: the visible set can reach
+	// into the thousands on a busy deployment, and carrying it as an IN list on
+	// every page request costs the database more than it saves.
 	//
-	// A small visible set goes into the SQL. That keeps total honest and lets a
-	// narrowly granted account page to its own rows: filtering after LIMIT would
-	// hand it an empty first page with a five-figure total, its three tasks
-	// stranded somewhere around page 500.
+	// The consequence is deliberate and worth stating: total is the unfiltered
+	// count, and a page may come back shorter than page_size — or empty — while
+	// later pages still hold visible rows. Callers must page on until the rows
+	// run out rather than trusting either number.
 	//
-	// A large one does not. Putting thousands of ids into an IN list on every
-	// page request is the cost this avoids — and an account granted that much
-	// can see most rows anyway, so filtering the page drops few of them and
-	// paging stays usable.
-	scope, err := bts.rs.AuthorizedResources(ctx, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		span.SetStatus(codes.Error, "Resolve authorized resources failed")
-		return nil, 0, err
-	}
-	if scope.Empty() {
-		span.SetStatus(codes.Ok, "")
-		return []*interfaces.BuildTaskSummary{}, 0, nil
-	}
+	// An explicit resource_id is answered on its own, before the query runs, so
+	// asking about one table never widens what the caller may see.
 	if params.ResourceID != "" {
-		// An explicit resource_id filter is intersected, never replaced: asking
-		// about one table must not widen what the caller may see.
-		if !scope.Allows(params.ResourceID) {
+		if err := bts.rs.CheckResourcePermission(ctx, params.ResourceID,
+			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.BuildTaskSummary{}, 0, nil
 		}
-	}
-	filterAfterFetch := false
-	switch {
-	case scope.Unfiltered() || params.ResourceID != "":
-		// Nothing to add: either everything is visible, or the query is already
-		// pinned to one table the caller may see.
-	case interfaces.ShouldPushDownVisibility(len(scope.IDs)):
-		params.ResourceIDs = scope.IDs
-		params.ExcludeResourceIDs = scope.Excluded
-	default:
-		filterAfterFetch = true
 	}
 
 	buildTasks, total, err := bts.bta.List(ctx, params)
@@ -676,7 +654,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		return nil, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
-	if filterAfterFetch {
+	if params.ResourceID == "" {
 		resourceIDs := make([]string, 0, len(buildTasks))
 		for _, bt := range buildTasks {
 			resourceIDs = append(resourceIDs, bt.ResourceID)
