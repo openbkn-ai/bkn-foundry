@@ -271,7 +271,11 @@ func normalizedHTTPInputHash(input map[string]any, businessContext bkntrace.Busi
 			"causation_event_ids": causationIDs,
 		},
 	}
-	raw, _ := sonic.Marshal(value)
+	// ConfigStd, because value is a map and the default sonic config does not sort map keys: with Go
+	// randomising map iteration order this "normalized" hash came out different on every call, and
+	// so did the operation key built from it, so the same request retried looked like a new
+	// operation every time. Same root cause as #1098, one subsystem over.
+	raw, _ := sonic.ConfigStd.Marshal(value)
 	return hashLifecyclePayload(raw)
 }
 
