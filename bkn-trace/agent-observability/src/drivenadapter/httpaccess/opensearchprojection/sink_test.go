@@ -117,8 +117,8 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyReceiptQuery(t *testing.T) 
 		t.Fatalf("created_at must be mapped as date for empty-index conversation sorting: %#v", createdAt)
 	}
 	externalConversationKey, ok := properties["external_conversation_key"].(map[string]any)
-	if !ok || externalConversationKey["type"] != "keyword" {
-		t.Fatalf("external_conversation_key must be mapped for empty-index conversation filtering: %#v", externalConversationKey)
+	if !ok || externalConversationKey["type"] != "text" || externalConversationKey["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
+		t.Fatalf("external_conversation_key must preserve the legacy dynamic text+keyword mapping: %#v", externalConversationKey)
 	}
 	generation, ok := properties["generation"].(map[string]any)
 	if !ok || generation["type"] != "long" {
