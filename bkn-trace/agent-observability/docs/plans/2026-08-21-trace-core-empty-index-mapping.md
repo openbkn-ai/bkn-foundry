@@ -4,7 +4,7 @@
 
 **Goal:** Keep `bkn-trace-core` healthy when a newly installed projection index contains no conversation documents.
 
-**Architecture:** The conversation-audit source queries `created_at`, `external_conversation_key`, and `generation`, but the bootstrap projection mapping currently defines only receipt fields. Add those fields to the versioned projection mapping and, when the projection alias already exists, issue OpenSearch's additive mapping update through that alias. This repairs existing empty indexes without rebuilding aliases or deleting data.
+**Architecture:** The conversation-audit source queries `created_at`, `external_conversation_key`, and `generation`, but the bootstrap projection mapping currently defines only receipt fields. Add those fields to the versioned projection mapping and, when the projection alias already exists, issue OpenSearch's additive mapping update through that alias. String fields that could already exist through dynamic mapping retain the legacy `text + keyword` shape; exact operation lookup uses `operation_id.keyword`. This repairs existing empty indexes without rebuilding aliases or deleting data.
 
 **Tech Stack:** Go, OpenSearch 2.x mappings, Go unit tests.
 
@@ -27,7 +27,7 @@ Expected: FAIL because the bootstrap mapping does not yet declare the conversati
 
 **Step 3: Implement the minimal mapping change**
 
-Add only the required conversation fields to `receiptProjectionIndexMapping` in `sink.go`. Retain all receipt fields and the existing alias/bootstrap behavior.
+Add only the required conversation fields to `receiptProjectionIndexMapping` in `sink.go`. Preserve the legacy dynamic `text + keyword` mapping shape for existing string fields, retain all receipt fields and the existing alias/bootstrap behavior.
 
 **Step 4: Run test to verify it passes**
 

@@ -24,7 +24,7 @@ const receiptProjectionIndexMapping = `{
       "external_conversation_key": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "generation": {"type": "long"},
       "created_at": {"type": "date"},
-      "operation_id": {"type": "keyword"},
+      "operation_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "receipt_status": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "knowledge_network_ids": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "issued_at": {"type": "date"},

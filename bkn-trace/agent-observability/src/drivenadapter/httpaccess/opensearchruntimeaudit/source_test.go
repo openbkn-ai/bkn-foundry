@@ -50,7 +50,7 @@ func TestSearchUsesExactReceiptFiltersScopeAndCursor(t *testing.T) {
 		`"receipt_status.keyword":["completed","failed"]`,
 		`"trace_id.keyword":"trace-a"`, `"request_id.keyword":"request-a"`,
 		`"conversation_id.keyword":"conversation-a"`, `"interaction_id.keyword":"interaction-a"`,
-		`"operation_id":"operation-a"`, `"knowledge_network_ids.keyword":["kn-a"]`,
+		`"operation_id.keyword":"operation-a"`, `"knowledge_network_ids.keyword":["kn-a"]`,
 		`"terminal_at":{"order":"desc"}`, `"receipt_id.keyword":{"order":"asc"}`,
 	} {
 		if !containsText(rendered, expected) {

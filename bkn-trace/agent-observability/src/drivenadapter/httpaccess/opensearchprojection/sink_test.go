@@ -69,7 +69,7 @@ func TestSinkAcknowledgesStaleAggregateVersionWithoutRetry(t *testing.T) {
 	}
 }
 
-func TestPrepareVersionDefinesMappingsRequiredByEmptyReceiptQuery(t *testing.T) {
+func TestPrepareVersionDefinesMappingsRequiredByEmptyProjectionQueries(t *testing.T) {
 	t.Parallel()
 
 	var mapping map[string]any
@@ -123,6 +123,10 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyReceiptQuery(t *testing.T) 
 	generation, ok := properties["generation"].(map[string]any)
 	if !ok || generation["type"] != "long" {
 		t.Fatalf("generation must be mapped for empty-index conversation filtering: %#v", generation)
+	}
+	operationID, ok := properties["operation_id"].(map[string]any)
+	if !ok || operationID["type"] != "text" || operationID["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
+		t.Fatalf("operation_id must preserve the legacy dynamic text+keyword mapping: %#v", operationID)
 	}
 }
 
