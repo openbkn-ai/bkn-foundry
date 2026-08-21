@@ -372,12 +372,6 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 	return tasks, nil
 }
 
-const (
-	// Scope values as stored in f_scope.
-	SemanticScopeResource = "resource"
-	SemanticScopeCatalog  = "catalog"
-)
-
 func applySemanticUnderstandingTaskFilters(builder sq.SelectBuilder,
 	params interfaces.SemanticUnderstandingTaskQueryParams) sq.SelectBuilder {
 	if params.Scope != "" {
