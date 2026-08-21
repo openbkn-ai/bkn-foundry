@@ -120,8 +120,12 @@ type eventContext struct {
 	observedAt       string
 }
 
+// HashValue is ConfigStd, not the default sonic config, and the difference is not cosmetic: the
+// default config neither sorts map keys nor escapes HTML, so hashing a map returns a different
+// digest on every call - Go randomises map iteration order. ConfigStd reproduces encoding/json
+// byte for byte, which is what every peer that recomputes one of these digests still uses.
 func HashValue(value any) string {
-	raw, err := sonic.Marshal(value)
+	raw, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}
@@ -834,7 +838,14 @@ type trace30OperationEdge struct {
 }
 
 func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs []BusinessRef) (trace30Event, error) {
-	envelope, err := sonic.Marshal(event)
+	// ConfigStd, because agent-observability recomputes this digest to admit the event and does it
+	// with encoding/json (ledgervo.CanonicalPayloadHash). Event is a map[string]any, and the default
+	// sonic config does not sort map keys, so the two sides agreed on nothing: Go randomises map
+	// iteration order, so the sender produced a different envelope - and a different hash - on every
+	// call, and every event was rejected with "payload_hash does not match canonical envelope".
+	// That rejection blocks bkn_start_interaction, which gates every MCP tool that takes a
+	// bkn_context, so the whole MCP surface goes down with it.
+	envelope, err := sonic.ConfigStd.Marshal(event)
 	if err != nil {
 		return trace30Event{}, err
 	}
