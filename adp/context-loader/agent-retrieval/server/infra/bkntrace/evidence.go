@@ -746,7 +746,13 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 		if err != nil {
 			return err
 		}
-		body, err := sonic.Marshal(requestPayload)
+		// Same config that hashed the envelope. Envelope holds the live Event map rather than the
+		// bytes that were hashed, so marshalling it here with a different config ships bytes the
+		// digest was not taken over. It survives today only because the receiver canonicalises what
+		// it gets before comparing - the moment a value stops round-tripping through that step
+		// unchanged (an int above 2^53, a json.Number, a struct), the two drift apart again and
+		// every event is rejected exactly as in #1098.
+		body, err := sonic.ConfigStd.Marshal(requestPayload)
 		if err != nil {
 			return err
 		}
