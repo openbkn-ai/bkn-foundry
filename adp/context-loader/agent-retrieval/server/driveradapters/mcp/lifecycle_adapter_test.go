@@ -162,11 +162,19 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 		{
 			name: "finish with unsupported outcome", toolName: "bkn_finish_interaction",
 			args:        map[string]any{"interaction_id": "int-1", "outcome": "abandoned"},
-			wantMessage: "bkn_finish_interaction outcome must be completed, failed, cancelled, or handed_off",
+			wantMessage: "bkn_finish_interaction outcome must be one of: completed, failed, cancelled, handed_off",
 		},
 		{
 			name: "finish with empty interaction id", toolName: "bkn_finish_interaction",
 			args:        map[string]any{"interaction_id": "", "outcome": "failed"},
+			wantMessage: "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise",
+		},
+		{
+			name: "finish with caller-owned claims", toolName: "bkn_finish_interaction",
+			args: map[string]any{
+				"interaction_id": "int-1", "outcome": "completed", "answer": "库存充足",
+				"claims": []any{map[string]any{"claim_id": "caller-owned"}},
+			},
 			wantMessage: "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise",
 		},
 	}

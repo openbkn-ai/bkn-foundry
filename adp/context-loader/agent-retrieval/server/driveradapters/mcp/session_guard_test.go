@@ -835,13 +835,14 @@ func TestLifecycleRequestDropsCallerSuppliedOwnerIdentity(t *testing.T) {
 	_, _, body := lifecycleRequest("bkn_start_interaction", map[string]any{
 		"conversation_id":          "conversation-1",
 		"idempotency_key":          "create-1",
+		"lease_seconds":            600,
 		"tenant_id":                "forged-tenant",
 		"business_domain_id":       "forged-domain",
 		"application_principal_id": "forged-app",
 		"effective_subject_id":     "forged-user",
 	})
 	for _, field := range []string{
-		"tenant_id", "business_domain_id", "application_principal_id", "effective_subject_id",
+		"lease_seconds", "tenant_id", "business_domain_id", "application_principal_id", "effective_subject_id",
 	} {
 		if _, exists := body[field]; exists {
 			t.Fatalf("caller-supplied trusted field %s leaked into Core JSON: %#v", field, body)

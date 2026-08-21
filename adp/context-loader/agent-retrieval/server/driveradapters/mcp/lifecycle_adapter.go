@@ -401,7 +401,7 @@ func lifecycleRequest(name string, args map[string]any) (string, string, map[str
 	case "bkn_start_interaction":
 		conversationID := url.PathEscape(stringValue(args["conversation_id"]))
 		return http.MethodPost, "/conversations/" + conversationID + "/interactions",
-			copyArgs(args, "idempotency_key", "request_hash", "agent_name", "lease_seconds")
+			copyArgs(args, "idempotency_key", "request_hash", "agent_name")
 	case "bkn_finish_interaction":
 		interactionID := url.PathEscape(stringValue(args["interaction_id"]))
 		return http.MethodPost, "/interactions/" + interactionID + "/finish",

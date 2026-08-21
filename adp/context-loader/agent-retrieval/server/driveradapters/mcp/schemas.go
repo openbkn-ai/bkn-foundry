@@ -99,6 +99,8 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 	return wrapper.InputSchema, wrapper.OutputSchema
 }
 
+var finishInteractionOutcomes = []string{"completed", "failed", "cancelled", "handed_off"}
+
 func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, bool) {
 	if _, ok := lifecycleToolNames[toolKey]; !ok {
 		return nil, nil, false
@@ -126,7 +128,7 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 			"description": "Use the exact interaction_id returned by start.",
 		}
 		required = append(required, "interaction_id")
-		properties["outcome"] = enumSchema("completed", "failed", "cancelled", "handed_off")
+		properties["outcome"] = enumSchema(finishInteractionOutcomes...)
 		properties["outcome"].(map[string]any)["description"] = "Set the final outcome for this turn."
 		required = append(required, "outcome")
 		properties["answer"] = map[string]any{

@@ -17,6 +17,8 @@ package mcp
 
 import (
 	"encoding/json"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -53,7 +55,7 @@ func validateLifecycleArguments(name string, arguments map[string]any) *lifecycl
 		}
 		if outcome, present := arguments["outcome"]; present && !validFinishOutcome(outcome) {
 			return invalidLifecycleArguments(
-				"bkn_finish_interaction outcome must be completed, failed, cancelled, or handed_off",
+				"bkn_finish_interaction outcome must be one of: " + strings.Join(finishInteractionOutcomes, ", "),
 			)
 		}
 	}
@@ -80,12 +82,7 @@ func validFinishOutcome(value any) bool {
 	if !ok {
 		return false
 	}
-	switch outcome {
-	case "completed", "failed", "cancelled", "handed_off":
-		return true
-	default:
-		return false
-	}
+	return slices.Contains(finishInteractionOutcomes, outcome)
 }
 
 func lifecycleArgumentGuidance(name string) string {
