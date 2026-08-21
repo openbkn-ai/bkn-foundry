@@ -643,6 +643,13 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	if params.ResourceID != "" {
 		if err := bts.rs.CheckResourcePermission(ctx, params.ResourceID,
 			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			// Only a refusal means "no tasks". Anything else is the authorization
+			// service or the database failing to answer, and reporting that as an
+			// empty page would hide a running task behind a successful request.
+			if !interfaces.IsPermissionRefusal(err) {
+				span.SetStatus(codes.Error, "Check resource permission failed")
+				return nil, 0, err
+			}
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.BuildTaskSummary{}, 0, nil
 		}

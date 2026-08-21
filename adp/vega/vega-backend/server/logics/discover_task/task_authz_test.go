@@ -9,12 +9,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 )
@@ -107,7 +111,8 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		svc, dta, cs := newSvc(ctrl)
 
 		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-other",
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(errors.New("denied"))
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 		_ = dta // dta.List 不该被调用
 
 		tasks, total, err := svc.List(context.Background(),
@@ -115,6 +120,23 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
 		assert.Zero(t, total)
+	})
+
+	t.Run("鉴权服务答不上来要报错,不能报成空页", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, dta, cs := newSvc(ctrl)
+
+		boom := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_FilterResourcesFailed)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", gomock.Any()).Return(boom)
+		_ = dta // dta.List 不该被调用
+
+		_, _, err := svc.List(context.Background(),
+			interfaces.DiscoverTaskQueryParams{CatalogID: "cat-1"})
+		require.Error(t, err, "鉴权故障必须上抛")
+		var httpErr *rest.HTTPError
+		require.True(t, errors.As(err, &httpErr))
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})
 
 	t.Run("显式指定看得见的 catalog_id,这一页不再逐行复判", func(t *testing.T) {

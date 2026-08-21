@@ -402,8 +402,7 @@ func (cs *catalogService) HasTypeWideGrant(ctx context.Context, op string) (bool
 	// A refusal answers "no", but anything else is the authorization service
 	// failing to answer at all. Reading that as "no" would turn an outage into a
 	// silent permission decision, so it goes back up.
-	var httpErr *rest.HTTPError
-	if errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden {
+	if interfaces.IsPermissionRefusal(err) {
 		return false, nil
 	}
 	return false, err

@@ -8,6 +8,10 @@ package interfaces
 
 import (
 	"context"
+	"errors"
+	"net/http"
+
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 const (
@@ -63,6 +67,19 @@ var (
 		OPERATION_TYPE_RESOURCE_MANAGE,
 	}
 )
+
+// IsPermissionRefusal reports whether an authorization error is the service
+// saying no, as opposed to the service failing to answer.
+//
+// The distinction decides what a listing does with the error. A refusal means
+// an empty result; an outage or a database failure must travel up as an error,
+// because answering 200 with an empty page turns "we could not tell" into
+// "there is nothing here" — the caller sees a table with no tasks and a
+// monitor sees a successful request.
+func IsPermissionRefusal(err error) bool {
+	var httpErr *rest.HTTPError
+	return errors.As(err, &httpErr) && httpErr.HTTPCode == http.StatusForbidden
+}
 
 // Check permissions
 type PermissionCheck struct {

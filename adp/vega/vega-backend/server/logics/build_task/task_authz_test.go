@@ -9,12 +9,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
+
+	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
@@ -205,7 +209,8 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		svc, bta, rs := newSvc(ctrl)
 
 		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-other",
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(errors.New("denied"))
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 		_ = bta // bta.List 不该被调用
 
 		tasks, total, err := svc.List(context.Background(),
@@ -213,6 +218,25 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
 		assert.Zero(t, total)
+	})
+
+	t.Run("鉴权服务答不上来要报错,不能报成空页", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, bta, rs := newSvc(ctrl)
+
+		// 500 不是「这张表没有任务」,而是「问不出来」。吞掉它会让界面显示一张
+		// 空表、监控看到一次成功请求,正在跑的任务凭空消失。
+		boom := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
+			verrors.VegaBackend_InternalError_FilterResourcesFailed)
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", gomock.Any()).Return(boom)
+		_ = bta // bta.List 不该被调用
+
+		_, _, err := svc.List(context.Background(),
+			interfaces.BuildTasksQueryParams{ResourceID: "res-1"})
+		require.Error(t, err, "鉴权故障必须上抛")
+		var httpErr *rest.HTTPError
+		require.True(t, errors.As(err, &httpErr))
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})
 
 	t.Run("显式指定看得见的 resource_id,这一页不再逐行复判", func(t *testing.T) {

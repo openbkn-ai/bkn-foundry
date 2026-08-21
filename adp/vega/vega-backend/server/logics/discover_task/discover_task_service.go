@@ -181,6 +181,12 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	if params.CatalogID != "" {
 		if err := dts.cs.CheckCatalogPermission(ctx, params.CatalogID,
 			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			// 只有「拒绝」才意味着没有任务。其余是鉴权服务或数据库答不上来,把它
+			// 报成空页会让一次故障看起来像一个成功请求。
+			if !interfaces.IsPermissionRefusal(err) {
+				span.SetStatus(codes.Error, "Check catalog permission failed")
+				return nil, 0, err
+			}
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.DiscoverTaskSummary{}, 0, nil
 		}
