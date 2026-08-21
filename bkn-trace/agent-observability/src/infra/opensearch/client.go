@@ -344,6 +344,13 @@ func (c *Client) EnsureIndex(ctx context.Context, index string, mapping []byte) 
 	return fmt.Errorf("opensearch create-index failed with status %d: %s", resp.StatusCode, string(body))
 }
 
+// EnsureMapping additively applies the mapping portion of an index definition
+// to an existing index or alias. OpenSearch permits adding fields without
+// rewriting existing documents.
+func (c *Client) EnsureMapping(ctx context.Context, index string, indexDefinition []byte) error {
+	return c.ensureMapping(ctx, index, indexDefinition)
+}
+
 func (c *Client) AliasExists(ctx context.Context, alias string) (bool, error) {
 	return c.resourceExists(ctx, http.MethodGet, "_alias/"+strings.TrimLeft(alias, "/"))
 }

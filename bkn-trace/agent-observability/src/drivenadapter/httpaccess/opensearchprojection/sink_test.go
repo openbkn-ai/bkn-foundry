@@ -112,6 +112,18 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyReceiptQuery(t *testing.T) 
 	if !ok || terminalAt["type"] != "date" {
 		t.Fatalf("terminal_at must be mapped as date for runtime-log sorting: %#v", terminalAt)
 	}
+	createdAt, ok := properties["created_at"].(map[string]any)
+	if !ok || createdAt["type"] != "date" {
+		t.Fatalf("created_at must be mapped as date for empty-index conversation sorting: %#v", createdAt)
+	}
+	externalConversationKey, ok := properties["external_conversation_key"].(map[string]any)
+	if !ok || externalConversationKey["type"] != "keyword" {
+		t.Fatalf("external_conversation_key must be mapped for empty-index conversation filtering: %#v", externalConversationKey)
+	}
+	generation, ok := properties["generation"].(map[string]any)
+	if !ok || generation["type"] != "long" {
+		t.Fatalf("generation must be mapped for empty-index conversation filtering: %#v", generation)
+	}
 }
 
 func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testing.T) {
@@ -159,16 +171,62 @@ func TestEnsureBootstrapDoesNotReplaceAnExistingAlias(t *testing.T) {
 	t.Parallel()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet || r.URL.Path != "/_alias/bkn-trace-core" {
+		switch r.Method + " " + r.URL.Path {
+		case http.MethodGet + " /_alias/bkn-trace-core", http.MethodPut + " /bkn-trace-core/_mapping":
+			w.WriteHeader(http.StatusOK)
+		default:
 			t.Fatalf("bootstrap changed an existing alias: %s %s", r.Method, r.URL.Path)
 		}
-		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(server.Close)
 
 	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
 	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1"); err != nil {
 		t.Fatalf("accept existing projection alias: %v", err)
+	}
+}
+
+func TestEnsureBootstrapAddsConversationMappingToExistingAlias(t *testing.T) {
+	t.Parallel()
+
+	requests := make([]string, 0, 2)
+	var mapping map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path)
+		switch r.Method + " " + r.URL.Path {
+		case http.MethodGet + " /_alias/bkn-trace-core":
+			w.WriteHeader(http.StatusOK)
+		case http.MethodPut + " /bkn-trace-core/_mapping":
+			if err := json.NewDecoder(r.Body).Decode(&mapping); err != nil {
+				t.Fatalf("decode mapping update: %v", err)
+			}
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected bootstrap request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
+	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1"); err != nil {
+		t.Fatalf("upgrade existing projection alias: %v", err)
+	}
+	want := []string{"GET /_alias/bkn-trace-core", "PUT /bkn-trace-core/_mapping"}
+	if len(requests) != len(want) {
+		t.Fatalf("unexpected existing-alias upgrade requests: got=%v want=%v", requests, want)
+	}
+	for index := range want {
+		if requests[index] != want[index] {
+			t.Fatalf("unexpected existing-alias upgrade requests: got=%v want=%v", requests, want)
+		}
+	}
+	properties, ok := mapping["properties"].(map[string]any)
+	if !ok {
+		t.Fatalf("mapping update must define properties: %#v", mapping)
+	}
+	createdAt, ok := properties["created_at"].(map[string]any)
+	if !ok || createdAt["type"] != "date" {
+		t.Fatalf("created_at must be mapped as date for empty-index conversation sorting: %#v", createdAt)
 	}
 }
 
