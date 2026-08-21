@@ -100,13 +100,10 @@ func TestSearchMarksCountPartialWhenFreeTextNeedsLocalFiltering(t *testing.T) {
 	}
 }
 
-func TestGetUsesScopedReceiptLookup(t *testing.T) {
+func TestGetAcceptsPublicOperationEventID(t *testing.T) {
 	terminalAt := time.Date(2026, 8, 20, 12, 1, 0, 0, time.UTC)
 	client := &fakeClient{result: searchPayload(t, "eq", terminalAt, nil)}
-	ctx := observabilityvo.WithSourceAccessScope(context.Background(), observabilityvo.SourceAccessScope{
-		TenantID: "tenant", BusinessDomain: "domain",
-	})
-	record, found, err := New(client, "projection").Get(ctx, "bkn-trace-runtime:receipt")
+	record, found, err := New(client, "projection").Get(scopedContext(), "operation.executed:receipt")
 	if err != nil || !found || record.SourceLogID != "receipt" {
 		t.Fatalf("record=%+v found=%v err=%v", record, found, err)
 	}
@@ -115,17 +112,70 @@ func TestGetUsesScopedReceiptLookup(t *testing.T) {
 			t.Errorf("detail query missing %s: %s", expected, client.body)
 		}
 	}
-
-	if _, found, err := New(client, "projection").Get(ctx, "other:receipt"); err != nil || found || client.calls != 1 {
-		t.Fatalf("foreign id should not query: found=%v calls=%d err=%v", found, client.calls, err)
+	if record.EventID != "operation.executed:receipt" {
+		t.Fatalf("event_id=%q", record.EventID)
 	}
+}
+
+func TestGetRetainsInternalLogIDCompatibility(t *testing.T) {
+	terminalAt := time.Date(2026, 8, 20, 12, 1, 0, 0, time.UTC)
+	client := &fakeClient{result: searchPayload(t, "eq", terminalAt, nil)}
+	record, found, err := New(client, "projection").Get(scopedContext(), "bkn-trace-runtime:receipt")
+	if err != nil || !found || record.SourceLogID != "receipt" || client.calls != 1 {
+		t.Fatalf("record=%+v found=%v calls=%d err=%v", record, found, client.calls, err)
+	}
+}
+
+func TestGetRejectsUnsupportedIdentifierWithoutQuerying(t *testing.T) {
+	client := &fakeClient{}
+	_, found, err := New(client, "projection").Get(scopedContext(), "other:receipt")
+	if err != nil || found || client.calls != 0 {
+		t.Fatalf("found=%v calls=%d err=%v", found, client.calls, err)
+	}
+}
+
+func TestGetRejectsMismatchedReceiptProjection(t *testing.T) {
+	terminalAt := time.Date(2026, 8, 20, 12, 1, 0, 0, time.UTC)
+	client := &fakeClient{result: searchPayloadForReceipt(t, "other", "eq", terminalAt, nil)}
+	_, found, err := New(client, "projection").Get(scopedContext(), "operation.executed:receipt")
+	if err == nil || found || client.calls != 1 {
+		t.Fatalf("found=%v calls=%d err=%v", found, client.calls, err)
+	}
+}
+
+func TestSearchPublicEventIDRoundTripsToDetailLookup(t *testing.T) {
+	terminalAt := time.Date(2026, 8, 20, 12, 1, 0, 0, time.UTC)
+	client := &fakeClient{result: searchPayload(t, "eq", terminalAt, nil)}
+	source := New(client, "projection")
+	page, err := source.Search(context.Background(), observabilityvo.LogQuery{
+		AuthorizedTenantID: "tenant", AuthorizedBusinessDomain: "domain",
+	})
+	if err != nil || len(page.Records) != 1 {
+		t.Fatalf("page=%+v err=%v", page, err)
+	}
+
+	record, found, err := source.Get(scopedContext(), page.Records[0].EventID)
+	if err != nil || !found || record.SourceLogID != page.Records[0].SourceLogID {
+		t.Fatalf("record=%+v found=%v err=%v", record, found, err)
+	}
+}
+
+func scopedContext() context.Context {
+	return observabilityvo.WithSourceAccessScope(context.Background(), observabilityvo.SourceAccessScope{
+		TenantID: "tenant", BusinessDomain: "domain",
+	})
 }
 
 func searchPayload(t *testing.T, relation string, terminalAt time.Time, sortValues []any) []byte {
 	t.Helper()
+	return searchPayloadForReceipt(t, "receipt", relation, terminalAt, sortValues)
+}
+
+func searchPayloadForReceipt(t *testing.T, receiptID, relation string, terminalAt time.Time, sortValues []any) []byte {
+	t.Helper()
 	hit := map[string]any{"_source": map[string]any{
 		"owner":        map[string]any{"tenant_id": "tenant", "business_domain_id": "domain", "effective_subject_type": "service", "effective_subject_id": "user", "application_principal_id": "app"},
-		"operation_id": "operation-a", "attempt": 1, "receipt_id": "receipt", "conversation_id": "conversation-a",
+		"operation_id": "operation-a", "attempt": 1, "receipt_id": receiptID, "conversation_id": "conversation-a",
 		"interaction_id": "interaction-a", "request_id": "request-a", "trace_id": "trace-a", "tool_name": "run_sql",
 		"receipt_status": "completed", "issued_at": terminalAt.Add(-time.Minute).Format(time.RFC3339Nano), "terminal_at": terminalAt.Format(time.RFC3339Nano),
 	}}

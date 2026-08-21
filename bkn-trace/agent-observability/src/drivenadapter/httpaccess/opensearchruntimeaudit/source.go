@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	sourceID  = "bkn-trace-runtime"
-	logPrefix = sourceID + ":"
+	sourceID    = "bkn-trace-runtime"
+	logPrefix   = sourceID + ":"
+	eventPrefix = "operation.executed:"
 )
 
 type searchClient interface {
@@ -68,8 +69,8 @@ func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery
 }
 
 func (source *Source) Get(ctx context.Context, logID string) (observabilityvo.LogRecord, bool, error) {
-	receiptID := strings.TrimPrefix(logID, logPrefix)
-	if receiptID == logID || receiptID == "" {
+	receiptID, supported := receiptIDFromIdentifier(logID)
+	if !supported {
 		return observabilityvo.LogRecord{}, false, nil
 	}
 	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
@@ -82,10 +83,19 @@ func (source *Source) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	if err != nil || len(page.Records) == 0 {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	if page.Records[0].LogID != logID {
-		return observabilityvo.LogRecord{}, false, fmt.Errorf("receipt log detail returned mismatched log_id")
+	if page.Records[0].SourceLogID != receiptID {
+		return observabilityvo.LogRecord{}, false, fmt.Errorf("receipt log detail returned mismatched receipt_id")
 	}
 	return page.Records[0], true, nil
+}
+
+func receiptIDFromIdentifier(identifier string) (string, bool) {
+	for _, prefix := range []string{eventPrefix, logPrefix} {
+		if receiptID := strings.TrimPrefix(identifier, prefix); receiptID != identifier && receiptID != "" {
+			return receiptID, true
+		}
+	}
+	return "", false
 }
 
 func (source *Source) search(ctx context.Context, query map[string]any) (observabilityvo.SourcePage, error) {
@@ -232,7 +242,7 @@ func projectReceipt(document sessionvo.ReceiptProjectionDocument) observabilityv
 	}
 	targetName := firstNonEmpty(document.ToolName, document.OperationID)
 	return observabilityvo.LogRecord{
-		EventID: "operation.executed:" + document.ID, EventTime: timestamp, RecordedAt: timestamp,
+		EventID: eventPrefix + document.ID, EventTime: timestamp, RecordedAt: timestamp,
 		ActorNameSnapshot: document.Owner.EffectiveSubjectID, ActorType: actorType(document.Owner.EffectiveSubjectType),
 		AuthMethod: "unknown", SourceChannel: "api", BusinessModule: "domain_knowledge_network", Action: "execute",
 		TargetType: "operation", TargetID: document.OperationID, TargetNameSnapshot: targetName,
