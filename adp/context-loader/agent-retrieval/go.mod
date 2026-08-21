@@ -13,6 +13,7 @@ require (
 	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.3
 	github.com/openbkn-ai/licverify v0.5.0
 	github.com/pkg/errors v0.9.1
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/viper v1.21.0
 	github.com/toon-format/toon-go v0.0.0-20251202084852-7ca0e27c4e8c
@@ -25,7 +26,6 @@ require (
 
 require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 )
 
 require (

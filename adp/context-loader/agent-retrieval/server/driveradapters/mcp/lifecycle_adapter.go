@@ -193,6 +193,9 @@ func handleLifecycleTool(
 			}), nil
 		}
 		args := req.GetArguments()
+		if validationErr := validateLifecycleArguments(name, args); validationErr != nil {
+			return lifecycleToolError(*validationErr), nil
+		}
 		ensureLifecycleIdempotency(ctx, name, args, hints)
 		if name == "bkn_start_interaction" {
 			args["request_hash"] = strings.TrimPrefix(hashBytes([]byte(stringValue(args["question"]))), "sha256:")
