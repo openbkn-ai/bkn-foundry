@@ -8,6 +8,7 @@ package anyshare
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -342,6 +343,10 @@ func TestAnyShareQueryHelpers(t *testing.T) {
 		got, err := toInt64(float64(10))
 		require.NoError(t, err)
 		assert.Equal(t, int64(10), got)
+
+		got, err = toInt64(json.Number("1710000000000"))
+		require.NoError(t, err)
+		assert.Equal(t, int64(1710000000000), got)
 
 		_, err = toInt64("10")
 		require.Error(t, err)

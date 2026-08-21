@@ -3,6 +3,7 @@ package anyshare
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"vega-backend/interfaces"
@@ -49,8 +50,16 @@ func toInt64(val interface{}) (int64, error) {
 		return v, nil
 	case float64:
 		return int64(v), nil
+	case json.Number:
+		if integer, err := v.Int64(); err == nil {
+			return integer, nil
+		}
+		if number, err := v.Float64(); err == nil {
+			return int64(number), nil
+		}
+		return 0, fmt.Errorf("invalid numeric value %q", v)
 	default:
-		return 0, fmt.Errorf("value must be int64 or float64, got %T", val)
+		return 0, fmt.Errorf("value must be int64, float64, or json.Number, got %T", val)
 	}
 }
 

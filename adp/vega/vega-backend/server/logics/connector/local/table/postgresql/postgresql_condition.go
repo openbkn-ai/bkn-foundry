@@ -8,6 +8,7 @@ package postgresql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -22,6 +23,14 @@ var Special = strings.NewReplacer(`\`, `\\\\`, `'`, `\'`, `%`, `\%`, `_`, `\_`)
 
 func normalizeTimestampValue(value any) any {
 	switch v := value.(type) {
+	case json.Number:
+		if integer, err := v.Int64(); err == nil {
+			return integer
+		}
+		if number, err := v.Float64(); err == nil {
+			return int64(number)
+		}
+		return value
 	case float64:
 		return int64(v)
 	case float32:

@@ -8,6 +8,7 @@ package mariadb
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -182,7 +183,7 @@ func TestMariaDBConnectorConvertFilterConditionGte(t *testing.T) {
 	})
 	t.Run("convert date gte uses from unix time", func(t *testing.T) {
 		c := &MariaDBConnector{}
-		cond := mustNewCond(t, "created_at", ">=", float64(1710000000000))
+		cond := mustNewCond(t, "created_at", ">=", json.Number("1710000000000"))
 		sql, args := toSQL(t, c, cond)
 		if sql != "`created_at` >= FROM_UNIXTIME(?/1000)" {
 			t.Errorf("unexpected SQL: %s", sql)

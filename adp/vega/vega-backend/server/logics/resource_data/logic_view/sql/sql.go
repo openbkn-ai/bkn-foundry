@@ -8,6 +8,7 @@ package sql
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -596,6 +597,8 @@ func formatArg(arg any) string {
 		return fmt.Sprintf("%v", v)
 	case float64, float32:
 		return fmt.Sprintf("%g", v)
+	case json.Number:
+		return v.String()
 	case bool:
 		if v {
 			return "1"

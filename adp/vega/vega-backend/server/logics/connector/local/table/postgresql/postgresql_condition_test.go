@@ -8,6 +8,7 @@ package postgresql
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -64,7 +65,7 @@ func TestConvertGteKeepsNonDateFieldAsParameter(t *testing.T) {
 func TestConvertDateGteUsesToTimestamp(t *testing.T) {
 	t.Run("uses to_timestamp for datetime field", func(t *testing.T) {
 		c := &PostgresqlConnector{}
-		cond := mustNewCond(t, "created_at", ">=", float64(1710000000000))
+		cond := mustNewCond(t, "created_at", ">=", json.Number("1710000000000"))
 		sql, args := toSQL(t, c, cond)
 
 		assert.Equal(t, `"created_at" >= to_timestamp(?::double precision / 1000.0)`, sql)

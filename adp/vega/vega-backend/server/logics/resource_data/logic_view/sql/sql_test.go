@@ -8,6 +8,7 @@ package sql
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -171,10 +172,10 @@ func TestLogicViewSQLHelpers(t *testing.T) {
 	t.Run("interpolate formats args", func(t *testing.T) {
 		generator := NewlogicDefinitionSQLGenerator(testSQLView())
 
-		got, err := generator.interpolate("a = ? AND b = ? AND c = ? AND d = ?", []any{"O'Reilly", 12, true, nil})
+		got, err := generator.interpolate("a = ? AND b = ? AND c = ? AND d = ? AND e = ?", []any{"O'Reilly", 12, true, nil, json.Number("9007199254740993")})
 
 		require.NoError(t, err)
-		assert.Equal(t, "a = 'O''Reilly' AND b = 12 AND c = 1 AND d = NULL", got)
+		assert.Equal(t, "a = 'O''Reilly' AND b = 12 AND c = 1 AND d = NULL AND e = 9007199254740993", got)
 	})
 
 	t.Run("interpolate rejects placeholder mismatch", func(t *testing.T) {

@@ -8,6 +8,7 @@ package mariadb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,6 +24,14 @@ var Special = strings.NewReplacer(`\`, `\\\\`, `'`, `\'`, `%`, `\%`, `_`, `\_`)
 
 func normalizeTimestampValue(value any) any {
 	switch v := value.(type) {
+	case json.Number:
+		if integer, err := v.Int64(); err == nil {
+			return integer
+		}
+		if number, err := v.Float64(); err == nil {
+			return int64(number)
+		}
+		return value
 	case float64:
 		return int64(v)
 	case float32:
@@ -74,6 +83,11 @@ func validateMariaDBDateValue(field *interfaces.Property, value any) error {
 	}
 
 	switch value := value.(type) {
+	case json.Number:
+		if _, err := value.Float64(); err != nil {
+			return fmt.Errorf("MariaDB date field %q requires epoch milliseconds, got %q", field.Name, value)
+		}
+		return nil
 	case string:
 		trimmed := strings.TrimSpace(value)
 		if _, err := strconv.ParseFloat(trimmed, 64); err == nil {
