@@ -185,6 +185,26 @@ class TestAddDataIntoModelList(TestCase):
         self.assertEqual(None, res)
 
 
+class TestAddDataWithDefault(TestCase):
+    def test_first_model_becomes_default_in_the_creation_transaction(self):
+        pool = mock.MagicMock()
+        connection = mock.MagicMock()
+        cursor = mock.MagicMock()
+        pool.connection.return_value = connection
+        connection.cursor.return_value = cursor
+        cursor.fetchall.side_effect = [[{"lock_acquired": 1}], []]
+        with mock.patch.object(PymysqlPool, "get_pool", return_value=pool):
+            is_default = llm_model_dao.add_data_with_default(
+                "222", "openai", "llm", "name", "model", "user", "{}", 32, None, False, False,
+            )
+
+        self.assertTrue(is_default)
+        connection.commit.assert_called_once()
+        insert_call = cursor.execute.call_args_list[-2]
+        self.assertIn("f_default", insert_call.args[0])
+        self.assertEqual(insert_call.args[1][-1], 1)
+
+
 # get_data_from_model_list_by_name_fuzzyfunction test class.
 class TestGetDataFromModelListByNameFuzzy(TestCase):
     def setUp(self) -> None:

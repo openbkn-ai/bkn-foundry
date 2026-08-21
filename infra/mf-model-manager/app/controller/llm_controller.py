@@ -28,6 +28,7 @@ import re
 
 # Save a large model configuration.
 async def add_model(schema_para, userId, language, role=""):
+    global redis_util
     required_params = ["max_model_len"]
     missing_params = await validate_required_params(schema_para, required_params)
     if missing_params:
@@ -43,6 +44,13 @@ async def add_model(schema_para, userId, language, role=""):
     if not permission:
         return JSONResponse(status_code=403, content=NotPermissionError)
     quota = schema_para.get("quota", False)
+    requested_default = schema_para.get("default", False)
+    if not isinstance(requested_default, bool):
+        error_dict = error_with_message(
+            ModelFactory_Router_ParamError_TypeError_Error,
+            "ModelFactory.Validation.BooleanParameter",
+            parameter="default")
+        return JSONResponse(status_code=400, content=error_dict)
     content = await llm_add_verify(schema_para, userId)
     if content:
         StandLogger.error(content)
@@ -58,12 +66,12 @@ async def add_model(schema_para, userId, language, role=""):
                 config["ClientId"] = model_configs.get("ClientId", "")
                 config["OperationCode"] = model_configs.get("OperationCode", "")
             model_id = worker.get_id()
-            llm_model_dao.add_data_into_model_list(model_id, schema_para["model_series"],
-                                                   schema_para.get("model_type", "llm"),
-                                                   schema_para["model_name"], model_configs["api_model"],
-                                                   userId, json.dumps(config),
-                                                   schema_para["max_model_len"],
-                                                   schema_para.get("model_parameters", None), quota)
+            is_default = llm_model_dao.add_data_with_default(
+                model_id, schema_para["model_series"], schema_para.get("model_type", "llm"),
+                schema_para["model_name"], model_configs["api_model"], userId, json.dumps(config),
+                schema_para["max_model_len"], schema_para.get("model_parameters", None), quota,
+                requested_default,
+            )
             # Grant the new model instance to its creator; add_permission bypasses administrators.
             if base_config.AUTH_ENABLED:
                 user_infos = await get_username_by_ids([userId])
@@ -77,7 +85,12 @@ async def add_model(schema_para, userId, language, role=""):
                 raise Exception("add permission failed")
             # Return Snowflake IDs as strings because 19-digit values exceed JavaScript's safe integer range.
             # Numeric JSON would lose precision and make the returned resource impossible to query or delete.
-            content = {"status": "ok", "id": str(model_id)}
+            content = {"status": "ok", "id": str(model_id), "default": is_default}
+            if is_default:
+                llm_default_key = "dip:model-api:llm:default_model_3ed523:list"
+                if redis_util is None:
+                    redis_util = await get_redis_util()
+                await redis_util.delete_str(llm_default_key)
             if quota is False:
                 conf_id = worker.get_id()
                 model_quota_dao.add_no_model_quota_config(conf_id, model_id, userId)
@@ -1003,7 +1016,6 @@ async def edit_default_model(model_para, userId, language):
             error_dict['detail'] = "The specified model does not exist."
             return JSONResponse(status_code=400, content=error_dict)
 
-        # Read the current default model.
         set_default = model_para["default"]
         if not set_default:
             llm_model_dao.update_model_default_status(model_id, False)
@@ -1015,21 +1027,14 @@ async def edit_default_model(model_para, userId, language):
             return JSONResponse(status_code=200, content={"status": "ok", "id": model_id, "default": False})
 
         old_default_data = llm_model_dao.get_default_model()
-        old_model_id = ""
-        if old_default_data:
-            old_model_id = old_default_data[0]["f_model_id"]
-        # Reject a redundant default-model update.
+        old_model_id = old_default_data[0]["f_model_id"] if old_default_data else ""
         if old_model_id == model_id:
             error_dict = error_with_message(
                 ModelFactory_Router_ParamError_TypeError_Error,
                 "ModelFactory.ModelController.EditDefaultModel.AlreadyDefault")
             return JSONResponse(status_code=400, content=error_dict)
 
-        # Clear the old default before setting the new one.
-        if old_model_id:
-            llm_model_dao.update_model_default_status(old_model_id, False)
-        # Set the new default model.
-        llm_model_dao.update_model_default_status(model_id, True)
+        llm_model_dao.set_default_model(model_id)
         default_cache_name = "default_model_3ed523"
         default_cache_key = f"dip:model-api:llm:{default_cache_name}:list"
         if redis_util is None:

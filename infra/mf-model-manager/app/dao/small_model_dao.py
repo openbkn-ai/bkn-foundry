@@ -3,7 +3,11 @@ import json
 
 from app.interfaces.dbaccess import AddExternalSmallModelInfo
 from app.logs.stand_log import StandLogger
-from app.mydb.my_pymysql_pool import connect_execute_close_db, connect_execute_commit_close_db
+from app.mydb.my_pymysql_pool import (
+    advisory_lock_transaction,
+    connect_execute_close_db,
+    connect_execute_commit_close_db,
+)
 
 para_dict = {
     "update_time": "f_update_time",
@@ -24,6 +28,37 @@ class SmallModelDao:
                       config_info.batch_size, config_info.max_tokens, config_info.embedding_dim]
 
         cursor.execute(sql, value_list)
+
+    def add_model_with_default(self, config_info: AddExternalSmallModelInfo, userId, requested_default):
+        """Create a small model with one default per model type under a lock."""
+        lock_name = f"mf-model-default:small:{config_info.model_type}"
+        with advisory_lock_transaction(lock_name) as cursor:
+            cursor.execute(
+                "select f_model_id from t_small_model where f_default=1 and f_model_type=%s",
+                config_info.model_type,
+            )
+            has_default = bool(cursor.fetchall())
+            is_default = requested_default or not has_default
+
+            if requested_default and has_default:
+                cursor.execute(
+                    "update t_small_model set f_default=0 where f_default=1 and f_model_type=%s",
+                    config_info.model_type,
+                )
+
+            sql = """insert into t_small_model(
+                f_model_id,f_model_name,f_model_type,f_model_config,f_create_time,f_update_time,
+                f_create_by,f_update_by,f_adapter,f_adapter_code,f_batch_size,f_max_tokens,
+                f_embedding_dim,f_default
+            ) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+            cursor.execute(sql, (
+                config_info.model_id, config_info.model_name, config_info.model_type,
+                json.dumps(config_info.model_config, ensure_ascii=False), datetime.datetime.today(),
+                datetime.datetime.today(), userId, userId, config_info.adapter, config_info.adapter_code,
+                config_info.batch_size, config_info.max_tokens, config_info.embedding_dim,
+                1 if is_default else 0,
+            ))
+            return is_default
 
     @connect_execute_commit_close_db
     def edit_model_info(self, config_info: AddExternalSmallModelInfo, userId, connection, cursor):
@@ -155,6 +190,16 @@ class SmallModelDao:
         """Update one small model's default status."""
         sql = """update t_small_model set f_default = %s where f_model_id = %s"""
         cursor.execute(sql, (1 if is_default else 0, model_id))
+
+    def set_default_model(self, model_id, model_type):
+        """Atomically make a model the sole default in its small-model type."""
+        lock_name = f"mf-model-default:small:{model_type}"
+        with advisory_lock_transaction(lock_name) as cursor:
+            cursor.execute(
+                "update t_small_model set f_default=0 where f_default=1 and f_model_type=%s",
+                model_type,
+            )
+            cursor.execute("update t_small_model set f_default=1 where f_model_id=%s", model_id)
 
 
 small_model_dao = SmallModelDao()

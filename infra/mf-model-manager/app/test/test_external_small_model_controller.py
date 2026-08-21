@@ -13,18 +13,18 @@ import json
 class TestAddModel(TestCase):
     def setUp(self) -> None:
         self.name_check = small_model_dao.name_check
-        self.add_model_info = small_model_dao.add_model_info
+        self.add_model_with_default = small_model_dao.add_model_with_default
 
     def tearDown(self) -> None:
         small_model_dao.name_check = self.name_check
-        small_model_dao.add_model_info = self.add_model_info
+        small_model_dao.add_model_with_default = self.add_model_with_default
         StandLogger.stand_log_shutdown()
 
     def test_add_model_success(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         small_model_dao.name_check = mock.Mock(return_value=[])
-        small_model_dao.add_model_info = mock.Mock(return_value=None)
+        small_model_dao.add_model_with_default = mock.Mock(return_value=True)
         para = logics.AddExternalSmallModel(
             model_name="1",
             model_type="embedding",
@@ -36,6 +36,8 @@ class TestAddModel(TestCase):
         res = loop.run_until_complete(
             small_model_controller.add_model(para, "1", "zh", "user"))
         self.assertEqual(isinstance(json.loads(res.body)["id"], str), True)
+        self.assertTrue(json.loads(res.body)["default"])
+        self.assertFalse(small_model_dao.add_model_with_default.call_args.args[-1])
 
 
 class TestVolcengineMultimodalEmbeddingRequest(TestCase):

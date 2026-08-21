@@ -128,14 +128,16 @@ class TestUsedModelOpenai(TestCase):
 
 class TestAddModel(TestCase):
     def setUp(self) -> None:
-        self.add_data_into_model_list = llm_model_dao.add_data_into_model_list
+        self.add_data_with_default = llm_model_dao.add_data_with_default
         self.get_model_by_name = llm_model_dao.get_model_by_name
         self.check_model_unique = llm_model_dao.check_model_unique
+        self.redis_util = llm_controller.redis_util
 
     def tearDown(self) -> None:
-        llm_model_dao.add_data_into_model_list = self.add_data_into_model_list
+        llm_model_dao.add_data_with_default = self.add_data_with_default
         llm_model_dao.get_model_by_name = self.get_model_by_name
         llm_model_dao.check_model_unique = self.check_model_unique
+        llm_controller.redis_util = self.redis_util
         StandLogger.stand_log_shutdown()
 
     def test_add_model_success(self):
@@ -154,14 +156,16 @@ class TestAddModel(TestCase):
             "max_model_len": 128,
             "quota": True
         }
-        llm_model_dao.add_data_into_model_list = mock.Mock(return_value=None)
+        llm_model_dao.add_data_with_default = mock.Mock(return_value=True)
         llm_model_dao.get_model_by_name = mock.Mock(return_value=())
         llm_model_dao.check_model_unique = mock.Mock(return_value=False)
-        # add_model returns {"status": "ok", "id": str(model_id)}.
+        llm_controller.redis_util = mock.MagicMock(delete_str=mock.AsyncMock())
         res = loop.run_until_complete(
             llm_controller.add_model(request, "111", "zh"))
         self.assertEqual(json.loads(res.body)["status"], "ok")
         self.assertEqual(isinstance(json.loads(res.body)["id"], str), True)
+        self.assertTrue(json.loads(res.body)["default"])
+        self.assertFalse(llm_model_dao.add_data_with_default.call_args.args[-1])
 
 
 # test_model

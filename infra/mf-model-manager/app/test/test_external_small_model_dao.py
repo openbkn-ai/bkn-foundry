@@ -43,6 +43,31 @@ class TestAddModelInfo(TestCase):
         self.assertEqual(res, None)
 
 
+class TestAddModelWithDefault(TestCase):
+    def test_requested_default_replaces_only_the_same_model_type(self):
+        pool = mock.MagicMock()
+        connection = mock.MagicMock()
+        cursor = mock.MagicMock()
+        pool.connection.return_value = connection
+        connection.cursor.return_value = cursor
+        cursor.fetchall.side_effect = [[{"lock_acquired": 1}], [{"f_model_id": "existing"}]]
+        config_info = AddExternalSmallModelInfo(
+            model_id="1",
+            model_name="new embedding",
+            model_type="embedding",
+            model_config={"api_url": "http://example.com", "api_model": "embedding"},
+        )
+
+        with mock.patch.object(PymysqlPool, "get_pool", return_value=pool):
+            is_default = small_model_dao.add_model_with_default(config_info, "user1", True)
+
+        self.assertTrue(is_default)
+        connection.commit.assert_called_once()
+        clear_call = cursor.execute.call_args_list[2]
+        self.assertIn("f_model_type=%s", clear_call.args[0])
+        self.assertEqual(clear_call.args[1], "embedding")
+
+
 class TestEditModelInfo(TestCase):
     def setUp(self) -> None:
         self.mysqlPool = PymysqlPool

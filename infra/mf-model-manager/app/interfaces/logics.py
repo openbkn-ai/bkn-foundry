@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Body, Header
 from typing import Optional, List, Dict, Union
-from pydantic import StrictFloat, StrictStr, Field, StrictInt, conint, validator, confloat, conlist, constr, \
+from pydantic import StrictBool, StrictFloat, StrictStr, Field, StrictInt, conint, validator, confloat, conlist, constr, \
     root_validator
 from fastapi.exceptions import RequestValidationError
 from app.controller.ossclient_controller import *
@@ -351,6 +351,7 @@ class AddExternalSmallModel(BaseModel):
     batch_size: int = Field(description="Batch size")
     max_tokens: Optional[int] = Field(default=None, description="Maximum token count")
     embedding_dim: Optional[int] = Field(default=None, description="Embedding dimension")
+    default: StrictBool = Field(default=False, description="Whether to set this model as the system default")
     is_private: Optional[bool] = Field(default=False, description="Whether this is a private route used to control validation")
 
     @root_validator

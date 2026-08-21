@@ -5,7 +5,11 @@ from app.commons.snow_id import worker
 from app.dao import user_info
 from app.interfaces import dbaccess
 from app.logs.stand_log import StandLogger
-from app.mydb.my_pymysql_pool import connect_execute_close_db, connect_execute_commit_close_db
+from app.mydb.my_pymysql_pool import (
+    advisory_lock_transaction,
+    connect_execute_close_db,
+    connect_execute_commit_close_db,
+)
 
 
 class ModelDao():
@@ -110,6 +114,29 @@ class ModelDao():
                                                                 max_model_len, quota)
 
         cursor.execute(sql)
+
+    def add_data_with_default(self, model_id, model_series, model_type, model_name, model, userId, model_config,
+                              max_model_len, model_parameters, quota, requested_default):
+        """Create a model and select its effective default in one transaction."""
+        with advisory_lock_transaction("mf-model-default:llm") as cursor:
+            cursor.execute("select f_model_id from t_llm_model where f_default=1")
+            has_default = bool(cursor.fetchall())
+            is_default = requested_default or not has_default
+
+            if requested_default and has_default:
+                cursor.execute("update t_llm_model set f_default=0 where f_default=1")
+
+            sql = """insert into t_llm_model(
+                f_model_id,f_model_series,f_model_type,f_model_name,f_model,
+                f_create_by,f_update_by,f_model_config,f_update_time,f_create_time,
+                f_max_model_len,f_model_parameters,f_quota,f_default
+            ) values(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"""
+            cursor.execute(sql, (
+                model_id, model_series, model_type, model_name, model, userId, userId, model_config,
+                datetime.datetime.today(), datetime.datetime.today(), max_model_len, model_parameters,
+                1 if quota else 0, 1 if is_default else 0,
+            ))
+            return is_default
 
     @connect_execute_commit_close_db
     def delete_model_by_id(self, model_ids, connection, cursor):
@@ -423,6 +450,12 @@ class ModelDao():
         """Update a model's default status."""
         sql = """update t_llm_model set f_default=%s where f_model_id=%s"""
         cursor.execute(sql, (1 if is_default else 0, model_id))
+
+    def set_default_model(self, model_id):
+        """Atomically make a model the sole large-model default."""
+        with advisory_lock_transaction("mf-model-default:llm") as cursor:
+            cursor.execute("update t_llm_model set f_default=0 where f_default=1")
+            cursor.execute("update t_llm_model set f_default=1 where f_model_id=%s", model_id)
 
     @connect_execute_commit_close_db
     def get_overview_data(self, model_id, start_time, end_time, userId, connection, cursor):

@@ -66,8 +66,8 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
         )
         if not status:
             raise Exception("add permission failed")
-        small_model_dao.add_model_info(config_info, userId)
-        content = {"status": "ok", "id": model_id}
+        is_default = small_model_dao.add_model_with_default(config_info, userId, request.default)
+        content = {"status": "ok", "id": model_id, "default": is_default}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
         StandLogger.error(e.args)
@@ -402,11 +402,7 @@ async def set_default_model(model_para, userId, language, role):
             small_model_dao.update_model_default_status(model_id, False)
             return JSONResponse(status_code=200, content={"status": "ok", "id": model_id, "default": False})
         model_type = model_info[0]["f_model_type"]
-        old_default = small_model_dao.get_default_by_type(model_type)
-        for line in old_default:
-            if line["f_model_id"] != model_id:
-                small_model_dao.update_model_default_status(line["f_model_id"], False)
-        small_model_dao.update_model_default_status(model_id, True)
+        small_model_dao.set_default_model(model_id, model_type)
         content = {"status": "ok", "id": model_id, "default": True}
         return JSONResponse(status_code=200, content=content)
     except Exception as e:
