@@ -47,6 +47,21 @@ func TestMigrationPlanReturnsOnlyUnappliedVersions(t *testing.T) {
 	}
 }
 
+func TestMigrationPlanUpgradesExistingCoreSchemaWithProvenanceTable(t *testing.T) {
+	migrations := Migrations()
+	applied := make(map[string]string, len(migrations)-1)
+	for _, migration := range migrations[:len(migrations)-1] {
+		applied[migration.Version] = migration.Checksum
+	}
+	plan, err := migrationPlan(migrations, applied)
+	if err != nil {
+		t.Fatalf("plan provenance schema migration: %v", err)
+	}
+	if len(plan) != 1 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") {
+		t.Fatalf("unexpected provenance schema plan: %#v", plan)
+	}
+}
+
 func TestMigrationPlanRejectsAppliedVersionGap(t *testing.T) {
 	migrations := Migrations()
 	applied := map[string]string{

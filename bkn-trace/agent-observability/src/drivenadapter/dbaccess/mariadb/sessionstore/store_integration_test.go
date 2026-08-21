@@ -109,6 +109,14 @@ func TestMigrateIsIdempotentAndRecordsVersionLedger(t *testing.T) {
 	if ledgerRows != len(sessionstore.Migrations()) {
 		t.Fatalf("expected %d migration ledger rows, got %d", len(sessionstore.Migrations()), ledgerRows)
 	}
+	var provenanceTableRows int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM information_schema.tables
+		WHERE table_schema = DATABASE() AND table_name = 'bkn_trace_ee_provenance_analyses'`).Scan(&provenanceTableRows); err != nil {
+		t.Fatalf("check provenance analysis table: %v", err)
+	}
+	if provenanceTableRows != 1 {
+		t.Fatalf("expected Core migration to create provenance analysis table, got %d", provenanceTableRows)
+	}
 }
 
 func TestSourceCoverageSurvivesStoreRestart(t *testing.T) {
