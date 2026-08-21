@@ -662,18 +662,18 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 			WithErrorDetails(err.Error())
 	}
 	if params.ResourceID == "" {
-		resourceIDs := make([]string, 0, len(buildTasks))
+		catalogIDs := make([]string, 0, len(buildTasks))
 		for _, bt := range buildTasks {
-			resourceIDs = append(resourceIDs, bt.ResourceID)
+			catalogIDs = append(catalogIDs, bt.CatalogID)
 		}
-		allowed, err := bts.rs.FilterAuthorizedResources(ctx, resourceIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		allowed, err := bts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 		if err != nil {
-			span.SetStatus(codes.Error, "Filter authorized resources failed")
+			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
 			return nil, 0, err
 		}
 		visible := make([]*interfaces.BuildTaskSummary, 0, len(buildTasks))
 		for _, bt := range buildTasks {
-			if allowed[bt.ResourceID] {
+			if allowed[bt.CatalogID] {
 				visible = append(visible, bt)
 			}
 		}

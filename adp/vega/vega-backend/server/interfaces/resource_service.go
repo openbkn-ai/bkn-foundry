@@ -52,17 +52,6 @@ type ResourceService interface {
 	// task is authorized by the table it belongs to rather than by nothing at all.
 	CheckResourcePermission(ctx context.Context, resourceID string, op string) error
 
-	// FilterAuthorizedResources keeps the ids the caller may perform op on, for
-	// listings of things that hang off a resource — build tasks above all. The
-	// caller passes the ids on the page it has already fetched, so the question
-	// is bounded by the page size rather than by how much the account was granted.
-	//
-	// The answer runs through the same two steps as every other check: ask the
-	// resource, then the catalog it lives in. Internal-catalog resources are asked
-	// under their own type, so a business role holding resource:* does not reach
-	// them, while one granted a single internal catalog does.
-	FilterAuthorizedResources(ctx context.Context, ids []string, op string) (map[string]bool, error)
-
 	// InternalGetByID retrieves a Resource by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*Resource, error)
 	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.

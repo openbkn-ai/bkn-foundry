@@ -630,58 +630,6 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 	return resource, nil
 }
 
-// FilterAuthorizedResources keeps the ids the caller may perform op on.
-//
-// The ids come from a page the caller already fetched, so the work is bounded by
-// the page size no matter how much the account was granted. That is the whole
-// reason this is not resolved up front and pushed into the SQL: an account
-// granted thousands of tables one by one would put every one of them into an IN
-// list on every page request.
-//
-// The cost is that the listing's total is the unfiltered count. It says how many
-// rows match the query, not how many this caller may read.
-func (rs *resourceService) FilterAuthorizedResources(ctx context.Context, ids []string,
-	op string) (map[string]bool, error) {
-
-	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.FilterAuthorizedResources")
-	defer span.End()
-
-	unique := make([]string, 0, len(ids))
-	seen := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		if id == "" || seen[id] {
-			continue
-		}
-		seen[id] = true
-		unique = append(unique, id)
-	}
-	if len(unique) == 0 {
-		return map[string]bool{}, nil
-	}
-
-	internalResources, err := rs.internalResourceIDSet(ctx)
-	if err != nil {
-		return nil, err
-	}
-	allowed, err := rs.filterResourcePermissions(ctx, unique, internalResources, []string{op}, true)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]bool, len(allowed))
-	for id := range allowed {
-		out[id] = true
-	}
-	return out, nil
-}
-
-// CheckResourcePermission authorizes an operation on one resource for callers
-// that hold only its id — the task services, whose objects all hang off a
-// resource. It resolves the owning catalog itself, so a caller never has to know
-// that the fallback exists.
-//
-// A missing resource is reported as forbidden rather than as "not found": the
-// caller has not proven it may see the resource, and saying which ids exist is
-// itself a disclosure.
 func (rs *resourceService) CheckResourcePermission(ctx context.Context, resourceID string, op string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.CheckResourcePermission")
 	defer span.End()

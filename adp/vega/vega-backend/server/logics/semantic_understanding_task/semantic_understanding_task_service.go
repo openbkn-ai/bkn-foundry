@@ -984,37 +984,24 @@ func accountInfoFromContext(ctx context.Context) interfaces.AccountInfo {
 func (suts *semanticUnderstandingTaskService) filterTasksByParent(ctx context.Context,
 	tasks []*interfaces.SemanticUnderstandingTaskSummary) ([]*interfaces.SemanticUnderstandingTaskSummary, error) {
 
-	resourceIDs := make([]string, 0, len(tasks))
+	// 判定统一落在目录上:表的管理权已经收敛到它所在的目录,任务是目录下的产物。
+	// 资源域的任务落库时也写了 f_catalog_id,所以两种 scope 走同一条路,不需要
+	// 回查资源表。
 	catalogIDs := make([]string, 0, len(tasks))
 	for _, t := range tasks {
-		if t.Scope == interfaces.SemanticUnderstandingTaskScopeResource && t.ResourceID != "" {
-			resourceIDs = append(resourceIDs, t.ResourceID)
-			continue
-		}
 		if t.CatalogID != "" {
 			catalogIDs = append(catalogIDs, t.CatalogID)
 		}
 	}
-	allowedResources, err := suts.rs.FilterAuthorizedResources(ctx, resourceIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
-	if err != nil {
-		return nil, err
-	}
-	allowedCatalogs, err := suts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	allowed, err := suts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
 	if err != nil {
 		return nil, err
 	}
 	visible := make([]*interfaces.SemanticUnderstandingTaskSummary, 0, len(tasks))
 	for _, t := range tasks {
-		if t.Scope == interfaces.SemanticUnderstandingTaskScopeResource && t.ResourceID != "" {
-			if allowedResources[t.ResourceID] {
-				visible = append(visible, t)
-			}
-			continue
-		}
-		if t.CatalogID != "" && allowedCatalogs[t.CatalogID] {
+		if t.CatalogID != "" && allowed[t.CatalogID] {
 			visible = append(visible, t)
 		}
 	}
-	tasks = visible
 	return visible, nil
 }

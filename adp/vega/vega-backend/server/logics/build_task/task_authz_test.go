@@ -117,14 +117,15 @@ func TestBuildTaskCreateRequiresTaskManage(t *testing.T) {
 	assert.Same(t, denied, err)
 }
 
-// TestBuildTaskListFiltersByVisibleResources 是 #472 的标题项:列表曾经返回全量。
+// TestBuildTaskListFiltersByVisibleCatalogs 是 #472 的标题项:列表曾经返回全量。
 //
-// 过滤对取回的这一页做,问的 id 数被页大小兜住,而不是被这个账号被授权过的资源
-// 数量兜住——后者在一个跑久了的部署上能到几千,每翻一页都塞进 IN 列表并不划算。
-// 代价是 total 为未过滤计数、某页可能短甚至为空,调用方要翻到没有为止。
-func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
+// 判定统一落在目录上——表的管理权已经收敛到它所在的目录,任务是目录下的产物。
+// 过滤对取回的这一页做,问的目录数被页大小兜住,而不是被这个账号被授权过的对象
+// 数量兜住。
+func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 	newSvc := func(ctrl *gomock.Controller) (*buildTaskService,
-		*mock_interfaces.MockBuildTaskAccess, *mock_interfaces.MockResourceService) {
+		*mock_interfaces.MockBuildTaskAccess, *mock_interfaces.MockResourceService,
+		*mock_interfaces.MockCatalogService) {
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		rs := mock_interfaces.NewMockResourceService(ctrl)
 		ums := mock_interfaces.NewMockUserMgmtService(ctrl)
@@ -132,43 +133,41 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		rs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 		cs.EXPECT().InternalGetByIDs(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
-		return &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}, bta, rs
+		return &buildTaskService{bta: bta, rs: rs, ums: ums, cs: cs}, bta, rs, cs
 	}
-	page := func(ids ...string) []*interfaces.BuildTaskSummary {
-		out := make([]*interfaces.BuildTaskSummary, 0, len(ids))
-		for i, id := range ids {
-			out = append(out, &interfaces.BuildTaskSummary{ID: fmt.Sprintf("task-%d", i), ResourceID: id})
+	page := func(catalogIDs ...string) []*interfaces.BuildTaskSummary {
+		out := make([]*interfaces.BuildTaskSummary, 0, len(catalogIDs))
+		for i, id := range catalogIDs {
+			out = append(out, &interfaces.BuildTaskSummary{
+				ID: fmt.Sprintf("task-%d", i), ResourceID: fmt.Sprintf("res-%d", i), CatalogID: id,
+			})
 		}
 		return out
 	}
 
 	t.Run("只留下看得见的那几行", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
+		svc, bta, _, cs := newSvc(ctrl)
 
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).DoAndReturn(
-			func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, int64, error) {
-				return page("res-1", "res-2"), int64(2), nil
-			})
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), []string{"res-1", "res-2"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("res-1"))
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1", "cat-2"), int64(2), nil)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-1", "cat-2"},
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("cat-1"))
 
 		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.NoError(t, err)
 		require.Len(t, tasks, 1)
-		assert.Equal(t, "res-1", tasks[0].ResourceID)
+		assert.Equal(t, "cat-1", tasks[0].CatalogID)
 	})
 
-	t.Run("只就这一页上的表问鉴权,不是全量 id", func(t *testing.T) {
+	t.Run("只就这一页上的目录问鉴权,不是全量 id", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
+		svc, bta, _, cs := newSvc(ctrl)
 
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("res-1", "res-1", "res-2"), int64(3), nil)
-		// 同一张表出现两次也只问一次:去重在服务里做。
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), gomock.Any(), gomock.Any()).
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1", "cat-1", "cat-2"), int64(3), nil)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(func(_ context.Context, ids []string, _ string) (map[string]bool, error) {
-				assert.Len(t, ids, 3, "传的是这一页上的 resource_id,页大小就是上限")
-				return map[string]bool{"res-1": true}, nil
+				assert.Len(t, ids, 3, "传的是这一页上的 catalog_id,页大小就是上限")
+				return map[string]bool{"cat-1": true}, nil
 			}).Times(1)
 
 		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
@@ -178,51 +177,35 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 
 	t.Run("内部目录下的任务看不见就滤掉", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
+		svc, bta, _, cs := newSvc(ctrl)
 
-		// 内部资源在批量过滤里按 internal_resource 分型问,业务角色的 resource:*
+		// 内部目录在批量过滤里按 internal_catalog 分型问,业务角色的 catalog:*
 		// 够不到它,所以挂在它底下的任务不会漏出去。
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("biz-1", "internal-1"), int64(2), nil)
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), gomock.Any(), gomock.Any()).
-			DoAndReturn(allowOnlyIDs("biz-1"))
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("biz-cat", "internal-cat"), int64(2), nil)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).
+			DoAndReturn(allowOnlyIDs("biz-cat"))
 
 		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.NoError(t, err)
 		require.Len(t, tasks, 1)
-		assert.Equal(t, "biz-1", tasks[0].ResourceID)
+		assert.Equal(t, "biz-cat", tasks[0].CatalogID)
 	})
 
 	t.Run("一页全被滤掉就返回空,不报错", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
+		svc, bta, _, cs := newSvc(ctrl)
 
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("res-1"), int64(1), nil)
-		rs.EXPECT().FilterAuthorizedResources(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(denyAllIDs)
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
+		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(denyAllIDs)
 
 		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.NoError(t, err)
 		assert.Empty(t, tasks)
 	})
 
-	t.Run("显式指定看不见的 resource_id,查都不查", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
-
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-other",
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).
-			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
-		_ = bta // bta.List 不该被调用
-
-		tasks, total, err := svc.List(context.Background(),
-			interfaces.BuildTasksQueryParams{ResourceID: "res-other"})
-		require.NoError(t, err)
-		assert.Empty(t, tasks)
-		assert.Zero(t, total)
-	})
-
 	t.Run("鉴权服务答不上来要报错,不能报成空页", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
+		svc, bta, rs, _ := newSvc(ctrl)
 
 		// 500 不是「这张表没有任务」,而是「问不出来」。吞掉它会让界面显示一张
 		// 空表、监控看到一次成功请求,正在跑的任务凭空消失。
@@ -239,14 +222,30 @@ func TestBuildTaskListFiltersByVisibleResources(t *testing.T) {
 		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
 	})
 
+	t.Run("显式指定看不见的 resource_id,查都不查", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		svc, bta, rs, _ := newSvc(ctrl)
+
+		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-other",
+			interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
+		_ = bta // bta.List 不该被调用
+
+		tasks, total, err := svc.List(context.Background(),
+			interfaces.BuildTasksQueryParams{ResourceID: "res-other"})
+		require.NoError(t, err)
+		assert.Empty(t, tasks)
+		assert.Zero(t, total)
+	})
+
 	t.Run("显式指定看得见的 resource_id,这一页不再逐行复判", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs := newSvc(ctrl)
+		svc, bta, rs, _ := newSvc(ctrl)
 
 		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(nil)
-		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("res-1"), int64(1), nil)
-		// 已经判过这张表了,再对整页问一遍是白花钱:FilterAuthorizedResources 不该被调用。
+		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
+		// 已经判过了,再对整页问一遍是白花钱:FilterAuthorizedCatalogs 不该被调用。
 
 		tasks, _, err := svc.List(context.Background(),
 			interfaces.BuildTasksQueryParams{ResourceID: "res-1"})
