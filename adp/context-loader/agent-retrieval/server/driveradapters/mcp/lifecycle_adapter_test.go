@@ -132,6 +132,89 @@ func lifecycleAdapterJSONResponse(status int, value any) *http.Response {
 	}
 }
 
+func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
+	tests := []struct {
+		name        string
+		toolName    string
+		args        map[string]any
+		wantMessage string
+	}{
+		{
+			name: "start without agent name", toolName: "bkn_start_interaction",
+			args:        map[string]any{"question": "查询库存"},
+			wantMessage: "bkn_start_interaction expects top-level question and agent_name, plus optional conversation_id",
+		},
+		{
+			name: "start with empty agent name", toolName: "bkn_start_interaction",
+			args:        map[string]any{"question": "查询库存", "agent_name": ""},
+			wantMessage: "bkn_start_interaction expects top-level question and agent_name, plus optional conversation_id",
+		},
+		{
+			name: "finish with lifecycle IDs nested in bkn context", toolName: "bkn_finish_interaction",
+			args: map[string]any{
+				"bkn_context": map[string]any{
+					"conversation_id": "conv-1", "interaction_id": "int-1",
+				},
+				"outcome": "completed", "answer": "库存充足",
+			},
+			wantMessage: "bkn_finish_interaction requires interaction_id as a top-level field; remove bkn_context and retry",
+		},
+		{
+			name: "finish with unsupported outcome", toolName: "bkn_finish_interaction",
+			args:        map[string]any{"interaction_id": "int-1", "outcome": "abandoned"},
+			wantMessage: "bkn_finish_interaction outcome must be completed, failed, cancelled, or handed_off",
+		},
+		{
+			name: "finish with empty interaction id", toolName: "bkn_finish_interaction",
+			args:        map[string]any{"interaction_id": "", "outcome": "failed"},
+			wantMessage: "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			coreCalls := 0
+			client := &http.Client{Transport: lifecycleAdapterRoundTripFunc(func(*http.Request) (*http.Response, error) {
+				coreCalls++
+				return lifecycleAdapterJSONResponse(http.StatusInternalServerError, map[string]any{}), nil
+			})}
+			ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
+				RequestID: "req-invalid-lifecycle-arguments", TenantID: "tenant-1", BusinessDomain: "domain-1",
+			})
+			ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
+				AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
+			})
+
+			result, err := handleLifecycleTool(
+				bkntrace.NewLifecycleClient("http://bkn-trace.test", client), test.toolName,
+			)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: test.args}})
+			if err != nil {
+				t.Fatalf("invalid lifecycle arguments returned handler error: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("invalid lifecycle arguments unexpectedly succeeded: %#v", result)
+			}
+			if coreCalls != 0 {
+				t.Fatalf("invalid lifecycle arguments reached Core %d times", coreCalls)
+			}
+			textContent, ok := mcpsdk.AsTextContent(result.Content[0])
+			if !ok {
+				t.Fatalf("invalid lifecycle error is not text: %#v", result.Content)
+			}
+			var envelope map[string]any
+			if err := json.Unmarshal([]byte(textContent.Text), &envelope); err != nil {
+				t.Fatalf("decode invalid lifecycle error: %v", err)
+			}
+			errorValue := envelope["error"].(map[string]any)
+			if errorValue["code"] != "invalid_params" ||
+				errorValue["required_action"] != "correct_tool_arguments" ||
+				errorValue["message"] != test.wantMessage {
+				t.Fatalf("invalid lifecycle error lacks correction guidance: %#v", errorValue)
+			}
+		})
+	}
+}
+
 func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEvidence(t *testing.T) {
 	createdAt := time.Date(2026, 8, 3, 6, 30, 0, 123000000, time.UTC)
 	var artifact map[string]any
@@ -176,7 +259,7 @@ func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEviden
 		bkntrace.NewLifecycleClient(backend.URL, backend.Client()),
 		"bkn_start_interaction",
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
-		"conversation_id": "conv-1", "question": "查询 BOM",
+		"conversation_id": "conv-1", "question": "查询 BOM", "agent_name": "供应链分析助手",
 	}}})
 	if err != nil || result.IsError {
 		t.Fatalf("start interaction failed: result=%#v err=%v", result, err)
@@ -243,17 +326,13 @@ func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testi
 		"bkn_finish_interaction",
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
 		"interaction_id": "int-1", "outcome": "completed",
-		"idempotency_key": "complete-1", "answer": "BOM 查询完成",
-		"claims": []any{map[string]any{"claim_id": "caller-owned"}},
+		"answer": "BOM 查询完成",
 	}}})
 	if err != nil || result.IsError {
 		t.Fatalf("complete interaction failed: result=%#v err=%v", result, err)
 	}
 	if got := artifact["observed_at"]; got != updatedAt.Format(time.RFC3339Nano) {
 		t.Fatalf("result artifact observed_at=%v, want Core updated_at %s", got, updatedAt.Format(time.RFC3339Nano))
-	}
-	if _, forwarded := finishBody["claims"]; forwarded {
-		t.Fatalf("ordinary MCP finish forwarded caller-owned claims: %#v", finishBody)
 	}
 }
 
@@ -303,7 +382,7 @@ func TestFinishInteractionRetryReusesCommittedResultArtifact(t *testing.T) {
 		"bkn_finish_interaction",
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
 		"interaction_id": "int-1", "outcome": "completed",
-		"idempotency_key": "complete-1", "answer": "BOM 查询完成",
+		"answer": "BOM 查询完成",
 	}}})
 	if err != nil || result.IsError {
 		t.Fatalf("terminal retry failed: result=%#v err=%v", result, err)

@@ -192,6 +192,30 @@ func TestStartInteractionDescriptionGuidesStableAgentIdentity(t *testing.T) {
 	}
 }
 
+func TestFinishInteractionDescriptionShowsTopLevelCompletedExample(t *testing.T) {
+	tests := []struct {
+		locale string
+		want   string
+	}{
+		{
+			locale: "zh-CN",
+			want:   `结束当前用户问题对应的 Interaction，并在成功后再回复用户。直接传入顶层字段 interaction_id 和 outcome（completed、failed、cancelled 或 handed_off）。outcome 为 completed 时必须传入 answer，内容为准备回复用户的最终答案；其他结果可传入 reason。Conversation 不会结束，可供后续问题继续使用。示例：{"interaction_id":"int_...","outcome":"completed","answer":"..."}`,
+		},
+		{
+			locale: "en-US",
+			want:   `Finish the Interaction for the current user question, then reply to the user after this call succeeds. Pass interaction_id and outcome (completed, failed, cancelled, or handed_off) as top-level fields. When outcome is completed, answer is required and should contain the final answer to the user; for other outcomes, reason is optional. The Conversation remains available for later questions. Example: {"interaction_id":"int_...","outcome":"completed","answer":"..."}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.locale, func(t *testing.T) {
+			if got := loadMCPLocaleBundle(test.locale).ToolMeta("bkn_finish_interaction").Description; got != test.want {
+				t.Fatalf("finish description for %s = %q, want %q", test.locale, got, test.want)
+			}
+		})
+	}
+}
+
 func getNestedString(root map[string]any, path []string) (string, bool) {
 	var current any = root
 	for _, segment := range path {
