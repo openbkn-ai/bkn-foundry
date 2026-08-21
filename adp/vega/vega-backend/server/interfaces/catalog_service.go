@@ -45,14 +45,9 @@ type CatalogService interface {
 	// ListAuthResources lists catalog auth resources with filters.
 	ListAuthResources(ctx context.Context, params AuthResourceQueryParams) ([]*AuthResourceEntry, int64, error)
 
-	// CheckCatalogPermission reports whether the caller may perform op on the
-	// catalog. Symmetric with ResourceService.CheckResourcePermission, for task
-	// services whose objects hang off a catalog rather than a table.
-	CheckCatalogPermission(ctx context.Context, catalogID string, op string) error
-
-	// FilterAuthorizedCatalogs keeps the ids the caller may perform op on.
-	// Symmetric with ResourceService.FilterAuthorizedResources and bounded the
-	// same way — by the page, not by the size of the grant.
+	// FilterAuthorizedCatalogs keeps the ids the caller may perform op on,
+	// bounded by the page the caller already fetched rather than by the size of
+	// the grant. Every listing that hangs off a catalog filters through this.
 	FilterAuthorizedCatalogs(ctx context.Context, ids []string, op string) (map[string]bool, error)
 
 	// CheckTaskPermission authorizes an operation on something that hangs off a
@@ -60,11 +55,6 @@ type CatalogService interface {
 	// tasks outlive their catalog, and judging them on an object that is gone
 	// would strand them beyond anyone's reach.
 	CheckTaskPermission(ctx context.Context, catalogID string, op string) error
-
-	// HasTypeWideGrant reports a grant written against the catalog type itself
-	// (catalog:*). It exists for the one case that has no object to judge: a task
-	// whose parent has been deleted, which only a type-wide holder may clean up.
-	HasTypeWideGrant(ctx context.Context, op string) (bool, error)
 
 	// InternalGetByID retrieves a Catalog by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*Catalog, error)

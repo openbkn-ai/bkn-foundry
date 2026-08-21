@@ -348,11 +348,9 @@ func (cs *catalogService) createHealthCheckSchedule(ctx context.Context, tx *sql
 	return err
 }
 
-// Get retrieves a Catalog by ID.
-// FilterAuthorizedCatalogs keeps the ids the caller may perform op on. Symmetric
-// with ResourceService.FilterAuthorizedResources: the ids come from a page the
-// caller already fetched, so the question stays bounded by the page rather than
-// by the size of the grant.
+// FilterAuthorizedCatalogs keeps the ids the caller may perform op on. The ids
+// come from a page the caller already fetched, so the question stays bounded by
+// the page rather than by the size of the grant.
 func (cs *catalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []string,
 	op string) (map[string]bool, error) {
 
@@ -406,10 +404,10 @@ func (cs *catalogService) CheckTaskPermission(ctx context.Context, catalogID str
 		// that is gone, so any failure here is read as "gone" — otherwise deleting
 		// a catalog would make its tasks unreachable through this path too.
 		if catalog, err := cs.InternalGetByID(ctx, catalogID, false); err == nil && catalog != nil {
-			return cs.CheckCatalogPermission(ctx, catalogID, op)
+			return cs.checkCatalogPermission(ctx, catalogID, op)
 		}
 	}
-	typeWide, err := cs.HasTypeWideGrant(ctx, op)
+	typeWide, err := cs.hasTypeWideGrant(ctx, op)
 	if err != nil {
 		return err
 	}
@@ -420,10 +418,10 @@ func (cs *catalogService) CheckTaskPermission(ctx context.Context, catalogID str
 		WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 }
 
-// HasTypeWideGrant reports a grant written against the catalog type itself.
+// hasTypeWideGrant reports a grant written against the catalog type itself.
 // Only one caller needs it: a task whose parent catalog has been deleted has no
 // object left to judge, and leaving those unreachable would strand them forever.
-func (cs *catalogService) HasTypeWideGrant(ctx context.Context, op string) (bool, error) {
+func (cs *catalogService) hasTypeWideGrant(ctx context.Context, op string) (bool, error) {
 	err := cs.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   interfaces.RESOURCE_ID_ALL,
@@ -440,11 +438,11 @@ func (cs *catalogService) HasTypeWideGrant(ctx context.Context, op string) (bool
 	return false, err
 }
 
-// CheckCatalogPermission authorizes an operation on one catalog for callers that
+// checkCatalogPermission authorizes an operation on one catalog for callers that
 // hold only its id. A missing catalog is reported as forbidden rather than as
 // "not found": the caller has not proven it may see the catalog, and saying
 // which ids exist is itself a disclosure.
-func (cs *catalogService) CheckCatalogPermission(ctx context.Context, catalogID string, op string) error {
+func (cs *catalogService) checkCatalogPermission(ctx context.Context, catalogID string, op string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CatalogService.CheckCatalogPermission")
 	defer span.End()
 

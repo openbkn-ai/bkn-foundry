@@ -426,7 +426,7 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 	if buildTask != nil {
 		// A task is read through the table it builds (#472).
 		if err := bts.cs.CheckTaskPermission(ctx, buildTask.CatalogID,
-			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 			span.SetStatus(codes.Error, "Permission denied")
 			return nil, err
 		}
@@ -631,7 +631,9 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List build tasks")
 	defer span.End()
 
-	// A task is visible through the table it builds (#472). The filter runs over
+	// A task is judged on the catalog it belongs to, with task_manage (#472) —
+	// reading a task is reading the catalog's management surface, so the same
+	// verb decides the listing and every single-task endpoint. The filter runs over
 	// the page that came back, not inside the query: the visible set can reach
 	// into the thousands on a busy deployment, and carrying it as an IN list on
 	// every page request costs the database more than it saves.
@@ -659,7 +661,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 			return []*interfaces.BuildTaskSummary{}, 0, nil
 		}
 		if err := bts.cs.CheckTaskPermission(ctx, resource.CatalogID,
-			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 			// Only a refusal means "no tasks". Anything else is the authorization
 			// service or the database failing to answer, and reporting that as an
 			// empty page would hide a running task behind a successful request.
@@ -683,7 +685,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 		for _, bt := range buildTasks {
 			catalogIDs = append(catalogIDs, bt.CatalogID)
 		}
-		allowed, err := bts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		allowed, err := bts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
 			return nil, 0, err

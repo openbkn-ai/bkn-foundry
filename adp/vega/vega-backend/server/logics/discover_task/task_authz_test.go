@@ -53,7 +53,7 @@ func TestDiscoverTaskReadRequiresCatalogViewDetail(t *testing.T) {
 		ID: "task-1", CatalogID: "cat-1",
 	}, nil)
 	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
+		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
 	require.Nil(t, task)
@@ -86,7 +86,7 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1", "cat-2"), int64(2), nil)
 		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-1", "cat-2"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("cat-1"))
+			interfaces.OPERATION_TYPE_TASK_MANAGE).DoAndReturn(allowOnlyIDs("cat-1"))
 
 		tasks, _, err := svc.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
 		require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		svc, dta, cs := newSvc(ctrl)
 
 		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-other",
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			interfaces.OPERATION_TYPE_TASK_MANAGE).
 			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 		_ = dta // dta.List 不该被调用
 
@@ -144,7 +144,7 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		svc, dta, cs := newSvc(ctrl)
 
 		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(nil)
+			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
 
 		tasks, _, err := svc.List(context.Background(),

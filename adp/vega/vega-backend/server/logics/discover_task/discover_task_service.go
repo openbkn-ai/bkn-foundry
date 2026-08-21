@@ -144,7 +144,7 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 	}
 	// 一个探查任务是通过它所属的目录被看见的（#269）。
 	if err := dts.cs.CheckTaskPermission(ctx, task.CatalogID,
-		interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+		interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
@@ -180,7 +180,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	// 空,而后面的页仍有可见行——调用方要一直翻到没有为止,不能只看 total。
 	if params.CatalogID != "" {
 		if err := dts.cs.CheckTaskPermission(ctx, params.CatalogID,
-			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 			// 只有「拒绝」才意味着没有任务。其余是鉴权服务或数据库答不上来,把它
 			// 报成空页会让一次故障看起来像一个成功请求。
 			if !interfaces.IsPermissionRefusal(err) {
@@ -203,7 +203,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 		for _, t := range tasks {
 			catalogIDs = append(catalogIDs, t.CatalogID)
 		}
-		allowed, err := dts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+		allowed, err := dts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter authorized catalogs failed")
 			return nil, 0, err

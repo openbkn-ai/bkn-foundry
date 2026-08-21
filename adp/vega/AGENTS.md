@@ -40,11 +40,13 @@
 ```go
 tasks, total, err := xxa.List(ctx, params)   // 查询里没有权限条件
 catalogIDs := collectCatalogIDs(tasks)       // 收集这一页的目录 id，去重
-allowed, err := cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+allowed, err := cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
 tasks = keepAllowed(tasks, allowed)          // 内存过滤
 ```
 
 判定落在**目录**上：数据表的管理权已经收敛到它所在的目录（#801），任务是目录下的产物，跟随目录即可。任务行上本来就带 `f_catalog_id`，不需要回查资源表。
+
+动词**一律是 `task_manage`**，读和写都一样，包括列表过滤与按 id 读详情。任务属于管理面，看得到一张表不等于该看到它的构建历史——只持目录 `view_detail` 的只读用户看不到任何任务，这是预期。用两个动词还会重新制造「列表判 A、详情判 B」那类不一致。
 
 ### 为什么不把 id 下推进 SQL
 

@@ -236,7 +236,7 @@ func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id st
 		span.SetStatus(codes.Error, "Semantic understanding task not found")
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_SemanticUnderstandingTask_NotFound)
 	}
-	if err := suts.checkTaskPermission(ctx, task, interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
+	if err := suts.checkTaskPermission(ctx, task, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
@@ -963,7 +963,7 @@ func (suts *semanticUnderstandingTaskService) filterTasksByParent(ctx context.Co
 			catalogIDs = append(catalogIDs, t.CatalogID)
 		}
 	}
-	allowed, err := suts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_VIEW_DETAIL)
+	allowed, err := suts.cs.FilterAuthorizedCatalogs(ctx, catalogIDs, interfaces.OPERATION_TYPE_TASK_MANAGE)
 	if err != nil {
 		return nil, err
 	}

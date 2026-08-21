@@ -1744,7 +1744,7 @@ func TestHasTypeWideGrantSeparatesRefusalFromFailure(t *testing.T) {
 		}, []string{interfaces.OPERATION_TYPE_TASK_MANAGE}).
 			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 
-		got, err := cs.HasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
+		got, err := cs.hasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
 		require.NoError(t, err)
 		assert.False(t, got)
 	})
@@ -1757,7 +1757,7 @@ func TestHasTypeWideGrantSeparatesRefusalFromFailure(t *testing.T) {
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(rest.NewHTTPError(context.Background(), http.StatusInternalServerError, rest.PublicError_InternalServerError))
 
-		got, err := cs.HasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
+		got, err := cs.hasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
 		require.Error(t, err, "鉴权服务挂了不能当成「没有权限」")
 		assert.False(t, got)
 	})
@@ -1769,7 +1769,7 @@ func TestHasTypeWideGrantSeparatesRefusalFromFailure(t *testing.T) {
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
-		got, err := cs.HasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
+		got, err := cs.hasTypeWideGrant(context.Background(), interfaces.OPERATION_TYPE_TASK_MANAGE)
 		require.NoError(t, err)
 		assert.True(t, got)
 	})

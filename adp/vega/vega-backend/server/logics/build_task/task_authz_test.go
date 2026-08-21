@@ -96,7 +96,7 @@ func TestBuildTaskReadRequiresViewDetail(t *testing.T) {
 		ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1",
 	}, nil)
 	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
+		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
 	require.Nil(t, task)
@@ -158,7 +158,7 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1", "cat-2"), int64(2), nil)
 		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), []string{"cat-1", "cat-2"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("cat-1"))
+			interfaces.OPERATION_TYPE_TASK_MANAGE).DoAndReturn(allowOnlyIDs("cat-1"))
 
 		tasks, _, err := svc.List(context.Background(), interfaces.BuildTasksQueryParams{})
 		require.NoError(t, err)
@@ -238,7 +238,7 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-other").
 			Return(&interfaces.Resource{ID: "res-other", CatalogID: "cat-other"}, nil)
 		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-other",
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).
+			interfaces.OPERATION_TYPE_TASK_MANAGE).
 			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 		_ = bta // bta.List 不该被调用
 
@@ -256,7 +256,7 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").
 			Return(&interfaces.Resource{ID: "res-1", CatalogID: "cat-1"}, nil)
 		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(nil)
+			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
 		// 已经判过了,再对整页问一遍是白花钱:FilterAuthorizedCatalogs 不该被调用。
 

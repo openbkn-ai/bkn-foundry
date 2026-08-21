@@ -485,7 +485,6 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	permCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.Catalog{ID: "c-1"}, nil).AnyTimes()
-	permCS.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 	service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 	taskAccess.EXPECT().
@@ -518,7 +517,6 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.Catalog{ID: "c-1"}, nil).AnyTimes()
-		permCS.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService, rs: permRS, cs: permCS}
 		task := &interfaces.SemanticUnderstandingTask{
 			ID:      "semantic-task-1",
@@ -551,7 +549,6 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.Catalog{ID: "c-1"}, nil).AnyTimes()
-		permCS.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
@@ -575,7 +572,6 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.Catalog{ID: "c-1"}, nil).AnyTimes()
-		permCS.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, ums: userMgmtService, rs: permRS, cs: permCS}
 		task := &interfaces.SemanticUnderstandingTask{ID: "semantic-task-2"}
 
@@ -607,7 +603,6 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 		Return(&interfaces.Resource{ID: "resource-2"}, nil).AnyTimes()
 	// 列表按可见父过滤（#269）；这条用例验的是名称回填，当作持类型级授权。
 	catalogService.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
-	catalogService.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 	userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
 	service := &semanticUnderstandingTaskService{
 		suta: taskAccess,
@@ -676,7 +671,6 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.Catalog{ID: "c-1"}, nil).AnyTimes()
-		permCS.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().
@@ -705,7 +699,6 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.Catalog{ID: "c-1"}, nil).AnyTimes()
-		permCS.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().
@@ -732,7 +725,6 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.Catalog{ID: "c-1"}, nil).AnyTimes()
-		permCS.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(true, nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: permRS, cs: permCS}
 
 		taskAccess.EXPECT().

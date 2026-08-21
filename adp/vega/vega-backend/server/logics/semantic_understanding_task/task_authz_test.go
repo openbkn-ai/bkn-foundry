@@ -40,7 +40,7 @@ func TestSemanticTaskReadRequiresPermission(t *testing.T) {
 	suta.EXPECT().GetByID(gomock.Any(), "task-1").Return(resourceScopedTask(), nil)
 	// 资源域的任务也判在它所属的目录上,与列表同一口径。
 	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
-		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
+		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
 	require.Nil(t, task)
@@ -129,7 +129,7 @@ func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 		}, int64(4), nil)
 		cs.EXPECT().FilterAuthorizedCatalogs(gomock.Any(),
 			[]string{"cat-1", "cat-2", "cat-1", "cat-2"},
-			interfaces.OPERATION_TYPE_VIEW_DETAIL).DoAndReturn(allowOnlyIDs("cat-1"))
+			interfaces.OPERATION_TYPE_TASK_MANAGE).DoAndReturn(allowOnlyIDs("cat-1"))
 
 		tasks, _, err := svc.List(context.Background(), interfaces.SemanticUnderstandingTaskQueryParams{})
 		require.NoError(t, err)

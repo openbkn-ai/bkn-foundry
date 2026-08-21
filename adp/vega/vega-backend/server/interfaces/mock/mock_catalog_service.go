@@ -41,20 +41,6 @@ func (m *MockCatalogService) EXPECT() *MockCatalogServiceMockRecorder {
 	return m.recorder
 }
 
-// CheckCatalogPermission mocks base method.
-func (m *MockCatalogService) CheckCatalogPermission(ctx context.Context, catalogID, op string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CheckCatalogPermission", ctx, catalogID, op)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// CheckCatalogPermission indicates an expected call of CheckCatalogPermission.
-func (mr *MockCatalogServiceMockRecorder) CheckCatalogPermission(ctx, catalogID, op any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckCatalogPermission", reflect.TypeOf((*MockCatalogService)(nil).CheckCatalogPermission), ctx, catalogID, op)
-}
-
 // CheckExistByID mocks base method.
 func (m *MockCatalogService) CheckExistByID(ctx context.Context, id string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -186,21 +172,6 @@ func (m *MockCatalogService) GetDeletionImpact(ctx context.Context, id string) (
 func (mr *MockCatalogServiceMockRecorder) GetDeletionImpact(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeletionImpact", reflect.TypeOf((*MockCatalogService)(nil).GetDeletionImpact), ctx, id)
-}
-
-// HasTypeWideGrant mocks base method.
-func (m *MockCatalogService) HasTypeWideGrant(ctx context.Context, op string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasTypeWideGrant", ctx, op)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// HasTypeWideGrant indicates an expected call of HasTypeWideGrant.
-func (mr *MockCatalogServiceMockRecorder) HasTypeWideGrant(ctx, op any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasTypeWideGrant", reflect.TypeOf((*MockCatalogService)(nil).HasTypeWideGrant), ctx, op)
 }
 
 // InternalGetByID mocks base method.
