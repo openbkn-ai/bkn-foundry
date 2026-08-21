@@ -109,8 +109,13 @@ if ! grep -A1 -Fq 'name: BKN_TRACE_DEPLOYMENT_TENANT_ID
   echo "single-tenant deployments must inject the trusted deployment tenant" >&2
   exit 1
 fi
-if ! grep -A1 -Fq 'name: BKN_TRACE_PUBLIC_LIFECYCLE_BUSINESS_DOMAINS
-              value: "bd_public"' <<<"${default_rendered}"; then
+if ! awk '
+  $0 == "            - name: BKN_TRACE_PUBLIC_LIFECYCLE_BUSINESS_DOMAINS" {
+    getline
+    if ($0 == "              value: \"bd_public\"") found = 1
+  }
+  END { exit !found }
+' <<<"${default_rendered}"; then
   echo "public lifecycle business domains must be rendered" >&2
   exit 1
 fi
