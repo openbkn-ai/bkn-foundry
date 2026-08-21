@@ -6,12 +6,12 @@
 
 package drivenadapters
 
-import "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
+import "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 
 // unmarshalPrecise decodes a downstream body without rounding integers wider
 // than float64. Every response carrying business data must go through it; see
-// rest.UnmarshalPrecise for why, and PostBytes/GetBytes for how the raw body is
+// common.UnmarshalPreciseJSON for why, and PostBytes/GetBytes for how the raw body is
 // obtained in the first place.
 func unmarshalPrecise(data []byte, out any) error {
-	return rest.UnmarshalPrecise(data, out)
+	return common.UnmarshalPreciseJSON(data, out)
 }

@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -98,7 +99,7 @@ func completeOperationAdapter(client *bkntrace.LifecycleClient) completeOperatio
 			failure.Result = downstream
 			payload = failure
 		}
-		raw, err := json.Marshal(payload)
+		raw, err := sonic.Marshal(payload)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -147,7 +148,7 @@ func normalizedBusinessInput(input map[string]any) json.RawMessage {
 			normalized[key] = value
 		}
 	}
-	raw, _ := json.Marshal(normalized)
+	raw, _ := sonic.ConfigStd.Marshal(normalized)
 	return raw
 }
 
@@ -366,7 +367,7 @@ func ensureLifecycleIdempotency(
 			stableArgs[key] = value
 		}
 	}
-	raw, _ := json.Marshal(struct {
+	raw, _ := sonic.ConfigStd.Marshal(struct {
 		Name      string
 		RequestID string
 		Args      map[string]any
@@ -385,7 +386,7 @@ func lifecycleCallResult(target any, apiErr *bkntrace.APIError, err error) (*mcp
 }
 
 func lifecycleSuccessResult(target any) (*mcpsdk.CallToolResult, error) {
-	raw, err := json.Marshal(target)
+	raw, err := sonic.Marshal(target)
 	if err != nil {
 		return nil, err
 	}

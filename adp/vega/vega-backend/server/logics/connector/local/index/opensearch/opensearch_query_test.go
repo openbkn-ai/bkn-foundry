@@ -8,6 +8,7 @@ package opensearch
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -25,14 +26,20 @@ import (
 
 func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	queries := make(chan map[string]any, 3)
+	requestCount := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
 		var query map[string]any
 		require.NoError(t, sonic.Unmarshal(body, &query))
 		queries <- query
+		requestCount++
 		w.Header().Set("Content-Type", "application/json")
-		_, err = w.Write([]byte(`{"hits":{"total":{"value":0},"hits":[]}}`))
+		response := `{"hits":{"total":{"value":0},"hits":[]}}`
+		if requestCount == 3 {
+			response = `{"hits":{"total":{"value":4},"hits":[]},"aggregations":{"count":{"value":4}}}`
+		}
+		_, err = w.Write([]byte(response))
 		require.NoError(t, err)
 	}))
 	t.Cleanup(server.Close)
@@ -54,12 +61,37 @@ func TestOpenSearchQueryTracksTotalOnlyWhenRequested(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, true, (<-queries)["track_total_hits"])
 
-	_, err = connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
+	result, err := connector.ExecuteQuery(context.Background(), "events", resource, &interfaces.ResourceDataQueryParams{
 		NeedTotal:   true,
 		Aggregation: &interfaces.Aggregation{Property: "status", Aggr: "count"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, true, (<-queries)["track_total_hits"])
+	assert.Equal(t, int64(4), result.Total)
+}
+
+func TestExecuteQueryWithDslPreservesLargeIntegerSourceField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"hits":{"total":{"value":1},"hits":[{"_id":"doc-1","_score":1.5,"_source":{"identifier":110101199001152345}}]}}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}, enabled: true}
+
+	result, err := connector.ExecuteQueryWithDsl(context.Background(), "events", `{"query":{"match_all":{}}}`)
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+	assert.Equal(t, json.Number("110101199001152345"), result.Entries[0]["identifier"])
+	assert.Equal(t, float64(1.5), result.Entries[0]["_score"])
+	assert.Equal(t, int64(1), result.Total)
 }
 
 func TestValidateAnalyzerCallsOpenSearch(t *testing.T) {
@@ -184,9 +216,33 @@ func TestExecuteRawQueryFlattensAggregationsIntoEntries(t *testing.T) {
 		"aggs": map[string]any{"by_status": map[string]any{"terms": map[string]any{"field": "status"}}},
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []map[string]any{{"status": "open", "__value": float64(3)}}, result.Entries)
+	assert.Equal(t, []map[string]any{{"status": "open", "__value": json.Number("3")}}, result.Entries)
 	require.NotNil(t, result.TotalCount)
 	assert.Equal(t, int64(4), *result.TotalCount)
+}
+
+func TestExecuteRawQueryPreservesLargeIntegerSourceField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := w.Write([]byte(`{"hits":{"total":{"value":1},"hits":[{"_source":{"identifier":110101199001152345},"sort":[110101199001152345]}]}}`))
+		require.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL, err := url.Parse(server.URL)
+	require.NoError(t, err)
+	host, portText, err := net.SplitHostPort(serverURL.Host)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(portText)
+	require.NoError(t, err)
+	connector := &OpenSearchConnector{Config: &opensearchConfig{Host: host, Port: port}}
+
+	result, err := connector.ExecuteRawQuery(context.Background(), "events", map[string]any{"query": map[string]any{"match_all": map[string]any{}}})
+	require.NoError(t, err)
+	require.Len(t, result.Entries, 1)
+	assert.Equal(t, json.Number("110101199001152345"), result.Entries[0]["identifier"])
+	assert.Equal(t, []any{json.Number("110101199001152345")}, result.SearchAfter)
+	assert.Equal(t, int64(1), *result.TotalCount)
 }
 
 func TestOpenSearchFlattenNestedGroupByRows(t *testing.T) {

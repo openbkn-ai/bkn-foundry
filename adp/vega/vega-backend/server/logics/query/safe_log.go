@@ -3,8 +3,9 @@ package query
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
+
+	"github.com/bytedance/sonic"
 )
 
 func SafeQuerySummary(query any) string {
@@ -16,7 +17,7 @@ func SafeQuerySummary(query any) string {
 		queryBytes = []byte(value)
 	default:
 		queryType = "structured"
-		queryBytes, _ = json.Marshal(value)
+		queryBytes, _ = sonic.Marshal(value)
 	}
 	hash := sha256.Sum256(queryBytes)
 	return fmt.Sprintf("query_type=%s query_hash=%s query_length=%d", queryType, hex.EncodeToString(hash[:]), len(queryBytes))

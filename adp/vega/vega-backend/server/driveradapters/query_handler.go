@@ -17,6 +17,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
+	"vega-backend/common"
 	"vega-backend/common/visitor"
 	"vega-backend/errors"
 	"vega-backend/interfaces"
@@ -54,7 +55,7 @@ func (r *restHandler) rawQuery(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
 	var req interfaces.RawQueryRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, errors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		otellog.LogError(ctx, "Bind raw query request failed", httpErr)

@@ -6,7 +6,6 @@ package drivenadapters
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -69,7 +68,7 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 	}
 
 	resp := &interfaces.ExecuteFunctionResponse{}
-	if err = json.Unmarshal(utils.ObjectToByte(respBody), resp); err != nil {
+	if err = common.UnmarshalPreciseJSON(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteFunction] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "FunctionExecutionResponseInvalid"))

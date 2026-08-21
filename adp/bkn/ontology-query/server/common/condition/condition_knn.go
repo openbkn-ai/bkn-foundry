@@ -8,8 +8,9 @@ package condition
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+
+	"github.com/bytedance/sonic"
 )
 
 type KnnCond struct {
@@ -64,7 +65,7 @@ func (cond *KnnCond) Convert(ctx context.Context, vectorizer func(ctx context.Co
 	if err != nil {
 		return "", fmt.Errorf("condition [knn]: vectorizer [%s] failed, error: %s", v, err.Error())
 	}
-	res, err := json.Marshal(vector[0].Vector)
+	res, err := sonic.Marshal(vector[0].Vector)
 	if err != nil {
 		return "", fmt.Errorf("condition [in] json marshal right value failed, %s", err.Error())
 	}

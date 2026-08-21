@@ -6,7 +6,6 @@
 package mcp
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,6 +13,10 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/bytedance/sonic"
+
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 )
 
 // PTC (Coded Tool Call) toolkit: renders the tool surface of this service into "a description + a stub".
@@ -168,11 +171,9 @@ func ptcParams(raw json.RawMessage) []ptcParam {
 	if len(raw) == 0 {
 		return nil
 	}
-	// UseNumber: a default wider than float64's mantissa must reach pyLiteral with
-	// its digits intact, not as 9.223372036854776e+18 baked into generated Python.
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.UseNumber()
-	if decoder.Decode(&schema) != nil {
+	// The schema default is rendered into executable Python. Preserve a value wider
+	// than float64's mantissa so the generated literal does not change its value.
+	if common.UnmarshalPreciseJSON(raw, &schema) != nil {
 		return nil
 	}
 	required := make(map[string]bool, len(schema.Required))
@@ -262,7 +263,7 @@ func ptcReturnKeys(tool MCPToolInfo) string {
 	var schema struct {
 		Properties map[string]json.RawMessage `json:"properties"`
 	}
-	if len(tool.OutputSchema) == 0 || json.Unmarshal(tool.OutputSchema, &schema) != nil {
+	if len(tool.OutputSchema) == 0 || sonic.Unmarshal(tool.OutputSchema, &schema) != nil {
 		return "dict"
 	}
 	if len(schema.Properties) == 0 {
@@ -295,7 +296,7 @@ func ptcItemKeys(raw json.RawMessage) string {
 			Properties map[string]json.RawMessage `json:"properties"`
 		} `json:"items"`
 	}
-	if json.Unmarshal(raw, &field) != nil || field.Type != "array" {
+	if sonic.Unmarshal(raw, &field) != nil || field.Type != "array" {
 		return ""
 	}
 	if len(field.Items.Properties) == 0 {
@@ -533,7 +534,7 @@ func buildPTCToolkitVariant(
 	}
 	// Version covers the entire tool table: the client caches it, and it will become invalid as long as the tool surface seen by the model changes.
 	// Light hash digest+stub will allow changes such as new tools and description changes to silently use the old cache.
-	fingerprint, err := json.Marshal(exposed)
+	fingerprint, err := sonic.ConfigStd.Marshal(exposed)
 	if err != nil {
 		return nil, err
 	}

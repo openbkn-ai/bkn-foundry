@@ -7,8 +7,9 @@
 package utils
 
 import (
-	"encoding/json"
 	"log"
+
+	"github.com/bytedance/sonic"
 )
 
 // JSONToObject converts a JSON string into an object of the specified type.
@@ -18,7 +19,7 @@ func JSONToObject[T any](jsonStr string) T {
 		return result
 	}
 
-	err := json.Unmarshal([]byte(jsonStr), &result)
+	err := sonic.Unmarshal([]byte(jsonStr), &result)
 	if err != nil {
 		log.Printf("JSONToObject error: %v", err)
 		return result
@@ -33,7 +34,7 @@ func JSONToObjectWithError[T any](jsonStr string) (T, error) {
 		return result, nil
 	}
 
-	err := json.Unmarshal([]byte(jsonStr), &result)
+	err := sonic.Unmarshal([]byte(jsonStr), &result)
 	if err != nil {
 		return result, err
 	}
@@ -42,11 +43,11 @@ func JSONToObjectWithError[T any](jsonStr string) (T, error) {
 
 // AnyToObject converts any object to the specified object.
 func AnyToObject(anyObj any, obj interface{}) error {
-	jsonBytes, err := json.Marshal(anyObj)
+	jsonBytes, err := sonic.Marshal(anyObj)
 	if err != nil {
 		return err
 	}
-	err = json.Unmarshal(jsonBytes, obj)
+	err = sonic.Unmarshal(jsonBytes, obj)
 	if err != nil {
 		return err
 	}

@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -18,10 +17,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"ontology-query/interfaces"
 )
+
+var canonicalJSON = sonic.Config{SortMapKeys: true}.Froze()
 
 // Environment variable for duplicate execution window (seconds).
 // Set to 0 or a negative value to disable duplicate detection.
@@ -54,7 +56,7 @@ func init() {
 func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynamicParams map[string]any) (string, error) {
 	parts := make([]string, 0, len(instances)+1)
 	for _, inst := range instances {
-		b, err := json.Marshal(inst.InstanceIdentity)
+		b, err := canonicalJSON.Marshal(inst.InstanceIdentity)
 		if err != nil {
 			return "", fmt.Errorf("marshal instance identity: %w", err)
 		}
@@ -62,7 +64,7 @@ func computeDuplicateFingerprint(instances []interfaces.ObjectSystemInfo, dynami
 	}
 	sort.Strings(parts)
 
-	paramsJSON, err := json.Marshal(dynamicParams)
+	paramsJSON, err := canonicalJSON.Marshal(dynamicParams)
 	if err != nil {
 		return "", fmt.Errorf("marshal dynamic_params: %w", err)
 	}

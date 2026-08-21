@@ -6,12 +6,12 @@ package drivenadapters
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -80,7 +80,7 @@ func (o *operatorIntegrationClient) ListSkills(ctx context.Context, req *interfa
 			Status      string `json:"status"`
 		} `json:"data"`
 	}
-	if err = json.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ListSkills] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SkillListResponseInvalid"))
@@ -124,7 +124,7 @@ func (o *operatorIntegrationClient) GetSkillContent(ctx context.Context, skillID
 		Status  string                        `json:"status"`
 		Files   []interfaces.SkillFileSummary `json:"files"`
 	}
-	if err = json.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetSkillContent] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SkillContentResponseInvalid"))
@@ -162,7 +162,7 @@ func (o *operatorIntegrationClient) ReadSkillFile(ctx context.Context, req *inte
 		MimeType string `json:"mime_type"`
 		FileType string `json:"file_type"`
 	}
-	if err = json.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
+	if err = sonic.Unmarshal(utils.ObjectToByte(respBody), &raw); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ReadSkillFile] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SkillFileReadResponseInvalid"))
@@ -199,7 +199,7 @@ func (o *operatorIntegrationClient) ExecuteSkill(ctx context.Context, req *inter
 	}
 
 	resp := &interfaces.ExecuteSkillResponse{}
-	if err = json.Unmarshal(utils.ObjectToByte(respBody), resp); err != nil {
+	if err = common.UnmarshalPreciseJSON(utils.ObjectToByte(respBody), resp); err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#ExecuteSkill] Unmarshal failed, err: %v", err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
 			infraErr.LocalizedDetail(ctx, "SkillExecutionResponseInvalid"))

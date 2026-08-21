@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"net/http"
 	"os"
 	"reflect"
@@ -19,6 +20,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/dlclark/regexp2"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -590,7 +592,7 @@ func TransferPropsToPropMap(props []cond.DataProperty) map[string]*cond.DataProp
 func BuildDslQuery(ctx context.Context, queryStr string, query *interfaces.ObjectQueryBaseOnObjectType) (map[string]any, error) {
 
 	var dslMap map[string]any
-	err := json.Unmarshal([]byte(queryStr), &dslMap)
+	err := common.UnmarshalPreciseJSON([]byte(queryStr), &dslMap)
 	if err != nil {
 		return map[string]any{}, rest.NewHTTPError(ctx, http.StatusBadRequest,
 			oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
@@ -1201,6 +1203,23 @@ func compareValues(left any, right any, operation string, fieldType string) (boo
 
 	// Handle numeric comparison
 	if isNumeric(left) && isNumeric(right) {
+		if leftNum, rightNum, ok := exactNumbers(left, right); ok {
+			comparison := leftNum.Cmp(rightNum)
+			switch operation {
+			case "==":
+				return comparison == 0, nil
+			case "!=":
+				return comparison != 0, nil
+			case ">":
+				return comparison > 0, nil
+			case ">=":
+				return comparison >= 0, nil
+			case "<":
+				return comparison < 0, nil
+			case "<=":
+				return comparison <= 0, nil
+			}
+		}
 		leftNum := toFloat64(left)
 		rightNum := toFloat64(right)
 
@@ -1258,11 +1277,28 @@ func compareValuesSimple(left any, right any) bool {
 
 	// Try numeric comparison
 	if isNumeric(left) && isNumeric(right) {
+		if leftNum, rightNum, ok := exactNumbers(left, right); ok {
+			return leftNum.Cmp(rightNum) == 0
+		}
 		return toFloat64(left) == toFloat64(right)
 	}
 
 	// String comparison
 	return fmt.Sprintf("%v", left) == fmt.Sprintf("%v", right)
+}
+
+func exactNumbers(left, right any) (*big.Rat, *big.Rat, bool) {
+	parse := func(value any) (*big.Rat, bool) {
+		literal := fmt.Sprintf("%v", value)
+		rational, ok := new(big.Rat).SetString(literal)
+		return rational, ok
+	}
+	leftNumber, ok := parse(left)
+	if !ok {
+		return nil, nil, false
+	}
+	rightNumber, ok := parse(right)
+	return leftNumber, rightNumber, ok
 }
 
 // isNumeric checks if value is numeric
@@ -1319,12 +1355,12 @@ func CondCfgToFilterMap(c *cond.CondCfg) map[string]any {
 	if c == nil {
 		return nil
 	}
-	raw, err := json.Marshal(c)
+	raw, err := sonic.Marshal(c)
 	if err != nil {
 		return nil
 	}
 	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil {
+	if err := sonic.Unmarshal(raw, &m); err != nil {
 		return nil
 	}
 	return m

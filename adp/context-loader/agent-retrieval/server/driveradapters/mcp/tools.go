@@ -8,8 +8,7 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
-
+	"github.com/bytedance/sonic"
 	"github.com/creasty/defaults"
 	validator "github.com/go-playground/validator/v10"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -120,7 +119,7 @@ func handleQueryObjectInstance(ontologyQuery interfaces.DrivenOntologyQuery) fun
 		}
 
 		queryReq := &interfaces.QueryObjectInstancesReq{}
-		if err := bindArguments(req, queryReq); err != nil {
+		if err := bindPreciseArguments(req, queryReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -169,7 +168,7 @@ func handleQueryInstanceSubgraph(service logicsKqs.KnQuerySubgraphService) func(
 		}
 
 		subgraphReq := &interfaces.QueryInstanceSubgraphReq{}
-		if err := bindArguments(req, subgraphReq); err != nil {
+		if err := bindPreciseArguments(req, subgraphReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -206,7 +205,7 @@ func handleExploreSubgraph(service logicsKqs.KnQuerySubgraphService) func(ctx co
 		}
 
 		exploreReq := &interfaces.ExploreSubgraphReq{}
-		if err := bindArguments(req, exploreReq); err != nil {
+		if err := bindPreciseArguments(req, exploreReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 
@@ -264,7 +263,7 @@ func handleGetLogicPropertiesValues(service interfaces.IKnLogicPropertyResolverS
 		}
 
 		resolveReq := &interfaces.ResolveLogicPropertiesRequest{}
-		if err := bindArguments(req, resolveReq); err != nil {
+		if err := bindPreciseArguments(req, resolveReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if resolveReq.KnID == "" {
@@ -303,7 +302,7 @@ func handleGetActionInfo(service interfaces.IKnActionRecallService) func(ctx con
 		}
 
 		actionReq := &interfaces.KnActionRecallRequest{}
-		if err := bindArguments(req, actionReq); err != nil {
+		if err := bindPreciseArguments(req, actionReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if actionReq.KnID == "" {
@@ -340,7 +339,7 @@ func handleExecuteAction(service interfaces.IKnActionRecallService) func(ctx con
 		}
 
 		execReq := &interfaces.KnActionExecuteRequest{}
-		if err := bindArguments(req, execReq); err != nil {
+		if err := bindPreciseArguments(req, execReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if execReq.KnID == "" {
@@ -416,7 +415,7 @@ func handleListActionExecutions(service interfaces.IKnActionRecallService) func(
 		}
 
 		listReq := &interfaces.KnListActionExecutionsRequest{}
-		if err := bindArguments(req, listReq); err != nil {
+		if err := bindPreciseArguments(req, listReq); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if listReq.KnID == "" {
@@ -714,11 +713,25 @@ func bindArguments(req mcp.CallToolRequest, target any) error {
 	if raw == nil {
 		return nil
 	}
-	data, err := json.Marshal(raw)
+	data, err := sonic.Marshal(raw)
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, target)
+	return sonic.Unmarshal(data, target)
+}
+
+// bindPreciseArguments is reserved for tool inputs that carry dynamic business
+// values, such as instance identities, conditions, parameters, or cursors.
+func bindPreciseArguments(req mcp.CallToolRequest, target any) error {
+	raw := req.GetRawArguments()
+	if raw == nil {
+		return nil
+	}
+	data, err := sonic.Marshal(raw)
+	if err != nil {
+		return err
+	}
+	return common.UnmarshalPreciseJSON(data, target)
 }
 
 // handleFindSkills returns a tool handler for find_skills.
@@ -787,7 +800,7 @@ func handleQueryMetric(service knmetrics.KnMetricsService) func(ctx context.Cont
 		}
 
 		args := &interfaces.QueryMetricReq{}
-		if err := bindArguments(req, args); err != nil {
+		if err := bindPreciseArguments(req, args); err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		if args.KnID == "" {

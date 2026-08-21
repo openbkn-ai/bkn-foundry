@@ -13,6 +13,8 @@ import (
 	"log"
 	"strings"
 	"sync"
+
+	"github.com/bytedance/sonic"
 )
 
 const defaultMCPLocale = "zh-CN"
@@ -72,7 +74,7 @@ func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBu
 	if content, err := readMCPResource(resources, normalized, "tools_meta.json"); err != nil {
 		log.Printf("WARN: cannot load MCP locale tool metadata for %s: %v; using baseline", normalized, err)
 	} else {
-		if err := json.Unmarshal([]byte(content), &bundle.toolMeta); err != nil {
+		if err := sonic.Unmarshal([]byte(content), &bundle.toolMeta); err != nil {
 			log.Printf("WARN: cannot parse MCP locale tool metadata for %s: %v; using baseline", normalized, err)
 			bundle.toolMeta = nil
 		} else if bundle.toolMeta == nil {
@@ -82,7 +84,7 @@ func buildMCPLocaleBundleFromFS(resources fs.FS, normalized string) *mcpLocaleBu
 	if content, err := readMCPResource(resources, normalized, "schema_descriptions.json"); err != nil {
 		log.Printf("WARN: cannot load MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
 	} else {
-		if err := json.Unmarshal([]byte(content), &bundle.schemaDescriptions); err != nil {
+		if err := sonic.Unmarshal([]byte(content), &bundle.schemaDescriptions); err != nil {
 			log.Printf("WARN: cannot parse MCP locale schema descriptions for %s: %v; using baseline", normalized, err)
 			bundle.schemaDescriptions = nil
 		} else if bundle.schemaDescriptions == nil {
@@ -188,7 +190,7 @@ func (b *mcpLocaleBundle) PTCHints(toolName string) []string {
 	// Hints are advisory. An unreadable file costs the model a hint; it must not
 	// cost the caller their request.
 	var hints map[string][]string
-	if err := json.Unmarshal([]byte(b.PTCResource("ptc_hints.json")), &hints); err != nil {
+	if err := sonic.Unmarshal([]byte(b.PTCResource("ptc_hints.json")), &hints); err != nil {
 		log.Printf("WARN: cannot parse PTC hints for %s, continuing without them: %v", b.locale, err)
 		return nil
 	}
@@ -200,7 +202,7 @@ func (b *mcpLocaleBundle) PTCError(key string, params ...any) string {
 	// malformed catalog entry must degrade to something readable rather than
 	// escalate the original error into a panic on the request path.
 	var messages map[string]string
-	if err := json.Unmarshal([]byte(b.PTCResource("ptc_errors.json")), &messages); err != nil {
+	if err := sonic.Unmarshal([]byte(b.PTCResource("ptc_errors.json")), &messages); err != nil {
 		log.Printf("WARN: cannot parse PTC errors for %s: %v", b.locale, err)
 		return key
 	}
@@ -289,7 +291,7 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 		return input, output
 	}
 	var schema any
-	if err := json.Unmarshal(wrapped, &schema); err != nil {
+	if err := sonic.Unmarshal(wrapped, &schema); err != nil {
 		log.Printf("WARN: MCP overlay for %s: base schema is not valid JSON, serving baseline: %v", toolKey, err)
 		return input, output
 	}
@@ -301,12 +303,14 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 	for path, value := range replacements {
 		setNestedString(root, strings.Split(path, "."), value)
 	}
-	rawInput, err := json.Marshal(root["input_schema"])
+	// Localized schemas are still MCP tool declarations. Keep their byte-stable
+	// representation aligned with the unlocalized embedded declaration.
+	rawInput, err := sonic.ConfigStd.Marshal(root["input_schema"])
 	if err != nil {
 		log.Printf("WARN: MCP overlay for %s: cannot marshal localized input schema, serving baseline: %v", toolKey, err)
 		return input, output
 	}
-	rawOutput, err := json.Marshal(root["output_schema"])
+	rawOutput, err := sonic.ConfigStd.Marshal(root["output_schema"])
 	if err != nil {
 		log.Printf("WARN: MCP overlay for %s: cannot marshal localized output schema, serving baseline: %v", toolKey, err)
 		return input, output
@@ -315,7 +319,7 @@ func (b *mcpLocaleBundle) OverlaySchemas(
 }
 
 func marshalToolSchema(input, output json.RawMessage) ([]byte, error) {
-	return json.Marshal(toolSchemaFile{
+	return sonic.ConfigStd.Marshal(toolSchemaFile{
 		InputSchema:  input,
 		OutputSchema: output,
 	})

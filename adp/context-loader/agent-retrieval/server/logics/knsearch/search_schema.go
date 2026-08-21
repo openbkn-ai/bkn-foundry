@@ -8,11 +8,11 @@ package knsearch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/creasty/defaults"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
@@ -321,12 +321,12 @@ func toAnySlice(v any) []any {
 	if v == nil {
 		return []any{}
 	}
-	data, err := json.Marshal(v)
+	data, err := sonic.Marshal(v)
 	if err != nil {
 		return []any{}
 	}
 	var slice []any
-	if err := json.Unmarshal(data, &slice); err != nil {
+	if err := sonic.Unmarshal(data, &slice); err != nil {
 		return []any{}
 	}
 	return slice

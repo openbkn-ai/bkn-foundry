@@ -8,13 +8,13 @@ package agent_operator
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -105,7 +105,7 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 
 	if respCode != http.StatusOK {
 		var opError integrationError
-		if err = json.Unmarshal(result, &opError); err != nil {
+		if err = sonic.Unmarshal(result, &opError); err != nil {
 			logger.Errorf("unmarshal ToolError failed: %v", err)
 			return toolResult, err
 		}
@@ -123,7 +123,7 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 		return toolResult, fmt.Errorf("execute tool %s/%s return null", boxID, toolID)
 	}
 
-	if err := json.Unmarshal(result, &toolResult); err != nil {
+	if err := common.UnmarshalPreciseJSON(result, &toolResult); err != nil {
 		logger.Errorf("Unmarshal tool execution result failed, %s", err)
 		return toolResult, err
 	}
@@ -133,7 +133,7 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 		toolResult.StatusCode < http.StatusMultipleChoices {
 		return toolResult.Body, nil
 	} else {
-		resByte, err := json.Marshal(toolResult)
+		resByte, err := sonic.Marshal(toolResult)
 		if err != nil {
 			logger.Errorf("marshal tool result failed: %v", err)
 			return toolResult, err
@@ -189,7 +189,7 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 
 	if respCode != http.StatusOK {
 		var opError integrationError
-		if err = json.Unmarshal(result, &opError); err != nil {
+		if err = sonic.Unmarshal(result, &opError); err != nil {
 			logger.Errorf("unmarshal integration error failed: %v\n", err)
 			return mcpResult, err
 		}
@@ -207,7 +207,7 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 		return mcpResult, fmt.Errorf("execute MCP %s return null", mcpID)
 	}
 
-	if err := json.Unmarshal(result, &mcpResult); err != nil {
+	if err := common.UnmarshalPreciseJSON(result, &mcpResult); err != nil {
 		logger.Errorf("Unmarshal MCP execution result failed, %s", err)
 		return mcpResult, err
 	}
@@ -253,7 +253,7 @@ func (r mcpCallToolResult) normalize() map[string]any {
 
 	joined := strings.Join(texts, "\n")
 	var parsed any
-	if err := json.Unmarshal([]byte(joined), &parsed); err == nil {
+	if err := common.UnmarshalPreciseJSON([]byte(joined), &parsed); err == nil {
 		switch v := parsed.(type) {
 		case map[string]any:
 			return v

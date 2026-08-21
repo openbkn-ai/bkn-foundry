@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
@@ -125,7 +126,7 @@ func newPTCMCPServerForLocale(
 // MCP clients must provide bkn_context themselves, so it is added here.
 func ptcToolInputSchemaWithContext(raw json.RawMessage, contextDescription string) json.RawMessage {
 	var schema map[string]any
-	if err := json.Unmarshal(raw, &schema); err != nil {
+	if err := sonic.Unmarshal(raw, &schema); err != nil {
 		return raw
 	}
 	properties, ok := schema["properties"].(map[string]any)
@@ -146,7 +147,9 @@ func ptcToolInputSchemaWithContext(raw json.RawMessage, contextDescription strin
 	} else {
 		schema["required"] = []any{"bkn_context"}
 	}
-	encoded, err := json.Marshal(schema)
+	// This schema is advertised to MCP clients and therefore must have the
+	// same stable wire representation as the embedded tool declarations.
+	encoded, err := sonic.ConfigStd.Marshal(schema)
 	if err != nil {
 		return raw
 	}
@@ -287,7 +290,7 @@ func ptcBusinessContextArg(req mcp.CallToolRequest) map[string]any {
 	var decoded struct {
 		BusinessContext map[string]any `json:"bkn_context"`
 	}
-	if err := json.Unmarshal(raw, &decoded); err != nil || decoded.BusinessContext == nil {
+	if err := common.UnmarshalPreciseJSON(raw, &decoded); err != nil || decoded.BusinessContext == nil {
 		return map[string]any{}
 	}
 	return decoded.BusinessContext

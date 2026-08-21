@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"go.opentelemetry.io/otel/trace"
@@ -86,6 +87,7 @@ type evidenceOutcome struct {
 }
 
 var (
+	artifactHashJSON   = sonic.Config{EscapeHTML: false, SortMapKeys: true}.Froze()
 	evidenceHTTPClient = &http.Client{}
 	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
 )
@@ -119,7 +121,7 @@ type eventContext struct {
 }
 
 func HashValue(value any) string {
-	raw, err := json.Marshal(value)
+	raw, err := sonic.Marshal(value)
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}
@@ -128,13 +130,10 @@ func HashValue(value any) string {
 }
 
 func hashArtifactContent(value any) (string, error) {
-	var buffer bytes.Buffer
-	encoder := json.NewEncoder(&buffer)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
+	raw, err := artifactHashJSON.Marshal(value)
+	if err != nil {
 		return "", err
 	}
-	raw := bytes.TrimSuffix(buffer.Bytes(), []byte("\n"))
 	sum := sha256.Sum256(raw)
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
@@ -232,7 +231,7 @@ func postArtifactWithRetry(
 	if url == "" {
 		return errors.New("BKN Trace artifact URL is not configured")
 	}
-	body, err := json.Marshal(artifact)
+	body, err := sonic.Marshal(artifact)
 	if err != nil {
 		return err
 	}
@@ -743,7 +742,7 @@ func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
 		if err != nil {
 			return err
 		}
-		body, err := json.Marshal(requestPayload)
+		body, err := sonic.Marshal(requestPayload)
 		if err != nil {
 			return err
 		}
@@ -782,7 +781,7 @@ func coreHTTPError(resp *http.Response) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_ = json.Unmarshal(body, &payload)
+	_ = sonic.Unmarshal(body, &payload)
 	if payload.Error.Code != "" || payload.Error.Message != "" {
 		payload.Code = payload.Error.Code
 		payload.Message = payload.Error.Message
@@ -835,7 +834,7 @@ type trace30OperationEdge struct {
 }
 
 func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs []BusinessRef) (trace30Event, error) {
-	envelope, err := json.Marshal(event)
+	envelope, err := sonic.Marshal(event)
 	if err != nil {
 		return trace30Event{}, err
 	}
@@ -1257,12 +1256,12 @@ func asMap(value any) (map[string]any, bool) {
 	if itemMap, ok := value.(map[string]any); ok {
 		return itemMap, true
 	}
-	raw, err := json.Marshal(value)
+	raw, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		return nil, false
 	}
 	var itemMap map[string]any
-	if err := json.Unmarshal(raw, &itemMap); err != nil {
+	if err := common.UnmarshalPreciseJSON(raw, &itemMap); err != nil {
 		return nil, false
 	}
 	return itemMap, true

@@ -10,12 +10,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"runtime/debug"
 
+	"github.com/bytedance/sonic"
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -211,7 +211,7 @@ func managedOperationKey(
 	clientInvocationID string,
 ) string {
 	if clientInvocationID != "" {
-		payload, _ := json.Marshal(struct {
+		payload, _ := sonic.Marshal(struct {
 			ConversationID string
 			InteractionID  string
 			InvocationKey  string
@@ -223,7 +223,7 @@ func managedOperationKey(
 	if traceContext, ok := common.GetTraceContextFromCtx(ctx); ok {
 		requestID = traceContext.RequestID
 	}
-	payload, _ := json.Marshal(struct {
+	payload, _ := sonic.Marshal(struct {
 		ConversationID string
 		InteractionID  string
 		ToolName       string
@@ -315,7 +315,7 @@ func lifecycleAvailabilityError(err error) lifecycleError {
 }
 
 func operationIdentity(operation any) (string, int) {
-	raw, err := json.Marshal(operation)
+	raw, err := sonic.Marshal(operation)
 	if err != nil {
 		return "", 0
 	}
@@ -323,7 +323,7 @@ func operationIdentity(operation any) (string, int) {
 		OperationID string `json:"operation_id"`
 		Attempt     int    `json:"attempt"`
 	}
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if err := sonic.Unmarshal(raw, &value); err != nil {
 		return "", 0
 	}
 	return value.OperationID, value.Attempt
@@ -342,14 +342,14 @@ func receiptStatus(receipt any) string {
 		status, _ := value["receipt_status"].(string)
 		return status
 	}
-	raw, err := json.Marshal(receipt)
+	raw, err := sonic.Marshal(receipt)
 	if err != nil {
 		return ""
 	}
 	var value struct {
 		Status string `json:"receipt_status"`
 	}
-	_ = json.Unmarshal(raw, &value)
+	_ = sonic.Unmarshal(raw, &value)
 	return value.Status
 }
 
@@ -394,6 +394,6 @@ func lifecycleToolErrorWithDetails(value lifecycleError, details map[string]any)
 	for key, detail := range details {
 		envelope[key] = detail
 	}
-	raw, _ := json.Marshal(envelope)
+	raw, _ := sonic.Marshal(envelope)
 	return mcpsdk.NewToolResultError(string(raw))
 }

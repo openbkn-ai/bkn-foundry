@@ -577,7 +577,7 @@ func limitSemanticUnderstandingSampleRows(rows []map[string]any) ([]map[string]a
 		}
 
 		candidate := append(limited, limitedRow)
-		candidateJSON, err := sonic.ConfigStd.Marshal(candidate)
+		candidateJSON, err := sonic.Marshal(candidate)
 		if err != nil {
 			return nil, false, err
 		}

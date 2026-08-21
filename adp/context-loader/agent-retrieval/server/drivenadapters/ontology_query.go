@@ -8,7 +8,6 @@ package drivenadapters
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -248,7 +248,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 	}
 
 	// 📤 Log the complete input parameters for calling ontology-query.
-	bodyJSON, _ := json.Marshal(body)
+	bodyJSON, _ := sonic.Marshal(body)
 	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 调用] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("  ├─ [ontology-query 请求] Body: %s", string(bodyJSON))
 
@@ -271,7 +271,7 @@ func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *int
 	}
 
 	// 📥 Log the complete output parameters from ontology-query.
-	respJSON, _ := json.Marshal(resp)
+	respJSON, _ := sonic.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("  └─ [ontology-query 响应] ✅ 成功 (%d 条数据): %s", len(resp.Datas), string(respJSON))
 	return resp, nil
 }
@@ -287,7 +287,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	}
 
 	// Log the request.
-	bodyJSON, _ := json.Marshal(body)
+	bodyJSON, _ := sonic.Marshal(body)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Request Body: %s", string(bodyJSON))
 
@@ -312,7 +312,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	}
 
 	// Log the response.
-	respJSON, _ := json.Marshal(resp)
+	respJSON, _ := sonic.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryActions] Response: %s", string(respJSON))
 
 	return resp, nil
@@ -361,7 +361,7 @@ func (o *ontologyQueryClient) ExecuteActions(ctx context.Context, req *interface
 	}
 
 	// Log the response.
-	respJSON, _ := json.Marshal(resp)
+	respJSON, _ := sonic.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#ExecuteActions] Response: %s", string(respJSON))
 
 	return resp, nil
@@ -535,7 +535,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	}
 
 	// Log the request.
-	bodyJSON, _ := json.Marshal(body)
+	bodyJSON, _ := sonic.Marshal(body)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] URL: %s", url)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Request Body: %s", string(bodyJSON))
 
@@ -562,7 +562,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	}
 
 	// Log the response.
-	respJSON, _ := json.Marshal(resp)
+	respJSON, _ := sonic.Marshal(resp)
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Response: %s", string(respJSON))
 
 	return resp, nil

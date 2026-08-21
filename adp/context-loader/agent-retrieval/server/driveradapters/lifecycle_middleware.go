@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
@@ -42,7 +43,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		var input map[string]any
 		if len(bytes.TrimSpace(raw)) == 0 {
 			input = map[string]any{}
-		} else if err := json.Unmarshal(raw, &input); err != nil {
+		} else if err := common.UnmarshalPreciseJSON(raw, &input); err != nil {
 			writeLifecycleHTTPError(c, http.StatusBadRequest, bkntrace.APIError{
 				Code: "operation_required", Message: "business request body must be a JSON object",
 				RequiredAction: "ensure_operation",
@@ -63,7 +64,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			return
 		}
 		businessContext.OperationKey = operationKey
-		downstreamBody, _ := json.Marshal(input)
+		downstreamBody, _ := sonic.Marshal(input)
 		c.Request.Body = io.NopCloser(bytes.NewReader(downstreamBody))
 		c.Request.ContentLength = int64(len(downstreamBody))
 
@@ -112,7 +113,7 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			defer func() {
 				if recovered := recover(); recovered != nil {
 					c.Writer = originalWriter
-					panicPayload, _ := json.Marshal(map[string]any{
+					panicPayload, _ := sonic.Marshal(map[string]any{
 						"code": "handler_panic", "message": fmt.Sprint(recovered), "stage": "handler",
 					})
 					_, _, _ = guard.Finish(
@@ -143,7 +144,7 @@ func traceLifecyclePayload(raw []byte, status int) json.RawMessage {
 	if len(trimmed) > 0 && json.Valid(trimmed) {
 		return append(json.RawMessage(nil), trimmed...)
 	}
-	encoded, _ := json.Marshal(map[string]any{
+	encoded, _ := sonic.Marshal(map[string]any{
 		"status_code": status,
 		"body":        string(raw),
 	})
@@ -230,7 +231,7 @@ func managedHTTPOperationKey(
 }
 
 func hashHTTPOperationKey(scope string, businessContext bkntrace.BusinessContext, toolName, identity string) string {
-	payload, _ := json.Marshal(struct {
+	payload, _ := sonic.Marshal(struct {
 		Scope          string
 		ConversationID string
 		InteractionID  string
@@ -270,7 +271,7 @@ func normalizedHTTPInputHash(input map[string]any, businessContext bkntrace.Busi
 			"causation_event_ids": causationIDs,
 		},
 	}
-	raw, _ := json.Marshal(value)
+	raw, _ := sonic.Marshal(value)
 	return hashLifecyclePayload(raw)
 }
 
@@ -325,7 +326,7 @@ func writeLifecycleHTTPError(c *gin.Context, status int, value bkntrace.APIError
 func writeLifecycleHTTPResult(c *gin.Context, status int, value any) {
 	c.Header("Content-Type", "application/json")
 	c.Status(status)
-	_ = json.NewEncoder(c.Writer).Encode(value)
+	_ = sonic.ConfigDefault.NewEncoder(c.Writer).Encode(value)
 	c.Abort()
 }
 

@@ -9,12 +9,12 @@ package localize
 
 import (
 	"embed"
-	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
 	"strings"
 
+	"github.com/bytedance/sonic"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"golang.org/x/text/language"
 )
@@ -81,7 +81,7 @@ func newTranslator(requested language.Tag, resources fs.FS) *I18nTranslator {
 
 func newBundle(lang language.Tag) *i18n.Bundle {
 	bundle := i18n.NewBundle(lang)
-	bundle.RegisterUnmarshalFunc("json", json.Unmarshal)
+	bundle.RegisterUnmarshalFunc("json", sonic.Unmarshal)
 	return bundle
 }
 

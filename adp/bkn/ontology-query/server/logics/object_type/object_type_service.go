@@ -8,7 +8,6 @@ package object_type
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -283,7 +282,7 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 					}
 				}
 				params := map[string]any{}
-				err = json.Unmarshal([]byte(paramsJson), &params)
+				err = sonic.Unmarshal([]byte(paramsJson), &params)
 				if err != nil {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 						WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s paramtersJson to map, %s",
@@ -291,7 +290,7 @@ func (*objectTypeService) processLogicProperties(ctx context.Context, resps *int
 				}
 
 				dynamicParams := map[string]any{}
-				err = json.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
+				err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
 				if err != nil {
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 						WithErrorDetails(fmt.Sprintf("failed to Unmarshal logic property[%s]'s dynamicParamsJson to map, %s",

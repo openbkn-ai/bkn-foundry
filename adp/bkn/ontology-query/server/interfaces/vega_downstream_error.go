@@ -7,11 +7,12 @@
 package interfaces
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"unicode/utf8"
+
+	"github.com/bytedance/sonic"
 )
 
 // VegaDownstreamError preserves the status code and error body returned by vega-backend.
@@ -86,7 +87,7 @@ func NewVegaDownstreamError(statusCode int, raw string) *VegaDownstreamError {
 		Description  string `json:"description"`
 		ErrorDetails string `json:"error_details"`
 	}
-	if err := json.Unmarshal([]byte(raw), &payload); err == nil {
+	if err := sonic.Unmarshal([]byte(raw), &payload); err == nil {
 		de.ErrorCode = payload.ErrorCode
 		de.Description = payload.Description
 		de.Details = payload.ErrorDetails

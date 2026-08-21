@@ -8,11 +8,11 @@ package drivenadapters
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -116,7 +116,7 @@ func (c *mfModelAPIClient) Chat(ctx context.Context, req *interfaces.LLMChatReq)
 	// Parse the response.
 	var resp chatCompletionsResp
 	resultBytes := utils.ObjectToByte(respBody)
-	if err := json.Unmarshal(resultBytes, &resp); err != nil {
+	if err := sonic.Unmarshal(resultBytes, &resp); err != nil {
 		c.logger.WithContext(ctx).Errorf("[MFModelAPIClient#Chat] Unmarshal failed: %v", err)
 		return "", fmt.Errorf("unmarshal response failed: %w", err)
 	}
@@ -167,7 +167,7 @@ func (c *mfModelAPIClient) Rerank(ctx context.Context, query string, documents [
 	// Parse the response.
 	var result interfaces.RerankResp
 	resultBytes := utils.ObjectToByte(respBody)
-	if err := json.Unmarshal(resultBytes, &result); err != nil {
+	if err := sonic.Unmarshal(resultBytes, &result); err != nil {
 		c.logger.WithContext(ctx).Errorf("[MFModelAPIClient#Rerank] Unmarshal failed: %v", err)
 		return nil, fmt.Errorf("unmarshal response failed: %w", err)
 	}

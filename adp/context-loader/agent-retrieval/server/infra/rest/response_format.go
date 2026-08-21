@@ -13,6 +13,7 @@ import (
 	"github.com/bytedance/sonic"
 	"github.com/toon-format/toon-go"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -98,7 +99,7 @@ func marshalTOON(body interface{}) ([]byte, error) {
 	// UseNumber, not the default configuration: the round-trip is the last place
 	// a wide integer can be rounded, and it would undo the precision the driven
 	// adapters went out of their way to keep. See openbkn-ai/bkn-studio#464.
-	if err := precisionJSON.Unmarshal(jsonBytes, &m); err != nil {
+	if err := common.UnmarshalPreciseJSON(jsonBytes, &m); err != nil {
 		return nil, err
 	}
 	// toon-go renders json.Number through float64, so anything past the IEEE 754

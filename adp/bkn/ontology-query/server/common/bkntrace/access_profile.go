@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 const (
@@ -89,7 +91,7 @@ func getBknSafe(ctx context.Context, client *http.Client, url, authorization str
 		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, maxBknSafeResponseBytes))
 		return fmt.Errorf("BKN Safe returned status %d", response.StatusCode)
 	}
-	return json.NewDecoder(io.LimitReader(response.Body, maxBknSafeResponseBytes)).Decode(target)
+	return sonic.ConfigDefault.NewDecoder(io.LimitReader(response.Body, maxBknSafeResponseBytes)).Decode(target)
 }
 
 func builtInRoles(values []string) []string {

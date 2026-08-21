@@ -10,7 +10,7 @@
 package knsearch
 
 import (
-	"encoding/json"
+	"github.com/bytedance/sonic"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
@@ -78,12 +78,12 @@ func retrievalConfigToLocal(cfg any) *interfaces.KnSearchRetrievalConfig {
 	case interfaces.RetrievalConfig:
 		return retrievalConfigStructToLocal(&v)
 	default:
-		data, err := json.Marshal(cfg)
+		data, err := sonic.Marshal(cfg)
 		if err != nil {
 			return nil
 		}
 		var local interfaces.KnSearchRetrievalConfig
-		if err := json.Unmarshal(data, &local); err != nil {
+		if err := sonic.Unmarshal(data, &local); err != nil {
 			return nil
 		}
 		return &local

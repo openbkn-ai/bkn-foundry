@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -47,7 +48,7 @@ func (h *mcpProxyHandler) CallMCPTool(c *gin.Context) {
 
 	// 2. Parse the request body (flattened parameters)
 	var parameters map[string]interface{}
-	if err := c.ShouldBindJSON(&parameters); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &parameters); err != nil {
 		// Allow empty parameters {}
 		if err.Error() == "EOF" {
 			parameters = make(map[string]interface{})

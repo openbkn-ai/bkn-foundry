@@ -7,7 +7,6 @@ package driveradapters
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -166,7 +166,7 @@ func operationAuditReader(ctx context.Context, authorization, expectedActorID st
 		Enabled bool
 		Roles   []string
 	}
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&me) != nil || !me.Enabled || me.ID != expectedActorID {
+	if sonic.ConfigDefault.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&me) != nil || !me.Enabled || me.ID != expectedActorID {
 		return false
 	}
 	for _, role := range me.Roles {

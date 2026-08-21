@@ -11,7 +11,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"go.opentelemetry.io/otel/trace"
 	"vega-backend/interfaces"
 )
@@ -144,6 +144,7 @@ func (e *evidenceHTTPError) retryable() bool {
 }
 
 var (
+	artifactHashJSON   = sonic.Config{EscapeHTML: false, SortMapKeys: true}.Froze()
 	evidenceHTTPClient = &http.Client{}
 	evidenceInFlight   = make(chan struct{}, maxInFlightEvidenceBatches)
 )
@@ -153,7 +154,7 @@ func EvidenceEnabled() bool {
 }
 
 func HashValue(value any) string {
-	raw, err := json.Marshal(value)
+	raw, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}
@@ -162,13 +163,10 @@ func HashValue(value any) string {
 }
 
 func ArtifactContentHash(value any) string {
-	var body bytes.Buffer
-	encoder := json.NewEncoder(&body)
-	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(value); err != nil {
+	raw, err := artifactHashJSON.Marshal(value)
+	if err != nil {
 		return HashValue(value)
 	}
-	raw := bytes.TrimSuffix(body.Bytes(), []byte("\n"))
 	sum := sha256.Sum256(raw)
 	return "sha256:" + hex.EncodeToString(sum[:])
 }
@@ -479,7 +477,7 @@ func postArtifact(ingestURL string, timeout time.Duration, artifact Artifact) er
 }
 
 func postJSON(ingestURL string, timeout time.Duration, payload any) error {
-	body, err := json.Marshal(payload)
+	body, err := sonic.Marshal(payload)
 	if err != nil {
 		return err
 	}
@@ -506,7 +504,7 @@ func postJSON(ingestURL string, timeout time.Duration, payload any) error {
 		}{}
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxEvidenceErrorBodyBytes))
 		if readErr == nil {
-			_ = json.Unmarshal(body, &response)
+			_ = sonic.Unmarshal(body, &response)
 		}
 		return &evidenceHTTPError{
 			statusCode:     resp.StatusCode,

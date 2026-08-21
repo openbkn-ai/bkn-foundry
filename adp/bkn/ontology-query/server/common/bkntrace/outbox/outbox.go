@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/bytedance/sonic"
 )
 
 const (
@@ -32,6 +34,8 @@ const (
 	StatusAbandoned             = "abandoned"
 	initialProducerEpoch uint64 = 1
 )
+
+var canonicalJSON = sonic.Config{UseNumber: true, SortMapKeys: true}.Froze()
 
 const (
 	tableOutbox = "ontology_query_trace_outbox"
@@ -227,7 +231,7 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 		return Event{}, errors.New("invalid evidence timestamps")
 	}
 	event.PayloadHash = CanonicalHash(event.Envelope)
-	coreEnvelope, err := json.Marshal(struct {
+	coreEnvelope, err := sonic.ConfigStd.Marshal(struct {
 		Event json.RawMessage `json:"event"`
 		Owner Owner           `json:"owner"`
 	}{Event: event.Envelope, Owner: owner})
@@ -236,7 +240,7 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 	}
 	event.Envelope = coreEnvelope
 	event.PayloadHash = CanonicalHash(event.Envelope)
-	stored, err := json.Marshal(struct {
+	stored, err := sonic.ConfigStd.Marshal(struct {
 		Event Event `json:"event"`
 		Owner Owner `json:"owner"`
 	}{Event: event, Owner: owner})
@@ -285,7 +289,7 @@ func (r *Repository) ClaimHeadOfLine(ctx context.Context, now time.Time) (*Recor
 		Event Event `json:"event"`
 		Owner Owner `json:"owner"`
 	}
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+	if err := sonic.Unmarshal([]byte(raw), &stored); err != nil {
 		return nil, err
 	}
 	token, err := leaseToken()
@@ -427,8 +431,8 @@ func (r *Repository) initializeEpochZero(ctx context.Context, tx *sql.Tx, now ti
 
 func CanonicalHash(payload json.RawMessage) string {
 	var decoded any
-	if json.Unmarshal(payload, &decoded) == nil {
-		if canonical, err := json.Marshal(decoded); err == nil {
+	if canonicalJSON.Unmarshal(payload, &decoded) == nil {
+		if canonical, err := canonicalJSON.Marshal(decoded); err == nil {
 			payload = canonical
 		}
 	}
@@ -529,7 +533,7 @@ func (w *Worker) run() {
 func (w *Worker) deliver(record *Record) {
 	ctx, cancel := context.WithTimeout(context.Background(), w.repository.config.CoreRequestTimeout)
 	defer cancel()
-	body, err := json.Marshal(record.Event)
+	body, err := sonic.ConfigStd.Marshal(record.Event)
 	if err != nil {
 		_, _ = w.repository.Complete(ctx, record, StatusDLQ, "core_rejected", time.Time{})
 		return
@@ -563,7 +567,7 @@ func (w *Worker) deliver(record *Record) {
 		var ack struct {
 			Durable bool `json:"durable_ack"`
 		}
-		if err := json.NewDecoder(resp.Body).Decode(&ack); err != nil || !ack.Durable {
+		if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&ack); err != nil || !ack.Durable {
 			_, _ = w.repository.Complete(context.Background(), record, StatusRetry, "core_unavailable", retryAt(record.Attempts))
 			return
 		}
@@ -729,7 +733,7 @@ func (r *Repository) Get(ctx context.Context, outboxID int64) (Detail, error) {
 	var stored struct {
 		Event Event `json:"event"`
 	}
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
+	if err := sonic.Unmarshal([]byte(raw), &stored); err != nil {
 		return Detail{}, err
 	}
 	detail.Envelope = stored.Event.Envelope
@@ -813,7 +817,7 @@ func (r *Repository) act(ctx context.Context, outboxID int64, action string, req
 }
 
 func actionRequestHash(outboxID int64, action string, request ActionRequest) string {
-	payload, _ := json.Marshal(struct {
+	payload, _ := sonic.ConfigStd.Marshal(struct {
 		OutboxID   int64  `json:"outbox_id"`
 		Action     string `json:"action"`
 		Version    uint64 `json:"expected_state_version"`

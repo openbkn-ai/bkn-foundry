@@ -9,13 +9,14 @@ package telemetry
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/bytedance/sonic"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel"
@@ -103,7 +104,7 @@ func sanitizeHeadersForSpan(headers http.Header) string {
 		}
 		sanitized[key] = values
 	}
-	headerBytes, _ := json.Marshal(sanitized)
+	headerBytes, _ := sonic.Marshal(sanitized)
 	return string(headerBytes)
 }
 
@@ -128,7 +129,7 @@ func requestBodyPolicyForSpan(contentLength int64) string {
 }
 
 func jsonCompact(value interface{}) string {
-	bytes, err := json.Marshal(value)
+	bytes, err := sonic.Marshal(value)
 	if err != nil {
 		return `{"redacted":true}`
 	}

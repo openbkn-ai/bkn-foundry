@@ -8,11 +8,11 @@ package drivenadapters
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -73,7 +73,7 @@ func (o *operatorIntegrationClient) GetToolDetail(ctx context.Context, req *inte
 
 	resp = &interfaces.GetToolDetailResponse{}
 	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, resp)
+	err = sonic.Unmarshal(resultByt, resp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetToolDetail] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
 		err = infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,
@@ -108,7 +108,7 @@ func (o *operatorIntegrationClient) GetMCPToolDetail(ctx context.Context, req *i
 	}
 
 	resultByt := utils.ObjectToByte(respBody)
-	err = json.Unmarshal(resultByt, &listResp)
+	err = sonic.Unmarshal(resultByt, &listResp)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OperatorIntegration#GetMCPToolDetail] Unmarshal failed, body: %s, err: %v", string(resultByt), err)
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusInternalServerError,

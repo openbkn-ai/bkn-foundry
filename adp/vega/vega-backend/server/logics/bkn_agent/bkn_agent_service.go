@@ -8,11 +8,11 @@ package bkn_agent
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"go.opentelemetry.io/otel/codes"
 
@@ -58,7 +58,7 @@ func (s *bknAgentService) Run(ctx context.Context, task *interfaces.SemanticUnde
 	if task.Input == "" {
 		return "", fmt.Errorf("input is required")
 	}
-	if !json.Valid([]byte(task.Input)) {
+	if !sonic.Valid([]byte(task.Input)) {
 		return "", fmt.Errorf("input must be valid json")
 	}
 	responseFormat, err := semanticUnderstandingResponseFormat(task.Scope)

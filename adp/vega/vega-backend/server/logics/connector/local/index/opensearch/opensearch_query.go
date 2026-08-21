@@ -10,6 +10,7 @@ package opensearch
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -18,8 +19,39 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 )
+
+func openSearchInt64(value any) (int64, bool) {
+	switch value := value.(type) {
+	case int64:
+		return value, true
+	case int:
+		return int64(value), true
+	case float64:
+		return int64(value), true
+	case json.Number:
+		parsed, err := value.Int64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
+
+func openSearchFloat64(value any) (float64, bool) {
+	switch value := value.(type) {
+	case float64:
+		return value, true
+	case float32:
+		return float64(value), true
+	case json.Number:
+		parsed, err := value.Float64()
+		return parsed, err == nil
+	default:
+		return 0, false
+	}
+}
 
 func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceName string, dsl string) (*interfaces.QueryResult, error) {
 	// Ensure the connector is enabled
@@ -36,7 +68,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	}
 	// Parse the DSL to ensure it's valid JSON
 	var dslMap map[string]any
-	if err := sonic.Unmarshal([]byte(dsl), &dslMap); err != nil {
+	if err := common.UnmarshalPreciseJSON([]byte(dsl), &dslMap); err != nil {
 		return nil, fmt.Errorf("invalid DSL JSON: %w", err)
 	}
 
@@ -59,7 +91,11 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 
 	// Parse response
 	var result map[string]any
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read search response: %w", err)
+	}
+	if err := common.UnmarshalPreciseJSON(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 
@@ -71,9 +107,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 	// Extract total count
 	var total int64
 	if totalMap, ok := hits["total"].(map[string]any); ok {
-		if value, ok := totalMap["value"].(float64); ok {
-			total = int64(value)
-		} else if value, ok := totalMap["value"].(int64); ok {
+		if value, ok := openSearchInt64(totalMap["value"]); ok {
 			total = value
 		}
 	}
@@ -104,7 +138,7 @@ func (c *OpenSearchConnector) ExecuteQueryWithDsl(ctx context.Context, resourceN
 		source["_id"] = hitMap["_id"]
 
 		// Add _score field if present
-		if score, ok := hitMap["_score"].(float64); ok {
+		if score, ok := openSearchFloat64(hitMap["_score"]); ok {
 			source["_score"] = score
 		}
 
@@ -166,7 +200,11 @@ func (c *OpenSearchConnector) ExecuteRawQuery(ctx context.Context, indexName str
 		Aggregations map[string]any `json:"aggregations"`
 	}
 
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&searchResp); err != nil {
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read raw query response: %w", err)
+	}
+	if err := common.UnmarshalPreciseJSON(responseBody, &searchResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 	totalCount := searchResp.Hits.Total.Value
@@ -469,7 +507,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 		// Parsing response
 		var result map[string]any
-		if err := sonic.Unmarshal(bodyBytes, &result); err != nil {
+		if err := common.UnmarshalPreciseJSON(bodyBytes, &result); err != nil {
 			return nil, fmt.Errorf("failed to decode aggregate search result: %w", err)
 		}
 
@@ -477,9 +515,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		var totalCount int64
 		if hits, ok := result["hits"].(map[string]any); ok {
 			if totalMap, ok := hits["total"].(map[string]any); ok {
-				if value, ok := totalMap["value"].(float64); ok {
-					totalCount = int64(value)
-				} else if value, ok := totalMap["value"].(int64); ok {
+				if value, ok := openSearchInt64(totalMap["value"]); ok {
 					totalCount = value
 				}
 			}
@@ -621,7 +657,11 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 	// Parse response
 	var result map[string]any
-	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read search response: %w", err)
+	}
+	if err := common.UnmarshalPreciseJSON(responseBody, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode search result: %w", err)
 	}
 
@@ -630,10 +670,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 		return nil, fmt.Errorf("invalid search result format: missing hits")
 	}
 
-	total, ok := hits["total"].(map[string]any)["value"].(float64)
-	if !ok {
-		total = 0
-	}
+	total, _ := openSearchInt64(hits["total"].(map[string]any)["value"])
 
 	hitsArray, ok := hits["hits"].([]any)
 	if !ok {
@@ -659,7 +696,7 @@ func (c *OpenSearchConnector) ExecuteQuery(ctx context.Context, indexName string
 
 		source["_id"] = hitMap["_id"]
 		// Add _score field if present
-		if score, ok := hitMap["_score"].(float64); ok {
+		if score, ok := openSearchFloat64(hitMap["_score"]); ok {
 			source["_score"] = score
 		}
 		documents = append(documents, source)

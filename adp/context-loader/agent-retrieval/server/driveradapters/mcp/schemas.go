@@ -11,6 +11,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/bytedance/sonic"
 )
 
 //go:embed schemas/*.json schemas/*.py schemas/locales/*/*.json schemas/locales/*/*.txt
@@ -56,7 +58,7 @@ var allToolMeta = sync.OnceValue(func() map[string]ToolMeta {
 		panic("cannot read tools_meta.json: " + err.Error())
 	}
 	var meta map[string]ToolMeta
-	if err := json.Unmarshal(data, &meta); err != nil {
+	if err := sonic.Unmarshal(data, &meta); err != nil {
 		panic("invalid tools_meta.json: " + err.Error())
 	}
 	return meta
@@ -85,7 +87,7 @@ func loadToolSchemas(toolKey string) (input, output json.RawMessage) {
 		panic("cannot read " + path + ": " + err.Error())
 	}
 	var wrapper toolSchemaFile
-	if err := json.Unmarshal(data, &wrapper); err != nil {
+	if err := sonic.Unmarshal(data, &wrapper); err != nil {
 		panic("invalid " + path + ": " + err.Error())
 	}
 	if len(wrapper.InputSchema) == 0 {
@@ -132,11 +134,13 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 			"type": "string", "description": "Briefly explain a non-completed outcome.",
 		}
 	}
-	input, _ := json.Marshal(map[string]any{
+	// Tool schemas are a byte-stable wire contract: the untouched declaration
+	// must remain identical to the embedded community schema.
+	input, _ := sonic.ConfigStd.Marshal(map[string]any{
 		"type": "object", "properties": properties, "required": required,
 		"additionalProperties": false,
 	})
-	output, _ := json.Marshal(lifecycleOutputSchema(toolKey))
+	output, _ := sonic.ConfigStd.Marshal(lifecycleOutputSchema(toolKey))
 	return input, output, true
 }
 
@@ -364,7 +368,7 @@ func isBusinessTool(toolKey string) bool {
 
 func offerBKNContext(input json.RawMessage) json.RawMessage {
 	var schema map[string]any
-	if err := json.Unmarshal(input, &schema); err != nil {
+	if err := sonic.Unmarshal(input, &schema); err != nil {
 		panic("invalid business tool input schema: " + err.Error())
 	}
 	properties, _ := schema["properties"].(map[string]any)
@@ -376,12 +380,12 @@ func offerBKNContext(input json.RawMessage) json.RawMessage {
 	required, _ := schema["required"].([]any)
 	for _, value := range required {
 		if value == "bkn_context" {
-			raw, _ := json.Marshal(schema)
+			raw, _ := sonic.ConfigStd.Marshal(schema)
 			return raw
 		}
 	}
 	schema["required"] = append(required, "bkn_context")
-	raw, err := json.Marshal(schema)
+	raw, err := sonic.ConfigStd.Marshal(schema)
 	if err != nil {
 		panic("marshal business tool input schema: " + err.Error())
 	}

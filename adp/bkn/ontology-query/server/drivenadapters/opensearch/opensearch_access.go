@@ -362,8 +362,7 @@ func (o *openSearchAccess) SearchData(ctx context.Context, indexName string, que
 		} `json:"hits"`
 	}
 
-	cfg := sonic.Config{UseInt64: true}.Froze()
-	if err := cfg.NewDecoder(res.Body).Decode(&searchResult); err != nil {
+	if err := common.DecodePreciseJSON(res.Body, &searchResult); err != nil {
 		return nil, fmt.Errorf("failed to decode search response: %w", err)
 	}
 

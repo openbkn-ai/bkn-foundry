@@ -8,11 +8,11 @@ package action_logs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	attr "go.opentelemetry.io/otel/attribute"
@@ -364,7 +364,7 @@ func (s *actionLogsService) QueryExecutions(ctx context.Context, query *interfac
 			var countResult struct {
 				Count int `json:"count"`
 			}
-			if json.Unmarshal(countBytes, &countResult) == nil {
+			if sonic.Unmarshal(countBytes, &countResult) == nil {
 				result.TotalCount = countResult.Count
 			}
 		}
@@ -521,21 +521,21 @@ func (s *actionLogsService) CancelExecution(ctx context.Context, knID, execID, r
 
 // structToMap converts a struct to a map
 func structToMap(v any) map[string]any {
-	data, _ := json.Marshal(v)
+	data, _ := sonic.Marshal(v)
 	var result map[string]any
-	_ = json.Unmarshal(data, &result)
+	_ = sonic.Unmarshal(data, &result)
 	return result
 }
 
 // mapToActionExecution converts a map to ActionExecution
 func mapToActionExecution(m map[string]any) (*interfaces.ActionExecution, error) {
-	data, err := json.Marshal(m)
+	data, err := sonic.Marshal(m)
 	if err != nil {
 		return nil, err
 	}
 
 	var exec interfaces.ActionExecution
-	if err := json.Unmarshal(data, &exec); err != nil {
+	if err := sonic.Unmarshal(data, &exec); err != nil {
 		return nil, err
 	}
 

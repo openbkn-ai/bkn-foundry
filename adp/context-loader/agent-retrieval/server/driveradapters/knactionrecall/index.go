@@ -15,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
@@ -72,7 +73,7 @@ func (h *knActionRecallHandler) GetActionInfo(c *gin.Context) {
 	}
 
 	// Bind the JSON body.
-	if err = c.ShouldBindJSON(req); err != nil {
+	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
@@ -124,7 +125,7 @@ func (h *knActionRecallHandler) ExecuteAction(c *gin.Context) {
 	}
 
 	// Bind the JSON body.
-	if err = c.ShouldBindJSON(req); err != nil {
+	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return
@@ -211,7 +212,7 @@ func (h *knActionRecallHandler) ListActionExecutions(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
-	if err = c.ShouldBindJSON(req); err != nil {
+	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return

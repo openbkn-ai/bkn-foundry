@@ -8,7 +8,6 @@ package driveradapters
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -105,7 +105,7 @@ func captureOperationAuditRequest(request *http.Request) map[string]any {
 		return nil
 	}
 	var value map[string]any
-	if json.Unmarshal(body, &value) != nil {
+	if common.UnmarshalPreciseJSON(body, &value) != nil {
 		return nil
 	}
 	return value
@@ -203,7 +203,7 @@ func operationAuditActorName(ctx context.Context, authorization, expectedActorID
 		ID, Account, Name string
 		Enabled           bool
 	}
-	if json.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&me) != nil || !me.Enabled || me.ID != expectedActorID {
+	if sonic.ConfigDefault.NewDecoder(io.LimitReader(response.Body, 1<<20)).Decode(&me) != nil || !me.Enabled || me.ID != expectedActorID {
 		return ""
 	}
 	return firstNonEmpty(strings.TrimSpace(me.Name), strings.TrimSpace(me.Account))

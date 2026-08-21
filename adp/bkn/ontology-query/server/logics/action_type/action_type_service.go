@@ -8,11 +8,11 @@ package action_type
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
@@ -294,7 +294,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 			}
 		}
 		params := map[string]any{}
-		err = json.Unmarshal([]byte(paramsJson), &params)
+		err = sonic.Unmarshal([]byte(paramsJson), &params)
 		if err != nil {
 			return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 				WithErrorDetails(fmt.Sprintf("failed to Unmarshal action type[%s]'s paramtersJson to map, %s",
@@ -302,7 +302,7 @@ func (ats *actionTypeService) GetActionsByActionTypeID(ctx context.Context,
 		}
 
 		dynamicParams := map[string]any{}
-		err = json.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
+		err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
 		if err != nil {
 			return resps, rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_InternalError_UnMarshalDataFailed).
 				WithErrorDetails(fmt.Sprintf("failed to Unmarshal action type[%s]'s dynamicParamsJson to map, %s",
@@ -382,14 +382,14 @@ func buildActionFromInstanceData(instanceData map[string]any,
 	}
 
 	params := map[string]any{}
-	err = json.Unmarshal([]byte(paramsJson), &params)
+	err = sonic.Unmarshal([]byte(paramsJson), &params)
 	if err != nil {
 		return action, fmt.Errorf("failed to Unmarshal action type[%s]'s paramtersJson to map, %s",
 			actionType.ATName, err.Error())
 	}
 
 	dynamicParams := map[string]any{}
-	err = json.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
+	err = sonic.Unmarshal([]byte(dynamicParamsJson), &dynamicParams)
 	if err != nil {
 		return action, fmt.Errorf("failed to Unmarshal action type[%s]'s dynamicParamsJson to map, %s",
 			actionType.ATName, err.Error())

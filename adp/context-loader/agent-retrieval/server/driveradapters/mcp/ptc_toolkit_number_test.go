@@ -48,8 +48,8 @@ func TestPyLiteralUnchangedForOtherTypes(t *testing.T) {
 }
 
 // End to end over the schema decoder: a wide default must reach the generated
-// Python as digits. With encoding/json's default number handling it arrived as
-// float64 and rendered as 9223372036854775807's rounded neighbour.
+// Python as digits. Default decoding would otherwise produce float64 and render
+// the rounded neighbour of 9223372036854775807.
 func TestPtcParamsKeepsWideDefaults(t *testing.T) {
 	raw := json.RawMessage(`{"properties":{"cursor":{"type":"integer","default":9223372036854775807},` +
 		`"limit":{"type":"integer","default":10}},"required":[]}`)

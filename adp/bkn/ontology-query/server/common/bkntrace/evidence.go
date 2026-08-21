@@ -12,7 +12,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -23,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"go.opentelemetry.io/otel/trace"
 	"ontology-query/common/bkntrace/outbox"
 	"ontology-query/interfaces"
@@ -229,7 +229,7 @@ func WarnIfLegacyEvidenceMisconfigured() {
 }
 
 func HashValue(value any) string {
-	raw, err := json.Marshal(value)
+	raw, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		raw = []byte(fmt.Sprintf("%v", value))
 	}
@@ -319,7 +319,7 @@ func coreSubjectType(accountType string) string {
 }
 
 func toCoreEvent(event Event, ec eventContext) (outbox.Event, error) {
-	raw, err := json.Marshal(event)
+	raw, err := sonic.ConfigStd.Marshal(event)
 	if err != nil {
 		return outbox.Event{}, err
 	}
@@ -442,7 +442,7 @@ func queryRefs(refs []EvidenceRef) ([]map[string]any, []map[string]any) {
 }
 
 func postBatch(ingestURL string, timeout time.Duration, payload batch) error {
-	body, err := json.Marshal(payload)
+	body, err := sonic.Marshal(payload)
 	if err != nil {
 		return err
 	}

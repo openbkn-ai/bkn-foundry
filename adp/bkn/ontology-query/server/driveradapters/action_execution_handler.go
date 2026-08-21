@@ -21,6 +21,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	attr "go.opentelemetry.io/otel/attribute"
 
+	"ontology-query/common"
 	"ontology-query/common/visitor"
 	oerrors "ontology-query/errors"
 	"ontology-query/interfaces"
@@ -79,7 +80,7 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 
 	// Bind request body
 	req := interfaces.ActionExecutionRequest{}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &req); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, oerrors.OntologyQuery_ActionExecution_InvalidParameter).
 			WithErrorDetails(fmt.Sprintf("Binding Parameter Failed: %s", err.Error()))
 

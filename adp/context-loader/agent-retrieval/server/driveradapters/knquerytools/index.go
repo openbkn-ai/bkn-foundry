@@ -16,6 +16,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
@@ -257,7 +258,7 @@ func (h *knQueryToolsHandler) GetRelationTypes(c *gin.Context) {
 func (h *knQueryToolsHandler) QueryMetric(c *gin.Context) {
 	ctx := c.Request.Context()
 	req := &interfaces.QueryMetricReq{}
-	if err := c.ShouldBindJSON(req); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, req); err != nil {
 		rest.ReplyError(c, errors.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error()))
 		return
 	}

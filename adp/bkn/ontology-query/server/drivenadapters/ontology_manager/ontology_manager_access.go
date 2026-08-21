@@ -8,7 +8,6 @@ package ontology_manager
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -337,22 +336,22 @@ func (oma *ontologyManagerAccess) GetRelationTypePathsBaseOnSource(ctx context.C
 			switch response.TypePaths[i].TypeEdges[j].RelationType.Type {
 			case interfaces.RELATION_TYPE_DIRECT:
 				var directMapping []interfaces.Mapping
-				jsonData, err := json.Marshal(response.TypePaths[i].TypeEdges[j].RelationType.MappingRules)
+				jsonData, err := sonic.Marshal(response.TypePaths[i].TypeEdges[j].RelationType.MappingRules)
 				if err != nil {
 					return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
 				}
-				err = json.Unmarshal(jsonData, &directMapping)
+				err = sonic.Unmarshal(jsonData, &directMapping)
 				if err != nil {
 					return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 				}
 				response.TypePaths[i].TypeEdges[j].RelationType.MappingRules = directMapping
 			case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 				var fcj interfaces.FilteredCrossJoinMapping
-				jsonData, err := json.Marshal(response.TypePaths[i].TypeEdges[j].RelationType.MappingRules)
+				jsonData, err := sonic.Marshal(response.TypePaths[i].TypeEdges[j].RelationType.MappingRules)
 				if err != nil {
 					return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
 				}
-				err = json.Unmarshal(jsonData, &fcj)
+				err = sonic.Unmarshal(jsonData, &fcj)
 				if err != nil {
 					return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 				}
@@ -475,22 +474,22 @@ func (oma *ontologyManagerAccess) GetRelationType(ctx context.Context, knID stri
 	switch response.RelationTypes[0].Type {
 	case interfaces.RELATION_TYPE_DIRECT:
 		var directMapping []interfaces.Mapping
-		jsonData, err := json.Marshal(response.RelationTypes[0].MappingRules)
+		jsonData, err := sonic.Marshal(response.RelationTypes[0].MappingRules)
 		if err != nil {
 			return emptyRelationType, false, fmt.Errorf("derived Config Marshal error: %s", err.Error())
 		}
-		err = json.Unmarshal(jsonData, &directMapping)
+		err = sonic.Unmarshal(jsonData, &directMapping)
 		if err != nil {
 			return emptyRelationType, false, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 		}
 		response.RelationTypes[0].MappingRules = directMapping
 	case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 		var fcj interfaces.FilteredCrossJoinMapping
-		jsonData, err := json.Marshal(response.RelationTypes[0].MappingRules)
+		jsonData, err := sonic.Marshal(response.RelationTypes[0].MappingRules)
 		if err != nil {
 			return emptyRelationType, false, fmt.Errorf("derived Config Marshal error: %s", err.Error())
 		}
-		err = json.Unmarshal(jsonData, &fcj)
+		err = sonic.Unmarshal(jsonData, &fcj)
 		if err != nil {
 			return emptyRelationType, false, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 		}
@@ -595,22 +594,22 @@ func (oma *ontologyManagerAccess) ListRelationTypes(ctx context.Context, knID st
 		switch response.RelationTypes[i].Type {
 		case interfaces.RELATION_TYPE_DIRECT:
 			var directMapping []interfaces.Mapping
-			jsonData, err := json.Marshal(response.RelationTypes[i].MappingRules)
+			jsonData, err := sonic.Marshal(response.RelationTypes[i].MappingRules)
 			if err != nil {
 				return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
 			}
-			err = json.Unmarshal(jsonData, &directMapping)
+			err = sonic.Unmarshal(jsonData, &directMapping)
 			if err != nil {
 				return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 			}
 			response.RelationTypes[i].MappingRules = directMapping
 		case interfaces.RELATION_TYPE_FILTERED_CROSS_JOIN:
 			var fcj interfaces.FilteredCrossJoinMapping
-			jsonData, err := json.Marshal(response.RelationTypes[i].MappingRules)
+			jsonData, err := sonic.Marshal(response.RelationTypes[i].MappingRules)
 			if err != nil {
 				return nil, fmt.Errorf("derived Config Marshal error: %s", err.Error())
 			}
-			err = json.Unmarshal(jsonData, &fcj)
+			err = sonic.Unmarshal(jsonData, &fcj)
 			if err != nil {
 				return nil, fmt.Errorf("derived Config Unmarshal error: %s", err.Error())
 			}

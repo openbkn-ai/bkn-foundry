@@ -15,7 +15,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 
@@ -289,11 +288,11 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 				continue
 			}
 
-			if err := sonic.Unmarshal(msg.Key, &keyMap); err != nil {
+			if err := common.UnmarshalPreciseJSON(msg.Key, &keyMap); err != nil {
 				logger.Errorf("Failed to unmarshal message key: %v", err)
 				time.Sleep(retryInterval)
 				continue
-			} else if err := sonic.Unmarshal(msg.Value, &valueMap); err != nil {
+			} else if err := common.UnmarshalPreciseJSON(msg.Value, &valueMap); err != nil {
 				logger.Errorf("Failed to unmarshal message value: %v", err)
 				time.Sleep(retryInterval)
 				continue

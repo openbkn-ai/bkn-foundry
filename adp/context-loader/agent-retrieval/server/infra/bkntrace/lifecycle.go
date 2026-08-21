@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
@@ -417,13 +418,13 @@ func (c *LifecycleClient) finishAttempt(
 
 func boundedJSONPayload(raw json.RawMessage) PayloadEnvelope {
 	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
+	if err := common.UnmarshalPreciseJSON(raw, &value); err != nil {
 		return PayloadEnvelope{
 			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
 			OmittedReason: "serialization_failed",
 		}
 	}
-	canonical, err := json.Marshal(value)
+	canonical, err := sonic.ConfigStd.Marshal(value)
 	if err != nil {
 		return PayloadEnvelope{
 			Mode: "omitted", MediaType: "application/json", ByteLength: len(raw),
@@ -461,7 +462,7 @@ func (c *LifecycleClient) do(
 	}
 	var reader io.Reader
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := sonic.Marshal(body)
 		if err != nil {
 			return nil, err
 		}
@@ -486,7 +487,7 @@ func (c *LifecycleClient) do(
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var envelope errorEnvelope
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
+		if err := sonic.ConfigDefault.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&envelope); err != nil {
 			return nil, fmt.Errorf("decode lifecycle error response: %w", err)
 		}
 		return &envelope.Error, nil
@@ -494,7 +495,7 @@ func (c *LifecycleClient) do(
 	if target == nil {
 		return nil, nil
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(target); err != nil {
+	if err := common.DecodePreciseJSON(io.LimitReader(resp.Body, 1<<20), target); err != nil {
 		return nil, fmt.Errorf("decode lifecycle response: %w", err)
 	}
 	return nil, nil

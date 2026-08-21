@@ -7,8 +7,9 @@
 package condition
 
 import (
-	"encoding/json"
 	"reflect"
+
+	"github.com/bytedance/sonic"
 )
 
 // Field scope.
@@ -169,14 +170,14 @@ func (c *CondCfg) MarshalJSON() ([]byte, error) {
 	}
 
 	// Serialize standard fields first.
-	data, err := json.Marshal(aux)
+	data, err := sonic.Marshal(aux)
 	if err != nil {
 		return nil, err
 	}
 
 	// Parse into a standard map.
 	var result map[string]any
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err := sonic.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}
 
@@ -196,7 +197,7 @@ func (c *CondCfg) MarshalJSON() ([]byte, error) {
 			delete(result, k)
 		}
 	}
-	return json.Marshal(result)
+	return sonic.Marshal(result)
 }
 
 type DataProperty struct {

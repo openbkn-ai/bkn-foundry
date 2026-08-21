@@ -17,6 +17,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
@@ -70,7 +71,7 @@ func (h *knQueryObjectInstanceHandler) QueryObjectInstance(c *gin.Context) {
 	}
 
 	// Bind the JSON body.
-	if err = c.ShouldBindJSON(req); err != nil {
+	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
 		return

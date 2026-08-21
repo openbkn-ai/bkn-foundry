@@ -13,10 +13,10 @@ package knlogicpropertyresolver
 import (
 	"context"
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"strings"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/utils"
 )
@@ -74,7 +74,7 @@ func (d *dynamicParamsLLM) GenerateMetricParams(
 	}
 
 	var rawResult map[string]any
-	if err = json.Unmarshal([]byte(resultStr), &rawResult); err != nil {
+	if err = common.UnmarshalPreciseJSON([]byte(resultStr), &rawResult); err != nil {
 		d.logger.WithContext(ctx).Errorf("  ├─ [直连LLM] ❌ Metric JSON 解析失败: %v, raw=%s", err, resultStr)
 		return nil, nil, fmt.Errorf("unmarshal metric llm result failed: %w", err)
 	}
@@ -119,7 +119,7 @@ func (d *dynamicParamsLLM) GenerateToolParams(
 	}
 
 	var rawResult map[string]any
-	if err = json.Unmarshal([]byte(resultStr), &rawResult); err != nil {
+	if err = common.UnmarshalPreciseJSON([]byte(resultStr), &rawResult); err != nil {
 		d.logger.WithContext(ctx).Errorf("  ├─ [LLM] Tool JSON parsing failed: %v, raw=%s", err, resultStr)
 		return nil, nil, fmt.Errorf("unmarshal tool llm result failed: %w", err)
 	}

@@ -8,15 +8,16 @@
 package knlogicpropertyresolver
 
 import (
-	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic"
 	"github.com/creasty/defaults"
 	"github.com/gin-gonic/gin"
 	validator "github.com/go-playground/validator/v10"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
@@ -81,7 +82,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 	}
 
 	// Bind the JSON body.
-	if err = c.ShouldBindJSON(req); err != nil {
+	if err = common.BindPreciseJSON(c.Request.Body, req); err != nil {
 		k.Logger.Errorf("[KnLogicPropertyResolverHandler] Bind JSON failed: %v", err)
 		err = errors.DefaultHTTPError(c.Request.Context(), http.StatusBadRequest, err.Error())
 		rest.ReplyError(c, err)
@@ -105,7 +106,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 	}
 
 	// 📥 Record request input parameters (structured)
-	reqJSON, _ := json.Marshal(req)
+	reqJSON, _ := sonic.Marshal(req)
 	k.Logger.Infof("========== [kn-logic-property-resolver] 请求开始 ==========")
 	k.Logger.Infof("📥 请求参数: %s", string(reqJSON))
 
@@ -122,7 +123,7 @@ func (k *knLogicPropertyResolverHandle) ResolveLogicProperties(c *gin.Context) {
 	}
 
 	// 📤 Record response results.
-	respJSON, _ := json.Marshal(resp)
+	respJSON, _ := sonic.Marshal(resp)
 	k.Logger.Infof("========== [kn-logic-property-resolver] 请求成功 ========== (耗时: %dms)", elapsed)
 	k.Logger.Infof("📤 响应数据: %s", string(respJSON))
 

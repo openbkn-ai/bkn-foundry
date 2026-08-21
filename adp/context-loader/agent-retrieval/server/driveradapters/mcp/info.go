@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/extension/mcptool"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/logics/knskills"
 )
@@ -58,7 +59,7 @@ func tryLoadToolSchemas(locale *mcpLocaleBundle, toolKey string) (input, output 
 		return nil, nil
 	}
 	var wrapper toolSchemaFile
-	if err := json.Unmarshal(data, &wrapper); err != nil {
+	if err := sonic.Unmarshal(data, &wrapper); err != nil {
 		return nil, nil
 	}
 	if isBusinessTool(toolKey) {
@@ -81,7 +82,7 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 		return nil, fmt.Errorf("read tools_meta.json: %w", err)
 	}
 	var meta map[string]ToolMeta
-	if err := json.Unmarshal(data, &meta); err != nil {
+	if err := sonic.Unmarshal(data, &meta); err != nil {
 		return nil, fmt.Errorf("parse tools_meta.json: %w", err)
 	}
 	// Resolve localized text from the same resource bundle as tools/list.
@@ -169,7 +170,7 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 	// Accept-Language belongs in the example because this block is what an
 	// integrator copies. MCP defines no locale field, so the transport header is
 	// the only channel; omitting it falls back to the service default language.
-	cfg, _ := json.Marshal(map[string]any{
+	cfg, _ := sonic.Marshal(map[string]any{
 		"mcpServers": map[string]any{
 			serverName: map[string]any{
 				"url": endpoint,

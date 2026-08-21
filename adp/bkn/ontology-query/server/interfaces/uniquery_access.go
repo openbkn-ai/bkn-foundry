@@ -7,11 +7,11 @@
 package interfaces
 
 import (
-	"encoding/json"
-	cond "ontology-query/common/condition"
-
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
+
+	"ontology-query/common"
+	cond "ontology-query/common/condition"
 )
 
 type ViewQuery struct {
@@ -35,9 +35,9 @@ type SearchAfterArray []any
 func (s *SearchAfterArray) UnmarshalJSON(data []byte) error {
 	var result []any
 
-	// Decode integers as int64.
-	cfg := sonic.Config{UseInt64: true}.Froze()
-	if err := cfg.Unmarshal(data, &result); err != nil {
+	// Cursor values can be uint64 business identifiers, so retain their original
+	// number literals rather than narrowing them to int64 or float64.
+	if err := common.UnmarshalPreciseJSON(data, &result); err != nil {
 		logger.Errorf("Unmarshal Search After failed, %s", err)
 		return err
 	}
@@ -48,7 +48,7 @@ func (s *SearchAfterArray) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON emits the preserved values without precision loss.
 func (s SearchAfterArray) MarshalJSON() ([]byte, error) {
-	return json.Marshal([]any(s))
+	return sonic.Marshal([]any(s))
 }
 
 type SearchAfterParams struct {

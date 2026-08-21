@@ -23,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"go.opentelemetry.io/otel/trace"
 
+	"vega-backend/common"
 	"vega-backend/common/visitor"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
@@ -88,7 +89,7 @@ func (r *restHandler) queryResourceData(c *gin.Context, ctx context.Context, spa
 	resourceID := c.Param("id")
 
 	var params interfaces.ResourceDataQueryParams
-	if err := c.ShouldBindJSON(&params); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &params); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		otellog.LogError(ctx, "Bind resource data query request failed", httpErr)
@@ -172,7 +173,7 @@ func (r *restHandler) createResourceData(c *gin.Context, ctx context.Context, sp
 	}
 
 	var documents []map[string]any
-	if err := c.ShouldBindJSON(&documents); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &documents); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -204,7 +205,7 @@ func (r *restHandler) deleteResourceDataByQuery(c *gin.Context, ctx context.Cont
 	}
 
 	var params interfaces.ResourceDataQueryParams
-	if err := c.ShouldBindJSON(&params); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &params); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -282,7 +283,7 @@ func (r *restHandler) putResourceData(c *gin.Context, visitor hydra.Visitor, s2s
 	}
 
 	var documents []map[string]any
-	if err := c.ShouldBindJSON(&documents); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &documents); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -434,7 +435,7 @@ func (r *restHandler) putResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	docID := c.Param("doc_id")
 
 	var doc map[string]any
-	if err := c.ShouldBindJSON(&doc); err != nil {
+	if err := common.BindPreciseJSON(c.Request.Body, &doc); err != nil {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(err.Error())
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
