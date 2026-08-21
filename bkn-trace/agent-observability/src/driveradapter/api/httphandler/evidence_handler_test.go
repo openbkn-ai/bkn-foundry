@@ -217,6 +217,49 @@ func TestPublicLifecycleIdentityRejectsAnonymousQueryCompatibilityMode(t *testin
 	}
 }
 
+func TestPublicLifecycleIdentityOverridesForgedOwnerHeaders(t *testing.T) {
+	resolver := &fakeAccessScopeResolver{profile: evidencevo.AccessProfile{
+		TenantID: "tenant-a", BusinessDomain: "domain-a", ActorID: "user-1",
+		EffectiveSubjectID: "user-1", AccountActive: true, TenantActive: true,
+	}}
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		HydraAdminURL: "http://hydra.test", DeploymentTenantID: "tenant-a",
+		PublicLifecycleBusinessDomains: "domain-a",
+		QueryHTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"active":true,"sub":"user-1","client_id":"openbkn-cli","ext":{"visitor_type":"user"}}`)),
+			}, nil
+		})},
+		AuthorizationScopeResolver: resolver,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("Authorization", "Bearer lifecycle-token")
+	request.Header.Set("x-business-domain", "domain-a")
+	request.Header.Set("X-BKN-Tenant-ID", "other-tenant")
+	request.Header.Set("X-Business-Domain-ID", "other-domain")
+	request.Header.Set("X-BKN-Effective-Subject-Type", "service")
+	response := httptest.NewRecorder()
+
+	handler.RequirePublicLifecycleIdentity(func(w http.ResponseWriter, r *http.Request) {
+		owner, ok := trustedOwnerFromRequest(r)
+		if !ok {
+			t.Fatalf("public lifecycle owner is incomplete: %+v", owner)
+		}
+		if owner.TenantID != "tenant-a" || owner.BusinessDomainID != "domain-a" ||
+			owner.ApplicationPrincipalID != "openbkn-cli" || owner.EffectiveSubjectType != "user" ||
+			owner.EffectiveSubjectID != "user-1" {
+			t.Fatalf("forged owner headers were not overwritten: %+v", owner)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("public lifecycle identity = %d, want %d: %s", response.Code, http.StatusNoContent, response.Body.String())
+	}
+}
+
 func TestPublicLifecycleIdentityUsesLifecycleAuthenticationErrorContract(t *testing.T) {
 	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
 		HydraAdminURL: "http://hydra.test", DeploymentTenantID: "tenant-a",
