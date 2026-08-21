@@ -35,6 +35,7 @@ func newCatalogHealthCheckWorker(appSetting *common.AppSetting, cs interfaces.Ca
 		defaultCronSchedule: defaultCronSchedule,
 		cs:                  cs,
 		chcsa:               chcsa,
+		stopCh:              make(chan struct{}),
 	}
 }
 
@@ -219,9 +220,10 @@ func TestCatalogHealthCheckWorkerStart(t *testing.T) {
 		case <-time.After(time.Second):
 			t.Fatal("worker did not start")
 		}
+		w.Stop()
 	})
 
-	t.Run("does not start when rescheduling fails", func(t *testing.T) {
+	t.Run("starts when rescheduling fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		sa := vmock.NewMockCatalogHealthCheckScheduleAccess(ctrl)
@@ -232,7 +234,19 @@ func TestCatalogHealthCheckWorkerStart(t *testing.T) {
 		)
 		updateErr := errors.New("database unavailable")
 		sa.EXPECT().UpdateInheritedNextRun(gomock.Any(), gomock.Any(), gomock.Any()).Return(updateErr)
+		runStarted := make(chan struct{})
+		sa.EXPECT().ListDue(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(context.Context, int64) ([]*interfaces.CatalogHealthCheckSchedule, error) {
+				close(runStarted)
+				return nil, errors.New("stop test run")
+			})
 
 		w.Start()
+		select {
+		case <-runStarted:
+		case <-time.After(time.Second):
+			t.Fatal("worker did not start after rescheduling failed")
+		}
+		w.Stop()
 	})
 }

@@ -64,13 +64,9 @@ func (chcw *CatalogHealthCheckWorker) Start() {
 	}
 
 	now := time.Now()
-	if err := chcw.chcsa.UpdateInheritedNextRun(
-		context.Background(),
-		now.UnixMilli(),
-		chcw.defaultCronSchedule.Next(now).UnixMilli(),
-	); err != nil {
-		logger.Errorf("Initialize catalog health check worker failed: %v", err)
-		return
+	if err := chcw.chcsa.UpdateInheritedNextRun(context.Background(),
+		now.UnixMilli(), chcw.defaultCronSchedule.Next(now).UnixMilli()); err != nil {
+		logger.Errorf("Initialize catalog health check schedules failed; continuing with the polling loop: %v", err)
 	}
 
 	chcw.wg.Add(1)
