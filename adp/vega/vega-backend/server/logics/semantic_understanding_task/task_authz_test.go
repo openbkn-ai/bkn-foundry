@@ -36,12 +36,15 @@ func TestSemanticTaskReadRequiresPermission(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 	rs := mock_interfaces.NewMockResourceService(ctrl)
-	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs}
+	cs := mock_interfaces.NewMockCatalogService(ctrl)
+	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
 	denied := errors.New("forbidden")
 	suta.EXPECT().GetByID(gomock.Any(), "task-1").Return(resourceScopedTask(), nil)
-	rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(&interfaces.Resource{ID: "res-1"}, nil)
-	rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+	// 资源域的任务也判在它所属的目录上,与列表同一口径。
+	cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
+		Return(&interfaces.Catalog{ID: "cat-1"}, nil)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
@@ -54,22 +57,24 @@ func TestSemanticTaskDeleteStopsTheWholeBatch(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 	rs := mock_interfaces.NewMockResourceService(ctrl)
-	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs}
+	cs := mock_interfaces.NewMockCatalogService(ctrl)
+	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
 	denied := errors.New("forbidden")
 	suta.EXPECT().GetByIDs(gomock.Any(), []string{"task-1"}).
 		Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-	rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(&interfaces.Resource{ID: "res-1"}, nil)
-	rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+	cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
+		Return(&interfaces.Catalog{ID: "cat-1"}, nil)
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 	// suta.DeleteByIDs 未被期望。
 
 	assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
 }
 
-// TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide: 表被删除后任务不随之消失，
-// 只会被标成 cancelled。判在已经不存在的父上会永远 403——任务既看不了也删不掉，
-// 永久滞留在列表里，而批量删除是全或无，一条孤儿会毒死整批。
+// TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide: 判定落在目录上,目录整个
+// 被删之后任务不随之消失,只会被标成 cancelled。判在已经不存在的父上会永远 403
+// ——任务既看不了也删不掉,永久滞留在列表里,而批量删除是全或无,一条孤儿会毒死整批。
 func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 	t.Run("表没了，退到目录", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -80,7 +85,6 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 
 		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(nil, nil) // 表已删
 		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
 			Return(&interfaces.Catalog{ID: "cat-1"}, nil)
 		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
@@ -99,7 +103,6 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 
 		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(nil, nil)
 		// 目录已删:InternalGetByID 返回的是 404 错误,不是 (nil, nil)。
 		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
 			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
@@ -118,7 +121,6 @@ func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
 
 		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").Return(nil, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
 			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
 		cs.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(false, nil)

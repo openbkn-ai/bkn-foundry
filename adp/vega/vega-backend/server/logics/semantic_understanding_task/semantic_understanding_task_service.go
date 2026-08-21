@@ -105,7 +105,7 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 	// InternalGetByID above deliberately skips authorization, so this is the only
 	// thing standing between an unauthorized caller and a task that reads the
 	// table's unmasked sample rows (bkn-studio#342).
-	if err := suts.rs.CheckResourcePermission(ctx, resourceID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	if err := suts.cs.CheckCatalogPermission(ctx, resource.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
@@ -216,18 +216,9 @@ func (suts *semanticUnderstandingTaskService) createTask(ctx context.Context, ta
 func (suts *semanticUnderstandingTaskService) checkTaskPermission(ctx context.Context,
 	task *interfaces.SemanticUnderstandingTask, op string) error {
 
-	if task.Scope == interfaces.SemanticUnderstandingTaskScopeResource && task.ResourceID != "" {
-		resource, err := suts.rs.InternalGetByID(ctx, task.ResourceID)
-		if err != nil {
-			return err
-		}
-		if resource != nil {
-			return suts.rs.CheckResourcePermission(ctx, task.ResourceID, op)
-		}
-		// 表已被删除,任务不随之级联删除、只会被 worker 标成 cancelled。此时判在
-		// 已消失的父上会永远 403——任务既看不了也删不掉,永久滞留在列表里。往上
-		// 退到它所属的目录。
-	}
+	// 两种 scope 都判在目录上,与列表口径一致。资源域的任务落库时也写了
+	// catalog_id,所以不需要回查资源表——而按表判会让「列表里看不到、按 id 却读
+	// 得到」这种矛盾重新出现。
 	if task.CatalogID != "" {
 		// InternalGetByID 对不存在的目录返回 404 错误而不是 (nil, nil),所以这里
 		// 要按「取不到就是没了」处理,不能把错误直接抛出去——否则删掉整个目录之后,

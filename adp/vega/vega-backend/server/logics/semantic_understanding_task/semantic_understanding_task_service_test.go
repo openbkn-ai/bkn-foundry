@@ -125,10 +125,13 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		t.Cleanup(ctrl.Finish)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		// 任务的授权判在它所属的目录上（bkn-studio#342）；这些用例验的是别的东西。
 		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: resourceService}
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		service := &semanticUnderstandingTaskService{suta: taskAccess, rs: resourceService, cs: catalogService}
 		ctx := context.WithValue(context.Background(), interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
 		var createdTask *interfaces.SemanticUnderstandingTask
 		var findHash string
@@ -175,8 +178,10 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		// 任务的授权判在它所属的目录上（bkn-studio#342）；这些用例验的是别的东西。
 		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		service := &semanticUnderstandingTaskService{suta: taskAccess, cs: catalogService, rs: resourceService}
 		var findScope string
@@ -271,8 +276,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		// 任务的授权判在它所属的目录上（bkn-studio#342）；这些用例验的是别的东西。
 		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
@@ -283,7 +291,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, cs: catalogService}
 		assertTaskCreatedWithoutSamples(t, service, resource.ID)
 	})
 
@@ -291,8 +299,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		// 任务的授权判在它所属的目录上（bkn-studio#342）；这些用例验的是别的东西。
 		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
@@ -303,7 +314,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, cs: catalogService}
 		assertTaskCreatedWithoutSamples(t, service, resource.ID)
 	})
 
@@ -311,8 +322,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		// 任务的授权判在它所属的目录上（bkn-studio#342）；这些用例验的是别的东西。
 		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
@@ -322,7 +336,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, cs: catalogService}
 		assertTaskCreatedWithoutSamples(t, service, resource.ID)
 	})
 
@@ -330,8 +344,11 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 		resourceService := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（bkn-studio#342）；这些用例验的是别的东西。
+		// 任务的授权判在它所属的目录上（bkn-studio#342）；这些用例验的是别的东西。
 		resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		catalogService := mock_interfaces.NewMockCatalogService(ctrl)
+		catalogService.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
@@ -369,7 +386,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 				return nil
 			})
 
-		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess}
+		service := &semanticUnderstandingTaskService{rs: resourceService, rds: resourceDataService, suta: taskAccess, cs: catalogService}
 		req := &interfaces.CreateSemanticUnderstandingTaskRequest{
 			IncludeSampleRows: true,
 			SamplePolicy:      &interfaces.SemanticUnderstandingSamplePolicy{Masked: false, MaxRows: 2},

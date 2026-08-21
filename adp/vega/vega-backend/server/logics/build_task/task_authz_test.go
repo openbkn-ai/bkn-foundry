@@ -34,13 +34,14 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		rs := mock_interfaces.NewMockResourceService(ctrl)
-		svc := &buildTaskService{bta: bta, rs: rs}
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs, cs: cs}
 
 		bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
 			ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1",
 			Status: interfaces.BuildTaskStatusStopped,
 		}, nil)
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 		// 状态流转与落库一次都不该发生。
 
@@ -51,12 +52,13 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		rs := mock_interfaces.NewMockResourceService(ctrl)
-		svc := &buildTaskService{bta: bta, rs: rs}
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs, cs: cs}
 
 		bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
-			ID: "task-1", ResourceID: "res-1", Status: interfaces.BuildTaskStatusRunning,
+			ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1", Status: interfaces.BuildTaskStatusRunning,
 		}, nil)
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 
 		assert.Same(t, denied, svc.Stop(context.Background(), "task-1"))
@@ -66,12 +68,13 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		rs := mock_interfaces.NewMockResourceService(ctrl)
-		svc := &buildTaskService{bta: bta, rs: rs}
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, rs: rs, cs: cs}
 
 		bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
-			ID: "task-1", ResourceID: "res-1", Status: interfaces.BuildTaskStatusStopped,
+			ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1", Status: interfaces.BuildTaskStatusStopped,
 		}, nil)
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 		// DeleteByIDs 未被期望——一条没权限就该整批不删。
 
@@ -79,18 +82,20 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 	})
 }
 
-// TestBuildTaskReadRequiresViewDetail：读一个任务等于读它构建的那张表。
+// TestBuildTaskReadRequiresViewDetail：读一个任务判在它所属的目录上,与列表同一
+// 口径——否则会出现「列表里看不到、按 id 却读得到」。
 func TestBuildTaskReadRequiresViewDetail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	rs := mock_interfaces.NewMockResourceService(ctrl)
-	svc := &buildTaskService{bta: bta, rs: rs}
+	cs := mock_interfaces.NewMockCatalogService(ctrl)
+	svc := &buildTaskService{bta: bta, rs: rs, cs: cs}
 
 	denied := errors.New("forbidden")
 	bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
-		ID: "task-1", ResourceID: "res-1",
+		ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1",
 	}, nil)
-	rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
@@ -103,13 +108,15 @@ func TestBuildTaskReadRequiresViewDetail(t *testing.T) {
 func TestBuildTaskCreateRequiresTaskManage(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	rs := mock_interfaces.NewMockResourceService(ctrl)
-	svc := &buildTaskService{rs: rs}
+	cs := mock_interfaces.NewMockCatalogService(ctrl)
+	svc := &buildTaskService{rs: rs, cs: cs}
 
 	denied := errors.New("forbidden")
 	rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(&interfaces.Resource{
 		ID: "res-1", CatalogID: "cat-1", Category: interfaces.ResourceCategoryTable,
 	}, nil)
-	rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+	// 判在表所在的目录上,而不是表本身。
+	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 
 	id, err := svc.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "res-1"})

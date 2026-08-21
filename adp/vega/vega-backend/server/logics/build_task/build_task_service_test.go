@@ -35,9 +35,9 @@ func TestBuildTaskServiceInternalMarkRunning(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 	mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-	mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
 	mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+	mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
 	mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 	service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 	mockBTA.EXPECT().MarkRunning(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
@@ -53,9 +53,9 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		syncedCount := int64(10)
@@ -77,9 +77,9 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkFailed(gomock.Any(), "task-1", "execution failed", gomock.Any()).
@@ -96,9 +96,9 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkCancelled(gomock.Any(), "task-1", "resource deleted", gomock.Any()).
@@ -115,9 +115,9 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).
@@ -133,9 +133,9 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 		mockBTA.EXPECT().MarkCompleted(gomock.Any(), nil, "task-1", gomock.Any()).
@@ -157,8 +157,8 @@ func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *tes
 	ctrl := gomock.NewController(t)
 	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 	mockRS := mock_interfaces.NewMockResourceService(ctrl)
-	// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-	mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+	// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+	mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
 	mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -261,8 +261,8 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
@@ -294,8 +294,8 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
@@ -321,8 +321,8 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
@@ -348,8 +348,8 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
@@ -372,12 +372,12 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects batch task without build key fields", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
-		service := &buildTaskService{rs: mockRS}
+		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
 			ID:        "resource-1",
@@ -395,12 +395,12 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects streaming task without build key fields", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
-		service := &buildTaskService{rs: mockRS}
+		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
 			ID:        "resource-1",
@@ -418,12 +418,12 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects resources containing unsupported fields before creating a task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
-		service := &buildTaskService{rs: mockRS}
+		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
 			ID:          "resource-1",
@@ -445,12 +445,12 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects an unsupported build key type before creating a task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
-		service := &buildTaskService{rs: mockRS}
+		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
 			ID:               "resource-1",
@@ -470,8 +470,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{cs: mockCS, rs: mockRS}
@@ -494,8 +494,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -525,8 +525,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -566,12 +566,12 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects execute type for streaming", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
-		service := &buildTaskService{rs: mockRS}
+		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{
@@ -592,8 +592,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -664,8 +664,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -726,8 +726,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -789,8 +789,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -870,8 +870,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -942,8 +942,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -987,8 +987,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -1027,7 +1027,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是状态流转，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
@@ -1050,7 +1050,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是状态流转，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
@@ -1072,9 +1072,9 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-			mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil).AnyTimes()
 			mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+			mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil).AnyTimes()
 			mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
@@ -1091,7 +1091,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是状态流转，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
@@ -1124,8 +1124,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -1159,8 +1159,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -1212,8 +1212,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -1253,8 +1253,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
@@ -1331,9 +1331,9 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
@@ -1347,9 +1347,9 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
@@ -1363,9 +1363,9 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
@@ -1382,9 +1382,9 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-			mockRSAuth.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil).AnyTimes()
 			mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
+			mockCSAuth.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(nil).AnyTimes()
 			mockCSAuth.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
@@ -1403,13 +1403,13 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
@@ -1424,13 +1424,13 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
 		idx := interfaces.BuildIndexName("r1", "t1")
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
@@ -1447,13 +1447,13 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
 		idx := interfaces.BuildIndexName("r1", "t1")
 		resource := &interfaces.Resource{ID: "r1", LocalIndexName: idx}
@@ -1470,13 +1470,13 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
 		idx := interfaces.BuildIndexName("r1", "t1")
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
@@ -1494,13 +1494,13 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
@@ -1514,13 +1514,13 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是别的东西，统一放行。
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
 		mockCS.EXPECT().FilterAuthorizedCatalogs(gomock.Any(), gomock.Any(), gomock.Any()).DoAndReturn(allowAllIDs).AnyTimes()
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, lim: mockLIM}
+		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
@@ -1536,9 +1536,10 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckCatalogPermission(gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(nil).AnyTimes()
-		service := &buildTaskService{bta: mockBTA, lim: mockLIM, rs: mockRS}
+		service := &buildTaskService{bta: mockBTA, lim: mockLIM, rs: mockRS, cs: mockCS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)

@@ -35,7 +35,9 @@ func TestResourceOpOnCatalogTranslation(t *testing.T) {
 	assert.False(t, createMapped)
 	assert.Equal(t, interfaces.OPERATION_TYPE_VIEW_DETAIL, resourceOpOnCatalog[interfaces.OPERATION_TYPE_VIEW_DETAIL])
 	assert.Equal(t, interfaces.OPERATION_TYPE_QUERY_DATA, resourceOpOnCatalog[interfaces.OPERATION_TYPE_QUERY_DATA])
-	assert.Equal(t, interfaces.OPERATION_TYPE_TASK_MANAGE, resourceOpOnCatalog[interfaces.OPERATION_TYPE_TASK_MANAGE])
+	// task_manage 不在表里:任务面已经直接判目录,不再从资源侧上翻。
+	_, taskMapped := resourceOpOnCatalog[interfaces.OPERATION_TYPE_TASK_MANAGE]
+	assert.False(t, taskMapped)
 
 	_, mapped := resourceOpOnCatalog[interfaces.OPERATION_TYPE_AUTHORIZE]
 	assert.False(t, mapped, "authorize 不能向上问，否则目录授权权就变成了对每张表的二次授权")
@@ -68,7 +70,6 @@ func TestCheckResourceOrCatalogNeverAsksTheResourceForManageVerbs(t *testing.T) 
 	for _, op := range []string{
 		interfaces.OPERATION_TYPE_MODIFY,
 		interfaces.OPERATION_TYPE_DELETE,
-		interfaces.OPERATION_TYPE_TASK_MANAGE,
 	} {
 		t.Run(op, func(t *testing.T) {
 			ctrl := gomock.NewController(t)

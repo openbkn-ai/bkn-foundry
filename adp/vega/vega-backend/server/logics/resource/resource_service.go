@@ -117,7 +117,6 @@ var resourceOpOnCatalog = map[string]string{
 	interfaces.OPERATION_TYPE_QUERY_DATA:  interfaces.OPERATION_TYPE_QUERY_DATA,
 	interfaces.OPERATION_TYPE_MODIFY:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
 	interfaces.OPERATION_TYPE_DELETE:      interfaces.OPERATION_TYPE_RESOURCE_MANAGE,
-	interfaces.OPERATION_TYPE_TASK_MANAGE: interfaces.OPERATION_TYPE_TASK_MANAGE,
 }
 
 // catalogAuthResourceType returns the resource type of the data directory in the permission service, and
