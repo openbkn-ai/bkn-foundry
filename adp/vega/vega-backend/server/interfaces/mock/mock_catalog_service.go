@@ -85,6 +85,20 @@ func (mr *MockCatalogServiceMockRecorder) CheckExistByName(ctx, name any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckExistByName", reflect.TypeOf((*MockCatalogService)(nil).CheckExistByName), ctx, name)
 }
 
+// CheckTaskPermission mocks base method.
+func (m *MockCatalogService) CheckTaskPermission(ctx context.Context, catalogID, op string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckTaskPermission", ctx, catalogID, op)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckTaskPermission indicates an expected call of CheckTaskPermission.
+func (mr *MockCatalogServiceMockRecorder) CheckTaskPermission(ctx, catalogID, op any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckTaskPermission", reflect.TypeOf((*MockCatalogService)(nil).CheckTaskPermission), ctx, catalogID, op)
+}
+
 // Create mocks base method.
 func (m *MockCatalogService) Create(ctx context.Context, req *interfaces.CatalogRequest, allowUnhealthy bool) (string, error) {
 	m.ctrl.T.Helper()

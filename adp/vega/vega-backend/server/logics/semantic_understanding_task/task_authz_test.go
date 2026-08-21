@@ -8,15 +8,12 @@ package semantic_understanding_task
 import (
 	"context"
 	"errors"
-	"net/http"
 	"testing"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
 )
@@ -42,9 +39,7 @@ func TestSemanticTaskReadRequiresPermission(t *testing.T) {
 	denied := errors.New("forbidden")
 	suta.EXPECT().GetByID(gomock.Any(), "task-1").Return(resourceScopedTask(), nil)
 	// 资源域的任务也判在它所属的目录上,与列表同一口径。
-	cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
-		Return(&interfaces.Catalog{ID: "cat-1"}, nil)
-	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
@@ -63,78 +58,33 @@ func TestSemanticTaskDeleteStopsTheWholeBatch(t *testing.T) {
 	denied := errors.New("forbidden")
 	suta.EXPECT().GetByIDs(gomock.Any(), []string{"task-1"}).
 		Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-	cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
-		Return(&interfaces.Catalog{ID: "cat-1"}, nil)
-	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 	// suta.DeleteByIDs 未被期望。
 
 	assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
 }
 
-// TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide: 判定落在目录上,目录整个
-// 被删之后任务不随之消失,只会被标成 cancelled。判在已经不存在的父上会永远 403
-// ——任务既看不了也删不掉,永久滞留在列表里,而批量删除是全或无,一条孤儿会毒死整批。
-func TestSemanticTaskOrphanFallsBackToCatalogThenTypeWide(t *testing.T) {
-	t.Run("表没了，退到目录", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
-		cs := mock_interfaces.NewMockCatalogService(ctrl)
-		svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
+// TestSemanticTaskDelegatesToTheCatalogCheck: 判定统一交给 CatalogService，包括
+// 目录被删之后的兜底——那套三级递降在 catalog 包里测，这里只钉住「确实是交出去
+// 判的」，不在两个包各测一遍同一件事。
+func TestSemanticTaskDelegatesToTheCatalogCheck(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
+	rs := mock_interfaces.NewMockResourceService(ctrl)
+	cs := mock_interfaces.NewMockCatalogService(ctrl)
+	svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
 
-		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
-			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
-			Return(&interfaces.Catalog{ID: "cat-1"}, nil)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
-			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
-		suta.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).Return(int64(1), nil)
+	suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
+		Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
+		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+	suta.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).Return(int64(1), nil)
 
-		require.NoError(t, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
-	})
-
-	t.Run("目录也没了，交给持类型级授权的人", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
-		cs := mock_interfaces.NewMockCatalogService(ctrl)
-		svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
-
-		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
-			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-		// 目录已删:InternalGetByID 返回的是 404 错误,不是 (nil, nil)。
-		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
-			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
-		cs.EXPECT().HasTypeWideGrant(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).Return(true, nil)
-		suta.EXPECT().DeleteByIDs(gomock.Any(), gomock.Any()).Return(int64(1), nil)
-
-		require.NoError(t, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
-	})
-
-	t.Run("父都没了且没有类型级授权，仍然拒绝", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		suta := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
-		rs := mock_interfaces.NewMockResourceService(ctrl)
-		cs := mock_interfaces.NewMockCatalogService(ctrl)
-		svc := &semanticUnderstandingTaskService{suta: suta, rs: rs, cs: cs}
-
-		suta.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).
-			Return([]*interfaces.SemanticUnderstandingTask{resourceScopedTask()}, nil)
-		cs.EXPECT().InternalGetByID(gomock.Any(), "cat-1", false).
-			Return(nil, rest.NewHTTPError(context.Background(), http.StatusNotFound, verrors.VegaBackend_Catalog_NotFound))
-		cs.EXPECT().HasTypeWideGrant(gomock.Any(), gomock.Any()).Return(false, nil)
-
-		err := svc.DeleteByIDs(context.Background(), []string{"task-1"}, false)
-		require.Error(t, err)
-		var httpErr *rest.HTTPError
-		require.True(t, errors.As(err, &httpErr))
-		assert.Equal(t, http.StatusForbidden, httpErr.HTTPCode)
-	})
+	require.NoError(t, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
 }
 
-// TestSemanticTaskListFiltersByVisibleParents: 判定统一落在目录上。资源域的任务
-// 落库时也写了 catalog_id,所以两种 scope 走同一条路,不需要回查资源表。
+// 被删之后任务不随之消失,只会被标成 cancelled。判在已经不存在的父上会永远 403
 func TestSemanticTaskListFiltersByVisibleParents(t *testing.T) {
 	newSvc := func(ctrl *gomock.Controller) (*semanticUnderstandingTaskService,
 		*mock_interfaces.MockSemanticUnderstandingTaskAccess,

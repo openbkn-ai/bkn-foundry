@@ -111,7 +111,7 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	// on the catalog, and the resource we just read carries its id, so ask there
 	// directly rather than through the table: fewer reads, and the code says which
 	// object decides.
-	if err := bts.cs.CheckCatalogPermission(ctx, resource.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	if err := bts.cs.CheckTaskPermission(ctx, resource.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", err
 	}
@@ -425,7 +425,7 @@ func (bts *buildTaskService) GetByID(ctx context.Context, id string) (*interface
 	}
 	if buildTask != nil {
 		// A task is read through the table it builds (#472).
-		if err := bts.cs.CheckCatalogPermission(ctx, buildTask.CatalogID,
+		if err := bts.cs.CheckTaskPermission(ctx, buildTask.CatalogID,
 			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 			span.SetStatus(codes.Error, "Permission denied")
 			return nil, err
@@ -658,7 +658,7 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 			span.SetStatus(codes.Ok, "")
 			return []*interfaces.BuildTaskSummary{}, 0, nil
 		}
-		if err := bts.cs.CheckCatalogPermission(ctx, resource.CatalogID,
+		if err := bts.cs.CheckTaskPermission(ctx, resource.CatalogID,
 			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 			// Only a refusal means "no tasks". Anything else is the authorization
 			// service or the database failing to answer, and reporting that as an
@@ -731,7 +731,7 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
-	if err := bts.cs.CheckCatalogPermission(ctx, buildTask.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	if err := bts.cs.CheckTaskPermission(ctx, buildTask.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
@@ -852,7 +852,7 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 		span.SetStatus(codes.Error, "Build task not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound)
 	}
-	if err := bts.cs.CheckCatalogPermission(ctx, buildTask.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	if err := bts.cs.CheckTaskPermission(ctx, buildTask.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return err
 	}
@@ -933,7 +933,7 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 		// reported: a batch is one transaction, so one unauthorized id stops the
 		// whole request; and answering "this one is running" to a caller with no
 		// grant would let it enumerate task ids and their state (#472).
-		if err := bts.cs.CheckCatalogPermission(ctx, buildTask.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+		if err := bts.cs.CheckTaskPermission(ctx, buildTask.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 			span.SetStatus(codes.Error, "Permission denied")
 			return err
 		}

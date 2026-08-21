@@ -55,6 +55,12 @@ type CatalogService interface {
 	// same way — by the page, not by the size of the grant.
 	FilterAuthorizedCatalogs(ctx context.Context, ids []string, op string) (map[string]bool, error)
 
+	// CheckTaskPermission authorizes an operation on something that hangs off a
+	// catalog. Unlike CheckCatalogPermission it survives the catalog's deletion:
+	// tasks outlive their catalog, and judging them on an object that is gone
+	// would strand them beyond anyone's reach.
+	CheckTaskPermission(ctx context.Context, catalogID string, op string) error
+
 	// HasTypeWideGrant reports a grant written against the catalog type itself
 	// (catalog:*). It exists for the one case that has no object to judge: a task
 	// whose parent has been deleted, which only a type-wide holder may clean up.

@@ -41,7 +41,7 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 			ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1",
 			Status: interfaces.BuildTaskStatusStopped,
 		}, nil)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 		// 状态流转与落库一次都不该发生。
 
@@ -58,7 +58,7 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 		bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
 			ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1", Status: interfaces.BuildTaskStatusRunning,
 		}, nil)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 
 		assert.Same(t, denied, svc.Stop(context.Background(), "task-1"))
@@ -74,7 +74,7 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 		bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
 			ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1", Status: interfaces.BuildTaskStatusStopped,
 		}, nil)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 		// DeleteByIDs 未被期望——一条没权限就该整批不删。
 
@@ -95,7 +95,7 @@ func TestBuildTaskReadRequiresViewDetail(t *testing.T) {
 	bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
 		ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1",
 	}, nil)
-	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
@@ -116,7 +116,7 @@ func TestBuildTaskCreateRequiresTaskManage(t *testing.T) {
 		ID: "res-1", CatalogID: "cat-1", Category: interfaces.ResourceCategoryTable,
 	}, nil)
 	// 判在表所在的目录上,而不是表本身。
-	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 
 	id, err := svc.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "res-1"})
@@ -220,7 +220,7 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 			verrors.VegaBackend_InternalError_FilterResourcesFailed)
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").
 			Return(&interfaces.Resource{ID: "res-1", CatalogID: "cat-1"}, nil)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", gomock.Any()).Return(boom)
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1", gomock.Any()).Return(boom)
 		_ = bta // bta.List 不该被调用
 
 		_, _, err := svc.List(context.Background(),
@@ -237,7 +237,7 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-other").
 			Return(&interfaces.Resource{ID: "res-other", CatalogID: "cat-other"}, nil)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-other",
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-other",
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).
 			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 		_ = bta // bta.List 不该被调用
@@ -255,7 +255,7 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").
 			Return(&interfaces.Resource{ID: "res-1", CatalogID: "cat-1"}, nil)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
 		// 已经判过了,再对整页问一遍是白花钱:FilterAuthorizedCatalogs 不该被调用。

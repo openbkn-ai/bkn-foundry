@@ -33,7 +33,7 @@ func TestDiscoverTaskCreateRequiresCatalogTaskManage(t *testing.T) {
 	svc := &discoverTaskService{cs: cs, dta: dta}
 
 	denied := errors.New("forbidden")
-	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 	// dta.Create 未被期望——拒了就不该落库。
 
@@ -52,7 +52,7 @@ func TestDiscoverTaskReadRequiresCatalogViewDetail(t *testing.T) {
 	dta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.DiscoverTask{
 		ID: "task-1", CatalogID: "cat-1",
 	}, nil)
-	cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+	cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 		interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(denied)
 
 	task, err := svc.GetByID(context.Background(), "task-1")
@@ -110,7 +110,7 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-other",
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-other",
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).
 			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 		_ = dta // dta.List 不该被调用
@@ -128,7 +128,7 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 		boom := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed)
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", gomock.Any()).Return(boom)
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1", gomock.Any()).Return(boom)
 		_ = dta // dta.List 不该被调用
 
 		_, _, err := svc.List(context.Background(),
@@ -143,7 +143,7 @@ func TestDiscoverTaskListFiltersByVisibleCatalogs(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		svc, dta, cs := newSvc(ctrl)
 
-		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(nil)
 		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
 

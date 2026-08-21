@@ -322,12 +322,11 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	// catalog they just created — and the connection config and credentials are
 	// theirs to begin with. Both are in COMMON_OPERATIONS, so the whole set is
 	// what the creator receives.
-	catalogCreatorOps := append([]string{}, interfaces.COMMON_OPERATIONS...)
 	err = cs.ps.CreateResources(ctx, []interfaces.PermissionResource{{
 		ID:   catalog.ID,
 		Type: authType,
 		Name: catalog.Name,
-	}}, catalogCreatorOps)
+	}}, interfaces.COMMON_OPERATIONS)
 	if err != nil {
 		logger.Errorf("CreateResources error: %s", err.Error())
 		span.SetStatus(codes.Error, "failed to create catalog resource")
@@ -386,6 +385,39 @@ func (cs *catalogService) FilterAuthorizedCatalogs(ctx context.Context, ids []st
 		out[id] = true
 	}
 	return out, nil
+}
+
+// CheckTaskPermission authorizes an operation on something that hangs off a
+// catalog — a build, discover or semantic task — and is the only check those
+// three should use.
+//
+// Deleting a catalog does not delete its tasks; they are marked cancelled and
+// the rows stay. Judging those on a catalog that is no longer there answers 403
+// forever, including for a super administrator, because the lookup fails before
+// casbin is ever consulted. The tasks would then be invisible to every listing
+// and deletable by nobody — dead rows that still count towards total.
+//
+// So a missing catalog steps up to the type-wide grant instead. Holding
+// catalog:* already means seeing every catalog, and a task whose parent is gone
+// discloses nothing further; without this it is simply stranded.
+func (cs *catalogService) CheckTaskPermission(ctx context.Context, catalogID string, op string) error {
+	if catalogID != "" {
+		// InternalGetByID answers a 404 error rather than (nil, nil) for a catalog
+		// that is gone, so any failure here is read as "gone" — otherwise deleting
+		// a catalog would make its tasks unreachable through this path too.
+		if catalog, err := cs.InternalGetByID(ctx, catalogID, false); err == nil && catalog != nil {
+			return cs.CheckCatalogPermission(ctx, catalogID, op)
+		}
+	}
+	typeWide, err := cs.HasTypeWideGrant(ctx, op)
+	if err != nil {
+		return err
+	}
+	if typeWide {
+		return nil
+	}
+	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
+		WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 }
 
 // HasTypeWideGrant reports a grant written against the catalog type itself.

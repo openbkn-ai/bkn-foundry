@@ -105,7 +105,7 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 	// InternalGetByID above deliberately skips authorization, so this is the only
 	// thing standing between an unauthorized caller and a task that reads the
 	// table's unmasked sample rows (bkn-studio#342).
-	if err := suts.cs.CheckCatalogPermission(ctx, resource.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	if err := suts.cs.CheckTaskPermission(ctx, resource.CatalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
@@ -166,7 +166,7 @@ func (suts *semanticUnderstandingTaskService) CreateCatalogTask(ctx context.Cont
 
 	// Same hole as the resource path: the catalog was fetched internally, which
 	// skips authorization (bkn-studio#342).
-	if err := suts.cs.CheckCatalogPermission(ctx, catalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
+	if err := suts.cs.CheckTaskPermission(ctx, catalogID, interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
 	}
@@ -218,29 +218,8 @@ func (suts *semanticUnderstandingTaskService) checkTaskPermission(ctx context.Co
 
 	// 两种 scope 都判在目录上,与列表口径一致。资源域的任务落库时也写了
 	// catalog_id,所以不需要回查资源表——而按表判会让「列表里看不到、按 id 却读
-	// 得到」这种矛盾重新出现。
-	if task.CatalogID != "" {
-		// InternalGetByID 对不存在的目录返回 404 错误而不是 (nil, nil),所以这里
-		// 要按「取不到就是没了」处理,不能把错误直接抛出去——否则删掉整个目录之后,
-		// 它下面的任务连兜底那一级都走不到,谁都读不了也删不掉。
-		catalog, err := suts.cs.InternalGetByID(ctx, task.CatalogID, false)
-		if err == nil && catalog != nil {
-			return suts.cs.CheckCatalogPermission(ctx, task.CatalogID, op)
-		}
-	}
-	// 父都不在了。这类孤儿只剩清理价值,判在目录类型的通配授权上:持有它的人本来
-	// 就看得见每一个目录,多看一条没有父的任务不构成新的暴露,而没有这条出路,
-	// 孤儿任务就是永久滞留。
-	//
-	// 问的是 catalog:* 而不是 resource:*——后者在本次收敛里只剩两个读动词,拿它
-	// 判 task_manage 会永远为假,兜底就又成了死代码。
-	if typeWide, err := suts.cs.HasTypeWideGrant(ctx, op); err != nil {
-		return err
-	} else if typeWide {
-		return nil
-	}
-	return rest.NewHTTPError(ctx, http.StatusForbidden, rest.PublicError_Forbidden).
-		WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
+	// 得到」这种矛盾重新出现。目录被删之后的兜底在 CheckTaskPermission 里。
+	return suts.cs.CheckTaskPermission(ctx, task.CatalogID, op)
 }
 
 func (suts *semanticUnderstandingTaskService) GetByID(ctx context.Context, id string) (*interfaces.SemanticUnderstandingTask, error) {

@@ -94,7 +94,7 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	}
 
 	// 探查任务是对目录的写操作（#269）。
-	if err := dts.cs.CheckCatalogPermission(ctx, req.CatalogID,
+	if err := dts.cs.CheckTaskPermission(ctx, req.CatalogID,
 		interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", err
@@ -143,7 +143,7 @@ func (dts *discoverTaskService) GetByID(ctx context.Context, id string) (*interf
 		return nil, rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_DiscoverTask_NotFound)
 	}
 	// 一个探查任务是通过它所属的目录被看见的（#269）。
-	if err := dts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+	if err := dts.cs.CheckTaskPermission(ctx, task.CatalogID,
 		interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 		span.SetStatus(codes.Error, "Permission denied")
 		return nil, err
@@ -179,7 +179,7 @@ func (dts *discoverTaskService) List(ctx context.Context, params interfaces.Disc
 	// #472)。代价一并写明:total 是未过滤的计数,某一页可能短于 page_size 甚至为
 	// 空,而后面的页仍有可见行——调用方要一直翻到没有为止,不能只看 total。
 	if params.CatalogID != "" {
-		if err := dts.cs.CheckCatalogPermission(ctx, params.CatalogID,
+		if err := dts.cs.CheckTaskPermission(ctx, params.CatalogID,
 			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 			// 只有「拒绝」才意味着没有任务。其余是鉴权服务或数据库答不上来,把它
 			// 报成空页会让一次故障看起来像一个成功请求。
@@ -389,7 +389,7 @@ func (dts *discoverTaskService) DeleteByIDs(ctx context.Context, ids []string, i
 		// Checked before anything is deleted, and before the status verdicts are
 		// reported: a batch is one transaction, and telling an unauthorized caller
 		// which ids are running is already a disclosure (#269).
-		if err := dts.cs.CheckCatalogPermission(ctx, task.CatalogID,
+		if err := dts.cs.CheckTaskPermission(ctx, task.CatalogID,
 			interfaces.OPERATION_TYPE_TASK_MANAGE); err != nil {
 			span.SetStatus(codes.Error, "Permission denied")
 			return err
