@@ -8,6 +8,7 @@ package filter_condition
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -87,6 +88,10 @@ func TestFilterConditionFactory(t *testing.T) {
 			assert.Equal(t, "created_at", got.Lfield.Name)
 		}},
 		{name: "before accepts interval pair", cfg: constCfg("created_at", OperationBefore, []any{float64(3), CurrentDay}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
+			got := cond.(*BeforeCond)
+			assert.Equal(t, []any{float64(3), CurrentDay}, got.Value)
+		}},
+		{name: "before normalizes json number interval", cfg: constCfg("created_at", OperationBefore, []any{json.Number("3"), CurrentDay}), assertion: func(t *testing.T, cond interfaces.FilterCondition) {
 			got := cond.(*BeforeCond)
 			assert.Equal(t, []any{float64(3), CurrentDay}, got.Value)
 		}},

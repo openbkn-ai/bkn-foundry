@@ -35,8 +35,6 @@ const (
 	initialProducerEpoch uint64 = 1
 )
 
-var canonicalJSON = sonic.Config{UseNumber: true, SortMapKeys: true}.Froze()
-
 const (
 	tableOutbox = "ontology_query_trace_outbox"
 	tableStream = "ontology_query_trace_producer_stream_state"
@@ -431,8 +429,8 @@ func (r *Repository) initializeEpochZero(ctx context.Context, tx *sql.Tx, now ti
 
 func CanonicalHash(payload json.RawMessage) string {
 	var decoded any
-	if canonicalJSON.Unmarshal(payload, &decoded) == nil {
-		if canonical, err := canonicalJSON.Marshal(decoded); err == nil {
+	if sonic.ConfigStd.Unmarshal(payload, &decoded) == nil {
+		if canonical, err := sonic.ConfigStd.Marshal(decoded); err == nil {
 			payload = canonical
 		}
 	}

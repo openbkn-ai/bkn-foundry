@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"vega-backend/common"
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
 )
@@ -73,6 +74,22 @@ func TestValidateResourceDataQueryParams(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, params.FilterCondCfg)
 		assert.Equal(t, "name", params.FilterCondCfg.Name)
+	})
+
+	t.Run("normalizes precise before interval for connectors", func(t *testing.T) {
+		var params interfaces.ResourceDataQueryParams
+		require.NoError(t, common.UnmarshalPreciseJSON([]byte(`{
+			"filter_condition": {
+				"field": "created_at",
+				"operation": "before",
+				"value_from": "const",
+				"value": [30, "day"]
+			}
+		}`), &params))
+
+		require.NoError(t, ValidateResourceDataQueryParams(ctx, &params))
+		require.NotNil(t, params.FilterCondCfg)
+		assert.Equal(t, float64(30), params.FilterCondCfg.Value.([]any)[0])
 	})
 
 	t.Run("accepts initial cursor paging and a cursor-only continuation", func(t *testing.T) {

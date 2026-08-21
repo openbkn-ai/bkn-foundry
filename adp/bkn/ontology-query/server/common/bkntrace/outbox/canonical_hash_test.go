@@ -1,6 +1,13 @@
 package outbox
 
-import "testing"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"testing"
+
+	"github.com/bytedance/sonic"
+)
 
 func TestCanonicalHashFixtures(t *testing.T) {
 	fixtures := []struct {
@@ -14,6 +21,35 @@ func TestCanonicalHashFixtures(t *testing.T) {
 	for _, fixture := range fixtures {
 		if got := CanonicalHash([]byte(fixture.payload)); got != fixture.want {
 			t.Fatalf("CanonicalHash(%s) = %s, want %s", fixture.payload, got, fixture.want)
+		}
+	}
+}
+
+func TestCanonicalHashMatchesEncodingJSON(t *testing.T) {
+	payloads := []string{
+		`{"message":"a & b < c > d"}`,
+		`{"number":1.0,"scientific":1e3}`,
+	}
+	for _, payload := range payloads {
+		var decoded any
+		if err := json.Unmarshal([]byte(payload), &decoded); err != nil {
+			t.Fatalf("json.Unmarshal(%s): %v", payload, err)
+		}
+		canonical, err := json.Marshal(decoded)
+		if err != nil {
+			t.Fatalf("json.Marshal(%s): %v", payload, err)
+		}
+		sonicCanonical, err := sonic.ConfigStd.Marshal(decoded)
+		if err != nil {
+			t.Fatalf("sonic.ConfigStd.Marshal(%s): %v", payload, err)
+		}
+		if string(sonicCanonical) != string(canonical) {
+			t.Fatalf("sonic.ConfigStd.Marshal(%s) = %s, want %s", payload, sonicCanonical, canonical)
+		}
+		sum := sha256.Sum256(canonical)
+		want := hex.EncodeToString(sum[:])
+		if got := CanonicalHash([]byte(payload)); got != want {
+			t.Fatalf("CanonicalHash(%s) = %s, want %s", payload, got, want)
 		}
 	}
 }

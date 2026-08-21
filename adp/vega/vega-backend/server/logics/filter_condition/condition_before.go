@@ -8,6 +8,7 @@ package filter_condition
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"vega-backend/interfaces"
@@ -17,6 +18,23 @@ type BeforeCond struct {
 	Cfg    *interfaces.FilterCondCfg
 	Lfield *interfaces.Property
 	Value  []any
+}
+
+// NormalizeBeforeInterval restores the numeric value consumed by date connectors.
+func NormalizeBeforeInterval(values []any) error {
+	if len(values) == 0 {
+		return nil
+	}
+	number, ok := values[0].(json.Number)
+	if !ok {
+		return nil
+	}
+	interval, err := number.Float64()
+	if err != nil {
+		return fmt.Errorf("condition [before]'s interval value should be a number")
+	}
+	values[0] = interval
+	return nil
 }
 
 func (c *BeforeCond) GetOperation() string { return OperationBefore }
@@ -56,6 +74,9 @@ func (c *BeforeCond) New(ctx context.Context, cfg *interfaces.FilterCondCfg,
 	}
 	if _, ok := val[0].(int); ok {
 		return nil, fmt.Errorf("condition [before]'s interval value should be an number")
+	}
+	if err := NormalizeBeforeInterval(val); err != nil {
+		return nil, err
 	}
 	if _, ok = val[1].(string); !ok {
 		return nil, fmt.Errorf("condition [before]'s interval value should be a string")

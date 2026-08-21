@@ -248,6 +248,12 @@ func validateFilterCondCfg(ctx context.Context, cfg *interfaces.FilterCondCfg) e
 					return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
 						WithErrorDetails(fmt.Sprintf("[%s] operation's value should contains at least 1 value", cfg.Operation))
 				}
+				if cfg.Operation == filter_condition.OperationBefore {
+					if err := filter_condition.NormalizeBeforeInterval(vals); err != nil {
+						return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_FilterConditionValue).
+							WithErrorDetails(err.Error())
+					}
+				}
 			}
 		}
 	}
