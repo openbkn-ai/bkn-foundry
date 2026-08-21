@@ -641,13 +641,27 @@ func (bts *buildTaskService) List(ctx context.Context, params interfaces.BuildTa
 	// An explicit resource_id is answered on its own, before the query runs, so
 	// asking about one table never widens what the caller may see.
 	if params.ResourceID != "" {
-		if err := bts.rs.CheckResourcePermission(ctx, params.ResourceID,
+		// Decided on the table's catalog, the same object the page filter below
+		// asks about. Asking the resource here instead would make naming an id
+		// more permissive than listing: a holder of resource:*/view_detail would
+		// read the tasks of a table whose catalog refuses it, while the listing
+		// hid exactly those rows.
+		resource, err := bts.rs.InternalGetByID(ctx, params.ResourceID)
+		if err != nil {
+			span.SetStatus(codes.Error, "Get resource failed")
+			return nil, 0, err
+		}
+		if resource == nil {
+			span.SetStatus(codes.Ok, "")
+			return []*interfaces.BuildTaskSummary{}, 0, nil
+		}
+		if err := bts.cs.CheckCatalogPermission(ctx, resource.CatalogID,
 			interfaces.OPERATION_TYPE_VIEW_DETAIL); err != nil {
 			// Only a refusal means "no tasks". Anything else is the authorization
 			// service or the database failing to answer, and reporting that as an
 			// empty page would hide a running task behind a successful request.
 			if !interfaces.IsPermissionRefusal(err) {
-				span.SetStatus(codes.Error, "Check resource permission failed")
+				span.SetStatus(codes.Error, "Check catalog permission failed")
 				return nil, 0, err
 			}
 			span.SetStatus(codes.Ok, "")

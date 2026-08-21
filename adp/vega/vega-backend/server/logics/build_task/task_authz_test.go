@@ -205,13 +205,15 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 	t.Run("鉴权服务答不上来要报错,不能报成空页", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs, _ := newSvc(ctrl)
+		svc, bta, rs, cs := newSvc(ctrl)
 
 		// 500 不是「这张表没有任务」,而是「问不出来」。吞掉它会让界面显示一张
 		// 空表、监控看到一次成功请求,正在跑的任务凭空消失。
 		boom := rest.NewHTTPError(context.Background(), http.StatusInternalServerError,
 			verrors.VegaBackend_InternalError_FilterResourcesFailed)
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1", gomock.Any()).Return(boom)
+		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").
+			Return(&interfaces.Resource{ID: "res-1", CatalogID: "cat-1"}, nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1", gomock.Any()).Return(boom)
 		_ = bta // bta.List 不该被调用
 
 		_, _, err := svc.List(context.Background(),
@@ -224,9 +226,11 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 	t.Run("显式指定看不见的 resource_id,查都不查", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs, _ := newSvc(ctrl)
+		svc, bta, rs, cs := newSvc(ctrl)
 
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-other",
+		rs.EXPECT().InternalGetByID(gomock.Any(), "res-other").
+			Return(&interfaces.Resource{ID: "res-other", CatalogID: "cat-other"}, nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-other",
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).
 			Return(rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
 		_ = bta // bta.List 不该被调用
@@ -240,9 +244,11 @@ func TestBuildTaskListFiltersByVisibleCatalogs(t *testing.T) {
 
 	t.Run("显式指定看得见的 resource_id,这一页不再逐行复判", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		svc, bta, rs, _ := newSvc(ctrl)
+		svc, bta, rs, cs := newSvc(ctrl)
 
-		rs.EXPECT().CheckResourcePermission(gomock.Any(), "res-1",
+		rs.EXPECT().InternalGetByID(gomock.Any(), "res-1").
+			Return(&interfaces.Resource{ID: "res-1", CatalogID: "cat-1"}, nil)
+		cs.EXPECT().CheckCatalogPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_VIEW_DETAIL).Return(nil)
 		bta.EXPECT().List(gomock.Any(), gomock.Any()).Return(page("cat-1"), int64(1), nil)
 		// 已经判过了,再对整页问一遍是白花钱:FilterAuthorizedCatalogs 不该被调用。
