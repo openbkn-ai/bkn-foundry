@@ -27,7 +27,7 @@ func TestTaskWorkerManagerStopsRecoveryBeforeStartingLoops(t *testing.T) {
 		[]*interfaces.SemanticUnderstandingTaskSummary{}, nil)
 	discoverService.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 		nil, errors.New("database unavailable"))
-	manager := &TaskWorkerManger{
+	manager := &WorkerManager{
 		sutw: &SemanticUnderstandingTaskWorker{suts: semanticService, queueSize: 1},
 		dtw:  &DiscoverTaskWorker{dts: discoverService, queueSize: 1},
 		btw:  &BuildTaskWorker{},

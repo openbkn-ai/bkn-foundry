@@ -17,6 +17,7 @@ spec:
       labels:
         module: {{ .Values.moduleName }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
 {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}
@@ -62,15 +63,17 @@ spec:
           - name: backend
             containerPort: {{ .Values.service.vegaBackend.port }}
         livenessProbe:
-          tcpSocket:
-            port: {{ .Values.service.vegaBackend.port }}
+          httpGet:
+            path: /health
+            port: backend
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 30
           failureThreshold: 3
         readinessProbe:
-          tcpSocket:
-            port: {{ .Values.service.vegaBackend.port }}
+          httpGet:
+            path: /readyz
+            port: backend
           initialDelaySeconds: 10
           periodSeconds: 10
           timeoutSeconds: 30

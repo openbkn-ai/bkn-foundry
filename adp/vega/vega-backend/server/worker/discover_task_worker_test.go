@@ -193,6 +193,7 @@ func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
 			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil
 		})
 
+	worker.stopCh = make(chan struct{})
 	worker.fillQueue(context.Background())
 
 	assert.Len(t, worker.queue, 1)
@@ -210,6 +211,7 @@ func TestDiscoverTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testing.
 	}
 	worker.queue <- "already-queued"
 
+	worker.stopCh = make(chan struct{})
 	worker.fillQueue(context.Background())
 }
 
@@ -217,7 +219,7 @@ func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	taskService := vmock.NewMockDiscoverTaskService(ctrl)
-	ctx, cancel := context.WithCancel(context.Background())
+	stopCh := make(chan struct{})
 	worker := &DiscoverTaskWorker{
 		dts: taskService,
 		queue: func() chan string {
@@ -227,6 +229,7 @@ func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
 			return queue
 		}(),
 		inFlight: map[string]struct{}{"task-1": {}, "task-2": {}},
+		stopCh:   stopCh,
 	}
 	taskService.EXPECT().InternalGetByID(gomock.Any(), "task-1").DoAndReturn(
 		func(context.Context, string) (*interfaces.DiscoverTask, error) {
@@ -243,14 +246,14 @@ func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
 	taskService.EXPECT().RequestDispatch().Times(2).Do(func() {
 		dispatchCount++
 		if dispatchCount == 2 {
-			cancel()
+			close(stopCh)
 		}
 	})
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
-		worker.runQueuedTasks(ctx)
+		worker.runQueuedTasks(context.Background())
 	}()
 
 	select {
@@ -260,6 +263,32 @@ func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
 	}
 	assert.True(t, worker.addInFlight("task-1"), "panic must not leak the in-flight task ID")
 	assert.True(t, worker.addInFlight("task-2"), "worker must continue and release the next task ID")
+}
+
+func TestDiscoverTaskWorkerDoesNotStartQueuedTaskAfterCancellation(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	worker := &DiscoverTaskWorker{
+		dts:   vmock.NewMockDiscoverTaskService(ctrl),
+		queue: make(chan string, 1),
+	}
+	worker.queue <- "pending-task"
+	stopCh := make(chan struct{})
+	worker.stopped.Store(true)
+	close(stopCh)
+	worker.stopCh = stopCh
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		worker.runQueuedTasks(context.Background())
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("cancelled worker did not exit")
+	}
 }
 
 func TestUpdateDiscoverResultForEnrichStatus(t *testing.T) {

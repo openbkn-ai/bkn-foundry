@@ -44,7 +44,7 @@ func TestDiscoverTaskWorkerLimitsConcurrency(t *testing.T) {
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 	taskService.EXPECT().DispatchSignal().AnyTimes().Return((<-chan struct{})(dispatchSignal))
 
-	assertWorkerPoolLimit(t, queue, worker.workerCount, worker.startLoops, entered, release, completed)
+	assertWorkerPoolLimit(t, queue, worker.workerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func TestSemanticUnderstandingTaskWorkerLimitsConcurrency(t *testing.T) {
@@ -74,7 +74,7 @@ func TestSemanticUnderstandingTaskWorkerLimitsConcurrency(t *testing.T) {
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 	taskService.EXPECT().DispatchSignal().AnyTimes().Return((<-chan struct{})(dispatchSignal))
 
-	assertWorkerPoolLimit(t, queue, worker.workerCount, worker.startLoops, entered, release, completed)
+	assertWorkerPoolLimit(t, queue, worker.workerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func TestBuildTaskWorkerLimitsBatchConcurrency(t *testing.T) {
@@ -101,7 +101,7 @@ func TestBuildTaskWorkerLimitsBatchConcurrency(t *testing.T) {
 	expectIdleBuildPoll(taskService, dispatchSignal)
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 
-	assertWorkerPoolLimit(t, queue, worker.batchWorkerCount, worker.startLoops, entered, release, completed)
+	assertWorkerPoolLimit(t, queue, worker.batchWorkerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func TestBuildTaskWorkerLimitsStreamingConcurrency(t *testing.T) {
@@ -128,7 +128,7 @@ func TestBuildTaskWorkerLimitsStreamingConcurrency(t *testing.T) {
 	expectIdleBuildPoll(taskService, dispatchSignal)
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 
-	assertWorkerPoolLimit(t, queue, worker.streamingWorkerCount, worker.startLoops, entered, release, completed)
+	assertWorkerPoolLimit(t, queue, worker.streamingWorkerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func workerPoolTestChannels() (chan string, chan struct{}, chan struct{}) {
@@ -154,12 +154,12 @@ func expectIdleBuildPoll(taskService *vmock.MockBuildTaskService, dispatchSignal
 }
 
 func assertWorkerPoolLimit(t *testing.T, queue chan string, workerCount int,
-	startLoops func(context.Context), entered <-chan string, release chan struct{}, completed <-chan struct{}) {
+	start func(chan struct{}), entered <-chan string, release chan struct{}, completed <-chan struct{}) {
 	t.Helper()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	stopCh := make(chan struct{})
+	defer close(stopCh)
 
-	startLoops(ctx)
+	start(stopCh)
 	for i := 0; i < workerCount; i++ {
 		waitForWorkerPoolSignal(t, entered, "task did not start")
 	}

@@ -75,6 +75,7 @@ func TestSemanticUnderstandingTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T)
 			return []*interfaces.SemanticUnderstandingTaskSummary{{ID: "task-1"}}, nil
 		})
 
+	worker.stopCh = make(chan struct{})
 	worker.fillQueue(context.Background())
 
 	assert.Len(t, worker.queue, 1)
@@ -92,6 +93,7 @@ func TestSemanticUnderstandingTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpt
 	}
 	worker.queue <- "already-queued"
 
+	worker.stopCh = make(chan struct{})
 	worker.fillQueue(context.Background())
 }
 
@@ -153,7 +155,7 @@ func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	t.Cleanup(ctrl.Finish)
 	taskService := vmock.NewMockSemanticUnderstandingTaskService(ctrl)
-	ctx, cancel := context.WithCancel(context.Background())
+	stopCh := make(chan struct{})
 	worker := &SemanticUnderstandingTaskWorker{
 		suts: taskService,
 		queue: func() chan string {
@@ -163,6 +165,7 @@ func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
 			return queue
 		}(),
 		inFlight: map[string]struct{}{"semantic-task-1": {}, "semantic-task-2": {}},
+		stopCh:   stopCh,
 	}
 	taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").DoAndReturn(
 		func(context.Context, string) (*interfaces.SemanticUnderstandingTask, error) {
@@ -179,14 +182,14 @@ func TestSemanticUnderstandingTaskWorkerRecoversTaskPanic(t *testing.T) {
 	taskService.EXPECT().RequestDispatch().Times(2).Do(func() {
 		dispatchCount++
 		if dispatchCount == 2 {
-			cancel()
+			close(stopCh)
 		}
 	})
 	done := make(chan struct{})
 
 	go func() {
 		defer close(done)
-		worker.runQueuedTasks(ctx)
+		worker.runQueuedTasks(context.Background())
 	}()
 
 	select {
@@ -265,7 +268,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			InternalSetAgentTaskID(ctxWithAccountID(t, "account-1"), "semantic-task-1", "agent-task-1").
 			Return(true, nil)
 		agentService.EXPECT().
-			WaitResult(gomock.Any(), "agent-task-1").
+			GetTask(gomock.Any(), "agent-task-1").
 			Return(&interfaces.BknAgentTask{
 				TaskID: "agent-task-1",
 				Status: interfaces.BknAgentTaskStatusSucceeded,
@@ -338,7 +341,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), task.ResourceID).Return(&interfaces.Resource{ID: task.ResourceID}, nil)
 		agentService.EXPECT().Run(ctxWithAccountID(t, "account-1"), task).Return("agent-task-1", nil)
 		taskService.EXPECT().InternalSetAgentTaskID(ctxWithAccountID(t, "account-1"), task.ID, "agent-task-1").Return(true, nil)
-		agentService.EXPECT().WaitResult(gomock.Any(), "agent-task-1").Return(&interfaces.BknAgentTask{
+		agentService.EXPECT().GetTask(gomock.Any(), "agent-task-1").Return(&interfaces.BknAgentTask{
 			TaskID: "agent-task-1",
 			Status: interfaces.BknAgentTaskStatusSucceeded,
 			Result: []byte(`{"confidence":0.82,"resource":{"description":"business resource","confidence":0.82},"fields":[],"warnings":[]}`),
@@ -391,7 +394,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		taskService.EXPECT().InternalMarkRunning(ctxWithAccountID(t, "account-1"), task.ID).Return(true, nil)
 		agentService.EXPECT().Run(ctxWithAccountID(t, "account-1"), task).Return("agent-task-1", nil)
 		taskService.EXPECT().InternalSetAgentTaskID(ctxWithAccountID(t, "account-1"), task.ID, "agent-task-1").Return(true, nil)
-		agentService.EXPECT().WaitResult(gomock.Any(), "agent-task-1").Return(&interfaces.BknAgentTask{
+		agentService.EXPECT().GetTask(gomock.Any(), "agent-task-1").Return(&interfaces.BknAgentTask{
 			TaskID:        "agent-task-1",
 			Status:        interfaces.BknAgentTaskStatusFailed,
 			FailureDetail: "agent failed",
@@ -486,7 +489,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			Run(ctxWithAccountID(t, "account-1"), semanticTask).
 			Return("", errors.New("temporary agent error"))
 		taskService.EXPECT().
-			InternalMarkFailed(gomock.Any(), "semantic-task-1", "temporary agent error").
+			InternalMarkFailed(gomock.Any(), "semantic-task-1", gomock.Any()).
 			Return(true, nil)
 
 		err := worker.Run(context.Background(), "semantic-task-1")
@@ -494,7 +497,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		require.ErrorContains(t, err, "temporary agent error")
 	})
 
-	t.Run("marks task failed when waiting for agent returns an error", func(t *testing.T) {
+	t.Run("marks task failed when agent reports failure", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		t.Cleanup(ctrl.Finish)
 
@@ -525,15 +528,19 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			InternalSetAgentTaskID(ctxWithAccountID(t, "account-1"), "semantic-task-1", "agent-task-1").
 			Return(true, nil)
 		agentService.EXPECT().
-			WaitResult(ctxWithAccountID(t, "account-1"), "agent-task-1").
-			Return(nil, errors.New("temporary agent error"))
+			GetTask(ctxWithAccountID(t, "account-1"), "agent-task-1").
+			Return(&interfaces.BknAgentTask{
+				TaskID:        "agent-task-1",
+				Status:        interfaces.BknAgentTaskStatusFailed,
+				FailureDetail: "temporary agent error",
+			}, nil)
 		taskService.EXPECT().
-			InternalMarkFailed(gomock.Any(), "semantic-task-1", "temporary agent error").
+			InternalMarkFailed(gomock.Any(), "semantic-task-1", gomock.Any()).
 			Return(true, nil)
 
 		err := worker.Run(context.Background(), "semantic-task-1")
 
-		require.ErrorContains(t, err, "temporary agent error")
+		require.NoError(t, err)
 	})
 
 	t.Run("marks unapplied detail when confidence is below threshold", func(t *testing.T) {
@@ -578,7 +585,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").
 			Return(&interfaces.Resource{ID: "resource-1"}, nil)
 		agentService.EXPECT().
-			WaitResult(gomock.Any(), "agent-task-1").
+			GetTask(gomock.Any(), "agent-task-1").
 			Return(&interfaces.BknAgentTask{
 				TaskID: "agent-task-1",
 				Status: interfaces.BknAgentTaskStatusSucceeded,

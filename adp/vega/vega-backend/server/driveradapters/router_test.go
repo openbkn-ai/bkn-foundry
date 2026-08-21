@@ -73,6 +73,26 @@ func Test_RestHandler_HealthCheck(t *testing.T) {
 	})
 }
 
+func Test_RestHandler_ReadinessCheck(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	engine := gin.New()
+	handler := &restHandler{}
+	engine.GET("/readyz", handler.ReadinessCheck)
+
+	handler.SetReady(true)
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	readyResponse := httptest.NewRecorder()
+	engine.ServeHTTP(readyResponse, request)
+	require.Equal(t, http.StatusOK, readyResponse.Code)
+
+	handler.SetReady(false)
+	drainingResponse := httptest.NewRecorder()
+	engine.ServeHTTP(drainingResponse, request)
+	require.Equal(t, http.StatusServiceUnavailable, drainingResponse.Code)
+}
+
 func Test_RestHandler_VerifyJsonContentType(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()

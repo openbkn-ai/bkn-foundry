@@ -17,6 +17,8 @@ bknSafe:
 # 节点选择器
 nodeSelector: {}
 
+terminationGracePeriodSeconds: 120
+
 image:
   registry: ghcr.io/openbkn-ai
   repository: vega-backend

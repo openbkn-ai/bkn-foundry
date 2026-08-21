@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -40,6 +41,10 @@ type DiscoverTaskWorker struct {
 	queue       chan string
 	mu          sync.Mutex
 	inFlight    map[string]struct{}
+
+	wg      sync.WaitGroup
+	stopCh  chan struct{}
+	stopped atomic.Bool
 }
 
 // NewDiscoverTaskWorker creates a new discover worker.
@@ -49,7 +54,7 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 		workerCount = appSetting.TaskWorker.DiscoverWorkerCount
 	}
 	queueSize := workerCount * taskQueueSizeMultiplier
-	return &DiscoverTaskWorker{
+	worker := &DiscoverTaskWorker{
 		appSetting: appSetting,
 		cf:         factory.GetFactory(appSetting),
 		cs:         catalog.NewCatalogService(appSetting),
@@ -60,17 +65,33 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 		queueSize:   queueSize,
 		queue:       make(chan string, queueSize),
 		inFlight:    make(map[string]struct{}),
+		stopCh:      make(chan struct{}),
 	}
+	worker.stopped.Store(false)
+	return worker
 }
 
-// startLoops starts the local worker pool and database producer after startup recovery succeeds.
-func (dtw *DiscoverTaskWorker) startLoops(ctx context.Context) {
+// Start starts the local worker pool and database producer after startup recovery succeeds.
+func (dtw *DiscoverTaskWorker) Start() {
+	dtw.wg.Add(dtw.workerCount + 1)
 	// Start a fixed worker pool that only consumes the bounded local queue.
 	for i := 0; i < dtw.workerCount; i++ {
-		go dtw.runQueuedTasks(ctx)
+		go func() {
+			defer dtw.wg.Done()
+			dtw.runQueuedTasks(context.Background())
+		}()
 	}
 	// Start the only producer. It owns the initial scan and all later refills.
-	go dtw.pollTasks(ctx)
+	go func() {
+		defer dtw.wg.Done()
+		dtw.pollTasks(context.Background())
+	}()
+}
+
+func (dtw *DiscoverTaskWorker) Stop() {
+	dtw.stopped.Store(true)
+	close(dtw.stopCh)
+	dtw.wg.Wait()
 }
 
 func (dtw *DiscoverTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
@@ -114,7 +135,7 @@ func (dtw *DiscoverTaskWorker) pollTasks(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-dtw.stopCh:
 			return
 		// The 30-second poll is only a fallback for missed notifications and restart recovery.
 		case <-ticker.C:
@@ -144,13 +165,16 @@ func (dtw *DiscoverTaskWorker) fillQueue(ctx context.Context) {
 		return
 	}
 	for _, task := range tasks {
+		if dtw.stopped.Load() {
+			return
+		}
 		// inFlight covers both queued and running tasks while the database may still show pending.
 		if task == nil || !dtw.addInFlight(task.ID) {
 			continue
 		}
 		select {
 		case dtw.queue <- task.ID:
-		case <-ctx.Done():
+		case <-dtw.stopCh:
 			dtw.removeInFlight(task.ID)
 			return
 		}
@@ -160,9 +184,12 @@ func (dtw *DiscoverTaskWorker) fillQueue(ctx context.Context) {
 func (dtw *DiscoverTaskWorker) runQueuedTasks(ctx context.Context) {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-dtw.stopCh:
 			return
 		case taskID := <-dtw.queue:
+			if dtw.stopped.Load() {
+				return
+			}
 			dtw.runSafely(ctx, taskID)
 			dtw.removeInFlight(taskID)
 			dtw.dts.RequestDispatch()

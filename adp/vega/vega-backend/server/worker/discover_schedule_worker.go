@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -19,63 +20,78 @@ import (
 
 const discoverScheduleScanInterval = time.Minute
 
-var (
-	dsWorkerOnce sync.Once
-	dsWorker     *DiscoverScheduleWorker
-)
-
 // The DiscoverScheduleWorker polls the next_run in the database and executes the expired DiscoverSchedule.
 // The database is the sole source of facts for the scheduling status.
 type DiscoverScheduleWorker struct {
 	appSetting *common.AppSetting
 	dsa        interfaces.DiscoverScheduleAccess
 	dss        interfaces.DiscoverScheduleService
+
+	wg      sync.WaitGroup
+	stopCh  chan struct{}
+	stopped atomic.Bool
 }
 
-// NewDiscoverScheduleWorker create or return to Discover the Schedule worker singleton.
+// NewDiscoverScheduleWorker creates a Discover schedule worker.
 func NewDiscoverScheduleWorker(appSetting *common.AppSetting, dss interfaces.DiscoverScheduleService) *DiscoverScheduleWorker {
-	dsWorkerOnce.Do(func() {
-		dsWorker = &DiscoverScheduleWorker{
-			appSetting: appSetting,
-			dsa:        logics.DSA,
-			dss:        dss,
-		}
-	})
-	return dsWorker
+	worker := &DiscoverScheduleWorker{
+		appSetting: appSetting,
+		dsa:        logics.DSA,
+		dss:        dss,
+		stopCh:     make(chan struct{}),
+	}
+	worker.stopped.Store(false)
+	return worker
 }
 
 // Start the polling loop.
-func (dsw *DiscoverScheduleWorker) Start() error {
-	go dsw.run()
+func (dsw *DiscoverScheduleWorker) Start() {
+	dsw.wg.Add(1)
+	go func() {
+		defer dsw.wg.Done()
+		dsw.run(context.Background())
+	}()
 	logger.Info("Discover schedule worker started")
-	return nil
 }
 
-func (dsw *DiscoverScheduleWorker) run() {
-	dsw.runDue()
+func (dsw *DiscoverScheduleWorker) Stop() {
+	dsw.stopped.Store(true)
+	close(dsw.stopCh)
+	dsw.wg.Wait()
+}
+
+func (dsw *DiscoverScheduleWorker) run(ctx context.Context) {
+	dsw.runDue(ctx)
 
 	ticker := time.NewTicker(discoverScheduleScanInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		dsw.runDue()
+	for {
+		select {
+		case <-dsw.stopCh:
+			return
+		case <-ticker.C:
+			dsw.runDue(ctx)
+		}
 	}
 }
 
-func (dsw *DiscoverScheduleWorker) runDue() {
+func (dsw *DiscoverScheduleWorker) runDue(ctx context.Context) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.Errorf("Run due discover schedules panicked: %v", recovered)
 		}
 	}()
 
-	ctx := context.Background()
 	schedules, err := dsw.dsa.ListDue(ctx, time.Now().UnixMilli())
 	if err != nil {
 		logger.Errorf("List due discover schedules failed: %v", err)
 		return
 	}
 	for _, schedule := range schedules {
+		if dsw.stopped.Load() {
+			return
+		}
 		dsw.runSchedule(ctx, schedule)
 	}
 }

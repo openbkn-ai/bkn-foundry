@@ -7,9 +7,7 @@ package bkn_agent
 
 import (
 	"context"
-	"errors"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,84 +44,19 @@ func TestBknAgentServiceRun(t *testing.T) {
 	assert.Equal(t, "agent-task-1", got)
 }
 
-func TestBknAgentServiceWaitResult(t *testing.T) {
-	t.Run("polls until succeeded", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
+func TestBknAgentServiceGetTask(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
 
-		agentAccess := vmock.NewMockBknAgentAccess(ctrl)
-		service := &bknAgentService{
-			baa:          agentAccess,
-			pollInterval: time.Millisecond,
-			maxPolls:     2,
-		}
+	agentAccess := vmock.NewMockBknAgentAccess(ctrl)
+	service := &bknAgentService{baa: agentAccess}
+	agentAccess.EXPECT().GetTask(gomock.Any(), "agent-task-1").Return(&interfaces.BknAgentTask{
+		TaskID: "agent-task-1",
+		Status: interfaces.BknAgentTaskStatusRunning,
+	}, nil)
 
-		agentAccess.EXPECT().
-			GetTask(gomock.Any(), "agent-task-1").
-			Return(&interfaces.BknAgentTask{
-				TaskID: "agent-task-1",
-				Status: interfaces.BknAgentTaskStatusRunning,
-			}, nil)
-		agentAccess.EXPECT().
-			GetTask(gomock.Any(), "agent-task-1").
-			Return(&interfaces.BknAgentTask{
-				TaskID: "agent-task-1",
-				Status: interfaces.BknAgentTaskStatusSucceeded,
-				Result: []byte(`{"confidence":0.8}`),
-			}, nil)
+	got, err := service.GetTask(context.Background(), "agent-task-1")
 
-		got, err := service.WaitResult(context.Background(), "agent-task-1")
-
-		require.NoError(t, err)
-		assert.Equal(t, interfaces.BknAgentTaskStatusSucceeded, got.Status)
-	})
-
-	t.Run("returns failed task", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-
-		agentAccess := vmock.NewMockBknAgentAccess(ctrl)
-		service := &bknAgentService{baa: agentAccess, maxPolls: 1}
-
-		agentAccess.EXPECT().
-			GetTask(gomock.Any(), "agent-task-1").
-			Return(&interfaces.BknAgentTask{
-				TaskID:        "agent-task-1",
-				Status:        interfaces.BknAgentTaskStatusFailed,
-				FailureDetail: "agent failed",
-			}, nil)
-
-		got, err := service.WaitResult(context.Background(), "agent-task-1")
-
-		require.NoError(t, err)
-		assert.Equal(t, interfaces.BknAgentTaskStatusFailed, got.Status)
-		assert.Equal(t, "agent failed", got.FailureDetail)
-	})
-
-	t.Run("retries transient get task errors", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		t.Cleanup(ctrl.Finish)
-
-		agentAccess := vmock.NewMockBknAgentAccess(ctrl)
-		service := &bknAgentService{
-			baa:          agentAccess,
-			pollInterval: time.Millisecond,
-			maxPolls:     2,
-		}
-
-		agentAccess.EXPECT().
-			GetTask(gomock.Any(), "agent-task-1").
-			Return(nil, errors.New("temporary network error"))
-		agentAccess.EXPECT().
-			GetTask(gomock.Any(), "agent-task-1").
-			Return(&interfaces.BknAgentTask{
-				TaskID: "agent-task-1",
-				Status: interfaces.BknAgentTaskStatusSucceeded,
-			}, nil)
-
-		got, err := service.WaitResult(context.Background(), "agent-task-1")
-
-		require.NoError(t, err)
-		assert.Equal(t, interfaces.BknAgentTaskStatusSucceeded, got.Status)
-	})
+	require.NoError(t, err)
+	assert.Equal(t, interfaces.BknAgentTaskStatusRunning, got.Status)
 }

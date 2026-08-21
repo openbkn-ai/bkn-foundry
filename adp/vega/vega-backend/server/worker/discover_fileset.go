@@ -101,6 +101,9 @@ func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, ta
 	}
 
 	for _, fs := range source {
+		if dtw.stopped.Load() {
+			return nil, nil, ErrWorkerManagerStopping
+		}
 		sourceIdentifier := filesetSourceIdentifier(fs)
 		if resource, ok := existingMap[sourceIdentifier]; ok {
 			markAfterEnrich := true
@@ -135,6 +138,9 @@ func (dtw *DiscoverTaskWorker) reconcileFilesetResources(ctx context.Context, ta
 
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
+			if dtw.stopped.Load() {
+				return nil, nil, ErrWorkerManagerStopping
+			}
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
 				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
 				if existing.Status == interfaces.ResourceStatusActive {
@@ -185,6 +191,9 @@ func (dtw *DiscoverTaskWorker) enrichFilesetMetadata(ctx context.Context, task *
 	progress.SetMetadataTotal(len(items))
 
 	for _, item := range items {
+		if dtw.stopped.Load() {
+			return ErrWorkerManagerStopping
+		}
 		fs := item.meta
 		resource := item.resource
 		beforeHash := sourceSnapshotHash(resource)

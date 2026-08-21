@@ -113,6 +113,9 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 
 	// Handle newly added and retained resources
 	for _, table := range sourceTables {
+		if dtw.stopped.Load() {
+			return nil, nil, ErrWorkerManagerStopping
+		}
 		sourceIdentifier := dtw.buildSourceIdentifier(table)
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
@@ -159,6 +162,9 @@ func (dtw *DiscoverTaskWorker) reconcileTableResources(ctx context.Context,
 	// Handle deleted resources (marked as stale) - only handle when the policy allows mark_stale
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
+			if dtw.stopped.Load() {
+				return nil, nil, ErrWorkerManagerStopping
+			}
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
 				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
 				if existing.Status == interfaces.ResourceStatusActive {
@@ -217,6 +223,9 @@ func (dtw *DiscoverTaskWorker) enrichTableMetadata(ctx context.Context, task *in
 
 	// Traverse all tables to discover items
 	for _, item := range items {
+		if dtw.stopped.Load() {
+			return ErrWorkerManagerStopping
+		}
 		table := item.tableMeta   // Obtain the table metadata
 		resource := item.resource // Obtain resource information
 		beforeHash := sourceSnapshotHash(resource)

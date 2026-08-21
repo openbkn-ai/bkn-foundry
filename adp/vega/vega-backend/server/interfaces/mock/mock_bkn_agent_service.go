@@ -41,6 +41,21 @@ func (m *MockBknAgentService) EXPECT() *MockBknAgentServiceMockRecorder {
 	return m.recorder
 }
 
+// GetTask mocks base method.
+func (m *MockBknAgentService) GetTask(ctx context.Context, agentTaskID string) (*interfaces.BknAgentTask, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTask", ctx, agentTaskID)
+	ret0, _ := ret[0].(*interfaces.BknAgentTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTask indicates an expected call of GetTask.
+func (mr *MockBknAgentServiceMockRecorder) GetTask(ctx, agentTaskID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTask", reflect.TypeOf((*MockBknAgentService)(nil).GetTask), ctx, agentTaskID)
+}
+
 // Run mocks base method.
 func (m *MockBknAgentService) Run(ctx context.Context, task *interfaces.SemanticUnderstandingTask) (string, error) {
 	m.ctrl.T.Helper()
@@ -54,19 +69,4 @@ func (m *MockBknAgentService) Run(ctx context.Context, task *interfaces.Semantic
 func (mr *MockBknAgentServiceMockRecorder) Run(ctx, task any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockBknAgentService)(nil).Run), ctx, task)
-}
-
-// WaitResult mocks base method.
-func (m *MockBknAgentService) WaitResult(ctx context.Context, agentTaskID string) (*interfaces.BknAgentTask, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "WaitResult", ctx, agentTaskID)
-	ret0, _ := ret[0].(*interfaces.BknAgentTask)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// WaitResult indicates an expected call of WaitResult.
-func (mr *MockBknAgentServiceMockRecorder) WaitResult(ctx, agentTaskID any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitResult", reflect.TypeOf((*MockBknAgentService)(nil).WaitResult), ctx, agentTaskID)
 }

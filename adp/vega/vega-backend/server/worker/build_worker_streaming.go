@@ -13,6 +13,7 @@ import (
 	"hash/fnv"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -52,6 +53,11 @@ type streamingBuildWorker struct {
 	lim         interfaces.LocalIndexManager
 	mfs         interfaces.ModelFactoryService
 	rs          interfaces.ResourceService
+	stopped     *atomic.Bool
+}
+
+func (sbw *streamingBuildWorker) isStopping() bool {
+	return sbw.stopped != nil && sbw.stopped.Load()
 }
 
 // NewStreamingBuildWorker creates a new build worker.
@@ -190,6 +196,9 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 	syncedCount := buildTaskInfo.SyncedCount
 	// Message processing loop
 	for {
+		if sbw.isStopping() {
+			return ErrWorkerManagerStopping
+		}
 		// Check task status before each batch
 		taskStatus, err := sbw.bts.InternalGetStatus(ctx, buildTaskInfo.ID)
 		if err != nil {

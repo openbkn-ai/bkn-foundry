@@ -131,14 +131,6 @@ func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces
 	return nil
 }
 
-// isBuildTaskTerminal reports statuses that background workers must never revive.
-func isBuildTaskTerminal(status string) bool {
-	return status == interfaces.BuildTaskStatusFailed ||
-		status == interfaces.BuildTaskStatusStopped ||
-		status == interfaces.BuildTaskStatusCompleted ||
-		status == interfaces.BuildTaskStatusCancelled
-}
-
 func cancelBuildTaskForDeletedParent(ctx context.Context, bts interfaces.BuildTaskService, taskID, detail string) error {
 	_, err := bts.InternalMarkCancelled(ctx, taskID, detail)
 	return err

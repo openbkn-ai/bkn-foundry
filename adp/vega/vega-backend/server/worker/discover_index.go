@@ -101,6 +101,9 @@ func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context,
 	}
 
 	for _, idx := range sourceIndices {
+		if dtw.stopped.Load() {
+			return nil, nil, ErrWorkerManagerStopping
+		}
 		sourceIdentifier := idx.Name
 
 		if resource, ok := existingMap[sourceIdentifier]; ok {
@@ -143,6 +146,9 @@ func (dtw *DiscoverTaskWorker) reconcileIndexResources(ctx context.Context,
 
 	if actions != nil && actions.MarkStale {
 		for sourceIdentifier, existing := range existingMap {
+			if dtw.stopped.Load() {
+				return nil, nil, ErrWorkerManagerStopping
+			}
 			if _, ok := sourceMap[sourceIdentifier]; !ok {
 				dtw.markDiscover(ctx, existing.ID, interfaces.DiscoverStatusMissing)
 				if existing.Status == interfaces.ResourceStatusActive {
@@ -190,6 +196,9 @@ func (dtw *DiscoverTaskWorker) enrichIndexMetadata(ctx context.Context, task *in
 	progress.SetMetadataTotal(len(items))
 
 	for _, item := range items {
+		if dtw.stopped.Load() {
+			return ErrWorkerManagerStopping
+		}
 		idx := item.indexMeta
 		resource := item.resource
 		beforeHash := sourceSnapshotHash(resource)

@@ -40,8 +40,6 @@ import (
 	"vega-backend/driveradapters"
 	"vega-backend/logics"
 	"vega-backend/logics/connector/factory"
-	logicsDiscoverSchedule "vega-backend/logics/discover_schedule"
-	logicsDiscoverTask "vega-backend/logics/discover_task"
 	"vega-backend/worker"
 )
 
@@ -49,6 +47,7 @@ type mgrService struct {
 	appSetting    *common.AppSetting
 	otelProviders *otel.Providers
 	restHandler   driveradapters.RestHandler
+	workerManager *worker.WorkerManager
 }
 
 func (server *mgrService) start() {
@@ -60,9 +59,8 @@ func (server *mgrService) start() {
 	server.restHandler.RegisterPublic(engine)
 	logger.Info("Server Register API Success")
 
-	// Listen for interrupt signals (SIGINT, SIGTERM)
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	// When a signal is received, the "Done" of ctx will be automatically triggered. This "stop" means no longer capturing the registered signal, which can be regarded as a form of resource release.
+	// server observes process signals and starts graceful shutdown when one arrives.
+	runCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	// Initialize the http service
@@ -84,7 +82,9 @@ func (server *mgrService) start() {
 
 	logger.Infof("Server Started on Port:%d", server.appSetting.ServerSetting.HttpPort)
 
-	<-ctx.Done()
+	<-runCtx.Done()
+
+	server.restHandler.SetReady(false)
 
 	// Set the last processing time of the system
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -93,10 +93,12 @@ func (server *mgrService) start() {
 	// Stop the http service
 	logger.Info("Server Start Shutdown")
 	if err := s.Shutdown(ctx); err != nil {
-		logger.Fatalf("Server Shutdown:%v", err)
+		logger.Errorf("Server Shutdown: %v", err)
 	}
 
-	server.otelProviders.Shutdown(ctx)
+	server.workerManager.Stop()
+
+	server.otelProviders.Shutdown(context.Background())
 
 	logger.Info("Server Exited")
 }
@@ -151,32 +153,18 @@ func main() {
 	logger.Info("VEGA Manager Init Connector Factory Success")
 
 	// Initialize and start a unified TaskWorkermanager to handle all types of tasks
-	taskWorkerMgr := worker.NewTaskWorkerManager(appSetting)
-	if err := taskWorkerMgr.Start(context.Background()); err != nil {
-		logger.Fatalf("Failed to start task workers: %v", err)
+	workerMgr := worker.NewWorkerManager(appSetting)
+	if err := workerMgr.Start(context.Background()); err != nil {
+		logger.Fatalf("Failed to start background workers: %v", err)
 	}
-	logger.Info("VEGA Manager Init Task Worker Success")
-
-	// Initialize and start the scheduler
-	dts := logicsDiscoverTask.NewDiscoverTaskService(appSetting)
-	dss := logicsDiscoverSchedule.NewDiscoverScheduleService(appSetting, dts)
-	dsw := worker.NewDiscoverScheduleWorker(appSetting, dss)
-	if err := dsw.Start(); err != nil {
-		logger.Fatalf("Failed to start scheduler: %v", err)
-	}
-	logger.Info("VEGA Manager Init Scheduler Success")
-
-	chcw := worker.NewCatalogHealthCheckWorker(appSetting)
-	if err := chcw.Start(); err != nil {
-		logger.Fatalf("Failed to start catalog health check worker: %v", err)
-	}
-	logger.Info("VEGA Manager Init Catalog Health Check Worker Success")
+	logger.Info("VEGA Manager Init Background Workers Success")
 
 	// Create and start the service
 	server := &mgrService{
 		appSetting:    appSetting,
 		otelProviders: otelProviders,
 		restHandler:   driveradapters.NewRestHandler(appSetting),
+		workerManager: workerMgr,
 	}
 	server.start()
 }

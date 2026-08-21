@@ -11,5 +11,5 @@ import "context"
 
 type BknAgentService interface {
 	Run(ctx context.Context, task *SemanticUnderstandingTask) (string, error)
-	WaitResult(ctx context.Context, agentTaskID string) (*BknAgentTask, error)
+	GetTask(ctx context.Context, agentTaskID string) (*BknAgentTask, error)
 }

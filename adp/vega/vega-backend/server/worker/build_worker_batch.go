@@ -9,6 +9,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -33,6 +34,7 @@ type batchBuildWorker struct {
 	lim        interfaces.LocalIndexManager
 	mfs        interfaces.ModelFactoryService
 	rs         interfaces.ResourceService
+	stopped    *atomic.Bool
 }
 
 // NewBatchBuildWorker creates a new build worker.
@@ -106,6 +108,10 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 
 	logger.Infof("Build completed for task: %s, resource: %s", taskID, resourceID)
 	return nil
+}
+
+func (bbw *batchBuildWorker) isStopping() bool {
+	return bbw.stopped != nil && bbw.stopped.Load()
 }
 
 func batchBuildExecuteType(buildTask *interfaces.BuildTask) string {
@@ -218,6 +224,9 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 	syncedCount := buildTaskInfo.SyncedCount
 	for {
+		if bbw.isStopping() {
+			return ErrWorkerManagerStopping
+		}
 		// Check task status before each batch
 		taskStatus, err := bbw.bts.InternalGetStatus(ctx, buildTaskInfo.ID)
 		if err != nil {

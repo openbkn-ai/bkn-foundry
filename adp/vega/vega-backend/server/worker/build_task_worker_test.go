@@ -38,6 +38,7 @@ func TestBuildTaskWorkerFillBatchQueueRefillsEmptyQueue(t *testing.T) {
 			return []*interfaces.BuildTaskSummary{{ID: "task-1"}}, nil
 		})
 
+	worker.stopCh = make(chan struct{})
 	worker.fillBatchQueue(context.Background())
 
 	assert.Len(t, worker.batchQueue, 1)
@@ -63,6 +64,7 @@ func TestBuildTaskWorkerFillStreamingQueueRefillsEmptyQueue(t *testing.T) {
 			return []*interfaces.BuildTaskSummary{{ID: "task-1"}}, nil
 		})
 
+	worker.stopCh = make(chan struct{})
 	worker.fillStreamingQueue(context.Background())
 
 	assert.Len(t, worker.streamingQueue, 1)
@@ -80,6 +82,7 @@ func TestBuildTaskWorkerFillBatchQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testin
 	}
 	worker.batchQueue <- "already-queued"
 
+	worker.stopCh = make(chan struct{})
 	worker.fillBatchQueue(context.Background())
 }
 

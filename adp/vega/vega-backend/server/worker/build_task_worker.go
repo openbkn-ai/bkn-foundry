@@ -10,6 +10,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -36,6 +37,10 @@ type BuildTaskWorker struct {
 	streamingQueue       chan string
 	mu                   sync.Mutex
 	inFlight             map[string]struct{}
+
+	wg      sync.WaitGroup
+	stopCh  chan struct{}
+	stopped atomic.Bool
 }
 
 func NewBuildTaskWorker(appSetting *common.AppSetting, bts interfaces.BuildTaskService) *BuildTaskWorker {
@@ -53,7 +58,11 @@ func NewBuildTaskWorker(appSetting *common.AppSetting, bts interfaces.BuildTaskS
 		batchQueue:           make(chan string, batchWorkerCount*taskQueueSizeMultiplier),
 		streamingQueue:       make(chan string, streamingWorkerCount*taskQueueSizeMultiplier),
 		inFlight:             make(map[string]struct{}),
+		stopCh:               make(chan struct{}),
 	}
+	worker.stopped.Store(false)
+	bbw.stopped = &worker.stopped
+	sbw.stopped = &worker.stopped
 	return worker
 }
 
@@ -71,15 +80,31 @@ func calculateTaskWorkerCounts(appSetting *common.AppSetting) (int, int) {
 	return batchWorkerCount, streamingWorkerCount
 }
 
-// startLoops starts the local worker pools and database producer after startup recovery succeeds.
-func (btw *BuildTaskWorker) startLoops(ctx context.Context) {
+// Start starts the local worker pools and database producer after startup recovery succeeds.
+func (btw *BuildTaskWorker) Start() {
+	btw.wg.Add(btw.batchWorkerCount + btw.streamingWorkerCount + 1)
 	for i := 0; i < btw.batchWorkerCount; i++ {
-		go btw.runBatchTasks(ctx)
+		go func() {
+			defer btw.wg.Done()
+			btw.runBatchTasks(context.Background())
+		}()
 	}
 	for i := 0; i < btw.streamingWorkerCount; i++ {
-		go btw.runStreamingTasks(ctx)
+		go func() {
+			defer btw.wg.Done()
+			btw.runStreamingTasks(context.Background())
+		}()
 	}
-	go btw.pollTasks(ctx)
+	go func() {
+		defer btw.wg.Done()
+		btw.pollTasks(context.Background())
+	}()
+}
+
+func (btw *BuildTaskWorker) Stop() {
+	btw.stopped.Store(true)
+	close(btw.stopCh)
+	btw.wg.Wait()
 }
 
 func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
@@ -130,7 +155,7 @@ func (btw *BuildTaskWorker) pollTasks(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-btw.stopCh:
 			return
 		case <-ticker.C:
 		case <-btw.bts.DispatchSignal():
@@ -158,12 +183,15 @@ func (btw *BuildTaskWorker) fillBatchQueue(ctx context.Context) {
 		return
 	}
 	for _, task := range tasks {
+		if btw.stopped.Load() {
+			return
+		}
 		if task == nil || !btw.addInFlight(task.ID) {
 			continue
 		}
 		select {
 		case btw.batchQueue <- task.ID:
-		case <-ctx.Done():
+		case <-btw.stopCh:
 			btw.removeInFlight(task.ID)
 			return
 		}
@@ -188,12 +216,15 @@ func (btw *BuildTaskWorker) fillStreamingQueue(ctx context.Context) {
 		return
 	}
 	for _, task := range tasks {
+		if btw.stopped.Load() {
+			return
+		}
 		if task == nil || !btw.addInFlight(task.ID) {
 			continue
 		}
 		select {
 		case btw.streamingQueue <- task.ID:
-		case <-ctx.Done():
+		case <-btw.stopCh:
 			btw.removeInFlight(task.ID)
 			return
 		}
@@ -203,9 +234,12 @@ func (btw *BuildTaskWorker) fillStreamingQueue(ctx context.Context) {
 func (btw *BuildTaskWorker) runBatchTasks(ctx context.Context) {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-btw.stopCh:
 			return
 		case taskID := <-btw.batchQueue:
+			if btw.stopped.Load() {
+				return
+			}
 			btw.runBatchSafely(ctx, taskID)
 			btw.removeInFlight(taskID)
 			btw.bts.RequestDispatch()
@@ -216,9 +250,12 @@ func (btw *BuildTaskWorker) runBatchTasks(ctx context.Context) {
 func (btw *BuildTaskWorker) runStreamingTasks(ctx context.Context) {
 	for {
 		select {
-		case <-ctx.Done():
+		case <-btw.stopCh:
 			return
 		case taskID := <-btw.streamingQueue:
+			if btw.stopped.Load() {
+				return
+			}
 			btw.runStreamingSafely(ctx, taskID)
 			btw.removeInFlight(taskID)
 			btw.bts.RequestDispatch()
@@ -275,10 +312,7 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	if !buildTaskHasEmbedding(task) {
-		return nil
-	}
-	return btw.waitForTerminalStatus(ctx, taskID)
+	return nil
 }
 
 func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string) error {
@@ -306,28 +340,7 @@ func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string)
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	if !buildTaskHasEmbedding(task) {
-		return nil
-	}
-	return btw.waitForTerminalStatus(ctx, taskID)
-}
-
-func (btw *BuildTaskWorker) waitForTerminalStatus(ctx context.Context, taskID string) error {
-	ticker := time.NewTicker(time.Second)
-	defer ticker.Stop()
-	for {
-		status, err := btw.bts.InternalGetStatus(ctx, taskID)
-		if err != nil {
-			logger.Errorf("Get running build task status failed: id=%s, error=%v", taskID, err)
-		} else if isBuildTaskTerminal(status) {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-ticker.C:
-		}
-	}
+	return nil
 }
 
 func (btw *BuildTaskWorker) failTask(ctx context.Context, taskID, detail string) {

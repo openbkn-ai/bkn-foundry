@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,6 +44,7 @@ import (
 // RestHandler interface
 type RestHandler interface {
 	RegisterPublic(engine *gin.Engine)
+	SetReady(ready bool)
 }
 
 type restHandler struct {
@@ -61,6 +63,7 @@ type restHandler struct {
 	rds             interfaces.ResourceDataService
 	rs              interfaces.ResourceService
 	suts            interfaces.SemanticUnderstandingTaskService
+	ready           atomic.Bool
 }
 
 // NewRestHandler creates a new RestHandler.
@@ -79,7 +82,7 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 	bts := build_task.NewBuildTaskService(appSetting, rs)
 	suts := semantic_understanding_task.NewSemanticUnderstandingTaskService(appSetting)
 
-	return &restHandler{
+	handler := &restHandler{
 		appSetting:      appSetting,
 		auditRecorder:   auditStore,
 		auditQueryStore: auditStore,
@@ -96,6 +99,8 @@ func NewRestHandler(appSetting *common.AppSetting) RestHandler {
 		rs:              rs,
 		suts:            suts,
 	}
+	handler.SetReady(true)
+	return handler
 }
 
 // RegisterPublic registers public API routes.
@@ -107,6 +112,7 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	c.Use(r.OperationAudit())
 
 	c.GET("/health", r.HealthCheck)
+	c.GET("/readyz", r.ReadinessCheck)
 
 	// External API (External
 	apiV1 := c.Group("/api/vega-backend/v1")
@@ -292,6 +298,12 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 	logger.Info("RestHandler RegisterPublic")
 }
 
+// SetReady changes readiness without affecting liveness. The main process sets
+// it to false before it begins draining a terminating Pod.
+func (r *restHandler) SetReady(ready bool) {
+	r.ready.Store(ready)
+}
+
 // HealthCheck Health checkup
 func (r *restHandler) HealthCheck(c *gin.Context) {
 	// Return service information
@@ -302,6 +314,15 @@ func (r *restHandler) HealthCheck(c *gin.Context) {
 		"GoVersion":     version.GoVersion,
 		"GoArch":        version.GoArch,
 	})
+}
+
+// ReadinessCheck prevents new traffic from reaching a draining process.
+func (r *restHandler) ReadinessCheck(c *gin.Context) {
+	if !r.ready.Load() {
+		c.Status(http.StatusServiceUnavailable)
+		return
+	}
+	c.Status(http.StatusOK)
 }
 
 // verifyJsonContentType middleware

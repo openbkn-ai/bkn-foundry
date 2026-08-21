@@ -8,6 +8,7 @@ package worker
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -24,44 +25,42 @@ const (
 	catalogHealthCheckScanInterval    = time.Minute
 )
 
-var (
-	chcWorkerOnce sync.Once
-	chcWorker     *CatalogHealthCheckWorker
-)
-
 // CatalogHealthCheckWorker executes due physical Catalog health checks in-process.
 type CatalogHealthCheckWorker struct {
 	appSetting          *common.AppSetting
 	defaultCronSchedule cron.Schedule
 	cs                  interfaces.CatalogService
 	chcsa               interfaces.CatalogHealthCheckScheduleAccess
+
+	wg      sync.WaitGroup
+	stopCh  chan struct{}
+	stopped atomic.Bool
 }
 
 func NewCatalogHealthCheckWorker(appSetting *common.AppSetting) *CatalogHealthCheckWorker {
-	chcWorkerOnce.Do(func() {
-		defaultCronExpr := catalogHealthCheckDefaultCronExpr
-		if appSetting.CatalogHealthCheck.CronExpr != "" {
-			defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
-		}
-		defaultCronSchedule, err := common.ParseHourlyCronExpr(defaultCronExpr)
-		if err != nil {
-			logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
-		}
-		cs := catalog.NewCatalogService(appSetting)
-		chcWorker = &CatalogHealthCheckWorker{
-			appSetting:          appSetting,
-			defaultCronSchedule: defaultCronSchedule,
-			cs:                  cs,
-			chcsa:               logics.CHCSA,
-		}
-	})
-	return chcWorker
+	defaultCronExpr := catalogHealthCheckDefaultCronExpr
+	if appSetting.CatalogHealthCheck.CronExpr != "" {
+		defaultCronExpr = appSetting.CatalogHealthCheck.CronExpr
+	}
+	defaultCronSchedule, err := common.ParseHourlyCronExpr(defaultCronExpr)
+	if err != nil {
+		logger.Fatalf("Invalid global catalog health check cron expression: %v", err)
+	}
+	worker := &CatalogHealthCheckWorker{
+		appSetting:          appSetting,
+		defaultCronSchedule: defaultCronSchedule,
+		cs:                  catalog.NewCatalogService(appSetting),
+		chcsa:               logics.CHCSA,
+		stopCh:              make(chan struct{}),
+	}
+	worker.stopped.Store(false)
+	return worker
 }
 
-func (chcw *CatalogHealthCheckWorker) Start() error {
+func (chcw *CatalogHealthCheckWorker) Start() {
 	if !chcw.appSetting.CatalogHealthCheck.WorkerEnabled {
 		logger.Info("Catalog health check worker is disabled")
-		return nil
+		return
 	}
 
 	now := time.Now()
@@ -70,39 +69,56 @@ func (chcw *CatalogHealthCheckWorker) Start() error {
 		now.UnixMilli(),
 		chcw.defaultCronSchedule.Next(now).UnixMilli(),
 	); err != nil {
-		return err
+		logger.Errorf("Initialize catalog health check worker failed: %v", err)
+		return
 	}
 
-	go chcw.run()
+	chcw.wg.Add(1)
+	go func() {
+		defer chcw.wg.Done()
+		chcw.run(context.Background())
+	}()
 	logger.Info("Catalog health check worker started")
-	return nil
 }
 
-func (chcw *CatalogHealthCheckWorker) run() {
-	chcw.runDue()
+func (chcw *CatalogHealthCheckWorker) Stop() {
+	chcw.stopped.Store(true)
+	close(chcw.stopCh)
+	chcw.wg.Wait()
+}
+
+func (chcw *CatalogHealthCheckWorker) run(ctx context.Context) {
+	chcw.runDue(ctx)
 
 	ticker := time.NewTicker(catalogHealthCheckScanInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		chcw.runDue()
+	for {
+		select {
+		case <-chcw.stopCh:
+			return
+		case <-ticker.C:
+			chcw.runDue(ctx)
+		}
 	}
 }
 
-func (chcw *CatalogHealthCheckWorker) runDue() {
+func (chcw *CatalogHealthCheckWorker) runDue(ctx context.Context) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.Errorf("Run due catalog health checks panicked: %v", recovered)
 		}
 	}()
 
-	ctx := context.Background()
 	schedules, err := chcw.chcsa.ListDue(ctx, time.Now().UnixMilli())
 	if err != nil {
 		logger.Errorf("List due catalog health check schedules failed: %v", err)
 		return
 	}
 	for _, schedule := range schedules {
+		if chcw.stopped.Load() {
+			return
+		}
 		chcw.runSchedule(ctx, schedule)
 	}
 }

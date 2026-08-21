@@ -32,7 +32,7 @@ func TestDiscoverScheduleWorkerRunDue(t *testing.T) {
 		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil)
 		dss.EXPECT().ExecuteSchedule(gomock.Any(), second).Return(nil)
 
-		newTestDiscoverScheduleWorker(dsa, dss).runDue()
+		newTestDiscoverScheduleWorker(dsa, dss).runDue(context.Background())
 	})
 
 	t.Run("returns when due query fails", func(t *testing.T) {
@@ -40,7 +40,7 @@ func TestDiscoverScheduleWorkerRunDue(t *testing.T) {
 		dsa := vmock.NewMockDiscoverScheduleAccess(ctrl)
 		dsa.EXPECT().ListDue(gomock.Any(), gomock.Any()).Return(nil, errors.New("db down"))
 
-		newTestDiscoverScheduleWorker(dsa, vmock.NewMockDiscoverScheduleService(ctrl)).runDue()
+		newTestDiscoverScheduleWorker(dsa, vmock.NewMockDiscoverScheduleService(ctrl)).runDue(context.Background())
 	})
 
 	t.Run("continues after one schedule panics", func(t *testing.T) {
@@ -56,7 +56,7 @@ func TestDiscoverScheduleWorkerRunDue(t *testing.T) {
 		dss.EXPECT().UpdateRunMetadata(gomock.Any(), second.ID, second.UpdateTime, second.NextRun, gomock.Any(), gomock.Any()).Return(int64(1), nil)
 		dss.EXPECT().ExecuteSchedule(gomock.Any(), second).Return(nil)
 
-		newTestDiscoverScheduleWorker(dsa, dss).runDue()
+		newTestDiscoverScheduleWorker(dsa, dss).runDue(context.Background())
 	})
 }
 
