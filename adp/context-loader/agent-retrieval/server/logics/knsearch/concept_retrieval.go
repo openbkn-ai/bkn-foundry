@@ -749,7 +749,11 @@ func (s *localSearchImpl) rankConcepts(
 	}
 
 	if relationApplied == 0 && len(relations) > 0 {
-		s.logger.WithContext(ctx).Warnf("[RankConcepts] Rerank scored no relation type; keeping recall order for %d", len(relations))
+		// The model answered, but not about a single relation - a vendor returning only its top N can
+		// do this. Recall order is not relevance, so handing back its head would be the #788 failure
+		// through a success path. Take the same ladder an unavailable reranker takes.
+		s.logger.WithContext(ctx).Warnf("[RankConcepts] Rerank scored no relation type; degrading for %d", len(relations))
+		return s.degradeRelationRanking(ctx, query, relations, topK)
 	}
 
 	ranked := rankRelationsByScores(relations, relationScores, topK)
@@ -826,15 +830,47 @@ func (s *localSearchImpl) buildRelationDocuments(
 	return documents
 }
 
-// rankRelationsByScores orders relations by the given per-index scores and takes Top-K.
+// scoredRelation pairs a relation type with whatever relevance the current scorer gave it.
+type scoredRelation struct {
+	relation *interfaces.RelationType
+	score    float64
+}
+
+// takeRelevantRelations orders by score, drops everything the scorer found no relevance in, and
+// cuts to Top-K.
+//
+// Dropping rather than ranking is the point (#788). Every scorer on this path can come back with
+// nothing relevant at all: the reranker is not registered, coarse recall is off so every _score is
+// zero, the literal name match finds no substring in a multi-word query. A Top-K taken from an
+// all-zero list is a relation picked by nothing but slice order - and it does not stop there,
+// because relation endpoint completion then pulls its two object types into the response. One
+// meaningless row becomes three, and the caller cannot tell them from real hits. An empty list is
+// the honest answer, and an empty list also leaves object_types clean.
+//
+// Stable sort, so relations the scorer rated equally keep recall order.
+func takeRelevantRelations(scored []scoredRelation, topK int) []*interfaces.RelationType {
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+
+	result := make([]*interfaces.RelationType, 0, len(scored))
+	for _, item := range scored {
+		if item.score <= 0 {
+			// Sorted descending: the first non-positive score ends the relevant run.
+			break
+		}
+		if topK > 0 && len(result) >= topK {
+			break
+		}
+		result = append(result, item.relation)
+	}
+	return result
+}
+
+// rankRelationsByScores orders relations by the given per-index scores and takes the relevant Top-K.
 func rankRelationsByScores(relations []*interfaces.RelationType, scores []float64, topK int) []*interfaces.RelationType {
 	if len(relations) == 0 {
 		return relations
-	}
-
-	type scoredRelation struct {
-		relation *interfaces.RelationType
-		score    float64
 	}
 
 	scored := make([]scoredRelation, len(relations))
@@ -845,20 +881,7 @@ func rankRelationsByScores(relations []*interfaces.RelationType, scores []float6
 		}
 		scored[i] = scoredRelation{relation: rel, score: score}
 	}
-
-	sort.SliceStable(scored, func(i, j int) bool {
-		return scored[i].score > scored[j].score
-	})
-
-	if topK > len(scored) {
-		topK = len(scored)
-	}
-
-	result := make([]*interfaces.RelationType, topK)
-	for i := 0; i < topK; i++ {
-		result[i] = scored[i].relation
-	}
-	return result
+	return takeRelevantRelations(scored, topK)
 }
 
 // truncateRelations keeps the incoming order and cuts to Top-K.
@@ -920,16 +943,16 @@ func rankRelationTypesByScore(relations []*interfaces.RelationType, topK int) ([
 		return nil, false
 	}
 
-	sorted := make([]*interfaces.RelationType, len(relations))
-	copy(sorted, relations)
-	sort.SliceStable(sorted, func(i, j int) bool {
-		return sorted[i].Score > sorted[j].Score
-	})
-
-	if topK <= 0 || topK > len(sorted) {
-		topK = len(sorted)
+	scored := make([]scoredRelation, 0, len(relations))
+	for _, rel := range relations {
+		if rel == nil {
+			continue
+		}
+		scored = append(scored, scoredRelation{relation: rel, score: rel.Score})
 	}
-	return sorted[:topK], true
+	// ok=true only says coarse recall had a signal to offer; the cut still drops the relations that
+	// signal did not reach, so a network where one relation scored does not drag Top-K-1 zeros along.
+	return takeRelevantRelations(scored, topK), true
 }
 
 // rankRelationTypesBySimpleMatch uses simple matching to sort (fallback when Rerank fails)
@@ -939,33 +962,16 @@ func (s *localSearchImpl) rankRelationTypesBySimpleMatch(
 	topK int,
 ) []*interfaces.RelationType {
 	// Simple relevance scoring (based on name matching)
-	type scoredRelation struct {
-		relation *interfaces.RelationType
-		score    float64
-	}
-
 	scored := make([]scoredRelation, len(relations))
 	for i, rel := range relations {
 		score := s.calculateRelevanceScore(query, rel.Name, rel.Comment)
 		scored[i] = scoredRelation{relation: rel, score: score}
 	}
 
-	// Sort by score descending.
-	sort.Slice(scored, func(i, j int) bool {
-		return scored[i].score > scored[j].score
-	})
-
-	// Take Top-K.
-	if topK > len(scored) {
-		topK = len(scored)
-	}
-
-	result := make([]*interfaces.RelationType, topK)
-	for i := 0; i < topK; i++ {
-		result[i] = scored[i].relation
-	}
-
-	return result
+	// calculateRelevanceScore is literal substring matching, so a multi-word query scores zero
+	// against every relation far more often than not. This is the last rung of the ladder: whatever
+	// it cannot vouch for, nothing downstream can.
+	return takeRelevantRelations(scored, topK)
 }
 
 // calculateRelevanceScore calculates the relevance score between Query and concept.

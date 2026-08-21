@@ -256,6 +256,11 @@ func buildEndpointsLastNetwork() *interfaces.KnowledgeNetworkDetail {
 // Both sources have to be knocked out for this to be the degraded path: object types are reranked
 // now, so a working reranker still yields relevance when the coarse pass fails. That laddering is
 // asserted by TestObjectRelevanceSurvivesCoarseFailure.
+//
+// The query has to be one the literal name matcher can actually score, or there are no relations to
+// take endpoints from and the assertion has nothing to bite on - since #788 a relation the last
+// rung cannot vouch for is dropped rather than ranked. TestNoRelevantRelationYieldsEmptyList covers
+// that other half.
 func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	net := buildEndpointsLastNetwork()
 	backend := &mockBknBackend{
@@ -271,7 +276,7 @@ func TestObjectScoringDegradesWhenBackendFails(t *testing.T) {
 	cfg := DefaultConceptRetrievalConfig()
 	cfg.TopK = 5
 
-	req := &interfaces.KnSearchLocalRequest{KnID: "kn_endpoints_last", Query: "对象", EnableRerank: true}
+	req := &interfaces.KnSearchLocalRequest{KnID: "kn_endpoints_last", Query: "关系_A", EnableRerank: true}
 	res, err := svc.conceptRetrieval(context.Background(), req, cfg)
 	if err != nil {
 		t.Fatalf("expected graceful degradation, got error: %v", err)
