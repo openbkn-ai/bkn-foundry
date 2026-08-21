@@ -142,7 +142,7 @@ func buildQuery(query observabilityvo.LogQuery, statuses []sessionvo.ReceiptStat
 	addTerm("request_id.keyword", query.RequestID)
 	addTerm("conversation_id.keyword", query.ConversationID)
 	addTerm("interaction_id.keyword", query.InteractionID)
-	addTerm("operation_id.keyword", firstNonEmpty(query.OperationID, query.TargetID))
+	addTerm("operation_id", firstNonEmpty(query.OperationID, query.TargetID))
 	addTerm("owner.effective_subject_id.keyword", query.ActorID)
 	addTerm("owner.application_principal_id.keyword", query.ApplicationID)
 	if query.RequireRecordScope {

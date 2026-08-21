@@ -4,7 +4,7 @@
 
 **Goal:** Keep `bkn-trace-core` healthy when a newly installed projection index contains no conversation documents.
 
-**Architecture:** The conversation-audit source queries `created_at`, `external_conversation_key`, and `generation`, but the bootstrap projection mapping currently defines only receipt fields. Add those fields to the versioned projection mapping and, when the projection alias already exists, issue OpenSearch's additive mapping update through that alias. String fields that could already exist through dynamic mapping retain the legacy `text + keyword` shape; exact operation lookup uses `operation_id.keyword`. This repairs existing empty indexes without rebuilding aliases or deleting data.
+**Architecture:** The conversation-audit source queries `created_at`, `external_conversation_key`, and `generation`, but the bootstrap projection mapping currently defines only receipt fields. Add those fields to the versioned projection mapping. For an existing alias, submit a separate, additive mapping containing only those three conversation fields. Receipt fields such as `operation_id` have changed mapping shape across released versions, so including them in an alias-wide update can make OpenSearch reject startup. The targeted update repairs existing empty indexes without rebuilding aliases, deleting data, or redefining receipt fields.
 
 **Tech Stack:** Go, OpenSearch 2.x mappings, Go unit tests.
 
@@ -41,7 +41,7 @@ Run the focused package test again.
 
 **Step 1: Add a regression test**
 
-Use the generated bootstrap mapping with a mock OpenSearch request. Verify that a pre-existing projection alias receives an additive `/_mapping` update, so the fix covers both new installs and already-deployed empty indexes without requiring a synthetic conversation document.
+Use the generated bootstrap mapping with a mock OpenSearch request. Verify that a pre-existing projection alias receives an additive `/_mapping` update containing only the three conversation fields and does not redefine `operation_id` or any other receipt field. This covers both new installs and already-deployed empty indexes without requiring a synthetic conversation document.
 
 **Step 2: Run the focused tests**
 

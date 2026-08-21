@@ -24,7 +24,7 @@ const receiptProjectionIndexMapping = `{
       "external_conversation_key": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "generation": {"type": "long"},
       "created_at": {"type": "date"},
-      "operation_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "operation_id": {"type": "keyword"},
       "receipt_status": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "knowledge_network_ids": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
       "issued_at": {"type": "date"},
@@ -37,6 +37,20 @@ const receiptProjectionIndexMapping = `{
           "application_principal_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}}
         }
       }
+    }
+  }
+}`
+
+// conversationAuditProjectionMapping is deliberately limited to fields used by
+// conversation audit queries. Existing projection aliases can have receipt
+// fields with different historical mappings, so upgrading them with the full
+// receipt mapping is unsafe.
+const conversationAuditProjectionMapping = `{
+  "mappings": {
+    "properties": {
+      "external_conversation_key": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+      "generation": {"type": "long"},
+      "created_at": {"type": "date"}
     }
   }
 }`
@@ -80,8 +94,8 @@ func (s *Sink) EnsureBootstrap(ctx context.Context, indexVersion string) error {
 		return fmt.Errorf("check projection alias: %w", err)
 	}
 	if aliasExists {
-		if err := s.client.EnsureMapping(ctx, s.index, []byte(receiptProjectionIndexMapping)); err != nil {
-			return fmt.Errorf("update projection mapping for existing alias: %w", err)
+		if err := s.client.EnsureMapping(ctx, s.index, []byte(conversationAuditProjectionMapping)); err != nil {
+			return fmt.Errorf("update conversation audit mapping for existing alias: %w", err)
 		}
 		return nil
 	}

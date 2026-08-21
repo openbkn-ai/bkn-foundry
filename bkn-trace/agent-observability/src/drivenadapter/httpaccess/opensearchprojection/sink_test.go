@@ -125,8 +125,8 @@ func TestPrepareVersionDefinesMappingsRequiredByEmptyProjectionQueries(t *testin
 		t.Fatalf("generation must be mapped for empty-index conversation filtering: %#v", generation)
 	}
 	operationID, ok := properties["operation_id"].(map[string]any)
-	if !ok || operationID["type"] != "text" || operationID["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
-		t.Fatalf("operation_id must preserve the legacy dynamic text+keyword mapping: %#v", operationID)
+	if !ok || operationID["type"] != "keyword" {
+		t.Fatalf("operation_id must retain the receipt projection schema: %#v", operationID)
 	}
 }
 
@@ -231,6 +231,17 @@ func TestEnsureBootstrapAddsConversationMappingToExistingAlias(t *testing.T) {
 	createdAt, ok := properties["created_at"].(map[string]any)
 	if !ok || createdAt["type"] != "date" {
 		t.Fatalf("created_at must be mapped as date for empty-index conversation sorting: %#v", createdAt)
+	}
+	externalConversationKey, ok := properties["external_conversation_key"].(map[string]any)
+	if !ok || externalConversationKey["type"] != "text" || externalConversationKey["fields"].(map[string]any)["keyword"].(map[string]any)["type"] != "keyword" {
+		t.Fatalf("existing aliases must receive the compatible conversation key mapping: %#v", externalConversationKey)
+	}
+	generation, ok := properties["generation"].(map[string]any)
+	if !ok || generation["type"] != "long" {
+		t.Fatalf("existing aliases must receive the compatible generation mapping: %#v", generation)
+	}
+	if _, found := properties["operation_id"]; found {
+		t.Fatalf("existing-alias mapping update must not redefine receipt fields: %#v", properties["operation_id"])
 	}
 }
 
