@@ -140,6 +140,16 @@ type Operation struct {
 	// name would turn the right to rename a catalog into the right to rewrite
 	// every table in it. Empty = the operation does not inherit at all (#800).
 	ParentOperationID string `gorm:"size:64"`
+	// ImpliedOperationIDs are operations on the SAME type that come with this one
+	// and cannot sensibly be held without it: resource_manage on a catalog also
+	// grants view_detail, because managing the tables inside a catalog is
+	// unreachable without the right to open it — every management route loads the
+	// target first, and that load is a view_detail judgement (#1121).
+	//
+	// Comma-separated operation ids, resolved when the grant is written rather
+	// than when it is enforced, so the policy table stores what the accessor
+	// actually holds and a reader need not replay a rule to know it.
+	ImpliedOperationIDs string `gorm:"size:512"`
 }
 
 // ResourceParent records that ONE concrete resource instance sits under one
