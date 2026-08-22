@@ -48,6 +48,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: bkn-trace/agent-observability/go.mod
+      - name: Verify OpenBKN license headers
+        run: make license-check
       - name: Unit tests
         run: make test
       - name: Swagger contract drift

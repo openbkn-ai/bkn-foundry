@@ -1,3 +1,8 @@
+# Copyright (c) 2026 OpenBKN
+# SPDX-License-Identifier: LicenseRef-OpenBKN
+# Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+# Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
+
 .DEFAULT_GOAL := gen-swag
 
 SWAG_VERSION := v1.8.12
@@ -13,11 +18,15 @@ RACE_PACKAGES := ./src/domain/service/... ./src/drivenadapter/memoryaccess/...
 INTEGRATION_PACKAGE := ./src/drivenadapter/dbaccess/mariadb/sessionstore
 OPENSEARCH_INTEGRATION_PACKAGE := ./src/drivenadapter/httpaccess/opensearchprojection
 
-.PHONY: lint test test-cover test-race test-integration test-opensearch-integration test-performance ci build \
+
+.PHONY: lint license-check test test-cover test-race test-integration test-opensearch-integration test-performance ci build \
 	docker-build helm-lint helm-package check-swag-version gen-swag check-swag view-swag clean-swag
 
 lint:
 	GOCACHE=$(GOCACHE) go vet ./...
+
+license-check:
+	python3 scripts/check_license_headers.py
 
 test:
 	GOCACHE=$(GOCACHE) go test $(UNIT_PACKAGES) -count=1
@@ -45,7 +54,7 @@ test-performance:
 	GOCACHE=$(GOCACHE) go test -tags=integration $(INTEGRATION_PACKAGE) -run '^$$' \
 		-bench 'BenchmarkMariaDB(EnsureCurrent|EvidenceIngest)' -benchtime=200x -count=1
 
-ci: lint test-cover
+ci: lint license-check test-cover
 
 build:
 	GOCACHE=$(GOCACHE) go build ./...
