@@ -17,11 +17,13 @@ package mcp
 
 import (
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
+	"github.com/santhosh-tekuri/jsonschema/v6/kind"
 )
 
 var lifecycleArgumentSchemas = sync.OnceValue(func() map[string]*jsonschema.Schema {
@@ -65,8 +67,38 @@ func validateLifecycleArguments(name string, arguments map[string]any) *lifecycl
 	}
 	if err := schema.Validate(arguments); err == nil {
 		return nil
+	} else if fields := unsupportedLifecycleArgumentFields(err); len(fields) > 0 {
+		return invalidLifecycleArguments(
+			name + " received unsupported field(s): " + strings.Join(fields, ", ") + ". Remove them and retry",
+		)
 	}
 	return invalidLifecycleArguments(lifecycleArgumentGuidance(name))
+}
+
+func unsupportedLifecycleArgumentFields(err error) []string {
+	var root *jsonschema.ValidationError
+	if !errors.As(err, &root) {
+		return nil
+	}
+	fields := make(map[string]struct{})
+	var visit func(*jsonschema.ValidationError)
+	visit = func(validationErr *jsonschema.ValidationError) {
+		if additional, ok := validationErr.ErrorKind.(*kind.AdditionalProperties); ok {
+			for _, field := range additional.Properties {
+				fields[field] = struct{}{}
+			}
+		}
+		for _, cause := range validationErr.Causes {
+			visit(cause)
+		}
+	}
+	visit(root)
+	result := make([]string, 0, len(fields))
+	for field := range fields {
+		result = append(result, field)
+	}
+	slices.Sort(result)
+	return result
 }
 
 func invalidLifecycleArguments(message string) *lifecycleError {

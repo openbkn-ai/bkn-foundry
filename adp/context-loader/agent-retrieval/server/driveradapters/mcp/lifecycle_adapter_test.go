@@ -150,6 +150,13 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 			wantMessage: "bkn_start_interaction expects top-level question and agent_name, plus optional conversation_id",
 		},
 		{
+			name: "start with unsupported lease seconds", toolName: "bkn_start_interaction",
+			args: map[string]any{
+				"question": "查询库存", "agent_name": "供应链分析助手", "lease_seconds": 600,
+			},
+			wantMessage: "bkn_start_interaction received unsupported field(s): lease_seconds. Remove them and retry",
+		},
+		{
 			name: "finish with lifecycle IDs nested in bkn context", toolName: "bkn_finish_interaction",
 			args: map[string]any{
 				"bkn_context": map[string]any{
@@ -175,7 +182,7 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 				"interaction_id": "int-1", "outcome": "completed", "answer": "库存充足",
 				"claims": []any{map[string]any{"claim_id": "caller-owned"}},
 			},
-			wantMessage: "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise",
+			wantMessage: "bkn_finish_interaction received unsupported field(s): claims. Remove them and retry",
 		},
 	}
 
