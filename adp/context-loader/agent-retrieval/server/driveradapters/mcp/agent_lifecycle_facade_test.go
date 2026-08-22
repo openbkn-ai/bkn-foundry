@@ -43,10 +43,10 @@ func TestStartInteractionSchemaRequiresQuestionAndAgentName(t *testing.T) {
 	if err := json.Unmarshal(input, &schema); err != nil {
 		t.Fatal(err)
 	}
-	if !sameStringSet(schema.Required, []string{"question", "agent_name"}) {
+	if !sameStringSet(schema.Required, []string{"question", "agent_name", "conversation_mode"}) {
 		t.Fatalf("start required fields = %v", schema.Required)
 	}
-	want := []string{"agent_name", "conversation_id", "question"}
+	want := []string{"agent_name", "conversation_id", "conversation_mode", "question"}
 	got := make([]string, 0, len(schema.Properties))
 	for name := range schema.Properties {
 		got = append(got, name)

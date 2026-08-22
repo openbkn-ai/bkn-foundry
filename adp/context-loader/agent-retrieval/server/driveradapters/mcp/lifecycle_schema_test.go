@@ -231,9 +231,63 @@ func TestStartInteractionRequiresBoundedStableAgentName(t *testing.T) {
 	}
 }
 
+func TestLifecycleSchemasRequireAnExplicitConversationChoiceAndCompletedAnswer(t *testing.T) {
+	tests := []struct {
+		name string
+		tool string
+		args map[string]any
+		want bool
+	}{
+		{
+			name: "new conversation", tool: "bkn_start_interaction",
+			args: map[string]any{"question": "查询库存", "agent_name": "supply-chain-analyst", "conversation_mode": "new"},
+			want: true,
+		},
+		{
+			name: "continue conversation", tool: "bkn_start_interaction",
+			args: map[string]any{"question": "继续查询", "agent_name": "supply-chain-analyst", "conversation_mode": "continue", "conversation_id": "conv-1"},
+			want: true,
+		},
+		{
+			name: "missing conversation choice", tool: "bkn_start_interaction",
+			args: map[string]any{"question": "查询库存", "agent_name": "supply-chain-analyst"},
+			want: false,
+		},
+		{
+			name: "continue without conversation", tool: "bkn_start_interaction",
+			args: map[string]any{"question": "继续查询", "agent_name": "supply-chain-analyst", "conversation_mode": "continue"},
+			want: false,
+		},
+		{
+			name: "completed without answer", tool: "bkn_finish_interaction",
+			args: map[string]any{"interaction_id": "int-1", "outcome": "completed"},
+			want: false,
+		},
+		{
+			name: "completed with empty answer", tool: "bkn_finish_interaction",
+			args: map[string]any{"interaction_id": "int-1", "outcome": "completed", "answer": ""},
+			want: false,
+		},
+		{
+			name: "failed without reason", tool: "bkn_finish_interaction",
+			args: map[string]any{"interaction_id": "int-1", "outcome": "failed"},
+			want: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got := validateLifecycleArguments(test.tool, test.args) == nil
+			if got != test.want {
+				t.Fatalf("%s validation = %t, want %t", test.name, got, test.want)
+			}
+		})
+	}
+}
+
 func TestLifecycleInputDescriptionsAreConciseAndActionable(t *testing.T) {
 	wantFields := map[string][]string{
-		"bkn_start_interaction":  {"conversation_id", "question", "agent_name"},
+		"bkn_start_interaction":  {"conversation_id", "conversation_mode", "question", "agent_name"},
 		"bkn_finish_interaction": {"interaction_id", "outcome", "answer", "reason"},
 	}
 	for tool, fields := range wantFields {
@@ -378,7 +432,7 @@ func TestLifecycleSwaggerPathsRequestsAndResponsesAreStructurallyFrozen(t *testi
 
 func TestLifecycleMCPInputRequiredFieldsFollowAgentFacadeContract(t *testing.T) {
 	expected := map[string][]string{
-		"bkn_start_interaction":  {"question", "agent_name"},
+		"bkn_start_interaction":  {"question", "agent_name", "conversation_mode"},
 		"bkn_finish_interaction": {"interaction_id", "outcome"},
 	}
 	for tool, want := range expected {
