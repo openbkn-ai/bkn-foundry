@@ -1,3 +1,8 @@
+// Copyright (c) 2026 OpenBKN
+// SPDX-License-Identifier: LicenseRef-OpenBKN
+// Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+// Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
+
 // Package enterpriseroute is the Trace Core assembly socket for optional
 // enterprise HTTP routes. It deliberately knows nothing about licenses,
 // capabilities, BKN mapping, or enterprise implementations.

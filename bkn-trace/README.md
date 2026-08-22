@@ -1,183 +1,87 @@
-# Tracing AI
+# BKN Trace
 
-English | [中文](README.zh.md)
+[中文](README.zh.md)
 
 [![License](https://img.shields.io/badge/license-OpenBKN-blue.svg)](../LICENSE-OPENBKN.txt)
 
-Tracing AI is a verification and observability framework for LLM applications and agent systems. It is built to turn opaque AI execution into inspectable, attributable, and production-ready workflows through end-to-end tracing, structured correlation, and queryable evidence.
+BKN Trace is the OpenBKN Community Trace Core. It records first-hand facts
+about managed Agent, SDK, and MCP execution, then provides protected APIs for
+technical trace analysis and precise correlation with platform logs.
 
-This repository currently contains two core building blocks:
+## What it records
 
-- `agent-observability`: a Go-based trace query service for searching agent traces from OpenSearch
-- `otelcol-contribute-chart`: a Helm chart for deploying OpenTelemetry Collector Contrib with OTLP ingestion and OpenSearch export
+The authoritative unit of execution is an Operation attempt. A completed or
+failed attempt can retain its Conversation, Interaction, Operation and request
+identifiers, execution timing and status, caller identity, protocol and tool
+information, and the input, output, or diagnostic error received at the call
+boundary. Recording must never alter the business tool's original result.
 
-## Why Tracing AI
+BKN Trace records facts rather than inferring them from a final answer. Missing
+information remains explicitly missing; it is not reconstructed by a reader or
+UI.
 
-Traditional application tracing tells you whether a request failed. AI-native systems require more: what the model saw, which tool it called, what knowledge it retrieved, and why a result should be trusted.
+## Public Community capabilities
 
-Tracing AI is designed to support that transition:
-
-- End-to-end execution trace observability across prompts, model calls, tool invocations, retrieval, and intermediate reasoning-related spans
-- Evidence tracing that links outputs to data sources, knowledge items, and execution context
-- Timeline-style replay and trace inspection for locating latency bottlenecks and bad cases
-- A foundation for closed-loop optimization from failed production traces to evaluation cases
-- A path toward automated root cause analysis for multi-agent systems
-
-## Core Capabilities
-
-### Available in this repository today
-
-- OpenTelemetry-based ingestion path through Collector deployment on Kubernetes
-- OTLP trace and log receiving via OpenTelemetry Collector Contrib
-- OpenSearch export pipeline for collected telemetry
-- Trace query service for raw DSL search and conversation-based lookup
-- Swagger documentation, Docker image build, Helm chart packaging, and GitHub Actions release workflows
-
-### Target capabilities of Tracing AI
-
-The following capabilities describe the product direction of Tracing AI. Some are partially enabled by the current architecture, while others are planned on top of the existing foundation:
-
-- Full execution trajectory capture, including model input/output, tool calls, retrieval, and reasoning steps
-- Evidence-grounded decision analysis with source-level attribution
-- Visual timeline replay for complex agent runs
-- Closed-loop workflow from failed traces to reusable evaluation cases
-- Intelligent RCA using causal analysis methods in multi-agent environments
+- Accept and persist managed execution facts and associated evidence events.
+- Provide protected Trace, Conversation, Interaction, Operation, evidence, and
+  technical-log read APIs.
+- Return technical execution detail: recorded input/output or errors, Trace and
+  Span relationships, and exact correlation identifiers for log drill-down.
+- Enforce access profiles and record scope before returning trace or evidence
+  data.
+- Retain the Community Trace fact model and public API contracts as stable
+  integration boundaries for OpenBKN clients.
 
 ## Architecture
 
-Tracing AI follows OpenTelemetry conventions so telemetry data can be collected in a standard, non-intrusive way.
-
-- `Trace`: the full lifecycle of one AI interaction
-- `Span`: one operation within the trace, such as a model call, retrieval, or tool execution
-- `Collector`: receives OTLP data, batches and routes telemetry, then exports it to storage
-- `Query Service`: exposes APIs to search and inspect stored traces
-- `Storage`: currently OpenSearch-oriented in this repository; the broader architecture can evolve toward other high-scale AI data stores
-
-Current repository architecture:
-
 ```text
-LLM App / Agent
-  -> OTLP
-OpenTelemetry Collector
-  -> OpenSearch
-agent-observability
-  -> trace query APIs / Swagger
+Managed MCP / SDK calls
+        |
+        v
+Trace producers capture first-hand execution facts
+        |
+        v
+BKN Trace Core
+  - lifecycle and operation facts
+  - evidence and technical correlations
+  - access-controlled read APIs
+        |
+        +--> technical Trace analysis
+        +--> precise log drill-down
 ```
 
-## Repository Layout
-
-```text
-.
-|-- agent-observability/
-|   |-- main.go
-|   |-- Dockerfile
-|   |-- Makefile
-|   |-- charts/agent-observability/
-|   `-- docs/
-|-- otelcol-contribute-chart/
-|   |-- charts/otelcol-contrib/
-|   `-- scripts/
-`-- .github/workflows/
-```
+The core is deliberately a technical fact service. It does not derive business
+meaning from a final response or add a second authoritative trace store.
 
 ## Components
 
-### agent-observability
+| Path | Responsibility |
+| --- | --- |
+| `agent-observability/` | Go Trace Core service, OpenAPI surface, persistence adapters, and deployment chart. |
+| `otelcol-contribute-chart/` | OpenTelemetry Collector Contrib chart for OTLP collection and OpenSearch export. |
+| `scripts/` | Repeatable contract and deployment-safety checks. |
 
-`agent-observability` is the trace query service in this repository. It currently provides:
+See [agent-observability/README.md](agent-observability/README.md) for local
+development and service configuration, and
+[otelcol-contribute-chart/README.md](otelcol-contribute-chart/README.md) for
+Collector deployment and validation.
 
-- `POST /api/v1/traces/_search`: proxy raw OpenSearch DSL to the configured trace index
-- `GET /api/v1/traces/by-conversation?conversation_id=...`: search traces by conversation ID
-- Swagger endpoints under `/swagger/`
+## Verification
 
-Local development:
-
-```bash
-cd agent-observability
-make test
-make gen-swag
-make docker-build
-```
-
-Run with Helm:
+Run the BKN Trace license-header check from the Foundry repository root:
 
 ```bash
-helm upgrade --install agent-observability agent-observability/charts/agent-observability \
-  --set image.repository=swr.cn-east-3.myhuaweicloud.com/openbkn-ai/agent-observability \
-  --set image.tag=0.1.0 \
-  --set opensearch.endpoint=http://opensearch-read.resource.svc.cluster.local:9200 \
-  --set opensearch.auth.enabled=false \
-  -n observability --create-namespace
+python3 bkn-trace/agent-observability/scripts/check_license_headers.py
 ```
 
-### otelcol-contribute-chart
-
-`otelcol-contribute-chart` packages OpenTelemetry Collector Contrib for Kubernetes deployment and provides:
-
-- Deployment-based Collector installation
-- OTLP gRPC and HTTP receivers
-- OpenSearch exporter with optional basic auth
-- GHCR chart packaging workflow
-
-Quick validation:
+Run service tests from the service directory:
 
 ```bash
-helm lint otelcol-contribute-chart/charts/otelcol-contrib
-helm template otelcol-contrib otelcol-contribute-chart/charts/otelcol-contrib
+GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
 ```
-
-Install example:
-
-```bash
-helm upgrade --install otelcol-contrib otelcol-contribute-chart/charts/otelcol-contrib \
-  -n observability \
-  --create-namespace \
-  --set opensearchExporter.http.endpoint=http://opensearch-read.resource.svc.cluster.local:9200
-```
-
-Create and publish a multi-arch collector manifest:
-
-```bash
-docker buildx imagetools create \
-  -t swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/opentelemetry-collector-contrib:0.148.0 \
-  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.148.0 \
-  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.148.0-linuxarm64
-```
-
-Verify the manifest platforms:
-
-```bash
-docker buildx imagetools inspect \
-  swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/opentelemetry-collector-contrib:0.148.0
-```
-
-## Quick Start
-
-1. Deploy `otelcol-contrib` to receive OTLP telemetry and export it to OpenSearch.
-2. Send telemetry from your LLM app or agent runtime through OTLP.
-3. Deploy `agent-observability`.
-4. Query traces through:
-
-```text
-POST /api/v1/traces/_search
-GET  /api/v1/traces/by-conversation
-GET  /swagger/index.html
-```
-
-## Business Value
-
-- Improve trust in AI systems with traceable evidence
-- Reduce uncertainty by inspecting critical execution nodes instead of only final outputs
-- Shorten debugging cycles with searchable production traces
-- Build evaluation datasets from real-world execution behavior rather than intuition alone
-
-## Related Docs
-
-- `agent-observability/README.md`
-- `otelcol-contribute-chart/README.md`
-- `agent-observability/docs/design/agent-tracing-system-design.md`
-- `agent-observability/docs/prd/agent-tracing-system-prd.md`
 
 ## License
 
-OpenBKN License. See [LICENSE-OPENBKN.txt](../LICENSE-OPENBKN.txt), and the repository root [LICENSE](../LICENSE) for the overall licensing model.
+BKN Trace is licensed under the [OpenBKN License](../LICENSE-OPENBKN.txt).
+Each OpenBKN-authored, commentable source and deployment file carries a
+copyright notice and `SPDX-License-Identifier: LicenseRef-OpenBKN` marker.
