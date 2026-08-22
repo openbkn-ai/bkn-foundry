@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -86,6 +87,10 @@ type catalogOperation struct {
 	// ParentOperation is the operation checked on the parent instance when this
 	// one is not granted on the instance itself. Empty = no inheritance.
 	ParentOperation string `json:"parent_operation"`
+	// Implies lists operations on the SAME type that are granted along with this
+	// one and cannot be taken away while it is held (#1121). Empty for almost
+	// every operation; see model.Operation.ImpliedOperationIDs.
+	Implies []string `json:"implies"`
 }
 
 type grantsFile struct {
@@ -222,6 +227,9 @@ func seedCatalog(db *gorm.DB) error {
 	// or a parent_operation the parent does not define would otherwise be stored
 	// and then silently deny at enforce time, which reads as "the grant does not
 	// work" rather than "the catalog is wrong".
+	if err := validateImplications(c); err != nil {
+		return err
+	}
 	if err := validateHierarchy(c); err != nil {
 		return err
 	}
@@ -238,11 +246,12 @@ func seedCatalog(db *gorm.DB) error {
 			declared = append(declared, op.ID)
 			opRow := model.Operation{
 				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
-				ParentOperationID: op.ParentOperation,
+				ParentOperationID:   op.ParentOperation,
+				ImpliedOperationIDs: strings.Join(op.Implies, ","),
 			}
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "resource_type_id"}, {Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"name", "parent_operation_id"}),
+				DoUpdates: clause.AssignmentColumns([]string{"name", "parent_operation_id", "implied_operation_ids"}),
 			}).Create(&opRow).Error; err != nil {
 				return err
 			}
@@ -323,6 +332,61 @@ func validateHierarchy(c catalog) error {
 				return fmt.Errorf("resource type parent chain has a cycle at %q", cur)
 			}
 			seen[cur] = true
+		}
+	}
+	return nil
+}
+
+// validateImplications checks the same-type implications declared in
+// catalog.json: every implied operation is declared on the same type, no
+// operation implies itself, and the implication graph is acyclic.
+//
+// The failure this guards against is silent. An implication naming an operation
+// the type does not declare would expand a grant into an op no check ever asks
+// about, and a cycle would make the expansion at grant time loop; both are
+// authoring mistakes in an embedded file, so refusing to boot is the honest
+// response.
+func validateImplications(c catalog) error {
+	for _, rt := range c.ResourceTypes {
+		declared := make(map[string]bool, len(rt.Operations))
+		implies := make(map[string][]string, len(rt.Operations))
+		for _, op := range rt.Operations {
+			declared[op.ID] = true
+			implies[op.ID] = op.Implies
+		}
+		for _, op := range rt.Operations {
+			for _, implied := range op.Implies {
+				if implied == op.ID {
+					return fmt.Errorf("operation %s/%s implies itself", rt.ID, op.ID)
+				}
+				if !declared[implied] {
+					return fmt.Errorf("operation %s/%s implies %q, which %s does not declare",
+						rt.ID, op.ID, implied, rt.ID)
+				}
+			}
+		}
+		// Walk every chain with a step budget of the operation count, the same
+		// shape the parent-chain check uses.
+		for start := range implies {
+			seen := map[string]bool{}
+			queue := []string{start}
+			for steps := 0; len(queue) > 0; steps++ {
+				if steps > len(implies) {
+					return fmt.Errorf("operation implication chain has a cycle in %q", rt.ID)
+				}
+				cur := queue[0]
+				queue = queue[1:]
+				for _, next := range implies[cur] {
+					if next == start {
+						return fmt.Errorf("operation implication chain has a cycle at %s/%s", rt.ID, start)
+					}
+					if seen[next] {
+						continue
+					}
+					seen[next] = true
+					queue = append(queue, next)
+				}
+			}
 		}
 	}
 	return nil

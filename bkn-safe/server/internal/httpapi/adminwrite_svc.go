@@ -121,7 +121,19 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	if resourceType == adminConsoleResourceType {
 		return adminwrite.ErrAdminConsolePermission
 	}
-	return s.e.GrantRolePermission(role.ID, resourceType, resourceID, op)
+	// A role granted resource_manage gets view_detail with it (#1121): the
+	// management routes load their target first, so without it the role holds a
+	// verb it can never reach.
+	ops, err := impliedOps(s.db.WithContext(ctx), resourceType, []string{op})
+	if err != nil {
+		return err
+	}
+	for _, granted := range ops {
+		if err := s.e.GrantRolePermission(role.ID, resourceType, resourceID, granted); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RevokeRolePermission revokes a custom role's op over a resource pattern.
@@ -130,7 +142,19 @@ func (s *adminWriteServices) RevokeRolePermission(ctx context.Context, roleID, r
 	if err != nil {
 		return err
 	}
-	return s.e.RevokeRolePermission(role.ID, resourceType, resourceID, op)
+	// Revoking view_detail takes resource_manage with it (#1121). Leaving the
+	// implying verb behind would rebuild the grant that cannot be used, and the
+	// role would keep a permission whose every route answers 403.
+	ops, err := impliedBy(s.db.WithContext(ctx), resourceType, []string{op})
+	if err != nil {
+		return err
+	}
+	for _, revoked := range ops {
+		if err := s.e.RevokeRolePermission(role.ID, resourceType, resourceID, revoked); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // loadCustomRole fetches a role and rejects built-ins. It maps to the
