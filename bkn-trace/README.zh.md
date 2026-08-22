@@ -1,183 +1,78 @@
-# Tracing AI
+# BKN Trace
 
-[English](README.md) | 中文
+[English](README.md)
 
-[![License](https://img.shields.io/badge/license-OpenBKN-blue.svg)](../LICENSE-OPENBKN.txt)
+[![许可证](https://img.shields.io/badge/license-OpenBKN-blue.svg)](../LICENSE-OPENBKN.txt)
 
-Tracing AI 是一套面向 LLM 应用和智能体系统的可验证性与可观测性框架，目标是通过全链路观测、结构化关联和证据化查询，把 AI 从“黑盒推理”推进到“确定性生产力”。
+BKN Trace 是 OpenBKN 的社区版 Trace Core。它记录受管 Agent、SDK 与 MCP 调用的一手执行
+事实，并提供受保护的技术 Trace 分析 API 以及与平台日志的精确关联能力。
 
-当前仓库主要包含两个核心组成部分：
+## 记录的事实
 
-- `agent-observability`：基于 Go 实现的 Trace 查询服务，用于从 OpenSearch 检索智能体链路
-- `otelcol-contribute-chart`：用于在 Kubernetes 中部署 OpenTelemetry Collector Contrib 的 Helm Chart，负责接收 OTLP 数据并导出到 OpenSearch
+Operation 的一次 attempt 是权威执行单元。已完成或失败的 attempt 可以保留 Conversation、
+Interaction、Operation 与 Request 标识，执行时间和状态，调用身份、协议和工具信息，以及调用
+边界实际收到的输入、输出或可诊断错误。记录 Trace 不得改变业务工具原本的返回结果。
 
-## 项目定位
+BKN Trace 只记录一手事实，不从最终回答反推执行信息。未记录的信息必须明确为“未记录”，不能由
+读取端或界面猜测补全。
 
-传统应用追踪只能告诉我们“请求是否失败”，但在 AI 系统里，开发者还需要回答更多问题：
+## 公开社区能力
 
-- 模型到底看到了什么输入
-- 中间调用了哪些工具
-- 检索命中了哪些知识
-- 某个结论是否有依据、是否可回溯
-- 延迟和错误究竟出现在执行链路的哪个节点
+- 接收并持久化受管调用事实及关联 Evidence 事件。
+- 提供受访问控制保护的 Trace、Conversation、Interaction、Operation、Evidence 和技术日志读取
+  API。
+- 返回技术执行详情：记录的输入/输出或错误、Trace 与 Span 关系，以及用于日志下钻的精确关联
+  标识。
+- 在返回 Trace 或 Evidence 数据前执行 Access Profile 和记录范围校验。
+- 为 OpenBKN 客户端保留稳定的社区 Trace 事实模型与公开 API 合同。
 
-Tracing AI 就是为这些问题设计的基础设施。
-
-## 核心特性
-
-### 当前仓库已具备的能力
-
-- 基于 OpenTelemetry 的标准化采集链路
-- 基于 OpenTelemetry Collector 的 OTLP 接入能力
-- 面向 OpenSearch 的 Trace / Log 导出能力
-- 面向 Agent Trace 的查询服务
-- Swagger 文档、Docker 构建、Helm 打包与 GitHub Actions 发布流程
-
-### Tracing AI 的目标能力
-
-以下能力代表 Tracing AI 的总体建设方向，其中一部分已经由当前架构打底，另一部分将在后续持续补齐：
-
-- 全链路执行轨迹观测：覆盖输入输出、工具调用、知识检索以及推理步骤
-- 决策依据穿透与证据追溯：把 AI 输出与数据来源、知识条目、上下文执行证据关联起来
-- 可视化时间轴回放：支持定位复杂 Agent 执行中的耗时节点与坏案例
-- 从 Trace 到 Eval 的闭环优化：将失败链路沉淀为评测用例
-- 智能根因分析：为多智能体复杂系统提供自动化故障定位基础
-
-## 技术架构
-
-Tracing AI 遵循 OpenTelemetry / OTLP 开放协议，便于以标准化、低侵入方式接入遥测数据。
-
-- `Trace`：一次 AI 交互或一次任务执行的完整生命周期
-- `Span`：链路中的单个操作单元，如一次模型调用、一次检索或一次工具执行
-- `Collector`：负责接收 OTLP 数据、执行批处理与路由，并导出到底层存储
-- `Query Service`：对外提供 Trace 检索与分析接口
-- `Storage`：当前仓库以 OpenSearch 为主，整体架构可扩展到更适合 AI 大规模数据的底层存储
-
-当前仓库落地的链路形态如下：
+## 架构
 
 ```text
-LLM App / Agent
-  -> OTLP
-OpenTelemetry Collector
-  -> OpenSearch
-agent-observability
-  -> Trace 查询接口 / Swagger
+受管 MCP / SDK 调用
+        |
+        v
+Trace 生产者采集一手执行事实
+        |
+        v
+BKN Trace Core
+  - 生命周期与 Operation 调用事实
+  - Evidence 与技术关联
+  - 访问控制读取 API
+        |
+        +--> 技术 Trace 分析
+        +--> 精确日志下钻
 ```
 
-## 仓库结构
+Core 是技术事实服务：不从最终回答推导业务语义，也不建立第二套权威 Trace 存储。
 
-```text
-.
-|-- agent-observability/
-|   |-- main.go
-|   |-- Dockerfile
-|   |-- Makefile
-|   |-- charts/agent-observability/
-|   `-- docs/
-|-- otelcol-contribute-chart/
-|   |-- charts/otelcol-contrib/
-|   `-- scripts/
-`-- .github/workflows/
-```
+## 组件
 
-## 组件说明
+| 路径 | 职责 |
+| --- | --- |
+| `agent-observability/` | Go Trace Core 服务、OpenAPI 接口、存储适配器和部署 Chart。 |
+| `otelcol-contribute-chart/` | 用于 OTLP 采集及 OpenSearch 导出的 OpenTelemetry Collector Contrib Chart。 |
+| `scripts/` | 可重复执行的合同与部署安全检查。 |
 
-### agent-observability
+本地开发和服务配置请见
+[agent-observability/README.md](agent-observability/README.md)；Collector 的部署与验证请见
+[otelcol-contribute-chart/README.md](otelcol-contribute-chart/README.md)。
 
-`agent-observability` 是当前仓库中的 Trace 查询服务，当前已提供：
+## 验证
 
-- `POST /api/v1/traces/_search`：将原始 OpenSearch DSL 代理到配置的 trace index
-- `GET /api/v1/traces/by-conversation?conversation_id=...`：按会话维度查询 trace
-- `/swagger/`：Swagger 文档访问入口
-
-本地开发：
+在 Foundry 仓库根目录运行 BKN Trace 许可证头检查：
 
 ```bash
-cd agent-observability
-make test
-make gen-swag
-make docker-build
+python3 bkn-trace/agent-observability/scripts/check_license_headers.py
 ```
 
-Helm 部署示例：
+在服务目录运行测试：
 
 ```bash
-helm upgrade --install agent-observability agent-observability/charts/agent-observability \
-  --set image.repository=swr.cn-east-3.myhuaweicloud.com/openbkn-ai/agent-observability \
-  --set image.tag=0.1.0 \
-  --set opensearch.endpoint=http://opensearch-read.resource.svc.cluster.local:9200 \
-  --set opensearch.auth.enabled=false \
-  -n observability --create-namespace
+GOCACHE=/tmp/openbkn-go-build-cache GOMODCACHE=/tmp/openbkn-go-mod-cache go test ./...
 ```
 
-### otelcol-contribute-chart
+## 许可证
 
-`otelcol-contribute-chart` 用于部署 OpenTelemetry Collector Contrib，当前提供：
-
-- 基于 Deployment 的 Collector 部署方式
-- OTLP gRPC / HTTP 接收器
-- OpenSearch 导出器与可选 Basic Auth
-- GHCR OCI Chart 发布流程
-
-本地校验：
-
-```bash
-helm lint otelcol-contribute-chart/charts/otelcol-contrib
-helm template otelcol-contrib otelcol-contribute-chart/charts/otelcol-contrib
-```
-
-安装示例：
-
-```bash
-helm upgrade --install otelcol-contrib otelcol-contribute-chart/charts/otelcol-contrib \
-  -n observability \
-  --create-namespace \
-  --set opensearchExporter.http.endpoint=http://opensearch-read.resource.svc.cluster.local:9200
-```
-
-创建并发布 Collector 多架构 manifest：
-
-```bash
-docker buildx imagetools create \
-  -t swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/opentelemetry-collector-contrib:0.148.0 \
-  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.148.0 \
-  swr.cn-north-4.myhuaweicloud.com/ddn-k8s/ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.148.0-linuxarm64
-```
-
-校验 manifest 平台信息：
-
-```bash
-docker buildx imagetools inspect \
-  swr.cn-east-3.myhuaweicloud.com/openbkn-ai/dip/opentelemetry-collector-contrib:0.148.0
-```
-
-## 快速开始
-
-1. 部署 `otelcol-contrib`，作为 OTLP 接入与数据导出组件。
-2. 让你的 LLM 应用或 Agent Runtime 通过 OTLP 上报遥测数据。
-3. 部署 `agent-observability` 查询服务。
-4. 通过以下接口查询链路：
-
-```text
-POST /api/v1/traces/_search
-GET  /api/v1/traces/by-conversation
-GET  /swagger/index.html
-```
-
-## 业务价值
-
-- 提升 AI 应用可信度，让输出具备可追溯依据
-- 降低不确定性风险，在关键节点分析异常行为与潜在幻觉
-- 显著缩短问题排查周期，让生产链路可检索、可定位
-- 用真实轨迹沉淀评测数据，让后续模型和系统迭代更可量化
-
-## 相关文档
-
-- `agent-observability/README.md`
-- `otelcol-contribute-chart/README.md`
-- `agent-observability/docs/design/agent-tracing-system-design.md`
-- `agent-observability/docs/prd/agent-tracing-system-prd.md`
-
-## License
-
-OpenBKN License，详见 [LICENSE-OPENBKN.txt](../LICENSE-OPENBKN.txt)；仓库整体的多许可证模型见根目录 [LICENSE](../LICENSE)。
+BKN Trace 使用 [OpenBKN License](../LICENSE-OPENBKN.txt)。每个由 OpenBKN 编写且可添加注释的
+源码与部署文件均带有版权声明及 `SPDX-License-Identifier: LicenseRef-OpenBKN` 标识。
