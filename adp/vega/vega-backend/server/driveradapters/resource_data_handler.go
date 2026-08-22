@@ -373,6 +373,17 @@ func (r *restHandler) getResourceDataDoc(c *gin.Context, visitor hydra.Visitor, 
 	if !ok {
 		return
 	}
+
+	// Reading one document is reading rows, so it needs query_data for the same
+	// reason the paged query does (#571): loading the resource only proves the
+	// caller may see the table's structure, and this endpoint hands back its
+	// contents.
+	if err := r.rs.CheckResourcePermission(ctx, resource.ID, interfaces.OPERATION_TYPE_QUERY_DATA); err != nil {
+		otellog.LogError(ctx, "Get resource data document denied", err)
+		rest.ReplyError(c, err)
+		return
+	}
+
 	warning, err := resourcelogic.EnsureResourceQueryable(ctx, resource)
 	if err != nil {
 		httpErr := err.(*rest.HTTPError)
