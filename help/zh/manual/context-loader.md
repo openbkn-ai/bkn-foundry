@@ -89,6 +89,11 @@ Token 可通过 `openbkn auth token` 命令获取。配置保存后，Cursor 会
 
 每个工具调用需要 `kn_id`（知识网络 ID），可用 `openbkn bkn list` 获取。
 
+受管会话先调用 `bkn_start_interaction`：没有当前 Conversation 时传
+`conversation_mode=new`，不传 `conversation_id`；延续当前对话时传
+`conversation_mode=continue` 和上次返回的 `conversation_id`。随后所有业务工具传入 start
+返回的 `bkn_context`，回复用户前调用 `bkn_finish_interaction`。宿主提供会话映射时，以宿主映射为准。
+
 ### 使用 CLI 探测
 
 不配置 MCP 客户端也能用 CLI 验证服务是否正常。CLI 没有「当前知识网络」这种全局配置，`kn-id` 是每条命令的位置参数：
