@@ -1,7 +1,8 @@
 {
   "bkn_finish_interaction": {
     "title": "Finish Interaction",
-    "group_title": "Session Lifecycle"
+    "group_title": "Session Lifecycle",
+    "description": "Finish the Interaction for the current user question, then reply to the user after this call succeeds. Pass interaction_id and outcome (completed, failed, cancelled, or handed_off) as top-level fields. When outcome is completed, answer is required and should contain the final answer to the user; for other outcomes, reason is optional. The Conversation remains available for later questions. Example: {\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}"
   },
   "bkn_start_interaction": {
     "title": "Start Interaction",

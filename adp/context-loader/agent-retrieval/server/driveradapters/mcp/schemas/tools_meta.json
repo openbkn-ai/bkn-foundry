@@ -5,7 +5,7 @@
     "group": "lifecycle",
     "group_title": "会话生命周期",
     "order": 20,
-    "description": "Submit the current Interaction result and final answer. This does not close the Conversation."
+    "description": "结束当前用户问题对应的 Interaction，并在成功后再回复用户。直接传入顶层字段 interaction_id 和 outcome（completed、failed、cancelled 或 handed_off）。outcome 为 completed 时必须传入 answer，内容为准备回复用户的最终答案；其他结果可传入 reason。Conversation 不会结束，可供后续问题继续使用。示例：{\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}"
   },
   "bkn_start_interaction": {
     "name": "bkn_start_interaction",
