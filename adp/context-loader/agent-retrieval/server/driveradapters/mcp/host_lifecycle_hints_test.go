@@ -129,7 +129,7 @@ func TestStartInteractionRetryUsesStableHostHintsAcrossTransportSessions(t *test
 		request := mcpsdk.CallToolRequest{
 			Header: http.Header{"Mcp-Session-Id": []string{transportSession}},
 			Params: mcpsdk.CallToolParams{
-				Arguments: map[string]any{"question": "查询库存", "agent_name": "供应链分析助手"},
+				Arguments: map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "new"},
 				Meta: &mcpsdk.Meta{AdditionalFields: map[string]any{
 					hostConversationKeyMeta: "cursor-chat-1",
 					clientInvocationIDMeta:  "cursor-call-1",
@@ -182,9 +182,10 @@ func TestStartInteractionRejectsConversationThatConflictsWithHostMapping(t *test
 		"bkn_start_interaction",
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{
 		Arguments: map[string]any{
-			"conversation_id": "conv-model-supplied",
-			"question":        "查询库存",
-			"agent_name":      "供应链分析助手",
+			"conversation_id":   "conv-model-supplied",
+			"question":          "查询库存",
+			"agent_name":        "供应链分析助手",
+			"conversation_mode": "continue",
 		},
 		Meta: &mcpsdk.Meta{AdditionalFields: map[string]any{
 			hostConversationKeyMeta: "cursor-chat-1",

@@ -85,6 +85,12 @@ Once configured, MCP clients can discover and call these tools (your deployment 
 
 Every tool call requires `kn_id` (knowledge network ID). Use `openbkn bkn list` to find it.
 
+For a managed session, call `bkn_start_interaction` first: use `conversation_mode=new` without
+`conversation_id` when there is no current Conversation; use `conversation_mode=continue` with
+the `conversation_id` returned by the prior start to continue one. Pass the returned `bkn_context`
+to all business tools, then call `bkn_finish_interaction` before replying. A host-provided
+conversation mapping remains authoritative.
+
 ### Verify with CLI
 
 You can verify the MCP server without configuring a full MCP client. There is no global "current KN" setting — `kn-id` is a positional argument on every command:

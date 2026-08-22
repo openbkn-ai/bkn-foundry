@@ -119,7 +119,7 @@ func validFinishOutcome(value any) bool {
 
 func lifecycleArgumentGuidance(name string) string {
 	if name == "bkn_start_interaction" {
-		return "bkn_start_interaction expects top-level question and agent_name, plus optional conversation_id"
+		return "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it"
 	}
 	return "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise"
 }

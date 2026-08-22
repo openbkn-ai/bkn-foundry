@@ -5,7 +5,7 @@
     "group": "lifecycle",
     "group_title": "会话生命周期",
     "order": 20,
-    "description": "结束当前用户问题对应的 Interaction，并在成功后再回复用户。直接传入顶层字段 interaction_id 和 outcome（completed、failed、cancelled 或 handed_off）。outcome 为 completed 时必须传入 answer，内容为准备回复用户的最终答案；其他结果可传入 reason。Conversation 不会结束，可供后续问题继续使用。示例：{\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}"
+    "description": "在回复用户前结束当前 Interaction。顶层传入 interaction_id 和 outcome；outcome=completed 时还必须传入最终 answer，其他结果可传 reason。Conversation 可继续使用。示例：{\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}"
   },
   "bkn_start_interaction": {
     "name": "bkn_start_interaction",
@@ -13,7 +13,7 @@
     "group": "lifecycle",
     "group_title": "会话生命周期",
     "order": 10,
-    "description": "为当前用户问题开始一次受管 Interaction。传入完整的用户问题和当前 Agent 的固定名称；首次不传 conversation_id，后续传入当前对话的 conversation_id。返回本轮后续工具调用的 bkn_context 所需的 conversation_id 和 interaction_id。"
+    "description": "为当前用户问题开始一次受管 Interaction。传入完整问题、当前 Agent 名称和 conversation_mode：没有当前受管 Conversation 时用 new 且不传 conversation_id；否则用 continue 并传入上次返回的 conversation_id。宿主提供会话映射时，以其为准。返回本轮 bkn_context 所需的两个 ID。"
   },
   "search_schema": {
     "name": "search_schema",

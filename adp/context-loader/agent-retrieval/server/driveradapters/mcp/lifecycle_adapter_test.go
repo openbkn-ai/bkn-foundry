@@ -93,7 +93,7 @@ func TestStartInteractionWithoutConversationEnsuresManagedConversationFirst(t *t
 		bkntrace.NewLifecycleClient("http://bkn-trace.test", client),
 		"bkn_start_interaction",
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
-		"question": "查询多层 BOM", "agent_name": "供应链分析助手",
+		"question": "查询多层 BOM", "agent_name": "供应链分析助手", "conversation_mode": "new",
 	}}})
 	if err != nil || result.IsError {
 		t.Fatalf("first start failed: result=%#v err=%v", result, err)
@@ -141,13 +141,23 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 	}{
 		{
 			name: "start without agent name", toolName: "bkn_start_interaction",
-			args:        map[string]any{"question": "查询库存"},
-			wantMessage: "bkn_start_interaction expects top-level question and agent_name, plus optional conversation_id",
+			args:        map[string]any{"question": "查询库存", "conversation_mode": "new"},
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
 		},
 		{
 			name: "start with empty agent name", toolName: "bkn_start_interaction",
-			args:        map[string]any{"question": "查询库存", "agent_name": ""},
-			wantMessage: "bkn_start_interaction expects top-level question and agent_name, plus optional conversation_id",
+			args:        map[string]any{"question": "查询库存", "agent_name": "", "conversation_mode": "new"},
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
+		},
+		{
+			name: "continue without conversation id", toolName: "bkn_start_interaction",
+			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "continue"},
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
+		},
+		{
+			name: "new with conversation id", toolName: "bkn_start_interaction",
+			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "new", "conversation_id": "conv-1"},
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
 		},
 		{
 			name: "start with unsupported lease seconds", toolName: "bkn_start_interaction",
@@ -274,7 +284,7 @@ func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEviden
 		bkntrace.NewLifecycleClient(backend.URL, backend.Client()),
 		"bkn_start_interaction",
 	)(ctx, mcpsdk.CallToolRequest{Params: mcpsdk.CallToolParams{Arguments: map[string]any{
-		"conversation_id": "conv-1", "question": "查询 BOM", "agent_name": "供应链分析助手",
+		"conversation_id": "conv-1", "conversation_mode": "continue", "question": "查询 BOM", "agent_name": "供应链分析助手",
 	}}})
 	if err != nil || result.IsError {
 		t.Fatalf("start interaction failed: result=%#v err=%v", result, err)

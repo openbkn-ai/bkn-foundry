@@ -243,7 +243,10 @@ async def open_session(
         return None
 
     try:
-        args = {"question": question or "(not provided)"}
+        # bkn-agent has no local conversation_id to resume. A chat supplies a
+        # host key, which the lifecycle service resolves authoritatively; a
+        # one-shot execution intentionally starts without a prior conversation.
+        args = {"question": question or "(not provided)", "conversation_mode": "new"}
         if agent_name:
             args["agent_name"] = agent_name[:128]
         raw = await start.coroutine(**args)

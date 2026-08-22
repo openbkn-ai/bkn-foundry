@@ -4,17 +4,18 @@ Managed interaction lifecycle:
 
 For each new user question:
 
-1. Call bkn_start_interaction with the complete question.
-   On the first turn, omit conversation_id. On later turns, pass the conversation_id for the current conversation.
+1. Call bkn_start_interaction with the complete question, the current Agent name, and conversation_mode.
+   For the first managed question in this chat, use conversation_mode=new and omit conversation_id.
+   For a later question, use conversation_mode=continue and pass the conversation_id returned previously.
 
 2. This tool returns conversation_id and interaction_id.
    conversation_id remains unchanged throughout the conversation.
    interaction_id remains unchanged from the start of the current user question until the reply is complete.
-   Use both IDs in bkn_context for all other tool calls in this turn.
+   Pass bkn_context: { conversation_id, interaction_id } to every other tool call in this turn.
 
 3. Before replying to the user, call bkn_finish_interaction.
-   For a successful result, use outcome=completed and the final answer.
-   Otherwise, use failed, cancelled, or handed_off and provide the reason.
+   For a successful result, pass outcome=completed and the final answer.
+   Otherwise, use failed, cancelled, or handed_off and optionally provide the reason.
    Then reply to the user.
 
 The next user question starts a new Interaction and continues using the current conversation_id.
