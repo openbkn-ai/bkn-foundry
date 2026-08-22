@@ -133,8 +133,11 @@ func TestServerInstructionsLeadWithManagedInteractionLifecycle(t *testing.T) {
 			locale: "zh-CN",
 			lifecycle: []string{
 				"处理每个新的用户问题时",
+				"conversation_mode=new",
+				"conversation_mode=continue",
 				"conversation_id 在整个对话过程中保持不变",
 				"interaction_id 在当前用户问题开始后、回复完成前保持不变",
+				"bkn_context: { conversation_id, interaction_id }",
 				"回复用户前，调用 bkn_finish_interaction",
 				"下一个用户问题会开始新的 Interaction",
 			},
@@ -144,8 +147,11 @@ func TestServerInstructionsLeadWithManagedInteractionLifecycle(t *testing.T) {
 			locale: "en-US",
 			lifecycle: []string{
 				"For each new user question",
+				"conversation_mode=new",
+				"conversation_mode=continue",
 				"conversation_id remains unchanged throughout the conversation",
 				"interaction_id remains unchanged from the start of the current user question until the reply is complete",
+				"bkn_context: { conversation_id, interaction_id }",
 				"Before replying to the user, call bkn_finish_interaction",
 				"The next user question starts a new Interaction",
 			},
@@ -175,11 +181,11 @@ func TestStartInteractionDescriptionGuidesStableAgentIdentity(t *testing.T) {
 	}{
 		{
 			locale: "zh-CN",
-			want:   "为当前用户问题开始一次受管 Interaction。传入完整的用户问题和当前 Agent 的固定名称；首次不传 conversation_id，后续传入当前对话的 conversation_id。返回本轮后续工具调用的 bkn_context 所需的 conversation_id 和 interaction_id。",
+			want:   "为当前用户问题开始一次受管 Interaction。传入完整问题、当前 Agent 名称和 conversation_mode：没有当前受管 Conversation 时用 new 且不传 conversation_id；否则用 continue 并传入上次返回的 conversation_id。宿主提供会话映射时，以其为准。返回本轮 bkn_context 所需的两个 ID。",
 		},
 		{
 			locale: "en-US",
-			want:   "Start a managed Interaction for the current user question. Provide the complete user question and the current Agent's stable name; omit conversation_id on the first turn, then provide the conversation_id for the current conversation. It returns the conversation_id and interaction_id required in bkn_context for subsequent tool calls in this turn.",
+			want:   "Start a managed Interaction for the current user question. Provide the complete question, the current Agent name, and conversation_mode: use new without conversation_id when there is no current managed Conversation; otherwise use continue with the conversation_id returned by the prior start. A host-provided conversation mapping remains authoritative. It returns the two IDs required in bkn_context for this turn.",
 		},
 	}
 
@@ -199,11 +205,11 @@ func TestFinishInteractionDescriptionShowsTopLevelCompletedExample(t *testing.T)
 	}{
 		{
 			locale: "zh-CN",
-			want:   `结束当前用户问题对应的 Interaction，并在成功后再回复用户。直接传入顶层字段 interaction_id 和 outcome（completed、failed、cancelled 或 handed_off）。outcome 为 completed 时必须传入 answer，内容为准备回复用户的最终答案；其他结果可传入 reason。Conversation 不会结束，可供后续问题继续使用。示例：{"interaction_id":"int_...","outcome":"completed","answer":"..."}`,
+			want:   `在回复用户前结束当前 Interaction。顶层传入 interaction_id 和 outcome；outcome=completed 时还必须传入最终 answer，其他结果可传 reason。Conversation 可继续使用。示例：{"interaction_id":"int_...","outcome":"completed","answer":"..."}`,
 		},
 		{
 			locale: "en-US",
-			want:   `Finish the Interaction for the current user question, then reply to the user after this call succeeds. Pass interaction_id and outcome (completed, failed, cancelled, or handed_off) as top-level fields. When outcome is completed, answer is required and should contain the final answer to the user; for other outcomes, reason is optional. The Conversation remains available for later questions. Example: {"interaction_id":"int_...","outcome":"completed","answer":"..."}`,
+			want:   `Finish the current Interaction before replying to the user. Pass interaction_id and outcome as top-level fields; outcome=completed also requires the final answer. Other outcomes may include reason. The Conversation remains available. Example: {"interaction_id":"int_...","outcome":"completed","answer":"..."}`,
 		},
 	}
 

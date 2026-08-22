@@ -2,12 +2,12 @@
   "bkn_finish_interaction": {
     "title": "Finish Interaction",
     "group_title": "Session Lifecycle",
-    "description": "Finish the Interaction for the current user question, then reply to the user after this call succeeds. Pass interaction_id and outcome (completed, failed, cancelled, or handed_off) as top-level fields. When outcome is completed, answer is required and should contain the final answer to the user; for other outcomes, reason is optional. The Conversation remains available for later questions. Example: {\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}"
+    "description": "Finish the current Interaction before replying to the user. Pass interaction_id and outcome as top-level fields; outcome=completed also requires the final answer. Other outcomes may include reason. The Conversation remains available. Example: {\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}"
   },
   "bkn_start_interaction": {
     "title": "Start Interaction",
     "group_title": "Session Lifecycle",
-    "description": "Start a managed Interaction for the current user question. Provide the complete user question and the current Agent's stable name; omit conversation_id on the first turn, then provide the conversation_id for the current conversation. It returns the conversation_id and interaction_id required in bkn_context for subsequent tool calls in this turn."
+    "description": "Start a managed Interaction for the current user question. Provide the complete question, the current Agent name, and conversation_mode: use new without conversation_id when there is no current managed Conversation; otherwise use continue with the conversation_id returned by the prior start. A host-provided conversation mapping remains authoritative. It returns the two IDs required in bkn_context for this turn."
   },
   "search_schema": {
     "title": "Explore Schema",

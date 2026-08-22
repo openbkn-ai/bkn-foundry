@@ -96,6 +96,25 @@ def test_session_injects_bkn_context_and_hides_it(monkeypatch):
     ]
 
 
+def test_start_handshake_declares_new_mode_without_a_local_conversation_id(monkeypatch):
+    start = _start_tool()
+    _install(monkeypatch, [start, _FakeTool("bkn_finish_interaction"), _FakeTool("search_schema")])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        session = asyncio.run(context_loader.open_session(
+            "查询库存", agent_name="supply-chain-analyst", host_conversation_key="thread-1"
+        ))
+    finally:
+        auth._caller_token.reset(token)
+
+    assert session is not None
+    assert start.calls == [{
+        "question": "查询库存",
+        "agent_name": "supply-chain-analyst",
+        "conversation_mode": "new",
+    }]
+
+
 def test_bound_context_loader_tool_preserves_mcp_artifact_response_format():
     async def raw_call(**_kwargs):
         return ([{"type": "text", "text": "result"}], {"structured_content": {}})

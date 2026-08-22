@@ -10,17 +10,18 @@ ContextLoader 知识网络查询工具集使用指南。
 
 处理每个新的用户问题时：
 
-1. 调用 bkn_start_interaction，传入完整问题。
-   首次不传 conversation_id；后续传入当前对话的 conversation_id。
+1. 调用 bkn_start_interaction，传入完整问题、当前 Agent 名称和 conversation_mode。
+   当前聊天中的首个受管问题使用 conversation_mode=new，不传 conversation_id；
+   后续问题使用 conversation_mode=continue，并传入上一次返回的 conversation_id。
 
 2. 本工具返回 conversation_id 和 interaction_id。
    conversation_id 在整个对话过程中保持不变；
    interaction_id 在当前用户问题开始后、回复完成前保持不变。
-   本轮调用其他工具时，在 bkn_context 中使用这两个 ID。
+   本轮调用其他工具时传入 bkn_context: { conversation_id, interaction_id }。
 
 3. 回复用户前，调用 bkn_finish_interaction。
-   正常完成使用 outcome=completed 和最终答案；
-   未完成时使用 failed、cancelled 或 handed_off，并附原因。
+   正常完成传入 outcome=completed 和最终答案；
+   未完成时传入 failed、cancelled 或 handed_off，并可附原因。
    然后回复用户。
 
 下一个用户问题会开始新的 Interaction，并继续使用当前 conversation_id。

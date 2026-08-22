@@ -7,8 +7,9 @@ info:
     Desktop 等 MCP 客户端可以直接接入，不必逐个封装 REST 调用。
 
     普通 Agent 默认只使用两个受管生命周期工具：`bkn_start_interaction`、
-    `bkn_finish_interaction`。每轮 start 都提交完整问题和固定的 `agent_name`；首轮由服务内部创建 Conversation，
-    后续轮次复用服务端返回的 `conversation_id`，并传入同一 `agent_name`。finish 只提交当前 Interaction 的
+    `bkn_finish_interaction`。每轮 start 都提交完整问题、固定的 `agent_name` 和 `conversation_mode`：没有当前
+    Conversation 时用 `new` 且不传 `conversation_id`；按显式 id 延续时用 `continue` 并传入 start 返回的 id。
+    宿主提供会话映射时，以宿主映射为准。finish 只提交当前 Interaction 的
     结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 `search_schema`、
     `query_object_instance`、`query_instance_subgraph`、`get_logic_properties_values`、
     `get_action_info`、`execute_action`、`get_action_execution`、
