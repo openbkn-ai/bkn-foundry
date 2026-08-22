@@ -132,26 +132,6 @@ func lifecycleAdapterJSONResponse(status int, value any) *http.Response {
 	}
 }
 
-func TestStartConversationModeKeepsLegacyCallsCompatible(t *testing.T) {
-	tests := []struct {
-		name string
-		args map[string]any
-		want string
-	}{
-		{name: "legacy first question", args: map[string]any{}, want: "new"},
-		{name: "legacy continuation", args: map[string]any{"conversation_id": "conv-1"}, want: "continue"},
-		{name: "explicit new", args: map[string]any{"conversation_mode": "new"}, want: "new"},
-		{name: "explicit continuation", args: map[string]any{"conversation_mode": "continue", "conversation_id": "conv-1"}, want: "continue"},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := startConversationMode(test.args); got != test.want {
-				t.Fatalf("startConversationMode(%v) = %q, want %q", test.args, got, test.want)
-			}
-		})
-	}
-}
-
 func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -162,22 +142,22 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 		{
 			name: "start without agent name", toolName: "bkn_start_interaction",
 			args:        map[string]any{"question": "查询库存", "conversation_mode": "new"},
-			wantMessage: "bkn_start_interaction expects top-level agent_name and question; use continue with conversation_id or new without it",
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
 		},
 		{
 			name: "start with empty agent name", toolName: "bkn_start_interaction",
 			args:        map[string]any{"question": "查询库存", "agent_name": "", "conversation_mode": "new"},
-			wantMessage: "bkn_start_interaction expects top-level agent_name and question; use continue with conversation_id or new without it",
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
 		},
 		{
 			name: "continue without conversation id", toolName: "bkn_start_interaction",
 			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "continue"},
-			wantMessage: "bkn_start_interaction with conversation_mode=continue requires conversation_id",
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
 		},
 		{
 			name: "new with conversation id", toolName: "bkn_start_interaction",
 			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "new", "conversation_id": "conv-1"},
-			wantMessage: "bkn_start_interaction with conversation_mode=new must omit conversation_id",
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
 		},
 		{
 			name: "start with unsupported lease seconds", toolName: "bkn_start_interaction",

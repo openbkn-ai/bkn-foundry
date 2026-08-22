@@ -49,21 +49,6 @@ var lifecycleArgumentSchemas = sync.OnceValue(func() map[string]*jsonschema.Sche
 })
 
 func validateLifecycleArguments(name string, arguments map[string]any) *lifecycleError {
-	if name == "bkn_start_interaction" {
-		_, declared := arguments["conversation_mode"]
-		mode := stringValue(arguments["conversation_mode"])
-		conversationID := stringValue(arguments["conversation_id"])
-		if declared && mode == "continue" && conversationID == "" {
-			return invalidLifecycleArguments(
-				"bkn_start_interaction with conversation_mode=continue requires conversation_id",
-			)
-		}
-		if declared && mode == "new" && conversationID != "" {
-			return invalidLifecycleArguments(
-				"bkn_start_interaction with conversation_mode=new must omit conversation_id",
-			)
-		}
-	}
 	if name == "bkn_finish_interaction" {
 		if _, nested := arguments["bkn_context"]; nested {
 			return invalidLifecycleArguments(
@@ -74,9 +59,6 @@ func validateLifecycleArguments(name string, arguments map[string]any) *lifecycl
 			return invalidLifecycleArguments(
 				"bkn_finish_interaction outcome must be one of: " + strings.Join(finishInteractionOutcomes, ", "),
 			)
-		}
-		if stringValue(arguments["outcome"]) == "completed" && stringValue(arguments["answer"]) == "" {
-			return invalidLifecycleArguments("bkn_finish_interaction with outcome=completed requires answer")
 		}
 	}
 	schema, ok := lifecycleArgumentSchemas()[name]
@@ -137,7 +119,7 @@ func validFinishOutcome(value any) bool {
 
 func lifecycleArgumentGuidance(name string) string {
 	if name == "bkn_start_interaction" {
-		return "bkn_start_interaction expects top-level agent_name and question; use continue with conversation_id or new without it"
+		return "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it"
 	}
 	return "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise"
 }

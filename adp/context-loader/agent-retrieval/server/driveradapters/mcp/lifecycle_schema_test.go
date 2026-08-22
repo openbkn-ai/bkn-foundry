@@ -231,7 +231,7 @@ func TestStartInteractionRequiresBoundedStableAgentName(t *testing.T) {
 	}
 }
 
-func TestLifecycleSchemasSupportExplicitAndLegacyStartModesAndCompletedAnswer(t *testing.T) {
+func TestLifecycleSchemasRequireAnExplicitConversationChoiceAndCompletedAnswer(t *testing.T) {
 	tests := []struct {
 		name string
 		tool string
@@ -249,9 +249,9 @@ func TestLifecycleSchemasSupportExplicitAndLegacyStartModesAndCompletedAnswer(t 
 			want: true,
 		},
 		{
-			name: "legacy start without conversation choice", tool: "bkn_start_interaction",
+			name: "missing conversation choice", tool: "bkn_start_interaction",
 			args: map[string]any{"question": "查询库存", "agent_name": "supply-chain-analyst"},
-			want: true,
+			want: false,
 		},
 		{
 			name: "continue without conversation", tool: "bkn_start_interaction",
@@ -432,7 +432,7 @@ func TestLifecycleSwaggerPathsRequestsAndResponsesAreStructurallyFrozen(t *testi
 
 func TestLifecycleMCPInputRequiredFieldsFollowAgentFacadeContract(t *testing.T) {
 	expected := map[string][]string{
-		"bkn_start_interaction":  {"question", "agent_name"},
+		"bkn_start_interaction":  {"question", "agent_name", "conversation_mode"},
 		"bkn_finish_interaction": {"interaction_id", "outcome"},
 	}
 	for tool, want := range expected {

@@ -4,7 +4,7 @@
 
 **Goal:** Make the ContextLoader MCP lifecycle contract concise, consistent with the explicit start mode, and schema-enforced for completed finishes.
 
-**Architecture:** The MCP adapter continues to own lifecycle schemas and localized tool metadata. `bkn_start_interaction` exposes an explicit `new`/`continue` choice for current callers while accepting omitted mode from rolling-upgrade callers and inferring the legacy behavior from `conversation_id`. Server instructions translate the explicit choice into a small execution sequence. `bkn_finish_interaction` validates a final answer for `completed` before it reaches Core.
+**Architecture:** The MCP adapter continues to own lifecycle schemas and localized tool metadata. `bkn_start_interaction` exposes an explicit `new`/`continue` choice; server instructions translate that choice into a small execution sequence. `bkn_finish_interaction` uses JSON Schema to require the final answer only for `completed`.
 
 **Tech Stack:** Go, JSON Schema Draft 7, embedded MCP locale JSON, Go unit tests.
 
@@ -16,7 +16,7 @@
 - Modify: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/schemas.go`
 - Test: `adp/context-loader/agent-retrieval/server/driveradapters/mcp/lifecycle_schema_test.go`
 
-1. Add failing tests for the explicit `conversation_mode` branches, legacy omitted-mode compatibility, and `completed` requiring `answer`.
+1. Add failing tests for required `conversation_mode`, its two start branches, and `completed` requiring `answer`.
 2. Run `go test ./server/driveradapters/mcp -run 'TestLifecycle' -count=1` and confirm failure on the old schema.
 3. Add the smallest `oneOf` branches that express those rules.
 4. Re-run the targeted tests.
