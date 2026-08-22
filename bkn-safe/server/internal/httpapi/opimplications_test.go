@@ -88,6 +88,60 @@ func TestObjectGrantResourceManageImpliesViewDetail(t *testing.T) {
 	}
 }
 
+// TestRolePermissionImplicationDirections pins the role write path, which the
+// object-grant surface cannot stand in for: role grants and revokes arrive one
+// operation at a time, so each direction has to be decided on its own rather
+// than falling out of a whole-set replace.
+func TestRolePermissionImplicationDirections(t *testing.T) {
+	_, e, db, _ := newAdminServer(t)
+	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
+	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	if err := db.Create(&model.Role{ID: "r-1", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := newAdminWriteServices(e, db)
+	ctx := t.Context()
+
+	if err := svc.GrantRolePermission(ctx, "r-1", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatalf("grant: %v", err)
+	}
+	for _, op := range []string{"resource_manage", "view_detail"} {
+		if ok, _ := e.Check("r-1", "catalog", "c1", op); !ok {
+			t.Fatalf("%s not granted to the role", op)
+		}
+	}
+
+	// Revoking the management verb leaves view_detail standing. It is a
+	// permission in its own right — "may open this catalog but no longer manage
+	// the tables in it" is the end state an operator asking for exactly this
+	// revoke wants, and it is also what the object-grant surface produces when a
+	// console re-saves the same set without resource_manage.
+	if err := svc.RevokeRolePermission(ctx, "r-1", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatalf("revoke resource_manage: %v", err)
+	}
+	if ok, _ := e.Check("r-1", "catalog", "c1", "resource_manage"); ok {
+		t.Fatal("resource_manage survived its own revoke")
+	}
+	if ok, _ := e.Check("r-1", "catalog", "c1", "view_detail"); !ok {
+		t.Fatal("revoking resource_manage took view_detail with it")
+	}
+
+	// The other direction is not symmetric, deliberately: revoking view_detail
+	// takes resource_manage with it, because the alternative is to leave a verb
+	// whose every route answers 403 — the exact grant #1121 exists to prevent.
+	if err := svc.GrantRolePermission(ctx, "r-1", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatalf("re-grant: %v", err)
+	}
+	if err := svc.RevokeRolePermission(ctx, "r-1", "catalog", "c1", "view_detail"); err != nil {
+		t.Fatalf("revoke view_detail: %v", err)
+	}
+	for _, op := range []string{"view_detail", "resource_manage"} {
+		if ok, _ := e.Check("r-1", "catalog", "c1", op); ok {
+			t.Fatalf("%s survived the view_detail revoke", op)
+		}
+	}
+}
+
 func TestImpliedOpsAndImpliedBy(t *testing.T) {
 	_, _, db, _ := newAdminServer(t)
 	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
