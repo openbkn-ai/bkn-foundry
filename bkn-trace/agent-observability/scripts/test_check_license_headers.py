@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 OpenBKN
+# SPDX-License-Identifier: LicenseRef-OpenBKN
+# Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+# Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
+
 """Regression tests for the BKN Trace OpenBKN license-header checker."""
 
 from __future__ import annotations
@@ -26,7 +31,7 @@ class LicenseHeaderCheckerTest(unittest.TestCase):
 
         errors = checker.validate_content(path, "package main\n")
 
-        self.assertEqual(errors, ["missing Copyright (c) 2026 OpenBKN"])
+        self.assertEqual(errors, ["missing OpenBKN license header"])
 
     def test_accepts_openbkn_go_header(self):
         checker = load_checker()
@@ -37,6 +42,40 @@ class LicenseHeaderCheckerTest(unittest.TestCase):
 // Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 
 package main
+"""
+
+        self.assertEqual(checker.validate_content(path, content), [])
+
+    def test_rejects_license_text_outside_the_go_header(self):
+        checker = load_checker()
+        path = Path("bkn-trace/agent-observability/main.go")
+        content = '''package main
+
+const notice = """
+Copyright (c) 2026 OpenBKN
+SPDX-License-Identifier: LicenseRef-OpenBKN
+Licensed under the OpenBKN License
+"""
+'''
+
+        self.assertEqual(
+            checker.validate_content(path, content),
+            ["missing OpenBKN license header"],
+        )
+
+    def test_accepts_non_rendering_helm_template_header(self):
+        checker = load_checker()
+        path = Path(
+            "bkn-trace/agent-observability/charts/agent-observability/templates/service.yaml"
+        )
+        content = """{{/*
+Copyright (c) 2026 OpenBKN
+SPDX-License-Identifier: LicenseRef-OpenBKN
+Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
+*/}}
+
+apiVersion: v1
 """
 
         self.assertEqual(checker.validate_content(path, content), [])

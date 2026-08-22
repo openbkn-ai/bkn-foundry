@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 OpenBKN
+# SPDX-License-Identifier: LicenseRef-OpenBKN
+# Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+# Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
+
 """Verify OpenBKN license markers in BKN Trace authored source and config files."""
 
 from __future__ import annotations
@@ -37,15 +42,33 @@ def is_commentable(path: Path) -> bool:
     # would mutate their schema bytes and invalidate the durable ledger.
     if path.match("bkn-trace/agent-observability/migrations/mariadb/*/init.sql"):
         return False
-    return path.name in COMMENTABLE_NAMES or path.suffix in COMMENTABLE_SUFFIXES
+    return (
+        "/templates/" in path.as_posix()
+        or path.name in COMMENTABLE_NAMES
+        or path.suffix in COMMENTABLE_SUFFIXES
+    )
 
 
 def validate_content(path: Path, content: str) -> list[str]:
-    del path
-    for marker in REQUIRED_MARKERS:
-        if marker not in content:
-            return [f"missing {marker}"]
-    return []
+    lines = content.splitlines()
+    if lines and lines[0].startswith("#!"):
+        lines = lines[1:]
+
+    if path.suffix == ".tpl" or "/templates/" in path.as_posix():
+        header = "\n".join(lines[:6])
+        if header.startswith("{{/*") and "*/}}" in header and all(
+            marker in header for marker in REQUIRED_MARKERS
+        ):
+            return []
+    else:
+        prefix = "--" if path.suffix == ".sql" else ("//" if path.suffix == ".go" else "#")
+        header = lines[:4]
+        if all(
+            any(line.startswith(prefix) and marker in line for line in header)
+            for marker in REQUIRED_MARKERS
+        ):
+            return []
+    return ["missing OpenBKN license header"]
 
 
 def tracked_trace_files() -> list[Path]:
