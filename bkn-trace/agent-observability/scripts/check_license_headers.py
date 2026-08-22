@@ -56,7 +56,7 @@ def validate_content(path: Path, content: str) -> list[str]:
 
     if path.suffix == ".tpl" or "/templates/" in path.as_posix():
         header = "\n".join(lines[:6])
-        if header.startswith("{{/*") and "*/}}" in header and all(
+        if header.startswith("{{- /*") and "*/ -}}" in header and all(
             marker in header for marker in REQUIRED_MARKERS
         ):
             return []

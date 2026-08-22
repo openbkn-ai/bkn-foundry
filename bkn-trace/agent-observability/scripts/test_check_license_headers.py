@@ -63,18 +63,17 @@ Licensed under the OpenBKN License
             ["missing OpenBKN license header"],
         )
 
-    def test_accepts_non_rendering_helm_template_header(self):
+    def test_accepts_trimmed_non_rendering_helm_template_header(self):
         checker = load_checker()
         path = Path(
             "bkn-trace/agent-observability/charts/agent-observability/templates/service.yaml"
         )
-        content = """{{/*
+        content = """{{- /*
 Copyright (c) 2026 OpenBKN
 SPDX-License-Identifier: LicenseRef-OpenBKN
 Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
 Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
-*/}}
-
+*/ -}}
 apiVersion: v1
 """
 
