@@ -201,7 +201,7 @@ func handleLifecycleTool(
 			args["request_hash"] = strings.TrimPrefix(hashBytes([]byte(stringValue(args["question"]))), "sha256:")
 		}
 		if name == "bkn_start_interaction" &&
-			(stringValue(args["conversation_mode"]) == "new" || hints.HostConversationKey != "") {
+			(startConversationMode(args) == "new" || hints.HostConversationKey != "") {
 			conversation, result := ensureManagedConversation(ctx, client, hints)
 			if result != nil {
 				return result, nil
@@ -287,6 +287,16 @@ func handleLifecycleTool(
 		}
 		return lifecycleSuccessResult(agentLifecycleView(name, target))
 	}
+}
+
+func startConversationMode(arguments map[string]any) string {
+	if mode := stringValue(arguments["conversation_mode"]); mode != "" {
+		return mode
+	}
+	if stringValue(arguments["conversation_id"]) != "" {
+		return "continue"
+	}
+	return "new"
 }
 
 func ensureManagedConversation(

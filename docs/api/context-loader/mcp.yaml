@@ -9,7 +9,8 @@ info:
     普通 Agent 默认只使用两个受管生命周期工具：`bkn_start_interaction`、
     `bkn_finish_interaction`。每轮 start 都提交完整问题、固定的 `agent_name` 和 `conversation_mode`：没有当前
     Conversation 时用 `new` 且不传 `conversation_id`；按显式 id 延续时用 `continue` 并传入 start 返回的 id。
-    宿主提供会话映射时，以宿主映射为准。finish 只提交当前 Interaction 的
+    宿主提供会话映射时，以宿主映射为准。滚动升级期间，旧调用方可省略 `conversation_mode`，服务端按
+    `conversation_id` 是否存在沿用原有语义。finish 只提交当前 Interaction 的
     结果，不关闭可跨轮、跨日复用的 Conversation。业务工具包括 `search_schema`、
     `query_object_instance`、`query_instance_subgraph`、`get_logic_properties_values`、
     `get_action_info`、`execute_action`、`get_action_execution`、

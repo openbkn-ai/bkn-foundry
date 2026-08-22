@@ -117,7 +117,6 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 			"type": "string", "enum": []string{"continue", "new"},
 			"description": "Use new without conversation_id if no managed Conversation exists; otherwise continue with the ID returned by start.",
 		}
-		required = append(required, "conversation_mode")
 		properties["question"] = map[string]any{
 			"type": "string", "minLength": 1, "description": "Use the user's question for this turn.",
 		}
@@ -148,18 +147,6 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 	inputSchema := map[string]any{
 		"type": "object", "properties": properties, "required": required,
 		"additionalProperties": false,
-	}
-	switch toolKey {
-	case "bkn_start_interaction":
-		inputSchema["oneOf"] = []map[string]any{
-			{"properties": map[string]any{"conversation_mode": map[string]any{"const": "continue"}}, "required": []string{"conversation_id"}},
-			{"properties": map[string]any{"conversation_mode": map[string]any{"const": "new"}}, "not": map[string]any{"required": []string{"conversation_id"}}},
-		}
-	case "bkn_finish_interaction":
-		inputSchema["oneOf"] = []map[string]any{
-			{"properties": map[string]any{"outcome": map[string]any{"const": "completed"}}, "required": []string{"answer"}},
-			{"properties": map[string]any{"outcome": map[string]any{"enum": []string{"failed", "cancelled", "handed_off"}}}},
-		}
 	}
 	input, _ := sonic.ConfigStd.Marshal(inputSchema)
 	output, _ := sonic.ConfigStd.Marshal(lifecycleOutputSchema(toolKey))

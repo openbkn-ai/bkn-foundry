@@ -82,6 +82,11 @@ def _credential() -> Optional[str]:
     return caller_token()
 
 
+def _declares_conversation_mode(tool: Any) -> bool:
+    schema = getattr(tool, "args_schema", None)
+    return isinstance(schema, dict) and "conversation_mode" in schema.get("properties", {})
+
+
 # The server groups turns into one managed conversation by this key. Without it
 # every turn mints a new one, so a multi-turn conversation is stored as N
 # separate sessions holding one interaction each, and they cannot be merged
@@ -246,7 +251,9 @@ async def open_session(
         # bkn-agent has no local conversation_id to resume. A chat supplies a
         # host key, which the lifecycle service resolves authoritatively; a
         # one-shot execution intentionally starts without a prior conversation.
-        args = {"question": question or "(not provided)", "conversation_mode": "new"}
+        args = {"question": question or "(not provided)"}
+        if _declares_conversation_mode(start):
+            args["conversation_mode"] = "new"
         if agent_name:
             args["agent_name"] = agent_name[:128]
         raw = await start.coroutine(**args)

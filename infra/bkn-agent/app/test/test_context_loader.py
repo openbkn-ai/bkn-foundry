@@ -35,7 +35,7 @@ class _FakeTool:
 def _start_tool():
     return _FakeTool(
         "bkn_start_interaction",
-        args_schema={"type": "object", "properties": {}},
+        args_schema={"type": "object", "properties": {"conversation_mode": {"type": "string"}}},
         # VM 实测形状：(content_blocks, {"structured_content": {...}})
         result=(
             [{"type": "text",
@@ -112,6 +112,25 @@ def test_start_handshake_declares_new_mode_without_a_local_conversation_id(monke
         "question": "查询库存",
         "agent_name": "supply-chain-analyst",
         "conversation_mode": "new",
+    }]
+
+
+def test_start_handshake_omits_mode_when_the_server_has_not_declared_it(monkeypatch):
+    start = _start_tool()
+    start.args_schema = {"type": "object", "properties": {}}
+    _install(monkeypatch, [start, _FakeTool("bkn_finish_interaction"), _FakeTool("search_schema")])
+    token = auth.set_caller_token("Bearer t")
+    try:
+        session = asyncio.run(context_loader.open_session(
+            "查询库存", agent_name="supply-chain-analyst", host_conversation_key="thread-1"
+        ))
+    finally:
+        auth._caller_token.reset(token)
+
+    assert session is not None
+    assert start.calls == [{
+        "question": "查询库存",
+        "agent_name": "supply-chain-analyst",
     }]
 
 
