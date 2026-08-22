@@ -145,6 +145,15 @@ func (s *adminWriteServices) RevokeRolePermission(ctx context.Context, roleID, r
 	// Revoking view_detail takes resource_manage with it (#1121). Leaving the
 	// implying verb behind would rebuild the grant that cannot be used, and the
 	// role would keep a permission whose every route answers 403.
+	//
+	// The reverse is deliberately NOT symmetric: revoking resource_manage leaves
+	// view_detail standing. view_detail is a permission in its own right, held by
+	// plenty of roles that never manage anything, and this route cannot tell one
+	// the expansion added from one granted on purpose. Taking it away would
+	// silently narrow access nobody asked to narrow, whereas keeping it lands on
+	// "may open the catalog, may no longer manage its tables" — which is what an
+	// operator issuing exactly this revoke means, and what the object-grant
+	// surface produces for the same edit.
 	ops, err := impliedBy(s.db.WithContext(ctx), resourceType, []string{op})
 	if err != nil {
 		return err
