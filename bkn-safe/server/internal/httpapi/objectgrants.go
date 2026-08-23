@@ -134,6 +134,36 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 //
 // Administrators skip both: admin-authz:grant is the platform-level authority
 // these two rules exist to protect.
+// restrictDelegatedRevoke stops a delegate from stripping another delegate — or
+// the creator — of `authorize` on the object.
+//
+// Revoking removes every p-line the accessor holds on the object, `authorize`
+// included, and restrictDelegatedOps forbids a delegate from granting it back.
+// Without this, anyone the platform trusts to share ONE object could silently
+// take the object away from the person who made it, and only a platform
+// administrator could undo it. That is the same reason `authorize` cannot be
+// handed out by a delegate, applied to the other direction: it is conferred by
+// an administrator, so only an administrator takes it away.
+//
+// Grants without `authorize` stay revocable — sharing you can undo is the whole
+// point of the owner surface.
+func restrictDelegatedRevoke(c *gin.Context, e *authz.Enforcer, ref resourceRef, accessorID string) bool {
+	held, err := e.ListObjectGrants(accessorID, ref.Type, ref.ID)
+	if err != nil {
+		serverError(c, err)
+		return false
+	}
+	for _, grant := range held {
+		for _, op := range grant.Operations {
+			if op == opAuthorize {
+				replyPublicError(c, http.StatusForbidden)
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func restrictDelegatedOps(c *gin.Context, e *authz.Enforcer, ref resourceRef, ops []string) bool {
 	for _, op := range ops {
 		if op == opAuthorize {
@@ -568,12 +598,21 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
+		// Search is mandatory. Holding `authorize` on one object says nothing about
+		// being allowed to page through the platform's accounts, and an empty
+		// search turned this into exactly that — the per-object gate below is not
+		// a bound on WHO is listed, only on who may ask.
+		search := strings.TrimSpace(c.Query("search"))
+		if search == "" {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
 		if _, ok := resolveGrantAuthority(c, e, "view", ref); !ok {
 			return
 		}
 		enabled := true
 		users, _, err := dir.ListUsers(c.Request.Context(), directory.UserListFilter{
-			Search: strings.TrimSpace(c.Query("search")),
+			Search: search,
 			// A disabled account cannot log in, so granting it access is a grant
 			// that does nothing; keep it out of the picker.
 			Enabled: &enabled,
@@ -731,6 +770,9 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		// taking access away can only narrow, never widen.
 		authority, ok := resolveGrantAuthority(c, e, "revoke", req.Resource)
 		if !ok {
+			return
+		}
+		if authority != authorityAdminAuthz && !restrictDelegatedRevoke(c, e, req.Resource, req.AccessorID) {
 			return
 		}
 		valid, err := catalogOpSet(db, req.Resource.Type)

@@ -563,7 +563,66 @@ func TestObjectGrantsOwnerDirectoryLookups(t *testing.T) {
 	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&resource_id=kn-mine&search=team", nil, "u-stranger"); w.Code != http.StatusForbidden {
 		t.Fatalf("non-owner picker: want 403, got %d", w.Code)
 	}
-	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network", nil, "u-owner"); w.Code != http.StatusBadRequest {
+	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&search=team", nil, "u-owner"); w.Code != http.StatusBadRequest {
 		t.Fatalf("picker without an object: want 400, got %d", w.Code)
+	}
+	// Holding authorize on one object is not a licence to page through the
+	// directory, so an empty search is refused rather than answered with a page.
+	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-owner"); w.Code != http.StatusBadRequest {
+		t.Fatalf("picker without a search term: want 400, got %d", w.Code)
+	}
+}
+
+// A delegate may take back what it shared, but must not strip another holder of
+// `authorize` — the creator included. Revoking removes every op the accessor has
+// on the object, and a delegate cannot grant `authorize` back, so without this
+// rule anyone trusted with one object could take it from the person who made it.
+func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
+	r, e := ownerGrantFixture(t)
+	// u-stranger is a network_builder: type-wide authorize on the whole type, no
+	// stake in this particular network.
+	mustGrantRole(t, e, "role-builder", "knowledge_network", "authorize")
+	mustGrantRole(t, e, "role-builder", "knowledge_network", "view_detail")
+	if err := e.AssignRole("u-stranger", "role-builder"); err != nil {
+		t.Fatal(err)
+	}
+
+	// The creator holds authorize on kn-mine and must survive.
+	w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-owner",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}, "u-stranger")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("stripping the creator: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-owner", "knowledge_network", "kn-mine", "authorize"); !ok {
+		t.Fatal("the creator lost authorize on its own object")
+	}
+
+	// A plain grantee stays revocable — undoing a share is the point.
+	if err := e.GrantObjectPermission("u-mate", "knowledge_network", "kn-mine", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}, "u-stranger")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("revoking a plain grantee: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	// An administrator is still able to do both.
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "u-owner",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}); w.Code != http.StatusNoContent {
+		t.Fatalf("administrator revoking an authorize holder: want 204, got %d", w.Code)
+	}
+}
+
+func mustGrantRole(t *testing.T, e *authz.Enforcer, roleID, resourceType, op string) {
+	t.Helper()
+	if err := e.GrantRolePermission(roleID, resourceType, "*", op); err != nil {
+		t.Fatal(err)
 	}
 }
