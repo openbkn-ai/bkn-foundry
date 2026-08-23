@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/hydra"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -28,6 +29,17 @@ func setupResourceDataHandlerTest(
 	t *testing.T,
 ) (*gin.Engine, *vmock.MockResourceService, *vmock.MockDatasetService, *vmock.MockResourceDataService) {
 	t.Helper()
+	// 取数要 query_data（#571）；这些用例验的是查询本身，统一放行。
+	return setupResourceDataHandlerTestWithPermission(t, nil)
+}
+
+// setupResourceDataHandlerTestWithPermission builds the same harness with the
+// query_data check answering permErr, so a test can drive the endpoint as a
+// caller who may see the table but not read its rows.
+func setupResourceDataHandlerTestWithPermission(
+	t *testing.T, permErr error,
+) (*gin.Engine, *vmock.MockResourceService, *vmock.MockDatasetService, *vmock.MockResourceDataService) {
+	t.Helper()
 
 	engine := gin.New()
 	engine.Use(gin.Recovery())
@@ -36,9 +48,8 @@ func setupResourceDataHandlerTest(
 	t.Cleanup(mockCtrl.Finish)
 
 	rs := vmock.NewMockResourceService(mockCtrl)
-	// 取数要 query_data（#571）；这些用例验的是查询本身，统一放行。
-	rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
+	rs.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), interfaces.OPERATION_TYPE_QUERY_DATA).
+		Return(permErr).AnyTimes()
 	ds := vmock.NewMockDatasetService(mockCtrl)
 	rds := vmock.NewMockResourceDataService(mockCtrl)
 	handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, ds, nil, nil, nil, rds)
@@ -274,6 +285,25 @@ func Test_ResourceDataRestHandler_GetResourceDataDoc(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 		assert.Contains(t, w.Body.String(), `"id":"doc-1"`)
+	})
+
+	t.Run("rejects document read without query_data", func(t *testing.T) {
+		// The document endpoint hands back row contents, so view_detail on the
+		// table is not enough on its own: it only says the caller may see the
+		// structure. Without this the split introduced by #801 decides nothing
+		// on this route even though the paged query already honours it.
+		engine, rs, _, _ := setupResourceDataHandlerTestWithPermission(t,
+			rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden).
+				WithErrorDetails("Access denied: insufficient permissions for[query_data]"))
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(sampleDatasetResource(), nil)
+
+		req := httptest.NewRequest(http.MethodGet, "/api/vega-backend/in/v1/resources/res-1/data/doc-1", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusForbidden, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "query_data")
 	})
 
 	t.Run("returns not found for nil document", func(t *testing.T) {
