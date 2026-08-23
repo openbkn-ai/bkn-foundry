@@ -138,11 +138,18 @@ fi
 HELM_GET_VALUES_EXIT=0
 
 CORE_SET_VALUES=()
+HELM_VALUES='{"opensearchExporter":{"pipeline":"bkn-trace-span-timestamp-v1"}}'
+if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
+    fail "installer must reconcile a Collector release with the unsupported pipeline value"
+else
+    ok
+fi
+
 HELM_VALUES='{"opensearchExporter":{"pipeline":""}}'
 if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
     ok
 else
-    fail "collector does not own the timestamp repair pipeline and should retain version-skip optimization"
+    fail "collector without the unsupported pipeline value should retain version-skip optimization"
 fi
 
 HELM_VALUES='{not-json}'

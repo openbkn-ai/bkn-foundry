@@ -1011,6 +1011,28 @@ _openbkn_agent_observability_profile_is_explicitly_volatile() {
     return 1
 }
 
+# Collector builds prior to the index-level timestamp repair passed a pipeline
+# option that the currently delivered Collector binary rejects at startup. Helm
+# still considers that release deployed, so chart-version equality alone would
+# leave it CrashLooping forever. Inspect the recorded values and reconcile it
+# once; empty/missing is the supported current state.
+_openbkn_otelcol_has_unsupported_pipeline() {
+    local namespace="$1"
+    local values
+    if ! values="$(helm get values otelcol-contrib -n "${namespace}" --all -o json 2>/dev/null)"; then
+        return 2
+    fi
+    python3 -c '
+import json, sys
+try:
+    values = json.load(sys.stdin)
+except (json.JSONDecodeError, TypeError):
+    sys.exit(2)
+pipeline = values.get("opensearchExporter", {}).get("pipeline")
+sys.exit(0 if isinstance(pipeline, str) and pipeline.strip() else 1)
+' <<<"${values}"
+}
+
 _openbkn_last_set_value() {
     local key="$1"
     shift
@@ -1050,6 +1072,20 @@ _openbkn_should_skip_upgrade() {
                 ;;
             *)
                 log_warn "Cannot read agent-observability Helm values; preserving the version-skip decision to avoid an unverified rollout."
+                return 0
+                ;;
+        esac
+    fi
+    if [[ "${release_name}" == "otelcol-contrib" ]]; then
+        _openbkn_otelcol_has_unsupported_pipeline "${namespace}"
+        case "$?" in
+            0)
+                log_info "Reconcile otelcol-contrib: installed values contain unsupported OpenSearch pipeline configuration."
+                return 1
+                ;;
+            1) ;;
+            *)
+                log_warn "Cannot read otelcol-contrib Helm values; preserving the version-skip decision to avoid an unverified rollout."
                 return 0
                 ;;
         esac

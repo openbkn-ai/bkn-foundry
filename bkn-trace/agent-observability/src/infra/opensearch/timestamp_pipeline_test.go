@@ -43,6 +43,9 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 			if !strings.Contains(content, `"index.default_pipeline":"bkn-trace-span-timestamp-v1"`) {
 				t.Fatalf("template must configure the timestamp repair pipeline: %s", content)
 			}
+			if !strings.Contains(content, `"priority":500`) {
+				t.Fatalf("template must take precedence over generic SS4O templates: %s", content)
+			}
 		case r.Method == http.MethodPut && r.URL.Path == "/ss4o_traces-default-namespace/_settings":
 			w.WriteHeader(http.StatusNotFound)
 			return
