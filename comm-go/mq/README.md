@@ -5,11 +5,11 @@ go-msq is a simple wrapper library for several kinds of message queue
 The purpose of the wrapper is to simplify the message queue api, and the simplified version of apis are used in following manner
 
 ## Functions
-The core functions are send messages to message queue and consume messages those recieve from message queue. In terms of use, some functional scenarios are also supported. The function summary is as follows:
+The core functions are send messages to message queue and consume messages those receive from message queue. In terms of use, some functional scenarios are also supported. The function summary is as follows:
 function|describe
 --|--
 publish|Send messages to message queue
-subscribe|Consume messages those recieve from message queue
+subscribe|Consume messages those receive from message queue
 SASL|Simple Authentication and Security Layer supported, but only apply for kafka. Currently support `PLAIN`, `SCRAM-SHA-256`, `SCRAM-SHA-512`.
 
 ## Message Queue Versions
@@ -110,7 +110,7 @@ if err != nil {
 ```
 
 ## Integrated Development Enviroment
-go-msq is a private repository, so you needed to configure your development enviroment follow the steps below:
+go-msq is a private repository, so you needed to configure your development environment follow the steps below:
 1. Set go env
 ```bash
 go env -w GO111MODULE=on
