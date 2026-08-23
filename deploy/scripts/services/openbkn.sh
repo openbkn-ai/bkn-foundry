@@ -991,7 +991,7 @@ durable = (
     and core.get("projection", {}).get("enabled") is True
     and evidence.get("store") == "opensearch"
     and bool(evidence.get("ingestAuth", {}).get("existingSecret"))
-    and opensearch.get("traceTimestampPipeline") == "bkn-trace-span-timestamp-v1"
+    and bool(opensearch.get("traceTimestampPipeline"))
 )
 sys.exit(0 if durable else 1)
 ' <<<"${values}"
@@ -1021,12 +1021,6 @@ sys.exit(0 if pipeline == "bkn-trace-span-timestamp-v1" else 1)
 _openbkn_collector_pipeline_is_explicitly_overridden() {
     local value
     value="$(_openbkn_last_set_value "opensearchExporter.pipeline" "${CORE_SET_VALUES[@]-}")" || return 1
-    [[ "${value}" != "bkn-trace-span-timestamp-v1" ]]
-}
-
-_openbkn_agent_observability_pipeline_is_explicitly_overridden() {
-    local value
-    value="$(_openbkn_last_set_value "opensearch.traceTimestampPipeline" "${CORE_SET_VALUES[@]-}")" || return 1
     [[ "${value}" != "bkn-trace-span-timestamp-v1" ]]
 }
 
@@ -1078,8 +1072,7 @@ _openbkn_should_skip_upgrade() {
         case "$?" in
             0) ;;
             1)
-                if _openbkn_agent_observability_profile_is_explicitly_volatile ||
-                   _openbkn_agent_observability_pipeline_is_explicitly_overridden; then
+                if _openbkn_agent_observability_profile_is_explicitly_volatile; then
                     return 0
                 fi
                 log_info "Reconcile agent-observability: installed runtime profile is not durable."
