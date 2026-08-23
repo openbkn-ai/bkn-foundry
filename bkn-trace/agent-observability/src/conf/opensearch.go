@@ -11,12 +11,13 @@ import (
 )
 
 type OpenSearchConfig struct {
-	Endpoint      string
-	TraceIndex    string
-	EvidenceIndex string
-	LogIndex      string
-	Timeout       time.Duration
-	Auth          OpenSearchAuthConfig
+	Endpoint               string
+	TraceIndex             string
+	EvidenceIndex          string
+	LogIndex               string
+	TraceTimestampPipeline string
+	Timeout                time.Duration
+	Auth                   OpenSearchAuthConfig
 }
 
 type OpenSearchAuthConfig struct {
@@ -47,11 +48,12 @@ func NewOpenSearchConfig() OpenSearchConfig {
 	}
 
 	return OpenSearchConfig{
-		Endpoint:      endpoint,
-		TraceIndex:    traceIndex,
-		EvidenceIndex: evidenceIndex,
-		LogIndex:      logIndex,
-		Timeout:       3 * time.Second,
+		Endpoint:               endpoint,
+		TraceIndex:             traceIndex,
+		EvidenceIndex:          evidenceIndex,
+		LogIndex:               logIndex,
+		TraceTimestampPipeline: os.Getenv("OPENSEARCH_TRACE_TIMESTAMP_PIPELINE"),
+		Timeout:                3 * time.Second,
 		Auth: OpenSearchAuthConfig{
 			Enabled:  os.Getenv("OPENSEARCH_AUTH_ENABLED") == "true",
 			Username: os.Getenv("OPENSEARCH_AUTH_USERNAME"),
