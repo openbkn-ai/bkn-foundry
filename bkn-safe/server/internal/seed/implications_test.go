@@ -185,3 +185,64 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 		t.Fatalf("audit detail does not name the operations: %s", got.Detail)
 	}
 }
+
+// TestBackfillAuditLabelsMatchTheSurfaceThatShowsTheGrant pins the vocabulary
+// per subject kind. An audit row naming a surface where the grant is absent is
+// worse than no row: it sends the auditor looking in a list that by
+// construction will never contain it. GET /object-grants excludes role
+// subjects, the public accessor and type-wide "type:*" rows alike.
+func TestBackfillAuditLabelsMatchTheSurfaceThatShowsTheGrant(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if err := db.Create(&model.Role{ID: "role-x", Name: "自定义角色", Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	// One row of each shape, all holding the management verb without the
+	// visibility it implies.
+	if err := e.GrantObjectPermission("u-1", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission("role-x", "catalog", "*", "resource_manage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantObjectPermission(authz.PublicAccessorID, "catalog", "c2", "resource_manage"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("re-apply: %v", err)
+	}
+
+	trail := audit.New(db)
+	for _, tc := range []struct {
+		name             string
+		resource, action string
+		targetID         string
+	}{
+		{"user object grant", "object-grants", "grant", "c1"},
+		{"role permission", "roles", "grant_permission", "role-x"},
+		{"public accessor is not an object grant", "policies", "grant", "c2"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			entries, total, err := trail.List(t.Context(), audit.Filter{
+				Resource: tc.resource, Action: tc.action, TargetID: tc.targetID,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if total != 1 {
+				t.Fatalf("rows = %d, want 1", total)
+			}
+			if entries[0].ActorID != "system:seed" {
+				t.Fatalf("actor = %q", entries[0].ActorID)
+			}
+		})
+	}
+}
