@@ -12,16 +12,19 @@
 package seed
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -127,7 +130,7 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
 	}
-	if err := backfillImpliedOperations(enforcer); err != nil {
+	if err := backfillImpliedOperations(db, enforcer); err != nil {
 		return fmt.Errorf("backfill implied operations: %w", err)
 	}
 	if err := seedRoleBindings(enforcer); err != nil {
@@ -410,11 +413,12 @@ func validateImplications(c catalog) error {
 // Deliberately NOT symmetric with revocation: this only ever adds. A row that
 // an administrator has since narrowed on purpose is repaired back to a usable
 // shape rather than left as a permission that answers 403 everywhere.
-func backfillImpliedOperations(enforcer *authz.Enforcer) error {
+func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 	var c catalog
 	if err := json.Unmarshal(catalogJSON, &c); err != nil {
 		return err
 	}
+	trail := audit.New(db)
 	for _, rt := range c.ResourceTypes {
 		implies := make(map[string][]string, len(rt.Operations))
 		for _, op := range rt.Operations {
@@ -441,14 +445,53 @@ func backfillImpliedOperations(enforcer *authz.Enforcer) error {
 				if err != nil {
 					return err
 				}
-				if added > 0 {
-					slog.Info("backfilled the operation an existing grant implies",
-						"resource_type", rt.ID, "holder", holder, "implied", implied, "rows", added)
+				if len(added) == 0 {
+					continue
 				}
+				slog.Info("backfilled the operation an existing grant implies",
+					"resource_type", rt.ID, "holder", holder, "implied", implied, "rows", len(added))
+				recordBackfillAudit(trail, rt.ID, holder, implied, added)
 			}
 		}
 	}
 	return nil
+}
+
+// recordBackfillAudit writes one audit row per repaired grant, under the same
+// resource/action the console shows for an operator-issued object grant. A
+// permission that appears without anyone having clicked anything is exactly the
+// change an auditor asking "why does this account see this catalog" needs to
+// find, and a line in the pod log is not somewhere they can look.
+//
+// Failures are logged and swallowed: auditing must never be the reason a
+// deployment fails to start.
+func recordBackfillAudit(trail *audit.Store, resourceType, holder, implied string,
+	grants []authz.BackfilledGrant) {
+
+	for _, g := range grants {
+		detail, err := json.Marshal(map[string]any{
+			"accessor_id": g.AccessorID,
+			"resource":    map[string]string{"type": resourceType, "id": g.ResourceID},
+			"operations":  []string{implied},
+			"_reason":     "implied by " + holder,
+		})
+		if err != nil {
+			slog.Error("seed: could not encode backfill audit detail", "err", err)
+			continue
+		}
+		if err := trail.Record(context.Background(), audit.Entry{
+			ActorID:  "system:seed",
+			Method:   "SYSTEM",
+			Resource: "object-grants",
+			Action:   "grant",
+			TargetID: g.ResourceID,
+			Detail:   string(detail),
+			Status:   http.StatusOK,
+		}); err != nil {
+			slog.Error("seed: backfill audit record failed",
+				"resource_type", resourceType, "resource_id", g.ResourceID, "err", err)
+		}
+	}
 }
 
 func seedGrants(enforcer *authz.Enforcer) error {
