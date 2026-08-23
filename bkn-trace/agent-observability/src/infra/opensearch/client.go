@@ -106,9 +106,7 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 	if traceIndex == "" {
 		return errors.New("trace index is required when trace timestamp pipeline is enabled")
 	}
-	if err := c.deleteLegacyTraceTimestampTemplate(ctx); err != nil {
-		return err
-	}
+	c.deleteLegacyTraceTimestampTemplate(ctx)
 	body, err := json.Marshal(map[string]any{
 		"description": "Repair zero @timestamp on OpenTelemetry SS4O trace spans from startTime.",
 		"processors": []map[string]any{{
@@ -150,27 +148,14 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 		return fmt.Errorf("encode trace index default pipeline setting: %w", err)
 	}
 	settingsURL := fmt.Sprintf("%s/%s/_settings", c.baseURL, url.PathEscape(traceIndex))
-	settingsRequest, err := http.NewRequestWithContext(ctx, http.MethodPut, settingsURL, bytes.NewReader(indexSettingsBody))
+	settingsStatus, settingsBody, err := c.putIndexSettings(ctx, settingsURL, indexSettingsBody)
 	if err != nil {
-		return fmt.Errorf("create trace index default pipeline setting request: %w", err)
-	}
-	settingsRequest.Header.Set("Content-Type", "application/json")
-	if c.auth.Enabled {
-		settingsRequest.SetBasicAuth(c.auth.Username, c.auth.Password)
-	}
-	settingsResponse, err := c.httpClient.Do(settingsRequest)
-	if err != nil {
-		return fmt.Errorf("execute trace index default pipeline setting request: %w", err)
-	}
-	defer func() { _ = settingsResponse.Body.Close() }()
-	settingsBody, err := io.ReadAll(settingsResponse.Body)
-	if err != nil {
-		return fmt.Errorf("read trace index default pipeline setting response: %w", err)
+		return err
 	}
 	// On a fresh installation create the exact Trace index before the Collector
 	// sends its first document. This preserves any generic SS4O template's
 	// mappings while avoiding a second, higher-priority settings-only template.
-	if settingsResponse.StatusCode == http.StatusNotFound {
+	if settingsStatus == http.StatusNotFound {
 		indexDefinition, err := json.Marshal(map[string]any{"settings": indexSettings})
 		if err != nil {
 			return fmt.Errorf("encode trace index default pipeline definition: %w", err)
@@ -178,10 +163,17 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 		if err := c.EnsureIndex(ctx, traceIndex, indexDefinition); err != nil {
 			return fmt.Errorf("create trace index default pipeline: %w", err)
 		}
+		settingsStatus, settingsBody, err = c.putIndexSettings(ctx, settingsURL, indexSettingsBody)
+		if err != nil {
+			return err
+		}
+		if settingsStatus < http.StatusOK || settingsStatus >= http.StatusMultipleChoices {
+			return fmt.Errorf("opensearch trace index default pipeline retry failed with status %d: %s", settingsStatus, string(settingsBody))
+		}
 		return nil
 	}
-	if settingsResponse.StatusCode < http.StatusOK || settingsResponse.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("opensearch trace index default pipeline setting failed with status %d: %s", settingsResponse.StatusCode, string(settingsBody))
+	if settingsStatus < http.StatusOK || settingsStatus >= http.StatusMultipleChoices {
+		return fmt.Errorf("opensearch trace index default pipeline setting failed with status %d: %s", settingsStatus, string(settingsBody))
 	}
 	return nil
 }
@@ -189,28 +181,46 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 // deleteLegacyTraceTimestampTemplate removes the settings-only template used
 // by the first index-level repair implementation. It could suppress matching
 // SS4O mappings because OpenSearch applies only the highest-priority template.
-func (c *Client) deleteLegacyTraceTimestampTemplate(ctx context.Context) error {
+func (c *Client) deleteLegacyTraceTimestampTemplate(ctx context.Context) {
 	requestURL := fmt.Sprintf("%s/_index_template/bkn-trace-timestamp-default", c.baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, requestURL, nil)
 	if err != nil {
-		return fmt.Errorf("create legacy trace timestamp template delete request: %w", err)
+		return
 	}
 	if c.auth.Enabled {
 		req.SetBasicAuth(c.auth.Username, c.auth.Password)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("execute legacy trace timestamp template delete request: %w", err)
+		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read legacy trace timestamp template delete response: %w", err)
+		return
 	}
-	if resp.StatusCode == http.StatusNotFound || (resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices) {
-		return nil
+	_ = body
+}
+
+func (c *Client) putIndexSettings(ctx context.Context, requestURL string, body []byte) (int, []byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, fmt.Errorf("create trace index default pipeline setting request: %w", err)
 	}
-	return fmt.Errorf("delete legacy trace timestamp template failed with status %d: %s", resp.StatusCode, string(body))
+	req.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return 0, nil, fmt.Errorf("execute trace index default pipeline setting request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, fmt.Errorf("read trace index default pipeline setting response: %w", err)
+	}
+	return resp.StatusCode, responseBody, nil
 }
 
 func (c *Client) Search(ctx context.Context, index string, query []byte) ([]byte, error) {
