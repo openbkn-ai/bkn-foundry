@@ -191,7 +191,16 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			return
 		}
 		auditPolicyWriteShape(c, db, "POST", req.AccessorID, req.Resource, req.Operations)
-		for _, op := range req.Operations {
+		// Expand implications here too (#1121). This route is the one a service
+		// calls directly, so leaving it out would keep the very bypass the rule
+		// exists to close: a caller could still write catalog.resource_manage
+		// alone and produce a grant that reaches nothing.
+		ops, err := impliedOps(db.WithContext(c.Request.Context()), req.Resource.Type, req.Operations)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		for _, op := range ops {
 			if err := e.GrantObjectPermission(req.AccessorID, req.Resource.Type, req.Resource.ID, op); err != nil {
 				serverError(c, err)
 				return

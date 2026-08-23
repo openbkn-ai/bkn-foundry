@@ -174,3 +174,27 @@ func TestImpliedOpsAndImpliedBy(t *testing.T) {
 		t.Fatalf("no-implication type: %+v", got)
 	}
 }
+
+// TestInternalPolicyGrantExpandsImplications covers the third write face. It is
+// the one a service calls directly, and it was missed on the first pass: found
+// by driving a real deployment, where a grant written through it came back
+// carrying resource_manage alone.
+func TestInternalPolicyGrantExpandsImplications(t *testing.T) {
+	r, e, db, _ := newAdminServer(t)
+	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
+	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+
+	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/policies", map[string]any{
+		"accessor_id": "svc-created",
+		"resource":    map[string]any{"type": "catalog", "id": "c9"},
+		"operations":  []string{"resource_manage"},
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("grant: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	for _, op := range []string{"resource_manage", "view_detail"} {
+		if ok, _ := e.Check("svc-created", "catalog", "c9", op); !ok {
+			t.Fatalf("%s not granted", op)
+		}
+	}
+}
