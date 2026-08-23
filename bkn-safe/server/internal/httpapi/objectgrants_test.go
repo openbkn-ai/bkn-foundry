@@ -611,6 +611,19 @@ func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
 		t.Fatalf("revoking a plain grantee: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 
+	// The grant side erases just as thoroughly: POST replaces the whole op set, so
+	// writing view_detail onto the creator would drop its authorize in one move.
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-owner",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("overwriting the creator's grant: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-owner", "knowledge_network", "kn-mine", "authorize"); !ok {
+		t.Fatal("the creator lost authorize through the grant path")
+	}
+
 	// An administrator is still able to do both.
 	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
 		"accessor_id": "u-owner",
