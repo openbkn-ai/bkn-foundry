@@ -6,10 +6,12 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -126,9 +128,11 @@ func TestRolePermissionImplicationDirections(t *testing.T) {
 		t.Fatal("revoking resource_manage took view_detail with it")
 	}
 
-	// The other direction is not symmetric, deliberately: revoking view_detail
-	// takes resource_manage with it, because the alternative is to leave a verb
-	// whose every route answers 403 — the exact grant #1121 exists to prevent.
+	// Revoking view_detail while resource_manage is held does NOT remove it: the
+	// operation is still implied, and dropping it would leave a verb whose every
+	// route answers 403. This is what the whole-set object-grant surface already
+	// does for the same edit, and it makes the outcome independent of the order
+	// a console sends its pair of requests in — see the sequence below.
 	if err := svc.GrantRolePermission(ctx, "r-1", "catalog", "c1", "resource_manage"); err != nil {
 		t.Fatalf("re-grant: %v", err)
 	}
@@ -136,9 +140,105 @@ func TestRolePermissionImplicationDirections(t *testing.T) {
 		t.Fatalf("revoke view_detail: %v", err)
 	}
 	for _, op := range []string{"view_detail", "resource_manage"} {
-		if ok, _ := e.Check("r-1", "catalog", "c1", op); ok {
-			t.Fatalf("%s survived the view_detail revoke", op)
+		if ok, _ := e.Check("r-1", "catalog", "c1", op); !ok {
+			t.Fatalf("%s was dropped by a revoke that had to be refused", op)
 		}
+	}
+
+	// Revoking the implying verb first is honoured immediately, and view_detail
+	// can then be revoked too, because nothing implies it any more.
+	if err := svc.RevokeRolePermission(ctx, "r-1", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatalf("revoke resource_manage: %v", err)
+	}
+	if err := svc.RevokeRolePermission(ctx, "r-1", "catalog", "c1", "view_detail"); err != nil {
+		t.Fatalf("revoke view_detail after: %v", err)
+	}
+	for _, op := range []string{"view_detail", "resource_manage"} {
+		if ok, _ := e.Check("r-1", "catalog", "c1", op); ok {
+			t.Fatalf("%s survived an unblocked revoke", op)
+		}
+	}
+}
+
+// TestRolePermissionSaveOrderDoesNotChangeTheResult is the case review raised:
+// a console saving a permission diff as "grant resource_manage" plus "revoke
+// view_detail" must not end up with neither, silently discarding the grant it
+// just made. Both orders must land on the same held set.
+func TestRolePermissionSaveOrderDoesNotChangeTheResult(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		revokeFirst bool
+	}{
+		{"grant then revoke", false},
+		{"revoke then grant", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, e, db, _ := newAdminServer(t)
+			seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
+			seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+			if err := db.Create(&model.Role{ID: "r-2", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
+				t.Fatal(err)
+			}
+			svc := newAdminWriteServices(e, db)
+			ctx := t.Context()
+
+			grant := func() error {
+				return svc.GrantRolePermission(ctx, "r-2", "catalog", "c1", "resource_manage")
+			}
+			revoke := func() error {
+				return svc.RevokeRolePermission(ctx, "r-2", "catalog", "c1", "view_detail")
+			}
+			steps := []func() error{grant, revoke}
+			if tc.revokeFirst {
+				steps = []func() error{revoke, grant}
+			}
+			for i, step := range steps {
+				if err := step(); err != nil {
+					t.Fatalf("step %d: %v", i, err)
+				}
+			}
+			for _, op := range []string{"resource_manage", "view_detail"} {
+				if ok, _ := e.Check("r-2", "catalog", "c1", op); !ok {
+					t.Fatalf("%s missing after %s", op, tc.name)
+				}
+			}
+		})
+	}
+}
+
+// TestObjectGrantAuditNamesTheImpliedOperation: the audit Detail snapshots the
+// request body, so an implied operation would otherwise land on the accessor
+// with nothing in the trail saying where it came from.
+func TestObjectGrantAuditNamesTheImpliedOperation(t *testing.T) {
+	r, _, db, users := newAdminServer(t)
+	if err := users.CreateLocalUser(t.Context(),
+		&model.User{ID: "u-9", Account: "carol", Name: "Carol", Enabled: true}, "pw-init0"); err != nil {
+		t.Fatal(err)
+	}
+	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
+	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+
+	w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "u-9",
+		"resource":    map[string]any{"type": "catalog", "id": "c7"},
+		"operations":  []string{"resource_manage"},
+	})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("grant: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+
+	entries, total, err := audit.New(db).List(t.Context(), audit.Filter{
+		Resource: "object-grants", Action: "grant", TargetID: "c7",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("audit rows = %d, want 1", total)
+	}
+	if !strings.Contains(entries[0].Detail, "implied_operations") ||
+		!strings.Contains(entries[0].Detail, "view_detail") {
+		t.Fatalf("audit detail does not name the implied operation: %s", entries[0].Detail)
 	}
 }
 

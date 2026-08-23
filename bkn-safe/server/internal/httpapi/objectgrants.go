@@ -287,6 +287,15 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 			serverError(c, err)
 			return
 		}
+		// The audit Detail snapshots the request body, so without this the trail
+		// would say only what was asked for and an implied operation would appear
+		// on the accessor with nothing recording where it came from — the one
+		// question ("why can this account see this catalog?") the trail exists to
+		// answer. The seed's back-fill records its own repairs for the same
+		// reason; this keeps the two paths saying the same thing.
+		if implied := addedOps(req.Operations, ops); len(implied) > 0 {
+			setAuditOutcome(c, map[string]any{"implied_operations": implied})
+		}
 		if err := e.SetObjectPermissions(req.AccessorID, req.Resource.Type, req.Resource.ID, ops); err != nil {
 			serverError(c, err)
 			return

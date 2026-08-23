@@ -96,3 +96,19 @@ func closure(ops []string, graph map[string][]string) []string {
 	}
 	return out
 }
+
+// addedOps returns the members of expanded that were not in requested, in
+// expanded's order — what the implication added on top of what was asked for.
+func addedOps(requested, expanded []string) []string {
+	asked := make(map[string]bool, len(requested))
+	for _, op := range requested {
+		asked[op] = true
+	}
+	var out []string
+	for _, op := range expanded {
+		if !asked[op] {
+			out = append(out, op)
+		}
+	}
+	return out
+}
