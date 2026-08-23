@@ -93,6 +93,52 @@ func NewWithHTTPClient(baseURL string, auth AuthConfig, httpClient *http.Client)
 	}
 }
 
+// EnsureTraceTimestampPipeline installs the OpenSearch-side compatibility
+// repair for the Collector's SS4O trace encoder. The affected upstream encoder
+// serializes @timestamp as Go's zero time while retaining span startTime. The
+// condition deliberately requires a traceId, so logs never enter this path.
+func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	body, err := json.Marshal(map[string]any{
+		"description": "Repair zero @timestamp on OpenTelemetry SS4O trace spans from startTime.",
+		"processors": []map[string]any{{
+			"script": map[string]any{
+				"lang":   "painless",
+				"if":     "ctx.containsKey('traceId') && ctx.containsKey('startTime') && ctx.startTime != null && (!ctx.containsKey('@timestamp') || ctx['@timestamp'] == null || ctx['@timestamp'] == '0001-01-01T00:00:00Z')",
+				"source": "ctx['@timestamp'] = ctx.startTime",
+			},
+		}},
+	})
+	if err != nil {
+		return fmt.Errorf("encode trace timestamp pipeline: %w", err)
+	}
+	requestURL := fmt.Sprintf("%s/_ingest/pipeline/%s", c.baseURL, url.PathEscape(name))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, requestURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create trace timestamp pipeline request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute trace timestamp pipeline request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read trace timestamp pipeline response: %w", err)
+	}
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("opensearch trace timestamp pipeline failed with status %d: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
 func (c *Client) Search(ctx context.Context, index string, query []byte) ([]byte, error) {
 	url := fmt.Sprintf("%s/%s/_search", c.baseURL, strings.TrimLeft(index, "/"))
 

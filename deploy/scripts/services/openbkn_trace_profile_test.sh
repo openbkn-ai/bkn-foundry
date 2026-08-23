@@ -16,6 +16,7 @@ not_contains() {
     if [[ "${value}" != *"${unexpected}"* ]]; then ok; else fail "${label}: unexpected [${unexpected}] in [${value}]"; fi
 }
 log_info() { :; }
+log_warn() { :; }
 get_set_value() {
     local key="$1"
     shift
@@ -55,9 +56,162 @@ contains "AO uses durable Core" "${ao_sets}" "core.store=mariadb"
 contains "AO requires Core DSN Secret" "${ao_sets}" "core.mariadb.existingSecret=bkn-trace-core-mariadb"
 contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
+contains "AO creates the Collector timestamp repair pipeline first" "${ao_sets}" "opensearch.traceTimestampPipeline=bkn-trace-span-timestamp-v1"
 not_contains "AO leaves index initialization to runtime" "${ao_sets}" "evidence.indexManagement"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
+
+# The installer must not silently retain Chart defaults when the chart version
+# is unchanged. That is precisely when a previously direct-installed release
+# would otherwise keep its volatile Core store through a later normal install.
+should_skip_upgrade_same_chart_version() { return 0; }
+HELM_VALUES=''
+HELM_GET_VALUES_EXIT=0
+helm() {
+    if [[ "$*" == "get values agent-observability -n openbkn --all -o json" || "$*" == "get values otelcol-contrib -n openbkn --all -o json" ]]; then
+        if [[ "${HELM_GET_VALUES_EXIT}" -ne 0 ]]; then
+            return "${HELM_GET_VALUES_EXIT}"
+        fi
+        printf '%s\n' "${HELM_VALUES}"
+        return 0
+    fi
+    return 0
+}
+HELM_VALUES='{"core":{"store":"memory","projection":{"enabled":false}},"evidence":{"store":"memory"}}'
+if ! declare -F _openbkn_should_skip_upgrade >/dev/null; then
+    fail "installer must expose a runtime-profile reconciliation guard"
+elif _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "installer must reconcile a volatile agent-observability runtime profile"
+else
+    ok
+fi
+
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":""}}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "installer must reconcile a profile without the evidence ingest Secret"
+else
+    ok
+fi
+
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "installer must reconcile a durable profile that lacks the timestamp pipeline"
+else
+    ok
+fi
+
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1"}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    ok
+else
+    fail "installer should retain the version-skip optimization for a fully reconciled runtime profile"
+fi
+
+CORE_SET_VALUES=("core.store=memory")
+HELM_VALUES='{"core":{"store":"memory","projection":{"enabled":false}},"evidence":{"store":"memory"}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    ok
+else
+    fail "an explicit volatile override must retain the normal version-skip decision"
+fi
+CORE_SET_VALUES=("opensearch.traceTimestampPipeline=custom-trace-pipeline")
+HELM_VALUES='{"core":{"store":"memory","projection":{"enabled":false}},"evidence":{"store":"memory"},"opensearch":{"traceTimestampPipeline":"custom-trace-pipeline"}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "a custom timestamp pipeline must not bypass durable Core profile reconciliation"
+else
+    ok
+fi
+CORE_SET_VALUES=("")
+
+HELM_VALUES='{not-json}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    ok
+else
+    fail "invalid Helm values must preserve the version-skip decision"
+fi
+HELM_GET_VALUES_EXIT=1
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    ok
+else
+    fail "a failed Helm values read must preserve the version-skip decision"
+fi
+HELM_GET_VALUES_EXIT=0
+
+CORE_SET_VALUES=()
+HELM_VALUES='{"opensearchExporter":{"pipeline":""}}'
+if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
+    fail "installer must reconcile a Collector without the timestamp repair pipeline"
+else
+    ok
+fi
+
+HELM_VALUES='{"opensearchExporter":{"pipeline":"bkn-trace-span-timestamp-v1"}}'
+if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
+    ok
+else
+    fail "installer should retain the version-skip optimization for a reconciled Collector"
+fi
+
+HELM_VALUES='{not-json}'
+if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
+    ok
+else
+    fail "invalid Collector Helm values must preserve the version-skip decision"
+fi
+
+CORE_SET_VALUES=("core.store=memory" "core.store=mariadb")
+HELM_VALUES='{"core":{"store":"memory","projection":{"enabled":false}},"evidence":{"store":"memory"}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "the last explicit --set value must decide whether a volatile profile is intentional"
+else
+    ok
+fi
+CORE_SET_VALUES=("")
+
+# Both installer paths must use the reconciliation guard. Keep this test
+# cluster-free by stubbing only the final Helm upgrade operation.
+UPGRADE_CALLS=0
+CONFIG_YAML_PATH="${CONFIG_REGISTRY_FILE}"
+ORIGINAL_RELEASE_EXTRA_SETS="$(declare -f _openbkn_release_extra_sets)"
+_openbkn_helm_upgrade_release() { UPGRADE_CALLS=$((UPGRADE_CALLS + 1)); }
+_openbkn_release_extra_sets() { CORE_RELEASE_EXTRA_SETS=("test.profile=true"); CORE_RELEASE_EXTRA_SET_STRINGS=(""); }
+_openbkn_resolve_release_version() { printf '%s' '0.1.4'; }
+_openbkn_resolve_chart_name() { printf '%s' "$1"; }
+build_chart_ref() { printf '%s' "$1/$2"; }
+find_cached_chart_tgz_by_version() { printf '%s' '/tmp/agent-observability-0.1.4.tgz'; }
+HELM_VALUES='{"core":{"store":"memory","projection":{"enabled":false}},"evidence":{"store":"memory"}}'
+_install_openbkn_release_local agent-observability /tmp openbkn
+if [[ "${UPGRADE_CALLS}" -eq 1 ]]; then
+    ok
+else
+    fail "local installer must upgrade a volatile runtime profile"
+fi
+
+_install_openbkn_release_repo agent-observability openbkn openbkn 0.1.4
+if [[ "${UPGRADE_CALLS}" -eq 2 ]]; then
+    ok
+else
+    fail "repository installer must upgrade a volatile runtime profile"
+fi
+
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1"}}'
+_install_openbkn_release_local agent-observability /tmp openbkn
+_install_openbkn_release_repo agent-observability openbkn openbkn 0.1.4
+if [[ "${UPGRADE_CALLS}" -eq 2 ]]; then
+    ok
+else
+    fail "durable runtime profiles must skip both installer paths"
+fi
+
+HELM_VALUES='{not-json}'
+_install_openbkn_release_local agent-observability /tmp openbkn
+_install_openbkn_release_repo agent-observability openbkn openbkn 0.1.4
+if [[ "${UPGRADE_CALLS}" -eq 2 ]]; then
+    ok
+else
+    fail "unreadable Helm values must not roll out either installer path"
+fi
+eval "${ORIGINAL_RELEASE_EXTRA_SETS}"
 
 cat >"${CONFIG_REGISTRY_FILE}" <<'EOF'
 depServices:
@@ -77,6 +231,7 @@ not_contains "secure AO never forwards an OpenSearch password to Helm" "${secure
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_trace_profile_sets otelcol-contrib
 secure_collector_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "Collector routes spans through the timestamp repair pipeline" "${secure_collector_sets}" "opensearchExporter.pipeline=bkn-trace-span-timestamp-v1"
 contains "secure Collector uses the OpenSearch endpoint from config" "${secure_collector_sets}" "opensearchExporter.http.endpoint=https://opensearch-secure.resource.svc.cluster.local:9200"
 contains "secure Collector verifies the OpenSearch TLS peer" "${secure_collector_sets}" "opensearchExporter.http.tls.insecure=false"
 contains "secure Collector enables OpenSearch auth" "${secure_collector_sets}" "opensearchExporter.auth.enabled=true"

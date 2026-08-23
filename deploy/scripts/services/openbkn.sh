@@ -476,6 +476,7 @@ _openbkn_trace_profile_sets() {
                 "evidence.ingestAuth.secretKey=token"
                 "opensearch.traceIndex=ss4o_traces-default-namespace"
                 "opensearch.logIndex=ss4o_logs-default-namespace"
+                "opensearch.traceTimestampPipeline=bkn-trace-span-timestamp-v1"
             )
             if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
                 CORE_RELEASE_EXTRA_SETS+=(
@@ -486,6 +487,9 @@ _openbkn_trace_profile_sets() {
             fi
             ;;
         otelcol-contrib)
+            CORE_RELEASE_EXTRA_SETS+=(
+                "opensearchExporter.pipeline=bkn-trace-span-timestamp-v1"
+            )
             if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
                 CORE_RELEASE_EXTRA_SETS+=(
                     "opensearchExporter.http.endpoint=$(_openbkn_trace_opensearch_endpoint)"
@@ -962,6 +966,143 @@ _openbkn_release_extra_sets() {
     fi
 }
 
+# Chart version equality alone is not sufficient for agent-observability: the
+# product installer supplies its durable Trace profile as Helm values, while
+# the standalone chart deliberately defaults to in-memory stores. Reconcile a
+# release that was installed directly (or before the profile existed) so a
+# later normal install cannot leave conversations volatile after a Pod restart.
+_openbkn_agent_observability_has_durable_profile() {
+    local namespace="$1"
+    local values
+    if ! values="$(helm get values agent-observability -n "${namespace}" --all -o json 2>/dev/null)"; then
+        return 2
+    fi
+    python3 -c '
+import json, sys
+try:
+    values = json.load(sys.stdin)
+except (json.JSONDecodeError, TypeError):
+    sys.exit(2)
+core = values.get("core", {})
+evidence = values.get("evidence", {})
+opensearch = values.get("opensearch", {})
+durable = (
+    core.get("store") == "mariadb"
+    and core.get("projection", {}).get("enabled") is True
+    and evidence.get("store") == "opensearch"
+    and bool(evidence.get("ingestAuth", {}).get("existingSecret"))
+    and bool(opensearch.get("traceTimestampPipeline"))
+)
+sys.exit(0 if durable else 1)
+' <<<"${values}"
+}
+
+# The Collector chart has an independent same-version skip. Reconcile its
+# rendered values as well: otherwise an already-installed Collector never
+# receives the trace timestamp pipeline even though agent-observability has
+# created it successfully.
+_openbkn_collector_has_trace_timestamp_pipeline() {
+    local namespace="$1"
+    local values
+    if ! values="$(helm get values otelcol-contrib -n "${namespace}" --all -o json 2>/dev/null)"; then
+        return 2
+    fi
+    python3 -c '
+import json, sys
+try:
+    values = json.load(sys.stdin)
+except (json.JSONDecodeError, TypeError):
+    sys.exit(2)
+pipeline = values.get("opensearchExporter", {}).get("pipeline")
+sys.exit(0 if pipeline == "bkn-trace-span-timestamp-v1" else 1)
+' <<<"${values}"
+}
+
+_openbkn_collector_pipeline_is_explicitly_overridden() {
+    local value
+    value="$(_openbkn_last_set_value "opensearchExporter.pipeline" "${CORE_SET_VALUES[@]-}")" || return 1
+    [[ "${value}" != "bkn-trace-span-timestamp-v1" ]]
+}
+
+_openbkn_agent_observability_profile_is_explicitly_volatile() {
+    local key value
+    local -a set_values=("${CORE_SET_VALUES[@]-}")
+    for key in core.store core.projection.enabled evidence.store evidence.ingestAuth.existingSecret; do
+        value="$(_openbkn_last_set_value "${key}" "${set_values[@]}")" || continue
+        case "${key}:${value}" in
+            core.store:mariadb|core.projection.enabled:true|evidence.store:opensearch)
+                ;;
+            evidence.ingestAuth.existingSecret:*)
+                [[ -n "${value}" ]] || return 0
+                ;;
+            *) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+_openbkn_last_set_value() {
+    local key="$1"
+    shift
+    local item value="" found=false
+    for item in "$@"; do
+        if [[ "${item}" == "${key}="* ]]; then
+            value="${item#*=}"
+            found=true
+        fi
+    done
+    if [[ "${found}" == true ]]; then
+        printf '%s\n' "${value}"
+        return 0
+    fi
+    return 1
+}
+
+_openbkn_should_skip_upgrade() {
+    local release_name="$1"
+    local namespace="$2"
+    local chart_name="$3"
+    local target_version="$4"
+
+    if ! should_skip_upgrade_same_chart_version "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+        return 1
+    fi
+    if [[ "${release_name}" == "agent-observability" ]]; then
+        _openbkn_agent_observability_has_durable_profile "${namespace}"
+        case "$?" in
+            0) ;;
+            1)
+                if _openbkn_agent_observability_profile_is_explicitly_volatile; then
+                    return 0
+                fi
+                log_info "Reconcile agent-observability: installed runtime profile is not durable."
+                return 1
+                ;;
+            *)
+                log_warn "Cannot read agent-observability Helm values; preserving the version-skip decision to avoid an unverified rollout."
+                return 0
+                ;;
+        esac
+    elif [[ "${release_name}" == "otelcol-contrib" ]]; then
+        _openbkn_collector_has_trace_timestamp_pipeline "${namespace}"
+        case "$?" in
+            0) ;;
+            1)
+                if _openbkn_collector_pipeline_is_explicitly_overridden; then
+                    return 0
+                fi
+                log_info "Reconcile otelcol-contrib: installed Collector has no trace timestamp pipeline."
+                return 1
+                ;;
+            *)
+                log_warn "Cannot read otelcol-contrib Helm values; preserving the version-skip decision to avoid an unverified rollout."
+                return 0
+                ;;
+        esac
+    fi
+    return 0
+}
+
 # Install a single bkn-foundry release from a local .tgz
 _install_openbkn_release_local() {
     local release_name="$1"
@@ -991,7 +1132,7 @@ _install_openbkn_release_local() {
     if [[ -z "${target_version}" ]]; then
         target_version="$(get_local_chart_version "${chart_tgz}")"
     fi
-    if should_skip_upgrade_same_chart_version "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
@@ -1037,7 +1178,7 @@ _install_openbkn_release_repo() {
         target_version=$(get_repo_chart_latest_version "${helm_repo_name}" "${chart_name}")
     fi
 
-    if should_skip_upgrade_same_chart_version "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
+    if _openbkn_should_skip_upgrade "${release_name}" "${namespace}" "${chart_name}" "${target_version}"; then
         return 0
     fi
 
