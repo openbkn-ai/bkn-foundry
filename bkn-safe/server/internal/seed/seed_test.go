@@ -517,3 +517,57 @@ func TestSeedRevokesNormalUserDataGrants(t *testing.T) {
 		t.Error("network_builder lost catalog resource_manage — creating a data table would 403 after upgrade")
 	}
 }
+
+// network_builder manages every knowledge network but may not hand one out.
+//
+// Sharing a network is the creator's call: bkn-backend writes `authorize` to
+// whoever created it, and that object grant is what the owner surface reads. A
+// type-wide `authorize` would instead let every member of the role give any
+// network to anyone — and since `authorize` can only be taken back by a platform
+// administrator, that power could not be walked back from inside the role.
+//
+// The rest of the row stays: the role is still the business-plane administrator.
+func TestNetworkBuilderCannotShareNetworksItDidNotCreate(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+	const (
+		builder = "u-builder"
+		network = "kn-someone-elses"
+	)
+	if err := e.AssignRole(builder, "1572fb82-526f-11f0-bde6-e674ec8dde71"); err != nil {
+		t.Fatal(err)
+	}
+
+	if ok, err := e.Check(builder, "knowledge_network", network, "authorize"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Error("network_builder must not hold type-wide authorize on knowledge networks")
+	}
+
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "task_manage"} {
+		ok, err := e.Check(builder, "knowledge_network", network, op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Errorf("network_builder lost %q — it is still the business-plane administrator", op)
+		}
+	}
+
+	// The creator's own grant is untouched: that is where sharing comes from.
+	const creator = "u-creator"
+	if err := e.GrantObjectPermission(creator, "knowledge_network", network, "authorize"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := e.Check(creator, "knowledge_network", network, "authorize"); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Error("the creator's object-level authorize must still decide sharing")
+	}
+}

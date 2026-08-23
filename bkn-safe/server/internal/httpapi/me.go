@@ -91,7 +91,8 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 		})
 	})
 
-	// GET /permissions -> { is_admin, permissions:[ { resource{type,id}, operations:[...] } ] }
+	// GET /permissions -> { is_admin, permissions:[ { resource{type,id}, operations:[...],
+	//   instance_operations?:[...] } ] }
 	// Returns the EFFECTIVE (collapsed) authorization, not one row per instance:
 	// a resource-wildcard holder gets a single {type:"*",id:"*",ops:["*"]} row;
 	// everyone else gets one type-wide row per type plus an instance row only
@@ -103,11 +104,20 @@ func registerMeReads(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, dir *di
 	// Optional scope filters: ?resource_type=<T> narrows to one type;
 	// &resource_id=<id1,id2,...> (comma-separated) narrows the instance rows,
 	// keeping the type-wide id:"*" row. resource_id requires resource_type.
-	// ?scope=type drops instance exception rows entirely (only id:"*" rows and
-	// the wildcard row) — for the login/boot call that renders menus from
-	// type-level grants and discards instance rows anyway; with per-object
-	// grants those rows dominate the payload (#353). Conflicts with
-	// resource_id (asking for instance rows while dropping them) -> 400.
+	// ?scope=type returns no instance exception rows (only id:"*" rows and the
+	// wildcard row) — for the login/boot call that renders menus from type-level
+	// grants and discards instance rows anyway; with per-object grants those
+	// rows dominate the payload (#353). Conflicts with resource_id (asking for
+	// instance rows while dropping them) -> 400.
+	//
+	// The ops on those rows are folded, not dropped: a type row carries
+	// "instance_operations" for what the caller holds on at least one instance
+	// but not type-wide, and a type reached only through instances still gets a
+	// row, with "operations" empty. Without that, an accessor granted a single
+	// knowledge network came back with no permissions at all and the console hid
+	// the entry to a network it had explicitly been given (bkn-studio#478). The
+	// field says nothing about WHICH instance, so it drives entry visibility
+	// only; per-object decisions use an unscoped or resource_id-scoped read.
 	g.GET("/permissions", func(c *gin.Context) {
 		accessorID := c.GetString(ctxAccessorID)
 		isAdmin, err := e.CanAdmin(accessorID)
