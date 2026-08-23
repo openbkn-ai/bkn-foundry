@@ -105,6 +105,7 @@ func NewApp() (*App, error) {
 	)
 	if err := openSearchClient.EnsureTraceTimestampPipeline(
 		context.Background(), openSearchConfig.TraceTimestampPipeline,
+		openSearchConfig.TraceIndex,
 	); err != nil {
 		return nil, fmt.Errorf("initialize trace timestamp pipeline: %w", err)
 	}

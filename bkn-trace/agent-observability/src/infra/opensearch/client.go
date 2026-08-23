@@ -97,10 +97,14 @@ func NewWithHTTPClient(baseURL string, auth AuthConfig, httpClient *http.Client)
 // repair for the Collector's SS4O trace encoder. The affected upstream encoder
 // serializes @timestamp as Go's zero time while retaining span startTime. The
 // condition deliberately requires a traceId, so logs never enter this path.
-func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string) error {
+func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, traceIndex string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil
+	}
+	traceIndex = strings.Trim(strings.TrimSpace(traceIndex), "/")
+	if traceIndex == "" {
+		return errors.New("trace index is required when trace timestamp pipeline is enabled")
 	}
 	body, err := json.Marshal(map[string]any{
 		"description": "Repair zero @timestamp on OpenTelemetry SS4O trace spans from startTime.",
@@ -135,6 +139,70 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string) 
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return fmt.Errorf("opensearch trace timestamp pipeline failed with status %d: %s", resp.StatusCode, string(responseBody))
+	}
+
+	indexSettings := map[string]string{"index.default_pipeline": name}
+	indexTemplate, err := json.Marshal(map[string]any{
+		"index_patterns": []string{traceIndex},
+		"template": map[string]any{
+			"settings": indexSettings,
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("encode trace index default pipeline template: %w", err)
+	}
+	templateURL := fmt.Sprintf("%s/_index_template/bkn-trace-timestamp-default", c.baseURL)
+	templateRequest, err := http.NewRequestWithContext(ctx, http.MethodPut, templateURL, bytes.NewReader(indexTemplate))
+	if err != nil {
+		return fmt.Errorf("create trace index default pipeline template request: %w", err)
+	}
+	templateRequest.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		templateRequest.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	templateResponse, err := c.httpClient.Do(templateRequest)
+	if err != nil {
+		return fmt.Errorf("execute trace index default pipeline template request: %w", err)
+	}
+	defer func() { _ = templateResponse.Body.Close() }()
+	templateBody, err := io.ReadAll(templateResponse.Body)
+	if err != nil {
+		return fmt.Errorf("read trace index default pipeline template response: %w", err)
+	}
+	if templateResponse.StatusCode < http.StatusOK || templateResponse.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("opensearch trace index default pipeline template failed with status %d: %s", templateResponse.StatusCode, string(templateBody))
+	}
+
+	indexSettingsBody, err := json.Marshal(indexSettings)
+	if err != nil {
+		return fmt.Errorf("encode trace index default pipeline setting: %w", err)
+	}
+	settingsURL := fmt.Sprintf("%s/%s/_settings", c.baseURL, url.PathEscape(traceIndex))
+	settingsRequest, err := http.NewRequestWithContext(ctx, http.MethodPut, settingsURL, bytes.NewReader(indexSettingsBody))
+	if err != nil {
+		return fmt.Errorf("create trace index default pipeline setting request: %w", err)
+	}
+	settingsRequest.Header.Set("Content-Type", "application/json")
+	if c.auth.Enabled {
+		settingsRequest.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	settingsResponse, err := c.httpClient.Do(settingsRequest)
+	if err != nil {
+		return fmt.Errorf("execute trace index default pipeline setting request: %w", err)
+	}
+	defer func() { _ = settingsResponse.Body.Close() }()
+	settingsBody, err := io.ReadAll(settingsResponse.Body)
+	if err != nil {
+		return fmt.Errorf("read trace index default pipeline setting response: %w", err)
+	}
+	// On a fresh installation the Collector creates the trace index later. The
+	// template above binds the pipeline then; only an existing index needs this
+	// immediate update.
+	if settingsResponse.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if settingsResponse.StatusCode < http.StatusOK || settingsResponse.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("opensearch trace index default pipeline setting failed with status %d: %s", settingsResponse.StatusCode, string(settingsBody))
 	}
 	return nil
 }

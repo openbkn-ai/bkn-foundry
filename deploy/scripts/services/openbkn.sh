@@ -487,9 +487,6 @@ _openbkn_trace_profile_sets() {
             fi
             ;;
         otelcol-contrib)
-            CORE_RELEASE_EXTRA_SETS+=(
-                "opensearchExporter.pipeline=bkn-trace-span-timestamp-v1"
-            )
             if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
                 CORE_RELEASE_EXTRA_SETS+=(
                     "opensearchExporter.http.endpoint=$(_openbkn_trace_opensearch_endpoint)"
@@ -997,33 +994,6 @@ sys.exit(0 if durable else 1)
 ' <<<"${values}"
 }
 
-# The Collector chart has an independent same-version skip. Reconcile its
-# rendered values as well: otherwise an already-installed Collector never
-# receives the trace timestamp pipeline even though agent-observability has
-# created it successfully.
-_openbkn_collector_has_trace_timestamp_pipeline() {
-    local namespace="$1"
-    local values
-    if ! values="$(helm get values otelcol-contrib -n "${namespace}" --all -o json 2>/dev/null)"; then
-        return 2
-    fi
-    python3 -c '
-import json, sys
-try:
-    values = json.load(sys.stdin)
-except (json.JSONDecodeError, TypeError):
-    sys.exit(2)
-pipeline = values.get("opensearchExporter", {}).get("pipeline")
-sys.exit(0 if pipeline == "bkn-trace-span-timestamp-v1" else 1)
-' <<<"${values}"
-}
-
-_openbkn_collector_pipeline_is_explicitly_overridden() {
-    local value
-    value="$(_openbkn_last_set_value "opensearchExporter.pipeline" "${CORE_SET_VALUES[@]-}")" || return 1
-    [[ "${value}" != "bkn-trace-span-timestamp-v1" ]]
-}
-
 _openbkn_agent_observability_profile_is_explicitly_volatile() {
     local key value
     local -a set_values=("${CORE_SET_VALUES[@]-}")
@@ -1080,22 +1050,6 @@ _openbkn_should_skip_upgrade() {
                 ;;
             *)
                 log_warn "Cannot read agent-observability Helm values; preserving the version-skip decision to avoid an unverified rollout."
-                return 0
-                ;;
-        esac
-    elif [[ "${release_name}" == "otelcol-contrib" ]]; then
-        _openbkn_collector_has_trace_timestamp_pipeline "${namespace}"
-        case "$?" in
-            0) ;;
-            1)
-                if _openbkn_collector_pipeline_is_explicitly_overridden; then
-                    return 0
-                fi
-                log_info "Reconcile otelcol-contrib: installed Collector has no trace timestamp pipeline."
-                return 1
-                ;;
-            *)
-                log_warn "Cannot read otelcol-contrib Helm values; preserving the version-skip decision to avoid an unverified rollout."
                 return 0
                 ;;
         esac

@@ -140,16 +140,9 @@ HELM_GET_VALUES_EXIT=0
 CORE_SET_VALUES=()
 HELM_VALUES='{"opensearchExporter":{"pipeline":""}}'
 if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
-    fail "installer must reconcile a Collector without the timestamp repair pipeline"
-else
-    ok
-fi
-
-HELM_VALUES='{"opensearchExporter":{"pipeline":"bkn-trace-span-timestamp-v1"}}'
-if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
     ok
 else
-    fail "installer should retain the version-skip optimization for a reconciled Collector"
+    fail "collector does not own the timestamp repair pipeline and should retain version-skip optimization"
 fi
 
 HELM_VALUES='{not-json}'
@@ -231,7 +224,7 @@ not_contains "secure AO never forwards an OpenSearch password to Helm" "${secure
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_trace_profile_sets otelcol-contrib
 secure_collector_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
-contains "Collector routes spans through the timestamp repair pipeline" "${secure_collector_sets}" "opensearchExporter.pipeline=bkn-trace-span-timestamp-v1"
+not_contains "Collector does not receive unsupported timestamp pipeline configuration" "${secure_collector_sets}" "opensearchExporter.pipeline="
 contains "secure Collector uses the OpenSearch endpoint from config" "${secure_collector_sets}" "opensearchExporter.http.endpoint=https://opensearch-secure.resource.svc.cluster.local:9200"
 contains "secure Collector verifies the OpenSearch TLS peer" "${secure_collector_sets}" "opensearchExporter.http.tls.insecure=false"
 contains "secure Collector enables OpenSearch auth" "${secure_collector_sets}" "opensearchExporter.auth.enabled=true"
