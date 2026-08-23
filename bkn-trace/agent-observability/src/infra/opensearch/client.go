@@ -144,6 +144,10 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 	indexSettings := map[string]string{"index.default_pipeline": name}
 	indexTemplate, err := json.Marshal(map[string]any{
 		"index_patterns": []string{traceIndex},
+		// Generic SS4O templates may also match the Trace index. Keep this
+		// narrowly scoped template above their default priority so the repair
+		// pipeline cannot be displaced by an unrelated template.
+		"priority": 500,
 		"template": map[string]any{
 			"settings": indexSettings,
 		},
