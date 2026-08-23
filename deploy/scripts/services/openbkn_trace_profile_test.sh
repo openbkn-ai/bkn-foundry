@@ -114,6 +114,13 @@ if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 
 else
     fail "an explicit volatile override must retain the normal version-skip decision"
 fi
+CORE_SET_VALUES=("opensearch.traceTimestampPipeline=custom-trace-pipeline")
+HELM_VALUES='{"core":{"store":"memory","projection":{"enabled":false}},"evidence":{"store":"memory"},"opensearch":{"traceTimestampPipeline":"custom-trace-pipeline"}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "a custom timestamp pipeline must not bypass durable Core profile reconciliation"
+else
+    ok
+fi
 CORE_SET_VALUES=("")
 
 HELM_VALUES='{not-json}'
