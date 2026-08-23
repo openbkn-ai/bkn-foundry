@@ -57,6 +57,7 @@ contains "AO requires Core DSN Secret" "${ao_sets}" "core.mariadb.existingSecret
 contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
 contains "AO creates the Collector timestamp repair pipeline first" "${ao_sets}" "opensearch.traceTimestampPipeline=bkn-trace-span-timestamp-v1"
+contains "AO records the index-level timestamp repair revision" "${ao_sets}" "opensearch.traceTimestampPipelineRevision=index-default-pipeline-v1"
 not_contains "AO leaves index initialization to runtime" "${ao_sets}" "evidence.indexManagement"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
@@ -102,6 +103,13 @@ fi
 
 HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1"}}'
 if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "installer must reconcile a durable profile that predates index-level timestamp repair"
+else
+    ok
+fi
+
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1","traceTimestampPipelineRevision":"index-default-pipeline-v1"}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
     ok
 else
     fail "installer should retain the version-skip optimization for a fully reconciled runtime profile"
@@ -138,18 +146,18 @@ fi
 HELM_GET_VALUES_EXIT=0
 
 CORE_SET_VALUES=()
-HELM_VALUES='{"opensearchExporter":{"pipeline":""}}'
+HELM_VALUES='{"opensearchExporter":{"pipeline":"bkn-trace-span-timestamp-v1"}}'
 if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
-    fail "installer must reconcile a Collector without the timestamp repair pipeline"
+    fail "installer must reconcile a Collector release with the unsupported pipeline value"
 else
     ok
 fi
 
-HELM_VALUES='{"opensearchExporter":{"pipeline":"bkn-trace-span-timestamp-v1"}}'
+HELM_VALUES='{"opensearchExporter":{"pipeline":""}}'
 if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
     ok
 else
-    fail "installer should retain the version-skip optimization for a reconciled Collector"
+    fail "collector without the unsupported pipeline value should retain version-skip optimization"
 fi
 
 HELM_VALUES='{not-json}'
@@ -194,7 +202,7 @@ else
     fail "repository installer must upgrade a volatile runtime profile"
 fi
 
-HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1"}}'
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1","traceTimestampPipelineRevision":"index-default-pipeline-v1"}}'
 _install_openbkn_release_local agent-observability /tmp openbkn
 _install_openbkn_release_repo agent-observability openbkn openbkn 0.1.4
 if [[ "${UPGRADE_CALLS}" -eq 2 ]]; then
@@ -231,7 +239,7 @@ not_contains "secure AO never forwards an OpenSearch password to Helm" "${secure
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_trace_profile_sets otelcol-contrib
 secure_collector_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
-contains "Collector routes spans through the timestamp repair pipeline" "${secure_collector_sets}" "opensearchExporter.pipeline=bkn-trace-span-timestamp-v1"
+not_contains "Collector does not receive unsupported timestamp pipeline configuration" "${secure_collector_sets}" "opensearchExporter.pipeline="
 contains "secure Collector uses the OpenSearch endpoint from config" "${secure_collector_sets}" "opensearchExporter.http.endpoint=https://opensearch-secure.resource.svc.cluster.local:9200"
 contains "secure Collector verifies the OpenSearch TLS peer" "${secure_collector_sets}" "opensearchExporter.http.tls.insecure=false"
 contains "secure Collector enables OpenSearch auth" "${secure_collector_sets}" "opensearchExporter.auth.enabled=true"
@@ -261,6 +269,8 @@ contains "AO profile reads the Collector log index" "${ao_sets}" "opensearch.log
 agent_observability_values="$(<"${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability/values.yaml")"
 contains "standalone AO reads the Collector Trace index" "${agent_observability_values}" "traceIndex: ${expected_trace_index}"
 contains "standalone AO reads the Collector log index" "${agent_observability_values}" "logIndex: ${expected_log_index}"
+agent_observability_deployment="$(<"${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability/templates/deployment.yaml")"
+contains "AO Pod template includes timestamp repair revision" "${agent_observability_deployment}" "trace-timestamp-pipeline-revision"
 
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_trace_profile_sets agent-retrieval

@@ -6,6 +6,8 @@
 
 set -euo pipefail
 
+runtime_image="${OTELCOL_RUNTIME_IMAGE:-swr.cn-east-3.myhuaweicloud.com/openbkn-ai/otel/opentelemetry-collector-contrib:0.148.0}"
+
 chart_dir="${1:-charts/otelcol-contrib}"
 
 checksum() {
@@ -33,9 +35,22 @@ if [[ "${baseline}" != "${unchanged}" ]]; then
   exit 1
 fi
 
-if ! grep -Fq "pipeline: bkn-trace-span-timestamp-v1" <<<"${timestamp_pipeline_rendered}"; then
-  echo "collector must pass the configured OpenSearch ingest pipeline to its exporter" >&2
+if grep -Fq "pipeline: bkn-trace-span-timestamp-v1" <<<"${timestamp_pipeline_rendered}"; then
+  echo "collector OpenSearch exporter must not render unsupported pipeline configuration" >&2
   exit 1
 fi
+
+rendered_config="$(mktemp)"
+trap 'rm -f "${rendered_config}" "${rendered_config}.manifest"' EXIT
+helm template otelcol-contrib "${chart_dir}" >"${rendered_config}.manifest"
+awk '
+  $0 == "  collector-config.yaml: |" { in_config=1; next }
+  in_config && $0 == "---" { exit }
+  in_config { sub(/^    /, ""); print }
+' "${rendered_config}.manifest" >"${rendered_config}"
+chmod a+r "${rendered_config}"
+docker run --rm \
+  -v "${rendered_config}:/tmp/collector-config.yaml:ro" \
+  "${runtime_image}" validate --config=/tmp/collector-config.yaml
 
 echo "collector config rollout checksum verified"

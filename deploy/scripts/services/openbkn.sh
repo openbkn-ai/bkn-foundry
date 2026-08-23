@@ -477,6 +477,7 @@ _openbkn_trace_profile_sets() {
                 "opensearch.traceIndex=ss4o_traces-default-namespace"
                 "opensearch.logIndex=ss4o_logs-default-namespace"
                 "opensearch.traceTimestampPipeline=bkn-trace-span-timestamp-v1"
+                "opensearch.traceTimestampPipelineRevision=index-default-pipeline-v1"
             )
             if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
                 CORE_RELEASE_EXTRA_SETS+=(
@@ -487,9 +488,6 @@ _openbkn_trace_profile_sets() {
             fi
             ;;
         otelcol-contrib)
-            CORE_RELEASE_EXTRA_SETS+=(
-                "opensearchExporter.pipeline=bkn-trace-span-timestamp-v1"
-            )
             if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
                 CORE_RELEASE_EXTRA_SETS+=(
                     "opensearchExporter.http.endpoint=$(_openbkn_trace_opensearch_endpoint)"
@@ -992,36 +990,10 @@ durable = (
     and evidence.get("store") == "opensearch"
     and bool(evidence.get("ingestAuth", {}).get("existingSecret"))
     and bool(opensearch.get("traceTimestampPipeline"))
+    and opensearch.get("traceTimestampPipelineRevision") == "index-default-pipeline-v1"
 )
 sys.exit(0 if durable else 1)
 ' <<<"${values}"
-}
-
-# The Collector chart has an independent same-version skip. Reconcile its
-# rendered values as well: otherwise an already-installed Collector never
-# receives the trace timestamp pipeline even though agent-observability has
-# created it successfully.
-_openbkn_collector_has_trace_timestamp_pipeline() {
-    local namespace="$1"
-    local values
-    if ! values="$(helm get values otelcol-contrib -n "${namespace}" --all -o json 2>/dev/null)"; then
-        return 2
-    fi
-    python3 -c '
-import json, sys
-try:
-    values = json.load(sys.stdin)
-except (json.JSONDecodeError, TypeError):
-    sys.exit(2)
-pipeline = values.get("opensearchExporter", {}).get("pipeline")
-sys.exit(0 if pipeline == "bkn-trace-span-timestamp-v1" else 1)
-' <<<"${values}"
-}
-
-_openbkn_collector_pipeline_is_explicitly_overridden() {
-    local value
-    value="$(_openbkn_last_set_value "opensearchExporter.pipeline" "${CORE_SET_VALUES[@]-}")" || return 1
-    [[ "${value}" != "bkn-trace-span-timestamp-v1" ]]
 }
 
 _openbkn_agent_observability_profile_is_explicitly_volatile() {
@@ -1039,6 +1011,28 @@ _openbkn_agent_observability_profile_is_explicitly_volatile() {
         esac
     done
     return 1
+}
+
+# Collector builds prior to the index-level timestamp repair passed a pipeline
+# option that the currently delivered Collector binary rejects at startup. Helm
+# still considers that release deployed, so chart-version equality alone would
+# leave it CrashLooping forever. Inspect the recorded values and reconcile it
+# once; empty/missing is the supported current state.
+_openbkn_otelcol_has_unsupported_pipeline() {
+    local namespace="$1"
+    local values
+    if ! values="$(helm get values otelcol-contrib -n "${namespace}" --all -o json 2>/dev/null)"; then
+        return 2
+    fi
+    python3 -c '
+import json, sys
+try:
+    values = json.load(sys.stdin)
+except (json.JSONDecodeError, TypeError):
+    sys.exit(2)
+pipeline = values.get("opensearchExporter", {}).get("pipeline")
+sys.exit(0 if isinstance(pipeline, str) and pipeline.strip() else 1)
+' <<<"${values}"
 }
 
 _openbkn_last_set_value() {
@@ -1083,17 +1077,15 @@ _openbkn_should_skip_upgrade() {
                 return 0
                 ;;
         esac
-    elif [[ "${release_name}" == "otelcol-contrib" ]]; then
-        _openbkn_collector_has_trace_timestamp_pipeline "${namespace}"
+    fi
+    if [[ "${release_name}" == "otelcol-contrib" ]]; then
+        _openbkn_otelcol_has_unsupported_pipeline "${namespace}"
         case "$?" in
-            0) ;;
-            1)
-                if _openbkn_collector_pipeline_is_explicitly_overridden; then
-                    return 0
-                fi
-                log_info "Reconcile otelcol-contrib: installed Collector has no trace timestamp pipeline."
+            0)
+                log_info "Reconcile otelcol-contrib: installed values contain unsupported OpenSearch pipeline configuration."
                 return 1
                 ;;
+            1) ;;
             *)
                 log_warn "Cannot read otelcol-contrib Helm values; preserving the version-skip decision to avoid an unverified rollout."
                 return 0

@@ -154,8 +154,12 @@ opensearch:
   traceIndex: ss4o_traces-default-namespace
   logIndex: ss4o_logs-default-namespace
   # Empty for standalone use. The product installer supplies the compatibility
-  # pipeline before it configures the Collector to require it.
+  # pipeline and binds it as the Trace index default ingest pipeline.
   traceTimestampPipeline: ""
+  # Records the installer-managed timestamp repair contract. It is not an
+  # OpenSearch setting; it lets same-version release installs reconcile once
+  # when the repair implementation changes.
+  traceTimestampPipelineRevision: ""
   auth:
     enabled: false
     existingSecret: ""
