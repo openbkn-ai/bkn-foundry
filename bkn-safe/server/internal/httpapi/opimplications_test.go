@@ -11,6 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/extension/adminwrite"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -318,11 +319,12 @@ func TestRevokeSetIsOrderIndependent(t *testing.T) {
 				t.Fatal(err)
 			}
 			svc := newAdminWriteServices(e, db)
+			revoker := svc.(adminwrite.RoleSetRevoker)
 			ctx := t.Context()
 			if err := svc.GrantRolePermission(ctx, "r-3", "catalog", "c1", "resource_manage"); err != nil {
 				t.Fatal(err)
 			}
-			if err := svc.RevokeRolePermissions(ctx, "r-3", "catalog", "c1", ops); err != nil {
+			if err := revoker.RevokeRolePermissions(ctx, "r-3", "catalog", "c1", ops); err != nil {
 				t.Fatalf("revoke %v: %v", ops, err)
 			}
 			for _, op := range []string{"view_detail", "resource_manage"} {
@@ -345,11 +347,12 @@ func TestRevokeSetKeepsAnOperationTheRemainderImplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := newAdminWriteServices(e, db)
+	revoker := svc.(adminwrite.RoleSetRevoker)
 	ctx := t.Context()
 	if err := svc.GrantRolePermission(ctx, "r-4", "catalog", "c1", "resource_manage"); err != nil {
 		t.Fatal(err)
 	}
-	if err := svc.RevokeRolePermissions(ctx, "r-4", "catalog", "c1", []string{"view_detail"}); err != nil {
+	if err := revoker.RevokeRolePermissions(ctx, "r-4", "catalog", "c1", []string{"view_detail"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, op := range []string{"view_detail", "resource_manage"} {

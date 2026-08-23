@@ -103,25 +103,14 @@ type Services interface {
 	UpdateRole(ctx context.Context, id string, patch RolePatch) error
 	// DeleteRole deletes a custom role and purges its bindings and grants.
 	DeleteRole(ctx context.Context, id string) error
-	// RevokeRolePermissions revokes a set of operations from a custom role over
-	// one resource pattern, judged against the state the role will be left in.
-	//
-	// The set matters. An operation another operation implies cannot be dropped
-	// while that implying operation is kept (#1121), and deciding that one
-	// operation at a time makes the answer depend on the order the caller listed
-	// them: revoking [view_detail, resource_manage] would keep view_detail,
-	// while [resource_manage, view_detail] would drop both. Judged against the
-	// remainder, both orders drop both.
-	RevokeRolePermissions(ctx context.Context, roleID, resourceType, resourceID string, ops []string) error
-
 	// GrantRolePermission grants a custom role an op over a resource pattern.
 	// Refuses wildcard types/ops and the admin-console capability (ErrInvalid).
 	GrantRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
-	// RevokeRolePermission revokes one operation.
+	// RevokeRolePermission revokes one operation from a custom role.
 	//
-	// Deprecated: use RevokeRolePermissions. Revoking one operation at a time
-	// cannot see the rest of the caller's set, so a multi-operation revoke
-	// issued through this entry point still depends on the order.
+	// An implementation that also satisfies RoleSetRevoker gets the whole set
+	// instead, which is what an accurate multi-operation revoke needs — see that
+	// interface.
 	RevokeRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
 }
 
@@ -157,6 +146,28 @@ func requireAnyPermission(svc Services, points ...PermissionPoint) gin.HandlerFu
 		return r.RequireAnyPermission(points...)
 	}
 	return svc.RequirePermission(points[0].ResourceType, points[0].Op)
+}
+
+// RoleSetRevoker is an OPTIONAL extension of Services: revoke a SET of
+// operations from a role over one resource pattern, in a single call.
+//
+// The set is what makes the answer correct. An operation another operation
+// implies cannot be dropped while that implying operation is kept (#1121), and
+// deciding that one operation at a time — against the live state, where an
+// operation earlier in the caller's list is still held — makes the outcome
+// depend on the order: revoking ["view_detail", "resource_manage"] keeps
+// view_detail, while ["resource_manage", "view_detail"] drops both. Judged
+// against the remainder, computed once before anything is removed, both orders
+// drop both.
+//
+// Like AnyPermissionRequirer, this is a separate interface rather than a
+// Services method so that adding it does not break existing Services
+// implementations (notably ee's test doubles). revokeRolePermissions falls back
+// to the per-operation method when the implementation does not provide it,
+// which restores the order dependence for that implementation only — core's
+// does provide it.
+type RoleSetRevoker interface {
+	RevokeRolePermissions(ctx context.Context, roleID, resourceType, resourceID string, ops []string) error
 }
 
 // Mounter registers the rbac_basic write routes onto g using svc. The ee build
