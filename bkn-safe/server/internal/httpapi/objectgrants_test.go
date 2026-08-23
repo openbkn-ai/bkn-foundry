@@ -639,3 +639,59 @@ func mustGrantRole(t *testing.T, e *authz.Enforcer, roleID, resourceType, op str
 		t.Fatal(err)
 	}
 }
+
+// A delegate must not be able to write a wildcard grant, or to un-publish a
+// built-in by deleting the public-access row. Both are shapes that look like an
+// ordinary per-object write but reach far past one object.
+func TestObjectGrantsDelegateCannotWriteWildcardOrTouchPublic(t *testing.T) {
+	r, e := ownerGrantFixture(t)
+
+	// keyMatch treats "*" anywhere as a wildcard, so an id like "kn-*" would be
+	// stored verbatim and then match every network with that prefix — a grant no
+	// console screen could show or revoke.
+	for _, id := range []string{"kn-*", "*-mine", "*"} {
+		if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+			"accessor_id": "u-mate",
+			"resource":    map[string]any{"type": "knowledge_network", "id": id},
+			"operations":  []string{"view_detail"},
+		}, "u-owner"); w.Code != http.StatusBadRequest {
+			t.Errorf("granting on id %q: want 400, got %d (%s)", id, w.Code, w.Body.String())
+		}
+		if w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+			"accessor_id": "u-mate",
+			"resource":    map[string]any{"type": "knowledge_network", "id": id},
+		}, "u-owner"); w.Code != http.StatusBadRequest {
+			t.Errorf("revoking on id %q: want 400, got %d (%s)", id, w.Code, w.Body.String())
+		}
+	}
+	// An administrator gets the same answer: these endpoints write one instance.
+	if w := adminReq(t, r, http.MethodPost, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-*"},
+		"operations":  []string{"view_detail"},
+	}); w.Code != http.StatusBadRequest {
+		t.Errorf("administrator granting on a wildcard id: want 400, got %d", w.Code)
+	}
+
+	// The public-access row publishes a built-in to everyone. It carries no
+	// `authorize`, so the holder check alone would let a delegate delete it.
+	if err := e.GrantObjectPermission(authz.PublicAccessorID, "knowledge_network", "kn-mine", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if w := tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": authz.PublicAccessorID,
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}, "u-owner"); w.Code != http.StatusForbidden {
+		t.Fatalf("delegate deleting the public row: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check(authz.PublicAccessorID, "knowledge_network", "kn-mine", "view_detail"); !ok {
+		t.Error("the public-access row was removed by a delegate")
+	}
+	// An administrator may still remove it.
+	if w := adminReq(t, r, http.MethodDelete, "/api/safe/v1/admin/object-grants", map[string]any{
+		"accessor_id": authz.PublicAccessorID,
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}); w.Code != http.StatusNoContent {
+		t.Errorf("administrator removing the public row: want 204, got %d", w.Code)
+	}
+}
