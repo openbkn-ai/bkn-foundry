@@ -298,3 +298,63 @@ func TestInternalPolicyGrantExpandsImplications(t *testing.T) {
 		}
 	}
 }
+
+// TestRevokeSetIsOrderIndependent is the case the second review round raised:
+// judging one operation at a time against the LIVE state makes a
+// multi-operation revoke depend on the order the caller listed them, so
+// ["view_detail", "resource_manage"] left view_detail behind while the reverse
+// order dropped both. The verdict is computed against what the role is left
+// with, so both orders now drop both.
+func TestRevokeSetIsOrderIndependent(t *testing.T) {
+	for _, ops := range [][]string{
+		{"view_detail", "resource_manage"},
+		{"resource_manage", "view_detail"},
+	} {
+		t.Run(strings.Join(ops, ","), func(t *testing.T) {
+			_, e, db, _ := newAdminServer(t)
+			seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
+			seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+			if err := db.Create(&model.Role{ID: "r-3", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
+				t.Fatal(err)
+			}
+			svc := newAdminWriteServices(e, db)
+			ctx := t.Context()
+			if err := svc.GrantRolePermission(ctx, "r-3", "catalog", "c1", "resource_manage"); err != nil {
+				t.Fatal(err)
+			}
+			if err := svc.RevokeRolePermissions(ctx, "r-3", "catalog", "c1", ops); err != nil {
+				t.Fatalf("revoke %v: %v", ops, err)
+			}
+			for _, op := range []string{"view_detail", "resource_manage"} {
+				if ok, _ := e.Check("r-3", "catalog", "c1", op); ok {
+					t.Fatalf("%s survived revoke of %v", op, ops)
+				}
+			}
+		})
+	}
+}
+
+// TestRevokeSetKeepsAnOperationTheRemainderImplies is the other half: dropping
+// only view_detail while resource_manage is kept must leave view_detail in
+// place, or the role is left holding a verb that answers 403 everywhere.
+func TestRevokeSetKeepsAnOperationTheRemainderImplies(t *testing.T) {
+	_, e, db, _ := newAdminServer(t)
+	seedCatalogOps(t, db, "catalog", "view_detail", "query_data")
+	seedCatalogOpImplies(t, db, "catalog", "resource_manage", "view_detail")
+	if err := db.Create(&model.Role{ID: "r-4", Name: "custom", Source: model.RoleSourceCustom}).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc := newAdminWriteServices(e, db)
+	ctx := t.Context()
+	if err := svc.GrantRolePermission(ctx, "r-4", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.RevokeRolePermissions(ctx, "r-4", "catalog", "c1", []string{"view_detail"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, op := range []string{"view_detail", "resource_manage"} {
+		if ok, _ := e.Check("r-4", "catalog", "c1", op); !ok {
+			t.Fatalf("%s dropped by a revoke the invariant had to refuse", op)
+		}
+	}
+}

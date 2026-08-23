@@ -137,48 +137,83 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	return nil
 }
 
-// RevokeRolePermission revokes a custom role's op over a resource pattern.
+// RevokeRolePermission revokes one operation.
+//
+// Deprecated: use RevokeRolePermissions. One operation at a time cannot see the
+// rest of the caller's set, so the outcome of a multi-operation revoke depends
+// on the order — see RevokeRolePermissions.
 func (s *adminWriteServices) RevokeRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error {
+	return s.RevokeRolePermissions(ctx, roleID, resourceType, resourceID, []string{op})
+}
+
+// RevokeRolePermissions revokes a set of operations from a custom role over one
+// resource pattern.
+//
+// An operation stays if something the role is LEFT WITH implies it (#1121):
+// dropping view_detail while resource_manage remains would leave a verb whose
+// every route answers 403, the grant this rule exists to prevent. Retaining is
+// also what the whole-set object-grant surface does for the same edit, so the
+// two surfaces agree.
+//
+// "Left with" is the whole point, and it is why this takes a set. Judging one
+// operation at a time against the live state makes the answer depend on the
+// order the caller listed them — revoking [view_detail, resource_manage] would
+// keep view_detail because resource_manage was still there when view_detail was
+// considered, while the reverse order would drop both. The remainder is
+// computed once, before anything is removed, so both orders drop both.
+//
+// Dropping view_detail alone stays reachable: revoke resource_manage first, and
+// the next revoke is honoured because nothing left implies view_detail.
+func (s *adminWriteServices) RevokeRolePermissions(ctx context.Context,
+	roleID, resourceType, resourceID string, ops []string) error {
+
 	role, err := s.loadCustomRole(ctx, roleID)
 	if err != nil {
 		return err
 	}
-	// An operation stays if another operation the role still holds implies it
-	// (#1121): revoking view_detail while resource_manage remains would leave a
-	// verb whose every route answers 403, the grant this rule exists to prevent.
-	//
-	// Retaining is what the whole-set object-grant surface already does for the
-	// same edit — a console that clears view_detail while leaving resource_manage
-	// ticked gets view_detail back — and it is the only shape that does not
-	// depend on the order a caller sends its pair of requests in. Revoking the
-	// implying verb as well would mean a console saving "add resource_manage,
-	// drop view_detail" as two calls ends up with NEITHER, silently discarding
-	// the grant it had just made.
-	//
-	// So this route only ever removes the operation it was given, and only when
-	// nothing the role retains implies it. To drop view_detail, revoke
-	// resource_manage first; that revoke is honoured immediately, because
-	// view_detail implies nothing.
-	implying, err := impliedBy(s.db.WithContext(ctx), resourceType, []string{op})
+	if len(ops) == 0 {
+		return nil
+	}
+	held, err := s.roleOperationsOn(role.ID, resourceType, resourceID)
 	if err != nil {
 		return err
 	}
-	if len(implying) > 1 {
-		held, err := s.roleOperationsOn(role.ID, resourceType, resourceID)
+	// What the role keeps once this request is applied — computed before the
+	// first removal so no operation's verdict can depend on another's.
+	remaining := map[string]bool{}
+	requested := make(map[string]bool, len(ops))
+	for _, op := range ops {
+		requested[op] = true
+	}
+	for op := range held {
+		if !requested[op] {
+			remaining[op] = true
+		}
+	}
+
+	for _, op := range ops {
+		implying, err := impliedBy(s.db.WithContext(ctx), resourceType, []string{op})
 		if err != nil {
 			return err
 		}
+		retainedBy := ""
 		for _, other := range implying {
-			if other == op || !held[other] {
-				continue
+			if other != op && remaining[other] {
+				retainedBy = other
+				break
 			}
+		}
+		if retainedBy != "" {
 			slog.Info("kept an operation the role still implies",
 				"role_id", role.ID, "resource_type", resourceType, "resource_id", resourceID,
-				"operation", op, "implied_by", other)
-			return nil
+				"operation", op, "implied_by", retainedBy)
+			continue
+		}
+		if err := s.e.RevokeRolePermission(role.ID, resourceType, resourceID, op); err != nil {
+			return err
 		}
 	}
-	return s.e.RevokeRolePermission(role.ID, resourceType, resourceID, op)
+	return nil
 }
 
 // roleOperationsOn returns the operations the role holds on exactly one
