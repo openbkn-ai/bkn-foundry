@@ -213,6 +213,10 @@ func New(deps Deps) *gin.Engine {
 			meWrites.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
 		registerMeProfile(meWrites, deps.Users)
+		// Object-grant delegation: sharing an object you own is a write, so it
+		// belongs on the raw-verifier group with the rest of the mutating /me
+		// surface — and it must be audited like any other authorization change.
+		registerMeObjectGrants(meWrites, deps.Enforcer, deps.DB, deps.Directory)
 		if deps.AccessLog != nil && deps.Directory != nil {
 			registerLogout(meWrites, deps.AccessLog, deps.Directory)
 		}

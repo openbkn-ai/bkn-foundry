@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -329,5 +330,240 @@ func TestObjectGrantsGroupedViews(t *testing.T) {
 	page := decode("?group_by=object&limit=1&offset=0")
 	if page.Total != 2 || len(page.Groups) != 1 {
 		t.Fatalf("grouped pagination: total=%d groups=%d", page.Total, len(page.Groups))
+	}
+}
+
+// ownerGrantFixture builds the situation the owner path exists for: a builder
+// who created a knowledge network (and therefore holds the creator's object
+// grant, opAuthorize included) but holds no admin-authz permission at all.
+func ownerGrantFixture(t *testing.T) (*gin.Engine, *authz.Enforcer) {
+	t.Helper()
+	r, e, db, users := newAdminServer(t)
+	ctx := t.Context()
+	for _, u := range []struct{ id, account string }{
+		{"u-owner", "builder"},
+		{"u-mate", "teammate"},
+		{"u-stranger", "stranger"},
+	} {
+		if err := users.CreateLocalUser(ctx, &model.User{ID: u.id, Account: u.account, Name: u.account, Enabled: true}, "pw-init0"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// task_manage is registered for the type but deliberately NOT granted below,
+	// so a test can ask for an operation that is valid yet unheld.
+	seedCatalogOps(t, db, "knowledge_network",
+		"view_detail", "modify", "delete", "query_data", "authorize", "task_manage")
+	// Exactly what bkn-backend writes on create (COMMON_OPERATIONS).
+	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize"} {
+		if err := e.GrantObjectPermission("u-owner", "knowledge_network", "kn-mine", op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return r, e
+}
+
+// The regression: the creator of a knowledge network can share it, without any
+// admin-authz permission. Before, opAuthorize was written on create and then
+// never consulted, so this was a flat 403 (bkn-studio#478).
+func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
+	r, e := ownerGrantFixture(t)
+
+	w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail", "query_data"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("owner share: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); !ok {
+		t.Error("shared grant did not take effect at enforce time")
+	}
+
+	// And can take it back.
+	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("owner revoke: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Error("owner revoke did not remove the grant")
+	}
+}
+
+// The two limits on a delegate, and the boundary of what it owns.
+func TestObjectGrantsOwnerLimits(t *testing.T) {
+	r, e := ownerGrantFixture(t)
+	// A second network the owner did NOT create.
+	if err := e.GrantObjectPermission("u-stranger", "knowledge_network", "kn-theirs", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		name string
+		body map[string]any
+	}{
+		{
+			// The chain stops at one: a delegate cannot mint another delegate.
+			"cannot pass authorize on",
+			map[string]any{
+				"accessor_id": "u-mate",
+				"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+				"operations":  []string{"view_detail", "authorize"},
+			},
+		},
+		{
+			// task_manage is registered for the type but the owner does not hold
+			// it, so it cannot be handed out.
+			"cannot grant an op it does not hold",
+			map[string]any{
+				"accessor_id": "u-mate",
+				"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+				"operations":  []string{"view_detail", "task_manage"},
+			},
+		},
+		{
+			// Ownership is per object, not per type.
+			"cannot reach another owner's object",
+			map[string]any{
+				"accessor_id": "u-mate",
+				"resource":    map[string]any{"type": "knowledge_network", "id": "kn-theirs"},
+				"operations":  []string{"view_detail"},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", tc.body, "u-owner"); w.Code != http.StatusForbidden {
+				t.Fatalf("want 403, got %d (%s)", w.Code, w.Body.String())
+			}
+		})
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Error("a rejected request must not write a partial grant")
+	}
+
+	// Someone with no stake in the object gets nothing.
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("non-owner: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// A role holding type-wide authorize (network_builder does, on
+// knowledge_network) may delegate any instance of that type — the seeded policy
+// already says so. It is still a delegate: the same two limits apply.
+func TestObjectGrantsTypeWideAuthorize(t *testing.T) {
+	r, e := ownerGrantFixture(t)
+	if err := e.GrantRolePermission("role-builder", "knowledge_network", "*", "authorize"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.GrantRolePermission("role-builder", "knowledge_network", "*", "view_detail"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AssignRole("u-stranger", "role-builder"); err != nil {
+		t.Fatal(err)
+	}
+
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-stranger"); w.Code != http.StatusNoContent {
+		t.Fatalf("type-wide authorize holder: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	// modify is not in the role grant, so it cannot be passed on.
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"modify"},
+	}, "u-stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("op it does not hold: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// The self-service read follows the write authority: an owner sees who already
+// holds their own network, and nothing else. It is per object by construction —
+// there is no way to widen it into a platform view.
+func TestObjectGrantsOwnerPolicyRead(t *testing.T) {
+	r, _ := ownerGrantFixture(t)
+	const base = "/api/safe/v1/me/object-grants?resource_type=knowledge_network"
+
+	if w := tokReq(t, r, http.MethodGet, base+"&resource_id=kn-mine", nil, "u-owner"); w.Code != http.StatusOK {
+		t.Fatalf("owner reading its own object: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	if w := tokReq(t, r, http.MethodGet, base+"&resource_id=kn-theirs", nil, "u-owner"); w.Code != http.StatusForbidden {
+		t.Fatalf("owner reading another object: want 403, got %d", w.Code)
+	}
+	// No id at all is rejected as a malformed request rather than answered as a
+	// type-wide read — the endpoint has no type-wide mode to fall into.
+	if w := tokReq(t, r, http.MethodGet, base, nil, "u-owner"); w.Code != http.StatusBadRequest {
+		t.Fatalf("owner reading the whole type: want 400, got %d (%s)", w.Code, w.Body.String())
+	}
+	// The platform-wide listing stays where it was, administrator-only.
+	if w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/object-grants", nil, "u-owner"); w.Code != http.StatusForbidden {
+		t.Fatalf("owner listing every grant: want 403, got %d", w.Code)
+	}
+	if w := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/policies?resource_type=knowledge_network", nil); w.Code != http.StatusOK {
+		t.Fatalf("administrator reading the whole type: want 200, got %d", w.Code)
+	}
+}
+
+// The owner-facing lookups: names on the grant rows, and a candidate picker.
+// Both exist because the platform user directory is administrator-only, and both
+// are gated on the same authority as writing grants on the object.
+func TestObjectGrantsOwnerDirectoryLookups(t *testing.T) {
+	r, _ := ownerGrantFixture(t)
+	const base = "/api/safe/v1/me"
+
+	w := tokReq(t, r, http.MethodGet, base+"/object-grants?resource_type=knowledge_network&resource_id=kn-mine", nil, "u-owner")
+	if w.Code != http.StatusOK {
+		t.Fatalf("read grants: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var grants struct {
+		Entries []struct {
+			AccessorID      string `json:"accessor_id"`
+			AccessorAccount string `json:"accessor_account"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &grants); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(grants.Entries) != 1 || grants.Entries[0].AccessorID != "u-owner" {
+		t.Fatalf("want the owner's own row, got %+v", grants.Entries)
+	}
+	if grants.Entries[0].AccessorAccount != "builder" {
+		t.Errorf("accessor_account = %q, want \"builder\" — an id alone names nobody", grants.Entries[0].AccessorAccount)
+	}
+
+	// The picker is scoped to an object the caller may authorize...
+	w = tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&resource_id=kn-mine&search=team", nil, "u-owner")
+	if w.Code != http.StatusOK {
+		t.Fatalf("picker: want 200, got %d (%s)", w.Code, w.Body.String())
+	}
+	var picker struct {
+		Users []struct {
+			ID      string `json:"id"`
+			Account string `json:"account"`
+		} `json:"users"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &picker); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(picker.Users) != 1 || picker.Users[0].Account != "teammate" {
+		t.Fatalf("search=team should match only teammate, got %+v", picker.Users)
+	}
+
+	// ...and is not a back door into the directory for anyone else.
+	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network&resource_id=kn-mine&search=team", nil, "u-stranger"); w.Code != http.StatusForbidden {
+		t.Fatalf("non-owner picker: want 403, got %d", w.Code)
+	}
+	if w := tokReq(t, r, http.MethodGet, base+"/grantable-users?resource_type=knowledge_network", nil, "u-owner"); w.Code != http.StatusBadRequest {
+		t.Fatalf("picker without an object: want 400, got %d", w.Code)
 	}
 }
