@@ -32,6 +32,20 @@ import (
 // holds no user→department membership rules, so a department grant would be a
 // dead policy that never matches at enforce time (see RolePermissions path for
 // the role-based alternative).
+// isConcreteResourceID reports whether an id names ONE instance.
+//
+// Rejecting only the literal "*" is not enough: the casbin matcher is keyMatch,
+// which treats a "*" ANYWHERE in the object as a wildcard. An id of "tb-*" is
+// stored verbatim by SetObjectPermissions and then matches every tool_box whose
+// id starts with "tb-", including ones created later — a grant the console can
+// neither show nor revoke, because every screen there works from a concrete id.
+//
+// Concrete ids never contain "*" (they are ULIDs, UUIDs or slugs), so refusing
+// the character outright costs nothing and closes the shape entirely.
+func isConcreteResourceID(id string) bool {
+	return id != "" && !strings.Contains(id, "*")
+}
+
 // opAuthorize is the resource-level operation that lets someone who is NOT a
 // platform administrator hand out access to one concrete object. The domain
 // services write it to the creator at create time (bkn-backend and vega call
@@ -86,11 +100,11 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 	if admin {
 		return authorityAdminAuthz, true
 	}
-	// A concrete instance is required from here on. An empty or wildcard id would
+	// A concrete instance is required from here on. An empty or wildcard-bearing id would
 	// make the ownership lookup below match ANY instance the caller happens to
 	// own, and casbin keyMatch would let a "type:*" role grant match it too —
 	// either turns "I own one network" into "I may act on the whole type".
-	if ref.ID == "" || ref.ID == "*" {
+	if !isConcreteResourceID(ref.ID) {
 		replyPublicError(c, http.StatusForbidden)
 		return "", false
 	}
@@ -135,7 +149,7 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 // Administrators skip both: admin-authz:grant is the platform-level authority
 // these two rules exist to protect.
 // protectAuthorizeHolder stops a delegate from touching the grant of another
-// `authorize` holder — the object's creator included.
+// `authorize` holder — the object's creator included — or the public-access row.
 //
 // It guards BOTH writes, because both erase. DELETE removes every p-line the
 // accessor holds on the object; POST is replace-semantics, so writing
@@ -152,6 +166,15 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 // without `authorize` stay fully editable and revocable, which is what the owner
 // surface exists for.
 func protectAuthorizeHolder(c *gin.Context, e *authz.Enforcer, ref resourceRef, accessorID string) bool {
+	// The public accessor is not a person whose access a delegate may adjust: it
+	// is how the execution factory publishes a built-in toolbox to everyone. Its
+	// row carries no `authorize`, so the holder check below would wave it through,
+	// and removing it would un-publish the toolbox platform-wide — previously an
+	// admin-authz:revoke action.
+	if accessorID == authz.PublicAccessorID {
+		replyPublicError(c, http.StatusForbidden)
+		return false
+	}
 	held, err := e.ListObjectGrants(accessorID, ref.Type, ref.ID)
 	if err != nil {
 		serverError(c, err)
@@ -669,7 +692,7 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !bind(c, &req) {
 			return
 		}
-		if req.Resource.ID == "" || req.Resource.ID == "*" {
+		if !isConcreteResourceID(req.Resource.ID) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
@@ -768,7 +791,7 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !bind(c, &req) {
 			return
 		}
-		if req.Resource.ID == "" || req.Resource.ID == "*" {
+		if !isConcreteResourceID(req.Resource.ID) {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
