@@ -17,6 +17,7 @@ package authz
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
@@ -213,9 +214,17 @@ func (en *Enforcer) RoleMembers(roleID string) ([]string, error) {
 
 // RoleGrant is one resource-object grant held by a role: the object pattern
 // ("type:id", id may be "*") and the operations allowed on it.
+//
+// InstanceOperations is set only by EffectivePermissions under TypeWideOnly, on
+// a type row ("type:*"): it carries the operations the accessor holds on at
+// least one INSTANCE of the type but not type-wide. It answers "is this type
+// reachable at all", which is what menu/navigation callers ask; it deliberately
+// does not say which instance, so it must never gate a concrete (type,id) — use
+// an unscoped or resource_id-scoped read for that.
 type RoleGrant struct {
-	Object     string
-	Operations []string
+	Object             string
+	Operations         []string
+	InstanceOperations []string
 }
 
 // RolePermissions lists the policy grants whose subject is the role, grouped by
@@ -260,10 +269,11 @@ func groupGrantsByObject(rows [][]string) []RoleGrant {
 // PermQuery narrows an EffectivePermissions read. The zero value returns the
 // full effective set; ResourceType scopes to one type and ResourceIDs further
 // narrows the instance exception rows (ResourceIDs is only meaningful with a
-// ResourceType set). TypeWideOnly drops instance exception rows entirely —
-// for callers that only render type-level UI (menus/navigation) and would
-// discard per-instance rows anyway; with per-object grants those rows dominate
-// the payload (#353).
+// ResourceType set). TypeWideOnly emits no instance exception rows — for
+// callers that only render type-level UI (menus/navigation) and would discard
+// per-instance rows anyway; with per-object grants those rows dominate the
+// payload (#353). Their operations are not lost: they fold into the type row's
+// InstanceOperations, so "granted only on objects" still reports the type.
 type PermQuery struct {
 	ResourceType string   // "" = all types
 	ResourceIDs  []string // empty = all instances of the type
@@ -292,6 +302,13 @@ type PermQuery struct {
 //     type-wide grant are dropped. Callers/frontends judge "may do op on
 //     (type,id)" as op ∈ typeWide(type) OR op ∈ instance(type,id) — i.e. they
 //     union the id:"*" row with the instance row.
+//
+//   - Under TypeWideOnly the instance rows collapse instead of appearing: their
+//     surplus ops move to the type row's InstanceOperations, and a type reached
+//     only through instances gets a row with empty Operations. A caller asking
+//     "may this accessor touch this type at all" unions Operations with
+//     InstanceOperations; a caller asking about a concrete instance must not use
+//     this shape at all, since it no longer says which instance.
 //
 // Object/op order follows GetImplicitPermissionsForUser; callers treat the
 // result as sets.
@@ -333,6 +350,13 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 	}
 
 	out := make([]RoleGrant, 0, len(grouped))
+	// TypeWideOnly still emits no instance ROWS, but their operations are folded
+	// into the type row's InstanceOperations rather than discarded: an accessor
+	// whose only grants are per-object would otherwise come back with nothing at
+	// all, and a caller rendering navigation from this read would hide the entry
+	// to a resource the accessor was explicitly granted (bkn-studio#478).
+	instanceExtra := map[string]map[string]bool{}
+	typeRowIndex := map[string]int{}
 	for _, g := range grouped {
 		rtype, rid := splitObjectKey(g.Object)
 		if q.ResourceType != "" && rtype != q.ResourceType {
@@ -340,10 +364,8 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		}
 		if rid == "*" {
 			// Type-wide row: always kept within scope; the frontend unions on it.
+			typeRowIndex[rtype] = len(out)
 			out = append(out, RoleGrant{Object: g.Object, Operations: g.Operations})
-			continue
-		}
-		if q.TypeWideOnly {
 			continue
 		}
 		// Instance row: keep only ops beyond the type-wide set; drop if fully
@@ -366,10 +388,44 @@ func (en *Enforcer) EffectivePermissions(accessorID string, q PermQuery) (hasWil
 		if len(extra) == 0 {
 			continue
 		}
+		if q.TypeWideOnly {
+			if instanceExtra[rtype] == nil {
+				instanceExtra[rtype] = map[string]bool{}
+			}
+			for _, op := range extra {
+				instanceExtra[rtype][op] = true
+			}
+			continue
+		}
 		if len(idFilter) > 0 && !idFilter[rid] {
 			continue
 		}
 		out = append(out, RoleGrant{Object: g.Object, Operations: extra})
+	}
+
+	// Attach the folded instance operations. Sorted throughout so a payload the
+	// frontend caches after login does not churn between two identical reads.
+	foldedTypes := make([]string, 0, len(instanceExtra))
+	for rtype := range instanceExtra {
+		foldedTypes = append(foldedTypes, rtype)
+	}
+	sort.Strings(foldedTypes)
+	for _, rtype := range foldedTypes {
+		ops := make([]string, 0, len(instanceExtra[rtype]))
+		for op := range instanceExtra[rtype] {
+			ops = append(ops, op)
+		}
+		sort.Strings(ops)
+		if i, ok := typeRowIndex[rtype]; ok {
+			out[i].InstanceOperations = ops
+			continue
+		}
+		// The accessor holds nothing type-wide on this type, only instances, so
+		// there is no row to attach to. Emit one whose Operations is empty: the
+		// id keeps the "*" shape every caller unions on, and an empty type-wide
+		// set plus a non-empty instance set reads exactly as what it is — "you
+		// may reach this type, but only through specific objects".
+		out = append(out, RoleGrant{Object: rtype + ":*", Operations: []string{}, InstanceOperations: ops})
 	}
 	return false, out, nil
 }

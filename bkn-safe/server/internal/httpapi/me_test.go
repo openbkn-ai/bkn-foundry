@@ -297,6 +297,31 @@ func TestMeKnowledgeNetworkGrantsReturnsDirectInstancesWithoutRoleWildcard(t *te
 	}
 }
 
+// decodeInstanceOps indexes the folded instance_operations by "type/id",
+// omitting rows where the key is absent so a test can assert absence.
+func decodeInstanceOps(t *testing.T, w *httptest.ResponseRecorder) map[string][]string {
+	t.Helper()
+	var resp struct {
+		Permissions []struct {
+			Resource struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+			} `json:"resource"`
+			InstanceOperations []string `json:"instance_operations"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	out := map[string][]string{}
+	for _, p := range resp.Permissions {
+		if len(p.InstanceOperations) > 0 {
+			out[p.Resource.Type+"/"+p.Resource.ID] = p.InstanceOperations
+		}
+	}
+	return out
+}
+
 // TestMePermissionsScope covers the scope filters and their validation.
 func TestMePermissionsScope(t *testing.T) {
 	r, e, _, _ := newAdminServer(t)
@@ -376,16 +401,33 @@ func TestMePermissionsScope(t *testing.T) {
 		t.Errorf("resource_id without resource_type: want 400, got %d", w.Code)
 	}
 
-	// scope=type: only type-wide rows; every instance row (surplus or
-	// instance-only) is dropped.
-	got = decode(tokReq(t, r, http.MethodGet, path+"?scope=type", nil, "u1"))
+	// scope=type: no instance rows; their surplus ops fold into the type row's
+	// instance_operations, and agent — held only through one object — still
+	// reports as a type with empty operations.
+	scoped := tokReq(t, r, http.MethodGet, path+"?scope=type", nil, "u1")
+	got = decode(scoped)
 	if got["large_model/*"] == nil {
 		t.Errorf("type-wide large_model/* row missing under scope=type: %v", got)
 	}
 	for _, k := range []string{"large_model/m1", "large_model/m2", "agent/a1"} {
 		if _, ok := got[k]; ok {
-			t.Errorf("%s must be dropped under scope=type: %v", k, got)
+			t.Errorf("%s must not appear as a row under scope=type: %v", k, got)
 		}
+	}
+	inst := decodeInstanceOps(t, scoped)
+	if len(inst["large_model/*"]) != 1 || inst["large_model/*"][0] != "modify" {
+		t.Errorf("large_model/* instance_operations = %v, want [modify]", inst["large_model/*"])
+	}
+	if len(got["agent/*"]) != 0 {
+		t.Errorf("agent/* operations = %v, want empty — nothing granted type-wide", got["agent/*"])
+	}
+	if len(inst["agent/*"]) != 1 || inst["agent/*"][0] != "use" {
+		t.Errorf("agent/* instance_operations = %v, want [use]", inst["agent/*"])
+	}
+
+	// The key is absent, not empty, on reads that never fold.
+	if inst := decodeInstanceOps(t, tokReq(t, r, http.MethodGet, path, nil, "u1")); len(inst) != 0 {
+		t.Errorf("instance_operations must not appear on an unscoped read: %v", inst)
 	}
 
 	// scope=type composes with resource_type.
