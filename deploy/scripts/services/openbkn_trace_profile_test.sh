@@ -269,6 +269,8 @@ contains "AO profile reads the Collector log index" "${ao_sets}" "opensearch.log
 agent_observability_values="$(<"${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability/values.yaml")"
 contains "standalone AO reads the Collector Trace index" "${agent_observability_values}" "traceIndex: ${expected_trace_index}"
 contains "standalone AO reads the Collector log index" "${agent_observability_values}" "logIndex: ${expected_log_index}"
+agent_observability_deployment="$(<"${SCRIPT_DIR}/../bkn-trace/agent-observability/charts/agent-observability/templates/deployment.yaml")"
+contains "AO Pod template includes timestamp repair revision" "${agent_observability_deployment}" "trace-timestamp-pipeline-revision"
 
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_trace_profile_sets agent-retrieval

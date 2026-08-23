@@ -22,10 +22,11 @@ spec:
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
-      {{- with .Values.podAnnotations }}
       annotations:
+        openbkn.ai/trace-timestamp-pipeline-revision: {{ .Values.opensearch.traceTimestampPipelineRevision | quote }}
+        {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "agent-observability.serviceAccountName" . }}
       {{- with .Values.imagePullSecrets }}

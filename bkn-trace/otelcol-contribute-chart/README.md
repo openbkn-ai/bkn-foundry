@@ -103,7 +103,7 @@ exporters:
 
 注意：官方 `opensearchexporter` 当前支持 `traces` 和 `logs`，默认不为 `metrics` 创建 OpenSearch 导出 pipeline。
 
-Trace 时间戳修复使用 OpenSearch 的 `index.default_pipeline`：由 `agent-observability` 在启动时先创建修复 pipeline，并更新已有 Trace 索引；在新安装时会直接创建配置了该默认管道的精确 Trace 索引。不要向 Collector 的 `opensearch` exporter 注入 `pipeline` 字段；当前交付的 Collector 不支持该配置，启动会失败。使用受限 OpenSearch 账号时，该账号还必须有创建 ingest pipeline、创建 Trace 索引以及更新其 index settings 的权限。
+Trace 时间戳修复使用 OpenSearch 的 `index.default_pipeline`：由 `agent-observability` 在启动时先创建修复 pipeline，并更新已有 Trace 索引；在新安装时会直接创建配置了该默认管道的精确 Trace 索引。升级时会幂等删除早期版本遗留的 settings-only Trace 模板，避免它压过 SS4O mappings。不要向 Collector 的 `opensearch` exporter 注入 `pipeline` 字段；当前交付的 Collector 不支持该配置，启动会失败。使用受限 OpenSearch 账号时，该账号还必须有创建 ingest pipeline、创建 Trace 索引、更新其 index settings 以及删除该遗留模板的权限。
 
 `scripts/test_config_rollout.sh` 默认使用交付中的 SWR Collector 镜像执行 `validate`；可通过 `OTELCOL_RUNTIME_IMAGE` 覆盖镜像。该校验不会因未设置环境变量而跳过。
 

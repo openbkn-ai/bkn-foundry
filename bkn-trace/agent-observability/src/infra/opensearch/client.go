@@ -106,6 +106,9 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 	if traceIndex == "" {
 		return errors.New("trace index is required when trace timestamp pipeline is enabled")
 	}
+	if err := c.deleteLegacyTraceTimestampTemplate(ctx); err != nil {
+		return err
+	}
 	body, err := json.Marshal(map[string]any{
 		"description": "Repair zero @timestamp on OpenTelemetry SS4O trace spans from startTime.",
 		"processors": []map[string]any{{
@@ -181,6 +184,33 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 		return fmt.Errorf("opensearch trace index default pipeline setting failed with status %d: %s", settingsResponse.StatusCode, string(settingsBody))
 	}
 	return nil
+}
+
+// deleteLegacyTraceTimestampTemplate removes the settings-only template used
+// by the first index-level repair implementation. It could suppress matching
+// SS4O mappings because OpenSearch applies only the highest-priority template.
+func (c *Client) deleteLegacyTraceTimestampTemplate(ctx context.Context) error {
+	requestURL := fmt.Sprintf("%s/_index_template/bkn-trace-timestamp-default", c.baseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, requestURL, nil)
+	if err != nil {
+		return fmt.Errorf("create legacy trace timestamp template delete request: %w", err)
+	}
+	if c.auth.Enabled {
+		req.SetBasicAuth(c.auth.Username, c.auth.Password)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("execute legacy trace timestamp template delete request: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read legacy trace timestamp template delete response: %w", err)
+	}
+	if resp.StatusCode == http.StatusNotFound || (resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices) {
+		return nil
+	}
+	return fmt.Errorf("delete legacy trace timestamp template failed with status %d: %s", resp.StatusCode, string(body))
 }
 
 func (c *Client) Search(ctx context.Context, index string, query []byte) ([]byte, error) {
@@ -433,6 +463,15 @@ func (c *Client) EnsureIndex(ctx context.Context, index string, mapping []byte) 
 		return nil
 	}
 	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(body), "resource_already_exists_exception") {
+		var definition struct {
+			Mappings json.RawMessage `json:"mappings"`
+		}
+		if err := json.Unmarshal(mapping, &definition); err != nil {
+			return fmt.Errorf("decode opensearch index definition: %w", err)
+		}
+		if len(definition.Mappings) == 0 {
+			return nil
+		}
 		return c.ensureMapping(ctx, index, mapping)
 	}
 

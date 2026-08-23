@@ -19,6 +19,9 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		switch {
+		case r.Method == http.MethodDelete && r.URL.Path == "/_index_template/bkn-trace-timestamp-default":
+			w.WriteHeader(http.StatusNotFound)
+			return
 		case r.Method == http.MethodPut && r.URL.Path == "/_ingest/pipeline/bkn-trace-span-timestamp-v1":
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -53,14 +56,20 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 	if err := client.EnsureTraceTimestampPipeline(t.Context(), "bkn-trace-span-timestamp-v1", "ss4o_traces-default-namespace"); err != nil {
 		t.Fatalf("ensure timestamp pipeline: %v", err)
 	}
-	if requests != 3 {
-		t.Fatalf("expected pipeline, index settings and index creation requests, got %d", requests)
+	if requests != 4 {
+		t.Fatalf("expected legacy cleanup, pipeline, index settings and index creation requests, got %d", requests)
 	}
 }
 
 func TestEnsureTraceTimestampPipelineUpdatesExistingTraceIndex(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case "/_index_template/bkn-trace-timestamp-default":
+			if r.Method != http.MethodDelete {
+				t.Fatalf("expected legacy template deletion, got %s", r.Method)
+			}
+			w.WriteHeader(http.StatusNotFound)
+			return
 		case "/_ingest/pipeline/bkn-trace-span-timestamp-v1":
 			w.WriteHeader(http.StatusOK)
 		case "/ss4o_traces-default-namespace/_settings":
@@ -81,5 +90,39 @@ func TestEnsureTraceTimestampPipelineUpdatesExistingTraceIndex(t *testing.T) {
 	client := New(server.URL, AuthConfig{}, time.Second)
 	if err := client.EnsureTraceTimestampPipeline(t.Context(), "bkn-trace-span-timestamp-v1", "ss4o_traces-default-namespace"); err != nil {
 		t.Fatalf("ensure timestamp pipeline: %v", err)
+	}
+}
+
+func TestEnsureTraceTimestampPipelineHandlesConcurrentIndexCreation(t *testing.T) {
+	settingsCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_index_template/bkn-trace-timestamp-default":
+			w.WriteHeader(http.StatusNotFound)
+		case "/_ingest/pipeline/bkn-trace-span-timestamp-v1":
+			w.WriteHeader(http.StatusOK)
+		case "/ss4o_traces-default-namespace/_settings":
+			settingsCalls++
+			if settingsCalls == 1 {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		case "/ss4o_traces-default-namespace":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"type":"resource_already_exists_exception"}}`))
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := New(server.URL, AuthConfig{}, time.Second)
+	if err := client.EnsureTraceTimestampPipeline(t.Context(), "bkn-trace-span-timestamp-v1", "ss4o_traces-default-namespace"); err != nil {
+		t.Fatalf("ensure timestamp pipeline after concurrent index creation: %v", err)
+	}
+	if settingsCalls != 1 {
+		t.Fatalf("expected one initial settings update before index creation race, got %d", settingsCalls)
 	}
 }
