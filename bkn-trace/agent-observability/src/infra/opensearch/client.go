@@ -142,41 +142,6 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 	}
 
 	indexSettings := map[string]string{"index.default_pipeline": name}
-	indexTemplate, err := json.Marshal(map[string]any{
-		"index_patterns": []string{traceIndex},
-		// Generic SS4O templates may also match the Trace index. Keep this
-		// narrowly scoped template above their default priority so the repair
-		// pipeline cannot be displaced by an unrelated template.
-		"priority": 500,
-		"template": map[string]any{
-			"settings": indexSettings,
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("encode trace index default pipeline template: %w", err)
-	}
-	templateURL := fmt.Sprintf("%s/_index_template/bkn-trace-timestamp-default", c.baseURL)
-	templateRequest, err := http.NewRequestWithContext(ctx, http.MethodPut, templateURL, bytes.NewReader(indexTemplate))
-	if err != nil {
-		return fmt.Errorf("create trace index default pipeline template request: %w", err)
-	}
-	templateRequest.Header.Set("Content-Type", "application/json")
-	if c.auth.Enabled {
-		templateRequest.SetBasicAuth(c.auth.Username, c.auth.Password)
-	}
-	templateResponse, err := c.httpClient.Do(templateRequest)
-	if err != nil {
-		return fmt.Errorf("execute trace index default pipeline template request: %w", err)
-	}
-	defer func() { _ = templateResponse.Body.Close() }()
-	templateBody, err := io.ReadAll(templateResponse.Body)
-	if err != nil {
-		return fmt.Errorf("read trace index default pipeline template response: %w", err)
-	}
-	if templateResponse.StatusCode < http.StatusOK || templateResponse.StatusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("opensearch trace index default pipeline template failed with status %d: %s", templateResponse.StatusCode, string(templateBody))
-	}
-
 	indexSettingsBody, err := json.Marshal(indexSettings)
 	if err != nil {
 		return fmt.Errorf("encode trace index default pipeline setting: %w", err)
@@ -199,10 +164,17 @@ func (c *Client) EnsureTraceTimestampPipeline(ctx context.Context, name string, 
 	if err != nil {
 		return fmt.Errorf("read trace index default pipeline setting response: %w", err)
 	}
-	// On a fresh installation the Collector creates the trace index later. The
-	// template above binds the pipeline then; only an existing index needs this
-	// immediate update.
+	// On a fresh installation create the exact Trace index before the Collector
+	// sends its first document. This preserves any generic SS4O template's
+	// mappings while avoiding a second, higher-priority settings-only template.
 	if settingsResponse.StatusCode == http.StatusNotFound {
+		indexDefinition, err := json.Marshal(map[string]any{"settings": indexSettings})
+		if err != nil {
+			return fmt.Errorf("encode trace index default pipeline definition: %w", err)
+		}
+		if err := c.EnsureIndex(ctx, traceIndex, indexDefinition); err != nil {
+			return fmt.Errorf("create trace index default pipeline: %w", err)
+		}
 		return nil
 	}
 	if settingsResponse.StatusCode < http.StatusOK || settingsResponse.StatusCode >= http.StatusMultipleChoices {
