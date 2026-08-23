@@ -103,6 +103,11 @@ func NewApp() (*App, error) {
 		},
 		openSearchConfig.Timeout,
 	)
+	if err := openSearchClient.EnsureTraceTimestampPipeline(
+		context.Background(), openSearchConfig.TraceTimestampPipeline,
+	); err != nil {
+		return nil, fmt.Errorf("initialize trace timestamp pipeline: %w", err)
+	}
 	traceDetailClient := opensearchtraceaccess.New(openSearchClient, openSearchConfig.TraceIndex)
 	traceQueryService := tracesvc.New(traceDetailClient)
 	var evidenceStore ievidencestore.EvidenceStorePort = evidencestore.New()

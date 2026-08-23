@@ -15,6 +15,7 @@ checksum() {
 
 baseline="$(checksum)"
 changed_exporter="$(checksum --set opensearchExporter.http.endpoint=http://example.invalid:9200)"
+timestamp_pipeline_rendered="$(helm template otelcol-contrib "${chart_dir}" --set opensearchExporter.pipeline=bkn-trace-span-timestamp-v1)"
 unchanged="$(checksum)"
 
 if [[ -z "${baseline}" ]]; then
@@ -29,6 +30,11 @@ fi
 
 if [[ "${baseline}" != "${unchanged}" ]]; then
   echo "collector config checksum changed without a configuration change" >&2
+  exit 1
+fi
+
+if ! grep -Fq "pipeline: bkn-trace-span-timestamp-v1" <<<"${timestamp_pipeline_rendered}"; then
+  echo "collector must pass the configured OpenSearch ingest pipeline to its exporter" >&2
   exit 1
 fi
 

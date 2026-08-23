@@ -56,6 +56,7 @@ contains "AO uses durable Core" "${ao_sets}" "core.store=mariadb"
 contains "AO requires Core DSN Secret" "${ao_sets}" "core.mariadb.existingSecret=bkn-trace-core-mariadb"
 contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
+contains "AO creates the Collector timestamp repair pipeline first" "${ao_sets}" "opensearch.traceTimestampPipeline=bkn-trace-span-timestamp-v1"
 not_contains "AO leaves index initialization to runtime" "${ao_sets}" "evidence.indexManagement"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
@@ -67,7 +68,7 @@ should_skip_upgrade_same_chart_version() { return 0; }
 HELM_VALUES=''
 HELM_GET_VALUES_EXIT=0
 helm() {
-    if [[ "$*" == "get values agent-observability -n openbkn --all -o json" ]]; then
+    if [[ "$*" == "get values agent-observability -n openbkn --all -o json" || "$*" == "get values otelcol-contrib -n openbkn --all -o json" ]]; then
         if [[ "${HELM_GET_VALUES_EXIT}" -ne 0 ]]; then
             return "${HELM_GET_VALUES_EXIT}"
         fi
@@ -121,6 +122,28 @@ else
     fail "a failed Helm values read must preserve the version-skip decision"
 fi
 HELM_GET_VALUES_EXIT=0
+
+CORE_SET_VALUES=()
+HELM_VALUES='{"opensearchExporter":{"pipeline":""}}'
+if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
+    fail "installer must reconcile a Collector without the timestamp repair pipeline"
+else
+    ok
+fi
+
+HELM_VALUES='{"opensearchExporter":{"pipeline":"bkn-trace-span-timestamp-v1"}}'
+if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
+    ok
+else
+    fail "installer should retain the version-skip optimization for a reconciled Collector"
+fi
+
+HELM_VALUES='{not-json}'
+if _openbkn_should_skip_upgrade otelcol-contrib openbkn otelcol-contrib 0.1.4; then
+    ok
+else
+    fail "invalid Collector Helm values must preserve the version-skip decision"
+fi
 
 CORE_SET_VALUES=("core.store=memory" "core.store=mariadb")
 HELM_VALUES='{"core":{"store":"memory","projection":{"enabled":false}},"evidence":{"store":"memory"}}'
@@ -194,6 +217,7 @@ not_contains "secure AO never forwards an OpenSearch password to Helm" "${secure
 CORE_RELEASE_EXTRA_SETS=()
 _openbkn_trace_profile_sets otelcol-contrib
 secure_collector_sets="${CORE_RELEASE_EXTRA_SETS[*]:-}"
+contains "Collector routes spans through the timestamp repair pipeline" "${secure_collector_sets}" "opensearchExporter.pipeline=bkn-trace-span-timestamp-v1"
 contains "secure Collector uses the OpenSearch endpoint from config" "${secure_collector_sets}" "opensearchExporter.http.endpoint=https://opensearch-secure.resource.svc.cluster.local:9200"
 contains "secure Collector verifies the OpenSearch TLS peer" "${secure_collector_sets}" "opensearchExporter.http.tls.insecure=false"
 contains "secure Collector enables OpenSearch auth" "${secure_collector_sets}" "opensearchExporter.auth.enabled=true"

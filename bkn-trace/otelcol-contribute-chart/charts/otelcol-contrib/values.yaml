@@ -97,6 +97,9 @@ opensearchExporter:
   tracesIndex: ""
   tracesIndexFallback: unknown
   tracesIndexTimeFormat: ""
+  # Optional OpenSearch ingest pipeline applied by the exporter. The full
+  # OpenBKN installer sets its trace timestamp repair pipeline explicitly.
+  pipeline: ""
   mapping:
     mode: ss4o
     timestampField: ""

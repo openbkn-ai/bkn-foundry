@@ -50,6 +50,8 @@ spec:
               value: {{ .Values.opensearch.traceIndex | quote }}
             - name: OPENSEARCH_LOG_INDEX
               value: {{ .Values.opensearch.logIndex | quote }}
+            - name: OPENSEARCH_TRACE_TIMESTAMP_PIPELINE
+              value: {{ .Values.opensearch.traceTimestampPipeline | quote }}
             - name: OPENSEARCH_EVIDENCE_INDEX
               value: {{ .Values.evidence.index | quote }}
             - name: BKN_TRACE_EVIDENCE_STORE

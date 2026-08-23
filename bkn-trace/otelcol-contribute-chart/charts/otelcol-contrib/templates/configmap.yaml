@@ -46,6 +46,9 @@ metadata:
 {{- if .Values.opensearchExporter.tracesIndexTimeFormat }}
 {{- $_ := set $opensearch "traces_index_time_format" .Values.opensearchExporter.tracesIndexTimeFormat }}
 {{- end }}
+{{- if .Values.opensearchExporter.pipeline }}
+{{- $_ := set $opensearch "pipeline" .Values.opensearchExporter.pipeline }}
+{{- end }}
 {{- $mapping := dict "mode" .Values.opensearchExporter.mapping.mode }}
 {{- if .Values.opensearchExporter.mapping.timestampField }}
 {{- $_ := set $mapping "timestamp_field" .Values.opensearchExporter.mapping.timestampField }}
