@@ -57,6 +57,7 @@ contains "AO requires Core DSN Secret" "${ao_sets}" "core.mariadb.existingSecret
 contains "AO persists evidence" "${ao_sets}" "evidence.store=opensearch"
 contains "AO enables projection" "${ao_sets}" "core.projection.enabled=true"
 contains "AO creates the Collector timestamp repair pipeline first" "${ao_sets}" "opensearch.traceTimestampPipeline=bkn-trace-span-timestamp-v1"
+contains "AO records the index-level timestamp repair revision" "${ao_sets}" "opensearch.traceTimestampPipelineRevision=index-default-pipeline-v1"
 not_contains "AO leaves index initialization to runtime" "${ao_sets}" "evidence.indexManagement"
 contains "AO protects evidence producer ingest" "${ao_sets}" "evidence.ingestAuth.existingSecret=bkn-trace-evidence-ingest"
 not_contains "AO has no query gateway Secret" "${ao_sets}" "queryAuth.existingSecret="
@@ -101,6 +102,13 @@ else
 fi
 
 HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1"}}'
+if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
+    fail "installer must reconcile a durable profile that predates index-level timestamp repair"
+else
+    ok
+fi
+
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1","traceTimestampPipelineRevision":"index-default-pipeline-v1"}}'
 if _openbkn_should_skip_upgrade agent-observability openbkn agent-observability 0.1.4; then
     ok
 else
@@ -194,7 +202,7 @@ else
     fail "repository installer must upgrade a volatile runtime profile"
 fi
 
-HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1"}}'
+HELM_VALUES='{"core":{"store":"mariadb","projection":{"enabled":true}},"evidence":{"store":"opensearch","ingestAuth":{"existingSecret":"bkn-trace-evidence-ingest"}},"opensearch":{"traceTimestampPipeline":"bkn-trace-span-timestamp-v1","traceTimestampPipelineRevision":"index-default-pipeline-v1"}}'
 _install_openbkn_release_local agent-observability /tmp openbkn
 _install_openbkn_release_repo agent-observability openbkn openbkn 0.1.4
 if [[ "${UPGRADE_CALLS}" -eq 2 ]]; then

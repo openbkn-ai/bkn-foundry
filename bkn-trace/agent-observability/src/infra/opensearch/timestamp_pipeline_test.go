@@ -31,24 +31,17 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 			if !strings.Contains(content, "ctx.containsKey('traceId')") {
 				t.Fatalf("pipeline must not alter log records: %s", content)
 			}
-		case r.Method == http.MethodPut && r.URL.Path == "/_index_template/bkn-trace-timestamp-default":
+		case r.Method == http.MethodPut && r.URL.Path == "/ss4o_traces-default-namespace/_settings":
+			w.WriteHeader(http.StatusNotFound)
+			return
+		case r.Method == http.MethodPut && r.URL.Path == "/ss4o_traces-default-namespace":
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
 				t.Fatal(err)
 			}
-			content := string(body)
-			if !strings.Contains(content, `"index_patterns":["ss4o_traces-default-namespace"]`) {
-				t.Fatalf("template must target the trace index: %s", content)
+			if !strings.Contains(string(body), `"index.default_pipeline":"bkn-trace-span-timestamp-v1"`) {
+				t.Fatalf("new trace index must configure the timestamp repair pipeline: %s", body)
 			}
-			if !strings.Contains(content, `"index.default_pipeline":"bkn-trace-span-timestamp-v1"`) {
-				t.Fatalf("template must configure the timestamp repair pipeline: %s", content)
-			}
-			if !strings.Contains(content, `"priority":500`) {
-				t.Fatalf("template must take precedence over generic SS4O templates: %s", content)
-			}
-		case r.Method == http.MethodPut && r.URL.Path == "/ss4o_traces-default-namespace/_settings":
-			w.WriteHeader(http.StatusNotFound)
-			return
 		default:
 			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
 		}
@@ -61,14 +54,14 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 		t.Fatalf("ensure timestamp pipeline: %v", err)
 	}
 	if requests != 3 {
-		t.Fatalf("expected pipeline, template and index settings requests, got %d", requests)
+		t.Fatalf("expected pipeline, index settings and index creation requests, got %d", requests)
 	}
 }
 
 func TestEnsureTraceTimestampPipelineUpdatesExistingTraceIndex(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/_ingest/pipeline/bkn-trace-span-timestamp-v1", "/_index_template/bkn-trace-timestamp-default":
+		case "/_ingest/pipeline/bkn-trace-span-timestamp-v1":
 			w.WriteHeader(http.StatusOK)
 		case "/ss4o_traces-default-namespace/_settings":
 			body, err := io.ReadAll(r.Body)

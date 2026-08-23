@@ -477,6 +477,7 @@ _openbkn_trace_profile_sets() {
                 "opensearch.traceIndex=ss4o_traces-default-namespace"
                 "opensearch.logIndex=ss4o_logs-default-namespace"
                 "opensearch.traceTimestampPipeline=bkn-trace-span-timestamp-v1"
+                "opensearch.traceTimestampPipelineRevision=index-default-pipeline-v1"
             )
             if [[ "$(_openbkn_trace_opensearch_protocol)" == "https" ]]; then
                 CORE_RELEASE_EXTRA_SETS+=(
@@ -989,6 +990,7 @@ durable = (
     and evidence.get("store") == "opensearch"
     and bool(evidence.get("ingestAuth", {}).get("existingSecret"))
     and bool(opensearch.get("traceTimestampPipeline"))
+    and opensearch.get("traceTimestampPipelineRevision") == "index-default-pipeline-v1"
 )
 sys.exit(0 if durable else 1)
 ' <<<"${values}"
