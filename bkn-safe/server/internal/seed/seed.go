@@ -127,6 +127,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
 	}
+	if err := backfillImpliedOperations(enforcer); err != nil {
+		return fmt.Errorf("backfill implied operations: %w", err)
+	}
 	if err := seedRoleBindings(enforcer); err != nil {
 		return fmt.Errorf("seed role bindings: %w", err)
 	}
@@ -385,6 +388,62 @@ func validateImplications(c catalog) error {
 					}
 					seen[next] = true
 					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// backfillImpliedOperations repairs grants written before an implication was
+// declared: every policy row holding an operation now marked as implying others
+// gains the implied ones.
+//
+// The implication is applied when a grant is written, so without this the fix
+// would reach new grants only. For catalog.resource_manage that would leave the
+// reported defect standing for everyone who had already been granted it — the
+// grant reaches nothing on its own, and nothing tells the administrator to
+// re-save it. Runs after seedGrants so the rebuilt role matrix is in place, and
+// it is idempotent, so a start with nothing to repair costs one filtered read
+// per declared implication.
+//
+// Deliberately NOT symmetric with revocation: this only ever adds. A row that
+// an administrator has since narrowed on purpose is repaired back to a usable
+// shape rather than left as a permission that answers 403 everywhere.
+func backfillImpliedOperations(enforcer *authz.Enforcer) error {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		return err
+	}
+	for _, rt := range c.ResourceTypes {
+		implies := make(map[string][]string, len(rt.Operations))
+		for _, op := range rt.Operations {
+			if len(op.Implies) > 0 {
+				implies[op.ID] = op.Implies
+			}
+		}
+		for holder := range implies {
+			// Transitive: an operation implying one that implies another must
+			// backfill both. validateImplications has already refused a cycle, and
+			// the visited set keeps this terminating regardless.
+			seen := map[string]bool{holder: true}
+			queue := append([]string(nil), implies[holder]...)
+			for len(queue) > 0 {
+				implied := queue[0]
+				queue = queue[1:]
+				if seen[implied] {
+					continue
+				}
+				seen[implied] = true
+				queue = append(queue, implies[implied]...)
+
+				added, err := enforcer.BackfillImpliedOperation(rt.ID, holder, implied)
+				if err != nil {
+					return err
+				}
+				if added > 0 {
+					slog.Info("backfilled the operation an existing grant implies",
+						"resource_type", rt.ID, "holder", holder, "implied", implied, "rows", added)
 				}
 			}
 		}
