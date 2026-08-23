@@ -41,6 +41,10 @@ import (
 // built a knowledge network could not share it (bkn-studio#478).
 const opAuthorize = "authorize"
 
+// grantableUserPageSize caps the owner-facing account picker. Deliberately not
+// caller-tunable: see the Limit comment in the handler.
+const grantableUserPageSize = 20
+
 // grantAuthority is how a caller earned the right to write grants on one object.
 // It is recorded in the audit trail because "the security administrator opened
 // this up" and "the owner shared their own object" are different acts that would
@@ -567,20 +571,18 @@ func registerMeObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB, 
 		if _, ok := resolveGrantAuthority(c, e, "view", ref); !ok {
 			return
 		}
-		limit := atoiDefault(c.Query("limit"), 0)
-		if limit <= 0 {
-			limit = 20
-		}
-		if limit > 100 {
-			limit = 100
-		}
 		enabled := true
 		users, _, err := dir.ListUsers(c.Request.Context(), directory.UserListFilter{
 			Search: strings.TrimSpace(c.Query("search")),
 			// A disabled account cannot log in, so granting it access is a grant
 			// that does nothing; keep it out of the picker.
 			Enabled: &enabled,
-			Limit:   limit,
+			// Fixed page size, not a caller-supplied one. A picker has no use for
+			// a tunable limit, and letting the query string reach the slice
+			// pre-allocation inside ListUsers is a memory-exhaustion path for the
+			// sake of nothing (CodeQL go/uncontrolled-allocation-size). Narrow the
+			// search instead of asking for more rows.
+			Limit: grantableUserPageSize,
 		})
 		if err != nil {
 			serverError(c, err)
