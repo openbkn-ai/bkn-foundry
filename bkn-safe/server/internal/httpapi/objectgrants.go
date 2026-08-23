@@ -134,20 +134,24 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 //
 // Administrators skip both: admin-authz:grant is the platform-level authority
 // these two rules exist to protect.
-// restrictDelegatedRevoke stops a delegate from stripping another delegate — or
-// the creator — of `authorize` on the object.
+// protectAuthorizeHolder stops a delegate from touching the grant of another
+// `authorize` holder — the object's creator included.
 //
-// Revoking removes every p-line the accessor holds on the object, `authorize`
-// included, and restrictDelegatedOps forbids a delegate from granting it back.
-// Without this, anyone the platform trusts to share ONE object could silently
-// take the object away from the person who made it, and only a platform
-// administrator could undo it. That is the same reason `authorize` cannot be
-// handed out by a delegate, applied to the other direction: it is conferred by
-// an administrator, so only an administrator takes it away.
+// It guards BOTH writes, because both erase. DELETE removes every p-line the
+// accessor holds on the object; POST is replace-semantics, so writing
+// operations:["view_detail"] onto a holder drops everything else in the same
+// motion. And restrictDelegatedOps forbids a delegate from putting `authorize`
+// back. Without this, anyone the platform trusts to share ONE object could
+// silently take that object away from the person who made it, and only a
+// platform administrator could undo it — network_builder holds `authorize`
+// type-wide on knowledge_network, so that is every member of the role against
+// every network.
 //
-// Grants without `authorize` stay revocable — sharing you can undo is the whole
-// point of the owner surface.
-func restrictDelegatedRevoke(c *gin.Context, e *authz.Enforcer, ref resourceRef, accessorID string) bool {
+// Same rule as the grant side, in the other direction: `authorize` is
+// administrator-conferred, so only an administrator takes it away. Grants
+// without `authorize` stay fully editable and revocable, which is what the owner
+// surface exists for.
+func protectAuthorizeHolder(c *gin.Context, e *authz.Enforcer, ref resourceRef, accessorID string) bool {
 	held, err := e.ListObjectGrants(accessorID, ref.Type, ref.ID)
 	if err != nil {
 		serverError(c, err)
@@ -688,6 +692,9 @@ func setObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		if authority != authorityAdminAuthz && !protectAuthorizeHolder(c, e, req.Resource, req.AccessorID) {
+			return
+		}
 		// Grantee must be a user (apps are user rows too). Departments/groups are
 		// rejected: their grants never match at enforce time.
 		ok, err := isUserAccessor(c, db, req.AccessorID)
@@ -772,7 +779,7 @@ func revokeObjectGrantHandler(e *authz.Enforcer, db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if authority != authorityAdminAuthz && !restrictDelegatedRevoke(c, e, req.Resource, req.AccessorID) {
+		if authority != authorityAdminAuthz && !protectAuthorizeHolder(c, e, req.Resource, req.AccessorID) {
 			return
 		}
 		valid, err := catalogOpSet(db, req.Resource.Type)
