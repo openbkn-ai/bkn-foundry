@@ -103,10 +103,25 @@ type Services interface {
 	UpdateRole(ctx context.Context, id string, patch RolePatch) error
 	// DeleteRole deletes a custom role and purges its bindings and grants.
 	DeleteRole(ctx context.Context, id string) error
+	// RevokeRolePermissions revokes a set of operations from a custom role over
+	// one resource pattern, judged against the state the role will be left in.
+	//
+	// The set matters. An operation another operation implies cannot be dropped
+	// while that implying operation is kept (#1121), and deciding that one
+	// operation at a time makes the answer depend on the order the caller listed
+	// them: revoking [view_detail, resource_manage] would keep view_detail,
+	// while [resource_manage, view_detail] would drop both. Judged against the
+	// remainder, both orders drop both.
+	RevokeRolePermissions(ctx context.Context, roleID, resourceType, resourceID string, ops []string) error
+
 	// GrantRolePermission grants a custom role an op over a resource pattern.
 	// Refuses wildcard types/ops and the admin-console capability (ErrInvalid).
 	GrantRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
-	// RevokeRolePermission revokes a custom role's op over a resource pattern.
+	// RevokeRolePermission revokes one operation.
+	//
+	// Deprecated: use RevokeRolePermissions. Revoking one operation at a time
+	// cannot see the rest of the caller's set, so a multi-operation revoke
+	// issued through this entry point still depends on the order.
 	RevokeRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
 }
 
