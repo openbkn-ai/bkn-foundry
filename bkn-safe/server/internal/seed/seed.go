@@ -12,15 +12,19 @@
 package seed
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"strings"
 
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/auth"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
@@ -86,6 +90,10 @@ type catalogOperation struct {
 	// ParentOperation is the operation checked on the parent instance when this
 	// one is not granted on the instance itself. Empty = no inheritance.
 	ParentOperation string `json:"parent_operation"`
+	// Implies lists operations on the SAME type that are granted along with this
+	// one and cannot be taken away while it is held (#1121). Empty for almost
+	// every operation; see model.Operation.ImpliedOperationIDs.
+	Implies []string `json:"implies"`
 }
 
 type grantsFile struct {
@@ -121,6 +129,9 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	}
 	if err := seedGrants(enforcer); err != nil {
 		return fmt.Errorf("seed grants: %w", err)
+	}
+	if err := backfillImpliedOperations(db, enforcer); err != nil {
+		return fmt.Errorf("backfill implied operations: %w", err)
 	}
 	if err := seedRoleBindings(enforcer); err != nil {
 		return fmt.Errorf("seed role bindings: %w", err)
@@ -222,6 +233,9 @@ func seedCatalog(db *gorm.DB) error {
 	// or a parent_operation the parent does not define would otherwise be stored
 	// and then silently deny at enforce time, which reads as "the grant does not
 	// work" rather than "the catalog is wrong".
+	if err := validateImplications(c); err != nil {
+		return err
+	}
 	if err := validateHierarchy(c); err != nil {
 		return err
 	}
@@ -238,11 +252,12 @@ func seedCatalog(db *gorm.DB) error {
 			declared = append(declared, op.ID)
 			opRow := model.Operation{
 				ResourceTypeID: rt.ID, ID: op.ID, Name: op.Name,
-				ParentOperationID: op.ParentOperation,
+				ParentOperationID:   op.ParentOperation,
+				ImpliedOperationIDs: strings.Join(op.Implies, ","),
 			}
 			if err := db.Clauses(clause.OnConflict{
 				Columns:   []clause.Column{{Name: "resource_type_id"}, {Name: "id"}},
-				DoUpdates: clause.AssignmentColumns([]string{"name", "parent_operation_id"}),
+				DoUpdates: clause.AssignmentColumns([]string{"name", "parent_operation_id", "implied_operation_ids"}),
 			}).Create(&opRow).Error; err != nil {
 				return err
 			}
@@ -326,6 +341,206 @@ func validateHierarchy(c catalog) error {
 		}
 	}
 	return nil
+}
+
+// validateImplications checks the same-type implications declared in
+// catalog.json: every implied operation is declared on the same type, no
+// operation implies itself, and the implication graph is acyclic.
+//
+// The failure this guards against is silent. An implication naming an operation
+// the type does not declare would expand a grant into an op no check ever asks
+// about, and a cycle would make the expansion at grant time loop; both are
+// authoring mistakes in an embedded file, so refusing to boot is the honest
+// response.
+func validateImplications(c catalog) error {
+	for _, rt := range c.ResourceTypes {
+		declared := make(map[string]bool, len(rt.Operations))
+		implies := make(map[string][]string, len(rt.Operations))
+		for _, op := range rt.Operations {
+			declared[op.ID] = true
+			implies[op.ID] = op.Implies
+		}
+		for _, op := range rt.Operations {
+			for _, implied := range op.Implies {
+				if implied == op.ID {
+					return fmt.Errorf("operation %s/%s implies itself", rt.ID, op.ID)
+				}
+				if !declared[implied] {
+					return fmt.Errorf("operation %s/%s implies %q, which %s does not declare",
+						rt.ID, op.ID, implied, rt.ID)
+				}
+			}
+		}
+		// Walk every chain with a step budget of the operation count, the same
+		// shape the parent-chain check uses.
+		for start := range implies {
+			seen := map[string]bool{}
+			queue := []string{start}
+			for steps := 0; len(queue) > 0; steps++ {
+				if steps > len(implies) {
+					return fmt.Errorf("operation implication chain has a cycle in %q", rt.ID)
+				}
+				cur := queue[0]
+				queue = queue[1:]
+				for _, next := range implies[cur] {
+					if next == start {
+						return fmt.Errorf("operation implication chain has a cycle at %s/%s", rt.ID, start)
+					}
+					if seen[next] {
+						continue
+					}
+					seen[next] = true
+					queue = append(queue, next)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// backfillImpliedOperations repairs grants written before an implication was
+// declared: every policy row holding an operation now marked as implying others
+// gains the implied ones.
+//
+// The implication is applied when a grant is written, so without this the fix
+// would reach new grants only. For catalog.resource_manage that would leave the
+// reported defect standing for everyone who had already been granted it — the
+// grant reaches nothing on its own, and nothing tells the administrator to
+// re-save it. Runs after seedGrants so the rebuilt role matrix is in place, and
+// it is idempotent, so a start with nothing to repair costs one filtered read
+// per declared implication.
+//
+// Deliberately NOT symmetric with revocation: this only ever adds. A row that
+// an administrator has since narrowed on purpose is repaired back to a usable
+// shape rather than left as a permission that answers 403 everywhere.
+func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
+	var c catalog
+	if err := json.Unmarshal(catalogJSON, &c); err != nil {
+		return err
+	}
+	trail := audit.New(db)
+	// Role ids up front: the audit vocabulary for a role's permission differs
+	// from an object grant's, and telling them apart per repaired row would be a
+	// query each.
+	roleNames, err := roleNameByID(db)
+	if err != nil {
+		return err
+	}
+	for _, rt := range c.ResourceTypes {
+		implies := make(map[string][]string, len(rt.Operations))
+		for _, op := range rt.Operations {
+			if len(op.Implies) > 0 {
+				implies[op.ID] = op.Implies
+			}
+		}
+		for holder := range implies {
+			// Transitive: an operation implying one that implies another must
+			// backfill both. validateImplications has already refused a cycle, and
+			// the visited set keeps this terminating regardless.
+			seen := map[string]bool{holder: true}
+			queue := append([]string(nil), implies[holder]...)
+			for len(queue) > 0 {
+				implied := queue[0]
+				queue = queue[1:]
+				if seen[implied] {
+					continue
+				}
+				seen[implied] = true
+				queue = append(queue, implies[implied]...)
+
+				added, err := enforcer.BackfillImpliedOperation(rt.ID, holder, implied)
+				if err != nil {
+					return err
+				}
+				if len(added) == 0 {
+					continue
+				}
+				slog.Info("backfilled the operation an existing grant implies",
+					"resource_type", rt.ID, "holder", holder, "implied", implied, "rows", len(added))
+				recordBackfillAudit(trail, roleNames, rt.ID, holder, implied, added)
+			}
+		}
+	}
+	return nil
+}
+
+// recordBackfillAudit writes one audit row per repaired grant, under the same
+// resource/action the console shows for an operator-issued object grant. A
+// permission that appears without anyone having clicked anything is exactly the
+// change an auditor asking "why does this account see this catalog" needs to
+// find, and a line in the pod log is not somewhere they can look.
+//
+// Failures are logged and swallowed: auditing must never be the reason a
+// deployment fails to start.
+func recordBackfillAudit(trail *audit.Store, roleNames map[string]string,
+	resourceType, holder, implied string, grants []authz.BackfilledGrant) {
+
+	for _, g := range grants {
+		detail, err := json.Marshal(map[string]any{
+			"accessor_id": g.AccessorID,
+			"resource":    map[string]string{"type": resourceType, "id": g.ResourceID},
+			"operations":  []string{implied},
+			"_reason":     "implied by " + holder,
+		})
+		if err != nil {
+			slog.Error("seed: could not encode backfill audit detail", "err", err)
+			continue
+		}
+		entry := audit.Entry{
+			ActorID: "system:seed",
+			Method:  "SYSTEM",
+			Detail:  string(detail),
+			Status:  http.StatusOK,
+		}
+		applyBackfillAuditTarget(&entry, roleNames, g)
+		if err := trail.Record(context.Background(), entry); err != nil {
+			slog.Error("seed: backfill audit record failed",
+				"resource_type", resourceType, "resource_id", g.ResourceID, "err", err)
+		}
+	}
+}
+
+// applyBackfillAuditTarget labels one repaired row with the vocabulary of the
+// surface that can actually show it. Getting this wrong is not cosmetic: an
+// audit row naming a surface where the grant is absent sends the auditor
+// looking in a list that will never contain it.
+//
+//   - a role subject is a role permission, which the console records as
+//     roles/grant_permission against the ROLE, not the resource;
+//   - a concrete grant to a real account is an object grant, and lands next to
+//     the operator-issued grant of the same object;
+//   - everything else — the public accessor, and type-wide "type:*" rows — is
+//     excluded from the object-grant list by construction, so it is labelled as
+//     what it is: a raw policy row, visible through GET /admin/policies.
+func applyBackfillAuditTarget(entry *audit.Entry, roleNames map[string]string, g authz.BackfilledGrant) {
+	if name, isRole := roleNames[g.AccessorID]; isRole {
+		entry.Resource = "roles"
+		entry.Action = "grant_permission"
+		entry.TargetID = g.AccessorID
+		entry.TargetName = name
+		return
+	}
+	entry.TargetID = g.ResourceID
+	entry.Action = "grant"
+	if g.ResourceID == "*" || g.AccessorID == authz.PublicAccessorID {
+		entry.Resource = "policies"
+		return
+	}
+	entry.Resource = "object-grants"
+}
+
+// roleNameByID loads the role id -> name map used to tell a role subject from
+// an accessor. Roles are few and this runs once per start.
+func roleNameByID(db *gorm.DB) (map[string]string, error) {
+	var roles []model.Role
+	if err := db.Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(roles))
+	for _, r := range roles {
+		out[r.ID] = r.Name
+	}
+	return out, nil
 }
 
 func seedGrants(enforcer *authz.Enforcer) error {

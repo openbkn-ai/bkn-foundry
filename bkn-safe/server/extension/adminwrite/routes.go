@@ -5,6 +5,7 @@
 package adminwrite
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -117,11 +118,13 @@ func Routes(g *gin.RouterGroup, svc Services) {
 		if !ok {
 			return
 		}
-		for _, op := range req.Operations {
-			if err := svc.RevokeRolePermission(c.Request.Context(), c.Param("id"), req.Resource.Type, req.Resource.ID, op); err != nil {
-				writeErr(c, err)
-				return
-			}
+		// One call with the whole set where the implementation supports it:
+		// whether an operation may be dropped depends on what the role is left
+		// with, which a per-operation loop cannot see (#1121).
+		if err := revokeRolePermissions(c.Request.Context(), svc, c.Param("id"),
+			req.Resource.Type, req.Resource.ID, req.Operations); err != nil {
+			writeErr(c, err)
+			return
 		}
 		c.Status(http.StatusNoContent)
 	})
@@ -181,4 +184,23 @@ func writeErr(c *gin.Context, err error) {
 		code = httperrors.AdminWriteInvalid
 	}
 	httperrors.WriteCode(c, status, code, nil)
+}
+
+// revokeRolePermissions hands the whole set to svc when it satisfies
+// RoleSetRevoker, and otherwise falls back to revoking one operation at a time.
+// The fallback keeps an older Services implementation compiling and working; it
+// carries the order dependence RoleSetRevoker exists to remove, which is why
+// core implements the set form.
+func revokeRolePermissions(ctx context.Context, svc Services,
+	roleID, resourceType, resourceID string, ops []string) error {
+
+	if r, ok := svc.(RoleSetRevoker); ok {
+		return r.RevokeRolePermissions(ctx, roleID, resourceType, resourceID, ops)
+	}
+	for _, op := range ops {
+		if err := svc.RevokeRolePermission(ctx, roleID, resourceType, resourceID, op); err != nil {
+			return err
+		}
+	}
+	return nil
 }

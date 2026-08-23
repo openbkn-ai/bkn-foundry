@@ -277,7 +277,26 @@ func registerObjectGrants(g *gin.RouterGroup, e *authz.Enforcer, db *gorm.DB) {
 				return
 			}
 		}
-		if err := e.SetObjectPermissions(req.AccessorID, req.Resource.Type, req.Resource.ID, req.Operations); err != nil {
+		// Add the operations the requested ones imply (#1121). Expanded after
+		// validation so a typo is still a 400 rather than something the expansion
+		// quietly absorbs. Upsert semantics make this self-healing: a console that
+		// clears view_detail while leaving resource_manage ticked sends a set this
+		// puts back, instead of storing a grant nothing can use.
+		ops, err := impliedOps(db.WithContext(c.Request.Context()), req.Resource.Type, req.Operations)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		// The audit Detail snapshots the request body, so without this the trail
+		// would say only what was asked for and an implied operation would appear
+		// on the accessor with nothing recording where it came from — the one
+		// question ("why can this account see this catalog?") the trail exists to
+		// answer. The seed's back-fill records its own repairs for the same
+		// reason; this keeps the two paths saying the same thing.
+		if implied := addedOps(req.Operations, ops); len(implied) > 0 {
+			setAuditOutcome(c, map[string]any{"implied_operations": implied})
+		}
+		if err := e.SetObjectPermissions(req.AccessorID, req.Resource.Type, req.Resource.ID, ops); err != nil {
 			serverError(c, err)
 			return
 		}

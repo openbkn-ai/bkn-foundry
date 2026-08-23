@@ -106,7 +106,11 @@ type Services interface {
 	// GrantRolePermission grants a custom role an op over a resource pattern.
 	// Refuses wildcard types/ops and the admin-console capability (ErrInvalid).
 	GrantRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
-	// RevokeRolePermission revokes a custom role's op over a resource pattern.
+	// RevokeRolePermission revokes one operation from a custom role.
+	//
+	// An implementation that also satisfies RoleSetRevoker gets the whole set
+	// instead, which is what an accurate multi-operation revoke needs — see that
+	// interface.
 	RevokeRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
 }
 
@@ -142,6 +146,28 @@ func requireAnyPermission(svc Services, points ...PermissionPoint) gin.HandlerFu
 		return r.RequireAnyPermission(points...)
 	}
 	return svc.RequirePermission(points[0].ResourceType, points[0].Op)
+}
+
+// RoleSetRevoker is an OPTIONAL extension of Services: revoke a SET of
+// operations from a role over one resource pattern, in a single call.
+//
+// The set is what makes the answer correct. An operation another operation
+// implies cannot be dropped while that implying operation is kept (#1121), and
+// deciding that one operation at a time — against the live state, where an
+// operation earlier in the caller's list is still held — makes the outcome
+// depend on the order: revoking ["view_detail", "resource_manage"] keeps
+// view_detail, while ["resource_manage", "view_detail"] drops both. Judged
+// against the remainder, computed once before anything is removed, both orders
+// drop both.
+//
+// Like AnyPermissionRequirer, this is a separate interface rather than a
+// Services method so that adding it does not break existing Services
+// implementations (notably ee's test doubles). revokeRolePermissions falls back
+// to the per-operation method when the implementation does not provide it,
+// which restores the order dependence for that implementation only — core's
+// does provide it.
+type RoleSetRevoker interface {
+	RevokeRolePermissions(ctx context.Context, roleID, resourceType, resourceID string, ops []string) error
 }
 
 // Mounter registers the rbac_basic write routes onto g using svc. The ee build

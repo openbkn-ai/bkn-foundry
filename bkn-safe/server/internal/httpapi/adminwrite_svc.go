@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -121,16 +122,118 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	if resourceType == adminConsoleResourceType {
 		return adminwrite.ErrAdminConsolePermission
 	}
-	return s.e.GrantRolePermission(role.ID, resourceType, resourceID, op)
+	// A role granted resource_manage gets view_detail with it (#1121): the
+	// management routes load their target first, so without it the role holds a
+	// verb it can never reach.
+	ops, err := impliedOps(s.db.WithContext(ctx), resourceType, []string{op})
+	if err != nil {
+		return err
+	}
+	for _, granted := range ops {
+		if err := s.e.GrantRolePermission(role.ID, resourceType, resourceID, granted); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
-// RevokeRolePermission revokes a custom role's op over a resource pattern.
+// RevokeRolePermission revokes one operation.
+//
+// Deprecated: use RevokeRolePermissions. One operation at a time cannot see the
+// rest of the caller's set, so the outcome of a multi-operation revoke depends
+// on the order — see RevokeRolePermissions.
 func (s *adminWriteServices) RevokeRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error {
+	return s.RevokeRolePermissions(ctx, roleID, resourceType, resourceID, []string{op})
+}
+
+// RevokeRolePermissions revokes a set of operations from a custom role over one
+// resource pattern.
+//
+// An operation stays if something the role is LEFT WITH implies it (#1121):
+// dropping view_detail while resource_manage remains would leave a verb whose
+// every route answers 403, the grant this rule exists to prevent. Retaining is
+// also what the whole-set object-grant surface does for the same edit, so the
+// two surfaces agree.
+//
+// "Left with" is the whole point, and it is why this takes a set. Judging one
+// operation at a time against the live state makes the answer depend on the
+// order the caller listed them — revoking [view_detail, resource_manage] would
+// keep view_detail because resource_manage was still there when view_detail was
+// considered, while the reverse order would drop both. The remainder is
+// computed once, before anything is removed, so both orders drop both.
+//
+// Dropping view_detail alone stays reachable: revoke resource_manage first, and
+// the next revoke is honoured because nothing left implies view_detail.
+func (s *adminWriteServices) RevokeRolePermissions(ctx context.Context,
+	roleID, resourceType, resourceID string, ops []string) error {
+
 	role, err := s.loadCustomRole(ctx, roleID)
 	if err != nil {
 		return err
 	}
-	return s.e.RevokeRolePermission(role.ID, resourceType, resourceID, op)
+	if len(ops) == 0 {
+		return nil
+	}
+	held, err := s.roleOperationsOn(role.ID, resourceType, resourceID)
+	if err != nil {
+		return err
+	}
+	// What the role keeps once this request is applied — computed before the
+	// first removal so no operation's verdict can depend on another's.
+	remaining := map[string]bool{}
+	requested := make(map[string]bool, len(ops))
+	for _, op := range ops {
+		requested[op] = true
+	}
+	for op := range held {
+		if !requested[op] {
+			remaining[op] = true
+		}
+	}
+
+	for _, op := range ops {
+		implying, err := impliedBy(s.db.WithContext(ctx), resourceType, []string{op})
+		if err != nil {
+			return err
+		}
+		retainedBy := ""
+		for _, other := range implying {
+			if other != op && remaining[other] {
+				retainedBy = other
+				break
+			}
+		}
+		if retainedBy != "" {
+			slog.Info("kept an operation the role still implies",
+				"role_id", role.ID, "resource_type", resourceType, "resource_id", resourceID,
+				"operation", op, "implied_by", retainedBy)
+			continue
+		}
+		if err := s.e.RevokeRolePermission(role.ID, resourceType, resourceID, op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// roleOperationsOn returns the operations the role holds on exactly one
+// resource pattern, as a set.
+func (s *adminWriteServices) roleOperationsOn(roleID, resourceType, resourceID string) (map[string]bool, error) {
+	grants, err := s.e.RolePermissions(roleID)
+	if err != nil {
+		return nil, err
+	}
+	want := resourceType + ":" + resourceID
+	out := map[string]bool{}
+	for _, g := range grants {
+		if g.Object != want {
+			continue
+		}
+		for _, op := range g.Operations {
+			out[op] = true
+		}
+	}
+	return out, nil
 }
 
 // loadCustomRole fetches a role and rejects built-ins. It maps to the
