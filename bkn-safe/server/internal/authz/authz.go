@@ -431,10 +431,17 @@ func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, err
 	return moved, nil
 }
 
+// BackfilledGrant names one policy row that gained an implied operation, so the
+// caller can record each repair in the audit trail rather than only counting it.
+type BackfilledGrant struct {
+	AccessorID string
+	ResourceID string
+}
+
 // BackfillImpliedOperation adds impliedOp to every policy row on a resource type
 // that already grants holderOp and does not yet grant the implied one. Returns
-// how many rows gained the operation, so an upgrade that did something is
-// visible in the log.
+// the rows that gained the operation, so an upgrade that did something is both
+// visible in the log and recordable per grant.
 //
 // The rule it repairs is enforced when a grant is WRITTEN (see the grant paths
 // in httpapi), which leaves grants written before the rule existed unrepaired —
@@ -446,13 +453,13 @@ func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, err
 //
 // Idempotent: once every holder row carries the implied operation it adds
 // nothing, at the cost of one filtered read per declared implication per start.
-func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp string) (int, error) {
+func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp string) ([]BackfilledGrant, error) {
 	rows, err := en.e.GetFilteredPolicy(2, holderOp)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	prefix := resourceType + ":"
-	added := 0
+	var added []BackfilledGrant
 	for _, row := range rows {
 		if len(row) < 3 {
 			continue
@@ -471,7 +478,7 @@ func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp s
 		if _, err := en.e.AddPolicy(row[0], object, impliedOp); err != nil {
 			return added, err
 		}
-		added++
+		added = append(added, BackfilledGrant{AccessorID: row[0], ResourceID: object[len(prefix):]})
 	}
 	return added, nil
 }

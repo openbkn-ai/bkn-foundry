@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/audit"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
@@ -161,5 +162,26 @@ func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
 	}
 	if len(grants) != 1 || len(grants[0].Operations) != 2 {
 		t.Fatalf("grant after repeated apply: %+v", grants)
+	}
+
+	// The repair is a permission change nobody asked for at the console, so it
+	// has to be findable there — one row per repaired grant, under the same
+	// resource/action an operator-issued object grant carries, and not repeated
+	// on the idempotent starts that followed.
+	entries, total, err := audit.New(db).List(t.Context(), audit.Filter{
+		Resource: "object-grants", Action: "grant",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("audit rows for the backfill = %d, want 1", total)
+	}
+	got := entries[0]
+	if got.ActorID != "system:seed" || got.TargetID != "c1" {
+		t.Fatalf("audit row = %+v", got)
+	}
+	if !strings.Contains(got.Detail, "view_detail") || !strings.Contains(got.Detail, "resource_manage") {
+		t.Fatalf("audit detail does not name the operations: %s", got.Detail)
 	}
 }
