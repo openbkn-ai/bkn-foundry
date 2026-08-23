@@ -117,11 +117,13 @@ func Routes(g *gin.RouterGroup, svc Services) {
 		if !ok {
 			return
 		}
-		for _, op := range req.Operations {
-			if err := svc.RevokeRolePermission(c.Request.Context(), c.Param("id"), req.Resource.Type, req.Resource.ID, op); err != nil {
-				writeErr(c, err)
-				return
-			}
+		// One call with the whole set: whether an operation may be dropped depends
+		// on what the role is left with, which a per-operation loop cannot see
+		// (#1121).
+		if err := svc.RevokeRolePermissions(c.Request.Context(), c.Param("id"),
+			req.Resource.Type, req.Resource.ID, req.Operations); err != nil {
+			writeErr(c, err)
+			return
 		}
 		c.Status(http.StatusNoContent)
 	})
