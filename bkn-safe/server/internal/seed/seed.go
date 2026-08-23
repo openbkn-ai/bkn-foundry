@@ -419,6 +419,13 @@ func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 		return err
 	}
 	trail := audit.New(db)
+	// Role ids up front: the audit vocabulary for a role's permission differs
+	// from an object grant's, and telling them apart per repaired row would be a
+	// query each.
+	roleNames, err := roleNameByID(db)
+	if err != nil {
+		return err
+	}
 	for _, rt := range c.ResourceTypes {
 		implies := make(map[string][]string, len(rt.Operations))
 		for _, op := range rt.Operations {
@@ -450,7 +457,7 @@ func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 				}
 				slog.Info("backfilled the operation an existing grant implies",
 					"resource_type", rt.ID, "holder", holder, "implied", implied, "rows", len(added))
-				recordBackfillAudit(trail, rt.ID, holder, implied, added)
+				recordBackfillAudit(trail, roleNames, rt.ID, holder, implied, added)
 			}
 		}
 	}
@@ -465,8 +472,8 @@ func backfillImpliedOperations(db *gorm.DB, enforcer *authz.Enforcer) error {
 //
 // Failures are logged and swallowed: auditing must never be the reason a
 // deployment fails to start.
-func recordBackfillAudit(trail *audit.Store, resourceType, holder, implied string,
-	grants []authz.BackfilledGrant) {
+func recordBackfillAudit(trail *audit.Store, roleNames map[string]string,
+	resourceType, holder, implied string, grants []authz.BackfilledGrant) {
 
 	for _, g := range grants {
 		detail, err := json.Marshal(map[string]any{
@@ -479,19 +486,61 @@ func recordBackfillAudit(trail *audit.Store, resourceType, holder, implied strin
 			slog.Error("seed: could not encode backfill audit detail", "err", err)
 			continue
 		}
-		if err := trail.Record(context.Background(), audit.Entry{
-			ActorID:  "system:seed",
-			Method:   "SYSTEM",
-			Resource: "object-grants",
-			Action:   "grant",
-			TargetID: g.ResourceID,
-			Detail:   string(detail),
-			Status:   http.StatusOK,
-		}); err != nil {
+		entry := audit.Entry{
+			ActorID: "system:seed",
+			Method:  "SYSTEM",
+			Detail:  string(detail),
+			Status:  http.StatusOK,
+		}
+		applyBackfillAuditTarget(&entry, roleNames, g)
+		if err := trail.Record(context.Background(), entry); err != nil {
 			slog.Error("seed: backfill audit record failed",
 				"resource_type", resourceType, "resource_id", g.ResourceID, "err", err)
 		}
 	}
+}
+
+// applyBackfillAuditTarget labels one repaired row with the vocabulary of the
+// surface that can actually show it. Getting this wrong is not cosmetic: an
+// audit row naming a surface where the grant is absent sends the auditor
+// looking in a list that will never contain it.
+//
+//   - a role subject is a role permission, which the console records as
+//     roles/grant_permission against the ROLE, not the resource;
+//   - a concrete grant to a real account is an object grant, and lands next to
+//     the operator-issued grant of the same object;
+//   - everything else — the public accessor, and type-wide "type:*" rows — is
+//     excluded from the object-grant list by construction, so it is labelled as
+//     what it is: a raw policy row, visible through GET /admin/policies.
+func applyBackfillAuditTarget(entry *audit.Entry, roleNames map[string]string, g authz.BackfilledGrant) {
+	if name, isRole := roleNames[g.AccessorID]; isRole {
+		entry.Resource = "roles"
+		entry.Action = "grant_permission"
+		entry.TargetID = g.AccessorID
+		entry.TargetName = name
+		return
+	}
+	entry.TargetID = g.ResourceID
+	entry.Action = "grant"
+	if g.ResourceID == "*" || g.AccessorID == authz.PublicAccessorID {
+		entry.Resource = "policies"
+		return
+	}
+	entry.Resource = "object-grants"
+}
+
+// roleNameByID loads the role id -> name map used to tell a role subject from
+// an accessor. Roles are few and this runs once per start.
+func roleNameByID(db *gorm.DB) (map[string]string, error) {
+	var roles []model.Role
+	if err := db.Find(&roles).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(roles))
+	for _, r := range roles {
+		out[r.ID] = r.Name
+	}
+	return out, nil
 }
 
 func seedGrants(enforcer *authz.Enforcer) error {
