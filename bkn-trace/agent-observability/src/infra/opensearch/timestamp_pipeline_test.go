@@ -16,6 +16,7 @@ import (
 
 func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T) {
 	requests := 0
+	settingsCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		switch {
@@ -35,7 +36,12 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 				t.Fatalf("pipeline must not alter log records: %s", content)
 			}
 		case r.Method == http.MethodPut && r.URL.Path == "/ss4o_traces-default-namespace/_settings":
-			w.WriteHeader(http.StatusNotFound)
+			settingsCalls++
+			if settingsCalls == 1 {
+				w.WriteHeader(http.StatusNotFound)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
 			return
 		case r.Method == http.MethodPut && r.URL.Path == "/ss4o_traces-default-namespace":
 			body, err := io.ReadAll(r.Body)
@@ -56,8 +62,8 @@ func TestEnsureTraceTimestampPipelineRepairsOnlyZeroSpanTimestamps(t *testing.T)
 	if err := client.EnsureTraceTimestampPipeline(t.Context(), "bkn-trace-span-timestamp-v1", "ss4o_traces-default-namespace"); err != nil {
 		t.Fatalf("ensure timestamp pipeline: %v", err)
 	}
-	if requests != 4 {
-		t.Fatalf("expected legacy cleanup, pipeline, index settings and index creation requests, got %d", requests)
+	if requests != 5 {
+		t.Fatalf("expected legacy cleanup, pipeline, two settings updates and index creation requests, got %d", requests)
 	}
 }
 
@@ -122,7 +128,26 @@ func TestEnsureTraceTimestampPipelineHandlesConcurrentIndexCreation(t *testing.T
 	if err := client.EnsureTraceTimestampPipeline(t.Context(), "bkn-trace-span-timestamp-v1", "ss4o_traces-default-namespace"); err != nil {
 		t.Fatalf("ensure timestamp pipeline after concurrent index creation: %v", err)
 	}
-	if settingsCalls != 1 {
-		t.Fatalf("expected one initial settings update before index creation race, got %d", settingsCalls)
+	if settingsCalls != 2 {
+		t.Fatalf("expected a settings retry after index creation race, got %d calls", settingsCalls)
+	}
+}
+
+func TestEnsureTraceTimestampPipelineContinuesWhenLegacyTemplateCleanupFails(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/_index_template/bkn-trace-timestamp-default":
+			w.WriteHeader(http.StatusForbidden)
+		case "/_ingest/pipeline/bkn-trace-span-timestamp-v1", "/ss4o_traces-default-namespace/_settings":
+			w.WriteHeader(http.StatusOK)
+		default:
+			t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := New(server.URL, AuthConfig{}, time.Second)
+	if err := client.EnsureTraceTimestampPipeline(t.Context(), "bkn-trace-span-timestamp-v1", "ss4o_traces-default-namespace"); err != nil {
+		t.Fatalf("legacy template cleanup must not block timestamp repair: %v", err)
 	}
 }
