@@ -112,3 +112,54 @@ func TestSeedPersistsImplications(t *testing.T) {
 		t.Fatalf("implied_operation_ids = %q, want %q", row.ImpliedOperationIDs, "view_detail")
 	}
 }
+
+// TestBackfillRepairsGrantsWrittenBeforeTheRule is the reason the write-time
+// rule alone is not a fix: a grant made before it existed carries only
+// resource_manage, reaches nothing, and nobody tells the administrator to
+// re-save it.
+func TestBackfillRepairsGrantsWrittenBeforeTheRule(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	// The shape an operator could produce before #1121: management without the
+	// visibility every management route needs.
+	if err := e.GrantObjectPermission("u-1", "catalog", "c1", "resource_manage"); err != nil {
+		t.Fatal(err)
+	}
+	// An unrelated grant on the same type must come through untouched.
+	if err := e.GrantObjectPermission("u-2", "catalog", "c2", "query_data"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("re-apply: %v", err)
+	}
+
+	if ok, _ := e.Check("u-1", "catalog", "c1", "view_detail"); !ok {
+		t.Fatal("backfill did not repair the pre-existing grant")
+	}
+	if ok, _ := e.Check("u-1", "catalog", "c1", "resource_manage"); !ok {
+		t.Fatal("backfill dropped the operation it was repairing")
+	}
+	if ok, _ := e.Check("u-2", "catalog", "c2", "view_detail"); ok {
+		t.Fatal("backfill widened a grant that implies nothing")
+	}
+
+	// Idempotent: a start with nothing left to repair changes nothing.
+	if err := Apply(db, e); err != nil {
+		t.Fatalf("third apply: %v", err)
+	}
+	grants, err := e.ListObjectGrants("u-1", "catalog", "c1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 1 || len(grants[0].Operations) != 2 {
+		t.Fatalf("grant after repeated apply: %+v", grants)
+	}
+}

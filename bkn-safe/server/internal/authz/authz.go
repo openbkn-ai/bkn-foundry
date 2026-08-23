@@ -431,6 +431,51 @@ func (en *Enforcer) RenameOperation(resourceType, oldOp, newOp string) (int, err
 	return moved, nil
 }
 
+// BackfillImpliedOperation adds impliedOp to every policy row on a resource type
+// that already grants holderOp and does not yet grant the implied one. Returns
+// how many rows gained the operation, so an upgrade that did something is
+// visible in the log.
+//
+// The rule it repairs is enforced when a grant is WRITTEN (see the grant paths
+// in httpapi), which leaves grants written before the rule existed unrepaired —
+// and for catalog.resource_manage that is not a cosmetic gap: a grant carrying
+// only the management verb reaches nothing, because every management route
+// loads its target first and that load is a view_detail judgement. Without this
+// backfill the fix would apply to new grants only, and an administrator would
+// have to re-save each old one without ever being told to.
+//
+// Idempotent: once every holder row carries the implied operation it adds
+// nothing, at the cost of one filtered read per declared implication per start.
+func (en *Enforcer) BackfillImpliedOperation(resourceType, holderOp, impliedOp string) (int, error) {
+	rows, err := en.e.GetFilteredPolicy(2, holderOp)
+	if err != nil {
+		return 0, err
+	}
+	prefix := resourceType + ":"
+	added := 0
+	for _, row := range rows {
+		if len(row) < 3 {
+			continue
+		}
+		object := row[1]
+		if len(object) <= len(prefix) || object[:len(prefix)] != prefix {
+			continue
+		}
+		has, err := en.e.HasPolicy(row[0], object, impliedOp)
+		if err != nil {
+			return added, err
+		}
+		if has {
+			continue
+		}
+		if _, err := en.e.AddPolicy(row[0], object, impliedOp); err != nil {
+			return added, err
+		}
+		added++
+	}
+	return added, nil
+}
+
 // RemoveRolePermissions purges only the p-lines owned by a role, preserving its
 // member bindings. Seed uses this before re-applying the built-in permission
 // matrix so removed grants do not linger across upgrades.
