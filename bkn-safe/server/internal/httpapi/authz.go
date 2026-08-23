@@ -670,10 +670,16 @@ func grantsJSON(grants []authz.RoleGrant) []gin.H {
 	out := make([]gin.H, 0, len(grants))
 	for _, gr := range grants {
 		rtype, rid := splitObject(gr.Object)
-		out = append(out, gin.H{
+		row := gin.H{
 			"resource":   gin.H{"type": rtype, "id": rid},
 			"operations": gr.Operations,
-		})
+		}
+		// Only the scope=type read ever sets this, so the key stays absent from
+		// every other response rather than showing up empty everywhere.
+		if len(gr.InstanceOperations) > 0 {
+			row["instance_operations"] = gr.InstanceOperations
+		}
+		out = append(out, row)
 	}
 	return out
 }

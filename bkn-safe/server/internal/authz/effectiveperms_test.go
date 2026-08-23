@@ -20,6 +20,16 @@ func byObject(grants []RoleGrant) map[string][]string {
 	return out
 }
 
+// instanceOpsOf returns the folded instance operations on one collapsed row.
+func instanceOpsOf(grants []RoleGrant, object string) []string {
+	for _, g := range grants {
+		if g.Object == object {
+			return g.InstanceOperations
+		}
+	}
+	return nil
+}
+
 func eqOps(got []string, want ...string) bool {
 	if len(got) != len(want) {
 		return false
@@ -233,15 +243,15 @@ func TestEffectivePermissionsScope(t *testing.T) {
 	}
 }
 
-// TypeWideOnly drops every instance exception row — including instance-only
-// grants with no type-wide row — and composes with ResourceType.
+// TypeWideOnly emits no instance exception row — the surplus ops fold into the
+// type row's InstanceOperations instead — and composes with ResourceType.
 func TestEffectivePermissionsTypeWideOnly(t *testing.T) {
 	e := newTestEnforcer(t)
 	const user = "u-tw"
 	mustNoErr(t, e.GrantRolePermission("role-tw", "large_model", "*", "view"))
 	mustNoErr(t, e.AssignRole(user, "role-tw"))
 	mustNoErr(t, e.GrantObjectPermission(user, "large_model", "m1", "modify")) // surplus over type-wide
-	mustNoErr(t, e.GrantObjectPermission(user, "agent", "a1", "use"))          // instance-only, no type-wide row
+	mustNoErr(t, e.GrantObjectPermission(user, "large_model", "m2", "view"))   // covered, contributes nothing
 
 	has, grants, err := e.EffectivePermissions(user, PermQuery{TypeWideOnly: true})
 	mustNoErr(t, err)
@@ -253,10 +263,11 @@ func TestEffectivePermissionsTypeWideOnly(t *testing.T) {
 		t.Errorf("large_model:* = %v, want [view]", idx["large_model:*"])
 	}
 	if _, ok := idx["large_model:m1"]; ok {
-		t.Errorf("surplus instance row must be dropped: %+v", grants)
+		t.Errorf("surplus instance row must not appear as a row: %+v", grants)
 	}
-	if _, ok := idx["agent:a1"]; ok {
-		t.Errorf("instance-only grant must be dropped: %+v", grants)
+	if !eqOps(instanceOpsOf(grants, "large_model:*"), "modify") {
+		t.Errorf("large_model:* instance_operations = %v, want [modify]",
+			instanceOpsOf(grants, "large_model:*"))
 	}
 
 	// Composes with ResourceType: single type-wide row of the queried type.
@@ -265,5 +276,57 @@ func TestEffectivePermissionsTypeWideOnly(t *testing.T) {
 	idx = byObject(grants)
 	if len(idx) != 1 || !eqOps(idx["large_model:*"], "view") {
 		t.Errorf("scoped type-wide = %+v, want only large_model:* [view]", grants)
+	}
+}
+
+// The regression this fold exists for: an accessor holding NOTHING type-wide on
+// a type, only a grant on one object. Before, scope=type returned no row for the
+// type and the console hid the entry to a resource the accessor was explicitly
+// granted (bkn-studio#478). Now the type reports with empty Operations and the
+// instance ops on the side.
+func TestEffectivePermissionsTypeWideOnlyInstanceOnlyType(t *testing.T) {
+	e := newTestEnforcer(t)
+	const user = "u-obj"
+	// Mirrors the shipped normal_user role: capability types type-wide, no data
+	// grants at all — data types are reachable only through object grants.
+	mustNoErr(t, e.GrantRolePermission("role-normal", "tool_box", "*", "view"))
+	mustNoErr(t, e.AssignRole(user, "role-normal"))
+	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-1", "view_detail"))
+	mustNoErr(t, e.GrantObjectPermission(user, "knowledge_network", "kn-2", "query_data"))
+
+	_, grants, err := e.EffectivePermissions(user, PermQuery{TypeWideOnly: true})
+	mustNoErr(t, err)
+
+	idx := byObject(grants)
+	row, ok := idx["knowledge_network:*"]
+	if !ok {
+		t.Fatalf("knowledge_network must report despite having no type-wide grant: %+v", grants)
+	}
+	if len(row) != 0 {
+		t.Errorf("knowledge_network:* operations = %v, want empty — nothing is granted type-wide", row)
+	}
+	// Union across both objects: the caller learns the type is reachable, not
+	// which network carries which op.
+	if !eqOps(instanceOpsOf(grants, "knowledge_network:*"), "query_data", "view_detail") {
+		t.Errorf("knowledge_network:* instance_operations = %v, want [query_data view_detail]",
+			instanceOpsOf(grants, "knowledge_network:*"))
+	}
+	// The role-held type-wide grant is untouched and carries no instance ops.
+	if !eqOps(idx["tool_box:*"], "view") {
+		t.Errorf("tool_box:* = %v, want [view]", idx["tool_box:*"])
+	}
+	if got := instanceOpsOf(grants, "tool_box:*"); len(got) != 0 {
+		t.Errorf("tool_box:* instance_operations = %v, want empty", got)
+	}
+
+	// Unscoped reads are unchanged: real instance rows, no fold.
+	_, grants, err = e.EffectivePermissions(user, PermQuery{})
+	mustNoErr(t, err)
+	idx = byObject(grants)
+	if !eqOps(idx["knowledge_network:kn-1"], "view_detail") {
+		t.Errorf("kn-1 = %v, want [view_detail]", idx["knowledge_network:kn-1"])
+	}
+	if _, ok := idx["knowledge_network:*"]; ok {
+		t.Errorf("no synthetic type row without TypeWideOnly: %+v", grants)
 	}
 }
