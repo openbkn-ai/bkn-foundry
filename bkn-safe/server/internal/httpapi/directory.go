@@ -244,8 +244,8 @@ func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Servi
 		users, total, err := dir.ListUsers(ctx, directory.UserListFilter{
 			Search:         c.Query("search"),
 			Enabled:        parseOptionalBool(c.Query("enabled")),
-			DepartmentID:   c.Query("department_id"),
-			IncludeSubtree: c.Query("include_subtree") == "true",
+			DepartmentID:   ownerDirectorySliceFilter(c, c.Query("department_id")),
+			IncludeSubtree: c.Query("include_subtree") == "true" && !isOwnerDirectoryRead(c),
 			RoleID:         ownerDirectoryRoleFilter(c, c.Query("role_id")),
 			Offset:         ownerDirectoryOffset(c, atoiDefault(c.Query("offset"), 0)),
 			Limit:          ownerDirectoryLimit(c, atoiDefault(c.Query("limit"), 0)),
@@ -305,7 +305,10 @@ func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Servi
 			}
 			if isOwnerDirectoryRead(c) {
 				out := projectDepartmentNodes(deps, ownerDirectoryLimit(c, 0))
-				c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out)})
+				// Say when the cap cut the branch. A tree that is silently short
+				// reads as "this is all of it", and the client cannot tell the
+				// difference from the payload alone.
+				c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out), "truncated": len(out) < len(deps)})
 				return
 			}
 			c.JSON(http.StatusOK, gin.H{"departments": deps, "total": len(deps)})
@@ -320,7 +323,7 @@ func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Servi
 		}
 		if isOwnerDirectoryRead(c) {
 			out := projectDepartmentNodes(deps, ownerDirectoryLimit(c, 0))
-			c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out)})
+			c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out), "truncated": len(out) < len(deps)})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"departments": deps, "total": total})
@@ -371,6 +374,19 @@ func ownerDirectoryOffset(c *gin.Context, requested int) int {
 		return requested
 	}
 	return 0
+}
+
+// ownerDirectorySliceFilter drops ?department_id= for an owner, and the caller
+// drops ?include_subtree= with it. Pinning offset bounds one axis; a filter that
+// partitions the same table is another axis, and walking the department tree
+// (which this endpoint's sibling hands out) then asking for each department in
+// turn reassembles the roster the page cap was meant to withhold. An owner gets
+// one window into the directory and narrows it by typing, not by slicing.
+func ownerDirectorySliceFilter(c *gin.Context, requested string) string {
+	if !isOwnerDirectoryRead(c) {
+		return requested
+	}
+	return ""
 }
 
 // ownerDirectoryRoleFilter drops ?role_id= for an owner. Listing users is one
