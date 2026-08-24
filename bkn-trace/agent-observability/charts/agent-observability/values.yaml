@@ -101,11 +101,12 @@ enterpriseBusinessProvenance:
       existingSecret: bkn-agent-provenance-bootstrap
       secretKey: token
     image:
-      # Empty values inherit the release-wide registry/tag overrides used by
-      # private and offline EE installations.
+      # Registry inherits the release-wide private/offline override. The tag is
+      # explicitly the bkn-agent release version; it must not inherit an
+      # agent-observability-only hotfix tag.
       registry: ""
       repository: bkn-agent
-      tag: ""
+      tag: "__VERSION__"
       pullPolicy: IfNotPresent
 
 observability:

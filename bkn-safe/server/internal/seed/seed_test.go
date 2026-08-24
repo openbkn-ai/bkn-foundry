@@ -5,6 +5,7 @@
 package seed
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -309,6 +310,29 @@ func TestApplyRejectsConflictingBusinessProvenancePrincipal(t *testing.T) {
 
 	if err := Apply(db, e); err == nil {
 		t.Fatal("expected conflicting fixed principal to fail seed")
+	}
+}
+
+func TestApplyReportsBusinessProvenanceAccountCollision(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.User{
+		ID:          "customer-created-id",
+		Account:     BusinessProvenanceOwnerAccount,
+		Name:        "Customer Account",
+		Enabled:     true,
+		Source:      model.SourceLocal,
+		AccountType: model.AccountTypeApp,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err = Apply(db, e)
+	if err == nil || !strings.Contains(err.Error(), "conflicts with the deployment contract") {
+		t.Fatalf("expected actionable fixed principal conflict, got %v", err)
 	}
 }
 

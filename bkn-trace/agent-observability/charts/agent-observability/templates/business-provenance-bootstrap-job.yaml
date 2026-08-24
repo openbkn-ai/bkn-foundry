@@ -7,7 +7,7 @@ Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
 {{- if and .Values.enterpriseBusinessProvenance.enabled .Values.enterpriseBusinessProvenance.bootstrap.enabled }}
 {{- $bootstrap := .Values.enterpriseBusinessProvenance.bootstrap }}
 {{- $registry := default .Values.image.registry $bootstrap.image.registry }}
-{{- $tag := default .Values.image.tag $bootstrap.image.tag }}
+{{- $tag := required "enterpriseBusinessProvenance.bootstrap.image.tag is required" $bootstrap.image.tag }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -20,7 +20,7 @@ metadata:
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: 1
-  activeDeadlineSeconds: 300
+  activeDeadlineSeconds: 420
   template:
     metadata:
       labels:

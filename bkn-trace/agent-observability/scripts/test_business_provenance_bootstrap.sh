@@ -23,6 +23,7 @@ enabled="$(helm template agent-observability "${chart_dir}" \
 for required in \
     'name: agent-observability-business-provenance-bootstrap' \
     '"helm.sh/hook": post-install,post-upgrade' \
+    'activeDeadlineSeconds: 420' \
     'value: "bdd59f76-19c3-58b0-bf5f-082c4c3cbddb"' \
     'value: "http://bkn-safe:3000/api/safe/v1"' \
     'value: "http://bkn-agent:30800/api/bkn-agent/v1"' \
@@ -36,13 +37,14 @@ done
 
 private_registry="$(helm template agent-observability "${chart_dir}" \
     --set image.registry=registry.internal/openbkn \
+    --set image.tag=observability-hotfix \
     --set enterpriseBusinessProvenance.enabled=true \
     --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
     --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
     --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer \
     --show-only templates/business-provenance-bootstrap-job.yaml)"
 grep -q 'image: "registry.internal/openbkn/bkn-agent:__VERSION__"' <<<"${private_registry}" || {
-    echo "bootstrap image must inherit the release registry" >&2
+    echo "bootstrap image must inherit the release registry but keep its own tag" >&2
     exit 1
 }
 

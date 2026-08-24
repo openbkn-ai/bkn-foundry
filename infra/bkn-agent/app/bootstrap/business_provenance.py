@@ -18,12 +18,20 @@ class BootstrapError(RuntimeError):
 
 
 class JsonClient:
-    def __init__(self, attempts: int = 30, delay_s: float = 2.0):
+    def __init__(self, attempts: int = 10, delay_s: float = 2.0):
         self.attempts = attempts
         self.delay_s = delay_s
 
-    def get_json(self, url: str, headers: dict[str, str] | None = None):
-        return self._request(Request(url, headers={"Accept": "application/json", **(headers or {})}))
+    def get_json(
+        self,
+        url: str,
+        headers: dict[str, str] | None = None,
+        retry_statuses: set[int] | None = None,
+    ):
+        return self._request(
+            Request(url, headers={"Accept": "application/json", **(headers or {})}),
+            retry_statuses=retry_statuses,
+        )
 
     def post_json(self, url: str, body: dict, headers: dict[str, str]):
         return self._request(
@@ -35,14 +43,15 @@ class JsonClient:
             )
         )
 
-    def _request(self, request: Request):
+    def _request(self, request: Request, retry_statuses: set[int] | None = None):
+        retry_statuses = retry_statuses or set()
         for attempt in range(1, self.attempts + 1):
             try:
                 with urlopen(request, timeout=10) as response:
                     return json.load(response)
             except HTTPError as exc:
                 detail = exc.read().decode("utf-8", errors="replace")
-                if exc.code < 500 or attempt == self.attempts:
+                if (exc.code < 500 and exc.code not in retry_statuses) or attempt == self.attempts:
                     raise BootstrapError(f"HTTP {exc.code} from {request.full_url}: {detail}") from exc
             except (URLError, TimeoutError) as exc:
                 if attempt == self.attempts:
@@ -116,7 +125,13 @@ def bootstrap(
     item = package["items"][0]
     agent_id = item["agent_id"]
 
-    owner = client.get_json(_join(bkn_safe_url, f"directory/users/{owner_id}"))
+    # During a rolling upgrade an old bkn-safe Pod can still answer before the
+    # new fixed principal has been seeded. Only that owner-read 404 is transient;
+    # every other 4xx remains a deterministic contract failure.
+    owner = client.get_json(
+        _join(bkn_safe_url, f"directory/users/{owner_id}"),
+        retry_statuses={404},
+    )
     _validate_owner(owner, owner_id)
 
     owner_headers = {

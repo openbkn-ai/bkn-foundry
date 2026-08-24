@@ -2,7 +2,9 @@
 
 import json
 import asyncio
+from io import BytesIO
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 from fastapi import HTTPException
@@ -10,7 +12,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from starlette.requests import Request
 
-from app.bootstrap.business_provenance import BootstrapError, bootstrap
+from app.bootstrap import business_provenance
+from app.bootstrap.business_provenance import BootstrapError, JsonClient, bootstrap
 from app.auth import get_account
 from app.config import config
 from app.db import get_session
@@ -56,7 +59,7 @@ class FakeClient:
         self.import_headers = None
         self.agent_get_headers = None
 
-    def get_json(self, url, headers=None):
+    def get_json(self, url, headers=None, retry_statuses=None):
         if "/directory/users/" in url:
             return self.owner
         self.agent_get_headers = headers
@@ -161,6 +164,25 @@ def test_bootstrap_rejects_agent_spec_drift_after_import():
         bootstrap(
             client, PACKAGE, "http://safe", "http://agent", OWNER_ID, BOOTSTRAP_TOKEN
         )
+
+
+def test_json_client_retries_owner_not_found_during_rolling_upgrade(monkeypatch):
+    calls = 0
+
+    def urlopen(request, timeout):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise HTTPError(request.full_url, 404, "not found", {}, BytesIO(b"not ready"))
+        return BytesIO(b'{"id":"ready"}')
+
+    monkeypatch.setattr(business_provenance, "urlopen", urlopen)
+
+    assert JsonClient(attempts=2, delay_s=0).get_json(
+        "http://safe/directory/users/owner",
+        retry_statuses={404},
+    ) == {"id": "ready"}
+    assert calls == 2
 
 
 def _request(headers: dict[str, str]) -> Request:

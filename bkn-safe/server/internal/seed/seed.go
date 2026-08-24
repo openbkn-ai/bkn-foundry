@@ -154,9 +154,12 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 
 func seedBusinessProvenanceOwner(db *gorm.DB) error {
 	var existing model.User
-	err := db.First(&existing, "id = ?", BusinessProvenanceOwnerID).Error
+	err := db.Where(
+		"id = ? OR account = ?", BusinessProvenanceOwnerID, BusinessProvenanceOwnerAccount,
+	).First(&existing).Error
 	if err == nil {
-		if existing.Account != BusinessProvenanceOwnerAccount ||
+		if existing.ID != BusinessProvenanceOwnerID ||
+			existing.Account != BusinessProvenanceOwnerAccount ||
 			existing.Name != BusinessProvenanceOwnerName ||
 			!existing.Enabled ||
 			existing.Source != model.SourceLocal ||
