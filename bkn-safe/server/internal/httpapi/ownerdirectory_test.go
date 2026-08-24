@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
@@ -306,4 +307,70 @@ func ownerAccounts(t *testing.T, r *gin.Engine, token, path string) []string {
 		accounts = append(accounts, u.Account)
 	}
 	return accounts
+}
+
+// Pinning offset bounds one axis. A filter that partitions the same table is
+// another: walk the department tree, ask for each department in turn, and the
+// roster reassembles itself. An owner narrows by typing, not by slicing.
+func TestOwnerDirectoryIgnoresDepartmentSlicing(t *testing.T) {
+	r, e, db, _ := newAdminServer(t)
+	ownerID, colleagueID := seedDirectoryPeople(t, db)
+	if err := db.Create(&model.Department{ID: "dept-a", Name: "A"}).Error; err != nil {
+		t.Fatalf("seed dept: %v", err)
+	}
+	dir := directory.New(db)
+	if err := dir.AddDepartmentMembers(t.Context(), "dept-a", []string{colleagueID}); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+	if err := e.GrantObjectPermission(ownerID, "knowledge_network", "kn-1", "authorize"); err != nil {
+		t.Fatalf("grant authorize: %v", err)
+	}
+
+	sliced := ownerAccounts(t, r, ownerID, "/api/safe/v1/admin/users?department_id=dept-a")
+	all := ownerAccounts(t, r, ownerID, "/api/safe/v1/admin/users")
+	if len(sliced) != len(all) {
+		t.Fatalf("department_id partitioned the owner's window: %d vs %d rows", len(sliced), len(all))
+	}
+
+	// The administrator still gets the filter they asked for.
+	adminResp := adminReq(t, r, http.MethodGet, "/api/safe/v1/admin/users?department_id=dept-a", nil)
+	var adminOut struct {
+		Users []map[string]any `json:"users"`
+	}
+	if err := json.Unmarshal(adminResp.Body.Bytes(), &adminOut); err != nil {
+		t.Fatalf("decode admin: %v", err)
+	}
+	if len(adminOut.Users) != 1 {
+		t.Fatalf("the administrator's department filter stopped working: %d rows", len(adminOut.Users))
+	}
+}
+
+// A tree that is silently short reads as "this is all of it".
+func TestOwnerDirectoryDepartmentsFlagTruncation(t *testing.T) {
+	r, e, db, _ := newAdminServer(t)
+	ownerID, _ := seedDirectoryPeople(t, db)
+	for i := 0; i < ownerDirectoryMaxPageSize+3; i++ {
+		id := fmt.Sprintf("child-%03d", i)
+		if err := db.Create(&model.Department{ID: id, Name: id, ParentID: "root-1"}).Error; err != nil {
+			t.Fatalf("seed child: %v", err)
+		}
+	}
+	if err := e.GrantObjectPermission(ownerID, "knowledge_network", "kn-1", "authorize"); err != nil {
+		t.Fatalf("grant authorize: %v", err)
+	}
+
+	w := tokReq(t, r, http.MethodGet, "/api/safe/v1/admin/departments?parent_id=root-1", nil, ownerID)
+	var out struct {
+		Departments []map[string]any `json:"departments"`
+		Truncated   bool             `json:"truncated"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(out.Departments) != ownerDirectoryMaxPageSize {
+		t.Fatalf("expected the cap to bite at %d, got %d rows", ownerDirectoryMaxPageSize, len(out.Departments))
+	}
+	if !out.Truncated {
+		t.Fatal("the branch was cut without saying so")
+	}
 }
