@@ -76,6 +76,7 @@ func TestInitPassesResolvedEmbeddingModelToVega(t *testing.T) {
 
 		ctx := context.Background()
 		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+			ModelID:      "2091780333946146816",
 			ModelName:    "text-embedding-v4",
 			EmbeddingDim: 1024,
 		}, nil)
@@ -84,7 +85,7 @@ func TestInitPassesResolvedEmbeddingModelToVega(t *testing.T) {
 		vegaBackend.EXPECT().CreateResource(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, resource *interfaces.VegaResource) error {
 			So(resource.IndexConfig, ShouldNotBeNil)
 			So(resource.IndexConfig.DefaultFulltextAnalyzer, ShouldEqual, "standard")
-			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
+			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "2091780333946146816")
 			return nil
 		})
 
@@ -108,6 +109,7 @@ func TestInitPassesResolvedEmbeddingModelWhenRecreatingDataset(t *testing.T) {
 
 		ctx := context.Background()
 		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+			ModelID:      "2091780333946146816",
 			ModelName:    "text-embedding-v4",
 			EmbeddingDim: 1024,
 		}, nil)
@@ -118,7 +120,7 @@ func TestInitPassesResolvedEmbeddingModelWhenRecreatingDataset(t *testing.T) {
 		}, nil)
 		vegaBackend.EXPECT().DeleteResource(ctx, interfaces.BKN_DATASET_ID).Return(nil)
 		vegaBackend.EXPECT().CreateResource(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, resource *interfaces.VegaResource) error {
-			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
+			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "2091780333946146816")
 			return nil
 		})
 

@@ -38,7 +38,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 			return errors.New("GetDefaultModel return nil")
 		}
 		vectorDim = smallModel.EmbeddingDim
-		defaultEmbeddingModel = smallModel.ModelName
+		defaultEmbeddingModel = smallModel.ModelID
 		logger.Infof("Small model enabled, vector dimension: %d", vectorDim)
 	}
 
