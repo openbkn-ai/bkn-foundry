@@ -148,6 +148,10 @@ if [[ $joined == *" exec "* && $joined == *" /projection-v013 "* ]]; then
 fi
 
 if [[ $joined == *" exec "* && ( $joined == *" /trace-v013/_count "* || $joined == *" /evidence-v013/_count "* ) ]]; then
+  if [[ ${MOCK_FINAL_INDEX_COUNT_STATUS:-} != "" && -f $MOCK_STATE_DIR/deleted ]]; then
+    printf '{"error":"mock"}\n%s\n' "$MOCK_FINAL_INDEX_COUNT_STATUS"
+    exit 0
+  fi
   if [[ ${MOCK_INDEX_COUNT_STATUS:-} != "" ]]; then
     printf '{"error":"mock"}\n%s\n' "$MOCK_INDEX_COUNT_STATUS"
     exit 0
@@ -372,6 +376,21 @@ case_opensearch_count_error() {
   teardown_case
 }
 
+case_final_index_count_error() {
+  setup_case
+  export MOCK_FINAL_INDEX_COUNT_STATUS=500
+  if run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced; then
+    fail "OpenSearch HTTP 500 passed final cleanup verification"
+  fi
+  unset MOCK_FINAL_INDEX_COUNT_STATUS
+  assert_contains "$output_file" "path=/trace-v013/_count http_status=500"
+  assert_contains "$command_log" "destructive:mysql-drop"
+  assert_contains "$command_log" "destructive:delete-by-query:trace-v013"
+  assert_not_contains "$output_file" "cleanup complete"
+  [[ -f $case_dir/state/scaled ]] || fail "deployment was not left scaled down"
+  teardown_case
+}
+
 case_credentials() {
   assert_not_contains "$cleanup_script" '--user "$username:$password"'
 }
@@ -427,6 +446,7 @@ run_case evidence_absent
 run_case trace_absent
 run_case all_indexes_absent
 run_case opensearch_count_error
+run_case final_index_count_error
 run_case credentials
 run_case success
 run_case tls

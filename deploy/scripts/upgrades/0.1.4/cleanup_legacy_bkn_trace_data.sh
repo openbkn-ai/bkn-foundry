@@ -535,8 +535,9 @@ verify_index_clean() {
       return 1
     }
     return
+  else
+    status=$?
   fi
-  status=$?
   [[ $status == 1 ]] && return
   return "$status"
 }
