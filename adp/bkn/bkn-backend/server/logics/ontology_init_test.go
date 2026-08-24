@@ -166,6 +166,38 @@ func TestInitRecreatesDatasetWhenEmbeddingModelIDDiffers(t *testing.T) {
 	})
 }
 
+func TestInitKeepsDatasetWhenSchemaAndEmbeddingModelIDMatch(t *testing.T) {
+	Convey("Init keeps the dataset when its schema and embedding model ID match (issue #1142)\n", t, func() {
+		ctrl := gomock.NewController(t)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
+		vegaBackend := mock_interfaces.NewMockVegaBackendAccess(ctrl)
+		previousVBA := VBA
+		VBA = vegaBackend
+		patches := gomonkey.ApplyFunc(model_factory.NewModelFactoryService, func(_ *common.AppSetting, _ interfaces.ModelFactoryAccess) interfaces.ModelFactoryService { return mfs })
+		Reset(func() {
+			patches.Reset()
+			VBA = previousVBA
+		})
+
+		ctx := context.Background()
+		model := &interfaces.SmallModel{
+			ModelID:      "2091780333946146816",
+			ModelName:    "text-embedding-v4",
+			EmbeddingDim: 1024,
+		}
+		mfs.EXPECT().GetDefaultModel(ctx).Return(model, nil)
+		vegaBackend.EXPECT().GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID).Return(&interfaces.Catalog{ID: interfaces.BKN_CATALOG_ID}, nil)
+		vegaBackend.EXPECT().GetResourceByID(ctx, interfaces.BKN_DATASET_ID).Return(&interfaces.VegaResource{
+			ID:               interfaces.BKN_DATASET_ID,
+			SchemaDefinition: interfaces.GetBKNConceptSchemaDefinition(model.EmbeddingDim, true),
+			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: model.ModelID},
+		}, nil)
+
+		err := Init(ctx, &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}})
+		So(err, ShouldBeNil)
+	})
+}
+
 func TestBKNConceptDatasetRequest(t *testing.T) {
 	Convey("Dataset request keeps the global template immutable\n", t, func() {
 		request := bknConceptDatasetRequest(nil, "text-embedding-v4")
