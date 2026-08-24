@@ -648,3 +648,58 @@ func TestNetworkBuilderCannotShareNetworksItDidNotCreate(t *testing.T) {
 		t.Error("the creator's object-level authorize must still decide sharing")
 	}
 }
+
+// The same rule as knowledge networks, arrived at the same way: a type-wide
+// `authorize` on catalog let every network_builder hand out a catalog somebody
+// else created, because casbin's keyMatch makes `catalog:*` match every id.
+// Observed on a live deployment — an account whose only role is network_builder
+// saw the share control on catalogs created by the administrator, and the write
+// behind it succeeded.
+//
+// The creator is unaffected: vega writes COMMON_OPERATIONS, `authorize`
+// included, as a `catalog:<id>` object grant at create time, and the owner
+// surface reads exactly that.
+func TestNetworkBuilderCannotShareCatalogsItDidNotCreate(t *testing.T) {
+	db := newDB(t)
+	e, err := authz.New(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Apply(db, e); err != nil {
+		t.Fatal(err)
+	}
+	const (
+		builder = "u-builder"
+		catalog = "cat-someone-elses"
+	)
+	if err := e.AssignRole(builder, "1572fb82-526f-11f0-bde6-e674ec8dde71"); err != nil {
+		t.Fatal(err)
+	}
+
+	if ok, err := e.Check(builder, "catalog", catalog, "authorize"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Error("network_builder must not hold type-wide authorize on catalogs")
+	}
+
+	// Everything else the role needs to run the business plane stays.
+	for _, op := range []string{"view_detail", "create", "modify", "delete", "task_manage", "resource_manage", "query_data"} {
+		ok, err := e.Check(builder, "catalog", catalog, op)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			t.Errorf("network_builder lost %q on catalog", op)
+		}
+	}
+
+	// A catalog the builder created carries the grant on the instance instead.
+	if err := e.GrantObjectPermission(builder, "catalog", "cat-mine", "authorize"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := e.Check(builder, "catalog", "cat-mine", "authorize"); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Error("the creator's own object grant must still authorize sharing")
+	}
+}
