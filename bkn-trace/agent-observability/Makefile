@@ -64,6 +64,7 @@ docker-build:
 
 helm-lint:
 	helm lint $(CHART_PATH)
+	bash scripts/test_business_provenance_bootstrap.sh $(CHART_PATH)
 	bash scripts/test_evidence_index_governance.sh $(CHART_PATH)
 	bash ../scripts/test_secure_opensearch_contract.sh
 

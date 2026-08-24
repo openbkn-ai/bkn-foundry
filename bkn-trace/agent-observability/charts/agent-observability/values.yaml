@@ -92,6 +92,22 @@ enterpriseBusinessProvenance:
   agentURL: ""
   agentID: ""
   agentName: ""
+  bootstrap:
+    enabled: true
+    ownerID: bdd59f76-19c3-58b0-bf5f-082c4c3cbddb
+    bknSafeURL: http://bkn-safe:3000/api/safe/v1
+    bknAgentURL: http://bkn-agent:30800/api/bkn-agent/v1
+    auth:
+      existingSecret: bkn-agent-provenance-bootstrap
+      secretKey: token
+    image:
+      # Registry inherits the release-wide private/offline override. The tag is
+      # explicitly the bkn-agent release version; it must not inherit an
+      # agent-observability-only hotfix tag.
+      registry: ""
+      repository: bkn-agent
+      tag: "__VERSION__"
+      pullPolicy: IfNotPresent
 
 observability:
   # Configure the same Secret on every replica so signed pagination cursors

@@ -25,6 +25,11 @@ class Config:
     )
     DEFAULT_MODEL = _env("BKN_AGENT_DEFAULT_MODEL", "")
 
+    # Possession proof for the deployment-managed provenance owner. Normal
+    # internal callers keep using the established /in identity headers; the
+    # fixed high-value owner additionally requires this chart-managed secret.
+    PROVENANCE_BOOTSTRAP_TOKEN = _env("BKN_PROVENANCE_BOOTSTRAP_TOKEN", "")
+
     # Operator factory (operator-integration): both the tool surface and the
     # skill surface go through its internal-v1 route (#322 moved the skill
     # surface over from capabilities-lab).
