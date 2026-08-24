@@ -100,6 +100,10 @@ if [[ $joined == *" exec "* && $joined == *" SELECT COUNT(*) FROM bkn_trace_conv
   exit 0
 fi
 
+if [[ $joined == *" exec "* && $joined == *" SET FOREIGN_KEY_CHECKS=0; SET FOREIGN_KEY_CHECKS=1; "* ]]; then
+  exit 0
+fi
+
 if [[ $joined == *" exec "* && $joined == *" DROP TABLE IF EXISTS "* ]]; then
   : >"$MOCK_STATE_DIR/dropped"
   printf '%s\n' destructive:mysql-drop >>"$MOCK_COMMAND_LOG"
@@ -144,6 +148,14 @@ if [[ $joined == *" exec "* && $joined == *" /projection-v013 "* ]]; then
 fi
 
 if [[ $joined == *" exec "* && ( $joined == *" /trace-v013/_count "* || $joined == *" /evidence-v013/_count "* ) ]]; then
+  if [[ ${MOCK_INDEX_COUNT_STATUS:-} != "" ]]; then
+    printf '{"error":"mock"}\n%s\n' "$MOCK_INDEX_COUNT_STATUS"
+    exit 0
+  fi
+  if [[ ${MOCK_TRACE_INDEX_ABSENT:-0} == 1 && $joined == *" /trace-v013/_count "* ]]; then
+    printf '{"error":"not found"}\n404\n'
+    exit 0
+  fi
   if [[ ${MOCK_EVIDENCE_INDEX_ABSENT:-0} == 1 && $joined == *" /evidence-v013/_count "* ]]; then
     printf '{"error":"not found"}\n404\n'
     exit 0
@@ -167,7 +179,7 @@ fi
 
 if [[ $joined == *" exec "* && $joined == *"_delete_by_query"* ]]; then
   : >"$MOCK_STATE_DIR/deleted"
-  if [[ $joined == *" /evidence-v013/_delete_by_query "* ]]; then
+  if [[ $joined == *"/evidence-v013/_delete_by_query"* ]]; then
     printf '%s\n' destructive:delete-by-query:evidence-v013 >>"$MOCK_COMMAND_LOG"
   else
     printf '%s\n' destructive:delete-by-query:trace-v013 >>"$MOCK_COMMAND_LOG"
@@ -310,6 +322,56 @@ case_evidence_absent() {
   teardown_case
 }
 
+case_trace_absent() {
+  setup_case
+  export MOCK_TRACE_INDEX_ABSENT=1
+  run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced || {
+    sed -n '1,260p' "$output_file" >&2
+    fail "absent Trace index failed cleanup"
+  }
+  unset MOCK_TRACE_INDEX_ABSENT
+  assert_contains "$output_file" "opensearch trace-v013 status=absent action=already_clean"
+  assert_contains "$command_log" "destructive:mysql-drop"
+  assert_contains "$command_log" "destructive:delete-by-query:evidence-v013"
+  assert_not_contains "$command_log" "destructive:delete-by-query:trace-v013"
+  teardown_case
+}
+
+case_all_indexes_absent() {
+  setup_case
+  export MOCK_TRACE_INDEX_ABSENT=1
+  export MOCK_EVIDENCE_INDEX_ABSENT=1
+  export MOCK_PROJECTION_ABSENT=1
+  run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced || {
+    sed -n '1,260p' "$output_file" >&2
+    fail "all absent targets failed first cleanup"
+  }
+  destructive_before=$(grep -c '^destructive:' "$command_log" || true)
+  run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced || {
+    sed -n '1,260p' "$output_file" >&2
+    fail "all absent targets failed second cleanup"
+  }
+  destructive_after=$(grep -c '^destructive:' "$command_log" || true)
+  unset MOCK_TRACE_INDEX_ABSENT MOCK_EVIDENCE_INDEX_ABSENT MOCK_PROJECTION_ABSENT
+  [[ $destructive_after == "$destructive_before" ]] || fail "second cleanup performed a destructive operation"
+  assert_contains "$output_file" "opensearch trace-v013 status=absent action=already_clean"
+  assert_contains "$output_file" "opensearch evidence-v013 status=absent action=already_clean"
+  teardown_case
+}
+
+case_opensearch_count_error() {
+  setup_case
+  export MOCK_INDEX_COUNT_STATUS=500
+  if run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced; then
+    fail "OpenSearch HTTP 500 passed cleanup admission"
+  fi
+  unset MOCK_INDEX_COUNT_STATUS
+  assert_contains "$output_file" "path=/trace-v013/_count http_status=500"
+  assert_not_contains "$command_log" " scale "
+  assert_not_contains "$command_log" "destructive:"
+  teardown_case
+}
+
 case_credentials() {
   assert_not_contains "$cleanup_script" '--user "$username:$password"'
 }
@@ -362,6 +424,9 @@ run_case missing_index
 run_case inventory
 run_case projection_absent
 run_case evidence_absent
+run_case trace_absent
+run_case all_indexes_absent
+run_case opensearch_count_error
 run_case credentials
 run_case success
 run_case tls
