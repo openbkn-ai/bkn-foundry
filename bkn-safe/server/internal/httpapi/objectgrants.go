@@ -72,10 +72,17 @@ const (
 	// A direct object grant carrying opAuthorize on this exact instance — the row
 	// the creator receives. Restricted (see restrictDelegatedOps).
 	authorityOwner grantAuthority = "owner"
-	// A type-wide role grant carrying opAuthorize (network_builder holds it on
-	// knowledge_network, catalog, resource, connector_type). The seeded role
-	// already says this role may delegate this type; honoring it here does not
+	// A type-wide role grant carrying opAuthorize — a role saying "every object of
+	// this type may be delegated by anyone holding me". Honoring it here does not
 	// widen the policy, it stops ignoring it. Restricted the same way as owner.
+	//
+	// The three types that carry data no longer have one: sharing a knowledge
+	// network, a data connection or a table is its creator's call, so the grant
+	// sits on the object rather than the type (#513, #977, #1150). network_builder
+	// still holds it type-wide on connector_type, stream_data_pipeline and the
+	// execution-factory types (operator, skill, mcp, tool_box), and a custom role
+	// may be given one anywhere — this branch is what makes such a grant decide
+	// something.
 	authorityTypeAuthorize grantAuthority = "type-authorize"
 )
 
@@ -157,9 +164,8 @@ func resolveGrantAuthority(c *gin.Context, e *authz.Enforcer, adminOp string, re
 // motion. And restrictDelegatedOps forbids a delegate from putting `authorize`
 // back. Without this, anyone the platform trusts to share ONE object could
 // silently take that object away from the person who made it, and only a
-// platform administrator could undo it — network_builder holds `authorize`
-// type-wide on knowledge_network, so that is every member of the role against
-// every network.
+// platform administrator could undo it — a role carrying `authorize` type-wide
+// would be every member of that role against every object of the type.
 //
 // Same rule as the grant side, in the other direction: `authorize` is
 // administrator-conferred, so only an administrator takes it away. Grants
