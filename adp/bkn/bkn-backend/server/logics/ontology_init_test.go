@@ -76,6 +76,7 @@ func TestInitPassesResolvedEmbeddingModelToVega(t *testing.T) {
 
 		ctx := context.Background()
 		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+			ModelID:      "2091780333946146816",
 			ModelName:    "text-embedding-v4",
 			EmbeddingDim: 1024,
 		}, nil)
@@ -84,7 +85,7 @@ func TestInitPassesResolvedEmbeddingModelToVega(t *testing.T) {
 		vegaBackend.EXPECT().CreateResource(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, resource *interfaces.VegaResource) error {
 			So(resource.IndexConfig, ShouldNotBeNil)
 			So(resource.IndexConfig.DefaultFulltextAnalyzer, ShouldEqual, "standard")
-			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
+			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "2091780333946146816")
 			return nil
 		})
 
@@ -108,6 +109,7 @@ func TestInitPassesResolvedEmbeddingModelWhenRecreatingDataset(t *testing.T) {
 
 		ctx := context.Background()
 		mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{
+			ModelID:      "2091780333946146816",
 			ModelName:    "text-embedding-v4",
 			EmbeddingDim: 1024,
 		}, nil)
@@ -118,9 +120,78 @@ func TestInitPassesResolvedEmbeddingModelWhenRecreatingDataset(t *testing.T) {
 		}, nil)
 		vegaBackend.EXPECT().DeleteResource(ctx, interfaces.BKN_DATASET_ID).Return(nil)
 		vegaBackend.EXPECT().CreateResource(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, resource *interfaces.VegaResource) error {
-			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "text-embedding-v4")
+			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, "2091780333946146816")
 			return nil
 		})
+
+		err := Init(ctx, &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}})
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestInitRecreatesDatasetWhenEmbeddingModelIDDiffers(t *testing.T) {
+	Convey("Init recreates the dataset when its embedding model reference differs (issue #1142)\n", t, func() {
+		ctrl := gomock.NewController(t)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
+		vegaBackend := mock_interfaces.NewMockVegaBackendAccess(ctrl)
+		previousVBA := VBA
+		VBA = vegaBackend
+		patches := gomonkey.ApplyFunc(model_factory.NewModelFactoryService, func(_ *common.AppSetting, _ interfaces.ModelFactoryAccess) interfaces.ModelFactoryService { return mfs })
+		Reset(func() {
+			patches.Reset()
+			VBA = previousVBA
+		})
+
+		ctx := context.Background()
+		model := &interfaces.SmallModel{
+			ModelID:      "2091780333946146816",
+			ModelName:    "text-embedding-v4",
+			EmbeddingDim: 1024,
+		}
+		mfs.EXPECT().GetDefaultModel(ctx).Return(model, nil)
+		vegaBackend.EXPECT().GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID).Return(&interfaces.Catalog{ID: interfaces.BKN_CATALOG_ID}, nil)
+		vegaBackend.EXPECT().GetResourceByID(ctx, interfaces.BKN_DATASET_ID).Return(&interfaces.VegaResource{
+			ID:               interfaces.BKN_DATASET_ID,
+			SchemaDefinition: interfaces.GetBKNConceptSchemaDefinition(model.EmbeddingDim, true),
+			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: model.ModelName},
+		}, nil)
+		vegaBackend.EXPECT().DeleteResource(ctx, interfaces.BKN_DATASET_ID).Return(nil)
+		vegaBackend.EXPECT().CreateResource(ctx, gomock.Any()).DoAndReturn(func(_ context.Context, resource *interfaces.VegaResource) error {
+			So(resource.IndexConfig.DefaultEmbeddingModel, ShouldEqual, model.ModelID)
+			return nil
+		})
+
+		err := Init(ctx, &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}})
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestInitKeepsDatasetWhenSchemaAndEmbeddingModelIDMatch(t *testing.T) {
+	Convey("Init keeps the dataset when its schema and embedding model ID match (issue #1142)\n", t, func() {
+		ctrl := gomock.NewController(t)
+		mfs := mock_interfaces.NewMockModelFactoryService(ctrl)
+		vegaBackend := mock_interfaces.NewMockVegaBackendAccess(ctrl)
+		previousVBA := VBA
+		VBA = vegaBackend
+		patches := gomonkey.ApplyFunc(model_factory.NewModelFactoryService, func(_ *common.AppSetting, _ interfaces.ModelFactoryAccess) interfaces.ModelFactoryService { return mfs })
+		Reset(func() {
+			patches.Reset()
+			VBA = previousVBA
+		})
+
+		ctx := context.Background()
+		model := &interfaces.SmallModel{
+			ModelID:      "2091780333946146816",
+			ModelName:    "text-embedding-v4",
+			EmbeddingDim: 1024,
+		}
+		mfs.EXPECT().GetDefaultModel(ctx).Return(model, nil)
+		vegaBackend.EXPECT().GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID).Return(&interfaces.Catalog{ID: interfaces.BKN_CATALOG_ID}, nil)
+		vegaBackend.EXPECT().GetResourceByID(ctx, interfaces.BKN_DATASET_ID).Return(&interfaces.VegaResource{
+			ID:               interfaces.BKN_DATASET_ID,
+			SchemaDefinition: interfaces.GetBKNConceptSchemaDefinition(model.EmbeddingDim, true),
+			IndexConfig:      &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: model.ModelID},
+		}, nil)
 
 		err := Init(ctx, &common.AppSetting{ServerSetting: common.ServerSetting{DefaultSmallModelEnabled: true}})
 		So(err, ShouldBeNil)
