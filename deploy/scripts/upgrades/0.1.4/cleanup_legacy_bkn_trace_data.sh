@@ -230,8 +230,8 @@ opensearch_pod=$(ready_pod_for_service "$opensearch_service" OpenSearch)
 kubectl -n "$dependency_namespace" exec "$mariadb_pod" -- sh -c 'command -v mariadb >/dev/null || command -v mysql >/dev/null' || {
   echo "MariaDB Pod $mariadb_pod has neither mariadb nor mysql client" >&2; exit 2;
 }
-kubectl -n "$dependency_namespace" exec "$opensearch_pod" -- sh -c 'command -v curl >/dev/null' || {
-  echo "OpenSearch Pod $opensearch_pod does not contain curl" >&2; exit 2;
+kubectl -n "$dependency_namespace" exec "$opensearch_pod" -- sh -c 'command -v curl >/dev/null && command -v sed >/dev/null' || {
+  echo "OpenSearch Pod $opensearch_pod must contain curl and sed" >&2; exit 2;
 }
 
 mysql_exec() {
@@ -249,11 +249,15 @@ opensearch_raw() {
     kubectl -n "$dependency_namespace" exec -i "$opensearch_pod" -- sh -c '
       IFS= read -r username; IFS= read -r password
       method=$1; protocol=$2; port=$3; data=$4; path=$5; tls_mode=$6; ca_file=$7
-      set -- -sS -X "$method" --user "$username:$password"
+      config_escape() { sed -e "s/\\\\/\\\\\\\\/g" -e "s/\"/\\\\\"/g"; }
+      username=$(printf "%s" "$username" | config_escape)
+      password=$(printf "%s" "$password" | config_escape)
+      set -- -sS -X "$method" --config -
       if [ -n "$data" ]; then set -- "$@" -H "Content-Type: application/json" --data "$data"; fi
       if [ "$tls_mode" = insecure ]; then set -- "$@" --insecure; fi
       if [ "$tls_mode" = ca ]; then set -- "$@" --cacert "$ca_file"; fi
-      curl "$@" --write-out "\n%{http_code}" "$protocol://127.0.0.1:$port$path"
+      printf "user = \"%s:%s\"\\n" "$username" "$password" |
+        curl "$@" --write-out "\n%{http_code}" "$protocol://127.0.0.1:$port$path"
     ' sh "$method" "$opensearch_protocol" "$opensearch_port" "$data" "$path" "$opensearch_tls_mode" "$opensearch_ca_file"
 }
 
@@ -357,13 +361,16 @@ echo "application_namespace=$application_namespace deployment=$deployment origin
 echo "mariadb namespace=$dependency_namespace service=$mariadb_service pod=$mariadb_pod database=$database user=root"
 echo "opensearch namespace=$dependency_namespace service=$opensearch_service pod=$opensearch_pod tls_mode=$opensearch_tls_mode"
 for table in ${existing_tables[*]-}; do
-  echo "mariadb $table count=$(mysql_exec "SELECT COUNT(*) FROM $table") action=drop_table"
+  count=$(mysql_exec "SELECT COUNT(*) FROM $table") || exit $?
+  echo "mariadb $table count=$count action=drop_table"
 done
 for index in "$trace_index" "$evidence_index"; do
-  echo "opensearch $index count=$(index_count "$index") action=delete_documents"
+  count=$(index_count "$index") || exit $?
+  echo "opensearch $index count=$count action=delete_documents"
 done
 if [[ $projection_status == present ]]; then
-  echo "opensearch projection_alias=$projection_alias physical_index=$physical_projection_index count=$(index_count "$physical_projection_index") action=delete_physical_index"
+  count=$(index_count "$physical_projection_index") || exit $?
+  echo "opensearch projection_alias=$projection_alias physical_index=$physical_projection_index count=$count action=delete_physical_index"
 else
   echo "opensearch projection_alias=$projection_alias status=absent action=already_clean"
 fi
@@ -396,20 +403,26 @@ for field in replicas readyReplicas availableReplicas updatedReplicas; do
 done
 
 storage_snapshot() {
-  local inventory table projection_now status body
+  local inventory table projection_now status count
   validate_database_inventory
   inventory=$(database_inventory)
   printf 'database=%s\n' "$database"
   while IFS= read -r table; do
-    [[ -z $table ]] || printf 'table=%s count=%s\n' "$table" "$(mysql_exec "SELECT COUNT(*) FROM $table")"
+    if [[ -n $table ]]; then
+      count=$(mysql_exec "SELECT COUNT(*) FROM $table") || return
+      printf 'table=%s count=%s\n' "$table" "$count"
+    fi
   done <<<"$inventory"
-  printf 'index=%s count=%s\n' "$trace_index" "$(index_count "$trace_index")"
-  printf 'index=%s count=%s\n' "$evidence_index" "$(index_count "$evidence_index")"
+  count=$(index_count "$trace_index") || return
+  printf 'index=%s count=%s\n' "$trace_index" "$count"
+  count=$(index_count "$evidence_index") || return
+  printf 'index=%s count=%s\n' "$evidence_index" "$count"
   if projection_now=$(projection_target); then
     [[ $projection_status == present && $projection_now == "$physical_projection_index" ]] || {
       echo "projection alias changed during cleanup admission" >&2; return 2;
     }
-    printf 'projection=%s count=%s\n' "$projection_now" "$(index_count "$projection_now")"
+    count=$(index_count "$projection_now") || return
+    printf 'projection=%s count=%s\n' "$projection_now" "$count"
   else
     status=$?
     [[ $status == 1 && $projection_status == absent ]] || return 2

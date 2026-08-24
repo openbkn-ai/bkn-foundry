@@ -83,7 +83,10 @@ if [[ $joined == *" wait --for=delete pod "* ]]; then exit 0; fi
 if [[ $joined == *" exec "* && $joined != *" exec -i "* && $joined == *" command -v "* ]]; then exit 0; fi
 
 if [[ $joined == *" exec "* && $joined == *" SELECT table_name FROM information_schema.tables "* ]]; then
-  if [[ ! -f $MOCK_STATE_DIR/dropped ]]; then printf '%s\n' bkn_trace_conversations; fi
+  if [[ ! -f $MOCK_STATE_DIR/dropped ]]; then
+    printf '%s\n' bkn_trace_conversations
+    [[ ${MOCK_UNEXPECTED_TABLE:-0} == 1 ]] && printf '%s\n' unrelated_application_table
+  fi
   exit 0
 fi
 
@@ -109,7 +112,7 @@ if [[ $joined == *" exec "* && $joined == *" SELECT COUNT(*) FROM information_sc
 fi
 
 if [[ $joined == *" exec "* && $joined == *" /_alias/bkn-trace-core "* ]]; then
-  if [[ -f $MOCK_STATE_DIR/projection_deleted ]]; then
+  if [[ ${MOCK_PROJECTION_ABSENT:-0} == 1 || -f $MOCK_STATE_DIR/projection_deleted ]]; then
     status=${MOCK_VERIFY_STATUS:-404}
     if [[ $status == transport ]]; then exit 7; fi
     printf '{"error":"mock"}\n%s\n' "$status"
@@ -141,6 +144,10 @@ if [[ $joined == *" exec "* && $joined == *" /projection-v013 "* ]]; then
 fi
 
 if [[ $joined == *" exec "* && ( $joined == *" /trace-v013/_count "* || $joined == *" /evidence-v013/_count "* ) ]]; then
+  if [[ ${MOCK_INDEX_MISSING_AFTER_SCALE:-0} == 1 && -f $MOCK_STATE_DIR/scaled ]]; then
+    printf '{"error":"not found"}\n404\n'
+    exit 0
+  fi
   count=5
   if [[ -f $MOCK_STATE_DIR/deleted ]]; then count=0; fi
   if [[ ${MOCK_DRIFT:-0} == 1 && -f $MOCK_STATE_DIR/scaled && ! -f $MOCK_STATE_DIR/deleted ]]; then
@@ -241,6 +248,50 @@ case_opensearch_status() {
   teardown_case
 }
 
+case_missing_index() {
+  setup_case
+  export MOCK_INDEX_MISSING_AFTER_SCALE=1
+  if run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced; then
+    fail "missing OpenSearch index count passed cleanup admission"
+  fi
+  unset MOCK_INDEX_MISSING_AFTER_SCALE
+  assert_contains "$output_file" "path=/trace-v013/_count http_status=404"
+  assert_not_contains "$command_log" "destructive:"
+  [[ -f $case_dir/state/scaled ]] || fail "deployment was not left scaled down"
+  teardown_case
+}
+
+case_inventory() {
+  setup_case
+  export MOCK_UNEXPECTED_TABLE=1
+  if run_cleanup; then
+    fail "unexpected database table passed cleanup preview"
+  fi
+  unset MOCK_UNEXPECTED_TABLE
+  assert_contains "$output_file" "outside the allowlist"
+  assert_contains "$output_file" "unrelated_application_table"
+  assert_not_contains "$command_log" " scale "
+  assert_not_contains "$command_log" "destructive:"
+  teardown_case
+}
+
+case_projection_absent() {
+  setup_case
+  export MOCK_PROJECTION_ABSENT=1
+  run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced || {
+    sed -n '1,260p' "$output_file" >&2
+    fail "absent projection alias failed cleanup"
+  }
+  unset MOCK_PROJECTION_ABSENT
+  assert_contains "$output_file" "projection_alias=bkn-trace-core status=absent action=already_clean"
+  assert_not_contains "$command_log" "destructive:projection-delete"
+  teardown_case
+}
+
+case_credentials() {
+  assert_not_contains "$cleanup_script" '--user "$username:$password"'
+}
+
 case_success() {
   setup_case
   run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced || {
@@ -285,6 +336,10 @@ run_case preview
 run_case context
 run_case quiescence
 run_case opensearch_status
+run_case missing_index
+run_case inventory
+run_case projection_absent
+run_case credentials
 run_case success
 run_case tls
 

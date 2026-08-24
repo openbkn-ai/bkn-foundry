@@ -11,6 +11,12 @@
 - 运维侧能够确保升级窗口内不再有新的 Trace、Evidence 或 Projection 写入；
 - 使用专用的 `bkn_trace` 数据库，且该数据库只含 BKN Trace 表。
 
+本工具仅支持 MariaDB 与 OpenSearch 都以 Kubernetes Service 形式部署在
+`BKN_TRACE_CLEANUP_DEPENDENCY_NAMESPACE`（默认 `resource`）中的环境；配置中的
+host 必须是 `<service>.<namespace>.svc` 或
+`<service>.<namespace>.svc.cluster.local`。外置数据库或 OpenSearch 会被脚本拒绝，
+不能将其作为本工具的目标。
+
 脚本不会自动停掉 OTEL Collector、业务服务或第三方 Trace 生产者。必须先从流量、采集和生产者侧完成停写；脚本的两次计数快照只用于发现遗漏的写入，不能替代停写。
 
 ## 前置条件
@@ -23,7 +29,7 @@
 
 2. 已停止 Trace 写入，包括 OTEL Collector 到 Trace 索引的导出、Evidence 写入和 Projection 写入。
 3. 操作账号具备：读取/缩容 `agent-observability` Deployment、读取 Pod 与 EndpointSlice、在 resource namespace 的 MariaDB 和 OpenSearch Pod 内执行命令的权限。
-4. 本机已安装 `kubectl`、`jq` 和 `awk`，且 `kubectl` 指向目标集群。
+4. 本机已安装 `kubectl`、`jq` 和 `awk`，且 `kubectl` 指向目标集群；OpenSearch Pod 中需有 `curl` 与 `sed`。
 5. 当前部署的 `agent-observability` 含有下列字面环境变量：
 
    - `OPENSEARCH_TRACE_INDEX`
@@ -147,4 +153,3 @@ kubectl -n <应用namespace> rollout status deployment/agent-observability --tim
 
 - 已删除的 MariaDB 或 OpenSearch 数据不能由脚本回滚；只能从升级前备份恢复。
 - OpenSearch 的 401、403、5xx、网络异常或 TLS 异常不是“索引已删除”。脚本会将其视为失败，不能据此继续升级。
-
