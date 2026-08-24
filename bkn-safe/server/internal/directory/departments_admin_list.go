@@ -10,6 +10,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
+const (
+	defaultDepartmentPageSize = 100
+	maxDepartmentPageSize     = 1000
+)
+
 // DepartmentListItem is the admin list view of a department (snake_case JSON).
 type DepartmentListItem struct {
 	ID                 string `json:"id"`
@@ -128,10 +133,10 @@ func (s *Service) subtreeMemberCounts(ctx context.Context, deptIDs []string) (ma
 // ListAllDepartments returns a flat, paginated department list with member_count.
 func (s *Service) ListAllDepartments(ctx context.Context, search string, offset, limit int) ([]DepartmentListItem, int64, error) {
 	if limit <= 0 {
-		limit = 100
+		limit = defaultDepartmentPageSize
 	}
-	if limit > 1000 {
-		limit = 1000
+	if limit > maxDepartmentPageSize {
+		limit = maxDepartmentPageSize
 	}
 	if offset < 0 {
 		offset = 0
@@ -144,7 +149,9 @@ func (s *Service) ListAllDepartments(ctx context.Context, search string, offset,
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	deps := make([]model.Department, 0, limit)
+	// Same reason as the user list: the allocation is sized by a constant the
+	// scanner can see, not by the request parameter the clamp happens to bound.
+	deps := make([]model.Department, 0, min(limit, maxDepartmentPageSize))
 	if err := q.Order("parent_id, name").Offset(offset).Limit(limit).Find(&deps).Error; err != nil {
 		return nil, 0, err
 	}
