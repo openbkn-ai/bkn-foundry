@@ -34,6 +34,15 @@ jobs:
       stack: python
       python-version: '3.12'
 
+  chart-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - name: Verify provenance bootstrap credential contract
+        working-directory: infra/bkn-agent
+        run: bash scripts/test_business_provenance_bootstrap_chart.sh charts
+
   build:
     needs: test
     uses: ./.github/workflows/reusable-build.yml
@@ -47,7 +56,7 @@ jobs:
       publish: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
 
   chart:
-    needs: [test, build]
+    needs: [test, build, chart-contract]
     uses: ./.github/workflows/reusable-chart.yml
     with:
       service-path: infra/bkn-agent

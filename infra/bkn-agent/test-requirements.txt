@@ -2,3 +2,4 @@
 # 运行时依赖（pyyaml/jsonschema 等）在 requirements.txt。
 pytest~=8.3
 httpx~=0.27
+aiosqlite~=0.20

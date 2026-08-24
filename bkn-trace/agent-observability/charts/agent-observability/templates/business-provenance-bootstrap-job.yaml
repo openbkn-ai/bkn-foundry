@@ -1,0 +1,52 @@
+{{- /*
+Copyright (c) 2026 OpenBKN
+SPDX-License-Identifier: LicenseRef-OpenBKN
+Licensed under the OpenBKN License, a modified Apache 2.0 with Additional
+Conditions. See LICENSE-OPENBKN.txt in the repository root for the full text.
+*/ -}}
+{{- if and .Values.enterpriseBusinessProvenance.enabled .Values.enterpriseBusinessProvenance.bootstrap.enabled }}
+{{- $bootstrap := .Values.enterpriseBusinessProvenance.bootstrap }}
+{{- $registry := default .Values.image.registry $bootstrap.image.registry }}
+{{- $tag := required "enterpriseBusinessProvenance.bootstrap.image.tag is required" $bootstrap.image.tag }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-business-provenance-bootstrap" (include "agent-observability.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "agent-observability.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 420
+  template:
+    metadata:
+      labels:
+        {{- include "agent-observability.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: business-provenance-bootstrap
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: business-provenance-bootstrap
+          image: {{ printf "%s/%s:%s" $registry $bootstrap.image.repository $tag | quote }}
+          imagePullPolicy: {{ $bootstrap.image.pullPolicy }}
+          command: ["python", "-m", "app.bootstrap.business_provenance"]
+          env:
+            - name: BKN_PROVENANCE_OWNER_ID
+              value: {{ required "enterpriseBusinessProvenance.bootstrap.ownerID is required" $bootstrap.ownerID | quote }}
+            - name: BKN_SAFE_URL
+              value: {{ required "enterpriseBusinessProvenance.bootstrap.bknSafeURL is required" $bootstrap.bknSafeURL | quote }}
+            - name: BKN_AGENT_URL
+              value: {{ required "enterpriseBusinessProvenance.bootstrap.bknAgentURL is required" $bootstrap.bknAgentURL | quote }}
+            - name: BKN_PROVENANCE_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "enterpriseBusinessProvenance.bootstrap.auth.existingSecret is required" $bootstrap.auth.existingSecret | quote }}
+                  key: {{ required "enterpriseBusinessProvenance.bootstrap.auth.secretKey is required" $bootstrap.auth.secretKey | quote }}
+{{- end }}

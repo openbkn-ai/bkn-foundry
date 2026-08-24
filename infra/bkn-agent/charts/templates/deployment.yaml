@@ -78,6 +78,11 @@ spec:
               value: {{ .Values.runtime.contextLoaderMcpUrl | quote }}
             - name: BKN_AGENT_DEFAULT_MODEL
               value: {{ .Values.runtime.defaultModel | quote }}
+            - name: BKN_PROVENANCE_BOOTSTRAP_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "provenanceBootstrap.auth.existingSecret is required" .Values.provenanceBootstrap.auth.existingSecret | quote }}
+                  key: {{ required "provenanceBootstrap.auth.secretKey is required" .Values.provenanceBootstrap.auth.secretKey | quote }}
             - name: CHECKPOINTER_BACKEND
               value: {{ .Values.runtime.checkpointerBackend | quote }}
             - name: CHECKPOINTER_ALLOW_RUNTIME_DDL

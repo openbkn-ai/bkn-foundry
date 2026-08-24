@@ -44,3 +44,39 @@ func TestBuiltInAdminUserProtected(t *testing.T) {
 		t.Errorf("admin state wrong after guarded edits: %+v", got)
 	}
 }
+
+func TestBusinessProvenanceAppPrincipalProtected(t *testing.T) {
+	for name, request := range map[string]struct {
+		method string
+		suffix string
+		body   any
+	}{
+		"delete":      {method: http.MethodDelete},
+		"disable":     {method: http.MethodPut, body: map[string]any{"enabled": false}},
+		"change type": {method: http.MethodPut, body: map[string]any{"account_type": "other"}},
+		"rename":      {method: http.MethodPut, body: map[string]any{"name": "Customer Service"}},
+		"set password": {
+			method: http.MethodPut,
+			suffix: "/password",
+			body:   map[string]any{"password": "must-not-become-a-login"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, _, db, _ := newAdminServer(t)
+			if err := db.Create(&model.User{
+				ID:          seed.BusinessProvenanceOwnerID,
+				Account:     "openbkn-business-provenance",
+				Name:        "OpenBKN Business Provenance Service",
+				Enabled:     true,
+				Source:      model.SourceLocal,
+				AccountType: model.AccountTypeApp,
+			}).Error; err != nil {
+				t.Fatal(err)
+			}
+			path := "/api/safe/v1/admin/users/" + seed.BusinessProvenanceOwnerID + request.suffix
+			if w := adminReq(t, r, request.method, path, request.body); w.Code != http.StatusForbidden {
+				t.Fatalf("want 403, got %d (%s)", w.Code, w.Body.String())
+			}
+		})
+	}
+}

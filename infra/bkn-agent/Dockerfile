@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -i ${PIP_INDEX_URL} -r requirements.txt
 COPY VERSION .
 COPY main.py .
 COPY app ./app
+COPY deploy ./deploy
 
 EXPOSE 30800
 CMD ["python", "main.py"]
