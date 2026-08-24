@@ -437,9 +437,11 @@ helm upgrade --install agent-observability charts/agent-observability \
 不要通过 Helm `--set` 传递 OpenSearch 用户名或密码。Chart 只接受已有 Secret 的名称；用户名与密码键默认为 `username`、`password`，可用 `opensearch.auth.usernameKey` 与 `passwordKey` 覆盖。
 创建凭据文件时使用 `printf`，避免 `echo` 在文件末尾写入换行。
 
-## 本地 Trace 数据一次性清理
+## 历史 clean-slate 数据清理（非 0.1.3 → 0.1.4 升级入口）
 
-`scripts/cleanup_legacy_bkn_trace_data.sh` 仅用于在 0.1.4 clean-slate 切换验收通过后，退役明确指定的旧 BKN Trace 服务库表及 Trace、Evidence、Projection 索引中的文档；不会清理日志索引或 MCP、SDK、BKN、Vega 业务数据，也不会自动运行。脚本默认只预览数量；核对目标并完成 Owner 确认后，才可显式增加 `--confirm`。MariaDB 密码可通过 `MYSQL_PWD` 提供，OpenSearch Basic Auth 可通过 `OPENSEARCH_USERNAME` 与 `OPENSEARCH_PASSWORD` 成对提供。
+`scripts/cleanup_legacy_bkn_trace_data.sh` 是早期 clean-slate 切换后退役旧目标的历史工具；它**不是** 0.1.3 → 0.1.4 的生产升级入口。该升级必须使用 [BKN Trace 0.1.3 升级到 0.1.4](../../help/zh/manual/bkn-trace-0.1.3-to-0.1.4-upgrade.md) 中的 `deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh`，后者包含停写观察、集群上下文和依赖目标校验。
+
+历史工具仅用于在 0.1.4 clean-slate 切换验收通过后，退役明确指定的旧 BKN Trace 服务库表及 Trace、Evidence、Projection 索引中的文档；不会清理日志索引或 MCP、SDK、BKN、Vega 业务数据，也不会自动运行。脚本默认只预览数量；核对目标并完成 Owner 确认后，才可显式增加 `--confirm`。MariaDB 密码可通过 `MYSQL_PWD` 提供，OpenSearch Basic Auth 可通过 `OPENSEARCH_USERNAME` 与 `OPENSEARCH_PASSWORD` 成对提供。
 
 必须显式设置：`BKN_TRACE_CLEANUP_DB_HOST`、`BKN_TRACE_CLEANUP_DB_NAME`、`BKN_TRACE_CLEANUP_DB_USER`、`OPENSEARCH_ENDPOINT`、`OPENSEARCH_TRACE_INDEX`、`OPENSEARCH_EVIDENCE_INDEX`、`BKN_TRACE_PROJECTION_INDEX`。脚本拒绝空值、未展开表达式、通配符、系统库及系统索引，并在清理后回读确认所有指定目标均为零。升级前版本尚不存在的明确允许表会报告 `status=absent` 并跳过，不会扩大清理范围。
 
