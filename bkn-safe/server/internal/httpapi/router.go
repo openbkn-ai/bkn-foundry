@@ -130,6 +130,17 @@ func New(deps Deps) *gin.Engine {
 		}
 		registerUserAdmin(admin, deps.Users, deps.Enforcer, deps.Directory)
 		registerAdminReads(admin, deps.Directory, deps.Enforcer)
+		// Directory reads an object owner needs to name a grantee. Same prefix,
+		// weaker door: RequireAdminOrResourceOwner in place of RequireAdmin. Kept
+		// off the `admin` group because gin fixes a group's handler chain at
+		// register time — the relaxation has to be its own group or it would be
+		// no relaxation at all.
+		ownerDirectory := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(),
+			RequireAdminOrResourceOwner(verifier, deps.Enforcer))
+		if deps.Audit != nil {
+			ownerDirectory.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
+		}
+		registerOwnerVisibleDirectoryReads(ownerDirectory, deps.Directory, deps.Enforcer)
 		registerDeptAdmin(admin, deps.Directory, deps.Enforcer)
 		registerRoleBindings(admin, deps.Enforcer, deps.DB)
 		registerRoles(admin, deps.Enforcer, deps.DB)

@@ -11,6 +11,13 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
+const (
+	// defaultUserPageSize is what an unspecified limit means; maxUserPageSize is
+	// the ceiling no caller may raise.
+	defaultUserPageSize = 50
+	maxUserPageSize     = 500
+)
+
 // UserListFilter is the admin user-list query (pagination + optional filters).
 type UserListFilter struct {
 	Search         string
@@ -47,10 +54,10 @@ var userSummaryCols = []string{
 func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserSummary, int64, error) {
 	limit := filter.Limit
 	if limit <= 0 {
-		limit = 50
+		limit = defaultUserPageSize
 	}
-	if limit > 500 {
-		limit = 500
+	if limit > maxUserPageSize {
+		limit = maxUserPageSize
 	}
 	offset := filter.Offset
 	if offset < 0 {
@@ -97,7 +104,13 @@ func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserS
 		return nil, 0, err
 	}
 
-	out := make([]UserSummary, 0, limit)
+	// Capacity is a constant, not the caller's number. The clamp above already
+	// bounds `limit`, and min(limit, ceiling) would too, but either way the
+	// allocation still reads a request parameter — the shape CodeQL flags as
+	// go/uncontrolled-allocation-size, and the one worth not having at all. A
+	// page larger than the default grows by append; at these sizes that costs
+	// nothing worth measuring.
+	out := make([]UserSummary, 0, defaultUserPageSize)
 	rows := make([]struct {
 		ID          string
 		Account     string
@@ -106,7 +119,7 @@ func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserS
 		Enabled     bool
 		AccountType string
 		UpdatedAt   time.Time
-	}, 0, limit)
+	}, 0, defaultUserPageSize)
 	if err := q.Select(userSummaryCols).Order("account").Offset(offset).Limit(limit).Scan(&rows).Error; err != nil {
 		return nil, 0, err
 	}
