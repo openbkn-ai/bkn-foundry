@@ -85,9 +85,12 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 		logger.Infof("Dataset %s created successfully, ID: %s", interfaces.BKN_DATASET_NAME, interfaces.BKN_DATASET_ID)
 	} else {
 		logger.Infof("Dataset %s found, ID: %s", interfaces.BKN_DATASET_NAME, dataset.ID)
-		// Deep compare schema
-		if !deepCompareSchemas(expectedSchema, dataset.SchemaDefinition) {
-			logger.Infof("Schema mismatch detected, deleting and recreating dataset...")
+		// Compare the schema and the resource-level embedding model reference.
+		// Vega interprets DefaultEmbeddingModel as a model ID, so a historical
+		// model name must trigger recreation even when the schema is unchanged.
+		if !deepCompareSchemas(expectedSchema, dataset.SchemaDefinition) ||
+			!sameDefaultEmbeddingModel(dataset.IndexConfig, defaultEmbeddingModel) {
+			logger.Infof("Dataset definition mismatch detected, deleting and recreating dataset...")
 			// Delete dataset
 			err = VBA.DeleteResource(ctx, dataset.ID)
 			if err != nil {
@@ -104,12 +107,19 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 			}
 			logger.Infof("Dataset %s recreated successfully, ID: %s", interfaces.BKN_DATASET_NAME, interfaces.BKN_DATASET_ID)
 		} else {
-			logger.Infof("Schema matches, no need to recreate dataset")
+			logger.Infof("Dataset definition matches, no need to recreate dataset")
 		}
 	}
 
 	logger.Info("Init BKN Dataset Success")
 	return nil
+}
+
+func sameDefaultEmbeddingModel(indexConfig *interfaces.VegaResourceIndexConfig, expectedModelID string) bool {
+	if indexConfig == nil {
+		return expectedModelID == ""
+	}
+	return indexConfig.DefaultEmbeddingModel == expectedModelID
 }
 
 // bknConceptDatasetRequest builds an independent resource request for the BKN
