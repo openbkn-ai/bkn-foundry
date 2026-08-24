@@ -169,3 +169,82 @@ func bearerToken(c *gin.Context) string {
 	}
 	return ""
 }
+
+// ctxDirectoryReadAuthority records how a caller earned a directory read on the
+// relaxed group below: "admin" for the platform administrator, "owner" for the
+// holder of a concrete object grant. Handlers branch on it because the two are
+// not entitled to the same rows or the same columns.
+const ctxDirectoryReadAuthority = "directory_read_authority"
+
+const (
+	directoryReadAdmin = "admin"
+	directoryReadOwner = "owner"
+)
+
+// RequireAdminOrResourceOwner guards the directory reads an object owner needs
+// in order to name the person they are sharing with. Administrators pass as they
+// always did; anyone else passes only while holding `authorize` on at least one
+// CONCRETE object.
+//
+// "Concrete" is the whole point, and it is why this reads ListObjectGrants
+// rather than asking the enforcer. A Check/EffectivePermissions answer folds in
+// type-wide role grants, and the seeded network_builder role carries `authorize`
+// on catalog, connector_type, operator, skill and stream_data_pipeline — so
+// every member of that role would pass without owning anything at all, turning
+// "the person who built this may look up a colleague" into "this role may read
+// the directory". ListObjectGrants skips type-wide rows (see its rid == "*"
+// filter), leaving exactly the grants a domain service wrote to a creator.
+//
+// Fail-closed throughout: a lookup error is a refusal, never a pass.
+func RequireAdminOrResourceOwner(v TokenVerifier, e *authz.Enforcer) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		tok := bearerToken(c)
+		if tok == "" {
+			abortPublicError(c, http.StatusUnauthorized)
+			return
+		}
+		sub, err := v.VerifyToken(c.Request.Context(), tok)
+		if err != nil {
+			abortPublicError(c, http.StatusUnauthorized)
+			return
+		}
+		admin, err := e.CanAdmin(sub)
+		if err != nil {
+			abortInternalError(c)
+			return
+		}
+		if admin {
+			c.Set(ctxAccessorID, sub)
+			c.Set(ctxDirectoryReadAuthority, directoryReadAdmin)
+			c.Next()
+			return
+		}
+		grants, err := e.ListObjectGrants(sub, "", "")
+		if err != nil {
+			abortInternalError(c)
+			return
+		}
+		for _, grant := range grants {
+			for _, op := range grant.Operations {
+				if op == opAuthorize {
+					c.Set(ctxAccessorID, sub)
+					c.Set(ctxDirectoryReadAuthority, directoryReadOwner)
+					c.Next()
+					return
+				}
+			}
+		}
+		abortPublicError(c, http.StatusForbidden)
+	}
+}
+
+// requireAdminDirectoryPermission applies the administrator's own permission
+// point when the caller is one. An owner reached the handler through the object
+// grant instead, and holds no admin-user/admin-dept point by construction, so
+// asking would refuse every one of them.
+func requireAdminDirectoryPermission(c *gin.Context, e *authz.Enforcer, resourceType, op string) bool {
+	if c.GetString(ctxDirectoryReadAuthority) == directoryReadOwner {
+		return true
+	}
+	return authorizePermission(c, e, resourceType, op)
+}
