@@ -1,11 +1,15 @@
 from contextvars import ContextVar
 from dataclasses import dataclass
+from secrets import compare_digest
 
 from fastapi import Request
 
 from app.errors import err
+from app.config import config
 
 _ALLOWED_TYPES = {"user", "app"}
+_PROVENANCE_OWNER_ID = "bdd59f76-19c3-58b0-bf5f-082c4c3cbddb"
+_PROVENANCE_TOKEN_HEADER = "x-bkn-provenance-bootstrap-token"
 
 # The caller's Authorization header, forwarded verbatim.
 #
@@ -61,4 +65,14 @@ def get_account(request: Request) -> Account:
     account_type = (request.headers.get("x-account-type") or "").strip()
     if not account_id or account_type not in _ALLOWED_TYPES:
         raise err(401, "BknAgent.Auth.AccountRequired")
+    if account_id == _PROVENANCE_OWNER_ID:
+        supplied = (request.headers.get(_PROVENANCE_TOKEN_HEADER) or "").strip()
+        expected = config.PROVENANCE_BOOTSTRAP_TOKEN
+        if (
+            account_type != "app"
+            or not expected
+            or not supplied
+            or not compare_digest(supplied, expected)
+        ):
+            raise err(401, "BknAgent.Auth.AccountRequired")
     return Account(account_id=account_id, account_type=account_type)

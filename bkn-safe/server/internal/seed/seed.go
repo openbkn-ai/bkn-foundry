@@ -15,6 +15,7 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -38,6 +39,12 @@ import (
 const (
 	adminUserID  = "266c6a42-6131-4d62-8f39-853e7093701c"
 	adminAccount = "admin"
+
+	// BusinessProvenanceOwnerID is the non-login application identity that owns
+	// the deployment-managed business provenance Agent in bkn-agent.
+	BusinessProvenanceOwnerID      = "bdd59f76-19c3-58b0-bf5f-082c4c3cbddb"
+	BusinessProvenanceOwnerAccount = "openbkn-business-provenance"
+	BusinessProvenanceOwnerName    = "OpenBKN Business Provenance Service"
 )
 
 var deprecatedSeedRoleIDs = []string{
@@ -139,7 +146,37 @@ func Apply(db *gorm.DB, enforcer *authz.Enforcer) error {
 	if err := seedAdminUser(db); err != nil {
 		return fmt.Errorf("seed admin user: %w", err)
 	}
+	if err := seedBusinessProvenanceOwner(db); err != nil {
+		return fmt.Errorf("seed business provenance owner: %w", err)
+	}
 	return nil
+}
+
+func seedBusinessProvenanceOwner(db *gorm.DB) error {
+	var existing model.User
+	err := db.First(&existing, "id = ?", BusinessProvenanceOwnerID).Error
+	if err == nil {
+		if existing.Account != BusinessProvenanceOwnerAccount ||
+			existing.Name != BusinessProvenanceOwnerName ||
+			!existing.Enabled ||
+			existing.Source != model.SourceLocal ||
+			existing.AccountType != model.AccountTypeApp ||
+			existing.PasswordHash != "" {
+			return fmt.Errorf("fixed app principal %s conflicts with the deployment contract", BusinessProvenanceOwnerID)
+		}
+		return nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return err
+	}
+	return db.Create(&model.User{
+		ID:          BusinessProvenanceOwnerID,
+		Account:     BusinessProvenanceOwnerAccount,
+		Name:        BusinessProvenanceOwnerName,
+		Enabled:     true,
+		Source:      model.SourceLocal,
+		AccountType: model.AccountTypeApp,
+	}).Error
 }
 
 // seedAdminUser creates the built-in admin login the FIRST time only. If a row

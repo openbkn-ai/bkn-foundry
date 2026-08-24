@@ -104,6 +104,10 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		if !bind(c, &req) {
 			return
 		}
+		if c.Param("id") == seed.BusinessProvenanceOwnerID {
+			replyPublicError(c, http.StatusForbidden)
+			return
+		}
 		if err := users.ResetPassword(c.Request.Context(), c.Param("id"), req.Password); err != nil {
 			serverError(c, err)
 			return
@@ -139,6 +143,13 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		// refuse to disable it (other edits like rename are fine). The frontend
 		// hides the control, but the API must not rely on that.
 		if id == seed.AdminUserID && req.Enabled != nil && !*req.Enabled {
+			replyPublicError(c, http.StatusForbidden)
+			return
+		}
+		if id == seed.BusinessProvenanceOwnerID &&
+			((req.Enabled != nil && !*req.Enabled) ||
+				(req.AccountType != nil && *req.AccountType != string(model.AccountTypeApp)) ||
+				(req.Name != nil && *req.Name != seed.BusinessProvenanceOwnerName)) {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}
@@ -203,7 +214,7 @@ func registerUserAdmin(g *gin.RouterGroup, users *auth.UserStore, e *authz.Enfor
 		id := c.Param("id")
 		// Defense in depth: never delete the built-in admin (deleting the only
 		// super-admin locks everyone out). The frontend hides the control too.
-		if id == seed.AdminUserID {
+		if id == seed.AdminUserID || id == seed.BusinessProvenanceOwnerID {
 			replyPublicError(c, http.StatusForbidden)
 			return
 		}

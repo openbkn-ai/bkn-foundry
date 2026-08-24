@@ -92,6 +92,21 @@ enterpriseBusinessProvenance:
   agentURL: ""
   agentID: ""
   agentName: ""
+  bootstrap:
+    enabled: true
+    ownerID: bdd59f76-19c3-58b0-bf5f-082c4c3cbddb
+    bknSafeURL: http://bkn-safe:3000/api/safe/v1
+    bknAgentURL: http://bkn-agent:30800/api/bkn-agent/v1
+    auth:
+      existingSecret: bkn-agent-provenance-bootstrap
+      secretKey: token
+    image:
+      # Empty values inherit the release-wide registry/tag overrides used by
+      # private and offline EE installations.
+      registry: ""
+      repository: bkn-agent
+      tag: ""
+      pullPolicy: IfNotPresent
 
 observability:
   # Configure the same Secret on every replica so signed pagination cursors

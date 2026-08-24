@@ -55,6 +55,12 @@ runtime:
   # it back to false after the tables are captured in a migration.
   checkpointerAllowRuntimeDdl: "false"
 
+provenanceBootstrap:
+  auth:
+    createSecret: true
+    existingSecret: bkn-agent-provenance-bootstrap
+    secretKey: token
+
 observability:
   otelEnabled: "true"
   otlpEndpoint: "http://otelcol-contrib:4318"
