@@ -246,8 +246,8 @@ func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Servi
 			Enabled:        parseOptionalBool(c.Query("enabled")),
 			DepartmentID:   c.Query("department_id"),
 			IncludeSubtree: c.Query("include_subtree") == "true",
-			RoleID:         c.Query("role_id"),
-			Offset:         atoiDefault(c.Query("offset"), 0),
+			RoleID:         ownerDirectoryRoleFilter(c, c.Query("role_id")),
+			Offset:         ownerDirectoryOffset(c, atoiDefault(c.Query("offset"), 0)),
 			Limit:          ownerDirectoryLimit(c, atoiDefault(c.Query("limit"), 0)),
 		})
 		if err != nil {
@@ -259,7 +259,10 @@ func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Servi
 			for _, user := range users {
 				out = append(out, projectGranteeCandidate(user))
 			}
-			c.JSON(http.StatusOK, gin.H{"users": out, "total": total})
+			// The count of everyone on the platform is not an answer this caller
+			// asked for, and paired with a stable page it is the number that tells
+			// an enumerator how far to keep going. Report the page.
+			c.JSON(http.StatusOK, gin.H{"users": out, "total": len(out)})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
@@ -300,12 +303,24 @@ func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Servi
 				serverError(c, err)
 				return
 			}
+			if isOwnerDirectoryRead(c) {
+				out := projectDepartmentNodes(deps, ownerDirectoryLimit(c, 0))
+				c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out)})
+				return
+			}
 			c.JSON(http.StatusOK, gin.H{"departments": deps, "total": len(deps)})
 			return
 		}
-		deps, total, err := dir.ListAllDepartments(ctx, c.Query("search"), atoiDefault(c.Query("offset"), 0), atoiDefault(c.Query("limit"), 0))
+		deps, total, err := dir.ListAllDepartments(ctx, c.Query("search"),
+			ownerDirectoryOffset(c, atoiDefault(c.Query("offset"), 0)),
+			ownerDirectoryLimit(c, atoiDefault(c.Query("limit"), 0)))
 		if err != nil {
 			serverError(c, err)
+			return
+		}
+		if isOwnerDirectoryRead(c) {
+			out := projectDepartmentNodes(deps, ownerDirectoryLimit(c, 0))
+			c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out)})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"departments": deps, "total": total})
@@ -324,6 +339,48 @@ type granteeCandidate struct {
 
 func projectGranteeCandidate(u directory.UserSummary) granteeCandidate {
 	return granteeCandidate{ID: u.ID, Account: u.Account, Name: u.Name}
+}
+
+// departmentNode is the owner-facing projection of a department: enough to draw
+// the tree a grantee picker groups by, and none of the contact detail the admin
+// shape carries (manager, code, email, remark) or the head counts that describe
+// the organisation rather than locate it.
+type departmentNode struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	ParentID string `json:"parent_id"`
+}
+
+func projectDepartmentNodes(deps []directory.DepartmentListItem, maxRows int) []departmentNode {
+	if maxRows > 0 && len(deps) > maxRows {
+		deps = deps[:maxRows]
+	}
+	out := make([]departmentNode, 0, len(deps))
+	for _, d := range deps {
+		out = append(out, departmentNode{ID: d.ID, Name: d.Name, ParentID: d.ParentID})
+	}
+	return out
+}
+
+// ownerDirectoryOffset pins an owner to the first page. Capping the page length
+// alone bounds one response and nothing else: offset=0,50,100… walks the whole
+// table at the same cost, which is the enumeration the cap was meant to prevent.
+// A picker opens on the first page and narrows by typing; it never pages.
+func ownerDirectoryOffset(c *gin.Context, requested int) int {
+	if !isOwnerDirectoryRead(c) {
+		return requested
+	}
+	return 0
+}
+
+// ownerDirectoryRoleFilter drops ?role_id= for an owner. Listing users is one
+// thing; asking which accounts hold a named privileged role is a different
+// question, and answering it hands over a target list.
+func ownerDirectoryRoleFilter(c *gin.Context, requested string) string {
+	if !isOwnerDirectoryRead(c) {
+		return requested
+	}
+	return ""
 }
 
 func isOwnerDirectoryRead(c *gin.Context) bool {
