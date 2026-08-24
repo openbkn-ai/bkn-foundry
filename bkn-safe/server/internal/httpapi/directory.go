@@ -323,7 +323,13 @@ func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Servi
 		}
 		if isOwnerDirectoryRead(c) {
 			out := projectDepartmentNodes(deps, ownerDirectoryLimit(c, 0))
-			c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out), "truncated": len(out) < len(deps)})
+			// Compare against the unpaged count, not against `deps`: the page cap
+			// was already applied by the query, so `deps` is at most one page and
+			// the in-memory projection can never be the thing that cut a row. The
+			// flag is a boolean and stays one — an owner is told that more exists,
+			// not how much, and with offset pinned there is no next page to ask
+			// for anyway.
+			c.JSON(http.StatusOK, gin.H{"departments": out, "total": len(out), "truncated": int64(len(out)) < total})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"departments": deps, "total": total})

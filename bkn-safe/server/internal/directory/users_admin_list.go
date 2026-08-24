@@ -104,11 +104,13 @@ func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserS
 		return nil, 0, err
 	}
 
-	// Pre-allocate against the constant ceiling, not the caller's number. The
-	// clamp above already bounds it, but sizing an allocation from a request
-	// parameter is a shape worth not having (CodeQL go/uncontrolled-allocation-size),
-	// and min() makes the bound one the compiler and the scanner can both see.
-	out := make([]UserSummary, 0, min(limit, maxUserPageSize))
+	// Capacity is a constant, not the caller's number. The clamp above already
+	// bounds `limit`, and min(limit, ceiling) would too, but either way the
+	// allocation still reads a request parameter — the shape CodeQL flags as
+	// go/uncontrolled-allocation-size, and the one worth not having at all. A
+	// page larger than the default grows by append; at these sizes that costs
+	// nothing worth measuring.
+	out := make([]UserSummary, 0, defaultUserPageSize)
 	rows := make([]struct {
 		ID          string
 		Account     string
@@ -117,7 +119,7 @@ func (s *Service) ListUsers(ctx context.Context, filter UserListFilter) ([]UserS
 		Enabled     bool
 		AccountType string
 		UpdatedAt   time.Time
-	}, 0, min(limit, maxUserPageSize))
+	}, 0, defaultUserPageSize)
 	if err := q.Select(userSummaryCols).Order("account").Offset(offset).Limit(limit).Scan(&rows).Error; err != nil {
 		return nil, 0, err
 	}
