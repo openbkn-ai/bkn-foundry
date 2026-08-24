@@ -149,9 +149,9 @@ func (s *Service) ListAllDepartments(ctx context.Context, search string, offset,
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	// Same reason as the user list: the allocation is sized by a constant the
-	// scanner can see, not by the request parameter the clamp happens to bound.
-	deps := make([]model.Department, 0, min(limit, maxDepartmentPageSize))
+	// Same reason as the user list: constant capacity, no request parameter in
+	// the allocation at all.
+	deps := make([]model.Department, 0, defaultDepartmentPageSize)
 	if err := q.Order("parent_id, name").Offset(offset).Limit(limit).Find(&deps).Error; err != nil {
 		return nil, 0, err
 	}

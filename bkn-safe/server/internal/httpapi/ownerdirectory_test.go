@@ -253,9 +253,16 @@ func TestOwnerDirectoryDepartmentsProjectedAndCapped(t *testing.T) {
 	var out struct {
 		Departments []map[string]any `json:"departments"`
 		Total       int              `json:"total"`
+		Truncated   bool             `json:"truncated"`
 	}
 	if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+	// More departments exist than this page carries, and the caller cannot page
+	// for the rest — so it has to be told, or it renders a partial org chart as
+	// the whole one.
+	if !out.Truncated {
+		t.Errorf("the flat page was cut at %d of %d without saying so", len(out.Departments), ownerDirectoryMaxPageSize+5)
 	}
 	if len(out.Departments) > ownerDirectoryMaxPageSize {
 		t.Fatalf("owner pulled %d departments, cap is %d", len(out.Departments), ownerDirectoryMaxPageSize)
