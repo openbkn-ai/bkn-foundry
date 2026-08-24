@@ -177,76 +177,6 @@ func registerDirectory(r *gin.Engine, dir *directory.Service) {
 // surface reaches them through the gateway. The internal (ClusterIP) equivalents
 // stay on /api/safe/v1/directory for service-to-service callers.
 func registerAdminReads(g *gin.RouterGroup, dir *directory.Service, e *authz.Enforcer) {
-	// GET /users — list/search users (paginated), or ?account= for an exact
-	// login lookup. Query: ?search=&offset=&limit= | ?account=
-	// -> { users:[{id,account,name,email,enabled,account_type}], total }
-	g.GET("/users", RequirePermission(e, "admin-user", "view"), func(c *gin.Context) {
-		ctx := c.Request.Context()
-		if acct := c.Query("account"); acct != "" {
-			u, err := dir.FindUserByAccount(ctx, acct)
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				c.JSON(http.StatusOK, gin.H{"users": []directory.UserSummary{}, "total": 0})
-				return
-			}
-			if err != nil {
-				serverError(c, err)
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"users": []*directory.UserSummary{u}, "total": 1})
-			return
-		}
-		users, total, err := dir.ListUsers(ctx, directory.UserListFilter{
-			Search:         c.Query("search"),
-			Enabled:        parseOptionalBool(c.Query("enabled")),
-			DepartmentID:   c.Query("department_id"),
-			IncludeSubtree: c.Query("include_subtree") == "true",
-			RoleID:         c.Query("role_id"),
-			Offset:         atoiDefault(c.Query("offset"), 0),
-			Limit:          atoiDefault(c.Query("limit"), 0),
-		})
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
-	})
-
-	// GET /users/:id — full user detail.
-	g.GET("/users/:id", RequirePermission(e, "admin-user", "view"), func(c *gin.Context) {
-		d, err := dir.GetUser(c.Request.Context(), c.Param("id"))
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			replyPublicError(c, http.StatusNotFound)
-			return
-		}
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusOK, d)
-	})
-
-	// GET /departments — with ?parent_id= lists that parent's direct children
-	// ("" = roots); without it returns the whole tree flat (paginated/searchable
-	// via ?search=&offset=&limit=) so the client can build the tree.
-	g.GET("/departments", RequirePermission(e, "admin-dept", "view"), func(c *gin.Context) {
-		ctx := c.Request.Context()
-		if _, scoped := c.GetQuery("parent_id"); scoped {
-			deps, err := dir.ListDepartmentsWithCounts(ctx, c.Query("parent_id"))
-			if err != nil {
-				serverError(c, err)
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"departments": deps, "total": len(deps)})
-			return
-		}
-		deps, total, err := dir.ListAllDepartments(ctx, c.Query("search"), atoiDefault(c.Query("offset"), 0), atoiDefault(c.Query("limit"), 0))
-		if err != nil {
-			serverError(c, err)
-			return
-		}
-		c.JSON(http.StatusOK, gin.H{"departments": deps, "total": total})
-	})
-
 	// GET /departments/:id — single department detail.
 	g.GET("/departments/:id", RequirePermission(e, "admin-dept", "view"), func(c *gin.Context) {
 		d, err := dir.GetDepartmentDetail(c.Request.Context(), c.Param("id"))
@@ -270,6 +200,149 @@ func registerAdminReads(g *gin.RouterGroup, dir *directory.Service, e *authz.Enf
 		}
 		c.JSON(http.StatusOK, gin.H{"users": members, "total": len(members)})
 	})
+}
+
+// registerOwnerVisibleDirectoryReads mounts the directory reads that an object
+// owner needs in order to name the colleague they are sharing with. They keep
+// their /admin paths so the console calls one URL whoever is looking; the group
+// they hang on swaps RequireAdmin for RequireAdminOrResourceOwner, and each
+// handler re-applies the administrator's permission point through
+// requireAdminDirectoryPermission — an owner is exempt from that check, never
+// from the one that let them in.
+//
+// What an owner gets back is narrower than what an administrator gets: id,
+// account and name — the three columns a grantee picker shows. The admin shape
+// carries email, telephone, role and department membership, and opening the
+// directory for the sake of a picker is no reason to hand every resource owner
+// the platform's contact list. The page size is capped for the same reason.
+func registerOwnerVisibleDirectoryReads(g *gin.RouterGroup, dir *directory.Service, e *authz.Enforcer) {
+	// GET /users — list/search users (paginated), or ?account= for an exact
+	// login lookup. Query: ?search=&offset=&limit= | ?account=
+	// -> { users:[{id,account,name,email,enabled,account_type}], total }
+	g.GET("/users", func(c *gin.Context) {
+		if !requireAdminDirectoryPermission(c, e, "admin-user", "view") {
+			return
+		}
+		ctx := c.Request.Context()
+		if acct := c.Query("account"); acct != "" {
+			u, err := dir.FindUserByAccount(ctx, acct)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				c.JSON(http.StatusOK, gin.H{"users": []directory.UserSummary{}, "total": 0})
+				return
+			}
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			if isOwnerDirectoryRead(c) {
+				c.JSON(http.StatusOK, gin.H{"users": []granteeCandidate{projectGranteeCandidate(*u)}, "total": 1})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"users": []*directory.UserSummary{u}, "total": 1})
+			return
+		}
+		users, total, err := dir.ListUsers(ctx, directory.UserListFilter{
+			Search:         c.Query("search"),
+			Enabled:        parseOptionalBool(c.Query("enabled")),
+			DepartmentID:   c.Query("department_id"),
+			IncludeSubtree: c.Query("include_subtree") == "true",
+			RoleID:         c.Query("role_id"),
+			Offset:         atoiDefault(c.Query("offset"), 0),
+			Limit:          ownerDirectoryLimit(c, atoiDefault(c.Query("limit"), 0)),
+		})
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if isOwnerDirectoryRead(c) {
+			out := make([]granteeCandidate, 0, len(users))
+			for _, user := range users {
+				out = append(out, projectGranteeCandidate(user))
+			}
+			c.JSON(http.StatusOK, gin.H{"users": out, "total": total})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"users": users, "total": total})
+	})
+
+	// GET /users/:id — full user detail.
+	g.GET("/users/:id", func(c *gin.Context) {
+		if !requireAdminDirectoryPermission(c, e, "admin-user", "view") {
+			return
+		}
+		d, err := dir.GetUser(c.Request.Context(), c.Param("id"))
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			replyPublicError(c, http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		if isOwnerDirectoryRead(c) {
+			c.JSON(http.StatusOK, granteeCandidate{ID: d.ID, Account: d.Account, Name: d.Name})
+			return
+		}
+		c.JSON(http.StatusOK, d)
+	})
+
+	// GET /departments — with ?parent_id= lists that parent's direct children
+	// ("" = roots); without it returns the whole tree flat (paginated/searchable
+	// via ?search=&offset=&limit=) so the client can build the tree.
+	g.GET("/departments", func(c *gin.Context) {
+		if !requireAdminDirectoryPermission(c, e, "admin-dept", "view") {
+			return
+		}
+		ctx := c.Request.Context()
+		if _, scoped := c.GetQuery("parent_id"); scoped {
+			deps, err := dir.ListDepartmentsWithCounts(ctx, c.Query("parent_id"))
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"departments": deps, "total": len(deps)})
+			return
+		}
+		deps, total, err := dir.ListAllDepartments(ctx, c.Query("search"), atoiDefault(c.Query("offset"), 0), atoiDefault(c.Query("limit"), 0))
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"departments": deps, "total": total})
+	})
+
+}
+
+// granteeCandidate is the owner-facing projection of a directory user: who they
+// are and what to show in a picker, and nothing that would make this endpoint
+// worth reading for any other purpose.
+type granteeCandidate struct {
+	ID      string `json:"id"`
+	Account string `json:"account"`
+	Name    string `json:"name"`
+}
+
+func projectGranteeCandidate(u directory.UserSummary) granteeCandidate {
+	return granteeCandidate{ID: u.ID, Account: u.Account, Name: u.Name}
+}
+
+func isOwnerDirectoryRead(c *gin.Context) bool {
+	return c.GetString(ctxDirectoryReadAuthority) == directoryReadOwner
+}
+
+// ownerDirectoryMaxPageSize caps what an owner may pull per request. The console
+// asks for 1000 when an administrator drives the same screen; an owner is here
+// to find one person by name.
+const ownerDirectoryMaxPageSize = 50
+
+func ownerDirectoryLimit(c *gin.Context, requested int) int {
+	if !isOwnerDirectoryRead(c) {
+		return requested
+	}
+	if requested <= 0 || requested > ownerDirectoryMaxPageSize {
+		return ownerDirectoryMaxPageSize
+	}
+	return requested
 }
 
 // atoiDefault parses s as an int, returning def on empty/invalid input.
