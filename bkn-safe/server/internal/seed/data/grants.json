@@ -130,7 +130,8 @@
       "role_name": "network_builder",
       "resource_type": "catalog",
       "id_pattern": "*",
-      "operations": ["view_detail", "create", "modify", "delete", "authorize", "task_manage", "resource_manage", "query_data"]
+      "_note": "无 authorize:同 knowledge_network 的理由。casbin keyMatch 下 catalog:* 匹配任意目录,构建者会在别人建的目录上也拿到转授权,而 authorize 只能由管理员收回。创建者不受影响 —— vega 建目录时把 COMMON_OPERATIONS(含 authorize)写成 catalog:<id> 的对象授权。",
+      "operations": ["view_detail", "create", "modify", "delete", "task_manage", "resource_manage", "query_data"]
     },
     {
       "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",
