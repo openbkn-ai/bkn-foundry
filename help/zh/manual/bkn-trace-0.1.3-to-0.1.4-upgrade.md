@@ -69,6 +69,10 @@ bash deploy/scripts/upgrades/0.1.4/cleanup_legacy_bkn_trace_data.sh
 - Projection alias 只能指向一个物理索引；
 - 不得有未知表、认证错误、TLS 错误或 OpenSearch 5xx。
 
+若 0.1.3 从未写入 Evidence，`OPENSEARCH_EVIDENCE_INDEX` 可能尚未创建；脚本会显示
+`status=absent action=already_clean` 并跳过该索引。Trace 索引不存在或任一已存在索引在
+停写观察窗口内消失，都会使脚本终止。
+
 ### 3. 执行确认清理
 
 在确认备份可恢复且 Trace 写入已经停止后执行：

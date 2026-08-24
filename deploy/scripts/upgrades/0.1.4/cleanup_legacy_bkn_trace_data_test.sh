@@ -144,6 +144,10 @@ if [[ $joined == *" exec "* && $joined == *" /projection-v013 "* ]]; then
 fi
 
 if [[ $joined == *" exec "* && ( $joined == *" /trace-v013/_count "* || $joined == *" /evidence-v013/_count "* ) ]]; then
+  if [[ ${MOCK_EVIDENCE_INDEX_ABSENT:-0} == 1 && $joined == *" /evidence-v013/_count "* ]]; then
+    printf '{"error":"not found"}\n404\n'
+    exit 0
+  fi
   if [[ ${MOCK_INDEX_MISSING_AFTER_SCALE:-0} == 1 && -f $MOCK_STATE_DIR/scaled ]]; then
     printf '{"error":"not found"}\n404\n'
     exit 0
@@ -163,7 +167,11 @@ fi
 
 if [[ $joined == *" exec "* && $joined == *"_delete_by_query"* ]]; then
   : >"$MOCK_STATE_DIR/deleted"
-  printf '%s\n' destructive:delete-by-query >>"$MOCK_COMMAND_LOG"
+  if [[ $joined == *" /evidence-v013/_delete_by_query "* ]]; then
+    printf '%s\n' destructive:delete-by-query:evidence-v013 >>"$MOCK_COMMAND_LOG"
+  else
+    printf '%s\n' destructive:delete-by-query:trace-v013 >>"$MOCK_COMMAND_LOG"
+  fi
   printf '{"failures":[]}\n200\n'
   exit 0
 fi
@@ -255,7 +263,7 @@ case_missing_index() {
     fail "missing OpenSearch index count passed cleanup admission"
   fi
   unset MOCK_INDEX_MISSING_AFTER_SCALE
-  assert_contains "$output_file" "path=/trace-v013/_count http_status=404"
+  assert_contains "$output_file" "OpenSearch index disappeared during cleanup admission: trace-v013"
   assert_not_contains "$command_log" "destructive:"
   [[ -f $case_dir/state/scaled ]] || fail "deployment was not left scaled down"
   teardown_case
@@ -285,6 +293,20 @@ case_projection_absent() {
   unset MOCK_PROJECTION_ABSENT
   assert_contains "$output_file" "projection_alias=bkn-trace-core status=absent action=already_clean"
   assert_not_contains "$command_log" "destructive:projection-delete"
+  teardown_case
+}
+
+case_evidence_absent() {
+  setup_case
+  export MOCK_EVIDENCE_INDEX_ABSENT=1
+  run_cleanup --confirm --expected-context production-cluster --backup-confirmed --writes-quiesced || {
+    sed -n '1,260p' "$output_file" >&2
+    fail "absent Evidence index failed cleanup"
+  }
+  unset MOCK_EVIDENCE_INDEX_ABSENT
+  assert_contains "$output_file" "opensearch evidence-v013 status=absent action=already_clean"
+  assert_contains "$command_log" "destructive:delete-by-query:trace-v013"
+  assert_not_contains "$command_log" "destructive:delete-by-query:evidence-v013"
   teardown_case
 }
 
@@ -339,6 +361,7 @@ run_case opensearch_status
 run_case missing_index
 run_case inventory
 run_case projection_absent
+run_case evidence_absent
 run_case credentials
 run_case success
 run_case tls

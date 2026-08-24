@@ -341,8 +341,53 @@ index_count() {
   jq -er '.count | select(type == "number" and . >= 0)' <<<"$body"
 }
 
+index_count_or_absent() {
+  local index=$1 raw body
+  raw=$(opensearch_raw GET "/$index/_count") || {
+    echo "OpenSearch request failed: method=GET path=/$index/_count" >&2
+    return 2
+  }
+  split_opensearch_response "$raw" || return
+  case "$OPENSEARCH_STATUS" in
+    200)
+      body=$OPENSEARCH_BODY
+      jq -er '.count | select(type == "number" and . >= 0)' <<<"$body"
+      ;;
+    404) return 1 ;;
+    *)
+      echo "OpenSearch request failed: method=GET path=/$index/_count http_status=$OPENSEARCH_STATUS" >&2
+      return 2
+      ;;
+  esac
+}
+
+snapshot_index() {
+  local index=$1 expected_status=$2 count status
+  if count=$(index_count_or_absent "$index"); then
+    [[ $expected_status == present ]] || {
+      echo "OpenSearch index appeared during cleanup admission: $index" >&2
+      return 2
+    }
+    printf 'index=%s count=%s\n' "$index" "$count"
+    return
+  else
+    status=$?
+  fi
+  if [[ $status == 1 && $expected_status == absent ]]; then
+    printf 'index=%s status=absent\n' "$index"
+    return
+  fi
+  if [[ $status == 1 ]]; then
+    echo "OpenSearch index disappeared during cleanup admission: $index" >&2
+    return 2
+  fi
+  return "$status"
+}
+
 physical_projection_index=
 projection_status=absent
+trace_index_status=present
+evidence_index_status=present
 validate_database_inventory
 if physical_projection_index=$(projection_target); then
   projection_status=present
@@ -355,6 +400,26 @@ existing_tables=()
 while IFS= read -r table; do
   [[ -z $table ]] || existing_tables+=("$table")
 done < <(database_inventory)
+if trace_index_count=$(index_count_or_absent "$trace_index"); then
+  :
+else
+  status=$?
+  if [[ $status == 1 ]]; then
+    echo "Trace index must exist for a 0.1.3 cleanup target: $trace_index" >&2
+    exit 2
+  fi
+  exit "$status"
+fi
+if evidence_index_count=$(index_count_or_absent "$evidence_index"); then
+  :
+else
+  status=$?
+  if [[ $status == 1 ]]; then
+    evidence_index_status=absent
+  else
+    exit "$status"
+  fi
+fi
 
 echo "mode=$mode kubectl_context=$current_context config=$config_file"
 echo "application_namespace=$application_namespace deployment=$deployment original_replicas=$original_replicas"
@@ -364,10 +429,12 @@ for table in ${existing_tables[*]-}; do
   count=$(mysql_exec "SELECT COUNT(*) FROM $table") || exit $?
   echo "mariadb $table count=$count action=drop_table"
 done
-for index in "$trace_index" "$evidence_index"; do
-  count=$(index_count "$index") || exit $?
-  echo "opensearch $index count=$count action=delete_documents"
-done
+echo "opensearch $trace_index count=$trace_index_count action=delete_documents"
+if [[ $evidence_index_status == present ]]; then
+  echo "opensearch $evidence_index count=$evidence_index_count action=delete_documents"
+else
+  echo "opensearch $evidence_index status=absent action=already_clean"
+fi
 if [[ $projection_status == present ]]; then
   count=$(index_count "$physical_projection_index") || exit $?
   echo "opensearch projection_alias=$projection_alias physical_index=$physical_projection_index count=$count action=delete_physical_index"
@@ -413,10 +480,8 @@ storage_snapshot() {
       printf 'table=%s count=%s\n' "$table" "$count"
     fi
   done <<<"$inventory"
-  count=$(index_count "$trace_index") || return
-  printf 'index=%s count=%s\n' "$trace_index" "$count"
-  count=$(index_count "$evidence_index") || return
-  printf 'index=%s count=%s\n' "$evidence_index" "$count"
+  snapshot_index "$trace_index" "$trace_index_status" || return
+  snapshot_index "$evidence_index" "$evidence_index_status" || return
   if projection_now=$(projection_target); then
     [[ $projection_status == present && $projection_now == "$physical_projection_index" ]] || {
       echo "projection alias changed during cleanup admission" >&2; return 2;
@@ -445,7 +510,9 @@ for table in ${existing_tables[*]-}; do drop_sql+=" DROP TABLE IF EXISTS $table;
 drop_sql+=" SET FOREIGN_KEY_CHECKS=1;"
 mysql_exec "$drop_sql"
 
-for index in "$trace_index" "$evidence_index"; do
+cleanup_indexes=("$trace_index")
+[[ $evidence_index_status == present ]] && cleanup_indexes+=("$evidence_index")
+for index in "${cleanup_indexes[@]}"; do
   response=$(opensearch_json_2xx POST "/$index/_delete_by_query?conflicts=proceed&refresh=true" '{"query":{"match_all":{}}}')
   jq -e '(.failures // []) | length == 0' >/dev/null <<<"$response" || {
     echo "OpenSearch cleanup reported failures for $index" >&2; exit 1;
@@ -459,7 +526,7 @@ remaining_tables=$(mysql_exec "SELECT COUNT(*) FROM information_schema.tables WH
 [[ $remaining_tables == 0 ]] || {
   echo "MariaDB cleanup verification failed: database=$database remaining_tables=$remaining_tables" >&2; exit 1;
 }
-for index in "$trace_index" "$evidence_index"; do
+for index in "${cleanup_indexes[@]}"; do
   remaining=$(index_count "$index")
   [[ $remaining == 0 ]] || { echo "OpenSearch cleanup verification failed: index=$index remaining=$remaining" >&2; exit 1; }
 done
