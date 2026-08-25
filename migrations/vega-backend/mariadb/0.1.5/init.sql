@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     -- Local索引已提交状态
     f_local_status            VARCHAR(20) NOT NULL DEFAULT 'unavailable' COMMENT 'Local index status: unavailable, available, stale',
     f_local_index_name        VARCHAR(255) NOT NULL DEFAULT '' COMMENT 'Local OpenSearch index name',
-    f_sync_mark               TEXT NOT NULL COMMENT 'Committed batch SyncCheckpoint V1 owned by the Resource',
+    f_sync_mark               TEXT NOT NULL COMMENT 'Committed batch SyncCheckpoint owned by the Resource',
 
     -- 审计字段
     f_creator                 VARCHAR(40) NOT NULL DEFAULT '' COMMENT '创建者id',
@@ -342,7 +342,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_status                  VARCHAR(20) NOT NULL COMMENT '任务状态: pending, running, stopping, stopped, completed, failed, cancelled',
     f_total_count             BIGINT NOT NULL DEFAULT 0 COMMENT '总数',
     f_synced_count            BIGINT NOT NULL DEFAULT 0 COMMENT '已同步数',
-    f_synced_mark             TEXT NOT NULL COMMENT 'Task execution checkpoint (batch SyncCheckpoint V1; streaming opaque)',
+    f_synced_mark             TEXT NOT NULL COMMENT 'Task execution checkpoint (batch SyncCheckpoint; streaming opaque)',
     f_error_msg               TEXT NOT NULL COMMENT '错误信息',
     f_failure_detail          TEXT NOT NULL COMMENT '构建完成但部分文档向量化失败的明细（区别于 f_error_msg 的整任务硬失败）',
 

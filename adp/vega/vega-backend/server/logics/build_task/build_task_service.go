@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -32,6 +31,8 @@ import (
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/local_index"
 	model_factory "vega-backend/logics/model_factory"
+	resourcelogic "vega-backend/logics/resource"
+	"vega-backend/logics/sync_checkpoint"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -129,6 +130,12 @@ func (bts *buildTaskService) Create(ctx context.Context, req *interfaces.CreateB
 	if err := validateBuildKeyFields(ctx, resource); err != nil {
 		span.SetStatus(codes.Error, "Invalid build key fields")
 		return "", err
+	}
+	if executeType == interfaces.BuildTaskExecuteTypeIncremental {
+		if err := validateIncrementalBaseline(ctx, resource); err != nil {
+			span.SetStatus(codes.Error, "Incremental baseline unavailable")
+			return "", err
+		}
 	}
 	req.ExecuteType = executeType
 
@@ -397,6 +404,30 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 
 	if len(buildTask.IndexConfig.Features) == 0 && len(buildTask.IndexConfig.BuildKeyFields) == 0 {
 		buildTask.IndexConfig = nil
+		return nil
+	}
+	fingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
+			WithErrorDetails(fmt.Sprintf("invalid resource index configuration: %v", err))
+	}
+	buildTask.IndexConfig.IndexConfigFingerprint = fingerprint
+	return nil
+}
+
+func validateIncrementalBaseline(ctx context.Context, resource *interfaces.Resource) error {
+	if !interfaces.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
+			WithErrorDetails("incremental build requires an available local index and committed checkpoint")
+	}
+	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
+			WithErrorDetails(fmt.Sprintf("invalid incremental checkpoint: %v", err))
+	}
+	if err := sync_checkpoint.ValidateCursor(checkpoint, resource.IndexConfig.BuildKeyFields, resource.SchemaDefinition); err != nil {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalBaselineUnavailable).
+			WithErrorDetails(fmt.Sprintf("invalid incremental checkpoint: %v", err))
 	}
 	return nil
 }
@@ -720,6 +751,10 @@ func (bts *buildTaskService) Start(ctx context.Context, taskID string, reset boo
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
 			WithErrorDetails(fmt.Sprintf("cannot start task in status: %s", buildTask.Status))
 	}
+	if reset && buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IncrementalResetUnsupported).
+			WithErrorDetails("incremental build tasks cannot be reset")
+	}
 
 	cat, err := bts.cs.GetByID(ctx, buildTask.CatalogID, false)
 	if err != nil {
@@ -781,36 +816,25 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 	if resource == nil {
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
-
-	currentSnapshot := &interfaces.BuildTask{ResourceID: resource.ID, CatalogID: resource.CatalogID}
-	if err := bts.fillBuildTaskIndexSnapshot(ctx, resource, currentSnapshot); err != nil {
-		return err
-	}
-	if !reflect.DeepEqual(buildTask.IndexConfig, currentSnapshot.IndexConfig) {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
-			WithErrorDetails("resource index config has changed; create a new build task instead")
-	}
 	if err := validateBuildKeyFields(ctx, resource); err != nil {
 		return err
 	}
 
-	tasks, err := bts.InternalList(ctx, interfaces.BuildTasksQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{
-			Limit:     1,
-			Sort:      interfaces.BuildTaskSortCreateTime,
-			Direction: interfaces.DESC_DIRECTION,
-		},
-		ResourceID: buildTask.ResourceID,
-		Statuses:   []string{interfaces.BuildTaskStatusCompleted},
-	})
-	if err != nil {
-		otellog.LogError(ctx, "Check latest completed build task failed", err)
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
+	if buildTask.IndexConfig == nil || buildTask.IndexConfig.IndexConfigFingerprint == "" {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+			WithErrorDetails("build task has no index config fingerprint; create a new build task instead")
 	}
-	if len(tasks) > 0 && tasks[0].ID != buildTask.ID && tasks[0].CreateTime > buildTask.CreateTime {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_InvalidStateTransition).
-			WithErrorDetails("resource already has a newer completed build task")
+	currentFingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+			WithErrorDetails(fmt.Sprintf("invalid current resource index configuration: %v", err))
+	}
+	if buildTask.IndexConfig.IndexConfigFingerprint != currentFingerprint {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+			WithErrorDetails("resource index config has changed; create a new build task instead")
+	}
+	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		return validateIncrementalBaseline(ctx, resource)
 	}
 	return nil
 }

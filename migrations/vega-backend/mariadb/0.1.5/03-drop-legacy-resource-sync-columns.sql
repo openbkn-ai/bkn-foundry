@@ -7,7 +7,7 @@ USE openbkn;
 
 ALTER TABLE t_resource
     MODIFY COLUMN f_index_config MEDIUMTEXT NOT NULL COMMENT '本地索引配置（JSON格式）',
-    MODIFY COLUMN f_sync_mark TEXT NOT NULL COMMENT 'Committed batch SyncCheckpoint V1 owned by the Resource',
+    MODIFY COLUMN f_sync_mark TEXT NOT NULL COMMENT 'Committed batch SyncCheckpoint owned by the Resource',
     DROP COLUMN IF EXISTS f_local_enabled,
     DROP COLUMN IF EXISTS f_local_storage_engine,
     DROP COLUMN IF EXISTS f_local_storage_config,

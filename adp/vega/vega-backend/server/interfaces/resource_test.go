@@ -15,7 +15,7 @@ func TestResourceLocalStateJSON(t *testing.T) {
 	resource := &Resource{
 		LocalIndexStatus: ResourceLocalIndexStatusAvailable,
 		LocalIndexName:   "vega-build-resource-task",
-		SyncMark:         `{"version":1,"mode":"batch","cursor":[]}`,
+		SyncMark:         `{"mode":"batch","cursor":[]}`,
 	}
 
 	data, err := json.Marshal(resource)

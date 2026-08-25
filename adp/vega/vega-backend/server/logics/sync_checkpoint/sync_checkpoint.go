@@ -4,11 +4,10 @@
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file in the project root for details.
 
-// Package sync_checkpoint owns the versioned batch checkpoint wire format.
+// Package sync_checkpoint owns the batch checkpoint wire format.
 package sync_checkpoint
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -18,26 +17,16 @@ import (
 	"vega-backend/interfaces"
 )
 
-const (
-	VersionV1 = 1
-	ModeBatch = "batch"
-)
+const ModeBatch = "batch"
 
-// SyncCheckpoint is the V1 checkpoint shared by Task execution progress and
-// the Resource's committed incremental baseline.
+// SyncCheckpoint is shared by Task execution progress and the Resource's
+// committed incremental baseline.
 type SyncCheckpoint struct {
-	Version int                   `json:"version"`
-	Mode    string                `json:"mode"`
-	Cursor  []interfaces.KeyValue `json:"cursor"`
+	Mode   string                `json:"mode"`
+	Cursor []interfaces.KeyValue `json:"cursor"`
 }
 
-type checkpointEnvelope struct {
-	Version int             `json:"version"`
-	Mode    string          `json:"mode"`
-	Cursor  json.RawMessage `json:"cursor"`
-}
-
-// EncodeBatch serializes a batch cursor as a V1 checkpoint. A nil cursor is
+// EncodeBatch serializes a batch cursor as a checkpoint. A nil cursor is
 // normalized to an empty array so an established empty baseline is never
 // confused with the empty string used for no checkpoint.
 func EncodeBatch(cursor []interfaces.KeyValue) (string, error) {
@@ -45,9 +34,8 @@ func EncodeBatch(cursor []interfaces.KeyValue) (string, error) {
 		cursor = make([]interfaces.KeyValue, 0)
 	}
 	data, err := json.Marshal(SyncCheckpoint{
-		Version: VersionV1,
-		Mode:    ModeBatch,
-		Cursor:  cursor,
+		Mode:   ModeBatch,
+		Cursor: cursor,
 	})
 	if err != nil {
 		return "", fmt.Errorf("encode batch checkpoint: %w", err)
@@ -55,42 +43,25 @@ func EncodeBatch(cursor []interfaces.KeyValue) (string, error) {
 	return string(data), nil
 }
 
-// DecodeBatch parses a V1 batch checkpoint. The exact empty string represents
-// an absent checkpoint and returns nil; whitespace and legacy V0 arrays are
+// DecodeBatch parses a batch checkpoint. The exact empty string represents
+// an absent checkpoint and returns nil; whitespace and legacy cursor arrays are
 // invalid rather than being guessed or silently upgraded.
 func DecodeBatch(mark string) (*SyncCheckpoint, error) {
 	if mark == "" {
 		return nil, nil
 	}
 
-	var envelope checkpointEnvelope
-	if err := decodeStrictJSON(strings.NewReader(mark), &envelope); err != nil {
+	var checkpoint SyncCheckpoint
+	if err := decodeStrictJSON(strings.NewReader(mark), &checkpoint); err != nil {
 		return nil, fmt.Errorf("decode batch checkpoint: %w", err)
 	}
-	if envelope.Version != VersionV1 {
-		return nil, fmt.Errorf("decode batch checkpoint: unsupported version %d", envelope.Version)
+	if checkpoint.Mode != ModeBatch {
+		return nil, fmt.Errorf("decode batch checkpoint: unsupported mode %q", checkpoint.Mode)
 	}
-	if envelope.Mode != ModeBatch {
-		return nil, fmt.Errorf("decode batch checkpoint: unsupported mode %q", envelope.Mode)
-	}
-	trimmedCursor := bytes.TrimSpace(envelope.Cursor)
-	if len(trimmedCursor) == 0 || bytes.Equal(trimmedCursor, []byte("null")) {
+	if checkpoint.Cursor == nil {
 		return nil, fmt.Errorf("decode batch checkpoint: cursor must be an array")
 	}
-
-	var cursor []interfaces.KeyValue
-	if err := decodeStrictJSON(bytes.NewReader(trimmedCursor), &cursor); err != nil {
-		return nil, fmt.Errorf("decode batch checkpoint cursor: %w", err)
-	}
-	if cursor == nil {
-		return nil, fmt.Errorf("decode batch checkpoint: cursor must be an array")
-	}
-
-	return &SyncCheckpoint{
-		Version: envelope.Version,
-		Mode:    envelope.Mode,
-		Cursor:  cursor,
-	}, nil
+	return &checkpoint, nil
 }
 
 // ValidateCursor checks a non-empty cursor against the ordered Resource build

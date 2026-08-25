@@ -72,7 +72,7 @@ func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
 		gomock.Any(), tx, "resource-1",
 		interfaces.ResourceLocalIndexStatusAvailable,
 		"index-v1",
-		`{"version":1,"mode":"batch","cursor":[10]}`,
+		`{"mode":"batch","cursor":[10]}`,
 	).Return(true, nil)
 
 	got, err := service.InternalGetByID(context.Background(), tx, "resource-1")
@@ -82,7 +82,7 @@ func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
 		context.Background(), tx, "resource-1",
 		interfaces.ResourceLocalIndexStatusAvailable,
 		"index-v1",
-		`{"version":1,"mode":"batch","cursor":[10]}`,
+		`{"mode":"batch","cursor":[10]}`,
 	)
 	require.NoError(t, err)
 	assert.True(t, updated)
@@ -1189,7 +1189,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 			LocalIndexName:   "vega-build-r1-task-1",
-			SyncMark:         `{"version":1,"mode":"batch","cursor":[1]}`,
+			SyncMark:         `{"mode":"batch","cursor":[1]}`,
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{

@@ -50,7 +50,7 @@ func TestResourceAccessCreate(t *testing.T) {
 				"[]",
 				interfaces.ResourceLocalIndexStatusAvailable,
 				"vega-build-resource-1-task-1",
-				`{"version":1,"mode":"batch","cursor":[10,"a"]}`,
+				`{"mode":"batch","cursor":[10,"a"]}`,
 				"u1",
 				interfaces.ACCESSOR_TYPE_USER,
 				int64(1),
@@ -118,7 +118,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 		assert.Equal(t, []string{"updated_at", "id"}, got.IndexConfig.BuildKeyFields)
 		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, got.LocalIndexStatus)
 		assert.Equal(t, "vega-build-resource-1-task-1", got.LocalIndexName)
-		assert.Equal(t, `{"version":1,"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
+		assert.Equal(t, `{"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
 		assert.Equal(t, map[string]string{"env": "prod"}, got.Extensions)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -250,7 +250,7 @@ func TestResourceAccessGetByIDsBasic(t *testing.T) {
 				"resource-1", "catalog-1", "orders", "pii,core", "desc", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "ready", interfaces.DiscoverStatusNew,
 				"db1", "public.orders", `{"properties":{"row_count":42}}`, `[{"name":"id"},{"name":"name"}]`, "",
 				"u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2),
-				interfaces.ResourceLocalIndexStatusAvailable, "vega-build-resource-1-task-1", `{"version":1,"mode":"batch","cursor":[10,"a"]}`,
+				interfaces.ResourceLocalIndexStatusAvailable, "vega-build-resource-1-task-1", `{"mode":"batch","cursor":[10,"a"]}`,
 			))
 
 		got, err := access.GetByIDsBasic(context.Background(), []string{"resource-1", "resource-2"})
@@ -444,7 +444,7 @@ func TestResourceAccessUpdateLocalIndexState(t *testing.T) {
 			WithArgs(
 				interfaces.ResourceLocalIndexStatusAvailable,
 				"index-v2",
-				`{"version":1,"mode":"batch","cursor":[20]}`,
+				`{"mode":"batch","cursor":[20]}`,
 				"resource-1",
 			).
 			WillReturnResult(sqlmock.NewResult(0, 1))
@@ -455,7 +455,7 @@ func TestResourceAccessUpdateLocalIndexState(t *testing.T) {
 			"resource-1",
 			interfaces.ResourceLocalIndexStatusAvailable,
 			"index-v2",
-			`{"version":1,"mode":"batch","cursor":[20]}`,
+			`{"mode":"batch","cursor":[20]}`,
 		)
 
 		require.NoError(t, err)
@@ -994,7 +994,7 @@ func sampleResource() *interfaces.Resource {
 		},
 		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 		LocalIndexName:   "vega-build-resource-1-task-1",
-		SyncMark:         `{"version":1,"mode":"batch","cursor":[10,"a"]}`,
+		SyncMark:         `{"mode":"batch","cursor":[10,"a"]}`,
 		Creator:          interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
 		CreateTime:       1,
 		Updater:          interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER},

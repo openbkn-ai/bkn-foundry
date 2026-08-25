@@ -22,10 +22,10 @@ SET f_total_count = 0,
 WHERE f_execute_type IN ('full', 'incremental')
   AND f_status in ('pending', 'stopped', 'failed');
 
--- Existing V0 batch marks are trusted and wrapped without decoding, preserving
+-- Existing batch cursor arrays are trusted and wrapped without decoding, preserving
 -- the original cursor JSON, including large numeric tokens.
 UPDATE t_build_task
-SET f_synced_mark = CONCAT('{"version":1,"mode":"batch","cursor":', TRIM(f_synced_mark), '}')
+SET f_synced_mark = CONCAT('{"mode":"batch","cursor":', TRIM(f_synced_mark), '}')
 WHERE f_execute_type IN ('full', 'incremental')
   AND f_status = 'completed'
   AND f_synced_mark <> ''

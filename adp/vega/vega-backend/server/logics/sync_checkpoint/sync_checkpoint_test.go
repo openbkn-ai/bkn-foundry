@@ -20,7 +20,7 @@ import (
 func TestEncodeBatch(t *testing.T) {
 	mark, err := EncodeBatch(nil)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"version":1,"mode":"batch","cursor":[]}`, mark)
+	assert.JSONEq(t, `{"mode":"batch","cursor":[]}`, mark)
 
 	checkpoint, err := DecodeBatch(mark)
 	require.NoError(t, err)
@@ -36,7 +36,7 @@ func TestDecodeBatch(t *testing.T) {
 	})
 
 	t.Run("preserves JSON numbers", func(t *testing.T) {
-		checkpoint, err := DecodeBatch(`{"version":1,"mode":"batch","cursor":[{"key":"id","value":9223372036854775807}]}`)
+		checkpoint, err := DecodeBatch(`{"mode":"batch","cursor":[{"key":"id","value":9223372036854775807}]}`)
 		require.NoError(t, err)
 		require.Len(t, checkpoint.Cursor, 1)
 		value, ok := checkpoint.Cursor[0].Value.(json.Number)
@@ -46,13 +46,13 @@ func TestDecodeBatch(t *testing.T) {
 
 	for name, mark := range map[string]string{
 		"whitespace is not an empty mark": "   ",
-		"legacy V0 array":                 `[]`,
-		"missing cursor":                  `{"version":1,"mode":"batch"}`,
-		"null cursor":                     `{"version":1,"mode":"batch","cursor":null}`,
-		"wrong version":                   `{"version":2,"mode":"batch","cursor":[]}`,
-		"wrong mode":                      `{"version":1,"mode":"streaming","cursor":[]}`,
-		"trailing document":               `{"version":1,"mode":"batch","cursor":[]} {}`,
-		"unknown field":                   `{"version":1,"mode":"batch","cursor":[],"extra":true}`,
+		"legacy cursor array":             `[]`,
+		"obsolete version field":          `{"version":1,"mode":"batch","cursor":[]}`,
+		"missing cursor":                  `{"mode":"batch"}`,
+		"null cursor":                     `{"mode":"batch","cursor":null}`,
+		"wrong mode":                      `{"mode":"streaming","cursor":[]}`,
+		"trailing document":               `{"mode":"batch","cursor":[]} {}`,
+		"unknown field":                   `{"mode":"batch","cursor":[],"extra":true}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			checkpoint, err := DecodeBatch(mark)
@@ -68,7 +68,7 @@ func TestValidateCursor(t *testing.T) {
 		{Name: "unsigned_id", Type: interfaces.DataType_UnsignedInteger},
 		{Name: "created_at", Type: interfaces.DataType_Timestamp},
 	}
-	checkpoint, err := DecodeBatch(`{"version":1,"mode":"batch","cursor":[{"key":"signed_id","value":9223372036854775807},{"key":"unsigned_id","value":18446744073709551615},{"key":"created_at","value":"2026-08-25T08:00:00Z"}]}`)
+	checkpoint, err := DecodeBatch(`{"mode":"batch","cursor":[{"key":"signed_id","value":9223372036854775807},{"key":"unsigned_id","value":18446744073709551615},{"key":"created_at","value":"2026-08-25T08:00:00Z"}]}`)
 	require.NoError(t, err)
 
 	require.NoError(t, ValidateCursor(checkpoint, []string{"signed_id", "unsigned_id", "created_at"}, schema))
@@ -84,37 +84,37 @@ func TestValidateCursor(t *testing.T) {
 	}{
 		{
 			name:      "cursor key order differs",
-			mark:      `{"version":1,"mode":"batch","cursor":[{"key":"unsigned_id","value":1},{"key":"signed_id","value":1}]}`,
+			mark:      `{"mode":"batch","cursor":[{"key":"unsigned_id","value":1},{"key":"signed_id","value":1}]}`,
 			buildKeys: []string{"signed_id", "unsigned_id"},
 			schema:    schema,
 		},
 		{
 			name:      "cursor count differs",
-			mark:      `{"version":1,"mode":"batch","cursor":[{"key":"signed_id","value":1}]}`,
+			mark:      `{"mode":"batch","cursor":[{"key":"signed_id","value":1}]}`,
 			buildKeys: []string{"signed_id", "unsigned_id"},
 			schema:    schema,
 		},
 		{
 			name:      "integer is fractional",
-			mark:      `{"version":1,"mode":"batch","cursor":[{"key":"signed_id","value":1.5}]}`,
+			mark:      `{"mode":"batch","cursor":[{"key":"signed_id","value":1.5}]}`,
 			buildKeys: []string{"signed_id"},
 			schema:    schema,
 		},
 		{
 			name:      "string cursor is numeric",
-			mark:      `{"version":1,"mode":"batch","cursor":[{"key":"created_at","value":1}]}`,
+			mark:      `{"mode":"batch","cursor":[{"key":"created_at","value":1}]}`,
 			buildKeys: []string{"created_at"},
 			schema:    schema,
 		},
 		{
 			name:      "build key is absent from schema",
-			mark:      `{"version":1,"mode":"batch","cursor":[{"key":"missing","value":"x"}]}`,
+			mark:      `{"mode":"batch","cursor":[{"key":"missing","value":"x"}]}`,
 			buildKeys: []string{"missing"},
 			schema:    schema,
 		},
 		{
 			name:      "build key type is unsupported",
-			mark:      `{"version":1,"mode":"batch","cursor":[{"key":"score","value":1}]}`,
+			mark:      `{"mode":"batch","cursor":[{"key":"score","value":1}]}`,
 			buildKeys: []string{"score"},
 			schema:    []*interfaces.Property{{Name: "score", Type: interfaces.DataType_Float}},
 		},
@@ -129,7 +129,7 @@ func TestValidateCursor(t *testing.T) {
 	}
 
 	t.Run("empty cursor is a valid established baseline", func(t *testing.T) {
-		checkpoint, err := DecodeBatch(`{"version":1,"mode":"batch","cursor":[]}`)
+		checkpoint, err := DecodeBatch(`{"mode":"batch","cursor":[]}`)
 		require.NoError(t, err)
 		require.NoError(t, ValidateCursor(checkpoint, []string{"signed_id"}, schema))
 	})

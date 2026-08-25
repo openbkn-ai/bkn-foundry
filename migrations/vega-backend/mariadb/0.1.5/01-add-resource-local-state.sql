@@ -10,5 +10,5 @@ ALTER TABLE t_resource
         COMMENT 'Local index status: unavailable, available, stale'
         AFTER f_logic_definition,
     ADD COLUMN IF NOT EXISTS f_sync_mark TEXT NULL
-        COMMENT 'Committed batch SyncCheckpoint V1 owned by the Resource'
+        COMMENT 'Committed batch SyncCheckpoint owned by the Resource'
         AFTER f_local_index_name;
