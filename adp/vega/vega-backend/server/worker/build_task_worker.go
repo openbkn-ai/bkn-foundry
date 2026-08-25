@@ -133,7 +133,7 @@ func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 			}
 			var changed bool
 			if task.Status == interfaces.BuildTaskStatusRunning {
-				changed, err = btw.bts.InternalMarkFailed(ctx, task.ID,
+				changed, err = btw.bts.InternalMarkFailed(ctx, nil, task.ID,
 					"build task interrupted by service restart")
 			} else {
 				changed, err = btw.bts.InternalMarkStopped(ctx, task.ID)
@@ -300,7 +300,7 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	claimed, err := btw.bts.InternalMarkRunning(ctx, taskID)
+	claimed, err := btw.bts.InternalMarkRunning(ctx, nil, taskID)
 	if err != nil {
 		return fmt.Errorf("claim batch build task execution: %w", err)
 	}
@@ -328,7 +328,7 @@ func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string)
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	claimed, err := btw.bts.InternalMarkRunning(ctx, taskID)
+	claimed, err := btw.bts.InternalMarkRunning(ctx, nil, taskID)
 	if err != nil {
 		return fmt.Errorf("claim streaming build task execution: %w", err)
 	}
@@ -344,7 +344,7 @@ func (btw *BuildTaskWorker) runStreamingTask(ctx context.Context, taskID string)
 }
 
 func (btw *BuildTaskWorker) failTask(ctx context.Context, taskID, detail string) {
-	if _, err := btw.bts.InternalMarkFailed(ctx, taskID, detail); err != nil {
+	if _, err := btw.bts.InternalMarkFailed(ctx, nil, taskID, detail); err != nil {
 		logger.Errorf("Mark build task failed: id=%s, error=%v", taskID, err)
 	}
 }

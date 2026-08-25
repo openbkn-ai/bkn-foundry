@@ -493,6 +493,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
 		IndexConfig:      req.IndexConfig,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusUnavailable,
 		LogicType:        logicType,
 		LogicDefinition:  req.LogicDefinition,
 		Creator:          accountInfo,
@@ -669,6 +670,15 @@ func (rs *resourceService) InternalGetByID(ctx context.Context, id string) (*int
 	defer span.End()
 
 	return rs.ra.GetByID(ctx, id)
+}
+
+func (rs *resourceService) InternalGetByIDForUpdate(
+	ctx context.Context, tx *sql.Tx, id string,
+) (*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalGetByIDForUpdate")
+	defer span.End()
+
+	return rs.ra.GetByIDForUpdate(ctx, tx, id)
 }
 
 // InternalGetByIDs is used by the server to batch read the basic information of resources internally without performing permission filtering or loading extended fields.
@@ -1026,9 +1036,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Name = req.Name
 	resource.Tags = req.Tags
 	resource.Description = req.Description
-	if buildRelevantChanged {
-		resource.LocalIndexName = ""
-	}
 
 	// Get account info
 	accountInfo := interfaces.AccountInfo{}
@@ -1061,15 +1068,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		span.SetStatus(codes.Error, "Resource update conflict")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_UpdateConflict)
 	}
-	if buildRelevantChanged {
-		if err := rs.ra.UpdateLocalIndexName(ctx, tx, resource.ID, ""); err != nil {
-			span.SetStatus(codes.Error, "Clear resource local index name failed")
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-				WithErrorDetails("failed to clear resource local index name")
-		}
-	}
-
 	if req.Extensions != nil {
 		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
 			span.SetStatus(codes.Error, "Replace resource extensions failed")
@@ -1244,6 +1242,20 @@ func (rs *resourceService) InternalUpdateLocalIndexName(ctx context.Context, tx 
 	return rs.ra.UpdateLocalIndexName(ctx, tx, id, localIndexName)
 }
 
+func (rs *resourceService) InternalUpdateLocalIndexState(
+	ctx context.Context,
+	tx *sql.Tx,
+	id string,
+	localIndexStatus string,
+	localIndexName string,
+	syncMark string,
+) (bool, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateLocalIndexState")
+	defer span.End()
+
+	return rs.ra.UpdateLocalIndexState(ctx, tx, id, localIndexStatus, localIndexName, syncMark)
+}
+
 func (rs *resourceService) InternalUpdateSemanticMetadata(ctx context.Context,
 	tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalUpdateSemanticMetadata")
@@ -1312,6 +1324,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		SourceMetadata:   req.SourceMetadata,
 		SchemaDefinition: req.SchemaDefinition,
 		IndexConfig:      req.IndexConfig,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusUnavailable,
 		LogicType:        logicType,
 		LogicDefinition:  req.LogicDefinition,
 		Creator:          accountInfo,

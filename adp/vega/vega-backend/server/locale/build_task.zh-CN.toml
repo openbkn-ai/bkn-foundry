@@ -48,6 +48,21 @@ Description = "构建任务索引是资源当前生效的本地索引"
 Solution = "如确认要删除当前生效的本地索引，请传入 delete_active_index=true；否则保持默认保护"
 ErrorLink = ""
 
+[VegaBackend.BuildTask.IncrementalBaselineUnavailable]
+Description = "资源没有可用的增量同步基线"
+Solution = "请先完成一次 full batch 构建，以建立可用索引和同步 checkpoint"
+ErrorLink = ""
+
+[VegaBackend.BuildTask.IncrementalResetUnsupported]
+Description = "增量构建任务不支持 reset"
+Solution = "请使用 reset=false 从 Resource checkpoint 继续；如需从头构建，请创建 full batch 任务"
+ErrorLink = ""
+
+[VegaBackend.BuildTask.IndexConfigChanged]
+Description = "资源索引构建配置已变化"
+Solution = "请根据 Resource 当前配置创建新的构建任务"
+ErrorLink = ""
+
 [VegaBackend.BuildTask.InternalError.CreateFailed]
 Description = "创建构建任务失败"
 Solution = "请联系管理员"

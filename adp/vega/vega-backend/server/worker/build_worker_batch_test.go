@@ -71,7 +71,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
-		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "get catalog failed: forbidden").
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "get catalog failed: forbidden").
 			Return(true, nil)
 
 		var gotAccount interfaces.AccountInfo
@@ -146,7 +146,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		}
 		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
-		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "get catalog failed: catalog down").
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "get catalog failed: catalog down").
 			Return(true, nil)
 
 		require.NoError(t, bbw.Run(context.Background(), task))

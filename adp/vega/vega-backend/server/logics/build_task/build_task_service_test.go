@@ -8,6 +8,7 @@ package build_task
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -42,9 +43,10 @@ func TestBuildTaskServiceInternalMarkRunning(t *testing.T) {
 		Return(nil).AnyTimes()
 	mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 	service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
-	mockBTA.EXPECT().MarkRunning(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
+	tx := &sql.Tx{}
+	mockBTA.EXPECT().MarkRunning(gomock.Any(), tx, "task-1", gomock.Any()).Return(true, nil)
 
-	updated, err := service.InternalMarkRunning(context.Background(), "task-1")
+	updated, err := service.InternalMarkRunning(context.Background(), tx, "task-1")
 
 	require.NoError(t, err)
 	assert.True(t, updated)
@@ -88,11 +90,12 @@ func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
 			Return(nil).AnyTimes()
 		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
-		mockBTA.EXPECT().MarkFailed(gomock.Any(), "task-1", "execution failed", gomock.Any()).
+		tx := &sql.Tx{}
+		mockBTA.EXPECT().MarkFailed(gomock.Any(), tx, "task-1", "execution failed", gomock.Any()).
 			Return(true, nil)
 
 		updated, err := service.InternalMarkFailed(
-			context.Background(), "task-1", "execution failed")
+			context.Background(), tx, "task-1", "execution failed")
 
 		require.NoError(t, err)
 		assert.True(t, updated)

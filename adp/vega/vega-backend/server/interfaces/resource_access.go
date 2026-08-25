@@ -19,6 +19,8 @@ type ResourceAccess interface {
 	Create(ctx context.Context, tx *sql.Tx, resource *Resource) error
 	// GetByID retrieves a Resource by ID.
 	GetByID(ctx context.Context, id string) (*Resource, error)
+	// GetByIDForUpdate retrieves and locks a Resource within the caller's transaction.
+	GetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
 	// AttachListExtensions loads root-level extensions based on the List query parameters (for the list to call after GetByIDsBasic).
@@ -37,6 +39,9 @@ type ResourceAccess interface {
 	Update(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateLocalIndexName updates only a Resource's local index name.
 	UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
+	// UpdateLocalIndexState atomically updates Resource-owned index state.
+	UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
+		localIndexStatus, localIndexName, syncMark string) (bool, error)
 	// UpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
 	UpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateDiscoveryMetadata updates only Resource metadata owned by discovery.

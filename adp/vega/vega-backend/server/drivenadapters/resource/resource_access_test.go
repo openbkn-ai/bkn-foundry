@@ -30,7 +30,7 @@ func TestResourceAccessCreate(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_status,f_status_message,f_last_discover_status,f_schema,f_source_identifier,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_enabled,f_local_storage_engine,f_local_storage_config,f_local_index_name,f_sync_strategy,f_sync_config,f_sync_status,f_last_sync_time,f_sync_error_message,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_status,f_status_message,f_last_discover_status,f_schema,f_source_identifier,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_status,f_local_index_name,f_sync_mark,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
 			WithArgs(
 				"resource-1",
 				"catalog-1",
@@ -48,15 +48,9 @@ func TestResourceAccessCreate(t *testing.T) {
 				`{"build_key_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				"",
 				"[]",
-				false,
-				"",
-				"",
-				"",
-				"",
-				"",
-				"",
-				0,
-				"",
+				interfaces.ResourceLocalIndexStatusAvailable,
+				"vega-build-resource-1-task-1",
+				`{"version":1,"mode":"batch","cursor":[10,"a"]}`,
 				"u1",
 				interfaces.ACCESSOR_TYPE_USER,
 				int64(1),
@@ -85,6 +79,21 @@ func TestResourceAccessCreate(t *testing.T) {
 		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("defaults local index status to unavailable", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		resource := sampleResource()
+		resource.LocalIndexStatus = ""
+		resource.LocalIndexName = ""
+		resource.SyncMark = ""
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource")).
+			WillReturnResult(sqlmock.NewResult(1, 1))
+
+		require.NoError(t, access.Create(context.Background(), nil, resource))
+		assert.Equal(t, interfaces.ResourceLocalIndexStatusUnavailable, resource.LocalIndexStatus)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
 }
 
 func TestResourceAccessGetByID(t *testing.T) {
@@ -107,6 +116,9 @@ func TestResourceAccessGetByID(t *testing.T) {
 		assert.Equal(t, "resource-1", got.ID)
 		require.NotNil(t, got.IndexConfig)
 		assert.Equal(t, []string{"updated_at", "id"}, got.IndexConfig.BuildKeyFields)
+		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, got.LocalIndexStatus)
+		assert.Equal(t, "vega-build-resource-1-task-1", got.LocalIndexName)
+		assert.Equal(t, `{"version":1,"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
 		assert.Equal(t, map[string]string{"env": "prod"}, got.Extensions)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
@@ -140,6 +152,38 @@ func TestResourceAccessGetByID(t *testing.T) {
 
 		require.Error(t, err)
 		assert.Nil(t, got)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestResourceAccessGetByIDForUpdate(t *testing.T) {
+	t.Run("requires transaction", func(t *testing.T) {
+		access, _, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+
+		got, err := access.GetByIDForUpdate(context.Background(), nil, "resource-1")
+
+		require.Error(t, err)
+		assert.Nil(t, got)
+	})
+
+	t.Run("locks and returns resource", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?") + " FOR UPDATE")).
+			WithArgs("resource-1").
+			WillReturnRows(resourceRows().AddRow(resourceRowValues(sampleResource())...))
+
+		got, err := access.GetByIDForUpdate(context.Background(), tx, "resource-1")
+
+		require.NoError(t, err)
+		require.NotNil(t, got)
+		assert.Equal(t, "resource-1", got.ID)
+		mock.ExpectRollback()
+		require.NoError(t, tx.Rollback())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -205,16 +249,18 @@ func TestResourceAccessGetByIDsBasic(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_logic_type, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_id IN (?,?)")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_logic_type, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_local_status, f_local_index_name, f_sync_mark FROM t_resource WHERE f_id IN (?,?)")).
 			WithArgs("resource-1", "resource-2").
 			WillReturnRows(sqlmock.NewRows([]string{
 				"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_status", "f_status_message", "f_last_discover_status",
 				"f_schema", "f_source_identifier", "f_source_metadata", "f_schema_definition", "f_logic_type",
 				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+				"f_local_status", "f_local_index_name", "f_sync_mark",
 			}).AddRow(
 				"resource-1", "catalog-1", "orders", "pii,core", "desc", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "ready", interfaces.DiscoverStatusNew,
 				"db1", "public.orders", `{"properties":{"row_count":42}}`, `[{"name":"id"},{"name":"name"}]`, "",
 				"u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2),
+				interfaces.ResourceLocalIndexStatusAvailable, "vega-build-resource-1-task-1", `{"version":1,"mode":"batch","cursor":[10,"a"]}`,
 			))
 
 		got, err := access.GetByIDsBasic(context.Background(), []string{"resource-1", "resource-2"})
@@ -235,7 +281,7 @@ func TestResourceAccessGetByName(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ? AND f_name = ?")).
+		mock.ExpectQuery(regexp.QuoteMeta(resourceNameSelectSQL("f_catalog_id = ? AND f_name = ?"))).
 			WithArgs("catalog-1", "orders").
 			WillReturnRows(resourceNameRows().AddRow(resourceNameRowValues(sampleResource())...))
 
@@ -255,7 +301,7 @@ func TestResourceAccessGetByName(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ? AND f_name = ?")).
+		mock.ExpectQuery(regexp.QuoteMeta(resourceNameSelectSQL("f_catalog_id = ? AND f_name = ?"))).
 			WithArgs("catalog-1", "missing").
 			WillReturnError(sql.ErrNoRows)
 
@@ -272,7 +318,7 @@ func TestResourceAccessGetByCatalogID(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_catalog_id = ?")).
+		mock.ExpectQuery(regexp.QuoteMeta(resourceNameSelectSQL("f_catalog_id = ?"))).
 			WithArgs("catalog-1").
 			WillReturnRows(resourceNameRows().
 				AddRow(resourceNameRowValues(sampleResource())...).
@@ -304,7 +350,7 @@ func TestResourceAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_resource WHERE f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_schema = ?")).
 			WithArgs("%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "db1").
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_schema = ? ORDER BY f_name ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta(resourceNameSelectSQL("f_name LIKE ? AND f_catalog_id = ? AND f_category = ? AND f_status = ? AND f_schema = ? ORDER BY f_name ASC"))).
 			WithArgs("%order%", "catalog-1", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "db1").
 			WillReturnRows(resourceNameRows().AddRow(resourceNameRowValues(sampleResource())...))
 
@@ -393,6 +439,59 @@ func TestResourceAccessUpdateLocalIndexName(t *testing.T) {
 		require.NoError(t, access.UpdateLocalIndexName(context.Background(), tx, "resource-1", "vega-build-resource-1-task-1"))
 		mock.ExpectCommit()
 		require.NoError(t, tx.Commit())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestResourceAccessUpdateLocalIndexState(t *testing.T) {
+	t.Run("updates all state fields in transaction", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		mock.ExpectBegin()
+		tx, err := access.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_local_status = ?, f_local_index_name = ?, f_sync_mark = ? WHERE f_id = ?")).
+			WithArgs(
+				interfaces.ResourceLocalIndexStatusAvailable,
+				"index-v2",
+				`{"version":1,"mode":"batch","cursor":[20]}`,
+				"resource-1",
+			).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		updated, err := access.UpdateLocalIndexState(
+			context.Background(),
+			tx,
+			"resource-1",
+			interfaces.ResourceLocalIndexStatusAvailable,
+			"index-v2",
+			`{"version":1,"mode":"batch","cursor":[20]}`,
+		)
+
+		require.NoError(t, err)
+		assert.True(t, updated)
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("returns false when resource does not exist", func(t *testing.T) {
+		access, mock, cleanup := newResourceAccessMock(t)
+		defer cleanup()
+		mock.ExpectExec("UPDATE t_resource SET .* WHERE f_id = \\?").
+			WillReturnResult(sqlmock.NewResult(0, 0))
+
+		updated, err := access.UpdateLocalIndexState(
+			context.Background(),
+			nil,
+			"missing",
+			interfaces.ResourceLocalIndexStatusUnavailable,
+			"",
+			"",
+		)
+
+		require.NoError(t, err)
+		assert.False(t, updated)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -903,10 +1002,13 @@ func sampleResource() *interfaces.Resource {
 			DefaultFulltextAnalyzer: "ik_max_word",
 			DefaultEmbeddingModel:   "embedding",
 		},
-		Creator:    interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
-		CreateTime: 1,
-		Updater:    interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER},
-		UpdateTime: 2,
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+		LocalIndexName:   "vega-build-resource-1-task-1",
+		SyncMark:         `{"version":1,"mode":"batch","cursor":[10,"a"]}`,
+		Creator:          interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
+		CreateTime:       1,
+		Updater:          interfaces.AccountInfo{ID: "u2", Type: interfaces.ACCESSOR_TYPE_USER},
+		UpdateTime:       2,
 	}
 }
 
@@ -938,6 +1040,9 @@ func resourceNameRows() *sqlmock.Rows {
 		"f_updater",
 		"f_updater_type",
 		"f_update_time",
+		"f_local_status",
+		"f_local_index_name",
+		"f_sync_mark",
 	})
 }
 
@@ -963,11 +1068,18 @@ func resourceNameRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.Updater.ID,
 		resource.Updater.Type,
 		resource.UpdateTime,
+		resource.LocalIndexStatus,
+		resource.LocalIndexName,
+		resource.SyncMark,
 	}
 }
 
+func resourceNameSelectSQL(where string) string {
+	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_local_status, f_local_index_name, f_sync_mark FROM t_resource WHERE " + where
+}
+
 func resourceSelectSQL(where string) string {
-	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_logic_type, f_logic_definition, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_local_index_name FROM t_resource WHERE " + where
+	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_logic_type, f_logic_definition, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time, f_local_status, f_local_index_name, f_sync_mark FROM t_resource WHERE " + where
 }
 
 func resourceRows() *sqlmock.Rows {
@@ -994,7 +1106,9 @@ func resourceRows() *sqlmock.Rows {
 		"f_updater",
 		"f_updater_type",
 		"f_update_time",
+		"f_local_status",
 		"f_local_index_name",
+		"f_sync_mark",
 	})
 }
 
@@ -1022,6 +1136,8 @@ func resourceRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.Updater.ID,
 		resource.Updater.Type,
 		resource.UpdateTime,
+		resource.LocalIndexStatus,
 		resource.LocalIndexName,
+		resource.SyncMark,
 	}
 }

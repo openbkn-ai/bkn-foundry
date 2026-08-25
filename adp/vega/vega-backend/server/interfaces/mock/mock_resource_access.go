@@ -143,6 +143,21 @@ func (mr *MockResourceAccessMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockResourceAccess)(nil).GetByID), ctx, id)
 }
 
+// GetByIDForUpdate mocks base method.
+func (m *MockResourceAccess) GetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByIDForUpdate", ctx, tx, id)
+	ret0, _ := ret[0].(*interfaces.Resource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByIDForUpdate indicates an expected call of GetByIDForUpdate.
+func (mr *MockResourceAccessMockRecorder) GetByIDForUpdate(ctx, tx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDForUpdate", reflect.TypeOf((*MockResourceAccess)(nil).GetByIDForUpdate), ctx, tx, id)
+}
+
 // GetByIDs mocks base method.
 func (m *MockResourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
@@ -290,6 +305,21 @@ func (m *MockResourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.T
 func (mr *MockResourceAccessMockRecorder) UpdateLocalIndexName(ctx, tx, id, localIndexName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLocalIndexName", reflect.TypeOf((*MockResourceAccess)(nil).UpdateLocalIndexName), ctx, tx, id, localIndexName)
+}
+
+// UpdateLocalIndexState mocks base method.
+func (m *MockResourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id, localIndexStatus, localIndexName, syncMark string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateLocalIndexState", ctx, tx, id, localIndexStatus, localIndexName, syncMark)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateLocalIndexState indicates an expected call of UpdateLocalIndexState.
+func (mr *MockResourceAccessMockRecorder) UpdateLocalIndexState(ctx, tx, id, localIndexStatus, localIndexName, syncMark any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateLocalIndexState", reflect.TypeOf((*MockResourceAccess)(nil).UpdateLocalIndexState), ctx, tx, id, localIndexStatus, localIndexName, syncMark)
 }
 
 // UpdateSemanticMetadata mocks base method.

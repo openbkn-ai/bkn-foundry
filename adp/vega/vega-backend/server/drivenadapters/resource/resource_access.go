@@ -42,6 +42,89 @@ type resourceAccess struct {
 	db         *sql.DB
 }
 
+var resourceDetailColumns = []string{
+	"f_id",
+	"f_catalog_id",
+	"f_name",
+	"f_tags",
+	"f_description",
+	"f_category",
+	"f_status",
+	"f_status_message",
+	"f_last_discover_status",
+	"f_schema",
+	"f_source_identifier",
+	"f_source_metadata",
+	"f_schema_definition",
+	"f_index_config",
+	"f_logic_type",
+	"f_logic_definition",
+	"f_creator",
+	"f_creator_type",
+	"f_create_time",
+	"f_updater",
+	"f_updater_type",
+	"f_update_time",
+	"f_local_status",
+	"f_local_index_name",
+	"f_sync_mark",
+}
+
+type resourceRowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanResourceDetail(scanner resourceRowScanner) (*interfaces.Resource, error) {
+	resource := &interfaces.Resource{}
+	var tagsStr string
+	var sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
+
+	if err := scanner.Scan(
+		&resource.ID,
+		&resource.CatalogID,
+		&resource.Name,
+		&tagsStr,
+		&resource.Description,
+		&resource.Category,
+		&resource.Status,
+		&resource.StatusMessage,
+		&resource.LastDiscoverStatus,
+		&resource.Schema,
+		&resource.SourceIdentifier,
+		&sourceMetadata,
+		&schemaDefinition,
+		&indexConfig,
+		&resource.LogicType,
+		&logicDefinition,
+		&resource.Creator.ID,
+		&resource.Creator.Type,
+		&resource.CreateTime,
+		&resource.Updater.ID,
+		&resource.Updater.Type,
+		&resource.UpdateTime,
+		&resource.LocalIndexStatus,
+		&resource.LocalIndexName,
+		&resource.SyncMark,
+	); err != nil {
+		return nil, err
+	}
+
+	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
+	if sourceMetadata.Valid && sourceMetadata.String != "" {
+		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
+	}
+	if schemaDefinition.Valid && schemaDefinition.String != "" {
+		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
+	}
+	if indexConfig.Valid && indexConfig.String != "" {
+		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
+	}
+	if logicDefinition.Valid && logicDefinition.String != "" {
+		_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
+	}
+	return resource, nil
+}
+
 // NewResourceAccess creates ra new ResourceAccess.
 func NewResourceAccess(appSetting *common.AppSetting) interfaces.ResourceAccess {
 	rAccessOnce.Do(func() {
@@ -82,6 +165,9 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 	if resource.LogicDefinition == nil {
 		logicDefinitionBytes = []byte("[]")
 	}
+	if resource.LocalIndexStatus == "" {
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusUnavailable
+	}
 
 	sqlStr, vals, err := sq.Insert(RESOURCE_TABLE_NAME).
 		Columns(
@@ -103,16 +189,9 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			"f_logic_type",
 			"f_logic_definition",
 
-			"f_local_enabled",
-			"f_local_storage_engine",
-			"f_local_storage_config",
+			"f_local_status",
 			"f_local_index_name",
-
-			"f_sync_strategy",
-			"f_sync_config",
-			"f_sync_status",
-			"f_last_sync_time",
-			"f_sync_error_message",
+			"f_sync_mark",
 
 			"f_creator",
 			"f_creator_type",
@@ -140,16 +219,9 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			resource.LogicType,
 			string(logicDefinitionBytes),
 
-			false,
-			"",
-			"",
-			"",
-
-			"",
-			"",
-			"",
-			0,
-			"",
+			resource.LocalIndexStatus,
+			resource.LocalIndexName,
+			resource.SyncMark,
 
 			resource.Creator.ID,
 			resource.Creator.Type,
@@ -186,31 +258,8 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 
 	span.SetAttributes(attr.Key("resource_id").String(id))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_catalog_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_category",
-		"f_status",
-		"f_status_message",
-		"f_last_discover_status",
-		"f_schema",
-		"f_source_identifier",
-		"f_source_metadata",
-		"f_schema_definition",
-		"f_index_config",
-		"f_logic_type",
-		"f_logic_definition",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-		"f_local_index_name",
-	).From(RESOURCE_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
+		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_id": id}).
 		ToSql()
 	if err != nil {
@@ -219,36 +268,8 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		return nil, err
 	}
 
-	resource := &interfaces.Resource{}
-	var tagsStr string
-	var sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
-
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
-	err = row.Scan(
-		&resource.ID,
-		&resource.CatalogID,
-		&resource.Name,
-		&tagsStr,
-		&resource.Description,
-		&resource.Category,
-		&resource.Status,
-		&resource.StatusMessage,
-		&resource.LastDiscoverStatus,
-		&resource.Schema,
-		&resource.SourceIdentifier,
-		&sourceMetadata,
-		&schemaDefinition,
-		&indexConfig,
-		&resource.LogicType,
-		&logicDefinition,
-		&resource.Creator.ID,
-		&resource.Creator.Type,
-		&resource.CreateTime,
-		&resource.Updater.ID,
-		&resource.Updater.Type,
-		&resource.UpdateTime,
-		&resource.LocalIndexName,
-	)
+	resource, err := scanResourceDetail(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
@@ -259,23 +280,42 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		return nil, err
 	}
 
-	// The format of converting tags string to an array
-	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
-	}
-	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
-	}
-	if indexConfig.Valid && indexConfig.String != "" {
-		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
-	}
-	if logicDefinition.Valid && logicDefinition.String != "" {
-		_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
-	}
-
 	if err := attachSingleResourceExtensions(ctx, ra.appSetting, resource); err != nil {
 		span.SetStatus(codes.Error, "Load resource extensions failed")
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return resource, nil
+}
+
+// GetByIDForUpdate retrieves and locks a Resource in the caller's transaction.
+func (ra *resourceAccess) GetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource by ID for update")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("resource_id").String(id))
+	if tx == nil {
+		return nil, fmt.Errorf("transaction is required to lock resource %q", id)
+	}
+
+	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
+		From(RESOURCE_TABLE_NAME).
+		Where(sq.Eq{"f_id": id}).
+		Suffix("FOR UPDATE").
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+
+	resource, err := scanResourceDetail(tx.QueryRowContext(ctx, sqlStr, vals...))
+	if err == sql.ErrNoRows {
+		span.SetStatus(codes.Ok, "")
+		return nil, nil
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Scan failed")
 		return nil, err
 	}
 
@@ -290,31 +330,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 	span.SetAttributes(attr.Key("resource_ids").StringSlice(ids))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_catalog_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_category",
-		"f_status",
-		"f_status_message",
-		"f_last_discover_status",
-		"f_schema",
-		"f_source_identifier",
-		"f_source_metadata",
-		"f_schema_definition",
-		"f_index_config",
-		"f_logic_type",
-		"f_logic_definition",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-		"f_local_index_name",
-	).From(RESOURCE_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(resourceDetailColumns...).From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
 	if err != nil {
@@ -333,55 +349,11 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 	resources := make([]*interfaces.Resource, 0)
 	for rows.Next() {
-		resource := &interfaces.Resource{}
-		var tagsStr string
-		var sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
-
-		err := rows.Scan(
-			&resource.ID,
-			&resource.CatalogID,
-			&resource.Name,
-			&tagsStr,
-			&resource.Description,
-			&resource.Category,
-			&resource.Status,
-			&resource.StatusMessage,
-			&resource.LastDiscoverStatus,
-			&resource.Schema,
-			&resource.SourceIdentifier,
-			&sourceMetadata,
-			&schemaDefinition,
-			&indexConfig,
-			&resource.LogicType,
-			&logicDefinition,
-			&resource.Creator.ID,
-			&resource.Creator.Type,
-			&resource.CreateTime,
-			&resource.Updater.ID,
-			&resource.Updater.Type,
-			&resource.UpdateTime,
-			&resource.LocalIndexName,
-		)
-
+		resource, err := scanResourceDetail(rows)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
 			return []*interfaces.Resource{}, err
-		}
-
-		// The format of converting tags string to an array
-		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		if sourceMetadata.Valid && sourceMetadata.String != "" {
-			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
-		}
-		if schemaDefinition.Valid && schemaDefinition.String != "" {
-			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
-		}
-		if indexConfig.Valid && indexConfig.String != "" {
-			_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
-		}
-		if logicDefinition.Valid && logicDefinition.String != "" {
-			_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
 		}
 
 		resources = append(resources, resource)
@@ -437,6 +409,9 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 		"f_updater",
 		"f_updater_type",
 		"f_update_time",
+		"f_local_status",
+		"f_local_index_name",
+		"f_sync_mark",
 	).From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
@@ -481,6 +456,9 @@ func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*i
 			&resource.Updater.ID,
 			&resource.Updater.Type,
 			&resource.UpdateTime,
+			&resource.LocalIndexStatus,
+			&resource.LocalIndexName,
+			&resource.SyncMark,
 		)
 
 		if err != nil {
@@ -548,6 +526,9 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		"f_updater",
 		"f_updater_type",
 		"f_update_time",
+		"f_local_status",
+		"f_local_index_name",
+		"f_sync_mark",
 	).From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		Where(sq.Eq{"f_name": name}).
@@ -584,6 +565,9 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		&resource.Updater.ID,
 		&resource.Updater.Type,
 		&resource.UpdateTime,
+		&resource.LocalIndexStatus,
+		&resource.LocalIndexName,
+		&resource.SyncMark,
 	)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
@@ -706,6 +690,9 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 		resourceExtCol(params, "f_updater"),
 		resourceExtCol(params, "f_updater_type"),
 		resourceExtCol(params, "f_update_time"),
+		resourceExtCol(params, "f_local_status"),
+		resourceExtCol(params, "f_local_index_name"),
+		resourceExtCol(params, "f_sync_mark"),
 	).From(RESOURCE_TABLE_NAME)
 
 	countBuilder := sq.Select("COUNT(*)").From(RESOURCE_TABLE_NAME)
@@ -796,6 +783,9 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 			&resource.Updater.ID,
 			&resource.Updater.Type,
 			&resource.UpdateTime,
+			&resource.LocalIndexStatus,
+			&resource.LocalIndexName,
+			&resource.SyncMark,
 		)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
@@ -924,6 +914,45 @@ func (ra *resourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, 
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+// UpdateLocalIndexState atomically updates the Resource-owned index state.
+func (ra *resourceAccess) UpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
+	localIndexStatus string, localIndexName string, syncMark string) (bool, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource local index state")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("resource_id").String(id))
+	builder := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_local_status", localIndexStatus).
+		Set("f_local_index_name", localIndexName).
+		Set("f_sync_mark", syncMark).
+		Where(sq.Eq{"f_id": id})
+
+	sqlStr, vals, err := builder.ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return false, err
+	}
+
+	var result sql.Result
+	if tx != nil {
+		result, err = tx.ExecContext(ctx, sqlStr, vals...)
+	} else {
+		result, err = ra.db.ExecContext(ctx, sqlStr, vals...)
+	}
+	if err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return false, err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		span.SetStatus(codes.Error, "Get affected rows failed")
+		return false, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return rowsAffected > 0, nil
 }
 
 // UpdateSemanticMetadata updates only fields owned by semantic understanding
@@ -1076,6 +1105,9 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 		"f_updater",
 		"f_updater_type",
 		"f_update_time",
+		"f_local_status",
+		"f_local_index_name",
+		"f_sync_mark",
 	).From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
@@ -1120,6 +1152,9 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 			&resource.Updater.ID,
 			&resource.Updater.Type,
 			&resource.UpdateTime,
+			&resource.LocalIndexStatus,
+			&resource.LocalIndexName,
+			&resource.SyncMark,
 		)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)

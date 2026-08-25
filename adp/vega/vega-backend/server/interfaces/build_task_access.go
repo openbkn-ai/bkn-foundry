@@ -31,7 +31,7 @@ type BuildTaskAccess interface {
 	// MarkPending transitions a stopped or failed build task to pending.
 	MarkPending(ctx context.Context, id string, reset bool) (bool, error)
 	// MarkRunning transitions a pending build task to running.
-	MarkRunning(ctx context.Context, id string, startTime int64) (bool, error)
+	MarkRunning(ctx context.Context, tx *sql.Tx, id string, startTime int64) (bool, error)
 	// MarkStopping transitions a running build task to stopping.
 	MarkStopping(ctx context.Context, id string) (bool, error)
 	// MarkStopped transitions a pending or stopping build task to stopped.
@@ -39,7 +39,7 @@ type BuildTaskAccess interface {
 	// MarkCompleted transitions a running build task to completed.
 	MarkCompleted(ctx context.Context, tx *sql.Tx, id string, finishTime int64) (bool, error)
 	// MarkFailed fails an active build task.
-	MarkFailed(ctx context.Context, id, detail string, finishTime int64) (bool, error)
+	MarkFailed(ctx context.Context, tx *sql.Tx, id, detail string, finishTime int64) (bool, error)
 	// MarkCancelled cancels an active build task.
 	MarkCancelled(ctx context.Context, id, detail string, finishTime int64) (bool, error)
 	// MarkCancelledByCatalogID cancels pending build tasks for a deleted catalog.

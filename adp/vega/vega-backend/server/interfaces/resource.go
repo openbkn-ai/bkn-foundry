@@ -26,6 +26,12 @@ const (
 )
 
 const (
+	ResourceLocalIndexStatusUnavailable string = "unavailable"
+	ResourceLocalIndexStatusAvailable   string = "available"
+	ResourceLocalIndexStatusStale       string = "stale"
+)
+
+const (
 	DiscoverStatusNew       string = "new"
 	DiscoverStatusUnchanged string = "unchanged"
 	DiscoverStatusUpdated   string = "updated"
@@ -63,8 +69,10 @@ type Resource struct {
 	SchemaDefinition []*Property    `json:"schema_definition,omitempty"` // Schema Definition
 
 	// Index related
-	IndexConfig    *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
-	LocalIndexName string               `json:"index_name,omitempty"`   // Index name, filled by the build task
+	IndexConfig      *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
+	LocalIndexStatus string               `json:"local_status"`           // Availability of the managed local index
+	LocalIndexName   string               `json:"index_name,omitempty"`   // Index name, filled by the build task
+	SyncMark         string               `json:"-"`                      // Internal committed batch checkpoint
 
 	// Scale information: The list interface is obtained from the original JSON lightweight count without deserializing the complete structure. nil indicates that the source does not have this information (omitted during serialization)
 	ColumnCount *int   `json:"column_count,omitempty"` // Number of schema_definition fields

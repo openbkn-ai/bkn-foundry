@@ -331,8 +331,8 @@ func (bta *buildTaskAccess) MarkPending(ctx context.Context, id string, reset bo
 	})
 }
 
-func (bta *buildTaskAccess) MarkRunning(ctx context.Context, id string, startTime int64) (bool, error) {
-	return bta.update(ctx, nil, map[string]any{
+func (bta *buildTaskAccess) MarkRunning(ctx context.Context, tx *sql.Tx, id string, startTime int64) (bool, error) {
+	return bta.update(ctx, tx, map[string]any{
 		"f_status":     interfaces.BuildTaskStatusRunning,
 		"f_error_msg":  "",
 		"f_start_time": startTime,
@@ -367,18 +367,20 @@ func (bta *buildTaskAccess) MarkCompleted(
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusRunning})
 }
 
-func (bta *buildTaskAccess) MarkFailed(ctx context.Context, id, detail string, finishTime int64) (bool, error) {
-	return bta.markTerminal(ctx, id, interfaces.BuildTaskStatusFailed, detail, finishTime)
+func (bta *buildTaskAccess) MarkFailed(
+	ctx context.Context, tx *sql.Tx, id, detail string, finishTime int64,
+) (bool, error) {
+	return bta.markTerminal(ctx, tx, id, interfaces.BuildTaskStatusFailed, detail, finishTime)
 }
 
 func (bta *buildTaskAccess) MarkCancelled(ctx context.Context, id, detail string, finishTime int64) (bool, error) {
-	return bta.markTerminal(ctx, id, interfaces.BuildTaskStatusCancelled, detail, finishTime)
+	return bta.markTerminal(ctx, nil, id, interfaces.BuildTaskStatusCancelled, detail, finishTime)
 }
 
 func (bta *buildTaskAccess) markTerminal(
-	ctx context.Context, id, status, detail string, finishTime int64,
+	ctx context.Context, tx *sql.Tx, id, status, detail string, finishTime int64,
 ) (bool, error) {
-	return bta.update(ctx, nil, map[string]any{
+	return bta.update(ctx, tx, map[string]any{
 		"f_status":      status,
 		"f_error_msg":   detail,
 		"f_finish_time": finishTime,

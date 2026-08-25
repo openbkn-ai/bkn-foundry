@@ -54,12 +54,17 @@ type ResourceService interface {
 
 	// InternalGetByID retrieves a Resource by ID for internal workers.
 	InternalGetByID(ctx context.Context, id string) (*Resource, error)
+	// InternalGetByIDForUpdate retrieves and locks a Resource within the caller's transaction.
+	InternalGetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
 	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
 	// InternalGetByCatalogID retrieves all Resources under a Catalog for internal callers.
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// InternalUpdateLocalIndexName updates only a Resource's local index name for internal workers.
 	InternalUpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
+	// InternalUpdateLocalIndexState atomically updates Resource-owned index state.
+	InternalUpdateLocalIndexState(ctx context.Context, tx *sql.Tx, id string,
+		localIndexStatus, localIndexName, syncMark string) (bool, error)
 	// InternalUpdateSemanticMetadata updates only Resource metadata owned by semantic understanding.
 	InternalUpdateSemanticMetadata(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) error
 	// InternalUpdateDiscoveryMetadata updates only Resource metadata owned by discovery.

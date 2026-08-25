@@ -480,18 +480,20 @@ func (bts *buildTaskService) InternalSetProgress(
 	return bts.bta.SetProgress(ctx, tx, id, progress, time.Now().UnixMilli())
 }
 
-func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {
+func (bts *buildTaskService) InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkRunning")
 	defer span.End()
 
-	return bts.bta.MarkRunning(ctx, id, time.Now().UnixMilli())
+	return bts.bta.MarkRunning(ctx, tx, id, time.Now().UnixMilli())
 }
 
-func (bts *buildTaskService) InternalMarkFailed(ctx context.Context, id, detail string) (bool, error) {
+func (bts *buildTaskService) InternalMarkFailed(
+	ctx context.Context, tx *sql.Tx, id, detail string,
+) (bool, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.InternalMarkFailed")
 	defer span.End()
 
-	return bts.bta.MarkFailed(ctx, id, detail, time.Now().UnixMilli())
+	return bts.bta.MarkFailed(ctx, tx, id, detail, time.Now().UnixMilli())
 }
 
 func (bts *buildTaskService) InternalMarkCancelled(ctx context.Context, id, detail string) (bool, error) {

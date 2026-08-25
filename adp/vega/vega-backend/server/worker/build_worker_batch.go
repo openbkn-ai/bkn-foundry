@@ -99,7 +99,7 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 	}
 	if err != nil {
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
-		_, err = bbw.bts.InternalMarkFailed(ctx, taskID, err.Error())
+		_, err = bbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error())
 		if err != nil {
 			return fmt.Errorf("update build task status failed: %w", err)
 		}

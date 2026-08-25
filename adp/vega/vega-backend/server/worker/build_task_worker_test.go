@@ -104,7 +104,7 @@ func TestBuildTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 				{ID: "stopping-task", Status: interfaces.BuildTaskStatusStopping},
 			}, nil
 		})
-	runningUpdate := bts.EXPECT().InternalMarkFailed(gomock.Any(), "running-task",
+	runningUpdate := bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "running-task",
 		"build task interrupted by service restart").Return(true, nil).After(firstList)
 	stoppingUpdate := bts.EXPECT().InternalMarkStopped(gomock.Any(), "stopping-task").Return(true, nil).After(runningUpdate)
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
@@ -125,7 +125,7 @@ func TestBuildTaskWorkerRecoveryReturnsUpdateError(t *testing.T) {
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTaskSummary{{
 		ID: "task-1", Status: interfaces.BuildTaskStatusRunning,
 	}}, nil)
-	bts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1",
+	bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1",
 		"build task interrupted by service restart").Return(false, errors.New("database unavailable"))
 
 	err := worker.recoverInterruptedTasks(context.Background())
@@ -182,7 +182,7 @@ func TestBuildTaskWorkerRejectsModeMismatch(t *testing.T) {
 				Status: interfaces.BuildTaskStatusPending,
 				Mode:   tt.mode,
 			}, nil)
-			bts.EXPECT().InternalMarkFailed(gomock.Any(), "task-1", tt.errorMsg).
+			bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1", tt.errorMsg).
 				Return(true, nil)
 
 			err := tt.runTask(worker)
@@ -246,7 +246,7 @@ func TestBuildTaskWorkerClaim(t *testing.T) {
 				Status: interfaces.BuildTaskStatusPending,
 				Mode:   tt.mode,
 			}, nil)
-			bts.EXPECT().InternalMarkRunning(gomock.Any(), "task-1").
+			bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, "task-1").
 				Return(tt.claimed, tt.claimErr)
 
 			err := tt.runTask(worker)

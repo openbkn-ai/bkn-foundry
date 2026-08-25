@@ -176,7 +176,7 @@ func TestBuildTaskAccessMarkRunning(t *testing.T) {
 			WithArgs("", int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		claimed, err := access.MarkRunning(context.Background(), "task-1", 123)
+		claimed, err := access.MarkRunning(context.Background(), nil, "task-1", 123)
 
 		require.NoError(t, err)
 		assert.True(t, claimed)
@@ -191,10 +191,28 @@ func TestBuildTaskAccessMarkRunning(t *testing.T) {
 			WithArgs("", int64(123), interfaces.BuildTaskStatusRunning, "task-1", interfaces.BuildTaskStatusPending).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 
-		claimed, err := access.MarkRunning(context.Background(), "task-1", 123)
+		claimed, err := access.MarkRunning(context.Background(), nil, "task-1", 123)
 
 		require.NoError(t, err)
 		assert.False(t, claimed)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("uses caller transaction", func(t *testing.T) {
+		db, mock, access := newBuildTaskAccessMock(t)
+		defer func() { _ = db.Close() }()
+		mock.ExpectBegin()
+		tx, err := db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_start_time = ?, f_status = ? WHERE f_id = ? AND f_status = ?")).
+			WillReturnResult(sqlmock.NewResult(0, 1))
+
+		claimed, err := access.MarkRunning(context.Background(), tx, "task-1", 123)
+
+		require.NoError(t, err)
+		assert.True(t, claimed)
+		mock.ExpectCommit()
+		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -225,7 +243,7 @@ func TestBuildTaskAccessMarkTerminal(t *testing.T) {
 			name:   "failed",
 			status: interfaces.BuildTaskStatusFailed,
 			mark: func(access *buildTaskAccess) (bool, error) {
-				return access.MarkFailed(context.Background(), "task-1", "execution failed", 123)
+				return access.MarkFailed(context.Background(), nil, "task-1", "execution failed", 123)
 			},
 		},
 		{
@@ -256,6 +274,24 @@ func TestBuildTaskAccessMarkTerminal(t *testing.T) {
 			require.NoError(t, mock.ExpectationsWereMet())
 		})
 	}
+}
+
+func TestBuildTaskAccessMarkFailedUsesCallerTransaction(t *testing.T) {
+	db, mock, access := newBuildTaskAccessMock(t)
+	defer func() { _ = db.Close() }()
+	mock.ExpectBegin()
+	tx, err := db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_build_task SET f_error_msg = ?, f_finish_time = ?, f_status = ? WHERE f_id = ? AND f_status IN (?,?,?)")).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	updated, err := access.MarkFailed(context.Background(), tx, "task-1", "execution failed", 123)
+
+	require.NoError(t, err)
+	assert.True(t, updated)
+	mock.ExpectCommit()
+	require.NoError(t, tx.Commit())
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestBuildTaskAccessMarkCancelledByCatalogID(t *testing.T) {

@@ -81,7 +81,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 			ConnectorType: interfaces.ConnectorTypePostgreSQL,
 			ConnectorCfg:  interfaces.ConnectorConfig{},
 		}, nil)
-		bts.EXPECT().InternalMarkFailed(gomock.Any(), "t1", "PostgreSQL streaming build requires connector_config.database").
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "PostgreSQL streaming build requires connector_config.database").
 			Return(true, nil)
 
 		require.NoError(t, sh.Run(context.Background(), task))

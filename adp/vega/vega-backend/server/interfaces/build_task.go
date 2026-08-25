@@ -105,8 +105,9 @@ type BuildTaskProgress struct {
 }
 
 type BuildTaskIndexConfig struct {
-	BuildKeyFields []string                              `json:"build_key_fields,omitempty"`
-	Features       map[string]BuildTaskFieldIndexFeature `json:"features,omitempty"`
+	BuildKeyFields         []string                              `json:"build_key_fields,omitempty"`
+	Features               map[string]BuildTaskFieldIndexFeature `json:"features,omitempty"`
+	IndexConfigFingerprint string                                `json:"index_config_fingerprint,omitempty"`
 }
 
 type BuildTaskFieldIndexFeature struct {
