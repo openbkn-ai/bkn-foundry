@@ -99,7 +99,7 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		resource := workerTestResource()
 		task := workerTestFullTask(t, resource)
-		indexName := interfaces.BuildIndexName(resource.ID, task.ID)
+		indexName := logics.BuildIndexName(resource.ID, task.ID)
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(true, nil)
 		lim.EXPECT().DeleteIndex(gomock.Any(), indexName).Return(nil)
@@ -111,7 +111,7 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 	t.Run("nonempty mark cannot resume a missing task index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		indexName := interfaces.BuildIndexName("r1", "t1")
+		indexName := logics.BuildIndexName("r1", "t1")
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(false, nil)
 
 		err := requireManagedLocalIndex(context.Background(), lim, indexName)

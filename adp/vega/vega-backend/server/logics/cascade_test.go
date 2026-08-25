@@ -57,7 +57,7 @@ func TestCascadeDeleteBuildTasks(t *testing.T) {
 		lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		task := &interfaces.BuildTaskSummary{ID: "task-1", ResourceID: "resource-1", Status: interfaces.BuildTaskStatusCompleted}
 		bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTaskSummary{task}, nil)
-		lim.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName(task.ResourceID, task.ID)).Return(errors.New("drop failed"))
+		lim.EXPECT().DeleteIndex(gomock.Any(), BuildIndexName(task.ResourceID, task.ID)).Return(errors.New("drop failed"))
 		bta.EXPECT().DeleteByIDs(gomock.Any(), []string{task.ID}).Return(int64(1), nil)
 
 		err := CascadeDeleteBuildTasks(context.Background(), bta, lim, interfaces.BuildTasksQueryParams{})
@@ -71,7 +71,7 @@ func TestCascadeDeleteBuildTasks(t *testing.T) {
 		lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		task := &interfaces.BuildTaskSummary{ID: "task-1", ResourceID: "resource-1", Status: interfaces.BuildTaskStatusCompleted}
 		bta.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTaskSummary{task}, nil)
-		lim.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName(task.ResourceID, task.ID)).Return(nil)
+		lim.EXPECT().DeleteIndex(gomock.Any(), BuildIndexName(task.ResourceID, task.ID)).Return(nil)
 		bta.EXPECT().DeleteByIDs(gomock.Any(), []string{task.ID}).Return(int64(0), errors.New("delete failed"))
 
 		err := CascadeDeleteBuildTasks(context.Background(), bta, lim, interfaces.BuildTasksQueryParams{})

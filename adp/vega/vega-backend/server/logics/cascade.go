@@ -50,7 +50,7 @@ func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess
 	// Drop indexes on a best-effort basis, then delete all task rows together.
 	ids := make([]string, 0, len(tasks))
 	for _, t := range tasks {
-		idx := interfaces.BuildIndexName(t.ResourceID, t.ID)
+		idx := BuildIndexName(t.ResourceID, t.ID)
 		if err := lim.DeleteIndex(ctx, idx); err != nil {
 			logger.Errorf("cascade delete: drop index %s failed: %v", idx, err)
 		}

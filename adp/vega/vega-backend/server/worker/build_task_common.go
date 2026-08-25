@@ -20,10 +20,6 @@ import (
 	resourcelogic "vega-backend/logics/resource"
 )
 
-func getIndexName(resourceID, buildTaskID string) string {
-	return interfaces.BuildIndexName(resourceID, buildTaskID)
-}
-
 // generateDocumentID builds a document ID from ordered build-key values.
 func generateDocumentID(keys []interfaces.KeyValue) (string, error) {
 	if len(keys) == 0 {

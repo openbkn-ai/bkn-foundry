@@ -8,6 +8,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -17,6 +18,8 @@ import (
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
+	"vega-backend/logics/sync_checkpoint"
 )
 
 const (
@@ -24,6 +27,8 @@ const (
 	defaultBatchBuildWorkerCount     = 1
 	defaultStreamingBuildWorkerCount = 1
 )
+
+var errIncrementalBatchResourceInvalid = errors.New("incremental batch resource is invalid")
 
 // BuildTaskWorker schedules persisted build tasks and dispatches their mode-specific execution.
 type BuildTaskWorker struct {
@@ -317,6 +322,12 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
+	if task.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		if err := validateIncrementalBatchResource(resource, task); err != nil {
+			btw.failTask(taskCtx, taskID, err.Error())
+			return err
+		}
+	}
 	catalog, err := btw.bbw.cs.InternalGetByID(taskCtx, resource.CatalogID, true)
 	if err != nil {
 		if isNotFoundError(err) {
@@ -340,8 +351,16 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
-	claimed, err := btw.bts.InternalMarkRunning(taskCtx, nil, taskID)
+	var claimed bool
+	if task.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
+		claimed, resource, err = btw.claimIncrementalBatchTask(taskCtx, task, resource)
+	} else {
+		claimed, err = btw.bts.InternalMarkRunning(taskCtx, nil, taskID)
+	}
 	if err != nil {
+		if errors.Is(err, errIncrementalBatchResourceInvalid) {
+			btw.failTask(taskCtx, taskID, err.Error())
+		}
 		return fmt.Errorf("claim batch build task execution: %w", err)
 	}
 	if !claimed {
@@ -351,6 +370,76 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 	if err := btw.bbw.Run(taskCtx, task, resource, catalog); err != nil {
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
+	}
+	return nil
+}
+
+func (btw *BuildTaskWorker) claimIncrementalBatchTask(ctx context.Context, task *interfaces.BuildTask,
+	resource *interfaces.Resource) (bool, *interfaces.Resource, error) {
+	if logics.DB == nil {
+		return false, resource, fmt.Errorf("database is not initialized")
+	}
+
+	tx, err := logics.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return false, resource, fmt.Errorf("begin incremental claim transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	current, err := btw.bbw.rs.InternalGetByID(ctx, tx, resource.ID)
+	if err != nil {
+		return false, resource, fmt.Errorf("reload resource before incremental claim: %w", err)
+	}
+	if err := validateIncrementalBatchResource(current, task); err != nil {
+		return false, resource, fmt.Errorf("%w: %v", errIncrementalBatchResourceInvalid, err)
+	}
+
+	claimed, err := btw.bts.InternalMarkRunning(ctx, tx, task.ID)
+	if err != nil {
+		return false, resource, err
+	}
+	if !claimed {
+		return false, resource, nil
+	}
+	progress := interfaces.BuildTaskProgress{SyncedMark: &current.SyncMark}
+	updated, err := btw.bts.InternalSetProgress(ctx, tx, task.ID, progress)
+	if err != nil {
+		return false, resource, fmt.Errorf("initialize incremental task checkpoint: %w", err)
+	}
+	if !updated {
+		return false, resource, fmt.Errorf("initialize incremental task checkpoint: task status changed")
+	}
+	if err := tx.Commit(); err != nil {
+		return false, resource, fmt.Errorf("commit incremental claim transaction: %w", err)
+	}
+	committed = true
+	task.Status = interfaces.BuildTaskStatusRunning
+	task.SyncedMark = current.SyncMark
+	return true, current, nil
+}
+
+func validateIncrementalBatchResource(resource *interfaces.Resource, task *interfaces.BuildTask) error {
+	if resource == nil {
+		return fmt.Errorf("incremental build resource was deleted")
+	}
+	if err := validateBuildTaskResourceFingerprint(resource, task); err != nil {
+		return err
+	}
+	if !interfaces.HasAvailableLocalIndex(resource) || resource.SyncMark == "" {
+		return fmt.Errorf("incremental build requires an available local index and committed checkpoint")
+	}
+	checkpoint, err := sync_checkpoint.DecodeBatch(resource.SyncMark)
+	if err != nil {
+		return fmt.Errorf("invalid incremental checkpoint: %w", err)
+	}
+	if err := sync_checkpoint.ValidateCursor(checkpoint,
+		resource.IndexConfig.BuildKeyFields, resource.SchemaDefinition); err != nil {
+		return fmt.Errorf("invalid incremental checkpoint: %w", err)
 	}
 	return nil
 }

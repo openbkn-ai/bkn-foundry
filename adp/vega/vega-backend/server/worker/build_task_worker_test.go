@@ -7,10 +7,12 @@ package worker
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
 	"testing"
 
+	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +21,7 @@ import (
 	"vega-backend/common"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
+	"vega-backend/logics"
 )
 
 func TestBuildTaskWorkerFillBatchQueueRefillsEmptyQueue(t *testing.T) {
@@ -329,6 +332,72 @@ func TestBuildTaskWorkerCancelsBatchTaskWhenResourceWasDeleted(t *testing.T) {
 	bts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "resource deleted").Return(true, nil)
 
 	require.NoError(t, worker.runBatchTask(context.Background(), "task-1"))
+}
+
+func TestBuildTaskWorkerClaimsIncrementalWithResourceCheckpoint(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	resource := workerTestResource()
+	resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+	resource.LocalIndexName = "current-index"
+	resource.SyncMark = `{"mode":"batch","cursor":[]}`
+	task := workerTestFullTask(t, resource)
+	task.ID = "task-1"
+	task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+	task.Status = interfaces.BuildTaskStatusPending
+	worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs}}
+
+	db, mockDB, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	oldDB := logics.DB
+	logics.DB = db
+	defer func() { logics.DB = oldDB }()
+
+	mockDB.ExpectBegin()
+	txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+	rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil)
+	bts.EXPECT().InternalMarkRunning(gomock.Any(), txMatcher, task.ID).Return(true, nil)
+	bts.EXPECT().InternalSetProgress(gomock.Any(), txMatcher, task.ID, gomock.Any()).DoAndReturn(
+		func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+			require.NotNil(t, progress.SyncedMark)
+			assert.Equal(t, resource.SyncMark, *progress.SyncedMark)
+			return true, nil
+		})
+	mockDB.ExpectCommit()
+
+	claimed, current, err := worker.claimIncrementalBatchTask(context.Background(), task, resource)
+
+	require.NoError(t, err)
+	require.True(t, claimed)
+	assert.Same(t, resource, current)
+	assert.Equal(t, interfaces.BuildTaskStatusRunning, task.Status)
+	assert.Equal(t, resource.SyncMark, task.SyncedMark)
+	require.NoError(t, mockDB.ExpectationsWereMet())
+}
+
+func TestBuildTaskWorkerRejectsIncrementalWithoutCommittedCheckpoint(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	resource := workerTestResource()
+	resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+	resource.LocalIndexName = "current-index"
+	task := workerTestFullTask(t, resource)
+	task.ID = "task-1"
+	task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
+	task.Status = interfaces.BuildTaskStatusPending
+	worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs}}
+
+	bts.EXPECT().InternalGetByID(gomock.Any(), task.ID).Return(task, nil)
+	rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+	bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, task.ID,
+		"incremental build requires an available local index and committed checkpoint").Return(true, nil)
+
+	err := worker.runBatchTask(context.Background(), task.ID)
+
+	require.EqualError(t, err, "incremental build requires an available local index and committed checkpoint")
 }
 
 func TestBuildTaskWorkerValidatesCatalogBeforeClaim(t *testing.T) {

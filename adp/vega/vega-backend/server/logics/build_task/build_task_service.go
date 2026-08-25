@@ -950,7 +950,7 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 				WithErrorDetails(err.Error())
 		}
 		if resource != nil {
-			idx := interfaces.BuildIndexName(buildTask.ResourceID, buildTask.ID)
+			idx := logics.BuildIndexName(buildTask.ResourceID, buildTask.ID)
 			if resource.LocalIndexName == idx {
 				activeIndexes = append(activeIndexes, map[string]string{
 					"resource_id":   buildTask.ResourceID,
@@ -996,7 +996,7 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 	for _, bt := range toDelete {
 		// Drop the index on a best-effort basis before deleting the task row, consistent with resource and catalog cascades.
 		// Semantic consistency is maintained to prevent the deletion of a single UI task from leaving an orphan index (#66 only covers the two paths of resources and directories).
-		idx := interfaces.BuildIndexName(bt.ResourceID, bt.ID)
+		idx := logics.BuildIndexName(bt.ResourceID, bt.ID)
 		if err := bts.lim.DeleteIndex(ctx, idx); err != nil {
 			otellog.LogError(ctx, fmt.Sprintf("Drop index %s for build task %s failed", idx, bt.ID), err)
 		}

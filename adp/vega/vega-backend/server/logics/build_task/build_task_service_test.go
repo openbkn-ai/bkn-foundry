@@ -1617,8 +1617,8 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
-			Return(&interfaces.Resource{ID: "r1", LocalIndexName: interfaces.BuildIndexName("r1", "old-task")}, nil)
-		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("r1", "t1")).Return(nil)
+			Return(&interfaces.Resource{ID: "r1", LocalIndexName: "vega-build-r1-old-task"}, nil)
+		mockLIM.EXPECT().DeleteIndex(gomock.Any(), "vega-build-r1-t1").Return(nil)
 		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
 		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1", "t1"}, false, false))
@@ -1637,7 +1637,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
-		idx := interfaces.BuildIndexName("r1", "t1")
+		idx := "vega-build-r1-t1"
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
@@ -1662,7 +1662,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
-		idx := interfaces.BuildIndexName("r1", "t1")
+		idx := "vega-build-r1-t1"
 		resource := &interfaces.Resource{ID: "r1", LocalIndexName: idx}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
@@ -1687,7 +1687,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
-		idx := interfaces.BuildIndexName("r1", "t1")
+		idx := "vega-build-r1-t1"
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
@@ -1716,7 +1716,7 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "missing-resource").Return(nil, nil)
-		mockLIM.EXPECT().DeleteIndex(gomock.Any(), interfaces.BuildIndexName("missing-resource", "t1")).Return(nil)
+		mockLIM.EXPECT().DeleteIndex(gomock.Any(), "vega-build-missing-resource-t1").Return(nil)
 		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
 		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false, false))

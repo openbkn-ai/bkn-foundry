@@ -166,6 +166,78 @@ func (bbw *batchBuildWorker) completeFullBuildTask(ctx context.Context, resource
 	return nil
 }
 
+func (bbw *batchBuildWorker) commitIncrementalProgress(ctx context.Context, resource *interfaces.Resource,
+	buildTask *interfaces.BuildTask, indexName, previousMark, syncMark string,
+	progress interfaces.BuildTaskProgress) error {
+	if logics.DB == nil {
+		return errors.New("database is not initialized")
+	}
+
+	tx, err := logics.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin incremental checkpoint transaction: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	current, err := bbw.rs.InternalGetByID(ctx, tx, resource.ID)
+	if err != nil {
+		return fmt.Errorf("reload resource before incremental checkpoint: %w", err)
+	}
+	if err := validateIncrementalBatchResource(current, buildTask); err != nil {
+		return fmt.Errorf("validate resource before incremental checkpoint: %w", err)
+	}
+	if current.LocalIndexName != indexName {
+		return errors.New("resource local index changed during incremental build")
+	}
+	if current.SyncMark != previousMark {
+		return errors.New("resource checkpoint changed during incremental build")
+	}
+
+	updated, err := bbw.bts.InternalSetProgress(ctx, tx, buildTask.ID, progress)
+	if err != nil {
+		return fmt.Errorf("update incremental task checkpoint: %w", err)
+	}
+	if !updated {
+		return errors.New("build task status changed before incremental checkpoint")
+	}
+	updated, err = bbw.rs.InternalUpdateLocalIndexState(ctx, tx, current.ID,
+		interfaces.ResourceLocalIndexStatusAvailable, indexName, syncMark)
+	if err != nil {
+		return fmt.Errorf("update resource incremental checkpoint: %w", err)
+	}
+	if !updated {
+		return errors.New("resource disappeared while updating incremental checkpoint")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit incremental checkpoint transaction: %w", err)
+	}
+	committed = true
+	resource.SyncMark = syncMark
+	buildTask.SyncedMark = syncMark
+	return nil
+}
+
+func (bbw *batchBuildWorker) completeIncrementalBuildTask(ctx context.Context, taskID string) error {
+	completed, err := bbw.bts.InternalMarkCompleted(ctx, nil, taskID)
+	if err != nil {
+		return fmt.Errorf("update build task status: %w", err)
+	}
+	if completed {
+		return nil
+	}
+	// A stop request may win the race with completion.
+	if _, err := bbw.bts.InternalMarkStopped(ctx, taskID); err != nil {
+		return fmt.Errorf("mark build task stopped: %w", err)
+	}
+	return nil
+}
+
 // buildBatchCursorFilter builds a lexicographic cursor filter for composite keys.
 func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) *interfaces.FilterCondCfg {
 	branches := make([]*interfaces.FilterCondCfg, 0, len(keys))
@@ -191,17 +263,21 @@ func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) *int
 // executeBuild executes the build logic
 func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog,
 	resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask) error {
-	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
+	isIncremental := buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental
+	indexName := logics.BuildIndexName(resource.ID, buildTaskInfo.ID)
+	if isIncremental {
+		indexName = resource.LocalIndexName
+	}
 	restartFromBeginning := buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeFull &&
 		buildTaskInfo.SyncedMark == ""
 	var err error
 	switch {
 	case restartFromBeginning:
 		err = recreateManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
-	case buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeFull:
+	case buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeFull || isIncremental:
 		err = requireManagedLocalIndex(ctx, bbw.lim, indexName)
 	default:
-		err = createManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
+		err = fmt.Errorf("unsupported batch build execute type %q", buildTaskInfo.ExecuteType)
 	}
 	if err != nil {
 		return fmt.Errorf("prepare local index failed: %w", err)
@@ -377,12 +453,18 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			if err != nil {
 				return fmt.Errorf("encode synced mark: %w", err)
 			}
-			lastSyncedMark = syncedMarkStr
 			progress.SyncedMark = &syncedMarkStr
-			_, err = bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
-			if err != nil {
-				return fmt.Errorf("update build task status failed: %w", err)
+			if isIncremental {
+				if err := bbw.commitIncrementalProgress(ctx, resource, buildTaskInfo,
+					indexName, lastSyncedMark, syncedMarkStr, progress); err != nil {
+					return fmt.Errorf("commit incremental progress: %w", err)
+				}
+			} else {
+				if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
+					return fmt.Errorf("update build task status failed: %w", err)
+				}
 			}
+			lastSyncedMark = syncedMarkStr
 		}
 
 		if readRows < batchSize {
@@ -390,7 +472,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 
-	if lastSyncedMark == "" {
+	if !isIncremental && lastSyncedMark == "" {
 		lastSyncedMark, err = sync_checkpoint.EncodeBatch(nil)
 		if err != nil {
 			return fmt.Errorf("encode empty synced mark: %w", err)
@@ -405,10 +487,15 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			return fmt.Errorf("update empty build task progress: %w", err)
 		}
 	}
-
-	if err := bbw.completeFullBuildTask(ctx, resource, buildTaskInfo, indexName, lastSyncedMark); err != nil {
-		return fmt.Errorf("complete build task: %w", err)
+	if isIncremental {
+		if err := bbw.completeIncrementalBuildTask(ctx, buildTaskInfo.ID); err != nil {
+			return fmt.Errorf("complete incremental build task: %w", err)
+		}
+		return nil
+	} else {
+		if err := bbw.completeFullBuildTask(ctx, resource, buildTaskInfo, indexName, lastSyncedMark); err != nil {
+			return fmt.Errorf("complete build task: %w", err)
+		}
 	}
-
 	return nil
 }
