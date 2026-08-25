@@ -117,8 +117,9 @@ paths:
     post:
       summary: 创建构建任务
       description: |
-        为指定 Resource 创建构建任务。同一 Resource 同时只能有一个 BuildTask；
-        已存在时返回 400 `VegaBackend.BuildTask.Exist`。
+        为指定 Resource 创建构建任务。同一 Resource 同时只能有一个 active BuildTask
+        （`pending` / `running` / `stopping`）；已存在 active Task 时返回 400
+        `VegaBackend.BuildTask.Exist`。终态 Task 不阻止创建新任务。
 
         - `streaming` 模式要求 Resource 在 `source_metadata.primary_keys` 中声明主键。
         - `batch` 模式要求 `build_key_fields` 非空。
@@ -465,6 +466,9 @@ components:
           type: array
           items:
             type: string
+        index_config_fingerprint:
+          description: Resource 当前索引构建配置的稳定指纹；用于确认 Task 快照与 Resource 配置仍一致
+          type: string
         features:
           type: object
           additionalProperties:
