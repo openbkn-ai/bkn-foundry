@@ -300,7 +300,47 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		btw.failTask(ctx, taskID, err.Error())
 		return err
 	}
-	claimed, err := btw.bts.InternalMarkRunning(ctx, nil, taskID)
+	// Asynchronous tasks have no original request context. Resolve execution
+	// dependencies using the task creator's permissions.
+	taskCtx := context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, task.Creator)
+	resource, err := btw.bbw.rs.InternalGetByID(taskCtx, nil, task.ResourceID)
+	if err != nil {
+		return fmt.Errorf("get resource before claiming batch build task: %w", err)
+	}
+	if resource == nil {
+		if err := cancelBuildTaskForDeletedParent(taskCtx, btw.bts, taskID, "resource deleted"); err != nil {
+			return fmt.Errorf("cancel batch build task with deleted resource: %w", err)
+		}
+		return nil
+	}
+	if err := validateBuildTaskResourceFingerprint(resource, task); err != nil {
+		btw.failTask(taskCtx, taskID, err.Error())
+		return err
+	}
+	catalog, err := btw.bbw.cs.InternalGetByID(taskCtx, resource.CatalogID, true)
+	if err != nil {
+		if isNotFoundError(err) {
+			if updateErr := cancelBuildTaskForDeletedParent(taskCtx, btw.bts, taskID, "catalog deleted"); updateErr != nil {
+				return fmt.Errorf("cancel batch build task with deleted catalog: %w", updateErr)
+			}
+			return nil
+		}
+		err = fmt.Errorf("get catalog before claiming batch build task: %w", err)
+		btw.failTask(taskCtx, taskID, err.Error())
+		return err
+	}
+	if catalog == nil {
+		if err := cancelBuildTaskForDeletedParent(taskCtx, btw.bts, taskID, "catalog deleted"); err != nil {
+			return fmt.Errorf("cancel batch build task with deleted catalog: %w", err)
+		}
+		return nil
+	}
+	if !catalog.Enabled {
+		err = fmt.Errorf("catalog is disabled")
+		btw.failTask(taskCtx, taskID, err.Error())
+		return err
+	}
+	claimed, err := btw.bts.InternalMarkRunning(taskCtx, nil, taskID)
 	if err != nil {
 		return fmt.Errorf("claim batch build task execution: %w", err)
 	}
@@ -308,8 +348,8 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		logger.Infof("Batch build task was not claimed for running: id=%s", taskID)
 		return nil
 	}
-	if err := btw.bbw.Run(ctx, task); err != nil {
-		btw.failTask(ctx, taskID, err.Error())
+	if err := btw.bbw.Run(taskCtx, task, resource, catalog); err != nil {
+		btw.failTask(taskCtx, taskID, err.Error())
 		return err
 	}
 	return nil

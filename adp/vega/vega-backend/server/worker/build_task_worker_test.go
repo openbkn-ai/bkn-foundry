@@ -8,8 +8,10 @@ package worker
 import (
 	"context"
 	"errors"
+	"net/http"
 	"testing"
 
+	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -177,11 +179,12 @@ func TestBuildTaskWorkerRejectsModeMismatch(t *testing.T) {
 			t.Cleanup(ctrl.Finish)
 			bts := vmock.NewMockBuildTaskService(ctrl)
 			worker := &BuildTaskWorker{bts: bts}
-			bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
+			task := &interfaces.BuildTask{
 				ID:     "task-1",
 				Status: interfaces.BuildTaskStatusPending,
 				Mode:   tt.mode,
-			}, nil)
+			}
+			bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
 			bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1", tt.errorMsg).
 				Return(true, nil)
 
@@ -241,11 +244,25 @@ func TestBuildTaskWorkerClaim(t *testing.T) {
 			t.Cleanup(ctrl.Finish)
 			bts := vmock.NewMockBuildTaskService(ctrl)
 			worker := &BuildTaskWorker{bts: bts}
-			bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
+			task := &interfaces.BuildTask{
 				ID:     "task-1",
 				Status: interfaces.BuildTaskStatusPending,
 				Mode:   tt.mode,
-			}, nil)
+			}
+			if tt.mode == interfaces.BuildTaskModeBatch {
+				resource := workerTestResource()
+				resource.CatalogID = "catalog-1"
+				task = workerTestFullTask(t, resource)
+				task.ID = "task-1"
+				task.Status = interfaces.BuildTaskStatusPending
+				rs := vmock.NewMockResourceService(ctrl)
+				cs := vmock.NewMockCatalogService(ctrl)
+				worker.bbw = &batchBuildWorker{rs: rs, cs: cs}
+				rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+				cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+					Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+			}
+			bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
 			bts.EXPECT().InternalMarkRunning(gomock.Any(), nil, "task-1").
 				Return(tt.claimed, tt.claimErr)
 
@@ -258,4 +275,134 @@ func TestBuildTaskWorkerClaim(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBuildTaskWorkerRejectsChangedBatchTaskBeforeClaim(t *testing.T) {
+	for _, executeType := range []string{
+		interfaces.BuildTaskExecuteTypeFull,
+		interfaces.BuildTaskExecuteTypeIncremental,
+	} {
+		t.Run(executeType, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			bts := vmock.NewMockBuildTaskService(ctrl)
+			rs := vmock.NewMockResourceService(ctrl)
+			resource := workerTestResource()
+			task := workerTestFullTask(t, resource)
+			task.ID = "task-1"
+			task.Status = interfaces.BuildTaskStatusPending
+			task.ExecuteType = executeType
+			resource.IndexConfig.BuildKeyFields = []string{"updated_at"}
+			resource.SchemaDefinition = []*interfaces.Property{{Name: "updated_at", Type: interfaces.DataType_Timestamp}}
+			worker := &BuildTaskWorker{
+				bts: bts,
+				bbw: &batchBuildWorker{rs: rs},
+			}
+
+			bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+			rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
+			bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1", "resource index config has changed").Return(true, nil)
+
+			err := worker.runBatchTask(context.Background(), "task-1")
+
+			require.EqualError(t, err, "resource index config has changed")
+		})
+	}
+}
+
+func TestBuildTaskWorkerCancelsBatchTaskWhenResourceWasDeleted(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	bts := vmock.NewMockBuildTaskService(ctrl)
+	rs := vmock.NewMockResourceService(ctrl)
+	task := &interfaces.BuildTask{
+		ID:         "task-1",
+		ResourceID: "r1",
+		Status:     interfaces.BuildTaskStatusPending,
+		Mode:       interfaces.BuildTaskModeBatch,
+	}
+	worker := &BuildTaskWorker{
+		bts: bts,
+		bbw: &batchBuildWorker{rs: rs},
+	}
+
+	bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+	rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(nil, nil)
+	bts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "resource deleted").Return(true, nil)
+
+	require.NoError(t, worker.runBatchTask(context.Background(), "task-1"))
+}
+
+func TestBuildTaskWorkerValidatesCatalogBeforeClaim(t *testing.T) {
+	t.Run("uses task creator and fails lookup error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		resource := workerTestResource()
+		resource.CatalogID = "catalog-1"
+		task := workerTestFullTask(t, resource)
+		task.ID = "task-1"
+		task.Status = interfaces.BuildTaskStatusPending
+		task.Creator = interfaces.AccountInfo{ID: "u1", Type: "user"}
+		worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs, cs: cs}}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).DoAndReturn(
+			func(ctx context.Context, _ string, _ bool) (*interfaces.Catalog, error) {
+				account, ok := workerAccountFromCtx(ctx)
+				require.True(t, ok)
+				assert.Equal(t, task.Creator, account)
+				return nil, errors.New("forbidden")
+			})
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1",
+			"get catalog before claiming batch build task: forbidden").Return(true, nil)
+
+		err := worker.runBatchTask(context.Background(), "task-1")
+
+		require.EqualError(t, err, "get catalog before claiming batch build task: forbidden")
+	})
+
+	t.Run("cancels task when catalog was deleted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		resource := workerTestResource()
+		resource.CatalogID = "catalog-1"
+		task := workerTestFullTask(t, resource)
+		task.ID = "task-1"
+		task.Status = interfaces.BuildTaskStatusPending
+		worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs, cs: cs}}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted").Return(true, nil)
+
+		require.NoError(t, worker.runBatchTask(context.Background(), "task-1"))
+	})
+
+	t.Run("fails task when catalog is disabled", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		resource := workerTestResource()
+		resource.CatalogID = "catalog-1"
+		task := workerTestFullTask(t, resource)
+		task.ID = "task-1"
+		task.Status = interfaces.BuildTaskStatusPending
+		worker := &BuildTaskWorker{bts: bts, bbw: &batchBuildWorker{rs: rs, cs: cs}}
+
+		bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
+		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
+			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil)
+		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "task-1", "catalog is disabled").Return(true, nil)
+
+		err := worker.runBatchTask(context.Background(), "task-1")
+
+		require.EqualError(t, err, "catalog is disabled")
+	})
 }

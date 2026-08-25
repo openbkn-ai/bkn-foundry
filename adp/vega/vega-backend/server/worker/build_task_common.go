@@ -9,7 +9,6 @@ package worker
 import (
 	"context"
 	"crypto/sha256"
-	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"github.com/mohae/deepcopy"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics"
 	resourcelogic "vega-backend/logics/resource"
 )
 
@@ -79,55 +77,17 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 	return nil
 }
 
-func completeBuildTaskWithoutEmbedding(ctx context.Context, resource *interfaces.Resource,
-	rs interfaces.ResourceService, bts interfaces.BuildTaskService, taskID, indexName string) error {
-	if logics.DB == nil {
-		return errors.New("database is not initialized")
+func validateBuildTaskResourceFingerprint(resource *interfaces.Resource, buildTask *interfaces.BuildTask) error {
+	if buildTask == nil || buildTask.IndexConfig == nil || buildTask.IndexConfig.IndexConfigFingerprint == "" {
+		return errors.New("build task has no index config fingerprint")
 	}
-
-	tx, err := logics.DB.BeginTx(ctx, nil)
+	fingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
 	if err != nil {
-		return fmt.Errorf("begin transaction: %w", err)
+		return fmt.Errorf("calculate resource index config fingerprint: %w", err)
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
-	oldIndexName := resource.LocalIndexName
-	if resource.LocalIndexName != indexName {
-		if err := rs.InternalUpdateLocalIndexName(ctx, tx, resource.ID, indexName); err != nil {
-			return fmt.Errorf("update resource index name: %w", err)
-		}
-		resource.LocalIndexName = indexName
+	if fingerprint != buildTask.IndexConfig.IndexConfigFingerprint {
+		return errors.New("resource index config has changed")
 	}
-
-	completed, err := bts.InternalMarkCompleted(ctx, tx, taskID)
-	if err != nil {
-		resource.LocalIndexName = oldIndexName
-		return fmt.Errorf("update build task status: %w", err)
-	}
-	if !completed {
-		resource.LocalIndexName = oldIndexName
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			return fmt.Errorf("rollback completion after build task state changed: %w", err)
-		}
-		committed = true
-		// A stop request may win the race with completion. The resource update
-		// has been rolled back, so finish the stopping -> stopped transition.
-		if _, err := bts.InternalMarkStopped(ctx, taskID); err != nil {
-			return fmt.Errorf("mark build task stopped: %w", err)
-		}
-		return nil
-	}
-
-	if err := tx.Commit(); err != nil {
-		resource.LocalIndexName = oldIndexName
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-	committed = true
 	return nil
 }
 
@@ -150,6 +110,35 @@ func createManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManag
 		return nil
 	}
 	return lim.CreateIndex(ctx, indexName, schema)
+}
+
+func recreateManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, indexName string,
+	buildTask *interfaces.BuildTask, resource *interfaces.Resource) error {
+	schema, err := buildLocalIndexSchema(buildTask, resource)
+	if err != nil {
+		return err
+	}
+	exists, err := lim.CheckIndexExist(ctx, indexName)
+	if err != nil {
+		return fmt.Errorf("check local index exist failed: %w", err)
+	}
+	if exists {
+		if err := lim.DeleteIndex(ctx, indexName); err != nil {
+			return fmt.Errorf("delete local index before full rebuild: %w", err)
+		}
+	}
+	return lim.CreateIndex(ctx, indexName, schema)
+}
+
+func requireManagedLocalIndex(ctx context.Context, lim interfaces.LocalIndexManager, indexName string) error {
+	exists, err := lim.CheckIndexExist(ctx, indexName)
+	if err != nil {
+		return fmt.Errorf("check local index exist failed: %w", err)
+	}
+	if !exists {
+		return errors.New("cannot resume full build because its local index is missing")
+	}
+	return nil
 }
 
 func buildLocalIndexSchema(buildTask *interfaces.BuildTask, resource *interfaces.Resource) ([]*interfaces.Property, error) {

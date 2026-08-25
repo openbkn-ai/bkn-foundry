@@ -8,14 +8,16 @@ package worker
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"sync/atomic"
 
-	"github.com/bytedance/sonic"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
+	"vega-backend/logics"
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
@@ -23,7 +25,10 @@ import (
 	"vega-backend/logics/local_index"
 	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/resource"
+	"vega-backend/logics/sync_checkpoint"
 )
+
+var errBuildTaskMarkedFailed = errors.New("build task was marked failed")
 
 // batchBuildWorker handles build tasks.
 type batchBuildWorker struct {
@@ -51,53 +56,24 @@ func NewBatchBuildWorker(appSetting *common.AppSetting) *batchBuildWorker {
 	}
 }
 
-// Run executes one persisted batch build task already claimed by the database producer.
-func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.BuildTask) error {
+// Run executes one persisted batch build task with its validated execution context.
+func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.BuildTask,
+	resource *interfaces.Resource, catalog *interfaces.Catalog) error {
 	if buildTaskInfo == nil {
 		return nil
 	}
 	taskID := buildTaskInfo.ID
 	logger.Infof("Starting batch build task: %s", taskID)
-	// Asynchronous tasks have no original request context and perform downstream permission checks as the task creator
-	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, buildTaskInfo.Creator)
 
 	resourceID := buildTaskInfo.ResourceID
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
-	// Get resource info
-	resource, err := bbw.rs.InternalGetByID(ctx, nil, resourceID)
+	err := bbw.executeBuild(ctx, catalog, resource, buildTaskInfo)
 	if err != nil {
-		logger.Errorf("Failed to get resource for task %s: %v", taskID, err)
-		return err
-	}
-	if resource == nil {
-		logger.Errorf("Resource not found for task %s, resourceID: %s", taskID, resourceID)
-		if err := cancelBuildTaskForDeletedParent(ctx, bbw.bts, taskID, "resource deleted"); err != nil {
-			return fmt.Errorf("update build task status failed: %w", err)
-		}
-		// Resource not found, return nil to stop the task
-		return nil
-	}
-
-	// Before executeBuild creates the index and connects to the data source, confirm the Catalog first. If you Catalog during the queue
-	// If it has been deleted, the task will be cancelled directly.
-	catalog, err := bbw.cs.InternalGetByID(ctx, resource.CatalogID, true)
-	if err != nil {
-		if isNotFoundError(err) {
-			if updateErr := cancelBuildTaskForDeletedParent(ctx, bbw.bts, taskID, "catalog deleted"); updateErr != nil {
-				return fmt.Errorf("update build task status failed: %w", updateErr)
-			}
+		if errors.Is(err, errBuildTaskMarkedFailed) {
+			logger.Infof("Build task failed during final configuration check: %s", taskID)
 			return nil
 		}
-		err = fmt.Errorf("get catalog failed: %w", err)
-	} else if !catalog.Enabled {
-		err = fmt.Errorf("catalog is disabled")
-	}
-
-	if err == nil {
-		err = bbw.executeBuild(ctx, catalog, resource, buildTaskInfo)
-	}
-	if err != nil {
 		logger.Errorf("Build failed for task %s: %w", taskID, err)
 		_, err = bbw.bts.InternalMarkFailed(ctx, nil, taskID, err.Error())
 		if err != nil {
@@ -114,18 +90,80 @@ func (bbw *batchBuildWorker) isStopping() bool {
 	return bbw.stopped != nil && bbw.stopped.Load()
 }
 
-func batchBuildExecuteType(buildTask *interfaces.BuildTask) string {
-	// Incremental tasks keep using their existing index and checkpoint. They
-	// cannot become full rebuilds because that index is not disposable.
-	if buildTask.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental {
-		return interfaces.BuildTaskExecuteTypeIncremental
+func (bbw *batchBuildWorker) completeFullBuildTask(ctx context.Context, resource *interfaces.Resource,
+	buildTask *interfaces.BuildTask, indexName, syncMark string) error {
+	if logics.DB == nil {
+		return errors.New("database is not initialized")
 	}
-	// A full task starts from the beginning only when its persisted progress is
-	// empty. Restart with reset clears that progress before dispatching the task.
-	if buildTask.SyncedMark == "" && buildTask.SyncedCount == 0 {
-		return interfaces.BuildTaskExecuteTypeFull
+
+	tx, err := logics.DB.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
 	}
-	return interfaces.BuildTaskExecuteTypeIncremental
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	current, err := bbw.rs.InternalGetByID(ctx, tx, resource.ID)
+	if err != nil {
+		return fmt.Errorf("reload resource before publishing index: %w", err)
+	}
+	if current == nil {
+		return errors.New("resource was deleted before publishing index")
+	}
+	if err := validateBuildTaskResourceFingerprint(current, buildTask); err != nil {
+		detail := fmt.Sprintf("cannot publish full build result: %v", err)
+		failed, updateErr := bbw.bts.InternalMarkFailed(ctx, tx, buildTask.ID, detail)
+		if updateErr != nil {
+			return fmt.Errorf("mark build task failed after config change: %w", updateErr)
+		}
+		if !failed {
+			return errors.New("build task status changed before config mismatch could be recorded")
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit build task config failure: %w", err)
+		}
+		committed = true
+		return fmt.Errorf("%w: %s", errBuildTaskMarkedFailed, detail)
+	}
+
+	updated, err := bbw.rs.InternalUpdateLocalIndexState(ctx, tx, current.ID,
+		interfaces.ResourceLocalIndexStatusAvailable, indexName, syncMark)
+	if err != nil {
+		return fmt.Errorf("publish resource local index state: %w", err)
+	}
+	if !updated {
+		return errors.New("resource disappeared while publishing local index state")
+	}
+
+	completed, err := bbw.bts.InternalMarkCompleted(ctx, tx, buildTask.ID)
+	if err != nil {
+		return fmt.Errorf("update build task status: %w", err)
+	}
+	if !completed {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			return fmt.Errorf("rollback completion after build task state changed: %w", err)
+		}
+		committed = true
+		// A stop request may win the race with completion. The resource update
+		// has been rolled back, so finish the stopping -> stopped transition.
+		if _, err := bbw.bts.InternalMarkStopped(ctx, buildTask.ID); err != nil {
+			return fmt.Errorf("mark build task stopped: %w", err)
+		}
+		return nil
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	committed = true
+	resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
+	resource.LocalIndexName = indexName
+	resource.SyncMark = syncMark
+	return nil
 }
 
 // buildBatchCursorFilter builds a lexicographic cursor filter for composite keys.
@@ -153,15 +191,24 @@ func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) *int
 // executeBuild executes the build logic
 func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog,
 	resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask) error {
-	executeType := batchBuildExecuteType(buildTaskInfo)
 	indexName := getIndexName(resource.ID, buildTaskInfo.ID)
-	err := createManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
+	restartFromBeginning := buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeFull &&
+		buildTaskInfo.SyncedMark == ""
+	var err error
+	switch {
+	case restartFromBeginning:
+		err = recreateManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
+	case buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeFull:
+		err = requireManagedLocalIndex(ctx, bbw.lim, indexName)
+	default:
+		err = createManagedLocalIndex(ctx, bbw.lim, indexName, buildTaskInfo, resource)
+	}
 	if err != nil {
-		return fmt.Errorf("create local index failed: %w", err)
+		return fmt.Errorf("prepare local index failed: %w", err)
 	}
 
 	lastSyncedMark := buildTaskInfo.SyncedMark
-	if executeType == interfaces.BuildTaskExecuteTypeFull {
+	if restartFromBeginning {
 		lastSyncedMark = ""
 		// All runs are redone from scratch, the vectors are also redone as a whole, and the progress counter is reset to zero at the same time.
 		// Otherwise, the display of synced > total will be accumulated across runs
@@ -180,17 +227,14 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 	keys := buildTaskBuildKeyFields(buildTaskInfo)
 	var lastBatchKeyValues []interfaces.KeyValue
 	if lastSyncedMark != "" {
-		if err := sonic.Unmarshal([]byte(lastSyncedMark), &lastBatchKeyValues); err != nil {
-			return fmt.Errorf("failed to unmarshal synced mark: %w", err)
+		checkpoint, err := sync_checkpoint.DecodeBatch(lastSyncedMark)
+		if err != nil {
+			return fmt.Errorf("decode synced mark: %w", err)
 		}
-		if len(lastBatchKeyValues) != len(keys) {
-			return fmt.Errorf("invalid synced mark: expected %d key values, got %d", len(keys), len(lastBatchKeyValues))
+		if err := sync_checkpoint.ValidateCursor(checkpoint, keys, resource.SchemaDefinition); err != nil {
+			return fmt.Errorf("validate synced mark: %w", err)
 		}
-		for i, key := range keys {
-			if lastBatchKeyValues[i].Key != key {
-				return fmt.Errorf("invalid synced mark: expected key %q at position %d, got %q", key, i, lastBatchKeyValues[i].Key)
-			}
-		}
+		lastBatchKeyValues = checkpoint.Cursor
 	}
 
 	// Batch read data from MySQL and write to dataset
@@ -329,14 +373,12 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				totalCount := int64(totalRows)
 				progress.TotalCount = &totalCount
 			}
-			if len(lastBatchKeyValues) > 0 {
-				syncedMarkStr, err := sonic.MarshalString(lastBatchKeyValues)
-				if err != nil {
-					return fmt.Errorf("failed to marshal synced mark: %w", err)
-				} else {
-					progress.SyncedMark = &syncedMarkStr
-				}
+			syncedMarkStr, err := sync_checkpoint.EncodeBatch(lastBatchKeyValues)
+			if err != nil {
+				return fmt.Errorf("encode synced mark: %w", err)
 			}
+			lastSyncedMark = syncedMarkStr
+			progress.SyncedMark = &syncedMarkStr
 			_, err = bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
@@ -348,7 +390,23 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 
-	if err := completeBuildTaskWithoutEmbedding(ctx, resource, bbw.rs, bbw.bts, buildTaskInfo.ID, indexName); err != nil {
+	if lastSyncedMark == "" {
+		lastSyncedMark, err = sync_checkpoint.EncodeBatch(nil)
+		if err != nil {
+			return fmt.Errorf("encode empty synced mark: %w", err)
+		}
+		zero := int64(0)
+		progress := interfaces.BuildTaskProgress{
+			TotalCount:  &zero,
+			SyncedCount: &zero,
+			SyncedMark:  &lastSyncedMark,
+		}
+		if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
+			return fmt.Errorf("update empty build task progress: %w", err)
+		}
+	}
+
+	if err := bbw.completeFullBuildTask(ctx, resource, buildTaskInfo, indexName, lastSyncedMark); err != nil {
 		return fmt.Errorf("complete build task: %w", err)
 	}
 

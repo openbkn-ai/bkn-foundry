@@ -7,7 +7,6 @@ package worker
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"testing"
 
@@ -19,6 +18,7 @@ import (
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
 	"vega-backend/logics"
+	resourcelogic "vega-backend/logics/resource"
 )
 
 func TestUpdateResourceIndexName(t *testing.T) {
@@ -93,29 +93,41 @@ func TestGenerateDocumentID(t *testing.T) {
 	require.ErrorContains(t, err, `build key field "id" is missing`)
 }
 
-func TestKeyValueJSONUsesOrderedCursorFormat(t *testing.T) {
-	mark, err := json.Marshal([]interfaces.KeyValue{
-		{Key: "id", Value: 42},
-		{Key: "tenant_id", Value: "tenant-1"},
-	})
-	require.NoError(t, err)
-	assert.JSONEq(t, `[{"key":"id","value":42},{"key":"tenant_id","value":"tenant-1"}]`, string(mark))
+func TestPrepareFullBuildIndex(t *testing.T) {
+	t.Run("empty mark rebuild deletes existing task index", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		resource := workerTestResource()
+		task := workerTestFullTask(t, resource)
+		indexName := interfaces.BuildIndexName(resource.ID, task.ID)
 
-	var restored []interfaces.KeyValue
-	require.NoError(t, json.Unmarshal(mark, &restored))
-	require.Len(t, restored, 2)
-	assert.Equal(t, "id", restored[0].Key)
-	assert.Equal(t, float64(42), restored[0].Value)
-	assert.Equal(t, "tenant_id", restored[1].Key)
-	assert.Equal(t, "tenant-1", restored[1].Value)
+		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(true, nil)
+		lim.EXPECT().DeleteIndex(gomock.Any(), indexName).Return(nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any()).Return(nil)
+
+		require.NoError(t, recreateManagedLocalIndex(context.Background(), lim, indexName, task, resource))
+	})
+
+	t.Run("nonempty mark cannot resume a missing task index", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		indexName := interfaces.BuildIndexName("r1", "t1")
+		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(false, nil)
+
+		err := requireManagedLocalIndex(context.Background(), lim, indexName)
+		require.ErrorContains(t, err, "cannot resume full build")
+	})
 }
 
-func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
+func TestCompleteFullBuildTask(t *testing.T) {
 	t.Run("completes task and resource update atomically", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
 		ts := vmock.NewMockBuildTaskService(ctrl)
-		resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
+		resource := workerTestResource()
+		resource.LocalIndexName = "old-index"
+		task := workerTestFullTask(t, resource)
+		mark := `{"mode":"batch","cursor":[{"key":"id","value":10}]}`
 
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -127,19 +139,18 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").
-			DoAndReturn(func(_ context.Context, _ *sql.Tx, id, indexName string) error {
-				assert.Equal(t, "r1", id)
-				assert.Equal(t, "new-index", indexName)
-				return nil
-			})
+		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(resource, nil)
+		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, "r1",
+			interfaces.ResourceLocalIndexStatusAvailable, "new-index", mark).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(true, nil)
 		mock.ExpectCommit()
 
-		err = completeBuildTaskWithoutEmbedding(context.Background(), resource, rs, ts, "t1", "new-index")
+		err = (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(context.Background(), resource, task, "new-index", mark)
 
 		require.NoError(t, err)
+		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, resource.LocalIndexStatus)
 		assert.Equal(t, "new-index", resource.LocalIndexName)
+		assert.Equal(t, mark, resource.SyncMark)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -147,7 +158,10 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
 		ts := vmock.NewMockBuildTaskService(ctrl)
-		resource := &interfaces.Resource{ID: "r1", LocalIndexName: "old-index"}
+		resource := workerTestResource()
+		resource.LocalIndexName = "old-index"
+		task := workerTestFullTask(t, resource)
+		mark := `{"mode":"batch","cursor":[]}`
 
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -159,12 +173,14 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").Return(nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(resource, nil)
+		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, "r1",
+			interfaces.ResourceLocalIndexStatusAvailable, "new-index", mark).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(false, nil)
 		mock.ExpectRollback()
 		ts.EXPECT().InternalMarkStopped(gomock.Any(), "t1").Return(true, nil)
 
-		err = completeBuildTaskWithoutEmbedding(context.Background(), resource, rs, ts, "t1", "new-index")
+		err = (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(context.Background(), resource, task, "new-index", mark)
 
 		require.NoError(t, err)
 		assert.Equal(t, "old-index", resource.LocalIndexName)
@@ -175,18 +191,12 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		rs := vmock.NewMockResourceService(ctrl)
 		ts := vmock.NewMockBuildTaskService(ctrl)
-		staleBuildResource := &interfaces.Resource{
-			ID:               "r1",
-			Name:             "supply_chain.material_entity",
-			SourceIdentifier: "supply_chain.material_entity",
-			Description:      "source material description",
-			SchemaDefinition: []*interfaces.Property{{
-				Name:                "material_id",
-				DisplayName:         "material_id",
-				Description:         "source material identifier",
-				OriginalDescription: "source material identifier",
-			}},
-		}
+		staleBuildResource := workerTestResource()
+		staleBuildResource.Description = "old description"
+		current := workerTestResource()
+		current.Description = "new description"
+		task := workerTestFullTask(t, current)
+		mark := `{"mode":"batch","cursor":[]}`
 
 		db, mock, err := sqlmock.New()
 		require.NoError(t, err)
@@ -197,18 +207,72 @@ func TestCompleteBuildTaskWithoutEmbedding(t *testing.T) {
 
 		mock.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
-		rs.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), txMatcher, "r1", "new-index").DoAndReturn(
-			func(_ context.Context, _ *sql.Tx, id, indexName string) error {
-				assert.Equal(t, "r1", id)
-				assert.Equal(t, "new-index", indexName)
-				return nil
-			},
-		)
+		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(current, nil)
+		rs.EXPECT().InternalUpdateLocalIndexState(gomock.Any(), txMatcher, "r1",
+			interfaces.ResourceLocalIndexStatusAvailable, "new-index", mark).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "build-task-1").Return(true, nil)
 		mock.ExpectCommit()
 
-		require.NoError(t, completeBuildTaskWithoutEmbedding(context.Background(), staleBuildResource, rs, ts, "build-task-1", "new-index"))
+		task.ID = "build-task-1"
+		require.NoError(t, (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(
+			context.Background(), staleBuildResource, task, "new-index", mark))
 		assert.Equal(t, "new-index", staleBuildResource.LocalIndexName)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+
+	t.Run("marks task failed when resource index config changed", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		rs := vmock.NewMockResourceService(ctrl)
+		ts := vmock.NewMockBuildTaskService(ctrl)
+		resource := workerTestResource()
+		task := workerTestFullTask(t, resource)
+		resource.IndexConfig.BuildKeyFields = []string{"updated_at"}
+		resource.SchemaDefinition = []*interfaces.Property{{Name: "updated_at", Type: interfaces.DataType_Timestamp}}
+
+		db, mock, err := sqlmock.New()
+		require.NoError(t, err)
+		defer func() { _ = db.Close() }()
+		oldDB := logics.DB
+		logics.DB = db
+		defer func() { logics.DB = oldDB }()
+
+		mock.ExpectBegin()
+		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
+		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, "r1").Return(resource, nil)
+		ts.EXPECT().InternalMarkFailed(gomock.Any(), txMatcher, "t1", gomock.Any()).Return(true, nil)
+		mock.ExpectCommit()
+
+		err = (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(
+			context.Background(), resource, task, "new-index", `{"mode":"batch","cursor":[]}`)
+
+		require.ErrorIs(t, err, errBuildTaskMarkedFailed)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func workerTestResource() *interfaces.Resource {
+	return &interfaces.Resource{
+		ID:          "r1",
+		Category:    interfaces.ResourceCategoryTable,
+		IndexConfig: &interfaces.ResourceIndexConfig{BuildKeyFields: []string{"id"}},
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "id", Type: interfaces.DataType_Integer},
+		},
+	}
+}
+
+func workerTestFullTask(t *testing.T, resource *interfaces.Resource) *interfaces.BuildTask {
+	t.Helper()
+	fingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
+	require.NoError(t, err)
+	return &interfaces.BuildTask{
+		ID:          "t1",
+		ResourceID:  resource.ID,
+		Mode:        interfaces.BuildTaskModeBatch,
+		ExecuteType: interfaces.BuildTaskExecuteTypeFull,
+		IndexConfig: &interfaces.BuildTaskIndexConfig{
+			BuildKeyFields:         []string{"id"},
+			IndexConfigFingerprint: fingerprint,
+		},
+	}
 }
