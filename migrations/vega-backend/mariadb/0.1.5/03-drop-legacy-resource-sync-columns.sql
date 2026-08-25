@@ -19,5 +19,5 @@ ALTER TABLE t_resource
     DROP COLUMN IF EXISTS f_sync_error_message;
 
 ALTER TABLE t_build_task
-    MODIFY COLUMN f_index_config TEXT NOT NULL COMMENT '索引配置快照(JSON)',
+    MODIFY COLUMN f_index_config MEDIUMTEXT NOT NULL COMMENT '索引配置快照(JSON)',
     MODIFY COLUMN f_synced_mark TEXT NOT NULL COMMENT 'Task execution checkpoint (batch SyncCheckpoint; streaming opaque)';

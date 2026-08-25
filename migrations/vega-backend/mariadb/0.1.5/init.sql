@@ -336,7 +336,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
     f_execute_type            VARCHAR(20) NOT NULL DEFAULT '' COMMENT 'batch 执行类型: full, incremental；空表示 streaming 任务',
 
     -- 任务索引配置
-    f_index_config            TEXT NOT NULL COMMENT '索引配置快照(JSON)',
+    f_index_config            MEDIUMTEXT NOT NULL COMMENT '索引配置快照(JSON)',
 
     -- 任务状态
     f_status                  VARCHAR(20) NOT NULL COMMENT '任务状态: pending, running, stopping, stopped, completed, failed, cancelled',
