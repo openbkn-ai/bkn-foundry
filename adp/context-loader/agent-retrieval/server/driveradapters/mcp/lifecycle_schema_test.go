@@ -285,6 +285,21 @@ func TestLifecycleSchemasRequireAnExplicitConversationChoiceAndCompletedAnswer(t
 	}
 }
 
+func TestLifecycleWireSchemasAvoidCompositionKeywords(t *testing.T) {
+	for _, tool := range []string{"bkn_start_interaction", "bkn_finish_interaction"} {
+		input, _ := loadToolSchemas(tool)
+		var schema map[string]any
+		if err := json.Unmarshal(input, &schema); err != nil {
+			t.Fatalf("decode %s input schema: %v", tool, err)
+		}
+		for _, keyword := range []string{"oneOf", "anyOf", "allOf", "if", "then", "else", "dependentRequired"} {
+			if _, found := schema[keyword]; found {
+				t.Fatalf("%s wire schema must not publish %s: %s", tool, keyword, input)
+			}
+		}
+	}
+}
+
 func TestLifecycleInputDescriptionsAreConciseAndActionable(t *testing.T) {
 	wantFields := map[string][]string{
 		"bkn_start_interaction":  {"conversation_id", "conversation_mode", "question", "agent_name"},

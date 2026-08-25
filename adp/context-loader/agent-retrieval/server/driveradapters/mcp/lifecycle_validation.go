@@ -65,14 +65,37 @@ func validateLifecycleArguments(name string, arguments map[string]any) *lifecycl
 	if !ok {
 		return nil
 	}
-	if err := schema.Validate(arguments); err == nil {
-		return nil
-	} else if fields := unsupportedLifecycleArgumentFields(err); len(fields) > 0 {
-		return invalidLifecycleArguments(
-			name + " received unsupported field(s): " + strings.Join(fields, ", ") + ". Remove them and retry",
-		)
+	if err := schema.Validate(arguments); err != nil {
+		if fields := unsupportedLifecycleArgumentFields(err); len(fields) > 0 {
+			return invalidLifecycleArguments(
+				name + " received unsupported field(s): " + strings.Join(fields, ", ") + ". Remove them and retry",
+			)
+		}
+		return invalidLifecycleArguments(lifecycleSchemaArgumentGuidance(name, arguments))
 	}
-	return invalidLifecycleArguments(lifecycleArgumentGuidance(name))
+	if !validLifecycleFieldCombination(name, arguments) {
+		return invalidLifecycleArguments(lifecycleArgumentGuidance(name, arguments))
+	}
+	return nil
+}
+
+func validLifecycleFieldCombination(name string, arguments map[string]any) bool {
+	switch name {
+	case "bkn_start_interaction":
+		_, hasConversationID := arguments["conversation_id"]
+		switch arguments["conversation_mode"] {
+		case "continue":
+			return hasConversationID
+		case "new":
+			return !hasConversationID
+		}
+	case "bkn_finish_interaction":
+		if arguments["outcome"] == "completed" {
+			answer, ok := arguments["answer"].(string)
+			return ok && answer != ""
+		}
+	}
+	return true
 }
 
 func unsupportedLifecycleArgumentFields(err error) []string {
@@ -117,9 +140,33 @@ func validFinishOutcome(value any) bool {
 	return slices.Contains(finishInteractionOutcomes, outcome)
 }
 
-func lifecycleArgumentGuidance(name string) string {
+func lifecycleArgumentGuidance(name string, arguments map[string]any) string {
 	if name == "bkn_start_interaction" {
+		switch arguments["conversation_mode"] {
+		case "continue":
+			return "bkn_start_interaction with conversation_mode=continue requires a non-empty conversation_id returned by the previous start call. Example: {\"conversation_mode\":\"continue\",\"question\":\"...\",\"agent_name\":\"...\",\"conversation_id\":\"conv_...\"}"
+		case "new":
+			if _, hasConversationID := arguments["conversation_id"]; hasConversationID {
+				return "bkn_start_interaction with conversation_mode=new must omit conversation_id. Example: {\"conversation_mode\":\"new\",\"question\":\"...\",\"agent_name\":\"...\"}"
+			}
+		}
 		return "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it"
+	}
+	if name == "bkn_finish_interaction" && arguments["outcome"] == "completed" {
+		return "bkn_finish_interaction with outcome=completed requires a non-empty answer. Example: {\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}"
+	}
+	return "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise"
+}
+
+func lifecycleSchemaArgumentGuidance(name string, arguments map[string]any) string {
+	if name == "bkn_start_interaction" {
+		if arguments["conversation_mode"] == "continue" && arguments["conversation_id"] == "" {
+			return lifecycleArgumentGuidance(name, arguments)
+		}
+		return "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it"
+	}
+	if arguments["outcome"] == "completed" && arguments["answer"] == "" {
+		return lifecycleArgumentGuidance(name, arguments)
 	}
 	return "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise"
 }

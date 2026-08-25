@@ -143,23 +143,13 @@ func lifecycleToolSchemas(toolKey string) (json.RawMessage, json.RawMessage, boo
 			"type": "string", "description": "Briefly explain a non-completed outcome.",
 		}
 	}
-	// Tool schemas are a byte-stable wire contract: the untouched declaration
-	// must remain identical to the embedded community schema.
+	// Lifecycle schemas cross an MCP host/function-calling boundary. Keep the
+	// published declaration flat: some hosts do not preserve JSON Schema
+	// composition when converting it to their local tool representation.
+	// Cross-field lifecycle rules are enforced by validateLifecycleArguments.
 	inputSchema := map[string]any{
 		"type": "object", "properties": properties, "required": required,
 		"additionalProperties": false,
-	}
-	switch toolKey {
-	case "bkn_start_interaction":
-		inputSchema["oneOf"] = []map[string]any{
-			{"properties": map[string]any{"conversation_mode": map[string]any{"const": "continue"}}, "required": []string{"conversation_id"}},
-			{"properties": map[string]any{"conversation_mode": map[string]any{"const": "new"}}, "not": map[string]any{"required": []string{"conversation_id"}}},
-		}
-	case "bkn_finish_interaction":
-		inputSchema["oneOf"] = []map[string]any{
-			{"properties": map[string]any{"outcome": map[string]any{"const": "completed"}}, "required": []string{"answer"}},
-			{"properties": map[string]any{"outcome": map[string]any{"enum": []string{"failed", "cancelled", "handed_off"}}}},
-		}
 	}
 	input, _ := sonic.ConfigStd.Marshal(inputSchema)
 	output, _ := sonic.ConfigStd.Marshal(lifecycleOutputSchema(toolKey))
