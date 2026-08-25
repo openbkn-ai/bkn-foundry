@@ -155,6 +155,11 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 			wantMessage: "bkn_start_interaction with conversation_mode=continue requires a non-empty conversation_id returned by the previous start call. Example: {\"conversation_mode\":\"continue\",\"question\":\"...\",\"agent_name\":\"...\",\"conversation_id\":\"conv_...\"}",
 		},
 		{
+			name: "continue with empty question", toolName: "bkn_start_interaction",
+			args:        map[string]any{"question": "", "agent_name": "供应链分析助手", "conversation_mode": "continue", "conversation_id": "conv-1"},
+			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
+		},
+		{
 			name: "new with conversation id", toolName: "bkn_start_interaction",
 			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "new", "conversation_id": "conv-1"},
 			wantMessage: "bkn_start_interaction with conversation_mode=new must omit conversation_id. Example: {\"conversation_mode\":\"new\",\"question\":\"...\",\"agent_name\":\"...\"}",
@@ -163,6 +168,11 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 			name: "completed without answer", toolName: "bkn_finish_interaction",
 			args:        map[string]any{"interaction_id": "int-1", "outcome": "completed"},
 			wantMessage: "bkn_finish_interaction with outcome=completed requires a non-empty answer. Example: {\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}",
+		},
+		{
+			name: "completed with empty interaction id", toolName: "bkn_finish_interaction",
+			args:        map[string]any{"interaction_id": "", "outcome": "completed", "answer": "库存充足"},
+			wantMessage: "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise",
 		},
 		{
 			name: "start with unsupported lease seconds", toolName: "bkn_start_interaction",
