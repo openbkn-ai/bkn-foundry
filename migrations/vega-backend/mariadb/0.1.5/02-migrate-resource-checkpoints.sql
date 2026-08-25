@@ -13,14 +13,26 @@ SET f_finish_time = UNIX_TIMESTAMP() * 1000,
 WHERE f_execute_type IN ('full', 'incremental')
   AND f_status IN ('running', 'stopping');
 
--- Pending, stopped, and failed tasks retain their current status and finish
--- time, but their next restart begins from zero.
+-- Stopped and failed tasks retain their current status and finish time, but
+-- their next restart begins from zero.
 UPDATE t_build_task
 SET f_total_count = 0,
     f_synced_count = 0,
     f_synced_mark = ''
 WHERE f_execute_type IN ('full', 'incremental')
-  AND f_status in ('pending', 'stopped', 'failed');
+  AND f_status in ('stopped', 'failed');
+
+-- Pending batch tasks do not carry the complete index configuration snapshot
+-- required after this upgrade. Cancel them instead of attempting to reconstruct
+-- a snapshot from Resource state; users can create a new task.
+UPDATE t_build_task
+SET f_status = 'cancelled',
+    f_finish_time = UNIX_TIMESTAMP() * 1000,
+    f_total_count = 0,
+    f_synced_count = 0,
+    f_synced_mark = ''
+WHERE f_execute_type IN ('full', 'incremental')
+  AND f_status = 'pending';
 
 -- Existing batch cursor arrays are trusted and wrapped without decoding, preserving
 -- the original cursor JSON, including large numeric tokens.

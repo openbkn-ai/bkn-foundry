@@ -591,7 +591,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, captured)
 		assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, captured.ExecuteType)
-		assert.Equal(t, mustResourceIndexConfigFingerprint(t, resource), captured.IndexConfig.IndexConfigFingerprint)
+		assert.Equal(t, mustBuildTaskIndexConfig(t, resource).Fields, captured.IndexConfig.Fields)
 	})
 	t.Run("allows streaming task with a build key and no physical primary key", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -772,7 +772,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 				},
 			},
 		}
-		expectedFingerprint := mustResourceIndexConfigFingerprint(t, resource)
+		expectedFields := mustBuildTaskIndexConfig(t, resource).Fields
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -800,7 +800,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		resource.SchemaDefinition[0].Features = nil
 
 		assert.Equal(t, []string{"id"}, captured.IndexConfig.BuildKeyFields)
-		assert.Equal(t, expectedFingerprint, captured.IndexConfig.IndexConfigFingerprint)
+		assert.Equal(t, expectedFields, captured.IndexConfig.Fields)
 		assert.Equal(t, &interfaces.SmallModel{ModelID: "2064382281006583808", ModelName: "text-embedding-v4", EmbeddingDim: 1024}, captured.IndexConfig.Features["family_name"].Vector)
 		assert.Equal(t, &interfaces.BuildTaskFulltextConfig{Analyzer: "ik_max_word"}, captured.IndexConfig.Features["family_name"].Fulltext)
 	})
@@ -1094,11 +1094,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
 			Status: interfaces.BuildTaskStatusFailed, ExecuteType: interfaces.BuildTaskExecuteTypeFull,
-			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				BuildKeyFields:         []string{"id"},
-				Features:               map[string]interfaces.BuildTaskFieldIndexFeature{},
-				IndexConfigFingerprint: mustResourceIndexConfigFingerprint(t, resource),
-			},
+			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -1147,10 +1143,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			CatalogID:   "catalog-1",
 			Status:      interfaces.BuildTaskStatusStopped,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
-			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				BuildKeyFields:         []string{"id"},
-				IndexConfigFingerprint: mustResourceIndexConfigFingerprint(t, resource),
-			},
+			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -1177,12 +1170,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		resource := buildTaskTestResource()
 		task := &interfaces.BuildTask{
 			ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1",
-			Status: interfaces.BuildTaskStatusStopped,
-			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				BuildKeyFields:         []string{"id"},
-				Features:               map[string]interfaces.BuildTaskFieldIndexFeature{},
-				IndexConfigFingerprint: mustResourceIndexConfigFingerprint(t, resource),
-			},
+			Status:      interfaces.BuildTaskStatusStopped,
+			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -1326,15 +1315,11 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
-			ID:         "task-1",
-			ResourceID: "resource-1",
-			CatalogID:  "catalog-1",
-			Status:     interfaces.BuildTaskStatusStopped,
-			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				BuildKeyFields:         []string{"id"},
-				Features:               map[string]interfaces.BuildTaskFieldIndexFeature{},
-				IndexConfigFingerprint: mustResourceIndexConfigFingerprint(t, originalResource),
-			},
+			ID:          "task-1",
+			ResourceID:  "resource-1",
+			CatalogID:   "catalog-1",
+			Status:      interfaces.BuildTaskStatusStopped,
+			IndexConfig: mustBuildTaskIndexConfig(t, originalResource),
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
@@ -1359,16 +1344,12 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		resource := buildTaskTestResource()
 
 		task := &interfaces.BuildTask{
-			ID:         "task-1",
-			ResourceID: "resource-1",
-			CatalogID:  "catalog-1",
-			Status:     interfaces.BuildTaskStatusStopped,
-			CreateTime: 100,
-			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				BuildKeyFields:         []string{"id"},
-				Features:               map[string]interfaces.BuildTaskFieldIndexFeature{},
-				IndexConfigFingerprint: mustResourceIndexConfigFingerprint(t, resource),
-			},
+			ID:          "task-1",
+			ResourceID:  "resource-1",
+			CatalogID:   "catalog-1",
+			Status:      interfaces.BuildTaskStatusStopped,
+			CreateTime:  100,
+			IndexConfig: mustBuildTaskIndexConfig(t, resource),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -1398,8 +1379,8 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			CatalogID:  "catalog-1",
 			Status:     interfaces.BuildTaskStatusStopped,
 			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				BuildKeyFields: []string{"id"},
-				Features:       map[string]interfaces.BuildTaskFieldIndexFeature{},
+				IndexConfigContract: interfaces.IndexConfigContract{BuildKeyFields: []string{"id"}},
+				Features:            map[string]interfaces.BuildTaskFieldIndexFeature{},
 			},
 		}, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -1460,13 +1441,13 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			ResourceID: "resource-1",
 			CatalogID:  "catalog-1",
 			Status:     interfaces.BuildTaskStatusStopped,
-			IndexConfig: &interfaces.BuildTaskIndexConfig{
-				BuildKeyFields:         []string{"id"},
-				IndexConfigFingerprint: mustResourceIndexConfigFingerprint(t, resource),
-				Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+			IndexConfig: func() *interfaces.BuildTaskIndexConfig {
+				config := mustBuildTaskIndexConfig(t, resource)
+				config.Features = map[string]interfaces.BuildTaskFieldIndexFeature{
 					"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
-				},
-			},
+				}
+				return config
+			}(),
 		}
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
 		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).
@@ -1509,11 +1490,18 @@ func buildTaskTestResource() *interfaces.Resource {
 	}
 }
 
-func mustResourceIndexConfigFingerprint(t *testing.T, resource *interfaces.Resource) string {
+func mustBuildTaskIndexConfig(t *testing.T, resource *interfaces.Resource) *interfaces.BuildTaskIndexConfig {
 	t.Helper()
-	fingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
+	fields, err := resourcelogic.SnapshotBuildTaskIndexConfigFields(resource)
 	require.NoError(t, err)
-	return fingerprint
+	config := &interfaces.BuildTaskIndexConfig{
+		IndexConfigContract: interfaces.IndexConfigContract{Fields: fields},
+		Features:            map[string]interfaces.BuildTaskFieldIndexFeature{},
+	}
+	if resource.IndexConfig != nil {
+		config.IndexConfigContract.BuildKeyFields = append([]string(nil), resource.IndexConfig.BuildKeyFields...)
+	}
+	return config
 }
 
 // failed 状态必须允许 start（否则失败任务只能删除重建）。

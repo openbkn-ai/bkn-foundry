@@ -263,7 +263,7 @@ func workerTestResource() *interfaces.Resource {
 
 func workerTestFullTask(t *testing.T, resource *interfaces.Resource) *interfaces.BuildTask {
 	t.Helper()
-	fingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
+	fields, err := resourcelogic.SnapshotBuildTaskIndexConfigFields(resource)
 	require.NoError(t, err)
 	return &interfaces.BuildTask{
 		ID:          "t1",
@@ -271,8 +271,10 @@ func workerTestFullTask(t *testing.T, resource *interfaces.Resource) *interfaces
 		Mode:        interfaces.BuildTaskModeBatch,
 		ExecuteType: interfaces.BuildTaskExecuteTypeFull,
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
-			BuildKeyFields:         []string{"id"},
-			IndexConfigFingerprint: fingerprint,
+			IndexConfigContract: interfaces.IndexConfigContract{
+				BuildKeyFields: []string{"id"},
+				Fields:         fields,
+			},
 		},
 	}
 }

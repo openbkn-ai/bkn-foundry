@@ -7,6 +7,7 @@
 package resource
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -106,6 +107,53 @@ func TestIndexConfigFingerprint(t *testing.T) {
 		_, err = BuildIndexConfigContract(duplicate)
 		assert.Error(t, err)
 	})
+}
+
+func TestBuildTaskIndexConfigFingerprintMatchesResourceSnapshot(t *testing.T) {
+	resource := fingerprintTestResource(false)
+	fields, err := SnapshotBuildTaskIndexConfigFields(resource)
+	require.NoError(t, err)
+
+	taskFingerprint, err := BuildTaskIndexConfigFingerprint(&interfaces.BuildTaskIndexConfig{
+		IndexConfigContract: interfaces.IndexConfigContract{
+			BuildKeyFields: append([]string(nil), resource.IndexConfig.BuildKeyFields...),
+			Fields:         fields,
+		},
+	})
+	require.NoError(t, err)
+	resourceFingerprint, err := ResourceIndexConfigFingerprint(resource)
+	require.NoError(t, err)
+	assert.Equal(t, resourceFingerprint, taskFingerprint)
+
+	resource.SchemaDefinition[1].OriginalType = "text"
+	changedFingerprint, err := ResourceIndexConfigFingerprint(resource)
+	require.NoError(t, err)
+	assert.NotEqual(t, taskFingerprint, changedFingerprint)
+}
+
+func TestBuildTaskIndexConfigFingerprintSupportsUpgradedSnapshot(t *testing.T) {
+	resource := fingerprintTestResource(false)
+	encodedSchema, err := json.Marshal(resource.SchemaDefinition)
+	require.NoError(t, err)
+	var fields []interfaces.IndexConfigFieldContract
+	require.NoError(t, json.Unmarshal(encodedSchema, &fields))
+
+	taskFingerprint, err := BuildTaskIndexConfigFingerprint(&interfaces.BuildTaskIndexConfig{
+		IndexConfigContract: interfaces.IndexConfigContract{
+			BuildKeyFields: append([]string(nil), resource.IndexConfig.BuildKeyFields...),
+			Fields:         fields,
+		},
+		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
+			"title": {
+				Vector:   &interfaces.SmallModel{ModelID: "model-a"},
+				Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "standard"},
+			},
+		},
+	})
+	require.NoError(t, err)
+	resourceFingerprint, err := ResourceIndexConfigFingerprint(resource)
+	require.NoError(t, err)
+	assert.Equal(t, resourceFingerprint, taskFingerprint)
 }
 
 func fingerprintTestResource(reordered bool) *interfaces.Resource {

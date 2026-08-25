@@ -402,16 +402,12 @@ func (bts *buildTaskService) fillBuildTaskIndexSnapshot(ctx context.Context, res
 		}
 	}
 
-	if len(buildTask.IndexConfig.Features) == 0 && len(buildTask.IndexConfig.BuildKeyFields) == 0 {
-		buildTask.IndexConfig = nil
-		return nil
-	}
-	fingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
+	fields, err := resourcelogic.SnapshotBuildTaskIndexConfigFields(resource)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).
 			WithErrorDetails(fmt.Sprintf("invalid resource index configuration: %v", err))
 	}
-	buildTask.IndexConfig.IndexConfigFingerprint = fingerprint
+	buildTask.IndexConfig.Fields = fields
 	return nil
 }
 
@@ -820,16 +816,21 @@ func (bts *buildTaskService) validateStartBuildTaskStillCurrent(ctx context.Cont
 		return err
 	}
 
-	if buildTask.IndexConfig == nil || buildTask.IndexConfig.IndexConfigFingerprint == "" {
+	if buildTask.IndexConfig == nil {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
-			WithErrorDetails("build task has no index config fingerprint; create a new build task instead")
+			WithErrorDetails("build task has no index config snapshot; create a new build task instead")
+	}
+	taskFingerprint, err := resourcelogic.BuildTaskIndexConfigFingerprint(buildTask.IndexConfig)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
+			WithErrorDetails(fmt.Sprintf("invalid build task index config snapshot: %v", err))
 	}
 	currentFingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
 			WithErrorDetails(fmt.Sprintf("invalid current resource index configuration: %v", err))
 	}
-	if buildTask.IndexConfig.IndexConfigFingerprint != currentFingerprint {
+	if taskFingerprint != currentFingerprint {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_IndexConfigChanged).
 			WithErrorDetails("resource index config has changed; create a new build task instead")
 	}

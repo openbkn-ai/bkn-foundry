@@ -145,7 +145,7 @@ func TestHandleUpdateOperationWritesReplacementBeforeDeletingOldDocument(t *test
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
 	worker := &streamingBuildWorker{lim: lim}
-	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{BuildKeyFields: []string{"id"}}}
+	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{BuildKeyFields: []string{"id"}}}}
 	oldID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 1}})
 	require.NoError(t, err)
 	newID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
@@ -170,7 +170,7 @@ func TestHandleUpdateOperationKeepsOldDocumentWhenReplacementWriteFails(t *testi
 	ctrl := gomock.NewController(t)
 	lim := vmock.NewMockLocalIndexManager(ctrl)
 	worker := &streamingBuildWorker{lim: lim}
-	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{BuildKeyFields: []string{"id"}}}
+	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{IndexConfigContract: interfaces.IndexConfigContract{BuildKeyFields: []string{"id"}}}}
 	newID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 2}})
 	require.NoError(t, err)
 

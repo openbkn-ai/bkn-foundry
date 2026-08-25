@@ -74,14 +74,18 @@ func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource,
 }
 
 func validateBuildTaskResourceFingerprint(resource *interfaces.Resource, buildTask *interfaces.BuildTask) error {
-	if buildTask == nil || buildTask.IndexConfig == nil || buildTask.IndexConfig.IndexConfigFingerprint == "" {
-		return errors.New("build task has no index config fingerprint")
+	if buildTask == nil || buildTask.IndexConfig == nil {
+		return errors.New("build task has no index config snapshot")
+	}
+	taskFingerprint, err := resourcelogic.BuildTaskIndexConfigFingerprint(buildTask.IndexConfig)
+	if err != nil {
+		return fmt.Errorf("calculate build task index config fingerprint: %w", err)
 	}
 	fingerprint, err := resourcelogic.ResourceIndexConfigFingerprint(resource)
 	if err != nil {
 		return fmt.Errorf("calculate resource index config fingerprint: %w", err)
 	}
-	if fingerprint != buildTask.IndexConfig.IndexConfigFingerprint {
+	if fingerprint != taskFingerprint {
 		return errors.New("resource index config has changed")
 	}
 	return nil

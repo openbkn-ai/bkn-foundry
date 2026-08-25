@@ -102,21 +102,6 @@ type BuildTaskProgress struct {
 	FailureDetail *string
 }
 
-type BuildTaskIndexConfig struct {
-	BuildKeyFields         []string                              `json:"build_key_fields,omitempty"`
-	Features               map[string]BuildTaskFieldIndexFeature `json:"features,omitempty"`
-	IndexConfigFingerprint string                                `json:"index_config_fingerprint,omitempty"`
-}
-
-type BuildTaskFieldIndexFeature struct {
-	Vector   *SmallModel              `json:"vector,omitempty"`
-	Fulltext *BuildTaskFulltextConfig `json:"fulltext,omitempty"`
-}
-
-type BuildTaskFulltextConfig struct {
-	Analyzer string `json:"analyzer,omitempty"`
-}
-
 // CreateBuildTaskRequest represents the request to create a build task.
 type CreateBuildTaskRequest struct {
 	ResourceID  string `json:"resource_id" binding:"required"`                                    // Associate Resource ID

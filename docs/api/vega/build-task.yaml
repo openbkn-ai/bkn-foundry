@@ -466,13 +466,37 @@ components:
           type: array
           items:
             type: string
-        index_config_fingerprint:
-          description: Resource 当前索引构建配置的稳定指纹；用于确认 Task 快照与 Resource 配置仍一致
-          type: string
+        fields:
+          type: array
+          description: 创建任务时固化的本地索引配置契约字段
+          items:
+            $ref: "#/components/schemas/BuildTaskIndexConfigField"
         features:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/BuildTaskFieldIndexFeature"
+    BuildTaskIndexConfigField:
+      type: object
+      required: [name, original_name, original_type, type, features]
+      properties:
+        name: { type: string }
+        original_name: { type: string }
+        original_type: { type: string }
+        type: { type: string }
+        features:
+          type: array
+          items:
+            $ref: "#/components/schemas/BuildTaskIndexConfigFieldFeature"
+    BuildTaskIndexConfigFieldFeature:
+      type: object
+      required: [name, feature_type, ref_property]
+      properties:
+        name: { type: string }
+        feature_type: { type: string }
+        ref_property: { type: string }
+        config:
+          type: object
+          additionalProperties: true
     BuildTaskFieldIndexFeature:
       type: object
       properties:

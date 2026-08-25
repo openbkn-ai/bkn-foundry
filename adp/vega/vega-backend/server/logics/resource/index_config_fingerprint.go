@@ -19,39 +19,17 @@ import (
 	"vega-backend/interfaces"
 )
 
-// IndexConfigContract contains only Resource configuration that affects local
-// index mappings, generated documents, queries, document IDs, or batch cursors.
-type IndexConfigContract struct {
-	BuildKeyFields []string                   `json:"build_key_fields"`
-	Fields         []IndexConfigFieldContract `json:"fields"`
-}
-
-type IndexConfigFieldContract struct {
-	Name         string                       `json:"name"`
-	OriginalName string                       `json:"original_name"`
-	OriginalType string                       `json:"original_type"`
-	Type         string                       `json:"type"`
-	Features     []IndexConfigFeatureContract `json:"features"`
-}
-
-type IndexConfigFeatureContract struct {
-	Name        string          `json:"name"`
-	Type        string          `json:"type"`
-	RefProperty string          `json:"ref_property"`
-	Config      json.RawMessage `json:"config,omitempty"`
-}
-
 // BuildIndexConfigContract normalizes the Resource's effective index
 // configuration without reading Catalog, connector, Model Factory, or other
 // external state. SourceMetadata and display-only metadata are excluded.
-func BuildIndexConfigContract(resource *interfaces.Resource) (IndexConfigContract, error) {
+func BuildIndexConfigContract(resource *interfaces.Resource) (interfaces.IndexConfigContract, error) {
 	if resource == nil {
-		return IndexConfigContract{}, fmt.Errorf("build index config contract: resource is required")
+		return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract: resource is required")
 	}
 
-	contract := IndexConfigContract{
+	contract := interfaces.IndexConfigContract{
 		BuildKeyFields: make([]string, 0),
-		Fields:         make([]IndexConfigFieldContract, 0, len(resource.SchemaDefinition)),
+		Fields:         make([]interfaces.IndexConfigFieldContract, 0, len(resource.SchemaDefinition)),
 	}
 	defaultEmbeddingModel := ""
 	defaultFulltextAnalyzer := ""
@@ -64,27 +42,27 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (IndexConfigContrac
 	seenFields := make(map[string]struct{}, len(resource.SchemaDefinition))
 	for _, property := range resource.SchemaDefinition {
 		if property == nil || property.Name == "" {
-			return IndexConfigContract{}, fmt.Errorf("build index config contract: resource schema contains an invalid property")
+			return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract: resource schema contains an invalid property")
 		}
 		if _, exists := seenFields[property.Name]; exists {
-			return IndexConfigContract{}, fmt.Errorf("build index config contract: duplicate property %q", property.Name)
+			return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract: duplicate property %q", property.Name)
 		}
 		seenFields[property.Name] = struct{}{}
 
-		field := IndexConfigFieldContract{
+		field := interfaces.IndexConfigFieldContract{
 			Name:         property.Name,
 			OriginalName: property.OriginalName,
 			OriginalType: property.OriginalType,
 			Type:         property.Type,
-			Features:     make([]IndexConfigFeatureContract, 0, len(property.Features)),
+			Features:     make([]interfaces.IndexConfigFeatureContract, 0, len(property.Features)),
 		}
 		seenFeatureTypes := make(map[string]struct{}, len(property.Features))
 		for _, feature := range property.Features {
 			if feature.FeatureType == "" {
-				return IndexConfigContract{}, fmt.Errorf("build index config contract: property %q contains a feature without type", property.Name)
+				return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract: property %q contains a feature without type", property.Name)
 			}
 			if _, exists := seenFeatureTypes[feature.FeatureType]; exists {
-				return IndexConfigContract{}, fmt.Errorf("build index config contract: property %q has more than one %q feature", property.Name, feature.FeatureType)
+				return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract: property %q has more than one %q feature", property.Name, feature.FeatureType)
 			}
 			seenFeatureTypes[feature.FeatureType] = struct{}{}
 
@@ -94,9 +72,9 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (IndexConfigContrac
 			}
 			config, err := effectiveFeatureConfig(feature, defaultEmbeddingModel, defaultFulltextAnalyzer)
 			if err != nil {
-				return IndexConfigContract{}, fmt.Errorf("build index config contract for property %q feature %q: %w", property.Name, feature.FeatureType, err)
+				return interfaces.IndexConfigContract{}, fmt.Errorf("build index config contract for property %q feature %q: %w", property.Name, feature.FeatureType, err)
 			}
-			field.Features = append(field.Features, IndexConfigFeatureContract{
+			field.Features = append(field.Features, interfaces.IndexConfigFeatureContract{
 				Name:        feature.FeatureName,
 				Type:        feature.FeatureType,
 				RefProperty: refProperty,
@@ -120,6 +98,167 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (IndexConfigContrac
 		contract.Fields = append(contract.Fields, field)
 	}
 
+	return normalizeIndexConfigContract(contract)
+}
+
+// BuildTaskIndexConfigFingerprint calculates the fingerprint from the index
+// configuration snapshot persisted on a build task.
+func BuildTaskIndexConfigFingerprint(config *interfaces.BuildTaskIndexConfig) (string, error) {
+	contract, err := BuildTaskIndexConfigContract(config)
+	if err != nil {
+		return "", err
+	}
+	return IndexConfigFingerprint(contract)
+}
+
+// BuildTaskIndexConfigContract builds the effective index configuration from a
+// task snapshot. Resolved task features supply the effective vector model and
+// fulltext analyzer.
+func BuildTaskIndexConfigContract(config *interfaces.BuildTaskIndexConfig) (interfaces.IndexConfigContract, error) {
+	if config == nil {
+		return interfaces.IndexConfigContract{}, fmt.Errorf("build task index config is required")
+	}
+
+	contract := cloneIndexConfigContract(config.IndexConfigContract)
+	for fieldIndex := range contract.Fields {
+		field := &contract.Fields[fieldIndex]
+		for featureIndex := range field.Features {
+			feature := &field.Features[featureIndex]
+			fieldName := field.Name
+			if feature.RefProperty != "" {
+				fieldName = feature.RefProperty
+			}
+			effectiveConfig, err := effectiveBuildTaskFeatureConfig(*feature, config.Features[fieldName])
+			if err != nil {
+				return interfaces.IndexConfigContract{}, fmt.Errorf("build task index config snapshot field %q feature %q: %w", field.Name, feature.Type, err)
+			}
+			feature.Config = effectiveConfig
+		}
+	}
+
+	normalized, err := normalizeIndexConfigContract(contract)
+	if err != nil {
+		return interfaces.IndexConfigContract{}, fmt.Errorf("build task index config snapshot: %w", err)
+	}
+	return normalized, nil
+}
+
+func effectiveBuildTaskFeatureConfig(feature interfaces.IndexConfigFeatureContract, snapshot interfaces.BuildTaskFieldIndexFeature) (json.RawMessage, error) {
+	config := map[string]any{}
+	if len(feature.Config) > 0 && string(feature.Config) != "null" {
+		decoder := json.NewDecoder(bytes.NewReader(feature.Config))
+		decoder.UseNumber()
+		if err := decoder.Decode(&config); err != nil {
+			return nil, err
+		}
+		var extra any
+		if err := decoder.Decode(&extra); err != io.EOF {
+			if err == nil {
+				return nil, fmt.Errorf("multiple JSON values are not allowed")
+			}
+			return nil, err
+		}
+	}
+
+	switch feature.Type {
+	case interfaces.PropertyFeatureType_Vector:
+		if snapshot.Vector != nil {
+			config["embedding_model"] = snapshot.Vector.ModelID
+		}
+	case interfaces.PropertyFeatureType_Fulltext:
+		if snapshot.Fulltext != nil {
+			config["analyzer"] = snapshot.Fulltext.Analyzer
+		}
+	}
+	return effectiveFeatureConfig(interfaces.PropertyFeature{FeatureType: feature.Type, Config: config}, "", "")
+}
+
+// SnapshotBuildTaskIndexConfigFields copies normalized index configuration
+// contract fields into the build task configuration snapshot.
+func SnapshotBuildTaskIndexConfigFields(resource *interfaces.Resource) ([]interfaces.IndexConfigFieldContract, error) {
+	contract, err := BuildIndexConfigContract(resource)
+	if err != nil {
+		return nil, err
+	}
+
+	return cloneIndexConfigContract(contract).Fields, nil
+}
+
+func cloneIndexConfigContract(contract interfaces.IndexConfigContract) interfaces.IndexConfigContract {
+	cloned := interfaces.IndexConfigContract{
+		BuildKeyFields: append([]string(nil), contract.BuildKeyFields...),
+		Fields:         make([]interfaces.IndexConfigFieldContract, 0, len(contract.Fields)),
+	}
+	for _, field := range contract.Fields {
+		clonedField := interfaces.IndexConfigFieldContract{
+			Name:         field.Name,
+			OriginalName: field.OriginalName,
+			OriginalType: field.OriginalType,
+			Type:         field.Type,
+			Features:     make([]interfaces.IndexConfigFeatureContract, 0, len(field.Features)),
+		}
+		for _, feature := range field.Features {
+			clonedField.Features = append(clonedField.Features, interfaces.IndexConfigFeatureContract{
+				Name:        feature.Name,
+				Type:        feature.Type,
+				RefProperty: feature.RefProperty,
+				Config:      append(json.RawMessage(nil), feature.Config...),
+			})
+		}
+		cloned.Fields = append(cloned.Fields, clonedField)
+	}
+	return cloned
+}
+
+func normalizeIndexConfigContract(contract interfaces.IndexConfigContract) (interfaces.IndexConfigContract, error) {
+	seenFields := make(map[string]struct{}, len(contract.Fields))
+	for fieldIndex := range contract.Fields {
+		field := &contract.Fields[fieldIndex]
+		if field.Name == "" {
+			return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract contains an invalid field")
+		}
+		if _, exists := seenFields[field.Name]; exists {
+			return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract contains duplicate field %q", field.Name)
+		}
+		seenFields[field.Name] = struct{}{}
+
+		seenFeatureTypes := make(map[string]struct{}, len(field.Features))
+		for featureIndex := range field.Features {
+			feature := &field.Features[featureIndex]
+			if feature.Type == "" {
+				return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract field %q contains a feature without type", field.Name)
+			}
+			if _, exists := seenFeatureTypes[feature.Type]; exists {
+				return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract field %q has more than one %q feature", field.Name, feature.Type)
+			}
+			seenFeatureTypes[feature.Type] = struct{}{}
+			if feature.RefProperty == field.Name {
+				feature.RefProperty = ""
+			}
+			if len(feature.Config) > 0 {
+				config, err := canonicalJSON(feature.Config)
+				if err != nil {
+					return interfaces.IndexConfigContract{}, fmt.Errorf("index config contract field %q feature %q: %w", field.Name, feature.Type, err)
+				}
+				feature.Config = config
+			}
+		}
+		sort.Slice(field.Features, func(i, j int) bool {
+			left := field.Features[i]
+			right := field.Features[j]
+			if left.Type != right.Type {
+				return left.Type < right.Type
+			}
+			if left.Name != right.Name {
+				return left.Name < right.Name
+			}
+			if left.RefProperty != right.RefProperty {
+				return left.RefProperty < right.RefProperty
+			}
+			return bytes.Compare(left.Config, right.Config) < 0
+		})
+	}
+
 	sort.Slice(contract.Fields, func(i, j int) bool {
 		left := contract.Fields[i]
 		right := contract.Fields[j]
@@ -138,7 +277,7 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (IndexConfigContrac
 }
 
 // IndexConfigFingerprint hashes a normalized contract with canonical JSON.
-func IndexConfigFingerprint(config IndexConfigContract) (string, error) {
+func IndexConfigFingerprint(config interfaces.IndexConfigContract) (string, error) {
 	data, err := json.Marshal(config)
 	if err != nil {
 		return "", fmt.Errorf("fingerprint index config: %w", err)
