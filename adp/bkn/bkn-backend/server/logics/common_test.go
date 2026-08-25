@@ -138,8 +138,9 @@ func Test_VegaResourceIndexCaps(t *testing.T) {
 			So(VegaResourceIndexCaps(nil), ShouldBeNil)
 		})
 
-		Convey("Resource without a local index returns nil even when features exist\n", func() {
+		Convey("Resource with an unavailable local index returns nil even when features exist\n", func() {
 			res := &interfaces.VegaResource{
+				LocalIndexStatus: "unavailable",
 				SchemaDefinition: []*interfaces.Property{fulltextAndVector},
 			}
 			So(VegaResourceIndexCaps(res), ShouldBeNil)
@@ -147,7 +148,7 @@ func Test_VegaResourceIndexCaps(t *testing.T) {
 
 		Convey("Indexed resource derives caps per field\n", func() {
 			res := &interfaces.VegaResource{
-				LocalIndexName:   "vega-build-res-task",
+				LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 				SchemaDefinition: []*interfaces.Property{fulltextAndVector, keywordOnly, plain, nil},
 			}
 
@@ -169,7 +170,7 @@ func Test_VegaResourceIndexCaps(t *testing.T) {
 
 func TestVegaResourceIndexCaps_RefPropertyRedirectsCapability(t *testing.T) {
 	res := &interfaces.VegaResource{
-		LocalIndexName: "vega-build-abc",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 		SchemaDefinition: []*interfaces.Property{
 			{
 				Name: "fulltext_summary",
@@ -199,7 +200,7 @@ func TestVegaResourceIndexCaps_RefPropertyRedirectsCapability(t *testing.T) {
 
 func TestVegaResourceIndexCaps_VectorCapabilityFollowsFeature(t *testing.T) {
 	res := &interfaces.VegaResource{
-		LocalIndexName: "vega-build-abc",
+		LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 		SchemaDefinition: []*interfaces.Property{
 			{
 				Name: "stadium_name",
@@ -231,5 +232,18 @@ func TestVegaResourceIndexCaps_NoVectorFieldWithoutLocalIndex(t *testing.T) {
 
 	if caps := VegaResourceIndexCaps(res); len(caps) != 0 {
 		t.Fatalf("declared features without a built index must yield no capability, got %+v", caps)
+	}
+}
+
+func TestVegaResourceIndexCaps_StaleLocalIndexHasNoCapability(t *testing.T) {
+	res := &interfaces.VegaResource{
+		LocalIndexStatus: "stale",
+		SchemaDefinition: []*interfaces.Property{
+			{Name: "stadium_name", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.FieldFeatureType_Vector}}},
+		},
+	}
+
+	if caps := VegaResourceIndexCaps(res); len(caps) != 0 {
+		t.Fatalf("stale local index must yield no capability, got %+v", caps)
 	}
 }

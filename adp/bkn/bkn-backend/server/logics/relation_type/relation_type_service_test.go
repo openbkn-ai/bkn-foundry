@@ -642,7 +642,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &relationTypeService{
@@ -651,7 +651,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			rta:        rta,
 			ps:         ps,
 			ots:        ots,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success creating relation types with normal mode\n", func() {
@@ -675,7 +675,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", true, nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
@@ -769,7 +769,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Ignore, true)
@@ -795,7 +795,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Overwrite, true)
@@ -823,7 +823,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Overwrite, true)
@@ -851,7 +851,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 				Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
@@ -926,7 +926,7 @@ func Test_relationTypeService_CreateRelationTypes(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().CheckRelationTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			rta.EXPECT().CreateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 			smock.ExpectRollback()
 
 			result, err := service.CreateRelationTypes(ctx, nil, relationTypes, interfaces.ImportMode_Normal, true)
@@ -950,7 +950,7 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &relationTypeService{
@@ -959,7 +959,7 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 			rta:        rta,
 			ps:         ps,
 			ots:        ots,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success updating relation type\n", func() {
@@ -979,7 +979,7 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			ots.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", true, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateRelationType(ctx, nil, relationType, false)
@@ -1059,7 +1059,7 @@ func Test_relationTypeService_UpdateRelationType(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ots.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.ObjectType{}, nil).AnyTimes()
 			rta.EXPECT().UpdateRelationType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateRelationType(ctx, nil, relationType, false)
@@ -1077,7 +1077,7 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &relationTypeService{
@@ -1085,7 +1085,7 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 			db:         db,
 			rta:        rta,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success deleting relation types\n", func() {
@@ -1096,7 +1096,7 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().DeleteRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(2), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
 
 			err := service.DeleteRelationTypesByIDs(ctx, nil, knID, branch, rtIDs)
@@ -1136,7 +1136,7 @@ func Test_relationTypeService_DeleteRelationTypesByIDs(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rta.EXPECT().DeleteRelationTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteRelationTypesByIDs(ctx, nil, knID, branch, rtIDs)
@@ -1156,11 +1156,11 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success inserting empty list\n", func() {
@@ -1182,7 +1182,7 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := service.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldBeNil)
@@ -1200,7 +1200,7 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			err := service.InsertDatasetData(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -1212,12 +1212,12 @@ func Test_relationTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
+			vbaWithVector := bmock.NewMockVegaBackendService(mockCtrl)
 			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &relationTypeService{
 				appSetting: appSettingWithVector,
-				vba:        vbaWithVector,
+				vbs:        vbaWithVector,
 				mfs:        mfs,
 			}
 
@@ -1352,11 +1352,11 @@ func Test_relationTypeService_GetTotal(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting total\n", func() {
@@ -1367,7 +1367,7 @@ func Test_relationTypeService_GetTotal(t *testing.T) {
 				"value_from": "const",
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				TotalCount: 10,
 			}, nil)
 
@@ -1379,7 +1379,7 @@ func Test_relationTypeService_GetTotal(t *testing.T) {
 		Convey("Failed when QueryResourceData fails\n", func() {
 			filterCondition := map[string]any{}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldNotBeNil)
@@ -1395,11 +1395,11 @@ func Test_relationTypeService_GetTotalWithLargeRTIDs(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting total with large RTIDs\n", func() {
@@ -1412,7 +1412,7 @@ func Test_relationTypeService_GetTotalWithLargeRTIDs(t *testing.T) {
 			rtIDs := []string{"rt1", "rt2", "rt3"}
 
 			// Mock GetTotalWithRTIDs calls
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				TotalCount: 5,
 			}, nil).Times(1)
 
@@ -1434,7 +1434,7 @@ func Test_relationTypeService_GetTotalWithLargeRTIDs(t *testing.T) {
 			filterCondition := map[string]any{}
 			rtIDs := []string{"rt1"}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			total, err := service.GetTotalWithLargeRTIDs(ctx, filterCondition, rtIDs)
 			So(err, ShouldNotBeNil)
@@ -1450,11 +1450,11 @@ func Test_relationTypeService_GetTotalWithRTIDs(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting total with RTIDs\n", func() {
@@ -1466,7 +1466,7 @@ func Test_relationTypeService_GetTotalWithRTIDs(t *testing.T) {
 			}
 			rtIDs := []string{"rt1", "rt2"}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				TotalCount: 2,
 			}, nil)
 
@@ -1479,7 +1479,7 @@ func Test_relationTypeService_GetTotalWithRTIDs(t *testing.T) {
 			filterCondition := map[string]any{}
 			rtIDs := []string{"rt1"}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 
 			total, err := service.GetTotalWithRTIDs(ctx, filterCondition, rtIDs)
 			So(err, ShouldNotBeNil)
@@ -1500,13 +1500,13 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			},
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
 			cga:        cga,
-			vba:        vba,
+			vbs:        vbs,
 			ps:         ps,
 		}
 
@@ -1518,7 +1518,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
 				TotalCount: 0,
 			}, nil)
@@ -1553,7 +1553,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsTotal(gomock.Any(), gomock.Any()).Return(1, nil)
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
 				TotalCount: 0,
 			}, nil)
@@ -1575,7 +1575,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			cga.EXPECT().GetRelationTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"keep-1", "keep-2"}, nil)
 			nextCursor := "cursor-1"
 			gomock.InOrder(
-				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+				vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: 2})
 						So(params.Sort, ShouldResemble, []*interfaces.SortParams{{Field: "id", Direction: "asc"}})
@@ -1584,7 +1584,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 							{"id": "keep-1", "name": "keep-1"},
 						}, Paging: &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor}}, nil
 					}),
-				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+				vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Cursor: nextCursor})
 						return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "keep-2", "name": "keep-2"}}}, nil
@@ -1656,7 +1656,7 @@ func Test_relationTypeService_SearchRelationTypes(t *testing.T) {
 			}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries:    []map[string]any{},
 				TotalCount: 0,
 			}, nil)
@@ -2028,13 +2028,13 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 			},
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 
 		service := &relationTypeService{
 			appSetting: appSetting,
 			cga:        cga,
-			vba:        vba,
+			vbs:        vbs,
 			ps:         ps,
 		}
 
@@ -2049,7 +2049,7 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 		Convey("Failed when QueryResourceData returns error\n", func() {
 			query := &interfaces.ConceptsQuery{KNID: "kn1", Branch: interfaces.MAIN_BRANCH, Limit: 10}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_RelationType_InternalError))
 			result, err := service.SearchRelationTypes(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Entries), ShouldEqual, 0)
@@ -2079,11 +2079,11 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// NeedTotal block: QueryResourceData with Limit=1, NeedTotal=true
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{}, TotalCount: 5,
 			}, nil)
 			// Main loop: QueryResourceData returns empty → break
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}, nil)
 			result, err := service.SearchRelationTypes(ctx, query)
@@ -2099,7 +2099,7 @@ func Test_relationTypeService_SearchRelationTypes_extraCases(t *testing.T) {
 				"_score":  float64(0.95),
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{entry},
 			}, nil)
 			result, err := service.SearchRelationTypes(ctx, query)

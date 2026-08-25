@@ -782,11 +782,11 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success inserting dataset data\n", func() {
@@ -797,7 +797,7 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := service.InsertDatasetData(ctx, conceptGroup)
 			So(err, ShouldBeNil)
@@ -811,7 +811,7 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 
 			err := service.InsertDatasetData(ctx, conceptGroup)
 			So(err, ShouldNotBeNil)
@@ -823,12 +823,12 @@ func Test_conceptGroupService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
+			vbaWithVector := bmock.NewMockVegaBackendService(mockCtrl)
 			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &conceptGroupService{
 				appSetting: appSettingWithVector,
-				vba:        vbaWithVector,
+				vbs:        vbaWithVector,
 				mfs:        mfs,
 			}
 
@@ -921,14 +921,14 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
 			cga:        cga,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 			db:         db,
 		}
 
@@ -941,7 +941,7 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
@@ -997,7 +997,7 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
 			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
@@ -1013,7 +1013,7 @@ func Test_conceptGroupService_DeleteConceptGroupByID(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().DeleteConceptGroupByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), nil)
 			cga.EXPECT().DeleteObjectTypesFromGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(0), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.DeleteConceptGroupByID(ctx, nil, knID, branch, cgID)
@@ -1035,14 +1035,14 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
 			cga:        cga,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 			db:         db,
 		}
 
@@ -1058,7 +1058,7 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
 			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, false)
@@ -1109,7 +1109,7 @@ func Test_conceptGroupService_UpdateConceptGroup(t *testing.T) {
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
 			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateConceptGroup(ctx, nil, conceptGroup, false)
@@ -1401,14 +1401,14 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 		}
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &conceptGroupService{
 			appSetting: appSetting,
 			cga:        cga,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 			db:         db,
 		}
 
@@ -1426,7 +1426,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1488,7 +1488,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			}).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1532,7 +1532,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("cg1", true, nil).Times(2)
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), "kn1", interfaces.MAIN_BRANCH, []string{"cg1"}, interfaces.MODULE_TYPE_OBJECT_TYPE).Return([]string{}, nil)
 			cga.EXPECT().UpdateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1575,7 +1575,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ConceptGroup_InternalError))
 			smock.ExpectRollback()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1605,7 +1605,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 				appSetting: appSetting,
 				cga:        cga,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 				ots:        ots,
 			}
@@ -1620,7 +1620,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			ots.EXPECT().CreateObjectTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot1"}, nil).AnyTimes()
 			cga.EXPECT().ListConceptGroupRelations(gomock.Any(), gomock.Any(), gomock.Any()).Return([]interfaces.ConceptGroupRelation{}, nil).AnyTimes()
 			cga.EXPECT().CreateConceptGroupRelation(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1650,7 +1650,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 				appSetting: appSetting,
 				cga:        cga,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 				ots:        ots,
 			}
@@ -1690,7 +1690,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 				appSetting: appSetting,
 				cga:        cga,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 				ots:        ots,
 			}
@@ -1731,7 +1731,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 				appSetting: appSetting,
 				cga:        cga,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 				rts:        rts,
 			}
@@ -1742,7 +1742,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			rts.EXPECT().CreateRelationTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"rt1"}, nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1772,7 +1772,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 				appSetting: appSetting,
 				cga:        cga,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 				rts:        rts,
 			}
@@ -1812,7 +1812,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 				appSetting: appSetting,
 				cga:        cga,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 				ats:        ats,
 			}
@@ -1823,7 +1823,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 			cga.EXPECT().CheckConceptGroupExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			cga.EXPECT().CreateConceptGroup(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ats.EXPECT().CreateActionTypes(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"at1"}, nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			cgID, err := service.CreateConceptGroup(ctx, nil, conceptGroup, mode, true)
@@ -1853,7 +1853,7 @@ func Test_conceptGroupService_CreateConceptGroup(t *testing.T) {
 				appSetting: appSetting,
 				cga:        cga,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 				ats:        ats,
 			}

@@ -48,6 +48,7 @@ import (
 	"bkn-backend/drivenadapters/vega_backend"
 	"bkn-backend/driveradapters"
 	"bkn-backend/logics"
+	vega_backend_service "bkn-backend/logics/vega_backend"
 	"bkn-backend/worker"
 )
 
@@ -64,7 +65,8 @@ type mgrService struct {
 func (server *mgrService) start() {
 	logger.Info("Server Starting")
 
-	err := logics.Init(context.Background(), server.appSetting)
+	vbs := vega_backend_service.NewVegaBackendService(server.appSetting, logics.VBA)
+	err := logics.Init(context.Background(), server.appSetting, vbs)
 	if err != nil {
 		panic(err)
 	}

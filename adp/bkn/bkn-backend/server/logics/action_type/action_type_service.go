@@ -37,6 +37,7 @@ import (
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/user_mgmt"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -54,7 +55,7 @@ type actionTypeService struct {
 	ots        interfaces.ObjectTypeService
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 }
 
 func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
@@ -73,7 +74,7 @@ func NewActionTypeService(appSetting *common.AppSetting) interfaces.ActionTypeSe
 			ots:        object_type.NewObjectTypeService(appSetting),
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 		}
 	})
 	return atService
@@ -661,7 +662,7 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 
 	for _, atID := range atIDs {
 		docid := interfaces.GenerateConceptDocuemtnID(knID, interfaces.MODULE_TYPE_ACTION_TYPE, atID, branch)
-		err = ats.vba.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
+		err = ats.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除行动类概念索引失败")
@@ -888,7 +889,7 @@ func (ats *actionTypeService) InsertDatasetData(ctx context.Context, actionTypes
 		documents = append(documents, doc)
 	}
 
-	err := ats.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := ats.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		span.SetStatus(codes.Error, "行动类概念索引写入失败")
@@ -1024,7 +1025,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 				},
 				NeedTotal: true,
 			}
-			datasetResp, err := ats.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+			datasetResp, err := ats.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 			if err != nil {
 				logger.Errorf("QueryResourceData error: %s", err.Error())
 				span.SetStatus(codes.Error, "业务知识网络行动类检索查询总数失败")
@@ -1069,7 +1070,7 @@ func (ats *actionTypeService) SearchActionTypes(ctx context.Context, query *inte
 			NeedTotal:       false,
 			Sort:            sort,
 		}
-		datasetResp, err := ats.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		datasetResp, err := ats.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "业务知识网络行动类检索查询失败")
@@ -1203,7 +1204,7 @@ func (ats *actionTypeService) GetTotal(ctx context.Context, filterCondition map[
 		},
 		NeedTotal: true,
 	}
-	datasetResp, err := ats.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	datasetResp, err := ats.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
 		return total, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ActionType_InternalError).

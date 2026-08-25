@@ -35,6 +35,7 @@ import (
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/relation_type"
 	"bkn-backend/logics/user_mgmt"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -56,7 +57,7 @@ type conceptGroupService struct {
 	ps         interfaces.PermissionService
 	rts        interfaces.RelationTypeService
 	ums        interfaces.UserMgmtService
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 }
 
 func NewConceptGroupService(appSetting *common.AppSetting) interfaces.ConceptGroupService {
@@ -75,7 +76,7 @@ func NewConceptGroupService(appSetting *common.AppSetting) interfaces.ConceptGro
 			rta:        logics.RTA,
 			rts:        relation_type.NewRelationTypeService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 		}
 	})
 	return cgService
@@ -860,7 +861,7 @@ func (cgs *conceptGroupService) DeleteConceptGroupByID(ctx context.Context, tx *
 
 	docid := interfaces.GenerateConceptDocuemtnID(knID,
 		interfaces.MODULE_TYPE_CONCEPT_GROUP, cgID, branch)
-	err = cgs.vba.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
+	err = cgs.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
 	if err != nil {
 		logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除概念分组概念索引失败")
@@ -1083,7 +1084,7 @@ func (cgs *conceptGroupService) InsertDatasetData(ctx context.Context, origConce
 	// Set document ID
 	doc["_id"] = docid
 
-	err = cgs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
+	err = cgs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		span.SetStatus(codes.Error, "概念分组概念索引写入失败")

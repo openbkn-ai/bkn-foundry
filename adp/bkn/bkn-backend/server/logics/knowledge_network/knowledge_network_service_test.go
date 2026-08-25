@@ -784,11 +784,11 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success inserting dataset data\n", func() {
@@ -798,7 +798,7 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := service.InsertDatasetData(ctx, kn)
 			So(err, ShouldBeNil)
@@ -811,7 +811,7 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 				Branch: interfaces.MAIN_BRANCH,
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 
 			err := service.InsertDatasetData(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -823,12 +823,12 @@ func Test_knowledgeNetworkService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
+			vbaWithVector := bmock.NewMockVegaBackendService(mockCtrl)
 			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &knowledgeNetworkService{
 				appSetting: appSettingWithVector,
-				vba:        vbaWithVector,
+				vbs:        vbaWithVector,
 				mfs:        mfs,
 			}
 
@@ -922,14 +922,14 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 		}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &knowledgeNetworkService{
 			appSetting: appSetting,
 			kna:        kna,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 			db:         db,
 		}
 
@@ -943,7 +943,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
 			err := service.UpdateKN(ctx, nil, kn, false)
@@ -989,7 +989,7 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.UpdateKN(ctx, nil, kn, false)
@@ -1009,14 +1009,14 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna,
 				ps:         ps2,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 			}
 
 			smock.ExpectBegin()
 			ps2.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps2.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 
@@ -1037,14 +1037,14 @@ func Test_knowledgeNetworkService_UpdateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna,
 				ps:         ps2,
-				vba:        vba,
+				vbs:        vbs,
 				db:         db,
 			}
 
 			smock.ExpectBegin()
 			ps2.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			kna.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps2.EXPECT().UpdateResource(gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectCommit()
 
@@ -1063,7 +1063,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		bss := bmock.NewMockBusinessSystemService(mockCtrl)
 		ots := bmock.NewMockObjectTypeService(mockCtrl)
 		rts := bmock.NewMockRelationTypeService(mockCtrl)
@@ -1078,7 +1078,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			appSetting: appSetting,
 			kna:        kna,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 			bss:        bss,
 			ots:        ots,
 			rts:        rts,
@@ -1106,8 +1106,8 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			bss.EXPECT().UnbindResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
@@ -1237,7 +1237,7 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1260,8 +1260,8 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			err := service.DeleteKN(ctx, kn)
@@ -1284,8 +1284,8 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -1310,8 +1310,8 @@ func Test_knowledgeNetworkService_DeleteKN(t *testing.T) {
 			ms.EXPECT().DeleteMetricsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			riskTypeS.EXPECT().DeleteRiskTypesByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cgs.EXPECT().DeleteConceptGroupsByKnID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().DeleteDatasetDocumentsByQuery(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().DeleteResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			bss.EXPECT().UnbindResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
@@ -1686,7 +1686,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 		}
 		kna := bmock.NewMockKNAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		bss := bmock.NewMockBusinessSystemService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
@@ -1694,7 +1694,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			appSetting: appSetting,
 			kna:        kna,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 			bss:        bss,
 			db:         db,
 		}
@@ -1712,7 +1712,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			bss.EXPECT().BindResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
@@ -1773,7 +1773,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			}).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			bss.EXPECT().BindResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
@@ -1819,7 +1819,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna2,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				bss:        bss,
 				db:         db,
 				ots:        ots,
@@ -1834,7 +1834,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna2.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
 			kna2.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", true, nil).AnyTimes()
 			kna2.EXPECT().UpdateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
@@ -1858,7 +1858,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				bss:        bss,
 				db:         db2,
 			}
@@ -1907,7 +1907,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				bss:        bss,
 				db:         db,
 				cgs:        cgs,
@@ -1947,7 +1947,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				bss:        bss,
 				db:         db,
 				ots:        ots,
@@ -1987,7 +1987,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				bss:        bss,
 				db:         db,
 				rts:        rts,
@@ -2027,7 +2027,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 				appSetting: appSetting,
 				kna:        kna,
 				ps:         ps,
-				vba:        vba,
+				vbs:        vbs,
 				bss:        bss,
 				db:         db,
 				ats:        ats,
@@ -2059,7 +2059,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)
@@ -2080,7 +2080,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()
 
@@ -2102,7 +2102,7 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByID(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			bss.EXPECT().BindResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_KnowledgeNetwork_InternalError))
 			smock.ExpectRollback()

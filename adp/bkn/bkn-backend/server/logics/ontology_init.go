@@ -18,7 +18,7 @@ import (
 	"bkn-backend/logics/model_factory"
 )
 
-func Init(ctx context.Context, appSetting *common.AppSetting) error {
+func Init(ctx context.Context, appSetting *common.AppSetting, vbs interfaces.VegaBackendService) error {
 	logger.Info("Init BKN Dataset Start")
 
 	var vectorDim = 768 // default dimension
@@ -43,7 +43,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 	}
 
 	// Get or create catalog
-	catalog, err := VBA.GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID)
+	catalog, err := vbs.GetCatalogByID(ctx, interfaces.BKN_CATALOG_ID)
 	if err != nil {
 		logger.Errorf("GetCatalogByID err:%v", err)
 		return err
@@ -52,7 +52,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 	if catalog == nil {
 		// Create catalog
 		logger.Infof("Catalog %s not found, creating...", interfaces.BKN_CATALOG_NAME)
-		catalog, err = VBA.CreateCatalog(ctx, bknCatalogRequest())
+		catalog, err = vbs.CreateCatalog(ctx, bknCatalogRequest())
 		if err != nil {
 			logger.Errorf("CreateCatalog err:%v", err)
 			return err
@@ -63,7 +63,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 	}
 
 	// Get dataset
-	dataset, err := VBA.GetResourceByID(ctx, interfaces.BKN_DATASET_ID)
+	dataset, err := vbs.GetResourceByID(ctx, interfaces.BKN_DATASET_ID)
 	if err != nil {
 		logger.Errorf("GetResourceByID err:%v", err)
 		return err
@@ -77,7 +77,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 		logger.Infof("Dataset %s not found, creating...", interfaces.BKN_DATASET_NAME)
 
 		dataset = bknConceptDatasetRequest(expectedSchema, defaultEmbeddingModel)
-		err = VBA.CreateResource(ctx, dataset)
+		err = vbs.CreateResource(ctx, dataset)
 		if err != nil {
 			logger.Errorf("CreateResource err:%v", err)
 			return err
@@ -92,7 +92,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 			!sameDefaultEmbeddingModel(dataset.IndexConfig, defaultEmbeddingModel) {
 			logger.Infof("Dataset definition mismatch detected, deleting and recreating dataset...")
 			// Delete dataset
-			err = VBA.DeleteResource(ctx, dataset.ID)
+			err = vbs.DeleteResource(ctx, dataset.ID)
 			if err != nil {
 				logger.Errorf("DeleteResource err:%v", err)
 				return err
@@ -100,7 +100,7 @@ func Init(ctx context.Context, appSetting *common.AppSetting) error {
 
 			// Create dataset again
 			dataset = bknConceptDatasetRequest(expectedSchema, defaultEmbeddingModel)
-			err = VBA.CreateResource(ctx, dataset)
+			err = vbs.CreateResource(ctx, dataset)
 			if err != nil {
 				logger.Errorf("CreateResource err:%v", err)
 				return err

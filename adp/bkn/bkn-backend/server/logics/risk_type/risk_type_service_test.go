@@ -34,11 +34,11 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 		service := &riskTypeService{
 			appSetting: &common.AppSetting{},
-			vba:        vba,
+			vbs:        vbs,
 			ps:         ps,
 		}
 		query := &interfaces.ConceptsQuery{
@@ -54,13 +54,13 @@ func TestRiskTypeServiceSearchRiskTypesContinuesDefaultCursorPaging(t *testing.T
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		nextCursor := "cursor-1"
 		gomock.InOrder(
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 				DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 					So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: interfaces.ConceptQueryLimit})
 					So(params.Sort, ShouldResemble, []*interfaces.SortParams{{Field: "id", Direction: "asc"}})
 					return &interfaces.DatasetQueryResponse{Entries: fullPage, Paging: &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor}}, nil
 				}),
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 				DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 					So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Cursor: nextCursor})
 					return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "risk-last", "name": "risk-last"}}}, nil

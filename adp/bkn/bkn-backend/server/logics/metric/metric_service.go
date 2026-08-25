@@ -35,6 +35,7 @@ import (
 	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -49,7 +50,7 @@ type metricService struct {
 	cga        interfaces.ConceptGroupAccess
 	ps         interfaces.PermissionService
 	uma        interfaces.UserMgmtService
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 	mfs        interfaces.ModelFactoryService
 	ots        interfaces.ObjectTypeService
 }
@@ -67,7 +68,7 @@ func NewMetricService(appSetting *common.AppSetting) interfaces.MetricService {
 			cga:        logics.CGA,
 			ps:         permission.NewPermissionService(appSetting),
 			uma:        logics.UMA,
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			ots:        object_type.NewObjectTypeService(appSetting),
 		}
@@ -129,7 +130,7 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 		documents = append(documents, doc)
 	}
 
-	if err := ms.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents); err != nil {
+	if err := ms.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents); err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		span.SetStatus(codes.Error, "指标概念索引写入失败")
 		return err
@@ -140,7 +141,7 @@ func (ms *metricService) InsertDatasetData(ctx context.Context, metrics []*inter
 func (ms *metricService) deleteDatasetDocs(ctx context.Context, knID string, branch string, metricIDs []string) {
 	for _, id := range metricIDs {
 		docid := interfaces.GenerateConceptDocuemtnID(knID, interfaces.MODULE_TYPE_METRIC, id, branch)
-		if err := ms.vba.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid); err != nil {
+		if err := ms.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid); err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID metric %s: %v", id, err)
 		}
 	}
@@ -783,7 +784,7 @@ func (ms *metricService) SearchMetrics(ctx context.Context, query *interfaces.Co
 			NeedTotal:       false,
 			Sort:            sort,
 		}
-		datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		datasetResp, err := ms.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
 			logger.Errorf("metric concept search query QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "metric concept search query failed")
@@ -857,7 +858,7 @@ func (ms *metricService) getMetricDatasetTotal(ctx context.Context, filterCondit
 		},
 		NeedTotal: true,
 	}
-	datasetResp, err := ms.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	datasetResp, err := ms.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total metric documents count failed")
 		return 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).

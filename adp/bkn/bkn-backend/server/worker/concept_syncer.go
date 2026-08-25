@@ -23,6 +23,7 @@ import (
 	"bkn-backend/interfaces"
 	"bkn-backend/logics"
 	"bkn-backend/logics/model_factory"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -36,7 +37,7 @@ type ConceptSyncer struct {
 	cga        interfaces.ConceptGroupAccess
 	mfs        interfaces.ModelFactoryService
 	kna        interfaces.KNAccess
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 	ota        interfaces.ObjectTypeAccess
 	rta        interfaces.RelationTypeAccess
 	riskTypeA  interfaces.RiskTypeAccess
@@ -72,7 +73,7 @@ func NewConceptSyncer(appSetting *common.AppSetting) *ConceptSyncer {
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 			kna:        logics.KNA,
 			cga:        logics.CGA,
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 			ota:        logics.OTA,
 			rta:        logics.RTA,
 			riskTypeA:  logics.RiskTypeAccess,
@@ -543,7 +544,7 @@ func (cs *ConceptSyncer) insertDatasetDataForKN(ctx context.Context, kn *interfa
 	// Set document ID
 	doc["_id"] = docid
 
-	err = cs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
+	err = cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		return err
@@ -628,7 +629,7 @@ func (cs *ConceptSyncer) insertDatasetDataForObjectTypes(ctx context.Context, ob
 		documents = append(documents, doc)
 	}
 
-	err := cs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		return err
@@ -717,7 +718,7 @@ func (cs *ConceptSyncer) insertDatasetDataForActionTypes(ctx context.Context, ac
 		documents = append(documents, doc)
 	}
 
-	err := cs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		return err
@@ -786,7 +787,7 @@ func (cs *ConceptSyncer) insertDatasetDataForRelationTypes(ctx context.Context, 
 		documents = append(documents, doc)
 	}
 
-	err := cs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		return err
@@ -855,7 +856,7 @@ func (cs *ConceptSyncer) insertDatasetDataForConceptGroups(ctx context.Context, 
 		documents = append(documents, doc)
 	}
 
-	err := cs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		return err
@@ -924,7 +925,7 @@ func (cs *ConceptSyncer) insertDatasetDataForRiskTypes(ctx context.Context, risk
 		documents = append(documents, doc)
 	}
 
-	err := cs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		return err
@@ -986,7 +987,7 @@ func (cs *ConceptSyncer) insertDatasetDataForMetrics(ctx context.Context, metric
 		documents = append(documents, doc)
 	}
 
-	if err := cs.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents); err != nil {
+	if err := cs.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents); err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		return err
 	}
@@ -1003,7 +1004,7 @@ func (cs *ConceptSyncer) queryAllDatasetEntries(ctx context.Context, filterCondi
 	}
 	entries := make([]map[string]any, 0)
 	for {
-		response, err := cs.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		response, err := cs.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
 			return nil, err
 		}

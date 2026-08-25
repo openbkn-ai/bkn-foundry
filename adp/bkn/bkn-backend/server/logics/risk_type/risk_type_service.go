@@ -33,6 +33,7 @@ import (
 	"bkn-backend/logics"
 	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/permission"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -46,7 +47,7 @@ type riskTypeService struct {
 	rta        interfaces.RiskTypeAccess
 	ps         interfaces.PermissionService
 	uma        interfaces.UserMgmtAccess
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 	mfs        interfaces.ModelFactoryService
 }
 
@@ -62,7 +63,7 @@ func NewRiskTypeService(appSetting *common.AppSetting) interfaces.RiskTypeServic
 			rta:        logics.RiskTypeAccess,
 			ps:         permission.NewPermissionService(appSetting),
 			uma:        logics.UMA,
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 			mfs:        model_factory.NewModelFactoryService(appSetting, logics.MFA),
 		}
 	})
@@ -417,7 +418,7 @@ func (rts *riskTypeService) DeleteRiskTypesByIDs(ctx context.Context, tx *sql.Tx
 
 	for _, rtID := range rtIDs {
 		docid := interfaces.GenerateConceptDocuemtnID(knID, interfaces.MODULE_TYPE_RISK_TYPE, rtID, branch)
-		err = rts.vba.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
+		err = rts.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除风险类概念索引失败")
@@ -495,7 +496,7 @@ func (rts *riskTypeService) InsertDatasetData(ctx context.Context, riskTypes []*
 		documents = append(documents, doc)
 	}
 
-	err := rts.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := rts.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		span.SetStatus(codes.Error, "风险类概念索引写入失败")
@@ -567,7 +568,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			},
 			NeedTotal: true,
 		}
-		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		datasetResp, err := rts.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "风险类检索查询总数失败")
@@ -601,7 +602,7 @@ func (rts *riskTypeService) SearchRiskTypes(ctx context.Context, query *interfac
 			NeedTotal:       false,
 			Sort:            sort,
 		}
-		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		datasetResp, err := rts.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "风险类检索查询失败")

@@ -36,6 +36,7 @@ import (
 	"bkn-backend/logics/model_factory"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/user_mgmt"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -53,7 +54,7 @@ type objectTypeService struct {
 	ota        interfaces.ObjectTypeAccess
 	ps         interfaces.PermissionService
 	ums        interfaces.UserMgmtService
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 }
 
 func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
@@ -72,7 +73,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 			ota:        logics.OTA,
 			ps:         permission.NewPermissionService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 		}
 	})
 	return otService
@@ -83,7 +84,7 @@ func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.C
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			res, err := ots.vba.GetResourceByID(ctx, objectType.DataSource.ID)
+			res, err := ots.vbs.GetResourceByID(ctx, objectType.DataSource.ID)
 			if err != nil {
 				return rest.NewHTTPError(ctx, http.StatusBadRequest,
 					berrors.BknBackend_ObjectType_InvalidParameter).
@@ -676,7 +677,7 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	var datasetResp *interfaces.DatasetQueryResponse
 	switch dsType {
 	case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-		datasetResp, err = ots.vba.QueryResourceData(ctx, objectType.DataSource.ID, &interfaces.ResourceDataQueryParams{
+		datasetResp, err = ots.vbs.QueryResourceData(ctx, objectType.DataSource.ID, &interfaces.ResourceDataQueryParams{
 			Paging: interfaces.ResourceDataPagingRequest{
 				Mode:   "single",
 				Limit:  query.Limit,
@@ -1180,7 +1181,7 @@ func (ots *objectTypeService) DeleteObjectTypesByIDs(ctx context.Context, tx *sq
 
 	for _, otID := range otIDs {
 		docid := interfaces.GenerateConceptDocuemtnID(knID, interfaces.MODULE_TYPE_OBJECT_TYPE, otID, branch)
-		err = ots.vba.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
+		err = ots.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除对象类概念索引失败")
@@ -1485,7 +1486,7 @@ func (ots *objectTypeService) InsertDatasetData(ctx context.Context, objectTypes
 		documents = append(documents, doc)
 	}
 
-	err := ots.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := ots.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		span.SetStatus(codes.Error, "对象类概念索引写入失败")
@@ -1621,7 +1622,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 				},
 				NeedTotal: true,
 			}
-			datasetResp, err := ots.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+			datasetResp, err := ots.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 			if err != nil {
 				logger.Errorf("QueryDatasetData error: %s", err.Error())
 				span.SetStatus(codes.Error, "业务知识网络对象类检索查询总数失败")
@@ -1666,7 +1667,7 @@ func (ots *objectTypeService) SearchObjectTypes(ctx context.Context,
 			NeedTotal:       false,
 			Sort:            sort,
 		}
-		datasetResp, err := ots.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		datasetResp, err := ots.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "业务知识网络对象类检索查询失败")
@@ -1771,7 +1772,7 @@ func (ots *objectTypeService) processObjectTypeDetails(ctx context.Context, obje
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
 		case interfaces.DATA_SOURCE_TYPE_RESOURCE:
-			res, err := ots.vba.GetResourceByID(ctx, objectType.DataSource.ID)
+			res, err := ots.vbs.GetResourceByID(ctx, objectType.DataSource.ID)
 			if err != nil || res == nil {
 				otellog.LogWarn(ctx, fmt.Sprintf("Object type [%s]'s vega Resource %s not found, error: %v",
 					objectType.OTID, objectType.DataSource.ID, err))
@@ -1825,7 +1826,7 @@ func (ots *objectTypeService) GetTotal(ctx context.Context, filterCondition map[
 		},
 		NeedTotal: true,
 	}
-	datasetResp, err := ots.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	datasetResp, err := ots.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
 		return total, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_ObjectType_InternalError).

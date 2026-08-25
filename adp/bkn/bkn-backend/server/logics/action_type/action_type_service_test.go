@@ -628,11 +628,11 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &actionTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting total\n", func() {
@@ -645,7 +645,7 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 				TotalCount: 10,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldBeNil)
@@ -659,7 +659,7 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldNotBeNil)
@@ -673,7 +673,7 @@ func Test_actionTypeService_GetTotal(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil)
 
 			total, err := service.GetTotal(ctx, filterCondition)
 			So(err, ShouldBeNil)
@@ -689,11 +689,11 @@ func Test_actionTypeService_GetTotalWithATIDs(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &actionTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting total with ATIDs\n", func() {
@@ -705,7 +705,7 @@ func Test_actionTypeService_GetTotalWithATIDs(t *testing.T) {
 				TotalCount: 2,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			total, err := service.GetTotalWithATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldBeNil)
@@ -718,7 +718,7 @@ func Test_actionTypeService_GetTotalWithATIDs(t *testing.T) {
 			}
 			atIDs := []string{"at1"}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			total, err := service.GetTotalWithATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldNotBeNil)
@@ -734,11 +734,11 @@ func Test_actionTypeService_GetTotalWithLargeATIDs(t *testing.T) {
 		defer mockCtrl.Finish()
 
 		appSetting := &common.AppSetting{}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &actionTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success getting total with large ATIDs\n", func() {
@@ -750,7 +750,7 @@ func Test_actionTypeService_GetTotalWithLargeATIDs(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil).AnyTimes()
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil).AnyTimes()
 
 			total, err := service.GetTotalWithLargeATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldBeNil)
@@ -774,7 +774,7 @@ func Test_actionTypeService_GetTotalWithLargeATIDs(t *testing.T) {
 			}
 			atIDs := []string{"at1", "at2"}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			total, err := service.GetTotalWithLargeATIDs(ctx, filterCondition, atIDs)
 			So(err, ShouldNotBeNil)
@@ -794,11 +794,11 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &actionTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success inserting dataset data\n", func() {
@@ -813,7 +813,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 
 			err := service.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldBeNil)
@@ -838,7 +838,7 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 
 			err := service.InsertDatasetData(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -850,12 +850,12 @@ func Test_actionTypeService_InsertDatasetData(t *testing.T) {
 					DefaultSmallModelEnabled: true,
 				},
 			}
-			vbaWithVector := bmock.NewMockVegaBackendAccess(mockCtrl)
+			vbaWithVector := bmock.NewMockVegaBackendService(mockCtrl)
 			mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 			serviceWithVector := &actionTypeService{
 				appSetting: appSettingWithVector,
-				vba:        vbaWithVector,
+				vbs:        vbaWithVector,
 				mfs:        mfs,
 			}
 
@@ -994,14 +994,14 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		service := &actionTypeService{
 			appSetting: appSetting,
 			ata:        ata,
 			db:         db,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success deleting action types\n", func() {
@@ -1011,7 +1011,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().DeleteActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(2), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
 			err := service.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
 			So(err, ShouldBeNil)
@@ -1047,7 +1047,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().DeleteActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			err := service.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
 			So(err, ShouldNotBeNil)
@@ -1060,7 +1060,7 @@ func Test_actionTypeService_DeleteActionTypesByIDs(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().DeleteActionTypesByIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(int64(1), nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
 			err := service.DeleteActionTypesByIDs(ctx, nil, knID, branch, atIDs)
 			So(err, ShouldBeNil)
@@ -1081,7 +1081,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 		}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &actionTypeService{
@@ -1089,7 +1089,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			ata:        ata,
 			db:         db,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success updating action type\n", func() {
@@ -1105,7 +1105,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			err := service.UpdateActionType(ctx, nil, actionType, false)
 			So(err, ShouldBeNil)
@@ -1158,7 +1158,7 @@ func Test_actionTypeService_UpdateActionType(t *testing.T) {
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			err := service.UpdateActionType(ctx, nil, actionType, false)
 			So(err, ShouldNotBeNil)
@@ -1179,7 +1179,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 		}
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &actionTypeService{
@@ -1187,7 +1187,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata:        ata,
 			db:         db,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success creating action types with normal mode\n", func() {
@@ -1208,7 +1208,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldBeNil)
@@ -1281,7 +1281,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				atType := at.(*interfaces.ActionType)
 				So(atType.ATID, ShouldNotBeEmpty)
 			}).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldBeNil)
@@ -1329,7 +1329,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("at1", true, nil)
 			ata.EXPECT().UpdateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(2)
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldBeNil)
@@ -1354,7 +1354,7 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldNotBeNil)
@@ -1374,13 +1374,13 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 
 		service := &actionTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			cga:        cga,
 			ps:         ps,
 		}
@@ -1402,7 +1402,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 			}
 
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			result, err := service.SearchActionTypes(ctx, query)
 			So(err, ShouldBeNil)
@@ -1439,7 +1439,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			result, err := service.SearchActionTypes(ctx, query)
 			So(err, ShouldBeNil)
@@ -1458,7 +1458,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 			cga.EXPECT().GetActionTypeIDsFromConceptGroupRelation(gomock.Any(), gomock.Any()).Return([]string{"keep-1", "keep-2"}, nil)
 			nextCursor := "cursor-1"
 			gomock.InOrder(
-				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+				vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: 2})
 						So(params.Sort, ShouldResemble, []*interfaces.SortParams{{Field: "id", Direction: "asc"}})
@@ -1467,7 +1467,7 @@ func Test_actionTypeService_SearchActionTypes(t *testing.T) {
 							{"id": "keep-1", "name": "keep-1"},
 						}, Paging: &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor}}, nil
 					}),
-				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+				vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Cursor: nextCursor})
 						return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "keep-2", "name": "keep-2"}}}, nil
@@ -1578,13 +1578,13 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
 
 		service := &actionTypeService{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			cga:        cga,
 			ps:         ps,
 		}
@@ -1600,7 +1600,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 		Convey("Failed when QueryResourceData returns error\n", func() {
 			query := &interfaces.ConceptsQuery{KNID: "kn1", Branch: interfaces.MAIN_BRANCH, Limit: 10}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ActionType_InternalError))
 			result, err := service.SearchActionTypes(ctx, query)
 			So(err, ShouldNotBeNil)
 			So(len(result.Entries), ShouldEqual, 0)
@@ -1630,11 +1630,11 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			// NeedTotal block: QueryResourceData with Limit=1
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{}, TotalCount: 3,
 			}, nil)
 			// Main loop: empty response → break
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}, nil)
 			result, err := service.SearchActionTypes(ctx, query)
@@ -1650,7 +1650,7 @@ func Test_actionTypeService_SearchActionTypes_extraCases(t *testing.T) {
 				"_score":  float64(0.9),
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(&interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{entry},
 			}, nil)
 			result, err := service.SearchActionTypes(ctx, query)

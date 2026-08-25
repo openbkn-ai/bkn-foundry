@@ -249,11 +249,6 @@ const (
 	BKN_DATASET_ID   = "adp_bkn_concept_dataset"
 	BKN_DATASET_NAME = "adp_bkn_concept_dataset"
 
-	// Feature configuration.
-	FieldFeatureType_Keyword  = "keyword"
-	FieldFeatureType_Fulltext = "fulltext"
-	FieldFeatureType_Vector   = "vector"
-
 	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE            = "ignore_above"
 	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE      = 1024
 	FIELD_KEYWORD_PROPERTY_IGNORE_ABOVE_VALUE_8192 = 8192

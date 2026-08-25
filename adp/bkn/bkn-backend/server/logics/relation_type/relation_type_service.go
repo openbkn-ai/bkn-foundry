@@ -37,6 +37,7 @@ import (
 	"bkn-backend/logics/object_type"
 	"bkn-backend/logics/permission"
 	"bkn-backend/logics/user_mgmt"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -53,7 +54,7 @@ type relationTypeService struct {
 	ps         interfaces.PermissionService
 	rta        interfaces.RelationTypeAccess
 	ums        interfaces.UserMgmtService
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 }
 
 func invalidParameterDetail(ctx context.Context, name string, templateData map[string]any) string {
@@ -71,7 +72,7 @@ func NewRelationTypeService(appSetting *common.AppSetting) interfaces.RelationTy
 			ps:         permission.NewPermissionService(appSetting),
 			rta:        logics.RTA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 		}
 	})
 	return rtService
@@ -604,7 +605,7 @@ func (rts *relationTypeService) DeleteRelationTypesByIDs(ctx context.Context, tx
 
 	for _, rtID := range rtIDs {
 		docid := interfaces.GenerateConceptDocuemtnID(knID, interfaces.MODULE_TYPE_RELATION_TYPE, rtID, branch)
-		err = rts.vba.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
+		err = rts.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
 		if err != nil {
 			logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 			span.SetStatus(codes.Error, "删除关系类概念索引失败")
@@ -755,7 +756,7 @@ func (rts *relationTypeService) InsertDatasetData(ctx context.Context, relationT
 		documents = append(documents, doc)
 	}
 
-	err := rts.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
+	err := rts.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, documents)
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		span.SetStatus(codes.Error, "关系类概念索引写入失败")
@@ -891,7 +892,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 				},
 				NeedTotal: true,
 			}
-			datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+			datasetResp, err := rts.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 			if err != nil {
 				logger.Errorf("QueryDatasetData error: %s", err.Error())
 				span.SetStatus(codes.Error, "业务知识网络关系类检索查询总数失败")
@@ -936,7 +937,7 @@ func (rts *relationTypeService) SearchRelationTypes(ctx context.Context,
 			NeedTotal:       true,
 			Sort:            sort,
 		}
-		datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+		datasetResp, err := rts.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 		if err != nil {
 			logger.Errorf("QueryResourceData error: %s", err.Error())
 			span.SetStatus(codes.Error, "业务知识网络关系类检索查询失败")
@@ -1016,7 +1017,7 @@ func (rts *relationTypeService) GetTotal(ctx context.Context, filterCondition ma
 		},
 		NeedTotal: true,
 	}
-	datasetResp, err := rts.vba.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
+	datasetResp, err := rts.vbs.QueryResourceData(ctx, interfaces.BKN_DATASET_ID, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "Search total documents count failed")
 		return total, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_RelationType_InternalError).

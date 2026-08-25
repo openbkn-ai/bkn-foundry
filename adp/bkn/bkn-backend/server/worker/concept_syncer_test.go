@@ -63,20 +63,20 @@ func TestConceptSyncerGetDefaultModelCachesForSyncRound(t *testing.T) {
 func TestConceptSyncerQueryAllDatasetEntriesUsesCursor(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-	vba := bmock.NewMockVegaBackendAccess(ctrl)
-	cs := &ConceptSyncer{vba: vba}
+	vbs := bmock.NewMockVegaBackendService(ctrl)
+	cs := &ConceptSyncer{vbs: vbs}
 	nextCursor := "cursor-1"
 	filter := map[string]any{"field": "module_type"}
 
 	gomock.InOrder(
-		vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+		vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 				if params.Paging.Mode != "cursor" || params.Paging.Limit != conceptSyncPageLimit || len(params.Sort) != 1 || params.Sort[0].Field != "id" {
 					t.Fatalf("unexpected initial paging request: %#v", params)
 				}
 				return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "1"}}, Paging: &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor}}, nil
 			}),
-		vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+		vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 				if params.Paging.Cursor != nextCursor {
 					t.Fatalf("unexpected continuation request: %#v", params)
@@ -107,12 +107,12 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 		}
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			kna:        kna,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success with no knowledge networks", func() {
@@ -120,7 +120,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			err := cs.handleKNs()
 			So(err, ShouldBeNil)
@@ -153,10 +153,10 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
 			// 3. handleKnowledgeNetwork calls several getAllXXXFromDatasetByKnID methods.
 			// Each calls QueryResourceData.
-			vba.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil).Times(4)
+			vbs.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil).Times(4)
 
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
@@ -164,7 +164,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 
 			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.handleKNs()
 			So(err, ShouldBeNil)
@@ -179,7 +179,7 @@ func TestConceptSyncer_handleKNs(t *testing.T) {
 
 		Convey("Failed to get knowledge networks from dataset", func() {
 			kna.EXPECT().GetAllKNs(ctx).Return(map[string]*interfaces.KN{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			err := cs.handleKNs()
 			So(err, ShouldNotBeNil)
@@ -200,7 +200,7 @@ func TestConceptSyncer_handleKnowledgeNetwork(t *testing.T) {
 		}
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
@@ -209,7 +209,7 @@ func TestConceptSyncer_handleKnowledgeNetwork(t *testing.T) {
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			kna:        kna,
-			vba:        vba,
+			vbs:        vbs,
 			ota:        ota,
 			rta:        rta,
 			ata:        ata,
@@ -230,14 +230,14 @@ func TestConceptSyncer_handleKnowledgeNetwork(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil).Times(4)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil).Times(4)
 
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 
 			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
 			So(err, ShouldBeNil)
@@ -248,7 +248,7 @@ func TestConceptSyncer_handleKnowledgeNetwork(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil).Times(4)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil).Times(4)
 
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
@@ -280,12 +280,12 @@ func TestConceptSyncer_handleObjectTypes(t *testing.T) {
 		}
 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			ota:        ota,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -306,8 +306,8 @@ func TestConceptSyncer_handleObjectTypes(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleObjectTypes(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -339,12 +339,12 @@ func TestConceptSyncer_handleRelationTypes(t *testing.T) {
 		}
 
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			rta:        rta,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -366,8 +366,8 @@ func TestConceptSyncer_handleRelationTypes(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleRelationTypes(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -400,12 +400,12 @@ func TestConceptSyncer_handleActionTypes(t *testing.T) {
 		}
 
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			ata:        ata,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -427,8 +427,8 @@ func TestConceptSyncer_handleActionTypes(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleActionTypes(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -460,12 +460,12 @@ func TestConceptSyncer_handleConceptGroups(t *testing.T) {
 		}
 
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			cga:        cga,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -484,8 +484,8 @@ func TestConceptSyncer_handleConceptGroups(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			simpleItems, needUpdate, err := cs.handleConceptGroups(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -516,12 +516,12 @@ func TestConceptSyncer_insertDatasetDataForKN(t *testing.T) {
 			},
 		}
 
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			mfs:        mfs,
 		}
 
@@ -532,14 +532,14 @@ func TestConceptSyncer_insertDatasetDataForKN(t *testing.T) {
 		}
 
 		Convey("Success inserting KN data", func() {
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldBeNil)
 		})
 
 		Convey("Failed to insert KN data", func() {
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -553,10 +553,10 @@ func TestConceptSyncer_getAllKNsFromDataset(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
-			vba: vba,
+			vbs: vbs,
 		}
 
 		Convey("Success getting KNs from dataset", func() {
@@ -569,7 +569,7 @@ func TestConceptSyncer_getAllKNsFromDataset(t *testing.T) {
 				Entries: []map[string]any{entry},
 			}
 
-			vba.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
 
 			kns, err := cs.getAllKNsFromDataset(ctx)
 			So(err, ShouldBeNil)
@@ -577,7 +577,7 @@ func TestConceptSyncer_getAllKNsFromDataset(t *testing.T) {
 		})
 
 		Convey("Failed to query KNs", func() {
-			vba.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, err := cs.getAllKNsFromDataset(ctx)
 			So(err, ShouldNotBeNil)
@@ -591,7 +591,7 @@ func TestConceptSyncer_getAllKNsFromDataset(t *testing.T) {
 				Entries: []map[string]any{entry},
 			}
 
-			vba.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(datasetResp, nil)
 
 			_, err := cs.getAllKNsFromDataset(ctx)
 			So(err, ShouldNotBeNil)
@@ -610,12 +610,12 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 				DefaultSmallModelEnabled: true,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			mfs:        mfs,
 		}
 
@@ -638,7 +638,7 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 		Convey("Success inserting KN data with vector\n", func() {
 			mfs.EXPECT().GetDefaultModel(ctx).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldBeNil)
@@ -662,7 +662,7 @@ func TestConceptSyncer_insertDatasetDataForKN_WithVector(t *testing.T) {
 		Convey("Failed when InsertData returns error\n", func() {
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error")).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error")).AnyTimes()
 
 			err := cs.insertDatasetDataForKN(ctx, kn)
 			So(err, ShouldNotBeNil)
@@ -681,11 +681,11 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success with empty list\n", func() {
@@ -707,7 +707,7 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldBeNil)
@@ -725,7 +725,7 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldNotBeNil)
@@ -744,12 +744,12 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 				DefaultSmallModelEnabled: true,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			mfs:        mfs,
 		}
 
@@ -777,7 +777,7 @@ func TestConceptSyncer_insertDatasetDataForObjectTypes_WithVector(t *testing.T) 
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil).AnyTimes()
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).AnyTimes()
 
 			err := cs.insertDatasetDataForObjectTypes(ctx, objectTypes)
 			So(err, ShouldBeNil)
@@ -853,11 +853,11 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success with empty list\n", func() {
@@ -879,7 +879,7 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldBeNil)
@@ -897,7 +897,7 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldNotBeNil)
@@ -916,12 +916,12 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 				DefaultSmallModelEnabled: true,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			mfs:        mfs,
 		}
 
@@ -949,7 +949,7 @@ func TestConceptSyncer_insertDatasetDataForRelationTypes_WithVector(t *testing.T
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForRelationTypes(ctx, relationTypes)
 			So(err, ShouldBeNil)
@@ -1025,11 +1025,11 @@ func TestConceptSyncer_insertDatasetDataForActionTypes(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success with empty list\n", func() {
@@ -1051,7 +1051,7 @@ func TestConceptSyncer_insertDatasetDataForActionTypes(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldBeNil)
@@ -1069,7 +1069,7 @@ func TestConceptSyncer_insertDatasetDataForActionTypes(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldNotBeNil)
@@ -1088,12 +1088,12 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 				DefaultSmallModelEnabled: true,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			mfs:        mfs,
 		}
 
@@ -1121,7 +1121,7 @@ func TestConceptSyncer_insertDatasetDataForActionTypes_WithVector(t *testing.T) 
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForActionTypes(ctx, actionTypes)
 			So(err, ShouldBeNil)
@@ -1197,11 +1197,11 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups(t *testing.T) {
 				DefaultSmallModelEnabled: false,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Success with empty list\n", func() {
@@ -1221,7 +1221,7 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldBeNil)
@@ -1237,7 +1237,7 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups(t *testing.T) {
 				},
 			}
 
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("opensearch error"))
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldNotBeNil)
@@ -1256,12 +1256,12 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 				DefaultSmallModelEnabled: true,
 			},
 		}
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		mfs := bmock.NewMockModelFactoryService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
-			vba:        vba,
+			vbs:        vbs,
 			mfs:        mfs,
 		}
 
@@ -1287,7 +1287,7 @@ func TestConceptSyncer_insertDatasetDataForConceptGroups_WithVector(t *testing.T
 
 			mfs.EXPECT().GetDefaultModel(gomock.Any()).Return(&interfaces.SmallModel{ModelID: "model1"}, nil)
 			mfs.EXPECT().GetVector(gomock.Any(), gomock.Any(), gomock.Any()).Return(vectors, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := cs.insertDatasetDataForConceptGroups(ctx, conceptGroups)
 			So(err, ShouldBeNil)
@@ -1352,10 +1352,10 @@ func TestConceptSyncer_getAllObjectTypesFromDatasetByKnID(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
-			vba: vba,
+			vbs: vbs,
 		}
 
 		knID := "kn1"
@@ -1372,7 +1372,7 @@ func TestConceptSyncer_getAllObjectTypesFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			objectTypes, err := cs.getAllObjectTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -1380,7 +1380,7 @@ func TestConceptSyncer_getAllObjectTypesFromDatasetByKnID(t *testing.T) {
 		})
 
 		Convey("Failed to search object types\n", func() {
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, err := cs.getAllObjectTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1396,7 +1396,7 @@ func TestConceptSyncer_getAllObjectTypesFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			_, err := cs.getAllObjectTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1410,10 +1410,10 @@ func TestConceptSyncer_getAllRelationTypesFromDatasetByKnID(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
-			vba: vba,
+			vbs: vbs,
 		}
 
 		knID := "kn1"
@@ -1430,7 +1430,7 @@ func TestConceptSyncer_getAllRelationTypesFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			relationTypes, err := cs.getAllRelationTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -1438,7 +1438,7 @@ func TestConceptSyncer_getAllRelationTypesFromDatasetByKnID(t *testing.T) {
 		})
 
 		Convey("Failed to search relation types\n", func() {
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, err := cs.getAllRelationTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1454,7 +1454,7 @@ func TestConceptSyncer_getAllRelationTypesFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			_, err := cs.getAllRelationTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1468,10 +1468,10 @@ func TestConceptSyncer_getAllActionTypesFromDatasetByKnID(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
-			vba: vba,
+			vbs: vbs,
 		}
 
 		knID := "kn1"
@@ -1488,7 +1488,7 @@ func TestConceptSyncer_getAllActionTypesFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			actionTypes, err := cs.getAllActionTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -1496,7 +1496,7 @@ func TestConceptSyncer_getAllActionTypesFromDatasetByKnID(t *testing.T) {
 		})
 
 		Convey("Failed to search action types\n", func() {
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, err := cs.getAllActionTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1512,7 +1512,7 @@ func TestConceptSyncer_getAllActionTypesFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			_, err := cs.getAllActionTypesFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1526,10 +1526,10 @@ func TestConceptSyncer_getAllConceptGroupsFromDatasetByKnID(t *testing.T) {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
-			vba: vba,
+			vbs: vbs,
 		}
 
 		knID := "kn1"
@@ -1546,7 +1546,7 @@ func TestConceptSyncer_getAllConceptGroupsFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			conceptGroups, err := cs.getAllConceptGroupsFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldBeNil)
@@ -1554,7 +1554,7 @@ func TestConceptSyncer_getAllConceptGroupsFromDatasetByKnID(t *testing.T) {
 		})
 
 		Convey("Failed to search concept groups\n", func() {
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, err := cs.getAllConceptGroupsFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1570,7 +1570,7 @@ func TestConceptSyncer_getAllConceptGroupsFromDatasetByKnID(t *testing.T) {
 				TotalCount: 1,
 			}
 
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(response, nil)
 
 			_, err := cs.getAllConceptGroupsFromDatasetByKnID(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1591,7 +1591,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 		}
 
 		kna := bmock.NewMockKNAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
@@ -1600,7 +1600,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			kna:        kna,
-			vba:        vba,
+			vbs:        vbs,
 			ota:        ota,
 			rta:        rta,
 			ata:        ata,
@@ -1618,7 +1618,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to handle relation types\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(nil, errors.New("db error"))
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
@@ -1627,7 +1627,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to handle action types\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(2)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(2)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(nil, errors.New("db error"))
 
@@ -1637,7 +1637,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to handle concept groups\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(3)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(3)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(nil, errors.New("db error"))
@@ -1648,7 +1648,7 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to update KN detail\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(4)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(4)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
@@ -1660,12 +1660,12 @@ func TestConceptSyncer_handleKnowledgeNetwork_Errors(t *testing.T) {
 
 		Convey("Failed to insert dataset data for KN\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(4)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil).Times(4)
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
 			kna.EXPECT().UpdateKNDetail(ctx, knID, branch, gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
 
 			err := cs.handleKnowledgeNetwork(ctx, kn, true)
 			So(err, ShouldNotBeNil)
@@ -1686,12 +1686,12 @@ func TestConceptSyncer_handleObjectTypes_Errors(t *testing.T) {
 		}
 
 		ota := bmock.NewMockObjectTypeAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			ota:        ota,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -1699,7 +1699,7 @@ func TestConceptSyncer_handleObjectTypes_Errors(t *testing.T) {
 
 		Convey("Failed to get object types from dataset\n", func() {
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ObjectType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, _, err := cs.handleObjectTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1717,8 +1717,8 @@ func TestConceptSyncer_handleObjectTypes_Errors(t *testing.T) {
 			}
 
 			ota.EXPECT().GetAllObjectTypesByKnID(ctx, knID, branch).Return(objectTypes, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleObjectTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1739,12 +1739,12 @@ func TestConceptSyncer_handleRelationTypes_Errors(t *testing.T) {
 		}
 
 		rta := bmock.NewMockRelationTypeAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			rta:        rta,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -1752,7 +1752,7 @@ func TestConceptSyncer_handleRelationTypes_Errors(t *testing.T) {
 
 		Convey("Failed to get relation types from dataset\n", func() {
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.RelationType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, _, err := cs.handleRelationTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1770,8 +1770,8 @@ func TestConceptSyncer_handleRelationTypes_Errors(t *testing.T) {
 			}
 
 			rta.EXPECT().GetAllRelationTypesByKnID(ctx, knID, branch).Return(relationTypes, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleRelationTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1792,12 +1792,12 @@ func TestConceptSyncer_handleActionTypes_Errors(t *testing.T) {
 		}
 
 		ata := bmock.NewMockActionTypeAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			ata:        ata,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -1805,7 +1805,7 @@ func TestConceptSyncer_handleActionTypes_Errors(t *testing.T) {
 
 		Convey("Failed to get action types from dataset\n", func() {
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(map[string]*interfaces.ActionType{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, _, err := cs.handleActionTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1823,8 +1823,8 @@ func TestConceptSyncer_handleActionTypes_Errors(t *testing.T) {
 			}
 
 			ata.EXPECT().GetAllActionTypesByKnID(ctx, knID, branch).Return(actionTypes, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleActionTypes(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1845,12 +1845,12 @@ func TestConceptSyncer_handleConceptGroups_Errors(t *testing.T) {
 		}
 
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 
 		cs := &ConceptSyncer{
 			appSetting: appSetting,
 			cga:        cga,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		knID := "kn1"
@@ -1858,7 +1858,7 @@ func TestConceptSyncer_handleConceptGroups_Errors(t *testing.T) {
 
 		Convey("Failed to get concept groups from dataset\n", func() {
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(map[string]*interfaces.ConceptGroup{}, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil, errors.New("dataset error"))
 
 			_, _, err := cs.handleConceptGroups(ctx, knID, branch)
 			So(err, ShouldNotBeNil)
@@ -1874,8 +1874,8 @@ func TestConceptSyncer_handleConceptGroups_Errors(t *testing.T) {
 			}
 
 			cga.EXPECT().GetAllConceptGroupsByKnID(ctx, knID, branch).Return(conceptGroups, nil)
-			vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
-			vba.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
+			vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(&interfaces.DatasetQueryResponse{Entries: []map[string]any{}, TotalCount: 0}, nil)
+			vbs.EXPECT().WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, gomock.Any()).Return(errors.New("dataset error"))
 
 			_, _, err := cs.handleConceptGroups(ctx, knID, branch)
 			So(err, ShouldNotBeNil)

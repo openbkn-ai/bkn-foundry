@@ -39,6 +39,7 @@ import (
 	"bkn-backend/logics/relation_type"
 	"bkn-backend/logics/risk_type"
 	"bkn-backend/logics/user_mgmt"
+	"bkn-backend/logics/vega_backend"
 )
 
 var (
@@ -66,7 +67,7 @@ type knowledgeNetworkService struct {
 	ps         interfaces.PermissionService
 	rts        interfaces.RelationTypeService
 	ums        interfaces.UserMgmtService
-	vba        interfaces.VegaBackendAccess
+	vbs        interfaces.VegaBackendService
 }
 
 func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
@@ -91,7 +92,7 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
 			riskTypeS:  risk_type.NewRiskTypeService(appSetting),
 			rts:        relation_type.NewRelationTypeService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
-			vba:        logics.VBA,
+			vbs:        vega_backend.NewVegaBackendService(appSetting, logics.VBA),
 		}
 	})
 	return knService
@@ -1053,7 +1054,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 
 	docid := interfaces.GenerateConceptDocuemtnID(kn.KNID,
 		interfaces.MODULE_TYPE_KN, kn.KNID, kn.Branch)
-	err = kns.vba.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
+	err = kns.vbs.DeleteDatasetDocumentByID(ctx, interfaces.BKN_DATASET_ID, docid)
 	if err != nil {
 		logger.Errorf("DeleteDatasetDocumentByID error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络概念失败")
@@ -1078,7 +1079,7 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 			},
 		},
 	}
-	err = kns.vba.DeleteDatasetDocumentsByQuery(ctx, interfaces.BKN_DATASET_ID, filterCondition)
+	err = kns.vbs.DeleteDatasetDocumentsByQuery(ctx, interfaces.BKN_DATASET_ID, filterCondition)
 	if err != nil {
 		logger.Errorf("DeleteDatasetDocumentsByQuery error: %s", err.Error())
 		span.SetStatus(codes.Error, "删除业务知识网络概念失败")
@@ -1286,7 +1287,7 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 	// Set document ID
 	doc["_id"] = docid
 
-	err = kns.vba.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
+	err = kns.vbs.WriteDatasetDocuments(ctx, interfaces.BKN_DATASET_ID, []map[string]any{doc})
 	if err != nil {
 		logger.Errorf("WriteDatasetDocuments error: %s", err.Error())
 		span.SetStatus(codes.Error, "业务知识网络概念索引写入失败")

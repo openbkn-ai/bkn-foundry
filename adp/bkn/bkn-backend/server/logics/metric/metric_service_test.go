@@ -291,7 +291,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 		appSetting := &common.AppSetting{}
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &metricService{
@@ -299,7 +299,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 			db:         db,
 			ma:         ma,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("Failed when kn_id branch or id missing\n", func() {
@@ -329,7 +329,7 @@ func Test_metricService_UpdateMetric(t *testing.T) {
 			}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().UpdateMetric(gomock.Any(), tx, gomock.Any()).Return(nil)
-			vba.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
 
 			err := service.UpdateMetric(ctx, tx, req, false)
 			So(err, ShouldBeNil)
@@ -345,7 +345,7 @@ func Test_metricService_DeleteMetricsByIDs(t *testing.T) {
 
 		ma := bmock.NewMockMetricAccess(mockCtrl)
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		db, smock, _ := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
 
 		service := &metricService{
@@ -353,7 +353,7 @@ func Test_metricService_DeleteMetricsByIDs(t *testing.T) {
 			db:         db,
 			ma:         ma,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 		}
 
 		Convey("No-op when metricIDs empty\n", func() {
@@ -369,7 +369,7 @@ func Test_metricService_DeleteMetricsByIDs(t *testing.T) {
 			ids := []string{"a", "b"}
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			ma.EXPECT().DeleteMetricsByIDs(gomock.Any(), tx, "kn1", interfaces.MAIN_BRANCH, ids).Return(nil)
-			vba.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).Times(2)
+			vbs.EXPECT().DeleteDatasetDocumentByID(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil).Times(2)
 
 			err := service.DeleteMetricsByIDs(ctx, tx, "kn1", interfaces.MAIN_BRANCH, ids)
 			So(err, ShouldBeNil)
@@ -399,13 +399,13 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 			},
 		}
 		ps := bmock.NewMockPermissionService(mockCtrl)
-		vba := bmock.NewMockVegaBackendAccess(mockCtrl)
+		vbs := bmock.NewMockVegaBackendService(mockCtrl)
 		cga := bmock.NewMockConceptGroupAccess(mockCtrl)
 
 		service := &metricService{
 			appSetting: appSetting,
 			ps:         ps,
-			vba:        vba,
+			vbs:        vbs,
 			cga:        cga,
 		}
 
@@ -430,7 +430,7 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			result, err := service.SearchMetrics(ctx, query)
 			So(err, ShouldBeNil)
@@ -465,7 +465,7 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			result, err := service.SearchMetrics(ctx, query)
 			So(err, ShouldBeNil)
@@ -538,7 +538,7 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 			datasetResp := &interfaces.DatasetQueryResponse{
 				Entries: []map[string]any{inDoc, keepDoc},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(datasetResp, nil)
 
 			result, err := service.SearchMetrics(ctx, query)
 			So(err, ShouldBeNil)
@@ -559,7 +559,7 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 			cga.EXPECT().GetConceptIDsByConceptGroupIDs(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return([]string{"ot_keep"}, nil)
 			nextCursor := "cursor-1"
 			gomock.InOrder(
-				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+				vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Mode: "cursor", Limit: 2})
 						So(params.Sort, ShouldResemble, []*interfaces.SortParams{{Field: "id", Direction: "asc"}})
@@ -568,7 +568,7 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 							{"id": "keep-1", "name": "keep-1", "scope_ref": "ot_keep"},
 						}, Paging: &interfaces.ResourceDataPagingResult{NextCursor: &nextCursor}}, nil
 					}),
-				vba.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
+				vbs.EXPECT().QueryResourceData(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).
 					DoAndReturn(func(_ context.Context, _ string, params *interfaces.ResourceDataQueryParams) (*interfaces.DatasetQueryResponse, error) {
 						So(params.Paging, ShouldResemble, interfaces.ResourceDataPagingRequest{Cursor: nextCursor})
 						return &interfaces.DatasetQueryResponse{Entries: []map[string]any{{"id": "keep-2", "name": "keep-2", "scope_ref": "ot_keep"}}}, nil
@@ -599,9 +599,9 @@ func Test_metricService_SearchMetrics(t *testing.T) {
 				TotalCount: 7,
 				Entries:    []map[string]any{},
 			}
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(totalResp, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(totalResp, nil)
 			emptyPage := &interfaces.DatasetQueryResponse{Entries: []map[string]any{}}
-			vba.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(emptyPage, nil)
+			vbs.EXPECT().QueryResourceData(gomock.Any(), gomock.Any(), gomock.Any()).Return(emptyPage, nil)
 
 			result, err := service.SearchMetrics(ctx, query)
 			So(err, ShouldBeNil)
