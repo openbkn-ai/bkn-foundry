@@ -15,10 +15,15 @@ import (
 )
 
 func tableResource(indexName string) *interfaces.Resource {
+	status := interfaces.ResourceLocalIndexStatusUnavailable
+	if indexName != "" {
+		status = interfaces.ResourceLocalIndexStatusAvailable
+	}
 	return &interfaces.Resource{
-		Name:           "yanfeng_kb.knowledge",
-		Category:       interfaces.ResourceCategoryTable,
-		LocalIndexName: indexName,
+		Name:             "yanfeng_kb.knowledge",
+		Category:         interfaces.ResourceCategoryTable,
+		LocalIndexStatus: status,
+		LocalIndexName:   indexName,
 	}
 }
 
@@ -46,6 +51,14 @@ func Test_validateFulltextConditions(t *testing.T) {
 	t.Run("表资源建过本地索引时放行", func(t *testing.T) {
 		if err := validateFulltextConditions(tableResource("vega-build-res-task"), matchCond); err != nil {
 			t.Fatalf("expected no error once the index exists, got %v", err)
+		}
+	})
+
+	t.Run("过时索引不允许全文检索", func(t *testing.T) {
+		resource := tableResource("vega-build-res-task")
+		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusStale
+		if err := validateFulltextConditions(resource, matchCond); err == nil {
+			t.Fatal("expected stale local index to reject full-text search")
 		}
 	})
 

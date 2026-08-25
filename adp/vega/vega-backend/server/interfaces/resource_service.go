@@ -52,10 +52,8 @@ type ResourceService interface {
 	// task is authorized by the table it belongs to rather than by nothing at all.
 	CheckResourcePermission(ctx context.Context, resourceID string, op string) error
 
-	// InternalGetByID retrieves a Resource by ID for internal workers.
-	InternalGetByID(ctx context.Context, id string) (*Resource, error)
-	// InternalGetByIDForUpdate retrieves and locks a Resource within the caller's transaction.
-	InternalGetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
+	// InternalGetByID retrieves a Resource for internal workers, using tx when provided.
+	InternalGetByID(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
 	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
 	// InternalGetByCatalogID retrieves all Resources under a Catalog for internal callers.

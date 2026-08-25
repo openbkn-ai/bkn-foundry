@@ -7,7 +7,6 @@
 package resource
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -16,14 +15,13 @@ import (
 	"vega-backend/interfaces"
 )
 
-func TestIndexConfigFingerprintV1(t *testing.T) {
+func TestIndexConfigFingerprint(t *testing.T) {
 	base := fingerprintTestResource(false)
 	contract, err := BuildIndexConfigContract(base)
 	require.NoError(t, err)
-	fingerprint, err := IndexConfigFingerprintV1(contract)
+	fingerprint, err := IndexConfigFingerprint(contract)
 	require.NoError(t, err)
-	assert.True(t, strings.HasPrefix(fingerprint, "v1:sha256:"))
-	assert.Len(t, strings.TrimPrefix(fingerprint, "v1:sha256:"), 64)
+	assert.Len(t, fingerprint, 64)
 
 	reordered := fingerprintTestResource(true)
 	reordered.SourceMetadata = map[string]any{"changed": true}
@@ -32,7 +30,7 @@ func TestIndexConfigFingerprintV1(t *testing.T) {
 	reordered.SchemaDefinition[0].Features[0].Description = "display-only feature change"
 	reorderedContract, err := BuildIndexConfigContract(reordered)
 	require.NoError(t, err)
-	reorderedFingerprint, err := IndexConfigFingerprintV1(reorderedContract)
+	reorderedFingerprint, err := IndexConfigFingerprint(reorderedContract)
 	require.NoError(t, err)
 	assert.Equal(t, fingerprint, reorderedFingerprint)
 
@@ -64,7 +62,7 @@ func TestIndexConfigFingerprintV1(t *testing.T) {
 			tt.mutate(changed)
 			changedContract, err := BuildIndexConfigContract(changed)
 			require.NoError(t, err)
-			changedFingerprint, err := IndexConfigFingerprintV1(changedContract)
+			changedFingerprint, err := IndexConfigFingerprint(changedContract)
 			require.NoError(t, err)
 			assert.NotEqual(t, fingerprint, changedFingerprint)
 		})
@@ -75,7 +73,7 @@ func TestIndexConfigFingerprintV1(t *testing.T) {
 		selfReferenced.SchemaDefinition[1].Features[0].RefProperty = selfReferenced.SchemaDefinition[1].Name
 		selfContract, err := BuildIndexConfigContract(selfReferenced)
 		require.NoError(t, err)
-		selfFingerprint, err := IndexConfigFingerprintV1(selfContract)
+		selfFingerprint, err := IndexConfigFingerprint(selfContract)
 		require.NoError(t, err)
 		assert.Equal(t, fingerprint, selfFingerprint)
 	})
@@ -84,12 +82,12 @@ func TestIndexConfigFingerprintV1(t *testing.T) {
 		explicit := fingerprintTestResource(false)
 		explicit.SchemaDefinition[1].Features[0].Config["embedding_model"] = "feature-model"
 		explicit.SchemaDefinition[1].Features[2].Config["analyzer"] = "feature-analyzer"
-		first, err := ResourceIndexConfigFingerprintV1(explicit)
+		first, err := ResourceIndexConfigFingerprint(explicit)
 		require.NoError(t, err)
 
 		explicit.IndexConfig.DefaultEmbeddingModel = "unused-model"
 		explicit.IndexConfig.DefaultFulltextAnalyzer = "unused-analyzer"
-		second, err := ResourceIndexConfigFingerprintV1(explicit)
+		second, err := ResourceIndexConfigFingerprint(explicit)
 		require.NoError(t, err)
 		assert.Equal(t, first, second)
 	})

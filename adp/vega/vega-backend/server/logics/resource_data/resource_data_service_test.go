@@ -196,10 +196,11 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		rds := &resourceDataService{cs: mockCS, lim: mockLIM}
 		resource := &interfaces.Resource{
-			ID:             "resource-1",
-			CatalogID:      "catalog-1",
-			Category:       interfaces.ResourceCategoryTable,
-			LocalIndexName: "vega-build-resource-1-task-1",
+			ID:               "resource-1",
+			CatalogID:        "catalog-1",
+			Category:         interfaces.ResourceCategoryTable,
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			LocalIndexName:   "vega-build-resource-1-task-1",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "name"},
 			},
@@ -328,7 +329,7 @@ func TestResourceDataPaginationCategoryUsesPhysicalEngine(t *testing.T) {
 	}{
 		{name: "index", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryIndex}, want: interfaces.ResourceCategoryIndex},
 		{name: "dataset", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryDataset}, want: interfaces.ResourceCategoryIndex},
-		{name: "local index table", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryTable, LocalIndexName: "index-1"}, want: interfaces.ResourceCategoryIndex},
+		{name: "local index table", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryTable, LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable, LocalIndexName: "index-1"}, want: interfaces.ResourceCategoryIndex},
 		{name: "rds table", resource: &interfaces.Resource{Category: interfaces.ResourceCategoryTable}, want: interfaces.ResourceCategoryTable},
 	}
 	for _, tt := range tests {

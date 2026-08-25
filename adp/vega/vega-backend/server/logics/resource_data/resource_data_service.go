@@ -17,7 +17,6 @@ import (
 	"vega-backend/common"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
-	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	"vega-backend/logics/connector/factory"
 	"vega-backend/logics/dataset"
@@ -44,7 +43,6 @@ type resourceDataService struct {
 	rs         interfaces.ResourceService
 	lvs        interfaces.LogicViewService
 	mfs        interfaces.ModelFactoryService
-	bta        interfaces.BuildTaskAccess
 	cl         rate.ConcurrencyLimiter
 }
 
@@ -60,7 +58,6 @@ func NewResourceDataService(appSetting *common.AppSetting) interfaces.ResourceDa
 			rs:         resourcelogic.NewResourceService(appSetting),
 			lvs:        logic_view.NewLogicViewService(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
-			bta:        logics.BTA,
 		}
 
 		// Initialize concurrency limiter if enabled
@@ -188,8 +185,9 @@ func (rds *resourceDataService) query(ctx context.Context, resource *interfaces.
 		return documents, total, nil
 
 	case interfaces.ResourceCategoryTable:
-		// Check if there is an index name. If there is, query the index directly
-		if resource.LocalIndexName != "" {
+		// Only an available managed index may be queried. Stale index names are
+		// retained for diagnostics and must fall back to the source.
+		if interfaces.HasAvailableLocalIndex(resource) {
 			// Call the local index manager to list the build product documentation
 			documents, total, err := rds.lim.ListDocuments(ctx, resource.LocalIndexName, resource, params)
 			if err != nil {
@@ -343,7 +341,7 @@ func resourceDataPaginationCategory(resource *interfaces.Resource) string {
 	}
 	if resource.Category == interfaces.ResourceCategoryDataset ||
 		resource.Category == interfaces.ResourceCategoryIndex ||
-		(resource.Category == interfaces.ResourceCategoryTable && resource.LocalIndexName != "") {
+		(resource.Category == interfaces.ResourceCategoryTable && interfaces.HasAvailableLocalIndex(resource)) {
 		return interfaces.ResourceCategoryIndex
 	}
 	return resource.Category

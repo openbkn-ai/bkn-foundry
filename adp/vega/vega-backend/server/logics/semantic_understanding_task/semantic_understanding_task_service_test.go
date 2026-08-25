@@ -138,7 +138,7 @@ func TestSemanticUnderstandingTaskServiceCreate(t *testing.T) {
 		var createdTask *interfaces.SemanticUnderstandingTask
 		var findHash string
 
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(sampleSemanticResource(), nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(sampleSemanticResource(), nil)
 		taskAccess.EXPECT().
 			FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).
 			DoAndReturn(func(_ context.Context, _ string, inputHash string) (*interfaces.SemanticUnderstandingTask, error) {
@@ -293,7 +293,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
 			Return(nil, errors.New("query unavailable"))
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
@@ -318,7 +318,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
 			Return(nil, rest.NewHTTPError(context.Background(), http.StatusTooManyRequests, verrors.VegaBackend_Query_ConcurrencyLimitExceeded))
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
@@ -344,7 +344,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
 		resource.Status = interfaces.ResourceStatusDisabled
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
 
@@ -367,7 +367,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), resource.ID).Return(resource, nil).Times(2)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil).Times(2)
 
 		queryCount := 0
 		resourceDataService.EXPECT().QueryWithPaging(gomock.Any(), resource, gomock.Any()).
@@ -480,7 +480,7 @@ func TestSemanticUnderstandingTaskServiceStatusUpdates(t *testing.T) {
 	taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 	permRS := mock_interfaces.NewMockResourceService(ctrl)
 	permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-	permRS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
+	permRS.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
 	permCS := mock_interfaces.NewMockCatalogService(ctrl)
 	permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 	permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -512,7 +512,7 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
 		permRS := mock_interfaces.NewMockResourceService(ctrl)
 		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		permRS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
+		permRS.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
 		permCS := mock_interfaces.NewMockCatalogService(ctrl)
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -544,7 +544,7 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		permRS := mock_interfaces.NewMockResourceService(ctrl)
 		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		permRS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
+		permRS.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
 		permCS := mock_interfaces.NewMockCatalogService(ctrl)
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -567,7 +567,7 @@ func TestSemanticUnderstandingTaskServiceGetByID(t *testing.T) {
 		userMgmtService := mock_interfaces.NewMockUserMgmtService(ctrl)
 		permRS := mock_interfaces.NewMockResourceService(ctrl)
 		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		permRS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
+		permRS.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
 		permCS := mock_interfaces.NewMockCatalogService(ctrl)
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -599,7 +599,7 @@ func TestSemanticUnderstandingTaskServicePopulatesReferenceNames(t *testing.T) {
 	resourceService := mock_interfaces.NewMockResourceService(ctrl)
 	resourceService.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(nil).AnyTimes()
-	resourceService.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).
+	resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).
 		Return(&interfaces.Resource{ID: "resource-2"}, nil).AnyTimes()
 	// 列表按可见父过滤（#269）；这条用例验的是名称回填，当作持类型级授权。
 	catalogService.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
@@ -666,7 +666,7 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		permRS := mock_interfaces.NewMockResourceService(ctrl)
 		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		permRS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
+		permRS.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
 		permCS := mock_interfaces.NewMockCatalogService(ctrl)
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -694,7 +694,7 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		permRS := mock_interfaces.NewMockResourceService(ctrl)
 		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		permRS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
+		permRS.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
 		permCS := mock_interfaces.NewMockCatalogService(ctrl)
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
@@ -720,7 +720,7 @@ func TestSemanticUnderstandingTaskServiceDeleteByIDs(t *testing.T) {
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		permRS := mock_interfaces.NewMockResourceService(ctrl)
 		permRS.EXPECT().CheckResourcePermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
-		permRS.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
+		permRS.EXPECT().InternalGetByID(gomock.Any(), nil, gomock.Any()).Return(&interfaces.Resource{ID: "r-1"}, nil).AnyTimes()
 		permCS := mock_interfaces.NewMockCatalogService(ctrl)
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 		permCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()

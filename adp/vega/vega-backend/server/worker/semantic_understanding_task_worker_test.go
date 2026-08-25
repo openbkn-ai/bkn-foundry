@@ -252,7 +252,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 			},
 		}
 		resourceService.EXPECT().
-			InternalGetByID(gomock.Any(), "resource-1").
+			InternalGetByID(gomock.Any(), nil, "resource-1").
 			Return(resourceInfo, nil)
 
 		taskService.EXPECT().
@@ -338,7 +338,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		}
 		taskService.EXPECT().InternalGetByID(gomock.Any(), task.ID).Return(task, nil)
 		taskService.EXPECT().InternalMarkRunning(ctxWithAccountID(t, "account-1"), task.ID).Return(true, nil)
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), task.ResourceID).Return(&interfaces.Resource{ID: task.ResourceID}, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, task.ResourceID).Return(&interfaces.Resource{ID: task.ResourceID}, nil)
 		agentService.EXPECT().Run(ctxWithAccountID(t, "account-1"), task).Return("agent-task-1", nil)
 		taskService.EXPECT().InternalSetAgentTaskID(ctxWithAccountID(t, "account-1"), task.ID, "agent-task-1").Return(true, nil)
 		agentService.EXPECT().GetTask(gomock.Any(), "agent-task-1").Return(&interfaces.BknAgentTask{
@@ -417,7 +417,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		}
 		taskService.EXPECT().InternalGetByID(gomock.Any(), "semantic-task-1").Return(taskInfo, nil)
 		taskService.EXPECT().InternalMarkRunning(gomock.Any(), "semantic-task-1").Return(true, nil)
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").Return(nil, nil)
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").Return(nil, nil)
 		taskService.EXPECT().InternalMarkCancelled(gomock.Any(), "semantic-task-1", "catalog or resource deleted").
 			Return(true, nil)
 
@@ -582,7 +582,7 @@ func TestSemanticUnderstandingTaskWorkerRun(t *testing.T) {
 		taskService.EXPECT().
 			InternalSetAgentTaskID(gomock.Any(), "semantic-task-1", "agent-task-1").
 			Return(true, nil)
-		resourceService.EXPECT().InternalGetByID(gomock.Any(), "resource-1").
+		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, "resource-1").
 			Return(&interfaces.Resource{ID: "resource-1"}, nil)
 		agentService.EXPECT().
 			GetTask(gomock.Any(), "agent-task-1").

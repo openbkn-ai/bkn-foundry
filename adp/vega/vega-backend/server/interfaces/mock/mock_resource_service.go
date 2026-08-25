@@ -221,33 +221,18 @@ func (mr *MockResourceServiceMockRecorder) InternalGetByCatalogID(ctx, catalogID
 }
 
 // InternalGetByID mocks base method.
-func (m *MockResourceService) InternalGetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
+func (m *MockResourceService) InternalGetByID(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalGetByID", ctx, id)
+	ret := m.ctrl.Call(m, "InternalGetByID", ctx, tx, id)
 	ret0, _ := ret[0].(*interfaces.Resource)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // InternalGetByID indicates an expected call of InternalGetByID.
-func (mr *MockResourceServiceMockRecorder) InternalGetByID(ctx, id any) *gomock.Call {
+func (mr *MockResourceServiceMockRecorder) InternalGetByID(ctx, tx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockResourceService)(nil).InternalGetByID), ctx, id)
-}
-
-// InternalGetByIDForUpdate mocks base method.
-func (m *MockResourceService) InternalGetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "InternalGetByIDForUpdate", ctx, tx, id)
-	ret0, _ := ret[0].(*interfaces.Resource)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// InternalGetByIDForUpdate indicates an expected call of InternalGetByIDForUpdate.
-func (mr *MockResourceServiceMockRecorder) InternalGetByIDForUpdate(ctx, tx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByIDForUpdate", reflect.TypeOf((*MockResourceService)(nil).InternalGetByIDForUpdate), ctx, tx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByID", reflect.TypeOf((*MockResourceService)(nil).InternalGetByID), ctx, tx, id)
 }
 
 // InternalGetByIDs mocks base method.

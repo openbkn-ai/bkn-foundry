@@ -28,7 +28,7 @@ func validateFulltextConditions(resource *interfaces.Resource, cfg *interfaces.F
 		return nil
 	}
 	// The index category and the dataset themselves are stored by OpenSearch and do not rely on the local index produced by the build task.
-	if resource.Category != interfaces.ResourceCategoryTable || resource.LocalIndexName != "" {
+	if resource.Category != interfaces.ResourceCategoryTable || interfaces.HasAvailableLocalIndex(resource) {
 		return nil
 	}
 	return rejectFulltext(resource, cfg)

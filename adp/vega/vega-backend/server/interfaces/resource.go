@@ -193,7 +193,7 @@ func LocalIndexVectorFieldName(field string) string {
 // Return nil when the resource has no local index: Those fields do not exist yet, and accepting filtering conditions for them will only allow
 // It is better to reject the query at the condition construction stage than to blow it up further downstream.
 func LocalIndexGeneratedFields(res *Resource) map[string]*Property {
-	if res == nil || res.LocalIndexName == "" {
+	if !HasAvailableLocalIndex(res) {
 		return nil
 	}
 
@@ -218,4 +218,13 @@ func LocalIndexGeneratedFields(res *Resource) map[string]*Property {
 		return nil
 	}
 	return generated
+}
+
+// HasAvailableLocalIndex reports whether a Resource may use its managed local
+// index for queries. A name alone is insufficient because stale indexes are
+// retained for diagnostics and later cleanup.
+func HasAvailableLocalIndex(res *Resource) bool {
+	return res != nil &&
+		res.LocalIndexStatus == ResourceLocalIndexStatusAvailable &&
+		res.LocalIndexName != ""
 }

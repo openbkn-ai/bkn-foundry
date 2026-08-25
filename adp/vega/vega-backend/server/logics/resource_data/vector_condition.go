@@ -9,6 +9,7 @@ package resource_data
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"vega-backend/interfaces"
 	"vega-backend/logics/filter_condition"
@@ -82,7 +83,7 @@ func vectorFieldFor(resource *interfaces.Resource, name string) (string, error) 
 	if resource == nil {
 		return "", fmt.Errorf("condition [knn_vector] left field '%s' has no resource context", name)
 	}
-	if resource.LocalIndexName == "" {
+	if !interfaces.HasAvailableLocalIndex(resource) {
 		return "", fmt.Errorf("condition [knn_vector] resource '%s' has no local index; build one before vector search", resource.Name)
 	}
 
@@ -110,29 +111,37 @@ func vectorFieldFor(resource *interfaces.Resource, name string) (string, error) 
 	return "", fmt.Errorf("condition [knn_vector] field '%s' has no vector index on resource '%s'", name, resource.Name)
 }
 
-// The embeddingModelForIndex takes the id of the embedding model used to create this index.
-//
-// The authoritative source is the snapshot of the build task that produced this index, not what is currently written on the resource: Has the feature configuration of the resource been changed
-// However, when the index is not reconstructed, the two will be inconsistent, and the vector calculated by the wrong model cannot be compared with that in the index. Saved in the snapshot
-// It is already the parsed model id, which is exactly the same as the one used to write the vector during the construction.
+// embeddingModelForIndex resolves the model from the current Resource index
+// configuration. An available Resource guarantees this configuration matches
+// its managed index, so queries never depend on a historical BuildTask.
 func (rds *resourceDataService) embeddingModelForIndex(ctx context.Context,
 	resource *interfaces.Resource, field string) (string, error) {
-
-	taskID := interfaces.BuildTaskIDFromIndexName(resource.LocalIndexName)
-	if taskID == "" {
-		return "", fmt.Errorf("condition [knn_vector] cannot tell which build task produced index '%s'", resource.LocalIndexName)
+	if resource == nil || resource.IndexConfig == nil {
+		return "", fmt.Errorf("condition [knn_vector] resource has no index configuration")
 	}
-
-	task, err := rds.bta.GetByID(ctx, taskID)
-	if err != nil {
-		return "", fmt.Errorf("condition [knn_vector] load build task %s failed: %w", taskID, err)
+	for _, prop := range resource.SchemaDefinition {
+		if prop == nil {
+			continue
+		}
+		for _, feature := range prop.Features {
+			if feature.FeatureType != interfaces.PropertyFeatureType_Vector {
+				continue
+			}
+			source := prop.Name
+			if feature.RefProperty != "" {
+				source = feature.RefProperty
+			}
+			if source != field {
+				continue
+			}
+			if modelID, ok := feature.Config["embedding_model"].(string); ok && strings.TrimSpace(modelID) != "" {
+				return strings.TrimSpace(modelID), nil
+			}
+			if modelID := strings.TrimSpace(resource.IndexConfig.DefaultEmbeddingModel); modelID != "" {
+				return modelID, nil
+			}
+			return "", fmt.Errorf("condition [knn_vector] field '%s' has no embedding model", field)
+		}
 	}
-	if task == nil || task.IndexConfig == nil {
-		return "", fmt.Errorf("condition [knn_vector] build task %s has no index config", taskID)
-	}
-	feature, ok := task.IndexConfig.Features[field]
-	if !ok || feature.Vector == nil || feature.Vector.ModelID == "" {
-		return "", fmt.Errorf("condition [knn_vector] field '%s' was not vectorized by build task %s", field, taskID)
-	}
-	return feature.Vector.ModelID, nil
+	return "", fmt.Errorf("condition [knn_vector] field '%s' has no vector index on resource '%s'", field, resource.Name)
 }

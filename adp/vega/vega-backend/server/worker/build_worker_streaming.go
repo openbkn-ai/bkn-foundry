@@ -89,7 +89,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
 	// Get resource info
-	resource, err := sbw.rs.InternalGetByID(ctx, resourceID)
+	resource, err := sbw.rs.InternalGetByID(ctx, nil, resourceID)
 	if err != nil {
 		logger.Errorf("Failed to get resource for task %s: %v", taskID, err)
 		return err

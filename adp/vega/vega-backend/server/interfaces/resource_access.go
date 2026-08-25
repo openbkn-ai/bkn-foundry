@@ -17,10 +17,8 @@ import (
 type ResourceAccess interface {
 	// Create creates a new Resource.
 	Create(ctx context.Context, tx *sql.Tx, resource *Resource) error
-	// GetByID retrieves a Resource by ID.
-	GetByID(ctx context.Context, id string) (*Resource, error)
-	// GetByIDForUpdate retrieves and locks a Resource within the caller's transaction.
-	GetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
+	// GetByID retrieves a Resource by ID, using tx when provided.
+	GetByID(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
 	// AttachListExtensions loads root-level extensions based on the List query parameters (for the list to call after GetByIDsBasic).

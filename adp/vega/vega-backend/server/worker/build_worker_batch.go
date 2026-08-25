@@ -65,7 +65,7 @@ func (bbw *batchBuildWorker) Run(ctx context.Context, buildTaskInfo *interfaces.
 	logger.Infof("Starting build for task: %s, resource: %s", taskID, resourceID)
 
 	// Get resource info
-	resource, err := bbw.rs.InternalGetByID(ctx, resourceID)
+	resource, err := bbw.rs.InternalGetByID(ctx, nil, resourceID)
 	if err != nil {
 		logger.Errorf("Failed to get resource for task %s: %v", taskID, err)
 		return err

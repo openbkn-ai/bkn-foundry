@@ -366,7 +366,7 @@ func TestViewDetailAloneDoesNotGrantQueryData(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
 
-	ra.EXPECT().GetByID(gomock.Any(), "r-1").Return(&interfaces.Resource{
+	ra.EXPECT().GetByID(gomock.Any(), nil, "r-1").Return(&interfaces.Resource{
 		ID: "r-1", CatalogID: "c-1",
 	}, nil)
 	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
@@ -391,7 +391,7 @@ func TestCheckResourcePermissionHidesUnknownResources(t *testing.T) {
 	ra := vmock.NewMockResourceAccess(ctrl)
 	rs := &resourceService{ra: ra}
 
-	ra.EXPECT().GetByID(gomock.Any(), "gone").Return(nil, nil)
+	ra.EXPECT().GetByID(gomock.Any(), nil, "gone").Return(nil, nil)
 
 	err := rs.CheckResourcePermission(context.Background(), "gone", interfaces.OPERATION_TYPE_QUERY_DATA)
 	require.Error(t, err)

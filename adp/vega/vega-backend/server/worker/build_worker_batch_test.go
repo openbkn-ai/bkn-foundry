@@ -70,7 +70,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending, Creator: creator,
 		}
-		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "get catalog failed: forbidden").
 			Return(true, nil)
 
@@ -96,7 +96,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		task := &interfaces.BuildTask{
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}
-		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(nil, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(nil, nil)
 		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "resource deleted").Return(true, nil)
 
 		require.NoError(t, bbw.Run(context.Background(), task))
@@ -114,7 +114,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 		}
-		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "c1"}, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).
 			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
@@ -144,7 +144,7 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 			Status:      interfaces.BuildTaskStatusPending,
 		}
-		rs.EXPECT().InternalGetByID(gomock.Any(), "r1").Return(resource, nil)
+		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "c1", true).Return(nil, errors.New("catalog down"))
 		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1", "get catalog failed: catalog down").
 			Return(true, nil)

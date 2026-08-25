@@ -252,23 +252,28 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 }
 
 // GetByID retrieves ra Resource by ID.
-func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
+func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource by ID")
 	defer span.End()
 
 	span.SetAttributes(attr.Key("resource_id").String(id))
 
-	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
+	builder := sq.Select(resourceDetailColumns...).
 		From(RESOURCE_TABLE_NAME).
-		Where(sq.Eq{"f_id": id}).
-		ToSql()
+		Where(sq.Eq{"f_id": id})
+	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
 		logger.Errorf("Failed to build query resource sql: %v", err)
 		span.SetStatus(codes.Error, "Build sql failed")
 		return nil, err
 	}
 
-	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
+	var row *sql.Row
+	if tx != nil {
+		row = tx.QueryRowContext(ctx, sqlStr, vals...)
+	} else {
+		row = ra.db.QueryRowContext(ctx, sqlStr, vals...)
+	}
 	resource, err := scanResourceDetail(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
@@ -280,43 +285,11 @@ func (ra *resourceAccess) GetByID(ctx context.Context, id string) (*interfaces.R
 		return nil, err
 	}
 
-	if err := attachSingleResourceExtensions(ctx, ra.appSetting, resource); err != nil {
-		span.SetStatus(codes.Error, "Load resource extensions failed")
-		return nil, err
-	}
-
-	span.SetStatus(codes.Ok, "")
-	return resource, nil
-}
-
-// GetByIDForUpdate retrieves and locks a Resource in the caller's transaction.
-func (ra *resourceAccess) GetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource by ID for update")
-	defer span.End()
-
-	span.SetAttributes(attr.Key("resource_id").String(id))
 	if tx == nil {
-		return nil, fmt.Errorf("transaction is required to lock resource %q", id)
-	}
-
-	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
-		From(RESOURCE_TABLE_NAME).
-		Where(sq.Eq{"f_id": id}).
-		Suffix("FOR UPDATE").
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return nil, err
-	}
-
-	resource, err := scanResourceDetail(tx.QueryRowContext(ctx, sqlStr, vals...))
-	if err == sql.ErrNoRows {
-		span.SetStatus(codes.Ok, "")
-		return nil, nil
-	}
-	if err != nil {
-		span.SetStatus(codes.Error, "Scan failed")
-		return nil, err
+		if err := attachSingleResourceExtensions(ctx, ra.appSetting, resource); err != nil {
+			span.SetStatus(codes.Error, "Load resource extensions failed")
+			return nil, err
+		}
 	}
 
 	span.SetStatus(codes.Ok, "")

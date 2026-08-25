@@ -40,7 +40,8 @@ func TestResourceLocalStateJSON(t *testing.T) {
 
 func TestLocalIndexGeneratedFields(t *testing.T) {
 	res := &Resource{
-		LocalIndexName: "vega-build-abc",
+		LocalIndexStatus: ResourceLocalIndexStatusAvailable,
+		LocalIndexName:   "vega-build-abc",
 		SchemaDefinition: []*Property{
 			{Name: "stadium_name", Features: []PropertyFeature{{FeatureType: PropertyFeatureType_Vector}}},
 			{Name: "city_name", Features: []PropertyFeature{{FeatureType: PropertyFeatureType_Fulltext}}},
@@ -60,6 +61,12 @@ func TestLocalIndexGeneratedFields(t *testing.T) {
 	res.LocalIndexName = ""
 	if got := LocalIndexGeneratedFields(res); got != nil {
 		t.Fatalf("without a built index nothing is generated yet, got %+v", got)
+	}
+
+	res.LocalIndexName = "vega-build-abc"
+	res.LocalIndexStatus = ResourceLocalIndexStatusStale
+	if got := LocalIndexGeneratedFields(res); got != nil {
+		t.Fatalf("a stale index must not expose generated fields, got %+v", got)
 	}
 }
 

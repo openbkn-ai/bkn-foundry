@@ -129,33 +129,18 @@ func (mr *MockResourceAccessMockRecorder) GetByCatalogID(ctx, catalogID any) *go
 }
 
 // GetByID mocks base method.
-func (m *MockResourceAccess) GetByID(ctx context.Context, id string) (*interfaces.Resource, error) {
+func (m *MockResourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByID", ctx, id)
+	ret := m.ctrl.Call(m, "GetByID", ctx, tx, id)
 	ret0, _ := ret[0].(*interfaces.Resource)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetByID indicates an expected call of GetByID.
-func (mr *MockResourceAccessMockRecorder) GetByID(ctx, id any) *gomock.Call {
+func (mr *MockResourceAccessMockRecorder) GetByID(ctx, tx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockResourceAccess)(nil).GetByID), ctx, id)
-}
-
-// GetByIDForUpdate mocks base method.
-func (m *MockResourceAccess) GetByIDForUpdate(ctx context.Context, tx *sql.Tx, id string) (*interfaces.Resource, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByIDForUpdate", ctx, tx, id)
-	ret0, _ := ret[0].(*interfaces.Resource)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetByIDForUpdate indicates an expected call of GetByIDForUpdate.
-func (mr *MockResourceAccessMockRecorder) GetByIDForUpdate(ctx, tx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDForUpdate", reflect.TypeOf((*MockResourceAccess)(nil).GetByIDForUpdate), ctx, tx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockResourceAccess)(nil).GetByID), ctx, tx, id)
 }
 
 // GetByIDs mocks base method.

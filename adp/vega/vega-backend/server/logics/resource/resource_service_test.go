@@ -67,7 +67,7 @@ func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
 	service := &resourceService{ra: mockRA}
 	tx := &sql.Tx{}
 	resource := &interfaces.Resource{ID: "resource-1"}
-	mockRA.EXPECT().GetByIDForUpdate(gomock.Any(), tx, "resource-1").Return(resource, nil)
+	mockRA.EXPECT().GetByID(gomock.Any(), tx, "resource-1").Return(resource, nil)
 	mockRA.EXPECT().UpdateLocalIndexState(
 		gomock.Any(), tx, "resource-1",
 		interfaces.ResourceLocalIndexStatusAvailable,
@@ -75,7 +75,7 @@ func TestResourceServiceInternalLocalIndexTransaction(t *testing.T) {
 		`{"version":1,"mode":"batch","cursor":[10]}`,
 	).Return(true, nil)
 
-	got, err := service.InternalGetByIDForUpdate(context.Background(), tx, "resource-1")
+	got, err := service.InternalGetByID(context.Background(), tx, "resource-1")
 	require.NoError(t, err)
 	assert.Same(t, resource, got)
 	updated, err := service.InternalUpdateLocalIndexState(
@@ -135,11 +135,14 @@ func TestResourceServiceInternalMetadataUpdateConflict(t *testing.T) {
 	t.Run("discovery metadata", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
 		expectedUpdateTime := int64(42)
-		resource := &interfaces.Resource{ID: "r1", UpdateTime: 43}
-		mockRA.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), nil, resource, expectedUpdateTime).
+		resource := &interfaces.Resource{ID: "r1", UpdateTime: 43, SchemaDefinition: []*interfaces.Property{{Name: "id"}}}
+		current := &interfaces.Resource{ID: "r1", UpdateTime: expectedUpdateTime, SchemaDefinition: []*interfaces.Property{{Name: "id"}}}
+		tx := &sql.Tx{}
+		mockRA.EXPECT().GetByID(gomock.Any(), tx, "r1").Return(current, nil)
+		mockRA.EXPECT().UpdateDiscoveryMetadata(gomock.Any(), tx, resource, expectedUpdateTime).
 			Return(int64(0), nil)
 
-		err := rs.InternalUpdateDiscoveryMetadata(context.Background(), nil, resource, expectedUpdateTime)
+		err := rs.InternalUpdateDiscoveryMetadata(context.Background(), tx, resource, expectedUpdateTime)
 		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_UpdateConflict)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
@@ -189,7 +192,7 @@ func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
 func TestResourceServiceCheckExistByID(t *testing.T) {
 	t.Run("check exist by idfound", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1"}, nil)
 
 		exists, err := rs.CheckExistByID(context.Background(), "r1")
@@ -202,7 +205,7 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 	})
 	t.Run("check exist by idnot found", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByID(gomock.Any(), "missing").
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "missing").
 			Return(nil, nil)
 
 		exists, err := rs.CheckExistByID(context.Background(), "missing")
@@ -215,7 +218,7 @@ func TestResourceServiceCheckExistByID(t *testing.T) {
 	})
 	t.Run("check exist by iderror", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(nil, fmt.Errorf("db error"))
 
 		_, err := rs.CheckExistByID(context.Background(), "r1")
@@ -257,7 +260,7 @@ func TestResourceServiceCheckExistByName(t *testing.T) {
 func TestResourceServiceGetByID(t *testing.T) {
 	t.Run("keeps resource when account name lookup fails", func(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", Name: "test"}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			[]string{"r1"}, gomock.Any(), true, gomock.Any()).
@@ -276,7 +279,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 	})
 	t.Run("get by idnot found", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByID(gomock.Any(), "missing").
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "missing").
 			Return(nil, nil)
 
 		_, err := rs.GetByID(context.Background(), "missing")
@@ -286,7 +289,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 	})
 	t.Run("get by iddberror", func(t *testing.T) {
 		rs, mockRA, _, _, _, _, _ := newTestService(t)
-		mockRA.EXPECT().GetByID(gomock.Any(), "r1").
+		mockRA.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(nil, fmt.Errorf("db error"))
 
 		_, err := rs.GetByID(context.Background(), "r1")
@@ -296,7 +299,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 	})
 	t.Run("bypasses view detail permission for internal resource with S2S marker", func(t *testing.T) {
 		rs, ra, _, ums := newS2STestService(t, []string{"cat-int"})
-		ra.EXPECT().GetByID(gomock.Any(), "r1").
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int"}, nil)
 		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
@@ -310,7 +313,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 	})
 	t.Run("rejects internal resource without S2S marker when permission filter returns empty", func(t *testing.T) {
 		rs, ra, ps, _ := newS2STestService(t, []string{"cat-int"})
-		ra.EXPECT().GetByID(gomock.Any(), "r1").
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-int"}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_RESOURCE,
 			gomock.Any(), gomock.Any(), true, gomock.Any()).
@@ -329,7 +332,7 @@ func TestResourceServiceGetByID(t *testing.T) {
 	})
 	t.Run("keeps per-account auth for non-internal resource with S2S marker", func(t *testing.T) {
 		rs, ra, ps, _ := newS2STestService(t, []string{})
-		ra.EXPECT().GetByID(gomock.Any(), "r1").
+		ra.EXPECT().GetByID(gomock.Any(), nil, "r1").
 			Return(&interfaces.Resource{ID: "r1", CatalogID: "cat-user"}, nil)
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			gomock.Any(), gomock.Any(), true, gomock.Any()).
@@ -1152,7 +1155,7 @@ func TestResourceServiceUpdate(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
-	t.Run("update clears local index name when build relevant fields change", func(t *testing.T) {
+	t.Run("update marks available local index stale when build relevant fields change", func(t *testing.T) {
 		rs, mockRA, mockPS, _, _, mockCS, mockBTA := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
 		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1174,12 +1177,19 @@ func TestResourceServiceUpdate(t *testing.T) {
 				}
 				return 1, nil
 			})
+		mockRA.EXPECT().UpdateLocalIndexState(
+			gomock.Any(), gomock.Not(nil), "r1",
+			interfaces.ResourceLocalIndexStatusStale,
+			"vega-build-r1-task-1", "",
+		).Return(true, nil)
 		err := rs.Update(context.Background(), &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
 			LocalIndexName:   "vega-build-r1-task-1",
+			SyncMark:         `{"version":1,"mode":"batch","cursor":[1]}`,
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{

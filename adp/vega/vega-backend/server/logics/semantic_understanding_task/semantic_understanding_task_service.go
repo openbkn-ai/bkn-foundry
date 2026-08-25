@@ -91,7 +91,7 @@ func (suts *semanticUnderstandingTaskService) CreateResourceTask(ctx context.Con
 			WithErrorDetails("resource_id is required")
 	}
 
-	resource, err := suts.rs.InternalGetByID(ctx, resourceID)
+	resource, err := suts.rs.InternalGetByID(ctx, nil, resourceID)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resource failed")
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_InternalError_FilterResourcesFailed).

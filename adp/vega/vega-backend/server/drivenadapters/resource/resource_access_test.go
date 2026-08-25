@@ -109,7 +109,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 			WithArgs("resource-1").
 			WillReturnRows(resourceRows().AddRow(resourceRowValues(sampleResource())...))
 
-		got, err := access.GetByID(context.Background(), "resource-1")
+		got, err := access.GetByID(context.Background(), nil, "resource-1")
 
 		require.NoError(t, err)
 		require.NotNil(t, got)
@@ -131,7 +131,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 			WithArgs("missing").
 			WillReturnError(sql.ErrNoRows)
 
-		got, err := access.GetByID(context.Background(), "missing")
+		got, err := access.GetByID(context.Background(), nil, "missing")
 
 		require.NoError(t, err)
 		assert.Nil(t, got)
@@ -148,7 +148,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 			WithArgs("resource-1").
 			WillReturnRows(resourceRows().AddRow(values...))
 
-		got, err := access.GetByID(context.Background(), "resource-1")
+		got, err := access.GetByID(context.Background(), nil, "resource-1")
 
 		require.Error(t, err)
 		assert.Nil(t, got)
@@ -156,28 +156,18 @@ func TestResourceAccessGetByID(t *testing.T) {
 	})
 }
 
-func TestResourceAccessGetByIDForUpdate(t *testing.T) {
-	t.Run("requires transaction", func(t *testing.T) {
-		access, _, cleanup := newResourceAccessMock(t)
-		defer cleanup()
-
-		got, err := access.GetByIDForUpdate(context.Background(), nil, "resource-1")
-
-		require.Error(t, err)
-		assert.Nil(t, got)
-	})
-
-	t.Run("locks and returns resource", func(t *testing.T) {
+func TestResourceAccessGetByIDWithTransaction(t *testing.T) {
+	t.Run("uses transaction and returns resource", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		mock.ExpectBegin()
 		tx, err := access.db.BeginTx(context.Background(), nil)
 		require.NoError(t, err)
-		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?") + " FOR UPDATE")).
+		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").
 			WillReturnRows(resourceRows().AddRow(resourceRowValues(sampleResource())...))
 
-		got, err := access.GetByIDForUpdate(context.Background(), tx, "resource-1")
+		got, err := access.GetByID(context.Background(), tx, "resource-1")
 
 		require.NoError(t, err)
 		require.NotNil(t, got)

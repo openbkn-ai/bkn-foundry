@@ -409,7 +409,7 @@ func (sutw *SemanticUnderstandingTaskWorker) taskParentExists(
 	ctx context.Context, task *interfaces.SemanticUnderstandingTask,
 ) (bool, error) {
 	if task.Scope == interfaces.SemanticUnderstandingTaskScopeResource {
-		resourceInfo, err := sutw.rs.InternalGetByID(ctx, task.ResourceID)
+		resourceInfo, err := sutw.rs.InternalGetByID(ctx, nil, task.ResourceID)
 		if err != nil {
 			return false, fmt.Errorf("get semantic understanding task resource: %w", err)
 		}

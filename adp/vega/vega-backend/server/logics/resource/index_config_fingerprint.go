@@ -137,24 +137,24 @@ func BuildIndexConfigContract(resource *interfaces.Resource) (IndexConfigContrac
 	return contract, nil
 }
 
-// IndexConfigFingerprintV1 hashes a normalized contract with canonical JSON.
-func IndexConfigFingerprintV1(config IndexConfigContract) (string, error) {
+// IndexConfigFingerprint hashes a normalized contract with canonical JSON.
+func IndexConfigFingerprint(config IndexConfigContract) (string, error) {
 	data, err := json.Marshal(config)
 	if err != nil {
 		return "", fmt.Errorf("fingerprint index config: %w", err)
 	}
 	sum := sha256.Sum256(data)
-	return "v1:sha256:" + hex.EncodeToString(sum[:]), nil
+	return hex.EncodeToString(sum[:]), nil
 }
 
-// ResourceIndexConfigFingerprintV1 builds and fingerprints a Resource's current
+// ResourceIndexConfigFingerprint builds and fingerprints a Resource's current
 // effective index configuration.
-func ResourceIndexConfigFingerprintV1(resource *interfaces.Resource) (string, error) {
+func ResourceIndexConfigFingerprint(resource *interfaces.Resource) (string, error) {
 	contract, err := BuildIndexConfigContract(resource)
 	if err != nil {
 		return "", err
 	}
-	return IndexConfigFingerprintV1(contract)
+	return IndexConfigFingerprint(contract)
 }
 
 func effectiveFeatureConfig(feature interfaces.PropertyFeature, defaultEmbeddingModel, defaultFulltextAnalyzer string) (json.RawMessage, error) {
