@@ -152,12 +152,44 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 		{
 			name: "continue without conversation id", toolName: "bkn_start_interaction",
 			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "continue"},
+			wantMessage: "bkn_start_interaction with conversation_mode=continue requires a non-empty conversation_id returned by the previous start call. Example: {\"conversation_mode\":\"continue\",\"question\":\"...\",\"agent_name\":\"...\",\"conversation_id\":\"conv_...\"}",
+		},
+		{
+			name: "continue with empty question", toolName: "bkn_start_interaction",
+			args:        map[string]any{"question": "", "agent_name": "供应链分析助手", "conversation_mode": "continue", "conversation_id": "conv-1"},
 			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
+		},
+		{
+			name: "continue with empty conversation id", toolName: "bkn_start_interaction",
+			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "continue", "conversation_id": ""},
+			wantMessage: "bkn_start_interaction with conversation_mode=continue requires a non-empty conversation_id returned by the previous start call. Example: {\"conversation_mode\":\"continue\",\"question\":\"...\",\"agent_name\":\"...\",\"conversation_id\":\"conv_...\"}",
 		},
 		{
 			name: "new with conversation id", toolName: "bkn_start_interaction",
 			args:        map[string]any{"question": "查询库存", "agent_name": "供应链分析助手", "conversation_mode": "new", "conversation_id": "conv-1"},
-			wantMessage: "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it",
+			wantMessage: "bkn_start_interaction with conversation_mode=new must omit conversation_id. Example: {\"conversation_mode\":\"new\",\"question\":\"...\",\"agent_name\":\"...\"}",
+		},
+		{
+			name: "completed without answer", toolName: "bkn_finish_interaction",
+			args:        map[string]any{"interaction_id": "int-1", "outcome": "completed"},
+			wantMessage: "bkn_finish_interaction with outcome=completed requires a non-empty answer. Example: {\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}",
+		},
+		{
+			name: "completed with empty interaction id", toolName: "bkn_finish_interaction",
+			args:        map[string]any{"interaction_id": "", "outcome": "completed", "answer": "库存充足"},
+			wantMessage: "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise",
+		},
+		{
+			name: "completed with empty answer", toolName: "bkn_finish_interaction",
+			args:        map[string]any{"interaction_id": "int-1", "outcome": "completed", "answer": ""},
+			wantMessage: "bkn_finish_interaction with outcome=completed requires a non-empty answer. Example: {\"interaction_id\":\"int_...\",\"outcome\":\"completed\",\"answer\":\"...\"}",
+		},
+		{
+			name: "start with unsupported lease seconds", toolName: "bkn_start_interaction",
+			args: map[string]any{
+				"question": "查询库存", "agent_name": "供应链分析助手", "lease_seconds": 600,
+			},
+			wantMessage: "bkn_start_interaction received unsupported field(s): lease_seconds. Remove them and retry",
 		},
 		{
 			name: "finish with lifecycle IDs nested in bkn context", toolName: "bkn_finish_interaction",
@@ -185,7 +217,7 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 				"interaction_id": "int-1", "outcome": "completed", "answer": "库存充足",
 				"claims": []any{map[string]any{"claim_id": "caller-owned"}},
 			},
-			wantMessage: "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise",
+			wantMessage: "bkn_finish_interaction received unsupported field(s): claims. Remove them and retry",
 		},
 	}
 
