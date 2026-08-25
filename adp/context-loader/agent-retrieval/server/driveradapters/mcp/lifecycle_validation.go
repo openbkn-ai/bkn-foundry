@@ -71,7 +71,7 @@ func validateLifecycleArguments(name string, arguments map[string]any) *lifecycl
 				name + " received unsupported field(s): " + strings.Join(fields, ", ") + ". Remove them and retry",
 			)
 		}
-		return invalidLifecycleArguments(lifecycleSchemaArgumentGuidance(name))
+		return invalidLifecycleArguments(lifecycleSchemaArgumentGuidance(name, arguments))
 	}
 	if !validLifecycleFieldCombination(name, arguments) {
 		return invalidLifecycleArguments(lifecycleArgumentGuidance(name, arguments))
@@ -158,9 +158,15 @@ func lifecycleArgumentGuidance(name string, arguments map[string]any) string {
 	return "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise"
 }
 
-func lifecycleSchemaArgumentGuidance(name string) string {
+func lifecycleSchemaArgumentGuidance(name string, arguments map[string]any) string {
 	if name == "bkn_start_interaction" {
+		if arguments["conversation_mode"] == "continue" && arguments["conversation_id"] == "" {
+			return lifecycleArgumentGuidance(name, arguments)
+		}
 		return "bkn_start_interaction expects top-level agent_name, question, and conversation_mode; use continue with conversation_id or new without it"
+	}
+	if arguments["outcome"] == "completed" && arguments["answer"] == "" {
+		return lifecycleArgumentGuidance(name, arguments)
 	}
 	return "bkn_finish_interaction expects top-level interaction_id and outcome, plus answer for completed or optional reason otherwise"
 }
