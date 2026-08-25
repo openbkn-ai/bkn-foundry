@@ -183,22 +183,18 @@ paths:
 
         预校验顺序：
 
-        1. 任一 id 处于 `running` / `stopping` → 409 `VegaBackend.BuildTask.HasRunningExecution`，
-           `error_details` 携带 `{ running_ids: [...] }`。状态拦截**不可绕过**，必须先 stop 再删。
+        1. 任一 id 处于 `pending` / `running` / `stopping` → 409 `VegaBackend.BuildTask.HasRunningExecution`，
+           `error_details` 携带 `{ active_ids: [...] }`。状态拦截**不可绕过**；pending/running
+           必须先 stop，stopping 必须等待停止完成后再删。
         2. 任一 id 不存在（且未启用 `ignore_missing`）→ 404 `VegaBackend.BuildTask.NotFound`，
            `error_details` 携带 `{ missing_ids: [...] }`。
-        3. 全部通过 → 逐条删除，返回 204。
+        3. 全部通过 → 只删除结束态 Task 数据库记录，返回 204。删除 Task 不修改 Resource
+           本地索引状态，也不删除 OpenSearch 索引。
       parameters:
         - name: ignore_missing
           description: |
             放宽不存在性检查：缺失 id 视为已删除（静默跳过），其它 id 正常删。
-            **不影响** running/stopping 拦截。
-          in: query
-          schema:
-            type: boolean
-            default: false
-        - name: delete_active_index
-          description: 是否删除当前活跃索引；默认 `false`
+            **不影响** pending/running/stopping 拦截。
           in: query
           schema:
             type: boolean
@@ -227,8 +223,8 @@ paths:
       description: |
         合法状态转移：`status ∈ {stopped, failed}` → `pending` → `running`。
         `failed` 允许重试；`pending` 已在队列中、`completed` 已结束，二者均不允许 start。
-        batch 任务默认按 `synced_mark` 续跑；incremental 任务始终
-        保持增量续跑，`reset` 对它无效。full 任务仅在 `reset=true` 时清除进度并从头重建，
+        batch 任务默认按 `synced_mark` 续跑；incremental 任务不支持 `reset=true`，传入时返回
+        409 `VegaBackend.BuildTask.IncrementalResetUnsupported`。full 任务仅在 `reset=true` 时清除进度并从头重建，
         不修改原始 `execute_type`；
         worker 实际开始执行时会清空 `error_msg`。
 
@@ -409,7 +405,7 @@ components:
           type: integer
           format: int64
         synced_mark:
-          description: 同步标记（增量构建用）
+          description: 不透明的执行 checkpoint 字符串，仅用于展示和透传；调用方不得解析其内部结构
           type: string
         error_msg:
           description: 错误或取消原因（仅在 failed/cancelled 状态下有意义）
@@ -452,7 +448,9 @@ components:
         execute_type: { type: string }
         total_count: { type: integer, format: int64 }
         synced_count: { type: integer, format: int64 }
-        synced_mark: { type: string }
+        synced_mark:
+          description: 不透明的执行 checkpoint 字符串，仅用于展示和透传
+          type: string
         error_msg: { type: string }
         creator: { $ref: "#/components/schemas/AccountInfo" }
         create_time: { type: integer, format: int64 }
@@ -525,7 +523,7 @@ components:
       type: object
       properties:
         reset:
-          description: 仅对原始 `execute_type=full` 的任务有效；为 true 时忽略 `synced_mark` 并从头执行。incremental 任务始终续跑，不会改变原始 `execute_type`
+          description: 仅对原始 `execute_type=full` 的任务有效；为 true 时清空进度并从头执行。incremental 任务传 true 返回 409 冲突
           type: boolean
           default: false
     ListBuildTasks:

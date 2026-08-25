@@ -25,7 +25,8 @@ import (
 // "index deletion failure does not affect resource deletion" behavior.
 // Errors are returned only when task-row deletion fails. This helper lives in logics because both the
 // resource and catalog services use it, while logics/build_task already depends on logics/catalog.
-func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess, lim interfaces.LocalIndexManager, filter interfaces.BuildTasksQueryParams) error {
+func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess, lim interfaces.LocalIndexManager,
+	filter interfaces.BuildTasksQueryParams, currentIndexName string) error {
 	// Limit=0 disables pagination so historical tasks and their orphan indexes are included.
 	filter.Limit = 0
 	filter.Offset = 0
@@ -47,14 +48,27 @@ func CascadeDeleteBuildTasks(ctx context.Context, bta interfaces.BuildTaskAccess
 			WithErrorDetails(map[string]any{"running_ids": running})
 	}
 
-	// Drop indexes on a best-effort basis, then delete all task rows together.
+	// Drop the Resource-owned current index and task-derived indexes on a best-effort
+	// basis, de-duplicating when the current index was produced by a retained task.
+	indexNames := make([]string, 0, len(tasks)+1)
+	seenIndexes := make(map[string]struct{}, len(tasks)+1)
+	if currentIndexName != "" {
+		indexNames = append(indexNames, currentIndexName)
+		seenIndexes[currentIndexName] = struct{}{}
+	}
 	ids := make([]string, 0, len(tasks))
 	for _, t := range tasks {
 		idx := BuildIndexName(t.ResourceID, t.ID)
+		if _, exists := seenIndexes[idx]; !exists {
+			indexNames = append(indexNames, idx)
+			seenIndexes[idx] = struct{}{}
+		}
+		ids = append(ids, t.ID)
+	}
+	for _, idx := range indexNames {
 		if err := lim.DeleteIndex(ctx, idx); err != nil {
 			logger.Errorf("cascade delete: drop index %s failed: %v", idx, err)
 		}
-		ids = append(ids, t.ID)
 	}
 	if len(ids) == 0 {
 		return nil

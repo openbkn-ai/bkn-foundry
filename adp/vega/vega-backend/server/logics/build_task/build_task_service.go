@@ -895,12 +895,11 @@ func (bts *buildTaskService) Stop(ctx context.Context, taskID string) error {
 //   - Input IDs are de-duplicated while preserving their first-seen order.
 //   - Loads each id; if any missing, returns 404 BuildTask.NotFound with {missing_ids: [...]}
 //     unless ignoreMissing=true (then missing ids are dropped from the delete set).
-//   - If any task is in running/stopping status, returns 409 HasRunningExecution with {running_ids: [...]}.
-//     This check cannot be bypassed.
-//   - If any task owns the resource's current LocalIndexName, returns 409 ActiveIndexInUse
-//     unless deleteActiveIndex=true. When deleteActiveIndex=true, clears LocalIndexName before deleting.
-//   - Deletes all validated task rows in one database statement after dropping their indexes.
-func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool, deleteActiveIndex bool) error {
+//   - If any task is pending/running/stopping, returns 409 HasRunningExecution with {active_ids: [...]}.
+//     Pending tasks must be stopped before deletion; this check cannot be bypassed.
+//   - Deletes all validated terminal task rows in one database statement without changing Resource state
+//     or deleting OpenSearch indexes.
+func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "BuildTaskService.DeleteByIDs")
 	defer span.End()
 
@@ -916,9 +915,7 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 
 	toDelete := make([]*interfaces.BuildTask, 0, len(uniqueIDs))
 	missingIDs := make([]string, 0)
-	runningIDs := make([]string, 0)
-	activeIndexes := make([]map[string]string, 0)
-	activeResources := make(map[string]*interfaces.Resource)
+	activeIDs := make([]string, 0)
 
 	for _, id := range uniqueIDs {
 		buildTask, err := bts.bta.GetByID(ctx, id)
@@ -939,67 +936,30 @@ func (bts *buildTaskService) DeleteByIDs(ctx context.Context, ids []string, igno
 			span.SetStatus(codes.Error, "Permission denied")
 			return err
 		}
-		if buildTask.Status == interfaces.BuildTaskStatusRunning || buildTask.Status == interfaces.BuildTaskStatusStopping {
-			runningIDs = append(runningIDs, id)
+		switch buildTask.Status {
+		case interfaces.BuildTaskStatusCompleted,
+			interfaces.BuildTaskStatusFailed,
+			interfaces.BuildTaskStatusStopped,
+			interfaces.BuildTaskStatusCancelled:
+			toDelete = append(toDelete, buildTask)
+		default:
+			activeIDs = append(activeIDs, id)
 			continue
 		}
-		resource, err := bts.rs.GetByID(ctx, buildTask.ResourceID)
-		if err != nil {
-			span.SetStatus(codes.Error, "Get resource failed")
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_BuildTask_InternalError_GetFailed).
-				WithErrorDetails(err.Error())
-		}
-		if resource != nil {
-			idx := logics.BuildIndexName(buildTask.ResourceID, buildTask.ID)
-			if resource.LocalIndexName == idx {
-				activeIndexes = append(activeIndexes, map[string]string{
-					"resource_id":   buildTask.ResourceID,
-					"build_task_id": buildTask.ID,
-					"index_name":    idx,
-				})
-				activeResources[buildTask.ID] = resource
-			}
-		}
-		toDelete = append(toDelete, buildTask)
 	}
 
-	if len(runningIDs) > 0 {
-		span.SetStatus(codes.Error, "Some tasks are running or stopping")
+	if len(activeIDs) > 0 {
+		span.SetStatus(codes.Error, "Some tasks are active")
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_HasRunningExecution).
-			WithErrorDetails(map[string]any{"running_ids": runningIDs})
+			WithErrorDetails(map[string]any{"active_ids": activeIDs})
 	}
 	if len(missingIDs) > 0 && !ignoreMissing {
 		span.SetStatus(codes.Error, "Some build tasks not found")
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_BuildTask_NotFound).
 			WithErrorDetails(map[string]any{"missing_ids": missingIDs})
 	}
-	if len(activeIndexes) > 0 && !deleteActiveIndex {
-		span.SetStatus(codes.Error, "Some build task indexes are currently used by resources")
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_ActiveIndexInUse).
-			WithErrorDetails(map[string]any{"active_indexes": activeIndexes})
-	}
-	if deleteActiveIndex {
-		for taskID, resource := range activeResources {
-			if err := bts.rs.InternalUpdateLocalIndexName(ctx, nil, resource.ID, ""); err != nil {
-				span.SetStatus(codes.Error, "Clear active local index failed")
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-					WithErrorDetails(map[string]any{
-						"build_task_id": taskID,
-						"resource_id":   resource.ID,
-						"error":         err.Error(),
-					})
-			}
-		}
-	}
-
 	deleteIDs := make([]string, 0, len(toDelete))
 	for _, bt := range toDelete {
-		// Drop the index on a best-effort basis before deleting the task row, consistent with resource and catalog cascades.
-		// Semantic consistency is maintained to prevent the deletion of a single UI task from leaving an orphan index (#66 only covers the two paths of resources and directories).
-		idx := logics.BuildIndexName(bt.ResourceID, bt.ID)
-		if err := bts.lim.DeleteIndex(ctx, idx); err != nil {
-			otellog.LogError(ctx, fmt.Sprintf("Drop index %s for build task %s failed", idx, bt.ID), err)
-		}
 		deleteIDs = append(deleteIDs, bt.ID)
 	}
 	if len(deleteIDs) == 0 {

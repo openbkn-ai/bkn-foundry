@@ -58,17 +58,17 @@ func (mr *MockBuildTaskServiceMockRecorder) Create(ctx, req any) *gomock.Call {
 }
 
 // DeleteByIDs mocks base method.
-func (m *MockBuildTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing, deleteActiveIndex bool) error {
+func (m *MockBuildTaskService) DeleteByIDs(ctx context.Context, ids []string, ignoreMissing bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids, ignoreMissing, deleteActiveIndex)
+	ret := m.ctrl.Call(m, "DeleteByIDs", ctx, ids, ignoreMissing)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // DeleteByIDs indicates an expected call of DeleteByIDs.
-func (mr *MockBuildTaskServiceMockRecorder) DeleteByIDs(ctx, ids, ignoreMissing, deleteActiveIndex any) *gomock.Call {
+func (mr *MockBuildTaskServiceMockRecorder) DeleteByIDs(ctx, ids, ignoreMissing any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockBuildTaskService)(nil).DeleteByIDs), ctx, ids, ignoreMissing, deleteActiveIndex)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByIDs", reflect.TypeOf((*MockBuildTaskService)(nil).DeleteByIDs), ctx, ids, ignoreMissing)
 }
 
 // DispatchSignal mocks base method.

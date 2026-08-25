@@ -552,6 +552,7 @@ components:
         - name
         - category
         - status
+        - local_status
         - source_identifier
         - creator
         - create_time
@@ -629,6 +630,13 @@ components:
             $ref: "#/components/schemas/Property"
         index_config:
           $ref: "#/components/schemas/ResourceIndexConfig"
+        local_status:
+          description: 本地索引状态；只有 `available` 且 `index_name` 非空时本地索引可用于查询
+          type: string
+          enum:
+            - unavailable
+            - available
+            - stale
         index_name:
           description: 关联索引名（由构建任务填充）
           type: string

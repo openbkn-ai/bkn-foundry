@@ -214,7 +214,7 @@ func (r *restHandler) listBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 
 // DeleteBuildTasksByEx handles DELETE /build-tasks/:ids (External).
 // `ids` is a comma-separated list.
-// Optional query: ?ignore_missing=true&delete_active_index=true
+// Optional query: ?ignore_missing=true
 func (r *restHandler) DeleteBuildTasksByEx(c *gin.Context) {
 	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
 	if err != nil {
@@ -256,9 +256,8 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 	}
 
 	ignoreMissing := strings.EqualFold(c.Query("ignore_missing"), "true")
-	deleteActiveIndex := strings.EqualFold(c.Query("delete_active_index"), "true")
 
-	if err := r.bts.DeleteByIDs(ctx, ids, ignoreMissing, deleteActiveIndex); err != nil {
+	if err := r.bts.DeleteByIDs(ctx, ids, ignoreMissing); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
 		rest.ReplyError(c, httpErr)

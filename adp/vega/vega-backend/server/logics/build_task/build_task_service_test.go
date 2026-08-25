@@ -1600,7 +1600,7 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 
 // running → stopping，pending → stopped。stopping/stopped 任务不可再 stop。
 func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
-	t.Run("drops index and row", func(t *testing.T) {
+	t.Run("deletes terminal task row without touching resource or index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
@@ -1616,14 +1616,11 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
-		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
-			Return(&interfaces.Resource{ID: "r1", LocalIndexName: "vega-build-r1-old-task"}, nil)
-		mockLIM.EXPECT().DeleteIndex(gomock.Any(), "vega-build-r1-t1").Return(nil)
 		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1", "t1"}, false, false))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1", "t1"}, false))
 	})
-	t.Run("refuses active local index", func(t *testing.T) {
+	t.Run("deletes completed task even when its index is active", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
@@ -1637,43 +1634,13 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
-		idx := "vega-build-r1-t1"
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
-			Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
-		// Active index conflicts must not delete either the index or the task row.
-
-		err := service.DeleteByIDs(context.Background(), []string{"t1"}, false, false)
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_ActiveIndexInUse)
-		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
-	})
-	t.Run("deletes active local index when explicitly allowed", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
-
-		idx := "vega-build-r1-t1"
-		resource := &interfaces.Resource{ID: "r1", LocalIndexName: idx}
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-		mockRS.EXPECT().GetByID(gomock.Any(), "r1").Return(resource, nil)
-		mockRS.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", "").Return(nil)
-		mockLIM.EXPECT().DeleteIndex(gomock.Any(), idx).Return(nil)
 		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false, true))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
 	})
-	t.Run("clear active local index failure blocks deletion", func(t *testing.T) {
+	t.Run("deletes failed task without parent resource", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
@@ -1687,17 +1654,31 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
 		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
 
-		idx := "vega-build-r1-t1"
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-		mockRS.EXPECT().GetByID(gomock.Any(), "r1").
-			Return(&interfaces.Resource{ID: "r1", LocalIndexName: idx}, nil)
-		mockRS.EXPECT().InternalUpdateLocalIndexName(gomock.Any(), nil, "r1", "").Return(errors.New("update failed"))
-		// Clearing LocalIndexName failed, so the index and task row must remain untouched.
+			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
+		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		err := service.DeleteByIDs(context.Background(), []string{"t1"}, false, true)
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_Resource_InternalError_UpdateFailed)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
+	})
+	t.Run("deletes stopped task without reading resource", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
+			Return(nil).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
+		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
+
+		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
+			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
+		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
+
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
 	})
 	t.Run("allows orphan task when resource missing", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -1715,13 +1696,11 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
-		mockRS.EXPECT().GetByID(gomock.Any(), "missing-resource").Return(nil, nil)
-		mockLIM.EXPECT().DeleteIndex(gomock.Any(), "vega-build-missing-resource-t1").Return(nil)
 		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false, false))
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
 	})
-	t.Run("resource lookup failure blocks deletion", func(t *testing.T) {
+	t.Run("does not depend on resource lookup", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
@@ -1737,29 +1716,30 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
 			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
-		mockRS.EXPECT().GetByID(gomock.Any(), "r1").Return(nil, errors.New("db unavailable"))
-		// If the guard cannot prove the index is safe to delete, deletion must not proceed.
+		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		err := service.DeleteByIDs(context.Background(), []string{"t1"}, false, false)
-		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
 	})
-	t.Run("refuses running", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		service := &buildTaskService{bta: mockBTA, lim: mockLIM, rs: mockRS, cs: mockCS}
+	for _, status := range []string{
+		interfaces.BuildTaskStatusPending,
+		interfaces.BuildTaskStatusRunning,
+		interfaces.BuildTaskStatusStopping,
+	} {
+		t.Run("refuses "+status, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+			mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+			mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			service := &buildTaskService{bta: mockBTA, cs: mockCS}
 
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "running"}, nil)
-		// 不应调用 local index delete / bta.Delete
+			mockBTA.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+				ID: "t1", CatalogID: "c1", ResourceID: "r1", Status: status,
+			}, nil)
 
-		require.Error(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false, true))
-	})
+			err := service.DeleteByIDs(context.Background(), []string{"t1"}, false)
+
+			httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_HasRunningExecution)
+			assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+		})
+	}
 }

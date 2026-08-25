@@ -27,7 +27,6 @@ const (
 	// 409 Conflict
 	VegaBackend_BuildTask_InvalidStateTransition         = "VegaBackend.BuildTask.InvalidStateTransition"
 	VegaBackend_BuildTask_HasRunningExecution            = "VegaBackend.BuildTask.HasRunningExecution"
-	VegaBackend_BuildTask_ActiveIndexInUse               = "VegaBackend.BuildTask.ActiveIndexInUse"
 	VegaBackend_BuildTask_IncrementalBaselineUnavailable = "VegaBackend.BuildTask.IncrementalBaselineUnavailable"
 	VegaBackend_BuildTask_IncrementalResetUnsupported    = "VegaBackend.BuildTask.IncrementalResetUnsupported"
 	VegaBackend_BuildTask_IndexConfigChanged             = "VegaBackend.BuildTask.IndexConfigChanged"
@@ -60,7 +59,6 @@ var BuildTaskErrCodeList = []string{
 	// 409 Conflict
 	VegaBackend_BuildTask_InvalidStateTransition,
 	VegaBackend_BuildTask_HasRunningExecution,
-	VegaBackend_BuildTask_ActiveIndexInUse,
 	VegaBackend_BuildTask_IncrementalBaselineUnavailable,
 	VegaBackend_BuildTask_IncrementalResetUnsupported,
 	VegaBackend_BuildTask_IndexConfigChanged,

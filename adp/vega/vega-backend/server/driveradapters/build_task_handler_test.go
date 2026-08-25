@@ -285,7 +285,7 @@ func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
 
-	t.Run("deletes build tasks with flags", func(t *testing.T) {
+	t.Run("deletes build tasks with ignore missing", func(t *testing.T) {
 		engine := gin.New()
 		engine.Use(gin.Recovery())
 
@@ -296,9 +296,9 @@ func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
 		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, nil, bts, nil, nil, nil, nil, nil)
 		handler.RegisterPublic(engine)
 
-		bts.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1", "t2"}, true, true).Return(nil)
+		bts.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1", "t2"}, true).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/build-tasks/t1,t2?ignore_missing=true&delete_active_index=true", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/build-tasks/t1,t2?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

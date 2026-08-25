@@ -39,13 +39,8 @@ Solution = "Check current task status; start requires status in {stopped, failed
 ErrorLink = ""
 
 [VegaBackend.BuildTask.HasRunningExecution]
-Description = "Build task has running execution and cannot be deleted"
-Solution = "Stop the task before deleting it"
-ErrorLink = ""
-
-[VegaBackend.BuildTask.ActiveIndexInUse]
-Description = "Build task index is currently the resource's active local index"
-Solution = "Pass delete_active_index=true to confirm deleting the active local index, or keep the default protection"
+Description = "Active build task cannot be deleted"
+Solution = "Stop pending or running tasks and wait for stopping tasks to stop before deleting them"
 ErrorLink = ""
 
 [VegaBackend.BuildTask.IncrementalBaselineUnavailable]

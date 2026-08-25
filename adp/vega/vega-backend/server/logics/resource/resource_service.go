@@ -1187,11 +1187,11 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 	for _, resource := range resources {
 		switch resource.Category {
 		case interfaces.ResourceCategoryTable:
-			// Cascade clear all build tasks of this resource + corresponding OpenSearch index (including historical orphans).
+			// Cascade clear all build tasks, the Resource-owned current index, and task-derived indexes.
 			// Now, when resources are deleted, tasks/indexes will also be deleted (dangerous operations will be confirmed and checked by the front end for the second time).
-			// Tasks that are running or stopped will be rejected by cascade (HasRunningExecution), and users need to stop them first before deleting them.
+			// Tasks that are running or stopping will be rejected by cascade (HasRunningExecution), and users need to stop them first before deleting them.
 			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta, rs.lim,
-				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}); err != nil {
+				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}, resource.LocalIndexName); err != nil {
 				span.SetStatus(codes.Error, "Cascade delete build tasks failed")
 				return err
 			}

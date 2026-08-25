@@ -77,7 +77,7 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)
 		// DeleteByIDs 未被期望——一条没权限就该整批不删。
 
-		assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false, false))
+		assert.Same(t, denied, svc.DeleteByIDs(context.Background(), []string{"task-1"}, false))
 	})
 }
 
