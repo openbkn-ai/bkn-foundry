@@ -92,10 +92,29 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 				assert.Equal(t, interfaces.ResourceCategoryDataset, params.Category)
 				assert.Equal(t, interfaces.ResourceStatusActive, params.Status)
 				assert.Equal(t, "external_data", params.Schema)
+				assert.Equal(t, "update_time", params.Sort)
+				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.Resource{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?name=orders&category=dataset&status=active&schema=external_data", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
+
+	t.Run("keeps API sort field for data access mapping", func(t *testing.T) {
+		engine, rs := setup(t)
+		rs.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
+				assert.Equal(t, "name", params.Sort)
+				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				return []*interfaces.Resource{}, int64(0), nil
+			})
+
+		req := httptest.NewRequest(http.MethodGet, url+"?sort=name&direction=asc", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

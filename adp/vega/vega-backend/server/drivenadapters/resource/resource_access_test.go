@@ -318,7 +318,7 @@ func TestResourceAccessList(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		params := interfaces.ResourcesQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "name", Direction: "ASC"},
 			Name:                  "order",
 			CatalogID:             "catalog-1",
 			Category:              interfaces.ResourceCategoryTable,
@@ -714,10 +714,17 @@ func TestResourceAccessDeleteByCatalogID(t *testing.T) {
 	})
 }
 
-func TestResourceListOrderExpr(t *testing.T) {
-	t.Run("builds order expression", func(t *testing.T) {
-		assert.Equal(t, "f_update_time DESC", resourceListOrderExpr(interfaces.ResourcesQueryParams{PaginationQueryParams: interfaces.PaginationQueryParams{Direction: "DESC"}}))
-		assert.Equal(t, "f_name ASC", resourceListOrderExpr(interfaces.ResourcesQueryParams{PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"}}))
+func TestResourceListOrderByClause(t *testing.T) {
+	t.Run("maps supported API fields", func(t *testing.T) {
+		assert.Equal(t, "f_name ASC", resourceListOrderByClause(interfaces.ResourceSortName, "ASC"))
+		assert.Equal(t, "f_create_time DESC", resourceListOrderByClause(interfaces.ResourceSortCreateTime, "desc"))
+		assert.Equal(t, "f_update_time ASC", resourceListOrderByClause(interfaces.ResourceSortUpdateTime, "asc"))
+	})
+
+	t.Run("falls back for empty or invalid values", func(t *testing.T) {
+		assert.Equal(t, "f_update_time DESC", resourceListOrderByClause("", "ASC"))
+		assert.Equal(t, "f_update_time DESC", resourceListOrderByClause("f_name", "ASC"))
+		assert.Equal(t, "f_name DESC", resourceListOrderByClause(interfaces.ResourceSortName, "invalid"))
 	})
 }
 

@@ -122,8 +122,6 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	pageParam.Sort = interfaces.CATALOG_SORT[sort]
-
 	params := interfaces.CatalogsQueryParams{
 		PaginationQueryParams: pageParam,
 		Name:                  name,

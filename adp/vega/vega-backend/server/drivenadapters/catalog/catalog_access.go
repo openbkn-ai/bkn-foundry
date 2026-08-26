@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -470,12 +471,7 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 		builder = builder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
 	}
 
-	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(catalogListOrderExpr(params))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(catalogListOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -619,12 +615,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	}
 
 	// Pagination is applied in service after permission filtering.
-	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(catalogListOrderExpr(params))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(catalogListOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -850,12 +841,24 @@ func (ca *catalogAccess) DeleteByID(ctx context.Context, tx *sql.Tx, id string) 
 	return nil
 }
 
-func catalogListOrderExpr(params interfaces.CatalogsQueryParams) string {
-	col := params.Sort
-	if col == "" {
-		col = "f_update_time"
+// catalogListOrderByClause translates API sort fields into a safe ORDER BY clause.
+// Empty or unknown sort values fall back to update time descending.
+func catalogListOrderByClause(sort, direction string) string {
+	dir := "DESC"
+	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
+		dir = "ASC"
 	}
-	return fmt.Sprintf("%s %s", col, params.Direction)
+
+	switch sort {
+	case interfaces.CatalogSortName:
+		return "f_name " + dir
+	case interfaces.CatalogSortCreateTime:
+		return "f_create_time " + dir
+	case interfaces.CatalogSortUpdateTime:
+		return "f_update_time " + dir
+	default:
+		return "f_update_time DESC"
+	}
 }
 
 // UpdateStatus updates Catalog status.

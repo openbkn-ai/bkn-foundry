@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"sync"
 
 	sq "github.com/Masterminds/squirrel"
@@ -574,12 +575,7 @@ func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.Resourc
 		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
 	}
 
-	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(resourceListOrderExpr(params))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(resourceListOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -660,12 +656,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	}
 
 	// Pagination is applied in service after permission filtering.
-	// Sorting
-	if params.Sort != "" {
-		builder = builder.OrderBy(resourceListOrderExpr(params))
-	} else {
-		builder = builder.OrderBy("f_update_time DESC")
-	}
+	builder = builder.OrderBy(resourceListOrderByClause(params.Sort, params.Direction))
 
 	sqlStr, vals, err := builder.ToSql()
 	if err != nil {
@@ -1307,10 +1298,22 @@ func (ra *resourceAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, cat
 	return nil
 }
 
-func resourceListOrderExpr(params interfaces.ResourcesQueryParams) string {
-	col := params.Sort
-	if col == "" {
-		col = "f_update_time"
+// resourceListOrderByClause translates API sort fields into a safe ORDER BY clause.
+// Empty or unknown sort values fall back to update time descending.
+func resourceListOrderByClause(sort, direction string) string {
+	dir := "DESC"
+	if strings.EqualFold(direction, interfaces.ASC_DIRECTION) {
+		dir = "ASC"
 	}
-	return fmt.Sprintf("%s %s", col, params.Direction)
+
+	switch sort {
+	case interfaces.ResourceSortName:
+		return "f_name " + dir
+	case interfaces.ResourceSortCreateTime:
+		return "f_create_time " + dir
+	case interfaces.ResourceSortUpdateTime:
+		return "f_update_time " + dir
+	default:
+		return "f_update_time DESC"
+	}
 }

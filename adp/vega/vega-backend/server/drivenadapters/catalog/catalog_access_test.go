@@ -77,7 +77,7 @@ func TestCatalogAccessListIDs(t *testing.T) {
 
 		enabled := true
 		params := interfaces.CatalogsQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "name", Direction: "ASC"},
 			Name:                  "cat",
 			Tag:                   "tag",
 			Type:                  interfaces.CatalogTypePhysical,
@@ -136,7 +136,7 @@ func TestCatalogAccessList(t *testing.T) {
 		defer cleanup()
 		enabled := true
 		params := interfaces.CatalogsQueryParams{
-			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"},
+			PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "name", Direction: "ASC"},
 			Name:                  "Catalog",
 			Tag:                   "tag-a",
 			Type:                  interfaces.CatalogTypePhysical,
@@ -445,10 +445,17 @@ func TestCatalogAccessDeleteByID(t *testing.T) {
 	})
 }
 
-func TestCatalogListOrderExpr(t *testing.T) {
-	t.Run("builds order expression", func(t *testing.T) {
-		assert.Equal(t, "f_update_time DESC", catalogListOrderExpr(interfaces.CatalogsQueryParams{PaginationQueryParams: interfaces.PaginationQueryParams{Direction: "DESC"}}))
-		assert.Equal(t, "f_name ASC", catalogListOrderExpr(interfaces.CatalogsQueryParams{PaginationQueryParams: interfaces.PaginationQueryParams{Sort: "f_name", Direction: "ASC"}}))
+func TestCatalogListOrderByClause(t *testing.T) {
+	t.Run("maps supported API fields", func(t *testing.T) {
+		assert.Equal(t, "f_name ASC", catalogListOrderByClause(interfaces.CatalogSortName, "ASC"))
+		assert.Equal(t, "f_create_time DESC", catalogListOrderByClause(interfaces.CatalogSortCreateTime, "desc"))
+		assert.Equal(t, "f_update_time ASC", catalogListOrderByClause(interfaces.CatalogSortUpdateTime, "asc"))
+	})
+
+	t.Run("falls back for empty or invalid values", func(t *testing.T) {
+		assert.Equal(t, "f_update_time DESC", catalogListOrderByClause("", "ASC"))
+		assert.Equal(t, "f_update_time DESC", catalogListOrderByClause("f_name", "ASC"))
+		assert.Equal(t, "f_name DESC", catalogListOrderByClause(interfaces.CatalogSortName, "invalid"))
 	})
 }
 

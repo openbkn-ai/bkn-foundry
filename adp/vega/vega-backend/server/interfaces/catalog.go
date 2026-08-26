@@ -6,17 +6,38 @@
 
 package interfaces
 
-type CatalogDeletionTaskImpact struct {
-	WillCancel int64 `json:"will_cancel"`
-	Blocking   int64 `json:"blocking"`
-}
-
 const (
+	CatalogTypePhysical string = "physical"
+	CatalogTypeLogical  string = "logical"
+
+	CatalogSortName       string = "name"
+	CatalogSortCreateTime string = "create_time"
+	CatalogSortUpdateTime string = "update_time"
+
+	CatalogHealthStatusHealthy   string = "healthy"
+	CatalogHealthStatusDegraded  string = "degraded"
+	CatalogHealthStatusUnhealthy string = "unhealthy"
+	CatalogHealthStatusOffline   string = "offline"
+	CatalogHealthStatusUnchecked string = "unchecked"
+
 	CatalogDeletionBlockerProtectedResources                = "protected_resources"
 	CatalogDeletionBlockerBuildTasksRunningOrStopping       = "build_tasks_running_or_stopping"
 	CatalogDeletionBlockerDiscoverTasksRunning              = "discover_tasks_running"
 	CatalogDeletionBlockerSemanticUnderstandingTasksRunning = "semantic_understanding_tasks_running"
 )
+
+// CATALOG_SORT is a whitelist of supported API sort fields. The data access
+// layer maps these fields to database columns.
+var CATALOG_SORT = map[string]string{
+	CatalogSortName:       "",
+	CatalogSortCreateTime: "",
+	CatalogSortUpdateTime: "",
+}
+
+type CatalogDeletionTaskImpact struct {
+	WillCancel int64 `json:"will_cancel"`
+	Blocking   int64 `json:"blocking"`
+}
 
 // CatalogDeletionImpact describes the current deletion impact for one catalog.
 // CanDelete mirrors the guards enforced by DELETE /catalogs/{id}.
@@ -33,19 +54,6 @@ type CatalogDeletionImpact struct {
 	ProtectedResources          int                       `json:"protected_resources"`
 	ResourceIDs                 []string                  `json:"-"`
 }
-
-const (
-	CatalogTypePhysical string = "physical"
-	CatalogTypeLogical  string = "logical"
-)
-
-const (
-	CatalogHealthStatusHealthy   string = "healthy"
-	CatalogHealthStatusDegraded  string = "degraded"
-	CatalogHealthStatusUnhealthy string = "unhealthy"
-	CatalogHealthStatusOffline   string = "offline"
-	CatalogHealthStatusUnchecked string = "unchecked"
-)
 
 type CatalogHealthCheckStatus struct {
 	HealthCheckStatus string `json:"health_check_status"`
@@ -78,14 +86,6 @@ type Catalog struct {
 
 	Operations []string `json:"operations"`
 }
-
-var (
-	CATALOG_SORT = map[string]string{
-		"name":        "f_name",
-		"create_time": "f_create_time",
-		"update_time": "f_update_time",
-	}
-)
 
 // CatalogsQueryParams holds catalog list query parameters.
 type CatalogsQueryParams struct {

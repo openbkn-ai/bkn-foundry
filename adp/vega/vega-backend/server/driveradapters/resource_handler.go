@@ -80,8 +80,6 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-	pageParam.Sort = interfaces.RESOURCE_SORT[sort]
-
 	params := interfaces.ResourcesQueryParams{
 		PaginationQueryParams: pageParam,
 		Name:                  name,

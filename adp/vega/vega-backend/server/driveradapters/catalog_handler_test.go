@@ -98,6 +98,8 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 				assert.Equal(t, "lake", params.Name)
 				assert.Equal(t, interfaces.CatalogTypePhysical, params.Type)
 				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, params.HealthCheckStatus)
+				assert.Equal(t, "update_time", params.Sort)
+				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 				return []*interfaces.Catalog{}, int64(0), nil
 			})
 
@@ -151,6 +153,23 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?health_check_status=unchecked", nil)
+		w := httptest.NewRecorder()
+
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
+
+	t.Run("keeps API sort field for data access mapping", func(t *testing.T) {
+		engine, cs, _ := setupCatalogHandlerTest(t)
+		cs.EXPECT().List(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+				assert.Equal(t, "name", params.Sort)
+				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+				return []*interfaces.Catalog{}, int64(0), nil
+			})
+
+		req := httptest.NewRequest(http.MethodGet, url+"?sort=name&direction=asc", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

@@ -16,37 +16,42 @@ const (
 	ResourceCategoryIndex     string = "index"
 	ResourceCategoryLogicView string = "logicview"
 	ResourceCategoryDataset   string = "dataset"
-)
 
-const (
+	ResourceSortName       string = "name"
+	ResourceSortCreateTime string = "create_time"
+	ResourceSortUpdateTime string = "update_time"
+
 	ResourceStatusActive     string = "active"
 	ResourceStatusDisabled   string = "disabled"
 	ResourceStatusDeprecated string = "deprecated"
 	ResourceStatusStale      string = "stale"
-)
 
-const (
 	ResourceLocalIndexStatusUnavailable string = "unavailable"
 	ResourceLocalIndexStatusAvailable   string = "available"
 	ResourceLocalIndexStatusStale       string = "stale"
-)
 
-const (
 	DiscoverStatusNew       string = "new"
 	DiscoverStatusUnchanged string = "unchanged"
 	DiscoverStatusUpdated   string = "updated"
 	DiscoverStatusRestored  string = "restored"
 	DiscoverStatusMissing   string = "missing"
 	DiscoverStatusError     string = "error"
+
+	// The maximum length of the Property field name, display name, remarks, feature name, and feature remarks
+	MaxLength_PropertyName               = 255
+	MaxLength_PropertyDisplayName        = 255
+	MaxLength_PropertyFeatureName        = 255
+	MaxLength_PropertyDescription        = 1000
+	MaxLength_PropertyFeatureDescription = 1000
 )
 
-var (
-	RESOURCE_SORT = map[string]string{
-		"name":        "f_name",
-		"create_time": "f_create_time",
-		"update_time": "f_update_time",
-	}
-)
+// RESOURCE_SORT is a whitelist of supported API sort fields. The data access
+// layer maps these fields to database columns.
+var RESOURCE_SORT = map[string]string{
+	ResourceSortName:       "",
+	ResourceSortCreateTime: "",
+	ResourceSortUpdateTime: "",
+}
 
 // Resource represents a Data Resource entity.
 type Resource struct {
@@ -89,15 +94,6 @@ type Resource struct {
 
 	Operations []string `json:"operations"`
 }
-
-const (
-	// The maximum length of the Property field name, display name, remarks, feature name, and feature remarks
-	MaxLength_PropertyName               = 255
-	MaxLength_PropertyDisplayName        = 255
-	MaxLength_PropertyFeatureName        = 255
-	MaxLength_PropertyDescription        = 1000
-	MaxLength_PropertyFeatureDescription = 1000
-)
 
 type Property struct {
 	Name        string `json:"name"`
