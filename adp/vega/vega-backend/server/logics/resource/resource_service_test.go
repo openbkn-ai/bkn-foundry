@@ -823,7 +823,6 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 		// 级联：无构建任务时 List 返回空，不再走 GetByResourceID 拦截
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return([]*interfaces.BuildTaskSummary{}, nil)
-		mockLIM.EXPECT().DeleteIndex(gomock.Any(), "vega-build-r1-t1").Return(nil)
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -840,7 +839,6 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		// 一个已完成任务 t1 → 期望 drop 其索引并删任务行
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 			Return([]*interfaces.BuildTaskSummary{{ID: "t1", ResourceID: "r1", Status: "completed"}}, nil)
-		mockLIM.EXPECT().DeleteIndex(gomock.Any(), "vega-build-r1-t1").Return(nil)
 		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)

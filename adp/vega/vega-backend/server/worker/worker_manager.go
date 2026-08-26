@@ -35,6 +35,7 @@ type WorkerManager struct {
 	sutw *SemanticUnderstandingTaskWorker
 	dsw  *DiscoverScheduleWorker
 	chcw *CatalogHealthCheckWorker
+	icw  *IndexCleanupWorker
 }
 
 // NewWorkerManager creates or returns the singleton WorkerManager.
@@ -49,12 +50,14 @@ func NewWorkerManager(appSetting *common.AppSetting) *WorkerManager {
 		dss := logicsDiscoverSchedule.NewDiscoverScheduleService(appSetting, dts)
 		dsw := NewDiscoverScheduleWorker(appSetting, dss)
 		chcw := NewCatalogHealthCheckWorker(appSetting)
+		icw := NewIndexCleanupWorker(appSetting)
 		workerManager = &WorkerManager{
 			btw:  btw,
 			dtw:  dtw,
 			sutw: sutw,
 			dsw:  dsw,
 			chcw: chcw,
+			icw:  icw,
 		}
 	})
 	return workerManager
@@ -77,6 +80,7 @@ func (wm *WorkerManager) Start(ctx context.Context) error {
 	wm.btw.Start()
 	wm.dsw.Start()
 	wm.chcw.Start()
+	wm.icw.Start()
 	return nil
 }
 
@@ -85,6 +89,7 @@ func (wm *WorkerManager) Start(ctx context.Context) error {
 func (wm *WorkerManager) Stop() {
 	wm.dsw.Stop()
 	wm.chcw.Stop()
+	wm.icw.Stop()
 	wm.sutw.Stop()
 	wm.dtw.Stop()
 	wm.btw.Stop()

@@ -75,6 +75,10 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 	return managerInst
 }
 
+func (lim *localIndexManager) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
+	return lim.lic.ListIndexes(ctx)
+}
+
 func (lim *localIndexManager) CreateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
 	return lim.lic.CreateIndex(ctx, indexName, schema)
 }

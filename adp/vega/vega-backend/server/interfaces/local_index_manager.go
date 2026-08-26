@@ -29,6 +29,7 @@ func (e *IndexCapabilitiesUnavailableError) Unwrap() error { return e.Cause }
 //
 //go:generate mockgen -source ../interfaces/local_index_manager.go -destination ../interfaces/mock/mock_local_index_manager.go
 type LocalIndexManager interface {
+	ListIndexes(ctx context.Context) ([]*IndexMeta, error)
 	CreateIndex(ctx context.Context, indexName string, schema []*Property) error
 	UpdateIndex(ctx context.Context, indexName string, schema []*Property) error
 	DeleteIndex(ctx context.Context, indexName string) error

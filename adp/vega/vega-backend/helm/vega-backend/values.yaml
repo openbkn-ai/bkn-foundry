@@ -138,6 +138,12 @@ config:
     workerEnabled: true
     timeout: 30s
     cronExpr: "0 * * * *"
+  indexCleanup:
+    workerEnabled: true
+    interval: 1h
+    protectionPeriod: 24h
+    maxDeletesPerRun: 100
+    dryRun: true
   taskWorker:
     # Local worker counts for the single-instance database task loops.
     semanticWorkerCount: 1

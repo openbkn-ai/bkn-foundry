@@ -250,6 +250,21 @@ func (mr *MockResourceServiceMockRecorder) InternalGetByIDs(ctx, ids any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalGetByIDs", reflect.TypeOf((*MockResourceService)(nil).InternalGetByIDs), ctx, ids)
 }
 
+// InternalList mocks base method.
+func (m *MockResourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalList", ctx, params)
+	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalList indicates an expected call of InternalList.
+func (mr *MockResourceServiceMockRecorder) InternalList(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalList", reflect.TypeOf((*MockResourceService)(nil).InternalList), ctx, params)
+}
+
 // InternalUpdateDiscoveryMetadata mocks base method.
 func (m *MockResourceService) InternalUpdateDiscoveryMetadata(ctx context.Context, tx *sql.Tx, resource *interfaces.Resource, expectedUpdateTime int64) error {
 	m.ctrl.T.Helper()

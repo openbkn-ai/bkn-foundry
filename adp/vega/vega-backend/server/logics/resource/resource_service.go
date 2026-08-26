@@ -908,6 +908,18 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	return resources, total, nil
 }
 
+func (rs *resourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, error) {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalList")
+	defer span.End()
+	resources, _, err := rs.ra.List(ctx, params)
+	if err != nil {
+		span.SetStatus(codes.Error, "List resources failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return resources, nil
+}
+
 // Update updates a Resource.
 func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource")
@@ -1143,8 +1155,8 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			// Cascade clear all build tasks, the Resource-owned current index, and task-derived indexes.
 			// Now, when resources are deleted, tasks/indexes will also be deleted (dangerous operations will be confirmed and checked by the front end for the second time).
 			// Tasks that are running or stopping will be rejected by cascade (HasRunningExecution), and users need to stop them first before deleting them.
-			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta, rs.lim,
-				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}, resource.LocalIndexName); err != nil {
+			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta,
+				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}); err != nil {
 				span.SetStatus(codes.Error, "Cascade delete build tasks failed")
 				return err
 			}

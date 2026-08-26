@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/bytedance/sonic"
@@ -69,6 +70,7 @@ func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.In
 
 	req := opensearchapi.CatIndicesRequest{
 		Format: "json",
+		H:      []string{"index", "docs.count", "store.size", "creation.date"},
 	}
 	if c.Config.IndexPattern != "" {
 		req.Index = []string{c.Config.IndexPattern}
@@ -85,9 +87,10 @@ func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.In
 	}
 
 	var catIndices []struct {
-		Index     string `json:"index"`
-		DocsCount string `json:"docs.count"`
-		StoreSize string `json:"store.size"`
+		Index        string `json:"index"`
+		DocsCount    string `json:"docs.count"`
+		StoreSize    string `json:"store.size"`
+		CreationDate string `json:"creation.date"`
 	}
 	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&catIndices); err != nil {
 		return nil, err
@@ -99,10 +102,15 @@ func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.In
 			continue // Skip system indices
 		}
 
+		creationTime, err := strconv.ParseInt(idx.CreationDate, 10, 64)
+		if err != nil {
+			creationTime = 0
+		}
 		indices = append(indices, &interfaces.IndexMeta{
-			Name:        idx.Index,
-			Description: "",
-			MappingMeta: map[string]any{},
+			Name:         idx.Index,
+			CreationTime: creationTime,
+			Description:  "",
+			MappingMeta:  map[string]any{},
 			Properties: map[string]any{
 				"docs.count": idx.DocsCount,
 				"store.size": idx.StoreSize,

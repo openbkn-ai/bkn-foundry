@@ -83,6 +83,15 @@ type CatalogHealthCheckConfig struct {
 	CronExpr string `mapstructure:"cronExpr"`
 }
 
+// IndexCleanupConfig configures the periodic cleanup of managed local indexes.
+type IndexCleanupConfig struct {
+	WorkerEnabled    bool          `mapstructure:"workerEnabled"`
+	Interval         time.Duration `mapstructure:"interval"`
+	ProtectionPeriod time.Duration `mapstructure:"protectionPeriod"`
+	MaxDeletesPerRun int           `mapstructure:"maxDeletesPerRun"`
+	DryRun           bool          `mapstructure:"dryRun"`
+}
+
 // TaskWorkerConfig configures local worker-pool concurrency for database-backed tasks.
 type TaskWorkerConfig struct {
 	SemanticWorkerCount  int `mapstructure:"semanticWorkerCount"`
@@ -101,6 +110,7 @@ type AppSetting struct {
 	RateLimitingSetting RateLimitingConfig        `mapstructure:"rateLimiting"`
 	QuerySetting        QueryConfig               `mapstructure:"query"`
 	CatalogHealthCheck  CatalogHealthCheckConfig  `mapstructure:"catalogHealthCheck"`
+	IndexCleanup        IndexCleanupConfig        `mapstructure:"indexCleanup"`
 	TaskWorker          TaskWorkerConfig          `mapstructure:"taskWorker"`
 
 	DBSetting           libdb.DBSetting

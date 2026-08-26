@@ -202,6 +202,21 @@ func (mr *MockLocalIndexManagerMockRecorder) ListDocuments(ctx, indexName, res, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDocuments", reflect.TypeOf((*MockLocalIndexManager)(nil).ListDocuments), ctx, indexName, res, params)
 }
 
+// ListIndexes mocks base method.
+func (m *MockLocalIndexManager) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListIndexes", ctx)
+	ret0, _ := ret[0].([]*interfaces.IndexMeta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListIndexes indicates an expected call of ListIndexes.
+func (mr *MockLocalIndexManagerMockRecorder) ListIndexes(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIndexes", reflect.TypeOf((*MockLocalIndexManager)(nil).ListIndexes), ctx)
+}
+
 // UpdateIndex mocks base method.
 func (m *MockLocalIndexManager) UpdateIndex(ctx context.Context, indexName string, schema []*interfaces.Property) error {
 	m.ctrl.T.Helper()

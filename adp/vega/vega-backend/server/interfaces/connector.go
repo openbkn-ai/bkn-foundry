@@ -115,11 +115,12 @@ type MetricValue struct {
 
 // IndexMeta represents search index metadata.
 type IndexMeta struct {
-	Name        string                    `json:"name"`
-	Description string                    `json:"description"`
-	Properties  map[string]any            `json:"properties"`
-	Mapping     map[string]IndexFieldMeta `json:"mapping"`
-	MappingMeta map[string]any            `json:"mapping_meta"`
+	Name         string                    `json:"name"`
+	CreationTime int64                     `json:"creation_time,omitempty"`
+	Description  string                    `json:"description"`
+	Properties   map[string]any            `json:"properties"`
+	Mapping      map[string]IndexFieldMeta `json:"mapping"`
+	MappingMeta  map[string]any            `json:"mapping_meta"`
 }
 
 // IndexFieldMeta represents index field metadata.
