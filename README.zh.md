@@ -407,10 +407,12 @@ F1 Bench 由 BIRD 测试集中 Formula-1 数据库混合 30 篇非结构化文�
 
 ## 🤝 加入社群
 
-扫码加入社群，获取支持、反馈问题、了解最新动态：
+扫码加入社群或关注微信公众号，获取支持、反馈问题、了解最新动态：
 
 <p align="center">
   <img src="help/qrcode.png" alt="加入 BKN Foundry 社群" width="220">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="help/qrcode-wechat.png" alt="关注 OpenBKN 微信公众号" width="220">
 </p>
 
 ## 许可 / License

@@ -402,9 +402,14 @@ F1 Bench is based on the BIRD test set with the Formula-1 database mixed with 30
 | **SQL Hit Efficiency** | **0.226** | 0.137 |
 | **Total SQL Calls** | **292** | 408 |
 
-## 🤝 Community
+## 🤝 Community & contact
 
-Scan the QR code to join the community and get support, share feedback, and stay up to date:
+| Channel | Link | What it's for |
+| --- | --- | --- |
+| Discord | [discord.gg/YTxDbrfNf](https://discord.gg/YTxDbrfNf) | Real-time help, showcases, and announcements. |
+| X | [@OpenBKN](https://x.com/OpenBKN) | Follow OpenBKN for release news and project updates. |
+
+Scan the QR code to join the WeChat community and get support, share feedback, and stay up to date:
 
 <p align="center">
   <img src="help/qrcode.png" alt="Join the BKN Foundry community" width="220">
