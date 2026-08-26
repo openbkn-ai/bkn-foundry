@@ -114,7 +114,7 @@ func TestVegaBackendClient(t *testing.T) {
 		})
 
 		Convey("deletes a resource before rebuild", func() {
-			httpClient.EXPECT().DeleteNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset", headers).
+			httpClient.EXPECT().DeleteNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset?ignore_missing=true", headers).
 				Return(http.StatusNoContent, []byte{}, nil)
 
 			So(client.DeleteResource(ctx, "bkn_execution_factory_skill_dataset"), ShouldBeNil)

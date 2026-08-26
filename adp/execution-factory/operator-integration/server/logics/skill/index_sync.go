@@ -133,11 +133,16 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 	}
 	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, catalog_id=%s, embedding_model_id=%s, embedding_model_name=%s, dimension=%d",
 		datasetID, catalogID, embeddingModel.ModelID, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
+	s.setEmbeddingModel(embeddingModel)
 	if err := s.createSkillDatasetResource(ctx, datasetID, catalogID, embeddingModel); err != nil {
 		s.logger.WithContext(ctx).Errorf("create skill dataset resource failed, resource_id=%s, err=%v", datasetID, err)
 		return err
 	}
-	s.setEmbeddingModel(embeddingModel)
+	if err := s.restoreSkillDatasetFromSource(ctx); err != nil {
+		s.setRestorePending(true)
+		return fmt.Errorf("restore skill dataset after creating missing resource: %w", err)
+	}
+	s.setRestorePending(false)
 	initialized = true
 	return nil
 }
@@ -394,6 +399,9 @@ func sameSkillIndexFeature(expected, actual interfaces.VegaPropertyFeature) bool
 }
 
 func (s *skillIndexSync) rebuildSkillDatasetResource(ctx context.Context, datasetID, catalogID string, embeddingModel *interfaces.EmbeddingModel) error {
+	// Preserve the restore intent before deletion. If creation subsequently fails,
+	// the next Init observes a missing resource and restores it after creation.
+	s.setRestorePending(true)
 	if err := s.vegaClient.DeleteResource(ctx, datasetID); err != nil {
 		return fmt.Errorf("delete legacy skill dataset before rebuild: %w", err)
 	}
@@ -429,6 +437,7 @@ func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) erro
 		if len(skills) == 0 {
 			return nil
 		}
+		documents := make([]map[string]any, 0, len(skills))
 		for _, skill := range skills {
 			if skill == nil {
 				return fmt.Errorf("skill index restore received nil skill")
@@ -442,12 +451,15 @@ func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) erro
 				if err != nil {
 					return fmt.Errorf("build skill %s document for index restore: %w", skill.SkillID, err)
 				}
-				if err := s.vegaClient.WriteDatasetDocuments(ctx, s.getDatasetID(), []map[string]any{document}); err != nil {
-					return fmt.Errorf("write skill %s document for index restore: %w", skill.SkillID, err)
-				}
+				documents = append(documents, document)
 			}
 			cursorUpdateTime = skill.UpdateTime
 			cursorSkillID = skill.SkillID
+		}
+		if len(documents) > 0 {
+			if err := s.vegaClient.WriteDatasetDocuments(ctx, s.getDatasetID(), documents); err != nil {
+				return fmt.Errorf("write %d skill documents for index restore: %w", len(documents), err)
+			}
 		}
 	}
 }

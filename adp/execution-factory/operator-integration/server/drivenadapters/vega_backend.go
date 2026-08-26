@@ -214,7 +214,7 @@ func (v *vegaBackendClient) CreateResource(ctx context.Context, req *interfaces.
 
 // DeleteResource deletes a Vega resource before a rebuild.
 func (v *vegaBackendClient) DeleteResource(ctx context.Context, id string) error {
-	src := fmt.Sprintf("%s/v1/resources/%s", v.baseURL, url.PathEscape(id))
+	src := fmt.Sprintf("%s/v1/resources/%s?ignore_missing=true", v.baseURL, url.PathEscape(id))
 	headers := v.buildHeaders(ctx)
 	v.logger.WithContext(ctx).Infof("delete vega resource, resource_id=%s, url=%s", id, src)
 	respCode, respData, err := v.httpClient.DeleteNoUnmarshal(ctx, src, headers)

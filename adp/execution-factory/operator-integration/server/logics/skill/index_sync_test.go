@@ -230,6 +230,40 @@ func TestSkillIndexSync(t *testing.T) {
 			So(syncer.Init(context.Background()), ShouldBeNil)
 		})
 
+		Convey("Init restores the dataset when recreation previously failed after deletion", func() {
+			mockModelManager := mocks.NewMockMFModelManager(ctrl)
+			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
+			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
+			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
+			syncer := &skillIndexSync{
+				modelManager: mockModelManager,
+				vegaClient:   mockVegaClient,
+				skillRepo:    mockSkillRepo,
+				releaseRepo:  mockReleaseRepo,
+				logger:       logger.DefaultLogger(),
+			}
+			catalog := &interfaces.VegaCatalog{ID: executionFactoryCatalogID, Name: executionFactoryCatalogID, Tags: []string{internalCatalogTag}, Enabled: true}
+			model := &interfaces.EmbeddingModel{ModelID: "embedding-model-id", ModelName: "text-embedding-v4", EmbeddingDim: 768}
+			gomock.InOrder(
+				mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).Return(catalog, nil),
+				mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil),
+				mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(model, nil),
+				mockVegaClient.EXPECT().DeleteResource(gomock.Any(), executionFactorySkillDataset).Return(nil),
+				mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(nil, errors.New("vega unavailable")),
+				mockVegaClient.EXPECT().GetCatalogByID(gomock.Any(), executionFactoryCatalogID).Return(catalog, nil),
+				mockVegaClient.EXPECT().GetResourceByID(gomock.Any(), executionFactorySkillDataset).Return(nil, nil),
+				mockModelManager.EXPECT().GetDefaultEmbeddingModel(gomock.Any(), interfaces.SmallModelTypeEmbedding).Return(model, nil),
+				mockVegaClient.EXPECT().CreateResource(gomock.Any(), gomock.Any()).Return(&interfaces.VegaResource{ID: executionFactorySkillDataset}, nil),
+				mockSkillRepo.EXPECT().SelectSkillBuildPage(gomock.Any(), gomock.Nil(), int64(0), "", skillIndexBuildBatchSize).Return(nil, nil),
+			)
+
+			So(syncer.Init(context.Background()), ShouldNotBeNil)
+			So(syncer.isRestorePending(), ShouldBeTrue)
+			So(syncer.Init(context.Background()), ShouldBeNil)
+			So(syncer.isRestorePending(), ShouldBeFalse)
+			So(syncer.isInitialized(), ShouldBeTrue)
+		})
+
 		Convey("restoreSkillDatasetFromSource restores published snapshots and skips non-indexable skills", func() {
 			mockModelAPI := mocks.NewMockMFModelAPIClient(ctrl)
 			mockVegaClient := mocks.NewMockVegaBackendClient(ctrl)
@@ -257,8 +291,10 @@ func TestSkillIndexSync(t *testing.T) {
 				return &interfaces.EmbeddingResp{Data: []interfaces.EmbeddingData{{Embedding: []float32{0.1}}}}, nil
 			})
 			writtenIDs := make([]string, 0, 2)
-			mockVegaClient.EXPECT().WriteDatasetDocuments(gomock.Any(), executionFactorySkillDataset, gomock.Any()).Times(2).DoAndReturn(func(_ context.Context, _ string, documents []map[string]any) error {
-				writtenIDs = append(writtenIDs, documents[0]["skill_id"].(string))
+			mockVegaClient.EXPECT().WriteDatasetDocuments(gomock.Any(), executionFactorySkillDataset, gomock.Any()).DoAndReturn(func(_ context.Context, _ string, documents []map[string]any) error {
+				for _, document := range documents {
+					writtenIDs = append(writtenIDs, document["skill_id"].(string))
+				}
 				return nil
 			})
 
