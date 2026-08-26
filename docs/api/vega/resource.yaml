@@ -40,7 +40,9 @@ paths:
     get:
       summary: 获取资源列表
       description: |
-        分页 + 多维过滤获取 Resource 列表。
+        分页 + 多维过滤获取 Resource 摘要。列表不返回扩展 JSON 字段
+        `source_metadata`、`schema_definition`、`index_config`、`logic_definition`；
+        需要这些字段时使用 `GET /resources/{id}`。
       parameters:
         - name: name
           description: 按名称模糊过滤，匹配名称中包含该值的资源
@@ -679,6 +681,97 @@ components:
         default_embedding_model:
           description: 默认 embedding 模型的 `model_id`；vector feature 未设置 `config.embedding_model` 时使用。
           type: string
+    ResourceSummary:
+      description: |
+        Resource 列表摘要。为避免列表反序列化扩展 JSON，不包含
+        `source_metadata`、`schema_definition`、`index_config`、`logic_definition`；
+        详情请使用 `GET /resources/{id}`。
+      type: object
+      required:
+        - id
+        - catalog_id
+        - name
+        - category
+        - status
+        - local_status
+        - source_identifier
+        - creator
+        - create_time
+        - updater
+        - update_time
+      properties:
+        id:
+          description: 资源 ID
+          type: string
+        catalog_id:
+          description: 所属 catalog ID
+          type: string
+        name:
+          description: 资源名称
+          type: string
+        tags:
+          description: 标签列表
+          type: array
+          items:
+            type: string
+        description:
+          description: 描述
+          type: string
+        category:
+          description: 资源类型
+          type: string
+          enum: [table, file, fileset, api, metric, topic, index, logicview, dataset]
+        status:
+          description: 资源状态
+          type: string
+          enum: [active, disabled, deprecated, stale]
+        status_message:
+          description: 状态说明
+          type: string
+        last_discover_status:
+          description: 最近一次资源发现的观察状态
+          type: string
+        schema:
+          description: 所属 schema
+          type: string
+        source_identifier:
+          description: 源端标识
+          type: string
+        local_status:
+          description: 本地索引状态
+          type: string
+          enum: [unavailable, available, stale]
+        index_name:
+          description: 关联索引名
+          type: string
+        column_count:
+          description: Schema 字段数
+          type: integer
+        row_count:
+          description: 最近一次发现记录的源端行数估算
+          type: integer
+          format: int64
+        logic_type:
+          description: 逻辑视图类型
+          type: string
+          enum: [derived, composite]
+        creator:
+          $ref: "#/components/schemas/AccountInfo"
+        create_time:
+          description: 创建时间，毫秒时间戳
+          type: integer
+          format: int64
+        updater:
+          $ref: "#/components/schemas/AccountInfo"
+        update_time:
+          description: 更新时间，毫秒时间戳
+          type: integer
+          format: int64
+        operations:
+          description: 后端计算的支持操作集合（只读）
+          type: array
+          items:
+            type: string
     ListResources:
       description: 资源列表响应
       type: object
@@ -689,7 +782,7 @@ components:
         entries:
           type: array
           items:
-            $ref: "#/components/schemas/Resource"
+            $ref: "#/components/schemas/ResourceSummary"
         total_count:
           type: integer
           format: int64

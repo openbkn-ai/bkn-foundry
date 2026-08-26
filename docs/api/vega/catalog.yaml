@@ -64,7 +64,9 @@ paths:
     get:
       summary: 获取 catalog 列表
       description: |
-        分页获取 catalog；支持按 name、tag、type、connector_type、health_check_status 过滤。
+        分页获取 catalog 摘要；支持按 name、tag、type、connector_type、health_check_status 过滤。
+        列表不返回详情专属的 `connector_config` 与 `metadata`，需要这些字段时使用
+        `GET /catalogs/{id}`。
 
       parameters:
         - name: name
@@ -780,6 +782,73 @@ components:
               oneOf:
                 - $ref: "catalog-health-check-schedule.yaml#/components/schemas/CatalogHealthCheckScheduleRequest"
                 - type: "null"
+    CatalogSummary:
+      description: |
+        Catalog 列表摘要。为避免在列表中返回连接配置与扩展元数据，不包含
+        `connector_config`、`metadata`；详情请使用 `GET /catalogs/{id}`。
+      type: object
+      required:
+        - id
+        - name
+        - type
+        - enabled
+        - connector_type
+      properties:
+        id:
+          description: catalog ID
+          type: string
+        name:
+          description: catalog 名称
+          type: string
+        tags:
+          description: 标签列表
+          type: array
+          items:
+            type: string
+        description:
+          description: 描述
+          type: string
+        type:
+          description: catalog 类型
+          type: string
+          enum: [physical, logical]
+        enabled:
+          description: 是否启用
+          type: boolean
+        internal:
+          description: 是否为内部 Catalog
+          type: boolean
+        connector_type:
+          description: 连接器类型标识
+          type: string
+        health_check_status:
+          description: 最近一次健康检查状态
+          type: string
+          enum: [healthy, degraded, unhealthy, offline, unchecked]
+        last_check_time:
+          description: 最近一次健康检查时间（毫秒时间戳）
+          type: integer
+          format: int64
+        health_check_result:
+          description: 最近一次健康检查详情
+          type: string
+        creator:
+          $ref: "#/components/schemas/AccountInfo"
+        create_time:
+          description: 创建时间，毫秒时间戳
+          type: integer
+          format: int64
+        updater:
+          $ref: "#/components/schemas/AccountInfo"
+        update_time:
+          description: 更新时间，毫秒时间戳
+          type: integer
+          format: int64
+        operations:
+          description: 当前用户对该 catalog 的操作权限集合
+          type: array
+          items:
+            type: string
     ListCatalogs:
       description: catalog 列表
       type: object
@@ -790,7 +859,7 @@ components:
         entries:
           type: array
           items:
-            $ref: "#/components/schemas/Catalog"
+            $ref: "#/components/schemas/CatalogSummary"
         total_count:
           type: integer
           format: int64
