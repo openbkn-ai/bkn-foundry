@@ -24,7 +24,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
 	"vega-backend/interfaces"
 )
 
@@ -231,11 +230,6 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		}
 	}
 
-	if err := attachSingleCatalogExtensions(ctx, ca.appSetting, catalog); err != nil {
-		span.SetStatus(codes.Error, "Load catalog extensions failed")
-		return nil, err
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return catalog, nil
 }
@@ -347,18 +341,8 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 		return []*interfaces.Catalog{}, err
 	}
 
-	if err := attachCatalogExtensions(ctx, ca.appSetting, interfaces.CatalogsQueryParams{IncludeExtensions: false}, catalogs); err != nil {
-		span.SetStatus(codes.Error, "Load catalog extensions failed")
-		return []*interfaces.Catalog{}, err
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return catalogs, nil
-}
-
-// AttachListExtensions implements interfaces.CatalogAccess.
-func (ca *catalogAccess) AttachListExtensions(ctx context.Context, params interfaces.CatalogsQueryParams, catalogs []*interfaces.Catalog) error {
-	return attachCatalogExtensions(ctx, ca.appSetting, params, catalogs)
 }
 
 // GetByName retrieves ca Catalog by name.
@@ -456,11 +440,6 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		}
 	}
 
-	if err := attachSingleCatalogExtensions(ctx, ca.appSetting, catalog); err != nil {
-		span.SetStatus(codes.Error, "Load catalog extensions failed")
-		return nil, err
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return catalog, nil
 }
@@ -470,38 +449,32 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalog IDs")
 	defer span.End()
 
-	builder := sq.Select(catalogExtCol(params, "f_id")).From(CATALOG_TABLE_NAME)
+	builder := sq.Select("f_id").From(CATALOG_TABLE_NAME)
 
 	if params.Name != "" {
 		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{catalogExtCol(params, "f_name"): name})
+		builder = builder.Where(sq.Like{"f_name": name})
 	}
 	if params.Tag != "" {
 		tag := "%" + common.EscapeLikePattern(params.Tag) + "%"
-		builder = builder.Where(sq.Like{catalogExtCol(params, "f_tags"): tag})
+		builder = builder.Where(sq.Like{"f_tags": tag})
 	}
 
 	if params.Type != "" {
-		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_type"): params.Type})
+		builder = builder.Where(sq.Eq{"f_type": params.Type})
 	}
 	if params.Enabled != nil {
-		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_enabled"): *params.Enabled})
+		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
 	}
 	if params.HealthCheckStatus != "" {
-		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_health_check_status"): params.HealthCheckStatus})
+		builder = builder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
 	}
-
-	builder = applyCatalogExtensionJoins(builder, params)
 
 	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(catalogListOrderExpr(params))
 	} else {
-		if len(params.ExtensionKeys) > 0 {
-			builder = builder.OrderBy(fmt.Sprintf("t_catalog.f_update_time %s", params.Direction))
-		} else {
-			builder = builder.OrderBy("f_update_time DESC")
-		}
+		builder = builder.OrderBy("f_update_time DESC")
 	}
 
 	sqlStr, vals, err := builder.ToSql()
@@ -581,59 +554,60 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	defer span.End()
 
 	builder := sq.Select(
-		catalogExtCol(params, "f_id"),
-		catalogExtCol(params, "f_name"),
-		catalogExtCol(params, "f_tags"),
-		catalogExtCol(params, "f_description"),
-		catalogExtCol(params, "f_type"),
-		catalogExtCol(params, "f_enabled"),
-		catalogExtCol(params, "f_internal"),
-		catalogExtCol(params, "f_connector_type"),
-		catalogExtCol(params, "f_connector_config"),
-		catalogExtCol(params, "f_metadata"),
-		catalogExtCol(params, "f_health_check_status"),
-		catalogExtCol(params, "f_last_check_time"),
-		catalogExtCol(params, "f_health_check_result"),
-		catalogExtCol(params, "f_creator"),
-		catalogExtCol(params, "f_creator_type"),
-		catalogExtCol(params, "f_create_time"),
-		catalogExtCol(params, "f_updater"),
-		catalogExtCol(params, "f_updater_type"),
-		catalogExtCol(params, "f_update_time"),
+		"f_id",
+		"f_name",
+		"f_tags",
+		"f_description",
+
+		"f_type",
+		"f_enabled",
+		"f_internal",
+
+		"f_connector_type",
+		"f_connector_config",
+		"f_metadata",
+
+		"f_health_check_status",
+		"f_last_check_time",
+		"f_health_check_result",
+
+		"f_creator",
+		"f_creator_type",
+		"f_create_time",
+		"f_updater",
+		"f_updater_type",
+		"f_update_time",
 	).From(CATALOG_TABLE_NAME)
 
 	countBuilder := sq.Select("COUNT(*)").From(CATALOG_TABLE_NAME)
 
 	if params.Name != "" {
 		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{catalogExtCol(params, "f_name"): name})
-		countBuilder = countBuilder.Where(sq.Like{catalogExtCol(params, "f_name"): name})
+		builder = builder.Where(sq.Like{"f_name": name})
+		countBuilder = countBuilder.Where(sq.Like{"f_name": name})
 	}
 	if params.Tag != "" {
 		tag := "%" + common.EscapeLikePattern(params.Tag) + "%"
-		builder = builder.Where(sq.Like{catalogExtCol(params, "f_tags"): tag})
-		countBuilder = countBuilder.Where(sq.Like{catalogExtCol(params, "f_tags"): tag})
+		builder = builder.Where(sq.Like{"f_tags": tag})
+		countBuilder = countBuilder.Where(sq.Like{"f_tags": tag})
 	}
 
 	if params.Type != "" {
-		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_type"): params.Type})
-		countBuilder = countBuilder.Where(sq.Eq{catalogExtCol(params, "f_type"): params.Type})
+		builder = builder.Where(sq.Eq{"f_type": params.Type})
+		countBuilder = countBuilder.Where(sq.Eq{"f_type": params.Type})
 	}
 	if params.ConnectorType != "" {
-		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_connector_type"): params.ConnectorType})
-		countBuilder = countBuilder.Where(sq.Eq{catalogExtCol(params, "f_connector_type"): params.ConnectorType})
+		builder = builder.Where(sq.Eq{"f_connector_type": params.ConnectorType})
+		countBuilder = countBuilder.Where(sq.Eq{"f_connector_type": params.ConnectorType})
 	}
 	if params.Enabled != nil {
-		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_enabled"): *params.Enabled})
-		countBuilder = countBuilder.Where(sq.Eq{catalogExtCol(params, "f_enabled"): *params.Enabled})
+		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
+		countBuilder = countBuilder.Where(sq.Eq{"f_enabled": *params.Enabled})
 	}
 	if params.HealthCheckStatus != "" {
-		builder = builder.Where(sq.Eq{catalogExtCol(params, "f_health_check_status"): params.HealthCheckStatus})
-		countBuilder = countBuilder.Where(sq.Eq{catalogExtCol(params, "f_health_check_status"): params.HealthCheckStatus})
+		builder = builder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
+		countBuilder = countBuilder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
 	}
-
-	builder = applyCatalogExtensionJoins(builder, params)
-	countBuilder = applyCatalogExtensionJoins(countBuilder, params)
 
 	countSql, countVals, _ := countBuilder.ToSql()
 	var total int64
@@ -649,11 +623,7 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	if params.Sort != "" {
 		builder = builder.OrderBy(catalogListOrderExpr(params))
 	} else {
-		if len(params.ExtensionKeys) > 0 {
-			builder = builder.OrderBy(fmt.Sprintf("t_catalog.f_update_time %s", params.Direction))
-		} else {
-			builder = builder.OrderBy("f_update_time DESC")
-		}
+		builder = builder.OrderBy("f_update_time DESC")
 	}
 
 	sqlStr, vals, err := builder.ToSql()
@@ -726,11 +696,6 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate catalog rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, 0, err
-	}
-
-	if err := attachCatalogExtensions(ctx, ca.appSetting, params, catalogs); err != nil {
-		span.SetStatus(codes.Error, "Load catalog extensions failed")
 		return nil, 0, err
 	}
 
@@ -866,13 +831,6 @@ func (ca *catalogAccess) DeleteByID(ctx context.Context, tx *sql.Tx, id string) 
 
 	span.SetAttributes(attr.Key("catalog_id").String(id))
 
-	extensionErr := entityextension.NewStore(ca.appSetting).
-		DeleteByEntityIDs(ctx, tx, entityextension.KindCatalog, []string{id})
-	if extensionErr != nil {
-		span.SetStatus(codes.Error, "Delete entity extensions failed")
-		return extensionErr
-	}
-
 	sqlStr, vals, _ := sq.Delete(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_id": id}).
 		ToSql()
@@ -890,6 +848,14 @@ func (ca *catalogAccess) DeleteByID(ctx context.Context, tx *sql.Tx, id string) 
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func catalogListOrderExpr(params interfaces.CatalogsQueryParams) string {
+	col := params.Sort
+	if col == "" {
+		col = "f_update_time"
+	}
+	return fmt.Sprintf("%s %s", col, params.Direction)
 }
 
 // UpdateStatus updates Catalog status.

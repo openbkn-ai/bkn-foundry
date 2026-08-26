@@ -125,7 +125,6 @@ func init() {
 	rest.Register(LogicViewErrCodeList)
 	rest.Register(DatasetErrCodeList)
 	rest.Register(DiscoverScheduleErrCodeList)
-	rest.Register(ExtensionsErrCodeList)
 	rest.Register(SemanticUnderstandingTaskErrCodeList)
 	rest.Register(IndexCapabilityErrCodeList)
 }

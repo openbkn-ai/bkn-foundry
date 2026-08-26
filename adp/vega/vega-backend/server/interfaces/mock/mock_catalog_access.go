@@ -42,20 +42,6 @@ func (m *MockCatalogAccess) EXPECT() *MockCatalogAccessMockRecorder {
 	return m.recorder
 }
 
-// AttachListExtensions mocks base method.
-func (m *MockCatalogAccess) AttachListExtensions(ctx context.Context, params interfaces.CatalogsQueryParams, catalogs []*interfaces.Catalog) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AttachListExtensions", ctx, params, catalogs)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// AttachListExtensions indicates an expected call of AttachListExtensions.
-func (mr *MockCatalogAccessMockRecorder) AttachListExtensions(ctx, params, catalogs any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AttachListExtensions", reflect.TypeOf((*MockCatalogAccess)(nil).AttachListExtensions), ctx, params, catalogs)
-}
-
 // Create mocks base method.
 func (m *MockCatalogAccess) Create(ctx context.Context, tx *sql.Tx, catalog *interfaces.Catalog) error {
 	m.ctrl.T.Helper()

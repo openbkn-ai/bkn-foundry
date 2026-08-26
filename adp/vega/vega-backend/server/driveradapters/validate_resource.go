@@ -16,7 +16,6 @@ import (
 
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
-	"vega-backend/logics/extensions"
 	resourcelogic "vega-backend/logics/resource"
 )
 
@@ -39,11 +38,6 @@ func validateResourceRequestBase(ctx context.Context, req *interfaces.ResourceRe
 	}
 	if err := validateDescription(ctx, req.Description); err != nil {
 		return err
-	}
-	if req.Extensions != nil {
-		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
-			return err
-		}
 	}
 	return nil
 }
@@ -125,11 +119,6 @@ func validateSchemaProperties(ctx context.Context, props []*interfaces.Property,
 			return err
 		}
 
-		if len(prop.Extensions) > 0 {
-			if err := extensions.ValidatePropertyExtensionsMap(ctx, prop.Extensions); err != nil {
-				return err
-			}
-		}
 	}
 	return nil
 }
@@ -216,9 +205,6 @@ func ValidateResourceListQueryParams(ctx context.Context, params interfaces.Reso
 		return err
 	}
 	if err := validateResourceStatusQueryParam(ctx, params.Status); err != nil {
-		return err
-	}
-	if err := extensions.ValidateExtensionQueryPairs(ctx, params.ExtensionKeys, params.ExtensionValues); err != nil {
 		return err
 	}
 	return nil
@@ -385,11 +371,6 @@ func validateViewFields(ctx context.Context, viewFields []*interfaces.ViewProper
 			return err
 		}
 
-		if len(field.Extensions) > 0 {
-			if err := extensions.ValidatePropertyExtensionsMap(ctx, field.Extensions); err != nil {
-				return err
-			}
-		}
 	}
 
 	return nil

@@ -29,13 +29,11 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog_health_check_schedule"
 	"vega-backend/logics/connector/factory"
-	"vega-backend/logics/extensions"
 	"vega-backend/logics/permission"
 	"vega-backend/logics/user_mgmt"
 )
@@ -280,12 +278,6 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 		UpdateTime: now,
 	}
 
-	if req.Extensions != nil {
-		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
-			return "", err
-		}
-	}
-
 	tx, err := cs.db.BeginTx(ctx, nil)
 	if err != nil {
 		otellog.LogError(ctx, "Create catalog transaction failed", err)
@@ -298,10 +290,6 @@ func (cs *catalogService) Create(ctx context.Context, req *interfaces.CatalogReq
 	err = cs.ca.Create(ctx, tx, catalog)
 	if err == nil {
 		err = cs.createHealthCheckSchedule(ctx, tx, catalog, req.HealthCheckSchedule)
-	}
-	if err == nil && req.Extensions != nil {
-		err = entityextension.NewStore(cs.appSetting).Replace(
-			ctx, tx, entityextension.KindCatalog, catalog.ID, *req.Extensions)
 	}
 	if err == nil {
 		err = tx.Commit()
@@ -707,12 +695,6 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 
-	if err := cs.ca.AttachListExtensions(ctx, interfaces.CatalogsQueryParams{IncludeExtensions: true}, catalogs); err != nil {
-		span.SetStatus(codes.Error, "Load catalog extensions failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
-	}
-
 	// Remove sensitive fields and do not return to the front end
 	for _, c := range catalogs {
 		cs.removeSensitiveFields(c)
@@ -859,12 +841,6 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		catalogs = append(catalogs, batchCatalogs...)
 	}
 
-	if err := cs.ca.AttachListExtensions(ctx, params, catalogs); err != nil {
-		span.SetStatus(codes.Error, "Attach catalog extensions failed")
-		return []*interfaces.Catalog{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
-	}
-
 	// Set the operation permissions for the catalog
 	for _, c := range catalogs {
 		if resrc, exist := matchResourceOpsMap[c.ID]; exist {
@@ -1002,18 +978,6 @@ func (cs *catalogService) Update(ctx context.Context, catalog *interfaces.Catalo
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Catalog_UpdateConflict)
 	}
 
-	if req.Extensions != nil {
-		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
-			return err
-		}
-		if err := entityextension.NewStore(cs.appSetting).Replace(ctx, tx, entityextension.KindCatalog, catalog.ID, *req.Extensions); err != nil {
-			span.SetStatus(codes.Error, "Replace catalog extensions failed")
-			otellog.LogError(ctx, "Replace catalog extensions failed", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				verrors.VegaBackend_Catalog_InternalError_UpdateFailed).
-				WithErrorDetails("failed to update catalog")
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		span.SetStatus(codes.Error, "Commit catalog update transaction failed")
 		otellog.LogError(ctx, "Commit catalog update transaction failed", err)

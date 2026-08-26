@@ -24,7 +24,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
 	"vega-backend/interfaces"
 )
 
@@ -285,13 +284,6 @@ func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*
 		return nil, err
 	}
 
-	if tx == nil {
-		if err := attachSingleResourceExtensions(ctx, ra.appSetting, resource); err != nil {
-			span.SetStatus(codes.Error, "Load resource extensions failed")
-			return nil, err
-		}
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
 }
@@ -337,18 +329,8 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 		return []*interfaces.Resource{}, err
 	}
 
-	if err := attachResourceExtensions(ctx, ra.appSetting, interfaces.ResourcesQueryParams{IncludeExtensions: false}, resources); err != nil {
-		span.SetStatus(codes.Error, "Load resource extensions failed")
-		return []*interfaces.Resource{}, err
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return resources, nil
-}
-
-// AttachListExtensions implements interfaces.ResourceAccess.
-func (ra *resourceAccess) AttachListExtensions(ctx context.Context, params interfaces.ResourcesQueryParams, resources []*interfaces.Resource) error {
-	return attachResourceExtensions(ctx, ra.appSetting, params, resources)
 }
 
 // GetByIDsBasic retrieves Resources by IDs without fully parsing sourceMetadata, schemaDefinition and logicDefinition.
@@ -573,36 +555,30 @@ func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.Resourc
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List resource IDs")
 	defer span.End()
 
-	builder := sq.Select(resourceExtCol(params, "f_id")).From(RESOURCE_TABLE_NAME)
+	builder := sq.Select("f_id").From(RESOURCE_TABLE_NAME)
 
 	if params.Name != "" {
 		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{resourceExtCol(params, "f_name"): name})
+		builder = builder.Where(sq.Like{"f_name": name})
 	}
 	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_catalog_id"): params.CatalogID})
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
 	}
 	if params.Category != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_category"): params.Category})
+		builder = builder.Where(sq.Eq{"f_category": params.Category})
 	}
 	if params.Status != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_status"): params.Status})
+		builder = builder.Where(sq.Eq{"f_status": params.Status})
 	}
 	if params.Schema != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_schema"): params.Schema})
+		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
 	}
-
-	builder = applyResourceExtensionJoins(builder, params)
 
 	// Sorting
 	if params.Sort != "" {
 		builder = builder.OrderBy(resourceListOrderExpr(params))
 	} else {
-		if len(params.ExtensionKeys) > 0 {
-			builder = builder.OrderBy(fmt.Sprintf("t_resource.f_update_time %s", params.Direction))
-		} else {
-			builder = builder.OrderBy("f_update_time DESC")
-		}
+		builder = builder.OrderBy("f_update_time DESC")
 	}
 
 	sqlStr, vals, err := builder.ToSql()
@@ -643,57 +619,36 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	defer span.End()
 
 	builder := sq.Select(
-		resourceExtCol(params, "f_id"),
-		resourceExtCol(params, "f_catalog_id"),
-		resourceExtCol(params, "f_name"),
-		resourceExtCol(params, "f_tags"),
-		resourceExtCol(params, "f_description"),
-		resourceExtCol(params, "f_category"),
-		resourceExtCol(params, "f_status"),
-		resourceExtCol(params, "f_status_message"),
-		resourceExtCol(params, "f_last_discover_status"),
-		resourceExtCol(params, "f_schema"),
-		resourceExtCol(params, "f_source_identifier"),
-		resourceExtCol(params, "f_source_metadata"),
-		resourceExtCol(params, "f_schema_definition"),
-		resourceExtCol(params, "f_index_config"),
-		resourceExtCol(params, "f_creator"),
-		resourceExtCol(params, "f_creator_type"),
-		resourceExtCol(params, "f_create_time"),
-		resourceExtCol(params, "f_updater"),
-		resourceExtCol(params, "f_updater_type"),
-		resourceExtCol(params, "f_update_time"),
-		resourceExtCol(params, "f_local_status"),
-		resourceExtCol(params, "f_local_index_name"),
-		resourceExtCol(params, "f_sync_mark"),
+		"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_status",
+		"f_status_message", "f_last_discover_status", "f_schema", "f_source_identifier",
+		"f_source_metadata", "f_schema_definition", "f_index_config", "f_creator", "f_creator_type",
+		"f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_local_status",
+		"f_local_index_name", "f_sync_mark",
 	).From(RESOURCE_TABLE_NAME)
 
 	countBuilder := sq.Select("COUNT(*)").From(RESOURCE_TABLE_NAME)
 
 	if params.Name != "" {
 		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{resourceExtCol(params, "f_name"): name})
-		countBuilder = countBuilder.Where(sq.Like{resourceExtCol(params, "f_name"): name})
+		builder = builder.Where(sq.Like{"f_name": name})
+		countBuilder = countBuilder.Where(sq.Like{"f_name": name})
 	}
 	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_catalog_id"): params.CatalogID})
-		countBuilder = countBuilder.Where(sq.Eq{resourceExtCol(params, "f_catalog_id"): params.CatalogID})
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
 	}
 	if params.Category != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_category"): params.Category})
-		countBuilder = countBuilder.Where(sq.Eq{resourceExtCol(params, "f_category"): params.Category})
+		builder = builder.Where(sq.Eq{"f_category": params.Category})
+		countBuilder = countBuilder.Where(sq.Eq{"f_category": params.Category})
 	}
 	if params.Status != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_status"): params.Status})
-		countBuilder = countBuilder.Where(sq.Eq{resourceExtCol(params, "f_status"): params.Status})
+		builder = builder.Where(sq.Eq{"f_status": params.Status})
+		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Status})
 	}
 	if params.Schema != "" {
-		builder = builder.Where(sq.Eq{resourceExtCol(params, "f_schema"): params.Schema})
-		countBuilder = countBuilder.Where(sq.Eq{resourceExtCol(params, "f_schema"): params.Schema})
+		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
+		countBuilder = countBuilder.Where(sq.Eq{"f_schema": params.Schema})
 	}
-
-	builder = applyResourceExtensionJoins(builder, params)
-	countBuilder = applyResourceExtensionJoins(countBuilder, params)
 
 	countSql, countVals, _ := countBuilder.ToSql()
 	var total int64
@@ -709,11 +664,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	if params.Sort != "" {
 		builder = builder.OrderBy(resourceListOrderExpr(params))
 	} else {
-		if len(params.ExtensionKeys) > 0 {
-			builder = builder.OrderBy(fmt.Sprintf("t_resource.f_update_time %s", params.Direction))
-		} else {
-			builder = builder.OrderBy("f_update_time DESC")
-		}
+		builder = builder.OrderBy("f_update_time DESC")
 	}
 
 	sqlStr, vals, err := builder.ToSql()
@@ -782,11 +733,6 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return nil, 0, err
-	}
-
-	if err := attachResourceExtensions(ctx, ra.appSetting, params, resources); err != nil {
-		span.SetStatus(codes.Error, "Load resource extensions failed")
 		return nil, 0, err
 	}
 
@@ -1231,11 +1177,6 @@ func (ra *resourceAccess) DeleteByIDs(ctx context.Context, ids []string) error {
 		return nil
 	}
 
-	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, nil, entityextension.KindResource, ids); err != nil {
-		span.SetStatus(codes.Error, "Delete entity extensions failed")
-		return err
-	}
-
 	sqlStr, vals, _ := sq.Delete(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
@@ -1348,45 +1289,7 @@ func (ra *resourceAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, cat
 
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	idSql, idArgs, err := sq.Select("f_id").
-		From(RESOURCE_TABLE_NAME).
-		Where(sq.Eq{"f_catalog_id": catalogID}).
-		ToSql()
-	if err != nil {
-		span.SetStatus(codes.Error, "Build sql failed")
-		return err
-	}
-	var ridRows *sql.Rows
-	if tx != nil {
-		ridRows, err = tx.QueryContext(ctx, idSql, idArgs...)
-	} else {
-		ridRows, err = ra.db.QueryContext(ctx, idSql, idArgs...)
-	}
-	if err != nil {
-		span.SetStatus(codes.Error, "Query resource ids failed")
-		return err
-	}
-	defer func() { _ = ridRows.Close() }()
-
-	var resIDs []string
-	for ridRows.Next() {
-		var rid string
-		if err := ridRows.Scan(&rid); err != nil {
-			span.SetStatus(codes.Error, "Scan failed")
-			return err
-		}
-		resIDs = append(resIDs, rid)
-	}
-	if err := ridRows.Err(); err != nil {
-		span.SetStatus(codes.Error, "Iterate rows failed")
-		return err
-	}
-	if err := entityextension.NewStore(ra.appSetting).DeleteByEntityIDs(ctx, tx, entityextension.KindResource, resIDs); err != nil {
-		span.SetStatus(codes.Error, "Delete entity extensions failed")
-		return err
-	}
-
-	sqlStr, vals, _ := sq.Delete(RESOURCE_TABLE_NAME).
+	sqlStr, vals, err := sq.Delete(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
 
@@ -1402,4 +1305,12 @@ func (ra *resourceAccess) DeleteByCatalogID(ctx context.Context, tx *sql.Tx, cat
 
 	span.SetStatus(codes.Ok, "")
 	return nil
+}
+
+func resourceListOrderExpr(params interfaces.ResourcesQueryParams) string {
+	col := params.Sort
+	if col == "" {
+		col = "f_update_time"
+	}
+	return fmt.Sprintf("%s %s", col, params.Direction)
 }

@@ -24,5 +24,3 @@
 - **错误响应**：所有非 2xx 响应统一返回 `Error` schema（对应 `comm-go/rest.BaseError`），各文件自含一份定义。
 - **内部接口**：多数业务端点同时提供 `/api/vega-backend/in/v1/...`，与对应外部端点的请求 / 响应结构一致；区别仅在鉴权方式（外部 OAuth Token，内部 Header `X-Account-ID` / `X-Account-Type`）。本文档仅描述外部接口；请以 `driveradapters/router.go` 中实际注册的内部路由为准。
 - **跨资源动作端点**：`POST /catalogs/{id}/discover` 创建 DiscoverTask 实例，定义在 `discover-task.yaml`。
-- **Catalog / Resource `extensions`（Issue #382，方案 B）**：OpenAPI 定义在 [catalog.yaml](catalog.yaml)、[resource.yaml](resource.yaml)。请求/响应与列表投影仅 **`extensions`**；列表筛选 query 为 **`extension_key` / `extension_value`**；`include_extensions`、`include_extension_keys` 见两文件。持久化表 **`t_entity_extension`** 及约定见 `info.description` 与设计稿
-  [catalog-resource-labels-scheme-b-design.md](../../../design/vega/features/vega-backend/dip-for-extension/catalog-resource-labels-scheme-b-design.md)。

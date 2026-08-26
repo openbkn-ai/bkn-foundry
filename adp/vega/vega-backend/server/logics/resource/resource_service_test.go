@@ -16,14 +16,11 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
-	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	vmock "vega-backend/interfaces/mock"
@@ -356,7 +353,6 @@ func TestResourceServiceGetByIDs(t *testing.T) {
 		rs, mockRA, mockPS, _, mockUMS, _, _ := newTestService(t)
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1", "r2"}).
 			Return([]*interfaces.Resource{{ID: "r1"}, {ID: "r2"}}, nil)
-		mockRA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE,
 			[]string{"r1", "r2"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
@@ -402,7 +398,6 @@ func TestResourceServiceList(t *testing.T) {
 			}, nil)
 		resources := []*interfaces.Resource{{ID: "r2"}, {ID: "r3"}}
 		mockRA.EXPECT().GetByIDsBasic(gomock.Any(), gomock.Any()).Return(resources, nil)
-		mockRA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		result, total, err := rs.List(context.Background(), interfaces.ResourcesQueryParams{
@@ -431,7 +426,6 @@ func TestResourceServiceList(t *testing.T) {
 				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"},
 			}, nil)
 		mockRA.EXPECT().GetByIDsBasic(gomock.Any(), gomock.Any()).Return(resources, nil)
-		mockRA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		result, total, err := rs.List(context.Background(), interfaces.ResourcesQueryParams{
@@ -499,7 +493,6 @@ func TestResourceServiceList(t *testing.T) {
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 		mockRA.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1"}}, nil)
-		mockRA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		result, total, err := rs.List(context.Background(), interfaces.ResourcesQueryParams{
@@ -607,52 +600,6 @@ func TestValidateSchemaDefinitionRejectsNullField(t *testing.T) {
 }
 
 func TestResourceServiceCreate(t *testing.T) {
-	t.Run("rolls back resource and extensions when extension replacement fails", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
-		db, sqlMock, err := sqlmock.New()
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = db.Close() })
-		rs.db = db
-		rs.appSetting = &common.AppSetting{}
-
-		sensitiveError := "replace t_entity_extension failed at db.internal"
-		replaceErr := errors.New(sensitiveError)
-		patches := gomonkey.NewPatches()
-		t.Cleanup(patches.Reset)
-		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
-			return &entityextension.Store{}
-		})
-		patches.ApplyMethod(&entityextension.Store{}, "Replace",
-			func(_ *entityextension.Store, _ context.Context, tx *sql.Tx, kind, entityID string, _ map[string]string) error {
-				require.NotNil(t, tx)
-				assert.Equal(t, entityextension.KindResource, kind)
-				assert.NotEmpty(t, entityID)
-				return replaceErr
-			})
-
-		sqlMock.ExpectBegin()
-		sqlMock.ExpectRollback()
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		mockRA.EXPECT().Create(gomock.Any(), gomock.Not(nil), gomock.Any()).Return(nil)
-
-		extensionValues := map[string]string{"owner": "team-a"}
-		_, err = rs.Create(context.Background(), &interfaces.ResourceRequest{
-			CatalogID:  "catalog-1",
-			Name:       "resource",
-			Category:   interfaces.ResourceCategoryTable,
-			Extensions: &extensionValues,
-		})
-
-		var httpErr *rest.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InternalError_CreateFailed, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to create resource")
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
-		require.NoError(t, sqlMock.ExpectationsWereMet())
-	})
-
 	t.Run("create dataset category", func(t *testing.T) {
 		rs, mockRA, mockPS, mockDS, _, mockCS, _ := newTestService(t)
 		expectResourceServiceTransaction(t, rs, true)
@@ -961,57 +908,6 @@ func TestResourceServiceUpdateDiscoverStatus(t *testing.T) {
 }
 
 func TestResourceServiceUpdate(t *testing.T) {
-	t.Run("rolls back resource and extensions when extension replacement fails", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, mockCS, _ := newTestService(t)
-		db, sqlMock, err := sqlmock.New()
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = db.Close() })
-		rs.db = db
-		rs.appSetting = &common.AppSetting{}
-
-		sensitiveError := "replace t_entity_extension failed at db.internal"
-		replaceErr := errors.New(sensitiveError)
-		patches := gomonkey.NewPatches()
-		t.Cleanup(patches.Reset)
-		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
-			return &entityextension.Store{}
-		})
-		patches.ApplyMethod(&entityextension.Store{}, "Replace",
-			func(_ *entityextension.Store, _ context.Context, tx *sql.Tx, kind, entityID string, _ map[string]string) error {
-				require.NotNil(t, tx)
-				assert.Equal(t, entityextension.KindResource, kind)
-				assert.Equal(t, "resource-1", entityID)
-				return replaceErr
-			})
-
-		sqlMock.ExpectBegin()
-		sqlMock.ExpectRollback()
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCS.EXPECT().CheckExistByID(gomock.Any(), "catalog-1").Return(true, nil)
-		mockRA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
-
-		extensionValues := map[string]string{"owner": "team-a"}
-		err = rs.Update(context.Background(), &interfaces.Resource{
-			ID:        "resource-1",
-			CatalogID: "catalog-1",
-			Name:      "resource",
-			Category:  interfaces.ResourceCategoryTable,
-		}, &interfaces.ResourceRequest{
-			CatalogID:  "catalog-1",
-			Category:   interfaces.ResourceCategoryTable,
-			Name:       "resource",
-			Extensions: &extensionValues,
-		})
-
-		var httpErr *rest.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Resource_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update resource")
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
-		require.NoError(t, sqlMock.ExpectationsWereMet())
-	})
-
 	t.Run("update nil resource", func(t *testing.T) {
 		rs, _, _, _, _, _, _ := newTestService(t)
 		err := rs.Update(context.Background(), nil, &interfaces.ResourceRequest{})

@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"vega-backend/interfaces"
-	"vega-backend/logics/extensions"
 )
 
 func TestValidateCatalogRequest(t *testing.T) {
@@ -92,19 +91,6 @@ func TestValidateCatalogRequest(t *testing.T) {
 			},
 			wantErr: true,
 		},
-		{
-			name: "rejects reserved extension key",
-			mutate: func(req *interfaces.CatalogRequest) {
-				req.Extensions = &map[string]string{"vega_owner": "system"}
-			},
-			wantErr: true,
-		},
-		{
-			name: "accepts valid extensions",
-			mutate: func(req *interfaces.CatalogRequest) {
-				req.Extensions = &map[string]string{"domain": "finance"}
-			},
-		},
 	}
 
 	for _, tt := range tests {
@@ -165,29 +151,6 @@ func TestValidateCatalogListQueryParams(t *testing.T) {
 			name: "rejects unknown health status",
 			params: interfaces.CatalogsQueryParams{
 				HealthCheckStatus: "stale",
-			},
-			wantErr: true,
-		},
-		{
-			name: "accepts paired extension filters",
-			params: interfaces.CatalogsQueryParams{
-				ExtensionKeys:   []string{"domain"},
-				ExtensionValues: []string{"finance"},
-			},
-		},
-		{
-			name: "rejects mismatched extension filters",
-			params: interfaces.CatalogsQueryParams{
-				ExtensionKeys:   []string{"domain"},
-				ExtensionValues: nil,
-			},
-			wantErr: true,
-		},
-		{
-			name: "rejects too many extension filters",
-			params: interfaces.CatalogsQueryParams{
-				ExtensionKeys:   make([]string, extensions.MaxExtensionFilterPairs+1),
-				ExtensionValues: make([]string, extensions.MaxExtensionFilterPairs+1),
 			},
 			wantErr: true,
 		},

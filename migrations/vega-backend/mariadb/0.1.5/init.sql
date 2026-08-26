@@ -4,95 +4,16 @@
 -- See the LICENSE file in the project root for details.
 
 -- ==========================================
--- VEGA Catalog 表结构定义
+-- VEGA Catalog / Resource 初始化表结构定义
 -- ==========================================
 
 -- ==========================================
--- Schema定义说明（f_schema_definition字段JSON格式）
+-- Schema 定义说明（f_schema_definition JSON 数组）
 -- ==========================================
--- f_schema_definition 字段使用JSON数组格式存储所有字段信息，每个字段包含以下属性：
---
--- 基础属性：
---   - name: 字段名称
---   - type: VEGA统一类型 (integer, unsigned_integer, float, decimal, string, text, date, datetime, time, boolean, binary, json, vector)
---   - description: 字段描述
---   - type_config: 类型配置对象 (如 {"max_length": 128}, {"dimension": 768})
---
--- 源端映射：
---   - source_name: 源端字段名（可能与name不同）
---   - source_type: 源端字段类型
---   - is_native: 是否为系统自动同步的字段
---
--- 字段属性：
---   - is_primary: 是否为主键
---   - is_nullable: 是否可为空
---   - default_value: 默认值
---   - ordinal_position: 字段顺序位置
---
--- 字段特征（features数组，可选，用于扩展字段能力）：
---   - feature_type: 特征类型 (keyword, fulltext, vector)
---   - feature_config: 特征配置对象 (如分词器、向量空间类型等)
---   - ref_field_name: 引用的字段名称（用于借用其他字段的能力）
---   - enabled: 是否启用
---
--- 示例：
--- [
---   {
---     "name": "id",
---     "type": "integer",
---     "description": "主键ID",
---     "type_config": {"length": 11},
---     "source_name": "id",
---     "source_type": "int(11)",
---     "is_native": true,
---     "is_primary": true,
---     "is_nullable": false,
---     "default_value": "",
---     "ordinal_position": 1
---   },
---   {
---     "name": "content",
---     "type": "text",
---     "description": "文章内容",
---     "type_config": {},
---     "source_name": "content",
---     "source_type": "text",
---     "is_native": true,
---     "is_primary": false,
---     "is_nullable": true,
---     "default_value": "",
---     "ordinal_position": 2,
---     "features": [
---       {
---         "feature_type": "fulltext",
---         "feature_config": {"analyzer": "ik_max_word"},
---         "ref_field_name": "",
---         "is_default": true
---       }
---     ]
---   },
---   {
---     "name": "embedding",
---     "type": "vector",
---     "description": "向量嵌入",
---     "type_config": {"dimension": 768},
---     "source_name": "",
---     "source_type": "",
---     "is_native": false,
---     "is_primary": false,
---     "is_nullable": true,
---     "default_value": "",
---     "ordinal_position": 3,
---     "features": [
---       {
---         "feature_type": "vector",
---         "feature_config": {"space_type": "cosinesimil", "m": 16, "ef_construction": 200},
---         "ref_field_name": "",
---         "is_default": true
---       }
---     ]
---   }
--- ]
+-- 每个字段使用 Property 模型：name、display_name、type、description、
+-- original_name、original_type、original_description、features 和 attributes。
+-- features 中的元素使用 PropertyFeature 模型；attributes 由各 connector 定义。
+-- 具体 JSON 契约以 interfaces/resource.go 和 VEGA OpenAPI 为准。
 -- ==========================================
 USE openbkn;
 -- ==========================================
@@ -102,7 +23,7 @@ CREATE TABLE IF NOT EXISTS t_catalog (
     -- 主键与基础信息
     f_id                      VARCHAR(40) NOT NULL DEFAULT '' COMMENT 'catalog唯一标识',
     f_name                    VARCHAR(255) NOT NULL DEFAULT '' COMMENT '目录名称，系统一级命名空间',
-    f_tags                    VARCHAR(255) NOT NULL DEFAULT '[]' COMMENT '标签，逗号分隔，用于分类和检索',
+    f_tags                    VARCHAR(255) NOT NULL DEFAULT '[]' COMMENT '标签，JSON 数组格式，用于分类和检索',
     f_description             VARCHAR(1000) NOT NULL DEFAULT '' COMMENT '目录描述',
 
     f_type                    VARCHAR(20) NOT NULL DEFAULT '' COMMENT '目录类型: physical, logical',
@@ -189,24 +110,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
 
 
 -- ==========================================
--- 3. t_entity_extension Catalog/Resource 可检索业务 KV（extensions）副表
--- Issue #382 方案 B
--- ==========================================
-CREATE TABLE IF NOT EXISTS t_entity_extension (
-    f_entity_kind VARCHAR(20) NOT NULL COMMENT '实体类型: catalog / resource，与 f_entity_id 共同标识扩展所属实体',
-    f_entity_id VARCHAR(40) NOT NULL COMMENT '等于 t_catalog.f_id 或 t_resource.f_id',
-    f_key       VARCHAR(128) NOT NULL COMMENT '扩展键，建议 dip: 等业务前缀',
-    f_value     VARCHAR(512) NOT NULL COMMENT '扩展值，可为 JSON 文本',
-    f_create_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '创建时间（毫秒）',
-    f_update_time BIGINT(20) NOT NULL DEFAULT 0 COMMENT '更新时间（毫秒）',
-    PRIMARY KEY (f_entity_kind, f_entity_id, f_key),
-    KEY idx_entity (f_entity_kind, f_entity_id),
-    KEY idx_entity_key_value (f_entity_kind, f_entity_id, f_key, f_value(191))
-) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='实体级 extensions 行存储（与 schema_definition 内 Property.extensions 分离）';
-
-
--- ==========================================
--- 4. t_resource_schema_history Schema历史表
+-- 3. t_resource_schema_history Schema历史表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_resource_schema_history (
     f_id                      VARCHAR(40) NOT NULL DEFAULT '' COMMENT '历史记录唯一标识',
@@ -227,7 +131,7 @@ CREATE TABLE IF NOT EXISTS t_resource_schema_history (
 
 
 -- ==========================================
--- 5. t_connector_type Connector 类型注册表
+-- 4. t_connector_type Connector 类型注册表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_connector_type (
     -- 主键与基础信息
@@ -256,7 +160,7 @@ CREATE TABLE IF NOT EXISTS t_connector_type (
 
 
 -- ==========================================
--- 6. 初始化内置 Local Connector
+-- 5. 初始化内置 Local Connector
 -- ==========================================
 INSERT INTO t_connector_type (f_type, f_name, f_description, f_mode, f_category, f_enabled)
 SELECT 'mariadb', 'mariadb', 'MariaDB 关系型数据库连接器', 'local', 'table', TRUE
@@ -283,7 +187,7 @@ SELECT 'anyshare', 'anyshare', 'AnyShare 连接器', 'local', 'fileset', TRUE
 FROM DUAL WHERE NOT EXISTS ( SELECT f_type FROM t_connector_type WHERE f_type = 'anyshare' );
 
 -- ==========================================
--- 7. t_discover_task 发现任务表
+-- 6. t_discover_task 发现任务表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_discover_task (
     -- 主键与关联信息
@@ -324,7 +228,7 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='发现任务表，记录异步资源发现任务的状态和结果';
 
 -- ==========================================
--- 8. t_build_task 构建任务表
+-- 7. t_build_task 构建任务表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_build_task (
     -- 主键与关联信息
@@ -366,7 +270,7 @@ CREATE TABLE IF NOT EXISTS t_build_task (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='构建任务表';
 
 -- ==========================================
--- 9. t_semantic_understanding_task 语义理解任务表
+-- 8. t_semantic_understanding_task 语义理解任务表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_semantic_understanding_task (
     -- 主键与关联信息
@@ -414,7 +318,7 @@ CREATE TABLE IF NOT EXISTS t_semantic_understanding_task (
 
 
 -- ==========================================
--- 10. t_discover_schedule 资源发现调度表
+-- 9. t_discover_schedule 资源发现调度表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_discover_schedule (
     -- 主键与关联信息
@@ -451,7 +355,7 @@ CREATE TABLE IF NOT EXISTS t_discover_schedule (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='资源发现调度表，记录定时资源发现的配置和执行状态';
 
 -- ==========================================
--- 11. t_catalog_health_check_schedule Catalog 健康检查调度表
+-- 10. t_catalog_health_check_schedule Catalog 健康检查调度表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_catalog_health_check_schedule (
     f_catalog_id              VARCHAR(40) NOT NULL COMMENT '所属 Catalog ID，同时为主键',
@@ -470,7 +374,7 @@ CREATE TABLE IF NOT EXISTS t_catalog_health_check_schedule (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='Catalog 定时健康检查配置与执行元数据';
 
 -- ==========================================
--- 12. t_vega_operation_audit 数据资源管理操作审计表
+-- 11. t_vega_operation_audit 数据资源管理操作审计表
 -- ==========================================
 CREATE TABLE IF NOT EXISTS t_vega_operation_audit (
     event_id                 VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,

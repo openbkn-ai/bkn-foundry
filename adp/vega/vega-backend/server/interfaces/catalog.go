@@ -69,9 +69,6 @@ type Catalog struct {
 	ConnectorCfg  ConnectorConfig `json:"connector_config"`
 	Metadata      map[string]any  `json:"metadata"`
 
-	// Extensions business out-of-domain flat KV (t_entity_extension); The list is omitted by default. Details or non-omission are returned
-	Extensions map[string]string `json:"extensions,omitempty"`
-
 	CatalogHealthCheckStatus
 
 	Creator    AccountInfo `json:"creator"`
@@ -99,11 +96,6 @@ type CatalogsQueryParams struct {
 	ConnectorType     string
 	Enabled           *bool
 	HealthCheckStatus string
-	// ExtensionKeys/ExtensionValues pairs of equal length, multiple pairs of AND (list filtering)
-	ExtensionKeys        []string
-	ExtensionValues      []string
-	IncludeExtensions    bool
-	IncludeExtensionKeys string
 }
 
 // CatalogCreateRequest represents create catalog request.
@@ -119,9 +111,6 @@ type CatalogRequest struct {
 	// Internal only takes effect during creation and cannot be changed by updates.
 	// The create permission of type internal_catalog is required (by default, only for the super administrator/system S2S identity).
 	Internal bool `json:"internal,omitempty"`
-
-	// When this key appears in the Extensions root object (including null, which needs to be avoided by the client), replace the entire package. A pointer of nil indicates that the request body does not carry this field
-	Extensions *map[string]string `json:"extensions,omitempty"`
 
 	// HealthCheckSchedule only takes effect when the physical directory is created; Create the default Schedule of the inherit mode when nil.
 	HealthCheckSchedule *CatalogHealthCheckScheduleRequest `json:"health_check_schedule,omitempty"`

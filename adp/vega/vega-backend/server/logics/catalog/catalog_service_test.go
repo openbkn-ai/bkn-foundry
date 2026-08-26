@@ -18,14 +18,12 @@ import (
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	"github.com/agiledragon/gomonkey/v2"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	mock_interfaces "vega-backend/interfaces/mock"
@@ -1003,7 +1001,7 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
-	t.Run("uses transaction when extensions are omitted", func(t *testing.T) {
+	t.Run("uses transaction", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
@@ -1081,57 +1079,6 @@ func TestCatalogServiceUpdate(t *testing.T) {
 		require.NoError(t, sqlMock.ExpectationsWereMet())
 	})
 
-	t.Run("rolls back catalog and extensions when extension replacement fails", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
-		db, sqlMock, err := sqlmock.New()
-		require.NoError(t, err)
-		t.Cleanup(func() { _ = db.Close() })
-
-		sensitiveError := "replace t_entity_extension failed at db.internal"
-		replaceErr := errors.New(sensitiveError)
-		patches := gomonkey.NewPatches()
-		t.Cleanup(patches.Reset)
-		patches.ApplyFunc(entityextension.NewStore, func(_ *common.AppSetting) *entityextension.Store {
-			return &entityextension.Store{}
-		})
-		patches.ApplyMethod(&entityextension.Store{}, "Replace",
-			func(_ *entityextension.Store, _ context.Context, tx *sql.Tx, kind, entityID string, _ map[string]string) error {
-				require.NotNil(t, tx)
-				assert.Equal(t, entityextension.KindCatalog, kind)
-				assert.Equal(t, "catalog-1", entityID)
-				return replaceErr
-			})
-
-		sqlMock.ExpectBegin()
-		sqlMock.ExpectRollback()
-		mockPS.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-		mockCA.EXPECT().Update(gomock.Any(), gomock.Not(nil), gomock.Any(), int64(0)).Return(int64(1), nil)
-
-		extensionValues := map[string]string{"owner": "team-a"}
-		cs := &catalogService{
-			appSetting: &common.AppSetting{},
-			db:         db,
-			ca:         mockCA,
-			ps:         mockPS,
-		}
-		err = cs.Update(context.Background(), &interfaces.Catalog{
-			ID:   "catalog-1",
-			Name: "catalog",
-		}, &interfaces.CatalogRequest{
-			Name:       "catalog",
-			Extensions: &extensionValues,
-		}, false)
-
-		var httpErr *rest.HTTPError
-		require.ErrorAs(t, err, &httpErr)
-		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
-		assert.Equal(t, verrors.VegaBackend_Catalog_InternalError_UpdateFailed, httpErr.BaseError.ErrorCode)
-		assert.Contains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), "failed to update catalog")
-		assert.NotContains(t, fmt.Sprint(httpErr.BaseError.ErrorDetails), sensitiveError)
-		require.NoError(t, sqlMock.ExpectationsWereMet())
-	})
 }
 
 func TestCatalogServiceSetEnabled(t *testing.T) {
@@ -1215,7 +1162,6 @@ func TestCatalogServiceList(t *testing.T) {
 				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"},
 			}, nil)
 		mockCA.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).Return(catalogs, nil)
-		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user management unavailable"))
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
@@ -1247,7 +1193,6 @@ func TestCatalogServiceList(t *testing.T) {
 			}, nil)
 		catalogs := []*interfaces.Catalog{{ID: "c2"}, {ID: "c3"}}
 		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c2", "c3"}).Return(catalogs, nil)
-		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
@@ -1310,7 +1255,6 @@ func TestCatalogServiceList(t *testing.T) {
 				"c1": {ResourceID: "c1"}, "c3": {ResourceID: "c3"},
 			}, nil)
 		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1", "c3"}).Return(catalogs, nil)
-		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
@@ -1356,7 +1300,6 @@ func TestCatalogServiceList(t *testing.T) {
 			[]string{"c2"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
 		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1"}).Return([]*interfaces.Catalog{{ID: "c1"}}, nil)
-		mockCA.EXPECT().AttachListExtensions(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}

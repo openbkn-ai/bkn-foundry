@@ -26,13 +26,11 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"vega-backend/common"
-	"vega-backend/drivenadapters/entityextension"
 	verrors "vega-backend/errors"
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
 	dataset "vega-backend/logics/dataset"
-	"vega-backend/logics/extensions"
 	"vega-backend/logics/local_index"
 	model_factory "vega-backend/logics/model_factory"
 	"vega-backend/logics/permission"
@@ -465,21 +463,12 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	if err := validateSchemaDefinition(ctx, req.SchemaDefinition); err != nil {
 		return nil, err
 	}
-	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, req.SchemaDefinition); err != nil {
-		return nil, err
-	}
 	if err := rs.validateIndexConfigModels(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
 		return nil, err
 	}
 	if err := rs.validateIndexConfigAnalyzers(ctx, req.SchemaDefinition, req.IndexConfig); err != nil {
 		return nil, err
 	}
-	if req.Extensions != nil {
-		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
-			return nil, err
-		}
-	}
-
 	resource := &interfaces.Resource{
 		ID:               id,
 		CatalogID:        req.CatalogID,
@@ -518,14 +507,6 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 			WithErrorDetails("failed to create resource")
 	}
 
-	if req.Extensions != nil {
-		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
-			span.SetStatus(codes.Error, "Replace resource extensions failed")
-			otellog.LogError(ctx, "Replace resource extensions failed", err)
-			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_CreateFailed).
-				WithErrorDetails("failed to create resource")
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		otellog.LogError(ctx, "Commit resource creation transaction failed", err)
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -721,12 +702,6 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 			WithErrorDetails(err.Error())
 	}
 
-	if err := rs.ra.AttachListExtensions(ctx, interfaces.ResourcesQueryParams{IncludeExtensions: true}, resources); err != nil {
-		span.SetStatus(codes.Error, "Load resource extensions failed")
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-
 	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
 	// Resources in the internal directory are verified by the internal_resource type
 	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
@@ -911,12 +886,6 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		resources = append(resources, batchResources...)
 	}
 
-	if err := rs.ra.AttachListExtensions(ctx, params, resources); err != nil {
-		span.SetStatus(codes.Error, "Attach resource extensions failed")
-		return []*interfaces.Resource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
-			WithErrorDetails(err.Error())
-	}
-
 	// Set the operation permissions for resources
 	for _, c := range resources {
 		if resrc, exist := matchResourceOpsMap[c.ID]; exist {
@@ -1008,19 +977,11 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	if err := validateSchemaDefinition(ctx, resource.SchemaDefinition); err != nil {
 		return err
 	}
-	if err := extensions.ValidateSchemaPropertiesExtensions(ctx, resource.SchemaDefinition); err != nil {
-		return err
-	}
 	if err := rs.validateIndexConfigModels(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 		return err
 	}
 	if err := rs.validateIndexConfigAnalyzers(ctx, resource.SchemaDefinition, resource.IndexConfig); err != nil {
 		return err
-	}
-	if req.Extensions != nil {
-		if err := extensions.ValidateEntityExtensionsMap(ctx, *req.Extensions); err != nil {
-			return err
-		}
 	}
 	currentFingerprint := ""
 	if buildRelevantChanged {
@@ -1091,14 +1052,6 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		}
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusStale
 		resource.SyncMark = ""
-	}
-	if req.Extensions != nil {
-		if err := entityextension.NewStore(rs.appSetting).Replace(ctx, tx, entityextension.KindResource, resource.ID, *req.Extensions); err != nil {
-			span.SetStatus(codes.Error, "Replace resource extensions failed")
-			otellog.LogError(ctx, "Replace resource extensions failed", err)
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_UpdateFailed).
-				WithErrorDetails("failed to update resource")
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		span.SetStatus(codes.Error, "Commit resource update transaction failed")

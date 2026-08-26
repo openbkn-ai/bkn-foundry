@@ -78,9 +78,6 @@ type Resource struct {
 	ColumnCount *int   `json:"column_count,omitempty"` // Number of schema_definition fields
 	RowCount    *int64 `json:"row_count,omitempty"`    // Source row count (the most recent estimated snapshot from discover, available only for some resource categories)
 
-	// Extensions root-level retrievable business KV (t_entity_extension); The list is omitted by default
-	Extensions map[string]string `json:"extensions,omitempty"`
-
 	// Fields specific to the logical view
 	LogicType       string                 `json:"logic_type,omitempty"`       // Logical types: derived(derived), composite(composite
 	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // Logical definition
@@ -114,8 +111,6 @@ type Property struct {
 
 	Features   []PropertyFeature `json:"features"`
 	Attributes map[string]any    `json:"attributes"`
-	// Extensions field-level display (within schema_definition JSON), not involved in list filtering
-	Extensions map[string]string `json:"extensions,omitempty"`
 }
 
 type PropertyFeature struct {
@@ -139,15 +134,11 @@ type ResourceIndexConfig struct {
 // ResourcesQueryParams holds resource list query parameters.
 type ResourcesQueryParams struct {
 	PaginationQueryParams
-	Name                 string
-	CatalogID            string
-	Category             string
-	Status               string
-	Schema               string
-	ExtensionKeys        []string
-	ExtensionValues      []string
-	IncludeExtensions    bool
-	IncludeExtensionKeys string
+	Name      string
+	CatalogID string
+	Category  string
+	Status    string
+	Schema    string
 }
 
 // ResourceCreateRequest represents create resource request.
@@ -170,8 +161,6 @@ type ResourceRequest struct {
 	IndexConfig *ResourceIndexConfig `json:"index_config,omitempty"` // Local index configuration
 
 	LogicDefinition []*LogicDefinitionNode `json:"logic_definition,omitempty"` // Logical definition
-
-	Extensions *map[string]string `json:"extensions,omitempty"`
 
 	ExpectedUpdateTime int64 `json:"expected_update_time,omitempty"`
 }

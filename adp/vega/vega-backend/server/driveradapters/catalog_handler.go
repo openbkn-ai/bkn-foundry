@@ -124,11 +124,6 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 	}
 	pageParam.Sort = interfaces.CATALOG_SORT[sort]
 
-	extKeys := c.QueryArray("extension_key")
-	extVals := c.QueryArray("extension_value")
-	includeExt := strings.EqualFold(strings.TrimSpace(c.Query("include_extensions")), "true")
-	includeExtKeys := strings.TrimSpace(c.Query("include_extension_keys"))
-
 	params := interfaces.CatalogsQueryParams{
 		PaginationQueryParams: pageParam,
 		Name:                  name,
@@ -137,10 +132,6 @@ func (r *restHandler) listCatalogs(c *gin.Context, visitor hydra.Visitor) {
 		ConnectorType:         connectorType,
 		Enabled:               enabled,
 		HealthCheckStatus:     healthCheckStatus,
-		ExtensionKeys:         extKeys,
-		ExtensionValues:       extVals,
-		IncludeExtensions:     includeExt,
-		IncludeExtensionKeys:  includeExtKeys,
 	}
 
 	if err := ValidateCatalogListQueryParams(ctx, params); err != nil {

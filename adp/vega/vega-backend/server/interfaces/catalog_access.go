@@ -21,8 +21,6 @@ type CatalogAccess interface {
 	GetByID(ctx context.Context, id string) (*Catalog, error)
 	// GetByIDs retrieves a Catalog by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
-	// AttachListExtensions loads or clears root-level extensions by List query parameters (for list to call after GetByIDs).
-	AttachListExtensions(ctx context.Context, params CatalogsQueryParams, catalogs []*Catalog) error
 	// GetByName retrieves a Catalog by name.
 	GetByName(ctx context.Context, name string) (*Catalog, error)
 	// List lists Catalogs with filters.
