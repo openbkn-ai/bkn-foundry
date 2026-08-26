@@ -945,7 +945,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 	if buildRelevantChanged {
-		if err := rs.rejectBuildRelevantUpdateWhenActiveBuildTask(ctx, resource); err != nil {
+		if err := rs.rejectWhenActiveBuildTask(ctx, resource.ID); err != nil {
 			span.SetStatus(codes.Error, "Resource has active build task")
 			return err
 		}
@@ -1145,6 +1145,12 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 		span.SetStatus(codes.Error, "Get resources failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
+	}
+	for _, resource := range resources {
+		if err := rs.rejectWhenActiveBuildTask(ctx, resource.ID); err != nil {
+			span.SetStatus(codes.Error, "Active build task prevents resource deletion")
+			return err
+		}
 	}
 
 	if err := rs.ra.DeleteByIDs(ctx, ids); err != nil {
@@ -1383,10 +1389,10 @@ func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx,
 	return rs.ra.UpdateStatus(ctx, tx, id, status, statusMessage)
 }
 
-func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resource *interfaces.Resource) error {
+func (rs *resourceService) rejectWhenActiveBuildTask(ctx context.Context, resourceID string) error {
 	tasks, err := rs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
-		ResourceID:            resource.ID,
+		ResourceID:            resourceID,
 		Statuses:              activeResourceBuildTaskStatuses,
 	})
 	if err != nil {
@@ -1396,7 +1402,7 @@ func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx cont
 	}
 	if len(tasks) > 0 {
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_Exist).
-			WithErrorDetails("resource has an active build task; update build-relevant fields after it finishes")
+			WithErrorDetails("resource has an active build task; wait until it finishes")
 	}
 	return nil
 }

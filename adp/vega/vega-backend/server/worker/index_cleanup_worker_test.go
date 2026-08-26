@@ -58,6 +58,20 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 
 		newIndexCleanupWorkerForTest(lim, rs, bts, false).runOnce(context.Background())
 	})
+
+	t.Run("protects active task index when its resource is missing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		lim := vmock.NewMockLocalIndexManager(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		bts := vmock.NewMockBuildTaskService(ctrl)
+		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
+		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return(nil, nil)
+		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
+			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
+		}, nil)
+
+		newIndexCleanupWorkerForTest(lim, rs, bts, false).runOnce(context.Background())
+	})
 }
 
 func newIndexCleanupWorkerForTest(lim interfaces.LocalIndexManager, rs interfaces.ResourceService, bts interfaces.BuildTaskService, dryRun bool) *IndexCleanupWorker {

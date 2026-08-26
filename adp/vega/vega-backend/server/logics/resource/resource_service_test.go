@@ -810,13 +810,14 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		}
 	})
 	t.Run("delete by ids success", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
 		ctrl := gomock.NewController(t)
 		mockLIM := vmock.NewMockLocalIndexManager(ctrl)
 		rs.lim = mockLIM
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: "table", LocalIndexName: "vega-build-r1-t1"}}, nil)
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
 		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
@@ -825,11 +826,18 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		}
 	})
 	t.Run("deletes resource before dataset", func(t *testing.T) {
-		rs, mockRA, mockPS, mockDS, _, _, _ := newTestService(t)
+		rs, mockRA, mockPS, mockDS, _, _, mockBTA := newTestService(t)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		gomock.InOrder(
 			mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 				Return([]*interfaces.Resource{{ID: "r1", Category: interfaces.ResourceCategoryDataset}}, nil),
+			mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+				DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+					assert.Equal(t, "r1", params.ResourceID)
+					assert.Equal(t, activeResourceBuildTaskStatuses, params.Statuses)
+					assert.Equal(t, 1, params.Limit)
+					return nil, nil
+				}),
 			mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil),
 			mockDS.EXPECT().Delete(gomock.Any(), "r1").Return(nil),
 			mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil),
@@ -838,15 +846,40 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}))
 	})
 	t.Run("does not delete dataset when resource deletion fails", func(t *testing.T) {
-		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
 		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
 			Return([]*interfaces.Resource{{ID: "r1", Category: interfaces.ResourceCategoryDataset}}, nil)
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
 		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(errors.New("delete resource failed"))
 
 		err := rs.DeleteByIDs(context.Background(), []string{"r1"})
 		require.Error(t, err)
 	})
+	t.Run("rejects deletion while build task is active", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
+			Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", []*interfaces.BuildTaskSummary{{
+			ID: "task-1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
+		}})
+
+		httpErr := requireResourceHTTPError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}), verrors.VegaBackend_BuildTask_Exist)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+}
+
+func expectResourceBuildTasksForDelete(t *testing.T, mockBTA *vmock.MockBuildTaskAccess,
+	resourceID string, tasks []*interfaces.BuildTaskSummary) {
+	t.Helper()
+	mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+			assert.Equal(t, resourceID, params.ResourceID)
+			assert.Equal(t, activeResourceBuildTaskStatuses, params.Statuses)
+			assert.Equal(t, 1, params.Limit)
+			return tasks, nil
+		})
 }
 
 func TestResourceServiceUpdateStatus(t *testing.T) {

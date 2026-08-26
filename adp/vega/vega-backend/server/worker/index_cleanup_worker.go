@@ -244,18 +244,21 @@ func (icw *IndexCleanupWorker) classifyOwnership(ctx context.Context, resourceEx
 	if task != nil && task.ResourceID != resourceID {
 		return false, true, nil
 	}
-	if !resourceExists || task == nil {
+	if task == nil {
 		return true, false, nil
 	}
 	switch task.Status {
-	case interfaces.BuildTaskStatusPending, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping,
-		interfaces.BuildTaskStatusStopped, interfaces.BuildTaskStatusFailed:
+	case interfaces.BuildTaskStatusPending,
+		interfaces.BuildTaskStatusRunning,
+		interfaces.BuildTaskStatusStopping:
 		return false, true, nil
-	case interfaces.BuildTaskStatusCancelled:
-		return true, false, nil
-	case interfaces.BuildTaskStatusCompleted:
+	case interfaces.BuildTaskStatusStopped,
+		interfaces.BuildTaskStatusFailed:
+		return !resourceExists, resourceExists, nil
+	case interfaces.BuildTaskStatusCancelled,
+		interfaces.BuildTaskStatusCompleted:
 		return true, false, nil
 	default:
-		return false, true, nil
+		return !resourceExists, resourceExists, nil
 	}
 }
