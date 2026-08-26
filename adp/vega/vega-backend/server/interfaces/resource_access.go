@@ -21,16 +21,18 @@ type ResourceAccess interface {
 	GetByID(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
 	// GetByIDs retrieves Resources by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
-	// GetByIDsBasic retrieves Resources by IDs without parsing sourceMetadata, schemaDefinition and logicDefinition.
-	GetByIDsBasic(ctx context.Context, ids []string) ([]*Resource, error)
+	// GetSummariesByIDs retrieves resource list summaries by IDs.
+	GetSummariesByIDs(ctx context.Context, ids []string) ([]*ResourceSummary, error)
+	// GetPermissionRefsByIDs retrieves the resource-to-catalog relations by IDs.
+	GetPermissionRefsByIDs(ctx context.Context, ids []string) ([]ResourcePermissionRef, error)
 	// GetByName retrieves a Resource by catalog and name.
 	GetByName(ctx context.Context, catalogID string, name string) (*Resource, error)
 	// GetByCatalogID retrieves all Resources under a Catalog.
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
-	// List lists Resources with filters.
-	List(ctx context.Context, params ResourcesQueryParams) ([]*Resource, int64, error)
-	// ListIDs lists Resource IDs with filters.
-	ListIDs(ctx context.Context, params ResourcesQueryParams) ([]string, error)
+	// List lists resource summaries with filters.
+	List(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, int64, error)
+	// ListPermissionRefs lists the minimal relations needed before list authorization.
+	ListPermissionRefs(ctx context.Context, params ResourcesQueryParams) ([]ResourcePermissionRef, error)
 	// Update updates a Resource.
 	Update(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
 	// UpdateLocalIndexName updates only a Resource's local index name.

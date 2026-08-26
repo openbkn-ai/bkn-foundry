@@ -115,11 +115,26 @@ func (mr *MockCatalogAccessMockRecorder) GetByName(ctx, name any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByName", reflect.TypeOf((*MockCatalogAccess)(nil).GetByName), ctx, name)
 }
 
+// GetSummariesByIDs mocks base method.
+func (m *MockCatalogAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.CatalogSummary, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSummariesByIDs", ctx, ids)
+	ret0, _ := ret[0].([]*interfaces.CatalogSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSummariesByIDs indicates an expected call of GetSummariesByIDs.
+func (mr *MockCatalogAccessMockRecorder) GetSummariesByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSummariesByIDs", reflect.TypeOf((*MockCatalogAccess)(nil).GetSummariesByIDs), ctx, ids)
+}
+
 // List mocks base method.
-func (m *MockCatalogAccess) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+func (m *MockCatalogAccess) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.Catalog)
+	ret0, _ := ret[0].([]*interfaces.CatalogSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -146,21 +161,6 @@ func (mr *MockCatalogAccessMockRecorder) ListAuthResources(ctx, params any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockCatalogAccess)(nil).ListAuthResources), ctx, params)
 }
 
-// ListIDs mocks base method.
-func (m *MockCatalogAccess) ListIDs(ctx context.Context, params interfaces.CatalogsQueryParams) ([]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListIDs", ctx, params)
-	ret0, _ := ret[0].([]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListIDs indicates an expected call of ListIDs.
-func (mr *MockCatalogAccessMockRecorder) ListIDs(ctx, params any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIDs", reflect.TypeOf((*MockCatalogAccess)(nil).ListIDs), ctx, params)
-}
-
 // ListInternalIDs mocks base method.
 func (m *MockCatalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) {
 	m.ctrl.T.Helper()
@@ -174,6 +174,21 @@ func (m *MockCatalogAccess) ListInternalIDs(ctx context.Context) ([]string, erro
 func (mr *MockCatalogAccessMockRecorder) ListInternalIDs(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListInternalIDs", reflect.TypeOf((*MockCatalogAccess)(nil).ListInternalIDs), ctx)
+}
+
+// ListPermissionRefs mocks base method.
+func (m *MockCatalogAccess) ListPermissionRefs(ctx context.Context, params interfaces.CatalogsQueryParams) ([]interfaces.CatalogPermissionRef, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPermissionRefs", ctx, params)
+	ret0, _ := ret[0].([]interfaces.CatalogPermissionRef)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPermissionRefs indicates an expected call of ListPermissionRefs.
+func (mr *MockCatalogAccessMockRecorder) ListPermissionRefs(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPermissionRefs", reflect.TypeOf((*MockCatalogAccess)(nil).ListPermissionRefs), ctx, params)
 }
 
 // Update mocks base method.

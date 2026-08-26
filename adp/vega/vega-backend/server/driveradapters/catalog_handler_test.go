@@ -94,13 +94,13 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 	t.Run("success list catalogs with name type and health check status", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 				assert.Equal(t, "lake", params.Name)
 				assert.Equal(t, interfaces.CatalogTypePhysical, params.Type)
 				assert.Equal(t, interfaces.CatalogHealthStatusHealthy, params.HealthCheckStatus)
 				assert.Equal(t, "update_time", params.Sort)
 				assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
-				return []*interfaces.Catalog{}, int64(0), nil
+				return []*interfaces.CatalogSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?name=lake&type=physical&health_check_status=healthy", nil)
@@ -114,9 +114,9 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 	t.Run("success list catalogs with connector type", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 				assert.Equal(t, "postgresql", params.ConnectorType)
-				return []*interfaces.Catalog{}, int64(0), nil
+				return []*interfaces.CatalogSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?connector_type=postgresql", nil)
@@ -130,10 +130,10 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 	t.Run("success list catalogs with enabled filter", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 				require.NotNil(t, params.Enabled)
 				assert.False(t, *params.Enabled)
-				return []*interfaces.Catalog{}, int64(0), nil
+				return []*interfaces.CatalogSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?enabled=false", nil)
@@ -147,9 +147,9 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 	t.Run("success list catalogs with unchecked health check status", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 				assert.Equal(t, interfaces.CatalogHealthStatusUnchecked, params.HealthCheckStatus)
-				return []*interfaces.Catalog{}, int64(0), nil
+				return []*interfaces.CatalogSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?health_check_status=unchecked", nil)
@@ -163,10 +163,10 @@ func Test_CatalogRestHandler_ListCatalogs(t *testing.T) {
 	t.Run("keeps API sort field for data access mapping", func(t *testing.T) {
 		engine, cs, _ := setupCatalogHandlerTest(t)
 		cs.EXPECT().List(gomock.Any(), gomock.Any()).
-			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+			DoAndReturn(func(_ context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 				assert.Equal(t, "name", params.Sort)
 				assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
-				return []*interfaces.Catalog{}, int64(0), nil
+				return []*interfaces.CatalogSummary{}, int64(0), nil
 			})
 
 		req := httptest.NewRequest(http.MethodGet, url+"?sort=name&direction=asc", nil)

@@ -251,10 +251,10 @@ func (mr *MockResourceServiceMockRecorder) InternalGetByIDs(ctx, ids any) *gomoc
 }
 
 // InternalList mocks base method.
-func (m *MockResourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, error) {
+func (m *MockResourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InternalList", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret0, _ := ret[0].([]*interfaces.ResourceSummary)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -337,10 +337,10 @@ func (mr *MockResourceServiceMockRecorder) InternalUpdateStatus(ctx, tx, id, sta
 }
 
 // List mocks base method.
-func (m *MockResourceService) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
+func (m *MockResourceService) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret0, _ := ret[0].([]*interfaces.ResourceSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

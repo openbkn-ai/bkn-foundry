@@ -1153,15 +1153,15 @@ func TestCatalogServiceList(t *testing.T) {
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 
-		ids := []string{"c1", "c2", "c3"}
-		catalogs := []*interfaces.Catalog{{ID: "c1"}, {ID: "c2"}, {ID: "c3"}}
-		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}, {CatalogID: "c3"}}
+		catalogs := []*interfaces.CatalogSummary{{ID: "c1"}, {ID: "c2"}, {ID: "c3"}}
+		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"},
 			}, nil)
-		mockCA.EXPECT().GetByIDs(gomock.Any(), gomock.Any()).Return(catalogs, nil)
+		mockCA.EXPECT().GetSummariesByIDs(gomock.Any(), gomock.Any()).Return(catalogs, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(errors.New("user management unavailable"))
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
@@ -1184,15 +1184,15 @@ func TestCatalogServiceList(t *testing.T) {
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 
-		ids := []string{"c1", "c2", "c3", "c4", "c5"}
-		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}, {CatalogID: "c3"}, {CatalogID: "c4"}, {CatalogID: "c5"}}
+		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"c1": {ResourceID: "c1"}, "c2": {ResourceID: "c2"}, "c3": {ResourceID: "c3"}, "c4": {ResourceID: "c4"}, "c5": {ResourceID: "c5"},
 			}, nil)
-		catalogs := []*interfaces.Catalog{{ID: "c2"}, {ID: "c3"}}
-		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c2", "c3"}).Return(catalogs, nil)
+		catalogs := []*interfaces.CatalogSummary{{ID: "c2"}, {ID: "c3"}}
+		mockCA.EXPECT().GetSummariesByIDs(gomock.Any(), []string{"c2", "c3"}).Return(catalogs, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
@@ -1217,8 +1217,8 @@ func TestCatalogServiceList(t *testing.T) {
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 
-		ids := []string{"c1", "c2"}
-		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}}
+		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
 		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
@@ -1245,16 +1245,16 @@ func TestCatalogServiceList(t *testing.T) {
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 
-		ids := []string{"c1", "c2", "c3"}
-		catalogs := []*interfaces.Catalog{{ID: "c1"}, {ID: "c3"}}
-		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}, {CatalogID: "c3"}}
+		catalogs := []*interfaces.CatalogSummary{{ID: "c1"}, {ID: "c3"}}
+		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{}, nil)
 		// 权限只返回 c1 和 c3，c2 被过滤
 		mockPS.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{
 				"c1": {ResourceID: "c1"}, "c3": {ResourceID: "c3"},
 			}, nil)
-		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1", "c3"}).Return(catalogs, nil)
+		mockCA.EXPECT().GetSummariesByIDs(gomock.Any(), []string{"c1", "c3"}).Return(catalogs, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}
@@ -1274,7 +1274,7 @@ func TestCatalogServiceList(t *testing.T) {
 	t.Run("list dberror", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCA := mock_interfaces.NewMockCatalogAccess(ctrl)
-		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db error"))
+		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(nil, fmt.Errorf("db error"))
 
 		cs := &catalogService{ca: mockCA}
 		_, _, err := cs.List(context.Background(), interfaces.CatalogsQueryParams{})
@@ -1288,8 +1288,8 @@ func TestCatalogServiceList(t *testing.T) {
 		mockPS := mock_interfaces.NewMockPermissionService(ctrl)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 
-		ids := []string{"c1", "c2"}
-		mockCA.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return(ids, nil)
+		refs := []interfaces.CatalogPermissionRef{{CatalogID: "c1"}, {CatalogID: "c2"}}
+		mockCA.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return(refs, nil)
 		mockCA.EXPECT().ListInternalIDs(gomock.Any()).Return([]string{"c2"}, nil)
 		// 普通目录按 catalog 类型校验
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
@@ -1299,7 +1299,7 @@ func TestCatalogServiceList(t *testing.T) {
 		mockPS.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_INTERNAL_CATALOG,
 			[]string{"c2"}, gomock.Any(), true, gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)
-		mockCA.EXPECT().GetByIDs(gomock.Any(), []string{"c1"}).Return([]*interfaces.Catalog{{ID: "c1"}}, nil)
+		mockCA.EXPECT().GetSummariesByIDs(gomock.Any(), []string{"c1"}).Return([]*interfaces.CatalogSummary{{ID: "c1"}}, nil)
 		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
 
 		cs := &catalogService{ca: mockCA, ps: mockPS, ums: mockUMS}

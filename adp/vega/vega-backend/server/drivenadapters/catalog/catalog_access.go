@@ -42,6 +42,142 @@ type catalogAccess struct {
 	db         *sql.DB
 }
 
+var catalogDetailColumns = []string{
+	"f_id",
+	"f_name",
+	"f_tags",
+	"f_description",
+	"f_type",
+	"f_enabled",
+	"f_internal",
+	"f_connector_type",
+	"f_connector_config",
+	"f_metadata",
+	"f_health_check_status",
+	"f_last_check_time",
+	"f_health_check_result",
+	"f_creator",
+	"f_creator_type",
+	"f_create_time",
+	"f_updater",
+	"f_updater_type",
+	"f_update_time",
+}
+
+var catalogSummaryColumns = []string{
+	"f_id",
+	"f_name",
+	"f_tags",
+	"f_description",
+	"f_type",
+	"f_enabled",
+	"f_internal",
+	"f_connector_type",
+	"f_health_check_status",
+	"f_last_check_time",
+	"f_health_check_result",
+	"f_creator",
+	"f_creator_type",
+	"f_create_time",
+	"f_updater",
+	"f_updater_type",
+	"f_update_time",
+}
+
+type catalogRowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanCatalogDetail(scanner catalogRowScanner) (*interfaces.Catalog, error) {
+	catalog := &interfaces.Catalog{}
+	var tagsStr, connectorConfigStr, metadataStr string
+	if err := scanner.Scan(
+		&catalog.ID,
+		&catalog.Name,
+		&tagsStr,
+		&catalog.Description,
+		&catalog.Type,
+		&catalog.Enabled,
+		&catalog.Internal,
+		&catalog.ConnectorType,
+		&connectorConfigStr,
+		&metadataStr,
+		&catalog.HealthCheckStatus,
+		&catalog.LastCheckTime,
+		&catalog.HealthCheckResult,
+		&catalog.Creator.ID,
+		&catalog.Creator.Type,
+		&catalog.CreateTime,
+		&catalog.Updater.ID,
+		&catalog.Updater.Type,
+		&catalog.UpdateTime,
+	); err != nil {
+		return nil, err
+	}
+	catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
+	if connectorConfigStr != "" {
+		if err := sonic.UnmarshalString(connectorConfigStr, &catalog.ConnectorCfg); err != nil {
+			return nil, err
+		}
+	}
+	if metadataStr != "" {
+		if err := sonic.UnmarshalString(metadataStr, &catalog.Metadata); err != nil {
+			return nil, err
+		}
+	}
+	return catalog, nil
+}
+
+func scanCatalogSummary(scanner catalogRowScanner) (*interfaces.CatalogSummary, error) {
+	summary := &interfaces.CatalogSummary{}
+	var tagsStr string
+	if err := scanner.Scan(
+		&summary.ID,
+		&summary.Name,
+		&tagsStr,
+		&summary.Description,
+		&summary.Type,
+		&summary.Enabled,
+		&summary.Internal,
+		&summary.ConnectorType,
+		&summary.HealthCheckStatus,
+		&summary.LastCheckTime,
+		&summary.HealthCheckResult,
+		&summary.Creator.ID,
+		&summary.Creator.Type,
+		&summary.CreateTime,
+		&summary.Updater.ID,
+		&summary.Updater.Type,
+		&summary.UpdateTime,
+	); err != nil {
+		return nil, err
+	}
+	summary.Tags = libCommon.TagString2TagSlice(tagsStr)
+	return summary, nil
+}
+
+func applyCatalogFilters(builder sq.SelectBuilder, params interfaces.CatalogsQueryParams) sq.SelectBuilder {
+	if params.Name != "" {
+		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
+	}
+	if params.Tag != "" {
+		builder = builder.Where(sq.Like{"f_tags": "%" + common.EscapeLikePattern(params.Tag) + "%"})
+	}
+	if params.Type != "" {
+		builder = builder.Where(sq.Eq{"f_type": params.Type})
+	}
+	if params.ConnectorType != "" {
+		builder = builder.Where(sq.Eq{"f_connector_type": params.ConnectorType})
+	}
+	if params.Enabled != nil {
+		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
+	}
+	if params.HealthCheckStatus != "" {
+		builder = builder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
+	}
+	return builder
+}
+
 // NewCatalogAccess creates ca new CatalogAccess.
 func NewCatalogAccess(appSetting *common.AppSetting) interfaces.CatalogAccess {
 	cAccessOnce.Do(func() {
@@ -143,27 +279,8 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 
 	span.SetAttributes(attr.Key("catalog_id").String(id))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_type",
-		"f_enabled",
-		"f_internal",
-		"f_connector_type",
-		"f_connector_config",
-		"f_metadata",
-		"f_health_check_status",
-		"f_last_check_time",
-		"f_health_check_result",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-	).From(CATALOG_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(catalogDetailColumns...).
+		From(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_id": id}).
 		ToSql()
 	if err != nil {
@@ -172,33 +289,8 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		return nil, err
 	}
 
-	catalog := &interfaces.Catalog{}
-	var tagsStr string
-	var connectorConfigStr string
-	var metadataStr string
-
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
-	err = row.Scan(
-		&catalog.ID,
-		&catalog.Name,
-		&tagsStr,
-		&catalog.Description,
-		&catalog.Type,
-		&catalog.Enabled,
-		&catalog.Internal,
-		&catalog.ConnectorType,
-		&connectorConfigStr,
-		&metadataStr,
-		&catalog.HealthCheckStatus,
-		&catalog.LastCheckTime,
-		&catalog.HealthCheckResult,
-		&catalog.Creator.ID,
-		&catalog.Creator.Type,
-		&catalog.CreateTime,
-		&catalog.Updater.ID,
-		&catalog.Updater.Type,
-		&catalog.UpdateTime,
-	)
+	catalog, err := scanCatalogDetail(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
@@ -207,28 +299,6 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 		logger.Errorf("Scan catalog failed: %v", err)
 		span.SetStatus(codes.Error, "Scan failed")
 		return nil, err
-	}
-
-	// The format of converting tags string to an array
-	catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
-
-	// Deserialize connector config
-	if connectorConfigStr != "" {
-		err = sonic.UnmarshalString(connectorConfigStr, &catalog.ConnectorCfg)
-		if err != nil {
-			logger.Errorf("Failed to unmarshal connector config: %v", err)
-			span.SetStatus(codes.Error, "Unmarshal connector failed")
-			return nil, err
-		}
-	}
-
-	if metadataStr != "" {
-		err = sonic.UnmarshalString(metadataStr, &catalog.Metadata)
-		if err != nil {
-			logger.Errorf("Failed to unmarshal metadata: %v", err)
-			span.SetStatus(codes.Error, "Unmarshal metadata failed")
-			return nil, err
-		}
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -242,27 +312,8 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 
 	span.SetAttributes(attr.Key("catalog_ids").StringSlice(ids))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_type",
-		"f_enabled",
-		"f_internal",
-		"f_connector_type",
-		"f_connector_config",
-		"f_metadata",
-		"f_health_check_status",
-		"f_last_check_time",
-		"f_health_check_result",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-	).From(CATALOG_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(catalogDetailColumns...).
+		From(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
 	if err != nil {
@@ -281,57 +332,11 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 
 	catalogs := make([]*interfaces.Catalog, 0)
 	for rows.Next() {
-		catalog := &interfaces.Catalog{}
-		var tagsStr string
-		var connectorConfigStr string
-		var metadataStr string
-
-		err := rows.Scan(
-			&catalog.ID,
-			&catalog.Name,
-			&tagsStr,
-			&catalog.Description,
-			&catalog.Type,
-			&catalog.Enabled,
-			&catalog.Internal,
-			&catalog.ConnectorType,
-			&connectorConfigStr,
-			&metadataStr,
-			&catalog.HealthCheckStatus,
-			&catalog.LastCheckTime,
-			&catalog.HealthCheckResult,
-			&catalog.Creator.ID,
-			&catalog.Creator.Type,
-			&catalog.CreateTime,
-			&catalog.Updater.ID,
-			&catalog.Updater.Type,
-			&catalog.UpdateTime,
-		)
+		catalog, err := scanCatalogDetail(rows)
 		if err != nil {
 			logger.Errorf("Scan catalog row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
 			return []*interfaces.Catalog{}, err
-		}
-
-		// The format of converting tags string to an array
-		catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
-
-		if connectorConfigStr != "" {
-			err = sonic.UnmarshalString(connectorConfigStr, &catalog.ConnectorCfg)
-			if err != nil {
-				logger.Errorf("Failed to unmarshal connector config: %v", err)
-				span.SetStatus(codes.Error, "Unmarshal connector config failed")
-				return []*interfaces.Catalog{}, err
-			}
-		}
-
-		if metadataStr != "" {
-			err = sonic.UnmarshalString(metadataStr, &catalog.Metadata)
-			if err != nil {
-				logger.Errorf("Failed to unmarshal metadata: %v", err)
-				span.SetStatus(codes.Error, "Unmarshal metadata failed")
-				return []*interfaces.Catalog{}, err
-			}
 		}
 
 		catalogs = append(catalogs, catalog)
@@ -346,6 +351,44 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 	return catalogs, nil
 }
 
+// GetSummariesByIDs retrieves catalog list summaries by IDs.
+func (ca *catalogAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.CatalogSummary, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query catalog summaries by IDs")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("catalog_ids").StringSlice(ids))
+	sqlStr, vals, err := sq.Select(catalogSummaryColumns...).
+		From(CATALOG_TABLE_NAME).
+		Where(sq.Eq{"f_id": ids}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+	rows, err := ca.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	summaries := make([]*interfaces.CatalogSummary, 0)
+	for rows.Next() {
+		summary, err := scanCatalogSummary(rows)
+		if err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		summaries = append(summaries, summary)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
+	span.SetStatus(codes.Ok, "")
+	return summaries, nil
+}
+
 // GetByName retrieves ca Catalog by name.
 func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interfaces.Catalog, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query catalog by Name")
@@ -353,27 +396,8 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 
 	span.SetAttributes(attr.Key("catalog_name").String(name))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_type",
-		"f_enabled",
-		"f_internal",
-		"f_connector_type",
-		"f_connector_config",
-		"f_metadata",
-		"f_health_check_status",
-		"f_last_check_time",
-		"f_health_check_result",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-	).From(CATALOG_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(catalogDetailColumns...).
+		From(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_name": name}).
 		ToSql()
 	if err != nil {
@@ -382,33 +406,8 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		return nil, err
 	}
 
-	catalog := &interfaces.Catalog{}
-	var tagsStr string
-	var connectorConfigStr string
-	var metadataStr string
-
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
-	err = row.Scan(
-		&catalog.ID,
-		&catalog.Name,
-		&tagsStr,
-		&catalog.Description,
-		&catalog.Type,
-		&catalog.Enabled,
-		&catalog.Internal,
-		&catalog.ConnectorType,
-		&connectorConfigStr,
-		&metadataStr,
-		&catalog.HealthCheckStatus,
-		&catalog.LastCheckTime,
-		&catalog.HealthCheckResult,
-		&catalog.Creator.ID,
-		&catalog.Creator.Type,
-		&catalog.CreateTime,
-		&catalog.Updater.ID,
-		&catalog.Updater.Type,
-		&catalog.UpdateTime,
-	)
+	catalog, err := scanCatalogDetail(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
@@ -419,57 +418,17 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 		return nil, err
 	}
 
-	// The format of converting tags string to an array
-	catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
-
-	// Deserialize connector config
-	if connectorConfigStr != "" {
-		err = sonic.UnmarshalString(connectorConfigStr, &catalog.ConnectorCfg)
-		if err != nil {
-			logger.Errorf("Failed to unmarshal connector config: %v", err)
-			span.SetStatus(codes.Error, "Unmarshal connector failed")
-			return nil, err
-		}
-	}
-
-	if metadataStr != "" {
-		err = sonic.UnmarshalString(metadataStr, &catalog.Metadata)
-		if err != nil {
-			logger.Errorf("Failed to unmarshal metadata: %v", err)
-			span.SetStatus(codes.Error, "Unmarshal metadata failed")
-			return nil, err
-		}
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return catalog, nil
 }
 
-// ListIDs lists Catalog IDs with filters.
-func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.CatalogsQueryParams) ([]string, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalog IDs")
+// ListPermissionRefs lists the minimal relations needed before list authorization.
+func (ca *catalogAccess) ListPermissionRefs(ctx context.Context, params interfaces.CatalogsQueryParams) ([]interfaces.CatalogPermissionRef, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalog permission refs")
 	defer span.End()
 
 	builder := sq.Select("f_id").From(CATALOG_TABLE_NAME)
-
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{"f_name": name})
-	}
-	if params.Tag != "" {
-		tag := "%" + common.EscapeLikePattern(params.Tag) + "%"
-		builder = builder.Where(sq.Like{"f_tags": tag})
-	}
-
-	if params.Type != "" {
-		builder = builder.Where(sq.Eq{"f_type": params.Type})
-	}
-	if params.Enabled != nil {
-		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
-	}
-	if params.HealthCheckStatus != "" {
-		builder = builder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
-	}
+	builder = applyCatalogFilters(builder, params)
 
 	builder = builder.OrderBy(catalogListOrderByClause(params.Sort, params.Direction))
 
@@ -486,14 +445,14 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 	}
 	defer func() { _ = rows.Close() }()
 
-	ids := make([]string, 0)
+	refs := make([]interfaces.CatalogPermissionRef, 0)
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var ref interfaces.CatalogPermissionRef
+		if err := rows.Scan(&ref.CatalogID); err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, err
 		}
-		ids = append(ids, id)
+		refs = append(refs, ref)
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate catalog rows failed: %v", err)
@@ -502,7 +461,7 @@ func (ca *catalogAccess) ListIDs(ctx context.Context, params interfaces.Catalogs
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return ids, nil
+	return refs, nil
 }
 
 // ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
@@ -544,66 +503,16 @@ func (ca *catalogAccess) ListInternalIDs(ctx context.Context) ([]string, error) 
 	return ids, nil
 }
 
-// List lists Catalogs with filters.
-func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+// List lists Catalog summaries with filters.
+func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List catalogs")
 	defer span.End()
 
-	builder := sq.Select(
-		"f_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-
-		"f_type",
-		"f_enabled",
-		"f_internal",
-
-		"f_connector_type",
-		"f_connector_config",
-		"f_metadata",
-
-		"f_health_check_status",
-		"f_last_check_time",
-		"f_health_check_result",
-
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-	).From(CATALOG_TABLE_NAME)
+	builder := sq.Select(catalogSummaryColumns...).From(CATALOG_TABLE_NAME)
+	builder = applyCatalogFilters(builder, params)
 
 	countBuilder := sq.Select("COUNT(*)").From(CATALOG_TABLE_NAME)
-
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{"f_name": name})
-		countBuilder = countBuilder.Where(sq.Like{"f_name": name})
-	}
-	if params.Tag != "" {
-		tag := "%" + common.EscapeLikePattern(params.Tag) + "%"
-		builder = builder.Where(sq.Like{"f_tags": tag})
-		countBuilder = countBuilder.Where(sq.Like{"f_tags": tag})
-	}
-
-	if params.Type != "" {
-		builder = builder.Where(sq.Eq{"f_type": params.Type})
-		countBuilder = countBuilder.Where(sq.Eq{"f_type": params.Type})
-	}
-	if params.ConnectorType != "" {
-		builder = builder.Where(sq.Eq{"f_connector_type": params.ConnectorType})
-		countBuilder = countBuilder.Where(sq.Eq{"f_connector_type": params.ConnectorType})
-	}
-	if params.Enabled != nil {
-		builder = builder.Where(sq.Eq{"f_enabled": *params.Enabled})
-		countBuilder = countBuilder.Where(sq.Eq{"f_enabled": *params.Enabled})
-	}
-	if params.HealthCheckStatus != "" {
-		builder = builder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
-		countBuilder = countBuilder.Where(sq.Eq{"f_health_check_status": params.HealthCheckStatus})
-	}
+	countBuilder = applyCatalogFilters(countBuilder, params)
 
 	countSql, countVals, _ := countBuilder.ToSql()
 	var total int64
@@ -630,56 +539,12 @@ func (ca *catalogAccess) List(ctx context.Context, params interfaces.CatalogsQue
 	}
 	defer func() { _ = rows.Close() }()
 
-	catalogs := make([]*interfaces.Catalog, 0)
+	catalogs := make([]*interfaces.CatalogSummary, 0)
 	for rows.Next() {
-		catalog := &interfaces.Catalog{}
-		var tagsStr string
-		var connectorConfigStr string
-		var metadataStr string
-
-		err := rows.Scan(
-			&catalog.ID,
-			&catalog.Name,
-			&tagsStr,
-			&catalog.Description,
-			&catalog.Type,
-			&catalog.Enabled,
-			&catalog.Internal,
-			&catalog.ConnectorType,
-			&connectorConfigStr,
-			&metadataStr,
-			&catalog.HealthCheckStatus,
-			&catalog.LastCheckTime,
-			&catalog.HealthCheckResult,
-			&catalog.Creator.ID,
-			&catalog.Creator.Type,
-			&catalog.CreateTime,
-			&catalog.Updater.ID,
-			&catalog.Updater.Type,
-			&catalog.UpdateTime,
-		)
+		catalog, err := scanCatalogSummary(rows)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, 0, err
-		}
-
-		// The format of converting tags string to an array
-		catalog.Tags = libCommon.TagString2TagSlice(tagsStr)
-
-		if connectorConfigStr != "" {
-			err = sonic.UnmarshalString(connectorConfigStr, &catalog.ConnectorCfg)
-			if err != nil {
-				span.SetStatus(codes.Error, "Unmarshal connector config failed")
-				return nil, 0, err
-			}
-		}
-
-		if metadataStr != "" {
-			err = sonic.UnmarshalString(metadataStr, &catalog.Metadata)
-			if err != nil {
-				span.SetStatus(codes.Error, "Unmarshal metadata failed")
-				return nil, 0, err
-			}
 		}
 
 		catalogs = append(catalogs, catalog)

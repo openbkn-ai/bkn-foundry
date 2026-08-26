@@ -19,7 +19,7 @@ type CatalogService interface {
 	// Get retrieves a Catalog by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
 	// List lists Catalogs with filters.
-	List(ctx context.Context, params CatalogsQueryParams) ([]*Catalog, int64, error)
+	List(ctx context.Context, params CatalogsQueryParams) ([]*CatalogSummary, int64, error)
 	// Update updates a Catalog.
 	Update(ctx context.Context, catalog *Catalog, req *CatalogRequest, allowUnhealthy bool) error
 	// SetEnabled updates Catalog enabled state.
@@ -32,6 +32,8 @@ type CatalogService interface {
 	CheckExistByID(ctx context.Context, id string) (bool, error)
 	// ListInternalIDs lists the ids of all internal system directories (grouped by internal_resource type for resource permission verification).
 	ListInternalIDs(ctx context.Context) ([]string, error)
+	// InternalCatalogIDSet returns the ids of all internal system directories as a set.
+	InternalCatalogIDSet(ctx context.Context) (map[string]struct{}, error)
 	// CheckExistByName checks if a Catalog exists by name.
 	CheckExistByName(ctx context.Context, name string) (bool, error)
 	// TestConnection tests catalog connection.

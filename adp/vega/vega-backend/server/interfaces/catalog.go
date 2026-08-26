@@ -87,6 +87,30 @@ type Catalog struct {
 	Operations []string `json:"operations"`
 }
 
+// CatalogSummary contains the fields returned by catalog list operations.
+// Connection configuration and metadata are loaded only for catalog details.
+type CatalogSummary struct {
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Tags        []string `json:"tags"`
+	Description string   `json:"description"`
+
+	Type     string `json:"type"`
+	Enabled  bool   `json:"enabled"`
+	Internal bool   `json:"internal"`
+
+	ConnectorType string `json:"connector_type"`
+
+	CatalogHealthCheckStatus
+
+	Creator    AccountInfo `json:"creator"`
+	CreateTime int64       `json:"create_time"`
+	Updater    AccountInfo `json:"updater"`
+	UpdateTime int64       `json:"update_time"`
+
+	Operations []string `json:"operations"`
+}
+
 // CatalogsQueryParams holds catalog list query parameters.
 type CatalogsQueryParams struct {
 	PaginationQueryParams

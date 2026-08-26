@@ -176,6 +176,21 @@ func (mr *MockCatalogServiceMockRecorder) GetDeletionImpact(ctx, id any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDeletionImpact", reflect.TypeOf((*MockCatalogService)(nil).GetDeletionImpact), ctx, id)
 }
 
+// InternalCatalogIDSet mocks base method.
+func (m *MockCatalogService) InternalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InternalCatalogIDSet", ctx)
+	ret0, _ := ret[0].(map[string]struct{})
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InternalCatalogIDSet indicates an expected call of InternalCatalogIDSet.
+func (mr *MockCatalogServiceMockRecorder) InternalCatalogIDSet(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InternalCatalogIDSet", reflect.TypeOf((*MockCatalogService)(nil).InternalCatalogIDSet), ctx)
+}
+
 // InternalGetByID mocks base method.
 func (m *MockCatalogService) InternalGetByID(ctx context.Context, id string, withSensitiveFields bool) (*interfaces.Catalog, error) {
 	m.ctrl.T.Helper()
@@ -222,10 +237,10 @@ func (mr *MockCatalogServiceMockRecorder) InternalTestConnection(ctx, catalogID 
 }
 
 // List mocks base method.
-func (m *MockCatalogService) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+func (m *MockCatalogService) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.Catalog)
+	ret0, _ := ret[0].([]*interfaces.CatalogSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2

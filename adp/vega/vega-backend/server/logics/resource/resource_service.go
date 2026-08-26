@@ -205,29 +205,29 @@ func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []st
 		return nil // The requested operations do not ask upward (such as authorize)
 	}
 
-	resources, err := rs.ra.GetByIDsBasic(ctx, pending)
+	refs, err := rs.ra.GetPermissionRefsByIDs(ctx, pending)
 	if err != nil {
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
-	catalogOf := make(map[string]string, len(resources))
-	catalogIDs := make([]string, 0, len(resources))
+	catalogOf := make(map[string]string, len(refs))
+	catalogIDs := make([]string, 0, len(refs))
 	seenCatalog := map[string]bool{}
-	for _, r := range resources {
-		if r == nil || r.CatalogID == "" {
+	for _, ref := range refs {
+		if ref.CatalogID == "" {
 			continue
 		}
-		catalogOf[r.ID] = r.CatalogID
-		if !seenCatalog[r.CatalogID] {
-			seenCatalog[r.CatalogID] = true
-			catalogIDs = append(catalogIDs, r.CatalogID)
+		catalogOf[ref.ResourceID] = ref.CatalogID
+		if !seenCatalog[ref.CatalogID] {
+			seenCatalog[ref.CatalogID] = true
+			catalogIDs = append(catalogIDs, ref.CatalogID)
 		}
 	}
 	if len(catalogIDs) == 0 {
 		return nil
 	}
 
-	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		return err
 	}
@@ -295,34 +295,21 @@ func (rs *resourceService) mergeCatalogPermissions(ctx context.Context, ids []st
 	return nil
 }
 
-// internalCatalogIDSet queries the collection of all internal directory ids of the system
-func (rs *resourceService) internalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
-	ids, err := rs.cs.ListInternalIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	set := make(map[string]struct{}, len(ids))
-	for _, id := range ids {
-		set[id] = struct{}{}
-	}
-	return set, nil
-}
-
 // The internalResourceIDSet queries the collection of resource ids in all internal system directories
 func (rs *resourceService) internalResourceIDSet(ctx context.Context) (map[string]struct{}, error) {
-	catalogIDs, err := rs.cs.ListInternalIDs(ctx)
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		return nil, err
 	}
 	set := make(map[string]struct{})
-	for _, catalogID := range catalogIDs {
-		ids, err := rs.ra.ListIDs(ctx, interfaces.ResourcesQueryParams{CatalogID: catalogID})
+	for catalogID := range internalCatalogs {
+		refs, err := rs.ra.ListPermissionRefs(ctx, interfaces.ResourcesQueryParams{CatalogID: catalogID})
 		if err != nil {
 			return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Resource_InternalError_GetFailed).WithErrorDetails(err.Error())
 		}
-		for _, id := range ids {
-			set[id] = struct{}{}
+		for _, ref := range refs {
+			set[ref.ResourceID] = struct{}{}
 		}
 	}
 	return set, nil
@@ -393,7 +380,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 	defer span.End()
 
 	// Resources in the internal directory are verified/registered according to the internal_resource type. By default, only the super administrator/system S2S identity can create them
-	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return nil, err
@@ -567,7 +554,7 @@ func (rs *resourceService) GetByID(ctx context.Context, id string) (*interfaces.
 
 	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
 	// Resources in the internal directory are verified by the internal_resource type
-	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return nil, err
@@ -630,7 +617,7 @@ func (rs *resourceService) CheckResourcePermission(ctx context.Context, resource
 			WithErrorDetails(fmt.Sprintf("Access denied: insufficient permissions for[%v]", op))
 	}
 
-	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		return err
 	}
@@ -662,7 +649,7 @@ func (rs *resourceService) InternalGetByIDs(ctx context.Context, ids []string) (
 		span.SetStatus(codes.Ok, "")
 		return []*interfaces.Resource{}, nil
 	}
-	resources, err := rs.ra.GetByIDsBasic(ctx, ids)
+	resources, err := rs.ra.GetByIDs(ctx, ids)
 	if err != nil {
 		span.SetStatus(codes.Error, "Get resources failed")
 		return nil, err
@@ -704,7 +691,7 @@ func (rs *resourceService) GetByIDs(ctx context.Context, ids []string) ([]*inter
 
 	// Filter objects with viewing permissions based on permissions. The total length of the filtered array is the total number, and there is no need to request the total number again.
 	// Resources in the internal directory are verified by the internal_resource type
-	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return nil, err
@@ -780,28 +767,39 @@ func (rs *resourceService) GetByName(ctx context.Context, catalogID string, name
 }
 
 // List lists Resources with filters.
-func (rs *resourceService) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
+func (rs *resourceService) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List resources")
 	defer span.End()
 
 	// Query the ids of all resources
-	ids, err := rs.ra.ListIDs(ctx, params)
+	refs, err := rs.ra.ListPermissionRefs(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List resource IDs failed")
-		return []*interfaces.Resource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+		return []*interfaces.ResourceSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 			WithErrorDetails(err.Error())
 	}
 
-	if len(ids) == 0 {
+	if len(refs) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []*interfaces.Resource{}, 0, nil
+		return []*interfaces.ResourceSummary{}, 0, nil
+	}
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ids = append(ids, ref.ResourceID)
 	}
 
-	// The collection of resource ids in the internal directory is grouped by the internal_resource type during permission verification
-	internalResources, err := rs.internalResourceIDSet(ctx)
+	// Classify the current candidate set by its catalog relation, avoiding a
+	// second full resource scan for every internal catalog.
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
-		span.SetStatus(codes.Error, "List internal resource IDs failed")
-		return []*interfaces.Resource{}, 0, err
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return []*interfaces.ResourceSummary{}, 0, err
+	}
+	internalResources := make(map[string]struct{})
+	for _, ref := range refs {
+		if _, ok := internalCatalogs[ref.CatalogID]; ok {
+			internalResources[ref.ResourceID] = struct{}{}
+		}
 	}
 
 	// Filter the array of ids with viewing permissions based on the permissions
@@ -823,7 +821,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
-			return []*interfaces.Resource{}, 0, err
+			return []*interfaces.ResourceSummary{}, 0, err
 		}
 
 		// Merge results
@@ -844,7 +842,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	// If there is no authorized resource, return an empty result directly
 	if total == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []*interfaces.Resource{}, total, nil
+		return []*interfaces.ResourceSummary{}, total, nil
 	}
 
 	// Query the complete resource based on the array of authorized ids and apply pagination
@@ -854,7 +852,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		// Check whether the starting position is out of bounds
 		if params.Offset < 0 || params.Offset >= len(authorizedIDs) {
 			span.SetStatus(codes.Ok, "")
-			return []*interfaces.Resource{}, total, nil
+			return []*interfaces.ResourceSummary{}, total, nil
 		}
 		// Calculate the end position
 		end := params.Offset + params.Limit
@@ -867,7 +865,7 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 
 	// Query the complete resource based on the array of authorized ids
 	// Process in batches, 10,000 ids per batch, to avoid the error of prepared statement contains too many placeholders
-	resources := make([]*interfaces.Resource, 0, len(authorizedIDs))
+	summaries := make([]*interfaces.ResourceSummary, 0, len(authorizedIDs))
 	queryBatchSize := 10000
 	for i := 0; i < len(authorizedIDs); i += queryBatchSize {
 		end := i + queryBatchSize
@@ -876,25 +874,25 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 		}
 		batchIDs := authorizedIDs[i:end]
 
-		batchResources, err := rs.ra.GetByIDsBasic(ctx, batchIDs)
+		batchSummaries, err := rs.ra.GetSummariesByIDs(ctx, batchIDs)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get resources by IDs failed")
-			return []*interfaces.Resource{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
+			return []*interfaces.ResourceSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_GetFailed).
 				WithErrorDetails(err.Error())
 		}
 
-		resources = append(resources, batchResources...)
+		summaries = append(summaries, batchSummaries...)
 	}
 
 	// Set the operation permissions for resources
-	for _, c := range resources {
+	for _, c := range summaries {
 		if resrc, exist := matchResourceOpsMap[c.ID]; exist {
 			c.Operations = resrc.Operations // The operations that the user is currently permitted to perform
 		}
 	}
 
-	accountInfos := make([]*interfaces.AccountInfo, 0, len(resources)*2)
-	for _, c := range resources {
+	accountInfos := make([]*interfaces.AccountInfo, 0, len(summaries)*2)
+	for _, c := range summaries {
 		accountInfos = append(accountInfos, &c.Creator, &c.Updater)
 	}
 
@@ -905,19 +903,19 @@ func (rs *resourceService) List(ctx context.Context, params interfaces.Resources
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return resources, total, nil
+	return summaries, total, nil
 }
 
-func (rs *resourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, error) {
+func (rs *resourceService) InternalList(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "ResourceService.InternalList")
 	defer span.End()
-	resources, _, err := rs.ra.List(ctx, params)
+	summaries, _, err := rs.ra.List(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List resources failed")
 		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
-	return resources, nil
+	return summaries, nil
 }
 
 // Update updates a Resource.
@@ -930,7 +928,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
 	}
 	// Determine whether the userid has the permission to be modified; Resources in the internal directory are verified by the internal_resource type
-	internalCatalogs, err := rs.internalCatalogIDSet(ctx)
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
 		return err

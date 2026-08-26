@@ -26,7 +26,7 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
-		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.Resource{{ID: "r1", LocalIndexName: "vega-build-r1-t2"}}, nil)
+		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1", LocalIndexName: "vega-build-r1-t2"}}, nil)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
 
 		newIndexCleanupWorkerForTest(lim, rs, bts, true).runOnce(context.Background())
@@ -38,9 +38,9 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
-		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1"}}, nil)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.Resource{{ID: "r1", LocalIndexName: oldIndex.Name}}, nil)
+		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1", LocalIndexName: oldIndex.Name}}, nil)
 
 		newIndexCleanupWorkerForTest(lim, rs, bts, false).runOnce(context.Background())
 	})
@@ -51,7 +51,7 @@ func TestIndexCleanupWorkerRunOnce(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		bts := vmock.NewMockBuildTaskService(ctrl)
 		lim.EXPECT().ListIndexes(gomock.Any()).Return([]*interfaces.IndexMeta{oldIndex}, nil)
-		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.Resource{{ID: "r1"}}, nil).Times(2)
+		rs.EXPECT().InternalList(gomock.Any(), interfaces.ResourcesQueryParams{}).Return([]*interfaces.ResourceSummary{{ID: "r1"}}, nil).Times(2)
 		bts.EXPECT().InternalGetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCancelled}, nil).Times(2)
 		lim.EXPECT().DeleteIndex(gomock.Any(), oldIndex.Name).Return(nil)
 

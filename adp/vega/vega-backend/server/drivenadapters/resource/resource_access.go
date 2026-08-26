@@ -57,6 +57,9 @@ var resourceDetailColumns = []string{
 	"f_source_metadata",
 	"f_schema_definition",
 	"f_index_config",
+	"f_local_status",
+	"f_local_index_name",
+	"f_sync_mark",
 	"f_logic_type",
 	"f_logic_definition",
 	"f_creator",
@@ -65,9 +68,32 @@ var resourceDetailColumns = []string{
 	"f_updater",
 	"f_updater_type",
 	"f_update_time",
+}
+
+var resourceSummaryColumns = []string{
+	"f_id",
+	"f_catalog_id",
+	"f_name",
+	"f_tags",
+	"f_description",
+	"f_category",
+	"f_status",
+	"f_status_message",
+	"f_last_discover_status",
+	"f_schema",
+	"f_source_identifier",
+	"f_source_metadata",
+	"f_schema_definition",
 	"f_local_status",
 	"f_local_index_name",
 	"f_sync_mark",
+	"f_logic_type",
+	"f_creator",
+	"f_creator_type",
+	"f_create_time",
+	"f_updater",
+	"f_updater_type",
+	"f_update_time",
 }
 
 type resourceRowScanner interface {
@@ -94,6 +120,9 @@ func scanResourceDetail(scanner resourceRowScanner) (*interfaces.Resource, error
 		&sourceMetadata,
 		&schemaDefinition,
 		&indexConfig,
+		&resource.LocalIndexStatus,
+		&resource.LocalIndexName,
+		&resource.SyncMark,
 		&resource.LogicType,
 		&logicDefinition,
 		&resource.Creator.ID,
@@ -102,9 +131,6 @@ func scanResourceDetail(scanner resourceRowScanner) (*interfaces.Resource, error
 		&resource.Updater.ID,
 		&resource.Updater.Type,
 		&resource.UpdateTime,
-		&resource.LocalIndexStatus,
-		&resource.LocalIndexName,
-		&resource.SyncMark,
 	); err != nil {
 		return nil, err
 	}
@@ -123,6 +149,74 @@ func scanResourceDetail(scanner resourceRowScanner) (*interfaces.Resource, error
 		_ = sonic.Unmarshal([]byte(logicDefinition.String), &resource.LogicDefinition)
 	}
 	return resource, nil
+}
+
+func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummary, error) {
+	summary := &interfaces.ResourceSummary{}
+	var tagsStr string
+	var sourceMetadata, schemaDefinition sql.NullString
+	if err := scanner.Scan(
+		&summary.ID,
+		&summary.CatalogID,
+		&summary.Name,
+		&tagsStr,
+		&summary.Description,
+		&summary.Category,
+		&summary.Status,
+		&summary.StatusMessage,
+		&summary.LastDiscoverStatus,
+		&summary.Schema,
+		&summary.SourceIdentifier,
+		&sourceMetadata,
+		&schemaDefinition,
+		&summary.LocalIndexStatus,
+		&summary.LocalIndexName,
+		&summary.SyncMark,
+		&summary.LogicType,
+		&summary.Creator.ID,
+		&summary.Creator.Type,
+		&summary.CreateTime,
+		&summary.Updater.ID,
+		&summary.Updater.Type,
+		&summary.UpdateTime,
+	); err != nil {
+		return nil, err
+	}
+	summary.Tags = libCommon.TagString2TagSlice(tagsStr)
+	if schemaDefinition.Valid && schemaDefinition.String != "" {
+		if node, err := sonic.GetFromString(schemaDefinition.String); err == nil && node.Load() == nil {
+			if n, err := node.Len(); err == nil {
+				summary.ColumnCount = &n
+			}
+		}
+	}
+	if sourceMetadata.Valid && sourceMetadata.String != "" {
+		if node, err := sonic.GetFromString(sourceMetadata.String, "properties", "row_count"); err == nil {
+			if v, err := node.Int64(); err == nil {
+				summary.RowCount = &v
+			}
+		}
+	}
+	return summary, nil
+}
+
+func applyResourceFilters(builder sq.SelectBuilder, params interfaces.ResourcesQueryParams) sq.SelectBuilder {
+	if params.Name != "" {
+		builder = builder.Where(sq.Like{"f_name": "%" + common.EscapeLikePattern(params.Name) + "%"})
+	}
+	if params.CatalogID != "" {
+		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
+	}
+	if params.Category != "" {
+		builder = builder.Where(sq.Eq{"f_category": params.Category})
+	}
+	if params.Status != "" {
+		builder = builder.Where(sq.Eq{"f_status": params.Status})
+	}
+	if params.Schema != "" {
+		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
+	}
+	return builder
 }
 
 // NewResourceAccess creates ra new ResourceAccess.
@@ -334,124 +428,97 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	return resources, nil
 }
 
-// GetByIDsBasic retrieves Resources by IDs without fully parsing sourceMetadata, schemaDefinition and logicDefinition.
-// This method is optimized for memory usage when these large fields are not needed.
+// GetSummariesByIDs retrieves resource list summaries without loading extended JSON fields.
 // Only lazy extract the scale information (column_count/row_count) from the original JSON, without deserializing the complete structure;
 // Counting is completed on the Go side to be compatible with multi-dialect databases (such as MariaDB/DM8/KDB9, etc.) and does not rely on MySQL JSON functions.
-func (ra *resourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resources by IDs (basic)")
+func (ra *resourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.ResourceSummary, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource summaries by IDs")
 	defer span.End()
 
 	span.SetAttributes(attr.Key("resource_ids").StringSlice(ids))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_catalog_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_category",
-		"f_status",
-		"f_status_message",
-		"f_last_discover_status",
-		"f_schema",
-		"f_source_identifier",
-		"f_source_metadata",
-		"f_schema_definition",
-		"f_logic_type",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-		"f_local_status",
-		"f_local_index_name",
-		"f_sync_mark",
-	).From(RESOURCE_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(resourceSummaryColumns...).
+		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
 	if err != nil {
 		logger.Errorf("Failed to build query resource sql: %v", err)
 		span.SetStatus(codes.Error, "Build sql failed")
-		return []*interfaces.Resource{}, err
+		return []*interfaces.ResourceSummary{}, err
 	}
 
 	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
 	if err != nil {
 		logger.Errorf("Query resources failed: %v", err)
 		span.SetStatus(codes.Error, "Query failed")
-		return []*interfaces.Resource{}, err
+		return []*interfaces.ResourceSummary{}, err
 	}
 	defer func() { _ = rows.Close() }()
 
-	resources := make([]*interfaces.Resource, 0)
+	summaries := make([]*interfaces.ResourceSummary, 0)
 	for rows.Next() {
-		resource := &interfaces.Resource{}
-		var tagsStr string
-		var sourceMetadata, schemaDefinition sql.NullString
-
-		err := rows.Scan(
-			&resource.ID,
-			&resource.CatalogID,
-			&resource.Name,
-			&tagsStr,
-			&resource.Description,
-			&resource.Category,
-			&resource.Status,
-			&resource.StatusMessage,
-			&resource.LastDiscoverStatus,
-			&resource.Schema,
-			&resource.SourceIdentifier,
-			&sourceMetadata,
-			&schemaDefinition,
-			&resource.LogicType,
-			&resource.Creator.ID,
-			&resource.Creator.Type,
-			&resource.CreateTime,
-			&resource.Updater.ID,
-			&resource.Updater.Type,
-			&resource.UpdateTime,
-			&resource.LocalIndexStatus,
-			&resource.LocalIndexName,
-			&resource.SyncMark,
-		)
-
+		summary, err := scanResourceSummary(rows)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
-			return []*interfaces.Resource{}, err
+			return []*interfaces.ResourceSummary{}, err
 		}
 
-		// The format of converting tags string to an array
-		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		// Do not deserialize the complete structure of sourceMetadata, schemaDefinition, and logicDefinition to reduce memory usage
-		// Only lazy extraction of scale information: column count (number of top-level schema elements) and source row count estimation (properties.row_count)
-		if schemaDefinition.Valid && schemaDefinition.String != "" {
-			if node, err := sonic.GetFromString(schemaDefinition.String); err == nil && node.Load() == nil {
-				if n, err := node.Len(); err == nil {
-					resource.ColumnCount = &n
-				}
-			}
-		}
-		if sourceMetadata.Valid && sourceMetadata.String != "" {
-			if node, err := sonic.GetFromString(sourceMetadata.String, "properties", "row_count"); err == nil {
-				if v, err := node.Int64(); err == nil {
-					resource.RowCount = &v
-				}
-			}
-		}
-
-		resources = append(resources, resource)
+		summaries = append(summaries, summary)
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate resource rows failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
-		return []*interfaces.Resource{}, err
+		return []*interfaces.ResourceSummary{}, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return resources, nil
+	return summaries, nil
+}
+
+// GetPermissionRefsByIDs retrieves the resource-to-catalog relations by IDs.
+func (ra *resourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []string) ([]interfaces.ResourcePermissionRef, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Query resource catalog refs by IDs")
+	defer span.End()
+
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return []interfaces.ResourcePermissionRef{}, nil
+	}
+
+	sqlStr, vals, err := sq.Select(
+		"f_id",
+		"f_catalog_id",
+	).From(RESOURCE_TABLE_NAME).
+		Where(sq.Eq{"f_id": ids}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+	rows, err := ra.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		span.SetStatus(codes.Error, "Query failed")
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	refs := make([]interfaces.ResourcePermissionRef, 0)
+	for rows.Next() {
+		var ref interfaces.ResourcePermissionRef
+		if err := rows.Scan(&ref.ResourceID, &ref.CatalogID); err != nil {
+			span.SetStatus(codes.Error, "Scan row failed")
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	if err := rows.Err(); err != nil {
+		span.SetStatus(codes.Error, "Rows iteration failed")
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return refs, nil
 }
 
 // GetByName retrieves ra Resource by catalog and name.
@@ -461,31 +528,8 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 
 	span.SetAttributes(attr.Key("resource_name").String(name))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_catalog_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_category",
-		"f_status",
-		"f_status_message",
-		"f_last_discover_status",
-		"f_schema",
-		"f_source_identifier",
-		"f_source_metadata",
-		"f_schema_definition",
-		"f_index_config",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-		"f_local_status",
-		"f_local_index_name",
-		"f_sync_mark",
-	).From(RESOURCE_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
+		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		Where(sq.Eq{"f_name": name}).
 		ToSql()
@@ -495,36 +539,8 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		return nil, err
 	}
 
-	resource := &interfaces.Resource{}
-	var tagsStr string
-	var sourceMetadata, schemaDefinition, indexConfig sql.NullString
-
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
-	err = row.Scan(
-		&resource.ID,
-		&resource.CatalogID,
-		&resource.Name,
-		&tagsStr,
-		&resource.Description,
-		&resource.Category,
-		&resource.Status,
-		&resource.StatusMessage,
-		&resource.LastDiscoverStatus,
-		&resource.Schema,
-		&resource.SourceIdentifier,
-		&sourceMetadata,
-		&schemaDefinition,
-		&indexConfig,
-		&resource.Creator.ID,
-		&resource.Creator.Type,
-		&resource.CreateTime,
-		&resource.Updater.ID,
-		&resource.Updater.Type,
-		&resource.UpdateTime,
-		&resource.LocalIndexStatus,
-		&resource.LocalIndexName,
-		&resource.SyncMark,
-	)
+	resource, err := scanResourceDetail(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
@@ -535,45 +551,17 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 		return nil, err
 	}
 
-	// The format of converting tags string to an array
-	resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-	if sourceMetadata.Valid && sourceMetadata.String != "" {
-		_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
-	}
-	if schemaDefinition.Valid && schemaDefinition.String != "" {
-		_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
-	}
-	if indexConfig.Valid && indexConfig.String != "" {
-		_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return resource, nil
 }
 
-// ListIDs lists Resource IDs with filters.
-func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.ResourcesQueryParams) ([]string, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List resource IDs")
+// ListPermissionRefs lists the minimal relations needed before list authorization.
+func (ra *resourceAccess) ListPermissionRefs(ctx context.Context, params interfaces.ResourcesQueryParams) ([]interfaces.ResourcePermissionRef, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List resource permission refs")
 	defer span.End()
 
-	builder := sq.Select("f_id").From(RESOURCE_TABLE_NAME)
-
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{"f_name": name})
-	}
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.Category != "" {
-		builder = builder.Where(sq.Eq{"f_category": params.Category})
-	}
-	if params.Status != "" {
-		builder = builder.Where(sq.Eq{"f_status": params.Status})
-	}
-	if params.Schema != "" {
-		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
-	}
+	builder := sq.Select("f_id", "f_catalog_id").From(RESOURCE_TABLE_NAME)
+	builder = applyResourceFilters(builder, params)
 
 	builder = builder.OrderBy(resourceListOrderByClause(params.Sort, params.Direction))
 
@@ -590,61 +578,35 @@ func (ra *resourceAccess) ListIDs(ctx context.Context, params interfaces.Resourc
 	}
 	defer func() { _ = rows.Close() }()
 
-	ids := make([]string, 0)
+	refs := make([]interfaces.ResourcePermissionRef, 0)
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		var ref interfaces.ResourcePermissionRef
+		if err := rows.Scan(&ref.ResourceID, &ref.CatalogID); err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, err
 		}
-		ids = append(ids, id)
+		refs = append(refs, ref)
 	}
 	if err := rows.Err(); err != nil {
-		logger.Errorf("Iterate resource ID rows failed: %v", err)
+		logger.Errorf("Iterate resource permission refs failed: %v", err)
 		span.SetStatus(codes.Error, "Rows iteration failed")
 		return nil, err
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return ids, nil
+	return refs, nil
 }
 
-// List lists Resources with filters.
-func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
-	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List resources")
+// List lists resource summaries with filters.
+func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, int64, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List resource summaries")
 	defer span.End()
 
-	builder := sq.Select(
-		"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_status",
-		"f_status_message", "f_last_discover_status", "f_schema", "f_source_identifier",
-		"f_source_metadata", "f_schema_definition", "f_index_config", "f_creator", "f_creator_type",
-		"f_create_time", "f_updater", "f_updater_type", "f_update_time", "f_local_status",
-		"f_local_index_name", "f_sync_mark",
-	).From(RESOURCE_TABLE_NAME)
+	builder := sq.Select(resourceSummaryColumns...).From(RESOURCE_TABLE_NAME)
+	builder = applyResourceFilters(builder, params)
 
 	countBuilder := sq.Select("COUNT(*)").From(RESOURCE_TABLE_NAME)
-
-	if params.Name != "" {
-		name := "%" + common.EscapeLikePattern(params.Name) + "%"
-		builder = builder.Where(sq.Like{"f_name": name})
-		countBuilder = countBuilder.Where(sq.Like{"f_name": name})
-	}
-	if params.CatalogID != "" {
-		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": params.CatalogID})
-	}
-	if params.Category != "" {
-		builder = builder.Where(sq.Eq{"f_category": params.Category})
-		countBuilder = countBuilder.Where(sq.Eq{"f_category": params.Category})
-	}
-	if params.Status != "" {
-		builder = builder.Where(sq.Eq{"f_status": params.Status})
-		countBuilder = countBuilder.Where(sq.Eq{"f_status": params.Status})
-	}
-	if params.Schema != "" {
-		builder = builder.Where(sq.Eq{"f_schema": params.Schema})
-		countBuilder = countBuilder.Where(sq.Eq{"f_schema": params.Schema})
-	}
+	countBuilder = applyResourceFilters(countBuilder, params)
 
 	countSql, countVals, _ := countBuilder.ToSql()
 	var total int64
@@ -671,55 +633,15 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	}
 	defer func() { _ = rows.Close() }()
 
-	resources := make([]*interfaces.Resource, 0)
+	summaries := make([]*interfaces.ResourceSummary, 0)
 	for rows.Next() {
-		resource := &interfaces.Resource{}
-		var tagsStr string
-		var sourceMetadata, schemaDefinition, indexConfig sql.NullString
-
-		err := rows.Scan(
-			&resource.ID,
-			&resource.CatalogID,
-			&resource.Name,
-			&tagsStr,
-			&resource.Description,
-			&resource.Category,
-			&resource.Status,
-			&resource.StatusMessage,
-			&resource.LastDiscoverStatus,
-			&resource.Schema,
-			&resource.SourceIdentifier,
-			&sourceMetadata,
-			&schemaDefinition,
-			&indexConfig,
-			&resource.Creator.ID,
-			&resource.Creator.Type,
-			&resource.CreateTime,
-			&resource.Updater.ID,
-			&resource.Updater.Type,
-			&resource.UpdateTime,
-			&resource.LocalIndexStatus,
-			&resource.LocalIndexName,
-			&resource.SyncMark,
-		)
+		summary, err := scanResourceSummary(rows)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, 0, err
 		}
 
-		// The format of converting tags string to an array
-		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		if sourceMetadata.Valid && sourceMetadata.String != "" {
-			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
-		}
-		if schemaDefinition.Valid && schemaDefinition.String != "" {
-			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
-		}
-		if indexConfig.Valid && indexConfig.String != "" {
-			_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
-		}
-
-		resources = append(resources, resource)
+		summaries = append(summaries, summary)
 	}
 	if err := rows.Err(); err != nil {
 		logger.Errorf("Iterate resource rows failed: %v", err)
@@ -728,7 +650,7 @@ func (ra *resourceAccess) List(ctx context.Context, params interfaces.ResourcesQ
 	}
 
 	span.SetStatus(codes.Ok, "")
-	return resources, total, nil
+	return summaries, total, nil
 }
 
 // Update updates ra Resource.
@@ -994,31 +916,8 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	sqlStr, vals, err := sq.Select(
-		"f_id",
-		"f_catalog_id",
-		"f_name",
-		"f_tags",
-		"f_description",
-		"f_category",
-		"f_status",
-		"f_status_message",
-		"f_last_discover_status",
-		"f_schema",
-		"f_source_identifier",
-		"f_source_metadata",
-		"f_schema_definition",
-		"f_index_config",
-		"f_creator",
-		"f_creator_type",
-		"f_create_time",
-		"f_updater",
-		"f_updater_type",
-		"f_update_time",
-		"f_local_status",
-		"f_local_index_name",
-		"f_sync_mark",
-	).From(RESOURCE_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
+		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
 	if err != nil {
@@ -1037,50 +936,11 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 
 	resources := make([]*interfaces.Resource, 0)
 	for rows.Next() {
-		resource := &interfaces.Resource{}
-		var tagsStr string
-		var sourceMetadata, schemaDefinition, indexConfig sql.NullString
-
-		err := rows.Scan(
-			&resource.ID,
-			&resource.CatalogID,
-			&resource.Name,
-			&tagsStr,
-			&resource.Description,
-			&resource.Category,
-			&resource.Status,
-			&resource.StatusMessage,
-			&resource.LastDiscoverStatus,
-			&resource.Schema,
-			&resource.SourceIdentifier,
-			&sourceMetadata,
-			&schemaDefinition,
-			&indexConfig,
-			&resource.Creator.ID,
-			&resource.Creator.Type,
-			&resource.CreateTime,
-			&resource.Updater.ID,
-			&resource.Updater.Type,
-			&resource.UpdateTime,
-			&resource.LocalIndexStatus,
-			&resource.LocalIndexName,
-			&resource.SyncMark,
-		)
+		resource, err := scanResourceDetail(rows)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, err
-		}
-
-		resource.Tags = libCommon.TagString2TagSlice(tagsStr)
-		if sourceMetadata.Valid && sourceMetadata.String != "" {
-			_ = sonic.Unmarshal([]byte(sourceMetadata.String), &resource.SourceMetadata)
-		}
-		if schemaDefinition.Valid && schemaDefinition.String != "" {
-			_ = sonic.Unmarshal([]byte(schemaDefinition.String), &resource.SchemaDefinition)
-		}
-		if indexConfig.Valid && indexConfig.String != "" {
-			_ = sonic.Unmarshal([]byte(indexConfig.String), &resource.IndexConfig)
 		}
 
 		resources = append(resources, resource)
@@ -1252,7 +1112,8 @@ func (ra *resourceAccess) CheckExistByCategories(ctx context.Context, catalogID 
 
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	countBuilder := sq.Select("COUNT(*)").From(RESOURCE_TABLE_NAME)
+	countBuilder := sq.Select("COUNT(*)").
+		From(RESOURCE_TABLE_NAME)
 
 	if catalogID != "" {
 		countBuilder = countBuilder.Where(sq.Eq{"f_catalog_id": catalogID})

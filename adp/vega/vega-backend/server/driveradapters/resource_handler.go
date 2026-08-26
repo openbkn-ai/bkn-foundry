@@ -113,7 +113,7 @@ func (r *restHandler) listResources(c *gin.Context, visitor hydra.Visitor) {
 
 	logger.Debug("Handler ListResources Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
-	emitResourceReadEvidence(c, ctx, "data.catalog.get", entries, total, safeResourceListQueryShape(params))
+	emitResourceSummaryReadEvidence(c, ctx, "data.catalog.get", entries, total, safeResourceListQueryShape(params))
 	rest.ReplyOK(c, http.StatusOK, result)
 }
 

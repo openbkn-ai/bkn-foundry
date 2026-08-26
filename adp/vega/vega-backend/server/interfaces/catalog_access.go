@@ -21,12 +21,14 @@ type CatalogAccess interface {
 	GetByID(ctx context.Context, id string) (*Catalog, error)
 	// GetByIDs retrieves a Catalog by IDs.
 	GetByIDs(ctx context.Context, ids []string) ([]*Catalog, error)
+	// GetSummariesByIDs retrieves catalog list summaries by IDs.
+	GetSummariesByIDs(ctx context.Context, ids []string) ([]*CatalogSummary, error)
 	// GetByName retrieves a Catalog by name.
 	GetByName(ctx context.Context, name string) (*Catalog, error)
 	// List lists Catalogs with filters.
-	List(ctx context.Context, params CatalogsQueryParams) ([]*Catalog, int64, error)
-	// ListIDs lists Catalog IDs with filters.
-	ListIDs(ctx context.Context, params CatalogsQueryParams) ([]string, error)
+	List(ctx context.Context, params CatalogsQueryParams) ([]*CatalogSummary, int64, error)
+	// ListPermissionRefs lists the minimal relations needed before list authorization.
+	ListPermissionRefs(ctx context.Context, params CatalogsQueryParams) ([]CatalogPermissionRef, error)
 	// ListInternalIDs lists the ids of all internal system directories (grouped by internal_catalog type when used for permission verification).
 	ListInternalIDs(ctx context.Context) ([]string, error)
 	// Update updates a Catalog.

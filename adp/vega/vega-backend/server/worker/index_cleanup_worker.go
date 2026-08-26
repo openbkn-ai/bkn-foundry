@@ -56,7 +56,7 @@ type indexCleanupStats struct {
 }
 
 type resourceIndexSnapshot struct {
-	byID       map[string]*interfaces.Resource
+	byID       map[string]*interfaces.ResourceSummary
 	references map[string]struct{}
 }
 
@@ -210,7 +210,7 @@ func (icw *IndexCleanupWorker) currentReferences(ctx context.Context) (*resource
 		return nil, err
 	}
 	snapshot := &resourceIndexSnapshot{
-		byID:       make(map[string]*interfaces.Resource, len(resources)),
+		byID:       make(map[string]*interfaces.ResourceSummary, len(resources)),
 		references: make(map[string]struct{}, len(resources)),
 	}
 	for _, resource := range resources {

@@ -70,8 +70,8 @@ func TestCatalogAccessCreate(t *testing.T) {
 	})
 }
 
-func TestCatalogAccessListIDs(t *testing.T) {
-	t.Run("returns catalog ids", func(t *testing.T) {
+func TestCatalogAccessListPermissionRefs(t *testing.T) {
+	t.Run("returns catalog permission refs", func(t *testing.T) {
 		access, mock, cleanup := newCatalogAccessMock(t)
 		defer cleanup()
 
@@ -81,17 +81,18 @@ func TestCatalogAccessListIDs(t *testing.T) {
 			Name:                  "cat",
 			Tag:                   "tag",
 			Type:                  interfaces.CatalogTypePhysical,
+			ConnectorType:         "postgresql",
 			Enabled:               &enabled,
 			HealthCheckStatus:     interfaces.CatalogHealthStatusHealthy,
 		}
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
-			WithArgs("%cat%", "%tag%", interfaces.CatalogTypePhysical, true, interfaces.CatalogHealthStatusHealthy).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
+			WithArgs("%cat%", "%tag%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"f_id"}).AddRow("catalog-1").AddRow("catalog-2"))
 
-		got, err := access.ListIDs(context.Background(), params)
+		got, err := access.ListPermissionRefs(context.Background(), params)
 
 		require.NoError(t, err)
-		assert.Equal(t, []string{"catalog-1", "catalog-2"}, got)
+		assert.Equal(t, []interfaces.CatalogPermissionRef{{CatalogID: "catalog-1"}, {CatalogID: "catalog-2"}}, got)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 }
@@ -113,7 +114,7 @@ func TestCatalogAccessListInternalIDs(t *testing.T) {
 	})
 }
 
-func TestCatalogAccessListIDsReturnsIterationError(t *testing.T) {
+func TestCatalogAccessListPermissionRefsReturnsIterationError(t *testing.T) {
 	access, mock, cleanup := newCatalogAccessMock(t)
 	defer cleanup()
 
@@ -123,7 +124,7 @@ func TestCatalogAccessListIDsReturnsIterationError(t *testing.T) {
 		RowError(1, errors.New("rows interrupted"))
 	mock.ExpectQuery("SELECT f_id FROM t_catalog").WillReturnRows(rows)
 
-	got, err := access.ListIDs(context.Background(), interfaces.CatalogsQueryParams{})
+	got, err := access.ListPermissionRefs(context.Background(), interfaces.CatalogsQueryParams{})
 
 	require.ErrorContains(t, err, "rows interrupted")
 	assert.Nil(t, got)
@@ -148,9 +149,9 @@ func TestCatalogAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ?")).
 			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC")).
+		mock.ExpectQuery(regexp.QuoteMeta(catalogSummarySelectSQL("f_name LIKE ? AND f_tags LIKE ? AND f_type = ? AND f_connector_type = ? AND f_enabled = ? AND f_health_check_status = ? ORDER BY f_name ASC"))).
 			WithArgs("%Catalog%", "%tag-a%", interfaces.CatalogTypePhysical, "postgresql", true, interfaces.CatalogHealthStatusHealthy).
-			WillReturnRows(catalogRows().AddRow(catalogRowValues(sampleCatalog())...))
+			WillReturnRows(catalogSummaryRows().AddRow(catalogSummaryRowValues(sampleCatalog())...))
 
 		got, total, err := access.List(context.Background(), params)
 
@@ -263,6 +264,23 @@ func TestCatalogAccessGetByIDs(t *testing.T) {
 		assert.Empty(t, got)
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
+}
+
+func TestCatalogAccessGetSummariesByIDs(t *testing.T) {
+	access, mock, cleanup := newCatalogAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectQuery(regexp.QuoteMeta(catalogSummarySelectSQL("f_id IN (?,?)"))).
+		WithArgs("catalog-1", "catalog-2").
+		WillReturnRows(catalogSummaryRows().AddRow(catalogSummaryRowValues(sampleCatalog())...))
+
+	got, err := access.GetSummariesByIDs(context.Background(), []string{"catalog-1", "catalog-2"})
+
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "catalog-1", got[0].ID)
+	assert.Equal(t, []string{"tag-a", "tag-b"}, got[0].Tags)
+	require.NoError(t, mock.ExpectationsWereMet())
 }
 
 func TestCatalogAccessListAuthResources(t *testing.T) {
@@ -499,6 +517,26 @@ func sampleCatalogWithID(id string) *interfaces.Catalog {
 
 func catalogSelectSQL(where string) string {
 	return "SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_connector_config, f_metadata, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE " + where
+}
+
+func catalogSummarySelectSQL(where string) string {
+	return "SELECT f_id, f_name, f_tags, f_description, f_type, f_enabled, f_internal, f_connector_type, f_health_check_status, f_last_check_time, f_health_check_result, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_catalog WHERE " + where
+}
+
+func catalogSummaryRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"f_id", "f_name", "f_tags", "f_description", "f_type", "f_enabled", "f_internal", "f_connector_type",
+		"f_health_check_status", "f_last_check_time", "f_health_check_result",
+		"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
+	})
+}
+
+func catalogSummaryRowValues(catalog *interfaces.Catalog) []driver.Value {
+	return []driver.Value{
+		catalog.ID, catalog.Name, "tag-a,tag-b", catalog.Description, catalog.Type, catalog.Enabled, catalog.Internal, catalog.ConnectorType,
+		catalog.HealthCheckStatus, catalog.LastCheckTime, catalog.HealthCheckResult,
+		catalog.Creator.ID, catalog.Creator.Type, catalog.CreateTime, catalog.Updater.ID, catalog.Updater.Type, catalog.UpdateTime,
+	}
 }
 
 func catalogRows() *sqlmock.Rows {

@@ -201,10 +201,10 @@ func TestMergeCatalogPermissionsFillsFromCatalog(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
 
-	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r-1"}).Return([]*interfaces.Resource{
-		{ID: "r-1", CatalogID: "c-1"},
+	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r-1"}).Return([]interfaces.ResourcePermissionRef{
+		{ResourceID: "r-1", CatalogID: "c-1"},
 	}, nil)
-	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c-1"},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
@@ -229,10 +229,10 @@ func TestMergeCatalogPermissionsLeavesUngrantedCatalogsAlone(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
 
-	ra.EXPECT().GetByIDsBasic(gomock.Any(), gomock.Any()).Return([]*interfaces.Resource{
-		{ID: "r-1", CatalogID: "c-1"},
+	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), gomock.Any()).Return([]interfaces.ResourcePermissionRef{
+		{ResourceID: "r-1", CatalogID: "c-1"},
 	}, nil)
-	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{}, nil)
 
@@ -253,10 +253,10 @@ func TestMergeCatalogPermissionsCarriesEveryMappedOp(t *testing.T) {
 	cs := vmock.NewMockCatalogService(ctrl)
 	rs := &resourceService{ps: ps, ra: ra, cs: cs}
 
-	ra.EXPECT().GetByIDsBasic(gomock.Any(), []string{"r-1"}).Return([]*interfaces.Resource{
-		{ID: "r-1", CatalogID: "c-1"},
+	ra.EXPECT().GetPermissionRefsByIDs(gomock.Any(), []string{"r-1"}).Return([]interfaces.ResourcePermissionRef{
+		{ResourceID: "r-1", CatalogID: "c-1"},
 	}, nil)
-	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 	ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG, []string{"c-1"},
 		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true, gomock.Any()).
 		Return(map[string]interfaces.PermissionResourceOps{
@@ -328,7 +328,7 @@ func TestCreateJudgesTheCatalogOnly(t *testing.T) {
 	rs := &resourceService{ra: ra, ps: ps, cs: cs}
 	expectResourceServiceTransaction(t, rs, true)
 
-	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 	ps.EXPECT().CheckPermission(gomock.Any(), interfaces.PermissionResource{
 		Type: interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 		ID:   "c-1",
@@ -369,7 +369,7 @@ func TestViewDetailAloneDoesNotGrantQueryData(t *testing.T) {
 	ra.EXPECT().GetByID(gomock.Any(), nil, "r-1").Return(&interfaces.Resource{
 		ID: "r-1", CatalogID: "c-1",
 	}, nil)
-	cs.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil)
+	cs.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil)
 
 	denied := errors.New("denied")
 	// 表上只有 view_detail,所以 query_data 被拒;目录上也没有,回落同样拒。

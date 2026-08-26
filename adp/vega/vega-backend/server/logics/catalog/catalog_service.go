@@ -131,8 +131,8 @@ func partitionCatalogIDs(ids []string, internalSet map[string]struct{}) (normalI
 	return normalIDs, internalIDs
 }
 
-// internalCatalogIDSet queries the collection of all internal directory ids of the system
-func (cs *catalogService) internalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
+// InternalCatalogIDSet queries the collection of all internal directory ids of the system.
+func (cs *catalogService) InternalCatalogIDSet(ctx context.Context) (map[string]struct{}, error) {
 	ids, err := cs.ca.ListInternalIDs(ctx)
 	if err != nil {
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
@@ -359,7 +359,7 @@ func (cs *catalogService) filterAuthorizedCatalogs(ctx context.Context, ids []st
 		return map[string]bool{}, nil
 	}
 
-	internalSet, err := cs.internalCatalogIDSet(ctx)
+	internalSet, err := cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -404,13 +404,17 @@ func (cs *catalogService) AuthorizedCatalogsForTasks(ctx context.Context,
 		return nil, true, excluded, nil
 	}
 
-	all, err := cs.ca.ListIDs(ctx, interfaces.CatalogsQueryParams{})
+	refs, err := cs.ca.ListPermissionRefs(ctx, interfaces.CatalogsQueryParams{})
 	if err != nil {
 		return nil, false, nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
-	if len(all) == 0 {
+	if len(refs) == 0 {
 		return nil, false, nil, nil
+	}
+	all := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		all = append(all, ref.CatalogID)
 	}
 	allowed, err := cs.filterAuthorizedCatalogs(ctx, all, op)
 	if err != nil {
@@ -434,7 +438,7 @@ func (cs *catalogService) unreachableInternalCatalogs(ctx context.Context, op st
 	}, []string{op}); err == nil {
 		return nil, nil
 	}
-	internalSet, err := cs.internalCatalogIDSet(ctx)
+	internalSet, err := cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -736,29 +740,33 @@ func (cs *catalogService) GetByIDs(ctx context.Context, ids []string) ([]*interf
 	return catalogs, nil
 }
 
-// List lists Catalogs with filters.
-func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.Catalog, int64, error) {
+// List lists catalog summaries with filters.
+func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQueryParams) ([]*interfaces.CatalogSummary, int64, error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "List catalogs")
 	defer span.End()
 
 	// Query the ids of all catalogs
-	ids, err := cs.ca.ListIDs(ctx, params)
+	refs, err := cs.ca.ListPermissionRefs(ctx, params)
 	if err != nil {
 		span.SetStatus(codes.Error, "List catalog IDs failed")
-		return []*interfaces.Catalog{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+		return []*interfaces.CatalogSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 			verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 	}
 
-	if len(ids) == 0 {
+	if len(refs) == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []*interfaces.Catalog{}, 0, nil
+		return []*interfaces.CatalogSummary{}, 0, nil
+	}
+	ids := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		ids = append(ids, ref.CatalogID)
 	}
 
 	// Internal directory ID collection, grouped by internal_catalog type during permission verification
-	internalSet, err := cs.internalCatalogIDSet(ctx)
+	internalSet, err := cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		span.SetStatus(codes.Error, "List internal catalog IDs failed")
-		return []*interfaces.Catalog{}, 0, err
+		return []*interfaces.CatalogSummary{}, 0, err
 	}
 
 	// Filter permissions using batch processing, with 10,000 ids processed in each batch
@@ -779,7 +787,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 			[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}, true)
 		if err != nil {
 			span.SetStatus(codes.Error, "Filter resources error")
-			return []*interfaces.Catalog{}, 0, err
+			return []*interfaces.CatalogSummary{}, 0, err
 		}
 
 		// Merge results
@@ -800,7 +808,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 	// If there is no authorized catalog, return an empty result directly
 	if total == 0 {
 		span.SetStatus(codes.Ok, "")
-		return []*interfaces.Catalog{}, total, nil
+		return []*interfaces.CatalogSummary{}, total, nil
 	}
 
 	// Apply pagination based on the array of authorized ids
@@ -809,7 +817,7 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		// Check whether the starting position is out of bounds
 		if params.Offset < 0 || params.Offset >= len(authorizedIDs) {
 			span.SetStatus(codes.Ok, "")
-			return []*interfaces.Catalog{}, total, nil
+			return []*interfaces.CatalogSummary{}, total, nil
 		}
 		// Calculate the end position
 		end := params.Offset + params.Limit
@@ -820,9 +828,9 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		authorizedIDs = authorizedIDs[params.Offset:end]
 	}
 
-	// Query the complete catalog based on the array of authorized ids
+	// Query catalog summaries based on the array of authorized ids.
 	// Process in batches, 10,000 ids per batch, to avoid the error of prepared statement contains too many placeholders
-	catalogs := make([]*interfaces.Catalog, 0, len(authorizedIDs))
+	catalogs := make([]*interfaces.CatalogSummary, 0, len(authorizedIDs))
 	queryBatchSize := 10000
 	for i := 0; i < len(authorizedIDs); i += queryBatchSize {
 		end := i + queryBatchSize
@@ -831,10 +839,10 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 		}
 		batchIDs := authorizedIDs[i:end]
 
-		batchCatalogs, err := cs.ca.GetByIDs(ctx, batchIDs)
+		batchCatalogs, err := cs.ca.GetSummariesByIDs(ctx, batchIDs)
 		if err != nil {
 			span.SetStatus(codes.Error, "Get catalogs by IDs failed")
-			return []*interfaces.Catalog{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			return []*interfaces.CatalogSummary{}, 0, rest.NewHTTPError(ctx, http.StatusInternalServerError,
 				verrors.VegaBackend_Catalog_InternalError_GetFailed).WithErrorDetails(err.Error())
 		}
 
@@ -857,11 +865,6 @@ func (cs *catalogService) List(ctx context.Context, params interfaces.CatalogsQu
 	if err != nil {
 		span.RecordError(err)
 		logger.Warnf("Failed to populate catalog account names: %v", err)
-	}
-
-	// Remove sensitive fields and do not return to the front end
-	for _, c := range catalogs {
-		cs.removeSensitiveFields(c)
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -1047,7 +1050,7 @@ func (cs *catalogService) SetEnabled(ctx context.Context, catalog *interfaces.Ca
 }
 
 func (cs *catalogService) authorizeDelete(ctx context.Context, id string) (map[string]struct{}, error) {
-	internalSet, err := cs.internalCatalogIDSet(ctx)
+	internalSet, err := cs.InternalCatalogIDSet(ctx)
 	if err != nil {
 		return nil, err
 	}

@@ -144,21 +144,6 @@ func (mr *MockResourceAccessMockRecorder) GetByIDs(ctx, ids any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockResourceAccess)(nil).GetByIDs), ctx, ids)
 }
 
-// GetByIDsBasic mocks base method.
-func (m *MockResourceAccess) GetByIDsBasic(ctx context.Context, ids []string) ([]*interfaces.Resource, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByIDsBasic", ctx, ids)
-	ret0, _ := ret[0].([]*interfaces.Resource)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetByIDsBasic indicates an expected call of GetByIDsBasic.
-func (mr *MockResourceAccessMockRecorder) GetByIDsBasic(ctx, ids any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDsBasic", reflect.TypeOf((*MockResourceAccess)(nil).GetByIDsBasic), ctx, ids)
-}
-
 // GetByName mocks base method.
 func (m *MockResourceAccess) GetByName(ctx context.Context, catalogID, name string) (*interfaces.Resource, error) {
 	m.ctrl.T.Helper()
@@ -174,11 +159,41 @@ func (mr *MockResourceAccessMockRecorder) GetByName(ctx, catalogID, name any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByName", reflect.TypeOf((*MockResourceAccess)(nil).GetByName), ctx, catalogID, name)
 }
 
+// GetPermissionRefsByIDs mocks base method.
+func (m *MockResourceAccess) GetPermissionRefsByIDs(ctx context.Context, ids []string) ([]interfaces.ResourcePermissionRef, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPermissionRefsByIDs", ctx, ids)
+	ret0, _ := ret[0].([]interfaces.ResourcePermissionRef)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPermissionRefsByIDs indicates an expected call of GetPermissionRefsByIDs.
+func (mr *MockResourceAccessMockRecorder) GetPermissionRefsByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPermissionRefsByIDs", reflect.TypeOf((*MockResourceAccess)(nil).GetPermissionRefsByIDs), ctx, ids)
+}
+
+// GetSummariesByIDs mocks base method.
+func (m *MockResourceAccess) GetSummariesByIDs(ctx context.Context, ids []string) ([]*interfaces.ResourceSummary, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSummariesByIDs", ctx, ids)
+	ret0, _ := ret[0].([]*interfaces.ResourceSummary)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSummariesByIDs indicates an expected call of GetSummariesByIDs.
+func (mr *MockResourceAccessMockRecorder) GetSummariesByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSummariesByIDs", reflect.TypeOf((*MockResourceAccess)(nil).GetSummariesByIDs), ctx, ids)
+}
+
 // List mocks base method.
-func (m *MockResourceAccess) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.Resource, int64, error) {
+func (m *MockResourceAccess) List(ctx context.Context, params interfaces.ResourcesQueryParams) ([]*interfaces.ResourceSummary, int64, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "List", ctx, params)
-	ret0, _ := ret[0].([]*interfaces.Resource)
+	ret0, _ := ret[0].([]*interfaces.ResourceSummary)
 	ret1, _ := ret[1].(int64)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -205,19 +220,19 @@ func (mr *MockResourceAccessMockRecorder) ListAuthResources(ctx, params any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockResourceAccess)(nil).ListAuthResources), ctx, params)
 }
 
-// ListIDs mocks base method.
-func (m *MockResourceAccess) ListIDs(ctx context.Context, params interfaces.ResourcesQueryParams) ([]string, error) {
+// ListPermissionRefs mocks base method.
+func (m *MockResourceAccess) ListPermissionRefs(ctx context.Context, params interfaces.ResourcesQueryParams) ([]interfaces.ResourcePermissionRef, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListIDs", ctx, params)
-	ret0, _ := ret[0].([]string)
+	ret := m.ctrl.Call(m, "ListPermissionRefs", ctx, params)
+	ret0, _ := ret[0].([]interfaces.ResourcePermissionRef)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListIDs indicates an expected call of ListIDs.
-func (mr *MockResourceAccessMockRecorder) ListIDs(ctx, params any) *gomock.Call {
+// ListPermissionRefs indicates an expected call of ListPermissionRefs.
+func (mr *MockResourceAccessMockRecorder) ListPermissionRefs(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListIDs", reflect.TypeOf((*MockResourceAccess)(nil).ListIDs), ctx, params)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPermissionRefs", reflect.TypeOf((*MockResourceAccess)(nil).ListPermissionRefs), ctx, params)
 }
 
 // Update mocks base method.

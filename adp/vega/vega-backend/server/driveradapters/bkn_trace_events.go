@@ -59,6 +59,32 @@ func emitResourceReadEvidence(c *gin.Context, ctx context.Context, operation str
 	}
 }
 
+func emitResourceSummaryReadEvidence(c *gin.Context, ctx context.Context, operation string, summaries []*interfaces.ResourceSummary, total int64, queryShape any) {
+	if !bkntrace.EvidenceEnabled() || len(summaries) == 0 {
+		return
+	}
+	subject := bkntrace.DataQuerySubject{
+		Operation:     operation,
+		QueryHash:     bkntrace.HashValue(queryShape),
+		ReturnedCount: len(summaries),
+		TotalCount:    total,
+	}
+	refs := make([]bkntrace.EvidenceRef, 0, len(summaries))
+	for _, summary := range summaries {
+		if summary == nil {
+			continue
+		}
+		refs = append(refs, bkntrace.EvidenceRef{RefID: "resource:" + summary.ID, RefType: bkntrace.RefTypeResource})
+	}
+	if len(summaries) == 1 && summaries[0] != nil {
+		subject.ResourceID = summaries[0].ID
+		subject.CatalogID = summaries[0].CatalogID
+	}
+	if eventID := bkntrace.EmitDataQueryEvents(ctx, vegaTraceRequestContext(c, ctx), subject, refs); eventID != "" {
+		c.Header("bkn-evidence-event-id", eventID)
+	}
+}
+
 func emitResourceDataEvidence(c *gin.Context, ctx context.Context, resource *interfaces.Resource, params *interfaces.ResourceDataQueryParams, result *interfaces.ResourceDataQueryResult) {
 	if !bkntrace.EvidenceEnabled() || resource == nil || result == nil {
 		return

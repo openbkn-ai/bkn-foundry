@@ -164,7 +164,7 @@ func TestAuthorizedCatalogsForTasks(t *testing.T) {
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 			rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
-		ca.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return([]string{"cat-1", "cat-2"}, nil)
+		ca.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}, {CatalogID: "cat-2"}}, nil)
 		ca.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil).AnyTimes()
 		ps.EXPECT().FilterResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_CATALOG,
 			[]string{"cat-1", "cat-2"}, gomock.Any(), true, gomock.Any()).
@@ -186,7 +186,7 @@ func TestAuthorizedCatalogsForTasks(t *testing.T) {
 
 		ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 			rest.NewHTTPError(context.Background(), http.StatusForbidden, rest.PublicError_Forbidden))
-		ca.EXPECT().ListIDs(gomock.Any(), gomock.Any()).Return([]string{"cat-1"}, nil)
+		ca.EXPECT().ListPermissionRefs(gomock.Any(), gomock.Any()).Return([]interfaces.CatalogPermissionRef{{CatalogID: "cat-1"}}, nil)
 		ca.EXPECT().ListInternalIDs(gomock.Any()).Return(nil, nil).AnyTimes()
 		ps.EXPECT().FilterResources(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			Return(map[string]interfaces.PermissionResourceOps{}, nil)

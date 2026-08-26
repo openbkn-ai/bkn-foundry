@@ -95,6 +95,41 @@ type Resource struct {
 	Operations []string `json:"operations"`
 }
 
+// ResourceSummary contains the fields returned by resource list queries.
+// Extended JSON fields are intentionally excluded.
+type ResourceSummary struct {
+	ID          string   `json:"id"`
+	CatalogID   string   `json:"catalog_id"`
+	Name        string   `json:"name"`
+	Tags        []string `json:"tags"`
+	Description string   `json:"description"`
+
+	Category string `json:"category"`
+
+	Status             string `json:"status"`
+	StatusMessage      string `json:"status_message"`
+	LastDiscoverStatus string `json:"last_discover_status"`
+
+	Schema           string `json:"schema,omitempty"`
+	SourceIdentifier string `json:"source_identifier"`
+
+	LocalIndexStatus string `json:"local_status"`
+	LocalIndexName   string `json:"index_name,omitempty"`
+	SyncMark         string `json:"-"`
+
+	ColumnCount *int   `json:"column_count,omitempty"`
+	RowCount    *int64 `json:"row_count,omitempty"`
+
+	LogicType string `json:"logic_type,omitempty"`
+
+	Creator    AccountInfo `json:"creator"`
+	CreateTime int64       `json:"create_time"`
+	Updater    AccountInfo `json:"updater"`
+	UpdateTime int64       `json:"update_time"`
+
+	Operations []string `json:"operations"`
+}
+
 type Property struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"display_name"`

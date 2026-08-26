@@ -25,8 +25,8 @@ type ResourceService interface {
 	GetByCatalogID(ctx context.Context, catalogID string) ([]*Resource, error)
 	// GetByName retrieves a Resource by catalog and name.
 	GetByName(ctx context.Context, catalogID string, name string) (*Resource, error)
-	// List lists Resources with filters.
-	List(ctx context.Context, params ResourcesQueryParams) ([]*Resource, int64, error)
+	// List lists resource summaries with filters.
+	List(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, int64, error)
 	// Update updates a Resource.
 	Update(ctx context.Context, resource *Resource, req *ResourceRequest) error
 	// UpdateStatus updates a Resource's status.
@@ -54,8 +54,8 @@ type ResourceService interface {
 
 	// InternalGetByID retrieves a Resource for internal workers, using tx when provided.
 	InternalGetByID(ctx context.Context, tx *sql.Tx, id string) (*Resource, error)
-	// InternalList retrieves Resources for internal workers without permission filtering.
-	InternalList(ctx context.Context, params ResourcesQueryParams) ([]*Resource, error)
+	// InternalList retrieves resource summaries for internal workers without permission filtering.
+	InternalList(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, error)
 	// InternalGetByIDs retrieves Resources for internal callers without permission filtering.
 	InternalGetByIDs(ctx context.Context, ids []string) ([]*Resource, error)
 	// InternalGetByCatalogID retrieves all Resources under a Catalog for internal callers.
