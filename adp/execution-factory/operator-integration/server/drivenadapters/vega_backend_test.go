@@ -29,7 +29,7 @@ func TestVegaBackendClient(t *testing.T) {
 			AccountType: interfaces.AccessorTypeUser,
 		})
 		headers := map[string]string{
-			"Content-Type":  "application/json",
+			"Content-Type":   "application/json",
 			"x-account-id":   "acc-1",
 			"x-account-type": "user",
 		}
@@ -113,12 +113,19 @@ func TestVegaBackendClient(t *testing.T) {
 			So(resp.ID, ShouldEqual, "bkn_execution_factory_skill_dataset")
 		})
 
+		Convey("deletes a resource before rebuild", func() {
+			httpClient.EXPECT().DeleteNoUnmarshal(gomock.Any(), "http://vega-backend:9898/api/vega-backend/v1/resources/bkn_execution_factory_skill_dataset", headers).
+				Return(http.StatusNoContent, []byte{}, nil)
+
+			So(client.DeleteResource(ctx, "bkn_execution_factory_skill_dataset"), ShouldBeNil)
+		})
+
 		Convey("writes dataset documents", func() {
 			docs := []map[string]any{
 				{"_id": "skill-1", "skill_id": "skill-1", "name": "demo"},
 			}
 			writeHeaders := map[string]string{
-				"Content-Type":            "application/json",
+				"Content-Type":           "application/json",
 				"x-account-id":           "acc-1",
 				"x-account-type":         "user",
 				"X-HTTP-Method-Override": "POST",

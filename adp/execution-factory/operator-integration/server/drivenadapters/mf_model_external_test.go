@@ -33,7 +33,7 @@ func TestGetEmbeddingModel(t *testing.T) {
 		Convey("parses embedding model from res list", func() {
 			httpClient.EXPECT().Get(gomock.Any(), "http://mf-model-manage:9898/api/private/mf-model-manage/v1/small-model/list",
 				gomock.Any(), map[string]string{
-					"Content-Type":  "application/json",
+					"Content-Type":   "application/json",
 					"x-account-id":   "acc-1",
 					"x-account-type": "user",
 				}).

@@ -928,6 +928,7 @@ type VegaBackendClient interface {
 	EnableCatalog(ctx context.Context, id string) error
 	GetResourceByID(ctx context.Context, id string) (*VegaResource, error)
 	CreateResource(ctx context.Context, req *VegaResourceRequest) (*VegaResource, error)
+	DeleteResource(ctx context.Context, id string) error
 	WriteDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
 	UpdateDatasetDocuments(ctx context.Context, datasetID string, documents []map[string]any) error
 	DeleteDatasetDocumentByID(ctx context.Context, datasetID string, docID string) error
