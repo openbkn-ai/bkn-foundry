@@ -111,7 +111,7 @@ func TestBuildTaskWorkerRecoversInterruptedTasks(t *testing.T) {
 		})
 	runningUpdate := bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "running-task",
 		"build task interrupted by service restart").Return(true, nil).After(firstList)
-	stoppingUpdate := bts.EXPECT().InternalMarkStopped(gomock.Any(), "stopping-task").Return(true, nil).After(runningUpdate)
+	stoppingUpdate := bts.EXPECT().InternalMarkStopped(gomock.Any(), nil, "stopping-task").Return(true, nil).After(runningUpdate)
 	bts.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(
 		[]*interfaces.BuildTaskSummary{}, nil).After(stoppingUpdate)
 
@@ -329,7 +329,7 @@ func TestBuildTaskWorkerCancelsBatchTaskWhenResourceWasDeleted(t *testing.T) {
 
 	bts.EXPECT().InternalGetByID(gomock.Any(), "task-1").Return(task, nil)
 	rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(nil, nil)
-	bts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "resource deleted").Return(true, nil)
+	bts.EXPECT().InternalMarkCancelled(gomock.Any(), nil, "task-1", "resource deleted").Return(true, nil)
 
 	require.NoError(t, worker.runBatchTask(context.Background(), "task-1"))
 }
@@ -447,7 +447,7 @@ func TestBuildTaskWorkerValidatesCatalogBeforeClaim(t *testing.T) {
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 		cs.EXPECT().InternalGetByID(gomock.Any(), "catalog-1", true).
 			Return(nil, &rest.HTTPError{HTTPCode: http.StatusNotFound})
-		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "task-1", "catalog deleted").Return(true, nil)
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), nil, "task-1", "catalog deleted").Return(true, nil)
 
 		require.NoError(t, worker.runBatchTask(context.Background(), "task-1"))
 	})

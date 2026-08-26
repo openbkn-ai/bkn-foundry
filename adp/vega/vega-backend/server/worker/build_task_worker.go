@@ -141,7 +141,7 @@ func (btw *BuildTaskWorker) recoverInterruptedTasks(ctx context.Context) error {
 				changed, err = btw.bts.InternalMarkFailed(ctx, nil, task.ID,
 					"build task interrupted by service restart")
 			} else {
-				changed, err = btw.bts.InternalMarkStopped(ctx, task.ID)
+				changed, err = btw.bts.InternalMarkStopped(ctx, nil, task.ID)
 			}
 			if err != nil {
 				return fmt.Errorf("recover interrupted build task %s: %w", task.ID, err)

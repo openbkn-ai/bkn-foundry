@@ -26,8 +26,8 @@ import (
 )
 
 var (
-	btaOnce sync.Once
-	bta     interfaces.BuildTaskAccess
+	btAccessOnce sync.Once
+	btAccess     interfaces.BuildTaskAccess
 )
 
 const (
@@ -78,10 +78,6 @@ func buildTaskSummaryColumns() []string {
 		"f_finish_time",
 		"f_last_progress_time",
 	}
-}
-
-type buildTaskAccess struct {
-	db *sql.DB
 }
 
 type buildTaskScanner interface {
@@ -154,14 +150,20 @@ func scanBuildTaskSummary(scanner buildTaskScanner) (*interfaces.BuildTaskSummar
 	return task, nil
 }
 
+type buildTaskAccess struct {
+	appSetting *common.AppSetting
+	db         *sql.DB
+}
+
 // NewBuildTaskAccess creates a new BuildTaskAccess.
 func NewBuildTaskAccess(appSetting *common.AppSetting) interfaces.BuildTaskAccess {
-	btaOnce.Do(func() {
-		bta = &buildTaskAccess{
-			db: db.NewDB(&appSetting.DBSetting),
+	btAccessOnce.Do(func() {
+		btAccess = &buildTaskAccess{
+			appSetting: appSetting,
+			db:         db.NewDB(&appSetting.DBSetting),
 		}
 	})
-	return bta
+	return btAccess
 }
 
 // Create creates a new build task.
@@ -242,6 +244,50 @@ func (bta *buildTaskAccess) GetByID(ctx context.Context, id string) (*interfaces
 	return buildTask, nil
 }
 
+// GetByIDs retrieves build tasks keyed by ID.
+func (bta *buildTaskAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.BuildTask, error) {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get build tasks by IDs")
+	defer span.End()
+
+	buildTasks := make(map[string]*interfaces.BuildTask, len(ids))
+	if len(ids) == 0 {
+		span.SetStatus(codes.Ok, "")
+		return buildTasks, nil
+	}
+
+	sqlStr, vals, err := sq.Select(buildTaskColumns()...).
+		From(BUILD_TASK_TABLE_NAME).
+		Where(sq.Eq{"f_id": ids}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return nil, err
+	}
+
+	rows, err := bta.db.QueryContext(ctx, sqlStr, vals...)
+	if err != nil {
+		otellog.LogError(ctx, "Get build tasks by IDs failed", err)
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		buildTask, err := scanBuildTask(rows)
+		if err != nil {
+			otellog.LogError(ctx, "Scan build task row failed", err)
+			return nil, err
+		}
+		buildTasks[buildTask.ID] = buildTask
+	}
+	if err := rows.Err(); err != nil {
+		otellog.LogError(ctx, "Rows iteration failed", err)
+		return nil, err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return buildTasks, nil
+}
+
 // GetByCatalogID retrieves build tasks by catalog ID.
 func (bta *buildTaskAccess) GetByCatalogID(ctx context.Context, catalogID string) ([]*interfaces.BuildTask, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get build tasks by catalog ID")
@@ -283,9 +329,8 @@ func (bta *buildTaskAccess) GetByCatalogID(ctx context.Context, catalogID string
 	return buildTasks, nil
 }
 
-func (bta *buildTaskAccess) SetProgress(
-	ctx context.Context, tx *sql.Tx, id string, progress interfaces.BuildTaskProgress, lastProgressTime int64,
-) (bool, error) {
+func (bta *buildTaskAccess) SetProgress(ctx context.Context, tx *sql.Tx, id string,
+	progress interfaces.BuildTaskProgress, lastProgressTime int64) (bool, error) {
 	updateColumns := map[string]any{"f_last_progress_time": lastProgressTime}
 	if progress.TotalCount != nil {
 		updateColumns["f_total_count"] = *progress.TotalCount
@@ -308,7 +353,7 @@ func (bta *buildTaskAccess) SetProgress(
 	})
 }
 
-func (bta *buildTaskAccess) MarkPending(ctx context.Context, id string, reset bool) (bool, error) {
+func (bta *buildTaskAccess) MarkPending(ctx context.Context, tx *sql.Tx, id string, reset bool) (bool, error) {
 	updateColumns := map[string]any{
 		"f_status":             interfaces.BuildTaskStatusPending,
 		"f_start_time":         int64(0),
@@ -322,7 +367,7 @@ func (bta *buildTaskAccess) MarkPending(ctx context.Context, id string, reset bo
 		updateColumns["f_error_msg"] = ""
 		updateColumns["f_failure_detail"] = ""
 	}
-	return bta.update(ctx, nil, updateColumns, map[string]any{
+	return bta.update(ctx, tx, updateColumns, map[string]any{
 		"f_id": id,
 		"f_status": []string{
 			interfaces.BuildTaskStatusStopped,
@@ -339,14 +384,14 @@ func (bta *buildTaskAccess) MarkRunning(ctx context.Context, tx *sql.Tx, id stri
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusPending})
 }
 
-func (bta *buildTaskAccess) MarkStopping(ctx context.Context, id string) (bool, error) {
-	return bta.update(ctx, nil, map[string]any{
+func (bta *buildTaskAccess) MarkStopping(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
+	return bta.update(ctx, tx, map[string]any{
 		"f_status": interfaces.BuildTaskStatusStopping,
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusRunning})
 }
 
-func (bta *buildTaskAccess) MarkStopped(ctx context.Context, id string, finishTime int64) (bool, error) {
-	return bta.update(ctx, nil, map[string]any{
+func (bta *buildTaskAccess) MarkStopped(ctx context.Context, tx *sql.Tx, id string, finishTime int64) (bool, error) {
+	return bta.update(ctx, tx, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusStopped,
 		"f_finish_time": finishTime,
 	}, map[string]any{
@@ -358,30 +403,16 @@ func (bta *buildTaskAccess) MarkStopped(ctx context.Context, id string, finishTi
 	})
 }
 
-func (bta *buildTaskAccess) MarkCompleted(
-	ctx context.Context, tx *sql.Tx, id string, finishTime int64,
-) (bool, error) {
+func (bta *buildTaskAccess) MarkCompleted(ctx context.Context, tx *sql.Tx, id string, finishTime int64) (bool, error) {
 	return bta.update(ctx, tx, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusCompleted,
 		"f_finish_time": finishTime,
 	}, map[string]any{"f_id": id, "f_status": interfaces.BuildTaskStatusRunning})
 }
 
-func (bta *buildTaskAccess) MarkFailed(
-	ctx context.Context, tx *sql.Tx, id, detail string, finishTime int64,
-) (bool, error) {
-	return bta.markTerminal(ctx, tx, id, interfaces.BuildTaskStatusFailed, detail, finishTime)
-}
-
-func (bta *buildTaskAccess) MarkCancelled(ctx context.Context, id, detail string, finishTime int64) (bool, error) {
-	return bta.markTerminal(ctx, nil, id, interfaces.BuildTaskStatusCancelled, detail, finishTime)
-}
-
-func (bta *buildTaskAccess) markTerminal(
-	ctx context.Context, tx *sql.Tx, id, status, detail string, finishTime int64,
-) (bool, error) {
+func (bta *buildTaskAccess) MarkFailed(ctx context.Context, tx *sql.Tx, id string, detail string, finishTime int64) (bool, error) {
 	return bta.update(ctx, tx, map[string]any{
-		"f_status":      status,
+		"f_status":      interfaces.BuildTaskStatusFailed,
 		"f_error_msg":   detail,
 		"f_finish_time": finishTime,
 	}, map[string]any{
@@ -394,9 +425,23 @@ func (bta *buildTaskAccess) markTerminal(
 	})
 }
 
-func (bta *buildTaskAccess) MarkCancelledByCatalogID(
-	ctx context.Context, tx *sql.Tx, catalogID, message string, finishTime int64,
-) error {
+func (bta *buildTaskAccess) MarkCancelled(ctx context.Context, tx *sql.Tx, id string, detail string, finishTime int64) (bool, error) {
+	return bta.update(ctx, tx, map[string]any{
+		"f_status":      interfaces.BuildTaskStatusCancelled,
+		"f_error_msg":   detail,
+		"f_finish_time": finishTime,
+	}, map[string]any{
+		"f_id": id,
+		"f_status": []string{
+			interfaces.BuildTaskStatusPending,
+			interfaces.BuildTaskStatusRunning,
+			interfaces.BuildTaskStatusStopping,
+		},
+	})
+}
+
+func (bta *buildTaskAccess) MarkCancelledByCatalogID(ctx context.Context,
+	tx *sql.Tx, catalogID string, message string, finishTime int64) error {
 	_, err := bta.update(ctx, tx, map[string]any{
 		"f_status":      interfaces.BuildTaskStatusCancelled,
 		"f_error_msg":   message,
@@ -408,8 +453,8 @@ func (bta *buildTaskAccess) MarkCancelledByCatalogID(
 	return err
 }
 
-// GetStatus retrieves the status of a build task by ID.
-func (bta *buildTaskAccess) GetStatus(ctx context.Context, id string) (string, error) {
+// GetStatusByID retrieves the status of a build task by ID.
+func (bta *buildTaskAccess) GetStatusByID(ctx context.Context, id string) (string, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Get build task status")
 	defer span.End()
 
@@ -583,12 +628,8 @@ func (bta *buildTaskAccess) DeleteByIDs(ctx context.Context, ids []string) (int6
 	return affected, nil
 }
 
-func (bta *buildTaskAccess) update(
-	ctx context.Context,
-	tx *sql.Tx,
-	updateColumns map[string]any,
-	filterColumns map[string]any,
-) (bool, error) {
+func (bta *buildTaskAccess) update(ctx context.Context, tx *sql.Tx,
+	updateColumns map[string]any, filterColumns map[string]any) (bool, error) {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update build task")
 	defer span.End()
 

@@ -92,7 +92,7 @@ func validateBuildTaskResourceFingerprint(resource *interfaces.Resource, buildTa
 }
 
 func cancelBuildTaskForDeletedParent(ctx context.Context, bts interfaces.BuildTaskService, taskID, detail string) error {
-	_, err := bts.InternalMarkCancelled(ctx, taskID, detail)
+	_, err := bts.InternalMarkCancelled(ctx, nil, taskID, detail)
 	return err
 }
 

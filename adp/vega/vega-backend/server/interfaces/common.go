@@ -63,6 +63,13 @@ type PaginationQueryParams struct {
 	Direction string `form:"direction" json:"direction"`
 }
 
+// KeyValue represents one named component of an ordered composite value.
+// It is shared by sync checkpoints and document identity generation.
+type KeyValue struct {
+	Key   string `json:"key"`
+	Value any    `json:"value"`
+}
+
 func GenerateCatalogAuditObject(id string, name string) audit.AuditObject {
 	return audit.AuditObject{
 		Type: MODULE_TYPE_CATALOG,

@@ -150,7 +150,7 @@ func (bbw *batchBuildWorker) completeFullBuildTask(ctx context.Context, resource
 		committed = true
 		// A stop request may win the race with completion. The resource update
 		// has been rolled back, so finish the stopping -> stopped transition.
-		if _, err := bbw.bts.InternalMarkStopped(ctx, buildTask.ID); err != nil {
+		if _, err := bbw.bts.InternalMarkStopped(ctx, nil, buildTask.ID); err != nil {
 			return fmt.Errorf("mark build task stopped: %w", err)
 		}
 		return nil
@@ -232,7 +232,7 @@ func (bbw *batchBuildWorker) completeIncrementalBuildTask(ctx context.Context, t
 		return nil
 	}
 	// A stop request may win the race with completion.
-	if _, err := bbw.bts.InternalMarkStopped(ctx, taskID); err != nil {
+	if _, err := bbw.bts.InternalMarkStopped(ctx, nil, taskID); err != nil {
 		return fmt.Errorf("mark build task stopped: %w", err)
 	}
 	return nil
@@ -348,7 +348,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			return ErrWorkerManagerStopping
 		}
 		// Check task status before each batch
-		taskStatus, err := bbw.bts.InternalGetStatus(ctx, buildTaskInfo.ID)
+		taskStatus, err := bbw.bts.InternalGetStatusByID(ctx, buildTaskInfo.ID)
 		if err != nil {
 			return fmt.Errorf("failed to get task status: %w", err)
 		}
@@ -369,7 +369,7 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			// Task is stopping, exit the loop
 			logger.Infof("Task %s is stopping, exiting...", buildTaskInfo.ID)
 			// Update task status to stopped
-			_, err = bbw.bts.InternalMarkStopped(ctx, buildTaskInfo.ID)
+			_, err = bbw.bts.InternalMarkStopped(ctx, nil, buildTaskInfo.ID)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}

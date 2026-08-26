@@ -241,11 +241,17 @@ func (r *restHandler) deleteBuildTasks(c *gin.Context, visitor hydra.Visitor) {
 
 	idsStr := c.Param("ids")
 	ids := make([]string, 0)
+	seen := make(map[string]struct{})
 	for _, id := range strings.Split(idsStr, ",") {
 		id = strings.TrimSpace(id)
-		if id != "" {
-			ids = append(ids, id)
+		if id == "" {
+			continue
 		}
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
 	}
 	if len(ids) == 0 {
 		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_InvalidParameter_RequestBody).

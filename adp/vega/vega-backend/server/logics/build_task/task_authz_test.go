@@ -70,8 +70,8 @@ func TestBuildTaskWritesRequireTaskManage(t *testing.T) {
 		cs := mock_interfaces.NewMockCatalogService(ctrl)
 		svc := &buildTaskService{bta: bta, rs: rs, cs: cs}
 
-		bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
-			ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1", Status: interfaces.BuildTaskStatusStopped,
+		bta.EXPECT().GetByIDs(gomock.Any(), []string{"task-1"}).Return(map[string]*interfaces.BuildTask{
+			"task-1": {ID: "task-1", ResourceID: "res-1", CatalogID: "cat-1", Status: interfaces.BuildTaskStatusStopped},
 		}, nil)
 		cs.EXPECT().CheckTaskPermission(gomock.Any(), "cat-1",
 			interfaces.OPERATION_TYPE_TASK_MANAGE).Return(denied)

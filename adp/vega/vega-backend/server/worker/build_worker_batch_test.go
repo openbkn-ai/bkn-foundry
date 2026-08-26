@@ -130,7 +130,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.QueryResult{Total: 0}, nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		bts.EXPECT().InternalGetStatus(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
+		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
 		mockDB.ExpectBegin()
 		txMatcher := gomock.AssignableToTypeOf(&sql.Tx{})
 		rs.EXPECT().InternalGetByID(gomock.Any(), txMatcher, resource.ID).Return(resource, nil)
@@ -180,7 +180,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				return &interfaces.QueryResult{Total: 1, Entries: []map[string]any{{"id": int64(1)}}}, nil
 			})
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		bts.EXPECT().InternalGetStatus(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
+		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
 		indexed := false
 		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).DoAndReturn(
 			func(context.Context, string, map[string]map[string]any) ([]string, error) {
@@ -235,7 +235,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.QueryResult{}, nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
-		bts.EXPECT().InternalGetStatus(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
+		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
 		bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil)
 
 		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)

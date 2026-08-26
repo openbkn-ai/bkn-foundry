@@ -298,7 +298,7 @@ func Test_BuildTaskRestHandler_DeleteBuildTasks(t *testing.T) {
 
 		bts.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1", "t2"}, true).Return(nil)
 
-		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/build-tasks/t1,t2?ignore_missing=true", nil)
+		req := httptest.NewRequest(http.MethodDelete, "/api/vega-backend/in/v1/build-tasks/t1,t2,t1?ignore_missing=true", nil)
 		w := httptest.NewRecorder()
 
 		engine.ServeHTTP(w, req)

@@ -178,7 +178,7 @@ func TestCompleteFullBuildTask(t *testing.T) {
 			interfaces.ResourceLocalIndexStatusAvailable, "new-index", mark).Return(true, nil)
 		ts.EXPECT().InternalMarkCompleted(gomock.Any(), txMatcher, "t1").Return(false, nil)
 		mock.ExpectRollback()
-		ts.EXPECT().InternalMarkStopped(gomock.Any(), "t1").Return(true, nil)
+		ts.EXPECT().InternalMarkStopped(gomock.Any(), nil, "t1").Return(true, nil)
 
 		err = (&batchBuildWorker{rs: rs, bts: ts}).completeFullBuildTask(context.Background(), resource, task, "new-index", mark)
 

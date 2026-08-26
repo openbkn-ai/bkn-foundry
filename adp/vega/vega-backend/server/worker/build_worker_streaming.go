@@ -200,7 +200,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			return ErrWorkerManagerStopping
 		}
 		// Check task status before each batch
-		taskStatus, err := sbw.bts.InternalGetStatus(ctx, buildTaskInfo.ID)
+		taskStatus, err := sbw.bts.InternalGetStatusByID(ctx, buildTaskInfo.ID)
 		if err != nil {
 			logger.Errorf("Failed to get task status: %v", err)
 			time.Sleep(retryInterval)
@@ -242,7 +242,7 @@ func (sbw *streamingBuildWorker) executeBuild(ctx context.Context, catalog *inte
 			if _, err = sbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID, progress); err != nil {
 				return fmt.Errorf("update build task progress failed: %w", err)
 			}
-			_, err = sbw.bts.InternalMarkStopped(ctx, buildTaskInfo.ID)
+			_, err = sbw.bts.InternalMarkStopped(ctx, nil, buildTaskInfo.ID)
 			if err != nil {
 				return fmt.Errorf("update build task status failed: %w", err)
 			}

@@ -127,8 +127,3 @@ type BuildTasksQueryParams struct {
 	Statuses          []string // Multi-valued state filtering (IN) Empty means no filtering
 	Mode              string
 }
-
-type KeyValue struct {
-	Key   string `json:"key"`
-	Value any    `json:"value"`
-}

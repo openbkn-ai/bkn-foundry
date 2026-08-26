@@ -35,19 +35,19 @@ type BuildTaskService interface {
 	InternalGetByCatalogID(ctx context.Context, catalogID string) ([]*BuildTask, error)
 	// InternalList retrieves build task summaries for internal workers without a count query.
 	InternalList(ctx context.Context, params BuildTasksQueryParams) ([]*BuildTaskSummary, error)
-	// InternalGetStatus retrieves the status of a build task for internal workers.
-	InternalGetStatus(ctx context.Context, id string) (string, error)
+	// InternalGetStatusByID retrieves the status of a build task for internal workers.
+	InternalGetStatusByID(ctx context.Context, id string) (string, error)
 
 	// InternalSetProgress persists execution progress without changing task status.
 	InternalSetProgress(ctx context.Context, tx *sql.Tx, id string, progress BuildTaskProgress) (bool, error)
 	// InternalMarkRunning transitions a pending build task to running.
 	InternalMarkRunning(ctx context.Context, tx *sql.Tx, id string) (bool, error)
 	// InternalMarkFailed fails an active build task.
-	InternalMarkFailed(ctx context.Context, tx *sql.Tx, id, detail string) (bool, error)
+	InternalMarkFailed(ctx context.Context, tx *sql.Tx, id string, detail string) (bool, error)
 	// InternalMarkCancelled cancels an active build task.
-	InternalMarkCancelled(ctx context.Context, id, detail string) (bool, error)
+	InternalMarkCancelled(ctx context.Context, tx *sql.Tx, id string, detail string) (bool, error)
 	// InternalMarkStopped transitions a stopping build task to stopped.
-	InternalMarkStopped(ctx context.Context, id string) (bool, error)
+	InternalMarkStopped(ctx context.Context, tx *sql.Tx, id string) (bool, error)
 	// InternalMarkCompleted completes a running build task.
 	InternalMarkCompleted(ctx context.Context, tx *sql.Tx, id string) (bool, error)
 

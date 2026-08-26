@@ -33,131 +33,93 @@ type analyzerValidatingIndexManager struct {
 }
 
 func TestBuildTaskServiceInternalMarkRunning(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	t.Cleanup(ctrl.Finish)
-	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-	mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-	mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
-	mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
-	mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-	service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
-	tx := &sql.Tx{}
-	mockBTA.EXPECT().MarkRunning(gomock.Any(), tx, "task-1", gomock.Any()).Return(true, nil)
+	t.Run("delegates with caller transaction", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		t.Cleanup(ctrl.Finish)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: mockBTA}
+		tx := &sql.Tx{}
+		mockBTA.EXPECT().MarkRunning(gomock.Any(), tx, "task-1", gomock.Any()).Return(true, nil)
 
-	updated, err := service.InternalMarkRunning(context.Background(), tx, "task-1")
+		updated, err := service.InternalMarkRunning(context.Background(), tx, "task-1")
 
-	require.NoError(t, err)
-	assert.True(t, updated)
+		require.NoError(t, err)
+		assert.True(t, updated)
+	})
 }
 
-func TestBuildTaskServiceInternalTerminalUpdates(t *testing.T) {
-	t.Run("sets progress without changing status", func(t *testing.T) {
+func TestBuildTaskServiceInternalSetProgress(t *testing.T) {
+	t.Run("delegates progress with caller transaction", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: bta}
+		tx := &sql.Tx{}
 		syncedCount := int64(10)
 		syncedMark := `{"id":10}`
-		progress := interfaces.BuildTaskProgress{
-			SyncedCount: &syncedCount,
-			SyncedMark:  &syncedMark,
-		}
-		mockBTA.EXPECT().SetProgress(gomock.Any(), nil, "task-1", progress, gomock.Any()).
-			Return(true, nil)
+		progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount, SyncedMark: &syncedMark}
+		bta.EXPECT().SetProgress(gomock.Any(), tx, "task-1", progress, gomock.Any()).Return(true, nil)
 
-		updated, err := service.InternalSetProgress(context.Background(), nil, "task-1", progress)
+		updated, err := service.InternalSetProgress(context.Background(), tx, "task-1", progress)
 
 		require.NoError(t, err)
 		assert.True(t, updated)
 	})
+}
 
-	t.Run("marks failed", func(t *testing.T) {
+func TestBuildTaskServiceInternalMarkFailed(t *testing.T) {
+	t.Run("delegates with caller transaction", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: bta}
 		tx := &sql.Tx{}
-		mockBTA.EXPECT().MarkFailed(gomock.Any(), tx, "task-1", "execution failed", gomock.Any()).
-			Return(true, nil)
+		bta.EXPECT().MarkFailed(gomock.Any(), tx, "task-1", "execution failed", gomock.Any()).Return(true, nil)
 
-		updated, err := service.InternalMarkFailed(
-			context.Background(), tx, "task-1", "execution failed")
+		updated, err := service.InternalMarkFailed(context.Background(), tx, "task-1", "execution failed")
 
 		require.NoError(t, err)
 		assert.True(t, updated)
 	})
+}
 
-	t.Run("marks cancelled", func(t *testing.T) {
+func TestBuildTaskServiceInternalMarkCancelled(t *testing.T) {
+	t.Run("delegates cancellation with caller transaction", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
-		mockBTA.EXPECT().MarkCancelled(gomock.Any(), "task-1", "resource deleted", gomock.Any()).
-			Return(true, nil)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: bta}
+		tx := &sql.Tx{}
+		bta.EXPECT().MarkCancelled(gomock.Any(), tx, "task-1", "resource deleted", gomock.Any()).Return(true, nil)
 
-		updated, err := service.InternalMarkCancelled(
-			context.Background(), "task-1", "resource deleted")
+		updated, err := service.InternalMarkCancelled(context.Background(), tx, "task-1", "resource deleted")
 
 		require.NoError(t, err)
 		assert.True(t, updated)
 	})
+}
 
-	t.Run("marks stopped", func(t *testing.T) {
+func TestBuildTaskServiceInternalMarkStopped(t *testing.T) {
+	t.Run("delegates stopped transition with caller transaction", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
-		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).
-			Return(true, nil)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: bta}
+		tx := &sql.Tx{}
+		bta.EXPECT().MarkStopped(gomock.Any(), tx, "task-1", gomock.Any()).Return(true, nil)
 
-		updated, err := service.InternalMarkStopped(context.Background(), "task-1")
+		updated, err := service.InternalMarkStopped(context.Background(), tx, "task-1")
 
 		require.NoError(t, err)
 		assert.True(t, updated)
 	})
+}
 
-	t.Run("marks completed", func(t *testing.T) {
+func TestBuildTaskServiceInternalMarkCompleted(t *testing.T) {
+	t.Run("delegates completed transition with caller transaction", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
-		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
-		mockBTA.EXPECT().MarkCompleted(gomock.Any(), nil, "task-1", gomock.Any()).
-			Return(true, nil)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: bta}
+		tx := &sql.Tx{}
+		bta.EXPECT().MarkCompleted(gomock.Any(), tx, "task-1", gomock.Any()).Return(true, nil)
 
-		updated, err := service.InternalMarkCompleted(context.Background(), nil, "task-1")
+		updated, err := service.InternalMarkCompleted(context.Background(), tx, "task-1")
 
 		require.NoError(t, err)
 		assert.True(t, updated)
@@ -169,122 +131,68 @@ func (m *analyzerValidatingIndexManager) ValidateAnalyzer(_ context.Context, ana
 	return m.available, m.err
 }
 
-func TestBuildTaskServiceRejectsUnavailableFieldAnalyzerBeforePersistence(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-	mockRS := mock_interfaces.NewMockResourceService(ctrl)
-	// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-	mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
-	mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(nil).AnyTimes()
-	mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-	mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-	validator := &analyzerValidatingIndexManager{}
-	service := &buildTaskService{
-		bta: mockBTA,
-		cs:  mockCS,
-		lim: validator,
-		rs:  mockRS,
-	}
+func TestBuildTaskServiceFillBuildTaskIndexSnapshot(t *testing.T) {
+	t.Run("rejects missing embedding model", func(t *testing.T) {
+		service := &buildTaskService{}
+		buildTask := &interfaces.BuildTask{}
+		err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{SchemaDefinition: []*interfaces.Property{{
+			Name: "title", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Vector, RefProperty: "title"}},
+		}}}, buildTask)
+		requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel)
+	})
+	t.Run("rejects duplicate feature type", func(t *testing.T) {
+		service := &buildTaskService{}
+		buildTask := &interfaces.BuildTask{}
 
-	mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
-		ID:        "resource-1",
-		CatalogID: "catalog-1",
-		Category:  interfaces.ResourceCategoryTable,
-		IndexConfig: &interfaces.ResourceIndexConfig{
-			BuildKeyFields:          []string{"id"},
-			DefaultFulltextAnalyzer: "standard",
-		},
-		SchemaDefinition: []*interfaces.Property{
-			{Name: "id", Type: interfaces.DataType_Integer},
-			{Name: "coupon_code", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}}}},
-			{Name: "status", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "hanlp_index"}}}},
-		},
-	}, nil)
-	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
-	mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
-
-	_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
-	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, "analyzer")
-	assert.Len(t, validator.captured, 1)
-}
-
-func TestFillBuildTaskIndexSnapshotRejectsMissingEmbeddingModel(t *testing.T) {
-	service := &buildTaskService{}
-	buildTask := &interfaces.BuildTask{}
-
-	err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{
-		SchemaDefinition: []*interfaces.Property{{
-			Name: "title",
-			Features: []interfaces.PropertyFeature{{
-				FeatureType: interfaces.PropertyFeatureType_Vector,
-				RefProperty: "title",
+		err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{
+			SchemaDefinition: []*interfaces.Property{{
+				Name: "title",
+				Features: []interfaces.PropertyFeature{
+					{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+					{FeatureType: interfaces.PropertyFeatureType_Fulltext},
+				},
 			}},
-		}},
-	}, buildTask)
+		}, buildTask)
 
-	requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_EmbeddingModel)
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
+	})
 }
 
-func TestFillBuildTaskIndexSnapshotRejectsDuplicateFeatureType(t *testing.T) {
-	service := &buildTaskService{}
-	buildTask := &interfaces.BuildTask{}
-
-	err := service.fillBuildTaskIndexSnapshot(context.Background(), &interfaces.Resource{
-		SchemaDefinition: []*interfaces.Property{{
-			Name: "title",
-			Features: []interfaces.PropertyFeature{
-				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
-				{FeatureType: interfaces.PropertyFeatureType_Fulltext},
-			},
-		}},
-	}, buildTask)
-
-	httpErr := requireHTTPError(t, err, verrors.VegaBackend_InvalidParameter_RequestBody)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, `property "title" has more than one "fulltext" feature`)
-}
-
-func TestValidateBuildTaskAnalyzersReturnsInternalErrorForTransportFailure(t *testing.T) {
-	validator := &analyzerValidatingIndexManager{err: errors.New("connect OpenSearch: connection refused")}
+func TestValidateBuildTaskAnalyzers(t *testing.T) {
 	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{
 		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 			"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
 		},
 	}}
 
-	err := validateBuildTaskAnalyzers(context.Background(), validator, buildTask)
-	httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed)
-	assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+	t.Run("maps transport failure to build task internal error", func(t *testing.T) {
+		validator := &analyzerValidatingIndexManager{err: errors.New("connect OpenSearch: connection refused")}
+
+		err := validateBuildTaskAnalyzers(context.Background(), validator, buildTask)
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_ValidateAnalyzerFailed)
+		assert.Equal(t, http.StatusInternalServerError, httpErr.HTTPCode)
+	})
+	t.Run("preserves capability unavailable error", func(t *testing.T) {
+		validator := &analyzerValidatingIndexManager{err: &interfaces.IndexCapabilitiesUnavailableError{Cause: errors.New("connection refused")}}
+
+		err := validateBuildTaskAnalyzers(context.Background(), validator, buildTask)
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_IndexCapability_InternalError_Unavailable)
+		assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
+	})
 }
 
-func TestValidateBuildTaskAnalyzersReturnsCapabilityUnavailableForStartupProbeFailure(t *testing.T) {
-	validator := &analyzerValidatingIndexManager{err: &interfaces.IndexCapabilitiesUnavailableError{Cause: errors.New("connection refused")}}
-	buildTask := &interfaces.BuildTask{IndexConfig: &interfaces.BuildTaskIndexConfig{
-		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
-			"status": {Fulltext: &interfaces.BuildTaskFulltextConfig{Analyzer: "hanlp_index"}},
-		},
-	}}
-
-	err := validateBuildTaskAnalyzers(context.Background(), validator, buildTask)
-	httpErr := requireHTTPError(t, err, verrors.VegaBackend_IndexCapability_InternalError_Unavailable)
-	assert.Equal(t, http.StatusServiceUnavailable, httpErr.HTTPCode)
-	assert.Contains(t, httpErr.BaseError.ErrorDetails, "connection refused")
-}
-
-func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
+func TestBuildTaskServiceList(t *testing.T) {
 	t.Run("list populates only referenced resources and catalogs", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
+			Return(nil, true, nil, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		tasks := []*interfaces.BuildTaskSummary{
@@ -309,46 +217,13 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		assert.Equal(t, "production", got[0].CatalogName)
 	})
 
-	t.Run("get by id populates the same reference fields", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
-		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
-		task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}
-
-		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
-		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{
-			{ID: "resource-1", Name: "orders"},
-		}, nil)
-		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
-		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
-
-		got, err := service.GetByID(context.Background(), "task-1")
-
-		require.NoError(t, err)
-		assert.Equal(t, "orders", got.ResourceName)
-		assert.Equal(t, "production", got.CatalogName)
-	})
-
 	t.Run("list keeps tasks when reference lookup fails", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
+			Return(nil, true, nil, nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		tasks := []*interfaces.BuildTaskSummary{{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}}
@@ -367,17 +242,57 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		assert.Equal(t, "production", got[0].CatalogName)
 	})
 
-	t.Run("get keeps task when account lookup fails", func(t *testing.T) {
+	t.Run("maps access failure to internal error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		service := &buildTaskService{bta: bta, cs: cs}
+		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), interfaces.OPERATION_TYPE_TASK_MANAGE).
+			Return(nil, true, nil, nil)
+		bta.EXPECT().List(gomock.Any(), interfaces.BuildTasksQueryParams{}).
+			Return(nil, int64(0), errors.New("list failed"))
+
+		got, total, err := service.List(context.Background(), interfaces.BuildTasksQueryParams{})
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
+		assert.Nil(t, got)
+		assert.Zero(t, total)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "list failed")
+	})
+}
+
+func TestBuildTaskServiceGetByID(t *testing.T) {
+	t.Run("populates referenced resource and catalog", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).
+			Return(nil)
+		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
+		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
+		task := &interfaces.BuildTask{ID: "task-1", ResourceID: "resource-1", CatalogID: "catalog-1"}
+
+		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(task, nil)
+		mockRS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{
+			{ID: "resource-1", Name: "orders"},
+		}, nil)
+		mockCS.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-1"}).Return([]*interfaces.Catalog{{ID: "catalog-1", Name: "production"}}, nil)
+		mockUMS.EXPECT().GetAccountNames(gomock.Any(), gomock.Any()).Return(nil)
+
+		got, err := service.GetByID(context.Background(), "task-1")
+
+		require.NoError(t, err)
+		assert.Equal(t, "orders", got.ResourceName)
+		assert.Equal(t, "production", got.CatalogName)
+	})
+	t.Run("keeps task when account lookup fails", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "", interfaces.OPERATION_TYPE_TASK_MANAGE).
+			Return(nil)
 		mockUMS := mock_interfaces.NewMockUserMgmtService(ctrl)
 		service := &buildTaskService{bta: mockBTA, cs: mockCS, rs: mockRS, ums: mockUMS}
 		task := &interfaces.BuildTask{ID: "task-2"}
@@ -392,19 +307,77 @@ func TestBuildTaskServicePopulatesTaskReferencesForListAndGet(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "task-2", got.ID)
 	})
+
+	t.Run("maps access failure to internal error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: bta}
+		bta.EXPECT().GetByID(gomock.Any(), "task-1").Return(nil, errors.New("get failed"))
+
+		got, err := service.GetByID(context.Background(), "task-1")
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InternalError_GetFailed)
+		assert.Nil(t, got)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "get failed")
+	})
+
+	t.Run("returns not found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		service := &buildTaskService{bta: bta}
+		bta.EXPECT().GetByID(gomock.Any(), "missing").Return(nil, nil)
+
+		got, err := service.GetByID(context.Background(), "missing")
+
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_NotFound)
+		assert.Nil(t, got)
+		assert.Equal(t, http.StatusNotFound, httpErr.HTTPCode)
+	})
 }
 
-func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
+func TestBuildTaskServiceCreate(t *testing.T) {
+	t.Run("rejects unavailable field analyzer before persistence", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
+		mockRS := mock_interfaces.NewMockResourceService(ctrl)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).
+			Return(nil)
+		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		validator := &analyzerValidatingIndexManager{}
+		service := &buildTaskService{
+			bta: mockBTA,
+			cs:  mockCS,
+			lim: validator,
+			rs:  mockRS,
+		}
+
+		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
+			ID:        "resource-1",
+			CatalogID: "catalog-1",
+			Category:  interfaces.ResourceCategoryTable,
+			IndexConfig: &interfaces.ResourceIndexConfig{
+				BuildKeyFields:          []string{"id"},
+				DefaultFulltextAnalyzer: "standard",
+			},
+			SchemaDefinition: []*interfaces.Property{
+				{Name: "id", Type: interfaces.DataType_Integer},
+				{Name: "coupon_code", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "standard"}}}},
+				{Name: "status", Features: []interfaces.PropertyFeature{{FeatureType: interfaces.PropertyFeatureType_Fulltext, Config: map[string]any{"analyzer": "hanlp_index"}}}},
+			},
+		}, nil)
+		mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", false).Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
+
+		_, err := service.Create(context.Background(), &interfaces.CreateBuildTaskRequest{ResourceID: "resource-1", Mode: interfaces.BuildTaskModeBatch})
+		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidParameter_Analyzer)
+		assert.Contains(t, httpErr.BaseError.ErrorDetails, "analyzer")
+		assert.Len(t, validator.captured, 1)
+	})
 	t.Run("rejects batch task without build key fields", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -423,13 +396,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects streaming task without build key fields", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -448,13 +416,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects resources containing unsupported fields before creating a task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -477,13 +440,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects an unsupported build key type before creating a task", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(&interfaces.Resource{
@@ -504,12 +462,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{cs: mockCS, rs: mockRS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
@@ -530,12 +483,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -564,7 +512,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		resource := buildTaskTestResource()
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
@@ -597,12 +545,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{
 			cs:         mockCS,
@@ -640,13 +583,8 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 	t.Run("rejects execute type for streaming", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{rs: mockRS, cs: mockCS}
 
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").
@@ -668,12 +606,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -742,12 +675,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -808,12 +736,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -873,12 +796,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -956,12 +874,7 @@ func TestBuildTaskServiceCreateBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockMFS := mock_interfaces.NewMockModelFactoryService(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA, mfs: mockMFS}
@@ -1072,17 +985,12 @@ func TestValidateIncrementalBaseline(t *testing.T) {
 	}
 }
 
-func TestBuildTaskServiceStartBuildTask(t *testing.T) {
+func TestBuildTaskServiceStart(t *testing.T) {
 	t.Run("persists full reset before requesting dispatch", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{
 			cs:         mockCS,
@@ -1101,7 +1009,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
-		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", true).Return(true, nil)
+		mockBTA.EXPECT().MarkPending(gomock.Any(), nil, "task-1", true).Return(true, nil)
 
 		require.NoError(t, service.Start(context.Background(), "task-1", true))
 		select {
@@ -1114,7 +1022,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").Return(&interfaces.BuildTask{
@@ -1133,7 +1041,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		resource := buildTaskTestResource()
 
@@ -1158,12 +1066,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -1178,7 +1081,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
-		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", false).Return(false, nil)
+		mockBTA.EXPECT().MarkPending(gomock.Any(), nil, "task-1", false).Return(false, nil)
 
 		err := service.Start(context.Background(), "task-1", false)
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
@@ -1190,12 +1093,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是状态流转，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1215,12 +1113,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是状态流转，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1241,15 +1134,11 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 			mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil).AnyTimes()
-			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil).AnyTimes()
-			mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-				Return(&interfaces.BuildTask{ID: "task-1", Status: status}, nil)
+				Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Status: status}, nil)
 
 			err := service.Start(context.Background(), "task-1", false)
 			requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
@@ -1260,12 +1149,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的数据表上（#472）；这些用例验的是状态流转，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{cs: mockCS, bta: mockBTA, rs: mockRS}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
@@ -1296,12 +1180,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		originalResource := buildTaskTestResource()
@@ -1333,12 +1212,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 		resource := buildTaskTestResource()
@@ -1356,7 +1230,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 			Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil)
 		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil)
 		mockRS.EXPECT().GetByID(gomock.Any(), "resource-1").Return(resource, nil)
-		mockBTA.EXPECT().MarkPending(gomock.Any(), "task-1", false).Return(true, nil)
+		mockBTA.EXPECT().MarkPending(gomock.Any(), nil, "task-1", false).Return(true, nil)
 
 		require.NoError(t, service.Start(context.Background(), "task-1", false))
 	})
@@ -1364,12 +1238,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		service := &buildTaskService{cs: mockCS, rs: mockRS, bta: mockBTA}
 
@@ -1407,12 +1276,7 @@ func TestBuildTaskServiceStartBuildTask(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
 		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		validator := &analyzerValidatingIndexManager{}
 		service := &buildTaskService{
@@ -1504,25 +1368,18 @@ func mustBuildTaskIndexConfig(t *testing.T, resource *interfaces.Resource) *inte
 	return config
 }
 
-// failed 状态必须允许 start（否则失败任务只能删除重建）。
-// 借 catalog-disabled 错误证明状态检查已放行：若 failed 被状态机拒绝，
-// 错误将是 InvalidStateTransition 而非 Catalog_IsDisabled。
-func TestBuildTaskServiceStopBuildTask(t *testing.T) {
+func TestBuildTaskServiceStop(t *testing.T) {
 	t.Run("running to stopping", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusRunning}, nil)
-		mockBTA.EXPECT().MarkStopping(gomock.Any(), "task-1").Return(true, nil)
+			Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusRunning}, nil)
+		mockBTA.EXPECT().MarkStopping(gomock.Any(), nil, "task-1").Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})
@@ -1531,16 +1388,12 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusPending}, nil)
-		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).Return(true, nil)
+			Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusPending}, nil)
+		mockBTA.EXPECT().MarkStopped(gomock.Any(), nil, "task-1", gomock.Any()).Return(true, nil)
 
 		require.NoError(t, service.Stop(context.Background(), "task-1"))
 	})
@@ -1549,16 +1402,12 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 		mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 		mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+		mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 		service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 		mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-			Return(&interfaces.BuildTask{ID: "task-1", Status: interfaces.BuildTaskStatusPending}, nil)
-		mockBTA.EXPECT().MarkStopped(gomock.Any(), "task-1", gomock.Any()).Return(false, nil)
+			Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Status: interfaces.BuildTaskStatusPending}, nil)
+		mockBTA.EXPECT().MarkStopped(gomock.Any(), nil, "task-1", gomock.Any()).Return(false, nil)
 
 		err := service.Stop(context.Background(), "task-1")
 		httpErr := requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
@@ -1570,15 +1419,11 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockRSAuth := mock_interfaces.NewMockResourceService(ctrl)
 			mockCSAuth := mock_interfaces.NewMockCatalogService(ctrl)
-			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil).AnyTimes()
-			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-				Return(nil).AnyTimes()
-			mockCSAuth.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
+			mockCSAuth.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 			service := &buildTaskService{bta: mockBTA, rs: mockRSAuth, cs: mockCSAuth}
 
 			mockBTA.EXPECT().GetByID(gomock.Any(), "task-1").
-				Return(&interfaces.BuildTask{ID: "task-1", Status: status}, nil)
+				Return(&interfaces.BuildTask{ID: "task-1", CatalogID: "catalog-1", Status: status}, nil)
 
 			err := service.Stop(context.Background(), "task-1")
 			requireHTTPError(t, err, verrors.VegaBackend_BuildTask_InvalidStateTransition)
@@ -1586,128 +1431,29 @@ func TestBuildTaskServiceStopBuildTask(t *testing.T) {
 	}
 }
 
-// running → stopping，pending → stopped。stopping/stopped 任务不可再 stop。
 func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
-	t.Run("deletes terminal task row without touching resource or index", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
+	for _, status := range []string{
+		interfaces.BuildTaskStatusCompleted,
+		interfaces.BuildTaskStatusFailed,
+		interfaces.BuildTaskStatusStopped,
+	} {
+		t.Run("deletes "+status+" task without resource or index access", func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+			cs := mock_interfaces.NewMockCatalogService(ctrl)
+			rs := mock_interfaces.NewMockResourceService(ctrl)
+			lim := mock_interfaces.NewMockLocalIndexManager(ctrl)
+			service := &buildTaskService{bta: bta, cs: cs, rs: rs, lim: lim}
 
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: "completed"}, nil)
-		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
+			bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(map[string]*interfaces.BuildTask{
+				"t1": {ID: "t1", CatalogID: "catalog-1", ResourceID: "r1", Status: status},
+			}, nil)
+			cs.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+			bta.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
 
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1", "t1"}, false))
-	})
-	t.Run("deletes completed task even when its index is active", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
-
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusCompleted}, nil)
-		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
-
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
-	})
-	t.Run("deletes failed task without parent resource", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
-
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
-		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
-
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
-	})
-	t.Run("deletes stopped task without reading resource", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
-
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
-		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
-
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
-	})
-	t.Run("allows orphan task when resource missing", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
-
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "missing-resource", Status: interfaces.BuildTaskStatusFailed}, nil)
-		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
-
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
-	})
-	t.Run("does not depend on resource lookup", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
-		mockRS := mock_interfaces.NewMockResourceService(ctrl)
-		// 任务的授权判在它所属的目录上（#472）；这些用例验的是别的东西，统一放行。
-		mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil).AnyTimes()
-		mockCS.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil).AnyTimes()
-		mockLIM := mock_interfaces.NewMockLocalIndexManager(ctrl)
-		service := &buildTaskService{bta: mockBTA, rs: mockRS, cs: mockCS, lim: mockLIM}
-
-		mockBTA.EXPECT().GetByID(gomock.Any(), "t1").
-			Return(&interfaces.BuildTask{ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusStopped}, nil)
-		mockBTA.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
-
-		require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
-	})
+			require.NoError(t, service.DeleteByIDs(context.Background(), []string{"t1"}, false))
+		})
+	}
 	for _, status := range []string{
 		interfaces.BuildTaskStatusPending,
 		interfaces.BuildTaskStatusRunning,
@@ -1717,11 +1463,11 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			mockBTA := mock_interfaces.NewMockBuildTaskAccess(ctrl)
 			mockCS := mock_interfaces.NewMockCatalogService(ctrl)
-			mockCS.EXPECT().CheckTaskPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			mockCS.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
 			service := &buildTaskService{bta: mockBTA, cs: mockCS}
 
-			mockBTA.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{
-				ID: "t1", CatalogID: "c1", ResourceID: "r1", Status: status,
+			mockBTA.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(map[string]*interfaces.BuildTask{
+				"t1": {ID: "t1", CatalogID: "catalog-1", ResourceID: "r1", Status: status},
 			}, nil)
 
 			err := service.DeleteByIDs(context.Background(), []string{"t1"}, false)
@@ -1730,4 +1476,130 @@ func TestBuildTaskServiceDeleteByIDs(t *testing.T) {
 			assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 		})
 	}
+
+	t.Run("maps bulk read failure to internal error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		svc := &buildTaskService{bta: bta}
+		bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(nil, errors.New("database unavailable"))
+
+		requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"t1"}, false), verrors.VegaBackend_BuildTask_InternalError_GetFailed)
+	})
+
+	t.Run("reports missing ids unless ignored", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		svc := &buildTaskService{bta: bta}
+		bta.EXPECT().GetByIDs(gomock.Any(), []string{"missing"}).Return(map[string]*interfaces.BuildTask{}, nil)
+
+		httpErr := requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"missing"}, false), verrors.VegaBackend_BuildTask_NotFound)
+		assert.Equal(t, map[string]any{"missing_ids": []string{"missing"}}, httpErr.BaseError.ErrorDetails)
+	})
+
+	t.Run("ignores missing ids and deletes returned terminal tasks", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, cs: cs}
+		bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1", "missing"}).Return(map[string]*interfaces.BuildTask{
+			"t1": {ID: "t1", CatalogID: "c1", Status: interfaces.BuildTaskStatusCompleted},
+		}, nil)
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "c1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		bta.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(int64(1), nil)
+
+		require.NoError(t, svc.DeleteByIDs(context.Background(), []string{"t1", "missing"}, true))
+	})
+
+	t.Run("reports active ids before missing ids", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		cs := mock_interfaces.NewMockCatalogService(ctrl)
+		svc := &buildTaskService{bta: bta, cs: cs}
+		bta.EXPECT().GetByIDs(gomock.Any(), []string{"active", "missing"}).Return(map[string]*interfaces.BuildTask{
+			"active": {ID: "active", CatalogID: "c1", Status: interfaces.BuildTaskStatusRunning},
+		}, nil)
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "c1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+
+		httpErr := requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"active", "missing"}, false), verrors.VegaBackend_BuildTask_HasRunningExecution)
+		assert.Equal(t, map[string]any{"active_ids": []string{"active"}}, httpErr.BaseError.ErrorDetails)
+	})
+
+	for _, tt := range []struct {
+		name   string
+		result int64
+		err    error
+	}{
+		{"maps delete failure to internal error", 0, errors.New("delete failed")},
+		{"rejects incomplete delete", 0, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+			cs := mock_interfaces.NewMockCatalogService(ctrl)
+			svc := &buildTaskService{bta: bta, cs: cs}
+			bta.EXPECT().GetByIDs(gomock.Any(), []string{"t1"}).Return(map[string]*interfaces.BuildTask{
+				"t1": {ID: "t1", CatalogID: "c1", Status: interfaces.BuildTaskStatusCompleted},
+			}, nil)
+			cs.EXPECT().CheckTaskPermission(gomock.Any(), "c1", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+			bta.EXPECT().DeleteByIDs(gomock.Any(), []string{"t1"}).Return(tt.result, tt.err)
+
+			requireHTTPError(t, svc.DeleteByIDs(context.Background(), []string{"t1"}, false), verrors.VegaBackend_BuildTask_InternalError_DeleteFailed)
+		})
+	}
+}
+
+func TestBuildTaskServiceInternalGetByID(t *testing.T) {
+	t.Run("delegates lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		svc := &buildTaskService{bta: bta}
+
+		bta.EXPECT().GetByID(gomock.Any(), "t1").Return(&interfaces.BuildTask{ID: "t1"}, nil)
+
+		task, err := svc.InternalGetByID(context.Background(), "t1")
+		require.NoError(t, err)
+		assert.Equal(t, "t1", task.ID)
+	})
+}
+
+func TestBuildTaskServiceInternalGetByCatalogID(t *testing.T) {
+	t.Run("delegates catalog lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		svc := &buildTaskService{bta: bta}
+		bta.EXPECT().GetByCatalogID(gomock.Any(), "c1").Return([]*interfaces.BuildTask{{ID: "t1"}}, nil)
+
+		tasks, err := svc.InternalGetByCatalogID(context.Background(), "c1")
+		require.NoError(t, err)
+		assert.Len(t, tasks, 1)
+	})
+}
+
+func TestBuildTaskServiceInternalList(t *testing.T) {
+	t.Run("delegates query parameters", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		svc := &buildTaskService{bta: bta}
+		params := interfaces.BuildTasksQueryParams{ResourceID: "r1"}
+		bta.EXPECT().InternalList(gomock.Any(), params).Return([]*interfaces.BuildTaskSummary{{ID: "t1"}}, nil)
+
+		tasks, err := svc.InternalList(context.Background(), params)
+
+		require.NoError(t, err)
+		require.Len(t, tasks, 1)
+		assert.Equal(t, "t1", tasks[0].ID)
+	})
+}
+
+func TestBuildTaskServiceInternalGetStatusByID(t *testing.T) {
+	t.Run("delegates status lookup", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		bta := mock_interfaces.NewMockBuildTaskAccess(ctrl)
+		svc := &buildTaskService{bta: bta}
+		bta.EXPECT().GetStatusByID(gomock.Any(), "t1").Return(interfaces.BuildTaskStatusRunning, nil)
+
+		status, err := svc.InternalGetStatusByID(context.Background(), "t1")
+		require.NoError(t, err)
+		assert.Equal(t, interfaces.BuildTaskStatusRunning, status)
+	})
 }

@@ -101,19 +101,34 @@ func (mr *MockBuildTaskAccessMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockBuildTaskAccess)(nil).GetByID), ctx, id)
 }
 
-// GetStatus mocks base method.
-func (m *MockBuildTaskAccess) GetStatus(ctx context.Context, id string) (string, error) {
+// GetByIDs mocks base method.
+func (m *MockBuildTaskAccess) GetByIDs(ctx context.Context, ids []string) (map[string]*interfaces.BuildTask, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetStatus", ctx, id)
+	ret := m.ctrl.Call(m, "GetByIDs", ctx, ids)
+	ret0, _ := ret[0].(map[string]*interfaces.BuildTask)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByIDs indicates an expected call of GetByIDs.
+func (mr *MockBuildTaskAccessMockRecorder) GetByIDs(ctx, ids any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByIDs", reflect.TypeOf((*MockBuildTaskAccess)(nil).GetByIDs), ctx, ids)
+}
+
+// GetStatusByID mocks base method.
+func (m *MockBuildTaskAccess) GetStatusByID(ctx context.Context, id string) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetStatusByID", ctx, id)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetStatus indicates an expected call of GetStatus.
-func (mr *MockBuildTaskAccessMockRecorder) GetStatus(ctx, id any) *gomock.Call {
+// GetStatusByID indicates an expected call of GetStatusByID.
+func (mr *MockBuildTaskAccessMockRecorder) GetStatusByID(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStatus", reflect.TypeOf((*MockBuildTaskAccess)(nil).GetStatus), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStatusByID", reflect.TypeOf((*MockBuildTaskAccess)(nil).GetStatusByID), ctx, id)
 }
 
 // InternalList mocks base method.
@@ -148,18 +163,18 @@ func (mr *MockBuildTaskAccessMockRecorder) List(ctx, params any) *gomock.Call {
 }
 
 // MarkCancelled mocks base method.
-func (m *MockBuildTaskAccess) MarkCancelled(ctx context.Context, id, detail string, finishTime int64) (bool, error) {
+func (m *MockBuildTaskAccess) MarkCancelled(ctx context.Context, tx *sql.Tx, id, detail string, finishTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkCancelled", ctx, id, detail, finishTime)
+	ret := m.ctrl.Call(m, "MarkCancelled", ctx, tx, id, detail, finishTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkCancelled indicates an expected call of MarkCancelled.
-func (mr *MockBuildTaskAccessMockRecorder) MarkCancelled(ctx, id, detail, finishTime any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) MarkCancelled(ctx, tx, id, detail, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkCancelled), ctx, id, detail, finishTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkCancelled", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkCancelled), ctx, tx, id, detail, finishTime)
 }
 
 // MarkCancelledByCatalogID mocks base method.
@@ -207,18 +222,18 @@ func (mr *MockBuildTaskAccessMockRecorder) MarkFailed(ctx, tx, id, detail, finis
 }
 
 // MarkPending mocks base method.
-func (m *MockBuildTaskAccess) MarkPending(ctx context.Context, id string, reset bool) (bool, error) {
+func (m *MockBuildTaskAccess) MarkPending(ctx context.Context, tx *sql.Tx, id string, reset bool) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkPending", ctx, id, reset)
+	ret := m.ctrl.Call(m, "MarkPending", ctx, tx, id, reset)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkPending indicates an expected call of MarkPending.
-func (mr *MockBuildTaskAccessMockRecorder) MarkPending(ctx, id, reset any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) MarkPending(ctx, tx, id, reset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkPending", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkPending), ctx, id, reset)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkPending", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkPending), ctx, tx, id, reset)
 }
 
 // MarkRunning mocks base method.
@@ -237,33 +252,33 @@ func (mr *MockBuildTaskAccessMockRecorder) MarkRunning(ctx, tx, id, startTime an
 }
 
 // MarkStopped mocks base method.
-func (m *MockBuildTaskAccess) MarkStopped(ctx context.Context, id string, finishTime int64) (bool, error) {
+func (m *MockBuildTaskAccess) MarkStopped(ctx context.Context, tx *sql.Tx, id string, finishTime int64) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkStopped", ctx, id, finishTime)
+	ret := m.ctrl.Call(m, "MarkStopped", ctx, tx, id, finishTime)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkStopped indicates an expected call of MarkStopped.
-func (mr *MockBuildTaskAccessMockRecorder) MarkStopped(ctx, id, finishTime any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) MarkStopped(ctx, tx, id, finishTime any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkStopped", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkStopped), ctx, id, finishTime)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkStopped", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkStopped), ctx, tx, id, finishTime)
 }
 
 // MarkStopping mocks base method.
-func (m *MockBuildTaskAccess) MarkStopping(ctx context.Context, id string) (bool, error) {
+func (m *MockBuildTaskAccess) MarkStopping(ctx context.Context, tx *sql.Tx, id string) (bool, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "MarkStopping", ctx, id)
+	ret := m.ctrl.Call(m, "MarkStopping", ctx, tx, id)
 	ret0, _ := ret[0].(bool)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // MarkStopping indicates an expected call of MarkStopping.
-func (mr *MockBuildTaskAccessMockRecorder) MarkStopping(ctx, id any) *gomock.Call {
+func (mr *MockBuildTaskAccessMockRecorder) MarkStopping(ctx, tx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkStopping", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkStopping), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkStopping", reflect.TypeOf((*MockBuildTaskAccess)(nil).MarkStopping), ctx, tx, id)
 }
 
 // SetProgress mocks base method.

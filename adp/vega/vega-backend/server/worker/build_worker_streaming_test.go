@@ -59,7 +59,7 @@ func TestStreamingBuildWorkerRun(t *testing.T) {
 			ID: "t1", ResourceID: "r1", Status: interfaces.BuildTaskStatusPending,
 		}
 		rs.EXPECT().InternalGetByID(gomock.Any(), nil, "r1").Return(nil, nil)
-		bts.EXPECT().InternalMarkCancelled(gomock.Any(), "t1", "resource deleted").Return(true, nil)
+		bts.EXPECT().InternalMarkCancelled(gomock.Any(), nil, "t1", "resource deleted").Return(true, nil)
 
 		require.NoError(t, worker.Run(context.Background(), task))
 	})
