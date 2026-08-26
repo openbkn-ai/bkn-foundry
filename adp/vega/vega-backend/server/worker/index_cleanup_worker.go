@@ -191,12 +191,16 @@ func (icw *IndexCleanupWorker) runOnce(ctx context.Context) {
 }
 
 func (icw *IndexCleanupWorker) recheckCandidate(ctx context.Context, candidate indexCleanupCandidate) bool {
-	resources, err := icw.currentReferences(ctx)
+	resource, err := icw.rs.InternalGetByID(ctx, nil, candidate.resourceID)
 	if err != nil {
-		logger.Errorf("Index cleanup recheck failed: index=%s, error=%v", candidate.index.Name, err)
+		logger.Errorf("Index cleanup recheck failed: index=%s, resource_id=%s, error=%v", candidate.index.Name, candidate.resourceID, err)
 		return false
 	}
-	candidateOK, _, err := icw.classify(ctx, candidate.index, candidate.resourceID, candidate.taskID, resources)
+	if resource != nil && resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable &&
+		resource.LocalIndexName == candidate.index.Name {
+		return false
+	}
+	candidateOK, _, err := icw.classifyOwnership(ctx, resource != nil, candidate.resourceID, candidate.taskID)
 	if err != nil || !candidateOK {
 		return false
 	}
@@ -214,18 +218,25 @@ func (icw *IndexCleanupWorker) currentReferences(ctx context.Context) (*resource
 	}
 	for _, resource := range resources {
 		snapshot.byID[resource.ID] = resource
-		if resource.LocalIndexName != "" {
+		if resource.LocalIndexStatus == interfaces.ResourceLocalIndexStatusAvailable && resource.LocalIndexName != "" {
 			snapshot.references[resource.LocalIndexName] = struct{}{}
 		}
 	}
 	return snapshot, nil
 }
 
-func (icw *IndexCleanupWorker) classify(ctx context.Context, index *interfaces.IndexMeta, resourceID, taskID string, resources *resourceIndexSnapshot) (candidate bool, protected bool, err error) {
+func (icw *IndexCleanupWorker) classify(ctx context.Context, index *interfaces.IndexMeta, resourceID string,
+	taskID string, resources *resourceIndexSnapshot) (candidate bool, protected bool, err error) {
 	if _, ok := resources.references[index.Name]; ok {
 		return false, true, nil
 	}
 	resource := resources.byID[resourceID]
+	candidate, protected, err = icw.classifyOwnership(ctx, resource != nil, resourceID, taskID)
+	return candidate, protected, err
+}
+
+func (icw *IndexCleanupWorker) classifyOwnership(ctx context.Context, resourceExists bool,
+	resourceID, taskID string) (candidate bool, protected bool, err error) {
 	task, err := icw.bts.InternalGetByID(ctx, taskID)
 	if err != nil {
 		return false, false, err
@@ -233,7 +244,7 @@ func (icw *IndexCleanupWorker) classify(ctx context.Context, index *interfaces.I
 	if task != nil && task.ResourceID != resourceID {
 		return false, true, nil
 	}
-	if resource == nil || task == nil {
+	if !resourceExists || task == nil {
 		return true, false, nil
 	}
 	switch task.Status {
