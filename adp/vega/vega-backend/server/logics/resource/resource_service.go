@@ -44,12 +44,6 @@ var (
 
 const resourceAuthResourcePermissionBatchSize = 10000
 
-var activeResourceBuildTaskStatuses = []string{
-	interfaces.BuildTaskStatusPending,
-	interfaces.BuildTaskStatusRunning,
-	interfaces.BuildTaskStatusStopping,
-}
-
 type resourceService struct {
 	appSetting *common.AppSetting
 	db         *sql.DB
@@ -945,7 +939,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 	if buildRelevantChanged {
-		if err := rs.rejectWhenActiveBuildTask(ctx, resource.ID); err != nil {
+		if err := rs.rejectBuildRelevantUpdateWhenActiveBuildTask(ctx, resource.ID, true); err != nil {
 			span.SetStatus(codes.Error, "Resource has active build task")
 			return err
 		}
@@ -1147,7 +1141,7 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			WithErrorDetails(err.Error())
 	}
 	for _, resource := range resources {
-		if err := rs.rejectWhenActiveBuildTask(ctx, resource.ID); err != nil {
+		if err := rs.rejectBuildRelevantUpdateWhenActiveBuildTask(ctx, resource.ID, false); err != nil {
 			span.SetStatus(codes.Error, "Active build task prevents resource deletion")
 			return err
 		}
@@ -1389,11 +1383,15 @@ func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx,
 	return rs.ra.UpdateStatus(ctx, tx, id, status, statusMessage)
 }
 
-func (rs *resourceService) rejectWhenActiveBuildTask(ctx context.Context, resourceID string) error {
+func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resourceID string, includePending bool) error {
+	statuses := []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}
+	if includePending {
+		statuses = append([]string{interfaces.BuildTaskStatusPending}, statuses...)
+	}
 	tasks, err := rs.bta.InternalList(ctx, interfaces.BuildTasksQueryParams{
 		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
 		ResourceID:            resourceID,
-		Statuses:              activeResourceBuildTaskStatuses,
+		Statuses:              statuses,
 	})
 	if err != nil {
 		otellog.LogError(ctx, "Check active build task failed", err)
@@ -1401,8 +1399,12 @@ func (rs *resourceService) rejectWhenActiveBuildTask(ctx context.Context, resour
 			WithErrorDetails(err.Error())
 	}
 	if len(tasks) > 0 {
-		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_Exist).
-			WithErrorDetails("resource has an active build task; wait until it finishes")
+		if includePending && tasks[0].Status == interfaces.BuildTaskStatusPending {
+			return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_Exist).
+				WithErrorDetails("resource has a pending build task; wait until it finishes")
+		}
+		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_HasRunningExecution).
+			WithErrorDetails("resource has a running build task; wait until it finishes")
 	}
 	return nil
 }

@@ -834,7 +834,7 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 				DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 					assert.Equal(t, "r1", params.ResourceID)
-					assert.Equal(t, activeResourceBuildTaskStatuses, params.Statuses)
+					assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}, params.Statuses)
 					assert.Equal(t, 1, params.Limit)
 					return nil, nil
 				}),
@@ -865,8 +865,20 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			ID: "task-1", ResourceID: "r1", Status: interfaces.BuildTaskStatusRunning,
 		}})
 
-		httpErr := requireResourceHTTPError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}), verrors.VegaBackend_BuildTask_Exist)
+		httpErr := requireResourceHTTPError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}), verrors.VegaBackend_BuildTask_HasRunningExecution)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+	t.Run("allows deletion while build task is pending", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, mockBTA := newTestService(t)
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
+			Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+		// The access query excludes pending tasks when deleting a resource.
+		expectResourceBuildTasksForDelete(t, mockBTA, "r1", nil)
+		mockRA.EXPECT().DeleteByIDs(gomock.Any(), []string{"r1"}).Return(nil)
+		mockPS.EXPECT().DeleteResources(gomock.Any(), interfaces.AUTH_RESOURCE_TYPE_RESOURCE, []string{"r1"}).Return(nil)
+
+		require.NoError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}))
 	})
 }
 
@@ -876,10 +888,45 @@ func expectResourceBuildTasksForDelete(t *testing.T, mockBTA *vmock.MockBuildTas
 	mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
 			assert.Equal(t, resourceID, params.ResourceID)
-			assert.Equal(t, activeResourceBuildTaskStatuses, params.Statuses)
+			assert.Equal(t, []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}, params.Statuses)
 			assert.Equal(t, 1, params.Limit)
 			return tasks, nil
 		})
+}
+
+func TestResourceServiceRejectBuildRelevantUpdateWhenActiveBuildTask(t *testing.T) {
+	t.Run("rejects pending task when requested", func(t *testing.T) {
+		rs, _, _, _, _, _, mockBTA := newTestService(t)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+				assert.Equal(t, "r1", params.ResourceID)
+				assert.Equal(t, []string{
+					interfaces.BuildTaskStatusPending,
+					interfaces.BuildTaskStatusRunning,
+					interfaces.BuildTaskStatusStopping,
+				}, params.Statuses)
+				return []*interfaces.BuildTaskSummary{{Status: interfaces.BuildTaskStatusPending}}, nil
+			})
+
+		httpErr := requireResourceHTTPError(t,
+			rs.rejectBuildRelevantUpdateWhenActiveBuildTask(context.Background(), "r1", true),
+			verrors.VegaBackend_BuildTask_Exist)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
+
+	t.Run("excludes pending task when not requested", func(t *testing.T) {
+		rs, _, _, _, _, _, mockBTA := newTestService(t)
+		mockBTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.BuildTasksQueryParams) ([]*interfaces.BuildTaskSummary, error) {
+				assert.Equal(t, []string{
+					interfaces.BuildTaskStatusRunning,
+					interfaces.BuildTaskStatusStopping,
+				}, params.Statuses)
+				return nil, nil
+			})
+
+		require.NoError(t, rs.rejectBuildRelevantUpdateWhenActiveBuildTask(context.Background(), "r1", false))
+	})
 }
 
 func TestResourceServiceUpdateStatus(t *testing.T) {
@@ -1037,8 +1084,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if httpErr.HTTPCode != http.StatusConflict {
 			t.Fatalf("expected 409, got %d", httpErr.HTTPCode)
 		}
-		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_Exist {
-			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_Exist, httpErr.BaseError.ErrorCode)
+		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_HasRunningExecution {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_HasRunningExecution, httpErr.BaseError.ErrorCode)
 		}
 	})
 	t.Run("update allows non build relevant change when active build task exists", func(t *testing.T) {
@@ -1170,8 +1217,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 		if httpErr.HTTPCode != http.StatusConflict {
 			t.Fatalf("expected 409, got %d", httpErr.HTTPCode)
 		}
-		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_Exist {
-			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_Exist, httpErr.BaseError.ErrorCode)
+		if httpErr.BaseError.ErrorCode != verrors.VegaBackend_BuildTask_HasRunningExecution {
+			t.Fatalf("expected %s, got %s", verrors.VegaBackend_BuildTask_HasRunningExecution, httpErr.BaseError.ErrorCode)
 		}
 	})
 	t.Run("update clears local index name when index config changes", func(t *testing.T) {
