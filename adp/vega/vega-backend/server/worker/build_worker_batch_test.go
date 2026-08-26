@@ -51,18 +51,18 @@ func TestBatchBuildWorkerHandleTask(t *testing.T) {
 		bbw := &batchBuildWorker{bts: bts, lim: lim}
 
 		resource := workerTestResource()
-		resource.LocalIndexName = logics.BuildIndexName("r1", "old-task")
+		resource.LocalIndexName = buildIndexName("r1", "old-task")
 		task := workerTestFullTask(t, resource)
 		task.ExecuteType = interfaces.BuildTaskExecuteTypeIncremental
 		task.Status = interfaces.BuildTaskStatusPending
-		lim.EXPECT().CheckIndexExist(gomock.Any(), logics.BuildIndexName("r1", "old-task")).
+		lim.EXPECT().CheckIndexExist(gomock.Any(), buildIndexName("r1", "old-task")).
 			Return(false, errors.New("opensearch unavailable"))
 		bts.EXPECT().InternalMarkFailed(gomock.Any(), nil, "t1",
 			"prepare local index failed: check local index exist failed: opensearch unavailable").
 			Return(true, nil)
 
 		require.NoError(t, bbw.Run(context.Background(), task, resource, &interfaces.Catalog{Enabled: true}))
-		assert.Equal(t, logics.BuildIndexName("r1", "old-task"), resource.LocalIndexName)
+		assert.Equal(t, buildIndexName("r1", "old-task"), resource.LocalIndexName)
 	})
 
 }
@@ -88,8 +88,8 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			}},
 		}
 
-		lim.EXPECT().CheckIndexExist(gomock.Any(), logics.BuildIndexName("r1", "t1")).Return(false, nil)
-		lim.EXPECT().CreateIndex(gomock.Any(), logics.BuildIndexName("r1", "t1"), gomock.Any()).
+		lim.EXPECT().CheckIndexExist(gomock.Any(), buildIndexName("r1", "t1")).Return(false, nil)
+		lim.EXPECT().CreateIndex(gomock.Any(), buildIndexName("r1", "t1"), gomock.Any()).
 			Return(errors.New("opensearch unavailable"))
 
 		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1"}, resource, buildTask)
@@ -106,7 +106,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		connector := vmock.NewMockTableConnector(ctrl)
 		resource := workerTestResource()
 		task := workerTestFullTask(t, resource)
-		indexName := logics.BuildIndexName(resource.ID, task.ID)
+		indexName := buildIndexName(resource.ID, task.ID)
 		bbw := &batchBuildWorker{lim: lim, bts: bts, rs: rs, cf: cf}
 
 		db, mockDB, err := sqlmock.New()

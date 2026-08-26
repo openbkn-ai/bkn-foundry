@@ -142,7 +142,7 @@ func (sbw *streamingBuildWorker) Run(ctx context.Context, buildTaskInfo *interfa
 		return nil
 	}
 
-	indexName := logics.BuildIndexName(resource.ID, buildTaskInfo.ID)
+	indexName := buildIndexName(resource.ID, buildTaskInfo.ID)
 	err = createManagedLocalIndex(ctx, sbw.lim, indexName, buildTaskInfo, resource)
 	if err != nil {
 		return fmt.Errorf("create local index failed: %w", err)

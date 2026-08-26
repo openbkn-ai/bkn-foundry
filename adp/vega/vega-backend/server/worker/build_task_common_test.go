@@ -21,6 +21,18 @@ import (
 	resourcelogic "vega-backend/logics/resource"
 )
 
+func TestParseBuildIndexName(t *testing.T) {
+	resourceID, taskID, ok := parseBuildIndexName("vega-build-resource-task")
+	assert.True(t, ok)
+	assert.Equal(t, "resource", resourceID)
+	assert.Equal(t, "task", taskID)
+
+	for _, name := range []string{"foreign-resource-task", "vega-build-resource-task-extra", "vega-build-resource-"} {
+		_, _, ok := parseBuildIndexName(name)
+		assert.False(t, ok, name)
+	}
+}
+
 func TestUpdateResourceIndexName(t *testing.T) {
 	t.Run("updates empty old index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
@@ -99,7 +111,7 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 		lim := vmock.NewMockLocalIndexManager(ctrl)
 		resource := workerTestResource()
 		task := workerTestFullTask(t, resource)
-		indexName := logics.BuildIndexName(resource.ID, task.ID)
+		indexName := buildIndexName(resource.ID, task.ID)
 
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(true, nil)
 		lim.EXPECT().DeleteIndex(gomock.Any(), indexName).Return(nil)
@@ -111,7 +123,7 @@ func TestPrepareFullBuildIndex(t *testing.T) {
 	t.Run("nonempty mark cannot resume a missing task index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		lim := vmock.NewMockLocalIndexManager(ctrl)
-		indexName := logics.BuildIndexName("r1", "t1")
+		indexName := buildIndexName("r1", "t1")
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(false, nil)
 
 		err := requireManagedLocalIndex(context.Background(), lim, indexName)

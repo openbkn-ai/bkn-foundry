@@ -15,7 +15,6 @@ import (
 
 	"vega-backend/common"
 	"vega-backend/interfaces"
-	"vega-backend/logics"
 	"vega-backend/logics/build_task"
 	"vega-backend/logics/local_index"
 	"vega-backend/logics/resource"
@@ -133,7 +132,7 @@ func (icw *IndexCleanupWorker) runOnce(ctx context.Context) {
 	candidates := make([]indexCleanupCandidate, 0)
 	for _, index := range indexes {
 		stats.scanned++
-		resourceID, taskID, ok := logics.ParseBuildIndexName(index.Name)
+		resourceID, taskID, ok := parseBuildIndexName(index.Name)
 		if !ok || index.CreationTime <= 0 {
 			stats.ignored++
 			continue

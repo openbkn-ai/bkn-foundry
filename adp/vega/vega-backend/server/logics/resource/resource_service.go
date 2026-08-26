@@ -1147,30 +1147,18 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			WithErrorDetails(err.Error())
 	}
 
-	for _, resource := range resources {
-		switch resource.Category {
-		case interfaces.ResourceCategoryTable:
-			// Cascade clear all build tasks, the Resource-owned current index, and task-derived indexes.
-			// Now, when resources are deleted, tasks/indexes will also be deleted (dangerous operations will be confirmed and checked by the front end for the second time).
-			// Tasks that are running or stopping will be rejected by cascade (HasRunningExecution), and users need to stop them first before deleting them.
-			if err := logics.CascadeDeleteBuildTasks(ctx, rs.bta,
-				interfaces.BuildTasksQueryParams{ResourceID: resource.ID}); err != nil {
-				span.SetStatus(codes.Error, "Cascade delete build tasks failed")
-				return err
-			}
-		case interfaces.ResourceCategoryDataset:
-			// Delete dataset
-			if err := rs.ds.Delete(ctx, resource.ID); err != nil {
-				logger.Errorf("Delete dataset failed: %v", err)
-				// The failure to delete the dataset does not affect the deletion of resources; it only records errors
-			}
-		}
-	}
-
 	if err := rs.ra.DeleteByIDs(ctx, ids); err != nil {
 		span.SetStatus(codes.Error, "Delete resources failed")
 		return rest.NewHTTPError(ctx, http.StatusInternalServerError, verrors.VegaBackend_Resource_InternalError_DeleteFailed).
 			WithErrorDetails(err.Error())
+	}
+
+	for _, resource := range resources {
+		if resource.Category == interfaces.ResourceCategoryDataset {
+			if err := rs.ds.Delete(ctx, resource.ID); err != nil {
+				logger.Errorf("Delete dataset failed after resource deletion: %v", err)
+			}
+		}
 	}
 
 	//  Clear resource policies and delete the corresponding type of policies by internal/ordinary resource groups

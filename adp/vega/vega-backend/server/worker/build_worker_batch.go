@@ -264,7 +264,7 @@ func buildBatchCursorFilter(keys []string, keyValues []interfaces.KeyValue) *int
 func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfaces.Catalog,
 	resource *interfaces.Resource, buildTaskInfo *interfaces.BuildTask) error {
 	isIncremental := buildTaskInfo.ExecuteType == interfaces.BuildTaskExecuteTypeIncremental
-	indexName := logics.BuildIndexName(resource.ID, buildTaskInfo.ID)
+	indexName := buildIndexName(resource.ID, buildTaskInfo.ID)
 	if isIncremental {
 		indexName = resource.LocalIndexName
 	}
