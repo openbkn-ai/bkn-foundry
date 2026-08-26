@@ -409,12 +409,6 @@ F1 Bench is based on the BIRD test set with the Formula-1 database mixed with 30
 | Discord | [discord.gg/YTxDbrfNf](https://discord.gg/YTxDbrfNf) | Real-time help, showcases, and announcements. |
 | X | [@OpenBKN](https://x.com/OpenBKN) | Follow OpenBKN for release news and project updates. |
 
-Scan the QR code to join the WeChat community and get support, share feedback, and stay up to date:
-
-<p align="center">
-  <img src="help/qrcode.png" alt="Join the BKN Foundry community" width="220">
-</p>
-
 ## License
 
 BKN Foundry is multi-licensed. See the repository [license
