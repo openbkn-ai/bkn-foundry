@@ -813,6 +813,20 @@ func (mr *MockVegaBackendClientMockRecorder) DeleteDatasetDocumentByID(ctx, data
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteDatasetDocumentByID", reflect.TypeOf((*MockVegaBackendClient)(nil).DeleteDatasetDocumentByID), ctx, datasetID, docID)
 }
 
+// DeleteResource mocks base method.
+func (m *MockVegaBackendClient) DeleteResource(ctx context.Context, id string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteResource", ctx, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteResource indicates an expected call of DeleteResource.
+func (mr *MockVegaBackendClientMockRecorder) DeleteResource(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteResource", reflect.TypeOf((*MockVegaBackendClient)(nil).DeleteResource), ctx, id)
+}
+
 // EnableCatalog mocks base method.
 func (m *MockVegaBackendClient) EnableCatalog(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()

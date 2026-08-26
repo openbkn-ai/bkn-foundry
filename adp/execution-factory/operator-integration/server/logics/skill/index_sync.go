@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/dbaccess"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -26,29 +27,26 @@ const (
 	internalCatalogTag = "internal"
 	// vegaMaxTags is aligned with vega's TAGS_MAX_NUMBER (exceeding 400)
 	vegaMaxTags = 5
-	// embeddingModelConfigKey is the model key in the vector feature config. For read only: once put the model.
-	// The snapshot is written here, but vega will copy the feature config of the vector attribute into OpenSearch as it is.
-	// knn_vector mapping, OpenSearch rejected it with unknown parameter, and the index could not be built.
-	// The write path uses resource-level index_config.default_embedding_model instead.
-	embeddingModelConfigKey = "embedding_model"
-	// embeddingModelTagPrefix is the old vector (resource tag) of this snapshot. Vega's tag verification is disabled.
-	// ':', a dataset creation request with this tag will result in 400, so only the read path is retained to be compatible with the old dataset.
-	embeddingModelTagPrefix = "embedding_model:"
 )
 
 type skillIndexSync struct {
 	modelManager interfaces.MFModelManager
 	modelAPI     interfaces.MFModelAPIClient
 	vegaClient   interfaces.VegaBackendClient
+	skillRepo    model.ISkillRepository
+	releaseRepo  model.ISkillReleaseDB
 	logger       interfaces.Logger
 	mu           sync.RWMutex
 	initialized  bool
 	// datasetID is the dataset ID actually used by this process; an empty value means it has not been parsed yet, and the default value is used.
 	datasetID string
-	// embeddingModelName The embedding model name locked when the system skill dataset is built (system default snapshot),
-	// Protected by mu; upsert reads back the vector it generates, rather than re-fetching the current default each time.
+	// embeddingModelName is the model name accepted by the embeddings API. It must not be replaced by embeddingModelID.
+	// It is protected by mu; upsert uses this build-time snapshot instead of re-fetching the current default.
 	embeddingModelName string
-	retryOnce          sync.Once
+	// restorePending makes the in-process retry rebuild and restore again after a
+	// partial restore failure, instead of accepting the newly-created empty index.
+	restorePending bool
+	retryOnce      sync.Once
 }
 
 var (
@@ -59,12 +57,15 @@ var (
 func NewSkillIndexSyncService() interfaces.SkillIndexSyncService {
 	ssOnce.Do(func() {
 		conf := config.NewConfigLoader()
-		ssInstance = &skillIndexSync{
+		syncer := &skillIndexSync{
 			modelManager: drivenadapters.NewMFModelManager(),
 			modelAPI:     drivenadapters.NewMFModelAPIClient(),
 			vegaClient:   drivenadapters.NewVegaBackendClient(),
+			skillRepo:    dbaccess.NewSkillRepositoryDB(),
+			releaseRepo:  dbaccess.NewSkillReleaseDB(),
 			logger:       conf.GetLogger(),
 		}
+		ssInstance = syncer
 	})
 	return ssInstance
 }
@@ -109,32 +110,45 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 		if err := s.ensureDatasetCatalogEnabled(ctx, resource, catalogID); err != nil {
 			return err
 		}
-		// The dataset already exists: read back the model name locked during creation (model building == model query).
-		// The old dataset is trapped in both forms, and when neither can be retrieved, it falls back to the name "embedding", which is consistent with the behavior before the transformation.
-		modelName := extractEmbeddingModelFromIndexConfig(resource.IndexConfig)
-		if modelName == "" {
-			modelName = extractEmbeddingModelFromSchema(resource.SchemaDefinition)
+		embeddingModel, err := s.resolveBuildEmbeddingModel(ctx)
+		if err != nil {
+			return err
 		}
-		if modelName == "" {
-			modelName = extractEmbeddingModelFromTags(resource.Tags)
+		s.setEmbeddingModel(embeddingModel)
+		if s.isRestorePending() || !sameSkillDatasetDefinition(resource, embeddingModel) {
+			if err := s.rebuildSkillDatasetResource(ctx, datasetID, resource.CatalogID, embeddingModel); err != nil {
+				return err
+			}
 		}
-		if modelName == "" {
-			modelName = interfaces.SmallModelTypeEmbedding
-		}
-		s.setEmbeddingModelName(modelName)
 		initialized = true
-		s.logger.WithContext(ctx).Infof("resource already exists, resource_id=%s, embedding_model=%s", datasetID, modelName)
+		s.logger.WithContext(ctx).Infof("resource already exists, resource_id=%s, embedding_model_id=%s, embedding_model_name=%s", datasetID, embeddingModel.ModelID, embeddingModel.ModelName)
 		return nil
 	}
+
 	// When creating a dataset for the first time: use the system default embedding model (interface configurable); if the default is not configured, it will fall back to the name "embedding".
 	embeddingModel, err := s.resolveBuildEmbeddingModel(ctx)
 	if err != nil {
 		s.logger.WithContext(ctx).Errorf("resolve embedding model failed, resource_id=%s, err=%v", datasetID, err)
 		return err
 	}
-	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, catalog_id=%s, embedding_model=%s, dimension=%d",
-		datasetID, catalogID, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
-	_, err = s.vegaClient.CreateResource(ctx, &interfaces.VegaResourceRequest{
+	s.logger.WithContext(ctx).Infof("creating skill dataset resource, resource_id=%s, catalog_id=%s, embedding_model_id=%s, embedding_model_name=%s, dimension=%d",
+		datasetID, catalogID, embeddingModel.ModelID, embeddingModel.ModelName, embeddingModel.EmbeddingDim)
+	s.setEmbeddingModel(embeddingModel)
+	if err := s.createSkillDatasetResource(ctx, datasetID, catalogID, embeddingModel); err != nil {
+		s.logger.WithContext(ctx).Errorf("create skill dataset resource failed, resource_id=%s, err=%v", datasetID, err)
+		return err
+	}
+	if err := s.restoreSkillDatasetFromSource(ctx); err != nil {
+		s.setRestorePending(true)
+		return fmt.Errorf("restore skill dataset after creating missing resource: %w", err)
+	}
+	s.setRestorePending(false)
+	initialized = true
+	return nil
+}
+
+func (s *skillIndexSync) createSkillDatasetResource(ctx context.Context, datasetID, catalogID string, embeddingModel *interfaces.EmbeddingModel) error {
+	_, err := s.vegaClient.CreateResource(ctx, &interfaces.VegaResourceRequest{
 		ID:               datasetID,
 		CatalogID:        catalogID,
 		Name:             datasetID,
@@ -144,18 +158,12 @@ func (s *skillIndexSync) Init(ctx context.Context) (err error) {
 		Status:           executionFactoryDatasetStatus,
 		SourceIdentifier: datasetID,
 		SchemaDefinition: buildSkillIndexSchema(embeddingModel.EmbeddingDim),
-		// The model name locked at build time is snapshotted into the resource level index_config: vega. Use it when parsing the vector model.
+		// Vega validates the resource-level index_config as a model ID. The embeddings API name remains in memory only.
 		// And it does not enter OpenSearch mapping. You can't put tags (vega tag verification prohibits ':', which will result in 400), and you can't.
 		// Feature config with vector attributes (will be copied into knn_vector mapping, rejected by OpenSearch).
-		IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelName},
+		IndexConfig: &interfaces.VegaResourceIndexConfig{DefaultEmbeddingModel: embeddingModel.ModelID},
 	})
-	if err != nil {
-		s.logger.WithContext(ctx).Errorf("create skill dataset resource failed, resource_id=%s, err=%v", datasetID, err)
-		return err
-	}
-	s.setEmbeddingModelName(embeddingModel.ModelName)
-	initialized = true
-	return nil
+	return err
 }
 
 // ensureCatalog parses and ensures the existence of the built-in catalog and returns the catalog ID actually used by this process.
@@ -287,45 +295,199 @@ func (s *skillIndexSync) resolveBuildEmbeddingModel(ctx context.Context) (*inter
 	model, err := s.modelManager.GetDefaultEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding)
 	if err != nil {
 		s.logger.WithContext(ctx).Warnf("get default embedding model failed, fallback to named '%s': %v", interfaces.SmallModelTypeEmbedding, err)
-	} else if model != nil && model.EmbeddingDim > 0 {
-		return model, nil
+	} else if model != nil {
+		return validateEmbeddingModel(model)
 	}
-	return s.modelManager.GetEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding)
+	model, err = s.modelManager.GetEmbeddingModel(ctx, interfaces.SmallModelTypeEmbedding, interfaces.SmallModelTypeEmbedding)
+	if err != nil {
+		return nil, err
+	}
+	return validateEmbeddingModel(model)
 }
 
-// extractEmbeddingModelFromIndexConfig reads back the model name locked at build time from resource-level index_config (current writing method)
-func extractEmbeddingModelFromIndexConfig(indexConfig *interfaces.VegaResourceIndexConfig) string {
+func validateEmbeddingModel(model *interfaces.EmbeddingModel) (*interfaces.EmbeddingModel, error) {
+	if model == nil {
+		return nil, fmt.Errorf("embedding model is required")
+	}
+	if strings.TrimSpace(model.ModelID) == "" {
+		return nil, fmt.Errorf("embedding model ID is required")
+	}
+	if strings.TrimSpace(model.ModelName) == "" {
+		return nil, fmt.Errorf("embedding model name is required")
+	}
+	if model.EmbeddingDim <= 0 {
+		return nil, fmt.Errorf("embedding model dimension must be positive")
+	}
+	return model, nil
+}
+
+func sameDefaultEmbeddingModel(indexConfig *interfaces.VegaResourceIndexConfig, expectedModelID string) bool {
 	if indexConfig == nil {
-		return ""
+		return expectedModelID == ""
 	}
-	return indexConfig.DefaultEmbeddingModel
+	return indexConfig.DefaultEmbeddingModel == expectedModelID
 }
 
-// extractEmbeddingModelFromSchema reads back the model name from the vector feature's config.embedding_model.
-// It only serves the dataset that has been written to this location briefly. When creating a new dataset, the model name will no longer be written into the schema.
-func extractEmbeddingModelFromSchema(schema []interfaces.VegaProperty) string {
-	for _, property := range schema {
-		for _, feature := range property.Features {
-			if feature.FeatureType != "vector" || feature.Config == nil {
-				continue
+// sameSkillDatasetDefinition compares the managed dataset definition rather than
+// only its embedding model reference. Property and feature order are not
+// semantically meaningful in Vega, so schema comparison is name based.
+func sameSkillDatasetDefinition(resource *interfaces.VegaResource, embeddingModel *interfaces.EmbeddingModel) bool {
+	if resource == nil || embeddingModel == nil {
+		return false
+	}
+	return sameSkillIndexSchema(buildSkillIndexSchema(embeddingModel.EmbeddingDim), resource.SchemaDefinition) &&
+		sameDefaultEmbeddingModel(resource.IndexConfig, embeddingModel.ModelID)
+}
+
+func sameSkillIndexSchema(expected, actual []interfaces.VegaProperty) bool {
+	if len(expected) != len(actual) {
+		return false
+	}
+	actualByName := make(map[string]interfaces.VegaProperty, len(actual))
+	for _, property := range actual {
+		actualByName[property.Name] = property
+	}
+	for _, expectedProperty := range expected {
+		actualProperty, ok := actualByName[expectedProperty.Name]
+		if !ok || !sameSkillIndexProperty(expectedProperty, actualProperty) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameSkillIndexProperty(expected, actual interfaces.VegaProperty) bool {
+	if expected.Name != actual.Name ||
+		expected.Type != actual.Type ||
+		expected.DisplayName != actual.DisplayName ||
+		expected.OriginalName != actual.OriginalName ||
+		expected.Description != actual.Description ||
+		len(expected.Features) != len(actual.Features) {
+		return false
+	}
+	actualFeaturesByName := make(map[string]interfaces.VegaPropertyFeature, len(actual.Features))
+	for _, feature := range actual.Features {
+		actualFeaturesByName[feature.Name] = feature
+	}
+	for _, expectedFeature := range expected.Features {
+		actualFeature, ok := actualFeaturesByName[expectedFeature.Name]
+		if !ok || !sameSkillIndexFeature(expectedFeature, actualFeature) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameSkillIndexFeature(expected, actual interfaces.VegaPropertyFeature) bool {
+	if expected.Name != actual.Name ||
+		expected.DisplayName != actual.DisplayName ||
+		expected.FeatureType != actual.FeatureType ||
+		expected.Description != actual.Description ||
+		expected.RefProperty != actual.RefProperty ||
+		expected.IsDefault != actual.IsDefault ||
+		expected.IsNative != actual.IsNative ||
+		len(expected.Config) != len(actual.Config) {
+		return false
+	}
+	for key, expectedValue := range expected.Config {
+		actualValue, ok := actual.Config[key]
+		if !ok || fmt.Sprintf("%v", expectedValue) != fmt.Sprintf("%v", actualValue) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *skillIndexSync) rebuildSkillDatasetResource(ctx context.Context, datasetID, catalogID string, embeddingModel *interfaces.EmbeddingModel) error {
+	// Preserve the restore intent before deletion. If creation subsequently fails,
+	// the next Init observes a missing resource and restores it after creation.
+	s.setRestorePending(true)
+	if err := s.vegaClient.DeleteResource(ctx, datasetID); err != nil {
+		return fmt.Errorf("delete legacy skill dataset before rebuild: %w", err)
+	}
+	if catalogID == "" {
+		catalogID = executionFactoryCatalogID
+	}
+	if err := s.createSkillDatasetResource(ctx, datasetID, catalogID, embeddingModel); err != nil {
+		return fmt.Errorf("recreate skill dataset with embedding model ID %q: %w", embeddingModel.ModelID, err)
+	}
+	if err := s.restoreSkillDatasetFromSource(ctx); err != nil {
+		s.setRestorePending(true)
+		return fmt.Errorf("restore skill dataset after rebuild: %w", err)
+	}
+	s.setRestorePending(false)
+	s.logger.WithContext(ctx).Infof("rebuilt skill dataset with embedding model ID, resource_id=%s, catalog_id=%s, model_id=%s", datasetID, catalogID, embeddingModel.ModelID)
+	return nil
+}
+
+// restoreSkillDatasetFromSource repopulates a recreated dataset from the Skill
+// repository. Published Skills use their release snapshot when available;
+// editing Skills are indexed only when a published snapshot still exists.
+func (s *skillIndexSync) restoreSkillDatasetFromSource(ctx context.Context) error {
+	if s.skillRepo == nil || s.releaseRepo == nil {
+		return fmt.Errorf("skill repositories are required to restore the skill dataset")
+	}
+	var cursorUpdateTime int64
+	var cursorSkillID string
+	for {
+		skills, err := s.skillRepo.SelectSkillBuildPage(ctx, nil, cursorUpdateTime, cursorSkillID, skillIndexBuildBatchSize)
+		if err != nil {
+			return err
+		}
+		if len(skills) == 0 {
+			return nil
+		}
+		documents := make([]map[string]any, 0, len(skills))
+		for _, skill := range skills {
+			if skill == nil {
+				return fmt.Errorf("skill index restore received nil skill")
 			}
-			if name, ok := feature.Config[embeddingModelConfigKey].(string); ok && name != "" {
-				return name
+			payload, err := s.skillIndexPayload(ctx, skill)
+			if err != nil {
+				return fmt.Errorf("resolve skill %s for index restore: %w", skill.SkillID, err)
+			}
+			if payload != nil {
+				document, err := s.buildSkillDocument(ctx, payload)
+				if err != nil {
+					return fmt.Errorf("build skill %s document for index restore: %w", skill.SkillID, err)
+				}
+				documents = append(documents, document)
+			}
+			cursorUpdateTime = skill.UpdateTime
+			cursorSkillID = skill.SkillID
+		}
+		if len(documents) > 0 {
+			if err := s.vegaClient.WriteDatasetDocuments(ctx, s.getDatasetID(), documents); err != nil {
+				return fmt.Errorf("write %d skill documents for index restore: %w", len(documents), err)
 			}
 		}
 	}
-	return ""
 }
 
-// extractEmbeddingModelFromTags parses the build-time locked embedding model names from resource tags.
-// It only serves the old dataset created during the tag snapshot period, and the new dataset will no longer write this tag.
-func extractEmbeddingModelFromTags(tags []string) string {
-	for _, t := range tags {
-		if strings.HasPrefix(t, embeddingModelTagPrefix) {
-			return strings.TrimPrefix(t, embeddingModelTagPrefix)
+func (s *skillIndexSync) skillIndexPayload(ctx context.Context, skill *model.SkillRepositoryDB) (*model.SkillRepositoryDB, error) {
+	if skill.IsDeleted {
+		return nil, nil
+	}
+	switch interfaces.BizStatus(skill.Status) {
+	case interfaces.BizStatusPublished:
+		release, err := s.releaseRepo.SelectBySkillID(ctx, nil, skill.SkillID)
+		if err != nil {
+			return nil, err
+		}
+		if release != nil {
+			return releaseToSkillRepository(release), nil
+		}
+		return skill, nil
+	case interfaces.BizStatusEditing:
+		release, err := s.releaseRepo.SelectBySkillID(ctx, nil, skill.SkillID)
+		if err != nil {
+			return nil, err
+		}
+		if release != nil {
+			return releaseToSkillRepository(release), nil
 		}
 	}
-	return ""
+	return nil, nil
 }
 
 func (s *skillIndexSync) getEmbeddingModelName() string {
@@ -337,10 +499,22 @@ func (s *skillIndexSync) getEmbeddingModelName() string {
 	return s.embeddingModelName
 }
 
-func (s *skillIndexSync) setEmbeddingModelName(name string) {
+func (s *skillIndexSync) setEmbeddingModel(model *interfaces.EmbeddingModel) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.embeddingModelName = name
+	s.embeddingModelName = model.ModelName
+}
+
+func (s *skillIndexSync) isRestorePending() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.restorePending
+}
+
+func (s *skillIndexSync) setRestorePending(pending bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.restorePending = pending
 }
 
 // getDatasetID returns the dataset ID actually used by this process; if it is not parsed, it takes the new default value.
