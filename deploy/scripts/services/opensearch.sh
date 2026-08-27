@@ -43,11 +43,47 @@ _opensearch_upgrade_legacy_image() {
     fi
 
     log_info "Upgrading existing OpenSearch image from ${current_image} to ${OPENSEARCH_IMAGE}."
-    # Do not use `helm upgrade` here: even with --reuse-values Helm re-renders
-    # and reconciles the whole chart. This targeted patch changes only the main
-    # OpenSearch container image and lets the StatefulSet perform the rollout.
-    kubectl set image statefulset "${statefulset_name}" -n "${OPENSEARCH_NAMESPACE}" \
-        "opensearch=${os_image_repo}:${os_image_tag}"
+    # Keep the Helm release values in sync so a later Helm upgrade does not
+    # restore the legacy image. --reuse-values preserves the existing release
+    # configuration; the only value intentionally changed here is the image.
+    local chart_ref="opensearch/opensearch"
+    local use_local_chart="false"
+    if [[ -f "${OPENSEARCH_CHART_TGZ}" ]]; then
+        chart_ref="${OPENSEARCH_CHART_TGZ}"
+        use_local_chart="true"
+    elif [[ "${OFFLINE_MODE}" == "true" ]]; then
+        log_error "Offline mode requires local OpenSearch chart: ${OPENSEARCH_CHART_TGZ}"
+        return 1
+    else
+        helm repo add --force-update opensearch "${HELM_REPO_OPENSEARCH}"
+        helm repo update
+    fi
+
+    local -a helm_args
+    helm_args=(
+        upgrade "${OPENSEARCH_RELEASE_NAME}" "${chart_ref}"
+        --namespace "${OPENSEARCH_NAMESPACE}"
+        --reuse-values
+        --set image.repository="${os_image_repo}"
+        --set image.tag="${os_image_tag}"
+        --wait --timeout=900s
+    )
+    if [[ "${OPENSEARCH_HELM_ATOMIC}" == "true" ]]; then
+        helm_args+=(--atomic)
+    fi
+    if [[ "${use_local_chart}" != "true" ]]; then
+        helm_args+=(--version "${OPENSEARCH_CHART_VERSION}")
+    fi
+    if ! helm "${helm_args[@]}"; then
+        log_error "OpenSearch image upgrade failed; the existing image remains in use."
+        return 1
+    fi
+
+    if ! kubectl rollout status statefulset "${statefulset_name}" \
+        -n "${OPENSEARCH_NAMESPACE}" --timeout=900s; then
+        log_error "OpenSearch image upgrade did not become ready within 900s."
+        return 1
+    fi
 }
 
 install_opensearch() {
