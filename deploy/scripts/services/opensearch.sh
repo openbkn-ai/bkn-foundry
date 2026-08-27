@@ -11,10 +11,54 @@ _opensearch_resolve_image_defaults() {
     fi
 }
 
+# Upgrade only the stock OpenSearch 2.19.4 image installed before the platform
+# image became the default. Other image tags are intentionally left alone: they
+# may be user-pinned builds and must not be overwritten by a regular install.
+_opensearch_upgrade_legacy_image() {
+    if [[ -n "${OPENSEARCH_IMAGE}" ]]; then
+        log_info "OpenSearch uses an explicit OPENSEARCH_IMAGE; skipping automatic image upgrade."
+        return 0
+    fi
+
+    local statefulset_name="${OPENSEARCH_CLUSTER_NAME}-${OPENSEARCH_NODE_GROUP}"
+    local current_image
+    current_image="$(kubectl get statefulset "${statefulset_name}" -n "${OPENSEARCH_NAMESPACE}" \
+        -o jsonpath='{.spec.template.spec.containers[?(@.name=="opensearch")].image}' 2>/dev/null || true)"
+    local current_tag="${current_image##*:}"
+    if [[ -z "${current_image}" || "${current_tag}" == "${current_image}" ]]; then
+        log_warn "Could not determine the image for existing OpenSearch release; skipping automatic image upgrade."
+        return 0
+    fi
+    if [[ "${current_tag}" != "2.19.4" ]]; then
+        log_info "OpenSearch is already installed with image ${current_image}; skipping automatic image upgrade."
+        return 0
+    fi
+
+    _opensearch_resolve_image_defaults
+    local os_image_repo="${OPENSEARCH_IMAGE%:*}"
+    local os_image_tag="${OPENSEARCH_IMAGE##*:}"
+    if [[ "${os_image_repo}" == "${OPENSEARCH_IMAGE}" || -z "${os_image_tag}" ]]; then
+        log_error "Invalid OPENSEARCH_IMAGE (expected repo:tag): ${OPENSEARCH_IMAGE}"
+        return 1
+    fi
+
+    log_info "Upgrading existing OpenSearch image from ${current_image} to ${OPENSEARCH_IMAGE}."
+    # Do not use `helm upgrade` here: even with --reuse-values Helm re-renders
+    # and reconciles the whole chart. This targeted patch changes only the main
+    # OpenSearch container image and lets the StatefulSet perform the rollout.
+    kubectl set image statefulset "${statefulset_name}" -n "${OPENSEARCH_NAMESPACE}" \
+        "opensearch=${os_image_repo}:${os_image_tag}"
+}
+
 install_opensearch() {
     log_info "Installing OpenSearch via Helm..."
 
     local fresh_install="true"
+
+    if is_helm_installed "${OPENSEARCH_RELEASE_NAME}" "${OPENSEARCH_NAMESPACE}"; then
+        _opensearch_upgrade_legacy_image || return 1
+        return 0
+    fi
 
     # OpenSearch password handling
     local existing_pass=$(config_yaml_dep_field opensearch password)
@@ -24,12 +68,6 @@ install_opensearch() {
     else
         OPENSEARCH_INITIAL_ADMIN_PASSWORD=$(generate_random_password 10)
         log_info "Generated random 10-character OpenSearch password"
-    fi
-
-    if is_helm_installed "${OPENSEARCH_RELEASE_NAME}" "${OPENSEARCH_NAMESPACE}"; then
-        fresh_install="false"
-        log_info "OpenSearch is already installed. Skipping installation."
-        return 0
     fi
 
     if [[ -z "${OPENSEARCH_INITIAL_ADMIN_PASSWORD}" ]]; then
