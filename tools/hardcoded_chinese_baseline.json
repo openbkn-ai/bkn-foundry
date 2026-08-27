@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2526,
+  "violation_count": 2607,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -38,6 +38,7 @@
       "50945c996308d0638140"
     ],
     "adp/bkn/bkn-backend/server/bkn-specification/bkn/parser.go": [
+      "e82a7c280e1e9667c322",
       "d80f34213b9bc55ef58a",
       "1c7b74bc2534c14efdb8",
       "7365ac9e306eb1cd9bb8"
@@ -79,6 +80,9 @@
       "d20bab42e5fee65d84c4",
       "ac5c5568d4d5d3a77e04"
     ],
+    "adp/bkn/bkn-backend/server/bkn-specification/bkn/validator.go": [
+      "77b2ed62380d52ff72c4"
+    ],
     "adp/bkn/bkn-backend/server/drivenadapters/permission/permission_access.go": [
       "f764029dc62af08a4331",
       "3c9e29fdfa57ba84447b",
@@ -113,7 +117,9 @@
       "70e66c2473d8fa41b5c2"
     ],
     "adp/bkn/bkn-backend/server/driveradapters/operation_audit.go": [
-      "1d0311b25fe3a05f728b"
+      "1d0311b25fe3a05f728b",
+      "25093979c3910babd047",
+      "9cdb25daf2da2e45cee2"
     ],
     "adp/bkn/bkn-backend/server/driveradapters/relation_type_handler.go": [
       "ea173c17f282ec2957b6",
@@ -126,6 +132,7 @@
       "202524e5ed2920afa5b0"
     ],
     "adp/bkn/bkn-backend/server/interfaces/common.go": [
+      "243a4615cc497973eef0",
       "b09f8ab7a77df20c4481",
       "a9d3e4a6bd36f1f55cd8",
       "9e79beb776220d6d1a30",
@@ -479,6 +486,7 @@
       "ed632f333a445e97e3ac"
     ],
     "adp/bkn/ontology-query/server/logics/action_logs/action_logs_service.go": [
+      "237a18f6008ed440ad00",
       "76a3c707fc92d45711b7"
     ],
     "adp/bkn/ontology-query/server/logics/action_type/action_type_service.go": [
@@ -569,6 +577,9 @@
       "7c51d2fe4c3cd645f5e2",
       "0ee32bf02de87915048c"
     ],
+    "adp/context-loader/agent-retrieval/server/drivenadapters/bkn_backend.go": [
+      "9cc0d1d0db029c26227e"
+    ],
     "adp/context-loader/agent-retrieval/server/drivenadapters/ontology_query.go": [
       "80c2d7316e078d3ba1c2",
       "c89f1a7cc89d6eeb26ba",
@@ -589,6 +600,9 @@
       "4832ee9e2db440187753",
       "2664499300530bb91b92",
       "acc467276d19c6996ef3"
+    ],
+    "adp/context-loader/agent-retrieval/server/infra/rest/reply.go": [
+      "ea5a7d3340c16df26371"
     ],
     "adp/context-loader/agent-retrieval/server/logics/knlogicpropertyresolver/dynamic_params_llm.go": [
       "7fee40e49e8e983752aa",
@@ -624,14 +638,22 @@
       "28f665f4df62cf75b269",
       "eb20eca5fe6b0a841a12",
       "5d8783e81f2b5d5098c0",
+      "e0bfdd41ef9a3a4ff6e5",
+      "39010c3ead60f7db12b0",
       "5ff5edb0beafa2462141",
       "757d27d2425a05346dff",
       "84d743794333e3757cac",
       "dcb6e06ecac346eaf2c0",
+      "33a42a52b6f51f93e765",
+      "d30738a6512fcb95326e",
       "eca4aa30472b909bcdbc"
     ],
     "adp/context-loader/agent-retrieval/server/logics/knretrieval/convert.go": [
       "eaf740719305b0b0381a"
+    ],
+    "adp/context-loader/agent-retrieval/server/logics/knsearch/concept_retrieval.go": [
+      "0a8f8f4933f4fa5e1d30",
+      "ff8f1d259e8a8c2619e8"
     ],
     "adp/execution-factory/operator-integration/server/infra/common/ormhelper/debug.go": [
       "acfb04ec55b3183464a3",
@@ -711,6 +733,13 @@
       "01f618007130d7824d9c",
       "a9bb3775ce48277f4481"
     ],
+    "adp/execution-factory/operator-integration/server/logics/skill/reader.go": [
+      "5e9ba2b55cd7aa48cd6d",
+      "396a28a1fb18be7451a2"
+    ],
+    "adp/vega/vega-backend/server/interfaces/common.go": [
+      "3f88d9f5aaddad798eeb"
+    ],
     "adp/vega/vega-backend/server/logics/connector/local/fileset/anyshare/anyshare.go": [
       "ca80984e1edc663f04ff",
       "f94f5dba7d2c92797a9f",
@@ -745,6 +774,9 @@
       "bf3bb7ea5028da89e0aa",
       "46010b0eca0e2504ec04",
       "7a78d9c9ce59b574445e"
+    ],
+    "bkn-trace/agent-observability/src/domain/service/evidencesvc/summary.go": [
+      "2b3696925db04b094337"
     ],
     "comm-go/db/driver/kingbase/gokb/array.go": [
       "8f13d38ed6eb2cc6f281"
@@ -1788,6 +1820,9 @@
       "b160d924a81a9fce7c40",
       "b749c8270f8d41ca34e1"
     ],
+    "infra/mf-model-api/app/interfaces/logics.py": [
+      "e27490696e6457bf5087"
+    ],
     "infra/mf-model-api/app/logs/__init__.py": [
       "b7a10aaad1b497369da0",
       "f025dd646a7ea1933fc7",
@@ -1844,6 +1879,10 @@
       "7108c4aaf03247859c6e",
       "f5e706f2462028f22968"
     ],
+    "infra/mf-model-api/app/utils/external_small_model_utils.py": [
+      "5adeeab33cde8aebf5d8",
+      "4fefa9bbb8ad72c2c96f"
+    ],
     "infra/mf-model-api/app/utils/kafka_shutdown.py": [
       "b117315e9bafae94caf8",
       "cdcd36466a958807f8fe",
@@ -1866,12 +1905,14 @@
     "infra/mf-model-api/app/utils/param_verify_utils.py": [
       "0b0b40fb57ca08296985",
       "b3f2f8012ea8f256667d",
+      "3b8c328dd8ae8fafc71e",
       "b83231bc4305ba7e4666",
       "8d2bb8bcd5e0f3a2a9b3",
       "8ec435d30a19bee1dec8",
       "e71afebd4e2cbfed6e40",
       "be25804b3b0f0ff04783",
       "c1d497750fd53f7484ed",
+      "04126b78fa07c750e94b",
       "41ab53e073438a3d30ff",
       "bc0377d655f6ab0187cd",
       "8e6312efd4ca052c42b2",
@@ -1880,32 +1921,42 @@
       "dde38fac268597a4ac2c",
       "1377b7ebf66182aea4db",
       "66eb7f3854ea5275470a",
+      "5fe6d38f637bbc2d8ed9",
       "4febca571ea702b50065",
       "d50e9b762be6fd55f4a6",
+      "b6d22600bd4f06e14964",
       "644b2ffea3741f882ded",
       "c5ad3cdbe4dc5211cd30",
+      "8f936eba44cc1ec44eb6",
       "3dd6e4472e0b4713a2b1",
       "3726fd147209e6c61191",
+      "fff30c893bc4e7fa77c8",
       "537c049511789f9325d9",
       "f665f78ffcf1854e17fb",
+      "df7623e0104c2146ad1d",
       "13b7134f61bbea42711b",
       "9587eba29502a80604ea",
       "6e377f1ecf20e492a5c0",
+      "ef4fdb1001123905d90d",
       "48704d86c4a3957c58b0",
       "66e937b12c6c2769160d",
       "b2196e935a712268a796",
       "4b9f9c5bc7ce8577f93a",
       "6677cdbf61aa099f06f3",
       "1cac93391039712ab5cd",
+      "c98a7235bf6a9cd164d1",
       "e4e3036561d95be0dbbf",
       "83a9ceb725f3c158f6ce",
+      "dcbe46985f43711ef34b",
       "54746028b739fd590c97",
       "729a634e67fef72795f3",
+      "4bc6ea5f3c9e4faa6b87",
       "ea98d2c2b4628cde140b",
       "b272525926ff61506811",
       "756830b3cb1f5e079192",
       "c60baa600e1b98faf476",
       "a66a5bb4bc76425f8e9b",
+      "cc85f98c81be3584045c",
       "06c98cc3118b659de7e6",
       "be2cca9906124b28bc09",
       "9b911b7fe0c3e7c0289e",
@@ -1924,10 +1975,13 @@
       "9d35c449485c2be68842",
       "46da9607c20ada42d955",
       "af8de5b04221a6d6388a",
+      "0c74758e439e05ab17b4",
       "632bc72abb5b5323f01c",
       "a299be1d99d9270ad63e",
       "57df7774996f1c5ce28a",
       "00266ded9f338990a81d",
+      "a43c09bc2e7f00749a91",
+      "083248eca3ac5ae14ae3",
       "31c265e90a7bc91de878",
       "562e95f177b7686d919e",
       "2cd9d7ed4cf8463c2a9e",
@@ -1940,6 +1994,7 @@
       "0374bd75bce07dc289e4",
       "5834ce00b041316230c0",
       "a1cbb3dffd930ed78a78",
+      "00d14b9b2e492612137f",
       "309466bbdee255ab61c8",
       "ac376960314fac07ec96",
       "eeedca3e5e64a0ed7666",
@@ -1948,6 +2003,7 @@
       "1e1178c2358ae1c168d0",
       "3670d12322c2a5b9e9fa",
       "635bd0afd83d4218de4f",
+      "9560008c765af55bff67",
       "2edea97ec814dbe84224",
       "c112598284e1fc20d967",
       "4fd53de18c2b39c8e760",
@@ -1956,12 +2012,14 @@
       "8036d7dd306f8cd9f21d",
       "be6f915a2ee80e247dde",
       "55858e593081dae4f81b",
+      "f7a232b0ea897204e031",
       "f6520f7d8f1838f3254d",
       "1b78300c89d035994f12",
       "39fa41d6c445264ace2c",
       "74f4bc1d897cdd765449",
       "ba92a35a895c9538c920",
       "ec972769689e99c935a6",
+      "033c232372ba4ae38753",
       "8ec65d716ff6210dd495",
       "b31332c4ee7c75a50a10",
       "3e92cc9bd944d94c6829",
@@ -1970,6 +2028,7 @@
       "19c9c81b35f2a4a59de4",
       "4f8c41af26e80f1b5338",
       "696fe0fd2b998f3c7dc1",
+      "24eef4174cfa20007f08",
       "220dfd7de48aae49552d",
       "727bbdd59b19e4aa9b6a",
       "5bd8114845f792546e6c",
@@ -1978,6 +2037,7 @@
       "ddbdb66da6b8fba23b9d",
       "a90f26f01ee5ff267031",
       "0111a903637d9b14fdc9",
+      "2b6d95f9d0e7ebe296c7",
       "c44730c0d2b62c8dd092",
       "71b644e78d2962600972",
       "97bdb442e3bb5ba7259f",
@@ -1988,10 +2048,12 @@
       "a87d51e552cf20db708f",
       "11f50349ca70666b10c1",
       "c5a2437e98eef5175a59",
+      "747fe359313091db2f27",
       "b7f12bb5cfd0a6da6288",
       "c0c83a155e720a210bf3",
       "519ed190f684aece0ecb",
       "cb6191737446f7c8b537",
+      "de8232ab6992c01a035c",
       "e7ad359676eb9c867b38",
       "9a2d845e231fbd9b4538",
       "f113749c2f4bf36f4ede",
@@ -2036,6 +2098,7 @@
       "56b7bc19293f16ec7d1f",
       "b63ba6d7307c52049544",
       "dcd22d614459e76314fd",
+      "d638fb76e6960f9630ec",
       "f538ec9099959c5f659c",
       "ce920c0f7f1335af8789",
       "f573d1f1fa042974ef8c",
@@ -2048,6 +2111,7 @@
       "3999787c7dc6c814d3fa",
       "9124acdd8d7335ffc405",
       "75eda80cb454a233e738",
+      "99c92c208d4ddd9fdc77",
       "a2d144e93b9de20d629c",
       "d2e234a4f4f12cd7139a",
       "7545d3bc7f10f97a1112",
@@ -2100,6 +2164,7 @@
       "49be53bbdadde4587bdc",
       "ff99eab95169df3d2019",
       "c64555a696f5a7e7f9d4",
+      "8bafccd6fb618eaafee2",
       "0db6383110673dfc5dc1",
       "a1b4bc20dfa7e374413b",
       "b0c0ab969c859c696a45",
@@ -2112,6 +2177,7 @@
       "d743a64a2bdbb60bfe3c",
       "38f07145187c8ab7fd38",
       "aaf530f1d99ffca54adf",
+      "c2c40d4097b8eb896849",
       "d54fdf3e7417384a9c0b",
       "93e52eedff5bde7d18c4",
       "f403e1a20115e8045f4e",
@@ -2237,13 +2303,17 @@
       "30912f3cf38d91a2dc5e",
       "c8eda7b40a54f8aaffff",
       "3ab02bdf3087da2ea2a6",
-      "6eae642340c8c86485ee"
+      "6eae642340c8c86485ee",
+      "2930f6fd2e4c315e08b0"
     ],
     "infra/mf-model-api/app/utils/permission_manager.py": [
       "fb3a6ec651a550d573e3"
     ],
     "infra/mf-model-api/main.py": [
       "c3cc68dcc7d8d9340b49"
+    ],
+    "infra/mf-model-manager/app/commons/locale.py": [
+      "0952f8ac6c131d074281"
     ],
     "infra/mf-model-manager/app/commons/restful_api.py": [
       "1c6b41e7f2f631005b3c",
@@ -2298,6 +2368,9 @@
       "eba47e1034b31d249454",
       "2b720feb9c21381e77a5",
       "3a49ee7fe48700559bcb"
+    ],
+    "infra/mf-model-manager/app/interfaces/logics.py": [
+      "42f0124ab7cafae6a116"
     ],
     "infra/mf-model-manager/app/logs/__init__.py": [
       "b2c2bded072851a3c07d",
@@ -2377,6 +2450,10 @@
       "e3c85e030e28792b271c",
       "b6fa09643e017e4bce4f"
     ],
+    "infra/mf-model-manager/app/utils/external_small_model_utils.py": [
+      "2ded3986e4c3a260a634",
+      "d06ec67324031b592d5a"
+    ],
     "infra/mf-model-manager/app/utils/kafka_streams_processor.py": [
       "b52637328cf6b3c73e54",
       "dd753108555b96989a29",
@@ -2421,6 +2498,35 @@
     ],
     "infra/mf-model-manager/app/utils/oss_gateway.py": [
       "6c9bd58afd1673da292a"
+    ],
+    "infra/mf-model-manager/app/utils/param_verify_utils.py": [
+      "d02628ad2283676b2367",
+      "0021519929cc9fad5303",
+      "e888d016206ddfb82fc8",
+      "50547cf3ee8afdbb2af4",
+      "30fd15becb42a6324e75",
+      "6621adef6b4cb6418333",
+      "deedd2a16ae935af20ae",
+      "1e9ae7fdef3730291cdb",
+      "df46b5940ce918fd8214",
+      "b4fbf7f083960b26daf6",
+      "c1d915224b3b9a81c1cf",
+      "23850ff0ca278eb45897",
+      "50c7124d0a3727589d0f",
+      "358c718664b8d720e404",
+      "a2165c94656f52865ff5",
+      "5f7a76b5e130a13265f0",
+      "c8de7809b56b8a69cbb4",
+      "b4bcdaa631b607201d55",
+      "392f37a3b11cb734b8ac",
+      "ca04cfb7f9c1566bf4af",
+      "11d3c0febae9ae344877",
+      "e74a3b99b992ede64c24",
+      "b19bb8cd145b6b5cdfdd",
+      "078ea3b95d36e5bb610c",
+      "35179c50b3f081ce8558",
+      "9e4a801ae809f3200b22",
+      "9f164626641c3c79000f"
     ],
     "infra/mf-model-manager/app/utils/permission_manager.py": [
       "4c2465b8cc184ad8b262"
@@ -2531,6 +2637,7 @@
     ],
     "infra/sandbox/runtime/sandbox_sdk/bkn.py": [
       "8128551e0e0075685c0d",
+      "6b80eb1d134c75ff3aeb",
       "3f2f73c6086d4af82ed6",
       "92553add93b8cc584974",
       "e6d5f62fc6a259793c03"

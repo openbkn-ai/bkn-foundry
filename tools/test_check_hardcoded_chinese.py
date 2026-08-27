@@ -24,7 +24,13 @@ class TestHardcodedChineseCheck(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary_directory:
             root = Path(temporary_directory)
             files = {
-                "service/main.go": 'package service\nvar message = "请求失败"\n// 中文注释\n',
+                "service/main.go": (
+                    'package service\n'
+                    'var message = "请求失败"\n'
+                    'var separator = "、"\n'
+                    'var punctuation = "，"\n'
+                    '// 中文注释\n'
+                ),
                 "worker/main.py": (
                     '"""中文模块说明。"""\n'
                     'message = f"任务{task_id}失败"\n'
@@ -34,7 +40,9 @@ class TestHardcodedChineseCheck(unittest.TestCase):
                     '    return "完成"\n'
                 ),
                 "web/page.tsx": 'export const Page = () => <div title="标题">正文</div>\n// 中文注释\n',
-                "web/index.html": '<main aria-label="首页">欢迎</main><!-- 中文注释 -->\n',
+                "web/index.html": '<main aria-label="Home">Welcome</main>\n<!-- 中文注释 -->\n',
+                "web/component.vue": '<template>Welcome</template>\n<!-- 中文注释 -->\n',
+                "web/component.svelte": '<main>Welcome</main>\n<!-- 中文注释 -->\n',
             }
             for path, content in files.items():
                 target = root / path
@@ -47,7 +55,8 @@ class TestHardcodedChineseCheck(unittest.TestCase):
             [(finding.path, finding.line) for finding in findings],
             [
                 ("service/main.go", 2),
-                ("web/index.html", 1),
+                ("service/main.go", 3),
+                ("service/main.go", 4),
                 ("web/page.tsx", 1),
                 ("worker/main.py", 2),
                 ("worker/main.py", 6),

@@ -81,7 +81,10 @@ EXCLUDED_PATHS = (
     "infra/sandbox/sandbox_control_plane/src/infrastructure/persistence/seed/**",
 )
 
-CJK = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+# Include Chinese characters as well as CJK and full-width punctuation.  Product
+# copy often uses a punctuation-only separator or terminator (for example
+# "、" or "。"), which must be subject to the same baseline ratchet.
+CJK = re.compile(r"[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]")
 
 
 @dataclass(frozen=True)
