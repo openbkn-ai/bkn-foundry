@@ -63,6 +63,7 @@ type Resource struct {
 
 	Category string `json:"category"` // Resource category: table/file/fileset/...
 
+	Enabled            bool   `json:"enabled"`
 	Status             string `json:"status"`               // Status: active/stale/disabled
 	StatusMessage      string `json:"status_message"`       // Status message
 	LastDiscoverStatus string `json:"last_discover_status"` // The latest scan observation status
@@ -106,6 +107,7 @@ type ResourceSummary struct {
 
 	Category string `json:"category"`
 
+	Enabled            bool   `json:"enabled"`
 	Status             string `json:"status"`
 	StatusMessage      string `json:"status_message"`
 	LastDiscoverStatus string `json:"last_discover_status"`
@@ -182,7 +184,8 @@ type ResourceRequest struct {
 
 	Category string `json:"category"`
 
-	Status string `json:"status"`
+	Enabled bool   `json:"enabled"`
+	Status  string `json:"status"`
 
 	Schema           string         `json:"schema,omitempty"`            // The schema to which it belongs is written by the discovery process
 	SourceIdentifier string         `json:"source_identifier"`           // Source identifier (original table name/path)

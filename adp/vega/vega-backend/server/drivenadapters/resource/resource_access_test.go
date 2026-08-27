@@ -12,6 +12,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -27,7 +28,7 @@ func TestResourceAccessCreate(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_status,f_status_message,f_last_discover_status,f_schema,f_source_identifier,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_status,f_local_index_name,f_sync_mark,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_resource (f_id,f_catalog_id,f_name,f_tags,f_description,f_category,f_enabled,f_status,f_status_message,f_last_discover_status,f_schema,f_source_identifier,f_source_metadata,f_schema_definition,f_index_config,f_logic_type,f_logic_definition,f_local_status,f_local_index_name,f_sync_mark,f_creator,f_creator_type,f_create_time,f_updater,f_updater_type,f_update_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")).
 			WithArgs(
 				"resource-1",
 				"catalog-1",
@@ -35,6 +36,7 @@ func TestResourceAccessCreate(t *testing.T) {
 				`"pii","core"`,
 				"desc",
 				interfaces.ResourceCategoryTable,
+				true,
 				interfaces.ResourceStatusActive,
 				"ready",
 				interfaces.DiscoverStatusNew,
@@ -780,6 +782,7 @@ func sampleResource() *interfaces.Resource {
 		Tags:               []string{"pii", "core"},
 		Description:        "desc",
 		Category:           interfaces.ResourceCategoryTable,
+		Enabled:            true,
 		Status:             interfaces.ResourceStatusActive,
 		StatusMessage:      "ready",
 		LastDiscoverStatus: interfaces.DiscoverStatusNew,
@@ -869,12 +872,12 @@ func resourceNameRowValues(resource *interfaces.Resource) []driver.Value {
 }
 
 func resourceNameSelectSQL(where string) string {
-	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_local_status, f_local_index_name, f_sync_mark, f_logic_type, f_logic_definition, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE " + where
+	return "SELECT " + strings.Join(resourceColumns, ", ") + " FROM t_resource WHERE " + where
 }
 
 func resourceSummaryRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
-		"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_status", "f_status_message", "f_last_discover_status",
+		"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_enabled", "f_status", "f_status_message", "f_last_discover_status",
 		"f_schema", "f_source_identifier", "f_source_metadata", "f_schema_definition", "f_local_status", "f_local_index_name", "f_sync_mark", "f_logic_type",
 		"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
 	})
@@ -883,18 +886,18 @@ func resourceSummaryRows() *sqlmock.Rows {
 func resourceSummaryRowValues(resource *interfaces.Resource) []driver.Value {
 	return []driver.Value{
 		resource.ID, resource.CatalogID, resource.Name, "", resource.Description,
-		resource.Category, resource.Status, resource.StatusMessage, resource.LastDiscoverStatus, resource.Schema, resource.SourceIdentifier,
+		resource.Category, resource.Enabled, resource.Status, resource.StatusMessage, resource.LastDiscoverStatus, resource.Schema, resource.SourceIdentifier,
 		`{"properties":{"row_count":42}}`, `[{"name":"id"}]`, resource.LocalIndexStatus, resource.LocalIndexName, resource.SyncMark, resource.LogicType,
 		resource.Creator.ID, resource.Creator.Type, resource.CreateTime, resource.Updater.ID, resource.Updater.Type, resource.UpdateTime,
 	}
 }
 
 func resourceSummarySelectSQL(where string) string {
-	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_local_status, f_local_index_name, f_sync_mark, f_logic_type, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE " + where
+	return "SELECT " + strings.Join(resourceSummaryColumns, ", ") + " FROM t_resource WHERE " + where
 }
 
 func resourceSelectSQL(where string) string {
-	return "SELECT f_id, f_catalog_id, f_name, f_tags, f_description, f_category, f_status, f_status_message, f_last_discover_status, f_schema, f_source_identifier, f_source_metadata, f_schema_definition, f_index_config, f_local_status, f_local_index_name, f_sync_mark, f_logic_type, f_logic_definition, f_creator, f_creator_type, f_create_time, f_updater, f_updater_type, f_update_time FROM t_resource WHERE " + where
+	return "SELECT " + strings.Join(resourceColumns, ", ") + " FROM t_resource WHERE " + where
 }
 
 func resourceRows() *sqlmock.Rows {
@@ -905,6 +908,7 @@ func resourceRows() *sqlmock.Rows {
 		"f_tags",
 		"f_description",
 		"f_category",
+		"f_enabled",
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
@@ -935,6 +939,7 @@ func resourceRowValues(resource *interfaces.Resource) []driver.Value {
 		"pii,core",
 		resource.Description,
 		resource.Category,
+		resource.Enabled,
 		resource.Status,
 		resource.StatusMessage,
 		resource.LastDiscoverStatus,

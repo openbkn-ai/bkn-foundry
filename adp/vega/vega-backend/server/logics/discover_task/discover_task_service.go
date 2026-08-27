@@ -101,17 +101,20 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	}
 
 	now := time.Now().UnixMilli()
+	queuePriority := DiscoverTaskPriority(req)
 	task := &interfaces.DiscoverTask{
-		ID:          xid.New().String(),
-		CatalogID:   req.CatalogID,
-		ScheduleID:  req.ScheduleID,
-		Strategy:    req.Strategy,
-		TriggerType: req.TriggerType,
-		Status:      interfaces.DiscoverTaskStatusPending,
-		Progress:    0,
-		Message:     "",
-		Creator:     accountInfo,
-		CreateTime:  now,
+		ID:            xid.New().String(),
+		CatalogID:     req.CatalogID,
+		ResourceID:    req.ResourceID,
+		ScheduleID:    req.ScheduleID,
+		Strategy:      req.Strategy,
+		TriggerType:   req.TriggerType,
+		QueuePriority: queuePriority,
+		Status:        interfaces.DiscoverTaskStatusPending,
+		Progress:      0,
+		Message:       "",
+		Creator:       accountInfo,
+		CreateTime:    now,
 	}
 
 	// 1. Write to database
@@ -123,6 +126,16 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	dts.RequestDispatch()
 
 	return task.ID, nil
+}
+
+func DiscoverTaskPriority(req *interfaces.CreateDiscoverTaskRequest) int {
+	if req.ResourceID != "" {
+		return interfaces.DiscoverTaskQueuePriorityHigh
+	}
+	if req.TriggerType == interfaces.DiscoverTaskTriggerScheduled {
+		return interfaces.DiscoverTaskQueuePriorityLow
+	}
+	return interfaces.DiscoverTaskQueuePriorityNormal
 }
 
 // CreateScheduled method removed - scheduled tasks are now managed by DiscoverScheduleService

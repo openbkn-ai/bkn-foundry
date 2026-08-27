@@ -49,9 +49,11 @@ func discoverTaskColumns() []string {
 	return []string{
 		"f_id",
 		"f_catalog_id",
+		"f_resource_id",
 		"f_schedule_id",
 		"f_strategy",
 		"f_trigger_type",
+		"f_queue_priority",
 		"f_status",
 		"f_progress",
 		"f_message",
@@ -65,15 +67,17 @@ func discoverTaskColumns() []string {
 	}
 }
 
-// discoverTaskListColumns excludes execution messages. It retains result JSON
+// discoverTaskSummaryColumns excludes execution messages. It retains result JSON
 // only to extract the compact counters required by list consumers.
-func discoverTaskListColumns() []string {
+func discoverTaskSummaryColumns() []string {
 	return []string{
 		"f_id",
 		"f_catalog_id",
+		"f_resource_id",
 		"f_schedule_id",
 		"f_strategy",
 		"f_trigger_type",
+		"f_queue_priority",
 		"f_status",
 		"f_progress",
 		"f_start_time",
@@ -93,9 +97,11 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 	err := scanner.Scan(
 		&task.ID,
 		&task.CatalogID,
+		&task.ResourceID,
 		&task.ScheduleID,
 		&task.Strategy,
 		&task.TriggerType,
+		&task.QueuePriority,
 		&task.Status,
 		&task.Progress,
 		&task.Message,
@@ -119,16 +125,18 @@ func scanDiscoverTask(scanner discoverTaskScanner) (*interfaces.DiscoverTask, er
 	return task, nil
 }
 
-func scanDiscoverTaskListItem(scanner discoverTaskScanner) (*interfaces.DiscoverTaskSummary, error) {
+func scanDiscoverTaskSummary(scanner discoverTaskScanner) (*interfaces.DiscoverTaskSummary, error) {
 	task := &interfaces.DiscoverTaskSummary{}
 	var resultStr sql.NullString
 
 	err := scanner.Scan(
 		&task.ID,
 		&task.CatalogID,
+		&task.ResourceID,
 		&task.ScheduleID,
 		&task.Strategy,
 		&task.TriggerType,
+		&task.QueuePriority,
 		&task.Status,
 		&task.Progress,
 		&task.StartTime,
@@ -220,9 +228,11 @@ func (dta *discoverTaskAccess) Create(ctx context.Context, task *interfaces.Disc
 		Values(
 			task.ID,
 			task.CatalogID,
+			task.ResourceID,
 			task.ScheduleID,
 			task.Strategy,
 			task.TriggerType,
+			task.QueuePriority,
 			task.Status,
 			task.Progress,
 			task.Message,
@@ -316,7 +326,8 @@ func (dta *discoverTaskAccess) InternalList(ctx context.Context, params interfac
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal discover tasks")
 	defer span.End()
 
-	builder := sq.Select(discoverTaskListColumns()...).From(DISCOVER_TASK_TABLE_NAME)
+	builder := sq.Select(discoverTaskSummaryColumns()...).
+		From(DISCOVER_TASK_TABLE_NAME)
 	builder = applyDiscoverTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
@@ -338,7 +349,7 @@ func (dta *discoverTaskAccess) InternalList(ctx context.Context, params interfac
 
 	tasks := make([]*interfaces.DiscoverTaskSummary, 0)
 	for rows.Next() {
-		task, err := scanDiscoverTaskListItem(rows)
+		task, err := scanDiscoverTaskSummary(rows)
 		if err != nil {
 			span.SetStatus(codes.Error, "Scan row failed")
 			return nil, err

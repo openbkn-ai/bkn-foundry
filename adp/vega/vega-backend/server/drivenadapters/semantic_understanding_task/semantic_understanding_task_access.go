@@ -68,9 +68,9 @@ func semanticUnderstandingTaskColumns() []string {
 	}
 }
 
-// semanticUnderstandingTaskListColumns excludes task payloads and execution
+// semanticUnderstandingTaskSummaryColumns excludes task payloads and execution
 // details, which are only needed by the single-task detail API.
-func semanticUnderstandingTaskListColumns() []string {
+func semanticUnderstandingTaskSummaryColumns() []string {
 	return []string{
 		"f_id",
 		"f_scope",
@@ -123,7 +123,7 @@ func scanSemanticUnderstandingTask(scanner semanticUnderstandingTaskScanner) (*i
 	return task, nil
 }
 
-func scanSemanticUnderstandingTaskListItem(scanner semanticUnderstandingTaskScanner) (*interfaces.SemanticUnderstandingTaskSummary, error) {
+func scanSemanticUnderstandingTaskSummary(scanner semanticUnderstandingTaskScanner) (*interfaces.SemanticUnderstandingTaskSummary, error) {
 	task := &interfaces.SemanticUnderstandingTaskSummary{}
 	err := scanner.Scan(
 		&task.ID,
@@ -334,7 +334,8 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "List internal semantic understanding tasks")
 	defer span.End()
 
-	builder := sq.Select(semanticUnderstandingTaskListColumns()...).From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
+	builder := sq.Select(semanticUnderstandingTaskSummaryColumns()...).
+		From(SEMANTIC_UNDERSTANDING_TASK_TABLE_NAME)
 	builder = applySemanticUnderstandingTaskFilters(builder, params).
 		OrderBy(buildOrderByClause(params.Sort, params.Direction))
 	if params.Limit > 0 {
@@ -356,7 +357,7 @@ func (suta *semanticUnderstandingTaskAccess) InternalList(ctx context.Context,
 
 	tasks := []*interfaces.SemanticUnderstandingTaskSummary{}
 	for rows.Next() {
-		task, err := scanSemanticUnderstandingTaskListItem(rows)
+		task, err := scanSemanticUnderstandingTaskSummary(rows)
 		if err != nil {
 			otellog.LogError(ctx, "Scan semantic understanding task row failed", err)
 			return nil, err

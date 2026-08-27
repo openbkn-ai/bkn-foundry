@@ -23,6 +23,10 @@ const (
 	DiscoverTaskSortStartTime        string = "start_time"
 	DiscoverTaskSortFinishTime       string = "finish_time"
 	DiscoverTaskSortLastProgressTime string = "last_progress_time"
+
+	DiscoverTaskQueuePriorityLow    = 10
+	DiscoverTaskQueuePriorityNormal = 20
+	DiscoverTaskQueuePriorityHigh   = 30
 )
 
 var (
@@ -48,12 +52,14 @@ type DiscoverResult struct {
 
 // DiscoverTask represents a discover task entity.
 type DiscoverTask struct {
-	ID          string `json:"id"`
-	CatalogID   string `json:"catalog_id"`
-	CatalogName string `json:"catalog_name,omitempty"`
-	ScheduleID  string `json:"schedule_id"`
-	Strategy    string `json:"strategy"`     // Discover strategy: full_sync/create_only/cleanup_only
-	TriggerType string `json:"trigger_type"` // manual/scheduled
+	ID            string `json:"id"`
+	CatalogID     string `json:"catalog_id"`
+	ResourceID    string `json:"resource_id,omitempty"`
+	CatalogName   string `json:"catalog_name,omitempty"`
+	ScheduleID    string `json:"schedule_id"`
+	Strategy      string `json:"strategy"`     // Discover strategy: full_sync/create_only/cleanup_only
+	TriggerType   string `json:"trigger_type"` // manual/scheduled
+	QueuePriority int    `json:"queue_priority"`
 
 	Status           string          `json:"status"`   // pending/running/completed/failed/cancelled
 	Progress         int             `json:"progress"` // 0-100
@@ -73,12 +79,14 @@ type DiscoverTask struct {
 // DiscoverTaskSummary is the lightweight representation returned by list APIs.
 // The full task result and its execution message are available from GetByID.
 type DiscoverTaskSummary struct {
-	ID          string `json:"id"`
-	CatalogID   string `json:"catalog_id"`
-	CatalogName string `json:"catalog_name,omitempty"`
-	ScheduleID  string `json:"schedule_id"`
-	Strategy    string `json:"strategy"`
-	TriggerType string `json:"trigger_type"`
+	ID            string `json:"id"`
+	CatalogID     string `json:"catalog_id"`
+	ResourceID    string `json:"resource_id,omitempty"`
+	CatalogName   string `json:"catalog_name,omitempty"`
+	ScheduleID    string `json:"schedule_id"`
+	Strategy      string `json:"strategy"`
+	TriggerType   string `json:"trigger_type"`
+	QueuePriority int    `json:"queue_priority"`
 
 	Status           string                     `json:"status"`
 	Progress         int                        `json:"progress"`
@@ -118,6 +126,7 @@ type DiscoverTaskQueryParams struct {
 
 type CreateDiscoverTaskRequest struct {
 	CatalogID   string
+	ResourceID  string
 	TriggerType string
 	ScheduleID  string
 	Strategy    string
