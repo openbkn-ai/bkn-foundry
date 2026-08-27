@@ -69,6 +69,7 @@ func TestReconcileFilesetResources(t *testing.T) {
 				ID:               "r1",
 				SourceIdentifier: "/team/docs",
 				Category:         interfaces.ResourceCategoryFileset,
+				Enabled:          true,
 				Status:           interfaces.ResourceStatusActive,
 			}})
 

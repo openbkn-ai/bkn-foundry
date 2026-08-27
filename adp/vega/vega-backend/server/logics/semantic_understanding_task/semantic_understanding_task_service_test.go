@@ -783,6 +783,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 func sampleSemanticResource() *interfaces.Resource {
 	return &interfaces.Resource{
 		ID:               "resource-1",
+		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Name:             "orders",
 		Category:         interfaces.ResourceCategoryTable,

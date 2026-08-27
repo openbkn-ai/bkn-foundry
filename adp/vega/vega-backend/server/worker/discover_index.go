@@ -173,6 +173,7 @@ func (dtw *DiscoverTaskWorker) createIndexResource(ctx context.Context,
 		Name:             index.Name,
 		Description:      index.Description,
 		Category:         interfaces.ResourceCategoryIndex,
+		Enabled:          true,
 		Status:           interfaces.ResourceStatusActive,
 		SourceIdentifier: index.Name,
 		SourceMetadata: map[string]any{

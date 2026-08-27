@@ -111,6 +111,7 @@ func TestReconcileIndexResources(t *testing.T) {
 				ID:               "r1",
 				SourceIdentifier: "idx-a",
 				Category:         interfaces.ResourceCategoryIndex,
+				Enabled:          true,
 				Status:           interfaces.ResourceStatusActive,
 			}})
 

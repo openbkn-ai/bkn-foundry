@@ -116,8 +116,8 @@ func TestEnsureResourcesQueryable(t *testing.T) {
 
 	t.Run("all active produces no warnings", func(t *testing.T) {
 		ws, err := EnsureResourcesQueryable(ctx, []*interfaces.Resource{
-			{ID: "a", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
-			{ID: "b", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "a", Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "b", Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -129,8 +129,8 @@ func TestEnsureResourcesQueryable(t *testing.T) {
 
 	t.Run("mixed active + deprecated returns deprecated warning", func(t *testing.T) {
 		ws, err := EnsureResourcesQueryable(ctx, []*interfaces.Resource{
-			{ID: "a", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
-			{ID: "b", Name: "n", Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "a", Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "b", Name: "n", Enabled: true, Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)

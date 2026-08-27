@@ -457,7 +457,7 @@ func (rs *resourceService) Create(ctx context.Context, req *interfaces.ResourceR
 		Tags:             req.Tags,
 		Description:      req.Description,
 		Category:         req.Category,
-		Enabled:          true,
+		Enabled:          req.Enabled,
 		Status:           req.Status,
 		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,
@@ -1011,6 +1011,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	resource.Name = req.Name
 	resource.Tags = req.Tags
 	resource.Description = req.Description
+	resource.Enabled = req.Enabled
 
 	// Get account info
 	accountInfo := interfaces.AccountInfo{}
@@ -1357,7 +1358,7 @@ func (rs *resourceService) InternalCreate(ctx context.Context, tx *sql.Tx, req *
 		Tags:             req.Tags,
 		Description:      req.Description,
 		Category:         req.Category,
-		Enabled:          true,
+		Enabled:          req.Enabled,
 		Status:           req.Status,
 		Schema:           req.Schema,
 		SourceIdentifier: req.SourceIdentifier,

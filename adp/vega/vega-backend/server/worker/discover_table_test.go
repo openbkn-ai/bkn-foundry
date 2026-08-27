@@ -87,13 +87,14 @@ func TestReconcileTableResources(t *testing.T) {
 		rs := vmock.NewMockResourceService(ctrl)
 		dh := &DiscoverTaskWorker{rs: rs}
 		rs.EXPECT().UpdateDiscoverStatus(gomock.Any(), "r1", interfaces.DiscoverStatusMissing).Return(nil)
+		rs.EXPECT().UpdateStatus(gomock.Any(), "r1", interfaces.ResourceStatusStale, "").Return(nil)
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 		result, _, err := dh.reconcileTableResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "cat1"}, nil,
 			[]*interfaces.Resource{{ID: "r1", SourceIdentifier: "users", Category: interfaces.ResourceCategoryTable, Enabled: false, Status: interfaces.ResourceStatusActive}})
 
 		require.NoError(t, err)
-		assert.Zero(t, result.StaleCount)
+		assert.Equal(t, 1, result.StaleCount)
 	})
 
 	t.Run("marks restored stale table", func(t *testing.T) {
