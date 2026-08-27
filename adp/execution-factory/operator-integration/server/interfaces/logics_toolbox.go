@@ -327,11 +327,16 @@ type UpdateToolStatusReq struct {
 
 // ExecuteToolReq Execute tool request.
 type ExecuteToolReq struct {
-	UserID            string `header:"user_id" validate:"required"` // User ID, internal use.
-	BoxID             string `uri:"box_id" validate:"required"`
-	ToolID            string `uri:"tool_id" validate:"required"`
-	Timeout           int    `json:"timeout"` // Timeout time in seconds.
-	HTTPRequestParams `json:",inline"`
+	UserID  string `header:"user_id" validate:"required"` // User ID, internal use.
+	BoxID   string `uri:"box_id" validate:"required"`
+	ToolID  string `uri:"tool_id" validate:"required"`
+	Timeout int    `json:"timeout"` // Timeout time in seconds.
+	// Trusted runtime context captured by the public Toolbox handler. These fields are never
+	// deserialized from a Tool body and are only forwarded to internal Function execution.
+	RequestAuthorization string `json:"-"`
+	BKNConversationID    string `json:"-"`
+	BKNInteractionID     string `json:"-"`
+	HTTPRequestParams    `json:",inline"`
 }
 
 // ConvertOperatorToToolReq operator converts tool request.

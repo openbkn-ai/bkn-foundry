@@ -342,17 +342,39 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	case model.SourceTypeFunction:
 		url = fmt.Sprintf("%s%s", metadata.GetServerURL(), metadata.GetPath())
 	}
+	params := req.HTTPRequestParams
+	if tool.SourceType == model.SourceTypeFunction {
+		params = functionRuntimeHeaders(params, req)
+	}
 	proxyReq := &interfaces.HTTPRequest{
 		ClientID: req.ToolID,
 		HTTPRouter: interfaces.HTTPRouter{
 			URL:    url,
 			Method: metadata.GetMethod(),
 		},
-		HTTPRequestParams: req.HTTPRequestParams,
+		HTTPRequestParams: params,
 		Timeout:           time.Duration(req.Timeout) * time.Second,
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
+}
+
+// functionRuntimeHeaders adds server-captured identity and lifecycle headers only when the
+// complete managed context exists. They override body-supplied values, are never reflected in a
+// Function Tool schema, and are not used for non-Function tools.
+func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces.ExecuteToolReq) interfaces.HTTPRequestParams {
+	if req == nil || req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
+		return params
+	}
+	headers := make(map[string]any, len(params.Headers)+3)
+	for key, value := range params.Headers {
+		headers[key] = value
+	}
+	headers["Authorization"] = req.RequestAuthorization
+	headers["bkn-conversation-id"] = req.BKNConversationID
+	headers["bkn-interaction-id"] = req.BKNInteractionID
+	params.Headers = headers
+	return params
 }
 
 func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {

@@ -624,6 +624,14 @@ func (h *toolBoxHandler) ExecuteTool(c *gin.Context) {
 		rest.ReplyError(c, err)
 		return
 	}
+	// These fields are server-owned transport context. Do not accept equivalent values from the
+	// Tool body: a Function may use them to read BKN as the authenticated caller.
+	req.RequestAuthorization = c.GetHeader("Authorization")
+	if req.RequestAuthorization == "" {
+		req.RequestAuthorization = c.GetHeader("X-Authorization")
+	}
+	req.BKNConversationID = c.GetHeader("bkn-conversation-id")
+	req.BKNInteractionID = c.GetHeader("bkn-interaction-id")
 	resp, err := h.ToolService.ExecuteTool(c.Request.Context(), req)
 	rest.ReplyWithExecutionMode(c, resp, err)
 }

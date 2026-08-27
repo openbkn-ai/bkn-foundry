@@ -141,6 +141,40 @@ func TestDebugTool_ForwardsAllRequestParams(t *testing.T) {
 	})
 }
 
+func TestFunctionRuntimeHeadersUseTrustedRequestContextOnly(t *testing.T) {
+	Convey("Function tools receive the authenticated caller and managed Interaction as internal proxy headers", t, func() {
+		req := &interfaces.ExecuteToolReq{
+			HTTPRequestParams: interfaces.HTTPRequestParams{
+				Headers: map[string]any{
+					"Authorization":       "Bearer caller-controlled",
+					"bkn-conversation-id": "caller-controlled",
+				},
+			},
+			RequestAuthorization: "Bearer trusted-token",
+			BKNConversationID:    "conv_trusted",
+			BKNInteractionID:     "int_trusted",
+		}
+
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req)
+
+		So(params.Headers["Authorization"], ShouldEqual, "Bearer trusted-token")
+		So(params.Headers["bkn-conversation-id"], ShouldEqual, "conv_trusted")
+		So(params.Headers["bkn-interaction-id"], ShouldEqual, "int_trusted")
+		So(req.Headers["Authorization"], ShouldEqual, "Bearer caller-controlled")
+	})
+
+	Convey("Incomplete managed context does not forward a credential to Function execution", t, func() {
+		req := &interfaces.ExecuteToolReq{
+			RequestAuthorization: "Bearer trusted-token",
+			BKNConversationID:    "conv_only",
+		}
+
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req)
+
+		So(params.Headers, ShouldBeNil)
+	})
+}
+
 // TestDebugTool_NoParamsToolSendsEmptyEnvelope verifies that path/query/header will not be created out of thin air when debugging the tool without input parameters (#216 backend side of acceptance criterion 8).
 func TestDebugTool_NoParamsToolSendsEmptyEnvelope(t *testing.T) {
 	Convey("无入参工具调试只发空信封", t, func() {
