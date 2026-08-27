@@ -36,7 +36,6 @@ var (
 		DiscoverTaskSortStartTime:        "",
 		DiscoverTaskSortFinishTime:       "",
 		DiscoverTaskSortLastProgressTime: "",
-		DiscoverTaskSortQueuePriority:    "",
 	}
 )
 

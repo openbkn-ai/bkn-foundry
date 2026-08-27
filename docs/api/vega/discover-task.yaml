@@ -5,17 +5,22 @@ info:
   description: |
     Vega Backend 资源发现任务（DiscoverTask）相关 API。
 
-    DiscoverTask 是**执行审计记录**，由两条路径产生：
+    DiscoverTask 是**执行审计记录**，由三条路径产生：
 
     - 手动触发：`POST /catalogs/{id}/discover`（动作端点，本规范末尾覆盖）
     - 定时触发：worker 内部由 `DiscoverSchedule`（见 [discover-schedule.yaml](discover-schedule.yaml)）按 cron 触发
+    - 资源刷新：`POST /resources/{id}/discover`（见 [resource.yaml](resource.yaml)）
+
+    `queue_priority` 是服务端计算的只读队列优先级：定时 catalog 任务为低（10）、
+    手动 catalog 任务为普通（20）、资源刷新任务为高（30）。worker 严格按优先级取任务，
+    同一 catalog 内串行执行。
 
     状态机（`pending → running → completed/failed/cancelled`）由 worker 单向推进；
     用户不能 cancel / retry / restart。对外仅暴露 list / get / delete 三类只读 + 清理操作。
 
     端点设计遵循 [vega-backend/CLAUDE.md] 的"端点设计规则"：批量删除走 path
     （`DELETE /discover-tasks/{ids}`，逗号分隔），按父资源过滤一律走 query
-    （如 `GET /discover-tasks?catalog_id=` / `?schedule_id=`），不提供嵌套列表视图。
+    （如 `GET /discover-tasks?catalog_id=` / `?schedule_id=` / `?resource_id=`），不提供嵌套列表视图。
   version: 0.1.0
 servers:
   - url: /api/vega-backend/v1
@@ -25,10 +30,16 @@ paths:
   /discover-tasks:
     get:
       summary: 获取发现任务列表
-      description: 分页获取发现任务；支持按 catalog_id / schedule_id / status / strategy / trigger_type 过滤。
+      description: 分页获取发现任务；支持按 catalog_id / resource_id / schedule_id / status / strategy / trigger_type 过滤。
       parameters:
         - name: catalog_id
           description: 按归属 catalog 过滤
+          in: query
+          schema:
+            type: string
+        - name: resource_id
+          description: |
+            按被刷新的 Resource 过滤。非空时仅匹配资源刷新任务；catalog 发现任务该字段为空。
           in: query
           schema:
             type: string
@@ -311,6 +322,7 @@ components:
         - schedule_id
         - strategy
         - trigger_type
+        - queue_priority
         - status
         - progress
         - message
@@ -322,6 +334,9 @@ components:
           type: string
         catalog_id:
           description: 关联 catalog ID
+          type: string
+        resource_id:
+          description: 被刷新的 Resource ID；catalog 发现任务不返回该字段
           type: string
         catalog_name:
           description: 关联 catalog 名称
@@ -343,6 +358,13 @@ components:
           enum:
             - manual
             - scheduled
+        queue_priority:
+          description: |
+            服务端计算的只读队列优先级：低=10（scheduled）、普通=20（手动 catalog）、
+            高=30（resource refresh）。数值越大优先级越高。
+          type: integer
+          enum: [10, 20, 30]
+          readOnly: true
         status:
           description: 状态
           type: string
@@ -394,10 +416,13 @@ components:
     DiscoverTaskSummary:
       description: 发现任务列表摘要；完整执行结果及其 message 请调用单条详情接口获取。
       type: object
-      required: [id, catalog_id, schedule_id, strategy, trigger_type, status, progress, creator, create_time]
+      required: [id, catalog_id, schedule_id, strategy, trigger_type, queue_priority, status, progress, creator, create_time]
       properties:
         id: { type: string }
         catalog_id: { type: string }
+        resource_id:
+          description: 被刷新的 Resource ID；catalog 发现任务不返回该字段
+          type: string
         catalog_name: { type: string }
         schedule_id: { type: string }
         strategy:
@@ -406,6 +431,11 @@ components:
         trigger_type:
           type: string
           enum: [manual, scheduled]
+        queue_priority:
+          description: 服务端计算的只读队列优先级；低=10、普通=20、高=30，数值越大优先级越高
+          type: integer
+          enum: [10, 20, 30]
+          readOnly: true
         status:
           type: string
           enum: [pending, running, completed, failed, cancelled]

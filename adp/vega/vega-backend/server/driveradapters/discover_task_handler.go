@@ -64,6 +64,7 @@ func parseDiscoverTaskListParams(ctx context.Context, c *gin.Context) (interface
 	params = interfaces.DiscoverTaskQueryParams{
 		PaginationQueryParams: pageParam,
 		CatalogID:             c.Query("catalog_id"),
+		ResourceID:            c.Query("resource_id"),
 		ScheduleID:            c.Query("schedule_id"),
 		Statuses:              statuses,
 		Strategy:              strategy,
