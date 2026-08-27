@@ -30,14 +30,15 @@ const (
 	VegaBackend_Resource_CatalogNotFound = "VegaBackend.Resource.CatalogNotFound"
 
 	// 409 Conflict (Naming Conflict/State Conflict)
-	VegaBackend_Resource_NameExists          = "VegaBackend.Resource.NameExists"
-	VegaBackend_Resource_IDExists            = "VegaBackend.Resource.IDExists"
-	VegaBackend_Resource_IsDisabled          = "VegaBackend.Resource.IsDisabled"
-	VegaBackend_Resource_AlreadyEnabled      = "VegaBackend.Resource.AlreadyEnabled"
-	VegaBackend_Resource_AlreadyDisabled     = "VegaBackend.Resource.AlreadyDisabled"
-	VegaBackend_Resource_NotQueryable        = "VegaBackend.Resource.NotQueryable"
-	VegaBackend_Resource_MetadataUnavailable = "VegaBackend.Resource.MetadataUnavailable"
-	VegaBackend_Resource_UpdateConflict      = "VegaBackend.Resource.UpdateConflict"
+	VegaBackend_Resource_NameExists             = "VegaBackend.Resource.NameExists"
+	VegaBackend_Resource_IDExists               = "VegaBackend.Resource.IDExists"
+	VegaBackend_Resource_IsDisabled             = "VegaBackend.Resource.IsDisabled"
+	VegaBackend_Resource_AlreadyEnabled         = "VegaBackend.Resource.AlreadyEnabled"
+	VegaBackend_Resource_AlreadyDisabled        = "VegaBackend.Resource.AlreadyDisabled"
+	VegaBackend_Resource_NotQueryable           = "VegaBackend.Resource.NotQueryable"
+	VegaBackend_Resource_MetadataUnavailable    = "VegaBackend.Resource.MetadataUnavailable"
+	VegaBackend_Resource_EnabledFieldNotAllowed = "VegaBackend.Resource.EnabledFieldNotAllowed"
+	VegaBackend_Resource_UpdateConflict         = "VegaBackend.Resource.UpdateConflict"
 
 	// 500 Internal Server Error
 	VegaBackend_Resource_InternalError                       = "VegaBackend.Resource.InternalError"
@@ -79,6 +80,7 @@ var ResourceErrCodeList = []string{
 	VegaBackend_Resource_AlreadyDisabled,
 	VegaBackend_Resource_NotQueryable,
 	VegaBackend_Resource_MetadataUnavailable,
+	VegaBackend_Resource_EnabledFieldNotAllowed,
 	VegaBackend_Resource_UpdateConflict,
 
 	// 500 Internal Server Error

@@ -368,6 +368,20 @@ func (mr *MockResourceServiceMockRecorder) ListAuthResources(ctx, params any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListAuthResources", reflect.TypeOf((*MockResourceService)(nil).ListAuthResources), ctx, params)
 }
 
+// SetEnabled mocks base method.
+func (m *MockResourceService) SetEnabled(ctx context.Context, resource *interfaces.Resource, enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetEnabled", ctx, resource, enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetEnabled indicates an expected call of SetEnabled.
+func (mr *MockResourceServiceMockRecorder) SetEnabled(ctx, resource, enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetEnabled", reflect.TypeOf((*MockResourceService)(nil).SetEnabled), ctx, resource, enabled)
+}
+
 // Update mocks base method.
 func (m *MockResourceService) Update(ctx context.Context, resource *interfaces.Resource, req *interfaces.ResourceRequest) error {
 	m.ctrl.T.Helper()

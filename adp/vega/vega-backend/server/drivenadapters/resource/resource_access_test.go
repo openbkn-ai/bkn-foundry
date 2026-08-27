@@ -667,6 +667,20 @@ func TestResourceAccessListAuthResources(t *testing.T) {
 	})
 }
 
+func TestResourceAccessUpdateEnabled(t *testing.T) {
+	access, mock, cleanup := newResourceAccessMock(t)
+	defer cleanup()
+
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_enabled = ?, f_updater = ?, f_updater_type = ?, f_update_time = ? WHERE f_id = ?")).
+		WithArgs(false, "u1", interfaces.ACCESSOR_TYPE_USER, int64(42), "resource-1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	err := access.UpdateEnabled(context.Background(), "resource-1", false, 42,
+		interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER})
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestResourceAccessUpdateStatus(t *testing.T) {
 	t.Run("updates status", func(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)

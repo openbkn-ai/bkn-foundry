@@ -235,6 +235,7 @@ paths:
 
         - `name` 在 catalog 内唯一；改名为已占用值返回 409 `VegaBackend.Resource.NameExists`。
         - `catalog_id` 和 `category` 不可修改，与当前 Resource 不一致时返回 400。
+        - PUT 中的 `enabled` 不可修改；请使用 `POST /resources/{id}/enable` 或 `/disable`。
         - PUT 中的 `status`、`schema`、`source_identifier`、`source_metadata` 由内部流程管理；即使携带也会被忽略。
         - 必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
           `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
@@ -299,6 +300,50 @@ paths:
             application/json:
               schema:
                 $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /resources/{id}/enable:
+    parameters:
+      - name: id
+        description: Resource ID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: 启用资源
+      description: |
+        仅将 Resource 的 `enabled` 设为 `true`，不改变 `status`、`last_discover_status`
+        或任何发现元数据。已启用时幂等返回 204。
+      responses:
+        "204":
+          description: 已启用或原本已启用
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /resources/{id}/disable:
+    parameters:
+      - name: id
+        description: Resource ID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: 禁用资源
+      description: |
+        仅将 Resource 的 `enabled` 设为 `false`，不改变 `status`、`last_discover_status`
+        或任何发现元数据。已禁用时幂等返回 204。
+      responses:
+        "204":
+          description: 已禁用或原本已禁用
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -687,8 +732,8 @@ components:
             - dataset
         enabled:
           description: |
-            是否允许该资源用于查询或构建。创建时省略默认 `true`；更新时按请求值修改。
-            与 `status` 独立。
+            是否允许该资源用于查询或构建。创建时省略默认 `true`；PUT 时该值必须与当前值一致，
+            启停请使用 `/enable` 或 `/disable`。与 `status` 独立。
           type: boolean
           default: true
         status:

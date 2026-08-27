@@ -29,6 +29,8 @@ type ResourceService interface {
 	List(ctx context.Context, params ResourcesQueryParams) ([]*ResourceSummary, int64, error)
 	// Update updates a Resource.
 	Update(ctx context.Context, resource *Resource, req *ResourceRequest) error
+	// SetEnabled enables or disables a Resource without changing its discovery status or metadata.
+	SetEnabled(ctx context.Context, resource *Resource, enabled bool) error
 	// UpdateStatus updates a Resource's status.
 	UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error
 	// UpdateDiscoverStatus updates a Resource's last discover status.

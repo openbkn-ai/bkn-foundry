@@ -725,6 +725,33 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 	return rowsAffected, nil
 }
 
+// UpdateEnabled updates only a Resource's enabled state and audit fields.
+func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64,
+	updater interfaces.AccountInfo) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource enabled")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("resource_id").String(id), attr.Key("enabled").Bool(enabled))
+	sqlStr, vals, err := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_enabled", enabled).
+		Set("f_updater", updater.ID).
+		Set("f_updater_type", updater.Type).
+		Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": id}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // UpdateLocalIndexName updates only the local index name so asynchronous build
 // completion cannot overwrite metadata changed after the build task started.
 func (ra *resourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error {

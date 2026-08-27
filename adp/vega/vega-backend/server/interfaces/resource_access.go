@@ -35,6 +35,8 @@ type ResourceAccess interface {
 	ListPermissionRefs(ctx context.Context, params ResourcesQueryParams) ([]ResourcePermissionRef, error)
 	// Update updates a Resource.
 	Update(ctx context.Context, tx *sql.Tx, resource *Resource, expectedUpdateTime int64) (int64, error)
+	// UpdateEnabled updates only a Resource's enabled state and audit fields.
+	UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64, updater AccountInfo) error
 	// UpdateLocalIndexName updates only a Resource's local index name.
 	UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error
 	// UpdateLocalIndexState atomically updates Resource-owned index state.

@@ -1071,6 +1071,40 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 	return nil
 }
 
+// SetEnabled changes only a Resource's enabled state.
+func (rs *resourceService) SetEnabled(ctx context.Context, resource *interfaces.Resource, enabled bool) error {
+	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Set resource enabled")
+	defer span.End()
+
+	if resource == nil {
+		span.SetStatus(codes.Error, "Resource not found")
+		return rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+	}
+	internalCatalogs, err := rs.cs.InternalCatalogIDSet(ctx)
+	if err != nil {
+		span.SetStatus(codes.Error, "List internal catalog IDs failed")
+		return err
+	}
+	_, parentInternal := internalCatalogs[resource.CatalogID]
+	if err = rs.checkResourceOrCatalog(ctx, resource.ID, resource.CatalogID,
+		parentInternal, interfaces.OPERATION_TYPE_MODIFY); err != nil {
+		return err
+	}
+
+	accountInfo := interfaces.AccountInfo{}
+	if v := ctx.Value(interfaces.ACCOUNT_INFO_KEY); v != nil {
+		accountInfo = v.(interfaces.AccountInfo)
+	}
+	if err = rs.ra.UpdateEnabled(ctx, resource.ID, enabled, time.Now().UnixMilli(), accountInfo); err != nil {
+		span.SetStatus(codes.Error, "Set resource enabled failed")
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_Resource_InternalError_UpdateFailed).WithErrorDetails(err.Error())
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
+}
+
 // UpdateStatus updates a Resource's status.
 func (rs *resourceService) UpdateStatus(ctx context.Context, id string, status string, statusMessage string) error {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "Update resource status")

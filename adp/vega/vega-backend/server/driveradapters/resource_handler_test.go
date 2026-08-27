@@ -123,6 +123,60 @@ func Test_ResourceRestHandler_ListResources(t *testing.T) {
 	})
 }
 
+func Test_ResourceRestHandler_SetResourceEnabled(t *testing.T) {
+	restoreGinMode := setGinMode()
+	defer restoreGinMode()
+
+	setup := func(t *testing.T) (*gin.Engine, *vmock.MockResourceService) {
+		t.Helper()
+
+		engine := gin.New()
+		engine.Use(gin.Recovery())
+		mockCtrl := gomock.NewController(t)
+		t.Cleanup(mockCtrl.Finish)
+
+		rs := vmock.NewMockResourceService(mockCtrl)
+		handler := MockNewRestHandler(&common.AppSetting{}, nil, nil, rs, nil, nil, nil, nil, nil, nil)
+		handler.RegisterPublic(engine)
+		return engine, rs
+	}
+
+	t.Run("enables disabled resource without changing discovery state", func(t *testing.T) {
+		engine, rs := setup(t)
+		resource := &interfaces.Resource{
+			ID:                 "res-1",
+			Name:               "orders",
+			Enabled:            false,
+			Status:             interfaces.ResourceStatusStale,
+			LastDiscoverStatus: interfaces.DiscoverStatusMissing,
+		}
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
+		rs.EXPECT().SetEnabled(gomock.Any(), resource, true).Return(nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/enable", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+		assert.False(t, resource.Enabled)
+		assert.Equal(t, interfaces.ResourceStatusStale, resource.Status)
+		assert.Equal(t, interfaces.DiscoverStatusMissing, resource.LastDiscoverStatus)
+	})
+
+	t.Run("disable is idempotent", func(t *testing.T) {
+		engine, rs := setup(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(&interfaces.Resource{
+			ID: "res-1", Name: "orders", Enabled: false,
+		}, nil)
+
+		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/disable", nil)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+}
+
 func Test_ResourceRestHandler_CreateResource(t *testing.T) {
 	restoreGinMode := setGinMode()
 	defer restoreGinMode()
@@ -290,6 +344,22 @@ func Test_ResourceRestHandler_UpdateResource(t *testing.T) {
 		engine.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusNoContent, w.Result().StatusCode)
+	})
+
+	t.Run("rejects enabled change through put", func(t *testing.T) {
+		engine, _, rs := setupResourceHandlerTest(t)
+		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(&interfaces.Resource{
+			ID: "res-1", CatalogID: "catalog-1", Category: interfaces.ResourceCategoryDataset, Enabled: true,
+		}, nil)
+
+		req := httptest.NewRequest(http.MethodPut, url,
+			strings.NewReader(`{"catalog_id":"catalog-1","name":"dataset","category":"dataset","enabled":false}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusConflict, w.Result().StatusCode)
+		assert.Contains(t, w.Body.String(), "VegaBackend.Resource.EnabledFieldNotAllowed")
 	})
 
 	t.Run("rejects missing expected update time", func(t *testing.T) {

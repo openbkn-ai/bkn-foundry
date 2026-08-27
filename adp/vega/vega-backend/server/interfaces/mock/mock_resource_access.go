@@ -279,6 +279,20 @@ func (mr *MockResourceAccessMockRecorder) UpdateDiscoveryMetadata(ctx, tx, resou
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDiscoveryMetadata", reflect.TypeOf((*MockResourceAccess)(nil).UpdateDiscoveryMetadata), ctx, tx, resource, expectedUpdateTime)
 }
 
+// UpdateEnabled mocks base method.
+func (m *MockResourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64, updater interfaces.AccountInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateEnabled", ctx, id, enabled, updateTime, updater)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateEnabled indicates an expected call of UpdateEnabled.
+func (mr *MockResourceAccessMockRecorder) UpdateEnabled(ctx, id, enabled, updateTime, updater any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateEnabled", reflect.TypeOf((*MockResourceAccess)(nil).UpdateEnabled), ctx, id, enabled, updateTime, updater)
+}
+
 // UpdateLocalIndexName mocks base method.
 func (m *MockResourceAccess) UpdateLocalIndexName(ctx context.Context, tx *sql.Tx, id, localIndexName string) error {
 	m.ctrl.T.Helper()
