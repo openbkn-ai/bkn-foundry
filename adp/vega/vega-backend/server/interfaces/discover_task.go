@@ -23,6 +23,7 @@ const (
 	DiscoverTaskSortStartTime        string = "start_time"
 	DiscoverTaskSortFinishTime       string = "finish_time"
 	DiscoverTaskSortLastProgressTime string = "last_progress_time"
+	DiscoverTaskSortQueuePriority    string = "queue_priority"
 
 	DiscoverTaskQueuePriorityLow    = 10
 	DiscoverTaskQueuePriorityNormal = 20
@@ -35,6 +36,7 @@ var (
 		DiscoverTaskSortStartTime:        "",
 		DiscoverTaskSortFinishTime:       "",
 		DiscoverTaskSortLastProgressTime: "",
+		DiscoverTaskSortQueuePriority:    "",
 	}
 )
 

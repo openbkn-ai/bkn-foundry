@@ -113,6 +113,25 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
+	t.Run("internal list orders dispatch candidates by priority then creation time", func(t *testing.T) {
+		access, mock, cleanup := newDiscoverTaskAccessMock(t)
+		defer cleanup()
+
+		params := interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{
+				Limit: 1, Sort: interfaces.DiscoverTaskSortQueuePriority, Direction: interfaces.DESC_DIRECTION,
+			},
+			Statuses: []string{interfaces.DiscoverTaskStatusPending},
+		}
+		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task WHERE f_status IN (?) ORDER BY f_queue_priority DESC, f_create_time ASC LIMIT 1 OFFSET 0").
+			WithArgs(interfaces.DiscoverTaskStatusPending).
+			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "", "", "full_sync", "manual", interfaces.DiscoverTaskQueuePriorityHigh, interfaces.DiscoverTaskStatusPending, 0, int64(0), int64(0), int64(0), "", "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
+
+		_, err := access.InternalList(context.Background(), params)
+		require.NoError(t, err)
+		require.NoError(t, mock.ExpectationsWereMet())
+	})
+
 	t.Run("sorts by last progress time", func(t *testing.T) {
 		access, mock, cleanup := newDiscoverTaskAccessMock(t)
 		defer cleanup()

@@ -180,16 +180,17 @@ func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	worker := &DiscoverTaskWorker{
-		dts:      dts,
-		queue:    make(chan string, 2),
-		inFlight: make(map[string]struct{}),
+		dts:              dts,
+		queue:            make(chan discoverTaskQueueItem, 2),
+		activeTaskIDs:    make(map[string]struct{}),
+		activeCatalogIDs: make(map[string]struct{}),
 	}
 	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).
 		DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
 			assert.Equal(t, 2, params.Limit)
 			assert.Equal(t, []string{interfaces.DiscoverTaskStatusPending}, params.Statuses)
-			assert.Equal(t, interfaces.DiscoverTaskSortCreateTime, params.Sort)
-			assert.Equal(t, interfaces.ASC_DIRECTION, params.Direction)
+			assert.Equal(t, interfaces.DiscoverTaskSortQueuePriority, params.Sort)
+			assert.Equal(t, interfaces.DESC_DIRECTION, params.Direction)
 			return []*interfaces.DiscoverTaskSummary{{ID: "task-1"}}, nil
 		})
 
@@ -197,7 +198,7 @@ func TestDiscoverTaskWorkerFillQueueRefillsEmptyQueue(t *testing.T) {
 	worker.fillQueue(context.Background())
 
 	assert.Len(t, worker.queue, 1)
-	assert.False(t, worker.addInFlight("task-1"))
+	assert.Contains(t, worker.activeTaskIDs, "task-1")
 }
 
 func TestDiscoverTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testing.T) {
@@ -205,14 +206,60 @@ func TestDiscoverTaskWorkerFillQueueSkipsDatabaseWhenQueueIsNotEmpty(t *testing.
 	t.Cleanup(ctrl.Finish)
 	dts := vmock.NewMockDiscoverTaskService(ctrl)
 	worker := &DiscoverTaskWorker{
-		dts:      dts,
-		queue:    make(chan string, 2),
-		inFlight: make(map[string]struct{}),
+		dts:              dts,
+		queue:            make(chan discoverTaskQueueItem, 2),
+		activeTaskIDs:    make(map[string]struct{}),
+		activeCatalogIDs: make(map[string]struct{}),
 	}
-	worker.queue <- "already-queued"
+	worker.queue <- discoverTaskQueueItem{taskID: "already-queued"}
 
 	worker.stopCh = make(chan struct{})
 	worker.fillQueue(context.Background())
+}
+
+func TestDiscoverTaskWorkerReservesOneTaskPerCatalog(t *testing.T) {
+	worker := &DiscoverTaskWorker{
+		activeTaskIDs:    make(map[string]struct{}),
+		activeCatalogIDs: make(map[string]struct{}),
+	}
+
+	assert.True(t, worker.reserveTask(discoverTaskQueueItem{taskID: "task-1", catalogID: "catalog-1"}))
+	assert.False(t, worker.reserveTask(discoverTaskQueueItem{taskID: "task-2", catalogID: "catalog-1"}))
+	assert.True(t, worker.reserveTask(discoverTaskQueueItem{taskID: "task-3", catalogID: "catalog-2"}))
+
+	worker.releaseTask(discoverTaskQueueItem{taskID: "task-1", catalogID: "catalog-1"})
+	assert.True(t, worker.reserveTask(discoverTaskQueueItem{taskID: "task-2", catalogID: "catalog-1"}))
+}
+
+func TestDiscoverTaskWorkerFillQueueSkipsActiveCatalogAndContinuesPaging(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	t.Cleanup(ctrl.Finish)
+	dts := vmock.NewMockDiscoverTaskService(ctrl)
+	worker := &DiscoverTaskWorker{
+		dts:              dts,
+		queue:            make(chan discoverTaskQueueItem, 2),
+		activeTaskIDs:    make(map[string]struct{}),
+		activeCatalogIDs: make(map[string]struct{}),
+		stopCh:           make(chan struct{}),
+	}
+
+	firstPage := dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
+			assert.Equal(t, 0, params.Offset)
+			return []*interfaces.DiscoverTaskSummary{
+				{ID: "task-1", CatalogID: "catalog-1"},
+				{ID: "task-2", CatalogID: "catalog-1"},
+			}, nil
+		})
+	dts.EXPECT().InternalList(gomock.Any(), gomock.Any()).After(firstPage).DoAndReturn(
+		func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
+			assert.Equal(t, 2, params.Offset)
+			return []*interfaces.DiscoverTaskSummary{{ID: "task-3", CatalogID: "catalog-2"}}, nil
+		})
+
+	worker.fillQueue(context.Background())
+	assert.Equal(t, "task-1", (<-worker.queue).taskID)
+	assert.Equal(t, "task-3", (<-worker.queue).taskID)
 }
 
 func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
@@ -222,14 +269,15 @@ func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
 	stopCh := make(chan struct{})
 	worker := &DiscoverTaskWorker{
 		dts: taskService,
-		queue: func() chan string {
-			queue := make(chan string, 2)
-			queue <- "task-1"
-			queue <- "task-2"
+		queue: func() chan discoverTaskQueueItem {
+			queue := make(chan discoverTaskQueueItem, 2)
+			queue <- discoverTaskQueueItem{taskID: "task-1", catalogID: "catalog-1"}
+			queue <- discoverTaskQueueItem{taskID: "task-2", catalogID: "catalog-2"}
 			return queue
 		}(),
-		inFlight: map[string]struct{}{"task-1": {}, "task-2": {}},
-		stopCh:   stopCh,
+		activeTaskIDs:    map[string]struct{}{"task-1": {}, "task-2": {}},
+		activeCatalogIDs: map[string]struct{}{"catalog-1": {}, "catalog-2": {}},
+		stopCh:           stopCh,
 	}
 	taskService.EXPECT().InternalGetByID(gomock.Any(), "task-1").DoAndReturn(
 		func(context.Context, string) (*interfaces.DiscoverTask, error) {
@@ -261,8 +309,8 @@ func TestDiscoverTaskWorkerRecoversTaskPanic(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("discover task worker did not continue after panic")
 	}
-	assert.True(t, worker.addInFlight("task-1"), "panic must not leak the in-flight task ID")
-	assert.True(t, worker.addInFlight("task-2"), "worker must continue and release the next task ID")
+	assert.NotContains(t, worker.activeTaskIDs, "task-1", "panic must not leak active task state")
+	assert.NotContains(t, worker.activeTaskIDs, "task-2", "worker must continue and release active task state")
 }
 
 func TestDiscoverTaskWorkerDoesNotStartQueuedTaskAfterCancellation(t *testing.T) {
@@ -270,9 +318,9 @@ func TestDiscoverTaskWorkerDoesNotStartQueuedTaskAfterCancellation(t *testing.T)
 	t.Cleanup(ctrl.Finish)
 	worker := &DiscoverTaskWorker{
 		dts:   vmock.NewMockDiscoverTaskService(ctrl),
-		queue: make(chan string, 1),
+		queue: make(chan discoverTaskQueueItem, 1),
 	}
-	worker.queue <- "pending-task"
+	worker.queue <- discoverTaskQueueItem{taskID: "pending-task"}
 	stopCh := make(chan struct{})
 	worker.stopped.Store(true)
 	close(stopCh)

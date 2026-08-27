@@ -28,6 +28,11 @@ const (
 	defaultDiscoverWorkerCount = 1
 )
 
+type discoverTaskQueueItem struct {
+	taskID    string
+	catalogID string
+}
+
 // DiscoverTaskWorker handles discover tasks.
 type DiscoverTaskWorker struct {
 	appSetting *common.AppSetting
@@ -36,11 +41,12 @@ type DiscoverTaskWorker struct {
 	dts        interfaces.DiscoverTaskService
 	rs         interfaces.ResourceService
 
-	workerCount int
-	queueSize   int
-	queue       chan string
-	mu          sync.Mutex
-	inFlight    map[string]struct{}
+	workerCount      int
+	queueSize        int
+	queue            chan discoverTaskQueueItem
+	mu               sync.Mutex
+	activeTaskIDs    map[string]struct{}
+	activeCatalogIDs map[string]struct{}
 
 	wg      sync.WaitGroup
 	stopCh  chan struct{}
@@ -61,11 +67,12 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 		dts:        discover_task.NewDiscoverTaskService(appSetting),
 		rs:         resource.NewResourceService(appSetting),
 
-		workerCount: workerCount,
-		queueSize:   queueSize,
-		queue:       make(chan string, queueSize),
-		inFlight:    make(map[string]struct{}),
-		stopCh:      make(chan struct{}),
+		workerCount:      workerCount,
+		queueSize:        queueSize,
+		queue:            make(chan discoverTaskQueueItem, queueSize),
+		activeTaskIDs:    make(map[string]struct{}),
+		activeCatalogIDs: make(map[string]struct{}),
+		stopCh:           make(chan struct{}),
 	}
 	worker.stopped.Store(false)
 	return worker
@@ -152,30 +159,52 @@ func (dtw *DiscoverTaskWorker) fillQueue(ctx context.Context) {
 		return
 	}
 	limit := cap(dtw.queue)
-	tasks, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{
-			Limit:     limit,
-			Sort:      interfaces.DiscoverTaskSortCreateTime,
-			Direction: interfaces.ASC_DIRECTION,
-		},
-		Statuses: []string{interfaces.DiscoverTaskStatusPending},
-	})
-	if err != nil {
-		logger.Errorf("List pending discover tasks failed: %v", err)
-		return
-	}
-	for _, task := range tasks {
-		if dtw.stopped.Load() {
+	offset := 0
+	for len(dtw.queue) < cap(dtw.queue) {
+		tasks, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{
+				Limit:     limit,
+				Offset:    offset,
+				Sort:      interfaces.DiscoverTaskSortQueuePriority,
+				Direction: interfaces.DESC_DIRECTION,
+			},
+			Statuses: []string{interfaces.DiscoverTaskStatusPending},
+		})
+		if err != nil {
+			logger.Errorf("List pending discover tasks failed: %v", err)
 			return
 		}
-		// inFlight covers both queued and running tasks while the database may still show pending.
-		if task == nil || !dtw.addInFlight(task.ID) {
-			continue
+		if len(tasks) == 0 {
+			return
 		}
-		select {
-		case dtw.queue <- task.ID:
-		case <-dtw.stopCh:
-			dtw.removeInFlight(task.ID)
+		offset += len(tasks)
+		for _, task := range tasks {
+			if dtw.stopped.Load() {
+				return
+			}
+			// A Catalog remains reserved from queueing until its task completes, so
+			// another worker cannot run the same Catalog concurrently.
+			if task == nil {
+				continue
+			}
+			taskItem := discoverTaskQueueItem{
+				taskID:    task.ID,
+				catalogID: task.CatalogID,
+			}
+			if !dtw.reserveTask(taskItem) {
+				continue
+			}
+			select {
+			case dtw.queue <- taskItem:
+			case <-dtw.stopCh:
+				dtw.releaseTask(taskItem)
+				return
+			}
+			if len(dtw.queue) == cap(dtw.queue) {
+				return
+			}
+		}
+		if len(tasks) < limit {
 			return
 		}
 	}
@@ -186,12 +215,12 @@ func (dtw *DiscoverTaskWorker) runQueuedTasks(ctx context.Context) {
 		select {
 		case <-dtw.stopCh:
 			return
-		case taskID := <-dtw.queue:
+		case taskItem := <-dtw.queue:
 			if dtw.stopped.Load() {
 				return
 			}
-			dtw.runSafely(ctx, taskID)
-			dtw.removeInFlight(taskID)
+			dtw.runSafely(ctx, taskItem.taskID)
+			dtw.releaseTask(taskItem)
 			dtw.dts.RequestDispatch()
 		}
 	}
@@ -212,20 +241,25 @@ func (dtw *DiscoverTaskWorker) runSafely(ctx context.Context, taskID string) {
 	}
 }
 
-func (dtw *DiscoverTaskWorker) addInFlight(id string) bool {
+func (dtw *DiscoverTaskWorker) reserveTask(taskItem discoverTaskQueueItem) bool {
 	dtw.mu.Lock()
 	defer dtw.mu.Unlock()
-	if _, exists := dtw.inFlight[id]; exists {
+	if _, exists := dtw.activeTaskIDs[taskItem.taskID]; exists {
 		return false
 	}
-	dtw.inFlight[id] = struct{}{}
+	if _, exists := dtw.activeCatalogIDs[taskItem.catalogID]; exists {
+		return false
+	}
+	dtw.activeTaskIDs[taskItem.taskID] = struct{}{}
+	dtw.activeCatalogIDs[taskItem.catalogID] = struct{}{}
 	return true
 }
 
-func (dtw *DiscoverTaskWorker) removeInFlight(id string) {
+func (dtw *DiscoverTaskWorker) releaseTask(taskItem discoverTaskQueueItem) {
 	dtw.mu.Lock()
 	defer dtw.mu.Unlock()
-	delete(dtw.inFlight, id)
+	delete(dtw.activeCatalogIDs, taskItem.catalogID)
+	delete(dtw.activeTaskIDs, taskItem.taskID)
 }
 
 // Run executes one discover task selected from the task table.

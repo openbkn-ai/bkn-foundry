@@ -396,6 +396,8 @@ func applyDiscoverTaskFilters(builder sq.SelectBuilder,
 func buildOrderByClause(sort, direction string) string {
 	column := "f_create_time"
 	switch sort {
+	case interfaces.DiscoverTaskSortQueuePriority:
+		return "f_queue_priority DESC, f_create_time ASC"
 	case interfaces.DiscoverTaskSortStartTime:
 		column = "f_start_time"
 	case interfaces.DiscoverTaskSortFinishTime:
