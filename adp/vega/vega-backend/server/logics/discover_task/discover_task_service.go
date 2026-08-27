@@ -99,6 +99,23 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", err
 	}
+	if req.ResourceID != "" {
+		activeTasks, err := dts.dta.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+			ResourceID:            req.ResourceID,
+			Statuses: []string{
+				interfaces.DiscoverTaskStatusPending,
+				interfaces.DiscoverTaskStatusRunning,
+			},
+		})
+		if err != nil {
+			return "", err
+		}
+		if len(activeTasks) > 0 {
+			return "", rest.NewHTTPError(ctx, http.StatusConflict,
+				verrors.VegaBackend_DiscoverTask_ResourceRefreshInProgress)
+		}
+	}
 
 	now := time.Now().UnixMilli()
 	queuePriority := DiscoverTaskPriority(req)

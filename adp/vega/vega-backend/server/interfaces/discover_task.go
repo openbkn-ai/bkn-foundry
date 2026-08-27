@@ -116,7 +116,8 @@ type DiscoverTaskResultSummary struct {
 // DiscoverTaskQueryParams holds discover task list query parameters.
 type DiscoverTaskQueryParams struct {
 	PaginationQueryParams
-	CatalogID string `form:"catalog_id" json:"catalog_id"`
+	CatalogID  string `form:"catalog_id" json:"catalog_id"`
+	ResourceID string `form:"resource_id" json:"resource_id"`
 	// CatalogIDs / ExcludeCatalogIDs carry the authorization filter into the query.
 	CatalogIDs        []string `form:"-" json:"-"`
 	ExcludeCatalogIDs []string `form:"-" json:"-"`

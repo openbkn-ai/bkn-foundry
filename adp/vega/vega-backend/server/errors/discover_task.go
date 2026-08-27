@@ -16,7 +16,8 @@ const (
 	VegaBackend_DiscoverTask_NotFound = "VegaBackend.DiscoverTask.NotFound"
 
 	// 409 Conflict
-	VegaBackend_DiscoverTask_HasRunningExecution = "VegaBackend.DiscoverTask.HasRunningExecution"
+	VegaBackend_DiscoverTask_HasRunningExecution       = "VegaBackend.DiscoverTask.HasRunningExecution"
+	VegaBackend_DiscoverTask_ResourceRefreshInProgress = "VegaBackend.DiscoverTask.ResourceRefreshInProgress"
 
 	// 500 Internal Server Error
 	VegaBackend_DiscoverTask_InternalError_GetFailed             = "VegaBackend.DiscoverTask.InternalError.GetFailed"
@@ -33,6 +34,7 @@ var DiscoverTaskErrCodeList = []string{
 
 	// 409 Conflict
 	VegaBackend_DiscoverTask_HasRunningExecution,
+	VegaBackend_DiscoverTask_ResourceRefreshInProgress,
 
 	// 500 Internal Server Error
 	VegaBackend_DiscoverTask_InternalError_GetFailed,

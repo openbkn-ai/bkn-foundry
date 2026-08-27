@@ -13,6 +13,11 @@ Description = "采集任务处于 pending 或 running 状态，无法删除"
 Solution = "请等待任务完成或失败后再删除"
 ErrorLink = ""
 
+[VegaBackend.DiscoverTask.ResourceRefreshInProgress]
+Description = "该资源的元数据刷新任务正在等待或运行"
+Solution = "请等待当前刷新任务结束后重试"
+ErrorLink = ""
+
 [VegaBackend.DiscoverTask.InternalError.GetFailed]
 Description = "获取采集任务失败"
 Solution = "请联系管理员"
