@@ -11,9 +11,9 @@ info:
     - 定时触发：worker 内部由 `DiscoverSchedule`（见 [discover-schedule.yaml](discover-schedule.yaml)）按 cron 触发
     - 资源刷新：`POST /resources/{id}/discover`（见 [resource.yaml](resource.yaml)）
 
-    `queue_priority` 是服务端计算的只读队列优先级：定时 catalog 任务为低（10）、
-    手动 catalog 任务为普通（20）、资源刷新任务为高（30）。worker 严格按优先级取任务，
-    同一 catalog 内串行执行。
+    `queue_priority` 是服务端计算的只读整数队列优先级，数值越大优先级越高。
+    当前默认队列配置中，定时 catalog 任务为低（10）、手动 catalog 任务为普通（20）、
+    资源刷新任务为高（30）。worker 严格按优先级取任务，同一 catalog 内串行执行。
 
     状态机（`pending → running → completed/failed/cancelled`）由 worker 单向推进；
     用户不能 cancel / retry / restart。对外仅暴露 list / get / delete 三类只读 + 清理操作。
@@ -360,10 +360,10 @@ components:
             - scheduled
         queue_priority:
           description: |
-            服务端计算的只读队列优先级：低=10（scheduled）、普通=20（手动 catalog）、
-            高=30（resource refresh）。数值越大优先级越高。
+            服务端计算的只读整数队列优先级，数值越大优先级越高。
+            当前默认队列配置为低=10（scheduled）、普通=20（手动 catalog）、
+            高=30（resource refresh）。
           type: integer
-          enum: [10, 20, 30]
           readOnly: true
         status:
           description: 状态
@@ -432,9 +432,8 @@ components:
           type: string
           enum: [manual, scheduled]
         queue_priority:
-          description: 服务端计算的只读队列优先级；低=10、普通=20、高=30，数值越大优先级越高
+          description: 服务端计算的只读整数队列优先级；数值越大优先级越高。当前默认队列配置为低=10、普通=20、高=30
           type: integer
-          enum: [10, 20, 30]
           readOnly: true
         status:
           type: string
