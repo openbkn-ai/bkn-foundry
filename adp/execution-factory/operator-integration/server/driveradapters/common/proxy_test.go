@@ -1,9 +1,11 @@
 package common
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	. "github.com/smartystreets/goconvey/convey"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -13,7 +15,7 @@ func TestBuildFunctionProxyExecutionEnv(t *testing.T) {
 	Convey("Function proxy execution context should separate task and capability identifiers", t, func() {
 		version := "11111111-1111-4111-8111-111111111111"
 
-		env := buildFunctionProxyExecutionEnv(version)
+		env := buildFunctionProxyExecutionEnv(version, "tok", "conv_1", "int_1")
 
 		So(env["source"], ShouldEqual, "function_proxy")
 		So(env["function_version_id"], ShouldEqual, version)
@@ -21,6 +23,42 @@ func TestBuildFunctionProxyExecutionEnv(t *testing.T) {
 		So(strings.HasPrefix(env["task_id"].(string), "function_proxy_"), ShouldBeTrue)
 		So(env["capability_id"], ShouldNotEqual, version)
 		So(env["capability_id"], ShouldEqual, "function_version:"+version)
+		So(env["BKN_TOKEN"], ShouldEqual, "tok")
+		So(env["BKN_CONVERSATION_ID"], ShouldEqual, "conv_1")
+		So(env["BKN_INTERACTION_ID"], ShouldEqual, "int_1")
+	})
+}
+
+func TestBuildFunctionProxyExecutionEnvClearsAbsentBKNContext(t *testing.T) {
+	Convey("Toolbox execution must clear BKN context when the caller did not supply a managed interaction", t, func() {
+		env := buildFunctionProxyExecutionEnv("11111111-1111-4111-8111-111111111111", "", "", "")
+
+		for _, key := range []string{"BKN_TOKEN", "BKN_CONVERSATION_ID", "BKN_INTERACTION_ID"} {
+			So(env[key], ShouldEqual, "")
+		}
+	})
+}
+
+func TestRequestCredentialUsesTheAuthenticatedRequestPrecedence(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	Convey("Authorization is the primary credential source for a published Function", t, func() {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest("POST", "/internal-v1/function/exec/version?token=query", nil)
+		ctx.Request.Header.Set("Authorization", "Bearer auth-token")
+		ctx.Request.Header.Set("X-Authorization", "Bearer x-auth-token")
+
+		So(requestCredential(ctx), ShouldEqual, "auth-token")
+	})
+
+	Convey("X-Authorization and query token retain the established fallbacks", t, func() {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest("POST", "/internal-v1/function/exec/version?token=query-token", nil)
+		ctx.Request.Header.Set("X-Authorization", "Bearer x-auth-token")
+		So(requestCredential(ctx), ShouldEqual, "x-auth-token")
+
+		ctx.Request.Header.Del("X-Authorization")
+		So(requestCredential(ctx), ShouldEqual, "query-token")
 	})
 }
 

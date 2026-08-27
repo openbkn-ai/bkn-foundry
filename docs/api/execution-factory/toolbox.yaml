@@ -644,6 +644,11 @@ paths:
         生产调用入口：由平台代为执行工具并返回结果，调用方不必知道工具背后打的是
         哪个地址。与调试接口的差别在于会走权限校验与审计日志。
 
+        对于函数工具，平台会在本次沙箱执行中自动传递已认证调用者与完整的 BKN
+        Interaction 上下文；它们不是工具的业务参数，也不应写入工具 Schema。函数可借助
+        `sandbox_sdk.bkn` 以调用者权限读取知识网络。若调用没有完整的受管 Interaction，
+        平台会清空这组运行时凭据，函数不得以其他调用者身份读取 BKN。
+
         **返回的是被调服务的原始响应**（`status_code` / `headers` / `body`），
         不是平台自己的信封——上游返 500 时本接口仍是 200，`status_code` 里才是 500。
       parameters:
@@ -1410,7 +1415,9 @@ components:
           additionalProperties: true
           description: |
             函数定义。**`metadata_type=function` 时必填**，结构见
-            [operator.yaml](operator.yaml) 的 `FunctionInput`：入口函数必须叫 `handler`。
+            [operator.yaml](operator.yaml) 的 `FunctionInput`。普通函数使用 `handler(event)`
+            入口；需要用 `sandbox_sdk.bkn` 读取 BKN 的函数使用顶层 `@tool` 装饰器，由
+            `sandbox_sdk.dispatch(event)` 接收平台传入的业务参数与受管运行时上下文。
         data:
           type: string
           description: |
