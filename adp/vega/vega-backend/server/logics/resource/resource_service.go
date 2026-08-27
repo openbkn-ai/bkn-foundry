@@ -53,6 +53,7 @@ type resourceService struct {
 	ra         interfaces.ResourceAccess
 	ums        interfaces.UserMgmtService
 	bta        interfaces.BuildTaskAccess
+	dta        interfaces.DiscoverTaskAccess
 	lim        interfaces.LocalIndexManager
 	mfs        interfaces.ModelFactoryService
 }
@@ -69,6 +70,7 @@ func NewResourceService(appSetting *common.AppSetting) interfaces.ResourceServic
 			ra:         logics.RA,
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 			bta:        logics.BTA,
+			dta:        logics.DTA,
 			lim:        local_index.NewLocalIndexManager(appSetting),
 			mfs:        model_factory.NewModelFactoryService(appSetting),
 		}
@@ -940,7 +942,7 @@ func (rs *resourceService) Update(ctx context.Context, resource *interfaces.Reso
 		return err
 	}
 	if buildRelevantChanged {
-		if err := rs.rejectBuildRelevantUpdateWhenActiveBuildTask(ctx, resource.ID, true); err != nil {
+		if err := rs.rejectResourceOperationWhenActiveBuildTask(ctx, resource.ID, true); err != nil {
 			span.SetStatus(codes.Error, "Resource has active build task")
 			return err
 		}
@@ -1177,7 +1179,11 @@ func (rs *resourceService) DeleteByIDs(ctx context.Context, ids []string) error 
 			WithErrorDetails(err.Error())
 	}
 	for _, resource := range resources {
-		if err := rs.rejectBuildRelevantUpdateWhenActiveBuildTask(ctx, resource.ID, false); err != nil {
+		if err := rs.rejectResourceOperationWhenActiveDiscoverTask(ctx, resource.ID); err != nil {
+			span.SetStatus(codes.Error, "Active resource refresh prevents resource deletion")
+			return err
+		}
+		if err := rs.rejectResourceOperationWhenActiveBuildTask(ctx, resource.ID, false); err != nil {
 			span.SetStatus(codes.Error, "Active build task prevents resource deletion")
 			return err
 		}
@@ -1420,7 +1426,7 @@ func (rs *resourceService) InternalUpdateStatus(ctx context.Context, tx *sql.Tx,
 	return rs.ra.UpdateStatus(ctx, tx, id, status, statusMessage)
 }
 
-func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx context.Context, resourceID string, includePending bool) error {
+func (rs *resourceService) rejectResourceOperationWhenActiveBuildTask(ctx context.Context, resourceID string, includePending bool) error {
 	statuses := []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusStopping}
 	if includePending {
 		statuses = append([]string{interfaces.BuildTaskStatusPending}, statuses...)
@@ -1442,6 +1448,28 @@ func (rs *resourceService) rejectBuildRelevantUpdateWhenActiveBuildTask(ctx cont
 		}
 		return rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_BuildTask_HasRunningExecution).
 			WithErrorDetails("resource has a running build task; wait until it finishes")
+	}
+	return nil
+}
+
+func (rs *resourceService) rejectResourceOperationWhenActiveDiscoverTask(ctx context.Context, resourceID string) error {
+	tasks, err := rs.dta.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+		PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+		ResourceID:            resourceID,
+		Statuses: []string{
+			interfaces.DiscoverTaskStatusPending,
+			interfaces.DiscoverTaskStatusRunning,
+		},
+	})
+	if err != nil {
+		otellog.LogError(ctx, "Check active resource refresh task failed", err)
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			verrors.VegaBackend_DiscoverTask_InternalError_GetFailed).WithErrorDetails(err.Error())
+	}
+	if len(tasks) > 0 {
+		return rest.NewHTTPError(ctx, http.StatusConflict,
+			verrors.VegaBackend_DiscoverTask_ResourceRefreshInProgress).
+			WithErrorDetails("resource has a pending or running metadata refresh task; wait until it finishes")
 	}
 	return nil
 }

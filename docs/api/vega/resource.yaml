@@ -211,6 +211,9 @@ paths:
         按 ids 批量删除 Resource。**整体事务**：所有 id 通过预校验后才进入删除阶段，
         任一不存在返回 404 `VegaBackend.Resource.NotFound`，整批不删。
 
+        若任一 Resource 存在 `pending` 或 `running` 的资源元数据刷新任务，返回 409
+        `VegaBackend.DiscoverTask.ResourceRefreshInProgress`，整批不删；需等待该任务进入终态。
+
         可选 `?ignore_missing=true`：忽略不存在的 id（视为已删除），其它 id 正常删。
       parameters:
         - name: ignore_missing
@@ -226,6 +229,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Resource 有 pending/running 元数据刷新任务
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
