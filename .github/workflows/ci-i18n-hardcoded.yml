@@ -1,0 +1,64 @@
+# Copyright openbkn.ai
+#
+# Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
+
+name: ci-i18n-hardcoded
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.go'
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.vue'
+      - '**/*.html'
+      - '**/*.htm'
+      - '**/*.svelte'
+      - 'tools/check_hardcoded_chinese.py'
+      - 'tools/test_check_hardcoded_chinese.py'
+      - 'tools/hardcoded_chinese_baseline.json'
+      - '.github/workflows/ci-i18n-hardcoded.yml'
+  pull_request:
+    paths:
+      - '**/*.go'
+      - '**/*.py'
+      - '**/*.js'
+      - '**/*.jsx'
+      - '**/*.ts'
+      - '**/*.tsx'
+      - '**/*.vue'
+      - '**/*.html'
+      - '**/*.htm'
+      - '**/*.svelte'
+      - 'tools/check_hardcoded_chinese.py'
+      - 'tools/test_check_hardcoded_chinese.py'
+      - 'tools/hardcoded_chinese_baseline.json'
+      - '.github/workflows/ci-i18n-hardcoded.yml'
+
+concurrency:
+  group: ci-i18n-hardcoded-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: prevent new hard-coded Chinese
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test hard-coded Chinese scanner
+        run: python3 -m unittest tools/test_check_hardcoded_chinese.py
+
+      - name: Reject new hard-coded Chinese
+        run: python3 tools/check_hardcoded_chinese.py
