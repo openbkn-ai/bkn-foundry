@@ -673,10 +673,10 @@ func TestResourceAccessUpdateStatus(t *testing.T) {
 		defer cleanup()
 
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_status = ?, f_status_message = ? WHERE f_id = ?")).
-			WithArgs(interfaces.ResourceStatusDisabled, "manual", "resource-1").
+			WithArgs(interfaces.ResourceStatusStale, "manual", "resource-1").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateStatus(context.Background(), nil, "resource-1", interfaces.ResourceStatusDisabled, "manual"))
+		require.NoError(t, access.UpdateStatus(context.Background(), nil, "resource-1", interfaces.ResourceStatusStale, "manual"))
 		require.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -688,10 +688,10 @@ func TestResourceAccessUpdateStatus(t *testing.T) {
 		tx, err := access.db.BeginTx(context.Background(), nil)
 		require.NoError(t, err)
 		mock.ExpectExec(regexp.QuoteMeta("UPDATE t_resource SET f_status = ?, f_status_message = ? WHERE f_id = ?")).
-			WithArgs(interfaces.ResourceStatusDisabled, "manual", "resource-1").
+			WithArgs(interfaces.ResourceStatusStale, "manual", "resource-1").
 			WillReturnResult(sqlmock.NewResult(0, 1))
 
-		require.NoError(t, access.UpdateStatus(context.Background(), tx, "resource-1", interfaces.ResourceStatusDisabled, "manual"))
+		require.NoError(t, access.UpdateStatus(context.Background(), tx, "resource-1", interfaces.ResourceStatusStale, "manual"))
 		mock.ExpectCommit()
 		require.NoError(t, tx.Commit())
 		require.NoError(t, mock.ExpectationsWereMet())

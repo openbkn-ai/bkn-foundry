@@ -19,7 +19,7 @@ import (
 
 // EnsureResourceQueryable validates that a resource is in a queryable state and has usable metadata.
 //
-//	disabled             → return 409 HTTPError (VegaBackend.Resource.NotQueryable)
+//	enabled=false        → return 409 HTTPError (VegaBackend.Resource.NotQueryable)
 //	stale                → return 409 HTTPError (VegaBackend.Resource.NotQueryable)
 //	missing              → return 409 HTTPError (VegaBackend.Resource.MetadataUnavailable)
 //	empty schema         → return 409 HTTPError (VegaBackend.Resource.MetadataUnavailable)
@@ -32,9 +32,9 @@ func EnsureResourceQueryable(ctx context.Context, r *interfaces.Resource) (strin
 	if r == nil {
 		return "", nil
 	}
-	if r.Status == interfaces.ResourceStatusDisabled {
+	if !r.Enabled {
 		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).
-			WithErrorDetails(fmt.Sprintf("resource %s is %s and cannot be queried", r.ID, r.Status))
+			WithErrorDetails(fmt.Sprintf("resource %s is disabled and cannot be queried", r.ID))
 	}
 	if r.Status == interfaces.ResourceStatusStale {
 		return "", rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_NotQueryable).

@@ -68,7 +68,7 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &logicViewService{rs: mockRS}
 		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
-			ID: "source-1", Status: interfaces.ResourceStatusDisabled,
+			ID: "source-1", Enabled: false,
 		}, nil)
 
 		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})

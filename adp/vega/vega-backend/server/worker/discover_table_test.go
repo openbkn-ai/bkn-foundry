@@ -90,7 +90,7 @@ func TestReconcileTableResources(t *testing.T) {
 		actions := interfaces.ActionsFromDiscoverStrategy(interfaces.DiscoverStrategyFullSync)
 
 		result, _, err := dh.reconcileTableResources(context.Background(), &interfaces.DiscoverTask{DiscoverActions: &actions}, &interfaces.Catalog{ID: "cat1"}, nil,
-			[]*interfaces.Resource{{ID: "r1", SourceIdentifier: "users", Category: interfaces.ResourceCategoryTable, Status: interfaces.ResourceStatusDisabled}})
+			[]*interfaces.Resource{{ID: "r1", SourceIdentifier: "users", Category: interfaces.ResourceCategoryTable, Enabled: false, Status: interfaces.ResourceStatusActive}})
 
 		require.NoError(t, err)
 		assert.Zero(t, result.StaleCount)

@@ -22,7 +22,6 @@ const (
 	ResourceSortUpdateTime string = "update_time"
 
 	ResourceStatusActive     string = "active"
-	ResourceStatusDisabled   string = "disabled"
 	ResourceStatusDeprecated string = "deprecated"
 	ResourceStatusStale      string = "stale"
 
@@ -64,7 +63,7 @@ type Resource struct {
 	Category string `json:"category"` // Resource category: table/file/fileset/...
 
 	Enabled            bool   `json:"enabled"`
-	Status             string `json:"status"`               // Status: active/stale/disabled
+	Status             string `json:"status"`               // Status: active/stale/deprecated
 	StatusMessage      string `json:"status_message"`       // Status message
 	LastDiscoverStatus string `json:"last_discover_status"` // The latest scan observation status
 
