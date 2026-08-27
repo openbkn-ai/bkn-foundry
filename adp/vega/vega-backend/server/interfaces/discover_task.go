@@ -57,6 +57,7 @@ type DiscoverTask struct {
 	CatalogID     string `json:"catalog_id"`
 	ResourceID    string `json:"resource_id,omitempty"`
 	CatalogName   string `json:"catalog_name,omitempty"`
+	ResourceName  string `json:"resource_name,omitempty"`
 	ScheduleID    string `json:"schedule_id"`
 	Strategy      string `json:"strategy"`     // Discover strategy: full_sync/create_only/cleanup_only
 	TriggerType   string `json:"trigger_type"` // manual/scheduled
@@ -84,6 +85,7 @@ type DiscoverTaskSummary struct {
 	CatalogID     string `json:"catalog_id"`
 	ResourceID    string `json:"resource_id,omitempty"`
 	CatalogName   string `json:"catalog_name,omitempty"`
+	ResourceName  string `json:"resource_name,omitempty"`
 	ScheduleID    string `json:"schedule_id"`
 	Strategy      string `json:"strategy"`
 	TriggerType   string `json:"trigger_type"`

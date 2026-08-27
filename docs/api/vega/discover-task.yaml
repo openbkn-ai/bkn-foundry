@@ -338,6 +338,9 @@ components:
         resource_id:
           description: 被刷新的 Resource ID；catalog 发现任务不返回该字段
           type: string
+        resource_name:
+          description: 被刷新的 Resource 当前名称；资源不存在时不返回该字段
+          type: string
         catalog_name:
           description: 关联 catalog 名称
           type: string
@@ -422,6 +425,9 @@ components:
         catalog_id: { type: string }
         resource_id:
           description: 被刷新的 Resource ID；catalog 发现任务不返回该字段
+          type: string
+        resource_name:
+          description: 被刷新的 Resource 当前名称；资源不存在时不返回该字段
           type: string
         catalog_name: { type: string }
         schedule_id: { type: string }
