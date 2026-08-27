@@ -295,7 +295,12 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	//Then obtain the metadata of the catalog based on the connector instance
 	//Then obtain the resource information of the catalog based on its metadata: metadata
 	progress := &discoverTaskReconcileProgress{}
-	result, err := dtw.discoverCatalog(ctx, catalog, taskInfo, progress)
+	var result *interfaces.DiscoverResult
+	if taskInfo.ResourceID != "" {
+		result, err = dtw.discoverResource(ctx, catalog, taskInfo, progress)
+	} else {
+		result, err = dtw.discoverCatalog(ctx, catalog, taskInfo, progress)
+	}
 	if err != nil {
 		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after execution error: id=%s, error=%v", taskID, updateErr)
@@ -318,6 +323,59 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 
 	logger.Infof("Discover completed for task: %s, catalog: %s", taskID, catalog.ID)
 	return nil
+}
+
+// discoverResource refreshes one already-discovered Resource without listing or reconciling its Catalog.
+func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *interfaces.Catalog,
+	task *interfaces.DiscoverTask, progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
+	resource, err := dtw.rs.InternalGetByID(ctx, nil, task.ResourceID)
+	if err != nil {
+		return nil, fmt.Errorf("get resource for discovery: %w", err)
+	}
+	if resource == nil || resource.CatalogID != catalog.ID {
+		return nil, fmt.Errorf("resource %s not found in catalog %s", task.ResourceID, catalog.ID)
+	}
+
+	connector, err := dtw.createAndConnectConnector(ctx, catalog)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to data source: %w", err)
+	}
+	defer func() { _ = connector.Close(ctx) }()
+
+	result := &interfaces.DiscoverResult{CatalogID: catalog.ID}
+	switch resource.Category {
+	case interfaces.ResourceCategoryTable:
+		tableConnector, ok := connector.(interfaces.TableConnector)
+		if !ok {
+			return nil, fmt.Errorf("connector does not support single-resource table metadata refresh")
+		}
+		table, err := tableConnector.GetTableMetaByIdentifier(ctx, resource.SourceIdentifier)
+		if err != nil {
+			return nil, fmt.Errorf("get table metadata: %w", err)
+		}
+		if err := dtw.enrichTableMetadata(ctx, task, tableConnector, []tableDiscoverItem{{
+			resource: resource, tableMeta: table, markAfterEnrich: true,
+		}}, result, progress); err != nil {
+			return nil, err
+		}
+	case interfaces.ResourceCategoryIndex:
+		indexConnector, ok := connector.(interfaces.IndexConnector)
+		if !ok {
+			return nil, fmt.Errorf("connector does not support single-resource index metadata refresh")
+		}
+		index, err := indexConnector.GetIndexMetaByIdentifier(ctx, resource.SourceIdentifier)
+		if err != nil {
+			return nil, fmt.Errorf("get index metadata: %w", err)
+		}
+		if err := dtw.enrichIndexMetadata(ctx, task, indexConnector, []indexDiscoverItem{{
+			resource: resource, indexMeta: index, markAfterEnrich: true,
+		}}, result, progress); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("resource category does not support single-resource metadata refresh: %s", resource.Category)
+	}
+	return result, nil
 }
 
 func (dtw *DiscoverTaskWorker) updateProgress(ctx context.Context, taskID string, progress int, message string) error {

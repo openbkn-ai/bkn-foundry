@@ -64,16 +64,22 @@ func (c *OpenSearchConnector) GetMetadata(ctx context.Context) (map[string]any, 
 
 // ListIndexes lists all indices.
 func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
+	var indexNames []string
+	if c.Config.IndexPattern != "" {
+		indexNames = []string{c.Config.IndexPattern}
+	}
+	return c.listIndexes(ctx, indexNames)
+}
+
+func (c *OpenSearchConnector) listIndexes(ctx context.Context, indexNames []string) ([]*interfaces.IndexMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
 
 	req := opensearchapi.CatIndicesRequest{
+		Index:  indexNames,
 		Format: "json",
 		H:      []string{"index", "docs.count", "store.size", "creation.date"},
-	}
-	if c.Config.IndexPattern != "" {
-		req.Index = []string{c.Config.IndexPattern}
 	}
 
 	resp, err := req.Do(ctx, c.client)
@@ -141,6 +147,29 @@ func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interface
 	}
 
 	return nil
+}
+
+func (c *OpenSearchConnector) GetIndexMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.IndexMeta, error) {
+	indices, err := c.listIndexes(ctx, []string{sourceIdentifier})
+	if err != nil {
+		return nil, fmt.Errorf("list indexes: %w", err)
+	}
+
+	var index *interfaces.IndexMeta
+	for _, candidate := range indices {
+		if candidate.Name == sourceIdentifier {
+			index = candidate
+			break
+		}
+	}
+	if index == nil {
+		return nil, fmt.Errorf("index %q not found", sourceIdentifier)
+	}
+
+	if err := c.GetIndexMeta(ctx, index); err != nil {
+		return nil, err
+	}
+	return index, nil
 }
 
 // fetchMappings retrieves and parses index mappings.

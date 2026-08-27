@@ -346,42 +346,40 @@ func (c *OracleConnector) validateSchemas(ctx context.Context) error {
 // If Config.Schemas is empty (instance-level connection), iterates through all user schemas,
 // and the TableMeta.Schema field marks the owning schema.
 func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
+	return c.listTables(ctx, "", "")
+}
+
+func (c *OracleConnector) listTables(ctx context.Context, schema, tableName string) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
 	baseQuery := "SELECT OWNER,OBJECT_NAME AS TABLE_NAME,OBJECT_TYPE AS TABLE_TYPE,LAST_DDL_TIME AS LAST_ANALYZED FROM all_objects WHERE OBJECT_TYPE IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW')"
-	// Filter schemas
-
 	var query string
-	//var args []interface{}
-
-	if len(c.config.Schemas) > 0 {
+	var args []any
+	if schema != "" {
+		if len(c.config.Schemas) > 0 && !containsOracleSchema(c.config.Schemas, schema) {
+			return nil, fmt.Errorf("schema %q is outside the connector scope", schema)
+		}
+		query = baseQuery + " AND OWNER = :1"
+		args = append(args, strings.ToUpper(schema))
+		if tableName != "" {
+			query += " AND OBJECT_NAME = :2"
+			args = append(args, strings.ToUpper(tableName))
+		}
+	} else if len(c.config.Schemas) > 0 {
 		placeholders := make([]string, len(c.config.Schemas))
-		//args = make([]interface{}, len(c.config.Schemas))
 		for i, schema := range c.config.Schemas {
-			// Add single quotes using string formatting
 			placeholders[i] = fmt.Sprintf("'%s'", strings.ToUpper(schema))
 		}
 		query = fmt.Sprintf("%s AND OWNER IN (%s)", baseQuery, strings.Join(placeholders, ", "))
-
-		//// Convert to uppercase for Oracle
-		//schemas := make([]string, len(c.config.Schemas))
-		//for i, s := range c.config.Schemas {
-		//	schemas[i] = strings.ToUpper(s)
-		//}
-		//builder = builder.Where(sq.Eq{"OWNER": schemas})
 	} else {
-		// Exclude system schemas
-		//builder = builder.Where(sq.NotEq{"OWNER": SYSTEM_SCHEMAS})
-		// If no schemas are specified, exclude system schemas
 		query = baseQuery
-		//args = []interface{}{}
 	}
-	//query, args, err := builder.ToSql()
-	//if err != nil {
-	//	return nil, fmt.Errorf("failed to build list tables query: %w", err)
-	//}
-	rows, err := c.db.QueryContext(ctx, query)
+	if schema == "" && tableName != "" {
+		query += " AND OBJECT_NAME = :1"
+		args = append(args, strings.ToUpper(tableName))
+	}
+	rows, err := c.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tables: %w", err)
 	}
@@ -424,6 +422,15 @@ func (c *OracleConnector) ListTables(ctx context.Context) ([]*interfaces.TableMe
 	return tables, nil
 }
 
+func containsOracleSchema(schemas []string, schema string) bool {
+	for _, configuredSchema := range schemas {
+		if strings.EqualFold(configuredSchema, schema) {
+			return true
+		}
+	}
+	return false
+}
+
 func oracleTableType(objectType string) string {
 	switch strings.ToUpper(objectType) {
 	case "VIEW":
@@ -463,6 +470,42 @@ func (c *OracleConnector) GetTableMeta(ctx context.Context, table *interfaces.Ta
 	}
 
 	return nil
+}
+
+func (c *OracleConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
+	schema, tableName, err := splitOracleTableIdentifier(sourceIdentifier)
+	if err != nil {
+		return nil, err
+	}
+	table, err := c.findTableByIdentifier(ctx, schema, tableName)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.GetTableMeta(ctx, table); err != nil {
+		return nil, err
+	}
+	return table, nil
+}
+
+func splitOracleTableIdentifier(sourceIdentifier string) (schema, tableName string, err error) {
+	separator := strings.LastIndex(sourceIdentifier, ".")
+	if separator <= 0 || separator == len(sourceIdentifier)-1 {
+		return "", "", fmt.Errorf("invalid Oracle table source identifier %q", sourceIdentifier)
+	}
+	return sourceIdentifier[:separator], sourceIdentifier[separator+1:], nil
+}
+
+func (c *OracleConnector) findTableByIdentifier(ctx context.Context, schema, tableName string) (*interfaces.TableMeta, error) {
+	tables, err := c.listTables(ctx, schema, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("list tables: %w", err)
+	}
+	for _, table := range tables {
+		if table.Name == tableName && table.Database == schema {
+			return table, nil
+		}
+	}
+	return nil, fmt.Errorf("table %q in schema %q not found", tableName, schema)
 }
 
 // fetchTableStatus retrieves supported object status and table statistics.

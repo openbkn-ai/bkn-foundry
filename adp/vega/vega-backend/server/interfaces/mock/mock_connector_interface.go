@@ -460,6 +460,21 @@ func (mr *MockTableConnectorMockRecorder) GetTableMeta(ctx, table any) *gomock.C
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTableMeta", reflect.TypeOf((*MockTableConnector)(nil).GetTableMeta), ctx, table)
 }
 
+// GetTableMetaByIdentifier mocks base method.
+func (m *MockTableConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetTableMetaByIdentifier", ctx, sourceIdentifier)
+	ret0, _ := ret[0].(*interfaces.TableMeta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetTableMetaByIdentifier indicates an expected call of GetTableMetaByIdentifier.
+func (mr *MockTableConnectorMockRecorder) GetTableMetaByIdentifier(ctx, sourceIdentifier any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTableMetaByIdentifier", reflect.TypeOf((*MockTableConnector)(nil).GetTableMetaByIdentifier), ctx, sourceIdentifier)
+}
+
 // GetType mocks base method.
 func (m *MockTableConnector) GetType() string {
 	m.ctrl.T.Helper()
@@ -1734,6 +1749,21 @@ func (m *MockIndexConnector) GetIndexMeta(ctx context.Context, index *interfaces
 func (mr *MockIndexConnectorMockRecorder) GetIndexMeta(ctx, index any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexMeta", reflect.TypeOf((*MockIndexConnector)(nil).GetIndexMeta), ctx, index)
+}
+
+// GetIndexMetaByIdentifier mocks base method.
+func (m *MockIndexConnector) GetIndexMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.IndexMeta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIndexMetaByIdentifier", ctx, sourceIdentifier)
+	ret0, _ := ret[0].(*interfaces.IndexMeta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIndexMetaByIdentifier indicates an expected call of GetIndexMetaByIdentifier.
+func (mr *MockIndexConnectorMockRecorder) GetIndexMetaByIdentifier(ctx, sourceIdentifier any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndexMetaByIdentifier", reflect.TypeOf((*MockIndexConnector)(nil).GetIndexMetaByIdentifier), ctx, sourceIdentifier)
 }
 
 // GetMetadata mocks base method.

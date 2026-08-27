@@ -137,6 +137,10 @@ ORDER BY root.oid`, strings.Join(placeholders, ", "))
 
 // ListTables lists tables, views and materialized views. Fill in the database name for TableMeta.Database and the Schema name for schema.
 func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
+	return c.listTables(ctx, "", "")
+}
+
+func (c *PostgresqlConnector) listTables(ctx context.Context, schema, tableName string) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
@@ -157,8 +161,16 @@ func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.Tab
 		Where(sq.Expr("NOT pg_is_other_temp_schema(n.oid)")).
 		Where(sq.Expr("NOT EXISTS (SELECT 1 FROM pg_catalog.pg_inherits i WHERE i.inhrelid = c.oid)"))
 
-	if len(c.config.Schemas) > 0 {
+	if schema != "" {
+		if len(c.config.Schemas) > 0 && !containsPostgresqlSchema(c.config.Schemas, schema) {
+			return nil, fmt.Errorf("schema %q is outside the connector scope", schema)
+		}
+		builder = builder.Where(sq.Eq{"n.nspname": schema})
+	} else if len(c.config.Schemas) > 0 {
 		builder = builder.Where(sq.Eq{"n.nspname": c.config.Schemas})
+	}
+	if tableName != "" {
+		builder = builder.Where(sq.Eq{"c.relname": tableName})
 	}
 
 	query, args, err := builder.OrderBy("n.nspname", "c.relname").ToSql()
@@ -196,6 +208,15 @@ func (c *PostgresqlConnector) ListTables(ctx context.Context) ([]*interfaces.Tab
 	return tables, nil
 }
 
+func containsPostgresqlSchema(schemas []string, schema string) bool {
+	for _, configuredSchema := range schemas {
+		if configuredSchema == schema {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *PostgresqlConnector) tableTypeFromRelKind(relKind string) string {
 	switch relKind {
 	case "v":
@@ -225,6 +246,42 @@ func (c *PostgresqlConnector) GetTableMeta(ctx context.Context, table *interface
 		return fmt.Errorf("failed to fetch foreign keys: %w", err)
 	}
 	return nil
+}
+
+func (c *PostgresqlConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
+	schema, tableName, err := splitPostgresqlTableIdentifier(sourceIdentifier)
+	if err != nil {
+		return nil, err
+	}
+	table, err := c.findTableByIdentifier(ctx, schema, tableName)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.GetTableMeta(ctx, table); err != nil {
+		return nil, err
+	}
+	return table, nil
+}
+
+func splitPostgresqlTableIdentifier(sourceIdentifier string) (schema, tableName string, err error) {
+	separator := strings.LastIndex(sourceIdentifier, ".")
+	if separator <= 0 || separator == len(sourceIdentifier)-1 {
+		return "", "", fmt.Errorf("invalid PostgreSQL table source identifier %q", sourceIdentifier)
+	}
+	return sourceIdentifier[:separator], sourceIdentifier[separator+1:], nil
+}
+
+func (c *PostgresqlConnector) findTableByIdentifier(ctx context.Context, schema, tableName string) (*interfaces.TableMeta, error) {
+	tables, err := c.listTables(ctx, schema, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("list tables: %w", err)
+	}
+	for _, table := range tables {
+		if table.Name == tableName && table.Schema == schema {
+			return table, nil
+		}
+	}
+	return nil, fmt.Errorf("table %q in schema %q not found", tableName, schema)
 }
 
 func (c *PostgresqlConnector) fetchTableStatus(ctx context.Context, table *interfaces.TableMeta) error {
