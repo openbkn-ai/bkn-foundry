@@ -27,7 +27,14 @@ reset_env() {
     OPENSEARCH_NAMESPACE="resource"
     OPENSEARCH_CLUSTER_NAME="opensearch-cluster"
     OPENSEARCH_NODE_GROUP="master"
+    OPENSEARCH_CHART_TGZ="${SCRIPT_DIR}/../../charts/opensearch-2.36.0.tgz"
+    OPENSEARCH_CHART_VERSION="2.36.0"
+    OPENSEARCH_HELM_ATOMIC="false"
+    OFFLINE_MODE="false"
+    HELM_REPO_OPENSEARCH="https://opensearch-project.github.io/helm-charts/"
     KUBECTL_SET_IMAGE_CALL=""
+    HELM_CALL=""
+    ROLLOUT_CALL=""
 }
 
 kubectl() {
@@ -35,24 +42,34 @@ kubectl() {
         printf '%s' "${CURRENT_IMAGE}"
     elif [[ "$1" == "set" && "$2" == "image" && "$3" == "statefulset" ]]; then
         KUBECTL_SET_IMAGE_CALL="$*"
+    elif [[ "$1" == "rollout" && "$2" == "status" ]]; then
+        ROLLOUT_CALL="$*"
     fi
+}
+
+helm() {
+    HELM_CALL="$*"
 }
 
 reset_env
 CURRENT_IMAGE="ghcr.io/openbkn-ai/opensearchproject/opensearch:2.19.4"
 _opensearch_upgrade_legacy_image
-[[ "${KUBECTL_SET_IMAGE_CALL}" == *"set image statefulset opensearch-cluster-master"* ]] || fail "legacy image must update the OpenSearch StatefulSet"
-[[ "${KUBECTL_SET_IMAGE_CALL}" == *"opensearch=ghcr.io/openbkn-ai/opensearch:2.19.4-main.20260818163046.shaaeb5d56"* ]] || fail "upgrade must set the platform image"
+[[ "${HELM_CALL}" == *"upgrade opensearch ${OPENSEARCH_CHART_TGZ}"* ]] || fail "legacy image must run helm upgrade"
+[[ "${HELM_CALL}" == *"--reuse-values"* ]] || fail "upgrade must preserve existing values"
+[[ "${HELM_CALL}" == *"--set image.repository=ghcr.io/openbkn-ai/opensearch"* ]] || fail "upgrade must set platform repository"
+[[ "${HELM_CALL}" == *"--set image.tag=2.19.4-main.20260818163046.shaaeb5d56"* ]] || fail "upgrade must set platform tag"
+[[ "${HELM_CALL}" == *"--wait --timeout=900s"* ]] || fail "upgrade must wait for helm readiness"
+[[ "${ROLLOUT_CALL}" == *"rollout status statefulset opensearch-cluster-master"* ]] || fail "upgrade must verify StatefulSet rollout"
 
 reset_env
 CURRENT_IMAGE="ghcr.io/openbkn-ai/opensearch:2.19.4-main.20260818163046.shaaeb5d56"
 _opensearch_upgrade_legacy_image
-[[ -z "${KUBECTL_SET_IMAGE_CALL}" ]] || fail "platform image must not be upgraded again"
+[[ -z "${HELM_CALL}" ]] || fail "platform image must not be upgraded again"
 
 reset_env
 CURRENT_IMAGE="ghcr.io/acme/opensearch:2.19.4"
 OPENSEARCH_IMAGE="ghcr.io/acme/opensearch:2.19.4"
 _opensearch_upgrade_legacy_image
-[[ -z "${KUBECTL_SET_IMAGE_CALL}" ]] || fail "explicit image must not be overwritten"
+[[ -z "${HELM_CALL}" ]] || fail "explicit image must not be overwritten"
 
 echo "PASS: OpenSearch legacy image upgrade guard"
