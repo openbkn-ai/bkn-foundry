@@ -131,38 +131,53 @@ func newExecutionEnv() map[string]any {
 	return env
 }
 
-// fillExecutionIdentityFromRequest backfills the caller identity the request body
-// left blank with the identity the request already authenticated as.
+// fillExecutionAccountFromRequest backfills the acting account when the body did
+// not state one. It is a tracking mark, not a credential, so it is safe on every
+// execution path.
 //
-// run_code needs nothing from its caller because Context Loader assembles the
-// execution itself: the token is in its own request context and the endpoint is
-// itself. Functions had no such assembler — the credential had to be restated in
-// the request body, so a caller that did not know to do so (the Studio debug
-// panel, any tool invocation) reached the sandbox with a blank identity and
-// sandbox_sdk.bkn reported "not configured". The request is already
-// authenticated and already carries it, so read it from there.
-//
-// Session context is deliberately NOT backfilled. bkn_conversation_id /
-// bkn_interaction_id stay caller-stated: #1161 rules out deriving function
-// invocation context from HTTP trace headers alone and reserves that contract
-// for an explicit typed envelope. Identity is a separate question — it comes
-// from the authenticated principal, not from correlation headers.
+// Session context is deliberately NOT backfilled here or anywhere else.
+// bkn_conversation_id / bkn_interaction_id stay caller-stated: #1161 rules out
+// deriving function invocation context from HTTP trace headers alone and
+// reserves that contract for an explicit typed envelope.
 //
 // Explicit body fields still win: a caller acting for someone else must be able
 // to say so. Only blanks are filled, and every key stays present, so a pooled
 // session never leaks the previous caller's identity into this execution.
-func fillExecutionIdentityFromRequest(env map[string]any, c *gin.Context) map[string]any {
+func fillExecutionAccountFromRequest(env map[string]any, c *gin.Context) map[string]any {
 	if c == nil || c.Request == nil {
 		return env
-	}
-	if isBlankEnvValue(env, "BKN_TOKEN") {
-		// The route is token-gated, so the raw credential is on the request.
-		env["BKN_TOKEN"] = drivenadapters.GetToken(c)
 	}
 	if isBlankEnvValue(env, "user_id") {
 		env["user_id"] = requestAccountID(c)
 	}
 	return env
+}
+
+// fillExecutionCredentialFromRequest additionally hands the sandbox the caller's
+// own credential.
+//
+// run_code needs nothing from its caller because Context Loader assembles the
+// execution itself: the token is in its own request context and the endpoint is
+// itself. Direct execution had no such assembler — the credential had to be
+// restated in the request body, so a caller that did not know to do so (the
+// Studio debug panel) reached the sandbox with a blank identity and
+// sandbox_sdk.bkn reported "not configured". The request is already introspected
+// and already carries it, so read it from there.
+//
+// Only for the path where the caller submits the code it is about to run, so the
+// credential never leaves the account it belongs to. The proxy path must not use
+// this: it runs code registered by a third party, and its route authenticates by
+// trusted header rather than by introspection, so the Authorization value there
+// is an unverified passthrough. Injecting it would let a function author read and
+// exfiltrate the invoking user's live credential.
+func fillExecutionCredentialFromRequest(env map[string]any, c *gin.Context) map[string]any {
+	if c == nil || c.Request == nil {
+		return env
+	}
+	if isBlankEnvValue(env, "BKN_TOKEN") {
+		env["BKN_TOKEN"] = drivenadapters.GetToken(c)
+	}
+	return fillExecutionAccountFromRequest(env, c)
 }
 
 func isBlankEnvValue(env map[string]any, key string) bool {
@@ -200,10 +215,10 @@ func buildFunctionProxyExecutionEnv(c *gin.Context, version string) map[string]a
 	env["task_id"] = "function_proxy_" + uuid.NewString()
 	env["capability_id"] = "function_version:" + version
 	env["function_version_id"] = version
-	// This path has no body fields to carry identity at all: a registered function
-	// is invoked by version, and everything it may need about the caller is on the
-	// request.
-	return fillExecutionIdentityFromRequest(env, c)
+	// This path has no body fields to carry the acting account at all: a registered
+	// function is invoked by version. The credential is deliberately withheld — the
+	// code being run belongs to whoever registered the version, not to the caller.
+	return fillExecutionAccountFromRequest(env, c)
 }
 
 // FunctionExecuteResp function execution response.
@@ -240,7 +255,7 @@ func buildFunctionExecutionEnv(c *gin.Context, req *interfaces.FunctionProxyExec
 	env := newExecutionEnv()
 	env["source"] = "function_debug"
 	if req == nil {
-		return fillExecutionIdentityFromRequest(env, c)
+		return fillExecutionCredentialFromRequest(env, c)
 	}
 	if req.Source != "" {
 		env["source"] = req.Source
@@ -267,7 +282,7 @@ func buildFunctionExecutionEnv(c *gin.Context, req *interfaces.FunctionProxyExec
 	env["BKN_TOKEN"] = req.BKNToken
 	env["BKN_CONVERSATION_ID"] = req.BKNConversationID
 	env["BKN_INTERACTION_ID"] = req.BKNInteractionID
-	return fillExecutionIdentityFromRequest(env, c)
+	return fillExecutionCredentialFromRequest(env, c)
 }
 
 // FunctionExecuteProxyReq function execution proxy request parameters.

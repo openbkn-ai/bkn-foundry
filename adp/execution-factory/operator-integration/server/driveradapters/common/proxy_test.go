@@ -216,18 +216,37 @@ func TestBuildFunctionExecutionEnvDoesNotDeriveSessionContext(t *testing.T) {
 }
 
 // The proxy path carries no body fields at all: a registered function is invoked
-// by version. Without the request fallback it can never reach BKN.
-func TestBuildFunctionProxyExecutionEnvFallsBackToRequest(t *testing.T) {
+// by version, so the acting account has to come from the request.
+func TestBuildFunctionProxyExecutionEnvFallsBackToRequestAccount(t *testing.T) {
 	env := buildFunctionProxyExecutionEnv(
 		newRequestContext("tok-req", "acct-req"),
 		"11111111-1111-4111-8111-111111111111",
 	)
 
-	if env["BKN_TOKEN"] != "tok-req" {
-		t.Fatalf("BKN_TOKEN 未从请求兜底: %v", env["BKN_TOKEN"])
-	}
 	if env["user_id"] != "acct-req" {
 		t.Fatalf("user_id 未从鉴权上下文兜底: %v", env["user_id"])
+	}
+}
+
+// The proxy path must never hand the sandbox the caller's credential.
+//
+// It runs code registered by a third party, and its route authenticates by
+// trusted header (hydra.GenerateVisitor) rather than by introspection, so the
+// Authorization value is an unverified passthrough. Injecting it would let a
+// function author read and exfiltrate the invoking user's live credential —
+// and the sandbox has outbound network.
+func TestBuildFunctionProxyExecutionEnvWithholdsCredential(t *testing.T) {
+	env := buildFunctionProxyExecutionEnv(
+		newRequestContext("tok-req", "acct-req"),
+		"11111111-1111-4111-8111-111111111111",
+	)
+
+	value, ok := env["BKN_TOKEN"]
+	if !ok {
+		t.Fatalf("BKN_TOKEN 必须在场（缺席会让上一个调用方的值留下）: %v", env)
+	}
+	if value != "" {
+		t.Fatalf("代理路径不得注入调用方凭据，得到 %v", value)
 	}
 }
 
