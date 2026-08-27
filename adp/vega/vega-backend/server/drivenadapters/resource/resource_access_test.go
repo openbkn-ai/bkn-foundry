@@ -136,7 +136,7 @@ func TestResourceAccessGetByID(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
-		values[21] = "not-int64"
+		values[22] = "not-int64"
 
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id = ?"))).
 			WithArgs("resource-1").
@@ -211,7 +211,7 @@ func TestResourceAccessGetByIDs(t *testing.T) {
 		access, mock, cleanup := newResourceAccessMock(t)
 		defer cleanup()
 		values := resourceRowValues(sampleResource())
-		values[21] = "not-int64"
+		values[22] = "not-int64"
 
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSelectSQL("f_id IN (?)"))).
 			WithArgs("resource-1").
@@ -232,12 +232,8 @@ func TestResourceAccessGetSummariesByIDs(t *testing.T) {
 
 		mock.ExpectQuery(regexp.QuoteMeta(resourceSummarySelectSQL("f_id IN (?,?)"))).
 			WithArgs("resource-1", "resource-2").
-			WillReturnRows(sqlmock.NewRows([]string{
-				"f_id", "f_catalog_id", "f_name", "f_tags", "f_description", "f_category", "f_status", "f_status_message", "f_last_discover_status",
-				"f_schema", "f_source_identifier", "f_source_metadata", "f_schema_definition", "f_local_status", "f_local_index_name", "f_sync_mark", "f_logic_type",
-				"f_creator", "f_creator_type", "f_create_time", "f_updater", "f_updater_type", "f_update_time",
-			}).AddRow(
-				"resource-1", "catalog-1", "orders", "pii,core", "desc", interfaces.ResourceCategoryTable, interfaces.ResourceStatusActive, "ready", interfaces.DiscoverStatusNew,
+			WillReturnRows(resourceSummaryRows().AddRow(
+				"resource-1", "catalog-1", "orders", "pii,core", "desc", interfaces.ResourceCategoryTable, true, interfaces.ResourceStatusActive, "ready", interfaces.DiscoverStatusNew,
 				"db1", "public.orders", `{"properties":{"row_count":42}}`, `[{"name":"id"},{"name":"name"}]`,
 				interfaces.ResourceLocalIndexStatusAvailable, "vega-build-resource-1-task-1", `{"mode":"batch","cursor":[10,"a"]}`, "",
 				"u1", interfaces.ACCESSOR_TYPE_USER, int64(1), "u2", interfaces.ACCESSOR_TYPE_USER, int64(2),
@@ -819,6 +815,7 @@ func resourceNameRows() *sqlmock.Rows {
 		"f_tags",
 		"f_description",
 		"f_category",
+		"f_enabled",
 		"f_status",
 		"f_status_message",
 		"f_last_discover_status",
@@ -849,6 +846,7 @@ func resourceNameRowValues(resource *interfaces.Resource) []driver.Value {
 		"pii,core",
 		resource.Description,
 		resource.Category,
+		resource.Enabled,
 		resource.Status,
 		resource.StatusMessage,
 		resource.LastDiscoverStatus,

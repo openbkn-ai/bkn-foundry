@@ -75,7 +75,7 @@ func TestDiscoverTaskAccessList(t *testing.T) {
 		mock.ExpectQuery("SELECT COUNT(*) FROM t_discover_task WHERE f_catalog_id = ? AND f_status IN (?,?) AND f_strategy = ? AND f_trigger_type = ?").
 			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskStatusPending, interfaces.DiscoverStrategyFullSync, interfaces.DiscoverTaskTriggerScheduled).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery("SELECT " + strings.Join(discoverTaskSummaryColumns(), ", ") + " FROM t_discover_task WHERE f_catalog_id = ? AND f_status IN (?,?) AND f_strategy = ? AND f_trigger_type = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5").
+		mock.ExpectQuery("SELECT "+strings.Join(discoverTaskSummaryColumns(), ", ")+" FROM t_discover_task WHERE f_catalog_id = ? AND f_status IN (?,?) AND f_strategy = ? AND f_trigger_type = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5").
 			WithArgs("catalog-1", interfaces.DiscoverTaskStatusRunning, interfaces.DiscoverTaskStatusPending, interfaces.DiscoverStrategyFullSync, interfaces.DiscoverTaskTriggerScheduled).
 			WillReturnRows(discoverTaskSummaryRows().AddRow("task-1", "catalog-1", "", "schedule-1", "full_sync", interfaces.DiscoverTaskTriggerScheduled, interfaces.DiscoverTaskQueuePriorityLow, interfaces.DiscoverTaskStatusRunning, 10, int64(0), int64(0), int64(0), `{"catalog_id":"catalog-1","new_count":2,"message":"large detail"}`, "u1", interfaces.ACCESSOR_TYPE_USER, int64(1)))
 
@@ -140,8 +140,8 @@ func TestDiscoverTaskAccessCreate(t *testing.T) {
 		defer cleanup()
 		task := sampleDiscoverTask()
 
-		mock.ExpectExec("INSERT INTO t_discover_task (f_id,f_catalog_id,f_schedule_id,f_strategy,f_trigger_type,f_status,f_progress,f_message,f_start_time,f_finish_time,f_last_progress_time,f_result,f_creator,f_creator_type,f_create_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").
-			WithArgs(task.ID, task.CatalogID, task.ScheduleID, task.Strategy, task.TriggerType, task.Status, task.Progress, task.Message, task.StartTime, task.FinishTime, task.LastProgressTime, "", task.Creator.ID, task.Creator.Type, task.CreateTime).
+		mock.ExpectExec("INSERT INTO t_discover_task (f_id,f_catalog_id,f_resource_id,f_schedule_id,f_strategy,f_trigger_type,f_queue_priority,f_status,f_progress,f_message,f_start_time,f_finish_time,f_last_progress_time,f_result,f_creator,f_creator_type,f_create_time) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").
+			WithArgs(task.ID, task.CatalogID, task.ResourceID, task.ScheduleID, task.Strategy, task.TriggerType, task.QueuePriority, task.Status, task.Progress, task.Message, task.StartTime, task.FinishTime, task.LastProgressTime, "", task.Creator.ID, task.Creator.Type, task.CreateTime).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 
 		require.NoError(t, access.Create(context.Background(), task))
@@ -341,18 +341,20 @@ func TestDiscoverTaskAccessMarkCancelled(t *testing.T) {
 
 func sampleDiscoverTask() *interfaces.DiscoverTask {
 	return &interfaces.DiscoverTask{
-		ID:          "task-1",
-		CatalogID:   "catalog-1",
-		ScheduleID:  "schedule-1",
-		Strategy:    "full_sync",
-		TriggerType: interfaces.DiscoverTaskTriggerManual,
-		Status:      interfaces.DiscoverTaskStatusPending,
-		Progress:    0,
-		Message:     "queued",
-		StartTime:   0,
-		FinishTime:  0,
-		Creator:     interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
-		CreateTime:  1,
+		ID:            "task-1",
+		CatalogID:     "catalog-1",
+		ResourceID:    "",
+		ScheduleID:    "schedule-1",
+		Strategy:      "full_sync",
+		TriggerType:   interfaces.DiscoverTaskTriggerManual,
+		QueuePriority: interfaces.DiscoverTaskQueuePriorityNormal,
+		Status:        interfaces.DiscoverTaskStatusPending,
+		Progress:      0,
+		Message:       "queued",
+		StartTime:     0,
+		FinishTime:    0,
+		Creator:       interfaces.AccountInfo{ID: "u1", Type: interfaces.ACCESSOR_TYPE_USER},
+		CreateTime:    1,
 	}
 }
 

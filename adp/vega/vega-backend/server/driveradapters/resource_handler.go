@@ -475,3 +475,52 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
+
+// DiscoverResourceByEx handles POST /api/vega-backend/v1/resources/:id/discover.
+func (r *restHandler) DiscoverResourceByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.discoverResource(c, visitor)
+}
+
+// DiscoverResourceByIn handles POST /api/vega-backend/in/v1/resources/:id/discover.
+func (r *restHandler) DiscoverResourceByIn(c *gin.Context) {
+	r.discoverResource(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) discoverResource(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	resource, err := r.rs.InternalGetByID(ctx, nil, c.Param("id"))
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if resource == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	taskID, err := r.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
+		CatalogID:   resource.CatalogID,
+		ResourceID:  resource.ID,
+		TriggerType: interfaces.DiscoverTaskTriggerManual,
+	})
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"id": taskID})
+}
