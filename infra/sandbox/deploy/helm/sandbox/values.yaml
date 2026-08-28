@@ -94,6 +94,15 @@ controlPlane:
     CLEANUP_INTERVAL_SECONDS: "300"
     DISABLE_BWRAP: "true"
     PYTHONUNBUFFERED: "1"
+    # In-cluster Context Loader MCP endpoint. The control plane writes it into
+    # every sandbox pod so sandbox_sdk.bkn can call back into BKN without the
+    # caller passing an address per execution. The sandbox is inside the cluster
+    # and cannot use the gateway address, so only the deployment knows this value.
+    # The trailing slash is required: without it the gateway answers 307 and the
+    # sandbox's urllib does not follow redirects on POST.
+    # Leave empty to ship without the capability surface; functions then have to
+    # pass `mcp` in the event themselves.
+    BKN_SANDBOX_MCP_URL: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
 
   s3:
     # Note: endpointUrl is dynamically set in secret.yaml using .Values.namespace
