@@ -78,7 +78,7 @@ func TestMigrationPlanAddsLocaleToExistingProvenanceHistory(t *testing.T) {
 		t.Fatalf("plan provenance locale migration: %v", err)
 	}
 	if len(plan) != 1 || plan[0].Version != "018" ||
-		!strings.Contains(plan[0].SQL, "ADD COLUMN locale") ||
+		!strings.Contains(plan[0].SQL, "ADD COLUMN IF NOT EXISTS locale") ||
 		!strings.Contains(plan[0].SQL, "DEFAULT 'zh-CN'") {
 		t.Fatalf("unexpected provenance locale migration plan: %#v", plan)
 	}
