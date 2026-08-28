@@ -245,6 +245,12 @@ spec:
                 configMapKeyRef:
                   name: {{ .Values.configMap.name }}
                   key: PYTHONUNBUFFERED
+            - name: BKN_SANDBOX_MCP_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .Values.configMap.name }}
+                  key: BKN_SANDBOX_MCP_URL
+                  optional: true
             - name: DEFAULT_TEMPLATE_IMAGE_REGISTRY
               valueFrom:
                 configMapKeyRef:
