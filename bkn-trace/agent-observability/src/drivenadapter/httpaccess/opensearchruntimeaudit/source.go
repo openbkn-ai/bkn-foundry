@@ -59,7 +59,7 @@ func (*Source) Metadata() observabilityvo.SourceStatus {
 }
 
 func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
-	if query.AuthorizedTenantID == "" || query.AuthorizedBusinessDomain == "" {
+	if query.AuthorizedTenantID == "" {
 		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
 	}
 	statuses, compatible := receiptStatuses(query)
@@ -79,11 +79,11 @@ func (source *Source) Get(ctx context.Context, logID string) (observabilityvo.Lo
 		return observabilityvo.LogRecord{}, false, nil
 	}
 	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
-	if scope.TenantID == "" || scope.BusinessDomain == "" {
-		return observabilityvo.LogRecord{}, false, fmt.Errorf("trusted tenant and business domain scope are required for receipt log detail")
+	if scope.TenantID == "" {
+		return observabilityvo.LogRecord{}, false, fmt.Errorf("trusted tenant scope is required for receipt log detail")
 	}
 	page, err := source.search(ctx, buildQuery(observabilityvo.LogQuery{
-		AuthorizedTenantID: scope.TenantID, AuthorizedBusinessDomain: scope.BusinessDomain, Limit: 1,
+		AuthorizedTenantID: scope.TenantID, Limit: 1,
 	}, []sessionvo.ReceiptStatus{sessionvo.ReceiptCompleted, sessionvo.ReceiptFailed}, receiptID))
 	if err != nil || len(page.Records) == 0 {
 		return observabilityvo.LogRecord{}, false, err
@@ -144,7 +144,6 @@ func buildQuery(query observabilityvo.LogQuery, statuses []sessionvo.ReceiptStat
 	filters := []any{
 		map[string]any{"exists": map[string]any{"field": "receipt_id"}},
 		term("owner.tenant_id.keyword", query.AuthorizedTenantID),
-		term("owner.business_domain_id.keyword", query.AuthorizedBusinessDomain),
 		terms("receipt_status.keyword", statuses),
 	}
 	addTerm := func(field, value string) {
@@ -211,7 +210,6 @@ func buildQuery(query observabilityvo.LogQuery, statuses []sessionvo.ReceiptStat
 func matchesFixedFilters(query observabilityvo.LogQuery) bool {
 	return query.SpanID == "" && query.ResourceType == "" && query.ResourceID == "" &&
 		(query.OperationID == "" || query.TargetID == "" || query.OperationID == query.TargetID) &&
-		(query.BusinessDomain == "" || query.BusinessDomain == query.AuthorizedBusinessDomain) &&
 		(query.BusinessModule == "" || query.BusinessModule == "domain_knowledge_network") &&
 		(query.Action == "" || query.Action == "execute") &&
 		(query.TargetType == "" || query.TargetType == "operation") &&
@@ -256,8 +254,8 @@ func projectReceipt(document sessionvo.ReceiptProjectionDocument) observabilityv
 		EventTimestamp: timestamp, ObservedTimestamp: timestamp,
 		SeverityNumber: severityNumber, SeverityText: severityText, Outcome: outcome,
 		SafeSummary: "Executed " + targetName, ServiceName: "bkn-trace-core", Environment: "unknown",
-		TenantID: document.Owner.TenantID, BusinessDomain: document.Owner.BusinessDomainID,
-		ActorID: document.Owner.EffectiveSubjectID, EffectiveSubjectID: document.Owner.EffectiveSubjectID,
+		TenantID: document.Owner.TenantID,
+		ActorID:  document.Owner.EffectiveSubjectID, EffectiveSubjectID: document.Owner.EffectiveSubjectID,
 		ApplicationID: document.Owner.ApplicationPrincipalID, IngressPrincipal: "bkn-trace-core", TrustLevel: "trusted",
 		RequestID: document.RequestID, TraceID: document.TraceID, ConversationID: document.ConversationID,
 		InteractionID: document.InteractionID, OperationID: document.OperationID, ToolName: document.ToolName,

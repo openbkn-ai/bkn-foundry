@@ -33,13 +33,12 @@ func (s *Store) ListInteractionEvents(ctx context.Context, owner sessionvo.Owner
 		SELECT l.envelope
 		FROM bkn_trace_evidence_event_ledger l
 		JOIN bkn_trace_conversations c ON c.conversation_id=l.conversation_id
-		WHERE l.tenant_id=? AND l.business_domain_id=? AND l.interaction_id=?
-		  AND c.tenant_id=? AND c.business_domain_id=?
+		WHERE l.tenant_id=? AND l.interaction_id=?
+		  AND c.tenant_id=?
 		  AND c.application_principal_id=? AND c.effective_subject_type=?
 		  AND c.effective_subject_id=? AND c.delegation_id=?
 		ORDER BY l.ingest_sequence`,
-		owner.TenantID, owner.BusinessDomainID, interactionID,
-		owner.TenantID, owner.BusinessDomainID,
+		owner.TenantID, interactionID, owner.TenantID,
 		owner.ApplicationPrincipalID, owner.EffectiveSubjectType,
 		owner.EffectiveSubjectID, owner.DelegationID,
 	)
@@ -193,15 +192,15 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (l
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_evidence_event_ledger (
 			event_id, payload_hash, immutable_record_hash, schema_version, event_type,
-			tenant_id, business_domain_id,
+			tenant_id,
 			conversation_id, interaction_id, operation_id, attempt_no, request_id, trace_id,
 			span_id, producer_id, producer_stream_id, producer_epoch, producer_sequence,
 			causality_status, missing_causation_event_ids,
 				started_at, observed_at, emitted_at, ingested_at, envelope
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, 0), NULLIF(?, ''),
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULLIF(?, ''), NULLIF(?, 0), NULLIF(?, ''),
 				NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?, ?)`,
 		event.EventID, event.PayloadHash, recordHash, event.SchemaVersion, event.EventType,
-		event.Owner.TenantID, event.Owner.BusinessDomainID, event.ConversationID,
+		event.Owner.TenantID, event.ConversationID,
 		event.InteractionID, event.OperationID, event.Attempt, event.RequestID, event.TraceID,
 		event.SpanID, event.ProducerID, event.ProducerStreamID, event.ProducerEpoch,
 		event.ProducerSequence, event.CausalityStatus, marshalJSON(event.MissingCauseIDs),
@@ -233,23 +232,22 @@ func (s *Store) commitEvidenceOnce(ctx context.Context, event ledgervo.Event) (l
 }
 
 func verifyEvidenceOwnership(ctx context.Context, tx *sql.Tx, event ledgervo.Event) error {
-	var tenantID, domainID, applicationID, subjectType, subjectID, delegationID string
+	var tenantID, applicationID, subjectType, subjectID, delegationID string
 	err := tx.QueryRowContext(ctx, `
-		SELECT c.tenant_id, c.business_domain_id, c.application_principal_id,
+		SELECT c.tenant_id, c.application_principal_id,
 			c.effective_subject_type, c.effective_subject_id, c.delegation_id
 		FROM bkn_trace_conversations c
 		JOIN bkn_trace_interactions i ON i.conversation_id=c.conversation_id
 		WHERE c.conversation_id=? AND i.interaction_id=? FOR UPDATE`,
 		event.ConversationID, event.InteractionID,
-	).Scan(&tenantID, &domainID, &applicationID, &subjectType, &subjectID, &delegationID)
+	).Scan(&tenantID, &applicationID, &subjectType, &subjectID, &delegationID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return errors.New("evidence interaction does not exist")
 	}
 	if err != nil {
 		return err
 	}
-	if tenantID != event.Owner.TenantID || domainID != event.Owner.BusinessDomainID ||
-		applicationID != event.Owner.ApplicationPrincipalID ||
+	if tenantID != event.Owner.TenantID || applicationID != event.Owner.ApplicationPrincipalID ||
 		subjectType != string(event.Owner.EffectiveSubjectType) ||
 		subjectID != event.Owner.EffectiveSubjectID ||
 		delegationID != event.Owner.DelegationID {
@@ -274,12 +272,12 @@ func verifyEvidenceOwnership(ctx context.Context, tx *sql.Tx, event ledgervo.Eve
 func verifyCausationScope(ctx context.Context, tx *sql.Tx, event ledgervo.Event) ([]string, error) {
 	var missing []string
 	for _, causeID := range event.CausationEventIDs {
-		var tenantID, domainID, interactionID string
+		var tenantID, interactionID string
 		err := tx.QueryRowContext(ctx, `
-			SELECT tenant_id, business_domain_id, interaction_id
+			SELECT tenant_id, interaction_id
 			FROM bkn_trace_evidence_event_ledger WHERE event_id=?`,
 			causeID,
-		).Scan(&tenantID, &domainID, &interactionID)
+		).Scan(&tenantID, &interactionID)
 		if errors.Is(err, sql.ErrNoRows) {
 			missing = append(missing, causeID)
 			continue
@@ -287,8 +285,7 @@ func verifyCausationScope(ctx context.Context, tx *sql.Tx, event ledgervo.Event)
 		if err != nil {
 			return nil, err
 		}
-		if tenantID != event.Owner.TenantID || domainID != event.Owner.BusinessDomainID ||
-			interactionID != event.InteractionID {
+		if tenantID != event.Owner.TenantID || interactionID != event.InteractionID {
 			return nil, fmt.Errorf("causation event %s crosses trusted interaction scope", causeID)
 		}
 	}
@@ -298,9 +295,9 @@ func verifyCausationScope(ctx context.Context, tx *sql.Tx, event ledgervo.Event)
 func verifyCausationAcyclic(ctx context.Context, tx *sql.Tx, event ledgervo.Event) error {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT envelope FROM bkn_trace_evidence_event_ledger
-		WHERE tenant_id=? AND business_domain_id=? AND interaction_id=?
+		WHERE tenant_id=? AND interaction_id=?
 		FOR UPDATE`,
-		event.Owner.TenantID, event.Owner.BusinessDomainID, event.InteractionID,
+		event.Owner.TenantID, event.InteractionID,
 	)
 	if err != nil {
 		return err
@@ -335,10 +332,10 @@ func insertEvidenceConflict(ctx context.Context, tx *sql.Tx, event ledgervo.Even
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bkn_trace_event_conflicts (
 			event_id, existing_payload_hash, conflicting_payload_hash,
-			tenant_id, business_domain_id, envelope, detected_at
-		) VALUES (?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(6))`,
+			tenant_id, envelope, detected_at
+		) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP(6))`,
 		event.EventID, existingHash, event.PayloadHash,
-		event.Owner.TenantID, event.Owner.BusinessDomainID, envelope,
+		event.Owner.TenantID, envelope,
 	)
 	return err
 }

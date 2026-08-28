@@ -117,14 +117,10 @@ func usableSummaryReceiptPredicates(alias string) []string {
 
 func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]string, []any) {
 	scope := query.Scope
-	domain := scope.BusinessDomain
 	where := make([]string, 0, 4)
 	args := make([]any, 0, 8)
 	if scope.TenantID != "" {
 		where, args = append(where, alias+".tenant_id=?"), append(args, scope.TenantID)
-	}
-	if domain != "" {
-		where, args = append(where, alias+".business_domain_id=?"), append(args, domain)
 	}
 	if scope.AccessProfile == nil {
 		where = append(where, alias+".effective_subject_type=?", alias+".effective_subject_id=?")

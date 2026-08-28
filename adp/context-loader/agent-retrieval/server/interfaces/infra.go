@@ -59,15 +59,12 @@ const (
 	HeaderXAccountType HeaderKey = "x-account-type"
 	// HeaderUserID User ID
 	HeaderUserID HeaderKey = "user_id"
-	// HeaderXBusinessDomain Business domain ID
-	HeaderXBusinessDomain HeaderKey = "x-business-domain"
 )
 
 // System built-in import context.
 const (
-	ADMIN_ACCOUNT_ID        = "266c6a42-6131-4d62-8f39-853e7093701c"
-	ADMIN_ACCOUNT_TYPE      = "user"
-	DefaultBusinessDomainID = "bd_public"
+	ADMIN_ACCOUNT_ID   = "266c6a42-6131-4d62-8f39-853e7093701c"
+	ADMIN_ACCOUNT_TYPE = "user"
 )
 
 const (

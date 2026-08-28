@@ -43,9 +43,6 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 		if r.URL.Path != "/api/agent-operator-integration/v1/function/execute" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.Header.Get("x-business-domain"); got != "" {
-			t.Fatalf("x-business-domain must not be forwarded, got %q", got)
-		}
 		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
 			t.Fatalf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
 		}

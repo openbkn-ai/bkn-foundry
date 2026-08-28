@@ -60,7 +60,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		return observabilityvo.SourcePage{CountAccuracy: "partial"}, nil
 	}
 	authorization := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
-	if authorization == "" || query.AuthorizedTenantID == "" || query.AuthorizedBusinessDomain == "" {
+	if authorization == "" || query.AuthorizedTenantID == "" {
 		return observabilityvo.SourcePage{}, errors.New("BKN Backend audit source requires caller authorization and trusted scope")
 	}
 	parameters := url.Values{}
@@ -86,7 +86,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	setTrustedHeaders(request, authorization, query.AuthorizedTenantID, query.AuthorizedBusinessDomain)
+	setTrustedHeaders(request, authorization, query.AuthorizedTenantID)
 	response, err := client.http.Do(request)
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
@@ -119,14 +119,14 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.LogRecord, bool, error) {
 	authorization := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
 	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
-	if authorization == "" || scope.TenantID == "" || scope.BusinessDomain == "" {
+	if authorization == "" || scope.TenantID == "" {
 		return observabilityvo.LogRecord{}, false, errors.New("BKN Backend audit source requires caller authorization and trusted scope")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.baseURL+"/api/bkn-backend/v1/operation-audits/"+url.PathEscape(sourceLogID(logID)), nil)
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	setTrustedHeaders(request, authorization, scope.TenantID, scope.BusinessDomain)
+	setTrustedHeaders(request, authorization, scope.TenantID)
 	response, err := client.http.Do(request)
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
@@ -152,7 +152,6 @@ type auditEntry struct {
 	EventTime          time.Time      `json:"event_time"`
 	RecordedAt         time.Time      `json:"recorded_at"`
 	TenantID           string         `json:"tenant_id"`
-	BusinessDomainID   string         `json:"business_domain_id"`
 	KnowledgeNetworkID string         `json:"knowledge_network_id"`
 	ActorID            string         `json:"actor_id"`
 	ActorName          string         `json:"actor_name"`
@@ -190,7 +189,7 @@ func project(entry auditEntry) observabilityvo.LogRecord {
 		Category: observabilityvo.CategoryAuditAdmin, EventName: "resource_config.changed",
 		EventTimestamp: entry.EventTime, ObservedTimestamp: entry.RecordedAt, SeverityNumber: severityNumber, SeverityText: severityText,
 		Outcome: entry.Outcome, SafeSummary: strings.TrimSpace(strings.Join([]string{entry.Method, entry.Action, entry.TargetType, targetName}, " ")),
-		ServiceName: "bkn-backend", Environment: "unknown", TenantID: entry.TenantID, BusinessDomain: entry.BusinessDomainID,
+		ServiceName: "bkn-backend", Environment: "unknown", TenantID: entry.TenantID,
 		ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID, RequestID: entry.RequestID,
 		IngressPrincipal: "bkn-backend", TrustLevel: "trusted", KnowledgeNetworkIDs: []string{entry.KnowledgeNetworkID},
 		ResourceRef: &observabilityvo.ResourceRef{ResourceType: entry.TargetType, ResourceID: entry.TargetID},
@@ -198,10 +197,9 @@ func project(entry auditEntry) observabilityvo.LogRecord {
 	}
 }
 
-func setTrustedHeaders(request *http.Request, authorization, tenantID, businessDomain string) {
+func setTrustedHeaders(request *http.Request, authorization, tenantID string) {
 	request.Header.Set("Authorization", authorization)
 	request.Header.Set("x-tenant-id", tenantID)
-	request.Header.Set("x-business-domain", businessDomain)
 }
 
 func sourceLogID(logID string) string {

@@ -47,12 +47,6 @@ paths:
           schema:
             type: string
             default: main
-        - name: X-Business-Domain
-          in: header
-          required: true
-          description: Business domain
-          schema:
-            type: string
         - name: import_mode
           description: |
             Import mode. normal reports an error for duplicate concept names; overwrite replaces them;

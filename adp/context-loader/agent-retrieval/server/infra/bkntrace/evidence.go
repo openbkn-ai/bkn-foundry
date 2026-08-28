@@ -110,7 +110,6 @@ type eventContext struct {
 	applicationName  string
 	subjectType      string
 	tenantID         string
-	businessDomain   string
 	conversationID   string
 	interactionID    string
 	operationID      string
@@ -188,16 +187,23 @@ func RecordInteractionArtifact(
 	artifactRef := "artifact:" + artifactID
 	traceBlock := traceBlockFromEventContext(ec)
 	artifact := map[string]any{
-		"artifact_id": artifactID, "artifact_type": string(artifactType),
-		"bkn.request.id": ec.requestID, "trace_id": ec.traceID,
-		"interaction_id": ec.interactionID, "content_type": "application/json",
-		"schema_version": "2.2.0", "observed_at": ec.observedAt,
-		"content_hash": contentHash, "content": content,
-		"bkn.tenant.id": ec.tenantID, "business_domain": ec.businessDomain,
-		"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
+		"artifact_id":              artifactID,
+		"artifact_type":            string(artifactType),
+		"bkn.request.id":           ec.requestID,
+		"trace_id":                 ec.traceID,
+		"interaction_id":           ec.interactionID,
+		"content_type":             "application/json",
+		"schema_version":           "2.2.0",
+		"observed_at":              ec.observedAt,
+		"content_hash":             contentHash,
+		"content":                  content,
+		"bkn.tenant.id":            ec.tenantID,
+		"bkn.account.id":           ec.accountID,
+		"bkn.account.type":         ec.accountType,
 		"effective_subject_id":     ec.accountID,
 		"application_principal_id": ec.applicationID,
-		"initiator":                "account:" + ec.accountID, "agent_or_app": agentOrApp(ec),
+		"initiator":                "account:" + ec.accountID,
+		"agent_or_app":             agentOrApp(ec),
 	}
 	eventPayload := map[string]any{artifactField: artifactRef, "content_hash": contentHash}
 	if ec.applicationName != "" {
@@ -605,7 +611,6 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		"traceparent":                  ec.traceparent,
 		"bkn.request.id":               ec.requestID,
 		"bkn.tenant.id":                ec.tenantID,
-		"business_domain":              ec.businessDomain,
 		"bkn.account.id":               ec.accountID,
 		"bkn.account.type":             ec.accountType,
 		"bkn.application.principal.id": ec.applicationID,
@@ -693,13 +698,13 @@ func recordDurableEvidenceOutcome(ctx context.Context, payload batch) {
 				seenEvents[eventID] = struct{}{}
 			}
 		}
-		for _, ref := range trace30BusinessRefs(event, stringValue(payload.Trace["business_domain"]), payload.DeclaredBusinessRefs) {
+		for _, ref := range trace30BusinessRefs(event, payload.DeclaredBusinessRefs) {
 			key := ref.RefType + "\x00" + ref.RefID + "\x00" + ref.Version
 			if _, exists := seenRefs[key]; exists {
 				continue
 			}
 			outcome.businessRefs = append(outcome.businessRefs, BusinessRef{
-				RefType: ref.RefType, RefID: ref.RefID, BusinessDomainID: ref.BusinessDomainID,
+				RefType: ref.RefType, RefID: ref.RefID,
 				Version: ref.Version, DisplayHint: ref.DisplayHint,
 			})
 			seenRefs[key] = struct{}{}
@@ -829,11 +834,10 @@ type trace30Event struct {
 }
 
 type trace30BusinessRef struct {
-	RefType          string `json:"ref_type"`
-	RefID            string `json:"ref_id"`
-	BusinessDomainID string `json:"business_domain_id"`
-	Version          string `json:"version"`
-	DisplayHint      string `json:"display_hint,omitempty"`
+	RefType     string `json:"ref_type"`
+	RefID       string `json:"ref_id"`
+	Version     string `json:"version"`
+	DisplayHint string `json:"display_hint,omitempty"`
 }
 
 type trace30OperationEdge struct {
@@ -863,7 +867,7 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs [
 	if emittedAt == "" {
 		emittedAt = observedAt
 	}
-	refs := trace30BusinessRefs(event, stringValue(traceBlock["business_domain"]), declaredRefs)
+	refs := trace30BusinessRefs(event, declaredRefs)
 	edges := make([]trace30OperationEdge, 0, len(refs))
 	for _, ref := range refs {
 		edges = append(edges, trace30OperationEdge{
@@ -892,7 +896,7 @@ func trace30EvidenceEvent(traceBlock map[string]any, event Event, declaredRefs [
 	}, nil
 }
 
-func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []BusinessRef) []trace30BusinessRef {
+func trace30BusinessRefs(event Event, declaredRefs []BusinessRef) []trace30BusinessRef {
 	payload, _ := event["payload"].(map[string]any)
 	items := make([]map[string]any, 0)
 	for _, field := range []string{"source_refs", "resource_refs", "field_refs"} {
@@ -909,7 +913,7 @@ func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []Busi
 	for _, item := range items {
 		refID := stringValue(item["ref_id"])
 		refType := trace30RefType(stringValue(item["ref_type"]))
-		if refID == "" || refType == "" || businessDomain == "" {
+		if refID == "" || refType == "" {
 			continue
 		}
 		version := strings.TrimSpace(declaredVersions[refType+"\x00"+refID])
@@ -925,14 +929,14 @@ func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []Busi
 		}
 		seen[key] = struct{}{}
 		refs = append(refs, trace30BusinessRef{
-			RefType: refType, RefID: refID, BusinessDomainID: businessDomain,
+			RefType: refType, RefID: refID,
 			Version: version, DisplayHint: stringValue(item["display_hint"]),
 		})
 	}
 	for _, ref := range declaredRefs {
 		refType := trace30RefType(ref.RefType)
 		refID := strings.TrimSpace(ref.RefID)
-		if refType == "" || refID == "" || businessDomain == "" {
+		if refType == "" || refID == "" {
 			continue
 		}
 		key := refType + "\x00" + refID
@@ -945,7 +949,7 @@ func trace30BusinessRefs(event Event, businessDomain string, declaredRefs []Busi
 			version = "unversioned"
 		}
 		refs = append(refs, trace30BusinessRef{
-			RefType: refType, RefID: refID, BusinessDomainID: businessDomain,
+			RefType: refType, RefID: refID,
 			Version: version, DisplayHint: ref.DisplayHint,
 		})
 	}
@@ -976,7 +980,6 @@ func setEvidenceIngestHeaders(headers http.Header, traceBlock map[string]any) {
 	accountID := stringValue(traceBlock["bkn.account.id"])
 	accountType := stringValue(traceBlock["bkn.account.type"])
 	tenantID := stringValue(traceBlock["bkn.tenant.id"])
-	businessDomain := stringValue(traceBlock["business_domain"])
 	applicationID := stringValue(traceBlock["bkn.application.principal.id"])
 	if applicationID == "" {
 		applicationID = ModuleName
@@ -988,9 +991,7 @@ func setEvidenceIngestHeaders(headers http.Header, traceBlock map[string]any) {
 	headers.Set("x-account-id", accountID)
 	headers.Set("x-account-type", accountType)
 	headers.Set("x-tenant-id", tenantID)
-	headers.Set("x-business-domain", businessDomain)
 	headers.Set("X-BKN-Tenant-ID", tenantID)
-	headers.Set("X-Business-Domain-ID", businessDomain)
 	headers.Set("X-BKN-Application-Principal-ID", applicationID)
 	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
 	headers.Set("X-BKN-Effective-Subject-ID", accountID)
@@ -1155,7 +1156,6 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 		applicationName:  applicationName,
 		subjectType:      subjectType,
 		tenantID:         strings.TrimSpace(traceContext.TenantID),
-		businessDomain:   strings.TrimSpace(traceContext.BusinessDomain),
 		conversationID:   strings.TrimSpace(traceContext.ConversationID),
 		interactionID:    strings.TrimSpace(traceContext.InteractionID),
 		operationID:      strings.TrimSpace(traceContext.OperationID),
@@ -1170,7 +1170,7 @@ func traceBlockFromEventContext(ec eventContext) map[string]any {
 	return map[string]any{
 		"trace_id": ec.traceID, "traceparent": ec.traceparent,
 		"bkn.request.id": ec.requestID, "bkn.tenant.id": ec.tenantID,
-		"business_domain": ec.businessDomain, "bkn.account.id": ec.accountID,
+		"bkn.account.id":               ec.accountID,
 		"bkn.account.type":             ec.accountType,
 		"bkn.application.principal.id": ec.applicationID,
 		"bkn.effective.subject.type":   ec.subjectType,

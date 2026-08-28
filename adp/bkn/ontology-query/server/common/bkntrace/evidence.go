@@ -70,7 +70,6 @@ type RequestContext struct {
 	RequestID              string
 	AccountID              string
 	AccountType            string
-	BusinessDomain         string
 	TenantID               string
 	ApplicationPrincipalID string
 	EffectiveSubjectID     string
@@ -116,7 +115,6 @@ type eventContext struct {
 	requestID        string
 	accountID        string
 	accountType      string
-	businessDomain   string
 	interactionID    string
 	operationID      string
 	causationEventID string
@@ -306,7 +304,7 @@ func trustedOwner(reqCtx RequestContext, ec eventContext) outbox.Owner {
 	if subjectType == "" {
 		subjectType = coreSubjectType(ec.accountType)
 	}
-	return outbox.Owner{TenantID: strings.TrimSpace(reqCtx.TenantID), BusinessDomainID: ec.businessDomain,
+	return outbox.Owner{TenantID: strings.TrimSpace(reqCtx.TenantID),
 		ApplicationPrincipalID: strings.TrimSpace(reqCtx.ApplicationPrincipalID), EffectiveSubjectType: subjectType,
 		EffectiveSubjectID: subjectID, DelegationID: strings.TrimSpace(reqCtx.DelegationID)}
 }
@@ -509,10 +507,6 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 	if spanContext.TraceFlags().IsSampled() {
 		flags = "01"
 	}
-	businessDomain := strings.TrimSpace(reqCtx.BusinessDomain)
-	if businessDomain == "" {
-		businessDomain = accountID
-	}
 	return eventContext{
 		traceID:          spanContext.TraceID().String(),
 		spanID:           spanContext.SpanID().String(),
@@ -520,7 +514,6 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		requestID:        requestID,
 		accountID:        accountID,
 		accountType:      accountType,
-		businessDomain:   businessDomain,
 		interactionID:    interactionID,
 		operationID:      operationID,
 		causationEventID: strings.TrimSpace(reqCtx.CausationEventID),

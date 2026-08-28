@@ -19,11 +19,6 @@ Description = "Invalid Request Paramter"
 Solution = "Please check whether the parameter is correct."
 ErrorLink = ""
 
-[BknBackend.KnowledgeNetwork.InvalidParameter.BusinessDomain]
-Description = "Invalid Business Domain Paramter"
-Solution = "Please check whether the parameter is correct."
-ErrorLink = ""
-
 [BknBackend.KnowledgeNetwork.InvalidParameter.ConceptCondition]
 Description = "Invalid Concept Condition Paramter"
 Solution = "Please check whether the parameter is correct."
@@ -101,16 +96,6 @@ ErrorLink = ""
 
 [BknBackend.KnowledgeNetwork.InternalError.BeginTransactionFailed]
 Description = "Begin Transaction Failed"
-Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = ""
-
-[BknBackend.KnowledgeNetwork.InternalError.BindBusinessDomainFailed]
-Description = "Bind Business Domain Failed"
-Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = ""
-
-[BknBackend.KnowledgeNetwork.InternalError.UnbindBusinessDomainFailed]
-Description = "Unbind Business Domain Failed"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
 ErrorLink = ""
 

@@ -41,7 +41,6 @@ onboard_print_completion_report() {
         _kctx="(kubectl not on PATH or not configured)"
     fi
 
-    _bd="${DEPLOY_BUSINESS_DOMAIN:-bd_public}"
     if type onboard_default_access_base_url &>/dev/null; then
         _acurl="$(onboard_default_access_base_url 2>/dev/null || true)"
     else
@@ -59,7 +58,6 @@ onboard_print_completion_report() {
         echo "  Node          $(command -v node &>/dev/null && node -v || echo '—')"
         echo "  openbkn       ${_kwh}"
         echo "  kubectl       ctx=${_kctx}  namespace=${NAMESPACE:-bkn}"
-        echo "  Business -bd  ${_bd}  (DEPLOY_BUSINESS_DOMAIN)"
         echo "  Default base  ${_acurl}"
         echo "${_line}"
         echo -e "  Install type   ${_isf_styled}"

@@ -14,10 +14,10 @@
 
 事实生产要求合法 trace/request/account、`bkn-interaction-id`、`bkn-operation-id`、`bkn-attempt` 和明确传播的 `bkn-event-observed-at`。业务因果 ID 不要求固定前缀，只校验安全字符与长度。
 
-- `business_domain`、attempt、observed time 在可信内部调用中传播。
+- attempt、observed time 在可信内部调用中传播。
 - 调用 permission、model-factory 等下游时 fork 子 `operation_id`，保留直接 cause。
 - 子 operation 派生包含父 operation、稳定操作名、attempt 和显式调用序号。同一父 operation 下同名多次调用必须递增序号或显式提供子 operation。
-- 不可信出站必须剥离业务因果、业务域与 observed time。`bkn-agent` 接入路径不在本变更范围。
+- 不可信出站必须剥离业务因果与 observed time。`bkn-agent` 接入路径不在本变更范围。
 
 ## 三、事实、引用与安全
 

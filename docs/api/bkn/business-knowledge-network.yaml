@@ -1838,9 +1838,6 @@ components:
           items:
             $ref: "#/components/schemas/ActionTypeDetail"
 
-        business_domain:
-          description: Business domain identifier
-          type: string
         module_type:
           description: Module type of the concept
           type: string

@@ -114,7 +114,6 @@ func TestOperationAuditMiddlewareRecordsOneReadableSuccessFact(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer bak_example")
 	req.Header.Set("x-tenant-id", "tenant-a")
-	req.Header.Set("x-business-domain", "domain-a")
 	req.Header.Set("bkn-request-id", "req-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, req)
@@ -160,7 +159,6 @@ func TestOperationAuditMiddlewareRecordsBoundedFailureAndReplacesInvalidRequestI
 	req := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", bytes.NewReader([]byte(`{"name":"供应链","password":"secret"}`)))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-tenant-id", "tenant-a")
-	req.Header.Set("x-business-domain", "domain-a")
 	req.Header.Set("bkn-request-id", string(make([]byte, 129)))
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, req)
@@ -193,7 +191,6 @@ func TestOperationAuditMiddlewareRecordsDeniedAttempt(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
 	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set("x-business-domain", "domain-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 
@@ -213,7 +210,6 @@ func TestOperationAuditMiddlewareDoesNotTrustUnverifiedIdentityHeaders(t *testin
 	})
 	request := httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
 	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set("x-business-domain", "domain-a")
 	request.Header.Set("x-account-id", "spoofed-user")
 	request.Header.Set("x-account-type", "admin")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
@@ -238,7 +234,6 @@ func TestOperationAuditMiddlewareUsesInternalCallerIdentityHeaders(t *testing.T)
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/kn-a", nil)
 	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set("x-business-domain", "domain-a")
 	request.Header.Set("x-account-id", "internal-user")
 	request.Header.Set("x-account-type", "user")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
@@ -254,7 +249,6 @@ func TestOperationAuditMiddlewareUsesInternalCallerIdentityHeaders(t *testing.T)
 
 func TestOperationAuditMiddlewareDoesNotPersistUnscopedFact(t *testing.T) {
 	t.Setenv("BKN_OPERATION_AUDIT_TENANT_ID", "")
-	t.Setenv("BKN_OPERATION_AUDIT_BUSINESS_DOMAIN", "")
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
 	handler := &restHandler{auditRecorder: store}
@@ -285,7 +279,6 @@ func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
 	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set("x-business-domain", "domain-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 

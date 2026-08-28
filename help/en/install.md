@@ -189,7 +189,7 @@ For more troubleshooting and manual fallbacks, see **`deploy/README.md` → Trou
 
 ### Minimum install (recommended for first try)
 
-Skips some optional modules (e.g. auth / business domain) for a lighter footprint:
+Skips optional authentication modules for a lighter footprint:
 
 ```bash
 ./deploy.sh openbkn install --minimum
@@ -198,12 +198,12 @@ Skips some optional modules (e.g. auth / business domain) for a lighter footprin
 Equivalent flags:
 
 ```bash
-./deploy.sh openbkn install --set auth.enabled=false --set businessDomain.enabled=false
+./deploy.sh openbkn install --set auth.enabled=false
 ```
 
 ### Full install
 
-Includes auth and business-domain related components:
+Includes authentication components:
 
 ```bash
 ./deploy.sh openbkn install
@@ -268,7 +268,7 @@ Typical flags:
 | `--config=models.yaml` | Non-interactive: register models (and optional BKN) via YAML; see `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | BKN ConfigMap patch only (after probe) |
 
-**Full install (auth + business domain):** onboarding treats the cluster as a full-auth install when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
+**Full install (auth enabled):** onboarding treats the cluster as a full-auth install when related Helm releases or namespaces exist. **`onboard.sh` then performs the following 5 steps automatically** (you do **not** need to run them by hand — they are listed here so you know what is happening, and what to fall back to if a step fails):
 
 1. **`openbkn auth login`** (`onboard_ensure_bkn_auth`) — session saved under `~/.bkn`. HTTP defaults to `admin` + the per-install initial password (`bknSafe.initialPassword` in config.yaml) (or browser OAuth on a TTY); under `-y` HTTP defaults are used automatically.
 2. **`openbkn` on `PATH`** (`onboard_ensure_bkn_cli`) — runs `npm i -g @openbkn/bkn-sdk` if missing (interactive prompt, or auto under `-y`). Admin is built in via the `openbkn admin` subcommand — no separate package.
@@ -349,7 +349,7 @@ The `openbkn` CLI and its `admin` subcommand share **one** login and token store
 
 ## 🛡️ Administrator commands after a full install (`openbkn admin`)
 
-After a full install (with `auth.enabled=true` and `businessDomain.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and is reached via `openbkn admin ...`:
+After a full install (with `auth.enabled=true`), platform-level operations — **users, organizations, roles, models, audit** — are managed through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) and is reached via `openbkn admin ...`:
 
 | Command surface | Audience | Scope |
 | --- | --- | --- |

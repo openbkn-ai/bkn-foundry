@@ -44,10 +44,9 @@ func NewHTTPClient(baseURL string) *HTTPClient {
 		BaseURL: baseURL,
 		Client:  &http.Client{Timeout: 120 * time.Second},
 		Headers: map[string]string{
-			"Content-Type":      "application/json",
-			"X-Account-ID":      "test-user-001",
-			"X-Account-Type":    "user",
-			"x-business-domain": "test-domain",
+			"Content-Type":   "application/json",
+			"X-Account-ID":   "test-user-001",
+			"X-Account-Type": "user",
 		},
 	}
 }

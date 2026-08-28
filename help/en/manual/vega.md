@@ -327,62 +327,62 @@ After `openbkn auth login`, use **`Authorization: Bearer $(openbkn auth token)`*
 # Probe: a catalogs listing means the service is up and the token is valid
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs?limit=1" \
   -H "Authorization: Bearer $(openbkn auth token)" \
-  -H "x-business-domain: bd_public"
+
 
 # Optional: raw pod health (path is /health on vega-backend, not under /v1)
 # curl -sk "https://<access-address>/health" -H "Authorization: Bearer $(openbkn auth token)"
 
 # List / get catalogs
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs?status=healthy&limit=20" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs/cat-001" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 
 # Create / update / delete catalog
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/catalogs" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"name":"my","connector_type":"mysql","connector_config":{"host":"h","port":3306,"database":"d","username":"u","password":"p"}}'
 curl -sk -X PUT "https://<access-address>/api/vega-backend/v1/catalogs/cat-001" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"name":"new-name"}'
 curl -sk -X DELETE "https://<access-address>/api/vega-backend/v1/catalogs/cat-001" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 
 # Catalog health / test-connection / discover / resources
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs/cat-001/health-status" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/catalogs/cat-001/test-connection" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/catalogs/cat-001/discover" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs/cat-001/resources?category=table&limit=30" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 
 # Resources: list, get, create, update, delete, data (create/update/delete are REST-only)
 curl -sk "https://<access-address>/api/vega-backend/v1/resources?catalog_id=cat-001&limit=50" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"catalog_id":"cat-001","name":"t","category":"table"}'
 curl -sk -X PUT "https://<access-address>/api/vega-backend/v1/resources/res-001" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"status":"active"}'
 curl -sk -X DELETE "https://<access-address>/api/vega-backend/v1/resources/res-001" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources/res-001/data" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -H "x-http-method-override: GET" \
   -d '{"limit":10,"offset":0,"need_total":true}'
 
 # Dataset docs (use POST override)
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources/res-ds/data" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -H "x-http-method-override: POST" \
   -d '[{"id":"doc1","content":"..."}]'
@@ -390,33 +390,33 @@ curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources/res-ds/
 # Index build task (resource_id must be a table resource; mode accepts only
 # batch / streaming, and execute_type is batch-only, defaulting to full)
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/build-tasks" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"resource_id":"res_orders_001","mode":"batch","execute_type":"full"}'
 curl -sk "https://<access-address>/api/vega-backend/v1/build-tasks/<task-id>" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 
 # Structured query / direct SQL
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/query/execute" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"tables":[{"resource_id":"res-001"}],"limit":5,"need_total":true}'
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/resources/query" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"query":"SELECT * FROM {{res-001}} LIMIT 1","query_format":"sql","input_dialect":"mysql","paging":{"mode":"single","limit":1}}'
 
 # Connector types
 curl -sk "https://<access-address>/api/vega-backend/v1/connector-types" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 curl -sk "https://<access-address>/api/vega-backend/v1/connector-types/mysql" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public"
+  -H "Authorization: Bearer $(openbkn auth token)"
 # curl -sk -X POST "https://<access-address>/api/vega-backend/v1/connector-types" \
-#   -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+#   -H "Authorization: Bearer $(openbkn auth token)" \
 #   -H "Content-Type: application/json" \
 #   -d '<connector-type-json>'
 curl -sk -X POST "https://<access-address>/api/vega-backend/v1/connector-types/mysql/enabled" \
-  -H "Authorization: Bearer $(openbkn auth token)" -H "x-business-domain: bd_public" \
+  -H "Authorization: Bearer $(openbkn auth token)" \
   -H "Content-Type: application/json" \
   -d '{"enabled":true}'
 ```

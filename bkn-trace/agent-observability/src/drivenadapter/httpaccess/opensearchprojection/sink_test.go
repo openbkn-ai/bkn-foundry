@@ -146,7 +146,7 @@ func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testin
 			http.NotFound(w, r)
 		case http.MethodHead + " /bkn-trace-core":
 			w.WriteHeader(http.StatusNotFound)
-		case http.MethodPut + " /bkn-trace-core-v014-r1":
+		case http.MethodPut + " /bkn-trace-core-v015-r1":
 			w.WriteHeader(http.StatusCreated)
 		case http.MethodPost + " /_aliases":
 			w.WriteHeader(http.StatusOK)
@@ -157,13 +157,13 @@ func TestEnsureBootstrapCreatesVersionedIndexAndAliasWhenNeitherExists(t *testin
 	t.Cleanup(server.Close)
 
 	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
-	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1"); err != nil {
+	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v015-r1"); err != nil {
 		t.Fatalf("bootstrap projection alias: %v", err)
 	}
 	want := []string{
 		"GET /_alias/bkn-trace-core",
 		"HEAD /bkn-trace-core",
-		"PUT /bkn-trace-core-v014-r1",
+		"PUT /bkn-trace-core-v015-r1",
 		"POST /_aliases",
 	}
 	if len(requests) != len(want) {
@@ -190,7 +190,7 @@ func TestEnsureBootstrapDoesNotReplaceAnExistingAlias(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
-	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1"); err != nil {
+	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v015-r1"); err != nil {
 		t.Fatalf("accept existing projection alias: %v", err)
 	}
 }
@@ -217,7 +217,7 @@ func TestEnsureBootstrapAddsConversationMappingToExistingAlias(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
-	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1"); err != nil {
+	if err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v015-r1"); err != nil {
 		t.Fatalf("upgrade existing projection alias: %v", err)
 	}
 	want := []string{"GET /_alias/bkn-trace-core", "PUT /bkn-trace-core/_mapping"}
@@ -266,7 +266,7 @@ func TestEnsureBootstrapRejectsAConcreteIndexWithTheAliasName(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	sink := opensearchprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core")
-	err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v014-r1")
+	err := sink.EnsureBootstrap(context.Background(), "bkn-trace-core-v015-r1")
 	if err == nil || !strings.Contains(err.Error(), "concrete index") {
 		t.Fatalf("bootstrap must reject concrete index collision: %v", err)
 	}

@@ -19,7 +19,6 @@ type requestPage struct {
 // @Summary Create or return the current managed Conversation
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param request body ensureConversationRequest true "Managed Conversation request"
@@ -33,7 +32,6 @@ func documentCreateConversation() {}
 // @Summary List managed Conversations in the authorized owner scope
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param limit query int false "Page size, 1..100"
 // @Success 200 {object} conversationPage
@@ -46,7 +44,6 @@ func documentListConversations() {}
 // @Summary Ensure the current managed Conversation
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param request body ensureConversationRequest true "Managed Conversation request"
@@ -60,7 +57,6 @@ func documentEnsureCurrentConversation() {}
 // @Summary Create a new managed Conversation generation
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param request body ensureConversationRequest true "New generation request"
@@ -74,7 +70,6 @@ func documentCreateConversationGeneration() {}
 // @Summary Resume an active managed Conversation by Core ID
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param request body resumeConversationRequest true "Conversation resume request"
@@ -88,7 +83,6 @@ func documentResumeConversation() {}
 // @Summary Get one managed Conversation
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param conversation_id path string true "Conversation ID"
 // @Success 200 {object} sessionvo.Conversation
@@ -101,7 +95,6 @@ func documentGetConversation() {}
 // @Summary Close one managed Conversation
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param conversation_id path string true "Conversation ID"
@@ -116,7 +109,6 @@ func documentCloseConversation() {}
 // @Summary Start one managed Interaction
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param conversation_id path string true "Conversation ID"
@@ -131,7 +123,6 @@ func documentStartInteraction() {}
 // @Summary Ensure an idempotent Operation intent and durable Receipt
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param conversation_id path string true "Conversation ID"
@@ -147,7 +138,6 @@ func documentEnsureOperation() {}
 // @Summary Get one managed Interaction
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
 // @Success 200 {object} sessionvo.Interaction
@@ -160,7 +150,6 @@ func documentGetInteraction() {}
 // @Summary List raw Operation call facts for one Interaction
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
 // @Success 200 {object} operationCallFactsResponse
@@ -174,7 +163,6 @@ func documentListInteractionOperations() {}
 // @Description Derives the current lease and closure manifest from authoritative Operations and Receipts. Ordinary Agents do not submit concurrency or closure internals.
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
@@ -189,7 +177,6 @@ func documentManagedFinishInteraction() {}
 // @Summary Complete one managed Interaction
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
@@ -204,7 +191,6 @@ func documentCompleteInteraction() {}
 // @Summary Fail one managed Interaction
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
@@ -219,7 +205,6 @@ func documentFailInteraction() {}
 // @Summary Cancel one managed Interaction
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
@@ -234,7 +219,6 @@ func documentCancelInteraction() {}
 // @Summary Hand off one managed Interaction
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param interaction_id path string true "Interaction ID"
@@ -249,7 +233,6 @@ func documentHandoffInteraction() {}
 // @Summary Get one Operation
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param operation_id path string true "Operation ID"
 // @Success 200 {object} sessionvo.Operation
@@ -262,7 +245,6 @@ func documentGetOperation() {}
 // @Summary Get one authorized Operation attempt call fact
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param operation_id path string true "Operation ID"
 // @Param attempt path int true "Attempt number"
@@ -276,7 +258,6 @@ func documentGetOperationAttemptFact() {}
 // @Summary Start the next retry attempt for an Operation
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param operation_id path string true "Operation ID"
@@ -291,7 +272,6 @@ func documentStartOperationAttempt() {}
 // @Summary Complete one Operation attempt
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param operation_id path string true "Operation ID"
@@ -307,7 +287,6 @@ func documentCompleteOperationAttempt() {}
 // @Summary Fail one Operation attempt
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Accept json
 // @Produce json
 // @Param operation_id path string true "Operation ID"
@@ -323,7 +302,6 @@ func documentFailOperationAttempt() {}
 // @Summary Get one durable Receipt
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param receipt_id path string true "Receipt ID"
 // @Success 200 {object} sessionvo.Receipt
@@ -336,7 +314,6 @@ func documentGetReceipt() {}
 // @Summary List request projections from durable Receipts
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param limit query int false "Page size, 1..100"
 // @Success 200 {object} requestPage
@@ -349,7 +326,6 @@ func documentListCoreRequests() {}
 // @Summary Get one request projection from durable Receipts
 // @Tags lifecycle
 // @Security BearerAuth
-// @Param x-business-domain header string true "Deployment-approved business domain"
 // @Produce json
 // @Param request_id path string true "Request ID"
 // @Success 200 {object} sessionvo.RequestSummary

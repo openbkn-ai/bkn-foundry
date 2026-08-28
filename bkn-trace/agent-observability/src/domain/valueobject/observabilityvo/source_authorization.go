@@ -11,8 +11,7 @@ type sourceAuthorizationContextKey struct{}
 type sourceAccessScopeContextKey struct{}
 
 type SourceAccessScope struct {
-	TenantID       string
-	BusinessDomain string
+	TenantID string
 }
 
 func WithSourceAuthorization(ctx context.Context, authorization string) context.Context {

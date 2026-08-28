@@ -123,7 +123,6 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
 
 			req := newMultipartRequest(t, url, "test.tar", newValidBKNTar(t))
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
@@ -182,7 +181,6 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", err)
 
 			req := newMultipartRequest(t, url, "test.tar", newValidBKNTar(t))
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 

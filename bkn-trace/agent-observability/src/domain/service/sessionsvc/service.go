@@ -477,19 +477,18 @@ func (s *Service) ListOperationExecutionsByTraceIDScoped(
 ) ([]sessionvo.OperationExecution, error) {
 	if strings.TrimSpace(scope.AccountID) == "" ||
 		strings.TrimSpace(scope.AccountType) == "" ||
-		(strings.TrimSpace(scope.TenantID) == "" && strings.TrimSpace(scope.BusinessDomain) == "") {
+		strings.TrimSpace(scope.TenantID) == "" {
 		return nil, errors.New("trusted trace query scope is incomplete")
 	}
 	return s.listOperationExecutionsByTraceID(ctx, traceID, func(owner sessionvo.Owner) bool {
 		if scope.AccessProfile != nil {
 			return evidencevo.CanReadRecord(*scope.AccessProfile, evidencevo.RecordScope{
-				TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+				TenantID:               owner.TenantID,
 				EffectiveSubjectID:     owner.EffectiveSubjectID,
 				ApplicationPrincipalID: owner.ApplicationPrincipalID,
 			}, evidencevo.AccessViewTechnical)
 		}
-		if scope.TenantID != "" && owner.TenantID != scope.TenantID ||
-			scope.BusinessDomain != "" && owner.BusinessDomainID != scope.BusinessDomain {
+		if scope.TenantID != "" && owner.TenantID != scope.TenantID {
 			return false
 		}
 		if scope.AccountType == "app" || scope.AccountType == "service" {
@@ -509,7 +508,7 @@ func (s *Service) ListOperationExecutionsByInteractionIDScoped(
 ) ([]sessionvo.OperationExecution, error) {
 	if strings.TrimSpace(scope.AccountID) == "" ||
 		strings.TrimSpace(scope.AccountType) == "" ||
-		(strings.TrimSpace(scope.TenantID) == "" && strings.TrimSpace(scope.BusinessDomain) == "") {
+		strings.TrimSpace(scope.TenantID) == "" {
 		return nil, errors.New("trusted trace query scope is incomplete")
 	}
 	interactionID = strings.TrimSpace(interactionID)
@@ -576,12 +575,11 @@ func (s *Service) listOperationExecutionsByTraceID(
 func canReadTechnicalOwner(scope evidencevo.QueryScope, owner sessionvo.Owner) bool {
 	if scope.AccessProfile != nil {
 		return evidencevo.CanReadRecord(*scope.AccessProfile, evidencevo.RecordScope{
-			TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+			TenantID:           owner.TenantID,
 			EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
 		}, evidencevo.AccessViewTechnical)
 	}
-	if scope.TenantID != "" && owner.TenantID != scope.TenantID ||
-		scope.BusinessDomain != "" && owner.BusinessDomainID != scope.BusinessDomain {
+	if scope.TenantID != "" && owner.TenantID != scope.TenantID {
 		return false
 	}
 	if scope.AccountType == "app" || scope.AccountType == "service" {
@@ -1289,7 +1287,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 			return domainError(CodeIdempotencyConflict, "receipt terminal payload conflicts with the durable result")
 		}
 		for _, ref := range command.BusinessRefs {
-			if !ref.IsCanonicalForBusinessDomain(command.Owner.BusinessDomainID) {
+			if !ref.IsCanonical() {
 				return domainError(
 					CodeOperationRequired,
 					"receipt business_refs contains an invalid typed business reference",
@@ -1476,8 +1474,7 @@ func canonicalStringSet(values []string) []string {
 
 func businessRefsEqual(left, right []sessionvo.BusinessRef) bool {
 	return slices.EqualFunc(left, right, func(a, b sessionvo.BusinessRef) bool {
-		if a.RefType != b.RefType || a.RefID != b.RefID ||
-			a.BusinessDomainID != b.BusinessDomainID || a.Version != b.Version ||
+		if a.RefType != b.RefType || a.RefID != b.RefID || a.Version != b.Version ||
 			a.DisplayHint != b.DisplayHint {
 			return false
 		}
@@ -1903,8 +1900,7 @@ func (s *Service) appendProjection(tx isessionstore.Transaction, aggregateType, 
 }
 
 func validateOwner(owner sessionvo.Owner) error {
-	if owner.TenantID == "" || owner.BusinessDomainID == "" ||
-		owner.ApplicationPrincipalID == "" || owner.EffectiveSubjectID == "" ||
+	if owner.TenantID == "" || owner.ApplicationPrincipalID == "" || owner.EffectiveSubjectID == "" ||
 		(owner.EffectiveSubjectType != sessionvo.SubjectUser && owner.EffectiveSubjectType != sessionvo.SubjectService) {
 		return ErrInvalidOwner
 	}

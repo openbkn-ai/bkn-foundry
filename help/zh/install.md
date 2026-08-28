@@ -190,7 +190,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 
 ### ⚡ 最小化安装（首次体验推荐）
 
-跳过部分可选模块（如认证、业务域），资源占用更小：
+跳过可选认证模块，资源占用更小：
 
 ```bash
 ./deploy.sh openbkn install --minimum
@@ -200,13 +200,12 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 
 ```bash
 ./deploy.sh openbkn install \
-  --set auth.enabled=false \
-  --set businessDomain.enabled=false
+  --set auth.enabled=false
 ```
 
 ### 📦 完整安装
 
-包含认证与业务域等组件：
+包含认证组件：
 
 ```bash
 ./deploy.sh openbkn install
@@ -271,7 +270,7 @@ sudo bash ./onboard.sh --help
 | `--config=xxx.yaml` | 非交互：按 YAML 注册模型与可选 BKN；参考 `deploy/conf/models.yaml.example` |
 | `--enable-bkn-search` | 仅做 BKN ConfigMap 类操作（仍先走 probe） |
 
-**完整鉴权安装（启用 auth + business domain）**：脚本根据 Helm/命名空间判断为完整鉴权安装 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
+**完整鉴权安装（启用 auth）**：脚本根据 Helm/命名空间判断为完整鉴权安装 后，**会自动按以下 5 步执行**（你不需要手工逐条做——这里列出来只是让你知道脚本在干什么，以及某一步失败时该回到哪一步）：
 
 1. **`openbkn auth login`**（`onboard_ensure_bkn_auth`）— 会话写入 `~/.bkn`。HTTP 默认 `admin` + 安装时生成的初始密码（config.yaml `bknSafe.initialPassword`）（TTY 下也可改走浏览器 OAuth）；`-y` 模式直接走 HTTP 默认。
 2. **`openbkn` 在 PATH**（`ensure admin CLI`）— 缺则自动 `npm i -g @openbkn/bkn-sdk`（交互提示，或 `-y` 时自动安装）。管理能力内置于 `openbkn admin` 子命令，无需单独的包。
@@ -352,7 +351,7 @@ sequenceDiagram
 
 ## 🛡️ 完整安装后的管理员命令（`openbkn admin`）
 
-完整安装（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**——管理能力随 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) 一起提供，通过 `openbkn admin ...` 调用：
+完整安装（启用 `auth.enabled=true`）后，平台的**用户、组织、角色、模型、审计**等管理操作通过同一个 `openbkn` CLI 的 **`openbkn admin`** 子命令完成。**没有单独的 admin 包**——管理能力随 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk) 一起提供，通过 `openbkn admin ...` 调用：
 
 | 命令面 | 受众 | 覆盖范围 |
 | --- | --- | --- |

@@ -31,7 +31,7 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	owner := Owner{
-		TenantID: "t1", BusinessDomainID: "d1", ApplicationPrincipalID: "bkn-backend",
+		TenantID: "t1", ApplicationPrincipalID: "bkn-backend",
 		EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1",
 	}
 	event := Event{
@@ -87,7 +87,7 @@ func TestEnqueueRejectsZeroEpoch(t *testing.T) {
 	_, err = repository.Enqueue(context.Background(), Event{
 		EventID: "evt-zero", EventType: "knowledge.read.observed", ConversationID: "c1", InteractionID: "i1",
 		StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`),
-	}, Owner{TenantID: "t1", BusinessDomainID: "d1", ApplicationPrincipalID: "bkn-backend", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"})
+	}, Owner{TenantID: "t1", ApplicationPrincipalID: "bkn-backend", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"})
 	if err == nil {
 		t.Fatal("Enqueue() accepted epoch 0")
 	}

@@ -36,7 +36,6 @@ func TestEnsureCurrentConversationIsIdempotent(t *testing.T) {
 	})
 	owner := sessionvo.Owner{
 		TenantID:               "tenant-1",
-		BusinessDomainID:       "domain-1",
 		ApplicationPrincipalID: "app-1",
 		EffectiveSubjectType:   sessionvo.SubjectUser,
 		EffectiveSubjectID:     "user-1",
@@ -1549,7 +1548,7 @@ func TestDurableReceiptFreezesEvidenceBusinessAndArtifactReferences(t *testing.T
 	service, owner, _, interaction, operation, receipt := mustCreateOperation(t)
 	businessRef := sessionvo.BusinessRef{
 		RefType: "object_type", RefID: "object:supplychain_hd0202:forecast",
-		BusinessDomainID: owner.BusinessDomainID, Version: "v3",
+		Version:     "v3",
 		DisplayHint: "需求预测单",
 	}
 	_, durableReceipt, err := service.CompleteOperationAttempt(
@@ -1627,25 +1626,18 @@ func TestOperationReceiptRejectsInvalidTypedBusinessReference(t *testing.T) {
 
 	tests := map[string]sessionvo.BusinessRef{
 		"unknown type": {
-			RefType: "result", RefID: "result:forecast", BusinessDomainID: "domain-1", Version: "1",
+			RefType: "result", RefID: "result:forecast", Version: "1",
 		},
 		"short ref id": {
-			RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast", BusinessDomainID: "domain-1", Version: "1",
-		},
-		"foreign business domain": {
-			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-2", Version: "1",
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:forecast", Version: "1",
 		},
 		"missing version": {
-			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-1",
-		},
+			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast"},
 	}
 	for name, businessRef := range tests {
 		name, businessRef := name, businessRef
 		t.Run(name, func(t *testing.T) {
 			service, owner, _, _, operation, receipt := mustCreateOperation(t)
-			if name != "foreign business domain" {
-				businessRef.BusinessDomainID = owner.BusinessDomainID
-			}
 			_, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
 				Owner: owner, OperationID: operation.ID, Attempt: receipt.Attempt,
 				ReceiptID: receipt.ID, Output: operationOutput("invalid-business-ref"),
@@ -1671,7 +1663,7 @@ func TestOperationReceiptReplaysLegacyTerminalBusinessReferenceIdempotently(t *t
 		RequestID:          "req-legacy-business-ref", TraceID: validTraceIDOne,
 		BusinessRefs: []sessionvo.BusinessRef{{
 			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
-			BusinessDomainID: owner.BusinessDomainID, Version: "1",
+			Version: "1",
 		}},
 	}
 	if _, _, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
@@ -1756,7 +1748,7 @@ func TestOperationReceiptComparesBusinessReferenceAsOfByValue(t *testing.T) {
 		RequestID:          "req-business-ref-as-of", TraceID: validTraceIDOne,
 		BusinessRefs: []sessionvo.BusinessRef{{
 			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
-			BusinessDomainID: owner.BusinessDomainID, Version: "1", AsOf: &firstAsOf,
+			Version: "1", AsOf: &firstAsOf,
 		}},
 	}
 	if _, _, err := service.CompleteOperationAttempt(context.Background(), command); err != nil {
@@ -2262,7 +2254,6 @@ func newTestService() *sessionsvc.Service {
 func testOwner() sessionvo.Owner {
 	return sessionvo.Owner{
 		TenantID:               "tenant-1",
-		BusinessDomainID:       "domain-1",
 		ApplicationPrincipalID: "app-1",
 		EffectiveSubjectType:   sessionvo.SubjectUser,
 		EffectiveSubjectID:     "user-1",
@@ -2504,13 +2495,11 @@ func TestListOperationExecutionsByTraceIDReturnsAuthorizedAttemptsInTimeOrder(t 
 	}
 
 	profile := evidencevo.AccessProfile{
-		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
-		EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
+		TenantID: owner.TenantID, EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
 		AccountActive: true, TenantActive: true,
 	}
 	scoped, err := service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
-		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
-		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		TenantID: owner.TenantID, AccountID: owner.EffectiveSubjectID, AccountType: "user",
 		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
 	}, validTraceIDOne)
 	if err != nil || len(scoped) != 2 {
@@ -2518,8 +2507,7 @@ func TestListOperationExecutionsByTraceIDReturnsAuthorizedAttemptsInTimeOrder(t 
 	}
 	profile.Roles = []string{"admin"}
 	scoped, err = service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
-		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
-		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		TenantID: owner.TenantID, AccountID: owner.EffectiveSubjectID, AccountType: "user",
 		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
 	}, validTraceIDOne)
 	if err != nil || len(scoped) != 3 {
@@ -2527,8 +2515,7 @@ func TestListOperationExecutionsByTraceIDReturnsAuthorizedAttemptsInTimeOrder(t 
 	}
 
 	interactionScoped, err := service.ListOperationExecutionsByInteractionIDScoped(context.Background(), evidencevo.QueryScope{
-		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
-		AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		TenantID: owner.TenantID, AccountID: owner.EffectiveSubjectID, AccountType: "user",
 		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
 	}, "int-early")
 	if err != nil || len(interactionScoped) != 1 || interactionScoped[0].Fact.OperationID != "op-early" {

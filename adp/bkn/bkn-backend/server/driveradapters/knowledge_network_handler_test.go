@@ -74,7 +74,6 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 			reqParamByte, _ := sonic.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
@@ -85,7 +84,6 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 			reqParamByte, _ := sonic.Marshal([]interfaces.KN{kn})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
@@ -96,7 +94,6 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 			reqParamByte, _ := sonic.Marshal(interfaces.KN{})
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
@@ -129,7 +126,6 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 			reqParamByte, _ := sonic.Marshal(kn)
 			req := httptest.NewRequest(http.MethodPost, url, bytes.NewReader(reqParamByte))
 			req.Header.Set(interfaces.CONTENT_TYPE_NAME, interfaces.CONTENT_TYPE_JSON)
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
@@ -304,8 +300,7 @@ func Test_KnowledgeNetworkRestHandler_ListKNs(t *testing.T) {
 		Convey("Success ListKNs\n", func() {
 			kns.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return([]*interfaces.KN{}, 0, nil)
 
-			req := httptest.NewRequest(http.MethodGet, url+"?business_domain=domain1", nil)
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
+			req := httptest.NewRequest(http.MethodGet, url+"", nil)
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 

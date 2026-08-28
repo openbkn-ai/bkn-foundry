@@ -137,7 +137,6 @@ func TestIngestAcceptsIntegratedProducerTwoPointOneFixtures(t *testing.T) {
 			}
 			trace := batch["trace"].(map[string]any)
 			trace["bkn.tenant.id"] = "tenant_fixture"
-			trace["business_domain"] = "domain_fixture"
 			trace["bkn.account.id"] = "account_fixture"
 			trace["bkn.account.type"] = "app"
 
@@ -801,7 +800,7 @@ func TestIngestRejectsTraceOwnershipDrift(t *testing.T) {
 			batch["trace"].(map[string]any)["bkn.request.id"] = "req_other"
 			batch["events"].([]map[string]any)[0]["bkn.request.id"] = "req_other"
 		},
-		"domain":  func(batch map[string]any) { batch["trace"].(map[string]any)["business_domain"] = "bd_other" },
+		"tenant":  func(batch map[string]any) { batch["trace"].(map[string]any)["bkn.tenant.id"] = "tenant_other" },
 		"account": func(batch map[string]any) { batch["trace"].(map[string]any)["bkn.account.id"] = "acct_other" },
 	}
 	for name, mutate := range tests {
@@ -851,7 +850,6 @@ func TestIngestPreservesLegacyCausalityAfterTwoPointOneAppend(t *testing.T) {
 	trace["traceparent"] = "00-8c0d0000000000000000000000000001-1f12000000000001-01"
 	trace["bkn.request.id"] = "req_phase2_001"
 	trace["bkn.tenant.id"] = "tenant_demo"
-	trace["business_domain"] = ""
 	trace["bkn.account.id"] = "acct_demo"
 	trace["bkn.account.type"] = "app"
 	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, batch)); err != nil || len(validationErrors) > 0 {
@@ -1481,7 +1479,7 @@ func TestBusinessGraphAddsDisplayOnlyFromResolvedResolverMetadata(t *testing.T) 
 			ResolutionStatus: "resolved", SourceVersion: "schema-v7",
 		},
 	}}}
-	scope := evidencevo.QueryScope{TenantID: "tenant_1", BusinessDomain: "domain_1", AccountID: "user_1", AccountType: "user"}
+	scope := evidencevo.QueryScope{TenantID: "tenant_1", AccountID: "user_1", AccountType: "user"}
 
 	response, found, err := NewWithBusinessResolver(store, resolver).GetBusinessGraphByTraceID(
 		context.Background(), "trace_graph_display", evidencevo.EvidenceQueryOptions{Scope: scope},
@@ -1546,7 +1544,7 @@ func TestBusinessGraphPromotesClaimedRetrievalSourceToResolvedBusinessEvidence(t
 		},
 	}}}
 	scope := evidencevo.QueryScope{
-		BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+		TenantID: "tenant_1", AccountID: "user_1", AccountType: "user",
 	}
 
 	response, found, err := NewWithBusinessResolver(
@@ -1583,7 +1581,7 @@ func TestBusinessGraphResolverVisibilityDoesNotOverrideRecordAuthorization(t *te
 	resolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{{
 		RefID: "object:kn_demo:customer", Visibility: "unauthorized",
 	}}}
-	scope := evidencevo.QueryScope{BusinessDomain: "domain_1", AccountID: "user_2", AccountType: "user"}
+	scope := evidencevo.QueryScope{AccountID: "user_2", AccountType: "user"}
 
 	response, found, err := NewWithBusinessResolver(store, resolver).GetBusinessGraphByTraceID(
 		context.Background(), "trace_graph_resolver_denied", evidencevo.EvidenceQueryOptions{Scope: scope},
@@ -1678,7 +1676,7 @@ func TestGetBusinessGraphByRequestIDFallsBackToAuthorizedProjection(t *testing.T
 		context.Background(),
 		"req_graph_projection",
 		evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
-			BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+			AccountID: "user_1", AccountType: "user",
 		}},
 	)
 
@@ -1697,7 +1695,7 @@ func TestTraceEvidenceReadsFallBackToAuthorizedCoreProjection(t *testing.T) {
 	}}
 	service := NewWithProjectionSource(&fakeStore{}, source)
 	options := evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
-		BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+		TenantID: "tenant_1", AccountID: "user_1", AccountType: "user",
 	}}
 
 	if _, found, err := service.GetEvidenceChainByTraceID(context.Background(), trace.TraceID, options); err != nil || !found {
@@ -1745,7 +1743,7 @@ func TestReceiptBusinessRefsPopulateEvidenceChainAndBusinessGraph(t *testing.T) 
 	}}
 	service := NewWithBusinessResolverAndProjectionSource(&fakeStore{}, resolver, source)
 	options := evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
-		BusinessDomain: "bd_public", AccountID: "user_1", AccountType: "user",
+		TenantID: "tenant_1", AccountID: "user_1", AccountType: "user",
 	}}
 
 	chain, found, err := service.GetEvidenceChainByRequestID(context.Background(), trace.RequestID, options)
@@ -2072,7 +2070,6 @@ func twoPointOneBatch(events []map[string]any) map[string]any {
 			"bkn.request.id":      "req_biz_001",
 			"bkn.conversation.id": "agent:thread_supply_chain",
 			"bkn.tenant.id":       "tenant_e2e",
-			"business_domain":     "supplychain_e2e",
 			"bkn.account.id":      "account_e2e_admin",
 			"bkn.account.type":    "user",
 		},
@@ -2377,7 +2374,7 @@ func missingClaimIDBatch() string {
     "trace_id": "8c0d0000000000000000000000000002",
     "bkn.request.id": "req_phase2_002",
     "traceparent": "00-8c0d0000000000000000000000000002-1f12000000000002-01",
-    "business_domain": "bd_demo",
+    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2411,7 +2408,7 @@ func toolEventsBatch() string {
     "trace_id": "8c0d0000000000000000000000000006",
     "bkn.request.id": "req_phase2_tool_006",
     "traceparent": "00-8c0d0000000000000000000000000006-1f12000000000006-01",
-    "business_domain": "bd_demo",
+    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2469,7 +2466,7 @@ func sensitiveBatch() string {
     "trace_id": "8c0d0000000000000000000000000003",
     "bkn.request.id": "req_phase2_003",
     "traceparent": "00-8c0d0000000000000000000000000003-1f12000000000003-01",
-    "business_domain": "bd_demo",
+    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2502,7 +2499,7 @@ func unknownClaimIDBatch() string {
     "trace_id": "8c0d0000000000000000000000000004",
     "bkn.request.id": "req_phase2_004",
     "traceparent": "00-8c0d0000000000000000000000000004-1f12000000000004-01",
-    "business_domain": "bd_demo",
+    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2538,7 +2535,7 @@ func emptyEventsBatch() string {
     "trace_id": "8c0d0000000000000000000000000005",
     "bkn.request.id": "req_phase2_005",
     "traceparent": "00-8c0d0000000000000000000000000005-1f12000000000005-01",
-    "business_domain": "bd_demo",
+    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },

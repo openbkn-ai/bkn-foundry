@@ -103,9 +103,6 @@ func (g *Guard) Begin(
 	ctx = common.SetTraceContextToCtx(ctx, traceContext)
 	ctx = common.SetAuthoritativeObservedAtIfMissing(ctx, result.Operation.CreatedAt)
 	trustedRefs := append([]BusinessRef(nil), intent.Context.BusinessRefs...)
-	for index := range trustedRefs {
-		trustedRefs[index].BusinessDomainID = traceContext.BusinessDomain
-	}
 	return withDeclaredBusinessRefs(withEvidenceOutcome(ctx), trustedRefs), state, GuardExecute, nil, nil
 }
 

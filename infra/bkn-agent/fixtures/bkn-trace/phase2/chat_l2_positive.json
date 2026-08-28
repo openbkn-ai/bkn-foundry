@@ -6,7 +6,6 @@
     "trace_id": "7a210000000000000000000000000001",
     "traceparent": "00-7a210000000000000000000000000001-7a21000000000001-01",
     "bkn.request.id": "req_bkn_agent_chat_0001",
-    "business_domain": "domain_customer_risk",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "user"
   },
@@ -33,7 +32,6 @@
       "observed_at": "2026-07-25T10:00:00.000000Z",
       "content_hash": "sha256:6df400bbf4f51642d6752f0cecfa9b9c1968cd0e4ec6cc4e7e2201e16f0c760c",
       "content": "客户 A 的风险为什么上升？",
-      "business_domain": "domain_customer_risk",
       "bkn.account.id": "acct_demo",
       "bkn.account.type": "user",
       "agent_or_app": "agent_demo"
@@ -53,7 +51,6 @@
       "observed_at": "2026-07-25T10:00:00.003000Z",
       "content_hash": "sha256:55133a7db97a59b21f7624cb25cd55f420920620facd67355129007308bf1a24",
       "content": "客户 A 的风险上升，因为近 7 天投诉增加。",
-      "business_domain": "domain_customer_risk",
       "bkn.account.id": "acct_demo",
       "bkn.account.type": "user",
       "agent_or_app": "agent_demo"

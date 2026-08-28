@@ -66,7 +66,7 @@ func NewCoreConfig() (CoreConfig, error) {
 	projectionRebuildVersion := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_REBUILD_VERSION"))
 	projectionBootstrapVersion := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_BOOTSTRAP_VERSION"))
 	if projectionBootstrapVersion == "" {
-		projectionBootstrapVersion = projectionIndex + "-v014-r1"
+		projectionBootstrapVersion = projectionIndex + "-v015-r1"
 	}
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),

@@ -44,7 +44,7 @@ Source: `<legacy platform clone>/adp/execution-factory/tests` (or `$LEGACY_PLATF
 
 1. Start `agent-operator-integration` (default `http://127.0.0.1:9000`)
 2. Python 3.10+ with `pytest`, `requests`, `pyyaml`
-3. For token mode: Bearer token with `x-business-domain: bd_public`
+3. For token mode: a valid Bearer token
 
 ### Start backend locally (AUTH_ENABLED=false)
 
@@ -67,8 +67,6 @@ cd bkn-foundry/bkn-foundry/adp/execution-factory/tests
 copy config\env.openbkn.example.ini config\env.ini
 
 $env:OPENBKN_TOKEN = "<your-bearer-token>"
-$env:OPENBKN_BUSINESS_DOMAIN = "bd_public"
-
 .\scripts\run-openbkn-smoke.ps1
 ```
 
@@ -116,7 +114,6 @@ Repository secrets for `workflow_dispatch` with `run_live_smoke=true`:
 |--------|---------|
 | `OPENBKN_TOKEN` | Bearer token when auth enabled |
 | `OPENBKN_AUTH_ENABLED` | Set to `false` for AUTH_ENABLED=false backends |
-| `OPENBKN_BUSINESS_DOMAIN` | Optional; defaults to `bd_public` in the workflow |
 
 ## bkn-studio mirror
 

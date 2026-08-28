@@ -24,7 +24,6 @@ var (
 // independently validate delegation until BKN Safe exposes a verifiable contract.
 type TrustedIdentity struct {
 	TenantID               string
-	BusinessDomain         string
 	ActorID                string
 	EffectiveSubjectID     string
 	ApplicationPrincipalID string

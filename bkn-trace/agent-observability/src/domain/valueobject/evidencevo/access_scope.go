@@ -19,7 +19,6 @@ const (
 // Callers cannot supply roles or managed knowledge networks in request payloads.
 type AccessProfile struct {
 	TenantID                   string
-	BusinessDomain             string
 	ActorID                    string
 	EffectiveSubjectID         string
 	ApplicationPrincipalID     string
@@ -34,7 +33,6 @@ type AccessProfile struct {
 // RecordScope is the immutable access projection attached to a persisted run.
 type RecordScope struct {
 	TenantID               string
-	BusinessDomain         string
 	EffectiveSubjectID     string
 	ApplicationPrincipalID string
 	KnowledgeNetworkIDs    []string
@@ -63,7 +61,7 @@ func CanReadRecord(profile AccessProfile, record RecordScope, view AccessView) b
 }
 
 // HasTenantWideTraceAccess is the only role-based bypass for a complete Trace
-// record. It never bypasses account, tenant, or business-domain boundaries.
+// record. It never bypasses account or tenant boundaries.
 func HasTenantWideTraceAccess(profile AccessProfile) bool {
 	return profile.AccountActive && profile.TenantActive && hasAnyRole(profile, "admin", "super_admin")
 }
@@ -101,9 +99,6 @@ func validAccessBoundary(profile AccessProfile, record RecordScope) bool {
 	if !profile.AccountActive || !profile.TenantActive ||
 		profile.TenantID == "" || record.TenantID == "" ||
 		profile.TenantID != record.TenantID {
-		return false
-	}
-	if record.BusinessDomain != "" && profile.BusinessDomain != record.BusinessDomain {
 		return false
 	}
 	return true

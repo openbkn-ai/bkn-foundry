@@ -94,7 +94,6 @@ type EvidenceArtifact struct {
 	Content                any          `json:"content,omitempty"`
 	SnapshotRef            string       `json:"snapshot_ref,omitempty"`
 	TenantID               string       `json:"bkn.tenant.id,omitempty"`
-	BusinessDomain         string       `json:"business_domain,omitempty"`
 	AccountID              string       `json:"bkn.account.id"`
 	AccountType            string       `json:"bkn.account.type"`
 	EffectiveSubjectID     string       `json:"effective_subject_id,omitempty"`
@@ -130,7 +129,6 @@ func NormalizeArtifact(artifact EvidenceArtifact) (EvidenceArtifact, ValidationE
 	artifact.ContentHash = strings.ToLower(strings.TrimSpace(artifact.ContentHash))
 	artifact.SnapshotRef = strings.TrimSpace(artifact.SnapshotRef)
 	artifact.TenantID = strings.TrimSpace(artifact.TenantID)
-	artifact.BusinessDomain = strings.TrimSpace(artifact.BusinessDomain)
 	artifact.AccountID = strings.TrimSpace(artifact.AccountID)
 	artifact.AccountType = strings.TrimSpace(artifact.AccountType)
 	artifact.Initiator = strings.TrimSpace(artifact.Initiator)
@@ -174,9 +172,9 @@ func NormalizeArtifact(artifact EvidenceArtifact) (EvidenceArtifact, ValidationE
 	}
 	requireArtifactValue(artifact.AccountID, "bkn.account.id", &validationErrors)
 	requireArtifactValue(artifact.AccountType, "bkn.account.type", &validationErrors)
-	if artifact.TenantID == "" && artifact.BusinessDomain == "" {
+	if artifact.TenantID == "" {
 		validationErrors = append(validationErrors, NewValidationError(
-			"ARTIFACT_OWNERSHIP_REQUIRED", "business_domain", "tenant or business domain is required",
+			"ARTIFACT_OWNERSHIP_REQUIRED", "bkn.tenant.id", "tenant is required",
 		))
 	}
 	for _, item := range []struct {
@@ -197,7 +195,6 @@ func NormalizeArtifact(artifact EvidenceArtifact) (EvidenceArtifact, ValidationE
 		{"source_version", artifact.SourceVersion},
 		{"snapshot_ref", artifact.SnapshotRef},
 		{"bkn.tenant.id", artifact.TenantID},
-		{"business_domain", artifact.BusinessDomain},
 		{"bkn.account.id", artifact.AccountID},
 		{"bkn.account.type", artifact.AccountType},
 		{"initiator", artifact.Initiator},
@@ -269,16 +266,13 @@ func MatchesArtifactScope(artifact EvidenceArtifact, scope QueryScope) bool {
 	if scope.AccessProfile != nil {
 		return CanReadRecord(*scope.AccessProfile, artifact.RecordScope(), AccessViewBusiness)
 	}
-	if artifact.AccountID == "" || artifact.AccountType == "" || artifact.TenantID == "" && artifact.BusinessDomain == "" {
+	if artifact.AccountID == "" || artifact.AccountType == "" || artifact.TenantID == "" {
 		return false
 	}
 	if artifact.AccountID != scope.AccountID || artifact.AccountType != scope.AccountType {
 		return false
 	}
 	if artifact.TenantID != "" && artifact.TenantID != scope.TenantID {
-		return false
-	}
-	if artifact.BusinessDomain != "" && artifact.BusinessDomain != scope.BusinessDomain {
 		return false
 	}
 	return true
@@ -294,7 +288,7 @@ func (artifact EvidenceArtifact) RecordScope() RecordScope {
 		applicationPrincipalID = artifact.AccountID
 	}
 	return RecordScope{
-		TenantID: artifact.TenantID, BusinessDomain: artifact.BusinessDomain,
+		TenantID:           artifact.TenantID,
 		EffectiveSubjectID: effectiveSubjectID, ApplicationPrincipalID: applicationPrincipalID,
 		KnowledgeNetworkIDs: artifact.KnowledgeNetworkIDs,
 	}

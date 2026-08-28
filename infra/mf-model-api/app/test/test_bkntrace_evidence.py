@@ -33,7 +33,6 @@ def test_build_model_call_events_hashes_prompt_output_and_preserves_context():
         "x-account-id": "acct_demo",
         "x-account-type": "user",
         "x-tenant-id": "tenant_demo",
-        "x-business-domain": "domain_demo",
         "bkn-interaction-id": "interaction_model_001",
         "bkn-operation-id": "operation_model_001",
         "bkn-causation-event-id": "event_tool_called_001",
@@ -95,7 +94,6 @@ def test_model_event_requires_business_causality_context():
         "traceparent": "00-81230000000000000000000000000001-8123000000000001-01",
         "bkn-request-id": "req_model_call_0002",
         "x-account-id": "acct_demo",
-        "x-business-domain": "domain_demo",
     })
 
     events = evidence.build_model_call_events(
@@ -117,7 +115,6 @@ def test_failed_model_event_contains_only_safe_error_hash_and_category():
         "traceparent": "00-81230000000000000000000000000001-8123000000000001-01",
         "bkn-request-id": "req_model_call_0003",
         "x-account-id": "acct_demo",
-        "x-business-domain": "domain_demo",
         "bkn-interaction-id": "interaction_model_003",
         "bkn-operation-id": "operation_model_003",
         "bkn-causation-event-id": "event_tool_called_003",
@@ -149,7 +146,6 @@ def test_model_receipt_uses_canonical_event_header_and_bounded_candidates():
         "bkn-request-id": "req_model_call_0004",
         "x-account-id": "acct_demo",
         "x-account-type": "user",
-        "x-business-domain": "domain_demo",
         "bkn-interaction-id": "interaction_model_004",
         "bkn-operation-id": "operation_model_004",
         "bkn-causation-event-id": "event_tool_called_004",

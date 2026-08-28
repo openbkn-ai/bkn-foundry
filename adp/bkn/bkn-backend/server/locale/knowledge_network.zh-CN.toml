@@ -19,11 +19,6 @@ Description = "请求参数不合法"
 Solution = "请检查参数是否正确。"
 ErrorLink = ""
 
-[BknBackend.KnowledgeNetwork.InvalidParameter.BusinessDomain]
-Description = "业务域不合法"
-Solution = "请检查参数是否正确。"
-ErrorLink = ""
-
 [BknBackend.KnowledgeNetwork.InvalidParameter.ConceptCondition]
 Description = "概念过滤条件不合法"
 Solution = "请检查参数是否正确。"
@@ -101,16 +96,6 @@ ErrorLink = ""
 
 [BknBackend.KnowledgeNetwork.InternalError.BeginTransactionFailed]
 Description = "开启事务异常"
-Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
-ErrorLink = ""
-
-[BknBackend.KnowledgeNetwork.InternalError.BindBusinessDomainFailed]
-Description = "绑定业务知识网络业务域失败"
-Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
-ErrorLink = ""
-
-[BknBackend.KnowledgeNetwork.InternalError.UnbindBusinessDomainFailed]
-Description = "解绑业务知识网络业务域失败"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
 ErrorLink = ""
 

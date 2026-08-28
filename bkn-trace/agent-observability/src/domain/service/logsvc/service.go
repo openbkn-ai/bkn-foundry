@@ -226,7 +226,6 @@ func (service *Service) listPage(
 		return observabilityvo.ListResult{}, ErrInvalidQuery
 	}
 	sourceQuery.AuthorizedTenantID = profile.TenantID
-	sourceQuery.AuthorizedBusinessDomain = profile.BusinessDomain
 	sourceQuery.AuthorizedSubjectID = profile.EffectiveSubjectID
 	sourceQuery.AuthorizedApplicationID = profile.ApplicationPrincipalID
 	sourceQuery.AuthorizedCategories = append([]string(nil), effectiveCategories...)
@@ -489,7 +488,7 @@ func (service *Service) Get(
 		detailCategories = []string{observabilityvo.CategoryRuntimeBusiness, observabilityvo.CategoryRuntimeModel}
 	}
 	ctx = observabilityvo.WithSourceAccessScope(ctx, observabilityvo.SourceAccessScope{
-		TenantID: profile.TenantID, BusinessDomain: profile.BusinessDomain,
+		TenantID: profile.TenantID,
 	})
 	visibleSources := service.visibleSources(detailCategories)
 	if service.operationAuditOnly {
@@ -563,7 +562,7 @@ func (service *Service) Sources(ctx context.Context, profile evidencevo.AccessPr
 	now := time.Now().UTC()
 	from := now.Add(-time.Hour)
 	query := observabilityvo.LogQuery{
-		Limit: 1, AuthorizedTenantID: profile.TenantID, AuthorizedBusinessDomain: profile.BusinessDomain,
+		Limit: 1, AuthorizedTenantID: profile.TenantID,
 		TimeFrom: &from, TimeTo: &now, ObservedBefore: &now,
 		AuthorizedSubjectID: profile.EffectiveSubjectID, AuthorizedApplicationID: profile.ApplicationPrincipalID,
 		AuthorizedCategories:          append([]string(nil), capabilities.AllowedLogCategories...),
@@ -810,9 +809,6 @@ func canReadLog(
 	if profile.TenantID == "" || record.TenantID == "" || profile.TenantID != record.TenantID {
 		return false
 	}
-	if record.BusinessDomain != "" && profile.BusinessDomain != record.BusinessDomain {
-		return false
-	}
 	if associated && !capabilities.GlobalLogSearch {
 		if isOperationAuditCategory(record.Category) {
 			return record.ActorID != "" && record.ActorID == profile.EffectiveSubjectID
@@ -829,7 +825,7 @@ func canReadLog(
 	}
 
 	recordScope := evidencevo.RecordScope{
-		TenantID: record.TenantID, BusinessDomain: record.BusinessDomain,
+		TenantID:           record.TenantID,
 		EffectiveSubjectID: record.EffectiveSubjectID, ApplicationPrincipalID: record.ApplicationID,
 		KnowledgeNetworkIDs: record.KnowledgeNetworkIDs,
 	}
@@ -863,7 +859,7 @@ func matchesQuery(record observabilityvo.LogRecord, query observabilityvo.LogQue
 		matchesOptional(record.TraceID, query.TraceID) && matchesOptional(record.SpanID, query.SpanID) &&
 		matchesOptional(record.RequestID, query.RequestID) && matchesOptional(record.ConversationID, query.ConversationID) &&
 		matchesOptional(record.InteractionID, query.InteractionID) && matchesOptional(record.OperationID, query.OperationID) &&
-		matchesOptional(record.BusinessDomain, query.BusinessDomain) && matchesOptional(record.ActorID, query.ActorID) && matchesActor(record, query.ActorQuery) &&
+		matchesOptional(record.ActorID, query.ActorID) && matchesActor(record, query.ActorQuery) &&
 		matchesOptional(record.BusinessModule, query.BusinessModule) && matchesOptional(record.Action, query.Action) &&
 		matchesOptional(record.TargetType, query.TargetType) && matchesOptional(record.TargetID, query.TargetID) &&
 		matchesSet(record.Outcome, query.Outcomes) &&

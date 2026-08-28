@@ -16,7 +16,6 @@ type Query struct {
 	Scope           evidencevo.QueryScope
 	From            time.Time
 	To              time.Time
-	BusinessDomain  string
 	Status          string
 	RequestID       string
 	TraceID         string

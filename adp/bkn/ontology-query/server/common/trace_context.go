@@ -26,7 +26,6 @@ const (
 	HeaderBKNClaimID          = "bkn-claim-id"
 	HeaderBKNAttempt          = "bkn-attempt"
 	HeaderBKNEventObservedAt  = "bkn-event-observed-at"
-	HeaderBusinessDomain      = "x-business-domain"
 )
 
 type traceContextKey string
@@ -39,7 +38,6 @@ var businessTraceIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`
 // TraceContext carries the OpenBKN phase-one correlation context.
 type TraceContext struct {
 	RequestID        string
-	BusinessDomain   string
 	InteractionID    string
 	OperationID      string
 	CausationEventID string
@@ -52,10 +50,6 @@ type TraceContext struct {
 func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) context.Context {
 	if !IsValidBKNRequestID(traceContext.RequestID) {
 		traceContext.RequestID = NewBKNRequestID()
-	}
-	traceContext.BusinessDomain = sanitizeBusinessTraceID(traceContext.BusinessDomain)
-	if traceContext.BusinessDomain == "" {
-		traceContext.BusinessDomain = sanitizeBusinessTraceID(traceContext.Baggage["business_domain"])
 	}
 	traceContext.InteractionID = sanitizeBusinessTraceID(traceContext.InteractionID)
 	traceContext.OperationID = sanitizeBusinessTraceID(traceContext.OperationID)
@@ -82,7 +76,6 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	baggage := parseBaggage(getHeader(HeaderBaggage))
 	return TraceContext{
 		RequestID:        requestID,
-		BusinessDomain:   firstNonEmpty(getHeader(HeaderBusinessDomain), baggage["business_domain"]),
 		InteractionID:    sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID)),
 		OperationID:      sanitizeBusinessTraceID(getHeader(HeaderBKNOperationID)),
 		CausationEventID: sanitizeBusinessTraceID(getHeader(HeaderBKNCausationEventID)),
@@ -121,9 +114,6 @@ func BuildTraceHeaders(ctx context.Context) map[string]string {
 		}
 		if traceContext.OperationID != "" {
 			headers[HeaderBKNOperationID] = traceContext.OperationID
-		}
-		if traceContext.BusinessDomain != "" {
-			headers[HeaderBusinessDomain] = traceContext.BusinessDomain
 		}
 		if traceContext.CausationEventID != "" {
 			headers[HeaderBKNCausationEventID] = traceContext.CausationEventID
@@ -219,7 +209,7 @@ func sanitizeBaggage(baggage map[string]string) map[string]string {
 	cleaned := map[string]string{}
 	for key, value := range baggage {
 		switch key {
-		case "bkn.account.type", "bkn.runtime.env", "business_domain":
+		case "bkn.account.type", "bkn.runtime.env":
 			cleaned[key] = value
 		}
 	}

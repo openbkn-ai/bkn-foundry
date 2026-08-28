@@ -43,7 +43,6 @@ func testRequestContext() RequestContext {
 		AccountID:          "acct_demo",
 		AccountType:        "user",
 		TenantID:           "tenant_demo",
-		BusinessDomain:     "domain_demo",
 		InteractionID:      "int_vega_query_0001",
 		OperationID:        "op_vega_query_0001",
 		CausationEventID:   "evt_retrieval_completed_0001",
@@ -194,7 +193,7 @@ func TestBuildDataQueryEvidenceLinksAuthorizedQueryAndResultArtifacts(t *testing
 			artifact.TraceID != "73220000000000000000000000000001" {
 			t.Fatalf("artifact does not preserve trace ownership: %#v", artifact)
 		}
-		if artifact.TenantID != "tenant_demo" || artifact.BusinessDomain != "domain_demo" ||
+		if artifact.TenantID != "tenant_demo" ||
 			artifact.AccountID != "acct_demo" || artifact.AccountType != "user" {
 			t.Fatalf("artifact does not preserve authorization scope: %#v", artifact)
 		}
@@ -238,7 +237,7 @@ func TestPostArtifactSendsDedicatedIngestTokenAndFullBusinessContent(t *testing.
 		ContentType: "application/json", SchemaVersion: ArtifactContractVersion,
 		ObservedAt: "2026-07-25T08:00:00Z", ContentHash: ArtifactContentHash(map[string]any{"order_id": "PO-2024-001"}),
 		Content:  map[string]any{"order_id": "PO-2024-001"},
-		TenantID: "tenant_demo", BusinessDomain: "domain_demo", AccountID: "acct_demo", AccountType: "user",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "user",
 	}
 	if err := postArtifact("http://trace.local/api/agent-observability/v1/evidence/artifacts", time.Second, artifact); err != nil {
 		t.Fatal(err)

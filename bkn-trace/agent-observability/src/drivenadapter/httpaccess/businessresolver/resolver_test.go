@@ -17,7 +17,7 @@ import (
 
 func TestResolverUsesAuthorizedBKNAndVegaAPIs(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("x-account-id") != "user-1" || r.Header.Get("x-account-type") != "user" || r.Header.Get("x-business-domain") != "domain-1" {
+		if r.Header.Get("x-account-id") != "user-1" || r.Header.Get("x-account-type") != "user" || r.Header.Get("x-tenant-id") != "tenant-1" {
 			t.Errorf("missing trusted identity headers: %+v", r.Header)
 			w.WriteHeader(http.StatusForbidden)
 			return
@@ -42,7 +42,7 @@ func TestResolverUsesAuthorizedBKNAndVegaAPIs(t *testing.T) {
 
 	resolver := New(server.URL, server.URL, server.Client())
 	result, err := resolver.ResolveBusinessRefs(context.Background(), ibusinessresolver.ResolveRequest{
-		Scope: evidencevo.QueryScope{BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user", Authorization: "Bearer user-access-token"},
+		Scope: evidencevo.QueryScope{TenantID: "tenant-1", AccountID: "user-1", AccountType: "user", Authorization: "Bearer user-access-token"},
 		Refs: []ibusinessresolver.BusinessRef{
 			{RefID: "kn:supplychain", RefType: "knowledge_network", SourceSystem: "bkn"},
 			{RefID: "object:supplychain:forecast", RefType: "object_type", SourceSystem: "bkn"},

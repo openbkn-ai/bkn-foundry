@@ -351,9 +351,6 @@ components:
         module_type:
           type: string
           description: 模块类型。
-        business_domain:
-          type: string
-          description: 业务域。
 
     GetKnDetailRequest:
       type: object

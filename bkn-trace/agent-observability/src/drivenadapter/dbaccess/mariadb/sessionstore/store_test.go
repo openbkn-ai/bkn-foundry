@@ -52,7 +52,7 @@ func TestMigrationPlanReturnsOnlyUnappliedVersions(t *testing.T) {
 	}
 }
 
-func TestMigrationPlanUpgradesExistingCoreSchemaWithProvenanceTable(t *testing.T) {
+func TestMigrationPlanUpgradesExistingCoreSchemaWithoutBusinessDomain(t *testing.T) {
 	migrations := Migrations()
 	applied := make(map[string]string, len(migrations)-1)
 	for _, migration := range migrations[:len(migrations)-1] {
@@ -60,10 +60,10 @@ func TestMigrationPlanUpgradesExistingCoreSchemaWithProvenanceTable(t *testing.T
 	}
 	plan, err := migrationPlan(migrations, applied)
 	if err != nil {
-		t.Fatalf("plan provenance schema migration: %v", err)
+		t.Fatalf("plan tenant-only schema migration: %v", err)
 	}
-	if len(plan) != 1 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") {
-		t.Fatalf("unexpected provenance schema plan: %#v", plan)
+	if len(plan) != 1 || plan[0].Version != "018" || !strings.Contains(plan[0].SQL, "DROP COLUMN IF EXISTS business_domain_id") {
+		t.Fatalf("unexpected tenant-only schema plan: %#v", plan)
 	}
 }
 

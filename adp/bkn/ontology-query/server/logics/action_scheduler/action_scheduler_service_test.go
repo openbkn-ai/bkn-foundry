@@ -534,7 +534,6 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 			Parameters: []interfaces.Parameter{},
 		}
 		req := &interfaces.ActionExecutionRequest{
-			BusinessDomain: "domain_001",
 			Instances: []interfaces.ObjectSystemInfo{
 				{InstanceIdentity: map[string]any{"id": "1"}},
 			},
@@ -557,7 +556,6 @@ func Test_executeAsync_ContextAndProgress(t *testing.T) {
 		aoAccess.EXPECT().ExecuteTool(gomock.Any(), "box_001", "tool_001", gomock.Any()).DoAndReturn(
 			func(ctx context.Context, boxID, toolID string, execRequest interfaces.ToolExecutionRequest) (any, error) {
 				So(ctx.Value(interfaces.ACCOUNT_INFO_KEY), ShouldResemble, execution.Executor)
-				So(ctx.Value(interfaces.BUSINESS_DOMAIN_KEY), ShouldEqual, "domain_001")
 				_, ok := ctx.Deadline()
 				So(ok, ShouldBeTrue)
 				return map[string]any{"checked": true}, nil

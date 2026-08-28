@@ -4,7 +4,6 @@ id: exchange-recovery
 name: Exchange邮件恢复网络
 tags: [Exchange, Exchange邮件服务器或邮件恢复, 灾备]
 branch: main
-business_domain: disaster_recovery
 ---
 
 # Exchange邮件恢复网络

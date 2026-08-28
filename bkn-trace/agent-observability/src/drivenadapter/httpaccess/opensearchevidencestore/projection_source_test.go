@@ -23,10 +23,8 @@ func TestOpenSearchProjectionSourceUsesScopedAggregateEvidenceAndArtifacts(t *te
 	var evidenceQuery string
 	var artifactQuery string
 	ownedTrace := normalizedTrace()
-	ownedTrace.BusinessDomain = "bd_index"
 	ownedArtifact := normalizedOpenSearchArtifact(t)
 	ownedArtifact.TenantID = "tenant_index"
-	ownedArtifact.BusinessDomain = "bd_index"
 	ownedArtifact.AccountID = "acct_index"
 	otherArtifact := ownedArtifact
 	otherArtifact.ArtifactID = "artifact_projection_other"
@@ -60,7 +58,7 @@ func TestOpenSearchProjectionSourceUsesScopedAggregateEvidenceAndArtifacts(t *te
 	})
 	store := New(client, "bkn-trace-evidence-test")
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+		TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app",
 	}
 
 	traces, err := store.ListEvidence(context.Background(), scope)
@@ -72,7 +70,7 @@ func TestOpenSearchProjectionSourceUsesScopedAggregateEvidenceAndArtifacts(t *te
 		t.Fatalf("return filtering must remove leaked hit: %+v err=%v", artifacts, err)
 	}
 	for _, query := range []string{evidenceQuery, artifactQuery} {
-		for _, field := range []string{"bkn.tenant.id", "business_domain", "bkn.account.id", "bkn.account.type"} {
+		for _, field := range []string{"bkn.tenant.id", "bkn.account.id", "bkn.account.type"} {
 			if !strings.Contains(query, field) {
 				t.Fatalf("projection query must filter %s: %s", field, query)
 			}
@@ -118,7 +116,7 @@ func TestOpenSearchProjectionSourcePaginatesAllEvidence(t *testing.T) {
 	store := New(client, "bkn-trace-evidence-test")
 
 	traces, err := store.ListEvidence(context.Background(), evidencevo.QueryScope{
-		TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+		TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app",
 	})
 
 	if err != nil || len(traces) != evidenceSearchPageSize+1 || searchCalls != 2 {
@@ -178,7 +176,7 @@ func TestOpenSearchEvidenceProjectionUsesImmutableCursorAcrossConcurrentUpdates(
 	})
 	store := New(client, "bkn-trace-evidence-test")
 	query := iprojectionsource.Query{Scope: evidencevo.QueryScope{
-		TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+		TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app",
 	}}
 
 	first, err := store.listEvidenceProjectionPage(context.Background(), query, nil, 2)
@@ -214,8 +212,7 @@ func TestEvidenceProjectionSortsCollectedTracesByBusinessTime(t *testing.T) {
 		{ID: laterDocument.DocumentID, Source: laterDocument},
 		{ID: earlierDocument.DocumentID, Source: earlierDocument},
 	}, evidencevo.QueryScope{
-		TenantID: later.TenantID, BusinessDomain: later.BusinessDomain,
-		AccountID: later.AccountID, AccountType: later.AccountType,
+		TenantID: later.TenantID, AccountID: later.AccountID, AccountType: later.AccountType,
 	})
 
 	if len(traces) != 2 || traces[0].TraceID != earlier.TraceID || traces[1].TraceID != later.TraceID {
@@ -245,7 +242,6 @@ func TestOpenSearchProjectionSourcePaginatesAllArtifacts(t *testing.T) {
 			artifact := normalizedOpenSearchArtifact(t)
 			artifact.ArtifactID = fmt.Sprintf("artifact_projection_%04d", start+i)
 			artifact.TenantID = "tenant_index"
-			artifact.BusinessDomain = "bd_index"
 			artifact.AccountID = "acct_index"
 			hits = append(hits, map[string]any{
 				"_id": artifact.ArtifactID, "_source": artifact,
@@ -258,7 +254,7 @@ func TestOpenSearchProjectionSourcePaginatesAllArtifacts(t *testing.T) {
 	store := New(client, "bkn-trace-evidence-test")
 
 	artifacts, err := store.ListArtifacts(context.Background(), evidencevo.QueryScope{
-		TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+		TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app",
 	})
 
 	if err != nil || len(artifacts) != evidenceSearchPageSize+1 || searchCalls != 2 {
@@ -272,7 +268,6 @@ func TestOpenSearchProjectionSourcePushesReliableFiltersAndRejectsMismatchedHits
 	exactTrace := normalizedTrace()
 	exactTrace.TraceID = "trace_exact_projection"
 	exactTrace.RequestID = "req_exact_projection"
-	exactTrace.BusinessDomain = "bd_index"
 	exactTrace.Events[0].ObservedAt = "2026-07-26T08:00:00Z"
 	leakedTrace := exactTrace
 	leakedTrace.TraceID = "trace_leaked_projection"
@@ -283,7 +278,6 @@ func TestOpenSearchProjectionSourcePushesReliableFiltersAndRejectsMismatchedHits
 	exactArtifact.TraceID = exactTrace.TraceID
 	exactArtifact.RequestID = exactTrace.RequestID
 	exactArtifact.TenantID = "tenant_index"
-	exactArtifact.BusinessDomain = "bd_index"
 	exactArtifact.AccountID = "acct_index"
 	exactDocument, err := toArtifactDocument(exactArtifact)
 	if err != nil {
@@ -332,17 +326,17 @@ func TestOpenSearchProjectionSourcePushesReliableFiltersAndRejectsMismatchedHits
 
 	result, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		Scope: evidencevo.QueryScope{
-			TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+			TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app",
 		},
 		RequestID: exactTrace.RequestID, TraceID: exactTrace.TraceID,
-		BusinessDomain: "bd_index", From: from, To: to, Limit: 20,
+		From: from, To: to, Limit: 20,
 	})
 
 	if err != nil || len(result.Traces) != 1 || result.Traces[0].TraceID != exactTrace.TraceID ||
 		len(result.Artifacts) != 1 || result.Artifacts[0].ArtifactID != exactArtifact.ArtifactID {
 		t.Fatalf("mismatched backend hits must be filtered: result=%+v err=%v", result, err)
 	}
-	for _, field := range []string{"bkn.request.id", "trace_id", "business_domain"} {
+	for _, field := range []string{"bkn.request.id", "trace_id"} {
 		if !strings.Contains(evidenceQuery, field) || !strings.Contains(artifactQuery, field) {
 			t.Fatalf("identity filter %s must be pushed down: evidence=%s artifact=%s", field, evidenceQuery, artifactQuery)
 		}
@@ -388,7 +382,7 @@ func TestOpenSearchProjectionSourceStopsAtScanCapAndMarksTruncated(t *testing.T)
 
 	result, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		Scope: evidencevo.QueryScope{
-			TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+			TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app",
 		},
 		Limit: 2,
 	})
@@ -431,8 +425,7 @@ func TestProjectionSourceExpandsConversationArtifactsBySelectedTraceIDs(t *testi
 	store := New(client, "bkn-trace-evidence-test")
 	_, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		Scope: evidencevo.QueryScope{
-			TenantID: trace.TenantID, BusinessDomain: trace.BusinessDomain,
-			AccountID: trace.AccountID, AccountType: trace.AccountType,
+			TenantID: trace.TenantID, AccountID: trace.AccountID, AccountType: trace.AccountType,
 		},
 		ConversationIDs: []string{trace.ConversationID}, Limit: 20,
 	})
@@ -470,7 +463,7 @@ func TestProjectionSourceUsesAuthorizedInteractionsWhenConversationEvidenceIsMis
 	store := New(client, "bkn-trace-evidence-test")
 	_, err := store.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		Scope: evidencevo.QueryScope{
-			TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app",
+			TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app",
 		},
 		ConversationIDs:          []string{"conversation-degraded"},
 		AuthorizedInteractionIDs: []string{"interaction-authorized"},
@@ -489,12 +482,11 @@ func TestProjectionSourceUsesAuthorizedInteractionsWhenConversationEvidenceIsMis
 
 func TestOwnershipMustSkipsAccountFiltersOnlyForExplicitTechnicalView(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
-		TenantID: "tenant_index", BusinessDomain: "bd_index", AccountActive: true, TenantActive: true,
+		TenantID: "tenant_index", AccountActive: true, TenantActive: true,
 		EffectiveSubjectID: "admin_index", Roles: []string{"super_admin"},
 	}
 	must := ownershipMust(evidencevo.QueryScope{
-		TenantID: "tenant_index", BusinessDomain: "bd_index",
-		AccountID: "admin_index", AccountType: "super_admin",
+		TenantID: "tenant_index", AccountID: "admin_index", AccountType: "super_admin",
 		AccessProfile: profile, View: evidencevo.AccessViewTechnical,
 	})
 	body, err := json.Marshal(must)
@@ -502,8 +494,8 @@ func TestOwnershipMustSkipsAccountFiltersOnlyForExplicitTechnicalView(t *testing
 		t.Fatal(err)
 	}
 	rendered := string(body)
-	if !strings.Contains(rendered, "bkn.tenant.id") || !strings.Contains(rendered, "business_domain") {
-		t.Fatalf("cross-account readers must still be constrained by tenant/domain: %s", rendered)
+	if !strings.Contains(rendered, "bkn.tenant.id") {
+		t.Fatalf("cross-account readers must still be constrained by tenant: %s", rendered)
 	}
 	if strings.Contains(rendered, "bkn.account.id") || strings.Contains(rendered, "bkn.account.type") {
 		t.Fatalf("cross-account projection must not push owner account filters: %s", rendered)

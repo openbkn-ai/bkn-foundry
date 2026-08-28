@@ -60,7 +60,6 @@ type knowledgeNetworkGrantsResponse struct {
 
 type fingerprintInput struct {
 	TenantID                   string
-	BusinessDomain             string
 	ActorID                    string
 	EffectiveSubjectID         string
 	ApplicationPrincipalID     string
@@ -105,14 +104,14 @@ func (c *Client) Resolve(
 	roles := currentBuiltInRoles(me.Roles)
 	managedNetworks := concreteManagedNetworks(grants)
 	input := fingerprintInput{
-		TenantID: identity.TenantID, BusinessDomain: identity.BusinessDomain,
-		ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
+		TenantID: identity.TenantID,
+		ActorID:  identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
 		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
 		Roles: roles, ManagedKnowledgeNetworkIDs: managedNetworks,
 	}
 	return evidencevo.AccessProfile{
-		TenantID: identity.TenantID, BusinessDomain: identity.BusinessDomain,
-		ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
+		TenantID: identity.TenantID,
+		ActorID:  identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
 		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
 		Roles: roles, ManagedKnowledgeNetworkIDs: managedNetworks,
 		AccountActive: true, TenantActive: true,
@@ -196,7 +195,6 @@ func accessScopeFingerprint(input fingerprintInput) string {
 	sort.Strings(networks)
 	body, _ := json.Marshal(struct {
 		TenantID                   string   `json:"tenant_id"`
-		BusinessDomain             string   `json:"business_domain"`
 		ActorID                    string   `json:"actor_id"`
 		EffectiveSubjectID         string   `json:"effective_subject_id"`
 		ApplicationPrincipalID     string   `json:"application_principal_id"`
@@ -204,7 +202,7 @@ func accessScopeFingerprint(input fingerprintInput) string {
 		Roles                      []string `json:"roles"`
 		ManagedKnowledgeNetworkIDs []string `json:"managed_knowledge_network_ids"`
 	}{
-		input.TenantID, input.BusinessDomain, input.ActorID, input.EffectiveSubjectID,
+		input.TenantID, input.ActorID, input.EffectiveSubjectID,
 		input.ApplicationPrincipalID, input.DelegationID, roles, networks,
 	})
 	sum := sha256.Sum256(body)

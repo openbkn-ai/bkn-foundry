@@ -87,7 +87,6 @@ func (s *Store) Commit(ctx context.Context, event ledgervo.Event) (ledgervo.Dura
 	events := make([]ledgervo.Event, 0, len(s.ledger)+1)
 	for _, record := range s.ledger {
 		if record.event.Owner.TenantID == event.Owner.TenantID &&
-			record.event.Owner.BusinessDomainID == event.Owner.BusinessDomainID &&
 			record.event.InteractionID == event.InteractionID {
 			events = append(events, record.event)
 		}
@@ -95,7 +94,6 @@ func (s *Store) Commit(ctx context.Context, event ledgervo.Event) (ledgervo.Dura
 	for _, causeID := range event.CausationEventIDs {
 		if cause, found := s.ledger[causeID]; found &&
 			(cause.event.Owner.TenantID != event.Owner.TenantID ||
-				cause.event.Owner.BusinessDomainID != event.Owner.BusinessDomainID ||
 				cause.event.InteractionID != event.InteractionID) {
 			s.conflicts++
 			return ledgervo.DurableAck{}, ievidenceledger.ErrCausalityConflict

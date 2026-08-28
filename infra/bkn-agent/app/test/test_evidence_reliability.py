@@ -15,7 +15,6 @@ def _headers():
         "traceparent": "00-1234567890abcdef1234567890abcdef-abcdef1234567890-01",
         "bkn-request-id": "req_reliable_001",
         "x-tenant-id": "tenant-supply-chain",
-        "x-business-domain": "domain-supply-chain",
         "x-account-id": "account-9",
         "x-account-type": "user",
         "x-bkn-application-principal-id": "openbkn-studio",
@@ -37,7 +36,7 @@ def test_internal_request_reuses_active_otel_trace_identity(monkeypatch):
     ctx = observability.build_context(
         {
             "bkn-request-id": "req_internal_otel_001",
-            "x-business-domain": "domain-supply-chain",
+            "x-tenant-id": "tenant-supply-chain",
         }
     )
 
@@ -67,7 +66,7 @@ def test_external_traceparent_wins_over_active_otel_identity(monkeypatch):
     assert ctx.entry_boundary == "external"
 
 
-def test_business_domain_is_propagated_and_never_derived_from_account():
+def test_tenant_is_propagated_and_never_derived_from_account():
     ctx = observability.build_context(_headers())
     token = observability.set_context(ctx)
     interaction = evidence.begin_interaction("intent", "task", "agent-1", "bkn.agent.task")
@@ -78,16 +77,14 @@ def test_business_domain_is_propagated_and_never_derived_from_account():
         evidence.end_interaction(interaction)
         observability.reset_context(token)
 
-    assert batch["trace"]["business_domain"] == "domain-supply-chain"
     assert batch["trace"]["bkn.tenant.id"] == "tenant-supply-chain"
-    assert batch["trace"]["business_domain"] != batch["trace"]["bkn.account.id"]
+    assert batch["trace"]["bkn.tenant.id"] != batch["trace"]["bkn.account.id"]
     assert observability.outbound_headers(ctx)["x-tenant-id"] == "tenant-supply-chain"
-    assert observability.outbound_headers(ctx)["x-business-domain"] == "domain-supply-chain"
     assert observability.outbound_headers(ctx)["bkn-event-observed-at"] == ctx.observed_at
     assert "bkn-trace-observed-at" not in observability.outbound_headers(ctx)
 
 
-def test_business_domain_only_identity_can_build_evidence_batch():
+def test_missing_tenant_cannot_build_evidence_batch():
     headers = _headers()
     headers.pop("x-tenant-id")
     token = observability.set_context(observability.build_context(headers))
@@ -101,14 +98,11 @@ def test_business_domain_only_identity_can_build_evidence_batch():
         evidence.end_interaction(interaction)
         observability.reset_context(token)
 
-    assert batch is not None
-    assert batch["trace"]["bkn.tenant.id"] is None
-    assert batch["trace"]["business_domain"] == "domain-supply-chain"
+    assert batch is None
 
 
 def test_tenant_only_identity_can_build_evidence_batch():
     headers = _headers()
-    headers.pop("x-business-domain")
     token = observability.set_context(observability.build_context(headers))
     interaction = evidence.begin_interaction(
         "intent", "task", "agent-1", "bkn.agent.task"
@@ -122,7 +116,6 @@ def test_tenant_only_identity_can_build_evidence_batch():
 
     assert batch is not None
     assert batch["trace"]["bkn.tenant.id"] == "tenant-supply-chain"
-    assert batch["trace"]["business_domain"] is None
 
 
 def test_authenticated_identity_is_propagated_to_model_evidence_producer():
@@ -152,7 +145,6 @@ def test_trusted_owner_identity_is_preserved_for_trace_ledger_ingest(monkeypatch
     assert headers == {
         "X-BKN-Trace-Ingest-Token": "producer-token",
         "X-BKN-Tenant-ID": "tenant-supply-chain",
-        "X-Business-Domain-ID": "domain-supply-chain",
         "X-BKN-Application-Principal-ID": "openbkn-studio",
         "X-BKN-Effective-Subject-Type": "user",
         "X-BKN-Effective-Subject-ID": "account-9",
@@ -407,7 +399,6 @@ def test_trusted_mcp_receipt_caps_evidence_and_normalizes_business_refs():
                 "business_refs": [{
                     "ref_id": "object:knowledge_network:purchase_order",
                     "ref_type": "object_type",
-                    "business_domain_id": "domain-supply-chain",
                     "version": "v1",
                     "display_hint": "Purchase order",
                 }],

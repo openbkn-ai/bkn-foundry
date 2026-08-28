@@ -15,10 +15,8 @@ const (
 	HTTP_HEADER_METHOD_OVERRIDE = "x-http-method-override"
 	HTTP_HEADER_ACCOUNT_ID      = "x-account-id"
 	HTTP_HEADER_ACCOUNT_TYPE    = "x-account-type"
-	HTTP_HEADER_BUSINESS_DOMAIN = "x-business-domain"
 
-	ACCOUNT_INFO_KEY    contextKey = "x-account-info"    // Avoid using an untyped string as a context key.
-	BUSINESS_DOMAIN_KEY contextKey = "x-business-domain" // Business-domain ID.
+	ACCOUNT_INFO_KEY contextKey = "x-account-info" // Avoid using an untyped string as a context key.
 
 	SERVICE_NAME = "ontology-query"
 

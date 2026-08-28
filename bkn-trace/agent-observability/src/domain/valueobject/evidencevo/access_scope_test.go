@@ -12,17 +12,16 @@ import (
 
 func TestAccessProfileCanReadOwnAndDelegatedBusinessRecord(t *testing.T) {
 	record := RecordScope{
-		TenantID: "tenant-a", BusinessDomain: "domain-a",
-		EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
+		TenantID: "tenant-a", EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
 	}
 
 	for _, profile := range []AccessProfile{
 		{
-			TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+			TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 			EffectiveSubjectID: "user-a", Roles: []string{"normal_user"},
 		},
 		{
-			TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+			TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 			EffectiveSubjectID: "user-a", ActorID: "assistant-a", DelegationID: "delegation-a",
 			Roles: []string{"normal_user"},
 		},
@@ -35,11 +34,11 @@ func TestAccessProfileCanReadOwnAndDelegatedBusinessRecord(t *testing.T) {
 
 func TestAccessProfileCanReadTechnicalTraceForOwnOrManagedRecord(t *testing.T) {
 	record := RecordScope{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "owner-a",
+		TenantID: "tenant-a", EffectiveSubjectID: "owner-a",
 		KnowledgeNetworkIDs: []string{"kn-a"},
 	}
 	base := AccessProfile{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+		TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 	}
 
 	owner := base
@@ -64,12 +63,11 @@ func TestAccessProfileCanReadTechnicalTraceForOwnOrManagedRecord(t *testing.T) {
 
 func TestAccessProfileCanReadOwnApplicationBusinessRecord(t *testing.T) {
 	profile := AccessProfile{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+		TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 		ApplicationPrincipalID: "app-a",
 	}
 	record := RecordScope{
-		TenantID: "tenant-a", BusinessDomain: "domain-a",
-		EffectiveSubjectID: "service-a", ApplicationPrincipalID: "app-a",
+		TenantID: "tenant-a", EffectiveSubjectID: "service-a", ApplicationPrincipalID: "app-a",
 	}
 	if !CanReadRecord(profile, record, AccessViewBusiness) {
 		t.Fatal("an application principal must read records produced by the same application")
@@ -78,11 +76,11 @@ func TestAccessProfileCanReadOwnApplicationBusinessRecord(t *testing.T) {
 
 func TestNetworkBuilderCanReadCompleteRecordForManagedKnowledgeNetwork(t *testing.T) {
 	record := RecordScope{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "other-user",
+		TenantID: "tenant-a", EffectiveSubjectID: "other-user",
 		KnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
 	}
 	base := AccessProfile{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+		TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 		EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
 	}
 
@@ -110,11 +108,11 @@ func TestNetworkBuilderCanReadCompleteRecordForManagedKnowledgeNetwork(t *testin
 
 func TestNetworkBuilderTypeWideGrantDoesNotImplyBusinessContentAccess(t *testing.T) {
 	profile := AccessProfile{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+		TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 		EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
 	}
 	record := RecordScope{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "other-user",
+		TenantID: "tenant-a", EffectiveSubjectID: "other-user",
 		KnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
 	}
 	if CanReadRecord(profile, record, AccessViewBusiness) {
@@ -133,7 +131,7 @@ func TestNetworkBuilderTypeWideGrantDoesNotImplyBusinessContentAccess(t *testing
 
 func TestAdminReadsAllTraceRecordsWithoutGrantingAuditRolesBusinessContent(t *testing.T) {
 	record := RecordScope{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "user-a",
+		TenantID: "tenant-a", EffectiveSubjectID: "user-a",
 		KnowledgeNetworkIDs: []string{"kn-a"},
 	}
 	for _, test := range []struct {
@@ -146,7 +144,7 @@ func TestAdminReadsAllTraceRecordsWithoutGrantingAuditRolesBusinessContent(t *te
 		{role: "audit", allowed: false},
 	} {
 		profile := AccessProfile{
-			TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+			TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 			EffectiveSubjectID: test.role + "-account", Roles: []string{test.role},
 		}
 		if got := CanReadRecord(profile, record, AccessViewBusiness); got != test.allowed {
@@ -156,7 +154,7 @@ func TestAdminReadsAllTraceRecordsWithoutGrantingAuditRolesBusinessContent(t *te
 }
 
 func TestRoleViewsRemainSeparated(t *testing.T) {
-	record := RecordScope{TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: "user-a"}
+	record := RecordScope{TenantID: "tenant-a", EffectiveSubjectID: "user-a"}
 	tests := []struct {
 		role    string
 		view    AccessView
@@ -172,7 +170,7 @@ func TestRoleViewsRemainSeparated(t *testing.T) {
 	}
 	for _, test := range tests {
 		profile := AccessProfile{
-			TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+			TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 			EffectiveSubjectID: test.role + "-account", Roles: []string{test.role},
 		}
 		if got := CanReadRecord(profile, record, test.view); got != test.allowed {
@@ -205,11 +203,10 @@ func TestCrossAccountCandidatesRequireAnExplicitAuthorizedView(t *testing.T) {
 
 func TestAccessProfileFailsClosedForInvalidIdentityBoundary(t *testing.T) {
 	record := RecordScope{
-		TenantID: "tenant-a", BusinessDomain: "domain-a",
-		EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
+		TenantID: "tenant-a", EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
 	}
 	valid := AccessProfile{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+		TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 		EffectiveSubjectID: "user-a", Roles: []string{"normal_user"},
 	}
 	tests := []AccessProfile{
@@ -217,7 +214,6 @@ func TestAccessProfileFailsClosedForInvalidIdentityBoundary(t *testing.T) {
 		func() AccessProfile { value := valid; value.AccountActive = false; return value }(),
 		func() AccessProfile { value := valid; value.TenantActive = false; return value }(),
 		func() AccessProfile { value := valid; value.TenantID = "tenant-b"; return value }(),
-		func() AccessProfile { value := valid; value.BusinessDomain = "domain-b"; return value }(),
 	}
 	for _, profile := range tests {
 		if CanReadRecord(profile, record, AccessViewBusiness) {
@@ -229,14 +225,13 @@ func TestAccessProfileFailsClosedForInvalidIdentityBoundary(t *testing.T) {
 func TestMatchesScopeUsesRecordAccessProfile(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace-a", RequestID: "request-a",
-		TenantID: "tenant-a", BusinessDomain: "domain-a",
-		AccountID: "other-user", AccountType: "user", EffectiveSubjectID: "other-user",
+		TenantID: "tenant-a", AccountID: "other-user", AccountType: "user", EffectiveSubjectID: "other-user",
 		KnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
 	}
 	scope := QueryScope{
 		View: AccessViewBusiness,
 		AccessProfile: &AccessProfile{
-			TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+			TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 			EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
 			ManagedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
 		},
@@ -253,14 +248,13 @@ func TestMatchesScopeUsesRecordAccessProfile(t *testing.T) {
 func TestMatchesArtifactScopeAllowsAdminToReadBusinessTrace(t *testing.T) {
 	artifact := EvidenceArtifact{
 		ArtifactID: "artifact-a", RequestID: "request-a",
-		TenantID: "tenant-a", BusinessDomain: "domain-a",
-		AccountID: "user-a", AccountType: "user", EffectiveSubjectID: "user-a",
+		TenantID: "tenant-a", AccountID: "user-a", AccountType: "user", EffectiveSubjectID: "user-a",
 		KnowledgeNetworkIDs: []string{"kn-a"},
 	}
 	scope := QueryScope{
 		View: AccessViewBusiness,
 		AccessProfile: &AccessProfile{
-			TenantID: "tenant-a", BusinessDomain: "domain-a", AccountActive: true, TenantActive: true,
+			TenantID: "tenant-a", AccountActive: true, TenantActive: true,
 			EffectiveSubjectID: "admin-a", Roles: []string{"super_admin"},
 		},
 	}

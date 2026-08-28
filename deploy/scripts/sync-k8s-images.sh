@@ -103,7 +103,6 @@ OTHER_IMAGES=(
 # Common images include:
 #   - openbkn-ai/bkn-core:<version>
 #   - openbkn-ai/bkn-auth:<version>
-#   - openbkn-ai/bkn-business-domain:<version>
 #   - openbkn-ai/bkn-foundry-web:<version>
 # You need to sync these images based on your deployment
 OPENBKN_APP_IMAGES=(

@@ -31,7 +31,7 @@ func TestInteractionBusinessGraphReturnsAuthorizedSemanticViewWithoutLeaseSecret
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", BusinessDomainID: "domain-1", ApplicationPrincipalID: "app-1",
+		TenantID: "tenant-1", ApplicationPrincipalID: "app-1",
 		EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
@@ -806,7 +806,6 @@ type lifecycleTestErrorEnvelope struct {
 
 func setTrustedOwnerHeaders(request *http.Request) {
 	request.Header.Set("X-BKN-Tenant-ID", "tenant-1")
-	request.Header.Set("X-Business-Domain-ID", "domain-1")
 	request.Header.Set("X-BKN-Application-Principal-ID", "app-1")
 	request.Header.Set("X-BKN-Effective-Subject-Type", "user")
 	request.Header.Set("X-BKN-Effective-Subject-ID", "user-1")

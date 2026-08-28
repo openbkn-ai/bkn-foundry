@@ -64,13 +64,6 @@ func testHeaders() map[string]any {
 	}
 }
 
-func TestParseActionDoesNotRequireBusinessDomain(t *testing.T) {
-	headers := testHeaders()
-	if _, ok := ParseAction(headers, "box", "tool", "user"); !ok {
-		t.Fatal("expected action without business domain")
-	}
-}
-
 func TestParseActionRejectsInvalidW3CTraceparent(t *testing.T) {
 	for _, traceparent := range []string{
 		"00-zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz-abcdef1234567890-01",
@@ -120,9 +113,6 @@ func TestHTTPEmitterRetriesNon2xxAndIncludesOriginalTraceparent(t *testing.T) {
 	trace := envelope["trace"].(map[string]any)
 	if trace["traceparent"] != testHeaders()["traceparent"] {
 		t.Fatalf("traceparent lost: %#v", trace)
-	}
-	if _, exists := trace["business_domain"]; exists {
-		t.Fatalf("business domain must not be emitted: %#v", trace)
 	}
 }
 

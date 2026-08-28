@@ -16,7 +16,7 @@ event, database table, payload copy, or rebuild path.
 A terminal Receipt already contains the identifiers and authorization data
 needed for runtime investigation:
 
-- tenant, business domain, application principal and effective subject;
+- tenant, application principal and effective subject;
 - knowledge-network IDs derived from the Receipt business references;
 - request, trace, conversation, interaction and operation IDs;
 - receipt status, tool name, attempt number and terminal timestamp.
@@ -29,8 +29,8 @@ execution results and are excluded.
 
 The adapter pushes exact Receipt filters to OpenSearch for Trace, Request,
 Conversation, Interaction and Operation IDs. Text fields use their `.keyword`
-subfields; `operation_id` uses its keyword mapping. Tenant and business-domain
-scope are always required. When record-level authorization is required, the
+subfields; `operation_id` uses its keyword mapping. Tenant scope is always
+required. When record-level authorization is required, the
 adapter also pushes the effective-subject, application-principal and managed
 knowledge-network candidates.
 
@@ -58,7 +58,7 @@ error and artifact evidence remains available through the existing Trace and
 Receipt detail paths.
 
 `GET /api/observability/v1/logs/{log_id}` resolves
-`bkn-trace-runtime:<receipt_id>` through a tenant- and business-domain-scoped
+`bkn-trace-runtime:<receipt_id>` through a tenant-scoped
 Receipt lookup, so every list item has a corresponding detail view.
 
 ## Lifecycle and Compatibility

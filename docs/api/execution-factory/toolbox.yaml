@@ -41,8 +41,6 @@ paths:
         （编辑接口的 `metadata_type` 是可选的，传了才校验）。
 
         `openapi` 类型的箱子必须给 `box_svc_url`——箱内工具的请求都发往这个地址。
-      parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
       requestBody:
         required: true
         content:
@@ -99,7 +97,6 @@ paths:
         条目里的 `tools` 是**工具名字符串数组**，不是工具对象也不是 ID——要工具详情
         得再调 `GET /tool-box/{box_id}/tools/list`。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/SortBy'
@@ -168,7 +165,6 @@ paths:
                         box_desc: 订单域的 OpenAPI 工具
                         box_svc_url: http://orders.example.com
                         metadata_type: openapi
-                        business_domain_id: default
                         status: published
                         category_type: data_query
                         category_name: 数据查询
@@ -280,7 +276,6 @@ paths:
       operationId: deleteToolBox
       description: 删除工具箱及其下全部工具。已被 Agent 挂载的工具箱删除后调用方会拿到 404。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/BoxID'
       responses:
         '200':
@@ -724,8 +719,6 @@ paths:
 
         **部分失败是常态**：接口返回 200，`failure_count` 与 `failures` 说明哪些
         操作没建成。`links` 给出算子与工具的对应关系。
-      parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
       requestBody:
         required: true
         content:
@@ -760,7 +753,6 @@ paths:
           page_size: 3
       description: 已发布工具箱的列表。过滤条件比工作区列表少了 `status` 与 `metadata_type`。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/SortBy'
@@ -825,7 +817,6 @@ paths:
         响应的数据字段是 `data`（与同模块 `/tool-box/{box_id}/tools/list` 的 `tools`
         不同）。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - name: tool_name
           in: query
           required: true
@@ -958,13 +949,6 @@ components:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
 
   parameters:
-    BusinessDomain:
-      name: x-business-domain
-      in: header
-      required: true
-      schema:
-        type: string
-      description: 业务域 ID。工具箱按业务域隔离，缺失返回 400。
     BoxID:
       name: box_id
       in: path
@@ -1209,8 +1193,6 @@ components:
           type: string
         box_svc_url:
           type: string
-        business_domain_id:
-          type: string
         metadata_type:
           $ref: '#/components/schemas/MetadataType'
         status:
@@ -1270,8 +1252,6 @@ components:
         box_desc:
           type: string
         box_svc_url:
-          type: string
-        business_domain_id:
           type: string
         metadata_type:
           $ref: '#/components/schemas/MetadataType'

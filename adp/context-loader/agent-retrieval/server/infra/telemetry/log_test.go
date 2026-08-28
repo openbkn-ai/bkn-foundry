@@ -26,7 +26,6 @@ func (l *recordingLogger) WithContext(context.Context) interfaces.Logger { retur
 func TestOperationLogAttributesCarryTrustedBusinessOperationScope(t *testing.T) {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
 		TenantID:       "tenant-local",
-		BusinessDomain: "bd_public",
 		RequestID:      "req_11111111-1111-4111-8111-111111111111",
 		ConversationID: "conv-1",
 		InteractionID:  "int-1",
@@ -48,7 +47,6 @@ func TestOperationLogAttributesCarryTrustedBusinessOperationScope(t *testing.T) 
 		"source_id":            "context-loader",
 		"source_log_id":        "source-log-1",
 		"tenant_id":            "tenant-local",
-		"business_domain_id":   "bd_public",
 		"effective_subject_id": "user-1",
 		"application_id":       "third-party-agent",
 		"request_id":           "req_11111111-1111-4111-8111-111111111111",

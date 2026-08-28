@@ -18,9 +18,6 @@ info:
     已发布后再改会进 `editing`。每次编辑产生新 `version`，历史版本可查、可回看。
     发布后的算子才会出现在**算子市场**（`/operator/market`）。
 
-    **业务域**：注册、列表、删除、市场相关接口要求 `x-business-domain` 头，
-    算子按业务域隔离。
-
     **时间戳一律是纳秒**：本服务所有 `*_time` 字段用 `time.Now().UnixNano()` 生成，
     形如 `1784880971306127803`。按毫秒解析会得到 1970 年附近的日期。
 
@@ -44,8 +41,6 @@ paths:
         `function_input`，`openapi` 走 `data`。
 
         `direct_publish=true` 表示注册完直接进入 `published`，跳过手工发布一步。
-      parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
       requestBody:
         required: true
         content:
@@ -183,7 +178,6 @@ paths:
         **`page_size` 传负数等价于「不分页、全量返回」**（服务端会把它翻译成
         `all=true`）；正常范围是 1–100。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/SortBy'
@@ -358,8 +352,6 @@ paths:
       description: |
         **DELETE 带请求体**，且请求体是数组——不是常见的路径参数删除，
         很多 HTTP 客户端默认不给 DELETE 发 body，注意。
-      parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
       requestBody:
         required: true
         content:
@@ -508,7 +500,6 @@ paths:
         与 `offline`，传 `unpublish` / `editing` 会 400。这是它与
         `/operator/info/list` 的关键差别：那边看的是工作区的全部算子。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/SortBy'
@@ -574,7 +565,6 @@ paths:
       operationId: getOperatorMarketDetail
       description: 在市场视角查看某个算子的详情。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/OperatorID'
       responses:
         '200':
@@ -635,13 +625,6 @@ components:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
 
   parameters:
-    BusinessDomain:
-      name: x-business-domain
-      in: header
-      required: true
-      schema:
-        type: string
-      description: 业务域 ID。算子按业务域隔离，缺失返回 400。
     OperatorID:
       name: operator_id
       in: path
@@ -1092,9 +1075,6 @@ components:
       type: object
       description: 算子的完整数据。
       properties:
-        business_domain_id:
-          type: string
-          description: 所属业务域。
         operator_id:
           type: string
         name:

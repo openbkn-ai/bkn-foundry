@@ -11,7 +11,6 @@ def _ctx():
         entry_boundary="external",
         upstream_span_id="1234567890abcdef",
         tenant_id="tenant-test",
-        business_domain="domain-test",
     )
 
 
@@ -36,7 +35,6 @@ def test_question_artifact_contains_business_content_and_event_only_references_i
     assert artifact["interaction_id"].startswith("int_")
     assert artifact["schema_version"] == "2.2.0"
     assert artifact["bkn.tenant.id"] == "tenant-test"
-    assert artifact["business_domain"] == "domain-test"
     assert artifact["bkn.account.id"] == "acct-1"
     assert artifact["bkn.account.type"] == "user"
     assert artifact["agent_or_app"] == "agent-1"

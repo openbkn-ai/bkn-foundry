@@ -54,7 +54,6 @@ type ActionExecutionRequest struct {
 	TriggerType        string           `json:"trigger_type,omitempty"` // "manual" or "scheduled", defaults to "manual"
 	InstanceIdentities []map[string]any `json:"_instance_identities"`
 	DynamicParams      map[string]any   `json:"dynamic_params,omitempty"`
-	BusinessDomain     string           `json:"-"`
 
 	Instances []ObjectSystemInfo `json:"-"`
 	ObjDatas  []map[string]any   `json:"-"`

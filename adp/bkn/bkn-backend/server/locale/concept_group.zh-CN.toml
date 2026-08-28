@@ -104,16 +104,6 @@ Description = "开启事务异常"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
 ErrorLink = ""
 
-[BknBackend.ConceptGroup.InternalError.BindBusinessDomainFailed]
-Description = "绑定概念分组业务域失败"
-Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
-ErrorLink = ""
-
-[BknBackend.ConceptGroup.InternalError.UnbindBusinessDomainFailed]
-Description = "解绑概念分组业务域失败"
-Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"
-ErrorLink = ""
-
 [BknBackend.ConceptGroup.InternalError.CheckConceptGroupIfExistFailed]
 Description = "检查概念分组名称是否存在失败"
 Solution = "请重试该操作，若再次出现该错误请提交工单或联系技术支持工程师。"

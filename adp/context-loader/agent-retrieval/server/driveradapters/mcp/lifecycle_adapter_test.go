@@ -83,8 +83,7 @@ func TestStartInteractionWithoutConversationEnsuresManagedConversationFirst(t *t
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", "")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_cursor_first_turn_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		RequestID: "req_cursor_first_turn_0001", TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
@@ -229,8 +228,7 @@ func TestLifecycleToolsRejectInvalidArgumentsBeforeCallingCore(t *testing.T) {
 				return lifecycleAdapterJSONResponse(http.StatusInternalServerError, map[string]any{}), nil
 			})}
 			ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-				RequestID: "req-invalid-lifecycle-arguments", TenantID: "tenant-1", BusinessDomain: "domain-1",
-			})
+				RequestID: "req-invalid-lifecycle-arguments", TenantID: "tenant-1"})
 			ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 				AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 			})
@@ -294,8 +292,7 @@ func TestStartInteractionCreatesCorrelationAndUsesCoreCreatedAtForQuestionEviden
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_TOKEN", "ingest-token")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_cursor_native_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		RequestID: "req_cursor_native_0001", TenantID: "tenant-1"})
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
 	if traceContext.ObservedAtProvided {
 		t.Fatal("test must represent a third-party MCP request without an internal observed-at header")
@@ -364,8 +361,7 @@ func TestFinishInteractionUsesCoreUpdatedAtForServerOwnedResultEvidence(t *testi
 	})
 	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
 	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
-		RequestID: "req_cursor_native_0002", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		RequestID: "req_cursor_native_0002", TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
@@ -422,8 +418,7 @@ func TestFinishInteractionRetryReusesCommittedResultArtifact(t *testing.T) {
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", backend.URL+"/api/agent-observability/v1/evidence/events")
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_cursor_retry_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		RequestID: "req_cursor_retry_0001", TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 	})
@@ -507,8 +502,7 @@ func TestLifecycleMiddlewareFinalizesRealAdapterFailures(t *testing.T) {
 	defer core.Close()
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_lifecycle_adapter_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		RequestID: "req_lifecycle_adapter_0001", TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
@@ -893,8 +887,7 @@ func TestLifecycleOperationToolsUseExplicitQueryAndRetryPaths(t *testing.T) {
 	defer core.Close()
 	client := bkntrace.NewLifecycleClient(core.URL, core.Client())
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_lifecycle_adapter_0002", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		RequestID: "req_lifecycle_adapter_0002", TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
@@ -937,8 +930,7 @@ func TestLifecycleReceiptToolUsesAuthoritativePollPath(t *testing.T) {
 	}))
 	defer core.Close()
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 	})

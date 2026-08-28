@@ -8,13 +8,16 @@
 // For each request {accessor, type, id, operation} it calls:
 //   - ISF:      POST {isf}/api/authorization/v1/operation-check  -> {result}
 //   - bkn-safe: POST {safe}/api/safe/v1/authz/check              -> {allowed}
+//
 // and reports MATCH / DIFF per request plus a summary. Use it to (a) batch-
 // validate before flipping a service, and (b) understand the intentional deltas
 // from the authz redesign.
 //
 // Usage:
-//   authz-shadow -isf https://host -safe http://127.0.0.1:3000 -token <bearer> \
-//                -corpus requests.json
+//
+//	authz-shadow -isf https://host -safe http://127.0.0.1:3000 -token <bearer> \
+//	             -corpus requests.json
+//
 // corpus.json: [{"accessor":"<id>","type":"agent","id":"probe","operation":"use"}, ...]
 // If -corpus is omitted, requests are read from stdin (same JSON array).
 package main
@@ -42,7 +45,6 @@ func main() {
 	isf := flag.String("isf", "", "ISF base URL (e.g. https://10.211.55.4); empty = skip ISF, bkn-safe only")
 	safe := flag.String("safe", "http://127.0.0.1:3000", "bkn-safe base URL")
 	token := flag.String("token", "", "Bearer token for ISF auth (and bkn-safe if it enforces)")
-	bizDomain := flag.String("biz-domain", "bd_public", "x-business-domain header for ISF")
 	corpus := flag.String("corpus", "", "path to JSON array of requests; stdin if empty")
 	insecure := flag.Bool("insecure", true, "skip TLS verify (self-signed dev certs)")
 	flag.Parse()
@@ -61,7 +63,7 @@ func main() {
 	for _, r := range reqs {
 		var isfRes, safeRes string
 		if *isf != "" {
-			isfRes = boolStr(callISF(client, *isf, *token, *bizDomain, r))
+			isfRes = boolStr(callISF(client, *isf, *token, r))
 		} else {
 			isfRes = "-"
 		}
@@ -90,14 +92,14 @@ func main() {
 }
 
 // callISF posts to ISF operation-check; returns (allowed, ok).
-func callISF(c *http.Client, base, token, biz string, r request) (bool, bool) {
+func callISF(c *http.Client, base, token string, r request) (bool, bool) {
 	body := map[string]any{
 		"accessor":  map[string]string{"type": "user", "id": r.Accessor},
 		"resource":  map[string]string{"type": r.Type, "id": r.ID},
 		"operation": []string{r.Operation},
 		"method":    "GET",
 	}
-	hdr := map[string]string{"x-business-domain": biz}
+	hdr := map[string]string{}
 	if token != "" {
 		hdr["Authorization"] = "Bearer " + token
 		hdr["token"] = token

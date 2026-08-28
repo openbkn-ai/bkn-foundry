@@ -70,13 +70,6 @@ const docTemplate = `{
                 "summary": "List managed Conversations in the authorized owner scope",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "type": "integer",
                         "description": "Page size, 1..100",
                         "name": "limit",
@@ -133,13 +126,6 @@ const docTemplate = `{
                 ],
                 "summary": "Create or return the current managed Conversation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "description": "Managed Conversation request",
                         "name": "request",
@@ -213,13 +199,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Conversation ID",
                         "name": "conversation_id",
                         "in": "path",
@@ -284,13 +263,6 @@ const docTemplate = `{
                 ],
                 "summary": "Close one managed Conversation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -380,13 +352,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Conversation ID",
                         "name": "conversation_id",
                         "in": "path",
@@ -472,13 +437,6 @@ const docTemplate = `{
                 ],
                 "summary": "Ensure an idempotent Operation intent and durable Receipt",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -574,13 +532,6 @@ const docTemplate = `{
                 "summary": "Create a new managed Conversation generation",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "description": "New generation request",
                         "name": "request",
                         "in": "body",
@@ -655,13 +606,6 @@ const docTemplate = `{
                 "summary": "Ensure the current managed Conversation",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "description": "Managed Conversation request",
                         "name": "request",
                         "in": "body",
@@ -735,13 +679,6 @@ const docTemplate = `{
                 ],
                 "summary": "Resume an active managed Conversation by Core ID",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "description": "Conversation resume request",
                         "name": "request",
@@ -1008,13 +945,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1128,13 +1058,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1228,13 +1151,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1326,13 +1242,6 @@ const docTemplate = `{
                 ],
                 "summary": "Fail one managed Interaction",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Interaction ID",
@@ -1429,13 +1338,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1529,13 +1431,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1626,13 +1521,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1694,13 +1582,6 @@ const docTemplate = `{
                 ],
                 "summary": "Get one Operation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1767,13 +1648,6 @@ const docTemplate = `{
                 ],
                 "summary": "Start the next retry attempt for an Operation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1860,13 +1734,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Operation ID",
                         "name": "operation_id",
                         "in": "path",
@@ -1944,13 +1811,6 @@ const docTemplate = `{
                 ],
                 "summary": "Complete one Operation attempt",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -2047,13 +1907,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Operation ID",
                         "name": "operation_id",
                         "in": "path",
@@ -2145,13 +1998,6 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Receipt ID",
                         "name": "receipt_id",
                         "in": "path",
@@ -2220,13 +2066,6 @@ const docTemplate = `{
                 "summary": "List request projections from durable Receipts",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "type": "integer",
                         "description": "Page size, 1..100",
                         "name": "limit",
@@ -2282,13 +2121,6 @@ const docTemplate = `{
                 ],
                 "summary": "Get one request projection from durable Receipts",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Request ID",
@@ -2400,12 +2232,6 @@ const docTemplate = `{
                         "type": "string",
                         "description": "Agent or application",
                         "name": "agent_or_app",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Business domain",
-                        "name": "business_domain",
                         "in": "query"
                     },
                     {
@@ -2924,9 +2750,6 @@ const docTemplate = `{
                 "bkn.tenant.id": {
                     "type": "string"
                 },
-                "business_domain": {
-                    "type": "string"
-                },
                 "business_refs": {
                     "type": "array",
                     "items": {
@@ -3224,9 +3047,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "application_principal_id": {
-                    "type": "string"
-                },
-                "business_domain": {
                     "type": "string"
                 },
                 "completed_at": {
@@ -4153,16 +3973,12 @@ const docTemplate = `{
         "sessionvo.BusinessRef": {
             "type": "object",
             "required": [
-                "business_domain_id",
                 "ref_id",
                 "ref_type",
                 "version"
             ],
             "properties": {
                 "as_of": {
-                    "type": "string"
-                },
-                "business_domain_id": {
                     "type": "string"
                 },
                 "display_hint": {
@@ -4831,16 +4647,12 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "application_principal_id",
-                "business_domain_id",
                 "effective_subject_id",
                 "effective_subject_type",
                 "tenant_id"
             ],
             "properties": {
                 "application_principal_id": {
-                    "type": "string"
-                },
-                "business_domain_id": {
                     "type": "string"
                 },
                 "delegation_id": {

@@ -23,15 +23,10 @@ const headerBKNEvidenceEventID = "bkn-evidence-event-id"
 
 func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hydra.Visitor) bkntrace.RequestContext {
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
-	businessDomain := strings.TrimSpace(c.GetHeader("x-business-domain"))
-	if businessDomain == "" {
-		businessDomain = strings.TrimSpace(traceContext.BusinessDomain)
-	}
 	return bkntrace.RequestContext{
 		RequestID:              traceContext.RequestID,
 		AccountID:              visitor.ID,
 		AccountType:            string(visitor.Type),
-		BusinessDomain:         businessDomain,
 		TenantID:               strings.TrimSpace(c.GetHeader("x-tenant-id")),
 		ApplicationPrincipalID: strings.TrimSpace(os.Getenv("BKN_TRACE_APPLICATION_PRINCIPAL_ID")),
 		EffectiveSubjectID:     visitor.ID,

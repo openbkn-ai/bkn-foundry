@@ -322,7 +322,7 @@ For streaming and the full resource API (`bkn.kn`, `bkn.context`, `bkn.models`, 
 
 ## 🛡️ Administration
 
-Platform administration (users, organizations, roles, models, audit) is **built into the same `openbkn` CLI** under the `openbkn admin` subcommands — there is no separate admin tool. These commands target services included in the **full install** (`auth.enabled=true`, `businessDomain.enabled=true`).
+Platform administration (users, organizations, roles, models, audit) is **built into the same `openbkn` CLI** under the `openbkn admin` subcommands — there is no separate admin tool. These commands target services included in the **full install** (`auth.enabled=true`).
 
 ```bash
 openbkn admin org tree                          # list departments

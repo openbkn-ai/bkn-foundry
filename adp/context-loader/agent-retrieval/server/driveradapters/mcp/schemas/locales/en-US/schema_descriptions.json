@@ -86,7 +86,6 @@
     "output_schema.properties.entries.items.properties.name.description": "Knowledge network name.",
     "output_schema.properties.entries.items.properties.description.description": "Knowledge network description.",
     "output_schema.properties.entries.items.properties.module_type.description": "Knowledge network module type.",
-    "output_schema.properties.entries.items.properties.business_domain.description": "Business domain that owns this knowledge network.",
     "output_schema.properties.total_count.description": "Total number of matched knowledge networks."
   },
   "list_resources": {

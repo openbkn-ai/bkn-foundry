@@ -40,7 +40,7 @@ func TestProjectionDoesNotRebuildByDefault(t *testing.T) {
 	if config.ProjectionRebuildVersion != "" {
 		t.Fatalf("projection rebuild must require an explicit version: %#v", config)
 	}
-	if config.ProjectionBootstrapVersion != "bkn-trace-core-v014-r1" {
+	if config.ProjectionBootstrapVersion != "bkn-trace-core-v015-r1" {
 		t.Fatalf("projection bootstrap must retain a versioned index: %#v", config)
 	}
 }

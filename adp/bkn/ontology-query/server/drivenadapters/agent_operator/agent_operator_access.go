@@ -76,16 +76,10 @@ func (aoa *agentOperatorAccess) ExecuteTool(ctx context.Context, boxID string,
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
-	businessDomain := ""
-	if ctx.Value(interfaces.BUSINESS_DOMAIN_KEY) != nil {
-		businessDomain = ctx.Value(interfaces.BUSINESS_DOMAIN_KEY).(string)
-	}
-
 	headers := map[string]string{
-		interfaces.CONTENT_TYPE_NAME:           interfaces.CONTENT_TYPE_JSON,
-		interfaces.HTTP_HEADER_BUSINESS_DOMAIN: businessDomain,
-		interfaces.HTTP_HEADER_ACCOUNT_ID:      accountInfo.ID,
-		interfaces.HTTP_HEADER_ACCOUNT_TYPE:    accountInfo.Type,
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
 
 	// http://{host}:{port}/api/agent-operator-integration/internal-v1/tool-box/{box_id}/proxy/{tool_id}
@@ -159,17 +153,10 @@ func (aoa *agentOperatorAccess) ExecuteMCP(ctx context.Context, mcpID string,
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
 	}
 
-	// Get business domain from context (passed from request header)
-	businessDomain := ""
-	if ctx.Value(interfaces.BUSINESS_DOMAIN_KEY) != nil {
-		businessDomain = ctx.Value(interfaces.BUSINESS_DOMAIN_KEY).(string)
-	}
-
 	headers := map[string]string{
-		interfaces.CONTENT_TYPE_NAME:           interfaces.CONTENT_TYPE_JSON,
-		interfaces.HTTP_HEADER_BUSINESS_DOMAIN: businessDomain,
-		interfaces.HTTP_HEADER_ACCOUNT_ID:      accountInfo.ID,
-		interfaces.HTTP_HEADER_ACCOUNT_TYPE:    accountInfo.Type,
+		interfaces.CONTENT_TYPE_NAME:        interfaces.CONTENT_TYPE_JSON,
+		interfaces.HTTP_HEADER_ACCOUNT_ID:   accountInfo.ID,
+		interfaces.HTTP_HEADER_ACCOUNT_TYPE: accountInfo.Type,
 	}
 
 	// http://{host}:{port}/api/agent-operator-integration/internal-v1/mcp/proxy/{mcp_id}/tool/call

@@ -86,7 +86,7 @@ func validateEvent(event ledgervo.Event) error {
 	if event.EventID == "" || event.EventType == "" || event.ConversationID == "" ||
 		event.InteractionID == "" || event.ProducerID == "" || event.ProducerStreamID == "" ||
 		event.ProducerEpoch == 0 || event.ProducerSequence == 0 ||
-		event.Owner.TenantID == "" || event.Owner.BusinessDomainID == "" {
+		event.Owner.TenantID == "" {
 		return &DomainError{Code: CodeInvalidEvent, Message: "required evidence event fields are missing"}
 	}
 	if event.PayloadHash != ledgervo.CanonicalPayloadHash(event.Envelope) {
@@ -119,7 +119,7 @@ func validateSemanticEvidence(event ledgervo.Event) error {
 		}
 	}
 	for _, ref := range event.BusinessRefs {
-		if !ref.IsCanonicalForBusinessDomain(event.Owner.BusinessDomainID) {
+		if !ref.IsCanonical() {
 			return &DomainError{Code: CodeInvalidEvent, Message: "business_refs contains an invalid typed business reference"}
 		}
 	}
@@ -146,7 +146,7 @@ func validateSemanticEvidence(event ledgervo.Event) error {
 	for _, edge := range event.OperationBusinessEdges {
 		if edge.OperationID == "" || edge.OperationID != event.OperationID || edge.ObservedAt.IsZero() ||
 			edge.ObservedAt.Before(event.StartedAt) || edge.ObservedAt.After(event.EmittedAt) || !validOperationRole(edge.Role) ||
-			!edge.BusinessRef.IsCanonicalForBusinessDomain(event.Owner.BusinessDomainID) {
+			!edge.BusinessRef.IsCanonical() {
 			return &DomainError{Code: CodeInvalidEvent, Message: "operation_business_edges contains an invalid typed edge"}
 		}
 	}

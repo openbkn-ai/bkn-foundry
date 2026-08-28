@@ -151,7 +151,6 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
 			RequestID:          "req_01JZVALIDREQUESTID000000005",
 			TenantID:           "tenant-supply-chain",
-			BusinessDomain:     "domain-sales-001",
 			InteractionID:      "third-party-interaction-0001",
 			OperationID:        "context-retrieval-0001",
 			CausationEventID:   "agent-tool-called-0001",
@@ -163,13 +162,11 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 
 		header := GetHeaderFromCtx(ctx)
 		convey.So(header[HeaderTenantID], convey.ShouldEqual, "tenant-supply-chain")
-		convey.So(header[HeaderBusinessDomain], convey.ShouldEqual, "domain-sales-001")
 		convey.So(header[HeaderBKNInteractionID], convey.ShouldEqual, "third-party-interaction-0001")
 		convey.So(header[HeaderBKNOperationID], convey.ShouldEqual, "context-retrieval-0001")
 		convey.So(header[HeaderBKNCausationEventID], convey.ShouldEqual, "agent-tool-called-0001")
 		convey.So(header[HeaderBKNClaimID], convey.ShouldEqual, "agent-answer-0001")
 		convey.So(header[HeaderBKNAttempt], convey.ShouldEqual, "2")
-		convey.So(header[HeaderBaggage], convey.ShouldContainSubstring, "business_domain=domain-sales-001")
 	})
 
 	convey.Convey("child operation is deterministic and does not reuse its parent operation", t, func() {
@@ -231,61 +228,20 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 
 func TestTraceContextUsesConfiguredTenantOnlyWhenInboundTenantIsMissing(t *testing.T) {
 	t.Setenv("BKN_TRACE_DEFAULT_TENANT_ID", "openbkn-local")
-	domainOnly := TraceContextFromHeaders(func(key string) string {
-		if key == HeaderBusinessDomain {
-			return "bd_public"
-		}
-		return ""
-	})
-	if domainOnly.TenantID != "openbkn-local" {
-		t.Fatalf("default tenant = %q, want openbkn-local", domainOnly.TenantID)
+	defaulted := TraceContextFromHeaders(func(string) string { return "" })
+	if defaulted.TenantID != "openbkn-local" {
+		t.Fatalf("default tenant = %q, want openbkn-local", defaulted.TenantID)
 	}
 	trustedTenant := TraceContextFromHeaders(func(key string) string {
 		switch key {
 		case HeaderTenantID:
 			return "tenant-from-gateway"
-		case HeaderBusinessDomain:
-			return "bd_public"
 		default:
 			return ""
 		}
 	})
 	if trustedTenant.TenantID != "tenant-from-gateway" {
 		t.Fatalf("inbound tenant was overwritten: %q", trustedTenant.TenantID)
-	}
-}
-
-func TestTraceContextUsesConfiguredBusinessDomainOnlyWhenInboundDomainIsMissing(t *testing.T) {
-	t.Setenv("BKN_TRACE_DEFAULT_TENANT_ID", "openbkn-local")
-	t.Setenv("BKN_TRACE_DEFAULT_BUSINESS_DOMAIN", "bd_public")
-
-	bare := SetTraceContextToCtx(context.Background(), TraceContextFromHeaders(func(string) string { return "" }))
-	traceContext, ok := GetTraceContextFromCtx(bare)
-	if !ok || traceContext.BusinessDomain != "bd_public" {
-		t.Fatalf("default business domain = %q, want bd_public", traceContext.BusinessDomain)
-	}
-	if traceContext.Baggage["business_domain"] != "bd_public" {
-		t.Fatalf("default business domain must reach outbound baggage: %v", traceContext.Baggage)
-	}
-
-	trusted := TraceContextFromHeaders(func(key string) string {
-		if key == HeaderBusinessDomain {
-			return "bd_from_gateway"
-		}
-		return ""
-	})
-	if trusted.BusinessDomain != "bd_from_gateway" {
-		t.Fatalf("inbound business domain was overwritten: %q", trusted.BusinessDomain)
-	}
-
-	baggageOnly := TraceContextFromHeaders(func(key string) string {
-		if key == HeaderBaggage {
-			return "business_domain=bd_from_baggage"
-		}
-		return ""
-	})
-	if baggageOnly.BusinessDomain != "bd_from_baggage" {
-		t.Fatalf("baggage business domain must outrank the deployment default: %q", baggageOnly.BusinessDomain)
 	}
 }
 
@@ -298,8 +254,7 @@ func TestCopyRequestScopedValuesKeepsTheTargetContextIntact(t *testing.T) {
 	transport := context.WithValue(context.Background(), transportKey{}, "session-1")
 
 	request := SetTraceContextToCtx(context.Background(), TraceContext{
-		TenantID: "tenant-1", BusinessDomain: "bd_public",
-	})
+		TenantID: "tenant-1"})
 	request = SetAccountAuthContextToCtx(request, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 	})
@@ -311,7 +266,7 @@ func TestCopyRequestScopedValuesKeepsTheTargetContextIntact(t *testing.T) {
 		t.Fatal("the transport's own context values were dropped")
 	}
 	traceContext, ok := GetTraceContextFromCtx(merged)
-	if !ok || traceContext.BusinessDomain != "bd_public" {
+	if !ok || traceContext.TenantID != "tenant-1" {
 		t.Fatalf("request trace context did not survive the copy: %#v", traceContext)
 	}
 	auth, ok := GetAccountAuthContextFromCtx(merged)

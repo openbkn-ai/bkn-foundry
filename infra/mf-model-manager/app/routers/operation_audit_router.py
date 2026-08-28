@@ -38,11 +38,11 @@ async def _require_audit_reader(request: Request):
     if not me.get("enabled") or not set(me.get("roles", [])) & {"super_admin", "admin", "audit"}:
         raise _audit_error("access_denied")
 
-def _list(tenant, domain, from_time, to_time, limit, before_time, before_event_id, actor_id, action, target_type, target_id, outcome):
+def _list(tenant, from_time, to_time, limit, before_time, before_event_id, actor_id, action, target_type, target_id, outcome):
     pool=PymysqlPool.get_pool(); connection=pool.connection(); cursor=connection.cursor()
     try:
-        sql="SELECT event_id,event_time,recorded_at,tenant_id,business_domain_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM t_model_manager_operation_audit WHERE tenant_id=%s AND business_domain_id=%s AND event_time>=%s AND event_time<%s"
-        args=[tenant,domain,from_time,to_time]
+        sql="SELECT event_id,event_time,recorded_at,tenant_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM t_model_manager_operation_audit WHERE tenant_id=%s AND event_time>=%s AND event_time<%s"
+        args=[tenant,from_time,to_time]
         for column, value in (("actor_id", actor_id), ("action", action), ("target_type", target_type), ("target_id", target_id), ("outcome", outcome)):
             if value:
                 sql += " AND " + column + "=%s"; args.append(value)
@@ -51,10 +51,10 @@ def _list(tenant, domain, from_time, to_time, limit, before_time, before_event_i
         sql += " ORDER BY event_time DESC,event_id ASC LIMIT %s";args.append(limit+1);cursor.execute(sql,args);rows=cursor.fetchall();return rows[:limit],len(rows)>limit
     finally: cursor.close();connection.close()
 
-def _get(event_id,tenant,domain):
+def _get(event_id,tenant):
     pool=PymysqlPool.get_pool(); connection=pool.connection(); cursor=connection.cursor()
     try:
-        cursor.execute("SELECT event_id,event_time,recorded_at,tenant_id,business_domain_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM t_model_manager_operation_audit WHERE event_id=%s AND tenant_id=%s AND business_domain_id=%s",[event_id,tenant,domain]);return cursor.fetchone()
+        cursor.execute("SELECT event_id,event_time,recorded_at,tenant_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM t_model_manager_operation_audit WHERE event_id=%s AND tenant_id=%s",[event_id,tenant]);return cursor.fetchone()
     finally: cursor.close();connection.close()
 
 def _time(value):
@@ -62,15 +62,15 @@ def _time(value):
     except ValueError: raise _audit_error("invalid_timestamp")
 
 @operation_audit_router.get("/operation-audits")
-async def list_operation_audits(request: Request, from_: str = Query(alias="from"), to: str = Query(), limit: int = Query(50, ge=1, le=500), before_time: str = Query(""), before_event_id: str = Query(""), actor_id: str = Query(""), action: str = Query(""), target_type: str = Query(""), target_id: str = Query(""), outcome: str = Query(""), x_tenant_id: str = Header(alias="x-tenant-id"), x_business_domain: str = Header(alias="x-business-domain")):
+async def list_operation_audits(request: Request, from_: str = Query(alias="from"), to: str = Query(), limit: int = Query(50, ge=1, le=500), before_time: str = Query(""), before_event_id: str = Query(""), actor_id: str = Query(""), action: str = Query(""), target_type: str = Query(""), target_id: str = Query(""), outcome: str = Query(""), x_tenant_id: str = Header(alias="x-tenant-id")):
     await _require_audit_reader(request); start,end=_time(from_),_time(to)
     if start>=end or (end-start).total_seconds()>_MAX_RANGE_SECONDS: raise _audit_error("invalid_time_range")
     before=_time(before_time) if before_time else None
-    rows,more=await asyncio.to_thread(_list,x_tenant_id,x_business_domain,start,end,limit,before,before_event_id,actor_id.strip(),action.strip(),target_type.strip(),target_id.strip(),outcome.strip())
+    rows,more=await asyncio.to_thread(_list,x_tenant_id,start,end,limit,before,before_event_id,actor_id.strip(),action.strip(),target_type.strip(),target_id.strip(),outcome.strip())
     return {"entries":rows,"has_more":more}
 
 @operation_audit_router.get("/operation-audits/{event_id}")
-async def get_operation_audit(event_id: str, request: Request, x_tenant_id: str = Header(alias="x-tenant-id"), x_business_domain: str = Header(alias="x-business-domain")):
-    await _require_audit_reader(request); row=await asyncio.to_thread(_get,event_id,x_tenant_id,x_business_domain)
+async def get_operation_audit(event_id: str, request: Request, x_tenant_id: str = Header(alias="x-tenant-id")):
+    await _require_audit_reader(request); row=await asyncio.to_thread(_get,event_id,x_tenant_id)
     if not row: raise _audit_error("event_not_found")
     return row

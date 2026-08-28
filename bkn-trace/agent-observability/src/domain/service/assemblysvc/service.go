@@ -198,7 +198,7 @@ func businessRefKey(ref sessionvo.BusinessRef) string {
 	if ref.AsOf != nil {
 		asOf = ref.AsOf.UTC().Format(time.RFC3339Nano)
 	}
-	return fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s", ref.RefType, ref.RefID, ref.BusinessDomainID, ref.Version, asOf)
+	return fmt.Sprintf("%s\x00%s\x00%s\x00%s", ref.RefType, ref.RefID, ref.Version, asOf)
 }
 
 func sortedBusinessRefs(values map[string]sessionvo.BusinessRef) []sessionvo.BusinessRef {

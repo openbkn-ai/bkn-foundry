@@ -25,7 +25,7 @@
 
 ## 3. Trace Context 与因果字段
 
-入站接受 `traceparent`、`bkn-request-id`、`x-request-id`、`x-account-id`、`x-account-type`、`x-tenant-id`、`x-business-domain` 和重放用 `bkn-event-observed-at`。为兼容旧调用方，入站暂时接受 `bkn-trace-observed-at`，但所有出站调用只传播统一头 `bkn-event-observed-at`。tenant 与 business domain 至少提供一个，均不得由 account id 推导；两者同时缺失时不提交 2.2 event batch 或 Artifact。合法 W3C traceparent 才复用；无上游 trace 时，业务 Trace Context 复用当前 OTel Server Span 的 trace/span 身份，确保 Span、Evidence、Artifact、响应头与下游传播只有一个 `trace_id`；仅在 OTel 上下文不可用时才生成本地 trace/request 标识。
+入站接受 `traceparent`、`bkn-request-id`、`x-request-id`、`x-account-id`、`x-account-type`、`x-tenant-id` 和重放用 `bkn-event-observed-at`。为兼容旧调用方，入站暂时接受 `bkn-trace-observed-at`，但所有出站调用只传播统一头 `bkn-event-observed-at`。tenant 必须由可信身份上下文提供且不得由 account id 推导；缺失时不提交 2.2 event batch 或 Artifact。合法 W3C traceparent 才复用；无上游 trace 时，业务 Trace Context 复用当前 OTel Server Span 的 trace/span 身份，确保 Span、Evidence、Artifact、响应头与下游传播只有一个 `trace_id`；仅在 OTel 上下文不可用时才生成本地 trace/request 标识。
 
 每个业务事件贯穿：
 
@@ -113,7 +113,7 @@ helper 不会自动把普通工具调用解释为 Action；缺 claim、operation
 
 ## 8. 敏感数据边界
 
-完整用户问题和最终业务结果写入独立 Evidence Artifact，并由 `bkn.account`、业务域和授权查询共同控制可见性；Studio 对有权用户展示制品内容。event、普通日志和 span 只保存引用、哈希和诊断字段，避免重复扩散业务正文。
+完整用户问题和最终业务结果写入独立 Evidence Artifact，并由 tenant、`bkn.account` 和授权查询共同控制可见性；Studio 对有权用户展示制品内容。event、普通日志和 span 只保存引用、哈希和诊断字段，避免重复扩散业务正文。
 
 无论是否为业务内容，Authorization、Cookie、token、API key、密码、私钥和对象存储裸 URL 都不得进入 Artifact、event、日志、span 或 Studio 响应。当前阶段不对一般业务问题和结果做额外内容分类或默认脱敏。
 

@@ -16,8 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"bkn-backend/interfaces"
 	"go.opentelemetry.io/otel/trace"
+
+	"bkn-backend/interfaces"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -34,9 +35,14 @@ func testTraceContext() context.Context {
 
 func testRequestContext() RequestContext {
 	return RequestContext{
-		RequestID: "req_bkn_backend_schema_0001", AccountID: "acct_demo", AccountType: "user", BusinessDomain: "domain_demo",
-		InteractionID: "int_schema_read_001", OperationID: "op_schema_read_001", CausationEventID: "evt_retrieval_001", Attempt: 2,
-		ObservedAt: "2026-07-25T08:00:00Z",
+		RequestID:        "req_bkn_backend_schema_0001",
+		AccountID:        "acct_demo",
+		AccountType:      "user",
+		InteractionID:    "int_schema_read_001",
+		OperationID:      "op_schema_read_001",
+		CausationEventID: "evt_retrieval_001",
+		Attempt:          2,
+		ObservedAt:       "2026-07-25T08:00:00Z",
 	}
 }
 

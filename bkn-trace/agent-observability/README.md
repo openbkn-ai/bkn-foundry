@@ -61,7 +61,7 @@ python3 scripts/bkn_trace_e2e_lite_probe.py \
 
 ### BKN Trace 3.0 Interaction 业务语义图
 
-`POST /api/agent-observability/v1/evidence/events` 与 `GET /api/agent-observability/v1/interactions/{interaction_id}/business-graph` 使用 BKN Trace 3.0 强类型合同。3.0 是 0.1.3 的新基线，不兼容未发布的旧请求体：事件必须使用 `bkn.trace.schema.version`，归属只能来自可信身份上下文，请求体中的 `schema_version`、`tenant_id` 和 `business_domain_id` 会被拒绝。
+`POST /api/agent-observability/v1/evidence/events` 与 `GET /api/agent-observability/v1/interactions/{interaction_id}/business-graph` 使用 BKN Trace 3.0 强类型合同。3.0 是 0.1.3 的新基线，不兼容未发布的旧请求体：事件必须使用 `bkn.trace.schema.version`，归属只能来自可信身份上下文，请求体中的 `schema_version` 和 `tenant_id` 会被拒绝。
 
 Interaction 业务语义图遵循以下口径：
 
@@ -169,7 +169,7 @@ Trace Graph 单次最多返回 1000 个 span 节点。命中上限时服务会�
 
 ### Evidence 写入安全边界
 
-受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，并限制在部署方配置的 tenant 与 business domain 白名单内，不接受客户端伪造 owner。Evidence Ledger 与 Artifact 保留在 8080 的已发布生产者接口，并继续校验独立的 `bkn-trace-evidence-ingest` token，以兼容 bkn-agent、Vega、BKN Backend、ontology-query 和 Context Loader。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认只允许带稳定 `app.kubernetes.io/name=agent-retrieval` 标签的 Pod 访问 8081，其他部署可通过 `networkPolicy.allowedClients` 显式扩展。
+受管 Conversation、Interaction、Operation 生命周期继续监听于集群内部的 `agent-observability-internal:8081`，同时在公开 8080 接口为 OAuth SDK 客户端开放。公开写入由服务端根据 OAuth 与 BKN Safe 身份派生 owner，并限制在部署方配置的 tenant 内，不接受客户端伪造 owner。Evidence Ledger 与 Artifact 保留在 8080 的已发布生产者接口，并继续校验独立的 `bkn-trace-evidence-ingest` token，以兼容 bkn-agent、Vega、BKN Backend、ontology-query 和 Context Loader。公开读取仍由 OAuth 与 Access Profile 保护。Chart 的 NetworkPolicy 默认只允许带稳定 `app.kubernetes.io/name=agent-retrieval` 标签的 Pod 访问 8081，其他部署可通过 `networkPolicy.allowedClients` 显式扩展。
 
 该 NetworkPolicy 依赖 Kubernetes 1.23 或更高版本。离线执行 `helm template` 时应显式传入 `--kube-version 1.23.0` 或实际目标集群版本；连接集群的 `helm install/upgrade` 会按目标集群能力校验。
 
@@ -190,7 +190,7 @@ helm upgrade --install agent-observability charts/agent-observability \
   -n observability
 ```
 
-Context Loader 通过内部监听器携带 tenant、business domain、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。公开监听器不信任这些 owner 请求头，而是从 OAuth、BKN Safe 和部署批准的 tenant/business domain 重新构造 owner；任一授权依赖不可用时均拒绝写入，不得 fail-open。证据生产者则必须携带 ingest token；内部网络身份不能绕过该校验。
+Context Loader 通过内部监听器携带 tenant、application principal、effective subject type/id 和可选 delegation 构成的 owner tuple。公开监听器不信任这些 owner 请求头，而是从 OAuth、BKN Safe 和部署批准的 tenant 重新构造 owner；任一授权依赖不可用时均拒绝写入，不得 fail-open。证据生产者则必须携带 ingest token；内部网络身份不能绕过该校验。
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
@@ -221,7 +221,7 @@ Schema 变更必须新增下一个版本目录。每条迁移中的每一句也�
 
 Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求；当前业务域由 Studio 发送。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。
 
-Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须经过 OAuth 与 Access Profile 校验，并以 tenant、business domain、account 归属在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY=true`，Helm 默认关闭。
+Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须经过 OAuth 与 Access Profile 校验，并以 tenant、account 归属在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY=true`，Helm 默认关闭。
 
 统一日志分页游标使用 `BKN_OBSERVABILITY_CURSOR_SIGNING_KEY` 做 HMAC 签名，并绑定过滤条件、主体、应用、Access Profile 指纹和可见来源。多副本部署必须通过 `observability.cursorSigning.existingSecret` 为全部 Pod 注入同一密钥；单实例本地环境未配置时使用仅在当前进程有效的随机密钥，进程重启后的旧游标按失效处理。密钥不得写入日志、响应或配置文件。
 
@@ -333,7 +333,7 @@ business_ref:{ref_id}
 
 Evidence ingestion 默认写入 `2.1.0`，读取兼容 `2.0.0`。2.1 事件执行精确 payload/ref allowlist、类型、枚举、hash、敏感值、trace/span/time join 校验。一般事实允许先于其父事件异步到达：首次查询返回 `causality_missing`，父事件补到后自动恢复完整；claim 的 `source_event_ids` 缺失仍返回 `source_event_missing`，Action 前态乱序继续原子拒绝。混合 2.0/2.1 历史按每个 event 的版本保留 `causality_missing`。
 
-OpenSearch 当前仍使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 tenant/business domain/account 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；`2.0` 兼容仅指已有归属事件的语义读取。缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
+OpenSearch 当前仍使用“单 trace 聚合文档 + OCC”保障 Action 状态和事件冲突原子性。为避免文档无限增长，单 trace 硬限制为 10,000 个事件且聚合 JSON 不超过 8 MiB，超限返回 `BKN_TRACE_CAPACITY_EXCEEDED`。该限制不是最终扩展方案；后续需要迁移为事件文档加状态投影，并使用 PIT 分页。旧索引中缺少 tenant/account 必要归属的 2.0 聚合文档默认不可查询、不可继续追加；`2.0` 兼容仅指已有归属事件的语义读取。缺失归属必须通过离线受控迁移补齐，不能由请求方认领。
 
 持久化 evidence 可通过企业业务溯源接口回查：
 

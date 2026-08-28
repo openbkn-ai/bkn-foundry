@@ -114,22 +114,6 @@ if ! grep -A1 -Fq 'name: BKN_TRACE_DEPLOYMENT_TENANT_ID
   echo "single-tenant deployments must inject the trusted deployment tenant" >&2
   exit 1
 fi
-if ! awk '
-  $0 == "            - name: BKN_TRACE_PUBLIC_LIFECYCLE_BUSINESS_DOMAINS" {
-    getline
-    if ($0 == "              value: \"bd_public\"") found = 1
-  }
-  END { exit !found }
-' <<<"${default_rendered}"; then
-  echo "public lifecycle business domains must be rendered" >&2
-  exit 1
-fi
-if helm template agent-observability "${chart_dir}" \
-  --set-json 'evidence.queryAuth.publicLifecycleBusinessDomains=[]' >/dev/null 2>&1; then
-  echo "public lifecycle business domains must be required and non-empty" >&2
-  exit 1
-fi
-
 legacy_rendered="$(render_chart agent-observability "${chart_dir}" \
   --set evidence.store=opensearch \
   --set evidence.index=bkn-trace-evidence-test \

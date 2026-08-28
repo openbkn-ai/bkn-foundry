@@ -49,8 +49,8 @@ def _write(entry):
     cursor = connection.cursor()
     try:
         cursor.execute("""INSERT INTO t_model_manager_operation_audit
-        (event_id,event_time,recorded_at,tenant_id,business_domain_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message)
-        VALUES (%(event_id)s,%(event_time)s,%(recorded_at)s,%(tenant_id)s,%(business_domain_id)s,%(actor_id)s,%(actor_name)s,%(actor_type)s,%(auth_method)s,%(request_id)s,%(source_channel)s,%(method)s,%(action)s,%(target_type)s,%(target_id)s,%(target_name)s,%(outcome)s,%(failure_code)s,%(failure_message)s)
+        (event_id,event_time,recorded_at,tenant_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message)
+        VALUES (%(event_id)s,%(event_time)s,%(recorded_at)s,%(tenant_id)s,%(actor_id)s,%(actor_name)s,%(actor_type)s,%(auth_method)s,%(request_id)s,%(source_channel)s,%(method)s,%(action)s,%(target_type)s,%(target_id)s,%(target_name)s,%(outcome)s,%(failure_code)s,%(failure_message)s)
         ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)""", entry)
         connection.commit()
     finally:
@@ -86,13 +86,12 @@ async def operation_audit_middleware(request, call_next):
     request._receive = receive
     response = await call_next(request)
     tenant = request.headers.get("x-tenant-id", "").strip()
-    domain = request.headers.get("x-business-domain", "").strip()
     actor = request.headers.get("x-account-id", "").strip()
     request_id, generated_request_id = operation_audit_request_id(request.headers)
     if generated_request_id:
         response.headers["bkn-request-id"] = request_id
     # A complete source fact requires the trusted scope and verified actor.
-    if not tenant or not domain or not actor or not request_id:
+    if not tenant or not actor or not request_id:
         return response
     try:
         payload = json.loads(body.decode() or "{}") if len(body) <= 65536 else {}
@@ -107,7 +106,7 @@ async def operation_audit_middleware(request, call_next):
     outcome = "success" if response.status_code < 400 else ("denied" if response.status_code in (401,403) else "failure")
     now = datetime.now(timezone.utc)
     entry = {"event_id": _event_id(tenant, request_id, request.method, request.url.path), "event_time": now, "recorded_at": now,
-             "tenant_id": tenant, "business_domain_id": domain, "actor_id": actor, "actor_name": await _actor_name(actor, request.headers),
+             "tenant_id": tenant, "actor_id": actor, "actor_name": await _actor_name(actor, request.headers),
              "actor_type": request.headers.get("x-account-type", "user"), "auth_method": "api_key" if request.headers.get("authorization", "").removeprefix("Bearer ").startswith("bak_") else "oauth",
              "request_id": request_id, "source_channel": "api", "method": request.method, "action": rule[0], "target_type": rule[1], "target_id": target_id, "target_name": target_name,
              "outcome": outcome, "failure_code": "" if outcome == "success" else f"http_{response.status_code}", "failure_message": "" if outcome == "success" else "management request failed"}

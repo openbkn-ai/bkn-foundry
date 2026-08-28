@@ -24,7 +24,6 @@ const (
 
 type Owner struct {
 	TenantID               string      `json:"tenant_id" binding:"required"`
-	BusinessDomainID       string      `json:"business_domain_id" binding:"required"`
 	ApplicationPrincipalID string      `json:"application_principal_id" binding:"required"`
 	EffectiveSubjectType   SubjectType `json:"effective_subject_type" binding:"required"`
 	EffectiveSubjectID     string      `json:"effective_subject_id" binding:"required"`
@@ -36,8 +35,7 @@ func (o Owner) Equal(other Owner) bool {
 }
 
 func (o Owner) Key() string {
-	return o.TenantID + "\x00" + o.BusinessDomainID + "\x00" +
-		o.ApplicationPrincipalID + "\x00" + string(o.EffectiveSubjectType) +
+	return o.TenantID + "\x00" + o.ApplicationPrincipalID + "\x00" + string(o.EffectiveSubjectType) +
 		"\x00" + o.EffectiveSubjectID + "\x00" + o.DelegationID
 }
 

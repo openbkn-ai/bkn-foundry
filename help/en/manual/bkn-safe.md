@@ -2,7 +2,7 @@
 
 ## 📖 Overview
 
-**BKN Safe** is the **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. In full installs it may integrate with OAuth2/OIDC stacks (e.g. Hydra) and business-domain services.
+**BKN Safe** is the **cross-cutting security layer**: unified **identity**, **permissions**, **policies**, and **audit** across data access, model output, and tool invocation. In full installs it may integrate with OAuth2/OIDC stacks such as Hydra.
 
 With **`--minimum` install**, many auth components are disabled for a simpler lab setup — APIs may not require tokens. For production, enable the full auth profile per the deployment and security guide bundled with your release.
 
@@ -10,7 +10,7 @@ With **`--minimum` install**, many auth components are disabled for a simpler la
 
 ## 🛡️ Administrator commands: `openbkn admin`
 
-In a **full install** (with `auth.enabled=true` and `businessDomain.enabled=true`), BKN Safe's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with `@openbkn/bkn-sdk` and is reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
+In a **full install** (with `auth.enabled=true`), BKN Safe's day-to-day **management surface** — users, organizations, roles, models (`llm` / `small-model`), audit — is handled through the **`openbkn admin`** subcommand of the same `openbkn` CLI. There is **no separate admin package** — admin ships with `@openbkn/bkn-sdk` and is reached via `openbkn admin ...`, sharing the same login/session as the end-user `openbkn` CLI shown below on this page.
 
 ```bash
 openbkn admin org tree                              # list departments
@@ -123,42 +123,11 @@ openbkn auth logout           # logout from active connection
 openbkn auth delete staging   # remove a saved connection
 ```
 
-### Configuration and Business Domain
+### Configuration
 
 ```bash
-# Show current configuration (server, user, business domain)
+# Show current configuration (server and user)
 openbkn config show
-
-# List available business domains
-openbkn config list-bd
-
-# Set the active business domain
-openbkn config set-bd <bd_uuid>
-```
-
-**`config list-bd` / `config set-bd` and minimal installs**: **`--minimum` / minimal installs do not ship** the **business-domain management service** these two subcommands call, so **`list-bd` / `set-bd` are unavailable** (e.g. `list-bd` returns **404**) — deployment choice, not a CLI bug. A default domain still exists; use `config show`. On a **full install**, use `list-bd` / `set-bd` to list or switch domains; if that still fails, check routing or whether the service is deployed.
-
-### Business Domain Priority
-
-Some resources are scoped to a business domain. If queries return empty results, verify you are in the correct domain:
-
-```bash
-# 1. Check current domain
-openbkn config show
-# → bd: bd_public (default)
-
-# 2. List available domains
-openbkn config list-bd
-# →  bd_public    (default)
-#    bd-sales     Sales Division
-#    bd-finance   Finance Division
-
-# 3. Switch to the correct domain
-openbkn config set-bd bd-sales
-
-# 4. Retry your query
-openbkn bkn list
-openbkn agent list
 ```
 
 ---
@@ -182,17 +151,7 @@ console.log('platform:', status.baseUrl, 'hasToken:', status.hasToken, 'expired:
 const me = auth.whoami();
 console.log(me.userId, me.username);
 
-// List available business domains (no typed helper — use the generic passthrough)
-const domains = await bkn.call('/api/bkn-backend/v1/business-domains', { method: 'GET' });
-console.log('business domains:', domains);
-
-// Scope subsequent requests to a business domain
-const scoped = createClient({
-  baseUrl: 'https://<access-address>',
-  token: process.env.BKN_TOKEN,
-  businessDomain: 'bd-sales',
-});
-const catalogs = await scoped.call('/api/vega-backend/v1/catalogs', { method: 'GET' });
+const catalogs = await bkn.call('/api/vega-backend/v1/catalogs', { method: 'GET' });
 console.log('catalogs:', catalogs);
 ```
 
@@ -227,12 +186,4 @@ curl -sk "https://<access-address>/userinfo" \
 curl -sk "https://<access-address>/api/vega-backend/v1/catalogs" \
   -H "Authorization: Bearer $(openbkn token)"
 
-# List business domains
-curl -sk "https://<access-address>/api/bkn-backend/v1/business-domains" \
-  -H "Authorization: Bearer $(openbkn token)"
-
-# Set business domain header for scoped requests
-curl -sk "https://<access-address>/api/vega-backend/v1/catalogs" \
-  -H "Authorization: Bearer $(openbkn token)" \
-  -H "X-Business-Domain: bd-sales"
 ```

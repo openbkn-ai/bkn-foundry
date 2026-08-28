@@ -56,28 +56,28 @@ func TestGetArtifactReturnsOnlyArtifactVisibleToScope(t *testing.T) {
 	}
 
 	artifact, found, err := service.GetArtifact(context.Background(), "artifact_query_service", evidencevo.QueryScope{
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	})
 	if err != nil || !found || artifact.Content == nil {
 		t.Fatalf("owner must read content: artifact=%+v found=%v err=%v", artifact, found, err)
 	}
 	_, found, err = service.GetArtifact(context.Background(), "artifact_query_service", evidencevo.QueryScope{
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "other", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "other", AccountType: "app",
 	})
 	if err != nil || found {
 		t.Fatalf("cross-owner query must look absent: found=%v err=%v", found, err)
 	}
 	_, found, err = service.GetArtifact(context.Background(), "artifact_query_service", evidencevo.QueryScope{
-		TenantID: "tenant_demo", BusinessDomain: "other-domain", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "other-tenant", AccountID: "acct_demo", AccountType: "app",
 	})
 	if err != nil || found {
-		t.Fatalf("cross-business-domain query must look absent: found=%v err=%v", found, err)
+		t.Fatalf("cross-tenant query must look absent: found=%v err=%v", found, err)
 	}
 	_, found, err = service.GetArtifact(context.Background(), "artifact_query_service", evidencevo.QueryScope{
 		AccountID: "acct_demo", AccountType: "app",
 	})
 	if err != nil || found {
-		t.Fatalf("query without tenant or business domain must fail closed: found=%v err=%v", found, err)
+		t.Fatalf("query without tenant must fail closed: found=%v err=%v", found, err)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestGetArtifactForAuthorizedInteractionReturnsArtifactToManagedBuilder(t *t
 		RequestID: "req_interaction_result", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		InteractionID: "int-1", ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-08-07T15:00:00Z", Content: map[string]any{"summary": "库存为 100"},
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "owner", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "owner", AccountType: "app",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize artifact: %+v", validationErrors)
@@ -99,7 +99,7 @@ func TestGetArtifactForAuthorizedInteractionReturnsArtifactToManagedBuilder(t *t
 	projection := &artifactInteractionProjection{result: iprojectionsource.Result{Artifacts: []evidencevo.EvidenceArtifact{artifact}}}
 	service := New(store, WithProjectionSource(projection))
 	scope := evidencevo.QueryScope{AccessProfile: &evidencevo.AccessProfile{
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", EffectiveSubjectID: "builder",
+		TenantID: "tenant_demo", EffectiveSubjectID: "builder",
 		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-managed"},
 		AccountActive: true, TenantActive: true,
 	}}
@@ -122,7 +122,7 @@ func TestGetArtifactReturnsOwnedContentWhenBusinessResolverIsUnavailable(t *test
 		BusinessRefs: []string{"object:kn_sales:order"},
 		ContentType:  "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"count": 12},
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize artifact: %+v", validationErrors)
@@ -132,7 +132,7 @@ func TestGetArtifactReturnsOwnedContentWhenBusinessResolverIsUnavailable(t *test
 	}
 
 	got, found, err := NewWithArtifactStore(store, store).GetArtifact(context.Background(), artifact.ArtifactID, evidencevo.QueryScope{
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	})
 
 	if err != nil || !found || got.Content == nil {
@@ -148,7 +148,7 @@ func TestGetArtifactReturnsOwnedContentWhenBusinessResolverCannotResolveRef(t *t
 		BusinessRefs: []string{"object:kn_sales:order"},
 		ContentType:  "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"count": 12},
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize artifact: %+v", validationErrors)
@@ -159,7 +159,7 @@ func TestGetArtifactReturnsOwnedContentWhenBusinessResolverCannotResolveRef(t *t
 	resolver := &fakeBusinessResolver{}
 
 	got, found, err := NewWithBusinessResolver(store, resolver).GetArtifact(context.Background(), artifact.ArtifactID, evidencevo.QueryScope{
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	})
 
 	if err != nil || !found || got.Content == nil {
@@ -178,7 +178,7 @@ func TestGetArtifactUsesRecordAuthorizationInsteadOfResolverVisibility(t *testin
 		SourceRef: "resource:orders", BusinessRefs: []string{"object:kn_sales:order"},
 		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"count": 12},
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize artifact: %+v", validationErrors)
@@ -187,7 +187,7 @@ func TestGetArtifactUsesRecordAuthorizationInsteadOfResolverVisibility(t *testin
 		t.Fatal(err)
 	}
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	}
 
 	deniedResolver := &fakeBusinessResolver{resolutions: []ibusinessresolver.Resolution{
@@ -216,7 +216,7 @@ func TestIngestArtifactRejectsOwnershipDriftFromExistingTrace(t *testing.T) {
 	store := evidencestore.New()
 	trace := evidencevo.NormalizedTrace{
 		TraceID: "4bf92f3577b34da6a3ce929d0e0e4736", RequestID: "req_existing",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: evidencevo.ContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
 			EventID: "evt_existing", EventType: "claim.created", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -240,7 +240,7 @@ func TestIngestArtifactRejectsTypeThatDoesNotMatchCommittedEventRole(t *testing.
 	store := evidencestore.New()
 	trace := evidencevo.NormalizedTrace{
 		TraceID: "4bf92f3577b34da6a3ce929d0e0e4736", RequestID: "req_artifact_service",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
 			EventID: "evt_question_role", EventType: "agent.interaction.started",
@@ -276,7 +276,7 @@ func validArtifactBody(t *testing.T, artifactID string, content any) []byte {
 		SourceRef:   "interaction:interaction_001",
 		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", Content: content,
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -325,7 +325,7 @@ const results  = await bkn.kn.search("<kn-id>", "供应链有哪些风险？");
 
 ## 🛡️ 平台管理
 
-平台管理（用户、组织、角色、模型、审计）**已内置在同一个 `openbkn` CLI** 的 `openbkn admin` 子命令下——无需独立的管理工具。`admin` 命令操作**完整安装**（`auth.enabled=true`、`businessDomain.enabled=true`）提供的服务。
+平台管理（用户、组织、角色、模型、审计）**已内置在同一个 `openbkn` CLI** 的 `openbkn admin` 子命令下——无需独立的管理工具。`admin` 命令操作**完整安装**（`auth.enabled=true`）提供的服务。
 
 ```bash
 openbkn admin org tree                          # 列出部门

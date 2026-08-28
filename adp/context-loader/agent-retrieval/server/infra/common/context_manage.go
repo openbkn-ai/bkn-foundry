@@ -39,10 +39,8 @@ const (
 	HeaderBKNClaimID            = "bkn-claim-id"
 	HeaderBKNAttempt            = "bkn-attempt"
 	HeaderTenantID              = "x-tenant-id"
-	HeaderBusinessDomain        = "x-business-domain"
 	HeaderBKNEventObservedAt    = "bkn-event-observed-at"
 	envDefaultTenantID          = "BKN_TRACE_DEFAULT_TENANT_ID"
-	envDefaultBusinessDomain    = "BKN_TRACE_DEFAULT_BUSINESS_DOMAIN"
 )
 
 type traceContextKey string
@@ -72,7 +70,6 @@ var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
 type TraceContext struct {
 	RequestID          string
 	TenantID           string
-	BusinessDomain     string
 	Baggage            map[string]string
 	ConversationID     string
 	InteractionID      string
@@ -164,21 +161,11 @@ func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) contex
 	}
 	traceContext.Baggage = sanitizeBaggage(traceContext.Baggage)
 	traceContext.TenantID = sanitizeBusinessTraceID(traceContext.TenantID)
-	traceContext.BusinessDomain = sanitizeBusinessTraceID(traceContext.BusinessDomain)
-	if traceContext.BusinessDomain == "" {
-		traceContext.BusinessDomain = sanitizeBusinessTraceID(traceContext.Baggage["business_domain"])
-	}
 	traceContext.ConversationID = sanitizeBusinessTraceID(traceContext.ConversationID)
 	traceContext.InteractionID = sanitizeBusinessTraceID(traceContext.InteractionID)
 	traceContext.OperationID = sanitizeBusinessTraceID(traceContext.OperationID)
 	traceContext.CausationEventID = sanitizeBusinessTraceID(traceContext.CausationEventID)
 	traceContext.ClaimID = sanitizeBusinessTraceID(traceContext.ClaimID)
-	if traceContext.BusinessDomain != "" {
-		if traceContext.Baggage == nil {
-			traceContext.Baggage = map[string]string{}
-		}
-		traceContext.Baggage["business_domain"] = traceContext.BusinessDomain
-	}
 	if traceContext.Attempt < 1 || traceContext.Attempt > 1000 {
 		traceContext.Attempt = 1
 	}
@@ -254,11 +241,6 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 		TenantID:  sanitizeBusinessTraceID(firstNonEmpty(getHeader(HeaderTenantID), os.Getenv(envDefaultTenantID))),
 		// A trusted inbound domain always wins; the deployment default only keeps
 		// single-domain installs working for clients that carry no domain at all.
-		BusinessDomain: firstNonEmpty(
-			getHeader(HeaderBusinessDomain),
-			parseBaggage(getHeader(HeaderBaggage))["business_domain"],
-			os.Getenv(envDefaultBusinessDomain),
-		),
 		Baggage:            parseBaggage(getHeader(HeaderBaggage)),
 		ConversationID:     sanitizeBusinessTraceID(getHeader(HeaderBKNConversationID)),
 		InteractionID:      sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID)),
@@ -306,9 +288,6 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 			header[HeaderBaggage] = baggage
 		}
 		setBusinessTraceHeaders(header, traceContext)
-		if traceContext.BusinessDomain != "" {
-			header[HeaderBusinessDomain] = traceContext.BusinessDomain
-		}
 		if traceContext.TenantID != "" {
 			header[HeaderTenantID] = traceContext.TenantID
 		}
@@ -342,7 +321,7 @@ func setBusinessTraceHeaders(header map[string]string, traceContext TraceContext
 // StripBusinessTraceHeaders removes OpenBKN-only causality before an untrusted outbound hop.
 func StripBusinessTraceHeaders(header map[string]string) {
 	for key := range header {
-		for _, protected := range []string{HeaderBKNConversationID, HeaderBKNInteractionID, HeaderBKNOperationID, HeaderBKNCausationEventID, HeaderBKNClaimID, HeaderBKNAttempt, HeaderBKNEventObservedAt, HeaderTenantID, HeaderBusinessDomain} {
+		for _, protected := range []string{HeaderBKNConversationID, HeaderBKNInteractionID, HeaderBKNOperationID, HeaderBKNCausationEventID, HeaderBKNClaimID, HeaderBKNAttempt, HeaderBKNEventObservedAt, HeaderTenantID} {
 			if strings.EqualFold(key, protected) {
 				delete(header, key)
 				break
@@ -384,7 +363,7 @@ func sanitizeBaggage(baggage map[string]string) map[string]string {
 	cleaned := map[string]string{}
 	for key, value := range baggage {
 		switch key {
-		case "bkn.runtime.env", "business_domain":
+		case "bkn.runtime.env":
 			cleaned[key] = value
 		}
 	}

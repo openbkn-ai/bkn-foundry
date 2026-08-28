@@ -83,7 +83,6 @@ type SummaryPageQuery struct {
 	Scope          evidencevo.QueryScope
 	From           time.Time
 	To             time.Time
-	BusinessDomain string
 	Limit          int
 	Offset         int
 	AfterStartedAt string

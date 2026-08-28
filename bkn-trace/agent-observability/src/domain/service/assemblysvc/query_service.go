@@ -157,7 +157,7 @@ func interactionRecordScope(owner sessionvo.Owner, events []ledgervo.Event) evid
 		}
 	}
 	return evidencevo.RecordScope{
-		TenantID: owner.TenantID, BusinessDomain: owner.BusinessDomainID,
+		TenantID:               owner.TenantID,
 		EffectiveSubjectID:     owner.EffectiveSubjectID,
 		ApplicationPrincipalID: owner.ApplicationPrincipalID,
 		KnowledgeNetworkIDs:    evidencevo.KnowledgeNetworkIDsFromRefs(refs),

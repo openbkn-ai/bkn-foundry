@@ -36,7 +36,6 @@ type RequestSummary struct {
 	AgentName                      string        `json:"agent_name,omitempty"`
 	ApplicationPrincipalID         string        `json:"application_principal_id,omitempty"`
 	EffectiveSubjectID             string        `json:"effective_subject_id,omitempty"`
-	BusinessDomain                 string        `json:"business_domain,omitempty"`
 	KnowledgeNetworks              []string      `json:"knowledge_networks,omitempty"`
 	QuestionPreview                string        `json:"question_preview,omitempty"`
 	ResultPreview                  string        `json:"result_preview,omitempty"`
@@ -66,7 +65,6 @@ type TraceSummary struct {
 	AgentName              string `json:"agent_name,omitempty"`
 	ApplicationPrincipalID string `json:"application_principal_id,omitempty"`
 	EffectiveSubjectID     string `json:"effective_subject_id,omitempty"`
-	BusinessDomain         string `json:"business_domain,omitempty"`
 	QuestionPreview        string `json:"question_preview,omitempty"`
 	ResultPreview          string `json:"result_preview,omitempty"`
 	RootService            string `json:"root_service,omitempty"`
@@ -97,7 +95,6 @@ type SummaryQueryOptions struct {
 	Service              string
 	Tool                 string
 	ErrorKeyword         string
-	BusinessDomain       string
 	KnowledgeNetwork     string
 	EvidenceCompleteness string
 	Keyword              string
@@ -134,7 +131,6 @@ type ConversationSummary struct {
 	AgentName              string   `json:"agent_name,omitempty"`
 	ApplicationPrincipalID string   `json:"application_principal_id,omitempty"`
 	EffectiveSubjectID     string   `json:"effective_subject_id,omitempty"`
-	BusinessDomain         string   `json:"business_domain,omitempty"`
 	KnowledgeNetworks      []string `json:"knowledge_networks,omitempty"`
 	QuestionPreview        string   `json:"question_preview,omitempty"`
 	ResultPreview          string   `json:"result_preview,omitempty"`
@@ -159,7 +155,6 @@ type InteractionListSummary struct {
 	AgentName              string   `json:"agent_name,omitempty"`
 	ApplicationPrincipalID string   `json:"application_principal_id,omitempty"`
 	EffectiveSubjectID     string   `json:"effective_subject_id,omitempty"`
-	BusinessDomain         string   `json:"business_domain,omitempty"`
 	KnowledgeNetworks      []string `json:"knowledge_networks,omitempty"`
 	QuestionPreview        string   `json:"question_preview,omitempty"`
 	ResultPreview          string   `json:"result_preview,omitempty"`
@@ -324,7 +319,6 @@ func buildRequestSummary(
 		summary.TraceCount++
 		mergeStableIdentity(&summary.ConversationID, traceSummary.ConversationID)
 		mergeStableIdentity(&summary.InteractionID, traceSummary.InteractionID)
-		firstNonEmpty(&summary.BusinessDomain, trace.BusinessDomain)
 		firstNonEmpty(&summary.AgentOrApp, traceSummary.AgentOrApp)
 		firstNonEmpty(&summary.ApplicationPrincipalID, traceSummary.ApplicationPrincipalID)
 		firstNonEmpty(&summary.EffectiveSubjectID, traceSummary.EffectiveSubjectID)
@@ -416,7 +410,6 @@ func buildRequestSummary(
 		return artifacts[i].ObservedAt < artifacts[j].ObservedAt
 	})
 	for _, artifact := range artifacts {
-		firstNonEmpty(&summary.BusinessDomain, artifact.BusinessDomain)
 		firstNonEmpty(&summary.AgentOrApp, artifact.AgentOrApp)
 		firstNonEmpty(&summary.Initiator, artifact.Initiator)
 		if started.IsZero() {
@@ -627,7 +620,8 @@ func buildTraceSummary(trace NormalizedTrace, artifacts []EvidenceArtifact) Trac
 		AgentOrApp:             trace.ApplicationPrincipalID,
 		ApplicationPrincipalID: trace.ApplicationPrincipalID,
 		EffectiveSubjectID:     trace.EffectiveSubjectID,
-		BusinessDomain:         trace.BusinessDomain, Status: "unknown", SpanCountStatus: "unavailable",
+		Status:                 "unknown",
+		SpanCountStatus:        "unavailable",
 	}
 	var started, completed time.Time
 	hasExplicitAgentIdentity := false

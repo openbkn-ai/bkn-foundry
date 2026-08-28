@@ -236,13 +236,10 @@ func (o *operatorIntegrationClient) fetchSkillAsset(ctx context.Context, assetUR
 	return body, nil
 }
 
-// skillHeader builds outbound account, trace, and business-domain headers.
+// skillHeader builds outbound account and trace headers.
 // The skill marketplace requires a business domain, so use the default if absent.
 func (o *operatorIntegrationClient) skillHeader(ctx context.Context, operationName string) map[string]string {
 	header := common.GetHeaderForChildOperation(ctx, operationName, 1)
-	if bd := header[string(interfaces.HeaderXBusinessDomain)]; bd == "" {
-		header[string(interfaces.HeaderXBusinessDomain)] = interfaces.DefaultBusinessDomainID
-	}
 	return header
 }
 

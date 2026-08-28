@@ -179,7 +179,7 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	result := documents["swagger.json"].Definitions["httphandler.operationResult"]
 	assertStringSet(t, result.Required, "operation", "receipt", "created", "execute")
 	businessRef := documents["swagger.json"].Definitions["sessionvo.BusinessRef"]
-	assertStringSet(t, businessRef.Required, "ref_type", "ref_id", "business_domain_id", "version")
+	assertStringSet(t, businessRef.Required, "ref_type", "ref_id", "version")
 
 	complete := documents["swagger.json"].Paths[completePath].Post
 	body := findParameter(t, complete.Parameters, "request", "body")
@@ -286,7 +286,7 @@ func TestLifecycleSourceRequiredTagsDriveSwagger(t *testing.T) {
 		t.Fatalf("parse operation value object: %v", err)
 	}
 	required := map[string][]string{
-		"BusinessRef": {"RefType", "RefID", "BusinessDomainID", "Version"},
+		"BusinessRef": {"RefType", "RefID", "Version"},
 	}
 	for typeName, fields := range required {
 		structType := findStruct(t, file, typeName)

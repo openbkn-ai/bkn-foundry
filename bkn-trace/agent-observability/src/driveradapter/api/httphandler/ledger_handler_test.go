@@ -122,7 +122,7 @@ func TestLedgerHandlerAcceptsTypedSemanticEvidence(t *testing.T) {
 		"artifact_refs": []string{"artifact:query", "artifact:answer"},
 		"business_refs": []map[string]any{{
 			"ref_type": "object_type", "ref_id": "object:supplychain:forecast",
-			"business_domain_id": "domain-1", "version": "1",
+			"version": "1",
 		}},
 		"evidence_refs": []map[string]any{{
 			"evidence_ref": "evidence:june", "ref_type": "artifact_fragment",
@@ -145,7 +145,7 @@ func TestLedgerHandlerAcceptsTypedSemanticEvidence(t *testing.T) {
 			"operation_id": "op-1", "role": "aggregate", "observed_at": time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC),
 			"business_ref": map[string]any{
 				"ref_type": "object_type", "ref_id": "object:supplychain:forecast",
-				"business_domain_id": "domain-1", "version": "1",
+				"version": "1",
 			},
 		}},
 	}

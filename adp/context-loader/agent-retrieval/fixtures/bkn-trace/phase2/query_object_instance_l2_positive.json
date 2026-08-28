@@ -7,7 +7,6 @@
     "trace_id": "71220000000000000000000000000001",
     "traceparent": "00-71220000000000000000000000000001-7122000000000001-01",
     "bkn.request.id": "req_context_loader_phase2_query_object_0001",
-    "business_domain": "domain_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "service"
   },

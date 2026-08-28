@@ -62,7 +62,6 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             "path": "/api/mf-model-manager/v1/llm/edit",
             "headers": [
                 (b"x-tenant-id", b"tenant-1"),
-                (b"x-business-domain", b"domain-1"),
                 (b"x-account-id", b"user-1"),
                 (b"bkn-request-id", b"req-audit-write-failure"),
             ],
@@ -85,6 +84,35 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             "update" in message
             for message in logs.output
         ))
+
+    async def test_writes_tenant_scoped_audit_without_business_domain(self):
+        async def receive():
+            return {"type": "http.request", "body": b'{"model_id":"model-1"}', "more_body": False}
+
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/mf-model-manager/v1/llm/edit",
+            "headers": [
+                (b"x-tenant-id", b"tenant-1"),
+                (b"x-account-id", b"user-1"),
+                (b"bkn-request-id", b"req-audit-tenant-only"),
+            ],
+            "query_string": b"",
+            "path_params": {},
+        }, receive)
+
+        async def call_next(_request):
+            return Response(status_code=200)
+
+        captured = []
+        with patch.object(operation_audit, "_actor_name", return_value="user-1"), \
+             patch.object(operation_audit, "_write", side_effect=captured.append):
+            response = await operation_audit.operation_audit_middleware(request, call_next)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured[0]["tenant_id"], "tenant-1")
+        self.assertNotIn("business_domain_id", captured[0])
 
 
 if __name__ == "__main__":

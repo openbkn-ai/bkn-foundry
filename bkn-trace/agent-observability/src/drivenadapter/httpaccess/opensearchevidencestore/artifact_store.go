@@ -16,7 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iartifactstore"
 )
 
-const artifactIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"artifact_id":{"type":"keyword"},"artifact_type":{"type":"keyword"},"trace_id":{"type":"keyword"},"interaction_id":{"type":"keyword"},"operation_id":{"type":"keyword"},"claim_id":{"type":"keyword"},"source_ref":{"type":"keyword"},"business_refs":{"type":"keyword"},"content_type":{"type":"keyword"},"schema_version":{"type":"keyword"},"observed_at":{"type":"date"},"as_of":{"type":"date"},"source_version":{"type":"keyword"},"content_hash":{"type":"keyword"},"content_json":{"type":"keyword","index":false,"doc_values":false},"snapshot_ref":{"type":"keyword"},"business_domain":{"type":"keyword"},"effective_subject_id":{"type":"keyword"},"application_principal_id":{"type":"keyword"},"knowledge_network_ids":{"type":"keyword"},"initiator":{"type":"keyword"},"agent_or_app":{"type":"keyword"},"bkn":{"properties":{"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}}}}}}}`
+const artifactIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200},"mappings":{"dynamic":false,"properties":{"artifact_id":{"type":"keyword"},"artifact_type":{"type":"keyword"},"trace_id":{"type":"keyword"},"interaction_id":{"type":"keyword"},"operation_id":{"type":"keyword"},"claim_id":{"type":"keyword"},"source_ref":{"type":"keyword"},"business_refs":{"type":"keyword"},"content_type":{"type":"keyword"},"schema_version":{"type":"keyword"},"observed_at":{"type":"date"},"as_of":{"type":"date"},"source_version":{"type":"keyword"},"content_hash":{"type":"keyword"},"content_json":{"type":"keyword","index":false,"doc_values":false},"snapshot_ref":{"type":"keyword"},"effective_subject_id":{"type":"keyword"},"application_principal_id":{"type":"keyword"},"knowledge_network_ids":{"type":"keyword"},"initiator":{"type":"keyword"},"agent_or_app":{"type":"keyword"},"bkn":{"properties":{"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}}}}}}}`
 
 type artifactDocument struct {
 	ArtifactID             string                  `json:"artifact_id"`
@@ -37,7 +37,6 @@ type artifactDocument struct {
 	ContentJSON            string                  `json:"content_json,omitempty"`
 	SnapshotRef            string                  `json:"snapshot_ref,omitempty"`
 	TenantID               string                  `json:"bkn.tenant.id,omitempty"`
-	BusinessDomain         string                  `json:"business_domain,omitempty"`
 	AccountID              string                  `json:"bkn.account.id"`
 	AccountType            string                  `json:"bkn.account.type"`
 	EffectiveSubjectID     string                  `json:"effective_subject_id,omitempty"`
@@ -171,7 +170,7 @@ func toArtifactDocument(artifact evidencevo.EvidenceArtifact) (artifactDocument,
 		ContentType: artifact.ContentType, SchemaVersion: artifact.SchemaVersion,
 		ObservedAt: artifact.ObservedAt, AsOf: artifact.AsOf, SourceVersion: artifact.SourceVersion,
 		ContentHash: artifact.ContentHash, SnapshotRef: artifact.SnapshotRef,
-		TenantID: artifact.TenantID, BusinessDomain: artifact.BusinessDomain,
+		TenantID:  artifact.TenantID,
 		AccountID: artifact.AccountID, AccountType: artifact.AccountType,
 		EffectiveSubjectID: artifact.EffectiveSubjectID, ApplicationPrincipalID: artifact.ApplicationPrincipalID,
 		KnowledgeNetworkIDs: append([]string(nil), artifact.KnowledgeNetworkIDs...),
@@ -200,7 +199,7 @@ func decodeArtifactDocument(body []byte) (evidencevo.EvidenceArtifact, error) {
 		ContentType: document.ContentType, SchemaVersion: document.SchemaVersion,
 		ObservedAt: document.ObservedAt, AsOf: document.AsOf, SourceVersion: document.SourceVersion,
 		ContentHash: document.ContentHash, SnapshotRef: document.SnapshotRef,
-		TenantID: document.TenantID, BusinessDomain: document.BusinessDomain,
+		TenantID:  document.TenantID,
 		AccountID: document.AccountID, AccountType: document.AccountType,
 		EffectiveSubjectID: document.EffectiveSubjectID, ApplicationPrincipalID: document.ApplicationPrincipalID,
 		KnowledgeNetworkIDs: append([]string(nil), document.KnowledgeNetworkIDs...),

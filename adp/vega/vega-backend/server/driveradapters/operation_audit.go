@@ -56,10 +56,9 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			return
 		}
 		tenantID := strings.TrimSpace(c.GetHeader("x-tenant-id"))
-		businessDomainID := strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN))
 		requestID := operationAuditRequestID(c)
-		if tenantID == "" || businessDomainID == "" {
-			logger.Errorf("operation audit fact rejected: request_id=%s action=%s missing tenant or business domain", requestID, rule.Action)
+		if tenantID == "" {
+			logger.Errorf("operation audit fact rejected: request_id=%s action=%s missing tenant", requestID, rule.Action)
 			return
 		}
 		actorName := operationAuditActorName(c.Request.Context(), c.GetHeader("Authorization"), actor.ID)
@@ -71,8 +70,8 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		outcome, failureCode, failureMessage := operationAuditOutcome(c)
 		entry := operationaudit.Entry{
 			EventID: operationaudit.EventID(tenantID, requestID, c.Request.Method, c.FullPath()), EventTime: now, RecordedAt: now,
-			TenantID: tenantID, BusinessDomainID: businessDomainID,
-			ActorID: actor.ID, ActorName: actorName, ActorType: firstNonEmpty(string(actor.Type), "user"), AuthMethod: operationAuditAuthMethod(c.GetHeader("Authorization")),
+			TenantID: tenantID,
+			ActorID:  actor.ID, ActorName: actorName, ActorType: firstNonEmpty(string(actor.Type), "user"), AuthMethod: operationAuditAuthMethod(c.GetHeader("Authorization")),
 			RequestID: requestID, SourceChannel: operationAuditSourceChannel(c.FullPath()), Method: c.Request.Method,
 			Action: rule.Action, TargetType: rule.TargetType, TargetID: targetID, TargetName: targetName,
 			Outcome: outcome, FailureCode: failureCode, FailureMessage: failureMessage,

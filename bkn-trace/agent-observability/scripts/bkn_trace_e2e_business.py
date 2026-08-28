@@ -321,7 +321,6 @@ def _core_headers(args: argparse.Namespace) -> dict[str, str]:
         "x-account-id": args.account_id,
         "x-account-type": args.account_type,
         "x-tenant-id": args.tenant_id,
-        "x-business-domain": args.business_domain,
     }
     if args.query_token:
         headers["Authorization"] = f"Bearer {args.query_token}"
@@ -369,7 +368,6 @@ def run_real_e2e(args: argparse.Namespace) -> BusinessE2EReport:
         "x-account-id": args.account_id,
         "x-account-type": args.account_type,
         "x-tenant-id": args.tenant_id,
-        "x-business-domain": args.business_domain,
     }
     status, response_headers, agent_response = _request_json(
         "POST",
@@ -489,7 +487,6 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--account-id", required=True)
     parser.add_argument("--account-type", default="user")
     parser.add_argument("--tenant-id", required=True)
-    parser.add_argument("--business-domain", required=True)
     parser.add_argument("--query-token", default="")
     parser.add_argument("--message", required=True)
     parser.add_argument("--prompt-override", required=True)

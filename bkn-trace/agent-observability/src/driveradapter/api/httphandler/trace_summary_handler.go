@@ -35,7 +35,6 @@ const maxSummaryQueryPage = 100
 // @Param to query string false "Started at or before this RFC3339 timestamp"
 // @Param status query string false "Execution status"
 // @Param agent_or_app query string false "Agent or application"
-// @Param business_domain query string false "Business domain"
 // @Param keyword query string false "Trace, request, operation, or error keyword"
 // @Success 200 {object} evidencevo.TraceSummaryPage
 // @Failure 400 {object} rdto.ErrorResponse
@@ -79,7 +78,6 @@ func (h *EvidenceHandler) summaryQueryOptionsFromRequest(w http.ResponseWriter, 
 		Service:              strings.TrimSpace(r.URL.Query().Get("service")),
 		Tool:                 strings.TrimSpace(r.URL.Query().Get("tool")),
 		ErrorKeyword:         strings.TrimSpace(r.URL.Query().Get("error_keyword")),
-		BusinessDomain:       strings.TrimSpace(r.URL.Query().Get("business_domain")),
 		KnowledgeNetwork:     strings.TrimSpace(r.URL.Query().Get("knowledge_network")),
 		EvidenceCompleteness: strings.TrimSpace(r.URL.Query().Get("evidence_completeness")),
 		Keyword:              strings.TrimSpace(r.URL.Query().Get("keyword")),

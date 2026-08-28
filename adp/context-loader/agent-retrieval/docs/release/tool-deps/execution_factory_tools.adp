@@ -106,10 +106,6 @@
                           "description": "算子名称",
                           "type": "string"
                         },
-                        "business_domain_id": {
-                          "description": "业务域Id",
-                          "type": "string"
-                        },
                         "version": {
                           "type": "string",
                           "description": "算子版本"

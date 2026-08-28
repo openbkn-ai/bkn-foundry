@@ -20,14 +20,13 @@ import (
 
 	"vega-backend/common/operationaudit"
 	verrors "vega-backend/errors"
-	"vega-backend/interfaces"
 )
 
 const maximumOperationAuditRange = 30 * 24 * time.Hour
 
 type operationAuditQueryStore interface {
 	List(ctx context.Context, filter operationaudit.Filter) (operationaudit.Page, error)
-	Get(ctx context.Context, eventID, tenantID, businessDomain string) (operationaudit.Entry, bool, error)
+	Get(ctx context.Context, eventID, tenantID string) (operationaudit.Entry, bool, error)
 }
 
 func (r *restHandler) ListOperationAudits(c *gin.Context) {
@@ -42,15 +41,15 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 		replyOperationAuditError(c, http.StatusServiceUnavailable, verrors.VegaBackend_OperationAudit_ServiceUnavailable, nil)
 		return
 	}
-	filter := operationaudit.Filter{TenantID: strings.TrimSpace(c.GetHeader("x-tenant-id")), BusinessDomain: strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)), From: from, To: to}
+	filter := operationaudit.Filter{TenantID: strings.TrimSpace(c.GetHeader("x-tenant-id")), From: from, To: to}
 	filter.ActorID = strings.TrimSpace(c.Query("actor_id"))
 	filter.Action = strings.TrimSpace(c.Query("action"))
 	filter.TargetType = strings.TrimSpace(c.Query("target_type"))
 	filter.TargetID = strings.TrimSpace(c.Query("target_id"))
 	filter.Outcome = strings.TrimSpace(c.Query("outcome"))
-	if filter.TenantID == "" || filter.BusinessDomain == "" {
+	if filter.TenantID == "" {
 		replyOperationAuditError(c, http.StatusBadRequest, verrors.VegaBackend_OperationAudit_MissingScope, gin.H{
-			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+			"required_headers": []string{"x-tenant-id"},
 		})
 		return
 	}
@@ -90,14 +89,14 @@ func (r *restHandler) GetOperationAudit(c *gin.Context) {
 		replyOperationAuditError(c, http.StatusServiceUnavailable, verrors.VegaBackend_OperationAudit_ServiceUnavailable, nil)
 		return
 	}
-	tenantID, businessDomain := strings.TrimSpace(c.GetHeader("x-tenant-id")), strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN))
-	if tenantID == "" || businessDomain == "" {
+	tenantID := strings.TrimSpace(c.GetHeader("x-tenant-id"))
+	if tenantID == "" {
 		replyOperationAuditError(c, http.StatusBadRequest, verrors.VegaBackend_OperationAudit_MissingScope, gin.H{
-			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+			"required_headers": []string{"x-tenant-id"},
 		})
 		return
 	}
-	entry, found, err := r.auditQueryStore.Get(c.Request.Context(), strings.TrimSpace(c.Param("event_id")), tenantID, businessDomain)
+	entry, found, err := r.auditQueryStore.Get(c.Request.Context(), strings.TrimSpace(c.Param("event_id")), tenantID)
 	if err != nil {
 		replyOperationAuditError(c, http.StatusInternalServerError, verrors.VegaBackend_OperationAudit_QueryFailed, nil)
 		return
@@ -178,26 +177,25 @@ func operationAuditReader(ctx context.Context, authorization, expectedActorID st
 }
 
 type operationAuditResponseDTO struct {
-	EventID          string `json:"event_id"`
-	EventTime        string `json:"event_time"`
-	RecordedAt       string `json:"recorded_at"`
-	TenantID         string `json:"tenant_id"`
-	BusinessDomainID string `json:"business_domain_id"`
-	ActorID          string `json:"actor_id"`
-	ActorName        string `json:"actor_name"`
-	ActorType        string `json:"actor_type"`
-	AuthMethod       string `json:"auth_method"`
-	RequestID        string `json:"request_id"`
-	SourceChannel    string `json:"source_channel"`
-	Method           string `json:"method"`
-	Action           string `json:"action"`
-	TargetType       string `json:"target_type"`
-	TargetID         string `json:"target_id"`
-	TargetName       string `json:"target_name"`
-	Outcome          string `json:"outcome"`
-	FailureCode      string `json:"failure_code,omitempty"`
-	FailureMessage   string `json:"failure_message,omitempty"`
-	SchemaVersion    string `json:"schema_version"`
+	EventID        string `json:"event_id"`
+	EventTime      string `json:"event_time"`
+	RecordedAt     string `json:"recorded_at"`
+	TenantID       string `json:"tenant_id"`
+	ActorID        string `json:"actor_id"`
+	ActorName      string `json:"actor_name"`
+	ActorType      string `json:"actor_type"`
+	AuthMethod     string `json:"auth_method"`
+	RequestID      string `json:"request_id"`
+	SourceChannel  string `json:"source_channel"`
+	Method         string `json:"method"`
+	Action         string `json:"action"`
+	TargetType     string `json:"target_type"`
+	TargetID       string `json:"target_id"`
+	TargetName     string `json:"target_name"`
+	Outcome        string `json:"outcome"`
+	FailureCode    string `json:"failure_code,omitempty"`
+	FailureMessage string `json:"failure_message,omitempty"`
+	SchemaVersion  string `json:"schema_version"`
 }
 
 func operationAuditResponses(entries []operationaudit.Entry) []operationAuditResponseDTO {
@@ -208,7 +206,7 @@ func operationAuditResponses(entries []operationaudit.Entry) []operationAuditRes
 	return result
 }
 func operationAuditResponse(entry operationaudit.Entry) operationAuditResponseDTO {
-	return operationAuditResponseDTO{EventID: entry.EventID, EventTime: entry.EventTime.UTC().Format(time.RFC3339Nano), RecordedAt: entry.RecordedAt.UTC().Format(time.RFC3339Nano), TenantID: entry.TenantID, BusinessDomainID: entry.BusinessDomainID, ActorID: entry.ActorID, ActorName: entry.ActorName, ActorType: entry.ActorType, AuthMethod: entry.AuthMethod, RequestID: entry.RequestID, SourceChannel: entry.SourceChannel, Method: entry.Method, Action: entry.Action, TargetType: entry.TargetType, TargetID: entry.TargetID, TargetName: entry.TargetName, Outcome: entry.Outcome, FailureCode: entry.FailureCode, FailureMessage: entry.FailureMessage, SchemaVersion: "1.0"}
+	return operationAuditResponseDTO{EventID: entry.EventID, EventTime: entry.EventTime.UTC().Format(time.RFC3339Nano), RecordedAt: entry.RecordedAt.UTC().Format(time.RFC3339Nano), TenantID: entry.TenantID, ActorID: entry.ActorID, ActorName: entry.ActorName, ActorType: entry.ActorType, AuthMethod: entry.AuthMethod, RequestID: entry.RequestID, SourceChannel: entry.SourceChannel, Method: entry.Method, Action: entry.Action, TargetType: entry.TargetType, TargetID: entry.TargetID, TargetName: entry.TargetName, Outcome: entry.Outcome, FailureCode: entry.FailureCode, FailureMessage: entry.FailureMessage, SchemaVersion: "1.0"}
 }
 
 var _ operationAuditQueryStore = (*operationaudit.Store)(nil)

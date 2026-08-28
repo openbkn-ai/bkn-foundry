@@ -48,8 +48,7 @@ func TestMemoryStoreArtifactQueryFailsClosedAcrossOwnership(t *testing.T) {
 	}
 
 	exact := evidencevo.QueryScope{
-		TenantID: artifact.TenantID, BusinessDomain: artifact.BusinessDomain,
-		AccountID: artifact.AccountID, AccountType: artifact.AccountType,
+		TenantID: artifact.TenantID, AccountID: artifact.AccountID, AccountType: artifact.AccountType,
 	}
 	foundArtifact, found, err := store.GetArtifact(context.Background(), artifact.ArtifactID, exact)
 	if err != nil || !found || foundArtifact.ContentHash != artifact.ContentHash {
@@ -82,8 +81,7 @@ func TestMemoryStoreListsOnlyAuthorizedArtifactsForRequest(t *testing.T) {
 
 	result, err := store.ListArtifactsByRequestID(context.Background(), owned.RequestID, iartifactstore.QueryOptions{
 		Scope: evidencevo.QueryScope{
-			TenantID: owned.TenantID, BusinessDomain: owned.BusinessDomain,
-			AccountID: owned.AccountID, AccountType: owned.AccountType,
+			TenantID: owned.TenantID, AccountID: owned.AccountID, AccountType: owned.AccountType,
 		},
 		Limit: iartifactstore.MaxArtifactQueryLimit,
 	})
@@ -103,7 +101,7 @@ func normalizedStoreArtifact(t *testing.T) evidencevo.EvidenceArtifact {
 		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", SourceVersion: "main",
 		Content:  map[string]any{"text": "result"},
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 	}
 	normalized, validationErrors := evidencevo.NormalizeArtifact(artifact)
 	if len(validationErrors) != 0 {

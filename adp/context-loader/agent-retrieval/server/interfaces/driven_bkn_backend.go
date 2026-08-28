@@ -463,11 +463,10 @@ type ListKnReq struct {
 
 // KnBrief Knowledge Network Summary (for list)
 type KnBrief struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Description    string `json:"description,omitempty"`
-	ModuleType     string `json:"module_type,omitempty"`
-	BusinessDomain string `json:"business_domain,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	ModuleType  string `json:"module_type,omitempty"`
 }
 
 // ListKnResp Knowledge Network List Response.

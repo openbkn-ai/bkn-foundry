@@ -573,7 +573,6 @@ def test_context_loader_search_without_receipt_links_real_retrieval_event_to_cla
         entry_boundary="external",
         upstream_span_id="abcdef1234567890",
         tenant_id="tenant-demo",
-        business_domain="bd-public",
     )
     token = observability.set_context(ctx)
     interaction_token = evidence.begin_interaction(

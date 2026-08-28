@@ -278,8 +278,7 @@ func TestOperationAuditModeQueriesReceiptRuntimeSource(t *testing.T) {
 		id: "bkn-trace-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		records: []observabilityvo.LogRecord{{
 			LogID: "bkn-trace-runtime:receipt-a", Category: observabilityvo.CategoryRuntimeBusiness,
-			EventName: "operation.executed", TraceID: "trace-a", TenantID: "tenant-a", BusinessDomain: "domain-a",
-			EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core",
+			EventName: "operation.executed", TraceID: "trace-a", TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core",
 		}},
 	}
 	service := NewWithOptions([]Source{source}, Options{OperationAuditOnly: true, CursorKey: []byte("runtime-source-test")})
@@ -515,7 +514,7 @@ func TestDetailAndFacetsUseTheSameRecordAuthorization(t *testing.T) {
 func TestOperationAuditDetailUsesTheSameCategoryAuthorizationAsList(t *testing.T) {
 	securityRecord := validTestRecord(observabilityvo.LogRecord{
 		LogID: "security-a", Category: observabilityvo.CategoryAuditSecurity, EventName: "access.denied",
-		TenantID: "tenant-a", BusinessDomain: "domain-a", EventTimestamp: time.Now(),
+		TenantID: "tenant-a", EventTimestamp: time.Now(),
 		TrustLevel: "trusted", IngressPrincipal: "bkn-safe", ActorID: "admin-a",
 	})
 	service := NewWithOptions([]Source{fakeDetailSource{
@@ -615,7 +614,7 @@ func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
 	if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{}); err != nil {
 		t.Fatalf("builder list failed: %v", err)
 	}
-	if source.query.AuthorizedTenantID != "tenant-a" || source.query.AuthorizedBusinessDomain != "domain-a" {
+	if source.query.AuthorizedTenantID != "tenant-a" {
 		t.Fatalf("trusted isolation scope was not pushed down: %+v", source.query)
 	}
 	if len(source.query.AuthorizedCategories) != 3 || len(source.query.AuthorizedKnowledgeNetworkIDs) != 2 {
@@ -1066,7 +1065,7 @@ func boolInt(value bool) int {
 
 func activeProfile(subject, role string) evidencevo.AccessProfile {
 	return evidencevo.AccessProfile{
-		TenantID: "tenant-a", BusinessDomain: "domain-a", EffectiveSubjectID: subject,
+		TenantID: "tenant-a", EffectiveSubjectID: subject,
 		Roles: []string{role}, AccountActive: true, TenantActive: true,
 	}
 }
@@ -1074,7 +1073,7 @@ func activeProfile(subject, role string) evidencevo.AccessProfile {
 func ownedBusinessLog(id, owner, traceID string) observabilityvo.LogRecord {
 	return observabilityvo.LogRecord{
 		LogID: id, Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed", TenantID: "tenant-a",
-		BusinessDomain: "domain-a", EffectiveSubjectID: owner, TraceID: traceID, EventTimestamp: time.Now(),
+		EffectiveSubjectID: owner, TraceID: traceID, EventTimestamp: time.Now(),
 		TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
 	}
 }
@@ -1082,7 +1081,7 @@ func ownedBusinessLog(id, owner, traceID string) observabilityvo.LogRecord {
 func managedBusinessLog(id string, networks []string) observabilityvo.LogRecord {
 	return observabilityvo.LogRecord{
 		LogID: id, Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed", TenantID: "tenant-a",
-		BusinessDomain: "domain-a", EffectiveSubjectID: "other-a", KnowledgeNetworkIDs: networks,
+		EffectiveSubjectID: "other-a", KnowledgeNetworkIDs: networks,
 		EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
 	}
 }
