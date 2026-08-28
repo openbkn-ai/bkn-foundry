@@ -6,7 +6,11 @@
 
 package interfaces
 
-import "bkn-backend/interfaces/data_type"
+import (
+	"encoding/json"
+
+	"bkn-backend/interfaces/data_type"
+)
 
 const (
 	MAX_PROPERTY_NUM = 1000
@@ -136,9 +140,30 @@ type DataProperty struct {
 
 	MappedField *Field `json:"mapped_field,omitempty" mapstructure:"mapped_field,omitempty"`
 
-	IndexConfig *IndexConfig `json:"index_config,omitempty" mapstructure:"index_config,omitempty"`
-
 	ConditionOperations []string `json:"condition_operations,omitempty"` // Operations supported by string fields
+
+	retiredIndexConfigProvided bool
+}
+
+// UnmarshalJSON records the removed index_config field without reintroducing it to the public model.
+func (p *DataProperty) UnmarshalJSON(data []byte) error {
+	type dataPropertyAlias DataProperty
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	var value dataPropertyAlias
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	*p = DataProperty(value)
+	_, p.retiredIndexConfigProvided = raw["index_config"]
+	return nil
+}
+
+// HasRetiredIndexConfig reports whether the request contained the retired property-level index_config field.
+func (p *DataProperty) HasRetiredIndexConfig() bool {
+	return p != nil && p.retiredIndexConfigProvided
 }
 
 type LogicProperty struct {
@@ -170,29 +195,6 @@ type Parameter struct {
 	Comment     *string `json:"comment,omitempty" mapstructure:"comment,omitempty"` // Parameter comment supplied by the metric read
 	Required    bool    `json:"required,omitempty" mapstructure:"required,omitempty"`
 	Default     any     `json:"default,omitempty" mapstructure:"default,omitempty"`
-}
-
-type IndexConfig struct {
-	KeywordConfig  KeywordConfig  `json:"keyword_config,omitempty" mapstructure:"keyword_config,omitempty"`
-	FulltextConfig FulltextConfig `json:"fulltext_config,omitempty" mapstructure:"fulltext_config,omitempty"`
-	VectorConfig   VectorConfig   `json:"vector_config,omitempty" mapstructure:"vector_config,omitempty"`
-}
-
-type KeywordConfig struct {
-	Enabled        bool `json:"enabled" mapstructure:"enabled"`
-	IgnoreAboveLen int  `json:"ignore_above_len" mapstructure:"ignore_above_len"`
-}
-
-type FulltextConfig struct {
-	Enabled  bool   `json:"enabled" mapstructure:"enabled"`
-	Analyzer string `json:"analyzer" mapstructure:"analyzer"`
-}
-
-type VectorConfig struct {
-	Enabled bool   `json:"enabled" mapstructure:"enabled"`
-	ModelID string `json:"model_id" mapstructure:"model_id"`
-
-	//Model *SmallModel `json:"-"`
 }
 
 type SimpleProperty struct {

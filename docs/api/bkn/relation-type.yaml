@@ -476,16 +476,6 @@ paths:
                                 name: c_browserused
                                 type: text
                                 display_name: c_browserused
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - ==
                                 - "!="
@@ -508,16 +498,6 @@ paths:
                                 name: c_content
                                 type: text
                                 display_name: c_content
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - "!="
                                 - in
@@ -548,16 +528,6 @@ paths:
                                 name: c_locationip
                                 type: text
                                 display_name: c_locationip
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - match
                                 - ==
@@ -654,16 +624,6 @@ paths:
                                 name: c_browserused
                                 type: text
                                 display_name: c_browserused
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - ==
                                 - "!="
@@ -686,16 +646,6 @@ paths:
                                 name: c_content
                                 type: text
                                 display_name: c_content
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - "!="
                                 - in
@@ -726,16 +676,6 @@ paths:
                                 name: c_locationip
                                 type: text
                                 display_name: c_locationip
-                              index_config:
-                                keyword_config:
-                                  enabled: true
-                                  ignore_above_len: 1024
-                                fulltext_config:
-                                  enabled: true
-                                  analyzer: standard
-                                vector_config:
-                                  enabled: false
-                                  model_id: ""
                               condition_operations:
                                 - match
                                 - ==

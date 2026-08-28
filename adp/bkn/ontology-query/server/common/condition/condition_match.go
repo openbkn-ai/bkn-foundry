@@ -29,8 +29,7 @@ func NewMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 		for _, fieldInfo := range fieldsMap {
 			fields = append(fields, fieldInfo.Name)
 			// If it is a string type with a full-text index, the field name is fieldInfo.Name + "." + dtype.TEXT_SUFFIX.
-			if fieldInfo.Type == dtype.DATATYPE_STRING &&
-				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+			if fieldInfo.Type == dtype.DATATYPE_STRING {
 				fields = append(fields, fieldInfo.Name+"."+dtype.TEXT_SUFFIX)
 			}
 		}
@@ -41,8 +40,7 @@ func NewMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap
 			// Append text fields directly.
 			fields = append(fields, name)
 		} else {
-			if fieldInfo.Type == dtype.DATATYPE_STRING &&
-				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+			if fieldInfo.Type == dtype.DATATYPE_STRING {
 				// match queries are allowed only for properties with a full-text index; otherwise return an error.
 				// For string fields with full-text enabled, match filters on xxx.text.
 				fields = append(fields, name+"."+dtype.TEXT_SUFFIX)

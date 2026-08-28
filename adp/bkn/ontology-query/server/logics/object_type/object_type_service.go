@@ -578,35 +578,7 @@ func (ots *objectTypeService) GetTotal(ctx context.Context, index string, dsl ma
 
 // Vectorize the query statement.
 func (ots *objectTypeService) handlerVector(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
-
-	// There is no need to check whether it is enabled; just avoid using the knn operator.
-	// knn queries are allowed only when the vector model is enabled in system configuration; return an error if knn is requested while disabled.
-	// if !ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
-	// 	err := errors.New("defaultSmallModelEnabled is false, does not support knn condition")
-	// 	return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-	// 		oerrors.OntologyQuery_ObjectType_InternalError_GetSmallModelByIDFailed).
-	// 		WithErrorDetails(err.Error())
-	// }
-
-	// First fetch the model configuration by the small model ID in vector index configuration; return an error if it cannot be found.
-	model, err := ots.mfa.GetModelByID(ctx, property.IndexConfig.VectorConfig.ModelID)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetSmallModelByIDFailed).
-			WithErrorDetails(err.Error())
-	}
-	if model == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-			oerrors.OntologyQuery_ObjectType_SmallModelNotFound).
-			WithErrorDetails(locale.ValidationDetail(ctx, "SmallModelNotFound", map[string]any{"modelID": property.IndexConfig.VectorConfig.ModelID}))
-	}
-	if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter_SmallModel).
-			WithErrorDetails(fmt.Sprintf("model %s has invalid embedding dim, batch size or max tokens", model.ModelID))
-	}
-
-	return ots.mfa.GetVector(ctx, model, []string{word})
+	return nil, fmt.Errorf("ontology-query no longer vectorizes property %q; Vega Resource resolves vector conditions", property.Name)
 }
 
 func (ots *objectTypeService) GetObjectPropertyValue(ctx context.Context,

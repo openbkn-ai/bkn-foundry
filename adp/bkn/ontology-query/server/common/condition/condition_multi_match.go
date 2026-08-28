@@ -57,8 +57,7 @@ func NewMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fiel
 				fields = append(fields, name)
 				continue
 			}
-			if fieldInfo.Type == dtype.DATATYPE_STRING &&
-				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+			if fieldInfo.Type == dtype.DATATYPE_STRING {
 				fields = append(fields, name+"."+dtype.TEXT_SUFFIX)
 				continue
 			}
@@ -169,8 +168,7 @@ func rewriteMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldsMap map[stri
 				fields = append(fields, fieldInfo.MappedField.Name)
 				continue
 			}
-			if fieldInfo.Type == dtype.DATATYPE_STRING &&
-				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+			if fieldInfo.Type == dtype.DATATYPE_STRING {
 				fields = append(fields, fieldInfo.MappedField.Name+"."+dtype.TEXT_SUFFIX)
 				continue
 			}
@@ -212,8 +210,7 @@ func expandIndexFieldNamesForMultiMatchStar(ctx context.Context, fieldsMap map[s
 			out = append(out, getFilterFieldName(fieldInfo.Name, fieldsMap, true))
 			continue
 		}
-		if fieldInfo.Type == dtype.DATATYPE_STRING &&
-			fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+		if fieldInfo.Type == dtype.DATATYPE_STRING {
 			base := getFilterFieldName(fieldInfo.Name, fieldsMap, true)
 			out = append(out, base+"."+dtype.TEXT_SUFFIX)
 		}
@@ -236,8 +233,7 @@ func expandViewFieldNamesForMultiMatchStar(ctx context.Context, fieldsMap map[st
 			out = append(out, fieldInfo.MappedField.Name)
 			continue
 		}
-		if fieldInfo.Type == dtype.DATATYPE_STRING &&
-			fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+		if fieldInfo.Type == dtype.DATATYPE_STRING {
 			out = append(out, fieldInfo.MappedField.Name+"."+dtype.TEXT_SUFFIX)
 		}
 	}

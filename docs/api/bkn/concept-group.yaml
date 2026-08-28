@@ -927,38 +927,11 @@ components:
         mapped_field:
           $ref: "#/components/schemas/ViewField"
           description: Field name mapped to the data source
-        index_config:
-          $ref: "#/components/schemas/IndexConfig"
-          description: Index configuration
         condition_operations:
           description: "Filter operations supported by string properties. String types are string and text."
           type: array
           items:
             type: string
-    IndexConfig:
-      title: Root Type for IndexConfig
-      description: Index configuration
-      type: object
-      properties:
-        keyword_config:
-          $ref: "#/components/schemas/KeywordConfig"
-          description: Keyword search configuration
-        fulltext_config:
-          $ref: "#/components/schemas/FulltextConfig"
-          description: Full-text search configuration
-        vector_config:
-          $ref: "#/components/schemas/VectorConfig"
-          description: Vector search configuration
-      example:
-        keyword_config:
-          enabled: true
-          ignore_above_len: 76
-        fulltext_config:
-          analyzer: standard
-          enabled: true
-        vector_config:
-          enabled: true
-          model_id: some text
     FulltextConfig:
       description: Full-text index configuration
       required:

@@ -397,11 +397,6 @@ func Test_NewCondWithOpr(t *testing.T) {
 					MappedField: Field{
 						Name: "mapped_text",
 					},
-					IndexConfig: &IndexConfig{
-						FulltextConfig: FulltextConfig{
-							Enabled: true,
-						},
-					},
 				},
 			}
 			cfg := &CondCfg{
@@ -434,12 +429,6 @@ func Test_NewCondWithOpr(t *testing.T) {
 				"vector_field": {
 					Name: "vector_field",
 					Type: dtype.DATATYPE_VECTOR,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "model1",
-						},
-					},
 					MappedField: Field{
 						Name: "mapped_vector",
 					},
@@ -510,11 +499,6 @@ func Test_getFilterFieldName(t *testing.T) {
 			"name": {
 				Name: "name",
 				Type: dtype.DATATYPE_STRING,
-				IndexConfig: &IndexConfig{
-					KeywordConfig: KeywordConfig{
-						Enabled: true,
-					},
-				},
 			},
 			"text_field": {
 				Name: "text_field",
@@ -541,20 +525,15 @@ func Test_getFilterFieldName(t *testing.T) {
 			So(result, ShouldEqual, "text_field")
 		})
 
-		Convey("成功 - 精确查询时text字段加keyword", func() {
+		Convey("成功 - 精确查询不从属性配置派生 keyword 子字段", func() {
 			textFieldsMap := map[string]*DataProperty{
 				"text_field": {
 					Name: "text_field",
 					Type: dtype.DATATYPE_TEXT,
-					IndexConfig: &IndexConfig{
-						KeywordConfig: KeywordConfig{
-							Enabled: true,
-						},
-					},
 				},
 			}
 			result := getFilterFieldName("text_field", textFieldsMap, false)
-			So(result, ShouldEqual, "text_field.keyword")
+			So(result, ShouldEqual, "text_field")
 		})
 
 		Convey("成功 - AllField", func() {

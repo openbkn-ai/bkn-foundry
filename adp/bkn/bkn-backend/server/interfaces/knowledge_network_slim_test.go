@@ -23,7 +23,6 @@ func newExportKNFixture() *KN {
 				Type:                "double",
 				Comment:             "订单金额",
 				MappedField:         &Field{},
-				IndexConfig:         &IndexConfig{},
 				ConditionOperations: []string{"gt", "lt"},
 			}},
 			LogicProperties: []*LogicProperty{{
@@ -69,7 +68,6 @@ func TestKN_SlimForSummary(t *testing.T) {
 		So(dp.Type, ShouldEqual, "double")
 		So(dp.Comment, ShouldEqual, "订单金额")
 		So(dp.MappedField, ShouldBeNil)
-		So(dp.IndexConfig, ShouldBeNil)
 		So(dp.ConditionOperations, ShouldBeNil)
 
 		lp := kn.ObjectTypes[0].LogicProperties[0]

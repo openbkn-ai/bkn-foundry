@@ -106,16 +106,7 @@ func BuildIndexSort(objectType interfaces.ObjectType, propMap map[string]cond.Da
 	for _, pri := range objectType.PrimaryKeys {
 		// If a mapping exists, assemble it into object properties. The field also needs a keyword index to be sortable; otherwise it is excluded from sorting.
 
-		// For text fields, check whether a keyword index is configured underneath; use xxx.keyword for sorting when present, otherwise exclude it from sorting.
-		// String fields support sorting directly. If full-text indexing is enabled, text exists under the field's keyword.
-		if propMap[pri].Type == dtype.DATATYPE_TEXT {
-			if propMap[pri].IndexConfig != nil && propMap[pri].IndexConfig.KeywordConfig.Enabled {
-				sorts = append(sorts, &interfaces.SortParams{
-					Field:     pri + "." + dtype.KEYWORD_SUFFIX,
-					Direction: interfaces.ASC_DIRECTION,
-				})
-			}
-		} else {
+		if propMap[pri].Type != dtype.DATATYPE_TEXT {
 			sorts = append(sorts, &interfaces.SortParams{
 				Field:     pri,
 				Direction: interfaces.ASC_DIRECTION,
@@ -570,19 +561,6 @@ func TransferPropsToPropMap(props []cond.DataProperty) map[string]*cond.DataProp
 	propMap := map[string]*cond.DataProperty{}
 	for _, prop := range props {
 		propMap[prop.Name] = &prop
-		// Future plan: if index configuration changes, mark the index status unavailable so queries use virtualization instead of persisted data. Therefore this query result can be considered accurate.
-		// if prop.IndexConfig != nil && prop.IndexConfig.FulltextConfig.Enabled {
-		// If full-text indexing is configured, define the field type as text.
-		// 	propMap[prop.Name] = prop
-		// } else if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled {
-		// Vectorized field.
-		// 	propMap[prop.Name] = prop
-
-		// 	propMap[prop.Name] = prop
-		// } else {
-		// Other cases.
-		// 	propMap[prop.Name] = prop
-		// }
 	}
 
 	return propMap

@@ -79,7 +79,7 @@ func NewObjectTypeService(appSetting *common.AppSetting) interfaces.ObjectTypeSe
 	return otService
 }
 
-// validateObjectTypeStrictExternalDeps checks backing data view or vega resource, vector embedding models, and logic property references.
+// validateObjectTypeStrictExternalDeps checks backing Vega resources and logic property references.
 func (ots *objectTypeService) validateObjectTypeStrictExternalDeps(ctx context.Context, objectType *interfaces.ObjectType) error {
 	if objectType.DataSource != nil && objectType.DataSource.ID != "" {
 		switch objectType.DataSource.Type {
@@ -711,119 +711,6 @@ func (ots *objectTypeService) GetObjectTypeSampleData(ctx context.Context,
 	return result, nil
 }
 
-// hasDataPropertyIndexAffectingChanges detects changes to index-affecting data property fields.
-// Index-affecting fields include Name, Type, IndexConfig, MappedField.Name, and MappedField.Type.
-func hasDataPropertyIndexAffectingChanges(oldProp, newProp *interfaces.DataProperty) bool {
-	if oldProp == nil || newProp == nil {
-		return oldProp != newProp
-	}
-
-	// Compare property names.
-	if oldProp.Name != newProp.Name {
-		return true
-	}
-
-	// Compare property types.
-	if oldProp.Type != newProp.Type {
-		return true
-	}
-
-	// Compare index configuration.
-	if !compareIndexConfig(oldProp.IndexConfig, newProp.IndexConfig) {
-		return true // Return true when configuration differs.
-	}
-
-	// Compare mapped field names and types.
-	if !compareMappedField(oldProp.MappedField, newProp.MappedField) {
-		return true
-	}
-
-	return false
-}
-
-// compareIndexConfig compares two index configurations.
-func compareIndexConfig(oldConfig, newConfig *interfaces.IndexConfig) bool {
-	if oldConfig == nil && newConfig == nil {
-		return true // Both are empty, so their states are equal.
-	}
-	if oldConfig == nil || newConfig == nil {
-		return false // One is empty and the other is not, so their states differ.
-	}
-
-	// Compare JSON serialization to ensure accuracy.
-	oldBytes, err := sonic.Marshal(oldConfig)
-	if err != nil {
-		return false
-	}
-	newBytes, err := sonic.Marshal(newConfig)
-	if err != nil {
-		return false
-	}
-
-	return string(oldBytes) == string(newBytes)
-}
-
-// compareMappedField compares mapped fields by Name and Type only.
-func compareMappedField(oldField, newField *interfaces.Field) bool {
-	if oldField == nil && newField == nil {
-		return true
-	}
-	if oldField == nil || newField == nil {
-		return false
-	}
-
-	// Compare field names.
-	if oldField.Name != newField.Name {
-		return false
-	}
-
-	// Compare field types.
-	if oldField.Type != newField.Type {
-		return false
-	}
-
-	return true
-}
-
-// hasAnyDataPropertyIndexAffectingChanges detects index-affecting changes in data property lists.
-func hasAnyDataPropertyIndexAffectingChanges(oldProps, newProps []*interfaces.DataProperty) bool {
-	// Convert old properties to a map keyed by Name.
-	oldPropMap := make(map[string]*interfaces.DataProperty)
-	for _, prop := range oldProps {
-		if prop != nil {
-			oldPropMap[prop.Name] = prop
-		}
-	}
-
-	// Traverse new properties and compare corresponding old properties.
-	for _, newProp := range newProps {
-		if newProp == nil {
-			continue
-		}
-
-		oldProp, exists := oldPropMap[newProp.Name]
-		if !exists {
-			// Added properties can affect indexes.
-			return true
-		}
-
-		// Check whether property changes affect indexes.
-		if hasDataPropertyIndexAffectingChanges(oldProp, newProp) {
-			return true
-		}
-
-		// Delete compared properties from the map.
-		delete(oldPropMap, newProp.Name)
-	}
-
-	// Removed old properties can also affect indexes.
-	if len(oldPropMap) > 0 {
-		return true
-	}
-
-	return false
-}
-
 // Update object types.
 func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, objectType *interfaces.ObjectType, strictMode bool) error {
 
@@ -887,34 +774,6 @@ func (ots *objectTypeService) UpdateObjectType(ctx context.Context, tx *sql.Tx, 
 		}()
 	}
 
-	// Get old object type data to compare data property changes.
-	oldObjectType, err := ots.ota.GetObjectTypeByID(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID)
-	if err != nil {
-		otellog.LogError(ctx, "GetObjectTypeByID error", err)
-
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError_GetObjectTypeByIDFailed).
-			WithErrorDetails(err.Error())
-	}
-
-	// Detect whether data property changes affect indexes.
-	if oldObjectType != nil && hasAnyDataPropertyIndexAffectingChanges(oldObjectType.DataProperties, objectType.DataProperties) {
-		// Mark index status unavailable.
-		otStatus := *oldObjectType.Status
-		otStatus.IndexAvailable = false
-		otStatus.UpdateTime = currentTime
-		err = ots.ota.UpdateObjectTypeStatus(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID, otStatus)
-		if err != nil {
-			otellog.LogError(ctx, "UpdateObjectTypeStatus error", err)
-
-			return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_ObjectType_InternalError).
-				WithErrorDetails(invalidParameterDetail(ctx, "IndexStatusUpdateFailed", nil))
-		}
-
-		otellog.LogInfo(ctx, fmt.Sprintf("数据属性变化影响索引，已将对象类[%s]的索引状态设置为不可用", objectType.OTID))
-	}
-
 	// Update model information.
 	err = ots.ota.UpdateObjectType(ctx, tx, objectType)
 	if err != nil {
@@ -961,35 +820,6 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 		return err
 	}
 
-	// When strictMode is true, validate embedding small model for any submitted property with vector index enabled.
-	if strictMode {
-		for _, prop := range dataProperties {
-			if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled {
-				model, err := ots.mfs.GetModelByID(ctx, prop.IndexConfig.VectorConfig.ModelID)
-				if err != nil {
-					return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-						berrors.BknBackend_ObjectType_InternalError_GetSmallModelByIDFailed).
-						WithErrorDetails(err.Error())
-				}
-				if model == nil {
-					return rest.NewHTTPError(ctx, http.StatusNotFound,
-						berrors.BknBackend_ObjectType_SmallModelNotFound).
-						WithErrorDetails(invalidParameterDetail(ctx, "SmallModelNotFound", map[string]any{"modelID": prop.IndexConfig.VectorConfig.ModelID}))
-				}
-				if model.ModelType != interfaces.SMALL_MODEL_TYPE_EMBEDDING {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(invalidParameterDetail(ctx, "SmallModelTypeInvalid", map[string]any{"modelType": model.ModelType, "expectedType": interfaces.SMALL_MODEL_TYPE_EMBEDDING}))
-				}
-				if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
-					return rest.NewHTTPError(ctx, http.StatusBadRequest,
-						berrors.BknBackend_ObjectType_InvalidParameter_SmallModel).
-						WithErrorDetails(invalidParameterDetail(ctx, "SmallModelConfigInvalid", map[string]any{"modelID": model.ModelID}))
-				}
-			}
-		}
-	}
-
 	accountInfo := interfaces.AccountInfo{}
 	if ctx.Value(interfaces.ACCOUNT_INFO_KEY) != nil {
 		accountInfo = ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
@@ -997,26 +827,6 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 	objectType.Updater = accountInfo
 	currentTime := time.Now().UnixMilli() // Object type update_time uses an integer type.
 	objectType.UpdateTime = currentTime
-
-	// Deep-copy old data properties for later comparison.
-	oldDataPropertiesBytes, err := sonic.Marshal(objectType.DataProperties)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to marshal old DataProperties, err", err)
-
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(invalidParameterDetail(ctx, "OldDataPropertiesMarshalFailed", nil))
-	}
-
-	var oldDataProperties []*interfaces.DataProperty
-	err = sonic.Unmarshal(oldDataPropertiesBytes, &oldDataProperties)
-	if err != nil {
-		otellog.LogError(ctx, "Failed to unmarshal old DataProperties, err", err)
-
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_ObjectType_InternalError).
-			WithErrorDetails(invalidParameterDetail(ctx, "OldDataPropertiesUnmarshalFailed", nil))
-	}
 
 	propMap := map[string]int{}
 	for idx, prop := range objectType.DataProperties {
@@ -1061,28 +871,6 @@ func (ots *objectTypeService) UpdateDataProperties(ctx context.Context,
 			}
 		}
 	}()
-
-	// Detect whether data property changes affect indexes.
-	if hasAnyDataPropertyIndexAffectingChanges(oldDataProperties, objectType.DataProperties) {
-		// Mark index status unavailable.
-		if objectType.Status != nil {
-			otStatus := *objectType.Status
-			otStatus.IndexAvailable = false
-			otStatus.UpdateTime = currentTime
-			// UpdateDataProperties has no tx parameter and manages its transaction internally.
-			// Use db.Exec directly to preserve consistency.
-			err = ots.ota.UpdateObjectTypeStatus(ctx, tx, objectType.KNID, objectType.Branch, objectType.OTID, otStatus)
-			if err != nil {
-				otellog.LogError(ctx, "UpdateObjectTypeStatus error", err)
-
-				return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-					berrors.BknBackend_ObjectType_InternalError).
-					WithErrorDetails(invalidParameterDetail(ctx, "IndexStatusUpdateFailed", nil))
-			}
-
-			otellog.LogInfo(ctx, fmt.Sprintf("数据属性变化影响索引，已将对象类[%s]的索引状态设置为不可用", objectType.OTID))
-		}
-	}
 
 	// Update model information.
 	err = ots.ota.UpdateDataProperties(ctx, tx, objectType)
@@ -1978,81 +1766,33 @@ func applyIndexCapOps(ops []string, propCaps logics.PropertyIndexCaps) []string 
 	return merged
 }
 
-// Process operators for string property types.
-func (ots *objectTypeService) processConditionOperations(objectType *interfaces.ObjectType, prop *interfaces.DataProperty,
+// processConditionOperations derives only the type baseline. Resource-local index
+// capabilities are added by applyIndexCapOps after the Vega Resource is loaded.
+func (ots *objectTypeService) processConditionOperations(_ *interfaces.ObjectType, prop *interfaces.DataProperty,
 	dataView *interfaces.DataView) []string {
-
-	ops := []string{}
-	if objectType.Status != nil && !objectType.Status.IndexAvailable {
-		// When indexes are unavailable, derive operations from view field types because varchar is a database type and keyword/text are OpenSearch types.
-		switch prop.Type {
-		case "keyword":
+	var ops []string
+	switch prop.Type {
+	case "keyword":
+		ops = interfaces.DSL_KEYWORD_OPS
+	case "varchar", "string":
+		if dataView.QueryType == interfaces.VIEW_QueryType_DSL {
 			ops = interfaces.DSL_KEYWORD_OPS
-		case "varchar", "string":
-			// A string source type may be keyword or varchar, so distinguish by view type.
-			if dataView.QueryType == interfaces.VIEW_QueryType_DSL {
-				ops = interfaces.DSL_KEYWORD_OPS
-			} else {
-				ops = interfaces.SQL_STRING_OPS
-			}
-		case "text":
-			if dataView.QueryType == interfaces.VIEW_QueryType_DSL {
-				ops = interfaces.DSL_TEXT_OPS // DSL text supports match
-				ops = append(ops, interfaces.DSL_KEYWORD_OPS...)
-			} else {
-				ops = interfaces.SQL_STRING_OPS
-			}
-		case "vector":
-			// KNN operations require an enabled small model.
-			if ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
-				ops = append(ops, cond.OperationKNN)
-			}
+		} else {
+			ops = interfaces.SQL_STRING_OPS
 		}
-	} else {
-		opMap := make(map[string]string)
-		// text supports match; other string types support ==, !=, in, and not_in.
-		switch prop.Type {
-		case "keyword", "varchar", "string":
-			// Copy map content instead of assigning reference to avoid concurrent map access
-			for k, v := range interfaces.DSL_KEYWORD_OPS_MAP {
-				opMap[k] = v
-			}
-		case "text":
-			// Copy map content instead of assigning reference to avoid concurrent map access
-			for k, v := range interfaces.DSL_KEYWORD_OPS_MAP {
-				opMap[k] = v
-			}
-			for k, v := range interfaces.DSL_TEXT_OPS_MAP {
-				opMap[k] = v
-			}
-		case "vector":
-			opMap[cond.OperationKNN] = cond.OperationKNN
+	case "text":
+		if dataView.QueryType == interfaces.VIEW_QueryType_DSL {
+			ops = append(ops, interfaces.DSL_TEXT_OPS...)
+			ops = append(ops, interfaces.DSL_KEYWORD_OPS...)
+		} else {
+			ops = interfaces.SQL_STRING_OPS
 		}
-
-		// A keyword index is configured.
-		if prop.IndexConfig != nil && prop.IndexConfig.KeywordConfig.Enabled {
-			// Add operators supported by keyword indexes.
-			for k, v := range interfaces.DSL_KEYWORD_OPS_MAP {
-				opMap[k] = v
-			}
-		}
-		// A full-text index enables match operations.
-		if prop.IndexConfig != nil && prop.IndexConfig.FulltextConfig.Enabled {
-			opMap[cond.OperationMatch] = cond.OperationMatch
-			opMap[cond.OperationMultiMatch] = cond.OperationMultiMatch
-		}
-		// A vector index with an enabled embedding model enables KNN operations.
-		if prop.IndexConfig != nil && prop.IndexConfig.VectorConfig.Enabled &&
-			ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
-
-			opMap[cond.OperationKNN] = cond.OperationKNN
-		}
-
-		for k := range opMap {
-			ops = append(ops, k)
+	case "vector":
+		if ots.appSetting.ServerSetting.DefaultSmallModelEnabled {
+			ops = append(ops, cond.OperationKNN)
 		}
 	}
-	return ops
+	return append([]string(nil), ops...)
 }
 
 // Process and persist object type-to-group relationships.

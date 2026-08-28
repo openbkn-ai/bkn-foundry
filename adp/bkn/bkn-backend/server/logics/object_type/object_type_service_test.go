@@ -676,7 +676,6 @@ func Test_objectTypeService_CreateObjectTypes(t *testing.T) {
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil).AnyTimes()
 			ota.EXPECT().CheckObjectTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
 			ota.EXPECT().CheckObjectTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("ot1", true, nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(ot, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			smock.ExpectCommit()
@@ -1410,7 +1409,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
@@ -1448,7 +1446,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
 
@@ -1468,7 +1465,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
 			smock.ExpectRollback()
@@ -1489,7 +1485,6 @@ func Test_objectTypeService_UpdateObjectType(t *testing.T) {
 
 			smock.ExpectBegin()
 			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
-			ota.EXPECT().GetObjectTypeByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(objectType, nil)
 			ota.EXPECT().UpdateObjectType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			cga.EXPECT().GetConceptGroupsByOTIDs(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string][]*interfaces.ConceptGroup{}, nil)
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(rest.NewHTTPError(ctx, 500, berrors.BknBackend_ObjectType_InternalError))
@@ -1574,12 +1569,6 @@ func Test_objectTypeService_UpdateDataProperties(t *testing.T) {
 			dataProperties := []*interfaces.DataProperty{
 				{
 					Name: "prop1",
-					IndexConfig: &interfaces.IndexConfig{
-						VectorConfig: interfaces.VectorConfig{
-							Enabled: true,
-							ModelID: "nonexistent-model",
-						},
-					},
 				},
 			}
 
@@ -3171,11 +3160,6 @@ func Test_objectTypeService_processConditionOperations(t *testing.T) {
 			}
 			prop := &interfaces.DataProperty{
 				Type: "keyword",
-				IndexConfig: &interfaces.IndexConfig{
-					KeywordConfig: interfaces.KeywordConfig{
-						Enabled: true,
-					},
-				},
 			}
 			dataView := &interfaces.DataView{}
 
@@ -3191,11 +3175,6 @@ func Test_objectTypeService_processConditionOperations(t *testing.T) {
 			}
 			prop := &interfaces.DataProperty{
 				Type: "keyword",
-				IndexConfig: &interfaces.IndexConfig{
-					FulltextConfig: interfaces.FulltextConfig{
-						Enabled: true,
-					},
-				},
 			}
 			dataView := &interfaces.DataView{}
 
@@ -3211,11 +3190,6 @@ func Test_objectTypeService_processConditionOperations(t *testing.T) {
 			}
 			prop := &interfaces.DataProperty{
 				Type: "vector",
-				IndexConfig: &interfaces.IndexConfig{
-					VectorConfig: interfaces.VectorConfig{
-						Enabled: true,
-					},
-				},
 			}
 			dataView := &interfaces.DataView{}
 
@@ -3239,11 +3213,6 @@ func Test_objectTypeService_processConditionOperations(t *testing.T) {
 			}
 			prop := &interfaces.DataProperty{
 				Type: "vector",
-				IndexConfig: &interfaces.IndexConfig{
-					VectorConfig: interfaces.VectorConfig{
-						Enabled: true,
-					},
-				},
 			}
 			dataView := &interfaces.DataView{}
 
@@ -3611,84 +3580,6 @@ func Test_objectTypeService_DeleteObjectTypesByKnID(t *testing.T) {
 			ota.EXPECT().DeleteObjectTypeStatusByKnID(gomock.Any(), tx, knID, branch).Return(int64(3), nil)
 			err := service.DeleteObjectTypesByKnID(context.Background(), tx, knID, branch)
 			So(err, ShouldBeNil)
-		})
-	})
-}
-
-func Test_compareIndexConfig(t *testing.T) {
-	Convey("Test compareIndexConfig\n", t, func() {
-		Convey("Both nil returns true\n", func() {
-			So(compareIndexConfig(nil, nil), ShouldBeTrue)
-		})
-
-		Convey("Old nil, new non-nil returns false\n", func() {
-			newCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true},
-			}
-			So(compareIndexConfig(nil, newCfg), ShouldBeFalse)
-		})
-
-		Convey("Old non-nil, new nil returns false\n", func() {
-			oldCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true},
-			}
-			So(compareIndexConfig(oldCfg, nil), ShouldBeFalse)
-		})
-
-		Convey("Both equal returns true\n", func() {
-			cfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			cfg2 := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			So(compareIndexConfig(cfg, cfg2), ShouldBeTrue)
-		})
-
-		Convey("Different config returns false\n", func() {
-			oldCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: true, IgnoreAboveLen: 256},
-			}
-			newCfg := &interfaces.IndexConfig{
-				KeywordConfig: interfaces.KeywordConfig{Enabled: false, IgnoreAboveLen: 256},
-			}
-			So(compareIndexConfig(oldCfg, newCfg), ShouldBeFalse)
-		})
-	})
-}
-
-func Test_compareMappedField(t *testing.T) {
-	Convey("Test compareMappedField\n", t, func() {
-		Convey("Both nil returns true\n", func() {
-			So(compareMappedField(nil, nil), ShouldBeTrue)
-		})
-
-		Convey("Old nil, new non-nil returns false\n", func() {
-			newField := &interfaces.Field{Name: "id", Type: "keyword"}
-			So(compareMappedField(nil, newField), ShouldBeFalse)
-		})
-
-		Convey("Old non-nil, new nil returns false\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			So(compareMappedField(oldField, nil), ShouldBeFalse)
-		})
-
-		Convey("Different Name returns false\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			newField := &interfaces.Field{Name: "pk", Type: "keyword"}
-			So(compareMappedField(oldField, newField), ShouldBeFalse)
-		})
-
-		Convey("Different Type returns false\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			newField := &interfaces.Field{Name: "id", Type: "text"}
-			So(compareMappedField(oldField, newField), ShouldBeFalse)
-		})
-
-		Convey("Both equal returns true\n", func() {
-			oldField := &interfaces.Field{Name: "id", Type: "keyword"}
-			newField := &interfaces.Field{Name: "id", Type: "keyword"}
-			So(compareMappedField(oldField, newField), ShouldBeTrue)
 		})
 	})
 }

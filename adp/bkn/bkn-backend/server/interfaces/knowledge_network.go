@@ -180,7 +180,6 @@ func slimObjectTypeForSummary(ot *ObjectType) {
 			continue
 		}
 		dp.MappedField = nil
-		dp.IndexConfig = nil
 		dp.ConditionOperations = nil
 	}
 	for _, lp := range ot.LogicProperties {

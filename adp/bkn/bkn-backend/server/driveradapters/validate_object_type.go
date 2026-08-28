@@ -439,7 +439,7 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyMappedFieldRequired", map[string]any{"property": dataProperty.Name}))
 	}
 
-	if dataProperty.IndexConfig != nil {
+	if dataProperty.HasRetiredIndexConfig() {
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
 			WithErrorDetails(objectTypeInvalidDetail(ctx, "DataPropertyIndexConfigUnsupported", map[string]any{"property": dataProperty.Name}))
 	}
@@ -447,61 +447,6 @@ func ValidateDataProperty(ctx context.Context, dataProperty *interfaces.DataProp
 	return nil
 }
 
-func ValidateIndexConfig(ctx context.Context, indexConfig interfaces.IndexConfig, strictMode bool) error {
-	err := ValidateKeywordConfig(ctx, indexConfig.KeywordConfig)
-	if err != nil {
-		return err
-	}
-	err = ValidateFulltextConfig(ctx, indexConfig.FulltextConfig)
-	if err != nil {
-		return err
-	}
-	err = ValidateVectorConfig(ctx, indexConfig.VectorConfig, strictMode)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func ValidateKeywordConfig(ctx context.Context, keywordConfig interfaces.KeywordConfig) error {
-	if !keywordConfig.Enabled {
-		return nil
-	}
-	if keywordConfig.IgnoreAboveLen <= 0 {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "KeywordIgnoreAboveLenInvalid", nil))
-		return httpErr
-	}
-	return nil
-}
-
 func objectTypeInvalidDetail(ctx context.Context, name string, templateData map[string]any) string {
 	return i18n.Translate(rest.GetLanguageByCtx(ctx), "BknBackend.ObjectType.InvalidParameter.Detail."+name, templateData)
-}
-
-func ValidateFulltextConfig(ctx context.Context, fulltextConfig interfaces.FulltextConfig) error {
-	if !fulltextConfig.Enabled {
-		return nil
-	}
-	switch fulltextConfig.Analyzer {
-	case "standard", "english", "ik_max_word", "hanlp_standard", "hanlp_index":
-	default:
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "FulltextAnalyzerInvalid", nil))
-		return httpErr
-	}
-	return nil
-}
-
-func ValidateVectorConfig(ctx context.Context, vectorConfig interfaces.VectorConfig, strictMode bool) error {
-	if !vectorConfig.Enabled {
-		return nil
-	}
-	if strictMode && vectorConfig.ModelID == "" {
-		httpErr := rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_ObjectType_InvalidParameter).
-			WithErrorDetails(objectTypeInvalidDetail(ctx, "VectorModelIDRequired", nil))
-		return httpErr
-	}
-	return nil
 }
