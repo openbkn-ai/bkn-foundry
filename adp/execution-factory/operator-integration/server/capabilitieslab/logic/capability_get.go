@@ -14,36 +14,36 @@ import (
 
 func (s *Service) GetCapability(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) (*model.Capability, error) {
 	kind := ParseCapabilityKind(capabilityID)
 
 	switch kind {
 	case "http":
-		return s.getHttpCapability(ctx, businessDomain, capabilityID)
+		return s.getHttpCapability(ctx, capabilityID)
 	case "function":
-		return s.getFunctionCapability(ctx, businessDomain, capabilityID)
+		return s.getFunctionCapability(ctx, capabilityID)
 	case "mcp":
-		return s.getMcpCapability(ctx, businessDomain, capabilityID)
+		return s.getMcpCapability(ctx, capabilityID)
 	case "skill":
-		return s.getSkillCapability(ctx, businessDomain, capabilityID)
+		return s.getSkillCapability(ctx, capabilityID)
 	default:
 		return nil, fmt.Errorf("invalid capability id")
 	}
 }
 
-func (s *Service) getHttpCapability(ctx context.Context, businessDomain, capabilityID string) (*model.Capability, error) {
+func (s *Service) getHttpCapability(ctx context.Context, capabilityID string) (*model.Capability, error) {
 	boxID, toolID, ok := ParseHttpCapabilityID(capabilityID)
 	if !ok {
 		return nil, fmt.Errorf("invalid http capability id")
 	}
 
-	box, err := s.findToolbox(ctx, businessDomain, boxID)
+	box, err := s.findToolbox(ctx, boxID)
 	if err != nil {
 		return nil, err
 	}
 
-	tool, err := s.Client.GetTool(ctx, businessDomain, boxID, toolID)
+	tool, err := s.Client.GetTool(ctx, boxID, toolID)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (s *Service) getHttpCapability(ctx context.Context, businessDomain, capabil
 		capability.Endpoint = extractEndpoint(string(tool.Metadata.APISpec))
 	}
 
-	capability.Orchestration = s.resolveOrchestrationForTool(ctx, businessDomain, boxID, client.ToolInfo{
+	capability.Orchestration = s.resolveOrchestrationForTool(ctx, boxID, client.ToolInfo{
 		ToolID:         tool.ToolID,
 		Name:           tool.Name,
 		Description:    tool.Description,
@@ -91,23 +91,23 @@ func (s *Service) getHttpCapability(ctx context.Context, businessDomain, capabil
 		SourceType:     tool.SourceType,
 		ResourceObject: tool.ResourceObject,
 	})
-	s.enrichOrchestrationAudit(ctx, businessDomain, capability.Orchestration)
+	s.enrichOrchestrationAudit(ctx, capability.Orchestration)
 	capability.OpenAPISpec = openAPISpecFromToolMetadata(tool)
 	return capability, nil
 }
 
-func (s *Service) getFunctionCapability(ctx context.Context, businessDomain, capabilityID string) (*model.Capability, error) {
+func (s *Service) getFunctionCapability(ctx context.Context, capabilityID string) (*model.Capability, error) {
 	boxID, toolID, ok := ParseFunctionCapabilityID(capabilityID)
 	if !ok {
 		return nil, fmt.Errorf("invalid function capability id")
 	}
 
-	box, err := s.findToolbox(ctx, businessDomain, boxID)
+	box, err := s.findToolbox(ctx, boxID)
 	if err != nil {
 		return nil, err
 	}
 
-	tool, err := s.Client.GetTool(ctx, businessDomain, boxID, toolID)
+	tool, err := s.Client.GetTool(ctx, boxID, toolID)
 	if err != nil {
 		return nil, err
 	}
@@ -141,13 +141,13 @@ func (s *Service) getFunctionCapability(ctx context.Context, businessDomain, cap
 	return capability, nil
 }
 
-func (s *Service) getMcpCapability(ctx context.Context, businessDomain, capabilityID string) (*model.Capability, error) {
+func (s *Service) getMcpCapability(ctx context.Context, capabilityID string) (*model.Capability, error) {
 	mcpID, ok := ParseMcpCapabilityID(capabilityID)
 	if !ok {
 		return nil, fmt.Errorf("invalid mcp capability id")
 	}
 
-	resp, err := s.Client.ListMcps(ctx, businessDomain, "", 1, 100)
+	resp, err := s.Client.ListMcps(ctx, "", 1, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (s *Service) getMcpCapability(ctx context.Context, businessDomain, capabili
 				Audit:       auditFromMcp(item),
 				McpID:       item.McpID,
 			}
-			if detail, detailErr := s.Client.GetMcp(ctx, businessDomain, mcpID); detailErr == nil && detail != nil {
+			if detail, detailErr := s.Client.GetMcp(ctx, mcpID); detailErr == nil && detail != nil {
 				capability.URL = detail.URL
 			}
 			return capability, nil
@@ -174,13 +174,13 @@ func (s *Service) getMcpCapability(ctx context.Context, businessDomain, capabili
 	return nil, fmt.Errorf("mcp capability not found")
 }
 
-func (s *Service) getSkillCapability(ctx context.Context, businessDomain, capabilityID string) (*model.Capability, error) {
+func (s *Service) getSkillCapability(ctx context.Context, capabilityID string) (*model.Capability, error) {
 	skillID, ok := ParseSkillCapabilityID(capabilityID)
 	if !ok {
 		return nil, fmt.Errorf("invalid skill capability id")
 	}
 
-	skill, err := s.Client.GetSkill(ctx, businessDomain, skillID)
+	skill, err := s.Client.GetSkill(ctx, skillID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,9 +200,9 @@ func (s *Service) getSkillCapability(ctx context.Context, businessDomain, capabi
 
 func (s *Service) GetOrchestrationDetail(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) (*model.OrchestrationDetailResponse, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}

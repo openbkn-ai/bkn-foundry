@@ -55,7 +55,7 @@ func toolboxInfoFromSnapshot(box *toolboxSnapshot) client.ToolboxInfo {
 
 func (s *Service) ListGroups(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 ) (*model.GroupListResponse, error) {
 	if page < 1 {
@@ -65,7 +65,7 @@ func (s *Service) ListGroups(
 		pageSize = 20
 	}
 
-	resp, err := s.Client.ListToolboxes(ctx, businessDomain, keyword, page, pageSize, false)
+	resp, err := s.Client.ListToolboxes(ctx, keyword, page, pageSize, false)
 	if err != nil {
 		return nil, err
 	}
@@ -98,14 +98,13 @@ func (s *Service) ListGroups(
 
 func (s *Service) CreateHttpCapability(
 	ctx context.Context,
-	businessDomain string,
 	req model.CreateHttpCapabilityRequest,
 ) (*model.CreateHttpCapabilityResponse, error) {
 	if req.Name != "" {
 		req.OpenAPISpec = applyCapabilityName(req.OpenAPISpec, req.Name)
 	}
 
-	groupName, boxID, err := s.resolveGroup(ctx, businessDomain, req)
+	groupName, boxID, err := s.resolveGroup(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +127,7 @@ func (s *Service) CreateHttpCapability(
 			Category:    category,
 		}, category)
 
-		bundle, bundleErr := s.Client.RegisterOpenAPIBundle(ctx, businessDomain, bundleReq)
+		bundle, bundleErr := s.Client.RegisterOpenAPIBundle(ctx, bundleReq)
 		if bundleErr != nil {
 			return nil, bundleErr
 		}
@@ -141,7 +140,7 @@ func (s *Service) CreateHttpCapability(
 
 		toolID := bundle.ToolIDs[0]
 		boxID = bundle.BoxID
-		capability, capErr := s.GetCapability(ctx, businessDomain, BuildHttpCapabilityID(boxID, toolID))
+		capability, capErr := s.GetCapability(ctx, BuildHttpCapabilityID(boxID, toolID))
 		if capErr != nil {
 			return nil, capErr
 		}
@@ -165,7 +164,7 @@ func (s *Service) CreateHttpCapability(
 	}
 
 	if boxID == "" {
-		created, createErr := s.Client.CreateToolbox(ctx, businessDomain, client.CreateToolboxPayload(
+		created, createErr := s.Client.CreateToolbox(ctx, client.CreateToolboxPayload(
 			groupName,
 			req.Description,
 			req.ServiceURL,
@@ -182,7 +181,7 @@ func (s *Service) CreateHttpCapability(
 		return nil, payloadErr
 	}
 
-	toolResp, toolErr := s.Client.CreateTool(ctx, businessDomain, boxID, toolPayload)
+	toolResp, toolErr := s.Client.CreateTool(ctx, boxID, toolPayload)
 	if toolErr != nil {
 		return nil, toolErr
 	}
@@ -193,7 +192,7 @@ func (s *Service) CreateHttpCapability(
 		return nil, errors.New("tool creation failed")
 	}
 
-	capability, capErr := s.GetCapability(ctx, businessDomain, BuildHttpCapabilityID(boxID, toolResp.SuccessIDs[0]))
+	capability, capErr := s.GetCapability(ctx, BuildHttpCapabilityID(boxID, toolResp.SuccessIDs[0]))
 	if capErr != nil {
 		return nil, capErr
 	}
@@ -203,9 +202,9 @@ func (s *Service) CreateHttpCapability(
 
 func (s *Service) findToolbox(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 ) (*toolboxSnapshot, error) {
-	boxResp, err := s.Client.ListToolboxes(ctx, businessDomain, "", 1, 100, true)
+	boxResp, err := s.Client.ListToolboxes(ctx, "", 1, 100, true)
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +232,6 @@ func (s *Service) findToolbox(
 
 func (s *Service) resolveGroup(
 	ctx context.Context,
-	businessDomain string,
 	req model.CreateHttpCapabilityRequest,
 ) (groupName, boxID string, err error) {
 	mode := strings.ToLower(strings.TrimSpace(req.Group.Mode))
@@ -256,7 +254,7 @@ func (s *Service) resolveGroup(
 		return groupName, "", nil
 	default:
 		groupName = DeriveAutoGroupName(req.ServiceURL)
-		resp, listErr := s.Client.ListToolboxes(ctx, businessDomain, groupName, 1, 5, false)
+		resp, listErr := s.Client.ListToolboxes(ctx, groupName, 1, 5, false)
 		if listErr != nil {
 			return "", "", listErr
 		}

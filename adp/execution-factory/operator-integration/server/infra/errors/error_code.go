@@ -196,16 +196,6 @@ const (
 	ErrExtFunctionInvalidParameterSubParametersCount ErrorCode = "FunctionInvalidParameterSubParametersCount" // Parameter "%s" is of array type, sub_parameters must contain only one element to define the structure of the array item, currently there are %d elements.
 )
 
-// Business domain error code.
-const (
-	// Business domain id must be passed.
-	ErrExtBusinessDomainIDRequired ErrorCode = "BusinessDomainIDRequired" // The business domain ID is missing from the request header. Please make sure to include the x-business-domain header parameter in the request.
-	// BusinessDomainForbidden Insufficient business domain permissions.
-	ErrExtBusinessDomainForbidden ErrorCode = "BusinessDomainForbidden" // You do not have permission to access this business domain, please contact the administrator to obtain permission.
-	// BusinessDomainResourceConflict resource is associated to the business domain.
-	ErrExtBusinessDomainResourceConflict ErrorCode = "BusinessDomainResourceConflict" // This resource has been associated with the business domain and does not need to be associated again.
-)
-
 // Dependent service error code definition.
 const (
 	// Error when running sandbox function.

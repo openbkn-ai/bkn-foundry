@@ -13,7 +13,6 @@ type Config struct {
 	Host                   string
 	Port                   int
 	OperatorIntegrationURL string
-	DefaultBusinessDomain  string
 	DefaultUserID          string
 	Features               FeatureFlags
 	MetricsEnabled         bool
@@ -38,11 +37,6 @@ func Load() Config {
 		baseURL = "http://127.0.0.1:9000"
 	}
 
-	bd := os.Getenv("DEFAULT_BUSINESS_DOMAIN")
-	if bd == "" {
-		bd = "bd_public"
-	}
-
 	userID := os.Getenv("DEFAULT_USER_ID")
 	if userID == "" {
 		userID = "capabilities-lab"
@@ -52,7 +46,6 @@ func Load() Config {
 		Host:                   host,
 		Port:                   port,
 		OperatorIntegrationURL: baseURL,
-		DefaultBusinessDomain:  bd,
 		DefaultUserID:          userID,
 		Features:               LoadFeatureFlags(),
 		MetricsEnabled:         envBool("LAB_METRICS_ENABLED", true),

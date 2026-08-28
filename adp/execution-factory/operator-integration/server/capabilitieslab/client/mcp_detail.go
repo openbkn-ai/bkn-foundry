@@ -23,12 +23,12 @@ type McpDetail struct {
 
 func (c *OperatorIntegrationClient) GetMcp(
 	ctx context.Context,
-	businessDomain, mcpID string,
+	mcpID string,
 ) (*McpDetail, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/%s", url.PathEscape(mcpID))
 
 	var resp McpDetail
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 

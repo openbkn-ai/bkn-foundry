@@ -38,7 +38,7 @@ type ExecuteFunctionResponse struct {
 
 func (c *OperatorIntegrationClient) ExecuteFunction(
 	ctx context.Context,
-	businessDomain, userID string,
+	userID string,
 	req ExecuteFunctionRequest,
 ) (*ExecuteFunctionResponse, error) {
 	if req.Language == "" {
@@ -63,7 +63,6 @@ func (c *OperatorIntegrationClient) ExecuteFunction(
 	httpReq.Header.Set("Accept", "application/json")
 	applyLanguageHeader(ctx, httpReq.Header)
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		httpReq.Header.Set("user_id", userID)
 	}
@@ -91,7 +90,7 @@ func (c *OperatorIntegrationClient) ExecuteFunction(
 	return &resp, nil
 }
 
-func (c *OperatorIntegrationClient) GetPythonTemplate(ctx context.Context, businessDomain string) (string, error) {
+func (c *OperatorIntegrationClient) GetPythonTemplate(ctx context.Context) (string, error) {
 	var resp struct {
 		CodeTemplate string `json:"code_template"`
 	}
@@ -99,7 +98,6 @@ func (c *OperatorIntegrationClient) GetPythonTemplate(ctx context.Context, busin
 		ctx,
 		http.MethodGet,
 		"/api/agent-operator-integration/v1/template/python",
-		businessDomain,
 		nil,
 		&resp,
 	); err != nil {
@@ -124,7 +122,7 @@ type FunctionToolPayload struct {
 
 func (c *OperatorIntegrationClient) CreateFunctionTool(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 	payload FunctionToolPayload,
 ) (*createToolResponse, error) {
 	scriptType := payload.ScriptType
@@ -150,7 +148,7 @@ func (c *OperatorIntegrationClient) CreateFunctionTool(
 	)
 
 	var resp createToolResponse
-	if err := c.doJSON(ctx, http.MethodPost, path, businessDomain, body, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, path, body, &resp); err != nil {
 		return nil, err
 	}
 

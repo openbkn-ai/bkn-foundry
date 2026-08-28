@@ -17,7 +17,6 @@ import (
 
 func (s *Service) CreateFunctionCapability(
 	ctx context.Context,
-	businessDomain string,
 	req model.CreateFunctionCapabilityRequest,
 ) (*model.CreateFunctionCapabilityResponse, error) {
 	if strings.TrimSpace(req.Code) == "" {
@@ -39,7 +38,7 @@ func (s *Service) CreateFunctionCapability(
 		serviceURL = strings.TrimRight(s.Client.BaseURL, "/") + "/api/agent-operator-integration/v1"
 	}
 
-	groupName, boxID, err := s.resolveFunctionGroup(ctx, businessDomain, req.Group, name)
+	groupName, boxID, err := s.resolveFunctionGroup(ctx, req.Group, name)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +46,6 @@ func (s *Service) CreateFunctionCapability(
 	if boxID == "" {
 		created, createErr := s.Client.CreateToolbox(
 			ctx,
-			businessDomain,
 			client.CreateFunctionToolboxPayload(groupName, req.Description, serviceURL, category),
 		)
 		if createErr != nil {
@@ -65,7 +63,7 @@ func (s *Service) CreateFunctionCapability(
 		outputs = []map[string]interface{}{{"name": "result", "type": "object"}}
 	}
 
-	toolResp, toolErr := s.Client.CreateFunctionTool(ctx, businessDomain, boxID, client.FunctionToolPayload{
+	toolResp, toolErr := s.Client.CreateFunctionTool(ctx, boxID, client.FunctionToolPayload{
 		Name:        name,
 		Description: req.Description,
 		Code:        req.Code,
@@ -85,7 +83,6 @@ func (s *Service) CreateFunctionCapability(
 
 	capability, capErr := s.GetCapability(
 		ctx,
-		businessDomain,
 		BuildFunctionCapabilityID(boxID, toolResp.SuccessIDs[0]),
 	)
 	if capErr != nil {
@@ -97,12 +94,11 @@ func (s *Service) CreateFunctionCapability(
 
 func (s *Service) resolveFunctionGroup(
 	ctx context.Context,
-	businessDomain string,
 	group model.GroupInput,
 	defaultName string,
 ) (groupName, boxID string, err error) {
 	createReq := model.CreateHttpCapabilityRequest{Group: group}
-	groupName, boxID, err = s.resolveGroup(ctx, businessDomain, createReq)
+	groupName, boxID, err = s.resolveGroup(ctx, createReq)
 	if err != nil {
 		return "", "", err
 	}
@@ -136,14 +132,13 @@ func functionParamsToMaps(params []model.FunctionParameterDef) []map[string]inte
 
 func (s *Service) ExecutePython(
 	ctx context.Context,
-	businessDomain string,
 	req model.ExecutePythonRequest,
 ) (*model.ExecutePythonResponse, error) {
 	if strings.TrimSpace(req.Code) == "" {
 		return nil, errors.New("code is required")
 	}
 
-	resp, err := s.Client.ExecuteFunction(ctx, businessDomain, s.DefaultUserID, client.ExecuteFunctionRequest{
+	resp, err := s.Client.ExecuteFunction(ctx, s.DefaultUserID, client.ExecuteFunctionRequest{
 		Code:           req.Code,
 		Event:          req.Event,
 		Language:       "python",
@@ -191,20 +186,19 @@ func decodeFunctionOutput(resp *client.ExecuteFunctionResponse) interface{} {
 	return nil
 }
 
-func (s *Service) GetPythonTemplate(ctx context.Context, businessDomain string) (string, error) {
-	return s.Client.GetPythonTemplate(ctx, businessDomain)
+func (s *Service) GetPythonTemplate(ctx context.Context) (string, error) {
+	return s.Client.GetPythonTemplate(ctx)
 }
 
 func (s *Service) ParseMcpSse(
 	ctx context.Context,
-	businessDomain string,
 	req model.ParseMcpSseRequest,
 ) (*model.ParseMcpSseResponse, error) {
 	if strings.TrimSpace(req.URL) == "" {
 		return nil, errors.New("url is required")
 	}
 
-	resp, err := s.Client.ParseMcpSse(ctx, businessDomain, client.McpParseSseRequest{
+	resp, err := s.Client.ParseMcpSse(ctx, client.McpParseSseRequest{
 		URL:     req.URL,
 		Mode:    req.Mode,
 		Headers: req.Headers,
@@ -226,14 +220,14 @@ func (s *Service) ParseMcpSse(
 
 func (s *Service) GetSkillContent(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) (*model.SkillContentResponse, error) {
 	skillID, ok := ParseSkillCapabilityID(capabilityID)
 	if !ok {
 		return nil, fmt.Errorf("invalid skill capability id")
 	}
 
-	content, err := s.Client.GetSkillManagementContent(ctx, businessDomain, skillID)
+	content, err := s.Client.GetSkillManagementContent(ctx, skillID)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +252,7 @@ func (s *Service) GetSkillContent(
 
 func (s *Service) ReadSkillFile(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.ReadSkillFileRequest,
 ) (*model.ReadSkillFileResponse, error) {
 	skillID, ok := ParseSkillCapabilityID(capabilityID)
@@ -274,7 +268,7 @@ func (s *Service) ReadSkillFile(
 		mode = "content"
 	}
 
-	resp, err := s.Client.ReadSkillManagementFile(ctx, businessDomain, skillID, req.RelPath, mode)
+	resp, err := s.Client.ReadSkillManagementFile(ctx, skillID, req.RelPath, mode)
 	if err != nil {
 		return nil, err
 	}

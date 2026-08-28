@@ -56,7 +56,6 @@ type ReadSkillFileResponse struct {
 
 func (c *OperatorIntegrationClient) ParseMcpSse(
 	ctx context.Context,
-	businessDomain string,
 	req McpParseSseRequest,
 ) (*McpParseSseResponse, error) {
 	mode := req.Mode
@@ -71,7 +70,7 @@ func (c *OperatorIntegrationClient) ParseMcpSse(
 	}
 
 	var resp McpParseSseResponse
-	if err := c.doJSON(ctx, http.MethodPost, "/api/agent-operator-integration/v1/mcp/parse/sse", businessDomain, body, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/api/agent-operator-integration/v1/mcp/parse/sse", body, &resp); err != nil {
 		return nil, err
 	}
 
@@ -80,7 +79,7 @@ func (c *OperatorIntegrationClient) ParseMcpSse(
 
 func (c *OperatorIntegrationClient) GetSkillManagementContent(
 	ctx context.Context,
-	businessDomain, skillID string,
+	skillID string,
 ) (*SkillManagementContentResponse, error) {
 	path := fmt.Sprintf(
 		"/api/agent-operator-integration/v1/skills/%s/management/content?response_mode=content",
@@ -99,7 +98,7 @@ func (c *OperatorIntegrationClient) GetSkillManagementContent(
 		} `json:"files"`
 	}
 
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &raw); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &raw); err != nil {
 		return nil, err
 	}
 
@@ -126,7 +125,7 @@ func (c *OperatorIntegrationClient) GetSkillManagementContent(
 
 func (c *OperatorIntegrationClient) ReadSkillManagementFile(
 	ctx context.Context,
-	businessDomain, skillID, relPath, responseMode string,
+	skillID, relPath, responseMode string,
 ) (*ReadSkillFileResponse, error) {
 	if responseMode == "" {
 		responseMode = "content"
@@ -139,7 +138,7 @@ func (c *OperatorIntegrationClient) ReadSkillManagementFile(
 	)
 
 	var resp ReadSkillFileResponse
-	if err := c.doJSON(ctx, http.MethodPost, path, businessDomain, ReadSkillFileRequest{RelPath: relPath}, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, path, ReadSkillFileRequest{RelPath: relPath}, &resp); err != nil {
 		return nil, err
 	}
 

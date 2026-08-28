@@ -251,7 +251,7 @@ type bundleResponse struct {
 
 func (c *OperatorIntegrationClient) ListToolboxes(
 	ctx context.Context,
-	businessDomain, name string,
+	name string,
 	page, pageSize int,
 	all bool,
 ) (*toolboxListResponse, error) {
@@ -271,7 +271,7 @@ func (c *OperatorIntegrationClient) ListToolboxes(
 	)
 
 	var resp toolboxListResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 
@@ -280,9 +280,9 @@ func (c *OperatorIntegrationClient) ListToolboxes(
 
 func (c *OperatorIntegrationClient) ListTools(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 ) ([]ToolInfo, error) {
-	resp, err := c.ListToolsPaged(ctx, businessDomain, boxID, "", 1, 100)
+	resp, err := c.ListToolsPaged(ctx, boxID, "", 1, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (c *OperatorIntegrationClient) ListTools(
 	tools := resp.Tools
 	if resp.Total > len(tools) {
 		for page := 2; len(tools) < resp.Total; page++ {
-			next, pageErr := c.ListToolsPaged(ctx, businessDomain, boxID, "", page, 100)
+			next, pageErr := c.ListToolsPaged(ctx, boxID, "", page, 100)
 			if pageErr != nil {
 				return nil, pageErr
 			}
@@ -306,7 +306,7 @@ func (c *OperatorIntegrationClient) ListTools(
 
 func (c *OperatorIntegrationClient) ListToolsPaged(
 	ctx context.Context,
-	businessDomain, boxID, keyword string,
+	boxID, keyword string,
 	page, pageSize int,
 ) (*ToolListResponse, error) {
 	query := url.Values{}
@@ -323,7 +323,7 @@ func (c *OperatorIntegrationClient) ListToolsPaged(
 	)
 
 	var resp ToolListResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 
@@ -384,7 +384,7 @@ func BundleRequestFromModel(
 
 func (c *OperatorIntegrationClient) GetTool(
 	ctx context.Context,
-	businessDomain, boxID, toolID string,
+	boxID, toolID string,
 ) (*ToolDetail, error) {
 	path := fmt.Sprintf(
 		"/api/agent-operator-integration/v1/tool-box/%s/tool/%s",
@@ -393,7 +393,7 @@ func (c *OperatorIntegrationClient) GetTool(
 	)
 
 	var resp ToolDetail
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 
@@ -402,7 +402,6 @@ func (c *OperatorIntegrationClient) GetTool(
 
 func (c *OperatorIntegrationClient) CreateToolbox(
 	ctx context.Context,
-	businessDomain string,
 	req createToolboxRequest,
 ) (*createToolboxResponse, error) {
 	var resp createToolboxResponse
@@ -410,7 +409,6 @@ func (c *OperatorIntegrationClient) CreateToolbox(
 		ctx,
 		http.MethodPost,
 		"/api/agent-operator-integration/v1/tool-box",
-		businessDomain,
 		req,
 		&resp,
 	); err != nil {
@@ -422,7 +420,7 @@ func (c *OperatorIntegrationClient) CreateToolbox(
 
 func (c *OperatorIntegrationClient) CreateTool(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 	req createToolRequest,
 ) (*createToolResponse, error) {
 	path := fmt.Sprintf(
@@ -431,7 +429,7 @@ func (c *OperatorIntegrationClient) CreateTool(
 	)
 
 	var resp createToolResponse
-	if err := c.doJSON(ctx, http.MethodPost, path, businessDomain, req, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, path, req, &resp); err != nil {
 		return nil, err
 	}
 
@@ -440,7 +438,6 @@ func (c *OperatorIntegrationClient) CreateTool(
 
 func (c *OperatorIntegrationClient) RegisterOpenAPIBundle(
 	ctx context.Context,
-	businessDomain string,
 	req bundleRequest,
 ) (*bundleResponse, error) {
 	var resp bundleResponse
@@ -448,7 +445,6 @@ func (c *OperatorIntegrationClient) RegisterOpenAPIBundle(
 		ctx,
 		http.MethodPost,
 		"/api/agent-operator-integration/v1/capabilities/openapi-bundle",
-		businessDomain,
 		req,
 		&resp,
 	); err != nil {
@@ -460,16 +456,16 @@ func (c *OperatorIntegrationClient) RegisterOpenAPIBundle(
 
 func (c *OperatorIntegrationClient) doJSON(
 	ctx context.Context,
-	method, path, businessDomain string,
+	method, path string,
 	body any,
 	out any,
 ) error {
-	return c.doJSONWithUser(ctx, method, path, businessDomain, "", body, out)
+	return c.doJSONWithUser(ctx, method, path, "", body, out)
 }
 
 func (c *OperatorIntegrationClient) doJSONWithUser(
 	ctx context.Context,
-	method, path, businessDomain, userID string,
+	method, path, userID string,
 	body any,
 	out any,
 ) error {
@@ -489,7 +485,6 @@ func (c *OperatorIntegrationClient) doJSONWithUser(
 
 	req.Header.Set("Accept", "application/json")
 	applyLanguageHeader(ctx, req.Header)
-	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)
 	}

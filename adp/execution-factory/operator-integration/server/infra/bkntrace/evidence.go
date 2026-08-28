@@ -43,7 +43,7 @@ type Action struct {
 	causationEventID, claimID, instanceID, observedAt string
 	approvalRequestedEventID                          string
 	actionType, policyRef, actorRef, toolRef          string
-	accountID, accountType, businessDomain            string
+	accountID, accountType                            string
 	attempt                                           int
 }
 
@@ -75,14 +75,13 @@ func ParseAction(headers map[string]any, boxID, toolID, userID string) (Action, 
 		actorRef:                 hashRef("actor", userID),
 		toolRef:                  hashRef("tool", toolID),
 		accountID:                get("x-account-id"), accountType: get("x-account-type"),
-		businessDomain: get("x-business-domain"),
-		attempt:        attempt,
+		attempt: attempt,
 	}
 	complete := action.traceID != "" && action.spanID != "" && action.requestID != "" &&
 		action.interactionID != "" && action.operationID != "" && action.causationEventID != "" &&
 		action.claimID != "" && action.instanceID != "" && action.observedAt != "" &&
 		action.approvalRequestedEventID != "" &&
-		action.accountID != "" && action.accountType != "" && action.businessDomain != "" && timestampErr == nil
+		action.accountID != "" && action.accountType != "" && timestampErr == nil
 	safePolicy := action.actionType == "monitor" && strings.EqualFold(get("bkn-action-reversible"), "true") &&
 		action.policyRef == "e2e-monitor-auto-approve"
 	return action, complete && safePolicy
@@ -178,8 +177,8 @@ func (e *HTTPEmitter) Emit(ctx context.Context, action Action, events []Event) e
 		"bkn.trace.schema.version": schemaVersion,
 		"trace": map[string]any{
 			"trace_id": action.traceID, "traceparent": action.traceparent,
-			"bkn.request.id":  action.requestID,
-			"business_domain": action.businessDomain, "bkn.account.id": action.accountID,
+			"bkn.request.id":   action.requestID,
+			"bkn.account.id":   action.accountID,
 			"bkn.account.type": action.accountType,
 		},
 		"events": events,

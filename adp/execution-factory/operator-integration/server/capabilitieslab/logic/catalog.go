@@ -17,7 +17,7 @@ import (
 
 func (s *Service) ListCatalog(
 	ctx context.Context,
-	businessDomain, kind, keyword string,
+	kind, keyword string,
 	page, pageSize int,
 ) (*model.CatalogListResponse, error) {
 	if page < 1 {
@@ -35,20 +35,20 @@ func (s *Service) ListCatalog(
 		kind = "all"
 	}
 
-	installed, err := s.collectInstalledCatalogIDs(ctx, businessDomain)
+	installed, err := s.collectInstalledCatalogIDs(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	switch kind {
 	case "http":
-		return s.listHttpCatalogPaged(ctx, businessDomain, keyword, page, pageSize, installed.boxes)
+		return s.listHttpCatalogPaged(ctx, keyword, page, pageSize, installed.boxes)
 	case "mcp":
-		return s.listMcpCatalogPaged(ctx, businessDomain, keyword, page, pageSize, installed.mcps)
+		return s.listMcpCatalogPaged(ctx, keyword, page, pageSize, installed.mcps)
 	case "skill":
-		return s.listSkillCatalogPaged(ctx, businessDomain, keyword, page, pageSize, installed.skills)
+		return s.listSkillCatalogPaged(ctx, keyword, page, pageSize, installed.skills)
 	default:
-		return s.listAllCatalogPaged(ctx, businessDomain, keyword, page, pageSize, installed)
+		return s.listAllCatalogPaged(ctx, keyword, page, pageSize, installed)
 	}
 }
 
@@ -62,7 +62,6 @@ const maxInstalledLookup = 100
 
 func (s *Service) collectInstalledCatalogIDs(
 	ctx context.Context,
-	businessDomain string,
 ) (*installedCatalogIDs, error) {
 	result := &installedCatalogIDs{
 		boxes:  map[string]struct{}{},
@@ -70,7 +69,7 @@ func (s *Service) collectInstalledCatalogIDs(
 		skills: map[string]struct{}{},
 	}
 
-	httpItems, _, err := s.collectHttpCapabilities(ctx, businessDomain, "", "", maxInstalledLookup)
+	httpItems, _, err := s.collectHttpCapabilities(ctx, "", "", maxInstalledLookup)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +79,7 @@ func (s *Service) collectInstalledCatalogIDs(
 		}
 	}
 
-	mcpItems, _, err := s.collectMcpCapabilities(ctx, businessDomain, "", maxInstalledLookup)
+	mcpItems, _, err := s.collectMcpCapabilities(ctx, "", maxInstalledLookup)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +89,7 @@ func (s *Service) collectInstalledCatalogIDs(
 		}
 	}
 
-	skillItems, _, err := s.collectSkillCapabilities(ctx, businessDomain, "", maxInstalledLookup)
+	skillItems, _, err := s.collectSkillCapabilities(ctx, "", maxInstalledLookup)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +104,7 @@ func (s *Service) collectInstalledCatalogIDs(
 
 func (s *Service) listAllCatalogPaged(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 	installed *installedCatalogIDs,
 ) (*model.CatalogListResponse, error) {
@@ -114,15 +113,15 @@ func (s *Service) listAllCatalogPaged(
 		windowSize = maxAllKindWindow
 	}
 
-	httpItems, httpTotal, err := s.collectHttpCatalog(ctx, businessDomain, keyword, windowSize, installed.boxes)
+	httpItems, httpTotal, err := s.collectHttpCatalog(ctx, keyword, windowSize, installed.boxes)
 	if err != nil {
 		return nil, err
 	}
-	mcpItems, mcpTotal, err := s.collectMcpCatalog(ctx, businessDomain, keyword, windowSize, installed.mcps)
+	mcpItems, mcpTotal, err := s.collectMcpCatalog(ctx, keyword, windowSize, installed.mcps)
 	if err != nil {
 		return nil, err
 	}
-	skillItems, skillTotal, err := s.collectSkillCatalog(ctx, businessDomain, keyword, windowSize, installed.skills)
+	skillItems, skillTotal, err := s.collectSkillCatalog(ctx, keyword, windowSize, installed.skills)
 	if err != nil {
 		return nil, err
 	}
@@ -149,11 +148,11 @@ func (s *Service) listAllCatalogPaged(
 
 func (s *Service) listHttpCatalogPaged(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 	installed map[string]struct{},
 ) (*model.CatalogListResponse, error) {
-	resp, err := s.Client.ListToolboxMarket(ctx, businessDomain, keyword, page, pageSize)
+	resp, err := s.Client.ListToolboxMarket(ctx, keyword, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -182,11 +181,11 @@ func (s *Service) listHttpCatalogPaged(
 
 func (s *Service) listMcpCatalogPaged(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 	installed map[string]struct{},
 ) (*model.CatalogListResponse, error) {
-	resp, err := s.Client.ListMcpMarket(ctx, businessDomain, keyword, page, pageSize)
+	resp, err := s.Client.ListMcpMarket(ctx, keyword, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -215,11 +214,11 @@ func (s *Service) listMcpCatalogPaged(
 
 func (s *Service) listSkillCatalogPaged(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 	installed map[string]struct{},
 ) (*model.CatalogListResponse, error) {
-	resp, err := s.Client.ListSkillMarket(ctx, businessDomain, keyword, page, pageSize)
+	resp, err := s.Client.ListSkillMarket(ctx, keyword, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +248,7 @@ func (s *Service) listSkillCatalogPaged(
 
 func (s *Service) collectHttpCatalog(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	limit int,
 	installed map[string]struct{},
 ) ([]model.CatalogEntry, int, error) {
@@ -257,7 +256,7 @@ func (s *Service) collectHttpCatalog(
 	if pageSize <= 0 {
 		pageSize = 100
 	}
-	resp, err := s.Client.ListToolboxMarket(ctx, businessDomain, keyword, 1, pageSize)
+	resp, err := s.Client.ListToolboxMarket(ctx, keyword, 1, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -280,7 +279,7 @@ func (s *Service) collectHttpCatalog(
 
 func (s *Service) collectMcpCatalog(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	limit int,
 	installed map[string]struct{},
 ) ([]model.CatalogEntry, int, error) {
@@ -288,7 +287,7 @@ func (s *Service) collectMcpCatalog(
 	if pageSize <= 0 {
 		pageSize = 100
 	}
-	resp, err := s.Client.ListMcpMarket(ctx, businessDomain, keyword, 1, pageSize)
+	resp, err := s.Client.ListMcpMarket(ctx, keyword, 1, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -311,7 +310,7 @@ func (s *Service) collectMcpCatalog(
 
 func (s *Service) collectSkillCatalog(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	limit int,
 	installed map[string]struct{},
 ) ([]model.CatalogEntry, int, error) {
@@ -319,7 +318,7 @@ func (s *Service) collectSkillCatalog(
 	if pageSize <= 0 {
 		pageSize = 100
 	}
-	resp, err := s.Client.ListSkillMarket(ctx, businessDomain, keyword, 1, pageSize)
+	resp, err := s.Client.ListSkillMarket(ctx, keyword, 1, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -354,7 +353,6 @@ func mergeCatalogByUpdateTime(chunks ...[]model.CatalogEntry) []model.CatalogEnt
 
 func (s *Service) InstallFromCatalog(
 	ctx context.Context,
-	businessDomain string,
 	req model.InstallCatalogRequest,
 ) (*model.InstallCatalogResponse, error) {
 	kind := strings.ToLower(strings.TrimSpace(req.Kind))
@@ -370,11 +368,11 @@ func (s *Service) InstallFromCatalog(
 
 	switch kind {
 	case "http":
-		return s.installToolboxFromCatalog(ctx, businessDomain, sourceID, mode, req.Name)
+		return s.installToolboxFromCatalog(ctx, sourceID, mode, req.Name)
 	case "mcp":
-		return s.installMcpFromCatalog(ctx, businessDomain, sourceID, mode, req.Name)
+		return s.installMcpFromCatalog(ctx, sourceID, mode, req.Name)
 	case "skill":
-		return s.installSkillFromCatalog(ctx, businessDomain, sourceID)
+		return s.installSkillFromCatalog(ctx, sourceID)
 	default:
 		return nil, fmt.Errorf("unsupported catalog kind %q", kind)
 	}
@@ -382,9 +380,9 @@ func (s *Service) InstallFromCatalog(
 
 func (s *Service) installToolboxFromCatalog(
 	ctx context.Context,
-	businessDomain, sourceID, mode, name string,
+	sourceID, mode, name string,
 ) (*model.InstallCatalogResponse, error) {
-	exported, err := s.Client.ExportImpex(ctx, businessDomain, s.DefaultUserID, "toolbox", sourceID)
+	exported, err := s.Client.ExportImpex(ctx, s.DefaultUserID, "toolbox", sourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -408,11 +406,11 @@ func (s *Service) installToolboxFromCatalog(
 		targetBoxID = newBoxID
 	}
 
-	if err := s.Client.ImportImpex(ctx, businessDomain, s.DefaultUserID, "toolbox", mode, importData); err != nil {
+	if err := s.Client.ImportImpex(ctx, s.DefaultUserID, "toolbox", mode, importData); err != nil {
 		return nil, err
 	}
 
-	capabilities, err := s.capabilitiesForToolbox(ctx, businessDomain, targetBoxID)
+	capabilities, err := s.capabilitiesForToolbox(ctx, targetBoxID)
 	if err != nil {
 		return nil, err
 	}
@@ -426,9 +424,9 @@ func (s *Service) installToolboxFromCatalog(
 
 func (s *Service) installMcpFromCatalog(
 	ctx context.Context,
-	businessDomain, sourceID, mode, name string,
+	sourceID, mode, name string,
 ) (*model.InstallCatalogResponse, error) {
-	exported, err := s.Client.ExportImpex(ctx, businessDomain, s.DefaultUserID, "mcp", sourceID)
+	exported, err := s.Client.ExportImpex(ctx, s.DefaultUserID, "mcp", sourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -452,11 +450,11 @@ func (s *Service) installMcpFromCatalog(
 		targetMcpID = newMcpID
 	}
 
-	if err := s.Client.ImportImpex(ctx, businessDomain, s.DefaultUserID, "mcp", mode, importData); err != nil {
+	if err := s.Client.ImportImpex(ctx, s.DefaultUserID, "mcp", mode, importData); err != nil {
 		return nil, err
 	}
 
-	capability, err := s.GetCapability(ctx, businessDomain, BuildMcpCapabilityID(targetMcpID))
+	capability, err := s.GetCapability(ctx, BuildMcpCapabilityID(targetMcpID))
 	if err != nil {
 		return nil, err
 	}
@@ -470,14 +468,14 @@ func (s *Service) installMcpFromCatalog(
 
 func (s *Service) installSkillFromCatalog(
 	ctx context.Context,
-	businessDomain, sourceID string,
+	sourceID string,
 ) (*model.InstallCatalogResponse, error) {
-	content, filename, err := s.Client.DownloadSkillMarketPackage(ctx, businessDomain, sourceID, s.DefaultUserID)
+	content, filename, err := s.Client.DownloadSkillMarketPackage(ctx, sourceID, s.DefaultUserID)
 	if err != nil {
 		return nil, err
 	}
 
-	capability, err := s.RegisterSkillCapability(ctx, businessDomain, model.RegisterSkillCapabilityRequest{
+	capability, err := s.RegisterSkillCapability(ctx, model.RegisterSkillCapabilityRequest{
 		FileType: "zip",
 		Category: "other_category",
 		Source:   "market",
@@ -498,14 +496,14 @@ func (s *Service) installSkillFromCatalog(
 
 func (s *Service) capabilitiesForToolbox(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 ) ([]model.Capability, error) {
-	box, err := s.findToolbox(ctx, businessDomain, boxID)
+	box, err := s.findToolbox(ctx, boxID)
 	if err != nil {
 		return nil, err
 	}
 
-	tools, err := s.listToolsForBox(ctx, businessDomain, client.ToolboxInfo{
+	tools, err := s.listToolsForBox(ctx, client.ToolboxInfo{
 		BoxID:     box.BoxID,
 		BoxName:   box.BoxName,
 		BoxSvcURL: box.BoxSvcURL,

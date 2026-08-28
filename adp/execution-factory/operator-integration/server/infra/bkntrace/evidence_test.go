@@ -61,15 +61,13 @@ func testHeaders() map[string]any {
 		"bkn-action-approval-requested-event-id": "evt_action_approval_requested_001",
 		"bkn-attempt":                            "2",
 		"x-account-id":                           "acct-test", "x-account-type": "user",
-		"x-business-domain": "domain-supply-chain",
 	}
 }
 
-func TestParseActionRequiresRealBusinessDomain(t *testing.T) {
+func TestParseActionDoesNotRequireBusinessDomain(t *testing.T) {
 	headers := testHeaders()
-	delete(headers, "x-business-domain")
-	if _, ok := ParseAction(headers, "box", "tool", "user"); ok {
-		t.Fatal("account id must not be used as business domain")
+	if _, ok := ParseAction(headers, "box", "tool", "user"); !ok {
+		t.Fatal("expected action without business domain")
 	}
 }
 
@@ -122,6 +120,9 @@ func TestHTTPEmitterRetriesNon2xxAndIncludesOriginalTraceparent(t *testing.T) {
 	trace := envelope["trace"].(map[string]any)
 	if trace["traceparent"] != testHeaders()["traceparent"] {
 		t.Fatalf("traceparent lost: %#v", trace)
+	}
+	if _, exists := trace["business_domain"]; exists {
+		t.Fatalf("business domain must not be emitted: %#v", trace)
 	}
 }
 

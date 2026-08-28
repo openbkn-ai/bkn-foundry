@@ -51,7 +51,7 @@ type registerSkillResponse struct {
 
 func (c *OperatorIntegrationClient) UpdateTool(
 	ctx context.Context,
-	businessDomain, boxID, toolID string,
+	boxID, toolID string,
 	payload UpdateToolPayload,
 ) error {
 	body := map[string]interface{}{
@@ -86,44 +86,43 @@ func (c *OperatorIntegrationClient) UpdateTool(
 		url.PathEscape(boxID),
 		url.PathEscape(toolID),
 	)
-	return c.doJSON(ctx, http.MethodPost, path, businessDomain, body, nil)
+	return c.doJSON(ctx, http.MethodPost, path, body, nil)
 }
 
 func (c *OperatorIntegrationClient) DeleteTools(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 	toolIDs []string,
 ) error {
 	path := fmt.Sprintf(
 		"/api/agent-operator-integration/v1/tool-box/%s/tools/batch-delete",
 		url.PathEscape(boxID),
 	)
-	return c.doJSON(ctx, http.MethodPost, path, businessDomain, map[string]interface{}{
+	return c.doJSON(ctx, http.MethodPost, path, map[string]interface{}{
 		"tool_ids": toolIDs,
 	}, nil)
 }
 
-func (c *OperatorIntegrationClient) DeleteMcp(ctx context.Context, businessDomain, mcpID string) error {
+func (c *OperatorIntegrationClient) DeleteMcp(ctx context.Context, mcpID string) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/%s", url.PathEscape(mcpID))
-	return c.doJSON(ctx, http.MethodDelete, path, businessDomain, nil, nil)
+	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
 }
 
-func (c *OperatorIntegrationClient) DeleteSkill(ctx context.Context, businessDomain, skillID string) error {
+func (c *OperatorIntegrationClient) DeleteSkill(ctx context.Context, skillID string) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s", url.PathEscape(skillID))
-	return c.doJSON(ctx, http.MethodDelete, path, businessDomain, nil, nil)
+	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
 }
 
 func (c *OperatorIntegrationClient) UpdateMcpStatus(
 	ctx context.Context,
-	businessDomain, mcpID, status string,
+	mcpID, status string,
 ) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/%s/status", url.PathEscape(mcpID))
-	return c.doJSON(ctx, http.MethodPost, path, businessDomain, map[string]string{"status": status}, nil)
+	return c.doJSON(ctx, http.MethodPost, path, map[string]string{"status": status}, nil)
 }
 
 func (c *OperatorIntegrationClient) RegisterMcp(
 	ctx context.Context,
-	businessDomain string,
 	payload RegisterMcpPayload,
 ) (string, error) {
 	mode := payload.Mode
@@ -153,7 +152,7 @@ func (c *OperatorIntegrationClient) RegisterMcp(
 	var resp struct {
 		McpID interface{} `json:"mcp_id"`
 	}
-	if err := c.doJSON(ctx, http.MethodPost, "/api/agent-operator-integration/v1/mcp", businessDomain, body, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/api/agent-operator-integration/v1/mcp", body, &resp); err != nil {
 		return "", err
 	}
 	mcpID := fmt.Sprint(resp.McpID)
@@ -165,7 +164,6 @@ func (c *OperatorIntegrationClient) RegisterMcp(
 
 func (c *OperatorIntegrationClient) RegisterSkill(
 	ctx context.Context,
-	businessDomain string,
 	payload RegisterSkillPayload,
 ) (*registerSkillResponse, error) {
 	var body bytes.Buffer
@@ -220,7 +218,6 @@ func (c *OperatorIntegrationClient) RegisterSkill(
 	}
 	req.Header.Set("Accept", "application/json")
 	applyLanguageHeader(ctx, req.Header)
-	req.Header.Set("x-business-domain", businessDomain)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	res, err := c.HTTP.Do(req)

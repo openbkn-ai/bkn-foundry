@@ -32,7 +32,7 @@ type impexExportResponse struct {
 
 func (c *OperatorIntegrationClient) GetToolSourceLineage(
 	ctx context.Context,
-	businessDomain, boxID, toolID, userID string,
+	boxID, toolID, userID string,
 ) (*ToolSourceLineage, error) {
 	path := fmt.Sprintf(
 		"/api/agent-operator-integration/v1/impex/export/toolbox/%s",
@@ -46,7 +46,6 @@ func (c *OperatorIntegrationClient) GetToolSourceLineage(
 
 	req.Header.Set("Accept", "application/json")
 	applyLanguageHeader(ctx, req.Header)
-	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)
 	}

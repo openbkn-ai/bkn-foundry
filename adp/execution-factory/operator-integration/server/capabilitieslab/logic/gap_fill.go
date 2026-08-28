@@ -13,33 +13,33 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/capabilitieslab/model"
 )
 
-func (s *Service) ListCategories(ctx context.Context, businessDomain string) ([]client.CategoryEntry, error) {
-	return s.Client.ListCategories(ctx, businessDomain)
+func (s *Service) ListCategories(ctx context.Context) ([]client.CategoryEntry, error) {
+	return s.Client.ListCategories(ctx)
 }
 
 func (s *Service) UpdateCapability(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.UpdateCapabilityRequest,
 ) (*model.Capability, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
 
 	switch capability.Kind {
 	case "http":
-		return s.UpdateHttpCapability(ctx, businessDomain, capabilityID, model.UpdateHttpCapabilityRequest{
+		return s.UpdateHttpCapability(ctx, capabilityID, model.UpdateHttpCapabilityRequest{
 			Name:        req.Name,
 			Description: req.Description,
 			OpenAPISpec: req.OpenAPISpec,
 		})
 	case "mcp":
-		return s.updateMcpCapability(ctx, businessDomain, capability, req)
+		return s.updateMcpCapability(ctx, capability, req)
 	case "skill":
-		return s.updateSkillMetadataCapability(ctx, businessDomain, capability, req)
+		return s.updateSkillMetadataCapability(ctx, capability, req)
 	case "function":
-		return s.updateFunctionCapability(ctx, businessDomain, capability, req)
+		return s.updateFunctionCapability(ctx, capability, req)
 	default:
 		return nil, fmt.Errorf("update not supported for %s capabilities", capability.Kind)
 	}
@@ -47,7 +47,6 @@ func (s *Service) UpdateCapability(
 
 func (s *Service) updateMcpCapability(
 	ctx context.Context,
-	businessDomain string,
 	capability *model.Capability,
 	req model.UpdateCapabilityRequest,
 ) (*model.Capability, error) {
@@ -82,16 +81,15 @@ func (s *Service) updateMcpCapability(
 		return capability, nil
 	}
 
-	if err := s.Client.UpdateMcp(ctx, businessDomain, capability.McpID, body); err != nil {
+	if err := s.Client.UpdateMcp(ctx, capability.McpID, body); err != nil {
 		return nil, err
 	}
 
-	return s.GetCapability(ctx, businessDomain, capability.ID)
+	return s.GetCapability(ctx, capability.ID)
 }
 
 func (s *Service) updateSkillMetadataCapability(
 	ctx context.Context,
-	businessDomain string,
 	capability *model.Capability,
 	req model.UpdateCapabilityRequest,
 ) (*model.Capability, error) {
@@ -119,16 +117,15 @@ func (s *Service) updateSkillMetadataCapability(
 		return capability, nil
 	}
 
-	if err := s.Client.UpdateSkillMetadata(ctx, businessDomain, capability.SkillID, body); err != nil {
+	if err := s.Client.UpdateSkillMetadata(ctx, capability.SkillID, body); err != nil {
 		return nil, err
 	}
 
-	return s.GetCapability(ctx, businessDomain, capability.ID)
+	return s.GetCapability(ctx, capability.ID)
 }
 
 func (s *Service) updateFunctionCapability(
 	ctx context.Context,
-	businessDomain string,
 	capability *model.Capability,
 	req model.UpdateCapabilityRequest,
 ) (*model.Capability, error) {
@@ -162,19 +159,19 @@ func (s *Service) updateFunctionCapability(
 		FallbackDescription: capability.Description,
 		FunctionInput:       functionInput,
 	}
-	if err := s.Client.UpdateTool(ctx, businessDomain, capability.BoxID, capability.ToolID, payload); err != nil {
+	if err := s.Client.UpdateTool(ctx, capability.BoxID, capability.ToolID, payload); err != nil {
 		return nil, err
 	}
 
-	return s.GetCapability(ctx, businessDomain, capability.ID)
+	return s.GetCapability(ctx, capability.ID)
 }
 
 func (s *Service) UpdateSkillPackage(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.RegisterSkillCapabilityRequest,
 ) (*model.Capability, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +179,7 @@ func (s *Service) UpdateSkillPackage(
 		return nil, errors.New("skill package update only supported for skill capabilities")
 	}
 
-	if err := s.Client.UpdateSkillPackage(ctx, businessDomain, capability.SkillID, client.RegisterSkillPayload{
+	if err := s.Client.UpdateSkillPackage(ctx, capability.SkillID, client.RegisterSkillPayload{
 		FileType: req.FileType,
 		Filename: req.Filename,
 		Content:  req.Content,
@@ -191,14 +188,14 @@ func (s *Service) UpdateSkillPackage(
 		return nil, err
 	}
 
-	return s.GetCapability(ctx, businessDomain, capabilityID)
+	return s.GetCapability(ctx, capabilityID)
 }
 
 func (s *Service) DownloadSkillPackage(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) ([]byte, string, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -206,14 +203,14 @@ func (s *Service) DownloadSkillPackage(
 		return nil, "", errors.New("download only supported for skill capabilities")
 	}
 
-	return s.Client.DownloadSkillPackage(ctx, businessDomain, capability.SkillID)
+	return s.Client.DownloadSkillPackage(ctx, capability.SkillID)
 }
 
 func (s *Service) ListMcpTools(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) ([]map[string]interface{}, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
@@ -221,5 +218,5 @@ func (s *Service) ListMcpTools(
 		return nil, errors.New("mcp tools only available for mcp capabilities")
 	}
 
-	return s.Client.ListMcpTools(ctx, businessDomain, capability.McpID)
+	return s.Client.ListMcpTools(ctx, capability.McpID)
 }
