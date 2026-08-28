@@ -318,11 +318,10 @@ func TestOperatorQueryPage(t *testing.T) {
 		}
 		Convey("校验默认值，默认查询第一页，页面大小为10", func() {
 			req := &interfaces.PageQueryRequest{
-				BusinessDomainID: "domain123",
-				Page:             1,
-				PageSize:         10,
-				SortOrder:        "desc",
-				SortBy:           "update_time",
+				Page:      1,
+				PageSize:  10,
+				SortOrder: "desc",
+				SortBy:    "update_time",
 			}
 			mockOperatorManager.EXPECT().GetOperatorQueryPage(gomock.Any(),
 				req).Return(&interfaces.PageQueryResponse{}, nil)

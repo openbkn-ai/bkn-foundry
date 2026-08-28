@@ -75,16 +75,15 @@ type MCPAppEndpointRequest struct {
 // MCPServerAddRequest MCP Server registration request.
 type MCPServerAddRequest struct {
 	MCPCoreConfigInfo
-	BusinessDomainID string               `header:"x-business-domain" validate:"required"`                                       // Business domain ID.
-	UserID           string               `header:"user_id"`                                                                     // User ID, internal use.
-	IsPublic         bool                 `header:"is_public"`                                                                   // Is it a public interface?.
-	CreationType     MCPCreationType      `json:"creation_type" default:"custom" validate:"required,oneof=custom tool_imported"` // Create type.
-	Name             string               `json:"name" validate:"required"`                                                      // MCP Server name.
-	Description      string               `json:"description"`                                                                   // Description information.
-	Source           string               `json:"source" default:"custom"`                                                       // Source.
-	IsInternal       bool                 `json:"is_internal" default:"false"`                                                   // Whether it is built-in.
-	Category         string               `json:"category" default:"other_category"`                                             // Classification.
-	ToolConfigs      []*MCPToolConfigInfo `json:"tool_configs"`                                                                  // Tool configuration.
+	UserID       string               `header:"user_id"`                                                                     // User ID, internal use.
+	IsPublic     bool                 `header:"is_public"`                                                                   // Is it a public interface?.
+	CreationType MCPCreationType      `json:"creation_type" default:"custom" validate:"required,oneof=custom tool_imported"` // Create type.
+	Name         string               `json:"name" validate:"required"`                                                      // MCP Server name.
+	Description  string               `json:"description"`                                                                   // Description information.
+	Source       string               `json:"source" default:"custom"`                                                       // Source.
+	IsInternal   bool                 `json:"is_internal" default:"false"`                                                   // Whether it is built-in.
+	Category     string               `json:"category" default:"other_category"`                                             // Classification.
+	ToolConfigs  []*MCPToolConfigInfo `json:"tool_configs"`                                                                  // Tool configuration.
 }
 
 // MCPServerAddResponse MCP Server registration response.
@@ -95,15 +94,13 @@ type MCPServerAddResponse struct {
 
 // MCPServerDeleteRequest MCP Server delete request.
 type MCPServerDeleteRequest struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"` // Business domain ID.
-	UserID           string `header:"user_id"`                               // User ID, internal use.
-	IsPublic         bool   `header:"is_public"`                             // Is it a public interface?.
-	MCPID            string `uri:"mcp_id" validate:"required"`               // MCP Server ID
+	UserID   string `header:"user_id"`                 // User ID, internal use.
+	IsPublic bool   `header:"is_public"`               // Is it a public interface?.
+	MCPID    string `uri:"mcp_id" validate:"required"` // MCP Server ID
 }
 
 type MCPServerConfigInfo struct {
 	MCPCoreConfigInfo `json:",inline"`
-	BusinessDomainID  string               `json:"business_domain_id"`                          // Business domain ID.
 	MCPID             string               `json:"mcp_id"`                                      // MCP Server ID
 	Version           int                  `json:"version,omitempty"`                           // MCP Server version.
 	CreationType      MCPCreationType      `json:"creation_type,omitempty"`                     // Create type.
@@ -152,21 +149,20 @@ type MCPConnectionInfo struct {
 
 // MCPServerListRequest MCP Server list request.
 type MCPServerListRequest struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`                                     // Business domain ID.
-	UserID           string `header:"user_id"`                                                                   // User ID, internal use.
-	IsPublic         bool   `header:"is_public"`                                                                 // Is it a public interface?.
-	Page             int    `form:"page" default:"1" validate:"min=1"`                                           // Page number.
-	PageSize         int    `form:"page_size" default:"10" validate:"min=1,max=100"`                             // Number of items per page.
-	SortBy           string `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"` // sort field.
-	SortOrder        string `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                         // sort order.
-	Name             string `form:"name"`                                                                        // MCP name.
-	Source           string `form:"source"`                                                                      // Source.
-	IsInternal       bool   `form:"is_internal"`                                                                 // Whether it is built-in.
-	Category         string `form:"category"`                                                                    // Classification.
-	Status           string `form:"status"`                                                                      // Status.
-	CreateUser       string `form:"create_user"`                                                                 // Create user.
-	All              bool   `form:"all"`                                                                         // Whether to return all information.
-	Mode             string `form:"mode" validate:"omitempty,oneof=stdio_uv stdio_npx sse stream"`               // operating mode.
+	UserID     string `header:"user_id"`                                                                   // User ID, internal use.
+	IsPublic   bool   `header:"is_public"`                                                                 // Is it a public interface?.
+	Page       int    `form:"page" default:"1" validate:"min=1"`                                           // Page number.
+	PageSize   int    `form:"page_size" default:"10" validate:"min=1,max=100"`                             // Number of items per page.
+	SortBy     string `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"` // sort field.
+	SortOrder  string `form:"sort_order" default:"desc" validate:"oneof=asc desc"`                         // sort order.
+	Name       string `form:"name"`                                                                        // MCP name.
+	Source     string `form:"source"`                                                                      // Source.
+	IsInternal bool   `form:"is_internal"`                                                                 // Whether it is built-in.
+	Category   string `form:"category"`                                                                    // Classification.
+	Status     string `form:"status"`                                                                      // Status.
+	CreateUser string `form:"create_user"`                                                                 // Create user.
+	All        bool   `form:"all"`                                                                         // Whether to return all information.
+	Mode       string `form:"mode" validate:"omitempty,oneof=stdio_uv stdio_npx sse stream"`               // operating mode.
 }
 
 // MCPServerListResponse MCP Server list response.

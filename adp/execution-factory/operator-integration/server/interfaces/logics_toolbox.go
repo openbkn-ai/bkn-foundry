@@ -29,15 +29,14 @@ type UpsertInternalToolBoxReq struct {
 
 // CreateToolBoxReq New toolbox request.
 type CreateToolBoxReq struct {
-	BusinessDomainID string       `header:"x-business-domain" validate:"required"`                                       // Business domain ID.
-	UserID           string       `header:"user_id" validate:"required"`                                                 // User ID, internal use.
-	BoxName          string       `json:"box_name" form:"box_name"`                                                      // Toolbox name.
-	BoxDesc          string       `json:"box_desc" form:"box_desc"`                                                      // Toolbox description.
-	BoxSvcURL        string       `json:"box_svc_url" form:"box_svc_url"`                                                // Toolbox service address.
-	Category         BizCategory  `json:"box_category" form:"box_category" default:"other_category"`                     // Classification.
-	MetadataType     MetadataType `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // Metadata type (mandatory parameter)
-	Source           string       `json:"source" form:"source" default:"custom"`                                         // Toolbox source (default custom)
-	*OpenAPIInput    `json:",inline"`
+	UserID        string       `header:"user_id" validate:"required"`                                                 // User ID, internal use.
+	BoxName       string       `json:"box_name" form:"box_name"`                                                      // Toolbox name.
+	BoxDesc       string       `json:"box_desc" form:"box_desc"`                                                      // Toolbox description.
+	BoxSvcURL     string       `json:"box_svc_url" form:"box_svc_url"`                                                // Toolbox service address.
+	Category      BizCategory  `json:"box_category" form:"box_category" default:"other_category"`                     // Classification.
+	MetadataType  MetadataType `json:"metadata_type" form:"metadata_type" validate:"required,oneof=openapi function"` // Metadata type (mandatory parameter)
+	Source        string       `json:"source" form:"source" default:"custom"`                                         // Toolbox source (default custom)
+	*OpenAPIInput `json:",inline"`
 }
 
 // CreateToolBoxResp New tool returns results.
@@ -75,24 +74,23 @@ type EditToolInfo struct {
 
 // ToolBoxToolInfo toolbox information.
 type ToolBoxToolInfo struct {
-	MetadataType     MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
-	BusinessDomainID string       `json:"business_domain_id"`                                       // Business domain ID.
-	BoxID            string       `json:"box_id"`                                                   // Toolbox ID.
-	BoxName          string       `json:"box_name"`                                                 // Toolbox name.
-	BoxDesc          string       `json:"box_desc"`                                                 // Toolbox description.
-	Status           BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
-	BoxSvcURL        string       `json:"box_svc_url"`                                              // Toolbox service address.
-	CategoryType     string       `json:"category_type"`                                            // Classification.
-	CategoryName     string       `json:"category_name"`                                            // Category name.
-	IsInternal       bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
-	Source           string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
-	Tools            []*ToolInfo  `json:"tools"`                                                    // Tool list under toolbox.
-	CreateTime       int64        `json:"create_time"`                                              // creation time.
-	UpdateTime       int64        `json:"update_time"`                                              // Update time.
-	CreateUser       string       `json:"create_user"`                                              // Create user.
-	UpdateUser       string       `json:"update_user"`                                              // Update user.
-	ReleaseUser      string       `json:"release_user,omitempty"`                                   // Posted by.
-	ReleaseTime      int64        `json:"release_time,omitempty"`                                   // Release time.
+	MetadataType MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
+	BoxID        string       `json:"box_id"`                                                   // Toolbox ID.
+	BoxName      string       `json:"box_name"`                                                 // Toolbox name.
+	BoxDesc      string       `json:"box_desc"`                                                 // Toolbox description.
+	Status       BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
+	BoxSvcURL    string       `json:"box_svc_url"`                                              // Toolbox service address.
+	CategoryType string       `json:"category_type"`                                            // Classification.
+	CategoryName string       `json:"category_name"`                                            // Category name.
+	IsInternal   bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
+	Source       string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
+	Tools        []*ToolInfo  `json:"tools"`                                                    // Tool list under toolbox.
+	CreateTime   int64        `json:"create_time"`                                              // creation time.
+	UpdateTime   int64        `json:"update_time"`                                              // Update time.
+	CreateUser   string       `json:"create_user"`                                              // Create user.
+	UpdateUser   string       `json:"update_user"`                                              // Update user.
+	ReleaseUser  string       `json:"release_user,omitempty"`                                   // Posted by.
+	ReleaseTime  int64        `json:"release_time,omitempty"`                                   // Release time.
 }
 
 // ToolInfo tool information.
@@ -123,9 +121,8 @@ type GetToolBoxReq struct {
 
 // DeleteBoxReq delete toolbox request.
 type DeleteBoxReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"` // Business domain ID.
-	UserID           string `header:"user_id" validate:"required"`           // User ID, internal use.
-	BoxID            string `uri:"box_id" validate:"required"`
+	UserID string `header:"user_id" validate:"required"` // User ID, internal use.
+	BoxID  string `uri:"box_id" validate:"required"`
 }
 
 // DeleteBoxResp Delete toolbox returns results.
@@ -135,14 +132,13 @@ type DeleteBoxResp struct {
 
 // QueryToolBoxListReq Get toolbox list request.
 type QueryToolBoxListReq struct {
-	BusinessDomainID string      `header:"x-business-domain" validate:"required"`                       // Business domain ID.
-	UserID           string      `header:"user_id"`                                                     // User ID, internal use.
-	IsPublic         bool        `header:"is_public"`                                                   // Whether to expose the interface.
-	CreateUser       string      `form:"create_user"`                                                   // Creator.
-	ReleaseUser      string      `form:"release_user"`                                                  // Posted by.
-	BoxCategory      BizCategory `form:"category"`                                                      // Classification.
-	Status           BizStatus   `form:"status" validate:"omitempty,oneof=unpublish published offline"` // toolbox status.
-	BoxName          string      `form:"name"`                                                          // Toolbox name.
+	UserID      string      `header:"user_id"`                                                     // User ID, internal use.
+	IsPublic    bool        `header:"is_public"`                                                   // Whether to expose the interface.
+	CreateUser  string      `form:"create_user"`                                                   // Creator.
+	ReleaseUser string      `form:"release_user"`                                                  // Posted by.
+	BoxCategory BizCategory `form:"category"`                                                      // Classification.
+	Status      BizStatus   `form:"status" validate:"omitempty,oneof=unpublish published offline"` // toolbox status.
+	BoxName     string      `form:"name"`                                                          // Toolbox name.
 	// Filter by metadata type. There are only two types of toolboxes: openapi and function. Accordingly, the function tool workbench only lists function toolboxes.
 	MetadataType MetadataType `form:"metadata_type" validate:"omitempty,oneof=openapi function"`
 	CommonPageParams
@@ -150,13 +146,12 @@ type QueryToolBoxListReq struct {
 
 // QueryMarketToolBoxListReq Query market toolbox list request.
 type QueryMarketToolBoxListReq struct {
-	BusinessDomainID string      `header:"x-business-domain" validate:"required"` // Business domain ID.
-	UserID           string      `header:"user_id"`                               // User ID, internal use.
-	IsPublic         bool        `header:"is_public"`                             // Whether to expose the interface.
-	CreateUser       string      `form:"create_user"`                             // Creator.
-	ReleaseUser      string      `form:"release_user"`                            // Posted by.
-	BoxCategory      BizCategory `form:"category"`                                // Classification.
-	BoxName          string      `form:"name"`                                    // Toolbox name.
+	UserID      string      `header:"user_id"`    // User ID, internal use.
+	IsPublic    bool        `header:"is_public"`  // Whether to expose the interface.
+	CreateUser  string      `form:"create_user"`  // Creator.
+	ReleaseUser string      `form:"release_user"` // Posted by.
+	BoxCategory BizCategory `form:"category"`     // Classification.
+	BoxName     string      `form:"name"`         // Toolbox name.
 	CommonPageParams
 }
 
@@ -171,24 +166,23 @@ type CommonPageParams struct {
 
 // ToolBoxInfo toolbox information.
 type ToolBoxInfo struct {
-	MetadataType     MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
-	BusinessDomainID string       `json:"business_domain_id"`                                       // Business domain ID.
-	BoxID            string       `json:"box_id"`                                                   // Toolbox ID.
-	BoxName          string       `json:"box_name"`                                                 // Toolbox name.
-	BoxDesc          string       `json:"box_desc"`                                                 // Toolbox description.
-	BoxSvcURL        string       `json:"box_svc_url"`                                              // Toolbox service address.
-	Status           BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
-	CategoryType     string       `json:"category_type"`                                            // Classification.
-	CategoryName     string       `json:"category_name"`                                            // Category name.
-	IsInternal       bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
-	Source           string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
-	Tools            []string     `json:"tools"`                                                    // Tool list under toolbox.
-	CreateTime       int64        `json:"create_time"`                                              // creation time.
-	UpdateTime       int64        `json:"update_time"`                                              // Update time.
-	CreateUser       string       `json:"create_user"`                                              // Create user.
-	UpdateUser       string       `json:"update_user"`                                              // Update user.
-	ReleaseUser      string       `json:"release_user,omitempty"`                                   // Posted by.
-	ReleaseTime      int64        `json:"release_time,omitempty"`                                   // Release time.
+	MetadataType MetadataType `json:"metadata_type" validate:"required,oneof=openapi function"` // metadata type.
+	BoxID        string       `json:"box_id"`                                                   // Toolbox ID.
+	BoxName      string       `json:"box_name"`                                                 // Toolbox name.
+	BoxDesc      string       `json:"box_desc"`                                                 // Toolbox description.
+	BoxSvcURL    string       `json:"box_svc_url"`                                              // Toolbox service address.
+	Status       BizStatus    `json:"status" validate:"oneof=unpublish published offline"`      // toolbox status.
+	CategoryType string       `json:"category_type"`                                            // Classification.
+	CategoryName string       `json:"category_name"`                                            // Category name.
+	IsInternal   bool         `json:"is_internal"`                                              // Is it an internal toolbox?.
+	Source       string       `json:"source" default:"custom" validate:"oneof=custom internal"` // Toolbox source.
+	Tools        []string     `json:"tools"`                                                    // Tool list under toolbox.
+	CreateTime   int64        `json:"create_time"`                                              // creation time.
+	UpdateTime   int64        `json:"update_time"`                                              // Update time.
+	CreateUser   string       `json:"create_user"`                                              // Create user.
+	UpdateUser   string       `json:"update_user"`                                              // Update user.
+	ReleaseUser  string       `json:"release_user,omitempty"`                                   // Posted by.
+	ReleaseTime  int64        `json:"release_time,omitempty"`                                   // Release time.
 }
 
 // QueryToolBoxListResp Gets the toolbox list and returns the results.
@@ -352,7 +346,6 @@ type ConvertOperatorToToolResp struct {
 
 // RegisterOpenApiBundleReq OpenAPI capability package registration: register the operator first, and then convert it into a tool (establishing blood relationship)
 type RegisterOpenApiBundleReq struct {
-	BusinessDomainID       string                  `header:"x-business-domain" validate:"required"`
 	UserID                 string                  `header:"user_id" validate:"required"`
 	BoxID                  string                  `json:"box_id"`                                // Already has a toolbox ID (optional with box_name)
 	BoxName                string                  `json:"box_name"`                              // New toolbox name.

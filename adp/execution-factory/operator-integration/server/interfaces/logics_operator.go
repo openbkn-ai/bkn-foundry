@@ -88,8 +88,7 @@ type OperatorEditResp struct {
 
 // OperatorDataInfo operator data.
 type OperatorDataInfo struct {
-	BusinessDomainID       string                  `json:"business_domain_id"` // Business domain ID.
-	Name                   string                  `json:"name"`               // Operator name.
+	Name                   string                  `json:"name"` // Operator name.
 	OperatorID             string                  `json:"operator_id" validate:"uuid4"`
 	Version                string                  `json:"version" validate:"uuid4"`
 	Status                 BizStatus               `json:"status" validate:"omitempty,oneof=unpublish published offline editing"` // Status.
@@ -149,19 +148,18 @@ type OperatorInfo struct {
 
 // PageQueryRequest paging query request.
 type PageQueryRequest struct {
-	BusinessDomainID string       `header:"x-business-domain" validate:"required"` // Business domain ID.
-	UserID           string       `header:"user_id"`
-	Page             int          `form:"page" default:"1" validate:"min=1"`
-	PageSize         int          `form:"page_size" default:"10" validate:"max=100"`
-	SortBy           string       `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"`
-	SortOrder        string       `form:"sort_order" default:"desc" validate:"oneof=asc desc"`
-	Name             string       `form:"name"`
-	Status           BizStatus    `form:"status" validate:"omitempty,oneof=unpublish published offline editing"`
-	CreateUser       string       `form:"create_user"`                                              // Creator.
-	Category         BizCategory  `form:"category"`                                                 // Classification.
-	OperatorType     OperatorType `form:"operator_type" validate:"omitempty,oneof=basic composite"` // Operator type (basic/composite)
-	All              bool         `form:"all"`
-	IsDataSource     *bool        `form:"is_data_source"` // Whether it is a data source operator.
+	UserID       string       `header:"user_id"`
+	Page         int          `form:"page" default:"1" validate:"min=1"`
+	PageSize     int          `form:"page_size" default:"10" validate:"max=100"`
+	SortBy       string       `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"`
+	SortOrder    string       `form:"sort_order" default:"desc" validate:"oneof=asc desc"`
+	Name         string       `form:"name"`
+	Status       BizStatus    `form:"status" validate:"omitempty,oneof=unpublish published offline editing"`
+	CreateUser   string       `form:"create_user"`                                              // Creator.
+	Category     BizCategory  `form:"category"`                                                 // Classification.
+	OperatorType OperatorType `form:"operator_type" validate:"omitempty,oneof=basic composite"` // Operator type (basic/composite)
+	All          bool         `form:"all"`
+	IsDataSource *bool        `form:"is_data_source"` // Whether it is a data source operator.
 }
 
 // PageQueryResponse Pagination query response.
@@ -209,22 +207,21 @@ type OperatorHistoryListReq struct {
 
 // PageQueryOperatorMarketReq Operator market query request.
 type PageQueryOperatorMarketReq struct {
-	BusinessDomainID string        `header:"x-business-domain" validate:"required"` // Business domain ID.
-	UserID           string        `header:"user_id"`                               // Optional.
-	Page             int           `form:"page" default:"1" validate:"min=1"`
-	PageSize         int           `form:"page_size" default:"10" validate:"max=100"`
-	SortBy           string        `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"`
-	SortOrder        string        `form:"sort_order" default:"desc" validate:"oneof=asc desc"`
-	All              bool          `form:"all"`
-	Status           BizStatus     `form:"status" validate:"omitempty,oneof=published offline"`       // Status.
-	Name             string        `form:"name"`                                                      // Operator name.
-	CreateUser       string        `form:"create_user"`                                               // Creator.
-	ReleaseUser      string        `form:"release_user"`                                              // Posted by.
-	Category         BizCategory   `form:"category"`                                                  // Classification.
-	OperatorType     OperatorType  `form:"operator_type" validate:"omitempty,oneof=basic composite"`  // Operator type (basic/composite)
-	IsDataSource     *bool         `form:"is_data_source"`                                            // Whether it is a data source operator.
-	ExecutionMode    ExecutionMode `form:"execution_mode" validate:"omitempty,oneof=sync async"`      // Execution mode (async/sync)
-	MetadataType     MetadataType  `form:"metadata_type" validate:"omitempty,oneof=openapi function"` // Metadata type (openapi/function)
+	UserID        string        `header:"user_id"` // Optional.
+	Page          int           `form:"page" default:"1" validate:"min=1"`
+	PageSize      int           `form:"page_size" default:"10" validate:"max=100"`
+	SortBy        string        `form:"sort_by" default:"update_time" validate:"oneof=update_time create_time name"`
+	SortOrder     string        `form:"sort_order" default:"desc" validate:"oneof=asc desc"`
+	All           bool          `form:"all"`
+	Status        BizStatus     `form:"status" validate:"omitempty,oneof=published offline"`       // Status.
+	Name          string        `form:"name"`                                                      // Operator name.
+	CreateUser    string        `form:"create_user"`                                               // Creator.
+	ReleaseUser   string        `form:"release_user"`                                              // Posted by.
+	Category      BizCategory   `form:"category"`                                                  // Classification.
+	OperatorType  OperatorType  `form:"operator_type" validate:"omitempty,oneof=basic composite"`  // Operator type (basic/composite)
+	IsDataSource  *bool         `form:"is_data_source"`                                            // Whether it is a data source operator.
+	ExecutionMode ExecutionMode `form:"execution_mode" validate:"omitempty,oneof=sync async"`      // Execution mode (async/sync)
+	MetadataType  MetadataType  `form:"metadata_type" validate:"omitempty,oneof=openapi function"` // Metadata type (openapi/function)
 }
 
 // GetOperatorInfoByOperatorIDReq Get operator information request.

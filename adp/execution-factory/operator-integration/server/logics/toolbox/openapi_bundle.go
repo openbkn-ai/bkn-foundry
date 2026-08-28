@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 // RegisterOpenApiBundle registers OpenAPI operators first, then converts each into toolbox tools.
@@ -35,13 +35,12 @@ func (s *ToolServiceImpl) RegisterOpenApiBundle(
 			return
 		}
 		createResp, createErr := s.CreateToolBox(ctx, &interfaces.CreateToolBoxReq{
-			BusinessDomainID: req.BusinessDomainID,
-			UserID:           req.UserID,
-			BoxName:          req.BoxName,
-			BoxDesc:          req.BoxDesc,
-			BoxSvcURL:        req.BoxSvcURL,
-			Category:         req.Category,
-			MetadataType:     interfaces.MetadataTypeAPI,
+			UserID:       req.UserID,
+			BoxName:      req.BoxName,
+			BoxDesc:      req.BoxDesc,
+			BoxSvcURL:    req.BoxSvcURL,
+			Category:     req.Category,
+			MetadataType: interfaces.MetadataTypeAPI,
 		})
 		if createErr != nil {
 			err = createErr
