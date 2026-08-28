@@ -157,7 +157,9 @@ func (p *DataProperty) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*p = DataProperty(value)
-	_, p.retiredIndexConfigProvided = raw["index_config"]
+	if rawIndexConfig, ok := raw["index_config"]; ok && string(rawIndexConfig) != "null" {
+		p.retiredIndexConfigProvided = true
+	}
 	return nil
 }
 

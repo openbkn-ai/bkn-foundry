@@ -728,6 +728,11 @@ func Test_RewriteCondition(t *testing.T) {
 					Type:        dtype.DATATYPE_INTEGER,
 					MappedField: Field{Name: "col_b"},
 				},
+				"c": {
+					Name:        "c",
+					Type:        dtype.DATATYPE_STRING,
+					MappedField: Field{Name: "col_c"},
+				},
 			}
 			cfg := &CondCfg{
 				Operation:   OperationMultiMatch,
@@ -740,7 +745,27 @@ func Test_RewriteCondition(t *testing.T) {
 			flds, ok := result.RemainCfg["fields"].([]string)
 			So(ok, ShouldBeTrue)
 			So(flds, ShouldContain, "col_a")
-			So(len(flds), ShouldEqual, 1)
+			So(flds, ShouldContain, "col_c")
+			So(flds, ShouldNotContain, "col_c.text")
+			So(len(flds), ShouldEqual, 2)
+		})
+
+		Convey("成功 - multi_match string 字段重写为 Vega 原始列", func() {
+			mmMap := map[string]*DataProperty{
+				"name": {
+					Name:        "name",
+					Type:        dtype.DATATYPE_STRING,
+					MappedField: Field{Name: "name_col"},
+				},
+			}
+			cfg := &CondCfg{
+				Operation:   OperationMultiMatch,
+				ValueOptCfg: ValueOptCfg{Value: "q"},
+				RemainCfg:   map[string]any{"fields": []any{"name"}},
+			}
+			result, err := RewriteCondition(ctx, cfg, mmMap, vectorizer)
+			So(err, ShouldBeNil)
+			So(result.RemainCfg["fields"], ShouldResemble, []string{"name_col"})
 		})
 
 		Convey("失败 - 二进制类型字段", func() {

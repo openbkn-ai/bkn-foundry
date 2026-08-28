@@ -311,7 +311,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("成功 - AllField 展开为可全文检索的具体索引字段", func() {
+		Convey("成功 - AllField 展开为 Vega 资源字段", func() {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
@@ -328,7 +328,8 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			dsl, err := cond.Convert(ctx, nil)
 			So(err, ShouldBeNil)
 			So(dsl, ShouldContainSubstring, "text_field")
-			So(dsl, ShouldContainSubstring, "string_field.text")
+			So(dsl, ShouldContainSubstring, "string_field")
+			So(dsl, ShouldNotContainSubstring, "string_field.text")
 			So(dsl, ShouldNotContainSubstring, `"*"`)
 		})
 

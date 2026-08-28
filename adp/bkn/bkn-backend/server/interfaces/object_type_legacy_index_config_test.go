@@ -1,3 +1,9 @@
+// Copyright openbkn.ai
+// Copyright The kweaver.ai Authors.
+//
+// Licensed under the Apache License, Version 2.0.
+// See the LICENSE file in the project root for details.
+
 package interfaces
 
 import (
@@ -19,6 +25,16 @@ func TestDataPropertyRejectsLegacyIndexConfigWithoutReexposingIt(t *testing.T) {
 	}
 	if string(encoded) == "" || containsIndexConfig(encoded) {
 		t.Fatalf("legacy index_config leaked into response: %s", encoded)
+	}
+}
+
+func TestDataPropertyAllowsNullLegacyIndexConfig(t *testing.T) {
+	var property DataProperty
+	if err := json.Unmarshal([]byte(`{"name":"title","type":"string","index_config":null}`), &property); err != nil {
+		t.Fatalf("unmarshal data property: %v", err)
+	}
+	if property.HasRetiredIndexConfig() {
+		t.Fatal("null legacy index_config must not be treated as configuration")
 	}
 }
 
