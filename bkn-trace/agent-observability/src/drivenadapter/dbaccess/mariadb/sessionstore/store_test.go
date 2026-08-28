@@ -54,16 +54,33 @@ func TestMigrationPlanReturnsOnlyUnappliedVersions(t *testing.T) {
 
 func TestMigrationPlanUpgradesExistingCoreSchemaWithProvenanceTable(t *testing.T) {
 	migrations := Migrations()
-	applied := make(map[string]string, len(migrations)-1)
-	for _, migration := range migrations[:len(migrations)-1] {
+	applied := make(map[string]string, 4)
+	for _, migration := range migrations[:4] {
 		applied[migration.Version] = migration.Checksum
 	}
 	plan, err := migrationPlan(migrations, applied)
 	if err != nil {
 		t.Fatalf("plan provenance schema migration: %v", err)
 	}
-	if len(plan) != 1 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") {
+	if len(plan) != 2 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") {
 		t.Fatalf("unexpected provenance schema plan: %#v", plan)
+	}
+}
+
+func TestMigrationPlanAddsLocaleToExistingProvenanceHistory(t *testing.T) {
+	migrations := Migrations()
+	applied := make(map[string]string, 5)
+	for _, migration := range migrations[:5] {
+		applied[migration.Version] = migration.Checksum
+	}
+	plan, err := migrationPlan(migrations, applied)
+	if err != nil {
+		t.Fatalf("plan provenance locale migration: %v", err)
+	}
+	if len(plan) != 1 || plan[0].Version != "018" ||
+		!strings.Contains(plan[0].SQL, "ADD COLUMN locale") ||
+		!strings.Contains(plan[0].SQL, "DEFAULT 'zh-CN'") {
+		t.Fatalf("unexpected provenance locale migration plan: %#v", plan)
 	}
 }
 
