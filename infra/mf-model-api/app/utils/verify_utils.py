@@ -7,6 +7,7 @@ from llmadapter.llms.llm_factory import llm_factory
 from llmadapter.schema import AIMessage
 from urllib3.exceptions import MaxRetryError
 from app.commons.errors import ModelFactory_ModelController_TestModel_Error_Error, LLMTestError
+from app.logs.stand_log import StandLogger
 from app.utils.http_client import proxy_aware_aiohttp
 
 
@@ -177,7 +178,6 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                 # A connectivity test should receive one JSON response.  Streaming
                 # SSE is commonly buffered or held open by enterprise proxies.
                 "stream": False,
-                "max_tokens": 16,
             }
             headers = {
                 "Authorization": f"Bearer {config.get('api_key', '')}",

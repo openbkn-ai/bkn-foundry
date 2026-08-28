@@ -220,7 +220,6 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                 # JSON response.  Proxies commonly buffer SSE or keep it open, which
                 # made a healthy upstream appear as a 504/timeout.
                 "stream": False,
-                "max_tokens": 16,
             }
             headers = {
                 "Authorization": f"Bearer {config.get('api_key', '')}",

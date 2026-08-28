@@ -23,6 +23,7 @@ from app.interfaces import logics
 from app.logs.stand_log import StandLogger
 from app.utils.bkntrace import evidence as bkntrace_evidence
 from app.utils.observability.observability_log import get_logger
+from app.utils import log_redact, openai_error
 from app.utils.http_client import proxy_aware_aiohttp
 
 from app.utils.str_util import generate_random_string, has_common_substring
