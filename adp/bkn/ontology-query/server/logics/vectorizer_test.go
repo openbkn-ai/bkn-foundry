@@ -17,7 +17,7 @@ import (
 func vectorProperty(model string) *cond.DataProperty {
 	return &cond.DataProperty{
 		Name:        "stadium_name",
-		IndexConfig: &cond.IndexConfig{VectorConfig: cond.VectorConfig{ModelID: model}},
+		MappedField: cond.Field{Name: model},
 	}
 }
 

@@ -107,15 +107,8 @@ func (kns *knowledgeNetworkService) expandFilteredCrossJoin(ctx context.Context,
 		}
 	}
 
-	ptrPropMap := logics.TransferPropsToPropMap(nextTypeMeta.DataProperties)
-	propMap := make(map[string]cond.DataProperty, len(ptrPropMap))
-	for k, v := range ptrPropMap {
-		if v != nil {
-			propMap[k] = *v
-		}
-	}
 	fullNextOT := interfaces.ObjectType{ObjectTypeWithKeyField: nextTypeMeta}
-	nextObjectQuery.Sort = logics.BuildIndexSort(fullNextOT, propMap)
+	nextObjectQuery.Sort = logics.BuildViewSort(fullNextOT)
 
 	nextObjects, err := kns.ots.GetObjectsByObjectTypeID(ctx, nextObjectQuery)
 	if err != nil {

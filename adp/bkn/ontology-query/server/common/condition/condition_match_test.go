@@ -29,11 +29,6 @@ func Test_NewMatchCond(t *testing.T) {
 			"string_field": {
 				Name: "string_field",
 				Type: dtype.DATATYPE_STRING,
-				IndexConfig: &IndexConfig{
-					FulltextConfig: FulltextConfig{
-						Enabled: true,
-					},
-				},
 				MappedField: Field{
 					Name: "mapped_string",
 				},
@@ -86,7 +81,7 @@ func Test_NewMatchCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("失败 - STRING字段（未配置全文索引）", func() {
+		Convey("成功 - STRING字段由 Vega Resource 校验全文能力", func() {
 			cfg := &CondCfg{
 				Name:      "string_field_no_fulltext",
 				Operation: OperationMatch,
@@ -95,8 +90,8 @@ func Test_NewMatchCond(t *testing.T) {
 				},
 			}
 			cond, err := NewMatchCond(ctx, cfg, CUSTOM, textFieldsMap)
-			So(err, ShouldNotBeNil)
-			So(cond, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(cond, ShouldNotBeNil)
 		})
 	})
 }
@@ -204,11 +199,6 @@ func Test_NewMatchPhraseCond(t *testing.T) {
 			"string_field": {
 				Name: "string_field",
 				Type: dtype.DATATYPE_STRING,
-				IndexConfig: &IndexConfig{
-					FulltextConfig: FulltextConfig{
-						Enabled: true,
-					},
-				},
 				MappedField: Field{
 					Name: "mapped_string",
 				},
@@ -248,7 +238,7 @@ func Test_NewMatchPhraseCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("失败 - 未配置全文索引", func() {
+		Convey("成功 - 不读取属性级全文索引配置", func() {
 			cfg := &CondCfg{
 				Name:      "string_field_no_fulltext",
 				Operation: OperationMatchPhrase,
@@ -257,8 +247,8 @@ func Test_NewMatchPhraseCond(t *testing.T) {
 				},
 			}
 			cond, err := NewMatchPhraseCond(ctx, cfg, CUSTOM, fieldsMap)
-			So(err, ShouldNotBeNil)
-			So(cond, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(cond, ShouldNotBeNil)
 		})
 	})
 }
@@ -299,11 +289,6 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			"string_field": {
 				Name: "string_field",
 				Type: dtype.DATATYPE_STRING,
-				IndexConfig: &IndexConfig{
-					FulltextConfig: FulltextConfig{
-						Enabled: true,
-					},
-				},
 				MappedField: Field{
 					Name: "mapped_string",
 				},
@@ -326,7 +311,7 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("成功 - AllField 展开为可全文检索的具体索引字段", func() {
+		Convey("成功 - AllField 展开为 Vega 资源字段", func() {
 			cfg := &CondCfg{
 				Name:      AllField,
 				Operation: OperationMultiMatch,
@@ -343,7 +328,8 @@ func Test_NewMultiMatchCond(t *testing.T) {
 			dsl, err := cond.Convert(ctx, nil)
 			So(err, ShouldBeNil)
 			So(dsl, ShouldContainSubstring, "text_field")
-			So(dsl, ShouldContainSubstring, "string_field.text")
+			So(dsl, ShouldContainSubstring, "string_field")
+			So(dsl, ShouldNotContainSubstring, "string_field.text")
 			So(dsl, ShouldNotContainSubstring, `"*"`)
 		})
 

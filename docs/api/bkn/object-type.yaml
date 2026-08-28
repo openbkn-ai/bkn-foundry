@@ -687,16 +687,6 @@ paths:
                             comment: 节点id，
                             mapped_field:
                               name: node_id
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -710,16 +700,6 @@ paths:
                             comment: pod的集群id
                             mapped_field:
                               name: pod_cluster_id
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -733,16 +713,6 @@ paths:
                             comment: pod的ip
                             mapped_field:
                               name: pod_ip
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -756,16 +726,6 @@ paths:
                             comment: pod名称
                             mapped_field:
                               name: pod_name
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -779,16 +739,6 @@ paths:
                             comment: pod所属命名空间
                             mapped_field:
                               name: pod_namespace
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -802,16 +752,6 @@ paths:
                             comment: pod所在节点名称
                             mapped_field:
                               name: pod_node_name
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -825,16 +765,6 @@ paths:
                             comment: pod端口
                             mapped_field:
                               name: pod_port
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -848,16 +778,6 @@ paths:
                             comment: pod状态
                             mapped_field:
                               name: pod_status
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -871,16 +791,6 @@ paths:
                             comment: 服务ip
                             mapped_field:
                               name: service_ip
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -894,16 +804,6 @@ paths:
                             comment: 服务名称
                             mapped_field:
                               name: service_name
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -917,16 +817,6 @@ paths:
                             comment: 组件
                             mapped_field:
                               name: component
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -940,16 +830,6 @@ paths:
                             comment: pod创建时间
                             mapped_field:
                               name: pod_create_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -963,16 +843,6 @@ paths:
                             comment: pod删除时间
                             mapped_field:
                               name: pod_delete_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -986,16 +856,6 @@ paths:
                             comment: 系统创建时间
                             mapped_field:
                               name: s_create_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1009,16 +869,6 @@ paths:
                             comment: 系统更新时间
                             mapped_field:
                               name: s_update_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1032,16 +882,6 @@ paths:
                             comment: 时间
                             mapped_field:
                               name: _timestamp
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1055,16 +895,6 @@ paths:
                             comment: 行动
                             mapped_field:
                               name: _action
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1176,16 +1006,6 @@ paths:
                             comment: 节点id，
                             mapped_field:
                               name: node_id
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1199,16 +1019,6 @@ paths:
                             comment: pod的集群id
                             mapped_field:
                               name: pod_cluster_id
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1222,16 +1032,6 @@ paths:
                             comment: pod的ip
                             mapped_field:
                               name: pod_ip
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1245,16 +1045,6 @@ paths:
                             comment: pod名称
                             mapped_field:
                               name: pod_name
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1268,16 +1058,6 @@ paths:
                             comment: pod所属命名空间
                             mapped_field:
                               name: pod_namespace
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1291,16 +1071,6 @@ paths:
                             comment: pod所在节点名称
                             mapped_field:
                               name: pod_node_name
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1314,16 +1084,6 @@ paths:
                             comment: pod端口
                             mapped_field:
                               name: pod_port
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1337,16 +1097,6 @@ paths:
                             comment: pod状态
                             mapped_field:
                               name: pod_status
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1360,16 +1110,6 @@ paths:
                             comment: 服务ip
                             mapped_field:
                               name: service_ip
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1383,16 +1123,6 @@ paths:
                             comment: 服务名称
                             mapped_field:
                               name: service_name
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1406,16 +1136,6 @@ paths:
                             comment: 组件
                             mapped_field:
                               name: component
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1429,16 +1149,6 @@ paths:
                             comment: pod创建时间
                             mapped_field:
                               name: pod_create_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1452,16 +1162,6 @@ paths:
                             comment: pod删除时间
                             mapped_field:
                               name: pod_delete_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1475,16 +1175,6 @@ paths:
                             comment: 系统创建时间
                             mapped_field:
                               name: s_create_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1498,16 +1188,6 @@ paths:
                             comment: 系统更新时间
                             mapped_field:
                               name: s_update_time
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1521,16 +1201,6 @@ paths:
                             comment: 时间
                             mapped_field:
                               name: _timestamp
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -1544,16 +1214,6 @@ paths:
                             comment: 行动
                             mapped_field:
                               name: _action
-                            index_config:
-                              keyword_config:
-                                enabled: true
-                                ignore_above_len: 1024
-                              fulltext_config:
-                                analyzer: standard
-                                enabled: true
-                              vector_config:
-                                enabled: true
-                                model_id: some text
                             condition_operations:
                               - ==
                               - "!="
@@ -2042,9 +1702,6 @@ components:
         mapped_field:
           $ref: "#/components/schemas/ViewField"
           description: Field name mapped to the data source
-        index_config:
-          $ref: "#/components/schemas/IndexConfig"
-          description: Index configuration
         condition_operations:
           description: |
             Supported filter operations for this property. They are inferred from the property type, such as
@@ -2658,30 +2315,6 @@ components:
             - <
             - <=
           type: string
-    IndexConfig:
-      title: Root Type for IndexConfig
-      description: Index configuration
-      type: object
-      properties:
-        keyword_config:
-          $ref: "#/components/schemas/KeywordConfig"
-          description: Keyword search configuration
-        fulltext_config:
-          $ref: "#/components/schemas/FulltextConfig"
-          description: Full-text search configuration
-        vector_config:
-          $ref: "#/components/schemas/VectorConfig"
-          description: Vector search configuration
-      example:
-        keyword_config:
-          enabled: true
-          ignore_above_len: 76
-        fulltext_config:
-          analyzer: standard
-          enabled: true
-        vector_config:
-          enabled: true
-          model_id: some text
     KeywordConfig:
       title: Root Type for KeywordConfig
       description: Keyword search configuration

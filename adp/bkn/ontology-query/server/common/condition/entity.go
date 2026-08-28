@@ -208,35 +208,13 @@ type DataProperty struct {
 
 	MappedField Field `json:"mapped_field"`
 
-	IndexConfig         *IndexConfig `json:"index_config,omitempty"`
-	ConditionOperations []string     `json:"condition_operations,omitempty"` // Operations supported by a string field.
+	ConditionOperations []string `json:"condition_operations,omitempty"` // Operations supported by a string field.
 }
 
 type Field struct {
 	Name        string `json:"name"` // Technical name.
 	Type        string `json:"type"`
 	DisplayName string `json:"display_name"` // Display name.
-}
-
-type IndexConfig struct {
-	KeywordConfig  KeywordConfig  `json:"keyword_config,omitempty"`
-	FulltextConfig FulltextConfig `json:"fulltext_config,omitempty"`
-	VectorConfig   VectorConfig   `json:"vector_config,omitempty"`
-}
-
-type KeywordConfig struct {
-	Enabled        bool `json:"enabled"`
-	IgnoreAboveLen int  `json:"ignore_above_len"`
-}
-
-type FulltextConfig struct {
-	Enabled  bool   `json:"enabled"`
-	Analyzer string `json:"analyzer"`
-}
-
-type VectorConfig struct {
-	Enabled bool   `json:"enabled"`
-	ModelID string `json:"model_id"`
 }
 
 // type ViewField struct {

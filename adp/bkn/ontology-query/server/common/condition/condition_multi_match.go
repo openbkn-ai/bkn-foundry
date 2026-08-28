@@ -57,9 +57,8 @@ func NewMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fiel
 				fields = append(fields, name)
 				continue
 			}
-			if fieldInfo.Type == dtype.DATATYPE_STRING &&
-				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
-				fields = append(fields, name+"."+dtype.TEXT_SUFFIX)
+			if fieldInfo.Type == dtype.DATATYPE_STRING {
+				fields = append(fields, name)
 				continue
 			}
 			return nil, validationError(ctx, "MultiMatchPropertyNotFullText", map[string]any{"field": field})
@@ -169,9 +168,8 @@ func rewriteMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldsMap map[stri
 				fields = append(fields, fieldInfo.MappedField.Name)
 				continue
 			}
-			if fieldInfo.Type == dtype.DATATYPE_STRING &&
-				fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
-				fields = append(fields, fieldInfo.MappedField.Name+"."+dtype.TEXT_SUFFIX)
+			if fieldInfo.Type == dtype.DATATYPE_STRING {
+				fields = append(fields, fieldInfo.MappedField.Name)
 				continue
 			}
 			return nil, validationError(ctx, "MultiMatchViewPropertyNotFullText", map[string]any{"field": field})
@@ -200,8 +198,8 @@ func rewriteMultiMatchCond(ctx context.Context, cfg *CondCfg, fieldsMap map[stri
 	}, nil
 }
 
-// expandIndexFieldNamesForMultiMatchStar resolves ["*"] into OpenSearch field names for text and
-// fulltext-enabled string properties (uses .text subfield for the latter).
+// expandIndexFieldNamesForMultiMatchStar resolves ["*"] into Vega Resource field names for text
+// and string properties. Vega resolves full-text capability from the resource schema.
 func expandIndexFieldNamesForMultiMatchStar(ctx context.Context, fieldsMap map[string]*DataProperty) ([]string, error) {
 	var out []string
 	for _, fieldInfo := range fieldsMap {
@@ -212,10 +210,8 @@ func expandIndexFieldNamesForMultiMatchStar(ctx context.Context, fieldsMap map[s
 			out = append(out, getFilterFieldName(fieldInfo.Name, fieldsMap, true))
 			continue
 		}
-		if fieldInfo.Type == dtype.DATATYPE_STRING &&
-			fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
-			base := getFilterFieldName(fieldInfo.Name, fieldsMap, true)
-			out = append(out, base+"."+dtype.TEXT_SUFFIX)
+		if fieldInfo.Type == dtype.DATATYPE_STRING {
+			out = append(out, getFilterFieldName(fieldInfo.Name, fieldsMap, true))
 		}
 	}
 	if len(out) == 0 {
@@ -224,8 +220,8 @@ func expandIndexFieldNamesForMultiMatchStar(ctx context.Context, fieldsMap map[s
 	return out, nil
 }
 
-// expandViewFieldNamesForMultiMatchStar resolves ["*"] into view column names (MappedField.Name)
-// for the same property kinds as the index path, skipping properties without mapped_field.
+// expandViewFieldNamesForMultiMatchStar resolves ["*"] into Vega Resource column names
+// (MappedField.Name), skipping properties without mapped_field.
 func expandViewFieldNamesForMultiMatchStar(ctx context.Context, fieldsMap map[string]*DataProperty) ([]string, error) {
 	var out []string
 	for _, fieldInfo := range fieldsMap {
@@ -236,9 +232,8 @@ func expandViewFieldNamesForMultiMatchStar(ctx context.Context, fieldsMap map[st
 			out = append(out, fieldInfo.MappedField.Name)
 			continue
 		}
-		if fieldInfo.Type == dtype.DATATYPE_STRING &&
-			fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
-			out = append(out, fieldInfo.MappedField.Name+"."+dtype.TEXT_SUFFIX)
+		if fieldInfo.Type == dtype.DATATYPE_STRING {
+			out = append(out, fieldInfo.MappedField.Name)
 		}
 	}
 	if len(out) == 0 {

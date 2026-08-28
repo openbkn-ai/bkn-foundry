@@ -28,14 +28,14 @@ func NewKnnCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fieldsMap m
 	if name == AllField {
 		return nil, fmt.Errorf(`the knn operation does not support the [*] query, please specify the field name explicitly`)
 	} else {
-		// When running a knn query on a vector field, rewrite it to "_vector_" + property.Name.
-		// Whether the field has knn enabled.
+		// This legacy OpenSearch path is retained only for compatibility. Resource-backed
+		// queries use rewriteKnnCond and Vega resolves feature and model capability.
 		fieldInfo := fieldsMap[name]
-		if fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.VectorConfig.Enabled {
+		if fieldInfo != nil {
 			// Vector queries are allowed only for vectorized properties; otherwise return an error.
 			field = "_vector_" + name
 		} else {
-			return nil, fmt.Errorf(`the index of property [%s] is not configured for vectorization and cannot be used for [knn] filtering. Please check the index configuration of the object type and the current request`, name)
+			return nil, fmt.Errorf(`property [%s] cannot be used for [knn] filtering`, name)
 		}
 	}
 

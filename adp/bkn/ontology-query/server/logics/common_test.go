@@ -206,19 +206,13 @@ func Test_BuildIndexSort(t *testing.T) {
 				"name": {
 					Name: "name",
 					Type: dtype.DATATYPE_TEXT,
-					IndexConfig: &cond.IndexConfig{
-						KeywordConfig: cond.KeywordConfig{
-							Enabled: true,
-						},
-					},
 				},
 			}
 
 			result := BuildIndexSort(objectType, propMap)
-			So(len(result), ShouldEqual, 3) // _score desc + two primary keys asc.
+			So(len(result), ShouldEqual, 2) // _score desc + string primary key asc.
 			So(result[0].Field, ShouldEqual, interfaces.SORT_FIELD_SCORE)
 			So(result[1].Field, ShouldEqual, "id")
-			So(result[2].Field, ShouldEqual, "name."+dtype.KEYWORD_SUFFIX)
 		})
 
 		Convey("成功 - text类型字段未启用keyword索引", func() {
@@ -232,11 +226,6 @@ func Test_BuildIndexSort(t *testing.T) {
 				"name": {
 					Name: "name",
 					Type: dtype.DATATYPE_TEXT,
-					IndexConfig: &cond.IndexConfig{
-						KeywordConfig: cond.KeywordConfig{
-							Enabled: false,
-						},
-					},
 				},
 			}
 

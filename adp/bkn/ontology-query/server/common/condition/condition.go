@@ -160,19 +160,11 @@ func getFilterFieldName(name string, fieldsMap map[string]*DataProperty, isFullT
 	// Add the _desensitize suffix for desensitized fields.
 	desensitizeFieldName := name + DESENSITIZE_FIELD_SUFFIX
 
-	fieldInfo, ok1 := fieldsMap[name]
+	_, ok1 := fieldsMap[name]
 	_, ok2 := fieldsMap[desensitizeFieldName]
 	if ok1 && ok2 {
 		// Desensitized field.
 		name = desensitizeFieldName
-	}
-
-	// Text fields do not need the keyword suffix for full-text search.
-	// Add .keyword for exact queries on text fields with a keyword index.
-	if !isFullTextQuery && ok1 &&
-		fieldInfo.Type == dtype.DATATYPE_TEXT &&
-		fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.KeywordConfig.Enabled {
-		name = wrapKeyWordFieldName(name)
 	}
 
 	return name

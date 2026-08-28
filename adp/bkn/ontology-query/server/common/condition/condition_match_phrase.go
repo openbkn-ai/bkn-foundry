@@ -30,7 +30,7 @@ func NewMatchPhraseCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fie
 		// }
 		// * Only for properties with a full-text index.
 		for _, fieldInfo := range fieldsMap {
-			if fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+			if fieldInfo.Type == "text" {
 				// match queries are allowed only for properties with a full-text index; otherwise return an error.
 				fields = append(fields, name)
 			}
@@ -38,7 +38,7 @@ func NewMatchPhraseCond(ctx context.Context, cfg *CondCfg, fieldScope uint8, fie
 	} else {
 		// Whether the field has a full-text index.
 		fieldInfo := fieldsMap[name]
-		if fieldInfo.IndexConfig != nil && fieldInfo.IndexConfig.FulltextConfig.Enabled {
+		if fieldInfo != nil && (fieldInfo.Type == "text" || fieldInfo.Type == "string") {
 			// match queries are allowed only for properties with a full-text index; otherwise return an error.
 			fields = append(fields, name)
 		} else {

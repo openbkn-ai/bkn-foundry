@@ -396,26 +396,7 @@ func (s *metricQueryService) buildResourceDataQueryParams(ctx context.Context, d
 
 // handlerVector resolves text to vectors for condition rewrite (same role as object_type_service).
 func (s *metricQueryService) handlerVector(ctx context.Context, property *cond.DataProperty, word string) ([]cond.VectorResp, error) {
-	if property == nil || property.IndexConfig == nil {
-		return nil, fmt.Errorf("%s", locale.ValidationDetail(ctx, "VectorIndexRequired", nil))
-	}
-	model, err := s.mfa.GetModelByID(ctx, property.IndexConfig.VectorConfig.ModelID)
-	if err != nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			oerrors.OntologyQuery_ObjectType_InternalError_GetSmallModelByIDFailed).
-			WithErrorDetails(err.Error())
-	}
-	if model == nil {
-		return nil, rest.NewHTTPError(ctx, http.StatusNotFound,
-			oerrors.OntologyQuery_ObjectType_SmallModelNotFound).
-			WithErrorDetails(locale.ValidationDetail(ctx, "SmallModelNotFound", map[string]any{"modelID": property.IndexConfig.VectorConfig.ModelID}))
-	}
-	if model.EmbeddingDim == 0 || model.BatchSize == 0 || model.MaxTokens == 0 {
-		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest,
-			oerrors.OntologyQuery_ObjectType_InvalidParameter_SmallModel).
-			WithErrorDetails(fmt.Sprintf("model %s has invalid embedding dim, batch size or max tokens", model.ModelID))
-	}
-	return s.mfa.GetVector(ctx, model, []string{word})
+	return nil, fmt.Errorf("ontology-query no longer vectorizes property %q; Vega Resource resolves vector conditions", property.Name)
 }
 
 // metricGroupByDimension describes one group-by dimension: PropertyName is the object type data property name and the key returned in labels.

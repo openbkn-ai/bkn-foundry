@@ -38,10 +38,7 @@ func MemoizeVectorizer(vectorize Vectorizer) Vectorizer {
 			return vectorize(ctx, property, word)
 		}
 
-		model := ""
-		if property.IndexConfig != nil {
-			model = property.IndexConfig.VectorConfig.ModelID
-		}
+		model := property.MappedField.Name
 		// Do not cache when the model is unknown. Without a distinguishing key, prefer recalculation over mixing vectors from different models.
 		if model == "" {
 			return vectorize(ctx, property, word)

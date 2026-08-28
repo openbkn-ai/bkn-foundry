@@ -23,12 +23,6 @@ func Test_NewKnnCond(t *testing.T) {
 			"vector_field": {
 				Name: "vector_field",
 				Type: dtype.DATATYPE_VECTOR,
-				IndexConfig: &IndexConfig{
-					VectorConfig: VectorConfig{
-						Enabled: true,
-						ModelID: "model1",
-					},
-				},
 				MappedField: Field{
 					Name: "mapped_vector",
 				},
@@ -43,12 +37,6 @@ func Test_NewKnnCond(t *testing.T) {
 			"vector_field_disabled": {
 				Name: "vector_field_disabled",
 				Type: dtype.DATATYPE_VECTOR,
-				IndexConfig: &IndexConfig{
-					VectorConfig: VectorConfig{
-						Enabled: false,
-						ModelID: "model1",
-					},
-				},
 				MappedField: Field{
 					Name: "mapped_vector",
 				},
@@ -122,7 +110,7 @@ func Test_NewKnnCond(t *testing.T) {
 			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("失败 - 未配置向量索引", func() {
+		Convey("成功 - 向量属性的资源能力由 Vega 校验", func() {
 			cfg := &CondCfg{
 				Name:      "vector_field_no_config",
 				Operation: OperationKNN,
@@ -135,11 +123,11 @@ func Test_NewKnnCond(t *testing.T) {
 				},
 			}
 			cond, err := NewKnnCond(ctx, cfg, CUSTOM, fieldsMap)
-			So(err, ShouldNotBeNil)
-			So(cond, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(cond, ShouldNotBeNil)
 		})
 
-		Convey("失败 - 向量索引未启用", func() {
+		Convey("成功 - 向量属性不读取旧配置", func() {
 			cfg := &CondCfg{
 				Name:      "vector_field_disabled",
 				Operation: OperationKNN,
@@ -152,8 +140,8 @@ func Test_NewKnnCond(t *testing.T) {
 				},
 			}
 			cond, err := NewKnnCond(ctx, cfg, CUSTOM, fieldsMap)
-			So(err, ShouldNotBeNil)
-			So(cond, ShouldBeNil)
+			So(err, ShouldBeNil)
+			So(cond, ShouldNotBeNil)
 		})
 
 		Convey("失败 - 子条件错误", func() {
@@ -438,12 +426,6 @@ func Test_rewriteKnnCond(t *testing.T) {
 				NameField: &DataProperty{
 					Name: "vector_field",
 					Type: dtype.DATATYPE_VECTOR,
-					IndexConfig: &IndexConfig{
-						VectorConfig: VectorConfig{
-							Enabled: true,
-							ModelID: "model1",
-						},
-					},
 					MappedField: Field{
 						Name: "mapped_vector",
 					},
@@ -504,7 +486,6 @@ func Test_rewriteKnnCond_NativeVectorPropertyPassesTextDownstream(t *testing.T) 
 				Name:        "embedding",
 				Type:        dtype.DATATYPE_VECTOR,
 				MappedField: Field{Name: "embedding_col"},
-				IndexConfig: &IndexConfig{VectorConfig: VectorConfig{Enabled: true, ModelID: "m-1"}},
 			},
 			ValueOptCfg: ValueOptCfg{Value: "famous stadium"},
 		}
