@@ -367,6 +367,13 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
+	if req.Enabled != resource.Enabled {
+		httpErr := rest.NewHTTPError(ctx, http.StatusConflict, verrors.VegaBackend_Resource_EnabledFieldNotAllowed).
+			WithErrorDetails("use POST /resources/{id}/enable or /disable to change enabled state")
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 	if err := ValidateResourceRequest(ctx, &req); err != nil {
 		httpErr := err.(*rest.HTTPError)
 		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
@@ -391,6 +398,69 @@ func (r *restHandler) updateResource(c *gin.Context, visitor hydra.Visitor) {
 		interfaces.GenerateResourceAuditObject(id, req.Name), "")
 
 	logger.Debug("Handler UpdateResource Success")
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// EnableResourceByEx handles POST /api/vega-backend/v1/resources/:id/enable.
+func (r *restHandler) EnableResourceByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setResourceEnabled(c, visitor, true)
+}
+
+// EnableResourceByIn handles POST /api/vega-backend/in/v1/resources/:id/enable.
+func (r *restHandler) EnableResourceByIn(c *gin.Context) {
+	r.setResourceEnabled(c, visitor.GenerateVisitor(c), true)
+}
+
+// DisableResourceByEx handles POST /api/vega-backend/v1/resources/:id/disable.
+func (r *restHandler) DisableResourceByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.setResourceEnabled(c, visitor, false)
+}
+
+// DisableResourceByIn handles POST /api/vega-backend/in/v1/resources/:id/disable.
+func (r *restHandler) DisableResourceByIn(c *gin.Context) {
+	r.setResourceEnabled(c, visitor.GenerateVisitor(c), false)
+}
+
+func (r *restHandler) setResourceEnabled(c *gin.Context, visitor hydra.Visitor, enabled bool) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{
+		ID: visitor.ID, Type: string(visitor.Type),
+	})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	id := c.Param("id")
+	resource, err := r.rs.GetByID(ctx, id)
+	if err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if resource.Enabled == enabled {
+		oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
+		rest.ReplyOK(c, http.StatusNoContent, nil)
+		return
+	}
+	if err = r.rs.SetEnabled(ctx, resource, enabled); err != nil {
+		httpErr := err.(*rest.HTTPError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+
+	audit.NewInfoLog(audit.OPERATION, audit.UPDATE, audit.TransforOperator(visitor),
+		interfaces.GenerateResourceAuditObject(id, resource.Name), "")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
 }
@@ -474,4 +544,53 @@ func (r *restHandler) deleteResources(c *gin.Context, visitor hydra.Visitor) {
 	logger.Debug("Handler DeleteResource Success")
 	oteltrace.AddHttpAttrs4Ok(span, http.StatusNoContent)
 	rest.ReplyOK(c, http.StatusNoContent, nil)
+}
+
+// DiscoverResourceByEx handles POST /api/vega-backend/v1/resources/:id/discover.
+func (r *restHandler) DiscoverResourceByEx(c *gin.Context) {
+	visitor, err := r.verifyOAuth(rest.GetLanguageCtx(c), c)
+	if err != nil {
+		return
+	}
+	r.discoverResource(c, visitor)
+}
+
+// DiscoverResourceByIn handles POST /api/vega-backend/in/v1/resources/:id/discover.
+func (r *restHandler) DiscoverResourceByIn(c *gin.Context) {
+	r.discoverResource(c, visitor.GenerateVisitor(c))
+}
+
+func (r *restHandler) discoverResource(c *gin.Context, visitor hydra.Visitor) {
+	ctx, span := oteltrace.StartServerSpan(c)
+	defer span.End()
+
+	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, interfaces.AccountInfo{ID: visitor.ID, Type: string(visitor.Type)})
+	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
+
+	resource, err := r.rs.InternalGetByID(ctx, nil, c.Param("id"))
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError_GetFailed)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	if resource == nil {
+		httpErr := rest.NewHTTPError(ctx, http.StatusNotFound, verrors.VegaBackend_Resource_NotFound)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	taskID, err := r.dts.Create(ctx, &interfaces.CreateDiscoverTaskRequest{
+		CatalogID:   resource.CatalogID,
+		ResourceID:  resource.ID,
+		TriggerType: interfaces.DiscoverTaskTriggerManual,
+	})
+	if err != nil {
+		httpErr := httpErrorOrInternal(ctx, err, verrors.VegaBackend_Resource_InternalError)
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
+	oteltrace.AddHttpAttrs4Ok(span, http.StatusOK)
+	rest.ReplyOK(c, http.StatusOK, map[string]any{"id": taskID})
 }

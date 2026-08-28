@@ -29,7 +29,7 @@ paths:
   /build-tasks:
     get:
       summary: 获取构建任务列表
-      description: 分页获取构建任务；支持按 resource_id / catalog_id / status / mode 过滤。
+      description: 分页获取构建任务；支持按 resource_id / catalog_id / status / mode / execute_type 过滤。
       parameters:
         - name: resource_id
           description: 按归属 resource 过滤
@@ -66,6 +66,14 @@ paths:
             enum:
               - streaming
               - batch
+        - name: execute_type
+          description: 按批处理执行方式过滤；流式任务不匹配该筛选条件
+          in: query
+          schema:
+            type: string
+            enum:
+              - full
+              - incremental
         - name: offset
           description: 分页偏移量，>=0，默认 0
           in: query

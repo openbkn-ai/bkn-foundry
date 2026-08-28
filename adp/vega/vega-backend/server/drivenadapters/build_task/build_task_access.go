@@ -553,6 +553,15 @@ func (bta *buildTaskAccess) List(ctx context.Context, params interfaces.BuildTas
 
 func applyBuildTaskFilters(builder sq.SelectBuilder,
 	params interfaces.BuildTasksQueryParams) sq.SelectBuilder {
+	if len(params.Statuses) > 0 {
+		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
+	}
+	if params.Mode != "" {
+		builder = builder.Where(sq.Eq{"f_mode": params.Mode})
+	}
+	if params.ExecuteType != "" {
+		builder = builder.Where(sq.Eq{"f_execute_type": params.ExecuteType})
+	}
 	if params.ResourceID != "" {
 		builder = builder.Where(sq.Eq{"f_resource_id": params.ResourceID})
 	}
@@ -564,12 +573,6 @@ func applyBuildTaskFilters(builder sq.SelectBuilder,
 	}
 	if len(params.CatalogIDs) > 0 {
 		builder = builder.Where(sq.Eq{"f_catalog_id": params.CatalogIDs})
-	}
-	if len(params.Statuses) > 0 {
-		builder = builder.Where(sq.Eq{"f_status": params.Statuses})
-	}
-	if params.Mode != "" {
-		builder = builder.Where(sq.Eq{"f_mode": params.Mode})
 	}
 	return builder
 }

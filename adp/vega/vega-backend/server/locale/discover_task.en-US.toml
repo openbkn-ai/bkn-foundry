@@ -13,6 +13,11 @@ Description = "Discover task is pending or running and cannot be deleted"
 Solution = "Wait for the task to complete or fail before deleting"
 ErrorLink = ""
 
+[VegaBackend.DiscoverTask.ResourceRefreshInProgress]
+Description = "A metadata refresh for this resource is already pending or running"
+Solution = "Wait for the existing refresh to finish before retrying"
+ErrorLink = ""
+
 [VegaBackend.DiscoverTask.InternalError.GetFailed]
 Description = "Failed to get discover task"
 Solution = "Please contact the administrator"

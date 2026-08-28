@@ -9,6 +9,7 @@ package discover_task
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -26,6 +27,7 @@ import (
 	"vega-backend/interfaces"
 	"vega-backend/logics"
 	"vega-backend/logics/catalog"
+	"vega-backend/logics/resource"
 	"vega-backend/logics/user_mgmt"
 )
 
@@ -40,6 +42,7 @@ type discoverTaskService struct {
 	appSetting *common.AppSetting
 	cs         interfaces.CatalogService
 	dta        interfaces.DiscoverTaskAccess
+	rs         interfaces.ResourceService
 	ums        interfaces.UserMgmtService
 
 	dispatchCh chan struct{}
@@ -52,6 +55,7 @@ func NewDiscoverTaskService(appSetting *common.AppSetting) interfaces.DiscoverTa
 			appSetting: appSetting,
 			cs:         catalog.NewCatalogService(appSetting),
 			dta:        logics.DTA,
+			rs:         resource.NewResourceService(appSetting),
 			ums:        user_mgmt.NewUserMgmtService(appSetting),
 
 			dispatchCh: make(chan struct{}, discoverTaskDispatchBuffer),
@@ -99,19 +103,39 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 		span.SetStatus(codes.Error, "Permission denied")
 		return "", err
 	}
+	if req.ResourceID != "" {
+		activeTasks, err := dts.dta.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{Limit: 1},
+			ResourceID:            req.ResourceID,
+			Statuses: []string{
+				interfaces.DiscoverTaskStatusPending,
+				interfaces.DiscoverTaskStatusRunning,
+			},
+		})
+		if err != nil {
+			return "", err
+		}
+		if len(activeTasks) > 0 {
+			return "", rest.NewHTTPError(ctx, http.StatusConflict,
+				verrors.VegaBackend_DiscoverTask_ResourceRefreshInProgress)
+		}
+	}
 
 	now := time.Now().UnixMilli()
+	queuePriority := DiscoverTaskPriority(req)
 	task := &interfaces.DiscoverTask{
-		ID:          xid.New().String(),
-		CatalogID:   req.CatalogID,
-		ScheduleID:  req.ScheduleID,
-		Strategy:    req.Strategy,
-		TriggerType: req.TriggerType,
-		Status:      interfaces.DiscoverTaskStatusPending,
-		Progress:    0,
-		Message:     "",
-		Creator:     accountInfo,
-		CreateTime:  now,
+		ID:            xid.New().String(),
+		CatalogID:     req.CatalogID,
+		ResourceID:    req.ResourceID,
+		ScheduleID:    req.ScheduleID,
+		Strategy:      req.Strategy,
+		TriggerType:   req.TriggerType,
+		QueuePriority: queuePriority,
+		Status:        interfaces.DiscoverTaskStatusPending,
+		Progress:      0,
+		Message:       "",
+		Creator:       accountInfo,
+		CreateTime:    now,
 	}
 
 	// 1. Write to database
@@ -123,6 +147,16 @@ func (dts *discoverTaskService) Create(ctx context.Context, req *interfaces.Crea
 	dts.RequestDispatch()
 
 	return task.ID, nil
+}
+
+func DiscoverTaskPriority(req *interfaces.CreateDiscoverTaskRequest) int {
+	if req.ResourceID != "" {
+		return interfaces.DiscoverTaskQueuePriorityHigh
+	}
+	if req.TriggerType == interfaces.DiscoverTaskTriggerScheduled {
+		return interfaces.DiscoverTaskQueuePriorityLow
+	}
+	return interfaces.DiscoverTaskQueuePriorityNormal
 }
 
 // CreateScheduled method removed - scheduled tasks are now managed by DiscoverScheduleService
@@ -239,70 +273,116 @@ func (dts *discoverTaskService) InternalList(ctx context.Context, params interfa
 	return tasks, nil
 }
 
-// PopulateDiscoverTaskSummaryReferences batch task link, filling the page directory name.
+// PopulateDiscoverTaskSummaryReferences batch task links, filling current catalog and resource names.
 func (dts *discoverTaskService) populateDiscoverTaskSummaryReferences(ctx context.Context, tasks []*interfaces.DiscoverTaskSummary) error {
 	catalogIDs := make([]string, 0, len(tasks))
-	seen := make(map[string]struct{}, len(tasks))
+	catalogIDSet := make(map[string]struct{}, len(tasks))
+	resourceIDs := make([]string, 0, len(tasks))
+	resourceIDSet := make(map[string]struct{}, len(tasks))
 	for _, task := range tasks {
-		if task.CatalogID == "" {
-			continue
+		if task.CatalogID != "" {
+			if _, exists := catalogIDSet[task.CatalogID]; !exists {
+				catalogIDSet[task.CatalogID] = struct{}{}
+				catalogIDs = append(catalogIDs, task.CatalogID)
+			}
 		}
-		if _, exists := seen[task.CatalogID]; !exists {
-			seen[task.CatalogID] = struct{}{}
-			catalogIDs = append(catalogIDs, task.CatalogID)
+		if task.ResourceID != "" {
+			if _, exists := resourceIDSet[task.ResourceID]; !exists {
+				resourceIDSet[task.ResourceID] = struct{}{}
+				resourceIDs = append(resourceIDs, task.ResourceID)
+			}
 		}
-	}
-	if len(catalogIDs) == 0 {
-		return nil
 	}
 
-	catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
-	if err != nil {
-		return err
+	var referenceErrors []error
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	if len(catalogIDs) > 0 {
+		catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
+		if err != nil {
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, catalog := range catalogs {
+				catalogsByID[catalog.ID] = catalog
+			}
+		}
 	}
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
-	for _, catalog := range catalogs {
-		catalogsByID[catalog.ID] = catalog
+	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	if len(resourceIDs) > 0 {
+		resources, err := dts.rs.InternalGetByIDs(ctx, resourceIDs)
+		if err != nil {
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, resource := range resources {
+				resourcesByID[resource.ID] = resource
+			}
+		}
 	}
+
 	for _, task := range tasks {
 		if catalog := catalogsByID[task.CatalogID]; catalog != nil {
 			task.CatalogName = catalog.Name
 		}
+		if resource := resourcesByID[task.ResourceID]; resource != nil {
+			task.ResourceName = resource.Name
+		}
 	}
-	return nil
+	return errors.Join(referenceErrors...)
 }
 
-// PopulateDiscoverTaskReferences batch completion task associated display name of the directory.
+// PopulateDiscoverTaskReferences batch task links, filling current catalog and resource names.
 func (dts *discoverTaskService) populateDiscoverTaskReferences(ctx context.Context, tasks []*interfaces.DiscoverTask) error {
 	catalogIDs := make([]string, 0, len(tasks))
-	seen := make(map[string]struct{}, len(tasks))
+	catalogIDSet := make(map[string]struct{}, len(tasks))
+	resourceIDs := make([]string, 0, len(tasks))
+	resourceIDSet := make(map[string]struct{}, len(tasks))
 	for _, task := range tasks {
-		if task.CatalogID == "" {
-			continue
+		if task.CatalogID != "" {
+			if _, exists := catalogIDSet[task.CatalogID]; !exists {
+				catalogIDSet[task.CatalogID] = struct{}{}
+				catalogIDs = append(catalogIDs, task.CatalogID)
+			}
 		}
-		if _, exists := seen[task.CatalogID]; !exists {
-			seen[task.CatalogID] = struct{}{}
-			catalogIDs = append(catalogIDs, task.CatalogID)
+		if task.ResourceID != "" {
+			if _, exists := resourceIDSet[task.ResourceID]; !exists {
+				resourceIDSet[task.ResourceID] = struct{}{}
+				resourceIDs = append(resourceIDs, task.ResourceID)
+			}
 		}
-	}
-	if len(catalogIDs) == 0 {
-		return nil
 	}
 
-	catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
-	if err != nil {
-		return err
+	var referenceErrors []error
+	resourcesByID := make(map[string]*interfaces.Resource, len(resourceIDs))
+	if len(resourceIDs) > 0 {
+		resources, err := dts.rs.InternalGetByIDs(ctx, resourceIDs)
+		if err != nil {
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, resource := range resources {
+				resourcesByID[resource.ID] = resource
+			}
+		}
 	}
-	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogs))
-	for _, catalog := range catalogs {
-		catalogsByID[catalog.ID] = catalog
+
+	catalogsByID := make(map[string]*interfaces.Catalog, len(catalogIDs))
+	if len(catalogIDs) > 0 {
+		catalogs, err := dts.cs.InternalGetByIDs(ctx, catalogIDs)
+		if err != nil {
+			referenceErrors = append(referenceErrors, err)
+		} else {
+			for _, catalog := range catalogs {
+				catalogsByID[catalog.ID] = catalog
+			}
+		}
 	}
 	for _, task := range tasks {
+		if resource := resourcesByID[task.ResourceID]; resource != nil {
+			task.ResourceName = resource.Name
+		}
 		if catalog := catalogsByID[task.CatalogID]; catalog != nil {
 			task.CatalogName = catalog.Name
 		}
 	}
-	return nil
+	return errors.Join(referenceErrors...)
 }
 
 func (dts *discoverTaskService) InternalMarkRunning(ctx context.Context, id string) (bool, error) {

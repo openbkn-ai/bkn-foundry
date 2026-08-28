@@ -78,6 +78,11 @@ Description = "数据资源已处于禁用状态"
 Solution = "无需操作"
 ErrorLink = ""
 
+[VegaBackend.Resource.EnabledFieldNotAllowed]
+Description = "不能通过 PUT 修改数据资源启停状态"
+Solution = "请使用资源启用或禁用动作"
+ErrorLink = ""
+
 [VegaBackend.Resource.NotQueryable]
 Description = "数据资源当前状态不支持查询"
 Solution = "仅 active/deprecated 状态可查询；请先启用资源或刷新 schema"

@@ -252,7 +252,6 @@ func validateResourceStatusQueryParam(ctx context.Context, status string) error 
 
 	switch status {
 	case interfaces.ResourceStatusActive,
-		interfaces.ResourceStatusDisabled,
 		interfaces.ResourceStatusDeprecated,
 		interfaces.ResourceStatusStale:
 		return nil

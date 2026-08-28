@@ -62,6 +62,7 @@ func sampleDatasetResource() *interfaces.Resource {
 		ID:               "res-1",
 		Name:             "dataset",
 		Category:         interfaces.ResourceCategoryDataset,
+		Enabled:          true,
 		Status:           interfaces.ResourceStatusActive,
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 	}

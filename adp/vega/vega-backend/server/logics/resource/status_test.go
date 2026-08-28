@@ -30,16 +30,16 @@ func TestEnsureResourceQueryable(t *testing.T) {
 		{name: "nil resource passes", resource: nil},
 		{
 			name:     "active passes silently",
-			resource: &interfaces.Resource{ID: "r1", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			resource: &interfaces.Resource{ID: "r1", Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		},
 		{
 			name:     "deprecated warns",
-			resource: &interfaces.Resource{ID: "r1", Name: "n1", Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			resource: &interfaces.Resource{ID: "r1", Name: "n1", Enabled: true, Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 			wantWarn: true,
 		},
 		{
 			name:        "disabled blocks",
-			resource:    &interfaces.Resource{ID: "r1", Status: interfaces.ResourceStatusDisabled},
+			resource:    &interfaces.Resource{ID: "r1", Enabled: false},
 			wantErr:     true,
 			wantErrCode: verrors.VegaBackend_Resource_NotQueryable,
 		},
@@ -53,6 +53,7 @@ func TestEnsureResourceQueryable(t *testing.T) {
 			name: "stale takes precedence over missing",
 			resource: &interfaces.Resource{
 				ID:                 "r1",
+				Enabled:            true,
 				Status:             interfaces.ResourceStatusStale,
 				LastDiscoverStatus: interfaces.DiscoverStatusMissing,
 				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
@@ -64,7 +65,8 @@ func TestEnsureResourceQueryable(t *testing.T) {
 			name: "disabled takes precedence over missing",
 			resource: &interfaces.Resource{
 				ID:                 "r1",
-				Status:             interfaces.ResourceStatusDisabled,
+				Enabled:            false,
+				Status:             interfaces.ResourceStatusActive,
 				LastDiscoverStatus: interfaces.DiscoverStatusMissing,
 				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
 			},
@@ -73,7 +75,7 @@ func TestEnsureResourceQueryable(t *testing.T) {
 		},
 		{
 			name:     "unknown status passes (forward compat)",
-			resource: &interfaces.Resource{ID: "r1", Status: "unknown_future_status", SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			resource: &interfaces.Resource{ID: "r1", Enabled: true, Status: "unknown_future_status", SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		},
 	}
 
@@ -114,8 +116,8 @@ func TestEnsureResourcesQueryable(t *testing.T) {
 
 	t.Run("all active produces no warnings", func(t *testing.T) {
 		ws, err := EnsureResourcesQueryable(ctx, []*interfaces.Resource{
-			{ID: "a", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
-			{ID: "b", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "a", Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "b", Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -127,8 +129,8 @@ func TestEnsureResourcesQueryable(t *testing.T) {
 
 	t.Run("mixed active + deprecated returns deprecated warning", func(t *testing.T) {
 		ws, err := EnsureResourcesQueryable(ctx, []*interfaces.Resource{
-			{ID: "a", Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
-			{ID: "b", Name: "n", Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "a", Enabled: true, Status: interfaces.ResourceStatusActive, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
+			{ID: "b", Name: "n", Enabled: true, Status: interfaces.ResourceStatusDeprecated, SchemaDefinition: []*interfaces.Property{{Name: "id"}}},
 		})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -140,9 +142,9 @@ func TestEnsureResourcesQueryable(t *testing.T) {
 
 	t.Run("any disabled in slice fails fast", func(t *testing.T) {
 		_, err := EnsureResourcesQueryable(ctx, []*interfaces.Resource{
-			{ID: "a", Status: interfaces.ResourceStatusActive},
-			{ID: "b", Status: interfaces.ResourceStatusDisabled},
-			{ID: "c", Status: interfaces.ResourceStatusActive},
+			{ID: "a", Enabled: true, Status: interfaces.ResourceStatusActive},
+			{ID: "b", Enabled: false, Status: interfaces.ResourceStatusActive},
+			{ID: "c", Enabled: true, Status: interfaces.ResourceStatusActive},
 		})
 		if err == nil {
 			t.Fatal("expected error from disabled resource")

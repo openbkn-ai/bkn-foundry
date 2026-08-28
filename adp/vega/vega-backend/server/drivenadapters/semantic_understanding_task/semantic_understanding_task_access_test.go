@@ -145,9 +145,9 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ?")).
 			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(1))
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskListColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinSemanticUnderstandingTaskSummaryColumns()+" FROM t_semantic_understanding_task WHERE f_scope = ? AND f_catalog_id = ? AND f_resource_id = ? AND f_status IN (?,?) AND f_apply_mode = ? AND f_applied = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
 			WithArgs(interfaces.SemanticUnderstandingTaskScopeResource, "catalog-1", "resource-1", interfaces.SemanticUnderstandingTaskStatusPending, interfaces.SemanticUnderstandingTaskStatusRunning, interfaces.SemanticUnderstandingApplyModeFillEmpty, true).
-			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskListColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
+			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskSummaryColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
 
 		got, total, err := access.List(context.Background(), params)
 
@@ -190,9 +190,9 @@ func TestSemanticUnderstandingTaskAccessList(t *testing.T) {
 			Statuses:              []string{interfaces.SemanticUnderstandingTaskStatusPending},
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinSemanticUnderstandingTaskListColumns() + " FROM t_semantic_understanding_task WHERE f_status IN (?) ORDER BY f_create_time DESC LIMIT 1 OFFSET 0")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT " + joinSemanticUnderstandingTaskSummaryColumns() + " FROM t_semantic_understanding_task WHERE f_status IN (?) ORDER BY f_create_time DESC LIMIT 1 OFFSET 0")).
 			WithArgs(interfaces.SemanticUnderstandingTaskStatusPending).
-			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskListColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
+			WillReturnRows(sqlmock.NewRows(semanticUnderstandingTaskSummaryColumns()).AddRow(semanticUnderstandingTaskListRowValues(task)...))
 
 		got, err := access.InternalList(context.Background(), params)
 
@@ -400,6 +400,6 @@ func semanticUnderstandingTaskListRowValues(task *interfaces.SemanticUnderstandi
 	}
 }
 
-func joinSemanticUnderstandingTaskListColumns() string {
-	return strings.Join(semanticUnderstandingTaskListColumns(), ", ")
+func joinSemanticUnderstandingTaskSummaryColumns() string {
+	return strings.Join(semanticUnderstandingTaskSummaryColumns(), ", ")
 }

@@ -42,6 +42,7 @@ func newTestService(t *testing.T) (*resourceService,
 	mockUMS := vmock.NewMockUserMgmtService(ctrl)
 	mockCS := vmock.NewMockCatalogService(ctrl)
 	mockBTA := vmock.NewMockBuildTaskAccess(ctrl)
+	mockDTA := vmock.NewMockDiscoverTaskAccess(ctrl)
 
 	rs := &resourceService{
 		ra:  mockRA,
@@ -50,10 +51,12 @@ func newTestService(t *testing.T) (*resourceService,
 		ums: mockUMS,
 		cs:  mockCS,
 		bta: mockBTA,
+		dta: mockDTA,
 	}
 
 	// 默认无系统内部目录；覆盖 internal 行为的用例可叠加更具体的 EXPECT
 	mockCS.EXPECT().InternalCatalogIDSet(gomock.Any()).Return(map[string]struct{}{}, nil).AnyTimes()
+	mockDTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 
 	return rs, mockRA, mockPS, mockDS, mockUMS, mockCS, mockBTA
 }
@@ -825,6 +828,26 @@ func TestResourceServiceDeleteByIDs(t *testing.T) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
+	t.Run("rejects deletion while resource refresh is pending or running", func(t *testing.T) {
+		rs, mockRA, mockPS, _, _, _, _ := newTestService(t)
+		ctrl := gomock.NewController(t)
+		mockDTA := vmock.NewMockDiscoverTaskAccess(ctrl)
+		rs.dta = mockDTA
+		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
+		mockRA.EXPECT().GetByIDs(gomock.Any(), []string{"r1"}).
+			Return([]*interfaces.Resource{{ID: "r1"}}, nil)
+		mockDTA.EXPECT().InternalList(gomock.Any(), gomock.Any()).
+			DoAndReturn(func(_ context.Context, params interfaces.DiscoverTaskQueryParams) ([]*interfaces.DiscoverTaskSummary, error) {
+				assert.Equal(t, "r1", params.ResourceID)
+				assert.Equal(t, []string{interfaces.DiscoverTaskStatusPending, interfaces.DiscoverTaskStatusRunning}, params.Statuses)
+				assert.Equal(t, 1, params.Limit)
+				return []*interfaces.DiscoverTaskSummary{{ID: "discover-1", ResourceID: "r1"}}, nil
+			})
+
+		httpErr := requireResourceHTTPError(t, rs.DeleteByIDs(context.Background(), []string{"r1"}),
+			verrors.VegaBackend_DiscoverTask_ResourceRefreshInProgress)
+		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
+	})
 	t.Run("deletes resource before dataset", func(t *testing.T) {
 		rs, mockRA, mockPS, mockDS, _, _, mockBTA := newTestService(t)
 		expectDeleteGrantedByCatalog(mockRA, mockPS, []string{"r1"}, "cat1")
@@ -909,7 +932,7 @@ func TestResourceServiceRejectBuildRelevantUpdateWhenActiveBuildTask(t *testing.
 			})
 
 		httpErr := requireResourceHTTPError(t,
-			rs.rejectBuildRelevantUpdateWhenActiveBuildTask(context.Background(), "r1", true),
+			rs.rejectResourceOperationWhenActiveBuildTask(context.Background(), "r1", true),
 			verrors.VegaBackend_BuildTask_Exist)
 		assert.Equal(t, http.StatusConflict, httpErr.HTTPCode)
 	})
@@ -925,7 +948,7 @@ func TestResourceServiceRejectBuildRelevantUpdateWhenActiveBuildTask(t *testing.
 				return nil, nil
 			})
 
-		require.NoError(t, rs.rejectBuildRelevantUpdateWhenActiveBuildTask(context.Background(), "r1", false))
+		require.NoError(t, rs.rejectResourceOperationWhenActiveBuildTask(context.Background(), "r1", false))
 	})
 }
 

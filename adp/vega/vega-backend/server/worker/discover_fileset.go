@@ -174,6 +174,7 @@ func (dtw *DiscoverTaskWorker) createFilesetResource(ctx context.Context, catalo
 		CatalogID:        catalog.ID,
 		Name:             fs.Name,
 		Category:         interfaces.ResourceCategoryFileset,
+		Enabled:          true,
 		Status:           interfaces.ResourceStatusActive,
 		Schema:           "",
 		SourceIdentifier: sourceIdentifier,

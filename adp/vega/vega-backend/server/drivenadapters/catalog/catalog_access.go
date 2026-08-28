@@ -42,7 +42,7 @@ type catalogAccess struct {
 	db         *sql.DB
 }
 
-var catalogDetailColumns = []string{
+var catalogColumns = []string{
 	"f_id",
 	"f_name",
 	"f_tags",
@@ -88,7 +88,7 @@ type catalogRowScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanCatalogDetail(scanner catalogRowScanner) (*interfaces.Catalog, error) {
+func scanCatalog(scanner catalogRowScanner) (*interfaces.Catalog, error) {
 	catalog := &interfaces.Catalog{}
 	var tagsStr, connectorConfigStr, metadataStr string
 	if err := scanner.Scan(
@@ -279,7 +279,7 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 
 	span.SetAttributes(attr.Key("catalog_id").String(id))
 
-	sqlStr, vals, err := sq.Select(catalogDetailColumns...).
+	sqlStr, vals, err := sq.Select(catalogColumns...).
 		From(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_id": id}).
 		ToSql()
@@ -290,7 +290,7 @@ func (ca *catalogAccess) GetByID(ctx context.Context, id string) (*interfaces.Ca
 	}
 
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
-	catalog, err := scanCatalogDetail(row)
+	catalog, err := scanCatalog(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
@@ -312,7 +312,7 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 
 	span.SetAttributes(attr.Key("catalog_ids").StringSlice(ids))
 
-	sqlStr, vals, err := sq.Select(catalogDetailColumns...).
+	sqlStr, vals, err := sq.Select(catalogColumns...).
 		From(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
@@ -332,7 +332,7 @@ func (ca *catalogAccess) GetByIDs(ctx context.Context, ids []string) ([]*interfa
 
 	catalogs := make([]*interfaces.Catalog, 0)
 	for rows.Next() {
-		catalog, err := scanCatalogDetail(rows)
+		catalog, err := scanCatalog(rows)
 		if err != nil {
 			logger.Errorf("Scan catalog row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
@@ -396,7 +396,7 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 
 	span.SetAttributes(attr.Key("catalog_name").String(name))
 
-	sqlStr, vals, err := sq.Select(catalogDetailColumns...).
+	sqlStr, vals, err := sq.Select(catalogColumns...).
 		From(CATALOG_TABLE_NAME).
 		Where(sq.Eq{"f_name": name}).
 		ToSql()
@@ -407,7 +407,7 @@ func (ca *catalogAccess) GetByName(ctx context.Context, name string) (*interface
 	}
 
 	row := ca.db.QueryRowContext(ctx, sqlStr, vals...)
-	catalog, err := scanCatalogDetail(row)
+	catalog, err := scanCatalog(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil

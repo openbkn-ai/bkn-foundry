@@ -24,6 +24,10 @@ import (
 // If Config.Database is not empty, only list the tables of this database;
 // If Config.Database is empty (instance level connection), traverse all user databases, and the returned TableMeta.Database field marks the library to which it belongs.
 func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableMeta, error) {
+	return c.listTables(ctx, "", "")
+}
+
+func (c *MariaDBConnector) listTables(ctx context.Context, database, tableName string) ([]*interfaces.TableMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
@@ -42,11 +46,20 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 		"INDEX_LENGTH",
 	).From("information_schema.TABLES")
 
-	// Filter databases
-	if len(c.config.Databases) > 0 {
+	// A qualified source identifier selects one database. It must still remain
+	// within the connector's configured database scope.
+	if database != "" {
+		if len(c.config.Databases) > 0 && !containsMariaDBDatabase(c.config.Databases, database) {
+			return nil, fmt.Errorf("database %q is outside the connector scope", database)
+		}
+		builder = builder.Where(sq.Eq{"TABLE_SCHEMA": database})
+	} else if len(c.config.Databases) > 0 {
 		builder = builder.Where(sq.Eq{"TABLE_SCHEMA": c.config.Databases})
 	} else {
 		builder = builder.Where(sq.NotEq{"TABLE_SCHEMA": SYSTEM_DBS})
+	}
+	if tableName != "" {
+		builder = builder.Where(sq.Eq{"TABLE_NAME": tableName})
 	}
 
 	query, args, err := builder.ToSql()
@@ -133,6 +146,15 @@ func (c *MariaDBConnector) ListTables(ctx context.Context) ([]*interfaces.TableM
 	return tables, nil
 }
 
+func containsMariaDBDatabase(databases []string, database string) bool {
+	for _, configuredDatabase := range databases {
+		if configuredDatabase == database {
+			return true
+		}
+	}
+	return false
+}
+
 // GetTableMeta returns metadata for a specific table.
 // table format: "table_name" or "database.table_name"
 func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.TableMeta) error {
@@ -161,6 +183,43 @@ func (c *MariaDBConnector) GetTableMeta(ctx context.Context, table *interfaces.T
 	}
 
 	return nil
+}
+
+func (c *MariaDBConnector) GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.TableMeta, error) {
+	database, tableName, err := splitMariaDBTableIdentifier(sourceIdentifier)
+	if err != nil {
+		return nil, err
+	}
+	table, err := c.findTableByIdentifier(ctx, database, tableName)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.GetTableMeta(ctx, table); err != nil {
+		return nil, err
+	}
+	return table, nil
+}
+
+func splitMariaDBTableIdentifier(sourceIdentifier string) (database, tableName string, err error) {
+	separator := strings.LastIndex(sourceIdentifier, ".")
+	if separator <= 0 || separator == len(sourceIdentifier)-1 {
+		return "", "", fmt.Errorf("invalid MariaDB table source identifier %q", sourceIdentifier)
+	}
+	return sourceIdentifier[:separator], sourceIdentifier[separator+1:], nil
+}
+
+func (c *MariaDBConnector) findTableByIdentifier(ctx context.Context, database, tableName string) (*interfaces.TableMeta, error) {
+	tables, err := c.listTables(ctx, database, tableName)
+	if err != nil {
+		return nil, fmt.Errorf("list tables: %w", err)
+	}
+	if len(tables) == 0 {
+		return nil, fmt.Errorf("table %q in database %q not found", tableName, database)
+	}
+	if len(tables) > 1 {
+		return nil, fmt.Errorf("table %q in database %q is ambiguous", tableName, database)
+	}
+	return tables[0], nil
 }
 
 // fetchTableStatus retrieves table status from information_schema.TABLES.

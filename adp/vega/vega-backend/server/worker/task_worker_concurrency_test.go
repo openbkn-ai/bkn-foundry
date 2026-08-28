@@ -7,6 +7,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -24,13 +25,20 @@ func TestDiscoverTaskWorkerLimitsConcurrency(t *testing.T) {
 	t.Cleanup(ctrl.Finish)
 	taskService := vmock.NewMockDiscoverTaskService(ctrl)
 	entered, release, completed := workerPoolTestChannels()
-	queue, inFlight := workerPoolTestQueue("task")
+	queue := make(chan discoverTaskQueueItem, 3)
+	activeTaskIDs := make(map[string]struct{}, 3)
+	for i := 1; i <= 3; i++ {
+		taskID := fmt.Sprintf("task-%d", i)
+		queue <- discoverTaskQueueItem{taskID: taskID}
+		activeTaskIDs[taskID] = struct{}{}
+	}
 	dispatchSignal := make(chan struct{})
 	worker := &DiscoverTaskWorker{
-		dts:         taskService,
-		workerCount: 2,
-		queue:       queue,
-		inFlight:    inFlight,
+		dts:              taskService,
+		workerCount:      2,
+		queue:            queue,
+		activeTaskIDs:    activeTaskIDs,
+		activeCatalogIDs: make(map[string]struct{}),
 	}
 	taskService.EXPECT().InternalGetByID(gomock.Any(), gomock.Any()).Times(3).
 		DoAndReturn(func(_ context.Context, taskID string) (*interfaces.DiscoverTask, error) {
@@ -44,7 +52,7 @@ func TestDiscoverTaskWorkerLimitsConcurrency(t *testing.T) {
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 	taskService.EXPECT().DispatchSignal().AnyTimes().Return((<-chan struct{})(dispatchSignal))
 
-	assertWorkerPoolLimit(t, queue, worker.workerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
+	assertWorkerPoolLimit(t, func() int { return len(queue) }, worker.workerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func TestSemanticUnderstandingTaskWorkerLimitsConcurrency(t *testing.T) {
@@ -74,7 +82,7 @@ func TestSemanticUnderstandingTaskWorkerLimitsConcurrency(t *testing.T) {
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 	taskService.EXPECT().DispatchSignal().AnyTimes().Return((<-chan struct{})(dispatchSignal))
 
-	assertWorkerPoolLimit(t, queue, worker.workerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
+	assertWorkerPoolLimit(t, func() int { return len(queue) }, worker.workerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func TestBuildTaskWorkerLimitsBatchConcurrency(t *testing.T) {
@@ -101,7 +109,7 @@ func TestBuildTaskWorkerLimitsBatchConcurrency(t *testing.T) {
 	expectIdleBuildPoll(taskService, dispatchSignal)
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 
-	assertWorkerPoolLimit(t, queue, worker.batchWorkerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
+	assertWorkerPoolLimit(t, func() int { return len(queue) }, worker.batchWorkerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func TestBuildTaskWorkerLimitsStreamingConcurrency(t *testing.T) {
@@ -128,7 +136,7 @@ func TestBuildTaskWorkerLimitsStreamingConcurrency(t *testing.T) {
 	expectIdleBuildPoll(taskService, dispatchSignal)
 	taskService.EXPECT().RequestDispatch().Times(3).Do(func() { completed <- struct{}{} })
 
-	assertWorkerPoolLimit(t, queue, worker.streamingWorkerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
+	assertWorkerPoolLimit(t, func() int { return len(queue) }, worker.streamingWorkerCount, func(stopCh chan struct{}) { worker.stopCh = stopCh; worker.Start() }, entered, release, completed)
 }
 
 func workerPoolTestChannels() (chan string, chan struct{}, chan struct{}) {
@@ -153,7 +161,7 @@ func expectIdleBuildPoll(taskService *vmock.MockBuildTaskService, dispatchSignal
 	taskService.EXPECT().DispatchSignal().AnyTimes().Return((<-chan struct{})(dispatchSignal))
 }
 
-func assertWorkerPoolLimit(t *testing.T, queue chan string, workerCount int,
+func assertWorkerPoolLimit(t *testing.T, queueLen func() int, workerCount int,
 	start func(chan struct{}), entered <-chan string, release chan struct{}, completed <-chan struct{}) {
 	t.Helper()
 	stopCh := make(chan struct{})
@@ -163,7 +171,7 @@ func assertWorkerPoolLimit(t *testing.T, queue chan string, workerCount int,
 	for i := 0; i < workerCount; i++ {
 		waitForWorkerPoolSignal(t, entered, "task did not start")
 	}
-	assert.Len(t, queue, 1)
+	assert.Equal(t, 1, queueLen())
 	select {
 	case taskID := <-entered:
 		t.Fatalf("task %s exceeded the configured worker concurrency", taskID)

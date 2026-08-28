@@ -78,6 +78,11 @@ Description = "Resource is already disabled"
 Solution = "No action needed"
 ErrorLink = ""
 
+[VegaBackend.Resource.EnabledFieldNotAllowed]
+Description = "Resource enabled state cannot be modified by PUT"
+Solution = "Use the resource enable or disable action"
+ErrorLink = ""
+
 [VegaBackend.Resource.NotQueryable]
 Description = "Resource is not queryable in its current status"
 Solution = "Only resources in active or deprecated status are queryable; enable the resource or refresh its schema"

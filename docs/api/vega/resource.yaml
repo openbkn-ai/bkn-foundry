@@ -19,7 +19,8 @@ info:
     | `logicview` | 逻辑 | 衍生 / 复合视图，由 `logic_definition` 定义 |
     | `dataset` | 逻辑 | 文档集合（RAG 索引），documents 子资源走 [resource-data.yaml] |
 
-    `status` 取值：`active` / `disabled` / `deprecated` / `stale`。
+    `enabled` 和 `status` 相互独立：`enabled=false` 表示该资源不可用于查询或构建；
+    `status` 反映资源的生命周期和最近发现结果，取值为 `active` / `deprecated` / `stale`。
 
     **子资源端点指引**：
 
@@ -76,7 +77,6 @@ paths:
             type: string
             enum:
               - active
-              - disabled
               - deprecated
               - stale
         - name: schema
@@ -211,6 +211,9 @@ paths:
         按 ids 批量删除 Resource。**整体事务**：所有 id 通过预校验后才进入删除阶段，
         任一不存在返回 404 `VegaBackend.Resource.NotFound`，整批不删。
 
+        若任一 Resource 存在 `pending` 或 `running` 的资源元数据刷新任务，返回 409
+        `VegaBackend.DiscoverTask.ResourceRefreshInProgress`，整批不删；需等待该任务进入终态。
+
         可选 `?ignore_missing=true`：忽略不存在的 id（视为已删除），其它 id 正常删。
       parameters:
         - name: ignore_missing
@@ -226,6 +229,12 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: Resource 有 pending/running 元数据刷新任务
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/InternalServerError"
     put:
@@ -235,6 +244,7 @@ paths:
 
         - `name` 在 catalog 内唯一；改名为已占用值返回 409 `VegaBackend.Resource.NameExists`。
         - `catalog_id` 和 `category` 不可修改，与当前 Resource 不一致时返回 400。
+        - PUT 中的 `enabled` 不可修改；请使用 `POST /resources/{id}/enable` 或 `/disable`。
         - PUT 中的 `status`、`schema`、`source_identifier`、`source_metadata` 由内部流程管理；即使携带也会被忽略。
         - 必须传入 `expected_update_time` 进行乐观并发控制。该值应取自最近一次查询响应的
           `update_time`；若资源已被其他请求更新，返回 409 `VegaBackend.Resource.UpdateConflict`。
@@ -261,6 +271,88 @@ paths:
           $ref: "#/components/responses/NotAcceptable"
         "409":
           $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /resources/{id}/discover:
+    parameters:
+      - name: id
+        description: Resource ID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: 刷新资源元数据
+      description: |
+        对指定物理资源触发一次元数据刷新。服务端创建 `resource_id` 为该资源 ID 的
+        DiscoverTask 并立即返回 task id；实际刷新由 worker 异步执行。刷新不会改变
+        Resource 的 `enabled` 值。
+
+        同一 Resource 已有 `pending` 或 `running` 的刷新任务时，返回 409
+        `VegaBackend.DiscoverTask.ResourceRefreshInProgress`。不支持按资源标识刷新
+        的 category，或源端已找不到该资源时，任务会进入 `failed`，请通过
+        `GET /discover-tasks/{id}` 查看详情。
+      responses:
+        "200":
+          description: 已创建并入队 Resource 刷新任务
+          content:
+            application/json:
+              schema:
+                $ref: "discover-task.yaml#/components/schemas/DiscoverTriggerResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 同一 Resource 已有 pending/running 刷新任务
+          content:
+            application/json:
+              schema:
+                $ref: "../_shared/errors.yaml#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /resources/{id}/enable:
+    parameters:
+      - name: id
+        description: Resource ID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: 启用资源
+      description: |
+        仅将 Resource 的 `enabled` 设为 `true`，不改变 `status`、`last_discover_status`
+        或任何发现元数据。已启用时幂等返回 204。
+      responses:
+        "204":
+          description: 已启用或原本已启用
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+  /resources/{id}/disable:
+    parameters:
+      - name: id
+        description: Resource ID
+        in: path
+        required: true
+        schema:
+          type: string
+    post:
+      summary: 禁用资源
+      description: |
+        仅将 Resource 的 `enabled` 设为 `false`，不改变 `status`、`last_discover_status`
+        或任何发现元数据。已禁用时幂等返回 204。
+      responses:
+        "204":
+          description: 已禁用或原本已禁用
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
         "500":
           $ref: "#/components/responses/InternalServerError"
 components:
@@ -468,6 +560,7 @@ components:
         - catalog_id
         - name
         - category
+        - enabled
         - status
         - local_status
         - source_identifier
@@ -514,12 +607,15 @@ components:
             - index
             - logicview
             - dataset
+        enabled:
+          description: 是否允许该资源用于查询或构建；与 `status` 独立
+          type: boolean
+          default: true
         status:
           description: 资源状态
           type: string
           enum:
             - active
-            - disabled
             - deprecated
             - stale
         status_message:
@@ -643,11 +739,16 @@ components:
             - index
             - logicview
             - dataset
+        enabled:
+          description: |
+            是否允许该资源用于查询或构建。创建时省略默认 `true`；PUT 时该值必须与当前值一致，
+            启停请使用 `/enable` 或 `/disable`。与 `status` 独立。
+          type: boolean
+          default: true
         status:
           type: string
           enum:
             - active
-            - disabled
             - deprecated
             - stale
         schema:
@@ -692,6 +793,7 @@ components:
         - catalog_id
         - name
         - category
+        - enabled
         - status
         - local_status
         - source_identifier
@@ -721,10 +823,13 @@ components:
           description: 资源类型
           type: string
           enum: [table, file, fileset, api, metric, topic, index, logicview, dataset]
+        enabled:
+          description: 是否允许该资源用于查询或构建；与 `status` 独立
+          type: boolean
         status:
           description: 资源状态
           type: string
-          enum: [active, disabled, deprecated, stale]
+          enum: [active, deprecated, stale]
         status_message:
           description: 状态说明
           type: string

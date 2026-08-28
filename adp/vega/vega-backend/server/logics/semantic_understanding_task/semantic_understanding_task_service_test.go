@@ -343,7 +343,7 @@ func TestSemanticUnderstandingTaskSampleRows(t *testing.T) {
 		resourceDataService := mock_interfaces.NewMockResourceDataService(ctrl)
 		taskAccess := mock_interfaces.NewMockSemanticUnderstandingTaskAccess(ctrl)
 		resource := sampleSemanticResource()
-		resource.Status = interfaces.ResourceStatusDisabled
+		resource.Enabled = false
 		resourceService.EXPECT().InternalGetByID(gomock.Any(), nil, resource.ID).Return(resource, nil)
 		taskAccess.EXPECT().FindActiveByInputHash(gomock.Any(), interfaces.SemanticUnderstandingTaskScopeResource, gomock.Any()).Return(nil, nil)
 		taskAccess.EXPECT().Create(gomock.Any(), gomock.Any()).Return(nil)
@@ -783,6 +783,7 @@ func TestNormalizeResourceSemanticUnderstandingRequest(t *testing.T) {
 func sampleSemanticResource() *interfaces.Resource {
 	return &interfaces.Resource{
 		ID:               "resource-1",
+		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Name:             "orders",
 		Category:         interfaces.ResourceCategoryTable,

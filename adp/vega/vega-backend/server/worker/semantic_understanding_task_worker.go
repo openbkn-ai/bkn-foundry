@@ -983,6 +983,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				SourceIdentifier: view.SourceIdentifier,
 				Description:      view.Description,
 				Category:         interfaces.ResourceCategoryLogicView,
+				Enabled:          true,
 				Status:           interfaces.ResourceStatusActive,
 				LogicDefinition:  view.LogicDefinition,
 			}
@@ -1014,6 +1015,7 @@ func (sutw *SemanticUnderstandingTaskWorker) applyCatalogResult(ctx context.Cont
 				Tags:               current.Tags,
 				Description:        nextDescription,
 				Category:           current.Category,
+				Enabled:            current.Enabled,
 				Status:             current.Status,
 				Schema:             current.Schema,
 				SourceMetadata:     current.SourceMetadata,

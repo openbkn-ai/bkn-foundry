@@ -68,7 +68,7 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 		mockRS := vmock.NewMockResourceService(ctrl)
 		svc := &logicViewService{rs: mockRS}
 		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
-			ID: "source-1", Status: interfaces.ResourceStatusDisabled,
+			ID: "source-1", Enabled: false,
 		}, nil)
 
 		_, _, err := svc.queryDerivedLogicView(context.Background(), view, &interfaces.ResourceDataQueryParams{})
@@ -83,6 +83,7 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 		svc := &logicViewService{rs: mockRS}
 		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
 			ID:                 "source-1",
+			Enabled:            true,
 			Status:             interfaces.ResourceStatusActive,
 			LastDiscoverStatus: interfaces.DiscoverStatusError,
 		}, nil)
@@ -102,6 +103,7 @@ func TestQueryDerivedLogicViewRejectsUnavailableSource(t *testing.T) {
 		mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
 			ID:               "source-1",
 			CatalogID:        "catalog-1",
+			Enabled:          true,
 			Status:           interfaces.ResourceStatusActive,
 			SchemaDefinition: []*interfaces.Property{{Name: "id"}},
 		}, nil)
@@ -124,6 +126,7 @@ func TestQueryCompositeLogicViewRejectsUnavailableSourceMetadata(t *testing.T) {
 	}}}}
 	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(&interfaces.Resource{
 		ID:                 "source-1",
+		Enabled:            true,
 		Status:             interfaces.ResourceStatusActive,
 		LastDiscoverStatus: interfaces.DiscoverStatusError,
 	}, nil)
@@ -145,13 +148,14 @@ func TestDerivedIndexCursorRequiresSort(t *testing.T) {
 	source := &interfaces.Resource{
 		ID:               "source-1",
 		CatalogID:        "catalog-1",
+		Enabled:          true,
 		Category:         interfaces.ResourceCategoryIndex,
 		Status:           interfaces.ResourceStatusActive,
 		SchemaDefinition: []*interfaces.Property{{Name: "timestamp"}},
 	}
 	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil).AnyTimes()
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil).AnyTimes()
 
 	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
 		ID:        "logic-1",
@@ -180,13 +184,14 @@ func TestDerivedIndexRejectsFirstPageWindowOverflow(t *testing.T) {
 	source := &interfaces.Resource{
 		ID:               "source-1",
 		CatalogID:        "catalog-1",
+		Enabled:          true,
 		Category:         interfaces.ResourceCategoryIndex,
 		Status:           interfaces.ResourceStatusActive,
 		SchemaDefinition: []*interfaces.Property{{Name: "timestamp"}},
 	}
 	mockRS.EXPECT().GetByID(gomock.Any(), "source-1").Return(source, nil).AnyTimes()
 	mockCS.EXPECT().GetByID(gomock.Any(), "catalog-1", true).
-		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: false}, nil).AnyTimes()
+		Return(&interfaces.Catalog{ID: "catalog-1", Enabled: true}, nil).AnyTimes()
 
 	result, err := svc.QueryWithPaging(context.Background(), &interfaces.Resource{
 		ID:        "logic-1",

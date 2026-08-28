@@ -74,6 +74,7 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 			name: "rejects empty schema after discover failure for any resource category",
 			resource: &interfaces.Resource{
 				ID:                 "resource-1",
+				Enabled:            true,
 				Category:           interfaces.ResourceCategoryFileset,
 				LastDiscoverStatus: interfaces.DiscoverStatusError,
 			},
@@ -84,6 +85,7 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 			name: "rejects empty schema after a successful discovery observation",
 			resource: &interfaces.Resource{
 				ID:                 "fileset-1",
+				Enabled:            true,
 				Category:           interfaces.ResourceCategoryFileset,
 				LastDiscoverStatus: interfaces.DiscoverStatusUnchanged,
 			},
@@ -94,6 +96,7 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 			name: "allows last known schema after discover failure",
 			resource: &interfaces.Resource{
 				ID:                 "resource-1",
+				Enabled:            true,
 				Category:           interfaces.ResourceCategoryTable,
 				LastDiscoverStatus: interfaces.DiscoverStatusError,
 				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
@@ -103,6 +106,7 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 			name: "rejects a missing resource even when its previous schema remains",
 			resource: &interfaces.Resource{
 				ID:                 "resource-1",
+				Enabled:            true,
 				Category:           interfaces.ResourceCategoryDataset,
 				LastDiscoverStatus: interfaces.DiscoverStatusMissing,
 				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
@@ -114,6 +118,7 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 			name: "allows restored resource metadata",
 			resource: &interfaces.Resource{
 				ID:                 "resource-1",
+				Enabled:            true,
 				Category:           interfaces.ResourceCategoryDataset,
 				LastDiscoverStatus: interfaces.DiscoverStatusRestored,
 				SchemaDefinition:   []*interfaces.Property{{Name: "id"}},
@@ -141,6 +146,7 @@ func TestEnsureResourceQueryableMetadata(t *testing.T) {
 func TestEnsureResourceQueryableDoesNotExposeStatusMessage(t *testing.T) {
 	resource := &interfaces.Resource{
 		ID:                 "resource-1",
+		Enabled:            true,
 		Category:           interfaces.ResourceCategoryFileset,
 		LastDiscoverStatus: interfaces.DiscoverStatusError,
 		StatusMessage:      "discover metadata failed: syntax error at or near LATERAL",
@@ -156,6 +162,7 @@ func TestEnsureResourceQueryableDoesNotExposeStatusMessage(t *testing.T) {
 func TestResourceDataServiceQueryWithPagingRejectsUnavailableTableMetadata(t *testing.T) {
 	resource := &interfaces.Resource{
 		ID:                 "resource-1",
+		Enabled:            true,
 		Category:           interfaces.ResourceCategoryFileset,
 		LastDiscoverStatus: interfaces.DiscoverStatusError,
 	}
@@ -180,6 +187,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		rds := &resourceDataService{cs: mockCS}
 		resource := &interfaces.Resource{
 			ID:        "resource-1",
+			Enabled:   true,
 			CatalogID: "catalog-1",
 			Category:  interfaces.ResourceCategoryTable,
 		}
@@ -197,6 +205,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		rds := &resourceDataService{cs: mockCS, lim: mockLIM}
 		resource := &interfaces.Resource{
 			ID:               "resource-1",
+			Enabled:          true,
 			CatalogID:        "catalog-1",
 			Category:         interfaces.ResourceCategoryTable,
 			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
@@ -226,6 +235,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		rds := &resourceDataService{cs: mockCS, ds: mockDS}
 		resource := &interfaces.Resource{
 			ID:        "dataset-1",
+			Enabled:   true,
 			CatalogID: "catalog-1",
 			Category:  interfaces.ResourceCategoryDataset,
 			SchemaDefinition: []*interfaces.Property{
@@ -268,6 +278,7 @@ func TestResourceDataServiceQuery(t *testing.T) {
 		rds := &resourceDataService{cs: mockCS, lvs: mockLVS}
 		resource := &interfaces.Resource{
 			ID:        "logic-view-1",
+			Enabled:   true,
 			CatalogID: "catalog-1",
 			Category:  interfaces.ResourceCategoryLogicView,
 			SchemaDefinition: []*interfaces.Property{
@@ -305,6 +316,7 @@ func TestResourceDataServiceRejectsIndexAggregationCursor(t *testing.T) {
 	rds := &resourceDataService{}
 	_, err := rds.QueryWithPaging(context.Background(), &interfaces.Resource{
 		ID:               "index-1",
+		Enabled:          true,
 		Category:         interfaces.ResourceCategoryIndex,
 		SchemaDefinition: []*interfaces.Property{{Name: "category"}},
 	}, &interfaces.ResourceDataQueryParams{
@@ -346,6 +358,7 @@ func TestResourceDataServiceRejectsOpenSearchCursorWithoutSort(t *testing.T) {
 	rds := &resourceDataService{cs: mockCS, ds: mockDS}
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
+		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Category:         interfaces.ResourceCategoryDataset,
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
@@ -371,6 +384,7 @@ func TestResourceDataServiceRejectsOpenSearchFirstPageWindowOverflow(t *testing.
 	rds := &resourceDataService{cs: mockCS, ds: mockDS}
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
+		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Category:         interfaces.ResourceCategoryDataset,
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
@@ -397,6 +411,7 @@ func TestDatasetCursorUsesSearchAfterPagination(t *testing.T) {
 	rds := &resourceDataService{cs: mockCS, ds: mockDS}
 	resource := &interfaces.Resource{
 		ID:               "dataset-1",
+		Enabled:          true,
 		CatalogID:        "catalog-1",
 		Category:         interfaces.ResourceCategoryDataset,
 		SchemaDefinition: []*interfaces.Property{{Name: "id"}},
@@ -496,7 +511,7 @@ func assertCatalogDisabledError(t *testing.T, err error) {
 func TestQueryClassifiesUnsupportedOperations(t *testing.T) {
 	newResource := func(category string) *interfaces.Resource {
 		return &interfaces.Resource{
-			ID: "resource-1", CatalogID: "catalog-1", Category: category,
+			ID: "resource-1", CatalogID: "catalog-1", Category: category, Enabled: true,
 			SchemaDefinition: []*interfaces.Property{{Name: "name", Type: interfaces.DataType_String}},
 		}
 	}

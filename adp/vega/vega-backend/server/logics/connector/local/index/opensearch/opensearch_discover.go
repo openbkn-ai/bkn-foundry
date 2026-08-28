@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,16 +65,18 @@ func (c *OpenSearchConnector) GetMetadata(ctx context.Context) (map[string]any, 
 
 // ListIndexes lists all indices.
 func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
+	return c.listIndexes(ctx, c.Config.IndexPatterns)
+}
+
+func (c *OpenSearchConnector) listIndexes(ctx context.Context, indexNames []string) ([]*interfaces.IndexMeta, error) {
 	if err := c.Connect(ctx); err != nil {
 		return nil, err
 	}
 
 	req := opensearchapi.CatIndicesRequest{
+		Index:  indexNames,
 		Format: "json",
 		H:      []string{"index", "docs.count", "store.size", "creation.date"},
-	}
-	if c.Config.IndexPattern != "" {
-		req.Index = []string{c.Config.IndexPattern}
 	}
 
 	resp, err := req.Do(ctx, c.client)
@@ -140,6 +143,49 @@ func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interface
 		return fmt.Errorf("failed to fetch settings: %w", err)
 	}
 
+	return nil
+}
+
+func (c *OpenSearchConnector) GetIndexMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.IndexMeta, error) {
+	if err := c.validateIndexScope(sourceIdentifier); err != nil {
+		return nil, err
+	}
+
+	indices, err := c.listIndexes(ctx, []string{sourceIdentifier})
+	if err != nil {
+		return nil, fmt.Errorf("list indexes: %w", err)
+	}
+
+	var index *interfaces.IndexMeta
+	for _, candidate := range indices {
+		if candidate.Name == sourceIdentifier {
+			index = candidate
+			break
+		}
+	}
+	if index == nil {
+		return nil, fmt.Errorf("index %q not found", sourceIdentifier)
+	}
+
+	if err := c.GetIndexMeta(ctx, index); err != nil {
+		return nil, err
+	}
+	return index, nil
+}
+
+func (c *OpenSearchConnector) validateIndexScope(sourceIdentifier string) error {
+	for _, pattern := range c.Config.IndexPatterns {
+		matched, err := path.Match(pattern, sourceIdentifier)
+		if err != nil {
+			return fmt.Errorf("match index pattern %q: %w", pattern, err)
+		}
+		if matched {
+			return nil
+		}
+	}
+	if len(c.Config.IndexPatterns) > 0 {
+		return fmt.Errorf("index %q is outside the connector scope", sourceIdentifier)
+	}
 	return nil
 }
 

@@ -28,6 +28,11 @@ const (
 	defaultDiscoverWorkerCount = 1
 )
 
+type discoverTaskQueueItem struct {
+	taskID    string
+	catalogID string
+}
+
 // DiscoverTaskWorker handles discover tasks.
 type DiscoverTaskWorker struct {
 	appSetting *common.AppSetting
@@ -36,11 +41,12 @@ type DiscoverTaskWorker struct {
 	dts        interfaces.DiscoverTaskService
 	rs         interfaces.ResourceService
 
-	workerCount int
-	queueSize   int
-	queue       chan string
-	mu          sync.Mutex
-	inFlight    map[string]struct{}
+	workerCount      int
+	queueSize        int
+	queue            chan discoverTaskQueueItem
+	mu               sync.Mutex
+	activeTaskIDs    map[string]struct{}
+	activeCatalogIDs map[string]struct{}
 
 	wg      sync.WaitGroup
 	stopCh  chan struct{}
@@ -61,11 +67,12 @@ func NewDiscoverTaskWorker(appSetting *common.AppSetting) *DiscoverTaskWorker {
 		dts:        discover_task.NewDiscoverTaskService(appSetting),
 		rs:         resource.NewResourceService(appSetting),
 
-		workerCount: workerCount,
-		queueSize:   queueSize,
-		queue:       make(chan string, queueSize),
-		inFlight:    make(map[string]struct{}),
-		stopCh:      make(chan struct{}),
+		workerCount:      workerCount,
+		queueSize:        queueSize,
+		queue:            make(chan discoverTaskQueueItem, queueSize),
+		activeTaskIDs:    make(map[string]struct{}),
+		activeCatalogIDs: make(map[string]struct{}),
+		stopCh:           make(chan struct{}),
 	}
 	worker.stopped.Store(false)
 	return worker
@@ -152,30 +159,52 @@ func (dtw *DiscoverTaskWorker) fillQueue(ctx context.Context) {
 		return
 	}
 	limit := cap(dtw.queue)
-	tasks, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
-		PaginationQueryParams: interfaces.PaginationQueryParams{
-			Limit:     limit,
-			Sort:      interfaces.DiscoverTaskSortCreateTime,
-			Direction: interfaces.ASC_DIRECTION,
-		},
-		Statuses: []string{interfaces.DiscoverTaskStatusPending},
-	})
-	if err != nil {
-		logger.Errorf("List pending discover tasks failed: %v", err)
-		return
-	}
-	for _, task := range tasks {
-		if dtw.stopped.Load() {
+	offset := 0
+	for len(dtw.queue) < cap(dtw.queue) {
+		tasks, err := dtw.dts.InternalList(ctx, interfaces.DiscoverTaskQueryParams{
+			PaginationQueryParams: interfaces.PaginationQueryParams{
+				Limit:     limit,
+				Offset:    offset,
+				Sort:      interfaces.DiscoverTaskSortQueuePriority,
+				Direction: interfaces.DESC_DIRECTION,
+			},
+			Statuses: []string{interfaces.DiscoverTaskStatusPending},
+		})
+		if err != nil {
+			logger.Errorf("List pending discover tasks failed: %v", err)
 			return
 		}
-		// inFlight covers both queued and running tasks while the database may still show pending.
-		if task == nil || !dtw.addInFlight(task.ID) {
-			continue
+		if len(tasks) == 0 {
+			return
 		}
-		select {
-		case dtw.queue <- task.ID:
-		case <-dtw.stopCh:
-			dtw.removeInFlight(task.ID)
+		offset += len(tasks)
+		for _, task := range tasks {
+			if dtw.stopped.Load() {
+				return
+			}
+			// A Catalog remains reserved from queueing until its task completes, so
+			// another worker cannot run the same Catalog concurrently.
+			if task == nil {
+				continue
+			}
+			taskItem := discoverTaskQueueItem{
+				taskID:    task.ID,
+				catalogID: task.CatalogID,
+			}
+			if !dtw.reserveTask(taskItem) {
+				continue
+			}
+			select {
+			case dtw.queue <- taskItem:
+			case <-dtw.stopCh:
+				dtw.releaseTask(taskItem)
+				return
+			}
+			if len(dtw.queue) == cap(dtw.queue) {
+				return
+			}
+		}
+		if len(tasks) < limit {
 			return
 		}
 	}
@@ -186,12 +215,12 @@ func (dtw *DiscoverTaskWorker) runQueuedTasks(ctx context.Context) {
 		select {
 		case <-dtw.stopCh:
 			return
-		case taskID := <-dtw.queue:
+		case taskItem := <-dtw.queue:
 			if dtw.stopped.Load() {
 				return
 			}
-			dtw.runSafely(ctx, taskID)
-			dtw.removeInFlight(taskID)
+			dtw.runSafely(ctx, taskItem.taskID)
+			dtw.releaseTask(taskItem)
 			dtw.dts.RequestDispatch()
 		}
 	}
@@ -212,20 +241,25 @@ func (dtw *DiscoverTaskWorker) runSafely(ctx context.Context, taskID string) {
 	}
 }
 
-func (dtw *DiscoverTaskWorker) addInFlight(id string) bool {
+func (dtw *DiscoverTaskWorker) reserveTask(taskItem discoverTaskQueueItem) bool {
 	dtw.mu.Lock()
 	defer dtw.mu.Unlock()
-	if _, exists := dtw.inFlight[id]; exists {
+	if _, exists := dtw.activeTaskIDs[taskItem.taskID]; exists {
 		return false
 	}
-	dtw.inFlight[id] = struct{}{}
+	if _, exists := dtw.activeCatalogIDs[taskItem.catalogID]; exists {
+		return false
+	}
+	dtw.activeTaskIDs[taskItem.taskID] = struct{}{}
+	dtw.activeCatalogIDs[taskItem.catalogID] = struct{}{}
 	return true
 }
 
-func (dtw *DiscoverTaskWorker) removeInFlight(id string) {
+func (dtw *DiscoverTaskWorker) releaseTask(taskItem discoverTaskQueueItem) {
 	dtw.mu.Lock()
 	defer dtw.mu.Unlock()
-	delete(dtw.inFlight, id)
+	delete(dtw.activeCatalogIDs, taskItem.catalogID)
+	delete(dtw.activeTaskIDs, taskItem.taskID)
 }
 
 // Run executes one discover task selected from the task table.
@@ -295,7 +329,12 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 	//Then obtain the metadata of the catalog based on the connector instance
 	//Then obtain the resource information of the catalog based on its metadata: metadata
 	progress := &discoverTaskReconcileProgress{}
-	result, err := dtw.discoverCatalog(ctx, catalog, taskInfo, progress)
+	var result *interfaces.DiscoverResult
+	if taskInfo.ResourceID != "" {
+		result, err = dtw.discoverResource(ctx, catalog, taskInfo, progress)
+	} else {
+		result, err = dtw.discoverCatalog(ctx, catalog, taskInfo, progress)
+	}
 	if err != nil {
 		if _, updateErr := dtw.dts.InternalMarkFailed(ctx, taskID, err.Error()); updateErr != nil {
 			logger.Errorf("Mark discover task failed after execution error: id=%s, error=%v", taskID, updateErr)
@@ -318,6 +357,59 @@ func (dtw *DiscoverTaskWorker) Run(ctx context.Context, taskID string) error {
 
 	logger.Infof("Discover completed for task: %s, catalog: %s", taskID, catalog.ID)
 	return nil
+}
+
+// discoverResource refreshes one already-discovered Resource without listing or reconciling its Catalog.
+func (dtw *DiscoverTaskWorker) discoverResource(ctx context.Context, catalog *interfaces.Catalog,
+	task *interfaces.DiscoverTask, progress *discoverTaskReconcileProgress) (*interfaces.DiscoverResult, error) {
+	resource, err := dtw.rs.InternalGetByID(ctx, nil, task.ResourceID)
+	if err != nil {
+		return nil, fmt.Errorf("get resource for discovery: %w", err)
+	}
+	if resource == nil || resource.CatalogID != catalog.ID {
+		return nil, fmt.Errorf("resource %s not found in catalog %s", task.ResourceID, catalog.ID)
+	}
+
+	connector, err := dtw.createAndConnectConnector(ctx, catalog)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to data source: %w", err)
+	}
+	defer func() { _ = connector.Close(ctx) }()
+
+	result := &interfaces.DiscoverResult{CatalogID: catalog.ID}
+	switch resource.Category {
+	case interfaces.ResourceCategoryTable:
+		tableConnector, ok := connector.(interfaces.TableConnector)
+		if !ok {
+			return nil, fmt.Errorf("connector does not support single-resource table metadata refresh")
+		}
+		table, err := tableConnector.GetTableMetaByIdentifier(ctx, resource.SourceIdentifier)
+		if err != nil {
+			return nil, fmt.Errorf("get table metadata: %w", err)
+		}
+		if err := dtw.enrichTableMetadata(ctx, task, tableConnector, []tableDiscoverItem{{
+			resource: resource, tableMeta: table, markAfterEnrich: true,
+		}}, result, progress); err != nil {
+			return nil, err
+		}
+	case interfaces.ResourceCategoryIndex:
+		indexConnector, ok := connector.(interfaces.IndexConnector)
+		if !ok {
+			return nil, fmt.Errorf("connector does not support single-resource index metadata refresh")
+		}
+		index, err := indexConnector.GetIndexMetaByIdentifier(ctx, resource.SourceIdentifier)
+		if err != nil {
+			return nil, fmt.Errorf("get index metadata: %w", err)
+		}
+		if err := dtw.enrichIndexMetadata(ctx, task, indexConnector, []indexDiscoverItem{{
+			resource: resource, indexMeta: index, markAfterEnrich: true,
+		}}, result, progress); err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("resource category does not support single-resource metadata refresh: %s", resource.Category)
+	}
+	return result, nil
 }
 
 func (dtw *DiscoverTaskWorker) updateProgress(ctx context.Context, taskID string, progress int, message string) error {

@@ -593,18 +593,19 @@ func TestBuildTaskAccessList(t *testing.T) {
 				Sort:      interfaces.BuildTaskSortCreateTime,
 				Direction: interfaces.ASC_DIRECTION,
 			},
-			ResourceID: task.ResourceID,
-			CatalogID:  task.CatalogID,
-			Statuses:   []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending},
-			Mode:       interfaces.BuildTaskModeBatch,
+			ResourceID:  task.ResourceID,
+			CatalogID:   task.CatalogID,
+			Statuses:    []string{interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending},
+			Mode:        interfaces.BuildTaskModeBatch,
+			ExecuteType: interfaces.BuildTaskExecuteTypeIncremental,
 		}
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_build_task WHERE f_resource_id = ? AND f_catalog_id = ? AND f_status IN (?,?) AND f_mode = ?")).
-			WithArgs(task.ResourceID, task.CatalogID, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM t_build_task WHERE f_status IN (?,?) AND f_mode = ? AND f_execute_type = ? AND f_resource_id = ? AND f_catalog_id = ?")).
+			WithArgs(interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch, interfaces.BuildTaskExecuteTypeIncremental, task.ResourceID, task.CatalogID).
 			WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
 		rows := sqlmock.NewRows(buildTaskSummaryColumns()).AddRow(buildTaskSummaryRowValues(task)...)
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinBuildTaskSummaryColumns()+" FROM t_build_task WHERE f_resource_id = ? AND f_catalog_id = ? AND f_status IN (?,?) AND f_mode = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
-			WithArgs(task.ResourceID, task.CatalogID, interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT "+joinBuildTaskSummaryColumns()+" FROM t_build_task WHERE f_status IN (?,?) AND f_mode = ? AND f_execute_type = ? AND f_resource_id = ? AND f_catalog_id = ? ORDER BY f_create_time ASC LIMIT 10 OFFSET 5")).
+			WithArgs(interfaces.BuildTaskStatusRunning, interfaces.BuildTaskStatusPending, interfaces.BuildTaskModeBatch, interfaces.BuildTaskExecuteTypeIncremental, task.ResourceID, task.CatalogID).
 			WillReturnRows(rows)
 
 		got, total, err := access.List(context.Background(), params)

@@ -48,10 +48,11 @@ type TableConnector interface {
 
 	ListTables(ctx context.Context) ([]*TableMeta, error)
 	GetTableMeta(ctx context.Context, table *TableMeta) error
+	// GetTableMetaByIdentifier retrieves complete metadata for one known table.
+	GetTableMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*TableMeta, error)
 
 	// ExecuteQuery executes a single-table query statement
-	ExecuteQuery(ctx context.Context, resource *Resource,
-		params *ResourceDataQueryParams) (*QueryResult, error)
+	ExecuteQuery(ctx context.Context, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)
 	// BuildPagedSQL wraps a validated read-only SQL statement with the
 	// connector-specific offset/limit syntax.
 	BuildPagedSQL(sql string, offset, limit int) string
@@ -101,6 +102,7 @@ type IndexConnector interface {
 
 	ListIndexes(ctx context.Context) ([]*IndexMeta, error)
 	GetIndexMeta(ctx context.Context, index *IndexMeta) error
+	GetIndexMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*IndexMeta, error)
 
 	// ExecuteQuery executes a query on the index
 	ExecuteQuery(ctx context.Context, indexName string, resource *Resource, params *ResourceDataQueryParams) (*QueryResult, error)

@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS t_resource (
     f_category                VARCHAR(20) NOT NULL DEFAULT '' COMMENT '数据资源类型: table, file, fileset, api, metric, topic, index, logicview, dataset',
 
     -- 状态管理
-    f_status                  VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '数据资源状态: active, disabled, deprecated, stale',
+    f_enabled                 TINYINT(1) NOT NULL DEFAULT 1 COMMENT '资源是否启用',
+    f_status                  VARCHAR(20) NOT NULL DEFAULT 'active' COMMENT '数据资源状态: active, deprecated, stale',
     f_status_message          VARCHAR(500) NOT NULL DEFAULT '' COMMENT '状态说明',
     f_last_discover_status    VARCHAR(32) NOT NULL DEFAULT '' COMMENT '最近一次扫描观察状态',
 
@@ -105,6 +106,7 @@ CREATE TABLE IF NOT EXISTS t_resource (
     PRIMARY KEY (f_id),
     INDEX idx_category (f_category),
     INDEX idx_status (f_status),
+    INDEX idx_enabled (f_enabled),
     INDEX idx_catalog_schema (f_catalog_id, f_schema)
 )  ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_bin COMMENT='数据资源主表，管理所有类型的数据资源';
 
@@ -193,10 +195,12 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
     -- 主键与关联信息
     f_id                      VARCHAR(40) NOT NULL DEFAULT '' COMMENT '任务唯一标识',
     f_catalog_id              VARCHAR(40) NOT NULL DEFAULT '' COMMENT '所属catalog ID',
+    f_resource_id             VARCHAR(40) NOT NULL DEFAULT '' COMMENT '单资源刷新目标；空表示 Catalog 扫描',
     f_schedule_id             VARCHAR(40) NOT NULL DEFAULT '' COMMENT '关联的 DiscoverSchedule ID',
     f_strategy                VARCHAR(32) NOT NULL DEFAULT 'full_sync' COMMENT '发现策略: full_sync, create_only, cleanup_only',
     f_strategies              VARCHAR(100) NOT NULL DEFAULT '' COMMENT '历史策略数组字段',
     f_trigger_type            VARCHAR(20) NOT NULL DEFAULT 'manual' COMMENT '触发类型: manual(立即执行), scheduled(定时驱动)',
+    f_queue_priority          TINYINT NOT NULL DEFAULT 20 COMMENT '调度优先级，数值越大越优先',
 
     -- 任务状态
     f_status                  VARCHAR(20) NOT NULL DEFAULT 'pending' COMMENT '任务状态: pending, running, completed, failed, cancelled',
@@ -220,6 +224,8 @@ CREATE TABLE IF NOT EXISTS t_discover_task (
     PRIMARY KEY (f_id),
     INDEX idx_catalog_id (f_catalog_id),
     INDEX idx_status (f_status),
+    INDEX idx_pending_priority (f_status, f_queue_priority, f_create_time, f_id),
+    INDEX idx_resource_active (f_resource_id, f_status),
     INDEX idx_schedule_id (f_schedule_id),
     INDEX idx_create_time (f_create_time),
     INDEX idx_start_time (f_start_time),

@@ -166,23 +166,23 @@ func TestOpenSearchConnectorMetadataAndNew(t *testing.T) {
 
 		fields := connector.GetFieldConfig()
 		assert.Equal(t, map[string]interfaces.ConnectorFieldConfig{
-			"host":          {Name: "主机地址", Type: "string", Description: "OpenSearch 服务器主机地址", Required: true, Encrypted: false},
-			"port":          {Name: "端口号", Type: "integer", Description: "OpenSearch 服务器端口", Required: true, Encrypted: false},
-			"username":      {Name: "用户名", Type: "string", Description: "认证用户名", Required: false, Encrypted: false},
-			"password":      {Name: "密码", Type: "string", Description: "认证密码", Required: false, Encrypted: true},
-			"index_pattern": {Name: "索引模式", Type: "string", Description: "索引匹配模式（可选，如 log-*）", Required: false, Encrypted: false},
+			"host":           {Name: "主机地址", Type: "string", Description: "OpenSearch 服务器主机地址", Required: true, Encrypted: false},
+			"port":           {Name: "端口号", Type: "integer", Description: "OpenSearch 服务器端口", Required: true, Encrypted: false},
+			"username":       {Name: "用户名", Type: "string", Description: "认证用户名", Required: false, Encrypted: false},
+			"password":       {Name: "密码", Type: "string", Description: "认证密码", Required: false, Encrypted: true},
+			"index_patterns": {Name: "索引模式", Type: "array", Description: "索引匹配模式列表（可选，如 log-*）", Required: false, Encrypted: false},
 		}, fields)
 		require.Contains(t, fields, "password")
 		assert.True(t, fields["password"].Encrypted)
-		require.Contains(t, fields, "index_pattern")
-		assert.False(t, fields["index_pattern"].Required)
+		require.Contains(t, fields, "index_patterns")
+		assert.False(t, fields["index_patterns"].Required)
 
 		instance, err := connector.New(interfaces.ConnectorConfig{
-			"host":          "127.0.0.1",
-			"port":          9200,
-			"username":      "admin",
-			"password":      "secret",
-			"index_pattern": "log-*",
+			"host":           "127.0.0.1",
+			"port":           9200,
+			"username":       "admin",
+			"password":       "secret",
+			"index_patterns": []string{"log-*", "metric-*"},
 		})
 
 		require.NoError(t, err)
@@ -191,7 +191,7 @@ func TestOpenSearchConnectorMetadataAndNew(t *testing.T) {
 		require.NotNil(t, osConnector.Config)
 		assert.Equal(t, "127.0.0.1", osConnector.Config.Host)
 		assert.Equal(t, 9200, osConnector.Config.Port)
-		assert.Equal(t, "log-*", osConnector.Config.IndexPattern)
+		assert.Equal(t, []string{"log-*", "metric-*"}, osConnector.Config.IndexPatterns)
 
 		require.NoError(t, osConnector.Close(t.Context()))
 		assert.Nil(t, osConnector.client)

@@ -154,6 +154,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.GET("/:id", r.GetResourcesByEx) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByEx)
 			resources.DELETE("/:id", r.DeleteResourcesByEx) // The ID is the resource ID, and multiple resource ids are separated by commas
+			resources.POST("/:id/enable", r.EnableResourceByEx)
+			resources.POST("/:id/disable", r.DisableResourceByEx)
+			resources.POST("/:id/discover", r.DiscoverResourceByEx)
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByEx)
 		}
 
@@ -251,6 +254,9 @@ func (r *restHandler) RegisterPublic(c *gin.Engine) {
 			resources.GET("/:id", r.GetResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas
 			resources.PUT("/:id", r.verifyJsonContentType(), r.UpdateResourceByIn)
 			resources.DELETE("/:id", r.DeleteResourcesByIn) // The ID is the resource ID, and multiple resource ids are separated by commas
+			resources.POST("/:id/enable", r.EnableResourceByIn)
+			resources.POST("/:id/disable", r.DisableResourceByIn)
+			resources.POST("/:id/discover", r.DiscoverResourceByIn)
 			resources.POST("/query", r.verifyJsonContentType(), r.RawQueryByIn)
 		}
 

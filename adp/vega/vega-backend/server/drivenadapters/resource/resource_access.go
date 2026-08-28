@@ -42,13 +42,14 @@ type resourceAccess struct {
 	db         *sql.DB
 }
 
-var resourceDetailColumns = []string{
+var resourceColumns = []string{
 	"f_id",
 	"f_catalog_id",
 	"f_name",
 	"f_tags",
 	"f_description",
 	"f_category",
+	"f_enabled",
 	"f_status",
 	"f_status_message",
 	"f_last_discover_status",
@@ -77,6 +78,7 @@ var resourceSummaryColumns = []string{
 	"f_tags",
 	"f_description",
 	"f_category",
+	"f_enabled",
 	"f_status",
 	"f_status_message",
 	"f_last_discover_status",
@@ -100,7 +102,7 @@ type resourceRowScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanResourceDetail(scanner resourceRowScanner) (*interfaces.Resource, error) {
+func scanResource(scanner resourceRowScanner) (*interfaces.Resource, error) {
 	resource := &interfaces.Resource{}
 	var tagsStr string
 	var sourceMetadata, schemaDefinition, indexConfig, logicDefinition sql.NullString
@@ -112,6 +114,7 @@ func scanResourceDetail(scanner resourceRowScanner) (*interfaces.Resource, error
 		&tagsStr,
 		&resource.Description,
 		&resource.Category,
+		&resource.Enabled,
 		&resource.Status,
 		&resource.StatusMessage,
 		&resource.LastDiscoverStatus,
@@ -162,6 +165,7 @@ func scanResourceSummary(scanner resourceRowScanner) (*interfaces.ResourceSummar
 		&tagsStr,
 		&summary.Description,
 		&summary.Category,
+		&summary.Enabled,
 		&summary.Status,
 		&summary.StatusMessage,
 		&summary.LastDiscoverStatus,
@@ -271,6 +275,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			"f_tags",
 			"f_description",
 			"f_category",
+			"f_enabled",
 			"f_status",
 			"f_status_message",
 			"f_last_discover_status",
@@ -301,6 +306,7 @@ func (ra *resourceAccess) Create(ctx context.Context, tx *sql.Tx, resource *inte
 			tagsStr,
 			resource.Description,
 			resource.Category,
+			resource.Enabled,
 			resource.Status,
 			resource.StatusMessage,
 			resource.LastDiscoverStatus,
@@ -352,7 +358,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*
 
 	span.SetAttributes(attr.Key("resource_id").String(id))
 
-	builder := sq.Select(resourceDetailColumns...).
+	builder := sq.Select(resourceColumns...).
 		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_id": id})
 	sqlStr, vals, err := builder.ToSql()
@@ -368,7 +374,7 @@ func (ra *resourceAccess) GetByID(ctx context.Context, tx *sql.Tx, id string) (*
 	} else {
 		row = ra.db.QueryRowContext(ctx, sqlStr, vals...)
 	}
-	resource, err := scanResourceDetail(row)
+	resource, err := scanResource(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
@@ -390,7 +396,8 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 	span.SetAttributes(attr.Key("resource_ids").StringSlice(ids))
 
-	sqlStr, vals, err := sq.Select(resourceDetailColumns...).From(RESOURCE_TABLE_NAME).
+	sqlStr, vals, err := sq.Select(resourceColumns...).
+		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_id": ids}).
 		ToSql()
 	if err != nil {
@@ -409,7 +416,7 @@ func (ra *resourceAccess) GetByIDs(ctx context.Context, ids []string) ([]*interf
 
 	resources := make([]*interfaces.Resource, 0)
 	for rows.Next() {
-		resource, err := scanResourceDetail(rows)
+		resource, err := scanResource(rows)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")
@@ -528,7 +535,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 
 	span.SetAttributes(attr.Key("resource_name").String(name))
 
-	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
+	sqlStr, vals, err := sq.Select(resourceColumns...).
 		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		Where(sq.Eq{"f_name": name}).
@@ -540,7 +547,7 @@ func (ra *resourceAccess) GetByName(ctx context.Context, catalogID string, name 
 	}
 
 	row := ra.db.QueryRowContext(ctx, sqlStr, vals...)
-	resource, err := scanResourceDetail(row)
+	resource, err := scanResource(row)
 	if err == sql.ErrNoRows {
 		span.SetStatus(codes.Ok, "")
 		return nil, nil
@@ -716,6 +723,33 @@ func (ra *resourceAccess) Update(ctx context.Context, tx *sql.Tx,
 
 	span.SetStatus(codes.Ok, "")
 	return rowsAffected, nil
+}
+
+// UpdateEnabled updates only a Resource's enabled state and audit fields.
+func (ra *resourceAccess) UpdateEnabled(ctx context.Context, id string, enabled bool, updateTime int64,
+	updater interfaces.AccountInfo) error {
+	ctx, span := oteltrace.StartNamedClientSpan(ctx, "Update resource enabled")
+	defer span.End()
+
+	span.SetAttributes(attr.Key("resource_id").String(id), attr.Key("enabled").Bool(enabled))
+	sqlStr, vals, err := sq.Update(RESOURCE_TABLE_NAME).
+		Set("f_enabled", enabled).
+		Set("f_updater", updater.ID).
+		Set("f_updater_type", updater.Type).
+		Set("f_update_time", updateTime).
+		Where(sq.Eq{"f_id": id}).
+		ToSql()
+	if err != nil {
+		span.SetStatus(codes.Error, "Build sql failed")
+		return err
+	}
+	if _, err = ra.db.ExecContext(ctx, sqlStr, vals...); err != nil {
+		span.SetStatus(codes.Error, "Update failed")
+		return err
+	}
+
+	span.SetStatus(codes.Ok, "")
+	return nil
 }
 
 // UpdateLocalIndexName updates only the local index name so asynchronous build
@@ -916,7 +950,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 
 	span.SetAttributes(attr.Key("catalog_id").String(catalogID))
 
-	sqlStr, vals, err := sq.Select(resourceDetailColumns...).
+	sqlStr, vals, err := sq.Select(resourceColumns...).
 		From(RESOURCE_TABLE_NAME).
 		Where(sq.Eq{"f_catalog_id": catalogID}).
 		ToSql()
@@ -936,7 +970,7 @@ func (ra *resourceAccess) GetByCatalogID(ctx context.Context, catalogID string) 
 
 	resources := make([]*interfaces.Resource, 0)
 	for rows.Next() {
-		resource, err := scanResourceDetail(rows)
+		resource, err := scanResource(rows)
 		if err != nil {
 			logger.Errorf("Scan resource row failed: %v", err)
 			span.SetStatus(codes.Error, "Scan row failed")

@@ -241,6 +241,52 @@ func TestDiscoverTaskServicePopulatesCatalogName(t *testing.T) {
 		assert.Equal(t, "task-4", got[0].ID)
 		assert.Empty(t, got[0].CatalogName)
 	})
+
+	t.Run("list batches current page resource ids", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		ums := vmock.NewMockUserMgmtService(ctrl)
+		cs.EXPECT().AuthorizedCatalogsForTasks(gomock.Any(), gomock.Any()).Return(nil, true, nil, nil)
+		service := &discoverTaskService{dta: dta, cs: cs, rs: rs, ums: ums}
+		tasks := []*interfaces.DiscoverTaskSummary{
+			{ID: "task-5", CatalogID: "catalog-4", ResourceID: "resource-1"},
+			{ID: "task-6", CatalogID: "catalog-4", ResourceID: "resource-1"},
+		}
+
+		dta.EXPECT().List(gomock.Any(), gomock.Any()).Return(tasks, int64(2), nil)
+		rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-1"}).Return([]*interfaces.Resource{{ID: "resource-1", Name: "orders"}}, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-4"}).Return([]*interfaces.Catalog{{ID: "catalog-4", Name: "目录四"}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(2)).Return(nil)
+
+		got, _, err := service.List(context.Background(), interfaces.DiscoverTaskQueryParams{})
+
+		require.NoError(t, err)
+		assert.Equal(t, "orders", got[0].ResourceName)
+		assert.Equal(t, "orders", got[1].ResourceName)
+	})
+
+	t.Run("get populates resource name", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		dta := vmock.NewMockDiscoverTaskAccess(ctrl)
+		cs := vmock.NewMockCatalogService(ctrl)
+		rs := vmock.NewMockResourceService(ctrl)
+		ums := vmock.NewMockUserMgmtService(ctrl)
+		service := &discoverTaskService{dta: dta, cs: cs, rs: rs, ums: ums}
+		task := &interfaces.DiscoverTask{ID: "task-7", CatalogID: "catalog-5", ResourceID: "resource-2"}
+
+		dta.EXPECT().GetByID(gomock.Any(), "task-7").Return(task, nil)
+		cs.EXPECT().CheckTaskPermission(gomock.Any(), "catalog-5", interfaces.OPERATION_TYPE_TASK_MANAGE).Return(nil)
+		rs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"resource-2"}).Return([]*interfaces.Resource{{ID: "resource-2", Name: "customers"}}, nil)
+		cs.EXPECT().InternalGetByIDs(gomock.Any(), []string{"catalog-5"}).Return([]*interfaces.Catalog{{ID: "catalog-5", Name: "目录五"}}, nil)
+		ums.EXPECT().GetAccountNames(gomock.Any(), gomock.Len(1)).Return(nil)
+
+		got, err := service.GetByID(context.Background(), "task-7")
+
+		require.NoError(t, err)
+		assert.Equal(t, "customers", got.ResourceName)
+	})
 }
 
 func TestDiscoverTaskServiceInternalStatusUpdates(t *testing.T) {

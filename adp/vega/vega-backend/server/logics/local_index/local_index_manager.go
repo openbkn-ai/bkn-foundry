@@ -43,11 +43,11 @@ func NewLocalIndexManager(appSetting *common.AppSetting) interfaces.LocalIndexMa
 		}
 
 		cfg := interfaces.ConnectorConfig{
-			"host":          opensearchSetting["host"],
-			"port":          opensearchSetting["port"],
-			"username":      opensearchSetting["user"],
-			"password":      opensearchSetting["password"],
-			"index_pattern": opensearchSetting["index_pattern"],
+			"host":           opensearchSetting["host"],
+			"port":           opensearchSetting["port"],
+			"username":       opensearchSetting["user"],
+			"password":       opensearchSetting["password"],
+			"index_patterns": opensearchSetting["index_patterns"],
 		}
 
 		connector, err := opensearchConnector.NewOpenSearchConnector().New(cfg)
