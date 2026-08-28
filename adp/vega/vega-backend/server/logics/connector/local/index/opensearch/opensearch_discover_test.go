@@ -147,13 +147,21 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 
 func TestGetIndexMetaByIdentifierRejectsIndexOutsideConfiguredPattern(t *testing.T) {
 	connector := &OpenSearchConnector{
-		Config: &opensearchConfig{IndexPattern: "catalog-*"},
+		Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}},
 	}
 
 	_, err := connector.GetIndexMetaByIdentifier(context.Background(), "system-audit")
 
 	require.Error(t, err)
 	assert.ErrorContains(t, err, `index "system-audit" is outside the connector scope`)
+}
+
+func TestGetIndexMetaByIdentifierAcceptsAnyConfiguredPattern(t *testing.T) {
+	connector := &OpenSearchConnector{
+		Config: &opensearchConfig{IndexPatterns: []string{"catalog-*", "metric-*"}},
+	}
+
+	require.NoError(t, connector.validateIndexScope("metric-cpu"))
 }
 
 func TestFetchMappingsDefaultsMissingMappingMetaToEmpty(t *testing.T) {

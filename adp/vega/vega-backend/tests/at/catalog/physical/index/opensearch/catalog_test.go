@@ -677,7 +677,7 @@ func TestOpenSearchSpecificOptions(t *testing.T) {
 		})
 
 		Convey("OS502: 自定义 index pattern 选项", func() {
-			options := map[string]any{"index_pattern": "*"}
+			options := map[string]any{"index_patterns": []string{"*"}}
 			payload := builder.BuildCreatePayloadWithOptions(options)
 			resp := client.POST("/api/vega-backend/v1/catalogs", payload)
 			So(resp.StatusCode, ShouldEqual, http.StatusCreated)

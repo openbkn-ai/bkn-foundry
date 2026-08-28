@@ -65,11 +65,7 @@ func (c *OpenSearchConnector) GetMetadata(ctx context.Context) (map[string]any, 
 
 // ListIndexes lists all indices.
 func (c *OpenSearchConnector) ListIndexes(ctx context.Context) ([]*interfaces.IndexMeta, error) {
-	var indexNames []string
-	if c.Config.IndexPattern != "" {
-		indexNames = []string{c.Config.IndexPattern}
-	}
-	return c.listIndexes(ctx, indexNames)
+	return c.listIndexes(ctx, c.Config.IndexPatterns)
 }
 
 func (c *OpenSearchConnector) listIndexes(ctx context.Context, indexNames []string) ([]*interfaces.IndexMeta, error) {
@@ -151,14 +147,8 @@ func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interface
 }
 
 func (c *OpenSearchConnector) GetIndexMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.IndexMeta, error) {
-	if c.Config.IndexPattern != "" {
-		matched, err := path.Match(c.Config.IndexPattern, sourceIdentifier)
-		if err != nil {
-			return nil, fmt.Errorf("match index pattern %q: %w", c.Config.IndexPattern, err)
-		}
-		if !matched {
-			return nil, fmt.Errorf("index %q is outside the connector scope", sourceIdentifier)
-		}
+	if err := c.validateIndexScope(sourceIdentifier); err != nil {
+		return nil, err
 	}
 
 	indices, err := c.listIndexes(ctx, []string{sourceIdentifier})
@@ -181,6 +171,22 @@ func (c *OpenSearchConnector) GetIndexMetaByIdentifier(ctx context.Context, sour
 		return nil, err
 	}
 	return index, nil
+}
+
+func (c *OpenSearchConnector) validateIndexScope(sourceIdentifier string) error {
+	for _, pattern := range c.Config.IndexPatterns {
+		matched, err := path.Match(pattern, sourceIdentifier)
+		if err != nil {
+			return fmt.Errorf("match index pattern %q: %w", pattern, err)
+		}
+		if matched {
+			return nil
+		}
+	}
+	if len(c.Config.IndexPatterns) > 0 {
+		return fmt.Errorf("index %q is outside the connector scope", sourceIdentifier)
+	}
+	return nil
 }
 
 // fetchMappings retrieves and parses index mappings.
