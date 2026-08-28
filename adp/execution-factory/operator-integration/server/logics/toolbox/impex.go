@@ -66,15 +66,7 @@ func (s *ToolServiceImpl) Import(ctx context.Context, tx *sql.Tx, mode interface
 
 // Post-operation: Add permission configuration and audit logging.
 func (s *ToolServiceImpl) importPostProcess(ctx context.Context, createBoxMap, updateBoxMap map[string]*model.ToolboxDB, accessor *interfaces.AuthAccessor) (err error) {
-	businessDomainID, _ := icommon.GetBusinessDomainFromCtx(ctx)
 	for _, boxDB := range createBoxMap {
-		// Associated business domains.
-		err = s.BusinessDomainService.AssociateResource(ctx, businessDomainID, boxDB.BoxID, interfaces.AuthResourceTypeToolBox)
-		if err != nil {
-			s.Logger.WithContext(ctx).Errorf("[importPostProcess] AssociateResource err:%v", err)
-			return
-		}
-
 		// Triggering a new policy, the creator has all operating permissions on the current resources by default (internal calls will not create)
 		if accessor != nil {
 			err := s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{

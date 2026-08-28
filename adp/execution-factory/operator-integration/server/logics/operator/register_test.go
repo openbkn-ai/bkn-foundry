@@ -34,21 +34,19 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 	mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 	mockAuditLog := mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl)
 	mockMetadataService := mocks.NewMockIMetadataService(ctrl)
-	mockBusinessDomainService := mocks.NewMockIBusinessDomainService(ctrl)
 	operator := &operatorManager{
-		Logger:                logger.DefaultLogger(),
-		DBOperatorManager:     mockDBOperatorManager,
-		DBTx:                  mockDBTx,
-		CategoryManager:       mockCategoryManager,
-		UserMgnt:              mockUserMgnt,
-		Validator:             mockValidator,
-		Proxy:                 mockProxy,
-		OpReleaseDB:           mockOpReleaseDB,
-		OpReleaseHistoryDB:    mockOpReleaseHistoryDB,
-		AuthService:           mockAuthService,
-		AuditLog:              mockAuditLog,
-		MetadataService:       mockMetadataService,
-		BusinessDomainService: mockBusinessDomainService,
+		Logger:             logger.DefaultLogger(),
+		DBOperatorManager:  mockDBOperatorManager,
+		DBTx:               mockDBTx,
+		CategoryManager:    mockCategoryManager,
+		UserMgnt:           mockUserMgnt,
+		Validator:          mockValidator,
+		Proxy:              mockProxy,
+		OpReleaseDB:        mockOpReleaseDB,
+		OpReleaseHistoryDB: mockOpReleaseHistoryDB,
+		AuthService:        mockAuthService,
+		AuditLog:           mockAuditLog,
+		MetadataService:    mockMetadataService,
 	}
 	req := &interfaces.OperatorRegisterReq{
 		OperatorInfo: &interfaces.OperatorInfo{
@@ -322,7 +320,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			So(len(resp), ShouldEqual, 1)
 			So(resp[0].Status, ShouldEqual, interfaces.ResultStatusFailed)
 		})
-		Convey("关联业务域失败", func() {
+		Convey("资源创建后触发新建策略失败", func() {
 			req.MetadataType = interfaces.MetadataTypeFunc
 			req.DirectPublish = true
 			metadataDBs := []interfaces.IMetadataDB{&model.FunctionMetadataDB{}}
@@ -345,8 +343,7 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			defer p1.Reset()
 			mockMetadataService.EXPECT().RegisterMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
 			mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
-			mockBusinessDomainService.EXPECT().AssociateResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(
-				mocks.MockFuncErr("AssociateResource")).Times(1)
+			mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("CreateOwnerPolicy")).Times(1)
 			resp, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldBeNil)
 			So(resp, ShouldNotBeNil)
@@ -376,7 +373,6 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			defer p1.Reset()
 			mockMetadataService.EXPECT().RegisterMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
 			mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
-			mockBusinessDomainService.EXPECT().AssociateResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("CreateOwnerPolicy")).Times(1)
 			resp, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
 			So(err, ShouldBeNil)
@@ -407,7 +403,6 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			defer p1.Reset()
 			mockMetadataService.EXPECT().RegisterMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
 			mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
-			mockBusinessDomainService.EXPECT().AssociateResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(false, nil, mocks.MockFuncErr("SelectByOpID")).Times(1)
 			resp, err := operator.RegisterOperatorByOpenAPI(context.TODO(), req, "")
@@ -439,7 +434,6 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			defer p1.Reset()
 			mockMetadataService.EXPECT().RegisterMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
 			mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
-			mockBusinessDomainService.EXPECT().AssociateResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(true, &model.OperatorReleaseDB{}, nil).Times(1)
 			mockOpReleaseDB.EXPECT().UpdateByOpID(gomock.Any(), gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("UpdateByOpID")).Times(1)
@@ -472,7 +466,6 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			defer p1.Reset()
 			mockMetadataService.EXPECT().RegisterMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
 			mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
-			mockBusinessDomainService.EXPECT().AssociateResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			mockOpReleaseDB.EXPECT().Insert(gomock.Any(), gomock.Any(), gomock.Any()).Return(mocks.MockFuncErr("Insert")).Times(1)
@@ -505,7 +498,6 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			defer p1.Reset()
 			mockMetadataService.EXPECT().RegisterMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
 			mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
-			mockBusinessDomainService.EXPECT().AssociateResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			mockOpReleaseDB.EXPECT().Insert(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
@@ -544,7 +536,6 @@ func TestRegisterOperatorByOpenAPI(t *testing.T) {
 			defer p1.Reset()
 			mockMetadataService.EXPECT().RegisterMetadata(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
 			mockDBOperatorManager.EXPECT().InsertOperator(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).Times(1)
-			mockBusinessDomainService.EXPECT().AssociateResource(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockAuthService.EXPECT().CreateOwnerPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)
 			mockOpReleaseDB.EXPECT().SelectByOpID(gomock.Any(), gomock.Any()).Return(false, nil, nil).Times(1)
 			mockOpReleaseDB.EXPECT().Insert(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).Times(1)

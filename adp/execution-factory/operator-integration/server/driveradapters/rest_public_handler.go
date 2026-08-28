@@ -13,49 +13,46 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/db"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type restPublicHandler struct {
-	Hydra                 interfaces.Hydra
-	AppKeys               interfaces.AppKeyVerifier
-	SandboxHandler        sandboxdriver.ManagementHandler
-	OperatorRestHandler   OperatorRestHandler
-	ToolBoxRestHandler    ToolBoxRestHandler
-	MCPRestHandler        MCPRestHandler
-	SkillRestHandler      SkillRestHandler
-	ImpexHandler          common.ImpexHandler
-	UnifiedProxyHandler   common.UnifiedProxyHandler
-	TemplateHandler       common.TemplateHandler
-	AIGenerationHandler   common.AIGenerationHandler
-	Logger                interfaces.Logger
-	businessDomainService interfaces.IBusinessDomainService
-	auditStore            *operationaudit.Store
-	auditQueryStore       operationAuditQueryStore
-	auditAuthorization    interfaces.IAuthorizationService
+	Hydra               interfaces.Hydra
+	AppKeys             interfaces.AppKeyVerifier
+	SandboxHandler      sandboxdriver.ManagementHandler
+	OperatorRestHandler OperatorRestHandler
+	ToolBoxRestHandler  ToolBoxRestHandler
+	MCPRestHandler      MCPRestHandler
+	SkillRestHandler    SkillRestHandler
+	ImpexHandler        common.ImpexHandler
+	UnifiedProxyHandler common.UnifiedProxyHandler
+	TemplateHandler     common.TemplateHandler
+	AIGenerationHandler common.AIGenerationHandler
+	Logger              interfaces.Logger
+	auditStore          *operationaudit.Store
+	auditQueryStore     operationAuditQueryStore
+	auditAuthorization  interfaces.IAuthorizationService
 }
 
 // NewRestPublicHandler creates a restHandler instance.
 func NewRestPublicHandler() interfaces.HTTPRouterInterface {
 	auditStore := operationaudit.NewStore(db.NewDBPool())
 	return &restPublicHandler{
-		Hydra:                 drivenadapters.NewHydra(),
-		AppKeys:               drivenadapters.NewAppKeyVerifier(),
-		SandboxHandler:        sandboxdriver.NewManagementHandler(),
-		OperatorRestHandler:   NewOperatorRestHandler(),
-		ToolBoxRestHandler:    NewToolBoxRestHandler(),
-		MCPRestHandler:        NewMCPRestHandler(),
-		SkillRestHandler:      NewSkillRestHandler(),
-		ImpexHandler:          common.NewImpexHandler(),
-		UnifiedProxyHandler:   common.NewUnifiedProxyHandler(),
-		TemplateHandler:       common.NewTemplateHandler(),
-		AIGenerationHandler:   common.NewAIGenerationHandler(),
-		Logger:                config.NewConfigLoader().GetLogger(),
-		businessDomainService: business_domain.NewBusinessDomainService(),
-		auditStore:            auditStore,
-		auditQueryStore:       auditStore,
-		auditAuthorization:    auth.NewAuthServiceImpl(),
+		Hydra:               drivenadapters.NewHydra(),
+		AppKeys:             drivenadapters.NewAppKeyVerifier(),
+		SandboxHandler:      sandboxdriver.NewManagementHandler(),
+		OperatorRestHandler: NewOperatorRestHandler(),
+		ToolBoxRestHandler:  NewToolBoxRestHandler(),
+		MCPRestHandler:      NewMCPRestHandler(),
+		SkillRestHandler:    NewSkillRestHandler(),
+		ImpexHandler:        common.NewImpexHandler(),
+		UnifiedProxyHandler: common.NewUnifiedProxyHandler(),
+		TemplateHandler:     common.NewTemplateHandler(),
+		AIGenerationHandler: common.NewAIGenerationHandler(),
+		Logger:              config.NewConfigLoader().GetLogger(),
+		auditStore:          auditStore,
+		auditQueryStore:     auditStore,
+		auditAuthorization:  auth.NewAuthServiceImpl(),
 	}
 }
 
@@ -86,7 +83,7 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	r.SandboxHandler.RegisterPublic(engine)
 	// Import and export.
 	engine.GET("/impex/export/:type/:id", r.ImpexHandler.Export)
-	engine.POST("/impex/import/:type", middlewareBusinessDomain(true, r.businessDomainService), r.ImpexHandler.Import)
+	engine.POST("/impex/import/:type", r.ImpexHandler.Import)
 	// function execution.
 	engine.POST("/function/execute", r.UnifiedProxyHandler.FunctionExecute)
 

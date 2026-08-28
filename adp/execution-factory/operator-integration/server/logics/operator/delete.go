@@ -87,12 +87,6 @@ func (m *operatorManager) DeleteOperator(ctx context.Context, req interfaces.Ope
 		}
 		deleteList = append(deleteList, item.OperatorID)
 	}
-	// Unassociate business domain.
-	businessDomainID, _ := common.GetBusinessDomainFromCtx(ctx)
-	err = m.BusinessDomainService.BatchDisassociateResource(ctx, businessDomainID, deleteList, interfaces.AuthResourceTypeOperator)
-	if err != nil {
-		return
-	}
 	// Delete resource permissions policy.
 	err = m.AuthService.DeletePolicy(ctx, deleteList, interfaces.AuthResourceTypeOperator)
 	return

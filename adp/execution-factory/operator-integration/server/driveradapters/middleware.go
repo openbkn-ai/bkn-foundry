@@ -183,33 +183,6 @@ func byteToInterface(byt []byte) interface{} {
 	return m
 }
 
-// middlewareBusinessDomain handles x-business-domain logic.
-func middlewareBusinessDomain(isPublic bool, businessDomainService interfaces.IBusinessDomainService) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		ctx := c.Request.Context()
-		businessDomain := businessDomainService.GetBusinessDomainFromHeader(c)
-		// Initialize default value.
-		// 1. External interface: If not passed, the default is bd_public.
-		if isPublic {
-			if businessDomain == "" {
-				businessDomain = interfaces.DefaultBusinessDomain
-				c.Request.Header.Set(string(interfaces.HeaderXBusinessDomain), businessDomain)
-			}
-		}
-		// Set to context for subsequent use.
-		ctx = common.SetBusinessDomainToCtx(ctx, businessDomain)
-		c.Request = c.Request.WithContext(ctx)
-		// 3. Verify whether the business domain exists.
-		err := businessDomainService.ValidateBusinessDomain(ctx)
-		if err != nil {
-			rest.ReplyError(c, err)
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
-}
-
 // middlewareProxyRequest identifies proxy requests and sets context information.
 func middlewareProxyRequest() gin.HandlerFunc {
 	return func(c *gin.Context) {

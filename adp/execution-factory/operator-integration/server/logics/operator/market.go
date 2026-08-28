@@ -3,7 +3,6 @@ package operator
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common/ormhelper"
@@ -93,7 +92,7 @@ func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *inte
 		Data: []*interfaces.OperatorDataInfo{},
 	}
 	var releaseList []*model.OperatorReleaseDB
-	authResp, resourceToBdMap, err := m.queryOperatorReleaseList(ctx, req)
+	authResp, err := m.queryOperatorReleaseList(ctx, req)
 	if err != nil {
 		return
 	}
@@ -131,7 +130,6 @@ func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *inte
 			m.Logger.WithContext(ctx).Errorf("assemble release result failed, err: %v", err)
 			continue
 		}
-		info.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, info.OperatorID, req.BusinessDomainID)
 		result.Data = append(result.Data, info)
 		userList = append(userList, userIDs...)
 	}
@@ -149,7 +147,7 @@ func (m *operatorManager) QueryOperatorMarketList(ctx context.Context, req *inte
 
 // Query and filter operator release list based on request parameters.
 func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *interfaces.PageQueryOperatorMarketReq) (
-	authResp *interfaces.QueryResponse[model.OperatorReleaseDB], resourceToBdMap map[string]string, err error) {
+	authResp *interfaces.QueryResponse[model.OperatorReleaseDB], err error) {
 	filter := make(map[string]interface{})
 	filter["all"] = req.All
 	if req.Name != "" {
@@ -233,12 +231,6 @@ func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *int
 		return list, nil
 	}
 
-	businessDomainIds := strings.Split(req.BusinessDomainID, ",")
-	resourceToBdMap, err = m.BusinessDomainService.BatchResourceList(ctx, businessDomainIds, interfaces.AuthResourceTypeOperator)
-	if err != nil {
-		return
-	}
-
 	queryBuilder := auth.NewQueryBuilder[model.OperatorReleaseDB]().
 		SetPage(req.Page, req.PageSize).SetAll(req.All).
 		SetQueryFunctions(queryTotal, queryBatch).
@@ -248,13 +240,6 @@ func (m *operatorManager) queryOperatorReleaseList(ctx context.Context, req *int
 		}, func(newCtx context.Context, pageSize int, offset int, ids []string, cursorValue *model.OperatorReleaseDB) ([]*model.OperatorReleaseDB, error) {
 			filter["in"] = ids
 			return queryBatch(newCtx, pageSize, offset, cursorValue)
-		}).
-		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			resourceIDs := make([]string, 0, len(resourceToBdMap))
-			for resourceID := range resourceToBdMap {
-				resourceIDs = append(resourceIDs, resourceID)
-			}
-			return resourceIDs, nil
 		})
 	if common.IsPublicAPIFromCtx(ctx) {
 		// Set up public access filtering.

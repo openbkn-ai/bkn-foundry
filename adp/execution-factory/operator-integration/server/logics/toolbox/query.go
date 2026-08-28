@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
@@ -134,7 +133,7 @@ func (s *ToolServiceImpl) toolDBToToolInfo(ctx context.Context, toolDB *model.To
 	return
 }
 
-func (s *ToolServiceImpl) getToolBoxList(ctx context.Context, toolBoxDBList []*model.ToolboxDB, resourceToBdMap map[string]string) (toolBoxInfoList []*interfaces.ToolBoxInfo, err error) {
+func (s *ToolServiceImpl) getToolBoxList(ctx context.Context, toolBoxDBList []*model.ToolboxDB) (toolBoxInfoList []*interfaces.ToolBoxInfo, err error) {
 	// Assembly toolbox information results.
 	toolBoxInfoList = []*interfaces.ToolBoxInfo{}
 	var userIDs, boxIDs []string
@@ -166,9 +165,7 @@ func (s *ToolServiceImpl) getToolBoxList(ctx context.Context, toolBoxDBList []*m
 	if err != nil {
 		return
 	}
-	businessDomainIDStr, _ := common.GetBusinessDomainFromCtx(ctx)
 	for i, toolBox := range toolBoxInfoList {
-		toolBoxInfoList[i].BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, toolBox.BoxID, businessDomainIDStr)
 		toolBoxInfoList[i].Tools = toolNameMap[toolBox.BoxID]
 		toolBoxInfoList[i].CreateUser = utils.GetValueOrDefault(userMap, toolBox.CreateUser, interfaces.UnknownUser)
 		toolBoxInfoList[i].UpdateUser = utils.GetValueOrDefault(userMap, toolBox.UpdateUser, interfaces.UnknownUser)

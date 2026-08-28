@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strings"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
@@ -120,7 +119,7 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 		},
 	}
 	var operatorList []*model.OperatorRegisterDB
-	authResp, resourceToBdMap, err := m.queryOperatorConfigList(ctx, req)
+	authResp, err := m.queryOperatorConfigList(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +171,6 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 			err = errors.DefaultHTTPError(ctx, http.StatusInternalServerError, err.Error())
 			return
 		}
-		operatorInfo.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, operator.OperatorID, req.BusinessDomainID)
 		operatorInfo.CreateUser = utils.GetValueOrDefault(userMap, operatorInfo.CreateUser, interfaces.UnknownUser)
 		operatorInfo.UpdateUser = utils.GetValueOrDefault(userMap, operatorInfo.UpdateUser, interfaces.UnknownUser)
 		result.Data = append(result.Data, operatorInfo)
@@ -181,7 +179,7 @@ func (m *operatorManager) GetOperatorQueryPage(ctx context.Context, req *interfa
 }
 
 func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *interfaces.PageQueryRequest) (
-	authResp *interfaces.QueryResponse[model.OperatorRegisterDB], resourceToBdMap map[string]string, err error) {
+	authResp *interfaces.QueryResponse[model.OperatorRegisterDB], err error) {
 	// Query operator list.
 	conditions := map[string]interface{}{}
 	// Convert request parameters into conditions.
@@ -257,12 +255,6 @@ func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *inte
 		return operatorList, nil
 	}
 
-	businessDomainIds := strings.Split(req.BusinessDomainID, ",")
-	resourceToBdMap, err = m.BusinessDomainService.BatchResourceList(ctx, businessDomainIds, interfaces.AuthResourceTypeOperator)
-	if err != nil {
-		return
-	}
-
 	queryBuilder := auth.NewQueryBuilder[model.OperatorRegisterDB]().
 		SetPage(req.Page, req.PageSize).SetAll(req.All).
 		SetQueryFunctions(queryTotal, queryBatch).
@@ -275,14 +267,7 @@ func (m *operatorManager) queryOperatorConfigList(ctx context.Context, req *inte
 				conditions["in"] = ids
 				return queryBatch(newCtx, pageSize, offset, cursorValue)
 			},
-		).
-		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			resourceIDs := make([]string, 0, len(resourceToBdMap))
-			for resourceID := range resourceToBdMap {
-				resourceIDs = append(resourceIDs, resourceID)
-			}
-			return resourceIDs, nil
-		})
+		)
 	if common.IsPublicAPIFromCtx(ctx) {
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
 			// Check viewing permissions.

@@ -132,11 +132,6 @@ func (s *ToolServiceImpl) DeleteBoxByID(ctx context.Context, req *interfaces.Del
 		return
 	}
 
-	// Unassociate business domain.
-	err = s.BusinessDomainService.DisassociateResource(ctx, req.BusinessDomainID, req.BoxID, interfaces.AuthResourceTypeToolBox)
-	if err != nil {
-		return
-	}
 	// Delete resource permissions policy.
 	err = s.AuthService.DeletePolicy(ctx, []string{req.BoxID}, interfaces.AuthResourceTypeToolBox)
 	if err != nil {
@@ -200,7 +195,7 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 	resp = &interfaces.QueryToolBoxListResp{
 		Data: []*interfaces.ToolBoxInfo{},
 	}
-	authResp, resourceToBdMap, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
+	authResp, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
 	if err != nil {
 		return
 	}
@@ -210,7 +205,7 @@ func (s *ToolServiceImpl) QueryToolBoxList(ctx context.Context, req *interfaces.
 		return
 	}
 	// Assembly toolbox information results.
-	toolBoxInfoList, err := s.getToolBoxList(ctx, toolBoxList, resourceToBdMap)
+	toolBoxInfoList, err := s.getToolBoxList(ctx, toolBoxList)
 	if err != nil {
 		return
 	}

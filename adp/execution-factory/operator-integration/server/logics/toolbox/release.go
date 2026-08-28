@@ -77,14 +77,6 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		toolBoxToolInfo[tool.BoxID] = append(toolBoxToolInfo[tool.BoxID], tool)
 	}
 
-	// Get the authorized resource ID under the business domain.
-	businessDomainStr, _ := infracommon.GetBusinessDomainFromCtx(ctx)
-	businessDomainIds := strings.Split(businessDomainStr, ",")
-	resourceToBdMap, err := s.BusinessDomainService.BatchResourceList(ctx, businessDomainIds, interfaces.AuthResourceTypeToolBox)
-	if err != nil {
-		return
-	}
-
 	// Get toolbox information.
 	authResp, err := auth.SelectListWithAuth(ctx, req.Page, req.PageSize, req.All, func() ([]*model.ToolboxDB, error) {
 		var boxList []*model.ToolboxDB
@@ -110,7 +102,7 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		if err != nil {
 			return nil, err
 		}
-		return filterToolboxResourceIDs(resourceToBdMap, authResourceIds), nil
+		return authResourceIds, nil
 	})
 	if err != nil {
 		return
@@ -128,7 +120,6 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 	sourceMap := map[model.SourceType][]string{}
 	for _, toolBox := range toolboxDBs {
 		toolBoxInfo := s.toolBoxDBToToolBoxToolInfo(ctx, toolBox)
-		toolBoxInfo.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, toolBox.BoxID, "")
 		userIDs = append(userIDs, toolBox.CreateUser, toolBox.UpdateUser, toolBox.ReleaseUser)
 		var toolInfos []*interfaces.ToolInfo
 		// Collect information about tools under the current toolbox.
@@ -177,38 +168,6 @@ func (s *ToolServiceImpl) GetMarketToolList(ctx context.Context, req *interfaces
 		}
 	}
 	return
-}
-
-func filterToolboxResourceIDs(resourceToBdMap map[string]string, authResourceIDs []string) []string {
-	resourceIDs := make([]string, 0, len(resourceToBdMap))
-	hasBusinessDomainBypass := false
-	for resourceID := range resourceToBdMap {
-		resourceIDs = append(resourceIDs, resourceID)
-		if resourceID == interfaces.ResourceIDAll {
-			hasBusinessDomainBypass = true
-		}
-	}
-	if len(resourceIDs) == 0 {
-		return []string{}
-	}
-
-	hasFullAccess := false
-	for _, authResourceID := range authResourceIDs {
-		if authResourceID == interfaces.ResourceIDAll {
-			hasFullAccess = true
-			break
-		}
-	}
-	if hasBusinessDomainBypass {
-		if hasFullAccess {
-			return []string{interfaces.ResourceIDAll}
-		}
-		return authResourceIDs
-	}
-	if hasFullAccess {
-		return resourceIDs
-	}
-	return utils.CalculateIntersection(resourceIDs, authResourceIDs)
 }
 
 // GetReleaseToolBoxInfo Get release tool information.
@@ -373,7 +332,7 @@ func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *inter
 	resp = &interfaces.QueryToolBoxListResp{
 		Data: []*interfaces.ToolBoxInfo{},
 	}
-	authResp, resourceToBdMap, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
+	authResp, err := s.getToolBoxListPage(ctx, filter, req.CommonPageParams, req.UserID, operations)
 	if err != nil {
 		return
 	}
@@ -383,7 +342,7 @@ func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *inter
 		return
 	}
 	// Assembly toolbox information results.
-	toolBoxInfoList, err := s.getToolBoxList(ctx, toolBoxList, resourceToBdMap)
+	toolBoxInfoList, err := s.getToolBoxList(ctx, toolBoxList)
 	if err != nil {
 		return
 	}
@@ -392,7 +351,7 @@ func (s *ToolServiceImpl) QueryMarketToolBoxList(ctx context.Context, req *inter
 }
 
 func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams,
-	userID string, operations ...interfaces.AuthOperationType) (authResp *interfaces.QueryResponse[model.ToolboxDB], resourceToBdMap map[string]string, err error) {
+	userID string, operations ...interfaces.AuthOperationType) (authResp *interfaces.QueryResponse[model.ToolboxDB], err error) {
 	sortField := sortFieldMap[pageParamsReq.SortBy]
 	sort := &ormhelper.SortParams{
 		Fields: []ormhelper.SortField{
@@ -443,13 +402,6 @@ func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[str
 		return boxList, err
 	}
 
-	businessDomainStr, _ := infracommon.GetBusinessDomainFromCtx(ctx)
-	businessDomainIds := strings.Split(businessDomainStr, ",")
-	resourceToBdMap, err = s.BusinessDomainService.BatchResourceList(ctx, businessDomainIds, interfaces.AuthResourceTypeToolBox)
-	if err != nil {
-		return
-	}
-
 	queryBuilder := auth.NewQueryBuilder[model.ToolboxDB]().
 		SetPage(pageParamsReq.Page, pageParamsReq.PageSize).
 		SetAll(pageParamsReq.All).SetQueryFunctions(queryTotal, queryBatch).
@@ -459,13 +411,6 @@ func (s *ToolServiceImpl) getToolBoxListPage(ctx context.Context, filter map[str
 		}, func(newCtx context.Context, pageSize, offset int, ids []string, cursorValue *model.ToolboxDB) ([]*model.ToolboxDB, error) {
 			filter["in"] = ids
 			return queryBatch(newCtx, pageSize, offset, cursorValue)
-		}).
-		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			resourceIDs := make([]string, 0, len(resourceToBdMap))
-			for resourceID := range resourceToBdMap {
-				resourceIDs = append(resourceIDs, resourceID)
-			}
-			return resourceIDs, nil
 		})
 	// Determine whether it is an external interface.
 	if infracommon.IsPublicAPIFromCtx(ctx) {

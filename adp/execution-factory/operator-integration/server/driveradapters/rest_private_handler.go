@@ -9,36 +9,33 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	sharedrest "github.com/openbkn-ai/bkn-foundry/comm-go/rest"
 )
 
 type restPrivateHandler struct {
-	OperatorRestHandler   OperatorRestHandler
-	ToolBoxRestHandler    ToolBoxRestHandler
-	MCPRestHandler        MCPRestHandler
-	UpgradeHandler        common.UpgradeHandler
-	UnifiedProxyHandler   common.UnifiedProxyHandler
-	ImpexHandler          common.ImpexHandler
-	Logger                interfaces.Logger
-	SkillRestHandler      SkillRestHandler
-	businessDomainService interfaces.IBusinessDomainService
-	Hydra                 interfaces.Hydra
+	OperatorRestHandler OperatorRestHandler
+	ToolBoxRestHandler  ToolBoxRestHandler
+	MCPRestHandler      MCPRestHandler
+	UpgradeHandler      common.UpgradeHandler
+	UnifiedProxyHandler common.UnifiedProxyHandler
+	ImpexHandler        common.ImpexHandler
+	Logger              interfaces.Logger
+	SkillRestHandler    SkillRestHandler
+	Hydra               interfaces.Hydra
 }
 
 // NewRestPrivateHandler creates a restHandler instance.
 func NewRestPrivateHandler() interfaces.HTTPRouterInterface {
 	return &restPrivateHandler{
-		OperatorRestHandler:   NewOperatorRestHandler(),
-		ToolBoxRestHandler:    NewToolBoxRestHandler(),
-		MCPRestHandler:        NewMCPRestHandler(),
-		UpgradeHandler:        common.NewUpgradeHandler(),
-		UnifiedProxyHandler:   common.NewUnifiedProxyHandler(),
-		ImpexHandler:          common.NewImpexHandler(),
-		Logger:                config.NewConfigLoader().GetLogger(),
-		SkillRestHandler:      NewSkillRestHandler(),
-		businessDomainService: business_domain.NewBusinessDomainService(),
-		Hydra:                 drivenadapters.NewHydra(),
+		OperatorRestHandler: NewOperatorRestHandler(),
+		ToolBoxRestHandler:  NewToolBoxRestHandler(),
+		MCPRestHandler:      NewMCPRestHandler(),
+		UpgradeHandler:      common.NewUpgradeHandler(),
+		UnifiedProxyHandler: common.NewUnifiedProxyHandler(),
+		ImpexHandler:        common.NewImpexHandler(),
+		Logger:              config.NewConfigLoader().GetLogger(),
+		SkillRestHandler:    NewSkillRestHandler(),
+		Hydra:               drivenadapters.NewHydra(),
 	}
 }
 
@@ -60,5 +57,5 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	// V0.6.0 -> V0.7.0 upgrade interface.
 	engine.POST("/upgrade/v070/migrate-history", r.UpgradeHandler.UpgradeSkillV070)
 	// Function sandbox execution.
-	engine.POST("/function/exec/:version", middlewareBusinessDomain(true, r.businessDomainService), r.UnifiedProxyHandler.FunctionExecuteProxy)
+	engine.POST("/function/exec/:version", r.UnifiedProxyHandler.FunctionExecuteProxy)
 }

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	icommon "github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
@@ -304,13 +303,6 @@ func (m *operatorManager) registerOperator(ctx context.Context, req *interfaces.
 	}
 	// Find.
 	operator.OperatorID = opID
-
-	// Associated business domains.
-	businessDomainID, _ := common.GetBusinessDomainFromCtx(ctx)
-	err = m.BusinessDomainService.AssociateResource(ctx, businessDomainID, opID, interfaces.AuthResourceTypeOperator)
-	if err != nil {
-		return
-	}
 
 	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = m.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{

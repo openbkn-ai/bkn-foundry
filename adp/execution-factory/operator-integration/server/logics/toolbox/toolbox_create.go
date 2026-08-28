@@ -104,11 +104,6 @@ func (s *ToolServiceImpl) CreateToolBox(ctx context.Context, req *interfaces.Cre
 			})
 		}
 	}
-	// Associated business domains.
-	err = s.BusinessDomainService.AssociateResource(ctx, req.BusinessDomainID, boxID, interfaces.AuthResourceTypeToolBox)
-	if err != nil {
-		return
-	}
 	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = s.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 		ID:   boxID,

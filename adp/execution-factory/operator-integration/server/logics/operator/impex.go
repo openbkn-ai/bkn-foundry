@@ -81,14 +81,7 @@ func (m *operatorManager) Import(ctx context.Context, tx *sql.Tx, mode interface
 
 // Post-operation: Add permission configuration and audit logging.
 func (m *operatorManager) importPostProcess(ctx context.Context, createMap, updateMap map[string]*model.OperatorRegisterDB, accessor *interfaces.AuthAccessor) (err error) {
-	businessDomainID, _ := icommon.GetBusinessDomainFromCtx(ctx)
 	for _, operatorDB := range createMap {
-		// Associated business domains.
-		err = m.BusinessDomainService.AssociateResource(ctx, businessDomainID, operatorDB.OperatorID, interfaces.AuthResourceTypeOperator)
-		if err != nil {
-			return
-		}
-
 		// Triggering a new policy, the creator has all operating permissions on the current resources by default (internal calls will not create)
 		if accessor != nil {
 			err := m.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{

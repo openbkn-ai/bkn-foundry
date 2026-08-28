@@ -36,18 +36,16 @@ func TestSkillManagementReader(t *testing.T) {
 			mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
-			mockBusinessDomainService := mocks.NewMockIBusinessDomainService(ctrl)
 			reader := &skillManagementReader{
 				skillRepo: &stubSkillRepo{
 					selectByID: func(ctx context.Context, tx *sql.Tx, skillID string) (*model.SkillRepositoryDB, error) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mockAuthService,
-				BusinessDomainService: mockBusinessDomainService,
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", SkillMD).
@@ -95,11 +93,10 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
@@ -127,11 +124,10 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
@@ -156,11 +152,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mockAuthService,
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			ctx := common.SetPublicAPIToCtx(context.Background(), true)
@@ -197,11 +192,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mockAuthService,
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			ctx := common.SetPublicAPIToCtx(context.Background(), true)
@@ -232,11 +226,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return nil, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
@@ -260,11 +253,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", SkillMD).
@@ -295,11 +287,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mockAuthService,
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", SkillMD).
@@ -341,11 +332,10 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
@@ -379,11 +369,10 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
@@ -408,11 +397,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", "scripts/main.py").
@@ -446,11 +434,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", "scripts/main.py").
@@ -482,11 +469,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
@@ -510,11 +496,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", "missing.py").

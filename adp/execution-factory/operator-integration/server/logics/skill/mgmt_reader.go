@@ -17,18 +17,16 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 type skillManagementReader struct {
-	skillRepo             model.ISkillRepository
-	fileRepo              model.ISkillFileIndex
-	assetStore            skillAssetStore
-	AuthService           interfaces.IAuthorizationService
-	BusinessDomainService interfaces.IBusinessDomainService
-	Logger                interfaces.Logger
+	skillRepo   model.ISkillRepository
+	fileRepo    model.ISkillFileIndex
+	assetStore  skillAssetStore
+	AuthService interfaces.IAuthorizationService
+	Logger      interfaces.Logger
 }
 
 var (
@@ -41,12 +39,11 @@ func NewSkillManagementReader() interfaces.SkillManagementReader {
 	mgmtReaderOnce.Do(func() {
 		conf := config.NewConfigLoader()
 		mgmtReaderInst = &skillManagementReader{
-			skillRepo:             dbaccess.NewSkillRepositoryDB(),
-			fileRepo:              dbaccess.NewSkillFileIndexDB(),
-			assetStore:            newOSSGatewaySkillAssetStore(),
-			AuthService:           auth.NewAuthServiceImpl(),
-			BusinessDomainService: business_domain.NewBusinessDomainService(),
-			Logger:                conf.GetLogger(),
+			skillRepo:   dbaccess.NewSkillRepositoryDB(),
+			fileRepo:    dbaccess.NewSkillFileIndexDB(),
+			assetStore:  newOSSGatewaySkillAssetStore(),
+			AuthService: auth.NewAuthServiceImpl(),
+			Logger:      conf.GetLogger(),
 		}
 	})
 	return mgmtReaderInst

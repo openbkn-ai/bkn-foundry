@@ -6,8 +6,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/operator"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
 // OperatorRestHandler operator RESTful API Handler interface.
@@ -20,9 +18,8 @@ type OperatorRestHandler interface {
 }
 
 type operatorRestHandler struct {
-	OperatorHandler       operator.OperatorHandler
-	CategoryHandler       category.CategoryHandler
-	businessDomainService interfaces.IBusinessDomainService
+	OperatorHandler operator.OperatorHandler
+	CategoryHandler category.CategoryHandler
 }
 
 var (
@@ -33,9 +30,8 @@ var (
 func NewOperatorRestHandler() OperatorRestHandler {
 	oOnce.Do(func() {
 		oHandler = &operatorRestHandler{
-			OperatorHandler:       operator.NewOperatorHandler(),
-			CategoryHandler:       category.NewCategoryHandler(),
-			businessDomainService: business_domain.NewBusinessDomainService(),
+			OperatorHandler: operator.NewOperatorHandler(),
+			CategoryHandler: category.NewCategoryHandler(),
 		}
 	})
 	return oHandler
@@ -45,11 +41,11 @@ func NewOperatorRestHandler() OperatorRestHandler {
 func (o *operatorRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	// Operator management related interfaces.
 	// POST /api/agent-operator-integration/internal-v1/operator/register Register operator.
-	engine.POST("/operator/register", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorRegister)
+	engine.POST("/operator/register", o.OperatorHandler.OperatorRegister)
 	// GET /api/agent-operator-integration/internal-v1/operator/info/{operator_id} Get operator details.
 	engine.GET("/operator/info/:operator_id", o.OperatorHandler.OperatorQueryByOperatorID)
 	// GET /api/agent-operator-integration/internal-v1/operator/info/list Get the operator paging list.
-	engine.GET("/operator/info/list", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorQueryPage)
+	engine.GET("/operator/info/list", o.OperatorHandler.OperatorQueryPage)
 	// POST /api/agent-operator-integration/internal-v1/operator/info/update Update operator information (currently only called by Dataflow)
 	engine.POST("/operator/info/update", o.OperatorHandler.OperatorUpdateByOpenAPI)
 	// POST /api/agent-operator-integration/internal-v1/operator/proxy/:operator_id execute operator.
@@ -63,7 +59,7 @@ func (o *operatorRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 
 	// Operator market related interfaces.
 	// GET /api/agent-operator-integration/internal-v1/operator/market Get the operator market list, support paging, sorting, and query filter conditions.
-	engine.GET("/operator/market", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.QueryOperatorMarketList)
+	engine.GET("/operator/market", o.OperatorHandler.QueryOperatorMarketList)
 	// GET /api/agent-operator-integration/internal-v1/operator/market/:operator_id View details in the operator market.
 	engine.GET("/operator/market/:operator_id", o.OperatorHandler.QueryOperatorMarketDetail)
 
@@ -81,16 +77,16 @@ func (o *operatorRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 // RegisterPublic Register external API.
 func (o *operatorRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	// POST /api/agent-operator-integration/v1/operator/register
-	engine.POST("/operator/register", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorRegister)
+	engine.POST("/operator/register", o.OperatorHandler.OperatorRegister)
 	// Query operator related interfaces.
 	// GET /api/agent-operator-integration/v1/operator/info/{operator_id}
 	engine.GET("/operator/info/:operator_id", o.OperatorHandler.OperatorQueryByOperatorID)
 	// GET /api/agent-operator-integration/v1/operator/info/list
-	engine.GET("/operator/info/list", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorQueryPage)
+	engine.GET("/operator/info/list", o.OperatorHandler.OperatorQueryPage)
 	// POST /api/agent-operator-integration/v1/operator/names Batch names based on operator ID (front-end object-level authorization page echo)
 	engine.POST("/operator/names", o.OperatorHandler.OperatorQueryNamesByIDs)
 	// DELETE /api/agent-operator-integration/v1/operator/delete
-	engine.DELETE("/operator/delete", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.OperatorDelete)
+	engine.DELETE("/operator/delete", o.OperatorHandler.OperatorDelete)
 	// POST /api/agent-operator-integration/v1/operator/status
 	engine.POST("/operator/status", o.OperatorHandler.OperatorStatusUpdate)
 	// POST /api/agent-operator-integration/v1/operator/info
@@ -108,9 +104,9 @@ func (o *operatorRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 
 	// Operator market related interfaces.
 	// GET /api/agent-operator-integration/v1/operator/market Get the operator market list, supports paging, sorting, and query filter conditions.
-	engine.GET("/operator/market", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.QueryOperatorMarketList)
+	engine.GET("/operator/market", o.OperatorHandler.QueryOperatorMarketList)
 	// GET /api/agent-operator-integration/v1/operator/market/:operator_id View details in the operator market.
-	engine.GET("/operator/market/:operator_id", middlewareBusinessDomain(true, o.businessDomainService), o.OperatorHandler.QueryOperatorMarketDetail)
+	engine.GET("/operator/market/:operator_id", o.OperatorHandler.QueryOperatorMarketDetail)
 
 	// Operator classification management.
 	// GET /api/agent-operator-integration/v1/operator/category //Get the operator classification list.
