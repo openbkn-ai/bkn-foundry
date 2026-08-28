@@ -8,6 +8,10 @@ import concurrent.futures
 
 from app.core.config import base_config
 from app.logs.stand_log import StandLogger
+from app.utils.http_client import proxy_aware_aiohttp
+
+# Small-model provider calls use the same environment proxy handling as LLMs.
+aiohttp = proxy_aware_aiohttp(aiohttp)
 
 
 class UpstreamModelError(Exception):

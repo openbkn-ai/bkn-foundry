@@ -3,11 +3,16 @@ import json
 
 import aiohttp
 
+from app.utils.http_client import proxy_aware_aiohttp
+
 from app.commons.errors import *
 import concurrent.futures
 
 from app.core.config import base_config
 from app.logs.stand_log import StandLogger
+
+# Small-model provider requests use the same proxy environment handling as LLMs.
+aiohttp = proxy_aware_aiohttp(aiohttp)
 
 
 class UpstreamModelError(Exception):

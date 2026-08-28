@@ -7,7 +7,20 @@ from llmadapter.llms.llm_factory import llm_factory
 from llmadapter.schema import AIMessage
 from urllib3.exceptions import MaxRetryError
 from app.commons.errors import ModelFactory_ModelController_TestModel_Error_Error, LLMTestError
-from app.logs.stand_log import StandLogger
+from app.utils.http_client import proxy_aware_aiohttp
+
+
+# Connection tests must use the deployment's standard proxy environment variables.
+aiohttp = proxy_aware_aiohttp(aiohttp)
+
+
+def _connection_test_error(detail, fallback):
+    raw = str(detail).lower()
+    if "504" in raw or "gateway timeout" in raw or "upstream request timeout" in raw:
+        return "The proxy gateway timed out while waiting for the model service; check the proxy's upstream timeout and streaming policy."
+    if "timeout" in raw or "timed out" in raw:
+        return "Model service connection timed out; check the proxy and network connectivity."
+    return fallback
 
 
 @func_set_timeout(30)
@@ -161,49 +174,38 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                     }
                 ],
                 "model": config["api_model"],
-                "stream": True,
-                "stream_options": {"include_usage": True}
+                # A connectivity test should receive one JSON response.  Streaming
+                # SSE is commonly buffered or held open by enterprise proxies.
+                "stream": False,
+                "max_tokens": 16,
             }
             headers = {
                 "Authorization": f"Bearer {config.get('api_key', '')}",
                 "Content-Type": "application/json"
             }
-            token_len = 0
-            prompt_tokens = 0
-            completion_tokens = 0
             async with aiohttp.ClientSession() as session:
                 async with session.post(config["api_url"], json=params, headers=headers, ssl=False) as response:
                     response.encoding = 'utf-8'
                     if response.status != 200:
                         error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
-                        error_dict["description"] = error_dict["solution"] = content
+                        detail = ""
                         try:
-                            error_dict["detail"] = await response.text()
+                            detail = await response.text()
                         except Exception as e:
                             StandLogger.error(str(e))
-                        error_dict["description"] = "Model configuration is invalid."
+                        error_detail = f"HTTP {response.status}: {detail}"
+                        error_dict["detail"] = error_detail
+                        error_dict["description"] = error_dict["solution"] = _connection_test_error(
+                            error_detail, content)
                         return JSONResponse(status_code=400, content=error_dict)
-                    async for chunk in response.content:
-                        chunk = chunk.decode('utf-8')
-                        if chunk.endswith('\n'):
-                            chunk = chunk[:-1]
-                        elif chunk.endswith('\r\n'):
-                            chunk = chunk[:-2]
-                        if len(chunk) >= 6 and chunk[0:6] != "data: ":
-                            continue
-                        if chunk != "data: [DONE]" and chunk != "":
-                            if chunk[0:6] == "data: ":
-                                chunk = chunk[6:]
-                            try:
-                                datas = json.loads(chunk)
-                            except Exception:
-                                continue
-                            if "usage" in datas.keys():
-                                try:
-                                    prompt_tokens = datas["usage"]["prompt_tokens"]
-                                    completion_tokens = datas["usage"]["completion_tokens"]
-                                except Exception:
-                                    pass
+                    body = await response.text()
+                    try:
+                        json.loads(body)
+                    except json.JSONDecodeError:
+                        error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
+                        error_dict["detail"] = "The model service returned an invalid JSON response."
+                        error_dict["description"] = error_dict["solution"] = content
+                        return JSONResponse(status_code=400, content=error_dict)
                     # if llm_id != "":
                     #     log_info = logics.AddModelUsedAudit(
                     #         model_id=llm_id, user_id=user_id,
