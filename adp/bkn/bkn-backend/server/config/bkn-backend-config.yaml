@@ -80,10 +80,6 @@ depServices:
     host: mf-model-api
     port: 9898
     protocol: http
-  business-system:
-    host: business-system-service
-    port: 80
-    protocol: http
   ontology-query:
     host: ontology-query-svc
     port: 13018

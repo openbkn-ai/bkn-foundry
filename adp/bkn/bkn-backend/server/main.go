@@ -34,7 +34,6 @@ import (
 	"bkn-backend/drivenadapters/action_type"
 	"bkn-backend/drivenadapters/agent_operator"
 	"bkn-backend/drivenadapters/auth"
-	"bkn-backend/drivenadapters/business_system"
 	"bkn-backend/drivenadapters/concept_group"
 	"bkn-backend/drivenadapters/knowledge_network"
 	"bkn-backend/drivenadapters/metric"
@@ -194,9 +193,6 @@ func main() {
 	logics.SetActionScheduleAccess(action_schedule.NewActionScheduleAccess(appSetting))
 	logics.SetAgentOperatorAccess(agent_operator.NewAgentOperatorAccess(appSetting))
 	logics.SetActionTypeAccess(action_type.NewActionTypeAccess(appSetting))
-	if common.GetBusinessDomainEnabled() {
-		logics.SetBusinessSystemAccess(business_system.NewBusinessSystemAccess(appSetting))
-	}
 	logics.SetConceptGroupAccess(concept_group.NewConceptGroupAccess(appSetting))
 	logics.SetKNAccess(knowledge_network.NewKNAccess(appSetting))
 	logics.SetMetricAccess(metric.NewMetricAccess(appSetting))

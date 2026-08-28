@@ -62,9 +62,6 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 	// Set trace attributes for the API.
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 
-	// Read the optional business domain from the header.
-	businessDomain := c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)
-
 	// Import mode.
 	mode := c.DefaultQuery(interfaces.QueryParam_ImportMode, interfaces.ImportMode_Normal)
 	httpErr := validateImportMode(ctx, mode)
@@ -119,8 +116,6 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 		rest.ReplyError(c, httpErr)
 		return
 	}
-
-	kn.BusinessDomain = businessDomain
 
 	// Validate required knowledge network creation fields, lengths, and enum values.
 	err = ValidateKN(ctx, &kn)
@@ -578,9 +573,6 @@ func (r *restHandler) ListKNs(c *gin.Context, visitor hydra.Visitor) {
 	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("分页获取业务知识网络列表请求参数: [%s]", c.Request.RequestURI))
 
-	// Read the optional business domain from the header.
-	businessDomain := c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)
-
 	// Read pagination parameters.
 	namePattern := c.Query("name_pattern")
 	tag := c.Query("tag")
@@ -610,10 +602,9 @@ func (r *restHandler) ListKNs(c *gin.Context, visitor hydra.Visitor) {
 
 	// Build the tag-list query parameters.
 	parameter := interfaces.KNsQueryParams{
-		NamePattern:    namePattern,
-		Tag:            tag,
-		BusinessDomain: businessDomain,
-		Branch:         interfaces.MAIN_BRANCH,
+		NamePattern: namePattern,
+		Tag:         tag,
+		Branch:      interfaces.MAIN_BRANCH,
 	}
 	parameter.Sort = pageParam.Sort
 	parameter.Direction = pageParam.Direction

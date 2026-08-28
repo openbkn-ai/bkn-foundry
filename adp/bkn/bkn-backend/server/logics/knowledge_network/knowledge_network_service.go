@@ -30,7 +30,6 @@ import (
 	"bkn-backend/logics"
 	"bkn-backend/logics/action_type"
 	"bkn-backend/logics/batchindex"
-	"bkn-backend/logics/business_system"
 	"bkn-backend/logics/concept_group"
 	"bkn-backend/logics/metric"
 	"bkn-backend/logics/model_factory"
@@ -52,7 +51,6 @@ type knowledgeNetworkService struct {
 	db         *sql.DB
 	ata        interfaces.ActionTypeAccess
 	ats        interfaces.ActionTypeService
-	bss        interfaces.BusinessSystemService
 	cga        interfaces.ConceptGroupAccess
 	cgs        interfaces.ConceptGroupService
 	kna        interfaces.KNAccess
@@ -76,7 +74,6 @@ func NewKNService(appSetting *common.AppSetting) interfaces.KNService {
 			appSetting: appSetting,
 			ata:        logics.ATA,
 			ats:        action_type.NewActionTypeService(appSetting),
-			bss:        business_system.NewBusinessSystemService(appSetting),
 			cga:        logics.CGA,
 			cgs:        concept_group.NewConceptGroupService(appSetting),
 			db:         logics.DB,
@@ -408,15 +405,6 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 				WithErrorDetails(err.Error())
 		}
 
-		// Bind the business domain.
-		err = kns.bss.BindResource(ctx, kn.BusinessDomain, kn.KNID, interfaces.MODULE_TYPE_KN)
-		if err != nil {
-			logger.Errorf("BindResource error: %s", err.Error())
-			span.SetStatus(codes.Error, "绑定业务知识网络业务系统失败")
-			return "", rest.NewHTTPError(ctx, http.StatusInternalServerError,
-				berrors.BknBackend_KnowledgeNetwork_InternalError_BindBusinessDomainFailed).
-				WithErrorDetails(err.Error())
-		}
 	}
 
 	span.SetStatus(codes.Ok, "")
@@ -1095,16 +1083,6 @@ func (kns *knowledgeNetworkService) DeleteKN(ctx context.Context, kn *interfaces
 		span.SetStatus(codes.Error, "删除业务知识网络资源策略失败")
 		return err
 	}
-	// Unbind the business domain last.
-	err = kns.bss.UnbindResource(ctx, kn.BusinessDomain, kn.KNID, interfaces.RESOURCE_TYPE_KN)
-	if err != nil {
-		logger.Errorf("UnbindResource error: %s", err.Error())
-		span.SetStatus(codes.Error, "解绑业务知识网络业务域失败")
-		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
-			berrors.BknBackend_KnowledgeNetwork_InternalError_UnbindBusinessDomainFailed).
-			WithErrorDetails(err.Error())
-	}
-
 	span.SetStatus(codes.Ok, "")
 	return nil
 }
@@ -1236,13 +1214,12 @@ func (kns *knowledgeNetworkService) InsertDatasetData(ctx context.Context, origK
 			Color:         origKN.Color,
 			BKNRawContent: origKN.BKNRawContent,
 		},
-		Branch:         origKN.Branch,
-		BusinessDomain: origKN.BusinessDomain,
-		Creator:        origKN.Creator,
-		CreateTime:     origKN.CreateTime,
-		Updater:        origKN.Updater,
-		UpdateTime:     origKN.UpdateTime,
-		ModuleType:     interfaces.MODULE_TYPE_KN,
+		Branch:     origKN.Branch,
+		Creator:    origKN.Creator,
+		CreateTime: origKN.CreateTime,
+		Updater:    origKN.Updater,
+		UpdateTime: origKN.UpdateTime,
+		ModuleType: interfaces.MODULE_TYPE_KN,
 	}
 
 	if kns.appSetting.ServerSetting.DefaultSmallModelEnabled {

@@ -162,15 +162,13 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		now := time.Now().UTC()
 		requestID := operationAuditRequestID(c)
 		tenantID := operationAuditScopeValue(c.GetHeader("x-tenant-id"), "BKN_OPERATION_AUDIT_TENANT_ID")
-		businessDomainID := operationAuditScopeValue(firstNonEmpty(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN), facts.businessDomain), "BKN_OPERATION_AUDIT_BUSINESS_DOMAIN")
-		if tenantID == "" || businessDomainID == "" {
-			logger.Errorf("operation audit fact rejected: request_id=%s action=%s target_type=%s missing_tenant=%t missing_business_domain=%t", requestID, rule.Action, rule.TargetType, tenantID == "", businessDomainID == "")
+		if tenantID == "" {
+			logger.Errorf("operation audit fact rejected: request_id=%s action=%s target_type=%s missing_tenant=true", requestID, rule.Action, rule.TargetType)
 			return
 		}
 		entry := operationaudit.Entry{
 			EventID: operationAuditEventID(tenantID, requestID, c.Request.Method, c.Request.URL.Path), EventTime: now, RecordedAt: now,
 			TenantID:           tenantID,
-			BusinessDomainID:   businessDomainID,
 			KnowledgeNetworkID: facts.knowledgeNetworkID,
 			ActorID:            actor.ActorID, ActorName: actor.ActorName, ActorType: actor.ActorType,
 			AuthMethod: actor.AuthMethod, CredentialID: actor.CredentialID,
@@ -296,7 +294,6 @@ func operationAuditInternalRoute(fullPath string) bool {
 
 type extractedOperationAuditFacts struct {
 	knowledgeNetworkID string
-	businessDomain     string
 	targetID           string
 	targetName         string
 	outcome            string
@@ -343,8 +340,8 @@ func operationAuditFacts(c *gin.Context, rule operationAuditRule, requestBody, r
 		failureCode, failureMessage = boundedFailure(responseJSON, c.Writer.Status())
 	}
 	return extractedOperationAuditFacts{
-		knowledgeNetworkID: knID, businessDomain: stringValue(requestJSON["business_domain"]),
-		targetID: boundText(targetID, 1024), targetName: boundText(targetName, 1024),
+		knowledgeNetworkID: knID,
+		targetID:           boundText(targetID, 1024), targetName: boundText(targetName, 1024),
 		outcome: outcome, failureCode: failureCode, failureMessage: failureMessage,
 		changeSummary: changedFields(requestJSON),
 	}
@@ -400,7 +397,7 @@ func targetValues(value map[string]any) ([]string, []string) {
 func changedFields(value map[string]any) map[string]any {
 	allowed := map[string]struct{}{
 		"name": {}, "comment": {}, "tags": {}, "icon": {}, "color": {}, "branch": {},
-		"business_domain": {}, "status": {}, "entries": {}, "object_type_ids": {},
+		"status": {}, "entries": {}, "object_type_ids": {},
 		"cron_expression": {}, "action_type_id": {},
 	}
 	fields := []string{}

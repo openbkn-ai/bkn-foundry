@@ -140,8 +140,6 @@ spec:
             value: /opt/bkn-backend/config
           - name: AUTH_ENABLED
             value: {{ .Values.auth.enabled | quote }}
-          - name: BUSINESS_DOMAIN_ENABLED
-            value: {{ .Values.businessDomain.enabled | quote }}
         resources: {{- toYaml .Values.resources | nindent 10 }}
         volumeMounts:
           - name: {{ .Values.moduleName }}-cm

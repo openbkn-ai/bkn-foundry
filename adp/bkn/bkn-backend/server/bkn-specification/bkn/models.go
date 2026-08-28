@@ -24,9 +24,8 @@ type BknNetworkFrontmatter struct {
 	Name string   `yaml:"name"`
 	Tags []string `yaml:"tags"`
 
-	Version        string `yaml:"version,omitempty"`
-	Branch         string `yaml:"branch,omitempty"`
-	BusinessDomain string `yaml:"business_domain,omitempty"`
+	Version string `yaml:"version,omitempty"`
+	Branch  string `yaml:"branch,omitempty"`
 }
 
 // BknDocument is a parsed network.bkn file: frontmatter + body definitions.

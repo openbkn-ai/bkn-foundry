@@ -58,8 +58,6 @@ type AppSetting struct {
 	ModelFactoryManagerUrl string
 	// model factory api url
 	ModelFactoryAPIUrl string
-	// business system url
-	BusinessSystemUrl string
 	// ontology query url
 	OntologyQueryUrl string
 	// vega backend url
@@ -84,7 +82,6 @@ const (
 	hydraAdminServiceName          string = "hydra-admin"
 	modelFactoryManagerServiceName string = "mf-model-manager"
 	modelFactoryAPIServiceName     string = "mf-model-api"
-	businessSystemServiceName      string = "business-system"
 	ontologyQueryServiceName       string = "ontology-query"
 	vegaBackendServiceName         string = "vega-backend"
 	agentOperatorServiceName       string = "agent-operator-integration"
@@ -156,8 +153,6 @@ func loadSetting(vp *viper.Viper) {
 	SetModelFactoryManagerSetting()
 
 	SetModelFactoryAPISetting()
-
-	SetBusinessSystemSetting()
 
 	SetOntologyQuerySetting()
 
@@ -309,30 +304,6 @@ func SetModelFactoryAPISetting() {
 	port := setting["port"].(int)
 
 	appSetting.ModelFactoryAPIUrl = fmt.Sprintf("%s://%s:%d/api/private/mf-model-api/v1", protocol, host, port)
-}
-
-// GetBusinessDomainEnabled returns whether the business-domain feature is enabled.
-// It is controlled by BUSINESS_DOMAIN_ENABLED and defaults to true for security.
-func GetBusinessDomainEnabled() bool {
-	envVal := os.Getenv("BUSINESS_DOMAIN_ENABLED")
-	return envVal != "false" && envVal != "0"
-}
-
-func SetBusinessSystemSetting() {
-	if !GetBusinessDomainEnabled() {
-		logger.Info("Business domain disabled via BUSINESS_DOMAIN_ENABLED env, skipping business-system configuration")
-		return
-	}
-	setting, ok := appSetting.DepServices[businessSystemServiceName]
-	if !ok {
-		logger.Fatalf("service %s not found in depServices", businessSystemServiceName)
-	}
-
-	protocol := setting["protocol"].(string)
-	host := setting["host"].(string)
-	port := setting["port"].(int)
-
-	appSetting.BusinessSystemUrl = fmt.Sprintf("%s://%s:%d/internal/api/business-system/v1", protocol, host, port)
 }
 
 func SetOntologyQuerySetting() {
