@@ -194,6 +194,12 @@ Context Loader 通过内部监听器携带 tenant、business domain、applicatio
 
 Chart 默认使用 memory store 且关闭 Core projection，以保证存量 trace/evidence 读取在普通 chart 升级时不会因缺少新 Secret 而中断。该默认值不代表具备 durable lifecycle；生产启用受管 Conversation / Interaction 时必须显式采用上面的 MariaDB 与 projection 配置。
 
+### Interaction 容量配额
+
+Core 在每个 Interaction 内强制限制 Operation、Claim 和已观察 evidence ref，默认分别为 `256`、`32` 和 `4096`。部署方可通过 Chart 的 `core.capacity` 修改它们；Chart 会分别注入 `BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION`、`BKN_TRACE_CORE_MAX_CLAIMS_PER_INTERACTION` 和 `BKN_TRACE_CORE_MAX_EVIDENCE_REFS_PER_INTERACTION`。这些是仅服务端可控的启动配置，第三方 Agent 不能在请求中覆盖；变更后需要滚动 Core。
+
+三个值必须为正整数，且 Claim 上限不能大于 Operation 上限、evidence ref 上限不能小于 Operation 上限。配置不合法时 Core 拒绝启动，避免静默失去配额保护。
+
 ### MariaDB Schema 版本账本与升级
 
 启用 `core.store=mariadb` 时，服务以镜像内嵌的迁移清单管理 `bkn_trace`。数据库中的

@@ -189,6 +189,11 @@ func NewApp() (*App, error) {
 	}
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
+		Capacity: sessionsvc.CapacityLimits{
+			MaxOperationsPerInteraction:   coreConfig.MaxOperationsPerInteraction,
+			MaxClaimsPerInteraction:       coreConfig.MaxClaimsPerInteraction,
+			MaxEvidenceRefsPerInteraction: coreConfig.MaxEvidenceRefsPerInteraction,
+		},
 		EvidenceCollectionState: func() string {
 			if coreConfig.EvidenceCollectionState == "" {
 				return "enabled"

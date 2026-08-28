@@ -26,18 +26,26 @@ import (
 
 var ErrInvalidOwner = errors.New("trusted conversation owner is incomplete")
 
-const (
-	maxOperationsPerInteraction   = 128
-	maxClaimsPerInteraction       = 32
-	maxEvidenceRefsPerInteraction = 2048
-	defaultAssemblyTimeout        = 5 * time.Minute
-)
+const defaultAssemblyTimeout = 5 * time.Minute
+
+type CapacityLimits struct {
+	MaxOperationsPerInteraction   int
+	MaxClaimsPerInteraction       int
+	MaxEvidenceRefsPerInteraction int
+}
+
+var defaultCapacityLimits = CapacityLimits{
+	MaxOperationsPerInteraction:   256,
+	MaxClaimsPerInteraction:       32,
+	MaxEvidenceRefsPerInteraction: 4096,
+}
 
 type Options struct {
 	Now                     func() time.Time
 	NewID                   func(prefix string) string
 	EvidenceCollectionState func() string
 	AssemblyTimeout         time.Duration
+	Capacity                CapacityLimits
 	Metrics                 icoremetrics.Recorder
 }
 
@@ -47,6 +55,7 @@ type Service struct {
 	newID                   func(string) string
 	evidenceCollectionState func() string
 	assemblyTimeout         time.Duration
+	capacity                CapacityLimits
 	metrics                 icoremetrics.Recorder
 }
 
@@ -71,10 +80,21 @@ func New(store isessionstore.Store, options Options) *Service {
 	if assemblyTimeout <= 0 {
 		assemblyTimeout = defaultAssemblyTimeout
 	}
+	capacity := options.Capacity
+	if capacity.MaxOperationsPerInteraction <= 0 {
+		capacity.MaxOperationsPerInteraction = defaultCapacityLimits.MaxOperationsPerInteraction
+	}
+	if capacity.MaxClaimsPerInteraction <= 0 {
+		capacity.MaxClaimsPerInteraction = defaultCapacityLimits.MaxClaimsPerInteraction
+	}
+	if capacity.MaxEvidenceRefsPerInteraction <= 0 {
+		capacity.MaxEvidenceRefsPerInteraction = defaultCapacityLimits.MaxEvidenceRefsPerInteraction
+	}
 	return &Service{
 		store: store, now: now, newID: newID,
 		evidenceCollectionState: evidenceCollectionState,
 		assemblyTimeout:         assemblyTimeout,
+		capacity:                capacity,
 		metrics:                 metrics,
 	}
 }
@@ -810,7 +830,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 				CurrentStatus: string(interaction.ExecutionStatus),
 			}
 		}
-		if err := validateClosureManifest(tx, interaction, command.Manifest); err != nil {
+		if err := s.validateClosureManifest(tx, interaction, command.Manifest); err != nil {
 			return err
 		}
 		now := tx.Now()
@@ -988,8 +1008,8 @@ func (s *Service) EnsureOperationWithDisposition(
 		// keeps it alive forever. The in-memory store makes that permanent, since
 		// it has no rollback and keeps the renewal written by the failed call.
 		if _, found := tx.FindOperationByKey(interaction.ID, command.OperationKey); !found &&
-			len(tx.ListOperations(interaction.ID)) >= maxOperationsPerInteraction {
-			return domainError(CodeOperationRequired, "interaction operation limit of 128 was reached")
+			len(tx.ListOperations(interaction.ID)) >= s.capacity.MaxOperationsPerInteraction {
+			return domainError(CodeOperationRequired, "interaction operation capacity was reached")
 		}
 		renewInteractionLease(tx, &interaction)
 		if existing, found := tx.FindOperationByKey(interaction.ID, command.OperationKey); found {
@@ -1297,8 +1317,8 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 			}
 		}
 		if evidenceReferenceCount(tx.ListReceipts(interaction.ID), currentReceipt.ID, command.ObservedEvidenceRefs) >
-			maxEvidenceRefsPerInteraction {
-			return domainError(CodeOperationRequired, "interaction evidence reference limit of 2048 was exceeded")
+			s.capacity.MaxEvidenceRefsPerInteraction {
+			return domainError(CodeOperationRequired, "interaction evidence reference capacity was exceeded")
 		}
 		now := tx.Now()
 		currentReceipt.Status = status
@@ -1703,9 +1723,9 @@ func (s *Service) freezeAssemblyRevision(tx isessionstore.Transaction, interacti
 	return s.appendProjection(tx, "assembly_revision", revision.ID, "assembly.revision.created", revision)
 }
 
-func validateClosureManifest(tx isessionstore.Transaction, interaction sessionvo.Interaction, manifest sessionvo.ClosureManifest) error {
-	if len(manifest.Claims) > maxClaimsPerInteraction {
-		return domainError(CodeClosureManifestInvalid, "closure manifest claim limit of 32 was exceeded")
+func (s *Service) validateClosureManifest(tx isessionstore.Transaction, interaction sessionvo.Interaction, manifest sessionvo.ClosureManifest) error {
+	if len(manifest.Claims) > s.capacity.MaxClaimsPerInteraction {
+		return domainError(CodeClosureManifestInvalid, "closure manifest claim capacity was exceeded")
 	}
 	registeredOperations := tx.ListOperations(interaction.ID)
 	registeredReceipts := tx.ListReceipts(interaction.ID)
