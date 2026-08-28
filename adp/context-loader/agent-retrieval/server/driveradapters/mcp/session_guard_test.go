@@ -8,6 +8,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
+	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
@@ -251,10 +253,18 @@ func TestSessionGuardLostResponseReplayReturnsExistingReceiptWithoutDownstream(t
 	if downstreamCalls != 0 {
 		t.Fatalf("completed operation replay must not call downstream, got %d", downstreamCalls)
 	}
-	structured := result.StructuredContent.(map[string]any)
-	receipt := structured["receipt"].(map[string]any)
+	envelope := errorEnvelopeFromResult(t, result)
+	receipt := envelope["receipt"].(map[string]any)
 	if receipt["receipt_id"] != "receipt-1" {
-		t.Fatalf("replay did not return durable receipt: %#v", structured)
+		t.Fatalf("replay did not return durable receipt: %#v", envelope)
+	}
+	// A replay carries no tool payload, so it must not pose as a successful structured result:
+	// hosts validate structured content against the tool's output schema and would reject it.
+	if result.StructuredContent != nil {
+		t.Fatalf("replay published structured content that no output schema describes: %#v", result.StructuredContent)
+	}
+	if errorValue := lifecycleErrorFromResult(t, result); errorValue["code"] != "receipt_terminal" {
+		t.Fatalf("unexpected replay error: %#v", errorValue)
 	}
 }
 
@@ -282,9 +292,13 @@ func TestSessionGuardFailedResponseReplayReturnsExistingReceiptWithoutDownstream
 	if downstreamCalls != 0 {
 		t.Fatalf("failed operation replay must not call downstream, got %d", downstreamCalls)
 	}
-	receipt := result.StructuredContent.(map[string]any)["receipt"].(map[string]any)
+	envelope := errorEnvelopeFromResult(t, result)
+	receipt := envelope["receipt"].(map[string]any)
 	if receipt["receipt_status"] != "failed" {
-		t.Fatalf("replay did not return failed durable receipt: %#v", result.StructuredContent)
+		t.Fatalf("replay did not return failed durable receipt: %#v", envelope)
+	}
+	if !result.IsError {
+		t.Fatalf("failed replay must stay an error result: %#v", result)
 	}
 }
 
@@ -489,6 +503,60 @@ func TestSessionGuardCompletesAttemptAndReturnsDurableReceipt(t *testing.T) {
 	structured := result.StructuredContent.(map[string]any)
 	receipt := structured["bkn_receipt"].(map[string]any)
 	if receipt["receipt_status"] != "completed" {
+		t.Fatalf("durable receipt missing from result: %#v", structured)
+	}
+}
+
+// TestSessionGuardKeepsDeclaredToolShapeWhenAttachingReceipt pins the shape of a struct payload.
+//
+// Business handlers return a response struct, not a map, so the receipt used to be attached by
+// nesting the whole payload under "result". search_instance is the one tool whose output schema
+// marks a field required, and a validating host rejected every managed call with
+// "data must have required property 'nodes'".
+func TestSessionGuardKeepsDeclaredToolShapeWhenAttachingReceipt(t *testing.T) {
+	guarded := guardBusinessToolCallWithCompletion(
+		func(context.Context, operationIntent) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Created: true, Execute: true,
+				Operation: map[string]any{"operation_id": "op-1", "attempt": float64(1)},
+				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "pending"},
+			}, nil, nil
+		},
+		func(_ context.Context, ensured *operationResult, _ *mcpsdk.CallToolResult) (*operationResult, *lifecycleError, error) {
+			return &operationResult{
+				Operation: ensured.Operation,
+				Receipt:   map[string]any{"receipt_id": "receipt-1", "receipt_status": "completed"},
+			}, nil, nil
+		},
+		nil,
+		func(context.Context, mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+			return BuildMCPToolResult(&interfaces.SearchInstanceResp{
+				Nodes: []any{map[string]any{
+					"object_type_id": "customer",
+					"order_no":       json.Number("9223372036854775807"),
+				}},
+			}, rest.FormatJSON)
+		},
+	)
+
+	result, err := guarded(context.Background(), validBusinessToolRequest())
+	if err != nil {
+		t.Fatalf("guard returned protocol error: %v", err)
+	}
+	structured, ok := result.StructuredContent.(map[string]any)
+	if !ok {
+		t.Fatalf("structured content is not a JSON object: %#v", result.StructuredContent)
+	}
+	nodes, ok := structured["nodes"].([]any)
+	if !ok || len(nodes) != 1 {
+		t.Fatalf("receipt attachment moved the tool payload off the top level: %#v", structured)
+	}
+	// The round-trip through a map is the last place a wide integer could be rounded through float64.
+	if orderNo := nodes[0].(map[string]any)["order_no"]; orderNo != json.Number("9223372036854775807") {
+		t.Fatalf("receipt attachment rounded a wide integer: %#v", orderNo)
+	}
+	receipt, ok := structured["bkn_receipt"].(map[string]any)
+	if !ok || receipt["receipt_status"] != "completed" {
 		t.Fatalf("durable receipt missing from result: %#v", structured)
 	}
 }
