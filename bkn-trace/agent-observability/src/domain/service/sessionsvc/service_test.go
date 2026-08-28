@@ -2152,7 +2152,11 @@ func TestRequestProjectionHasRequestRatherThanReceiptCardinality(t *testing.T) {
 func TestInteractionRejectsOperationBeyondCapacityLimit(t *testing.T) {
 	t.Parallel()
 
-	service := newTestService()
+	service := newTestServiceWithCapacity(sessionsvc.CapacityLimits{
+		MaxOperationsPerInteraction:   2,
+		MaxClaimsPerInteraction:       2,
+		MaxEvidenceRefsPerInteraction: 4,
+	})
 	owner := testOwner()
 	conversation := mustEnsureConversation(t, service, owner, "operation-capacity")
 	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
@@ -2161,7 +2165,7 @@ func TestInteractionRejectsOperationBeyondCapacityLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start interaction: %v", err)
 	}
-	for index := 0; index < 128; index++ {
+	for index := 0; index < 2; index++ {
 		if _, _, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
 			Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
 			OperationKey: fmt.Sprintf("operation-%03d", index), ToolName: "query",
@@ -2184,7 +2188,11 @@ func TestInteractionRejectsOperationBeyondCapacityLimit(t *testing.T) {
 func TestClosureManifestRejectsClaimsBeyondCapacityLimit(t *testing.T) {
 	t.Parallel()
 
-	service := newTestService()
+	service := newTestServiceWithCapacity(sessionsvc.CapacityLimits{
+		MaxOperationsPerInteraction:   2,
+		MaxClaimsPerInteraction:       2,
+		MaxEvidenceRefsPerInteraction: 4,
+	})
 	owner := testOwner()
 	conversation := mustEnsureConversation(t, service, owner, "claim-capacity")
 	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
@@ -2193,7 +2201,7 @@ func TestClosureManifestRejectsClaimsBeyondCapacityLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("start interaction: %v", err)
 	}
-	claims := make([]string, 33)
+	claims := make([]string, 3)
 	for index := range claims {
 		claims[index] = fmt.Sprintf("claim-%02d", index)
 	}
@@ -2212,8 +2220,28 @@ func TestClosureManifestRejectsClaimsBeyondCapacityLimit(t *testing.T) {
 func TestReceiptRejectsEvidenceReferencesBeyondCapacityLimit(t *testing.T) {
 	t.Parallel()
 
-	service, owner, _, _, operation, receipt := mustCreateOperation(t)
-	references := make([]string, 2049)
+	service := newTestServiceWithCapacity(sessionsvc.CapacityLimits{
+		MaxOperationsPerInteraction:   2,
+		MaxClaimsPerInteraction:       2,
+		MaxEvidenceRefsPerInteraction: 4,
+	})
+	owner := testOwner()
+	conversation := mustEnsureConversation(t, service, owner, "evidence-capacity")
+	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
+		Owner: owner, ConversationID: conversation.ID, IdempotencyKey: "evidence-capacity",
+	})
+	if err != nil {
+		t.Fatalf("start interaction: %v", err)
+	}
+	operation, receipt, err := service.EnsureOperation(context.Background(), sessionsvc.EnsureOperationCommand{
+		Owner: owner, ConversationID: conversation.ID, InteractionID: interaction.ID,
+		OperationKey: "evidence-capacity", ToolName: "query", Input: operationInput("evidence-capacity"),
+		LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+	})
+	if err != nil {
+		t.Fatalf("ensure operation: %v", err)
+	}
+	references := make([]string, 5)
 	for index := range references {
 		references[index] = fmt.Sprintf("event-%04d", index)
 	}
@@ -2257,6 +2285,10 @@ func operationError(value string) sessionvo.PayloadEnvelope {
 
 func newTestService() *sessionsvc.Service {
 	return sessionsvc.New(sessionstore.New(), sessionsvc.Options{})
+}
+
+func newTestServiceWithCapacity(capacity sessionsvc.CapacityLimits) *sessionsvc.Service {
+	return sessionsvc.New(sessionstore.New(), sessionsvc.Options{Capacity: capacity})
 }
 
 func testOwner() sessionvo.Owner {
@@ -2366,7 +2398,11 @@ func TestOperationLimitDoesNotKeepAFullInteractionAlive(t *testing.T) {
 	// expire and the caller's retries keep it alive indefinitely. The in-memory
 	// store makes that permanent — it has no rollback, so the renewal written by
 	// the failed call survives.
-	service := newTestService()
+	service := newTestServiceWithCapacity(sessionsvc.CapacityLimits{
+		MaxOperationsPerInteraction:   128,
+		MaxClaimsPerInteraction:       32,
+		MaxEvidenceRefsPerInteraction: 2048,
+	})
 	owner := testOwner()
 	conversation := mustEnsureConversation(t, service, owner, "operation-limit")
 	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{

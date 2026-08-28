@@ -28,6 +28,19 @@ if grep -Fq "BKN_TRACE_CORE_MARIADB_DSN" <<<"${default_rendered}"; then
   exit 1
 fi
 
+for required_capacity_env in \
+  'name: BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION' \
+  'value: "256"' \
+  'name: BKN_TRACE_CORE_MAX_CLAIMS_PER_INTERACTION' \
+  'value: "32"' \
+  'name: BKN_TRACE_CORE_MAX_EVIDENCE_REFS_PER_INTERACTION' \
+  'value: "4096"'; do
+  if ! grep -Fq "${required_capacity_env}" <<<"${default_rendered}"; then
+    echo "default chart must render ${required_capacity_env}" >&2
+    exit 1
+  fi
+done
+
 if ! grep -Fq 'name: agent-observability-internal' <<<"${default_rendered}" ||
    ! grep -Fq 'port: internal-http' <<<"${default_rendered}"; then
   echo "chart must expose a private lifecycle Service" >&2

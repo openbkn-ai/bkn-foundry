@@ -140,6 +140,11 @@ core:
   autoMigrate: true
   abandonInterval: 30s
   oneShotIdleTTL: 15m
+  capacity:
+    # Per-Interaction safeguards. Changes take effect after a Core rollout.
+    maxOperationsPerInteraction: 256
+    maxClaimsPerInteraction: 32
+    maxEvidenceRefsPerInteraction: 4096
   evidenceCollectionState: enabled
   projection:
     enabled: false

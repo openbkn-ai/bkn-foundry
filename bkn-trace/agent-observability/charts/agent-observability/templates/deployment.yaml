@@ -65,6 +65,12 @@ spec:
               value: {{ .Values.core.abandonInterval | quote }}
             - name: BKN_TRACE_CORE_ONE_SHOT_IDLE_TTL
               value: {{ .Values.core.oneShotIdleTTL | quote }}
+            - name: BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION
+              value: {{ .Values.core.capacity.maxOperationsPerInteraction | quote }}
+            - name: BKN_TRACE_CORE_MAX_CLAIMS_PER_INTERACTION
+              value: {{ .Values.core.capacity.maxClaimsPerInteraction | quote }}
+            - name: BKN_TRACE_CORE_MAX_EVIDENCE_REFS_PER_INTERACTION
+              value: {{ .Values.core.capacity.maxEvidenceRefsPerInteraction | quote }}
             - name: BKN_TRACE_EVIDENCE_COLLECTION_STATE
               value: {{ .Values.core.evidenceCollectionState | quote }}
             - name: BKN_TRACE_PROJECTION_ENABLED
