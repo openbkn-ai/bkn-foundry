@@ -43,6 +43,7 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 		"dropped_records BIGINT UNSIGNED NOT NULL DEFAULT 0",
 		"bkn_trace_ee_provenance_analyses",
 		"idx_provenance_analysis_interaction",
+		"ADD COLUMN IF NOT EXISTS locale VARCHAR(16) NOT NULL DEFAULT 'zh-CN'",
 	}
 	for _, fragment := range required {
 		if !strings.Contains(schema, fragment) {
@@ -58,6 +59,7 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"015": "408e6cb3445f6116995da9852116f1795563f5ea17a65da667b6ec42a33dec2e",
 		"016": "869da02928bed7950e7d0b2b3e609c806334a3839342e57631548f57b3ac1be4",
 		"017": "f47e2ee9f70f0089c2cd225f5d28cc612b2f0c105d5ba001d55771636c02e349",
+		"018": "9fd4c45b568a2a5c395ee09a4214a240d9e865239e1024f443559f45a97b89b8",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {
