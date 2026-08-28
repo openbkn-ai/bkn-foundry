@@ -29,7 +29,7 @@ All REST and MCP business tool calls must belong to an active Conversation and a
 
 - Conversation and Interaction must be created through `bkn_start_interaction`, `Mcp-Session-Id` cannot replace business Conversation.
 - When the context is missing, invalid, unauthorized, expired or final, the Context Loader returns a stable error code, `required_action` and a security prompt, and the number of downstream business calls must be 0.
-- The Context Loader uses a trusted authentication context to determine the tenant, business domain, application principal, and effective subject; the caller cannot override the Owner in JSON.
+- The Context Loader uses a trusted authentication context to determine the tenant, application principal, and effective subject; the caller cannot override the Owner in JSON.
 - The Context Loader derives the Operation idempotent identity from the trusted request association, tool name, and normalized input. Network retry reuses `bkn-request-id`, or carries a stable `X-OpenBKN-Client-Invocation-Id`; an existing pending Receipt returns `receipt_pending`, and downstream side effects must not be repeated.
 
 ## 3. Downstream sub-call contract
@@ -40,8 +40,8 @@ Core assigns stable `operation_id`, `attempt` and `receipt_id` to each managed b
 - The trusted Context Loader adapter can create the next Attempt and re-invoke the business tool only when the previous Attempt failed with a retryable error. Only the first claimant executes the downstream call; other concurrent calls return `receipt_pending`.
 - `created` only indicates whether the Operation was created for the first time, and `execute` indicates whether this ensure call obtained the right to execute the current Attempt; callers must not infer execution from `created`.
 - Finalization of the Attempt is done by the Context Loader trusted adapter based on the actual downstream results. The third-party Agent can only query Operation/Receipt and cannot submit `payload_hash`, `outcome` or terminate Receipt directly.
-- `conversation_id`, `interaction_id`, `operation_id`, `attempt`, business domain and causal ID are propagated with trusted internal calls.
-- OpenBKN business causation, business domain and observed time must be stripped before calling untrusted third parties.
+- `conversation_id`, `interaction_id`, `operation_id`, `attempt` and causal ID are propagated with trusted internal calls.
+- OpenBKN business causation and observed time must be stripped before calling untrusted third parties.
 
 ## 4. Receipt output contract
 

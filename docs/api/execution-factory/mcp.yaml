@@ -144,7 +144,7 @@ paths:
           page_size: 3
         provides:
           mcp_id: data[0].mcp_id
-      description: 按业务域分页列出已登记的 MCP Server，支持按名称、来源、分类、状态、运行模式过滤。
+      description: 分页列出当前租户可访问的 MCP Server，支持按名称、来源、分类、状态、运行模式过滤。
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'

@@ -71,7 +71,7 @@ Interaction 业务语义图遵循以下口径：
 - `completeness` / `partial_reasons` 描述客观证据组装；`disclosure_partial` / `disclosure_reasons` 描述当前用户授权投影。resolver 不可用、未配置或无法确认权限时，业务节点及其操作边默认不披露。
 - resolver 按 `ref_type + ref_id + source_system` 判定，不使用不匹配的 RefID 前缀推断权限。暂时没有安全实例级授权接口的类型保持 `unresolved`，不能由父类型权限推断实例权限。
 
-`ref_type` 与 `ref_id` 的规范结构是一一对应的写入合同。事件与 operation receipt 两条写入路径都必须使用完整限定格式；前缀、段数、业务域或版本不合法时会拒绝写入，避免业务节点在查询时静默消失。
+`ref_type` 与 `ref_id` 的规范结构是一一对应的写入合同。事件与 operation receipt 两条写入路径都必须使用完整限定格式；前缀、段数或版本不合法时会拒绝写入，避免业务节点在查询时静默消失。
 
 | `ref_type` | `ref_id` 规范结构 |
 |---|---|
@@ -219,7 +219,7 @@ Schema 变更必须新增下一个版本目录。每条迁移中的每一句也�
 
 滚动升级期间，新旧 agent-retrieval 实例可能对失败调用上报不同的 evidence durability；这是升级窗口内的临时统计差异，待生产者全部完成滚动后收敛。不得据此回写或重算历史 Ledger 事件。
 
-Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求；当前业务域由 Studio 发送。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。
+Studio 查询使用用户 OAuth access token。核心服务通过 `BKN_TRACE_HYDRA_ADMIN_URL` 调用 Hydra introspection，从 token 派生可信 `account_id/account_type`，拒绝客户端自报身份与 token 不一致的请求。解析 BKN/Vega 业务名称时只在内存中向授权下游转发该 Bearer，不能写入日志、事件、索引或响应。
 
 Evidence、Business Graph、Snapshot、Node 和技术 Trace Graph 查询必须经过 OAuth 与 Access Profile 校验，并以 tenant、account 归属在 OpenSearch 条件和返回层同时过滤。跨归属查询统一返回 404，不泄露 trace 是否存在。仅本地开发和测试可显式设置 `BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY=true`，Helm 默认关闭。
 

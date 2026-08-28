@@ -82,7 +82,7 @@ paths:
                 $ref: "#/components/schemas/Error"
     get:
       summary: "查询 Skill 列表"
-      description: "分页查询业务域下的 Skill 列表，仅返回轻量摘要，不返回 SKILL.md 正文和文件清单"
+      description: "分页查询当前租户可访问的 Skill 列表，仅返回轻量摘要，不返回 SKILL.md 正文和文件清单"
       tags:
         - "Skill 管理"
       parameters:

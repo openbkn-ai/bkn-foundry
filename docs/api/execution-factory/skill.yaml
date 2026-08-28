@@ -101,7 +101,7 @@ paths:
           page_size: 3
         provides:
           skill_id: data[0].skill_id
-      description: 按业务域分页列出技能，支持按名称、状态、分类、创建人过滤。
+      description: 分页列出当前租户可访问的技能，支持按名称、状态、分类、创建人过滤。
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'

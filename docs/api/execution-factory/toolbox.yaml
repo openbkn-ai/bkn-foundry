@@ -91,7 +91,7 @@ paths:
         provides:
           box_id: data[0].box_id
       description: |
-        按业务域分页列出工具箱。`metadata_type` 过滤用于「函数工具工作台只列函数
+        分页列出当前租户可访问的工具箱。`metadata_type` 过滤用于「函数工具工作台只列函数
         工具箱」这类场景。
 
         条目里的 `tools` 是**工具名字符串数组**，不是工具对象也不是 ID——要工具详情

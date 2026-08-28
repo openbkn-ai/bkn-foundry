@@ -100,7 +100,7 @@ func Test_KnowledgeNetworkRestHandler_CreateKN(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusBadRequest)
 		})
 
-		Convey("Business domain is empty, proceeds with empty domain\n", func() {
+		Convey("Request without optional headers succeeds\n", func() {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
 
 			reqParamByte, _ := sonic.Marshal(kn)
@@ -307,7 +307,7 @@ func Test_KnowledgeNetworkRestHandler_ListKNs(t *testing.T) {
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 
-		Convey("Business domain is empty, proceeds with empty domain\n", func() {
+		Convey("Request without optional headers succeeds\n", func() {
 			kns.EXPECT().ListKNs(gomock.Any(), gomock.Any()).Return([]*interfaces.KN{}, 0, nil)
 
 			req := httptest.NewRequest(http.MethodGet, url, nil)

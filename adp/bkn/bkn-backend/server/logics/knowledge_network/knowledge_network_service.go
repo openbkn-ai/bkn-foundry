@@ -389,7 +389,7 @@ func (kns *knowledgeNetworkService) CreateKN(ctx context.Context, kn *interfaces
 		}
 	}
 
-	// Bind the business domain last and only during creation.
+	// Register resource policies last and only during creation.
 	if isCreate {
 		// Register resource policies.
 		err = kns.ps.CreateResources(ctx, []interfaces.PermissionResource{{

@@ -116,7 +116,7 @@ AI 编码 Agent（如 Cursor、Claude Code、Codex）可在已安装 **openbkn**
 
 > 💡 **openbkn** 技能由企业内部分发。Cursor 用户可将 Skill 目录放到 `~/.cursor/skills/` 或项目 `.cursor/skills/` 下；其他 Agent 环境参照各自的 Skill 加载方式。
 
-### 用自然语言描述业务域
+### 用自然语言描述业务场景
 
 向 Agent 描述你的业务领域即可。例如：
 

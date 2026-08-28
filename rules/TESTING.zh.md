@@ -7,7 +7,7 @@
 
 ## 1. 背景
 
-BKN Foundry 由多个模块组成，分属多个业务域（ontology、vega、execution-factory 等），由多个小组并行开发。本规范同样适用于 BKN Foundry 的所有模块。
+BKN Foundry 由多个产品模块组成（ontology、vega、execution-factory 等），由多个小组并行开发。本规范同样适用于 BKN Foundry 的所有模块。
 
 测试的编写、运行、修复主要由 AI Agent 完成，人工负责审核和决策。
 
@@ -190,9 +190,9 @@ ci: lint test-at
 ./scripts/ci-run.sh lint                          # 只跑 lint
 ./scripts/ci-run.sh cover                         # 只跑覆盖率
 
-# 指定模块 / 业务域
+# 指定模块 / 模块目录
 ./scripts/ci-run.sh ut ontology/ontology-manager  # 单个模块
-./scripts/ci-run.sh ut ontology/                  # 按业务域过滤
+./scripts/ci-run.sh ut ontology/                  # 按模块目录过滤
 ./scripts/ci-run.sh it vega/                      # vega 域的 IT
 ```
 

@@ -501,7 +501,7 @@ func Test_ActionExecution_Snapshot(t *testing.T) {
 }
 
 func Test_executeAsync_ContextAndProgress(t *testing.T) {
-	Convey("executeAsync should restore business domain and flush small-run progress", t, func() {
+	Convey("executeAsync should restore trace context and flush small-run progress", t, func() {
 		mockCtrl := gomock.NewController(t)
 		defer mockCtrl.Finish()
 
