@@ -32,7 +32,7 @@
 | 工具 | 说明 |
 | --- | --- |
 | **Git** | `deploy.sh` / `preflight.sh` **不会**调用 `git`。只有从 **Git 仓库 clone** 开发/更新时才需要本机装 Git；使用**已解压的产品包**或构建产物时，**安装目标机可以不装 Git**。 |
-| **Node.js** | **22+** 与 **`@openbkn/bkn-sdk`** 的 npm `engines`、`deploy/onboard.sh` 及 preflight 检查一致（环境变量 **`PREFLIGHT_OPENBKN_MIN_NODE_MAJOR`**，默认 **22**）。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
+| **Node.js** | **22.19.0+** 与 **`@openbkn/bkn-sdk`** 的 npm `engines`、`deploy/onboard.sh` 及 preflight 检查一致（环境变量 **`PREFLIGHT_OPENBKN_MIN_NODE`**，默认 **22.19.0**）。比的是完整版本而不是主版本号：22.0.0 能过「≥22」却装不上 CLI —— npm 遇到运行时满足不了 `engines` 的版本会跳过它、装一个旧的，且不报错。**仅起 K8s / Helm** 时，目标机**可以不装 Node**；缺 Node 或版本低于 22 时 preflight 多为 **[WARN]**（非阻塞），也可在**另一台已装 Node 22+ 的机器**上跑 `onboard.sh`，或通过 **`preflight.sh --fix`** 里与 Node 相关的可选项安装。详见下文 **客户端工具**。 |
 | **Python** **3** | 日常跑 **`preflight` / `deploy.sh` 不强制**要求。若使用 **`deploy/preflight.sh --output=json`**（JSON 输出依赖 **`python3`**），则**必须**安装 Python 3。若目标机 **PATH 上已有 `python3`**，preflight 会检查其版本为 **CPython 3.6+**（与 `deploy/scripts/lib/onboard_*.py` 一致；可用 **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`** 覆盖，默认 **3** / **6**）。部分与 `kubectl` 相关的辅助解析在存在 `python3` 时也会使用。 |
 
 **`deploy/scripts/lib/onboard_*.py`（供 `onboard.sh` 调用）**：实现上约定 **CPython 3.6 起至当前主线 3.x** 可调（兼容 CentOS 7 自带的 **3.6.x**；**3.5 及以下**不适用，因其缺少 f-string 等语法）。不向 **PyYAML 5.1 以后**才有的 `yaml.dump(..., sort_keys=...)` 等参数。维护者或 CI 可执行 **`bash deploy/scripts/lib/preflight_checks_test.sh`**，在存在 **`python3`** 时会对这两个文件做一次 **`py_compile`**；本机若有多个解释器，可 **`EXTRA_PYTHONS="python3.9 python3.12"`** 再跑一遍以覆盖多版本。
@@ -81,7 +81,7 @@ npm install -g @openbkn/bkn-sdk
 npx openbkn --help
 ```
 
-> 需要 **Node.js 22+**，与 npm 上 [`@openbkn/bkn-sdk`](https://www.npmjs.com/package/@openbkn/bkn-sdk) 的 `engines`（`node >= 22`）一致；使用 Node 18 会 `EBADENGINE` 或运行期报错。
+> 需要 **Node.js 22.19.0+**，与 npm 上 [`@openbkn/bkn-sdk`](https://www.npmjs.com/package/@openbkn/bkn-sdk) 的 `engines` 一致。低于这个版本时 **`npm i -g @openbkn/bkn-sdk` 不会报错**，而是静默装上一个旧版本 —— 所以安装后请用 `openbkn --version` 核对，或直接 `npm i -g @openbkn/bkn-sdk@latest`。
 
 - 🌐 **curl** — 直接调用 HTTP API
 
@@ -117,7 +117,7 @@ sudo bash deploy/preflight.sh --help         # 全部参数
 | 参数 | 含义 |
 | --- | --- |
 | `--check-only` | 仅检查，不改系统（默认） |
-| `--fix` | 检查 + 应用修复（K8s / sysctl / containerd / Helm / 防火墙 / SELinux / 系统调优 / sysctl 等）；同时按需提示安装 Node 22+ + `openbkn` |
+| `--fix` | 检查 + 应用修复（K8s / sysctl / containerd / Helm / 防火墙 / SELinux / 系统调优 / sysctl 等）；同时按需提示安装 Node 22.19+ + `openbkn` |
 | `-y` / `--yes` | **全部**修复项自动确认 |
 | `-n` / `--no` | 全部修复项自动拒绝（仅查看风险描述，不改东西） |
 | `--fix-allow=LIST` | 仅自动确认指定修复项（其余跳过），如 `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`（旧名 `k8s-apt-source` 仍可作别名）。可用 `sudo bash deploy/preflight.sh --list-fixes` 查看本机当前可用的全部修复名 |

@@ -32,7 +32,7 @@ Prepare the host, network, and client tooling before you deploy.
 | Tool | Expectation |
 | --- | --- |
 | **Git** | `deploy.sh` / `preflight.sh` **do not** call `git`. Install Git only if you are working from **a cloned repository**. Deployments from an **extracted product tarball** or artifact **do not** require Git on the install host. |
-| **Node.js** | **22+** aligns with **`@openbkn/bkn-sdk`** npm [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk), **`deploy/onboard.sh`**, and preflight checks (`PREFLIGHT_OPENBKN_MIN_NODE_MAJOR`, default **22**). Bringing up Kubernetes/Helm on the server **does not** require Node; preflight warns if Node is missing or older than **22** (**[WARN]** only—you can run onboard from another machine or install Node via **`preflight.sh --fix`** opt-ins). See **Client tooling** below. |
+| **Node.js** | **22.19.0+** aligns with **`@openbkn/bkn-sdk`** npm [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk), **`deploy/onboard.sh`**, and preflight checks (`PREFLIGHT_OPENBKN_MIN_NODE`, default **22.19.0**). The full version is compared, not the major: 22.0.0 clears a `>= 22` bar and still cannot install the CLI, because npm skips a release whose `engines` the runtime misses and installs an older one without an error. Bringing up Kubernetes/Helm on the server **does not** require Node; preflight warns if Node is missing or older than **22** (**[WARN]** only—you can run onboard from another machine or install Node via **`preflight.sh --fix`** opt-ins). See **Client tooling** below. |
 | **Python** **3** | **Optional** for normal `preflight` / `deploy.sh`. **`python3`** is **required** if you pass **`deploy/preflight.sh --output=json`** (stdout JSON is emitted via Python). When **`python3`** is on PATH, preflight **requires CPython 3.6+** (same bar as `deploy/scripts/lib/onboard_*.py`; override **`PREFLIGHT_MIN_PYTHON_MAJOR`** / **`PREFLIGHT_MIN_PYTHON_MINOR`**, default **3** / **6**). A few kubectl-related helpers also use Python when available. |
 
 **`deploy/scripts/lib/onboard_*.py` (invoked by `onboard.sh`)** are written for **CPython 3.6 through current 3.x** — including **CentOS 7’s 3.6.x** — and avoid 3.7-only `subprocess` flags, **PEP 563** annotations, **`yaml.dump(..., sort_keys=...)`** (needs newer PyYAML), etc. **Python 3.5 and older are not supported** (f-strings, among other things). Maintainer/CI: **`bash deploy/scripts/lib/preflight_checks_test.sh`** includes a `py_compile` pass on these files when `python3` is available; set **`EXTRA_PYTHONS="python3.9 python3.12"`** to repeat with more interpreters.
@@ -80,7 +80,7 @@ npm install -g @openbkn/bkn-sdk
 # or: npx openbkn --help
 ```
 
-> **Node.js 22+** is required. This matches the [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk) field of `@openbkn/bkn-sdk` on npm (`node >= 22`); Node 18 will get `EBADENGINE` or runtime issues.
+> **Node.js 22.19.0+** is required, matching the [`engines`](https://www.npmjs.com/package/@openbkn/bkn-sdk) field of `@openbkn/bkn-sdk` on npm. Below that, **`npm i -g @openbkn/bkn-sdk` does not fail** — it quietly installs an older release instead. Check `openbkn --version` after installing, or install `@openbkn/bkn-sdk@latest` directly.
 
 - **curl** — for raw HTTP API calls
 
@@ -116,7 +116,7 @@ Common flags:
 | Flag | Meaning |
 | --- | --- |
 | `--check-only` | Only run checks, do not modify the system (default) |
-| `--fix` | Check + apply fixes (K8s / sysctl / containerd / Helm / firewall / SELinux / system tuning / sysctl …); also offers Node 22+ + `openbkn` |
+| `--fix` | Check + apply fixes (K8s / sysctl / containerd / Helm / firewall / SELinux / system tuning / sysctl …); also offers Node 22.19+ + `openbkn` |
 | `-y` / `--yes` | Auto-approve **every** fix prompt |
 | `-n` / `--no` | Auto-decline every fix (preview risk text only) |
 | `--fix-allow=LIST` | Comma-separated fix names to auto-approve, others are skipped (e.g. `k8s-pkgs-repo,k8s-bins,containerd-install,helm-v3,nofile-limits,nodejs-npm,bkn-sdk`; legacy alias `k8s-apt-source`). Run `sudo bash deploy/preflight.sh --list-fixes` to see all fix names available on this host. |
