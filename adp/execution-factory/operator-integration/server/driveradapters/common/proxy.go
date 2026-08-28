@@ -10,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"github.com/google/uuid"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/drivenadapters"
+	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/errors"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/rest"
@@ -94,7 +96,7 @@ func (h *unifiedProxyHandler) FunctionExecute(c *gin.Context) {
 		Event:                 req.Event,
 		Language:              req.Language,
 		Timeout:               req.Timeout,
-		EnvVars:               buildFunctionExecutionEnv(req),
+		EnvVars:               buildFunctionExecutionEnv(c, req),
 		Dependencies:          req.Dependencies,
 		PythonPackageIndexURL: req.DependenciesURL,
 	}
@@ -129,21 +131,94 @@ func newExecutionEnv() map[string]any {
 	return env
 }
 
+// fillExecutionAccountFromRequest backfills the acting account when the body did
+// not state one. It is a tracking mark, not a credential, so it is safe on every
+// execution path.
+//
+// Session context is deliberately NOT backfilled here or anywhere else.
+// bkn_conversation_id / bkn_interaction_id stay caller-stated: #1161 rules out
+// deriving function invocation context from HTTP trace headers alone and
+// reserves that contract for an explicit typed envelope.
+//
+// Explicit body fields still win: a caller acting for someone else must be able
+// to say so. Only blanks are filled, and every key stays present, so a pooled
+// session never leaks the previous caller's identity into this execution.
+func fillExecutionAccountFromRequest(env map[string]any, c *gin.Context) map[string]any {
+	if c == nil || c.Request == nil {
+		return env
+	}
+	if isBlankEnvValue(env, "user_id") {
+		env["user_id"] = requestAccountID(c)
+	}
+	return env
+}
+
+// fillExecutionCredentialFromRequest additionally hands the sandbox the caller's
+// own credential.
+//
+// run_code needs nothing from its caller because Context Loader assembles the
+// execution itself: the token is in its own request context and the endpoint is
+// itself. Direct execution had no such assembler — the credential had to be
+// restated in the request body, so a caller that did not know to do so (the
+// Studio debug panel) reached the sandbox with a blank identity and
+// sandbox_sdk.bkn reported "not configured". The request is already introspected
+// and already carries it, so read it from there.
+//
+// Only for the path where the caller submits the code it is about to run, so the
+// credential never leaves the account it belongs to. The proxy path must not use
+// this: it runs code registered by a third party, and its route authenticates by
+// trusted header rather than by introspection, so the Authorization value there
+// is an unverified passthrough. Injecting it would let a function author read and
+// exfiltrate the invoking user's live credential.
+func fillExecutionCredentialFromRequest(env map[string]any, c *gin.Context) map[string]any {
+	if c == nil || c.Request == nil {
+		return env
+	}
+	if isBlankEnvValue(env, "BKN_TOKEN") {
+		env["BKN_TOKEN"] = drivenadapters.GetToken(c)
+	}
+	return fillExecutionAccountFromRequest(env, c)
+}
+
+func isBlankEnvValue(env map[string]any, key string) bool {
+	value, ok := env[key].(string)
+	return !ok || value == ""
+}
+
+// requestAccountID is the account the request authenticated as. Both auth
+// middlewares put it on the context and mirror it onto the user_id header; the
+// header is the fallback for a route that only ran the header-auth path.
+func requestAccountID(c *gin.Context) string {
+	if authContext, ok := common.GetAccountAuthContextFromCtx(c.Request.Context()); ok && authContext != nil {
+		if authContext.AccountID != "" {
+			return authContext.AccountID
+		}
+	}
+	return c.GetHeader(string(interfaces.HeaderUserID))
+}
+
 // Deriving the schema will also execute user code, and the identity key must be overwritten as well -.
 // If one is sent less, the identity of the previous caller in the pooled container will be read by the user code.
+//
+// Deliberately not backfilled from the request: schema derivation only imports the
+// module to read a signature, so handing it a live credential would widen what that
+// import can reach for no gain.
 func inferSchemaExecutionEnv() map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_infer_schema"
 	return env
 }
 
-func buildFunctionProxyExecutionEnv(version string) map[string]any {
+func buildFunctionProxyExecutionEnv(c *gin.Context, version string) map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_proxy"
 	env["task_id"] = "function_proxy_" + uuid.NewString()
 	env["capability_id"] = "function_version:" + version
 	env["function_version_id"] = version
-	return env
+	// This path has no body fields to carry the acting account at all: a registered
+	// function is invoked by version. The credential is deliberately withheld — the
+	// code being run belongs to whoever registered the version, not to the caller.
+	return fillExecutionAccountFromRequest(env, c)
 }
 
 // FunctionExecuteResp function execution response.
@@ -176,11 +251,11 @@ func newFunctionExecuteResp(resp *interfaces.ExecuteCodeResp) *FunctionExecuteRe
 	}
 }
 
-func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[string]any {
+func buildFunctionExecutionEnv(c *gin.Context, req *interfaces.FunctionProxyExecuteCodeReq) map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_debug"
 	if req == nil {
-		return env
+		return fillExecutionCredentialFromRequest(env, c)
 	}
 	if req.Source != "" {
 		env["source"] = req.Source
@@ -207,7 +282,7 @@ func buildFunctionExecutionEnv(req *interfaces.FunctionProxyExecuteCodeReq) map[
 	env["BKN_TOKEN"] = req.BKNToken
 	env["BKN_CONVERSATION_ID"] = req.BKNConversationID
 	env["BKN_INTERACTION_ID"] = req.BKNInteractionID
-	return env
+	return fillExecutionCredentialFromRequest(env, c)
 }
 
 // FunctionExecuteProxyReq function execution proxy request parameters.
@@ -272,7 +347,7 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		Event:                 event,
 		Timeout:               int(req.Timeout / 1000),
 		Language:              scriptType,
-		EnvVars:               buildFunctionProxyExecutionEnv(req.Version),
+		EnvVars:               buildFunctionProxyExecutionEnv(c, req.Version),
 		Dependencies:          dependencies,
 		PythonPackageIndexURL: metadata.GetDependenciesURL(),
 	}
