@@ -22,13 +22,6 @@ paths:
       tags:
         - "内部导入"
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-            example: bd_public
-          description: 业务域 ID；ContextLoader 自动同步场景固定传 `bd_public`
         - name: x-account-id
           in: header
           required: false

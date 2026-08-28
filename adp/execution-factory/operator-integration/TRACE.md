@@ -44,12 +44,10 @@ bkn-action-observed-at
 bkn-action-approval-requested-event-id
 x-account-id
 x-account-type
-x-business-domain
 ```
 
 - `bkn-action-approval-requested-event-id` is the direct cause of `approved/rejected`.
 - `traceparent` must be the original valid W3C value and passed into the 2.1 ingest envelope unchanged.
-- `x-business-domain` must be a real business domain. If it is missing, Action evidence will not be enabled and it is forbidden to replace it with account id.
 - `bkn-operation-id` remains unchanged on retries, `bkn-attempt` is incremented and goes into event ID.
 - The original execution behavior is maintained when any required causal field is missing, but no orphan Action event is created.
 - The current automatic testing policy only accepts `action_type=monitor`, `reversible=true`, `policy_ref=e2e-monitor-auto-approve`.

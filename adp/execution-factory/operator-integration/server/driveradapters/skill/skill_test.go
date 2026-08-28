@@ -56,7 +56,6 @@ func TestSkillHandler(t *testing.T) {
 			}
 			mockRegistry.EXPECT().RegisterSkill(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, req *interfaces.RegisterSkillReq) (*interfaces.RegisterSkillResp, error) {
-					// So(req.BusinessDomainID, ShouldEqual, "bd-test")
 					// So(req.UserID, ShouldEqual, "user-1")
 					So(req.FileType, ShouldEqual, "content")
 					return &interfaces.RegisterSkillResp{SkillID: "skill-1", Status: "active"}, nil
@@ -73,8 +72,7 @@ func TestSkillHandler(t *testing.T) {
 			So(writer.Close(), ShouldBeNil)
 
 			recorder := performSkillRequest(http.MethodPost, "/skills", writer.FormDataContentType(), body.String(), map[string]string{
-				"x-business-domain": "bd-test",
-				"user_id":           "user-1",
+				"user_id": "user-1",
 			}, handler.RegisterSkill)
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
@@ -84,8 +82,7 @@ func TestSkillHandler(t *testing.T) {
 		Convey("RegisterSkill rejects unsupported content type", func() {
 			handler := &skillHandler{}
 			recorder := performSkillRequest(http.MethodPost, "/skills", "text/plain", "raw", map[string]string{
-				"x-business-domain": "bd-test",
-				"user_id":           "user-1",
+				"user_id": "user-1",
 			}, handler.RegisterSkill)
 
 			So(recorder.Code, ShouldEqual, http.StatusBadRequest)
@@ -115,8 +112,7 @@ func TestSkillHandler(t *testing.T) {
 			recorder := performSkillRequest(http.MethodPut, "/skills/:skill_id/metadata", "application/json",
 				`{"name":"demo-skill","description":"new-desc","category":"other_category","source":"custom"}`,
 				map[string]string{
-					"x-business-domain": "bd-test",
-					"user_id":           "user-1",
+					"user_id": "user-1",
 				}, handler.UpdateSkillMetadata, "skill-meta-1")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
@@ -154,8 +150,7 @@ func TestSkillHandler(t *testing.T) {
 			So(writer.Close(), ShouldBeNil)
 
 			recorder := performSkillRequest(http.MethodPut, "/skills/:skill_id/package", writer.FormDataContentType(), body.String(), map[string]string{
-				"x-business-domain": "bd-test",
-				"user_id":           "user-1",
+				"user_id": "user-1",
 			}, handler.UpdateSkillPackage, "skill-pkg-1")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
@@ -186,8 +181,7 @@ func TestSkillHandler(t *testing.T) {
 			recorder := performSkillRequest(http.MethodPost, "/skills/:skill_id/history/republish", "application/json",
 				`{"version":"hist-v1"}`,
 				map[string]string{
-					"x-business-domain": "bd-test",
-					"user_id":           "user-1",
+					"user_id": "user-1",
 				}, handler.RepublishSkillHistory, "skill-h1")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
@@ -218,8 +212,7 @@ func TestSkillHandler(t *testing.T) {
 			recorder := performSkillRequest(http.MethodPost, "/skills/:skill_id/history/publish", "application/json",
 				`{"version":"hist-v2"}`,
 				map[string]string{
-					"x-business-domain": "bd-test",
-					"user_id":           "user-1",
+					"user_id": "user-1",
 				}, handler.PublishSkillHistory, "skill-h2")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
@@ -238,15 +231,12 @@ func TestSkillHandler(t *testing.T) {
 			}
 			mockReader.EXPECT().GetSkillContent(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, req *interfaces.GetSkillContentReq) (*interfaces.GetSkillContentResp, error) {
-					// So(req.BusinessDomainID, ShouldEqual, "bd-test")
 					So(req.SkillID, ShouldEqual, "skill-2")
 					return &interfaces.GetSkillContentResp{SkillID: "skill-2", URL: "https://download/skill-2/SKILL.md"}, nil
 				},
 			)
 
-			recorder := performSkillRequest(http.MethodGet, "/skills/:skill_id/content", "", "", map[string]string{
-				"x-business-domain": "bd-test",
-			}, handler.GetSkillContent, "skill-2")
+			recorder := performSkillRequest(http.MethodGet, "/skills/:skill_id/content", "", "", map[string]string{}, handler.GetSkillContent, "skill-2")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
 			So(recorder.Body.String(), ShouldContainSubstring, `"skill_id":"skill-2"`)
@@ -264,16 +254,13 @@ func TestSkillHandler(t *testing.T) {
 			}
 			mockReader.EXPECT().ReadSkillFile(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, req *interfaces.ReadSkillFileReq) (*interfaces.ReadSkillFileResp, error) {
-					// So(req.BusinessDomainID, ShouldEqual, "bd-test")
 					So(req.SkillID, ShouldEqual, "skill-3")
 					So(req.RelPath, ShouldEqual, "refs/guide.md")
 					return &interfaces.ReadSkillFileResp{SkillID: "skill-3", RelPath: "refs/guide.md", URL: "https://download/skill-3/refs/guide.md"}, nil
 				},
 			)
 
-			recorder := performSkillRequest(http.MethodPost, "/skills/:skill_id/files/read", "application/json", `{"rel_path":"refs/guide.md"}`, map[string]string{
-				"x-business-domain": "bd-test",
-			}, handler.ReadSkillFile, "skill-3")
+			recorder := performSkillRequest(http.MethodPost, "/skills/:skill_id/files/read", "application/json", `{"rel_path":"refs/guide.md"}`, map[string]string{}, handler.ReadSkillFile, "skill-3")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
 			So(recorder.Body.String(), ShouldContainSubstring, `"skill_id":"skill-3"`)
@@ -292,7 +279,6 @@ func TestSkillHandler(t *testing.T) {
 			}
 			mockRegistry.EXPECT().DownloadSkill(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, req *interfaces.DownloadSkillReq) (*interfaces.DownloadSkillResp, error) {
-					// So(req.BusinessDomainID, ShouldEqual, "bd-test")
 					So(req.SkillID, ShouldEqual, "skill-4")
 					return &interfaces.DownloadSkillResp{
 						SkillID:  "skill-4",
@@ -302,9 +288,7 @@ func TestSkillHandler(t *testing.T) {
 				},
 			)
 
-			recorder := performSkillRequest(http.MethodGet, "/skills/:skill_id/download", "", "", map[string]string{
-				"x-business-domain": "bd-test",
-			}, handler.DownloadSkill, "skill-4")
+			recorder := performSkillRequest(http.MethodGet, "/skills/:skill_id/download", "", "", map[string]string{}, handler.DownloadSkill, "skill-4")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
 			So(recorder.Header().Get("Content-Type"), ShouldEqual, "application/zip")
@@ -323,7 +307,6 @@ func TestSkillHandler(t *testing.T) {
 			}
 			mockMarket.EXPECT().QuerySkillMarketList(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, req *interfaces.QuerySkillMarketListReq) (*interfaces.QuerySkillMarketListResp, error) {
-					// So(req.BusinessDomainID, ShouldEqual, "bd-test")
 					So(req.Page, ShouldEqual, 2)
 					So(req.PageSize, ShouldEqual, 5)
 					return &interfaces.QuerySkillMarketListResp{
@@ -346,7 +329,6 @@ func TestSkillHandler(t *testing.T) {
 			router := gin.New()
 			router.Handle(http.MethodGet, "/skills/market", handler.QuerySkillMarketList)
 			req := httptest.NewRequest(http.MethodGet, "/skills/market?page=2&page_size=5", nil)
-			req.Header.Set("x-business-domain", "bd-test")
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, req)
 
@@ -366,7 +348,6 @@ func TestSkillHandler(t *testing.T) {
 			}
 			mockMarket.EXPECT().GetSkillMarketDetail(gomock.Any(), gomock.Any()).DoAndReturn(
 				func(_ any, req *interfaces.GetSkillMarketDetailReq) (*interfaces.SkillInfo, error) {
-					// So(req.BusinessDomainID, ShouldEqual, "bd-test")
 					So(req.SkillID, ShouldEqual, "skill-market-2")
 					return &interfaces.SkillInfo{
 						SkillID:     "skill-market-2",
@@ -377,9 +358,7 @@ func TestSkillHandler(t *testing.T) {
 				},
 			)
 
-			recorder := performSkillRequest(http.MethodGet, "/skills/market/:skill_id", "", "", map[string]string{
-				"x-business-domain": "bd-test",
-			}, handler.GetSkillMarketDetail, "skill-market-2")
+			recorder := performSkillRequest(http.MethodGet, "/skills/market/:skill_id", "", "", map[string]string{}, handler.GetSkillMarketDetail, "skill-market-2")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)
 			So(recorder.Body.String(), ShouldContainSubstring, `"skill_id":"skill-market-2"`)
@@ -414,8 +393,7 @@ func TestSkillHandler(t *testing.T) {
 			recorder := performSkillRequest(http.MethodPost, "/skills/:skill_id/execute", "application/json",
 				`{"entry_shell":"bash run.sh"}`,
 				map[string]string{
-					"x-business-domain": "bd-test",
-					"user_id":           "user-1",
+					"user_id": "user-1",
 				}, handler.ExecuteSkill, "skill-5")
 
 			So(recorder.Code, ShouldEqual, http.StatusOK)

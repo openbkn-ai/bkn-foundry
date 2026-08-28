@@ -26,12 +26,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         required: true
         content:
@@ -62,12 +56,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         required: true
         content:
@@ -144,12 +132,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: page
           in: query
           description: 页码，从1开始，默认为1
@@ -239,12 +221,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           required: true
@@ -317,12 +293,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           required: true
@@ -410,12 +380,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           required: true
@@ -442,12 +406,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           required: true
@@ -506,12 +464,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           required: true
@@ -554,12 +506,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: page
           in: query
           description: 页码，从1开始，默认为1
@@ -648,12 +594,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           required: true
@@ -719,12 +659,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_ids
           in: path
           required: true
@@ -776,12 +710,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           description: MCP Server ID
@@ -812,12 +740,6 @@ paths:
           schema:
             type: string
           description: Bearer token，格式：Bearer <token>
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           description: MCP Server ID
@@ -1064,9 +986,6 @@ components:
       type: object
       description: mcp server基本信息
       properties:
-        business_domain_id:
-          type: string
-          description: 业务域Id
         mcp_id:
           type: string
           description: MCP Server ID

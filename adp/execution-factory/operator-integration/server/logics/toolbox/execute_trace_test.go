@@ -56,7 +56,6 @@ func actionHeaders() map[string]any {
 		"bkn-action-approval-requested-event-id": "evt_action_approval_requested_001",
 		"bkn-attempt":                            "2",
 		"x-account-id":                           "acct-test", "x-account-type": "user",
-		"x-business-domain": "domain-supply-chain",
 	}
 }
 

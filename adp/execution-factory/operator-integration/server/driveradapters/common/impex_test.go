@@ -37,8 +37,7 @@ func TestImport(t *testing.T) {
 		)
 
 		recorder := performMultipartImportRequest(http.MethodPost, "/impex/:type", "/impex/toolbox", map[string]string{
-			"user_id":           "user_id",
-			"x-business-domain": "bd_001",
+			"user_id": "user_id",
 		}, map[string]string{
 			"mode": "upsert",
 		}, "data", `{"toolbox":{"configs":[]}}`, handler.Import)

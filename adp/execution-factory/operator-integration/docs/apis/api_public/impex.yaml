@@ -93,12 +93,6 @@ paths:
           schema:
             type: string
           example: "Bearer 123456"
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: type
           in: path
           description: 组件类型

@@ -33,7 +33,6 @@ if (-not (Test-Path $secretLocal)) {
 
 $env:CONFIG_PROFILE = $configDir
 $env:AUTH_ENABLED = "false"
-$env:BUSINESS_DOMAIN_ENABLED = "false"
 
 # Use local secret override (copy real values into secret.local.yaml)
 Copy-Item $secretLocal (Join-Path $configDir "agent-operator-integration-secret.yaml") -Force

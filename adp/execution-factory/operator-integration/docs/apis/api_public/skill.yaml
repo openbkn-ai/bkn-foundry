@@ -28,12 +28,6 @@ paths:
           required: true
           schema:
             type: string
-        - name: x-business-domain
-          in: header
-          description: "业务域 ID"
-          required: true
-          schema:
-            type: string
       requestBody:
         required: true
         content:
@@ -95,12 +89,6 @@ paths:
         - name: Authorization
           in: header
           description: "Bearer token"
-          required: true
-          schema:
-            type: string
-        - name: x-business-domain
-          in: header
-          description: "业务域 ID"
           required: true
           schema:
             type: string
@@ -191,7 +179,6 @@ paths:
         - "Skill 市场"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - name: page
           in: query
           description: "页码，从 1 开始"
@@ -254,7 +241,6 @@ paths:
         - "Skill 市场"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       responses:
         "200":
@@ -296,7 +282,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       responses:
         "200":
@@ -330,7 +315,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       responses:
         "200":
@@ -366,7 +350,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       requestBody:
         required: true
@@ -414,7 +397,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       requestBody:
         required: true
@@ -462,7 +444,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       requestBody:
         required: true
@@ -525,7 +506,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       responses:
         "200":
@@ -561,7 +541,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       requestBody:
         required: true
@@ -609,7 +588,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       requestBody:
         required: true
@@ -657,7 +635,6 @@ paths:
         - "Skill 读取"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       responses:
         "200":
@@ -693,7 +670,6 @@ paths:
         - "Skill 管理"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       responses:
         "200":
@@ -741,7 +717,6 @@ paths:
         - "Skill 读取"
       parameters:
         - $ref: "#/components/parameters/Authorization"
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/SkillID"
       requestBody:
         required: true
@@ -787,7 +762,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/Page"
         - $ref: "#/components/parameters/PageSize"
         - $ref: "#/components/parameters/All"
@@ -841,7 +815,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
       requestBody:
         required: true
         content:
@@ -881,7 +854,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - name: task_id
           in: path
           description: "任务 ID"
@@ -921,7 +893,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - name: task_id
           in: path
           description: "任务 ID"
@@ -967,7 +938,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - name: task_id
           in: path
           description: "原任务 ID"
@@ -1013,7 +983,6 @@ paths:
       tags:
         - "Skill - Management Read"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/Authorization"
         - $ref: "#/components/parameters/SkillID"
         - name: response_mode
@@ -1057,7 +1026,6 @@ paths:
       tags:
         - "Skill - Management Read"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/Authorization"
         - $ref: "#/components/parameters/SkillID"
         - name: response_mode
@@ -1112,7 +1080,6 @@ paths:
       tags:
         - "Skill - Management Read"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/Authorization"
         - $ref: "#/components/parameters/SkillID"
         - name: response_mode
@@ -1150,13 +1117,6 @@ components:
       name: Authorization
       in: header
       description: "Bearer token"
-      required: true
-      schema:
-        type: string
-    BusinessDomain:
-      name: x-business-domain
-      in: header
-      description: "业务域 ID"
       required: true
       schema:
         type: string

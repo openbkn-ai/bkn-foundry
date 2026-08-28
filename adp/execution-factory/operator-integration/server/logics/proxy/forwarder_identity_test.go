@@ -95,9 +95,8 @@ func TestBuildRequest_IdentityHeaders(t *testing.T) {
 				},
 				HTTPRequestParams: interfaces.HTTPRequestParams{
 					Headers: map[string]any{
-						"X-Api-Key":         "secret-key",
-						"x-business-domain": "domain-1",
-						"x-account-id":      testSpoofedID,
+						"X-Api-Key":    "secret-key",
+						"x-account-id": testSpoofedID,
 					},
 				},
 			}
@@ -106,7 +105,6 @@ func TestBuildRequest_IdentityHeaders(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(httpReq.Header.Get("X-Api-Key"), ShouldEqual, "secret-key")
-			So(httpReq.Header.Get("x-business-domain"), ShouldEqual, "domain-1")
 			So(httpReq.Header.Get("x-account-id"), ShouldEqual, testAuthAccountID)
 		})
 

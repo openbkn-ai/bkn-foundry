@@ -313,9 +313,7 @@ func TestOperatorQueryPage(t *testing.T) {
 			Logger:          mockLogger,
 		}
 		path := "/operator/info/list"
-		headers := map[string]string{
-			"x-business-domain": "domain123",
-		}
+		headers := map[string]string{}
 		Convey("校验默认值，默认查询第一页，页面大小为10", func() {
 			req := &interfaces.PageQueryRequest{
 				Page:      1,

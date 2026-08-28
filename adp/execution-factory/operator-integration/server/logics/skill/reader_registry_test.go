@@ -280,7 +280,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "skill not found")
 		})
 
-		Convey("DeleteSkill ignores owner and business domain direct comparison", func() {
+		Convey("DeleteSkill ignores direct owner comparison", func() {
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
 			mockDBTx := mocks.NewMockDBTx(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
@@ -336,7 +336,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "create forbidden")
 		})
 
-		Convey("RegisterSkill associates business domain after registration succeeds", func() {
+		Convey("RegisterSkill registers after persistence succeeds", func() {
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
 			mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
@@ -721,7 +721,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(string(raw), ShouldNotContainSubstring, "owner_type")
 		})
 
-		Convey("QuerySkillList ignores owner and business domain direct comparison", func() {
+		Convey("QuerySkillList ignores direct owner comparison", func() {
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
 			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
 			mockCategoryManager := mocks.NewMockCategoryManager(ctrl)
@@ -799,7 +799,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(string(raw), ShouldNotContainSubstring, "owner_type")
 		})
 
-		Convey("GetSkillDetail ignores owner and business domain direct comparison", func() {
+		Convey("GetSkillDetail ignores direct owner comparison", func() {
 			mockSkillRepo := mocks.NewMockISkillRepository(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
@@ -938,7 +938,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "skill not found")
 		})
 
-		Convey("GetSkillContent ignores owner and business domain direct comparison", func() {
+		Convey("GetSkillContent ignores direct owner comparison", func() {
 			mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
@@ -999,7 +999,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(err.Error(), ShouldContainSubstring, "skill not found")
 		})
 
-		Convey("ReadSkillFile ignores owner and business domain direct comparison", func() {
+		Convey("ReadSkillFile ignores direct owner comparison", func() {
 			mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
@@ -1079,7 +1079,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(resp[0].ReleaseUser, ShouldEqual, "publisher")
 		})
 
-		Convey("QuerySkillMarketList filters by public access and business domain visibility", func() {
+		Convey("QuerySkillMarketList filters by public access", func() {
 			mockReleaseRepo := mocks.NewMockISkillReleaseDB(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
@@ -1124,7 +1124,7 @@ func TestSkillReaderAndRegistry(t *testing.T) {
 			So(resp.Data[0].SkillID, ShouldEqual, "skill-m1")
 		})
 
-		Convey("GetSkillMarketDetail checks public access and business domain visibility", func() {
+		Convey("GetSkillMarketDetail checks public access", func() {
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 			mockUserMgnt := mocks.NewMockUserManagement(ctrl)
 			mockCategoryManager := mocks.NewMockCategoryManager(ctrl)

@@ -21,12 +21,6 @@ paths:
       tags:
         - "工具箱"
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: "page"
           in: "query"
           required: false
@@ -156,12 +150,6 @@ paths:
       tags:
         - "内置工具管理"
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         description: "工具信息"
         required: true
@@ -560,9 +548,6 @@ components:
           type: string
           description: "算子元数据类型"
           enum: ["openapi", "function"]
-        business_domain_id:
-          type: string
-          description: 业务域Id
         box_id:
           type: string
           description: "工具箱ID"
@@ -922,9 +907,6 @@ components:
                 enum:
                   - "openapi" # OpenAPI
                   - "function" # 函数
-              business_domain_id:
-                type: string
-                description: 业务域Id
               box_id:
                 type: string
                 description: "工具箱ID"
