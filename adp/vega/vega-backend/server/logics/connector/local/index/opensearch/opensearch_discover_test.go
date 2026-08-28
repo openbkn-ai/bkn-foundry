@@ -145,6 +145,17 @@ func TestFetchMappingsExtractsMappingMeta(t *testing.T) {
 	require.Contains(t, index.Mapping, "title")
 }
 
+func TestGetIndexMetaByIdentifierRejectsIndexOutsideConfiguredPattern(t *testing.T) {
+	connector := &OpenSearchConnector{
+		Config: &opensearchConfig{IndexPattern: "catalog-*"},
+	}
+
+	_, err := connector.GetIndexMetaByIdentifier(context.Background(), "system-audit")
+
+	require.Error(t, err)
+	assert.ErrorContains(t, err, `index "system-audit" is outside the connector scope`)
+}
+
 func TestFetchMappingsDefaultsMissingMappingMetaToEmpty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

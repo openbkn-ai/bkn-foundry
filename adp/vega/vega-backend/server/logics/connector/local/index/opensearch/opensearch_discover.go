@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -150,6 +151,16 @@ func (c *OpenSearchConnector) GetIndexMeta(ctx context.Context, index *interface
 }
 
 func (c *OpenSearchConnector) GetIndexMetaByIdentifier(ctx context.Context, sourceIdentifier string) (*interfaces.IndexMeta, error) {
+	if c.Config.IndexPattern != "" {
+		matched, err := path.Match(c.Config.IndexPattern, sourceIdentifier)
+		if err != nil {
+			return nil, fmt.Errorf("match index pattern %q: %w", c.Config.IndexPattern, err)
+		}
+		if !matched {
+			return nil, fmt.Errorf("index %q is outside the connector scope", sourceIdentifier)
+		}
+	}
+
 	indices, err := c.listIndexes(ctx, []string{sourceIdentifier})
 	if err != nil {
 		return nil, fmt.Errorf("list indexes: %w", err)

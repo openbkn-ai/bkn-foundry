@@ -151,7 +151,13 @@ func Test_ResourceRestHandler_SetResourceEnabled(t *testing.T) {
 			LastDiscoverStatus: interfaces.DiscoverStatusMissing,
 		}
 		rs.EXPECT().GetByID(gomock.Any(), "res-1").Return(resource, nil)
-		rs.EXPECT().SetEnabled(gomock.Any(), resource, true).Return(nil)
+		rs.EXPECT().SetEnabled(gomock.Any(), resource, true).
+			DoAndReturn(func(_ context.Context, got *interfaces.Resource, enabled bool) error {
+				assert.Same(t, resource, got)
+				assert.Equal(t, "res-1", got.ID)
+				assert.True(t, enabled)
+				return nil
+			})
 
 		req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/in/v1/resources/res-1/enable", nil)
 		w := httptest.NewRecorder()
