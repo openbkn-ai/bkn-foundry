@@ -14,7 +14,7 @@ from app.utils.http_client import proxy_aware_aiohttp
 aiohttp = proxy_aware_aiohttp(aiohttp)
 
 
-def _semantic_model_test_error(detail, fallback):
+def _semantic_model_test_error(detail, fallback, http_status=None):
     upstream_code = ""
     upstream_type = ""
     upstream_message = ""
@@ -37,11 +37,11 @@ def _semantic_model_test_error(detail, fallback):
         pass
 
     raw = " ".join(
-        [upstream_code, upstream_type, upstream_message, str(detail)]
+        [str(http_status or ""), upstream_code, upstream_type, upstream_message, str(detail)]
     ).lower()
     if any(token in raw for token in ("auth", "unauthorized", "api key", "ak/sk", "apikey", "401")):
         return "Model service authentication failed; check the API key, AK/SK, or authorization configuration."
-    if any(token in raw for token in ("deploymentnotfound", "model not found", "not found", "404")):
+    if any(token in raw for token in ("deploymentnotfound", "model_not_found", "model not found", "not found", "404")):
         return "Model or deployment not found; check API Model and the service URL."
     if any(token in raw for token in ("504", "gateway timeout", "upstream request timeout")):
         return "The proxy gateway timed out while waiting for the model service; check the proxy's upstream timeout and streaming policy."
@@ -97,7 +97,8 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                             StandLogger.error(str(err))
                         error_detail = f"HTTP {response.status}: {detail}"
                         error_dict["detail"] = error_detail
-                        description = _semantic_model_test_error(error_detail, content)
+                        description = _semantic_model_test_error(
+                            detail, content, http_status=response.status)
                         error_dict["description"] = error_dict["solution"] = description
                         return JSONResponse(status_code=400, content=error_dict)
             return JSONResponse(status_code=200, content={"status": "ok", "id": llm_id})
@@ -238,7 +239,8 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                             StandLogger.error(str(e))
                         error_detail = f"HTTP {response.status}: {detail}"
                         error_dict["detail"] = error_detail
-                        description = _semantic_model_test_error(error_detail, content)
+                        description = _semantic_model_test_error(
+                            detail, content, http_status=response.status)
                         error_dict["description"] = error_dict["solution"] = description
                         return JSONResponse(status_code=400, content=error_dict)
                     # Consume and validate the complete non-streaming response.  This
