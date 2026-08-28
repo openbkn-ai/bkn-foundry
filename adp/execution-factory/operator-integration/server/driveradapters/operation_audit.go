@@ -50,8 +50,7 @@ func OperationAudit(recorder interface {
 			c.Header(infra.HeaderBKNRequestID, requestID)
 		}
 		tenantID := strings.TrimSpace(c.GetHeader("x-tenant-id"))
-		businessDomainID := strings.TrimSpace(c.GetHeader(string(interfaces.HeaderXBusinessDomain)))
-		if tenantID == "" || businessDomainID == "" {
+		if tenantID == "" {
 			return
 		}
 		actorName := executionAuditActorName(c.Request.Context(), auth)
@@ -60,8 +59,8 @@ func OperationAudit(recorder interface {
 		now := time.Now().UTC()
 		entry := operationaudit.Entry{
 			EventID: operationaudit.EventID(tenantID, requestID, c.Request.Method, c.FullPath()), EventTime: now, RecordedAt: now,
-			TenantID: tenantID, BusinessDomainID: businessDomainID,
-			ActorID: auth.AccountID, ActorName: actorName, ActorType: executionAuditActorType(auth), AuthMethod: executionAuditAuthMethod(c.GetHeader("Authorization")),
+			TenantID: tenantID,
+			ActorID:  auth.AccountID, ActorName: actorName, ActorType: executionAuditActorType(auth), AuthMethod: executionAuditAuthMethod(c.GetHeader("Authorization")),
 			RequestID: requestID, SourceChannel: "api", Method: c.Request.Method, Action: rule.Action,
 			TargetType: rule.TargetType, TargetID: targetID, TargetName: targetName, Outcome: outcome, FailureCode: failureCode, FailureMessage: failureMessage,
 		}

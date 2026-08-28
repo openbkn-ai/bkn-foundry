@@ -99,14 +99,3 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 	header[string(interfaces.HeaderXAccountType)] = string(authContext.AccountType)
 	return
 }
-
-// SetBusinessDomainToCtx sets the business domain id to context.
-func SetBusinessDomainToCtx(ctx context.Context, businessDomain string) context.Context {
-	return context.WithValue(ctx, interfaces.XBusinessDomain, businessDomain)
-}
-
-// GetBusinessDomainFromCtx Gets the business domain id from context.
-func GetBusinessDomainFromCtx(ctx context.Context) (string, bool) {
-	businessDomain, ok := ctx.Value(interfaces.XBusinessDomain).(string)
-	return businessDomain, ok
-}

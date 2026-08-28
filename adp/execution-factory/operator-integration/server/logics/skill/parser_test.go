@@ -15,9 +15,8 @@ func TestParseRegisterReqContentSuccess(t *testing.T) {
 	Convey("parseRegisterReq content success", t, func() {
 		parser := newSkillParser()
 		req := &interfaces.RegisterSkillReq{
-			BusinessDomainID: "bd-test",
-			UserID:           "user-1",
-			FileType:         "content",
+			UserID:   "user-1",
+			FileType: "content",
 			File: json.RawMessage(`---
 name: demo-skill
 description: demo desc
@@ -48,10 +47,9 @@ func TestParseRegisterReqZipMissingSkillMD(t *testing.T) {
 	Convey("parseRegisterReq zip missing SKILL.md", t, func() {
 		parser := newSkillParser()
 		req := &interfaces.RegisterSkillReq{
-			BusinessDomainID: "bd-test",
-			UserID:           "user-1",
-			FileType:         "zip",
-			File:             buildZip(t, map[string]string{"refs/guide.md": "hello"}),
+			UserID:   "user-1",
+			FileType: "zip",
+			File:     buildZip(t, map[string]string{"refs/guide.md": "hello"}),
 		}
 
 		_, _, _, err := parser.parseRegisterReq(req)
@@ -64,9 +62,8 @@ func TestParseRegisterReqZipRejectsTraversalPath(t *testing.T) {
 	Convey("parseRegisterReq zip rejects traversal path", t, func() {
 		parser := newSkillParser()
 		req := &interfaces.RegisterSkillReq{
-			BusinessDomainID: "bd-test",
-			UserID:           "user-1",
-			FileType:         "zip",
+			UserID:   "user-1",
+			FileType: "zip",
 			File: buildZip(t, map[string]string{
 				"SKILL.md":      validSkillMarkdown(),
 				"../secret.txt": "bad",
@@ -83,9 +80,8 @@ func TestParseRegisterReqZipReturnsAssets(t *testing.T) {
 	Convey("parseRegisterReq zip returns assets", t, func() {
 		parser := newSkillParser()
 		req := &interfaces.RegisterSkillReq{
-			BusinessDomainID: "bd-test",
-			UserID:           "user-1",
-			FileType:         "zip",
+			UserID:   "user-1",
+			FileType: "zip",
 			File: buildZip(t, map[string]string{
 				"SKILL.md":       validSkillMarkdown(),
 				"refs/guide.md":  "guide",

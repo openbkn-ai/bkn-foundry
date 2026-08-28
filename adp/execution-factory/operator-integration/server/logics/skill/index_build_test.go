@@ -45,9 +45,8 @@ func TestSkillIndexBuildService(t *testing.T) {
 				Return(&model.SkillIndexBuildTaskDB{TaskID: "task-1", Status: interfaces.SkillIndexBuildStatusRunning.String()}, nil)
 
 			resp, err := svc.CreateTask(context.Background(), &interfaces.CreateSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-1",
-				ExecuteType:      interfaces.SkillIndexBuildExecuteTypeFull,
+				UserID:      "user-1",
+				ExecuteType: interfaces.SkillIndexBuildExecuteTypeFull,
 			})
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
@@ -68,9 +67,8 @@ func TestSkillIndexBuildService(t *testing.T) {
 				})
 
 			resp, err := svc.CreateTask(context.Background(), &interfaces.CreateSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-1",
-				ExecuteType:      interfaces.SkillIndexBuildExecuteTypeFull,
+				UserID:      "user-1",
+				ExecuteType: interfaces.SkillIndexBuildExecuteTypeFull,
 			})
 			So(err, ShouldBeNil)
 			So(resp.Status, ShouldEqual, interfaces.SkillIndexBuildStatusPending)
@@ -119,9 +117,8 @@ func TestSkillIndexBuildService(t *testing.T) {
 				})
 
 			resp, err := svc.RetryTask(context.Background(), &interfaces.RetrySkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-1",
-				TaskID:           "task-failed",
+				UserID: "user-1",
+				TaskID: "task-failed",
 			})
 			So(err, ShouldBeNil)
 			So(resp.SourceTaskID, ShouldEqual, "task-failed")
@@ -168,9 +165,8 @@ func TestSkillIndexBuildService(t *testing.T) {
 				})
 
 			resp, err := svc.RetryTask(context.Background(), &interfaces.RetrySkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-1",
-				TaskID:           "task-canceled",
+				UserID: "user-1",
+				TaskID: "task-canceled",
 			})
 			So(err, ShouldBeNil)
 			So(resp.SourceTaskID, ShouldEqual, "task-canceled")
@@ -192,9 +188,8 @@ func TestSkillIndexBuildService(t *testing.T) {
 			}, nil)
 
 			resp, err := svc.RetryTask(context.Background(), &interfaces.RetrySkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-1",
-				TaskID:           "task-running",
+				UserID: "user-1",
+				TaskID: "task-running",
 			})
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
@@ -279,8 +274,7 @@ func TestSkillIndexBuildService(t *testing.T) {
 			}, nil)
 
 			resp, err := svc.GetTask(context.Background(), &interfaces.GetSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				TaskID:           "task-1",
+				TaskID: "task-1",
 			})
 			So(err, ShouldBeNil)
 			So(resp.QueueState, ShouldEqual, "")
@@ -299,7 +293,6 @@ func TestSkillIndexBuildService(t *testing.T) {
 			}, nil)
 
 			resp, err := svc.QueryTaskList(context.Background(), &interfaces.QuerySkillIndexBuildTaskListReq{
-				BusinessDomainID: "bd-1",
 				CommonPageParams: interfaces.CommonPageParams{
 					Page:      1,
 					PageSize:  10,
@@ -332,9 +325,8 @@ func TestSkillIndexBuildService(t *testing.T) {
 				})
 
 			resp, err := svc.CancelTask(context.Background(), &interfaces.CancelSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-1",
-				TaskID:           "task-2",
+				UserID: "user-1",
+				TaskID: "task-2",
 			})
 			So(err, ShouldBeNil)
 			So(resp.Action, ShouldEqual, "cancel_task")
@@ -359,9 +351,8 @@ func TestSkillIndexBuildService(t *testing.T) {
 				})
 
 			resp, err := svc.CancelTask(context.Background(), &interfaces.CancelSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-1",
-				TaskID:           "task-3",
+				UserID: "user-1",
+				TaskID: "task-3",
 			})
 			So(err, ShouldBeNil)
 			So(resp.Action, ShouldEqual, "cancel_task")

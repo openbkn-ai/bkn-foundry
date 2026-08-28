@@ -11,13 +11,12 @@ import (
 
 // RegisterSkillReq Register Skill request.
 type RegisterSkillReq struct {
-	BusinessDomainID string          `header:"x-business-domain" validate:"required"`
-	UserID           string          `header:"user_id" validate:"required"`
-	FileType         string          `form:"file_type" validate:"required,oneof=zip content"`
-	File             json.RawMessage `form:"file" validate:"required"`
-	Category         BizCategory     `form:"category" default:"other_category" validate:"required"`
-	Source           string          `form:"source" default:"custom" validate:"oneof=custom internal"`
-	ExtendInfo       json.RawMessage `form:"extend_info"`
+	UserID     string          `header:"user_id" validate:"required"`
+	FileType   string          `form:"file_type" validate:"required,oneof=zip content"`
+	File       json.RawMessage `form:"file" validate:"required"`
+	Category   BizCategory     `form:"category" default:"other_category" validate:"required"`
+	Source     string          `form:"source" default:"custom" validate:"oneof=custom internal"`
+	ExtendInfo json.RawMessage `form:"extend_info"`
 }
 
 // RegisterSkillResp Register Skill response.
@@ -32,16 +31,14 @@ type RegisterSkillResp struct {
 
 // DeleteSkillReq Delete Skill request.
 type DeleteSkillReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id" validate:"required"`
-	SkillID          string `uri:"skill_id" validate:"required"`
+	UserID  string `header:"user_id" validate:"required"`
+	SkillID string `uri:"skill_id" validate:"required"`
 }
 
 // DownloadSkillReq Download Skill Request.
 type DownloadSkillReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
 }
 
 // DownloadSkillResp Download Skill response.
@@ -53,7 +50,6 @@ type DownloadSkillResp struct {
 
 // QuerySkillListReq Skill list query.
 type QuerySkillListReq struct {
-	BusinessDomainID string      `header:"x-business-domain" validate:"required"`
 	UserID           string      `header:"user_id"`
 	Name             string      `form:"name"`
 	Status           BizStatus   `form:"status" validate:"omitempty,oneof=unpublish published offline editing"`
@@ -64,23 +60,22 @@ type QuerySkillListReq struct {
 
 // SkillInfo Skill details.
 type SkillInfo struct {
-	SkillID          string         `json:"skill_id"`
-	Name             string         `json:"name"`
-	Description      string         `json:"description"`
-	Version          string         `json:"version"`
-	Status           BizStatus      `json:"status"`
-	Source           string         `json:"source"`
-	Dependencies     map[string]any `json:"dependencies,omitempty"`
-	ExtendInfo       map[string]any `json:"extend_info,omitempty"`
-	CreateUser       string         `json:"create_user"`
-	CreateTime       int64          `json:"create_time"`
-	UpdateUser       string         `json:"update_user"`
-	UpdateTime       int64          `json:"update_time"`
-	Category         BizCategory    `json:"category,omitempty"`
-	CategoryName     string         `json:"category_name,omitempty"`
-	BusinessDomainID string         `json:"business_domain_id"`
-	ReleaseUser      string         `json:"release_user,omitempty"`
-	ReleaseTime      int64          `json:"release_time,omitempty"`
+	SkillID      string         `json:"skill_id"`
+	Name         string         `json:"name"`
+	Description  string         `json:"description"`
+	Version      string         `json:"version"`
+	Status       BizStatus      `json:"status"`
+	Source       string         `json:"source"`
+	Dependencies map[string]any `json:"dependencies,omitempty"`
+	ExtendInfo   map[string]any `json:"extend_info,omitempty"`
+	CreateUser   string         `json:"create_user"`
+	CreateTime   int64          `json:"create_time"`
+	UpdateUser   string         `json:"update_user"`
+	UpdateTime   int64          `json:"update_time"`
+	Category     BizCategory    `json:"category,omitempty"`
+	CategoryName string         `json:"category_name,omitempty"`
+	ReleaseUser  string         `json:"release_user,omitempty"`
+	ReleaseTime  int64          `json:"release_time,omitempty"`
 }
 
 // SkillFileSummary Skill file summary.
@@ -99,7 +94,6 @@ type QuerySkillListResp struct {
 
 // QuerySkillMarketListReq Skill market list query.
 type QuerySkillMarketListReq struct {
-	BusinessDomainID string      `header:"x-business-domain" validate:"required"`
 	UserID           string      `header:"user_id"`
 	Name             string      `form:"name"`
 	Category         BizCategory `form:"category"`
@@ -115,23 +109,20 @@ type QuerySkillMarketListResp struct {
 
 // GetSkillDetailReq Skill details query.
 type GetSkillDetailReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
 }
 
 // GetSkillMarketDetailReq Skill market details query.
 type GetSkillMarketDetailReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
 }
 
 // GetSkillContentReq Skill content query.
 type GetSkillContentReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
 }
 
 // GetSkillContentResp Skill content response.
@@ -144,10 +135,9 @@ type GetSkillContentResp struct {
 
 // ReadSkillFileReq Read Skill file request.
 type ReadSkillFileReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
-	RelPath          string `json:"rel_path" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
+	RelPath string `json:"rel_path" validate:"required"`
 }
 
 // ReadSkillFileResp Read Skill file response.
@@ -161,9 +151,8 @@ type ReadSkillFileResp struct {
 
 // GetSkillReleaseHistoryReq Query Skill release history requests.
 type GetSkillReleaseHistoryReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
 }
 
 // SkillReleaseHistoryInfo Skill release history summary.
@@ -186,10 +175,9 @@ type SkillReleaseHistoryInfo struct {
 
 // UpdateSkillStatusReq Update Skill status request.
 type UpdateSkillStatusReq struct {
-	BusinessDomainID string    `header:"x-business-domain" validate:"required"`
-	UserID           string    `header:"user_id"`
-	SkillID          string    `uri:"skill_id" validate:"required"`
-	Status           BizStatus `json:"status" validate:"required,oneof=published offline"`
+	UserID  string    `header:"user_id"`
+	SkillID string    `uri:"skill_id" validate:"required"`
+	Status  BizStatus `json:"status" validate:"required,oneof=published offline"`
 }
 
 // UpdateSkillStatusResp Update Skill status response.
@@ -200,14 +188,13 @@ type UpdateSkillStatusResp struct {
 
 // UpdateSkillMetadataReq Update Skill metadata request.
 type UpdateSkillMetadataReq struct {
-	BusinessDomainID string          `header:"x-business-domain" validate:"required"`
-	UserID           string          `header:"user_id"`
-	SkillID          string          `uri:"skill_id" validate:"required"`
-	Name             string          `json:"name" validate:"required"`
-	Description      string          `json:"description" validate:"required"`
-	Category         BizCategory     `json:"category" validate:"required"`
-	Source           string          `json:"source" validate:"omitempty,oneof=custom internal"`
-	ExtendInfo       json.RawMessage `json:"extend_info"`
+	UserID      string          `header:"user_id"`
+	SkillID     string          `uri:"skill_id" validate:"required"`
+	Name        string          `json:"name" validate:"required"`
+	Description string          `json:"description" validate:"required"`
+	Category    BizCategory     `json:"category" validate:"required"`
+	Source      string          `json:"source" validate:"omitempty,oneof=custom internal"`
+	ExtendInfo  json.RawMessage `json:"extend_info"`
 }
 
 // UpdateSkillMetadataResp Update Skill metadata response.
@@ -219,11 +206,10 @@ type UpdateSkillMetadataResp struct {
 
 // UpdateSkillPackageReq Update Skill package request.
 type UpdateSkillPackageReq struct {
-	BusinessDomainID string          `header:"x-business-domain" validate:"required"`
-	UserID           string          `header:"user_id"`
-	SkillID          string          `uri:"skill_id" validate:"required"`
-	FileType         string          `form:"file_type" validate:"required,oneof=zip content"`
-	File             json.RawMessage `form:"file" validate:"required"`
+	UserID   string          `header:"user_id"`
+	SkillID  string          `uri:"skill_id" validate:"required"`
+	FileType string          `form:"file_type" validate:"required,oneof=zip content"`
+	File     json.RawMessage `form:"file" validate:"required"`
 }
 
 // UpdateSkillPackageResp Update Skill package response.
@@ -235,10 +221,9 @@ type UpdateSkillPackageResp struct {
 
 // RepublishSkillHistoryReq returns historical versions to draft requests.
 type RepublishSkillHistoryReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
-	Version          string `json:"version" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
+	Version string `json:"version" validate:"required"`
 }
 
 // RepublishSkillHistoryResp reverts historical versions to draft responses.
@@ -250,10 +235,9 @@ type RepublishSkillHistoryResp struct {
 
 // PublishSkillHistoryReq directly publishes historical version requests.
 type PublishSkillHistoryReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
-	Version          string `json:"version" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
+	Version string `json:"version" validate:"required"`
 }
 
 // PublishSkillHistoryResp directly publishes historical version responses.
@@ -265,11 +249,10 @@ type PublishSkillHistoryResp struct {
 
 // ExecuteSkillReq executes Skill request.
 type ExecuteSkillReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
-	EntryShell       string `json:"entry_shell" validate:"required"`
-	Timeout          int    `json:"timeout,omitempty"`
+	UserID     string `header:"user_id"`
+	SkillID    string `uri:"skill_id" validate:"required"`
+	EntryShell string `json:"entry_shell" validate:"required"`
+	Timeout    int    `json:"timeout,omitempty"`
 }
 
 // ExecuteSkillResp Execute Skill response.
@@ -313,9 +296,8 @@ const (
 )
 
 type CreateSkillIndexBuildTaskReq struct {
-	BusinessDomainID string                     `header:"x-business-domain" validate:"required"`
-	UserID           string                     `header:"user_id" validate:"required"`
-	ExecuteType      SkillIndexBuildExecuteType `json:"execute_type" validate:"required,oneof=full incremental"`
+	UserID      string                     `header:"user_id" validate:"required"`
+	ExecuteType SkillIndexBuildExecuteType `json:"execute_type" validate:"required,oneof=full incremental"`
 }
 
 type CreateSkillIndexBuildTaskResp struct {
@@ -325,15 +307,13 @@ type CreateSkillIndexBuildTaskResp struct {
 }
 
 type GetSkillIndexBuildTaskReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id"`
-	TaskID           string `uri:"task_id" validate:"required"`
+	UserID string `header:"user_id"`
+	TaskID string `uri:"task_id" validate:"required"`
 }
 
 type CancelSkillIndexBuildTaskReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id" validate:"required"`
-	TaskID           string `uri:"task_id" validate:"required"`
+	UserID string `header:"user_id" validate:"required"`
+	TaskID string `uri:"task_id" validate:"required"`
 }
 
 type CancelSkillIndexBuildTaskResp struct {
@@ -343,9 +323,8 @@ type CancelSkillIndexBuildTaskResp struct {
 }
 
 type RetrySkillIndexBuildTaskReq struct {
-	BusinessDomainID string `header:"x-business-domain" validate:"required"`
-	UserID           string `header:"user_id" validate:"required"`
-	TaskID           string `uri:"task_id" validate:"required"`
+	UserID string `header:"user_id" validate:"required"`
+	TaskID string `uri:"task_id" validate:"required"`
 }
 
 type RetrySkillIndexBuildTaskResp struct {
@@ -356,7 +335,6 @@ type RetrySkillIndexBuildTaskResp struct {
 }
 
 type QuerySkillIndexBuildTaskListReq struct {
-	BusinessDomainID string                `header:"x-business-domain" validate:"required"`
 	UserID           string                `header:"user_id"`
 	Status           SkillIndexBuildStatus `form:"status" validate:"omitempty,oneof=pending running completed failed"`
 	ExecuteType      string                `form:"execute_type" validate:"omitempty,oneof=full incremental"`
@@ -434,10 +412,9 @@ type SkillManagementReader interface {
 
 // GetManagementContentReq management content query request.
 type GetManagementContentReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
-	ResponseMode     string `form:"response_mode" default:"url"` // url(default) | content.
+	UserID       string `header:"user_id"`
+	SkillID      string `uri:"skill_id" validate:"required"`
+	ResponseMode string `form:"response_mode" default:"url"` // url(default) | content.
 }
 
 // GetManagementContentResp management content query response.
@@ -456,11 +433,10 @@ type GetManagementContentResp struct {
 
 // ReadManagementFileReq management file read request.
 type ReadManagementFileReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
-	RelPath          string `json:"rel_path" validate:"required"`
-	ResponseMode     string `form:"response_mode" default:"url"` // url(default) | content.
+	UserID       string `header:"user_id"`
+	SkillID      string `uri:"skill_id" validate:"required"`
+	RelPath      string `json:"rel_path" validate:"required"`
+	ResponseMode string `form:"response_mode" default:"url"` // url(default) | content.
 }
 
 // ReadManagementFileResp management file read response.
@@ -476,9 +452,8 @@ type ReadManagementFileResp struct {
 
 // DownloadManagementSkillReq Management skill package download request.
 type DownloadManagementSkillReq struct {
-	BusinessDomainID string `header:"x-business-domain"`
-	UserID           string `header:"user_id"`
-	SkillID          string `uri:"skill_id" validate:"required"`
+	UserID  string `header:"user_id"`
+	SkillID string `uri:"skill_id" validate:"required"`
 }
 
 type SkillIndexBuildService interface {

@@ -36,16 +36,12 @@ const (
 	KeyStreamingMode  ContextKey = "streaming_mode"  // streaming mode.
 	// KeyAccountAuthContext account authentication context.
 	KeyAccountAuthContext ContextKey = "account_auth_context"
-	// XBusinessDomain business domain id.
-	XBusinessDomain ContextKey = "x-business-domain"
 )
 
 // HeaderKey context key.
 type HeaderKey string
 
 const (
-	// HeaderXBusinessDomain business domain id header parameter.
-	HeaderXBusinessDomain HeaderKey = "x-business-domain"
 	// HeaderXAccountID Account ID header parameter.
 	HeaderXAccountID HeaderKey = "x-account-id"
 	// HeaderXAccountType account type header parameter.
@@ -54,10 +50,7 @@ const (
 	HeaderUserID HeaderKey = "user_id"
 )
 
-const (
-	// DefaultBusinessDomain Default business domain.
-	DefaultBusinessDomain = "bd_public"
-)
+const ()
 
 const (
 	HTTP  = "http"  // http protocol.

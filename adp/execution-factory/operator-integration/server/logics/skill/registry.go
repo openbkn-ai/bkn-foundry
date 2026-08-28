@@ -86,7 +86,6 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
-		"bd_id":   req.BusinessDomainID,
 	})
 	// Check new permissions.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -170,7 +169,6 @@ func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 	})
 
 	skill, err := r.skillRepo.SelectSkillByID(ctx, nil, req.SkillID)
@@ -250,7 +248,6 @@ func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id":  req.SkillID,
 		"user_id":   req.UserID,
-		"bd_id":     req.BusinessDomainID,
 		"file_type": req.FileType,
 	})
 
@@ -364,7 +361,6 @@ func (r *skillRegistry) RepublishSkillHistory(ctx context.Context, req *interfac
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"version":  req.Version,
 	})
 
@@ -440,7 +436,6 @@ func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"version":  req.Version,
 	})
 
@@ -531,7 +526,6 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 	})
 	// Check delete permissions.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -630,7 +624,6 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"status":   req.Status,
 	})
 	// Acquire skills.
@@ -750,7 +743,6 @@ func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.Downl
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 	})
 
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -785,7 +777,6 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 	})
 
@@ -904,7 +895,6 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
-		"bd_id":   req.BusinessDomainID,
 	})
 	resp = &interfaces.QuerySkillListResp{
 		CommonPageResult: interfaces.CommonPageResult{
@@ -1164,7 +1154,6 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
-		"bd_id":   req.BusinessDomainID,
 	})
 
 	resp = &interfaces.QuerySkillMarketListResp{
@@ -1215,7 +1204,6 @@ func (r *skillRegistry) GetSkillMarketDetail(ctx context.Context, req *interface
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 	})
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -1251,7 +1239,6 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 	})
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)

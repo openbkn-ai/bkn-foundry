@@ -59,8 +59,7 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/SKILL.md", nil)
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
+				SkillID: "skill-1",
 			})
 
 			So(err, ShouldBeNil)
@@ -100,9 +99,8 @@ func TestSkillManagementReader(t *testing.T) {
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-2",
-				ResponseMode:     "content",
+				SkillID:      "skill-2",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -131,8 +129,7 @@ func TestSkillManagementReader(t *testing.T) {
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-deleted",
+				SkillID: "skill-deleted",
 			})
 
 			So(resp, ShouldBeNil)
@@ -174,9 +171,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/SKILL.md", nil)
 
 			resp, err := reader.GetManagementContent(ctx, &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-view",
-				SkillID:          "skill-1",
+				UserID:  "user-view",
+				SkillID: "skill-1",
 			})
 
 			So(err, ShouldBeNil)
@@ -207,9 +203,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return(false, nil)
 
 			resp, err := reader.GetManagementContent(ctx, &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "no-perm-user",
-				SkillID:          "skill-1",
+				UserID:  "no-perm-user",
+				SkillID: "skill-1",
 			})
 
 			So(resp, ShouldBeNil)
@@ -233,8 +228,7 @@ func TestSkillManagementReader(t *testing.T) {
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-nonexistent",
+				SkillID: "skill-nonexistent",
 			})
 
 			So(resp, ShouldBeNil)
@@ -268,8 +262,7 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/SKILL.md", nil)
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
+				SkillID: "skill-1",
 			})
 
 			So(err, ShouldBeNil)
@@ -302,9 +295,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return([]byte("# SKILL.md from OSS"), nil)
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				ResponseMode:     "content",
+				SkillID:      "skill-1",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -339,9 +331,8 @@ func TestSkillManagementReader(t *testing.T) {
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-2",
-				ResponseMode:     "content",
+				SkillID:      "skill-2",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -376,9 +367,8 @@ func TestSkillManagementReader(t *testing.T) {
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-2",
-				ResponseMode:     "url",
+				SkillID:      "skill-2",
+				ResponseMode: "url",
 			})
 
 			So(err, ShouldBeNil)
@@ -413,9 +403,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/scripts/main.py", nil)
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "scripts/main.py",
+				SkillID: "skill-1",
+				RelPath: "scripts/main.py",
 			})
 
 			So(err, ShouldBeNil)
@@ -450,10 +439,9 @@ func TestSkillManagementReader(t *testing.T) {
 				Return([]byte("print('hello')\n"), nil)
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "scripts/main.py",
-				ResponseMode:     "content",
+				SkillID:      "skill-1",
+				RelPath:      "scripts/main.py",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -476,9 +464,8 @@ func TestSkillManagementReader(t *testing.T) {
 			}
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "../../etc/passwd",
+				SkillID: "skill-1",
+				RelPath: "../../etc/passwd",
 			})
 
 			So(resp, ShouldBeNil)
@@ -506,9 +493,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return(nil, nil)
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "missing.py",
+				SkillID: "skill-1",
+				RelPath: "missing.py",
 			})
 
 			So(resp, ShouldBeNil)

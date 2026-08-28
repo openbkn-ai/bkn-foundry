@@ -154,7 +154,6 @@ func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSki
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 		"rel_path": req.RelPath,
 	})
