@@ -123,7 +123,7 @@ func (r *restHandler) getBuildTask(c *gin.Context, visitor hydra.Visitor) {
 // =========================== GET /build-tasks ===========================
 
 // parseBuildTaskListParams parses and validates all queries of GET /build-tasks:
-// Pagination (offset/limit), sorting (sort/direction), filtering (status multi-value/mode).
+// Pagination (offset/limit), sorting (sort/direction), filtering (status multi-value/mode/execute_type).
 // Sorting and filtering both sink to the server side, with global sorting taking precedence over paging (see build_task_access.List);
 // total_count is always the full number of items after filtering.
 func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.BuildTasksQueryParams, error) {
@@ -155,10 +155,17 @@ func parseBuildTaskListParams(ctx context.Context, c *gin.Context) (interfaces.B
 		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidParameter_Mode).
 			WithErrorDetails(fmt.Sprintf("invalid mode: %s", mode))
 	}
+	params.Mode = mode
+
+	executeType := c.Query("execute_type")
+	if executeType != "" && !isValidBuildTaskExecuteType(executeType) {
+		return params, rest.NewHTTPError(ctx, http.StatusBadRequest, verrors.VegaBackend_BuildTask_InvalidExecuteType).
+			WithErrorDetails(fmt.Sprintf("invalid execute_type: %s", executeType))
+	}
+	params.ExecuteType = executeType
 
 	params.ResourceID = c.Query("resource_id")
 	params.CatalogID = c.Query("catalog_id")
-	params.Mode = mode
 	return params, nil
 }
 

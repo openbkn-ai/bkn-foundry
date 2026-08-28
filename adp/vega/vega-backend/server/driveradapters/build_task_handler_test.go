@@ -159,11 +159,19 @@ func TestParseBuildTaskListParams(t *testing.T) {
 				assert.Equal(t, interfaces.ASC_DIRECTION, got.Direction)
 			},
 		},
+		{
+			name:  "execute type honored",
+			query: "execute_type=incremental",
+			assert: func(t *testing.T, got interfaces.BuildTasksQueryParams) {
+				assert.Equal(t, interfaces.BuildTaskExecuteTypeIncremental, got.ExecuteType)
+			},
+		},
 		{name: "invalid sort returns error", query: "sort=bogus", wantErr: true},
 		{name: "invalid direction returns error", query: "direction=sideways", wantErr: true},
 		{name: "invalid status returns error", query: "status=running&status=nope", wantErr: true},
 		{name: "comma-separated status returns error", query: "status=running,pending", wantErr: true},
 		{name: "invalid mode returns error", query: "mode=nope", wantErr: true},
+		{name: "invalid execute type returns error", query: "execute_type=nope", wantErr: true},
 		{name: "negative offset returns error", query: "offset=-1", wantErr: true},
 		{
 			name:  "limit no-limit allowed",
