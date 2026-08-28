@@ -7,9 +7,14 @@ from urllib3.exceptions import MaxRetryError
 from app.commons.errors import ModelFactory_ModelController_TestModel_Error_Error, LLMTestError
 from app.logs.stand_log import StandLogger
 from app.core.config import base_config
+from app.utils.http_client import proxy_aware_aiohttp
 
 
-def _semantic_model_test_error(detail, fallback):
+# Use the workload's HTTP(S)_PROXY / NO_PROXY settings for every model test.
+aiohttp = proxy_aware_aiohttp(aiohttp)
+
+
+def _semantic_model_test_error(detail, fallback, http_status=None):
     upstream_code = ""
     upstream_type = ""
     upstream_message = ""
@@ -32,12 +37,14 @@ def _semantic_model_test_error(detail, fallback):
         pass
 
     raw = " ".join(
-        [upstream_code, upstream_type, upstream_message, str(detail)]
+        [str(http_status or ""), upstream_code, upstream_type, upstream_message, str(detail)]
     ).lower()
     if any(token in raw for token in ("auth", "unauthorized", "api key", "ak/sk", "apikey", "401")):
         return "Model service authentication failed; check the API key, AK/SK, or authorization configuration."
-    if any(token in raw for token in ("deploymentnotfound", "model not found", "not found", "404")):
+    if any(token in raw for token in ("deploymentnotfound", "model_not_found", "model not found", "not found", "404")):
         return "Model or deployment not found; check API Model and the service URL."
+    if any(token in raw for token in ("504", "gateway timeout", "upstream request timeout")):
+        return "The proxy gateway timed out while waiting for the model service; check the proxy's upstream timeout and streaming policy."
     if any(token in raw for token in ("timeout", "timed out")):
         return "Model service connection timed out; check the service URL and network connectivity."
     if any(token in raw for token in ("connection", "connect", "dns", "name resolution", "enotfound")):
@@ -71,7 +78,10 @@ async def llm_test(series, config, llm_id, user_id, model_type):
             headers = {
                 "api-key": config["api_key"]
             }
-            async with aiohttp.ClientSession(timeout=base_config.test_llm_timeout) as session:
+            # trust_env makes the test follow HTTP(S)_PROXY and NO_PROXY configured
+            # on the workload.  aiohttp otherwise bypasses those proxy settings.
+            async with aiohttp.ClientSession(
+                    timeout=base_config.test_llm_timeout, trust_env=True) as session:
                 url = config["api_url"] + (
                     f"openai/deployments/{config['api_model']}/chat/completions"
                     "?api-version=2023-05-15&api-type=azure"
@@ -85,8 +95,10 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                             detail = await response.text()
                         except Exception as err:
                             StandLogger.error(str(err))
-                        error_dict["detail"] = detail
-                        description = _semantic_model_test_error(detail, content)
+                        error_detail = f"HTTP {response.status}: {detail}"
+                        error_dict["detail"] = error_detail
+                        description = _semantic_model_test_error(
+                            detail, content, http_status=response.status)
                         error_dict["description"] = error_dict["solution"] = description
                         return JSONResponse(status_code=400, content=error_dict)
             return JSONResponse(status_code=200, content={"status": "ok", "id": llm_id})
@@ -205,17 +217,17 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                     }
                 ],
                 "model": config["api_model"],
-                "stream": True,
-                "stream_options": {"include_usage": True}
+                # A connectivity test must match a normal request and finish after one
+                # JSON response.  Proxies commonly buffer SSE or keep it open, which
+                # made a healthy upstream appear as a 504/timeout.
+                "stream": False,
             }
             headers = {
                 "Authorization": f"Bearer {config.get('api_key', '')}",
                 "Content-Type": "application/json"
             }
-            token_len = 0
-            prompt_tokens = 0
-            completion_tokens = 0
-            async with aiohttp.ClientSession(timeout=base_config.test_llm_timeout) as session:
+            async with aiohttp.ClientSession(
+                    timeout=base_config.test_llm_timeout, trust_env=True) as session:
                 async with session.post(config["api_url"], json=params, headers=headers, ssl=False) as response:
                     response.encoding = 'utf-8'
                     if response.status != 200:
@@ -225,31 +237,22 @@ async def llm_test(series, config, llm_id, user_id, model_type):
                             detail = await response.text()
                         except Exception as e:
                             StandLogger.error(str(e))
-                        error_dict["detail"] = detail
-                        description = _semantic_model_test_error(detail, content)
+                        error_detail = f"HTTP {response.status}: {detail}"
+                        error_dict["detail"] = error_detail
+                        description = _semantic_model_test_error(
+                            detail, content, http_status=response.status)
                         error_dict["description"] = error_dict["solution"] = description
                         return JSONResponse(status_code=400, content=error_dict)
-                    async for chunk in response.content:
-                        chunk = chunk.decode('utf-8')
-                        if chunk.endswith('\n'):
-                            chunk = chunk[:-1]
-                        elif chunk.endswith('\r\n'):
-                            chunk = chunk[:-2]
-                        if len(chunk) >= 6 and chunk[0:6] != "data: ":
-                            continue
-                        if chunk != "data: [DONE]" and chunk != "":
-                            if chunk[0:6] == "data: ":
-                                chunk = chunk[6:]
-                            try:
-                                datas = json.loads(chunk)
-                            except Exception:
-                                continue
-                            if "usage" in datas.keys():
-                                try:
-                                    prompt_tokens = datas["usage"]["prompt_tokens"]
-                                    completion_tokens = datas["usage"]["completion_tokens"]
-                                except Exception:
-                                    pass
+                    # Consume and validate the complete non-streaming response.  This
+                    # also detects a proxy that returns a 200 with an empty body.
+                    body = await response.text()
+                    try:
+                        json.loads(body)
+                    except json.JSONDecodeError:
+                        error_dict = ModelFactory_ModelController_TestModel_Error_Error.copy()
+                        error_dict["detail"] = "The model service returned an invalid JSON response."
+                        error_dict["description"] = error_dict["solution"] = content
+                        return JSONResponse(status_code=400, content=error_dict)
                     # if llm_id != "":
                     #     log_info = logics.AddModelUsedAudit(
                     #         model_id=llm_id, user_id=user_id,
