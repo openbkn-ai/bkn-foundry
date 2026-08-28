@@ -105,8 +105,11 @@ fi
 # Override: ONBOARD_TEST_USER_PASSWORD; rename default: ONBOARD_DEFAULT_TEST_USER_PASSWORD
 : "${ONBOARD_DEFAULT_TEST_USER_PASSWORD:=111111}"
 
-# Same requirement as @openbkn/bkn-sdk on npm (node >= 22). https://www.npmjs.com/package/@openbkn/bkn-sdk
-ONBOARD_MIN_NODE_MAJOR="${ONBOARD_MIN_NODE_MAJOR:-22}"
+# Same requirement as @openbkn/bkn-sdk on npm. https://www.npmjs.com/package/@openbkn/bkn-sdk
+# A full version, not a major: 22.0.0 clears a `>= 22` bar and still cannot
+# install the CLI, because npm resolves past a release whose `engines` the
+# runtime misses and hands back an older one without an error.
+ONBOARD_MIN_NODE="${ONBOARD_MIN_NODE:-${OPENBKN_NODE_MIN_SEMVER}}"
 
 # Node/bkn bootstrap prompts use the terminal (even with --config); -y skips those prompts; no TTY + no -y = error.
 onboard_is_bootstrap_tty() {
@@ -227,7 +230,7 @@ onboard_bkn_tls_insecure_args_to_array() {
 usage() {
     echo "Usage: sudo bash ./onboard.sh [options]   # Linux (matches sudo deploy.sh)"
     echo "       bash ./dev/mac.sh onboard           # macOS dev (kind path; no sudo)"
-    echo "  Requires: Node 22+ (see @openbkn/bkn-sdk on npm), openbkn, kubectl, python3; run from deploy/"
+    echo "  Requires: Node ${ONBOARD_MIN_NODE}+ (see @openbkn/bkn-sdk on npm), openbkn, kubectl, python3; run from deploy/"
     echo "  Config YAML: unset CONFIG_YAML_PATH and onboard uses \$HOME/.openbkn-ai/config.yaml when that file exists (same as deploy.sh); otherwise scripts/lib/common.sh default (deploy/conf/config.yaml)."
     echo "  Why sudo on Linux: deploy.sh runs as root and writes \$HOME/.openbkn-ai/config.yaml under /root/.openbkn-ai/ (mode 700); onboard.sh also writes \$HOME/.bkn auth state. sudo keeps both pointing at the same root home (silence the startup hint with ONBOARD_SUDO_HINT_DISABLED=1; not needed on macOS dev)."
     echo "  (no flags)                Interactive: nvm+Node 22 and npm -g (Y/n) in your terminal, then models/BKN"
@@ -246,7 +249,7 @@ usage() {
     echo "  --skip-bkn               With --config: register models but skip BKN + rollout"
     echo "  -h, --help"
     echo ""
-    echo "  Environment: ONBOARD_SKIP_NODE_INSTALL=true  skip nvm in onboard (fail if Node < ${ONBOARD_MIN_NODE_MAJOR})"
+    echo "  Environment: ONBOARD_SKIP_NODE_INSTALL=true  skip nvm in onboard (fail if Node < ${ONBOARD_MIN_NODE})"
     echo "                ONBOARD_SKIP_OPENBKN_INSTALL=true  never run npm -g for openbkn in onboard"
     echo "                ONBOARD_SKIP_OPENBKN_ADMIN_INSTALL=true  do not auto/offer  npm -g  openbkn admin  (also skipped with  -y )"
     echo "                ONBOARD_SKIP_TEST_USER=true  same as --skip-test-user"
@@ -278,20 +281,11 @@ for _ob_arg in "$@"; do
     esac
 done
 
-onboard_node_major() {
-    if ! command -v node &>/dev/null; then
-        echo 0
-        return
-    fi
-    local v
-    v="$(node -v 2>/dev/null)"
-    v="${v#v}"
-    v="${v%%.*}"
-    if [[ "${v}" =~ ^[0-9]+$ ]]; then
-        echo "${v}"
-    else
-        echo 0
-    fi
+onboard_node_ok() {
+    local have
+    have="$(bkn_node_semver)"
+    [[ -n "${have}" ]] || return 1
+    bkn_semver_ge "${have}" "${ONBOARD_MIN_NODE}"
 }
 
 # This script is not a login shell: ~/.zshrc / .bashrc are not sourced, so nvm's node is often missing
@@ -335,7 +329,7 @@ onboard_bootstrap_node_path() {
 # Install nvm + Node 22 in the current user (no sudo; same idea as preflight's node-22 fix, user-local).
 onboard_install_node22_nvm() {
     if ! command -v curl &>/dev/null; then
-        log_error "curl is required to install nvm. Install curl, or install Node ${ONBOARD_MIN_NODE_MAJOR}+ from https://nodejs.org/"
+        log_error "curl is required to install nvm. Install curl, or install Node ${ONBOARD_MIN_NODE}+ from https://nodejs.org/"
         return 1
     fi
     if ! command -v bash &>/dev/null; then
@@ -367,40 +361,37 @@ onboard_install_node22_nvm() {
 
 # If not sudo bash ./preflight.sh --fix, still help: offer (or with -y, run) nvm+Node 22 in this user.
 onboard_ensure_node_22() {
-    local mj
     onboard_bootstrap_node_path
-    mj="$(onboard_node_major)"
-    if command -v node &>/dev/null && [[ -n "${mj}" && $(( 10#${mj} )) -ge ${ONBOARD_MIN_NODE_MAJOR} ]]; then
+    if command -v node &>/dev/null && onboard_node_ok; then
         log_info "Using $(node -v) ($(command -v node))"
         return 0
     fi
 
     if [[ "${ONBOARD_SKIP_NODE_INSTALL:-false}" == "true" ]]; then
-        log_error "Node is $(node -v 2>/dev/null || echo missing) but Node.js ${ONBOARD_MIN_NODE_MAJOR}+ is required. Unset ONBOARD_SKIP_NODE_INSTALL or install Node manually."
+        log_error "Node is $(node -v 2>/dev/null || echo missing) but Node.js ${ONBOARD_MIN_NODE}+ is required. Unset ONBOARD_SKIP_NODE_INSTALL or install Node manually."
         exit 1
     fi
 
     # Interactive on a TTY: always ask, including when --config is set. No TTY: must pass -y to auto-install.
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
-        log_info "Node ${ONBOARD_MIN_NODE_MAJOR}+ not active; installing via nvm (-y)…"
+        log_info "Node ${ONBOARD_MIN_NODE}+ not active; installing via nvm (-y)…"
     elif onboard_is_bootstrap_tty; then
         echo ""
-        read -r -p "Node.js ${ONBOARD_MIN_NODE_MAJOR}+ is required for openbkn/onboard. Install nvm and Node 22 in this user account now? [Y/n]: " _obn
+        read -r -p "Node.js ${ONBOARD_MIN_NODE}+ is required for openbkn/onboard. Install nvm and Node 22 (latest 22.x) in this user account now? [Y/n]: " _obn
         if [[ "${_obn}" =~ ^[Nn] ]]; then
-            log_error "Install Node ${ONBOARD_MIN_NODE_MAJOR}+ (e.g. nvm install 22), or use another machine with Node 22+ on PATH, or run: sudo bash ./preflight.sh --fix on the host where you need system-wide Node."
+            log_error "Install Node ${ONBOARD_MIN_NODE}+ (e.g. nvm install 22 — the latest 22.x clears it), or use another machine with a new enough Node on PATH, or run: sudo bash ./preflight.sh --fix on the host where you need system-wide Node."
             exit 1
         fi
     else
-        log_error "Node ${ONBOARD_MIN_NODE_MAJOR}+ required (or missing). In a real terminal you get a Y/n prompt; without a TTY pass  $0 -y  (e.g. CI), or install Node / nvm first. Or: sudo bash ./preflight.sh --fix (onboard-tooling) on a server."
+        log_error "Node ${ONBOARD_MIN_NODE}+ required (or missing). In a real terminal you get a Y/n prompt; without a TTY pass  $0 -y  (e.g. CI), or install Node / nvm first. Or: sudo bash ./preflight.sh --fix (onboard-tooling) on a server."
         exit 1
     fi
 
     if ! onboard_install_node22_nvm; then
         exit 1
     fi
-    mj="$(onboard_node_major)"
-    if ! command -v node &>/dev/null || [[ -z "${mj}" || $(( 10#${mj} )) -lt ${ONBOARD_MIN_NODE_MAJOR} ]]; then
-        log_error "Node is still < ${ONBOARD_MIN_NODE_MAJOR} in this process. In a new terminal run:  source \"\$NVM_DIR/nvm.sh\" && nvm use 22  then:  $0  again."
+    if ! command -v node &>/dev/null || ! onboard_node_ok; then
+        log_error "Node is still < ${ONBOARD_MIN_NODE} in this process. In a new terminal run:  source \"\$NVM_DIR/nvm.sh\" && nvm use 22  then:  $0  again."
         exit 1
     fi
     # After a fresh nvm install in this function, the success message is similar
@@ -422,24 +413,24 @@ onboard_ensure_bkn_cli() {
         exit 1
     fi
     if [[ "${ONBOARD_SKIP_OPENBKN_INSTALL:-false}" == "true" ]]; then
-        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk  (or unset ONBOARD_SKIP_OPENBKN_INSTALL to allow this script to run npm -g.)"
+        log_error "openbkn not in PATH. Install: npm i -g @openbkn/bkn-sdk@latest  (or unset ONBOARD_SKIP_OPENBKN_INSTALL to allow this script to run npm -g.)"
         exit 1
     fi
     if [[ "${ONBOARD_ASSUME_YES}" == "true" ]]; then
         log_info "Installing @openbkn/bkn-sdk globally (-y)…"
     elif onboard_is_bootstrap_tty; then
         echo ""
-        read -r -p "openbkn CLI not in PATH. Install @openbkn/bkn-sdk globally now? (npm i -g) [Y/n]: " _obk
+        read -r -p "openbkn CLI not in PATH. Install @openbkn/bkn-sdk globally now? (npm i -g …@latest) [Y/n]: " _obk
         if [[ "${_obk}" =~ ^[Nn] ]]; then
-            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk"
+            log_error "openbkn is required. Run:  npm i -g @openbkn/bkn-sdk@latest"
             exit 1
         fi
     else
-        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk"
+        log_error "openbkn not in PATH. In a TTY you get a Y/n prompt; without a TTY use  $0 -y  or install: npm i -g @openbkn/bkn-sdk@latest"
         exit 1
     fi
-    if ! npm i -g @openbkn/bkn-sdk; then
-        log_error "npm i -g @openbkn/bkn-sdk failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
+    if ! npm i -g @openbkn/bkn-sdk@latest; then
+        log_error "npm i -g @openbkn/bkn-sdk@latest failed. Check registry/proxy, or EACCES (avoid sudo; use nvm user prefix.)"
         exit 1
     fi
     hash -r 2>/dev/null || true
@@ -466,8 +457,8 @@ onboard_upgrade_bkn_cli() {
     if ! command -v openbkn &>/dev/null; then
         return 0
     fi
-    if ! npm i -g @openbkn/bkn-sdk; then
-        log_warn "npm i -g @openbkn/bkn-sdk failed; continuing with the existing openbkn CLI."
+    if ! npm i -g @openbkn/bkn-sdk@latest; then
+        log_warn "npm i -g @openbkn/bkn-sdk@latest failed; continuing with the existing openbkn CLI."
         return 0
     fi
     hash -r 2>/dev/null || true

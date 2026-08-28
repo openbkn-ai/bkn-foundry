@@ -17,14 +17,16 @@ declare -a PREFLIGHT_JSON_FIXED=()
 declare -a PREFLIGHT_JSON_DECLINED=()
 declare -a PREFLIGHT_FAIL_SNAPSHOT=()
 
-# Node major for openbkn / onboard in this deploy path (default 22: aligns with
-# @openbkn/bkn-sdk; same bar even if npm lists >=18). Override for experiments.
-PREFLIGHT_OPENBKN_MIN_NODE_MAJOR="${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR:-22}"
+# Node floor for openbkn / onboard in this deploy path — aligned with
+# @openbkn/bkn-sdk. A full version, not a major: 22.0.0 passes a `>= 22` test
+# and still cannot install the CLI, because npm resolves past a release whose
+# `engines` the runtime misses and installs an older one without an error.
+PREFLIGHT_OPENBKN_MIN_NODE="${PREFLIGHT_OPENBKN_MIN_NODE:-${OPENBKN_NODE_MIN_SEMVER:-22.19.0}}"
 # Minimum CPython for deploy/scripts/lib/onboard_*.py; enforced when python3 is on PATH.
 PREFLIGHT_MIN_PYTHON_MAJOR="${PREFLIGHT_MIN_PYTHON_MAJOR:-3}"
 PREFLIGHT_MIN_PYTHON_MINOR="${PREFLIGHT_MIN_PYTHON_MINOR:-6}"
 # If the user does not install Node 22+ on the server they ran preflight on, they need *some* environment with it.
-PREFLIGHT_OFFHOST_NODE22_HINT="If you do not upgrade Node on this host, run ./onboard.sh and the openbkn CLI from a machine (or job) where Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ is on PATH — e.g. your laptop, a jump box with nvm, a devcontainer, or CI."
+PREFLIGHT_OFFHOST_NODE22_HINT="If you do not upgrade Node on this host, run ./onboard.sh and the openbkn CLI from a machine (or job) where Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ is on PATH — e.g. your laptop, a jump box with nvm, a devcontainer, or CI."
 
 # Strict mode (default true): items that block install AND are auto-fixable by --fix
 # are reported as [FAIL] instead of [WARN], so check-only exits 1 (not 2) and operators
@@ -1405,6 +1407,13 @@ preflight_check_target_tools() {
 }
 
 # Node major from `node -v` (0 if missing or unparseable). Align with npm `engines` (default: 22+). Check only unless --fix + confirm.
+preflight_node_ok() {
+    local have
+    have="$(bkn_node_semver)"
+    [[ -n "${have}" ]] || return 1
+    bkn_semver_ge "${have}" "${PREFLIGHT_OPENBKN_MIN_NODE}"
+}
+
 preflight_node_major() {
     if ! command -v node &>/dev/null; then
         echo 0
@@ -1423,19 +1432,19 @@ preflight_node_major() {
 
 preflight_check_admin_tools() {
     preflight_skip "admin-tools" && return 0
-    log_info "Checking admin / optional tools (node, npm, openbkn) — target Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+; below that is [WARN] only (not [FAIL])..."
+    log_info "Checking admin / optional tools (node, npm, openbkn) — target Node ${PREFLIGHT_OPENBKN_MIN_NODE}+; below that is [WARN] only (not [FAIL])..."
 
     local _nmj
     _nmj=""
     if command -v node &>/dev/null; then
         _nmj="$(preflight_node_major)"
-        if [[ -n "${_nmj}" && $(( 10#${_nmj} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
-            preflight_ok "node: $(node -v 2>/dev/null) (>= ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}; openbkn CLI + onboard)"
+        if preflight_node_ok; then
+            preflight_ok "node: $(node -v 2>/dev/null) (>= ${PREFLIGHT_OPENBKN_MIN_NODE}; openbkn CLI + onboard)"
         else
-            preflight_warn "node: $(node -v 2>/dev/null) (need ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+. Not a hard failure. Fix: sudo bash ./preflight.sh --fix → allow onboard-tooling, then accept node-22 (nvm/NodeSource), or upgrade Node yourself. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+            preflight_warn "node: $(node -v 2>/dev/null) (need ${PREFLIGHT_OPENBKN_MIN_NODE}+. Not a hard failure. Fix: sudo bash ./preflight.sh --fix → allow onboard-tooling, then accept node-22 (nvm/NodeSource), or upgrade Node yourself. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         fi
     else
-        preflight_warn "node not in PATH (need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ for CLIs / onboard. [WARN] only. Fix: sudo bash ./preflight.sh --fix and opt in to nodejs-npm + node-22 when prompted. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        preflight_warn "node not in PATH (need Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ for CLIs / onboard. [WARN] only. Fix: sudo bash ./preflight.sh --fix and opt in to nodejs-npm + node-22 when prompted. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
     fi
 
     if command -v npm &>/dev/null; then
@@ -1447,13 +1456,13 @@ preflight_check_admin_tools() {
     if command -v openbkn &>/dev/null; then
         if ! command -v node &>/dev/null; then
             preflight_ok "openbkn: $(openbkn --version 2>/dev/null | head -1 || echo ok) (node issue called out above)"
-        elif [[ -n "${_nmj}" && $(( 10#${_nmj} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+        elif preflight_node_ok; then
             preflight_ok "openbkn: $(openbkn --version 2>/dev/null | head -1 || echo ok) (provides 'openbkn admin')"
         else
-            preflight_warn "openbkn on PATH, but Node is < ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} — prefer upgrading to Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (npm i -g and onboard expect that here). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+            preflight_warn "openbkn on PATH, but Node is < ${PREFLIGHT_OPENBKN_MIN_NODE} — prefer upgrading to Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ (npm i -g and onboard expect that here). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         fi
     else
-        preflight_warn "openbkn CLI not in PATH (npm i -g @openbkn/bkn-sdk; or sudo bash ./preflight.sh --fix after Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+). 'openbkn admin' ships with it. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        preflight_warn "openbkn CLI not in PATH (npm i -g @openbkn/bkn-sdk@latest; or sudo bash ./preflight.sh --fix after Node ${PREFLIGHT_OPENBKN_MIN_NODE}+). 'openbkn admin' ships with it. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
     fi
 }
 
@@ -1935,13 +1944,12 @@ preflight_fix_helm_v3() {
 
 # Install distro nodejs + npm (opt-in via preflight --fix + y/N; before npm -g bkn).
 preflight_fix_node_npm() {
-    local _ok=true _mj
-    _mj="$(preflight_node_major)"
+    local _ok=true
     if command -v npm &>/dev/null && command -v node &>/dev/null; then
-        if [[ -n "${_mj}" && $(( 10#${_mj} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+        if preflight_node_ok; then
             return 0
         fi
-        preflight_warn "Node is $(node -v 2>/dev/null) but bkn CLIs need ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+; 'nodejs-npm' only adds distro packages and will not replace an old Node. Use node-22 fix or nvm/Node LTS. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        preflight_warn "Node is $(node -v 2>/dev/null) but bkn CLIs need ${PREFLIGHT_OPENBKN_MIN_NODE}+; 'nodejs-npm' only adds distro packages and will not replace an old Node. Use node-22 fix or nvm/Node LTS. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         return 0
     fi
     if command -v apt-get &>/dev/null; then
@@ -1969,9 +1977,8 @@ preflight_fix_node_npm() {
             preflight_warn "node is present but npm is still missing"
         fi
     fi
-    _mj="$(preflight_node_major)"
-    if command -v node &>/dev/null && [[ -n "${_mj}" && $(( 10#${_mj} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
-        preflight_warn "node after install: $(node -v 2>/dev/null) (still < ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}; run the node-22 fix if you agreed to it, or nvm/Node 22+). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+    if command -v node &>/dev/null && ! preflight_node_ok; then
+        preflight_warn "node after install: $(node -v 2>/dev/null) (still < ${PREFLIGHT_OPENBKN_MIN_NODE}; run the node-22 fix if you agreed to it, or nvm/Node 22+). ${PREFLIGHT_OFFHOST_NODE22_HINT}"
     fi
 }
 
@@ -2003,11 +2010,11 @@ preflight_fix_node_22() {
     fi
     hash -r 2>/dev/null || true
     m="$(preflight_node_major)"
-    if command -v node &>/dev/null && [[ -n "${m}" && $(( 10#${m} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+    if command -v node &>/dev/null && preflight_node_ok; then
         preflight_fixed "Node.js $(node -v) via nvm (NVM_DIR=${NVM_DIR}, $(command -v node); npm $(npm -v 2>/dev/null))"
         return 0
     fi
-    preflight_warn "nvm did not yield Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ in this shell; falling back to NodeSource (adds a third-party OS repo)…"
+    preflight_warn "nvm did not yield Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ in this shell; falling back to NodeSource (adds a third-party OS repo)…"
     preflight_fix_node_22_nodesource
 }
 
@@ -2056,7 +2063,7 @@ preflight_fix_node_22_nodesource() {
     hash -r 2>/dev/null || true
     local m
     m="$(preflight_node_major)"
-    if command -v node &>/dev/null && [[ -n "${m}" && $(( 10#${m} )) -ge ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+    if command -v node &>/dev/null && preflight_node_ok; then
         preflight_fixed "Node.js is now $(node -v) at $(command -v node) (includes npm $(npm -v 2>/dev/null))"
     else
         preflight_warn "NodeSource step finished but node is still ${m:-0}: $(node -v 2>/dev/null)"
@@ -2213,9 +2220,7 @@ preflight_onboard_tooling_needed() {
     if ! command -v node &>/dev/null || ! command -v npm &>/dev/null; then
         return 0
     fi
-    local _om
-    _om="$(preflight_node_major)"
-    if [[ -n "${_om}" && $(( 10#${_om} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+    if ! preflight_node_ok; then
         return 0
     fi
     if ! command -v openbkn &>/dev/null; then
@@ -2633,12 +2638,12 @@ preflight_apply_safe_fixes() {
         if preflight_fix_allow_includes_onboard_step; then
             _ot_run=true
         elif preflight_confirm_fix "onboard-tooling" \
-            "Will you run ./onboard.sh (and optionally the openbkn CLI) on this machine? We standardize on Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (openbkn CLI, onboard); we can nvm/NodeSource → npm -g in the next prompts if you say Yes" \
-            "Choose No if you will run onboard/CLIs on another host with Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (nvm, container, laptop, etc.). If you stay on this machine without node-22, you still need that other environment. Yes = may run node-22 and global npm; each step y/N unless -y. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel."; then
+            "Will you run ./onboard.sh (and optionally the openbkn CLI) on this machine? We standardize on Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ (openbkn CLI, onboard); we can nvm/NodeSource → npm -g in the next prompts if you say Yes" \
+            "Choose No if you will run onboard/CLIs on another host with Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ (nvm, container, laptop, etc.). If you stay on this machine without node-22, you still need that other environment. Yes = may run node-22 and global npm; each step y/N unless -y. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel."; then
             _ot_run=true
         else
             preflight_remember_no "onboard-tooling"
-            log_info "Skipped preparing this host for onboard (onboard-tooling: No). You still need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ somewhere for ./onboard.sh and the CLIs — use another machine, nvm in your user, a devcontainer, or CI."
+            log_info "Skipped preparing this host for onboard (onboard-tooling: No). You still need Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ somewhere for ./onboard.sh and the CLIs — use another machine, nvm in your user, a devcontainer, or CI."
         fi
     else
         _ot_run=true
@@ -2654,14 +2659,12 @@ preflight_apply_safe_fixes() {
     fi
 
     if command -v node &>/dev/null; then
-        local _nmj22
-        _nmj22="$(preflight_node_major)"
-        if [[ -n "${_nmj22}" && $(( 10#${_nmj22} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
+        if ! preflight_node_ok; then
             if preflight_was_declined "node-22"; then
                 log_info "  -> skipping node-22: previously declined ($(_preflight_decision_file node-22)). Re-prompt: sudo rm $(_preflight_decision_file node-22)"
             elif preflight_confirm_fix "node-22" \
                 "nvm in \$HOME/.nvm + nvm install 22 (LTS); if nvm fails, NodeSource 22.x (adds OS repo; needs HTTPS)" \
-                "For hosts below Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}. nvm: GitHub+nodejs.org; NodeSource: third-party apt/dnf. Air-gapped: install Node 22+ manually. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel. ${PREFLIGHT_OFFHOST_NODE22_HINT}"; then
+                "For hosts below Node ${PREFLIGHT_OPENBKN_MIN_NODE}. nvm: GitHub+nodejs.org; NodeSource: third-party apt/dnf. Air-gapped: install Node 22+ manually. Saying No is REMEMBERED — preflight will not ask again until you remove the sentinel. ${PREFLIGHT_OFFHOST_NODE22_HINT}"; then
                 preflight_fix_node_22
             else
                 preflight_remember_no "node-22"
@@ -2670,19 +2673,17 @@ preflight_apply_safe_fixes() {
     fi
 
     if command -v npm &>/dev/null; then
-        local _npmj
-        _npmj="$(preflight_node_major)"
-        if [[ -z "${_npmj}" || $(( 10#${_npmj} )) -lt ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR} ]]; then
-            preflight_warn "Skipping openbkn CLI (@openbkn/bkn-sdk) global npm install: need Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ (current: $(node -v 2>/dev/null || echo 'no node')). Run node-22 fix with consent, or upgrade Node manually, then re-run preflight --fix. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
+        if ! preflight_node_ok; then
+            preflight_warn "Skipping openbkn CLI (@openbkn/bkn-sdk) global npm install: need Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ (current: $(node -v 2>/dev/null || echo 'no node')). Run node-22 fix with consent, or upgrade Node manually, then re-run preflight --fix. ${PREFLIGHT_OFFHOST_NODE22_HINT}"
         else
         if ! command -v openbkn &>/dev/null; then
             if preflight_confirm_fix "bkn-sdk" \
-                "npm install -g @openbkn/bkn-sdk" \
-                "User accepted: installs the openbkn CLI (provides 'openbkn admin'). Requires working npm and Node ${PREFLIGHT_OPENBKN_MIN_NODE_MAJOR}+ on PATH in this root shell (same as https://www.npmjs.com/package/@openbkn/bkn-sdk)."; then
-                if npm install -g @openbkn/bkn-sdk; then
+                "npm install -g @openbkn/bkn-sdk@latest" \
+                "User accepted: installs the openbkn CLI (provides 'openbkn admin'). Requires working npm and Node ${PREFLIGHT_OPENBKN_MIN_NODE}+ on PATH in this root shell (same as https://www.npmjs.com/package/@openbkn/bkn-sdk)."; then
+                if npm install -g @openbkn/bkn-sdk@latest; then
                     preflight_fixed "Installed @openbkn/bkn-sdk ($(openbkn --version 2>/dev/null | head -n1 || echo ok))"
                 else
-                    preflight_warn "npm install -g @openbkn/bkn-sdk failed (check npm registry / proxy)"
+                    preflight_warn "npm install -g @openbkn/bkn-sdk@latest failed (check npm registry / proxy)"
                 fi
             fi
         fi

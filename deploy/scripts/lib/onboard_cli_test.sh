@@ -28,23 +28,26 @@ out="$(
         onboard_upgrade_bkn_cli
 )"
 [[ "${out}" == *"npm-called"* ]] || fail "installed CLI should attempt npm upgrade"
-[[ "${out}" == *"warn:npm i -g @openbkn/bkn-sdk failed"* ]] || fail "upgrade failure should warn"
+[[ "${out}" == *"warn:npm i -g @openbkn/bkn-sdk@latest failed"* ]] || fail "upgrade failure should warn"
 
 # Explicit skip, offline mode, and BKN-only mode must never invoke npm.
+# Patterns are written `(x)` rather than `x)`: bash 3.2, still the macOS system
+# shell and a supported way to run these scripts, otherwise reads the pattern's
+# `)` as the end of the enclosing `$( )` and the whole loop never runs.
 for mode in skip offline bkn-only; do
     out="$(
         openbkn() { :; }
         npm() { echo "unexpected-npm"; return 99; }
         case "${mode}" in
-            skip)
+            (skip)
                 ONBOARD_SKIP_OPENBKN_INSTALL=true OFFLINE_MODE=false ENABLE_BKN_ONLY=false \
                     onboard_upgrade_bkn_cli
                 ;;
-            offline)
+            (offline)
                 ONBOARD_SKIP_OPENBKN_INSTALL=false OFFLINE_MODE=true ENABLE_BKN_ONLY=false \
                     onboard_upgrade_bkn_cli
                 ;;
-            bkn-only)
+            (bkn-only)
                 ONBOARD_SKIP_OPENBKN_INSTALL=false OFFLINE_MODE=false ENABLE_BKN_ONLY=true \
                     onboard_upgrade_bkn_cli
                 ;;
