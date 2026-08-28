@@ -599,9 +599,13 @@ class TestEditDefaultModel(TestCase):
 class TestModelOverviewData(TestCase):
     def setUp(self) -> None:
         self.get_overview_data = llm_model_dao.get_overview_data
+        self.auth_enabled = llm_controller.base_config.AUTH_ENABLED
+        self.filter_authorized_ids = llm_controller.permission_manager.filter_authorized_ids
 
     def tearDown(self) -> None:
         llm_model_dao.get_overview_data = self.get_overview_data
+        llm_controller.base_config.AUTH_ENABLED = self.auth_enabled
+        llm_controller.permission_manager.filter_authorized_ids = self.filter_authorized_ids
         StandLogger.stand_log_shutdown()
 
     def test_get_overview_data_rejects_reversed_date_range(self):
@@ -616,6 +620,20 @@ class TestModelOverviewData(TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertEqual(body["detail"], "Param start_time must be earlier than or equal to end_time")
         llm_model_dao.get_overview_data.assert_not_called()
+
+    def test_get_overview_data_allows_regular_user_to_view_own_aggregate_usage(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        llm_controller.base_config.AUTH_ENABLED = True
+        llm_controller.permission_manager.filter_authorized_ids = mock.AsyncMock(return_value=[])
+        llm_model_dao.get_overview_data = mock.Mock(return_value=([], [], []))
+
+        res = loop.run_until_complete(
+            llm_controller.get_overview_data("user-1", "zh", "", "2026-07-13", "2026-07-14", "user"))
+
+        self.assertEqual(res.status_code, 200)
+        llm_controller.permission_manager.filter_authorized_ids.assert_not_called()
+        llm_model_dao.get_overview_data.assert_called_once_with("", "2026-07-13", "2026-07-14", "user-1")
 
 
 if __name__ == '__main__':

@@ -1069,24 +1069,13 @@ async def edit_default_model(model_para, userId, language, role=""):
 
 async def get_overview_data(userId, language, model_id, start_time, end_time, role=""):
     try:
-        # Authorization (#213): check display permission for a selected model.
-        # Aggregate views require permission for at least one large model.
-        # Administrators and disabled authorization bypass this check.
+        # A selected model requires display permission.  An aggregate overview
+        # is already scoped to the caller's own usage records in the DAO, so it
+        # must not require access to an arbitrary model merely to view the
+        # caller's own cross-model statistics.
         if base_config.AUTH_ENABLED and userId != "266c6a42-6131-4d62-8f39-853e7093701c":
             if model_id:
                 if not await permission_manager.check_display(userId, role, "large_model", model_id):
-                    return JSONResponse(status_code=403, content=NotPermissionError)
-            else:
-                # authorized is an admission check for at least one model, preventing a misleading zero overview.
-                # The aggregate is not narrowed to the authorized model set; the DAO filters by caller.
-                # Non-admin queries add d.f_user_id='{userId}' in llm_model_dao.
-                # The overview aggregates the caller's own cross-model usage and does not expose other users.
-                # Lists are grant-filtered, while overviews are caller-filtered.
-                candidate_ids = [m['f_model_id'] for m in llm_model_dao.get_all_model_list()]
-                authorized = await permission_manager.filter_authorized_ids(
-                    user_id=userId, role=role, candidate_ids=candidate_ids,
-                    resource_type="large_model", resource_name="大模型", operation="display")
-                if not authorized:
                     return JSONResponse(status_code=403, content=NotPermissionError)
         if not start_time:
             error_dict = error_with_message(
