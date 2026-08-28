@@ -167,6 +167,12 @@ spec:
                 configMapKeyRef:
                   name: sandbox-config
                   key: DISABLE_BWRAP
+            - name: BKN_SANDBOX_MCP_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: sandbox-config
+                  key: BKN_SANDBOX_MCP_URL
+                  optional: true
 
             # 从 Secret 读取敏感信息
             - name: S3_ENDPOINT_URL

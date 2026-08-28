@@ -102,6 +102,12 @@ controlPlane:
     # sandbox's urllib does not follow redirects on POST.
     # Leave empty to ship without the capability surface; functions then have to
     # pass `mcp` in the event themselves.
+    # Helm cannot read another release's values, so the address is written out
+    # here rather than derived from the agent-retrieval chart. The authoritative
+    # port is agent-retrieval's own `project.port`, which its sandboxMCPURL()
+    # renders into the same string for run_code; change them together. A wrong
+    # address does not fail closed — bkn.available() only checks that a URL and a
+    # token exist, so calls fail at the network layer instead.
     BKN_SANDBOX_MCP_URL: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
 
   s3:

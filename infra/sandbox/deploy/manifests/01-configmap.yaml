@@ -29,3 +29,10 @@ data:
 
   # 禁用 Bubblewrap（K8s 环境下推荐使用）
   DISABLE_BWRAP: "true"
+
+  # 集群内 Context Loader 的 MCP 地址，控制面会把它写进每个沙箱 Pod，
+  # 沙箱里的 sandbox_sdk.bkn 据此回访 BKN，调用方不必每次执行都传地址。
+  # 本目录部署的是独立沙箱（sandbox-system），默认没有 BKN，因此留空；
+  # 与 BKN 同集群时填形如 http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/。
+  # 尾斜杠必须有：缺了网关回 307，而沙箱用的 urllib 对 POST 不跟随重定向。
+  BKN_SANDBOX_MCP_URL: ""
