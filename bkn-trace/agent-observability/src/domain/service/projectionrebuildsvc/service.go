@@ -10,10 +10,13 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionrebuild"
 )
 
 var ErrProjectionValidation = errors.New("rebuilt projection does not match authoritative state")
+
+const historicalProvenanceBuildRequested = "historical_provenance.build_requested"
 
 type Options struct {
 	BatchSize int
@@ -89,14 +92,21 @@ func (s *Service) Rebuild(ctx context.Context, projectorID, alias, indexVersion 
 			if len(items) == 0 {
 				return Result{}, ErrProjectionValidation
 			}
+			projectable := make([]iprojectionoutbox.Item, 0, len(items))
 			for _, item := range items {
+				checkpoint = item.ID
+				if item.EventType == historicalProvenanceBuildRequested {
+					continue
+				}
 				if err := s.target.ProjectVersion(ctx, indexVersion, item); err != nil {
 					return Result{}, err
 				}
-				checkpoint = item.ID
+				projectable = append(projectable, item)
 			}
-			if err := s.target.ValidateVersion(ctx, indexVersion, items); err != nil {
-				return Result{}, fmt.Errorf("validate projection history: %w", err)
+			if len(projectable) > 0 {
+				if err := s.target.ValidateVersion(ctx, indexVersion, projectable); err != nil {
+					return Result{}, fmt.Errorf("validate projection history: %w", err)
+				}
 			}
 			if err := s.source.SaveProjectionCheckpoint(
 				ctx, projectorID, indexVersion, checkpoint,

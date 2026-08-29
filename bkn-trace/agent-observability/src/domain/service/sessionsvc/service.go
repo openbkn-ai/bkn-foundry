@@ -41,22 +41,24 @@ var defaultCapacityLimits = CapacityLimits{
 }
 
 type Options struct {
-	Now                     func() time.Time
-	NewID                   func(prefix string) string
-	EvidenceCollectionState func() string
-	AssemblyTimeout         time.Duration
-	Capacity                CapacityLimits
-	Metrics                 icoremetrics.Recorder
+	Now                        func() time.Time
+	NewID                      func(prefix string) string
+	EvidenceCollectionState    func() string
+	EnableHistoricalProvenance bool
+	AssemblyTimeout            time.Duration
+	Capacity                   CapacityLimits
+	Metrics                    icoremetrics.Recorder
 }
 
 type Service struct {
-	store                   isessionstore.Store
-	now                     func() time.Time
-	newID                   func(string) string
-	evidenceCollectionState func() string
-	assemblyTimeout         time.Duration
-	capacity                CapacityLimits
-	metrics                 icoremetrics.Recorder
+	store                      isessionstore.Store
+	now                        func() time.Time
+	newID                      func(string) string
+	evidenceCollectionState    func() string
+	enableHistoricalProvenance bool
+	assemblyTimeout            time.Duration
+	capacity                   CapacityLimits
+	metrics                    icoremetrics.Recorder
 }
 
 func New(store isessionstore.Store, options Options) *Service {
@@ -92,10 +94,11 @@ func New(store isessionstore.Store, options Options) *Service {
 	}
 	return &Service{
 		store: store, now: now, newID: newID,
-		evidenceCollectionState: evidenceCollectionState,
-		assemblyTimeout:         assemblyTimeout,
-		capacity:                capacity,
-		metrics:                 metrics,
+		evidenceCollectionState:    evidenceCollectionState,
+		enableHistoricalProvenance: options.EnableHistoricalProvenance,
+		assemblyTimeout:            assemblyTimeout,
+		capacity:                   capacity,
+		metrics:                    metrics,
 	}
 }
 
@@ -844,6 +847,11 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		interaction.UpdatedAt = now
 		interaction.TerminalAt = &now
 		tx.SaveInteraction(interaction)
+		if s.enableHistoricalProvenance {
+			if err := s.appendHistoricalProvenanceBuildRequest(tx, conversation.Owner, interaction); err != nil {
+				return err
+			}
+		}
 		if interaction.EvidenceStatus == sessionvo.EvidenceComplete ||
 			interaction.EvidenceStatus == sessionvo.EvidencePartial ||
 			interaction.EvidenceStatus == sessionvo.EvidenceFailed {
@@ -1918,6 +1926,32 @@ func (s *Service) appendProjection(tx isessionstore.Transaction, aggregateType, 
 		EventID: s.newID("evt"), AggregateType: aggregateType,
 		AggregateID: aggregateID, AggregateVersion: aggregateVersion,
 		EventType: eventType, Payload: payload,
+	})
+	return nil
+}
+
+func (s *Service) appendHistoricalProvenanceBuildRequest(
+	tx isessionstore.Transaction,
+	owner sessionvo.Owner,
+	interaction sessionvo.Interaction,
+) error {
+	request, err := sessionvo.NewHistoricalProvenanceBuildRequest(
+		interaction.ID, owner, tx.ListOperationCallFacts(interaction.ID),
+	)
+	if err != nil {
+		return err
+	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return err
+	}
+	tx.AppendProjection(sessionvo.ProjectionMutation{
+		EventID:          s.newID("evt"),
+		AggregateType:    "interaction",
+		AggregateID:      interaction.ID,
+		AggregateVersion: interaction.RowVersion,
+		EventType:        sessionvo.HistoricalProvenanceBuildRequestedEventType,
+		Payload:          payload,
 	})
 	return nil
 }

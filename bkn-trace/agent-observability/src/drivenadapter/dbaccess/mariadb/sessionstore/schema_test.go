@@ -42,6 +42,10 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 		"PRIMARY KEY (source_id, deployment_id)",
 		"dropped_records BIGINT UNSIGNED NOT NULL DEFAULT 0",
 		"bkn_trace_ee_provenance_analyses",
+		"bkn_trace_ee_historical_provenance_projections",
+		"bkn_trace_ee_historical_provenance_tombstones",
+		"uq_provenance_projection_interaction_facts",
+		"uq_provenance_projection_interaction (interaction_id)",
 		"idx_provenance_analysis_interaction",
 		"ADD COLUMN IF NOT EXISTS locale VARCHAR(16) NOT NULL DEFAULT 'zh-CN'",
 	}
@@ -60,6 +64,7 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"016": "869da02928bed7950e7d0b2b3e609c806334a3839342e57631548f57b3ac1be4",
 		"017": "f47e2ee9f70f0089c2cd225f5d28cc612b2f0c105d5ba001d55771636c02e349",
 		"018": "9fd4c45b568a2a5c395ee09a4214a240d9e865239e1024f443559f45a97b89b8",
+		"019": "4bdaffbf5877ae560a8aaf13dbcb69b88c7dfe6fd642e06be1da54827f9134a8",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {

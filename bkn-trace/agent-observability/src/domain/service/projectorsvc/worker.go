@@ -17,19 +17,31 @@ import (
 )
 
 type WorkerOptions struct {
-	Now          func() time.Time
-	BatchSize    int
-	LockDuration time.Duration
-	MaxAttempts  uint32
-	MaxRetryAge  time.Duration
-	FullJitter   func(max time.Duration) time.Duration
-	Metrics      icoremetrics.Recorder
+	Now                         func() time.Time
+	BatchSize                   int
+	LockDuration                time.Duration
+	MaxAttempts                 uint32
+	MaxRetryAge                 time.Duration
+	FullJitter                  func(max time.Duration) time.Duration
+	Metrics                     icoremetrics.Recorder
+	HistoricalProvenanceHandler HistoricalProvenanceHandler
+}
+
+const historicalProvenanceBuildRequested = "historical_provenance.build_requested"
+
+// HistoricalProvenanceHandler consumes the enterprise-only provenance build
+// event in the same leased Core outbox worker. It is deliberately separate
+// from the OpenSearch projection sink so one delivery cannot be consumed by
+// both destinations.
+type HistoricalProvenanceHandler interface {
+	HandleHistoricalProvenance(context.Context, iprojectionoutbox.Item) error
 }
 
 type Worker struct {
-	store   iprojectionoutbox.Store
-	sink    iprojectionoutbox.Sink
-	options WorkerOptions
+	store      iprojectionoutbox.Store
+	sink       iprojectionoutbox.Sink
+	provenance HistoricalProvenanceHandler
+	options    WorkerOptions
 }
 
 type RunResult struct {
@@ -61,7 +73,7 @@ func NewWorker(store iprojectionoutbox.Store, sink iprojectionoutbox.Sink, optio
 	if options.Metrics == nil {
 		options.Metrics = icoremetrics.Noop{}
 	}
-	return &Worker{store: store, sink: sink, options: options}
+	return &Worker{store: store, sink: sink, provenance: options.HistoricalProvenanceHandler, options: options}
 }
 
 func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
@@ -75,7 +87,7 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 		if !item.CreatedAt.IsZero() && (oldest.IsZero() || item.CreatedAt.Before(oldest)) {
 			oldest = item.CreatedAt
 		}
-		projectionErr := w.sink.Project(ctx, item)
+		projectionErr := w.project(ctx, item)
 		if projectionErr == nil {
 			if err := w.store.MarkDelivered(ctx, item); err != nil {
 				if errors.Is(err, iprojectionoutbox.ErrLeaseLost) {
@@ -125,6 +137,16 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 		w.options.Metrics.Set(icoremetrics.ProjectionLagSeconds, 0)
 	}
 	return result, nil
+}
+
+func (w *Worker) project(ctx context.Context, item iprojectionoutbox.Item) error {
+	if item.EventType == historicalProvenanceBuildRequested {
+		if w.provenance == nil {
+			return iprojectionoutbox.Permanent(errors.New("historical provenance handler is not assembled"))
+		}
+		return w.provenance.HandleHistoricalProvenance(ctx, item)
+	}
+	return w.sink.Project(ctx, item)
 }
 
 func (w *Worker) Drain(ctx context.Context) (RunResult, error) {

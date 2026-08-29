@@ -62,7 +62,8 @@ func TestMigrationPlanUpgradesExistingCoreSchemaWithProvenanceTable(t *testing.T
 	if err != nil {
 		t.Fatalf("plan provenance schema migration: %v", err)
 	}
-	if len(plan) != 2 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") {
+	if len(plan) != 3 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
+		plan[2].Version != "019" || !strings.Contains(plan[2].SQL, "bkn_trace_ee_historical_provenance_projections") {
 		t.Fatalf("unexpected provenance schema plan: %#v", plan)
 	}
 }
@@ -77,9 +78,10 @@ func TestMigrationPlanAddsLocaleToExistingProvenanceHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan provenance locale migration: %v", err)
 	}
-	if len(plan) != 1 || plan[0].Version != "018" ||
+	if len(plan) != 2 || plan[0].Version != "018" ||
 		!strings.Contains(plan[0].SQL, "ADD COLUMN IF NOT EXISTS locale") ||
-		!strings.Contains(plan[0].SQL, "DEFAULT 'zh-CN'") {
+		!strings.Contains(plan[0].SQL, "DEFAULT 'zh-CN'") ||
+		plan[1].Version != "019" || !strings.Contains(plan[1].SQL, "bkn_trace_ee_historical_provenance_tombstones") {
 		t.Fatalf("unexpected provenance locale migration plan: %#v", plan)
 	}
 }

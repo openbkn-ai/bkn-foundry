@@ -6,6 +6,7 @@
 package sessionsvc_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -19,6 +20,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/drivenadapter/memoryaccess/sessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 )
 
@@ -575,6 +577,101 @@ func TestOnlyOneActiveInteractionAndTerminalIsFenced(t *testing.T) {
 	}); !sessionsvc.IsCode(err, sessionsvc.CodeTerminalConflict) {
 		t.Fatalf("expected terminal_conflict, got %v", err)
 	}
+}
+
+func TestTerminalInteractionEnqueuesImmutableHistoricalProvenanceBuildRequest(t *testing.T) {
+	t.Parallel()
+
+	store, service, owner, _, interaction, operation, receipt := mustCreateOperationWithHistoricalProvenance(t)
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt, ReceiptID: receipt.ID,
+		Output: operationOutput("ok"), EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID: "req-provenance", TraceID: validTraceIDOne,
+	}); err != nil {
+		t.Fatalf("complete operation: %v", err)
+	}
+	completed, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "terminal-provenance", LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Manifest: sessionvo.ClosureManifest{Version: "1", CompletionReason: "answer_returned", ExpectedOperations: []sessionvo.ExpectedOperation{{OperationID: operation.ID, Required: true}}, ExpectedReceipts: []sessionvo.ExpectedReceipt{{ReceiptID: receipt.ID, Required: true}}},
+	})
+	if err != nil {
+		t.Fatalf("terminate interaction: %v", err)
+	}
+	items, err := store.Lease(context.Background(), 20, time.Minute)
+	if err != nil {
+		t.Fatalf("lease outbox: %v", err)
+	}
+	var request sessionvo.HistoricalProvenanceBuildRequest
+	found := false
+	for _, item := range items {
+		if item.EventType != sessionvo.HistoricalProvenanceBuildRequestedEventType {
+			continue
+		}
+		if err := json.Unmarshal(item.Payload, &request); err != nil {
+			t.Fatalf("decode provenance request: %v", err)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatalf("terminal interaction did not enqueue %q: %#v", sessionvo.HistoricalProvenanceBuildRequestedEventType, items)
+	}
+	if request.InteractionID != completed.ID || request.TenantID != owner.TenantID || request.BusinessDomainID != owner.BusinessDomainID {
+		t.Fatalf("unexpected request scope: %#v", request)
+	}
+	if request.FactsHash == "" || len(request.Facts) != 1 || request.Facts[0].OperationID != operation.ID {
+		t.Fatalf("request does not contain sealed facts: %#v", request)
+	}
+	if bytes.Contains(itemPayloadForEvent(items, sessionvo.HistoricalProvenanceBuildRequestedEventType), []byte("Bearer")) {
+		t.Fatal("historical provenance request must not serialize a user bearer token")
+	}
+}
+
+func TestLateReceiptDoesNotEnqueueAnotherHistoricalProvenanceBuildRequest(t *testing.T) {
+	t.Parallel()
+
+	store, service, owner, _, interaction, operation, receipt := mustCreateOperationWithHistoricalProvenance(t)
+	if _, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "terminal-late-receipt", LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Manifest: sessionvo.ClosureManifest{Version: "1", CompletionReason: "answer_returned", ExpectedOperations: []sessionvo.ExpectedOperation{{OperationID: operation.ID, Required: true}}, ExpectedReceipts: []sessionvo.ExpectedReceipt{{ReceiptID: receipt.ID, Required: true}}},
+	}); err != nil {
+		t.Fatalf("terminate interaction: %v", err)
+	}
+	initial, err := store.Lease(context.Background(), 20, time.Minute)
+	if err != nil {
+		t.Fatalf("lease terminal events: %v", err)
+	}
+	for _, item := range initial {
+		if err := store.MarkDelivered(context.Background(), item); err != nil {
+			t.Fatalf("mark initial event delivered: %v", err)
+		}
+	}
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt, ReceiptID: receipt.ID,
+		Output: operationOutput("late"), EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID: "req-late", TraceID: validTraceIDOne,
+	}); err != nil {
+		t.Fatalf("complete late receipt: %v", err)
+	}
+	late, err := store.Lease(context.Background(), 20, time.Minute)
+	if err != nil {
+		t.Fatalf("lease late receipt events: %v", err)
+	}
+	for _, item := range late {
+		if item.EventType == sessionvo.HistoricalProvenanceBuildRequestedEventType {
+			t.Fatalf("late receipt must not enqueue a replacement provenance build request: %#v", item)
+		}
+	}
+}
+
+func itemPayloadForEvent(items []iprojectionoutbox.Item, eventType string) []byte {
+	for _, item := range items {
+		if item.EventType == eventType {
+			return item.Payload
+		}
+	}
+	return nil
 }
 
 func TestStartInteractionRejectsChangedPayloadForSameIdempotencyKey(t *testing.T) {
@@ -2347,6 +2444,18 @@ func mustCreateOperationWithStore(t *testing.T) (*sessionstore.Store, *sessionsv
 	t.Helper()
 	store := sessionstore.New()
 	service := sessionsvc.New(store, sessionsvc.Options{})
+	return mustCreateOperationForService(t, store, service)
+}
+
+func mustCreateOperationWithHistoricalProvenance(t *testing.T) (*sessionstore.Store, *sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
+	t.Helper()
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{EnableHistoricalProvenance: true})
+	return mustCreateOperationForService(t, store, service)
+}
+
+func mustCreateOperationForService(t *testing.T, store *sessionstore.Store, service *sessionsvc.Service) (*sessionstore.Store, *sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
+	t.Helper()
 	owner := testOwner()
 	conversation := mustEnsureConversation(t, service, owner, "thread-operation")
 	interaction, err := service.StartInteraction(context.Background(), sessionsvc.StartInteractionCommand{
