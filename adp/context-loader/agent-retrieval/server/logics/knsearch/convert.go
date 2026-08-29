@@ -48,7 +48,7 @@ func KnSearchReqToLocal(req *interfaces.KnSearchReq) *interfaces.KnSearchLocalRe
 	return local
 }
 
-func applySearchScopeToLocalRetrievalConfig(local *interfaces.KnSearchLocalRequest, scope *interfaces.SearchScopeConfig) {
+func applySearchScopeToLocalRetrievalConfig(local *interfaces.KnSearchLocalRequest, scope *interfaces.KnSearchScope) {
 	if local == nil || scope == nil {
 		return
 	}

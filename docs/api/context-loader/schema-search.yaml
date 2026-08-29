@@ -341,6 +341,18 @@ components:
           default: true
           description: 是否包含指标类。
 
+    KnSearchScope:
+      type: object
+      description: |
+        `kn_search` 的检索范围。只有 `concept_groups` 生效——本接口从不按概念类型过滤
+        响应，需要按类型裁剪请用 `search_schema` 的 `search_scope`。
+      properties:
+        concept_groups:
+          type: array
+          items:
+            type: string
+          description: 限定的概念分组 ID 列表。
+
     KnSearchCompatRequest:
       type: object
       required:
@@ -357,7 +369,7 @@ components:
           type: string
           description: 知识网络 ID。
         search_scope:
-          $ref: '#/components/schemas/SearchScope'
+          $ref: '#/components/schemas/KnSearchScope'
         retrieval_config:
           type: object
           nullable: true

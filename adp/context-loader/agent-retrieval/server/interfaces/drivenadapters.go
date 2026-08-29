@@ -259,8 +259,6 @@ type SemanticInstanceRetrievalConfig struct {
 	InitialCandidateCount             int     `json:"initial_candidate_count,omitempty"`                // Default50.
 	EnableGlobalFinalScoreRatioFilter bool    `json:"enable_global_final_score_ratio_filter,omitempty"` // Default is true.
 	GlobalFinalScoreRatio             float64 `json:"global_final_score_ratio,omitempty"`               // Default0.25.
-	PreFilterPerTypeLimit             int     `json:"pre_filter_per_type_limit,omitempty"`              // Optional.
-	MaxKeywords                       int     `json:"max_keywords,omitempty"`                           // Maximum number of multiple keywords, default 5.
 	MaxSemanticSubConditions          int     `json:"max_semantic_sub_conditions,omitempty"`            // Default is 10.
 	SemanticFieldKeepRatio            float64 `json:"semantic_field_keep_ratio,omitempty"`              // Default0.2.
 	SemanticFieldKeepMin              int     `json:"semantic_field_keep_min,omitempty"`                // Default is 5.
@@ -281,6 +279,16 @@ type RetrievalConfig struct {
 	PropertyFilter            *PropertyFilterConfig            `json:"property_filter,omitempty"`
 }
 
+// KnSearchScope is the scope block kn_search accepts.
+//
+// Only concept_groups: the include_object_types / include_relation_types / include_action_types
+// switches that SearchScopeConfig also carries were accepted here and then dropped on the floor --
+// kn_search never filtered its response by category. Taking them out of the contract keeps the
+// request struct honest; search_schema keeps its own SearchSchemaScope, where those switches work.
+type KnSearchScope struct {
+	ConceptGroups []string `json:"concept_groups,omitempty"`
+}
+
 // KnSearchReq kn_search request
 type KnSearchReq struct {
 	// Header Parameters
@@ -292,7 +300,7 @@ type KnSearchReq struct {
 	Query           string                `json:"query" validate:"required"`
 	KnID            string                `json:"kn_id" validate:"required"`
 	knIDs           []*KnDataSourceConfig // Internal use, converted from KnID, not exposed
-	SearchScope     *SearchScopeConfig    `json:"search_scope,omitempty"`
+	SearchScope     *KnSearchScope        `json:"search_scope,omitempty"`
 	RetrievalConfig any                   `json:"retrieval_config,omitempty"`
 	OnlySchema      *bool                 `json:"only_schema,omitempty"`
 	EnableRerank    *bool                 `json:"enable_rerank,omitempty"`
