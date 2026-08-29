@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2605,
+  "violation_count": 2585,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -624,30 +624,6 @@
       "60ed7fd64ed1dd6c8f18",
       "6f0fd235beceac09dc3e",
       "b8fe85089c2eb31a554a"
-    ],
-    "adp/context-loader/agent-retrieval/server/logics/knrerank/knowledge_rerank.go": [
-      "5c09401cb75a40b6105c",
-      "7389a83adf18da66bbe1",
-      "24703382eb5e0cb23917",
-      "76734a080df74daf3b61",
-      "059e1c906e0a7572bf9f",
-      "e23ee8ca96d330f646ff",
-      "690f6322f9f35b5ed781",
-      "28f665f4df62cf75b269",
-      "eb20eca5fe6b0a841a12",
-      "5d8783e81f2b5d5098c0",
-      "e0bfdd41ef9a3a4ff6e5",
-      "39010c3ead60f7db12b0",
-      "5ff5edb0beafa2462141",
-      "757d27d2425a05346dff",
-      "84d743794333e3757cac",
-      "dcb6e06ecac346eaf2c0",
-      "33a42a52b6f51f93e765",
-      "d30738a6512fcb95326e",
-      "eca4aa30472b909bcdbc"
-    ],
-    "adp/context-loader/agent-retrieval/server/logics/knretrieval/convert.go": [
-      "eaf740719305b0b0381a"
     ],
     "adp/context-loader/agent-retrieval/server/logics/knsearch/concept_retrieval.go": [
       "0a8f8f4933f4fa5e1d30",
