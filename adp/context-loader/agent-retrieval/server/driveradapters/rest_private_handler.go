@@ -19,7 +19,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcpproxy"
@@ -29,7 +28,6 @@ import (
 )
 
 type restPrivateHandler struct {
-	KnRetrievalHandler             knretrieval.KnRetrievalHandler
 	KnLogicPropertyResolverHandler knlogicpropertyresolver.KnLogicPropertyResolverHandler
 	KnActionRecallHandler          knactionrecall.KnActionRecallHandler
 	KnQueryObjectInstanceHandler   knqueryobjectinstance.KnQueryObjectInstanceHandler
@@ -46,7 +44,6 @@ type restPrivateHandler struct {
 // NewRestPrivateHandler createrestHandlerinstance.
 func NewRestPrivateHandler(logger interfaces.Logger) interfaces.HTTPRouterInterface {
 	return &restPrivateHandler{
-		KnRetrievalHandler:             knretrieval.NewKnRetrievalHandler(),
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
 		KnActionRecallHandler:          knactionrecall.NewKnActionRecallHandler(),
 		KnQueryObjectInstanceHandler:   knqueryobjectinstance.NewKnQueryObjectInstanceHandler(),
@@ -67,7 +64,6 @@ func (r *restPrivateHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareHeaderAuthContext(), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
 	engine.Use(mws...)
 
-	engine.POST("/kn/semantic-search", r.KnRetrievalHandler.SemanticSearch)
 	engine.POST("/kn/logic-property-resolver", r.KnLogicPropertyResolverHandler.ResolveLogicProperties)
 	engine.POST("/kn/get_action_info", r.KnActionRecallHandler.GetActionInfo)
 	engine.POST("/kn/execute_action", r.KnActionRecallHandler.ExecuteAction)

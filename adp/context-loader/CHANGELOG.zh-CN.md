@@ -2,6 +2,19 @@
 
 英文版本：[CHANGELOG.md](CHANGELOG.md)
 
+## Unreleased
+
+### 移除
+
+- 移除 `POST /kn/semantic-search`（公有路径与 `in/v1` 内部路径），请改用 `POST /kn/search_schema`
+  - 该接口相对 `search_schema` 的全部差异字段——`query_understanding`、`hits_total`、`intent_score` / `match_score` / `rerank_score` 与每个概念的 `samples`——都会在回包前被 handler 清空，因此 `return_query_understanding: true` 从来没有产生过可见效果，实际响应是 `search_schema` 的真子集
+  - `agent_intent_planning` 与 `agent_intent_retrieval` 两个 mode 仍会为意图分析真实调用一次大模型，结果随后被丢弃
+  - 一并删除 `knretrieval`、`knrerank` 两个包，`SemanticSearch*` / `QueryUnderstanding` / `ConceptResult` / `KnowledgeRerank*` 等类型，以及 `api_public/kn.yaml`、`api_private/kn_schema_search.yaml` 两份文档
+  - 一并删除已无人读取的 `rerank_llm` 配置块（服务配置、Helm values 与渲染出的 ConfigMap）。存量对该键的覆盖会被忽略，不会导致部署失败
+- 从 `kn_search` 请求契约中移除 `search_scope.include_object_types` / `include_relation_types` / `include_action_types`
+  - `kn_search` 从不按概念类型过滤响应，这三个开关被接收后直接丢弃。`search_scope.concept_groups` 不受影响，`search_schema` 自己那套可用的范围开关也不受影响
+- 从请求契约中移除 `retrieval_config.semantic_instance_retrieval.max_keywords` 与 `pre_filter_per_type_limit`，这两个字段从未被任何代码读取
+
 ## 0.8.0
 
 ### 功能与改进
