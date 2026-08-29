@@ -17,7 +17,9 @@ func (stubKnSearchHandler) SearchSchema(c *gin.Context) {
 	c.String(http.StatusOK, "search_schema")
 }
 
-func (stubKnSearchHandler) SearchInstance(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"nodes": []any{}}) }
+func (stubKnSearchHandler) SearchInstance(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"nodes": []any{}})
+}
 
 func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -28,7 +30,6 @@ func TestRestPublicHandler_RegistersSearchSchemaRoute(t *testing.T) {
 
 		handler := &restPublicHandler{
 			Hydra:                          stubPublicHydra{},
-			KnRetrievalHandler:             stubSemanticSearchHandler{},
 			MCPHandler:                     http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }),
 			KnLogicPropertyResolverHandler: stubLogicPropertyResolverHandler{},
 			KnActionRecallHandler:          stubActionRecallHandler{},

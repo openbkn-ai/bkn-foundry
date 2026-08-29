@@ -94,8 +94,6 @@ func TestBusinessToolSchemasRequireManagedBKNContext(t *testing.T) {
 
 func TestModuleOpenAPIRequiresManagedBKNContext(t *testing.T) {
 	documents := map[string]string{
-		"api_public/kn.yaml":                           "SemanticSearchRequest",
-		"api_private/kn_schema_search.yaml":            "SemanticSearchRequest",
 		"api_private/kn_search.yaml":                   "KnSearchCompatRequest",
 		"api_private/search_schema.yaml":               "SearchSchemaRequest",
 		"api_private/find_skills.yaml":                 "FindSkillsRequest",

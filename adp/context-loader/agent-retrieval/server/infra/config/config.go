@@ -47,7 +47,6 @@ type Config struct {
 	OTelProviders        *bknotel.Providers     `yaml:"-"`
 	// New configuration - knowledge rearrangement and retrieval related.
 	MFModelAPI PrivateBaseConfig `yaml:"mf_model_api"` // MF-Model API unified service configuration.
-	RerankLLM  RerankLLMConfig   `yaml:"rerank_llm"`   // LLM parameter configuration for Rerank.
 	FindSkills FindSkillsConfig  `yaml:"find_skills"`  // find_skills Skill recall configuration.
 }
 
@@ -184,16 +183,6 @@ type KnInstanceSearchConfig struct {
 }
 
 // MFModelAPI configuration uses a unified PrivateBaseConfig structure.
-
-// RerankLLMConfig LLM parameter configuration for Rerank (the model is not configured here: the system default large model is used by default, per-request is overridden by rerank_llm_model)
-type RerankLLMConfig struct {
-	Temperature      float64 `yaml:"temperature" default:"0"`         // generate randomness.
-	TopK             int     `yaml:"top_k" default:"2"`               // Sampling range.
-	TopP             float64 `yaml:"top_p" default:"0.5"`             // Kernel sampling threshold.
-	FrequencyPenalty float64 `yaml:"frequency_penalty" default:"0.5"` // Frequency penalty.
-	PresencePenalty  float64 `yaml:"presence_penalty" default:"0.5"`  // Presence penalty.
-	MaxTokens        int     `yaml:"max_tokens" default:"5000"`       // Maximum token count.
-}
 
 // FindSkillsConfig find_skills Skill recall configuration.
 type FindSkillsConfig struct {

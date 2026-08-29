@@ -206,24 +206,6 @@ type AppKeyVerifier interface {
 	Verify(ctx context.Context, key string) (tokenInfo *TokenInfo, err error)
 }
 
-// KnowledgeRerankActionType Result set rerank type based on business knowledge network
-type KnowledgeRerankActionType string
-
-const (
-	KnowledgeRerankActionLLM     KnowledgeRerankActionType = "llm"     // Rerank based on LLM
-	KnowledgeRerankActionVector  KnowledgeRerankActionType = "vector"  // Rerank based on vector
-	KnowledgeRerankActionDefault KnowledgeRerankActionType = "default" // Default rerank
-)
-
-// KnowledgeRerankReq Knowledge rerank request
-type KnowledgeRerankReq struct {
-	QueryUnderstanding *QueryUnderstanding       `json:"query_understanding" validate:"required"`                      // Query understanding
-	KnowledgeConcepts  []*ConceptResult          `json:"concepts" validate:"required"`                                 // Business knowledge network concepts
-	Action             KnowledgeRerankActionType `json:"action" validate:"required,oneof=llm vector" default:"vector"` // Action: llm based rerank, vector based rerank
-	LLMModel           string                    `json:"llm_model,omitempty"`                                          // per-request override for LLM rerank model; empty => config.Model
-	VectorModel        string                    `json:"vector_model,omitempty"`                                       // per-request override for the rerank small model; empty => the factory default
-}
-
 // KnDataSourceConfig Knowledge network data source configuration
 type KnDataSourceConfig struct {
 	KnowledgeNetworkID string `json:"knowledge_network_id"` // Knowledge Network ID

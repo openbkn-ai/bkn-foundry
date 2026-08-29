@@ -240,7 +240,7 @@ components:
         object_type_id:
           type: string
           description: |
-            业务对象类型 ID（从 kn_search 或 kn_schema_search 返回的 concept_id 获取）。
+            业务对象类型 ID（从 search_schema 或 kn_search 返回的 concept_id 获取）。
             当前版本为必填项；传入后为对象类级或实例级召回，且该对象类必须存在于当前知识网络中。
           example: contract
         instance_identities:

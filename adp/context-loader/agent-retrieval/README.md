@@ -8,15 +8,14 @@ Agent Retrieval is the retrieval service component of the context-loader in ADP.
 
 ## Core Features
 
-Core features are six tools and the Context Loader MCP server:
+Core features are five tools and the Context Loader MCP server:
 
 1. **kn_search**: Knowledge network search (concept- and instance-level semantic retrieval)
-2. **kn_schema_search**: Knowledge network schema search
-3. **query_object_instance**: Query object-type instances in a knowledge network
-4. **query_instance_subgraph**: Query subgraph around instances with configurable depth and relations
-5. **get_action_info**: Get action metadata, the input schema and the execution result schema (`output_schema`) for operator/agent tooling
-6. **get_logic_properties_values**: Resolve logic properties and get property values
-7. **Context Loader MCP Server**: Exposes the six tools above to MCP clients (e.g. Cursor, Claude Desktop)
+2. **query_object_instance**: Query object-type instances in a knowledge network
+3. **query_instance_subgraph**: Query subgraph around instances with configurable depth and relations
+4. **get_action_info**: Get action metadata, the input schema and the execution result schema (`output_schema`) for operator/agent tooling
+5. **get_logic_properties_values**: Resolve logic properties and get property values
+6. **Context Loader MCP Server**: Exposes the five tools above to MCP clients (e.g. Cursor, Claude Desktop)
 
 ## Technical Architecture
 
@@ -35,7 +34,6 @@ server/
 │   ├── knlogicpropertyresolver/
 │   ├── knqueryobjectinstance/
 │   ├── knquerysubgraph/
-│   ├── knretrieval/
 │   ├── knsearch/
 │   ├── mcp/            # MCP server & schemas
 │   └── mcpproxy/
@@ -51,8 +49,6 @@ server/
 │   ├── knactionrecall/
 │   ├── knlogicpropertyresolver/
 │   ├── knquerysubgraph/
-│   ├── knrerank/
-│   ├── knretrieval/
 │   └── knsearch/
 ├── infra/              # Config, logger, telemetry, i18n
 │   ├── config/
