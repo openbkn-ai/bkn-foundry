@@ -49,12 +49,16 @@
 # frozen at publish time, so a service that was merely mid-restart during
 # install shows "degraded" forever even after it self-heals. HTTP-sourced
 # entries can't be re-probed here (jq only, no curl), so leave those as-is.
-# serviceHealth names may carry a "-svc" suffix the workload key lacks.
+# serviceHealth names may carry a "-svc" or "-internal" suffix the workload
+# key lacks.
 | .serviceHealth |= ((. // []) | map(
     . as $h
     | if ($h.source == "pod")
       then
-        (($actual[$h.name]) // ($actual[($h.name | rtrimstr("-svc"))]) // null) as $m
+        (($actual[$h.name])
+         // ($actual[($h.name | rtrimstr("-svc"))])
+         // ($actual[($h.name | rtrimstr("-internal"))])
+         // null) as $m
         | if $m == null then .
           else
             . + {ready: "\($m.ready)/\($m.total)",
