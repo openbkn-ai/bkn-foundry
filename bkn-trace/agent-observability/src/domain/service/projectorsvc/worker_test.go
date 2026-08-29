@@ -166,6 +166,30 @@ func TestProjectionWorkerContinuesAfterLeaseIsLost(t *testing.T) {
 	}
 }
 
+func TestHistoricalProvenanceEventUsesDedicatedHandlerBeforeDelivery(t *testing.T) {
+	t.Parallel()
+
+	store := &fakeOutboxStore{items: []iprojectionoutbox.Item{{
+		ID: 1, EventID: "evt-provenance", EventType: "historical_provenance.build_requested",
+	}}}
+	sink := &fakeProjectionSink{err: errors.New("OpenSearch must not receive provenance events")}
+	handler := &fakeHistoricalProvenanceHandler{}
+	worker := projectorsvc.NewWorker(store, sink, projectorsvc.WorkerOptions{
+		HistoricalProvenanceHandler: handler,
+	})
+
+	result, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run worker: %v", err)
+	}
+	if result.Delivered != 1 || len(store.delivered) != 1 {
+		t.Fatalf("event was not delivered after handler success: %#v", result)
+	}
+	if handler.calls != 1 || sink.calls != 0 {
+		t.Fatalf("provenance routing leaked to OpenSearch: handler=%d sink=%d", handler.calls, sink.calls)
+	}
+}
+
 type fakeOutboxStore struct {
 	items               []iprojectionoutbox.Item
 	retried             []iprojectionoutbox.Item
@@ -199,10 +223,27 @@ func (s *fakeOutboxStore) MoveToDLQ(_ context.Context, item iprojectionoutbox.It
 	return nil
 }
 
-type fakeProjectionSink struct{ err error }
+type fakeProjectionSink struct {
+	err   error
+	calls int
+}
 
 func (s *fakeProjectionSink) Project(context.Context, iprojectionoutbox.Item) error {
+	s.calls++
 	return s.err
+}
+
+type fakeHistoricalProvenanceHandler struct {
+	err   error
+	calls int
+}
+
+func (h *fakeHistoricalProvenanceHandler) HandleHistoricalProvenance(
+	context.Context,
+	iprojectionoutbox.Item,
+) error {
+	h.calls++
+	return h.err
 }
 
 type projectionTestMetrics struct {
