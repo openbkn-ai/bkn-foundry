@@ -212,5 +212,13 @@
     "group": "execution",
     "group_title": "代码执行",
     "order": 620
+  },
+  "execute_published_tool": {
+    "name": "execute_published_tool",
+    "title": "执行已发布函数",
+    "group": "execution",
+    "group_title": "代码执行",
+    "order": 600,
+    "description": "在当前受管 Interaction 中执行一个已发布且已启用的 Toolbox 函数。先从函数工具箱目录取得 toolbox_id、tool_id 与参数定义；arguments 只传函数业务参数，不传 Token、会话 ID、快照或 resolved_context。平台以当前 MCP 调用者身份执行并自动传递受管上下文。"
   }
 }

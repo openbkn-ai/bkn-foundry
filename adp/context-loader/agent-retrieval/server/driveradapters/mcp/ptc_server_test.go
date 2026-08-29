@@ -64,9 +64,11 @@ func TestPTCMCPInitializeUsesRequestLocale(t *testing.T) {
 // fakeExecutor records the last sandbox execution request.
 type fakeExecutor struct {
 	interfaces.DrivenOperatorIntegration
-	last *interfaces.ExecuteFunctionRequest
-	resp *interfaces.ExecuteFunctionResponse
-	err  error
+	last     *interfaces.ExecuteFunctionRequest
+	lastTool *interfaces.ExecutePublishedToolRequest
+	resp     *interfaces.ExecuteFunctionResponse
+	toolResp map[string]any
+	err      error
 }
 
 func (f *fakeExecutor) ExecuteFunction(
@@ -80,6 +82,52 @@ func (f *fakeExecutor) ExecuteFunction(
 		return f.resp, nil
 	}
 	return &interfaces.ExecuteFunctionResponse{Stdout: "ok"}, nil
+}
+
+func (f *fakeExecutor) ExecutePublishedTool(
+	_ context.Context, req *interfaces.ExecutePublishedToolRequest,
+) (map[string]any, error) {
+	f.lastTool = req
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.toolResp != nil {
+		return f.toolResp, nil
+	}
+	return map[string]any{"body": map[string]any{"exit_code": 0}}, nil
+}
+
+func TestPTCPublishedToolUsesCallerContext(t *testing.T) {
+	executor := &fakeExecutor{toolResp: map[string]any{"body": map[string]any{"result": map[string]any{"leadtime_days": 14}}}}
+	handler := handlePTCPublishedTool(executor, loadMCPLocaleBundle("en-US"))
+	ctx := common.SetRawTokenToCtx(context.Background(), "caller-appkey")
+
+	result, err := handler(ctx, ptcCallRequest("execute_published_tool", map[string]any{
+		"toolbox_id": "box-1",
+		"tool_id":    "tool-1",
+		"arguments":  map[string]any{"material_code": "606-000989"},
+		"bkn_context": map[string]any{
+			"conversation_id": "conv-1", "interaction_id": "int-1",
+		},
+	}))
+	if err != nil {
+		t.Fatalf("call published tool: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("published-tool response marked error: %#v", result)
+	}
+	if executor.lastTool == nil {
+		t.Fatal("published tool was not invoked")
+	}
+	if executor.lastTool.ToolboxID != "box-1" || executor.lastTool.ToolID != "tool-1" {
+		t.Fatalf("wrong published tool target: %#v", executor.lastTool)
+	}
+	if executor.lastTool.BKNConversationID != "conv-1" || executor.lastTool.BKNInteractionID != "int-1" {
+		t.Fatalf("managed context missing from published tool request: %#v", executor.lastTool)
+	}
+	if executor.lastTool.Parameters["material_code"] != "606-000989" {
+		t.Fatalf("business parameters changed: %#v", executor.lastTool.Parameters)
+	}
 }
 
 func ptcCallRequest(name string, args map[string]any) mcp.CallToolRequest {

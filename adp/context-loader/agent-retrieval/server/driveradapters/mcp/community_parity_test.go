@@ -42,6 +42,7 @@ var communityTools = []string{
 	// knowledge network tools.
 	"describe_resource",
 	"execute_action",
+	"execute_published_tool",
 	"explore_subgraph",
 	"find_skills",
 	"get_action_execution",

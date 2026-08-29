@@ -191,6 +191,11 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 		b.add(toolKeyExecuteSkill, handleExecuteSkill(skillsService))
 	}
 
+	// A managed bridge for published Function tools. It uses the original MCP
+	// credential, not a separately logged-in CLI credential, so the sandbox
+	// query belongs to the same Interaction owner.
+	b.add(toolKeyExecutePublishedTool, handlePTCPublishedTool(drivenadapters.NewOperatorIntegrationClient(), localeBundle))
+
 	// The lifecycle tools are registered straight onto the server by the tracing
 	// adapter rather than through the builder. Claim their advertised names all
 	// the same, so an enterprise tool cannot shadow one of them — mcp-go's

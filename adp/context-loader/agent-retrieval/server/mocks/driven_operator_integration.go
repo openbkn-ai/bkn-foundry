@@ -71,6 +71,21 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) ExecuteFunction(ctx, req an
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteFunction", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ExecuteFunction), ctx, req)
 }
 
+// ExecutePublishedTool mocks base method.
+func (m *MockDrivenOperatorIntegration) ExecutePublishedTool(ctx context.Context, req *interfaces.ExecutePublishedToolRequest) (map[string]any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecutePublishedTool", ctx, req)
+	ret0, _ := ret[0].(map[string]any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecutePublishedTool indicates an expected call of ExecutePublishedTool.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ExecutePublishedTool(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecutePublishedTool", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ExecutePublishedTool), ctx, req)
+}
+
 // ExecuteSkill mocks base method.
 func (m *MockDrivenOperatorIntegration) ExecuteSkill(ctx context.Context, req *interfaces.ExecuteSkillRequest) (*interfaces.ExecuteSkillResponse, error) {
 	m.ctrl.T.Helper()

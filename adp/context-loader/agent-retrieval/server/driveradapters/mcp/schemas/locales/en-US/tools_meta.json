@@ -131,5 +131,10 @@
   "run_shell": {
     "title": "Run Command",
     "group_title": "Code Execution"
+  },
+  "execute_published_tool": {
+    "title": "Execute Published Function",
+    "group_title": "Code Execution",
+    "description": "Execute an enabled published Toolbox function in the current managed Interaction. First obtain toolbox_id, tool_id, and the parameter schema from the function toolbox catalog. arguments contains only business parameters—never a token, session ID, snapshot, or resolved_context. The platform uses the current MCP caller identity and propagates the managed context automatically."
   }
 }

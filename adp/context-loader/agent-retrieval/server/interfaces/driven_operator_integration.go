@@ -69,6 +69,18 @@ type CallMCPToolRequest struct {
 	Parameters map[string]interface{} `json:"parameters"`
 }
 
+// ExecutePublishedToolRequest invokes an enabled, published Toolbox tool on
+// behalf of the authenticated Context Loader caller. The lifecycle IDs come
+// only from a previously validated MCP bkn_context; they are transport context,
+// never business input for the Function.
+type ExecutePublishedToolRequest struct {
+	ToolboxID         string         `json:"toolbox_id"`
+	ToolID            string         `json:"tool_id"`
+	Parameters        map[string]any `json:"parameters"`
+	BKNConversationID string         `json:"-"`
+	BKNInteractionID  string         `json:"-"`
+}
+
 // ==================== Driven Adapters Interface ====================
 
 // DrivenOperatorIntegration Operator integration service interface
@@ -89,6 +101,10 @@ type DrivenOperatorIntegration interface {
 	ExecuteSkill(ctx context.Context, req *ExecuteSkillRequest) (*ExecuteSkillResponse, error)
 	// ExecuteFunction executes a piece of code within the sandbox (PTC's run_code / run_shell)
 	ExecuteFunction(ctx context.Context, req *ExecuteFunctionRequest) (*ExecuteFunctionResponse, error)
+	// ExecutePublishedTool invokes a published Toolbox tool with the caller's original credential.
+	// It is used by Context Loader's managed MCP surface so a Function reads BKN under
+	// the same principal that owns the Interaction.
+	ExecutePublishedTool(ctx context.Context, req *ExecutePublishedToolRequest) (map[string]any, error)
 }
 
 // ExecuteFunctionRequest sandbox code execution request.
