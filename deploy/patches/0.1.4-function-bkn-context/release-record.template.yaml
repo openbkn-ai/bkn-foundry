@@ -16,6 +16,10 @@ images:
     repository: ghcr.io/openbkn-ai/agent-operator-integration
     tag: 0.1.4-supply-sample-p1
     manifest_digest: sha256:<published-multi-architecture-manifest-digest>
+  sandbox_control_plane:
+    repository: ghcr.io/openbkn-ai/sandbox-control-plane
+    tag: 0.1.4-supply-sample-p1
+    manifest_digest: sha256:<published-multi-architecture-manifest-digest>
 verification:
   script_test: deploy/patches/0.1.4-function-bkn-context/test_patch_scripts.sh
   context_loader_unit_test: go test ./server/driveradapters/mcp ./server/drivenadapters

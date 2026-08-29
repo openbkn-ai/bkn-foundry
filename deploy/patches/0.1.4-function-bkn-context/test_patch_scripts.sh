@@ -63,11 +63,12 @@ case_dry_run_is_explicit_and_non_mutating() {
   assert_contains "$case_dir/output.log" "mode=dry-run"
   assert_contains "$case_dir/output.log" "agent-retrieval=registry.example/openbkn-ai/agent-retrieval:0.1.4-supply-sample-p1"
   assert_contains "$case_dir/output.log" "agent-operator-integration=registry.example/openbkn-ai/agent-operator-integration:0.1.4-supply-sample-p1"
+  assert_contains "$case_dir/output.log" "sandbox-control-plane=registry.example/openbkn-ai/sandbox-control-plane:0.1.4-supply-sample-p1"
   [[ ! -s $case_dir/error.log ]] || fail "dry-run wrote stderr"
   teardown_case
 }
 
-case_apply_upgrades_only_the_two_patch_services() {
+case_apply_upgrades_only_the_three_patch_services() {
   setup_case
   if ! run_script "$apply_script" \
     --yes \
@@ -80,8 +81,10 @@ case_apply_upgrades_only_the_two_patch_services() {
   assert_contains "$case_dir/output.log" "patch apply complete"
   assert_contains "$case_dir/output.log" "helm upgrade --install agent-retrieval"
   assert_contains "$case_dir/output.log" "helm upgrade --install agent-operator-integration"
+  assert_contains "$case_dir/output.log" "helm upgrade --install sandbox"
   assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/agent-retrieval"
   assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/agent-operator-integration"
+  assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/sandbox-control-plane"
   teardown_case
 }
 
@@ -94,7 +97,7 @@ case_rollback_requires_an_explicit_target_tag() {
   teardown_case
 }
 
-case_rollback_changes_only_the_two_patch_services() {
+case_rollback_changes_only_the_three_patch_services() {
   setup_case
   if ! run_script "$rollback_script" \
     --yes \
@@ -106,11 +109,12 @@ case_rollback_changes_only_the_two_patch_services() {
   fi
   assert_contains "$case_dir/output.log" "helm upgrade --install agent-retrieval"
   assert_contains "$case_dir/output.log" "helm upgrade --install agent-operator-integration"
+  assert_contains "$case_dir/output.log" "helm upgrade --install sandbox"
   assert_contains "$case_dir/output.log" "patch rollback complete"
   teardown_case
 }
 
-case_verify_checks_both_patched_deployments() {
+case_verify_checks_all_patched_deployments() {
   setup_case
   if ! run_script "$verify_script" --namespace demo; then
     cat "$case_dir/error.log" >&2
@@ -118,13 +122,14 @@ case_verify_checks_both_patched_deployments() {
   fi
   assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/agent-retrieval"
   assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/agent-operator-integration"
+  assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/sandbox-control-plane"
   assert_contains "$case_dir/output.log" "MCP acceptance is required"
   teardown_case
 }
 
 case_dry_run_is_explicit_and_non_mutating
-case_apply_upgrades_only_the_two_patch_services
+case_apply_upgrades_only_the_three_patch_services
 case_rollback_requires_an_explicit_target_tag
-case_rollback_changes_only_the_two_patch_services
-case_verify_checks_both_patched_deployments
+case_rollback_changes_only_the_three_patch_services
+case_verify_checks_all_patched_deployments
 echo "test_patch_scripts: all checks passed"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Apply the OpenBKN 0.1.4 Function/BKN-context compatibility patch.
 #
-# This patch replaces only agent-retrieval and agent-operator-integration
-# container images. It performs no database migration and never imports a
-# sample, toolbox, Skill, or knowledge network.
+# This patch replaces only agent-retrieval, agent-operator-integration, and
+# sandbox-control-plane container images. It performs no database migration and
+# never imports a sample, toolbox, Skill, or knowledge network.
 set -euo pipefail
 
 namespace="openbkn"
@@ -33,9 +33,9 @@ Options:
   --yes                       Apply without an interactive confirmation.
   -h, --help                  Show this help.
 
-This patch changes only agent-retrieval and agent-operator-integration. It has
-no schema/data migration. Use rollback.sh with the original image registry/tag
-to revert the two deployments.
+This patch changes only agent-retrieval, agent-operator-integration, and
+sandbox-control-plane. It has no schema/data migration. Use rollback.sh with
+the original image registry/tag to revert the three deployments.
 EOF
 }
 
@@ -73,11 +73,13 @@ done
 
 agent_retrieval_image="$registry/agent-retrieval:$tag"
 operator_integration_image="$registry/agent-operator-integration:$tag"
+sandbox_control_plane_image="$registry/sandbox-control-plane:$tag"
 
 echo "patch=0.1.4-function-bkn-context"
 echo "namespace=$namespace"
 echo "agent-retrieval=$agent_retrieval_image"
 echo "agent-operator-integration=$operator_integration_image"
+echo "sandbox-control-plane=$sandbox_control_plane_image"
 
 if [[ "$dry_run" == true ]]; then
   echo "mode=dry-run"
@@ -87,13 +89,13 @@ fi
 command -v helm >/dev/null || die "helm is required"
 command -v kubectl >/dev/null || die "kubectl is required"
 
-for release in agent-retrieval agent-operator-integration; do
+for release in agent-retrieval agent-operator-integration sandbox; do
   helm status "$release" --namespace "$namespace" >/dev/null 2>&1 || \
     die "expected existing Helm release not found: $release in namespace $namespace"
 done
 
 if [[ "$assume_yes" != true ]]; then
-  read -r -p "Upgrade only the two listed OpenBKN deployments? Type yes: " confirmation
+  read -r -p "Upgrade only the three listed OpenBKN deployments? Type yes: " confirmation
   [[ "$confirmation" == yes ]] || die "cancelled"
 fi
 
@@ -112,8 +114,18 @@ upgrade() {
 upgrade agent-retrieval agent-retrieval
 upgrade agent-operator-integration agent-operator-integration
 
+helm upgrade --install sandbox "$chart_registry/sandbox" \
+  --namespace "$namespace" \
+  --version "$chart_version" \
+  --reuse-values \
+  --set "image.registry=$registry" \
+  --set "image.controlPlane.repository=sandbox-control-plane" \
+  --set-string "image.controlPlane.tag=$tag" \
+  --wait --timeout "$timeout"
+
 kubectl -n "$namespace" rollout status deployment/agent-retrieval --timeout="$timeout"
 kubectl -n "$namespace" rollout status deployment/agent-operator-integration --timeout="$timeout"
+kubectl -n "$namespace" rollout status deployment/sandbox-control-plane --timeout="$timeout"
 
 echo "patch apply complete"
 echo "Next: run ./verify.sh --namespace $namespace and then the MCP acceptance in README.md."

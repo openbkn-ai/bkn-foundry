@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Roll back the two deployments changed by apply.sh. No data is deleted.
+# Roll back the three deployments changed by apply.sh. No data is deleted.
 set -euo pipefail
 
 namespace="openbkn"
@@ -17,7 +17,7 @@ Usage:
 
 Use the exact registry/tag recorded before applying the patch. Standard 0.1.4
 installations normally use --tag 0.1.4-release. This command only changes the
-two patched deployments and does not delete data.
+three patched deployments and does not delete data.
 EOF
 }
 
@@ -49,7 +49,7 @@ command -v helm >/dev/null || die "helm is required"
 command -v kubectl >/dev/null || die "kubectl is required"
 
 if [[ "$assume_yes" != true ]]; then
-  read -r -p "Restore the two OpenBKN deployments to tag $tag? Type yes: " confirmation
+  read -r -p "Restore the three OpenBKN deployments to tag $tag? Type yes: " confirmation
   [[ "$confirmation" == yes ]] || die "cancelled"
 fi
 
@@ -67,6 +67,15 @@ rollback() {
 
 rollback agent-retrieval agent-retrieval
 rollback agent-operator-integration agent-operator-integration
+helm upgrade --install sandbox "$chart_registry/sandbox" \
+  --namespace "$namespace" \
+  --version "$chart_version" \
+  --reuse-values \
+  --set "image.registry=$registry" \
+  --set "image.controlPlane.repository=sandbox-control-plane" \
+  --set-string "image.controlPlane.tag=$tag" \
+  --wait --timeout "$timeout"
 kubectl -n "$namespace" rollout status deployment/agent-retrieval --timeout="$timeout"
 kubectl -n "$namespace" rollout status deployment/agent-operator-integration --timeout="$timeout"
+kubectl -n "$namespace" rollout status deployment/sandbox-control-plane --timeout="$timeout"
 echo "patch rollback complete"

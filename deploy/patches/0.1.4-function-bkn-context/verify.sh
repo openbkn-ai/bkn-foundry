@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Verify that the two patched control-plane deployments are available.
+# Verify that the three patched control-plane deployments are available.
 set -euo pipefail
 
 namespace="openbkn"
@@ -33,4 +33,5 @@ done
 command -v kubectl >/dev/null || die "kubectl is required"
 kubectl -n "$namespace" rollout status deployment/agent-retrieval --timeout="$timeout"
 kubectl -n "$namespace" rollout status deployment/agent-operator-integration --timeout="$timeout"
-echo "MCP acceptance is required: use the two published-tool discovery tools and execute_published_tool."
+kubectl -n "$namespace" rollout status deployment/sandbox-control-plane --timeout="$timeout"
+echo "MCP acceptance is required: use the three published-tool interfaces."

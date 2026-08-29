@@ -10,20 +10,21 @@ Knowledge Network.
 ## Compatibility and scope
 
 - Base product: OpenBKN `0.1.4` installed by Helm/Kubernetes.
-- Changed Deployments: `agent-retrieval` and `agent-operator-integration` only.
+- Changed Deployments: `agent-retrieval`, `agent-operator-integration`, and
+  `sandbox-control-plane` only.
 - No data migration, no database DDL, and no BKN import/export occurs.
-- The Function Runtime and Sandbox Context Loader address injection already ship
-  in the `0.1.4` base release; do not replace Sandbox images for this patch.
+- The patch includes the Sandbox Context Loader address injection required by
+  the GitHub `release/0.1.4` baseline.
 - The patch image tag must be supplied from the signed release record. Never use
   a local development tag in a customer cluster.
 
 ## Before changing the cluster
 
-1. Record the two currently running image references, especially if your
+1. Record the three currently running image references, especially if your
    installation uses a private registry:
 
    ```bash
-   kubectl -n openbkn get deployment agent-retrieval agent-operator-integration \
+   kubectl -n openbkn get deployment agent-retrieval agent-operator-integration sandbox-control-plane \
      -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.spec.template.spec.containers[0].image}{"\n"}{end}'
    ```
 
@@ -47,7 +48,7 @@ cd deploy/patches/0.1.4-function-bkn-context
   --tag <published-patch-tag>
 ```
 
-For air-gapped installations, first mirror the two published images to the
+For air-gapped installations, first mirror the three published images to the
 customer registry, then pass that registry to `--registry`. The Helm charts stay
 on the normal `0.1.4-release` version; only their image values are replaced.
 
@@ -84,7 +85,7 @@ Use the exact original registry and tag recorded before installation:
 ```
 
 The standard release uses `0.1.4-release`, but a private or previously patched
-installation may use another tag. Rollback changes only the same two Deployments
+installation may use another tag. Rollback changes only the same three Deployments
 and does not remove imported sample data or persisted business data.
 
 ## Release record
