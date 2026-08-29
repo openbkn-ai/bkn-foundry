@@ -60,6 +60,8 @@ const (
 	toolKeyGetSkillContent          = "get_skill_content"
 	toolKeyReadSkillFile            = "read_skill_file"
 	toolKeyExecuteSkill             = "execute_skill"
+	toolKeyListPublishedToolboxes   = "list_published_toolboxes"
+	toolKeyListPublishedTools       = "list_published_tools"
 	// Bounds the lifetime of mcp-go's in-memory session state.
 	mcpSessionIdleTTL = 30 * time.Minute
 )
@@ -191,10 +193,16 @@ func newMCPServerForLocale(lifecycleClient *bkntrace.LifecycleClient, locale str
 		b.add(toolKeyExecuteSkill, handleExecuteSkill(skillsService))
 	}
 
+	// Published Functions have their own directory, distinct from Skills. The
+	// Agent obtains real IDs here and must never guess IDs or probe candidates.
+	operatorIntegration := drivenadapters.NewOperatorIntegrationClient()
+	b.add(toolKeyListPublishedToolboxes, handleListPublishedToolboxes(operatorIntegration))
+	b.add(toolKeyListPublishedTools, handleListPublishedTools(operatorIntegration))
+
 	// A managed bridge for published Function tools. It uses the original MCP
 	// credential, not a separately logged-in CLI credential, so the sandbox
 	// query belongs to the same Interaction owner.
-	b.add(toolKeyExecutePublishedTool, handlePTCPublishedTool(drivenadapters.NewOperatorIntegrationClient(), localeBundle))
+	b.add(toolKeyExecutePublishedTool, handlePTCPublishedTool(operatorIntegration, localeBundle))
 
 	// The lifecycle tools are registered straight onto the server by the tracing
 	// adapter rather than through the builder. Claim their advertised names all

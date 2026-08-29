@@ -161,6 +161,36 @@ func (mr *MockDrivenOperatorIntegrationMockRecorder) ListSkills(ctx, req any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSkills", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ListSkills), ctx, req)
 }
 
+// ListPublishedToolboxes mocks base method.
+func (m *MockDrivenOperatorIntegration) ListPublishedToolboxes(ctx context.Context, req *interfaces.ListPublishedToolboxesRequest) (*interfaces.ListPublishedToolboxesResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPublishedToolboxes", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ListPublishedToolboxesResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPublishedToolboxes indicates an expected call of ListPublishedToolboxes.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ListPublishedToolboxes(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPublishedToolboxes", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ListPublishedToolboxes), ctx, req)
+}
+
+// ListPublishedTools mocks base method.
+func (m *MockDrivenOperatorIntegration) ListPublishedTools(ctx context.Context, req *interfaces.ListPublishedToolsRequest) (*interfaces.ListPublishedToolsResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPublishedTools", ctx, req)
+	ret0, _ := ret[0].(*interfaces.ListPublishedToolsResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPublishedTools indicates an expected call of ListPublishedTools.
+func (mr *MockDrivenOperatorIntegrationMockRecorder) ListPublishedTools(ctx, req any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPublishedTools", reflect.TypeOf((*MockDrivenOperatorIntegration)(nil).ListPublishedTools), ctx, req)
+}
+
 // ReadSkillFile mocks base method.
 func (m *MockDrivenOperatorIntegration) ReadSkillFile(ctx context.Context, req *interfaces.ReadSkillFileRequest) (*interfaces.ReadSkillFileResponse, error) {
 	m.ctrl.T.Helper()

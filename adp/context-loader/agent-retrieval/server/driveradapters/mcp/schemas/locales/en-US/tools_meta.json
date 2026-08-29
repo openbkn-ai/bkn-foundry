@@ -136,5 +136,15 @@
     "title": "Execute Published Function",
     "group_title": "Code Execution",
     "description": "Execute an enabled published Toolbox function in the current managed Interaction. First obtain toolbox_id, tool_id, and the parameter schema from the function toolbox catalog. arguments contains only business parameters—never a token, session ID, snapshot, or resolved_context. The platform uses the current MCP caller identity and propagates the managed context automatically."
+  },
+  "list_published_toolboxes": {
+    "title": "Find Published Function Toolboxes",
+    "group_title": "Network & Schema",
+    "description": "List published Function toolboxes visible to the current caller. Functions and Skills are distinct capabilities: use list_skills for Skills; use this tool to obtain a real toolbox_id. If no match is returned, record it and do not guess a name or ID."
+  },
+  "list_published_tools": {
+    "title": "List Published Functions",
+    "group_title": "Network & Schema",
+    "description": "List enabled Functions and parameter descriptions in one published toolbox. toolbox_id must come from list_published_toolboxes; use the returned exact tool_id with execute_published_tool. Do not guess or enumerate candidate IDs."
   }
 }

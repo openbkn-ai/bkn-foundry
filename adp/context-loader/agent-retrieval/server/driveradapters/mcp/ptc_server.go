@@ -130,7 +130,38 @@ func newPTCMCPServerForLocale(
 		}, publishedToolInputSchema(localeBundle.PTCResource("ptc_bkn_context_description.txt")), nil),
 		handlePTCPublishedTool(executor, localeBundle),
 	)
+	// Keep the dedicated programmatic endpoint self-sufficient: an Agent can
+	// discover exactly the Functions it may call before selecting one.
+	mcpServer.AddTool(
+		newToolWithSchemas(ToolMeta{Name: toolKeyListPublishedToolboxes, Description: "List caller-visible published Function toolboxes. Use this before listing tools or executing a Function.", Title: "List published Function toolboxes"}, publishedToolboxCatalogInputSchema(localeBundle.PTCResource("ptc_bkn_context_description.txt")), nil),
+		handleListPublishedToolboxes(executor),
+	)
+	mcpServer.AddTool(
+		newToolWithSchemas(ToolMeta{Name: toolKeyListPublishedTools, Description: "List enabled Functions and input schemas in a published Toolbox. Use the returned exact IDs with execute_published_tool; do not guess IDs.", Title: "List published Functions"}, publishedToolListInputSchema(localeBundle.PTCResource("ptc_bkn_context_description.txt")), nil),
+		handleListPublishedTools(executor),
+	)
 	return mcpServer, nil
+}
+
+func publishedToolboxCatalogInputSchema(contextDescription string) json.RawMessage {
+	return publishedCatalogSchema(map[string]any{"keyword": map[string]any{"type": "string", "description": "Optional toolbox name keyword."}}, []any{"bkn_context"}, contextDescription)
+}
+
+func publishedToolListInputSchema(contextDescription string) json.RawMessage {
+	return publishedCatalogSchema(map[string]any{"toolbox_id": map[string]any{"type": "string", "description": "A toolbox_id returned by list_published_toolboxes."}}, []any{"toolbox_id", "bkn_context"}, contextDescription)
+}
+
+func publishedCatalogSchema(properties map[string]any, required []any, contextDescription string) json.RawMessage {
+	properties["bkn_context"] = map[string]any{
+		"type": "object", "description": contextDescription,
+		"properties": map[string]any{"conversation_id": map[string]any{"type": "string"}, "interaction_id": map[string]any{"type": "string"}},
+		"required":   []any{"conversation_id", "interaction_id"},
+	}
+	encoded, err := sonic.ConfigStd.Marshal(map[string]any{"type": "object", "properties": properties, "required": required})
+	if err != nil {
+		return nil
+	}
+	return encoded
 }
 
 func publishedToolInputSchema(contextDescription string) json.RawMessage {
