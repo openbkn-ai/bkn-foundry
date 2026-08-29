@@ -38,7 +38,7 @@ func TestPublishedToolCatalogUsesCallerCredentialAndReturnsSafeFields(t *testing
 			if got := r.URL.Query().Get("status"); got != "enabled" {
 				t.Fatalf("tool status = %q", got)
 			}
-			_, _ = w.Write([]byte(`{"box_id":"box-1","tools":[{"tool_id":"tool-1","name":"标准交期","description":"返回标准交期","status":"enabled","use_rule":"按物料编码查询","metadata":{"server_url":"http://internal","api_spec":{"servers":[{"url":"http://internal"}],"parameters":[{"name":"material_code","required":true,"type":"string"}]}}}]}`))
+			_, _ = w.Write([]byte(`{"box_id":"box-1","tools":[{"tool_id":"tool-1","name":"标准交期","description":"返回标准交期","status":"enabled","use_rule":"按物料编码查询","metadata":{"server_url":"http://internal","api_spec":{"servers":[{"url":"http://internal"}],"security":[{"api_key":[]}],"parameters":[{"name":"material_code","required":true,"type":"string"}]}}}]}`))
 		default:
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
@@ -71,5 +71,8 @@ func TestPublishedToolCatalogUsesCallerCredentialAndReturnsSafeFields(t *testing
 	}
 	if _, leaked := tools.Tools[0].InputSchema["servers"]; leaked {
 		t.Fatalf("OpenAPI server topology leaked: %#v", tools.Tools[0])
+	}
+	if _, leaked := tools.Tools[0].InputSchema["security"]; leaked {
+		t.Fatalf("transport security detail leaked: %#v", tools.Tools[0])
 	}
 }

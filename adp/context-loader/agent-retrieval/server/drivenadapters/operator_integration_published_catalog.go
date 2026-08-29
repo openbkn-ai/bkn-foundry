@@ -107,20 +107,23 @@ func (o *operatorIntegrationClient) ListPublishedTools(ctx context.Context, req 
 	return resp, nil
 }
 
-// safeInputSchema removes OpenAPI deployment topology. Parameters and request
-// schemas remain intact; callers need those to invoke a Function, while a
-// server address must never be part of the Agent-facing catalogue.
+// safeInputSchema keeps just a Function's business-input contract. Transport
+// topology and security metadata are neither callable business parameters nor
+// useful to an Agent which is already authenticated through Context Loader.
 func safeInputSchema(apiSpec map[string]any) map[string]any {
 	if apiSpec == nil {
 		return nil
 	}
-	copy := make(map[string]any, len(apiSpec))
-	for key, value := range apiSpec {
-		switch strings.ToLower(key) {
-		case "servers", "server_url", "serverurl", "x-server-url":
-			continue
+	input := make(map[string]any, 3)
+	for _, key := range []string{"parameters", "request_body"} {
+		if value, ok := apiSpec[key]; ok {
+			input[key] = value
 		}
-		copy[key] = value
 	}
-	return copy
+	if components, ok := apiSpec["components"].(map[string]any); ok {
+		if schemas, ok := components["schemas"]; ok {
+			input["components"] = map[string]any{"schemas": schemas}
+		}
+	}
+	return input
 }
