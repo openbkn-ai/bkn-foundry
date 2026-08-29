@@ -28,16 +28,21 @@ ContextLoader 知识网络查询工具集使用指南。
 
 探索顺序：
 1. list_knowledge_networks 获取 kn_id（其余工具都需要 kn_id）。
-2. 摸清 schema，两条路二选一：
-   - 自然语言按需找对象类 → search_schema（返回 ot_id、属性、condition_operations、data_source.id）。默认精简（schema_brief=true，省约 70%，够写查询）；要属性备注/主键/标签的完整 Schema 才传 schema_brief=false。
-   - 通读整网结构 → get_kn_detail（默认 summary：骨架 + 属性名，体积小）；要某对象完整字段映射再 get_object_types(ids)，要关系 mapping_rules 再 get_relation_types(ids)。别一上来就 detail_level=full。
-3. 按查询类型选工具（见下）。
+2. get_kn_detail（默认 detail_level=summary，体积小）先看概念组清单。每个分组带 name/tags/comment，据此选出 1-3 个与问题相关的分组。
+3. search_schema 在选中分组内找对象类：传 search_scope={"concept_groups":[选中的分组 ID]}，返回 ot_id、属性、condition_operations、data_source.id。
+   默认精简（schema_brief=true，省约 70%，够写查询）；要属性备注/主键/标签的完整 Schema 才传 schema_brief=false。
+   回退：概念组清单为空、凭语义判断不出该选哪个、或问题跨越三个以上分组时，不传 concept_groups 直接全网检索。
+   不传分组不会报错，只是召回范围是整网，返回更大也更杂——能选就选。
+4. 要某对象完整字段映射再 get_object_types(ids)，要关系 mapping_rules 再 get_relation_types(ids)。别一上来就 detail_level=full。
+5. 按查询类型选工具（见下）。
 
 查询分流：
 - 单对象类过滤 + 排序 + 分页（field op value，可 and/or 组合）→ query_object_instance；比较算子（==/!=/in/>/range/like/regex 等）按属性 type 自行判断，索引算子 match / knn 才看属性的 condition_operations——该键缺失只说明字段没建索引，不代表不能过滤；like/not_like 是字面子串包含（不要自己拼 %），要通配用 regex（锚定与大小写敏感性随资源存储而变，「包含」写 .*词.*）。
 - 聚合 / 统计 / 排名（SUM、COUNT、AVG、GROUP BY、按聚合值排序、跨表 join）→ run_sql（MySQL 只读 SQL）；表名用占位符 {{.<data_source.id>}}，<data_source.id> 必须替换成 search_schema 返回的真实 id 值（禁止照抄字面 resource_id；JOIN 多表时每个表用各自不同的 id）；列名用 search_schema 的 data_property.column（物理列，需 include_columns=true 获取），不是 name（逻辑名）。query_object_instance 不支持聚合。
 - 已知路径长什么样（说得出经过哪几个对象类、走哪几条关系类）→ query_instance_subgraph，按路径模板批量取数，可逐节点加过滤与排序。
 - 不知道拓扑、要发现关联（「这张订单牵连到什么」「这个供应商两跳内碰到谁」）→ explore_subgraph，只给起点对象类 + 方向 + 跳数，路径由引擎散。**别为了用 query_instance_subgraph 去先枚举关系类拼路径**，那是把探索硬凑成取数，路径一长就组合爆炸。
+- 反向上溯 / 反查用途（「这个零件被哪些成品用到」「这条记录往上挂在谁身上」）→ 同样是 explore_subgraph，传 direction=backward 沿入边走。**别在 run_code 里逐节点循环调 query_object_instance 自己爬父链**：那会把一次交互的操作预算耗光，中途被拒。
+  注意 path_length 上限是 3。层级更深（多级 BOM 之类）走这条到不了根，改用已发布函数，或一次性分页取回全表在本地遍历——run_sql 不支持 WITH/CTE，递归查询写不出来。
 - 对象可执行行动召回 → get_action_info。
 
 指标取数（OT 优先，三选一，禁止用 run_sql 重写已建模指标的口径）：
