@@ -1,0 +1,23 @@
+# Copy this file to release-record.yaml only after the release tag has built
+# both multi-architecture images. Do not leave placeholder values in a customer
+# delivery package.
+patch:
+  name: 0.1.4-function-bkn-context
+  base_release: 0.1.4
+  source_branch: patch/0.1.4-function-bkn-context
+  source_commit: <approved-commit-sha>
+  release_tag: v0.1.4-supply-sample-p1
+images:
+  agent_retrieval:
+    repository: ghcr.io/openbkn-ai/agent-retrieval
+    tag: 0.1.4-supply-sample-p1
+    manifest_digest: sha256:<published-multi-architecture-manifest-digest>
+  agent_operator_integration:
+    repository: ghcr.io/openbkn-ai/agent-operator-integration
+    tag: 0.1.4-supply-sample-p1
+    manifest_digest: sha256:<published-multi-architecture-manifest-digest>
+verification:
+  script_test: deploy/patches/0.1.4-function-bkn-context/test_patch_scripts.sh
+  context_loader_unit_test: go test ./server/driveradapters/mcp ./server/drivenadapters
+  execution_factory_unit_test: go test ./server/logics/toolbox ./server/driveradapters/toolbox
+  mcp_smoke: <interaction-id-and-result-reference>
