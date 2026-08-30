@@ -211,6 +211,7 @@
 "authenticated lifecycle owner identity is incomplete" = "已认证的生命周期所有者身份不完整"
 "authenticated lifecycle owner scope does not match the authorized request" = "生命周期所有者范围与已授权请求不一致"
 "public lifecycle authorization scope is not configured" = "未配置公共生命周期授权范围"
+"public lifecycle writes are disabled for this deployment" = "本部署已关闭公共生命周期写入"
 "public lifecycle authorization is temporarily unavailable" = "公共生命周期授权服务暂时不可用"
 "current account could not be authorized for public lifecycle writes" = "当前账号无权执行公共生命周期写入"
 "trusted lifecycle identity is required" = "缺少可信生命周期身份"

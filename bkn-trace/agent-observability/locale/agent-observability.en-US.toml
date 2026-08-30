@@ -211,6 +211,7 @@
 "authenticated lifecycle owner identity is incomplete" = "authenticated lifecycle owner identity is incomplete"
 "authenticated lifecycle owner scope does not match the authorized request" = "authenticated lifecycle owner scope does not match the authorized request"
 "public lifecycle authorization scope is not configured" = "public lifecycle authorization scope is not configured"
+"public lifecycle writes are disabled for this deployment" = "public lifecycle writes are disabled for this deployment"
 "public lifecycle authorization is temporarily unavailable" = "public lifecycle authorization is temporarily unavailable"
 "current account could not be authorized for public lifecycle writes" = "current account could not be authorized for public lifecycle writes"
 "trusted lifecycle identity is required" = "trusted lifecycle identity is required"
