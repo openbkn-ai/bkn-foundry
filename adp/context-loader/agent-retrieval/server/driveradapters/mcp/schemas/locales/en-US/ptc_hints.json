@@ -10,5 +10,18 @@
     "or from list_resources.resource_id; never use the literal string 'resource_id'.",
     "Use physical column names. Submit one SELECT statement only; CTE and UNION are unsupported.",
     "run_sql(sql=\"SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name\")"
+  ],
+  "get_kn_detail": [
+    "Read concept_groups first: each carries name/tags/comment and is how you narrow recall.",
+    "Pick the 1-3 groups relevant to the question, then pass them to search_schema's search_scope."
+  ],
+  "search_schema": [
+    "Prefer search_scope={\"concept_groups\":[ids]} to narrow recall; ids come from get_kn_detail.",
+    "Omit it only when the semantics do not identify a group, or the question spans more than three."
+  ],
+  "explore_subgraph": [
+    "For reverse lookups (which finished goods use this part) pass direction=\"backward\".",
+    "Do not crawl the parent chain by looping query_object_instance: it burns the operation budget.",
+    "path_length caps at 3. Deeper hierarchies need a published function or a local walk over a paged table."
   ]
 }

@@ -108,7 +108,6 @@ func TestRegisteredOperatorAndMCPProxyRoutesCannotBypassLifecycle(t *testing.T) 
 	publicEngine := gin.New()
 	public := &restPublicHandler{
 		Hydra:                          stubPublicHydra{},
-		KnRetrievalHandler:             stubSemanticSearchHandler{},
 		KnLogicPropertyResolverHandler: stubLogicPropertyResolverHandler{},
 		KnActionRecallHandler:          stubActionRecallHandler{},
 		KnQueryObjectInstanceHandler:   stubQueryObjectInstanceHandler{},
@@ -138,7 +137,6 @@ func TestRegisteredOperatorAndMCPProxyRoutesCannotBypassLifecycle(t *testing.T) 
 	proxy := &countingMCPProxyHandler{}
 	privateEngine := gin.New()
 	private := &restPrivateHandler{
-		KnRetrievalHandler:             stubSemanticSearchHandler{},
 		KnLogicPropertyResolverHandler: stubLogicPropertyResolverHandler{},
 		KnActionRecallHandler:          stubActionRecallHandler{},
 		KnQueryObjectInstanceHandler:   stubQueryObjectInstanceHandler{},

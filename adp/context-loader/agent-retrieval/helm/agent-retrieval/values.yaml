@@ -63,13 +63,6 @@ service:
     min_reranker_score: 0
     # 0 keeps the object type pre-filter off. Same file for how to calibrate it.
     min_object_type_score_ratio: 0
-  rerank_llm: # The model uses the system default LLM by default; override per request through rerank_llm_model.
-    temperature: 0
-    top_k: 2
-    top_p: 0.5
-    frequency_penalty: 0.5
-    presence_penalty: 0.5
-    max_tokens: 5000
 # Authentication switches.
 auth:
   enabled: true

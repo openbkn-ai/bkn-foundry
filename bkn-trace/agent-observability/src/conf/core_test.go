@@ -77,3 +77,40 @@ func TestCoreConfigRejectsInvalidAutoMigrate(t *testing.T) {
 		t.Fatal("expected invalid auto-migrate setting to be rejected")
 	}
 }
+
+func TestCoreConfigDefaultsInteractionCapacity(t *testing.T) {
+	config, err := NewCoreConfig()
+	if err != nil {
+		t.Fatalf("new core config: %v", err)
+	}
+	if config.MaxOperationsPerInteraction != 256 ||
+		config.MaxClaimsPerInteraction != 32 ||
+		config.MaxEvidenceRefsPerInteraction != 4096 {
+		t.Fatalf("unexpected default interaction capacity: %#v", config)
+	}
+}
+
+func TestCoreConfigParsesInteractionCapacity(t *testing.T) {
+	t.Setenv("BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION", "300")
+	t.Setenv("BKN_TRACE_CORE_MAX_CLAIMS_PER_INTERACTION", "40")
+	t.Setenv("BKN_TRACE_CORE_MAX_EVIDENCE_REFS_PER_INTERACTION", "4800")
+
+	config, err := NewCoreConfig()
+	if err != nil {
+		t.Fatalf("new core config: %v", err)
+	}
+	if config.MaxOperationsPerInteraction != 300 ||
+		config.MaxClaimsPerInteraction != 40 ||
+		config.MaxEvidenceRefsPerInteraction != 4800 {
+		t.Fatalf("unexpected configured interaction capacity: %#v", config)
+	}
+}
+
+func TestCoreConfigRejectsInvalidInteractionCapacity(t *testing.T) {
+	t.Setenv("BKN_TRACE_CORE_MAX_OPERATIONS_PER_INTERACTION", "31")
+	t.Setenv("BKN_TRACE_CORE_MAX_CLAIMS_PER_INTERACTION", "32")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("expected invalid interaction capacity to be rejected")
+	}
+}

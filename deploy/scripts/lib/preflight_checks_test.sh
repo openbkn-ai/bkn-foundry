@@ -74,6 +74,50 @@ PREFLIGHT_FIX_ALLOW="|other|"
 PREFLIGHT_ASSUME_NO=false PREFLIGHT_ASSUME_YES=false preflight_confirm_fix "t" "a" "r" && fail "not in allowlist" || true
 PREFLIGHT_FIX_ALLOW=""
 
+# --- Node floor: full version, not just the major ---
+# 22.0.0 clears a `>= 22` test and still cannot install the CLI: npm resolves
+# past a release whose `engines` the runtime misses and installs an older one
+# without an error, which is how a deploy ends up running a stale openbkn while
+# every check reports green.
+[[ "${OPENBKN_NODE_MIN_SEMVER}" == "22.19.0" ]] || fail "node floor is ${OPENBKN_NODE_MIN_SEMVER}, expected 22.19.0"
+
+bkn_semver_ge "22.19.0" "${OPENBKN_NODE_MIN_SEMVER}" || fail "22.19.0 must satisfy the floor"
+bkn_semver_ge "22.22.0" "${OPENBKN_NODE_MIN_SEMVER}" || fail "22.22.0 must satisfy the floor"
+bkn_semver_ge "24.15.0" "${OPENBKN_NODE_MIN_SEMVER}" || fail "24.15.0 must satisfy the floor"
+bkn_semver_ge "22.11.0" "${OPENBKN_NODE_MIN_SEMVER}" && fail "22.11.0 must NOT satisfy the floor (major-only check let this through)"
+bkn_semver_ge "22.0.0" "${OPENBKN_NODE_MIN_SEMVER}" && fail "22.0.0 must NOT satisfy the floor"
+bkn_semver_ge "20.19.0" "${OPENBKN_NODE_MIN_SEMVER}" && fail "20.19.0 must NOT satisfy the floor"
+
+# preflight_node_ok reads the running node, so drive it through a stub.
+_node_stub_dir="$(mktemp -d)"
+_stub_node() {
+  printf '#!/usr/bin/env bash\necho "v%s"\n' "$1" > "${_node_stub_dir}/node"
+  chmod +x "${_node_stub_dir}/node"
+}
+_stub_node "22.11.0"
+PATH="${_node_stub_dir}:${PATH}" preflight_node_ok && fail "preflight_node_ok accepted 22.11.0" || true
+_stub_node "22.19.0"
+PATH="${_node_stub_dir}:${PATH}" preflight_node_ok || fail "preflight_node_ok rejected 22.19.0"
+rm -rf "${_node_stub_dir}"
+
+# The floor is a full version, so it must never reach an arithmetic test:
+# `[[ $(( 10#$m )) -ge 22.19.0 ]]` is a runtime error, not a false result, and
+# every caller that compared a major had to move to preflight_node_ok.
+_pf="${SCRIPT_DIR}/scripts/lib/preflight_checks.sh"
+grep -nE '\$\(\(.*\)\).*(-ge|-lt|-gt|-le) *\$\{PREFLIGHT_OPENBKN_MIN_NODE\}' "${_pf}" \
+  && fail "preflight_checks.sh compares the Node floor arithmetically (it is a full version)" || true
+
+# A bare `npm i -g` reinstalls whatever the global already resolves to.
+grep -nE 'npm (i|install) -g @openbkn/bkn-sdk([^@]|$)' "${_pf}" \
+  && fail "preflight_checks.sh installs @openbkn/bkn-sdk without @latest" || true
+
+# The onboard script must enforce the same floor and pin the CLI install.
+_onboard="${SCRIPT_DIR}/onboard.sh"
+grep -q 'ONBOARD_MIN_NODE="\${ONBOARD_MIN_NODE:-\${OPENBKN_NODE_MIN_SEMVER}}"' "${_onboard}" \
+  || fail "onboard.sh does not take its Node floor from OPENBKN_NODE_MIN_SEMVER"
+grep -qE 'npm i -g @openbkn/bkn-sdk([^@]|$)' "${_onboard}" \
+  && fail "onboard.sh installs @openbkn/bkn-sdk without @latest (a stale global blocks the upgrade)" || true
+
 if [[ ${ONE_FAILED} -ne 0 ]]; then
   exit 1
 fi

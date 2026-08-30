@@ -167,21 +167,6 @@ func (stubPublicHydra) Introspect(_ context.Context, _ string) (*interfaces.Toke
 	}, nil
 }
 
-type stubSemanticSearchHandler struct{}
-
-func (stubSemanticSearchHandler) SemanticSearch(c *gin.Context) {
-	formatVal, ok := common.GetResponseFormatFromCtx(c.Request.Context())
-	if !ok {
-		c.String(http.StatusInternalServerError, "response_format missing")
-		return
-	}
-	if formatVal != rest.FormatTOON {
-		c.String(http.StatusInternalServerError, "unexpected response_format")
-		return
-	}
-	c.String(http.StatusOK, "ok")
-}
-
 type stubLogicPropertyResolverHandler struct{}
 
 func (stubLogicPropertyResolverHandler) ResolveLogicProperties(c *gin.Context) {
@@ -224,8 +209,19 @@ func (stubQuerySubgraphHandler) ExploreSubgraph(c *gin.Context) {
 
 type stubKnSearchHandler struct{}
 
+// KnSearch doubles as the probe for the response_format middleware: it fails loudly when the
+// middleware did not put the negotiated format on the request context.
 func (stubKnSearchHandler) KnSearch(c *gin.Context) {
-	c.Status(http.StatusOK)
+	formatVal, ok := common.GetResponseFormatFromCtx(c.Request.Context())
+	if !ok {
+		c.String(http.StatusInternalServerError, "response_format missing")
+		return
+	}
+	if formatVal != rest.FormatTOON {
+		c.String(http.StatusInternalServerError, "unexpected response_format")
+		return
+	}
+	c.String(http.StatusOK, "ok")
 }
 
 type stubKnFindSkillsHandler struct{}
@@ -261,7 +257,6 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 
 		handler := &restPublicHandler{
 			Hydra:                          stubPublicHydra{},
-			KnRetrievalHandler:             stubSemanticSearchHandler{},
 			KnLogicPropertyResolverHandler: stubLogicPropertyResolverHandler{},
 			KnActionRecallHandler:          stubActionRecallHandler{},
 			KnQueryObjectInstanceHandler:   stubQueryObjectInstanceHandler{},
@@ -277,7 +272,7 @@ func TestRestPublicHandler_AppliesResponseFormatMiddleware(t *testing.T) {
 
 		req := httptest.NewRequest(
 			http.MethodPost,
-			"/api/agent-retrieval/v1/kn/semantic-search?response_format=toon",
+			"/api/agent-retrieval/v1/kn/kn_search?response_format=toon",
 			bytes.NewBufferString(`{
 						"bkn_context":{"conversation_id":"conv-route","interaction_id":"int-route"}
 			}`),

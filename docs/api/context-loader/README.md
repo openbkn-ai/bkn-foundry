@@ -7,7 +7,7 @@
 
 | 文件 | 主题 | 包含的端点（`/api/agent-retrieval/v1` 下） |
 |---|---|---|
-| [schema-search.yaml](schema-search.yaml) | Schema 检索 | `POST /kn/search_schema`、`POST /kn/kn_search`、`POST /kn/semantic-search` |
+| [schema-search.yaml](schema-search.yaml) | Schema 检索 | `POST /kn/search_schema`、`POST /kn/kn_search` |
 | [kn-explore.yaml](kn-explore.yaml) | 知识网络浏览 | `POST /kn/list_knowledge_networks`、`POST /kn/get_kn_detail`、`POST /kn/get_object_types`、`POST /kn/get_relation_types` |
 | [object-instance.yaml](object-instance.yaml) | 对象实例查询 | `POST /kn/query_object_instance` |
 | [instance-subgraph.yaml](instance-subgraph.yaml) | 实例子图查询 | `POST /kn/query_instance_subgraph` |
@@ -71,7 +71,6 @@ make api-contract-diff CONTRACT_FACE=ex CONTRACT_SSH=root@<host> \
 | 端点 | 不探测的原因 |
 |---|---|
 | `execute_action` | **有副作用**，会真的触发行动执行 |
-| `semantic-search` | 走大模型，耗时与成本不适合常态巡检 |
 | `logic-property-resolver` | 同上，且需要真实实例标识才能求值 |
 | `query_metric` | 需要环境里存在已建模指标，`metric_id` 无法自动合成 |
 | `run_sql` | 需要针对具体资源构造有意义的 SQL，无法自动合成 |

@@ -78,7 +78,7 @@ func TestKnSearchReqToLocal_SearchScopeConceptGroups(t *testing.T) {
 	req := &interfaces.KnSearchReq{
 		Query: "q",
 		KnID:  "kn-1",
-		SearchScope: &interfaces.SearchScopeConfig{
+		SearchScope: &interfaces.KnSearchScope{
 			ConceptGroups: []string{" supply_chain ", "supply_chain", "", "finance"},
 		},
 	}

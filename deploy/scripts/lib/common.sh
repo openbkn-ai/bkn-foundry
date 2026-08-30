@@ -116,11 +116,24 @@ bkn_helm_uninstall_if_not_deployed() {
 # (older clients may parse templates as empty → Helm error "no objects visited").
 OPENBKN_HELM_MIN_SEMVER="${OPENBKN_HELM_MIN_SEMVER:-3.10.0}"
 
+# The openbkn CLI's own floor, and the one npm enforces when resolving it. Kept
+# as a full version on purpose: comparing only the major number accepts 22.0.0,
+# where `npm i -g @openbkn/bkn-sdk` silently installs an older release instead
+# of failing — npm skips a version whose `engines` the runtime cannot meet and
+# says nothing. 22.19.0 is what `@openbkn/bkn-sdk` declares (undici's own floor).
+OPENBKN_NODE_MIN_SEMVER="${OPENBKN_NODE_MIN_SEMVER:-22.19.0}"
+
 bkn_semver_ge() {
     local have="$1"
     local need="$2"
     [[ -n "${have}" && -n "${need}" ]] || return 1
     [[ "$(printf '%s\n' "${need}" "${have}" | sort -V | head -1)" == "${need}" ]]
+}
+
+# Full `node -v` as x.y.z, or empty when node is absent or unparseable.
+bkn_node_semver() {
+    command -v node &>/dev/null || return 0
+    node -v 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true
 }
 
 bkn_helm_client_semver() {

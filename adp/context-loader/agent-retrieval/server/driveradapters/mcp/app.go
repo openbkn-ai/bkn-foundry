@@ -283,6 +283,11 @@ func newToolWithSchemas(meta ToolMeta, input, output json.RawMessage) mcp.Tool {
 	tool := mcp.NewToolWithRawSchema(meta.Name, meta.Description, input)
 	tool.RawOutputSchema = output
 	tool.Title = meta.Title
+	// Annotations are keyed by the advertised name, which is also the tool key
+	// in tools_meta.json. Every registration path lands here - the builder, the
+	// PTC execution tools and the lifecycle pair - so one lookup covers them all.
+	tool.Annotations = annotationFor(meta.Name)
+	tool.Annotations.Title = meta.Title
 	if fields := toolDisplayMetaFields(meta); len(fields) > 0 {
 		tool.Meta = &mcp.Meta{AdditionalFields: fields}
 	}

@@ -77,6 +77,7 @@ The deprecated `image.defaultTemplate` value is still accepted as a compatibilit
 | `image.defaultTemplates.multiLanguage.repository` | Multi-language template image repository | `dip/sandbox-template-multi-language` |
 | `image.defaultTemplates.multiLanguage.tag` | Multi-language template image tag; empty uses `/app/VERSION` | `""` |
 | `controlPlane.env.ENVIRONMENT` | Control Plane environment | `staging` |
+| `controlPlane.env.BKN_SANDBOX_MCP_URL` | In-cluster Context Loader MCP endpoint written into every sandbox pod, so `sandbox_sdk.bkn` can call back into BKN. Trailing slash required. Empty ships without the capability surface. | `http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/` |
 | `depServices.rds` | Core-provided database service configuration | enabled by values |
 
 ## Rendering

@@ -86,7 +86,7 @@ For an array, `sub_parameters` must contain exactly one object defining its item
 
 1. Analyze `inputs_json`, complete missing supported fields, and preserve valid caller intent.
 2. Analyze returned values and create complete `outputs` metadata.
-3. Use `event.get()` calls and return statements in the source to infer missing parameters.
+3. Infer missing inputs from the `@tool` function's parameters (with their type annotations and defaults); legacy `handler(event)` `event.get()` calls are recognised too. Infer outputs from the return statements.
 4. Resolve inconsistencies according to the function logic and business intent. Prefer a flat valid structure over an unnecessary unnamed object wrapper.
 5. Recursively process nested objects and arrays so every level has complete metadata.
 6. Infer a concise machine-safe function name, a human-readable description, and practical usage rules.

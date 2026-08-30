@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -725,6 +726,13 @@ func writeSessionDomainError(w http.ResponseWriter, r *http.Request, err error) 
 		return
 	}
 	status, action, retryable := lifecycleErrorContract(domainErr.Code)
+	// The response stays deliberately opaque; the cause is recorded here so a
+	// failure can be diagnosed without the caller learning which check tripped.
+	if domainErr.Cause != "" {
+		slog.Warn("lifecycle request rejected",
+			"code", string(domainErr.Code), "cause", domainErr.Cause,
+			"request_id", requestIDFromRequest(r), "path", r.URL.Path)
+	}
 	writeJSON(w, r, status, lifecycleErrorEnvelope{Error: lifecycleError{
 		Code: string(domainErr.Code), Message: domainErr.Message,
 		CurrentStatus: domainErr.CurrentStatus, CurrentInteractionID: domainErr.CurrentInteractionID,

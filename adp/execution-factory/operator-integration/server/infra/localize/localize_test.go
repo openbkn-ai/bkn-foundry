@@ -5,6 +5,7 @@
 package localize
 
 import (
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -39,5 +40,21 @@ func TestNewI18nTranslatorKeepsMessageIDWhenBaselineIsUnavailable(t *testing.T) 
 
 	if got := translator.Trans("desc.BadRequest"); got != "desc.BadRequest" {
 		t.Fatalf("translation = %q, want message ID", got)
+	}
+}
+
+// The python scaffold is served through go-i18n's Trans, which runs the message
+// as a text/template. Any literal `{{` in the scaffold makes Localize fail and
+// the endpoint returns the raw key "template.python" instead of the code. Both
+// locales must resolve to real @tool code.
+func TestPythonScaffoldResolvesInBothLocales(t *testing.T) {
+	for _, lang := range []string{"zh-Hans", "en-US"} {
+		got := NewI18nTranslator(lang).Trans("template.python")
+		if got == "template.python" {
+			t.Fatalf("%s: scaffold did not resolve — a literal {{ likely broke the go-i18n template", lang)
+		}
+		if !strings.Contains(got, "@tool") {
+			t.Fatalf("%s: scaffold resolved but is not the @tool form: %.60q", lang, got)
+		}
 	}
 }

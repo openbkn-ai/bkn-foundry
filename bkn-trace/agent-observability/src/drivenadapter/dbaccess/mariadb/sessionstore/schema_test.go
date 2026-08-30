@@ -42,7 +42,12 @@ func TestSchemaFreezesLifecycleAndDurableEvidenceConstraints(t *testing.T) {
 		"PRIMARY KEY (source_id, deployment_id)",
 		"dropped_records BIGINT UNSIGNED NOT NULL DEFAULT 0",
 		"bkn_trace_ee_provenance_analyses",
+		"bkn_trace_ee_historical_provenance_projections",
+		"bkn_trace_ee_historical_provenance_tombstones",
+		"uq_provenance_projection_interaction_facts",
+		"uq_provenance_projection_interaction (interaction_id)",
 		"idx_provenance_analysis_interaction",
+		"ADD COLUMN IF NOT EXISTS locale VARCHAR(16) NOT NULL DEFAULT 'zh-CN'",
 	}
 	for _, fragment := range required {
 		if !strings.Contains(schema, fragment) {
@@ -58,7 +63,9 @@ func TestMigrationsAreOrderedAndChecksumProtected(t *testing.T) {
 		"015": "408e6cb3445f6116995da9852116f1795563f5ea17a65da667b6ec42a33dec2e",
 		"016": "869da02928bed7950e7d0b2b3e609c806334a3839342e57631548f57b3ac1be4",
 		"017": "f47e2ee9f70f0089c2cd225f5d28cc612b2f0c105d5ba001d55771636c02e349",
-		"018": "08a9c9cc1cb7678ca462222529f5aa92db0d24f182e4aca6e2b67f327f781c64",
+		"018": "9fd4c45b568a2a5c395ee09a4214a240d9e865239e1024f443559f45a97b89b8",
+		"019": "4bdaffbf5877ae560a8aaf13dbcb69b88c7dfe6fd642e06be1da54827f9134a8",
+		"020": "0f6e66d2d5feefdd85a8b6bf8316a58980c2a5da7b3d51a34a71cc912b137d40",
 	}
 	migrations := sessionstore.Migrations()
 	if len(migrations) != len(expectedChecksums) {

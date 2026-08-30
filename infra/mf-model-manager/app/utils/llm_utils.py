@@ -21,8 +21,12 @@ from app.dao.llm_model_dao import llm_model_dao
 from app.interfaces import logics
 from app.logs.stand_log import StandLogger
 from app.utils.observability.observability_log import get_logger
+from app.utils.http_client import proxy_aware_aiohttp
 
 from app.utils.str_util import generate_random_string, has_common_substring
+
+# All external LLM calls honor proxy variables injected into the workload.
+aiohttp = proxy_aware_aiohttp(aiohttp)
 
 # Process-wide tokenizer cache.
 _TOKENIZER_CACHE = {}

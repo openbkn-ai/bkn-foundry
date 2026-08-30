@@ -20,7 +20,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knqueryobjectinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerysubgraph"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knquerytools"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knretrieval"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knsearch"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/knskills"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
@@ -33,10 +32,9 @@ import (
 )
 
 type restPublicHandler struct {
-	Hydra              interfaces.Hydra
-	AppKeys            interfaces.AppKeyVerifier
-	KnRetrievalHandler knretrieval.KnRetrievalHandler
-	MCPHandler         http.Handler
+	Hydra      interfaces.Hydra
+	AppKeys    interfaces.AppKeyVerifier
+	MCPHandler http.Handler
 	// PTCMCPHandler is a standalone MCP endpoint for PTC (…/mcp/ptc). separate from MCPHandler,
 	// This is because the two tool surfaces are mutually exclusive: when the client sees run_code and twenty business tools at the same time,
 	// The model will choose the latter, and PTC will degenerate into ordinary tool calls. It is nil when the assembly fails, and the route reports 503.
@@ -64,7 +62,6 @@ func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.
 	return &restPublicHandler{
 		Hydra:                          drivenadapters.NewHydra(),
 		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
-		KnRetrievalHandler:             knretrieval.NewKnRetrievalHandler(),
 		MCPHandler:                     mcp.NewMCPHandler(),
 		PTCMCPHandler:                  newPTCMCPHandlerOrNil(logger),
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
@@ -87,7 +84,6 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 	mws = append(mws, middlewareRequestLog(r.Logger), middlewareTrace, sharedrest.LanguageMiddleware(), sharedrest.PrivateNoCacheMiddleware(), middlewareIntrospectVerify(r.Hydra, r.AppKeys), middlewareResponseFormat(), middlewareLifecycle(r.LifecycleClient))
 	engine.Use(mws...)
 
-	engine.POST("/kn/semantic-search", r.KnRetrievalHandler.SemanticSearch)
 	engine.POST("/kn/logic-property-resolver", r.KnLogicPropertyResolverHandler.ResolveLogicProperties)
 	engine.POST("/kn/get_action_info", r.KnActionRecallHandler.GetActionInfo)
 	engine.POST("/kn/execute_action", r.KnActionRecallHandler.ExecuteAction)

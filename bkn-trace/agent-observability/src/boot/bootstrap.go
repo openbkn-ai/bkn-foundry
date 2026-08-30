@@ -188,7 +188,14 @@ func NewApp() (*App, error) {
 		logSources = append(logSources, opensearchruntimeaudit.New(openSearchClient, coreConfig.ProjectionIndex))
 	}
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
+	provenanceHandler := enterpriseroute.HistoricalProvenanceHandler()
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
+		EnableHistoricalProvenance: provenanceHandler != nil && coreConfig.ProjectionEnabled,
+		Capacity: sessionsvc.CapacityLimits{
+			MaxOperationsPerInteraction:   coreConfig.MaxOperationsPerInteraction,
+			MaxClaimsPerInteraction:       coreConfig.MaxClaimsPerInteraction,
+			MaxEvidenceRefsPerInteraction: coreConfig.MaxEvidenceRefsPerInteraction,
+		},
 		EvidenceCollectionState: func() string {
 			if coreConfig.EvidenceCollectionState == "" {
 				return "enabled"
@@ -295,9 +302,9 @@ func NewApp() (*App, error) {
 			}
 			return nil, fmt.Errorf("initialize projection alias: %w", err)
 		}
-		worker := projectorsvc.NewWorker(
-			outboxStore, sink, projectorsvc.WorkerOptions{Metrics: metrics},
-		)
+		worker := projectorsvc.NewWorker(outboxStore, sink, projectorsvc.WorkerOptions{
+			Metrics: metrics, HistoricalProvenanceHandler: provenanceHandler,
+		})
 		app.projection = worker
 		app.workers.Add(1)
 		go func() {

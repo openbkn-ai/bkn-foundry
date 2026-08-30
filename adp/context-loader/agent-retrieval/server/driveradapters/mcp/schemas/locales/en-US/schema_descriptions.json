@@ -35,7 +35,7 @@
     "output_schema.properties.id.description": "Knowledge network id.",
     "output_schema.properties.name.description": "Knowledge network name.",
     "output_schema.properties.comment.description": "Knowledge network description.",
-    "output_schema.properties.concept_groups.description": "Concept groups defined in the knowledge network.",
+    "output_schema.properties.concept_groups.description": "Concept groups. Each carries name/tags/comment; use them to pick 1-3 relevant groups and pass those to search_schema's search_scope.concept_groups to narrow schema recall.",
     "output_schema.properties.object_types.description": "Object types in the knowledge network.",
     "output_schema.properties.relation_types.description": "Relation types in the knowledge network.",
     "output_schema.properties.action_types.description": "Action types in the knowledge network.",
@@ -57,7 +57,9 @@
     "output_schema.properties.action_types.items.properties.id.description": "Action type id",
     "output_schema.properties.action_types.items.properties.name.description": "Action name",
     "output_schema.properties.action_types.items.properties.comment.description": "Description. Present only with detail_level=full: the default summary returns the skeleton plus a name+type property table, so reading this field there yields None. Call get_object_types for the complete field mapping.",
-    "output_schema.properties.action_types.items.properties.object_type_id.description": "Id of the object type it belongs to"
+    "output_schema.properties.action_types.items.properties.object_type_id.description": "Id of the object type it belongs to",
+    "output_schema.properties.concept_groups.items.properties.tags.description": "Group tags. Read together with name and comment when choosing a group.",
+    "output_schema.properties.concept_groups.items.properties.comment.description": "What the group is about. Judge relevance from this instead of expanding object_type_ids."
   },
   "get_logic_properties_values": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",

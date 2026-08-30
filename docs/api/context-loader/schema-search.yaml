@@ -7,13 +7,12 @@ info:
     映射到知识网络里的**概念**（对象类 / 关系类 / 行动类 / 指标类），供 Agent
     据此决定下一步调哪个查询接口。
 
-    三个端点的分工：
+    两个端点的分工：
 
     | 端点 | 定位 | 建议 |
     |---|---|---|
     | `POST /kn/search_schema` | 标准契约，Schema-only | **新接入方用这个** |
     | `POST /kn/kn_search` | 兼容壳，吸收旧字段；可选开语义实例召回 | 仅存量调用方 |
-    | `POST /kn/semantic-search` | 早期语义检索，带查询理解与实例样本 | 需要 `query_understanding` 时用 |
 
     `search_schema` 固定为 Schema-only：不返回实例数据，也不承担实例检索。
     `kn_search` 默认同样只回 Schema，只有显式传 `only_schema: false` 时才在概念命中的
@@ -165,64 +164,6 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
-  /kn/semantic-search:
-    post:
-      tags:
-        - SchemaSearch
-      summary: 语义检索（含查询理解）
-      operationId: semanticSearch
-      description: |
-        基于用户查询意图，返回知识网络中相关的概念。与 `search_schema` 的差别：
-        本接口可返回 `query_understanding`（改写后的查询、识别出的意图与查询策略）
-        和每个概念的 `samples`（实例样本），代价是链路更长。
-
-        只需要「有哪些概念」时用 `search_schema` 更省。
-      parameters:
-        - $ref: '#/components/parameters/ResponseFormat'
-        - name: mode
-          in: query
-          required: false
-          schema:
-            type: string
-            enum:
-              - keyword_vector_retrieval
-              - agent_intent_planning
-              - agent_intent_retrieval
-            default: keyword_vector_retrieval
-          description: |
-            检索策略。`keyword_vector_retrieval` 关键词 + 向量召回（默认，最快）；
-            `agent_intent_planning` / `agent_intent_retrieval` 走大模型意图分析，
-            更准但更慢、更贵。
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SemanticSearchRequest'
-            examples:
-              带查询理解:
-                value:
-                  kn_id: kn_medical
-                  query: 最近一年哪家药企的产品召回次数最多
-                  return_query_understanding: true
-                  max_concepts: 10
-      responses:
-        '200':
-          description: 相关概念与（可选的）查询理解
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SemanticSearchResponse'
-            application/toon:
-              schema:
-                type: string
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '500':
-          $ref: '#/components/responses/InternalError'
-
 components:
   securitySchemes:
     OAuth2:
@@ -341,6 +282,18 @@ components:
           default: true
           description: 是否包含指标类。
 
+    KnSearchScope:
+      type: object
+      description: |
+        `kn_search` 的检索范围。只有 `concept_groups` 生效——本接口从不按概念类型过滤
+        响应，需要按类型裁剪请用 `search_schema` 的 `search_scope`。
+      properties:
+        concept_groups:
+          type: array
+          items:
+            type: string
+          description: 限定的概念分组 ID 列表。
+
     KnSearchCompatRequest:
       type: object
       required:
@@ -357,7 +310,7 @@ components:
           type: string
           description: 知识网络 ID。
         search_scope:
-          $ref: '#/components/schemas/SearchScope'
+          $ref: '#/components/schemas/KnSearchScope'
         retrieval_config:
           type: object
           nullable: true
@@ -511,219 +464,3 @@ components:
             实例召回的说明，例如「未检索到符合条件的实例数据」
             （仅 `kn_search` 且 `only_schema: false`）。
 
-    SemanticSearchRequest:
-      type: object
-      required:
-        - bkn_context
-        - query
-        - kn_id
-      properties:
-        bkn_context:
-          $ref: '../_shared/common.yaml#/components/schemas/BKNContext'
-        query:
-          type: string
-          description: 用户自然语言查询。
-        kn_id:
-          type: string
-          description: 知识网络 ID。
-        previous_queries:
-          type: array
-          items:
-            type: string
-          description: 历史查询，用于多轮场景下的查询改写。
-        search_scope:
-          $ref: '#/components/schemas/SearchScope'
-        max_concepts:
-          type: integer
-          default: 10
-          description: 最大返回概念数量。
-        rerank_action:
-          type: string
-          enum:
-            - default
-            - llm
-            - vector
-          default: vector
-          description: 精排方式：`vector` 向量精排（默认），`llm` 走大模型精排。
-        rerank_llm_model:
-          type: string
-          description: 仅 `rerank_action=llm` 时生效；留空走系统默认大模型。
-        rerank_vector_model:
-          type: string
-          description: 仅 `rerank_action=vector` 时生效；留空走系统默认小模型。
-        return_query_understanding:
-          type: boolean
-          default: false
-          description: 是否返回查询理解信息。
-
-    SearchScope:
-      type: object
-      description: 语义检索范围（不含指标类开关）。
-      properties:
-        concept_groups:
-          type: array
-          items:
-            type: string
-          description: 限定的概念分组 ID 列表。
-        include_object_types:
-          type: boolean
-          default: true
-          description: 是否包含对象类。
-        include_relation_types:
-          type: boolean
-          default: true
-          description: 是否包含关系类。
-        include_action_types:
-          type: boolean
-          default: true
-          description: 是否包含行动类。
-
-    SemanticSearchResponse:
-      type: object
-      properties:
-        query_understanding:
-          $ref: '#/components/schemas/QueryUnderstanding'
-        concepts:
-          type: array
-          items:
-            $ref: '#/components/schemas/Concept'
-        hits_total:
-          type: integer
-          description: 命中总数。
-
-    QueryUnderstanding:
-      type: object
-      description: 查询理解结果，仅 `return_query_understanding=true` 时返回。
-      properties:
-        origin_query:
-          type: string
-          description: 用户原始查询。
-        processed_query:
-          type: string
-          description: 大模型改写后的标准化查询。
-        intent:
-          type: array
-          items:
-            $ref: '#/components/schemas/QueryIntent'
-        query_strategy:
-          type: array
-          items:
-            $ref: '#/components/schemas/QueryStrategy'
-
-    QueryIntent:
-      type: object
-      properties:
-        query_segment:
-          type: string
-          description: 对应的查询片段。
-        confidence:
-          type: number
-          format: float
-          minimum: 0
-          maximum: 1
-          description: 置信度。
-        reasoning:
-          type: string
-          description: 识别推理过程。
-        requires_reasoning:
-          type: boolean
-          default: false
-          description: 是否需要进一步推理。
-        related_concepts:
-          type: array
-          items:
-            $ref: '#/components/schemas/RelatedConcept'
-
-    QueryStrategy:
-      type: object
-      properties:
-        strategy_type:
-          type: string
-          enum:
-            - concept_get
-            - concept_discovery
-            - object_instance_discovery
-          description: 策略类型。
-        filter:
-          $ref: '#/components/schemas/ConceptFilter'
-
-    ConceptFilter:
-      type: object
-      properties:
-        concept_type:
-          type: string
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          description: 概念类型。
-        conditions:
-          type: array
-          items:
-            type: object
-            properties:
-              field:
-                type: string
-                description: 字段名。
-              operation:
-                type: string
-                description: 操作符。
-              value:
-                type: string
-                description: 值。
-
-    RelatedConcept:
-      type: object
-      properties:
-        concept_type:
-          type: string
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-        concept_id:
-          type: string
-        concept_name:
-          type: string
-
-    Concept:
-      type: object
-      properties:
-        concept_type:
-          type: string
-          enum:
-            - object_type
-            - relation_type
-            - action_type
-          description: 概念类型。
-        concept_id:
-          type: string
-          description: 概念 ID。
-        concept_name:
-          type: string
-          description: 概念名称。
-        concept_detail:
-          type: object
-          additionalProperties: true
-          description: |
-            概念详情，结构随 `concept_type` 变化：对象类含数据属性 / 逻辑属性 /
-            主键 / 数据源，关系类含起终点对象类 ID，行动类含所绑定的对象类 ID。
-            完整字段见 [kn-explore.yaml](kn-explore.yaml)。
-        intent_score:
-          type: number
-          format: float
-          description: 意图得分。
-        match_score:
-          type: number
-          format: float
-          description: 匹配得分。
-        rerank_score:
-          type: number
-          format: float
-          description: 精排得分。
-        samples:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-          description: 实例样本。
