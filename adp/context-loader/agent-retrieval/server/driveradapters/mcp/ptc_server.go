@@ -48,7 +48,8 @@ const (
 	// back. PTC_SANDBOX_MCP_URL and PTC_SANDBOX_MCP_HOST override it.
 	defaultPTCServicePort = 30779
 	// ptcMaxTimeout aligns with the execution-factory sandbox timeout.
-	ptcMaxTimeout = 600
+	ptcMaxTimeout               = 600
+	toolKeyExecutePublishedTool = "execute_published_tool"
 )
 
 // NewPTCMCPHandler creates the PTC MCP HTTP handler.
@@ -117,7 +118,106 @@ func newPTCMCPServerForLocale(
 			handlePTCExecuteForLocale(executor, toolkit, tool, localeBundle),
 		)
 	}
+	// This bridge invokes a registered Function through the normal Toolbox
+	// execution path using the MCP caller's credential. It avoids the unsafe
+	// alternative of making a separately logged-in CLI principal look like the
+	// owner of an existing managed Interaction.
+	mcpServer.AddTool(
+		newToolWithSchemas(ToolMeta{
+			Name:        toolKeyExecutePublishedTool,
+			Description: "Invoke an enabled published Toolbox function in the current managed Interaction. Use a toolbox_id and tool_id obtained from the published toolbox catalog; pass only the function's business parameters.",
+			Title:       "Execute published Toolbox function",
+		}, publishedToolInputSchema(localeBundle.PTCResource("ptc_bkn_context_description.txt")), nil),
+		handlePTCPublishedTool(executor, localeBundle),
+	)
+	// Keep the dedicated programmatic endpoint self-sufficient: an Agent can
+	// discover exactly the Functions it may call before selecting one.
+	mcpServer.AddTool(
+		newToolWithSchemas(ToolMeta{Name: toolKeyListPublishedToolboxes, Description: "List caller-visible published Function toolboxes. Use this before listing tools or executing a Function.", Title: "List published Function toolboxes"}, publishedToolboxCatalogInputSchema(localeBundle.PTCResource("ptc_bkn_context_description.txt")), nil),
+		handleListPublishedToolboxes(executor),
+	)
+	mcpServer.AddTool(
+		newToolWithSchemas(ToolMeta{Name: toolKeyListPublishedTools, Description: "List enabled Functions and input schemas in a published Toolbox. Use the returned exact IDs with execute_published_tool; do not guess IDs.", Title: "List published Functions"}, publishedToolListInputSchema(localeBundle.PTCResource("ptc_bkn_context_description.txt")), nil),
+		handleListPublishedTools(executor),
+	)
 	return mcpServer, nil
+}
+
+func publishedToolboxCatalogInputSchema(contextDescription string) json.RawMessage {
+	return publishedCatalogSchema(map[string]any{"keyword": map[string]any{"type": "string", "description": "Optional toolbox name keyword."}}, []any{"bkn_context"}, contextDescription)
+}
+
+func publishedToolListInputSchema(contextDescription string) json.RawMessage {
+	return publishedCatalogSchema(map[string]any{"toolbox_id": map[string]any{"type": "string", "description": "A toolbox_id returned by list_published_toolboxes."}}, []any{"toolbox_id", "bkn_context"}, contextDescription)
+}
+
+func publishedCatalogSchema(properties map[string]any, required []any, contextDescription string) json.RawMessage {
+	properties["bkn_context"] = map[string]any{
+		"type": "object", "description": contextDescription,
+		"properties": map[string]any{"conversation_id": map[string]any{"type": "string"}, "interaction_id": map[string]any{"type": "string"}},
+		"required":   []any{"conversation_id", "interaction_id"},
+	}
+	encoded, err := sonic.ConfigStd.Marshal(map[string]any{"type": "object", "properties": properties, "required": required})
+	if err != nil {
+		return nil
+	}
+	return encoded
+}
+
+func publishedToolInputSchema(contextDescription string) json.RawMessage {
+	schema := map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"toolbox_id": map[string]any{"type": "string", "description": "Published Toolbox ID."},
+			"tool_id":    map[string]any{"type": "string", "description": "Enabled Function tool ID in that Toolbox."},
+			"arguments":  map[string]any{"type": "object", "description": "Business parameters defined by the published Function schema."},
+			"bkn_context": map[string]any{
+				"type": "object", "description": contextDescription,
+				"properties": map[string]any{
+					"conversation_id": map[string]any{"type": "string"},
+					"interaction_id":  map[string]any{"type": "string"},
+				},
+				"required": []any{"conversation_id", "interaction_id"},
+			},
+		},
+		"required": []any{"toolbox_id", "tool_id", "arguments", "bkn_context"},
+	}
+	encoded, err := sonic.ConfigStd.Marshal(schema)
+	if err != nil {
+		return nil
+	}
+	return encoded
+}
+
+func handlePTCPublishedTool(
+	executor interfaces.DrivenOperatorIntegration, _ *mcpLocaleBundle,
+) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		toolboxID := strings.TrimSpace(getStringArg(req, "toolbox_id", ""))
+		toolID := strings.TrimSpace(getStringArg(req, "tool_id", ""))
+		if toolboxID == "" || toolID == "" {
+			return mcp.NewToolResultError("toolbox_id and tool_id are required"), nil
+		}
+		args, ok := req.GetArguments()["arguments"].(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("arguments must be an object"), nil
+		}
+		businessContext := ptcBusinessContextArg(req)
+		conversationID, _ := businessContext["conversation_id"].(string)
+		interactionID, _ := businessContext["interaction_id"].(string)
+		response, err := executor.ExecutePublishedTool(ctx, &interfaces.ExecutePublishedToolRequest{
+			ToolboxID: toolboxID, ToolID: toolID, Parameters: args,
+			BKNConversationID: conversationID, BKNInteractionID: interactionID,
+		})
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		result, err := BuildMCPToolResult(response, rest.FormatJSON)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return result, nil
+	}
 }
 
 // ptcToolInputSchemaWithContext adds bkn_context to a tool's input schema.

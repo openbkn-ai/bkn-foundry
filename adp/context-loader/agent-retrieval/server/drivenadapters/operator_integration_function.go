@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	infraErr "github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/errors"
@@ -24,6 +25,8 @@ import (
 // Calling the internal endpoint with a service identity would bypass that check,
 // so this request carries the original caller bearer token.
 const executeFunctionURI = "/v1/function/execute"
+
+const executePublishedToolURI = "/v1/tool-box/%s/proxy/%s"
 
 // ErrCallerTokenMissing indicates that the caller token is absent from context.
 //
@@ -74,4 +77,45 @@ func (o *operatorIntegrationClient) ExecuteFunction(
 			infraErr.LocalizedDetail(ctx, "FunctionExecutionResponseInvalid"))
 	}
 	return resp, nil
+}
+
+// ExecutePublishedTool invokes the standard public Toolbox execution endpoint.
+// It deliberately uses the Context Loader caller's raw token instead of a
+// service identity: the Function Runtime then propagates exactly that identity
+// and the validated managed context into the sandbox.
+func (o *operatorIntegrationClient) ExecutePublishedTool(
+	ctx context.Context, req *interfaces.ExecutePublishedToolRequest,
+) (map[string]any, error) {
+	if req == nil || strings.TrimSpace(req.ToolboxID) == "" || strings.TrimSpace(req.ToolID) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, "toolbox_id and tool_id are required")
+	}
+	if strings.TrimSpace(req.BKNConversationID) == "" || strings.TrimSpace(req.BKNInteractionID) == "" {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, "managed BKN context is required")
+	}
+	token, ok := common.GetRawTokenFromCtx(ctx)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusUnauthorized, ErrCallerTokenMissing.Error())
+	}
+
+	header := o.skillHeader(ctx, "operator.published_tool.execute")
+	header["Authorization"] = "Bearer " + token
+	header[common.HeaderBKNConversationID] = req.BKNConversationID
+	header[common.HeaderBKNInteractionID] = req.BKNInteractionID
+	url := fmt.Sprintf(o.baseURL+executePublishedToolURI, req.ToolboxID, req.ToolID)
+	body := req.Parameters
+	if body == nil {
+		body = map[string]any{}
+	}
+	// Toolbox proxy expects HTTPRequestParams. Keep Function business
+	// parameters inside its body field, rather than treating them as proxy
+	// envelope fields (which would leave the proxied request body empty).
+	code, response, err := o.httpClient.Post(ctx, url, header, map[string]any{"body": body})
+	if err != nil {
+		return nil, skillUpstreamError(ctx, code, "PublishedToolExecutionFailed", err)
+	}
+	result, ok := response.(map[string]any)
+	if !ok {
+		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway, "published tool response is invalid")
+	}
+	return result, nil
 }

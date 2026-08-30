@@ -1,0 +1,12 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "toolbox_id": {"type": "string", "description": "Published Toolbox ID."},
+      "tool_id": {"type": "string", "description": "Enabled Function tool ID in that Toolbox."},
+      "arguments": {"type": "object", "description": "Business parameters defined by the published Function schema."}
+    },
+    "required": ["toolbox_id", "tool_id", "arguments"]
+  },
+  "output_schema": {"type": "object", "description": "The published Toolbox function response."}
+}

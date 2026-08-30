@@ -4,6 +4,9 @@ imagePullSecrets: []
 image:
   registry: ""
   controlPlane:
+    # Optional dedicated registry for the control-plane image. When empty, it
+    # inherits image.registry and template executor images keep their registry.
+    registry: ""
     repository: sandbox-control-plane
     tag: "__VERSION__"
     pullPolicy: IfNotPresent
@@ -94,6 +97,9 @@ controlPlane:
     CLEANUP_INTERVAL_SECONDS: "300"
     DISABLE_BWRAP: "true"
     PYTHONUNBUFFERED: "1"
+    # In-cluster Context Loader MCP endpoint used by sandbox_sdk.bkn. This is
+    # deployment configuration, not a Function input or customer setting.
+    BKN_SANDBOX_MCP_URL: "http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/"
 
   s3:
     endpointUrl: "http://minio.sandbox-system.svc.cluster.local:9000"

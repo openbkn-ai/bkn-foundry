@@ -22,7 +22,7 @@ func TestInlinePTCToolsAreOnTheBusinessSurface(t *testing.T) {
 	for _, tool := range assembledTools(t) {
 		byName[tool.Name] = true
 	}
-	for _, name := range []string{toolKeyRunCode, toolKeyRunShell} {
+	for _, name := range []string{toolKeyRunCode, toolKeyRunShell, toolKeyExecutePublishedTool} {
 		if !byName[name] {
 			t.Fatalf("tools/list 缺 %s——并进业务工具面的整个意义就是模型能在一次选择里同时看到它和业务工具", name)
 		}

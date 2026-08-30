@@ -69,6 +69,54 @@ type CallMCPToolRequest struct {
 	Parameters map[string]interface{} `json:"parameters"`
 }
 
+// ExecutePublishedToolRequest invokes an enabled, published Toolbox tool on
+// behalf of the authenticated Context Loader caller. The lifecycle IDs come
+// only from a previously validated MCP bkn_context; they are transport context,
+// never business input for the Function.
+type ExecutePublishedToolRequest struct {
+	ToolboxID         string         `json:"toolbox_id"`
+	ToolID            string         `json:"tool_id"`
+	Parameters        map[string]any `json:"parameters"`
+	BKNConversationID string         `json:"-"`
+	BKNInteractionID  string         `json:"-"`
+}
+
+// ListPublishedToolboxesRequest lists only published Function toolboxes which
+// are visible to the current caller. It intentionally has no service-address
+// or creator fields: this is an Agent discovery contract, not an admin API.
+type ListPublishedToolboxesRequest struct {
+	Keyword string `json:"keyword,omitempty"`
+}
+
+type PublishedToolboxSummary struct {
+	ToolboxID   string `json:"toolbox_id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+type ListPublishedToolboxesResponse struct {
+	Toolboxes []PublishedToolboxSummary `json:"toolboxes"`
+}
+
+// ListPublishedToolsRequest lists only enabled Function tools in one published
+// toolbox visible to the current caller.
+type ListPublishedToolsRequest struct {
+	ToolboxID string `json:"toolbox_id"`
+}
+
+type PublishedToolSummary struct {
+	ToolID      string         `json:"tool_id"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	UseRule     string         `json:"use_rule,omitempty"`
+	InputSchema map[string]any `json:"input_schema,omitempty"`
+}
+
+type ListPublishedToolsResponse struct {
+	ToolboxID string                 `json:"toolbox_id"`
+	Tools     []PublishedToolSummary `json:"tools"`
+}
+
 // ==================== Driven Adapters Interface ====================
 
 // DrivenOperatorIntegration Operator integration service interface
@@ -89,6 +137,14 @@ type DrivenOperatorIntegration interface {
 	ExecuteSkill(ctx context.Context, req *ExecuteSkillRequest) (*ExecuteSkillResponse, error)
 	// ExecuteFunction executes a piece of code within the sandbox (PTC's run_code / run_shell)
 	ExecuteFunction(ctx context.Context, req *ExecuteFunctionRequest) (*ExecuteFunctionResponse, error)
+	// ExecutePublishedTool invokes a published Toolbox tool with the caller's original credential.
+	// It is used by Context Loader's managed MCP surface so a Function reads BKN under
+	// the same principal that owns the Interaction.
+	ExecutePublishedTool(ctx context.Context, req *ExecutePublishedToolRequest) (map[string]any, error)
+	// ListPublishedToolboxes provides the caller-visible Function toolbox directory.
+	ListPublishedToolboxes(ctx context.Context, req *ListPublishedToolboxesRequest) (*ListPublishedToolboxesResponse, error)
+	// ListPublishedTools provides safe enabled-Function details for one toolbox.
+	ListPublishedTools(ctx context.Context, req *ListPublishedToolsRequest) (*ListPublishedToolsResponse, error)
 }
 
 // ExecuteFunctionRequest sandbox code execution request.

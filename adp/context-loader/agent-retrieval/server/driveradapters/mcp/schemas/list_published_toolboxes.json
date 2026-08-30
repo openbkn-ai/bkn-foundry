@@ -1,0 +1,14 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "keyword": {"type": "string", "description": "可选：按工具箱名称筛选。"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "toolboxes": {"type": "array", "description": "当前调用者可见的已发布函数工具箱；每项含 toolbox_id、name、description。"}
+    }
+  }
+}

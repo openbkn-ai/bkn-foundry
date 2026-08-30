@@ -42,6 +42,7 @@ var communityTools = []string{
 	// knowledge network tools.
 	"describe_resource",
 	"execute_action",
+	"execute_published_tool",
 	"explore_subgraph",
 	"find_skills",
 	"get_action_execution",
@@ -53,6 +54,8 @@ var communityTools = []string{
 	"get_skill_content",
 	"list_action_executions",
 	"list_knowledge_networks",
+	"list_published_toolboxes",
+	"list_published_tools",
 	"list_resources",
 	"list_skills",
 	"query_instance_subgraph",

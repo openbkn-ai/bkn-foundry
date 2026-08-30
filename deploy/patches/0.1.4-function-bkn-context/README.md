@@ -1,0 +1,122 @@
+# OpenBKN 0.1.4 Function / BKN Context Compatibility Patch
+
+This Helm patch enables a third-party Agent to discover and call published
+Function Toolbox tools through Context Loader MCP. A Function receives only its
+business parameters and reads permitted Knowledge Network data in the sandbox
+using the managed caller identity. It is intended for the supply ontology sample
+and is generic: it does not install the sample, data, toolbox, Skills, or any
+Knowledge Network.
+
+## Compatibility and scope
+
+- Base product: OpenBKN `0.1.4` installed by Helm/Kubernetes.
+- Changed Deployments: `agent-retrieval`, `agent-operator-integration`, and
+  `sandbox-control-plane` only.
+- No data migration, no database DDL, and no BKN import/export occurs.
+- The patch includes the Sandbox Context Loader address injection required by
+  the GitHub `release/0.1.4` baseline.
+- The patch image tag must be supplied from the signed release record. Never use
+  a local development tag in a customer cluster.
+
+## Before changing the cluster
+
+1. Record the three currently running image references, especially if your
+   installation uses a private registry:
+
+   ```bash
+   kubectl -n openbkn get deployment agent-retrieval agent-operator-integration sandbox-control-plane \
+     -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.spec.template.spec.containers[0].image}{"\n"}{end}'
+   ```
+
+2. Obtain the published patch image registry, tag, digest, **and patched
+   Sandbox Chart version/digest** from the release record. The three service
+   images and the patched Sandbox Chart must belong to the same patch release.
+3. Ensure the existing Helm releases are named `agent-retrieval` and
+   `agent-operator-integration` in the target namespace.
+
+## Preview and install
+
+```bash
+cd deploy/patches/0.1.4-function-bkn-context
+
+./apply.sh --dry-run \
+  --registry <patch-image-registry> \
+  --tag <published-patch-tag> \
+  --sandbox-chart-version <published-patch-chart-version>
+
+./apply.sh --yes \
+  --namespace openbkn \
+  --registry <patch-image-registry> \
+  --tag <published-patch-tag> \
+  --sandbox-chart-version <published-patch-chart-version>
+```
+
+For air-gapped installations, first mirror the three published images to the
+customer registry, then pass that registry to `--registry`. The Sandbox Chart
+must be pulled from the immutable **patched** chart version because the base
+`0.1.4-release` chart does not render `BKN_SANDBOX_MCP_URL`. The installer
+changes only `image.controlPlane.registry` for Sandbox; it deliberately keeps
+the existing general image registry so executor template images are not moved
+to a registry that may not contain them. When the control-plane image is
+mirrored separately, pass its location with
+`--sandbox-control-plane-registry <customer-registry>`.
+
+## Verify
+
+```bash
+./verify.sh --namespace openbkn
+```
+
+Kubernetes readiness is necessary but not sufficient. With an account that can
+query the imported supply Knowledge Network, an Agent must then use Context
+Loader MCP to:
+
+1. start a managed Interaction;
+2. call `list_published_toolboxes` and `list_published_tools` to discover the
+   published supply toolbox and the actual tool IDs;
+3. call `execute_published_tool` for **标准交期** with
+   `{"material_code":"606-000989"}` and the managed `bkn_context`;
+4. verify `exit_code=0` and `leadtime_days=14`, then finish the Interaction.
+
+This validates the full MCP → Toolbox → Function sandbox → Knowledge Network
+path without a token, service address, snapshot, or `resolved_context` in the
+Function arguments.
+
+## Roll back
+
+Use the exact original registry and tag recorded before installation:
+
+```bash
+./rollback.sh --yes \
+  --namespace openbkn \
+  --registry <original-image-registry> \
+  --tag <original-image-tag>
+```
+
+The standard release uses `0.1.4-release`, but a private or previously patched
+installation may use another tag. Rollback changes only the same three Deployments
+and does not remove imported sample data or persisted business data.
+
+## Release record
+
+The release owner must publish the following immutable details alongside this
+directory before customers install it:
+
+| Item | Required value |
+| --- | --- |
+| Patch version | Semantic patch version, e.g. `0.1.4-supply-sample-p1` |
+| Source commit | Commit on `patch/0.1.4-function-bkn-context` |
+| `agent-retrieval` digest | `sha256:…` for amd64 and arm64 manifest list |
+| `agent-operator-integration` digest | `sha256:…` for amd64 and arm64 manifest list |
+| `sandbox-control-plane` digest | `sha256:…` for amd64 and arm64 manifest list |
+| `sandbox` Chart version/digest | Immutable OCI Chart containing `BKN_SANDBOX_MCP_URL` |
+| Verification evidence | Unit tests and MCP smoke result |
+
+### Publishing procedure
+
+Review this patch as a PR against `release/0.1.4`, but do **not** merge it in a
+way that overwrites the existing `0.1.4-release` image tag. After approval,
+create the immutable tag `v0.1.4-supply-sample-p1` on the approved patch commit.
+The repository's existing release workflows build multi-architecture images from
+that tag. Copy `release-record.template.yaml` to the delivery record and replace
+every placeholder with the published digest and fresh MCP smoke evidence.

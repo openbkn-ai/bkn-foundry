@@ -1,0 +1,16 @@
+{
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "toolbox_id": {"type": "string", "description": "由 list_published_toolboxes 返回的工具箱 ID。"}
+    },
+    "required": ["toolbox_id"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "toolbox_id": {"type": "string"},
+      "tools": {"type": "array", "description": "该工具箱内已启用函数；每项含 tool_id、名称、说明、使用规则及已裁剪的 input_schema。"}
+    }
+  }
+}

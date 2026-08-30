@@ -386,6 +386,14 @@
     "output_schema.properties.truncated.description": "Whether the body was truncated for length",
     "output_schema.properties.message.description": "Further detail, such as a binary file with no body returned, or a truncation notice"
   },
+  "list_published_toolboxes": {
+    "input_schema.properties.keyword.description": "Optional toolbox-name keyword.",
+    "output_schema.properties.toolboxes.description": "Published Function toolboxes visible to the current caller. Each item includes toolbox_id, name, and description."
+  },
+  "list_published_tools": {
+    "input_schema.properties.toolbox_id.description": "Toolbox id returned by list_published_toolboxes.",
+    "output_schema.properties.tools.description": "Enabled Functions in this toolbox. Each item includes tool_id, name, description, usage rule, and a sanitized input schema."
+  },
   "search_instance": {
     "input_schema.properties.response_format.description": "Response format: json or toon. Defaults to toon.",
     "input_schema.properties.kn_id.description": "Knowledge network id. The X-Kn-ID request header carries it too.",

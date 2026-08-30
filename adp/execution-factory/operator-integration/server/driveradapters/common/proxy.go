@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/creasty/defaults"
@@ -137,13 +138,37 @@ func inferSchemaExecutionEnv() map[string]any {
 	return env
 }
 
-func buildFunctionProxyExecutionEnv(version string) map[string]any {
+// buildFunctionProxyExecutionEnv forwards the authenticated caller and its managed BKN interaction
+// to a published Function. These values are transport context, never part of the Function's
+// business input schema. A partial interaction is intentionally treated as absent so a pooled
+// sandbox cannot receive a credential without the lifecycle guard it is tied to.
+func buildFunctionProxyExecutionEnv(version, token, conversationID, interactionID string) map[string]any {
 	env := newExecutionEnv()
 	env["source"] = "function_proxy"
 	env["task_id"] = "function_proxy_" + uuid.NewString()
 	env["capability_id"] = "function_version:" + version
 	env["function_version_id"] = version
+	if token != "" && conversationID != "" && interactionID != "" {
+		env["BKN_TOKEN"] = token
+		env["BKN_CONVERSATION_ID"] = conversationID
+		env["BKN_INTERACTION_ID"] = interactionID
+	}
 	return env
+}
+
+// requestCredential mirrors the public authentication precedence. The value only crosses the
+// proxy boundary as a per-execution environment variable; it is never persisted in metadata or
+// exposed in a Tool's business contract.
+func requestCredential(c *gin.Context) string {
+	credential := c.GetHeader("Authorization")
+	if credential == "" {
+		credential = c.GetHeader("X-Authorization")
+	}
+	if credential == "" {
+		credential, _ = c.GetQuery("token")
+		return credential
+	}
+	return strings.TrimPrefix(credential, "Bearer ")
 }
 
 // FunctionExecuteResp function execution response.
@@ -268,11 +293,16 @@ func (h *unifiedProxyHandler) FunctionExecuteProxy(c *gin.Context) {
 		dependencies = utils.JSONToObject[[]*interfaces.DependencyInfo](metadata.GetDependencies())
 	}
 	execReq := &interfaces.ExecuteCodeReq{
-		Code:                  code,
-		Event:                 event,
-		Timeout:               int(req.Timeout / 1000),
-		Language:              scriptType,
-		EnvVars:               buildFunctionProxyExecutionEnv(req.Version),
+		Code:     code,
+		Event:    event,
+		Timeout:  int(req.Timeout / 1000),
+		Language: scriptType,
+		EnvVars: buildFunctionProxyExecutionEnv(
+			req.Version,
+			requestCredential(c),
+			c.GetHeader("bkn-conversation-id"),
+			c.GetHeader("bkn-interaction-id"),
+		),
 		Dependencies:          dependencies,
 		PythonPackageIndexURL: metadata.GetDependenciesURL(),
 	}

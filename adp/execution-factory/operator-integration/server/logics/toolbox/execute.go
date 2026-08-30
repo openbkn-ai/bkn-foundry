@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
@@ -342,17 +344,53 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	case model.SourceTypeFunction:
 		url = fmt.Sprintf("%s%s", metadata.GetServerURL(), metadata.GetPath())
 	}
+	params := req.HTTPRequestParams
+	if tool.SourceType == model.SourceTypeFunction {
+		params = functionRuntimeHeaders(params, req, url)
+	}
 	proxyReq := &interfaces.HTTPRequest{
 		ClientID: req.ToolID,
 		HTTPRouter: interfaces.HTTPRouter{
 			URL:    url,
 			Method: metadata.GetMethod(),
 		},
-		HTTPRequestParams: req.HTTPRequestParams,
+		HTTPRequestParams: params,
 		Timeout:           time.Duration(req.Timeout) * time.Second,
 	}
 	resp, err = s.Proxy.HandlerRequest(ctx, proxyReq)
 	return
+}
+
+// functionRuntimeHeaders adds server-captured identity and lifecycle headers only for the
+// platform-owned Function Runtime. Imported Function metadata can contain arbitrary server URLs,
+// so sending these headers to any other endpoint would disclose the caller credential.
+func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces.ExecuteToolReq, targetURL string) interfaces.HTTPRequestParams {
+	if !isTrustedFunctionRuntime(targetURL) || req == nil || req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
+		return params
+	}
+	headers := make(map[string]any, len(params.Headers)+3)
+	for key, value := range params.Headers {
+		headers[key] = value
+	}
+	headers["Authorization"] = req.RequestAuthorization
+	headers["bkn-conversation-id"] = req.BKNConversationID
+	headers["bkn-interaction-id"] = req.BKNInteractionID
+	params.Headers = headers
+	return params
+}
+
+func isTrustedFunctionRuntime(targetURL string) bool {
+	target, err := url.Parse(targetURL)
+	if err != nil || target.User != nil || target.RawQuery != "" || target.Fragment != "" {
+		return false
+	}
+	trusted, err := url.Parse(interfaces.AOIServerURL)
+	if err != nil || target.Scheme != trusted.Scheme || target.Host != trusted.Host {
+		return false
+	}
+	expectedPathPrefix := strings.TrimRight(interfaces.AOPInternalV1Prefix, "/") + "/function/exec/"
+	version := strings.TrimPrefix(target.EscapedPath(), expectedPathPrefix)
+	return version != target.EscapedPath() && version != "" && !strings.Contains(version, "/")
 }
 
 func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {

@@ -212,5 +212,29 @@
     "group": "execution",
     "group_title": "代码执行",
     "order": 620
+  },
+  "execute_published_tool": {
+    "name": "execute_published_tool",
+    "title": "执行已发布函数",
+    "group": "execution",
+    "group_title": "代码执行",
+    "order": 600,
+    "description": "在当前受管 Interaction 中执行一个已发布且已启用的 Toolbox 函数。先从函数工具箱目录取得 toolbox_id、tool_id 与参数定义；arguments 只传函数业务参数，不传 Token、会话 ID、快照或 resolved_context。平台以当前 MCP 调用者身份执行并自动传递受管上下文。"
+  },
+  "list_published_toolboxes": {
+    "name": "list_published_toolboxes",
+    "title": "查找已发布函数工具箱",
+    "group": "discovery",
+    "group_title": "网络与 Schema",
+    "order": 146,
+    "description": "列出当前调用者可见的、已发布的函数工具箱。函数与 Skill 是两类能力：Skill 用 list_skills，函数先用本工具取得真实 toolbox_id；没有匹配项即如实记录，不得猜测名称或 ID。"
+  },
+  "list_published_tools": {
+    "name": "list_published_tools",
+    "title": "查看已发布函数",
+    "group": "discovery",
+    "group_title": "网络与 Schema",
+    "order": 147,
+    "description": "列出一个已发布函数工具箱内当前可调用的函数及其参数说明。toolbox_id 必须来自 list_published_toolboxes；用返回的精确 tool_id 调 execute_published_tool，不得猜测或枚举候选 ID。"
   }
 }
