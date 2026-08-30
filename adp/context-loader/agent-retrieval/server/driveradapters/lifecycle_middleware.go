@@ -63,6 +63,12 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 		// where an agent actually calls, keeps the requirement: that middleware is
 		// separate and untouched, as is /mcp/proxy/.../call below.
 		if !hasBusinessContext(input) && !isProxyToolCall(c.Request) {
+			// io.ReadAll above drained the body. The managed path rebuilds it after
+			// stripping bkn_context; this path has nothing to strip but still has to
+			// hand the handler something to read, or every request this branch exists
+			// to admit reaches it empty and fails to bind.
+			c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+			c.Request.ContentLength = int64(len(raw))
 			c.Next()
 			return
 		}
@@ -182,20 +188,25 @@ func isProxyToolCall(request *http.Request) bool {
 		strings.HasSuffix(request.URL.Path, "/call")
 }
 
-// hasBusinessContext reports whether the caller named a session to attach to.
+// hasBusinessContext reports whether this call has to go through the guard.
 //
 // The rule the caller has to remember is one line: state an id and the call is
-// managed, state none and it is ad hoc. So an absent bkn_context and an empty one
-// mean the same thing, and neither is an error. A partial context is - a caller
-// passing one id and not the other is wiring the context up and got it wrong,
-// which parseHTTPBusinessContext reports rather than letting the call through
-// half-attached.
+// managed, state none and it is ad hoc. Only two shapes are ad hoc - no
+// bkn_context at all, and an empty one. Everything else goes to
+// parseHTTPBusinessContext to be judged, including the shapes that carry no id:
+// one id and not the other, a bkn_context that is not an object, and an object
+// holding only parent_operation_id, business_refs or a misspelt field. Each of
+// those is a caller wiring the context up and getting it wrong, and admitting it
+// as ad hoc would answer a mistake with silence.
 func hasBusinessContext(input map[string]any) bool {
-	raw, ok := input["bkn_context"].(map[string]any)
-	if !ok {
+	value, stated := input["bkn_context"]
+	if !stated {
 		return false
 	}
-	return httpString(raw["conversation_id"]) != "" || httpString(raw["interaction_id"]) != ""
+	if fields, ok := value.(map[string]any); ok && len(fields) == 0 {
+		return false
+	}
+	return true
 }
 
 func parseHTTPBusinessContext(input map[string]any, currentKNID string) (bkntrace.BusinessContext, *bkntrace.APIError) {

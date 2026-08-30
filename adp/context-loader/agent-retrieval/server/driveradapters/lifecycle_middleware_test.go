@@ -51,10 +51,18 @@ func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
 			downstreamCalls := 0
+			var seenBody map[string]any
 			router := gin.New()
 			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
+			// The handler binds its body the way the real ones do. A stub that
+			// ignores the body cannot tell a request that was let through from one
+			// that arrived drained, which is exactly the gap that let a middleware
+			// consuming the body without putting it back look correct.
 			router.POST("/*path", func(c *gin.Context) {
 				downstreamCalls++
+				if err := c.ShouldBindJSON(&seenBody); err != nil {
+					t.Errorf("%s: handler could not bind the body: %v", tc.path, err)
+				}
 				c.Status(http.StatusNoContent)
 			})
 
@@ -66,6 +74,9 @@ func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 			if downstreamCalls != tc.wantCalls {
 				t.Fatalf("%s: downstream calls = %d, want %d (status %d, body %s)",
 					tc.path, downstreamCalls, tc.wantCalls, response.Code, response.Body)
+			}
+			if tc.wantCalls > 0 && seenBody["query"] != "q" {
+				t.Fatalf("%s: handler saw %#v, want the original body", tc.path, seenBody)
 			}
 		})
 	}
@@ -91,6 +102,9 @@ func TestRESTContextOptionalityBoundary(t *testing.T) {
 	}{
 		{"empty context is ad hoc", `{"sql":"select 1","bkn_context":{}}`, 1, ""},
 		{"partial context is refused", `{"sql":"select 1","bkn_context":{"conversation_id":"c1"}}`, 0, "interaction_required"},
+		{"non-object context is refused", `{"sql":"select 1","bkn_context":"c1"}`, 0, "conversation_required"},
+		{"context without ids is refused", `{"sql":"select 1","bkn_context":{"parent_operation_id":"op1"}}`, 0, "conversation_required"},
+		{"misspelt field is refused", `{"sql":"select 1","bkn_context":{"conversationId":"c1"}}`, 0, "invalid_business_context"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
