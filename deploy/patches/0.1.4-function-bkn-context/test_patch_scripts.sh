@@ -16,6 +16,13 @@ assert_contains() {
   grep -F -- "$expected" "$file" >/dev/null || fail "$file does not contain: $expected"
 }
 
+assert_not_contains() {
+  local file=$1 unexpected=$2
+  if grep -F -- "$unexpected" "$file" >/dev/null; then
+    fail "$file unexpectedly contains: $unexpected"
+  fi
+}
+
 setup_case() {
   case_dir=$(mktemp -d)
   mkdir -p "$case_dir/bin"
@@ -82,6 +89,11 @@ case_apply_upgrades_only_the_three_patch_services() {
   assert_contains "$case_dir/output.log" "helm upgrade --install agent-retrieval"
   assert_contains "$case_dir/output.log" "helm upgrade --install agent-operator-integration"
   assert_contains "$case_dir/output.log" "helm upgrade --install sandbox"
+  assert_contains "$case_dir/output.log" "--version 0.1.4-supply-sample-p1"
+  assert_contains "$case_dir/output.log" "image.controlPlane.registry=registry.example/openbkn-ai"
+  assert_contains "$case_dir/output.log" "image.controlPlane.repository=sandbox-control-plane"
+  assert_not_contains "$case_dir/output.log" "helm upgrade --install sandbox oci://ghcr.io/openbkn-ai/charts/sandbox --namespace demo --version 0.1.4-release"
+  assert_not_contains "$case_dir/output.log" "helm upgrade --install sandbox oci://ghcr.io/openbkn-ai/charts/sandbox --namespace demo --version 0.1.4-supply-sample-p1 --reuse-values --set image.registry=registry.example/openbkn-ai"
   assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/agent-retrieval"
   assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/agent-operator-integration"
   assert_contains "$case_dir/output.log" "kubectl -n demo rollout status deployment/sandbox-control-plane"

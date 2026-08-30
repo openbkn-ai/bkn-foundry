@@ -20,6 +20,11 @@ images:
     repository: ghcr.io/openbkn-ai/sandbox-control-plane
     tag: 0.1.4-supply-sample-p1
     manifest_digest: sha256:<published-multi-architecture-manifest-digest>
+charts:
+  sandbox:
+    repository: oci://ghcr.io/openbkn-ai/charts/sandbox
+    version: 0.1.4-supply-sample-p1
+    digest: sha256:<published-oci-chart-digest>
 verification:
   script_test: deploy/patches/0.1.4-function-bkn-context/test_patch_scripts.sh
   context_loader_unit_test: go test ./server/driveradapters/mcp ./server/drivenadapters

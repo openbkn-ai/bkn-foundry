@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/bkntrace"
@@ -344,7 +345,7 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	}
 	params := req.HTTPRequestParams
 	if tool.SourceType == model.SourceTypeFunction {
-		params = functionRuntimeHeaders(params, req)
+		params = functionRuntimeHeaders(params, req, metadata.GetServerURL())
 	}
 	proxyReq := &interfaces.HTTPRequest{
 		ClientID: req.ToolID,
@@ -359,11 +360,11 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	return
 }
 
-// functionRuntimeHeaders adds server-captured identity and lifecycle headers only when the
-// complete managed context exists. They override body-supplied values, are never reflected in a
-// Function Tool schema, and are not used for non-Function tools.
-func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces.ExecuteToolReq) interfaces.HTTPRequestParams {
-	if req == nil || req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
+// functionRuntimeHeaders adds server-captured identity and lifecycle headers only for the
+// platform-owned Function Runtime. Imported Function metadata can contain arbitrary server URLs,
+// so sending these headers to any other endpoint would disclose the caller credential.
+func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces.ExecuteToolReq, serverURL string) interfaces.HTTPRequestParams {
+	if !isTrustedFunctionRuntime(serverURL) || req == nil || req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
 		return params
 	}
 	headers := make(map[string]any, len(params.Headers)+3)
@@ -375,6 +376,10 @@ func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces
 	headers["bkn-interaction-id"] = req.BKNInteractionID
 	params.Headers = headers
 	return params
+}
+
+func isTrustedFunctionRuntime(serverURL string) bool {
+	return strings.TrimRight(serverURL, "/") == strings.TrimRight(interfaces.AOIServerURL, "/")
 }
 
 func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {

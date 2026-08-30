@@ -28,8 +28,9 @@ Knowledge Network.
      -o jsonpath='{range .items[*]}{.metadata.name}{"="}{.spec.template.spec.containers[0].image}{"\n"}{end}'
    ```
 
-2. Obtain the published patch image registry, tag, and digest from the release
-   record. Both service images must use the same patch tag.
+2. Obtain the published patch image registry, tag, digest, **and patched
+   Sandbox Chart version/digest** from the release record. The three service
+   images and the patched Sandbox Chart must belong to the same patch release.
 3. Ensure the existing Helm releases are named `agent-retrieval` and
    `agent-operator-integration` in the target namespace.
 
@@ -40,17 +41,25 @@ cd deploy/patches/0.1.4-function-bkn-context
 
 ./apply.sh --dry-run \
   --registry <patch-image-registry> \
-  --tag <published-patch-tag>
+  --tag <published-patch-tag> \
+  --sandbox-chart-version <published-patch-chart-version>
 
 ./apply.sh --yes \
   --namespace openbkn \
   --registry <patch-image-registry> \
-  --tag <published-patch-tag>
+  --tag <published-patch-tag> \
+  --sandbox-chart-version <published-patch-chart-version>
 ```
 
 For air-gapped installations, first mirror the three published images to the
-customer registry, then pass that registry to `--registry`. The Helm charts stay
-on the normal `0.1.4-release` version; only their image values are replaced.
+customer registry, then pass that registry to `--registry`. The Sandbox Chart
+must be pulled from the immutable **patched** chart version because the base
+`0.1.4-release` chart does not render `BKN_SANDBOX_MCP_URL`. The installer
+changes only `image.controlPlane.registry` for Sandbox; it deliberately keeps
+the existing general image registry so executor template images are not moved
+to a registry that may not contain them. When the control-plane image is
+mirrored separately, pass its location with
+`--sandbox-control-plane-registry <customer-registry>`.
 
 ## Verify
 
@@ -99,6 +108,8 @@ directory before customers install it:
 | Source commit | Commit on `patch/0.1.4-function-bkn-context` |
 | `agent-retrieval` digest | `sha256:…` for amd64 and arm64 manifest list |
 | `agent-operator-integration` digest | `sha256:…` for amd64 and arm64 manifest list |
+| `sandbox-control-plane` digest | `sha256:…` for amd64 and arm64 manifest list |
+| `sandbox` Chart version/digest | Immutable OCI Chart containing `BKN_SANDBOX_MCP_URL` |
 | Verification evidence | Unit tests and MCP smoke result |
 
 ### Publishing procedure

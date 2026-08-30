@@ -155,7 +155,7 @@ func TestFunctionRuntimeHeadersUseTrustedRequestContextOnly(t *testing.T) {
 			BKNInteractionID:     "int_trusted",
 		}
 
-		params := functionRuntimeHeaders(req.HTTPRequestParams, req)
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req, interfaces.AOIServerURL)
 
 		So(params.Headers["Authorization"], ShouldEqual, "Bearer trusted-token")
 		So(params.Headers["bkn-conversation-id"], ShouldEqual, "conv_trusted")
@@ -169,7 +169,19 @@ func TestFunctionRuntimeHeadersUseTrustedRequestContextOnly(t *testing.T) {
 			BKNConversationID:    "conv_only",
 		}
 
-		params := functionRuntimeHeaders(req.HTTPRequestParams, req)
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req, interfaces.AOIServerURL)
+
+		So(params.Headers, ShouldBeNil)
+	})
+
+	Convey("Untrusted Function endpoints never receive server-captured credentials or Interaction context", t, func() {
+		req := &interfaces.ExecuteToolReq{
+			RequestAuthorization: "Bearer trusted-token",
+			BKNConversationID:    "conv_trusted",
+			BKNInteractionID:     "int_trusted",
+		}
+
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req, "https://external.example/functions/run")
 
 		So(params.Headers, ShouldBeNil)
 	})

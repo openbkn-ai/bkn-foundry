@@ -86,7 +86,8 @@ spec:
       {{- end }}
       containers:
         - name: control-plane
-          image: "{{- if .Values.image.registry }}{{ .Values.image.registry }}/{{ end }}{{ .Values.image.controlPlane.repository }}:{{ .Values.image.controlPlane.tag }}"
+          {{- $controlPlaneRegistry := default .Values.image.registry .Values.image.controlPlane.registry }}
+          image: "{{- if $controlPlaneRegistry }}{{ $controlPlaneRegistry }}/{{ end }}{{ .Values.image.controlPlane.repository }}:{{ .Values.image.controlPlane.tag }}"
           imagePullPolicy: {{ .Values.image.controlPlane.pullPolicy }}
           ports:
             - name: http

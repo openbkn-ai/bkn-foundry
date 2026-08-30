@@ -11,6 +11,8 @@ registry="ghcr.io/openbkn-ai"
 tag=""
 chart_registry="oci://ghcr.io/openbkn-ai/charts"
 chart_version="0.1.4-release"
+sandbox_chart_version=""
+sandbox_control_plane_registry=""
 timeout="10m"
 dry_run=false
 assume_yes=false
@@ -28,6 +30,11 @@ Options:
   --registry <host/path>      Image registry path (default: ghcr.io/openbkn-ai).
   --chart-registry <oci-url>  Chart OCI prefix (default: oci://ghcr.io/openbkn-ai/charts).
   --chart-version <version>   Existing 0.1.4 chart version (default: 0.1.4-release).
+  --sandbox-chart-version <version>
+                              Patched Sandbox Chart version (default: --tag).
+  --sandbox-control-plane-registry <host/path>
+                              Registry containing only the patched sandbox-control-plane image
+                              (default: --registry). Does not change template executor images.
   --timeout <duration>        Helm and rollout timeout (default: 10m).
   --dry-run                   Print the exact target images without changing the cluster.
   --yes                       Apply without an interactive confirmation.
@@ -50,7 +57,7 @@ need_value() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --namespace|--registry|--tag|--chart-registry|--chart-version|--timeout)
+    --namespace|--registry|--tag|--chart-registry|--chart-version|--sandbox-chart-version|--sandbox-control-plane-registry|--timeout)
       need_value "$1" "${2:-}"
       case "$1" in
         --namespace) namespace="$2" ;;
@@ -58,6 +65,8 @@ while [[ $# -gt 0 ]]; do
         --tag) tag="$2" ;;
         --chart-registry) chart_registry="${2%/}" ;;
         --chart-version) chart_version="$2" ;;
+        --sandbox-chart-version) sandbox_chart_version="$2" ;;
+        --sandbox-control-plane-registry) sandbox_control_plane_registry="${2%/}" ;;
         --timeout) timeout="$2" ;;
       esac
       shift 2
@@ -70,6 +79,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$tag" ]] || die "--tag is required"
+[[ -n "$sandbox_chart_version" ]] || sandbox_chart_version="$tag"
+[[ -n "$sandbox_control_plane_registry" ]] || sandbox_control_plane_registry="$registry"
 
 agent_retrieval_image="$registry/agent-retrieval:$tag"
 operator_integration_image="$registry/agent-operator-integration:$tag"
@@ -80,6 +91,7 @@ echo "namespace=$namespace"
 echo "agent-retrieval=$agent_retrieval_image"
 echo "agent-operator-integration=$operator_integration_image"
 echo "sandbox-control-plane=$sandbox_control_plane_image"
+echo "sandbox-chart-version=$sandbox_chart_version"
 
 if [[ "$dry_run" == true ]]; then
   echo "mode=dry-run"
@@ -116,9 +128,9 @@ upgrade agent-operator-integration agent-operator-integration
 
 helm upgrade --install sandbox "$chart_registry/sandbox" \
   --namespace "$namespace" \
-  --version "$chart_version" \
+  --version "$sandbox_chart_version" \
   --reuse-values \
-  --set "image.registry=$registry" \
+  --set "image.controlPlane.registry=$sandbox_control_plane_registry" \
   --set "image.controlPlane.repository=sandbox-control-plane" \
   --set-string "image.controlPlane.tag=$tag" \
   --wait --timeout "$timeout"

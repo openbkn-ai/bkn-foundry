@@ -6,6 +6,9 @@ imagePullSecrets: []
 image:
   registry: "ghcr.io/openbkn-ai"
   controlPlane:
+    # Optional dedicated registry for the control-plane image. When empty, it
+    # inherits image.registry and template executor images keep their registry.
+    registry: ""
     repository: sandbox-control-plane
     tag: "__VERSION__"
     pullPolicy: IfNotPresent
