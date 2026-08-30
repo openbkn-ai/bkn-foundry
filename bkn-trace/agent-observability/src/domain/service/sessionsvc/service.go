@@ -846,7 +846,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		interaction.TerminalAt = &now
 		tx.SaveInteraction(interaction)
 		if s.enableHistoricalProvenance {
-			if err := s.appendHistoricalProvenanceBuildRequest(tx, conversation.Owner, interaction); err != nil {
+			if err := s.appendHistoricalProvenanceBuildRequest(tx, interaction); err != nil {
 				return err
 			}
 		}
@@ -1931,11 +1931,10 @@ func (s *Service) appendProjection(tx isessionstore.Transaction, aggregateType, 
 
 func (s *Service) appendHistoricalProvenanceBuildRequest(
 	tx isessionstore.Transaction,
-	owner sessionvo.Owner,
 	interaction sessionvo.Interaction,
 ) error {
 	request, err := sessionvo.NewHistoricalProvenanceBuildRequest(
-		interaction.ID, owner, tx.ListOperationCallFacts(interaction.ID),
+		interaction.ID, tx.ListOperationCallFacts(interaction.ID),
 	)
 	if err != nil {
 		return err

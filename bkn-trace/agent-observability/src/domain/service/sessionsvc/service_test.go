@@ -615,8 +615,8 @@ func TestTerminalInteractionEnqueuesImmutableHistoricalProvenanceBuildRequest(t 
 	if !found {
 		t.Fatalf("terminal interaction did not enqueue %q: %#v", sessionvo.HistoricalProvenanceBuildRequestedEventType, items)
 	}
-	if request.InteractionID != completed.ID || request.TenantID != owner.TenantID {
-		t.Fatalf("unexpected request scope: %#v", request)
+	if request.InteractionID != completed.ID {
+		t.Fatalf("unexpected request interaction: %#v", request)
 	}
 	if request.FactsHash == "" || len(request.Facts) != 1 || request.Facts[0].OperationID != operation.ID {
 		t.Fatalf("request does not contain sealed facts: %#v", request)
