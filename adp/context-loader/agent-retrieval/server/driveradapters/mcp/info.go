@@ -33,14 +33,20 @@ type MCPToolInfo struct {
 // MCPInfo MCP service self-describing document: endpoint, protocol, authentication, tool directory, client configuration example.
 // For Agent/people to learn how to integrate in one go via GET without having to go through the MCP handshake first.
 type MCPInfo struct {
-	Service             string          `json:"service"`
-	Endpoint            string          `json:"endpoint"`
-	Protocol            string          `json:"protocol"`
-	Transport           string          `json:"transport"`
-	Auth                string          `json:"auth"`
-	Language            string          `json:"language"`
-	SupportedLanguages  []string        `json:"supported_languages"`
-	ToolCount           int             `json:"tool_count"`
+	Service            string   `json:"service"`
+	Endpoint           string   `json:"endpoint"`
+	Protocol           string   `json:"protocol"`
+	Transport          string   `json:"transport"`
+	Auth               string   `json:"auth"`
+	Language           string   `json:"language"`
+	SupportedLanguages []string `json:"supported_languages"`
+	ToolCount          int      `json:"tool_count"`
+	// ToolkitVersion is the content hash of the tool surface the sandbox image is
+	// generated from. The image carries the same hash as __toolkit_version__, and
+	// the two drifting apart shows up only as signatures that no longer match,
+	// with nothing in the failure naming the cause. GET /mcp/ptc/toolkit used to
+	// be where an operator could ask; it is gone, so the answer lives here.
+	ToolkitVersion      string          `json:"toolkit_version,omitempty"`
 	Tools               []MCPToolInfo   `json:"tools"`
 	ClientConfigExample json.RawMessage `json:"client_config_example"`
 }
@@ -77,6 +83,14 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 // BuildMCPInfoForLocale builds the MCP self-description using the requested
 // effective locale. endpoint is the public MCP Streamable HTTP address.
 func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
+	return buildMCPInfoForLocale(endpoint, localeName, true)
+}
+
+// buildMCPInfoForLocale carries a flag because the toolkit renderer builds its
+// tool list from this document: BuildPTCToolkit calls back in here, so filling
+// toolkit_version unconditionally would recurse forever. The renderer asks for
+// the document without it.
+func buildMCPInfoForLocale(endpoint, localeName string, withToolkitVersion bool) (*MCPInfo, error) {
 	data, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		return nil, fmt.Errorf("read tools_meta.json: %w", err)
@@ -182,6 +196,17 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 		},
 	})
 
+	// The hash the sandbox image carries, not a hash of this document: the point
+	// is to be comparable with __toolkit_version__. A failure here is not worth
+	// failing the whole document over - the field is omitempty and the rest of
+	// the answer still helps.
+	toolkitVersion := ""
+	if withToolkitVersion {
+		if v, tkErr := ImageToolkitVersion(); tkErr == nil {
+			toolkitVersion = v
+		}
+	}
+
 	return &MCPInfo{
 		Service:             serverName,
 		Endpoint:            endpoint,
@@ -191,6 +216,7 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 		Language:            locale.locale,
 		SupportedLanguages:  []string{defaultMCPLocale, "en-US"},
 		ToolCount:           len(tools),
+		ToolkitVersion:      toolkitVersion,
 		Tools:               tools,
 		ClientConfigExample: cfg,
 	}, nil

@@ -464,6 +464,38 @@ func renderPTCStub(tools []MCPToolInfo) string {
 	return b.String()
 }
 
+// Build-time constants for the toolkit the sandbox image is generated from.
+// cmd/ptc-stub renders with these, and ImageToolkitVersion reports the hash of
+// that same rendering, so an operator comparing /mcp/info against the image's
+// __toolkit_version__ is comparing two runs of one function rather than two
+// functions that happen to look alike.
+const (
+	// ImageBuildEndpoint keeps a machine address out of the artifact: the value
+	// only lands in the self-describing address field of the tool directory.
+	ImageBuildEndpoint = "http://agent-retrieval/api/agent-retrieval/v1/mcp"
+	// ImageSandboxPort is overwritten at runtime by _configure(event); the built
+	// artifact only needs a default, pinned to the in-cluster service port.
+	ImageSandboxPort = defaultPTCServicePort
+)
+
+// ImageToolkitVersion returns the content hash the sandbox image carries as
+// __toolkit_version__.
+//
+// It has to render exactly what cmd/ptc-stub renders. The hash covers the digest
+// and the stub, and the digest differs between the signature-carrying variant
+// and the inline one, so reporting the wrong variant produces a value that never
+// matches - and an operator told to compare the two would read "out of sync"
+// even seconds after make bkn-tools. The locale is pinned for the same reason:
+// the image is built once, in the default locale, and rendering per request
+// language would make the answer depend on the caller's Accept-Language.
+func ImageToolkitVersion() (string, error) {
+	toolkit, err := BuildPTCToolkit(ImageBuildEndpoint, ImageSandboxPort)
+	if err != nil {
+		return "", err
+	}
+	return toolkit.Version, nil
+}
+
 // BuildPTCToolkit renders the PTC toolkit. endpoint is consistent with BuildMCPInfo (self-describing only),
 // port is the listening port of this service and is used to derive the sandbox return address.
 func BuildPTCToolkit(endpoint string, port int) (*PTCToolkit, error) {
@@ -472,7 +504,7 @@ func BuildPTCToolkit(endpoint string, port int) (*PTCToolkit, error) {
 
 // BuildPTCToolkitForLocale renders the PTC toolkit from the effective locale.
 func BuildPTCToolkitForLocale(endpoint string, port int, locale string) (*PTCToolkit, error) {
-	info, err := BuildMCPInfoForLocale(endpoint, locale)
+	info, err := buildMCPInfoForLocale(endpoint, locale, false)
 	if err != nil {
 		return nil, err
 	}
@@ -491,7 +523,7 @@ func BuildPTCToolkitForLocale(endpoint string, port int, locale string) (*PTCToo
 // The same build path is followed instead of changing the description afterwards, so Version covers the actual content of this version.
 // There will never be two different digests with the same hash.
 func InlinePTCToolkit(port int, locale string) (*PTCToolkit, error) {
-	info, err := BuildMCPInfoForLocale("", locale)
+	info, err := buildMCPInfoForLocale("", locale, false)
 	if err != nil {
 		return nil, err
 	}

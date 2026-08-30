@@ -31,8 +31,6 @@ const (
 	ErrExtMCPInstanceAlreadyExists = "MCPInstanceAlreadyExists" // MCP instance already exists.
 	ErrExtMCPInstanceNotFound      = "MCPInstanceNotFound"      // MCPinstancedoes not exist.
 	ErrExtMCPInfoBuildFailed       = "MCPInfoBuildFailed"       // MCP information construction failed.
-	ErrExtMCPPTCUnavailable        = "MCPPTCUnavailable"        // PTC MCP endpoint is unavailable
-	ErrExtMCPPTCToolkitBuildFailed = "MCPPTCToolkitBuildFailed" // PTC MCP toolkit build failed
 )
 
 // Business knowledge network action recall expansion error code definition.

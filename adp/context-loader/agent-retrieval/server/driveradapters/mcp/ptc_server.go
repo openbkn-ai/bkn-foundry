@@ -9,15 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/drivenadapters"
-	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/bkntrace"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/infra/rest"
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
@@ -41,7 +37,6 @@ import (
 // Execution occurs server-side with the caller's token, allowing any MCP client
 // to use PTC without implementing toolkit retrieval and execution-factory calls.
 const (
-	ptcEndpointPath   = "/api/agent-retrieval/v1/mcp/ptc"
 	ptcServerName     = "context-loader-ptc"
 	ptcDefaultTimeout = 60
 	// defaultPTCServicePort is the in-cluster port used when the sandbox calls
@@ -51,79 +46,12 @@ const (
 	ptcMaxTimeout = 600
 )
 
-// NewPTCMCPHandler creates the PTC MCP HTTP handler.
-func NewPTCMCPHandler() (http.Handler, error) {
-	return NewPTCMCPHandlerWith(
-		bkntrace.NewLifecycleClientFromEnv(),
-		drivenadapters.NewOperatorIntegrationClient(),
-		defaultPTCServicePort,
-	)
-}
+// The tools below are what an agent gets when it asks this service to run code.
+// They used to back a second MCP server of their own at /mcp/ptc, for hosts that
+// wanted code execution and nothing else; that server is gone and these are
+// registered onto /mcp by registerInlinePTCTools, so there is one endpoint to
+// integrate against rather than a choice between two.
 
-// NewPTCMCPHandlerWith creates the handler with injected dependencies for tests.
-func NewPTCMCPHandlerWith(
-	lifecycleClient *bkntrace.LifecycleClient,
-	executor interfaces.DrivenOperatorIntegration,
-	servicePort int,
-) (http.Handler, error) {
-	handlers := make(map[string]http.Handler, 2)
-	for _, locale := range []string{"zh-CN", "en-US"} {
-		srv, err := newPTCMCPServerForLocale(lifecycleClient, executor, servicePort, locale)
-		if err != nil {
-			return nil, err
-		}
-		handlers[locale] = newMCPStreamableHTTPHandler(srv, ptcEndpointPath)
-	}
-	return &localizedMCPHandler{handlers: handlers}, nil
-}
-
-func newPTCMCPServer(
-	lifecycleClient *bkntrace.LifecycleClient,
-	executor interfaces.DrivenOperatorIntegration,
-	servicePort int,
-) (*server.MCPServer, error) {
-	return newPTCMCPServerForLocale(lifecycleClient, executor, servicePort, defaultMCPLocale)
-}
-
-func newPTCMCPServerForLocale(
-	lifecycleClient *bkntrace.LifecycleClient,
-	executor interfaces.DrivenOperatorIntegration,
-	servicePort int,
-	locale string,
-) (*server.MCPServer, error) {
-	// Render the toolkit during assembly because it depends only on the tool
-	// catalog and environment, not an individual request.
-	toolkit, err := BuildPTCToolkitForLocale(ptcEndpointPath, servicePort, locale)
-	if err != nil {
-		return nil, err
-	}
-	localeBundle := loadMCPLocaleBundle(locale)
-
-	mcpServer := server.NewMCPServer(ptcServerName, serverVersion,
-		server.WithToolCapabilities(true),
-		server.WithInstructions(localeBundle.PTCServerInstructions()),
-		// run_code and run_shell are business tools. The middleware requires
-		// bkn_context for non-lifecycle tools and records each call as an operation.
-		server.WithToolHandlerMiddleware(lifecycleToolMiddleware(lifecycleClient)),
-	)
-	// External clients require lifecycle tools to start and finish interactions.
-	registerLifecycleTools(mcpServer, lifecycleClient, localeBundle)
-
-	for _, tool := range toolkit.Tools {
-		input := ptcToolInputSchemaWithContext(tool.InputSchema, localeBundle.PTCResource("ptc_bkn_context_description.txt"))
-		mcpServer.AddTool(
-			newToolWithSchemas(ToolMeta{Name: tool.Name, Description: tool.Description, Title: tool.Name}, input,
-				json.RawMessage(localeBundle.PTCResource("ptc_output_schema.json"))),
-			handlePTCExecuteForLocale(executor, toolkit, tool, localeBundle),
-		)
-	}
-	return mcpServer, nil
-}
-
-// ptcToolInputSchemaWithContext adds bkn_context to a tool's input schema.
-//
-// The toolkit schema is used by Studio, where the frontend manages the session.
-// MCP clients must provide bkn_context themselves, so it is added here.
 func ptcToolInputSchemaWithContext(raw json.RawMessage, contextDescription string) json.RawMessage {
 	var schema map[string]any
 	if err := sonic.Unmarshal(raw, &schema); err != nil {

@@ -32,14 +32,9 @@ import (
 )
 
 type restPublicHandler struct {
-	Hydra      interfaces.Hydra
-	AppKeys    interfaces.AppKeyVerifier
-	MCPHandler http.Handler
-	// PTCMCPHandler is a standalone MCP endpoint for PTC (…/mcp/ptc). separate from MCPHandler,
-	// This is because the two tool surfaces are mutually exclusive: when the client sees run_code and twenty business tools at the same time,
-	// The model will choose the latter, and PTC will degenerate into ordinary tool calls. It is nil when the assembly fails, and the route reports 503.
-	// Does not affect the main tool surface.
-	PTCMCPHandler                  http.Handler
+	Hydra                          interfaces.Hydra
+	AppKeys                        interfaces.AppKeyVerifier
+	MCPHandler                     http.Handler
 	KnLogicPropertyResolverHandler knlogicpropertyresolver.KnLogicPropertyResolverHandler
 	KnActionRecallHandler          knactionrecall.KnActionRecallHandler
 	KnQueryObjectInstanceHandler   knqueryobjectinstance.KnQueryObjectInstanceHandler
@@ -63,7 +58,6 @@ func NewRestPublicHandler(logger interfaces.Logger, servicePort int) interfaces.
 		Hydra:                          drivenadapters.NewHydra(),
 		AppKeys:                        drivenadapters.NewAppKeyVerifier(),
 		MCPHandler:                     mcp.NewMCPHandler(),
-		PTCMCPHandler:                  newPTCMCPHandlerOrNil(logger),
 		KnLogicPropertyResolverHandler: knlogicpropertyresolver.NewKnLogicPropertyResolverHandler(),
 		KnActionRecallHandler:          knactionrecall.NewKnActionRecallHandler(),
 		KnQueryObjectInstanceHandler:   knqueryobjectinstance.NewKnQueryObjectInstanceHandler(),
@@ -120,77 +114,28 @@ func (r *restPublicHandler) RegisterRouter(engine *gin.RouterGroup) {
 
 	// MCP Server (Bearer token auth, supports Cursor/Claude Desktop)
 	// GET /mcp/info returns the self-description (tool catalog and connection
-	// details). GET /mcp/toolkit returns the code-mode representation; all other
+	// details). All other
 	// requests use standard MCP Streamable HTTP.
 	engine.Any("/mcp/*path", r.handleMCP)
 }
 
-// handlePTCToolkit returns the PTC toolkit for GET .../mcp/toolkit.
-// Its contents change with the tool surface; clients cache it by version.
-func (r *restPublicHandler) handlePTCToolkit(c *gin.Context) {
-	toolkit, err := buildPTCToolkit(
-		publicEndpointURL(c.Request, mcpPath), r.ServicePort, common.GetLanguageFromCtx(c.Request.Context()),
-	)
-	if err != nil {
-		if r.Logger != nil {
-			r.Logger.Errorf("BuildPTCToolkit failed: %v", err)
-		}
-		sharedrest.MarkLocalizedCacheableResponse(c)
-		infrarest.ReplyError(c, infraerrors.NewHTTPError(
-			c.Request.Context(), http.StatusInternalServerError, infraerrors.ErrExtMCPPTCToolkitBuildFailed, nil))
-		return
-	}
-	c.JSON(http.StatusOK, toolkit)
-}
-
-var buildPTCToolkit = mcp.BuildPTCToolkitForLocale
-
 // handleMCP dispatches requests inside the MCP catch-all route.
 //
-// Path layout (choose one of the two MCP servers per integration):
+// Path layout:
 //
-//	/mcp                 MCP with individual business tools
+//	/mcp                 MCP with business tools and run_code / run_shell
 //	/mcp/info            Self-description for /mcp
-//	/mcp/ptc             MCP with run_code/run_shell and lifecycle tools
-//	/mcp/ptc/info        Self-description for /mcp/ptc
-//	/mcp/ptc/toolkit     PTC assets (stub, digest, and tool catalog)
-//	/mcp/toolkit         Deprecated alias for /mcp/ptc/toolkit
 //
-// Exact matches must precede the /ptc prefix match. Otherwise mcp-go consumes
-// /mcp/ptc/toolkit as an MCP request for the PTC server and returns a silent
-// 404, making the endpoint appear unavailable.
+// There used to be a second server at /mcp/ptc exposing only run_code and
+// run_shell, plus a GET /mcp/ptc/toolkit serving the assets a client needed to
+// implement that flow itself. Both are gone: the execution tools are on /mcp
+// through registerInlinePTCTools, so a host that wants them no longer has to
+// choose an endpoint, and the assets are generated into the sandbox image at
+// build time by cmd/ptc-stub rather than fetched. The rendering they shared is
+// untouched - only the two HTTP surfaces are.
 func (r *restPublicHandler) handleMCP(c *gin.Context) {
-	path := c.Param("path")
-	isGet := c.Request.Method == http.MethodGet
-
-	switch {
-	case isGet && path == ptcToolkitPath:
-		r.handlePTCToolkit(c)
-		return
-	// Legacy path retained only for clients released before /mcp/ptc/toolkit.
-	case isGet && path == legacyToolkitPath:
-		r.handlePTCToolkit(c)
-		return
-	case isGet && path == ptcInfoPath:
-		r.replyMCPInfo(c, publicEndpointURL(c.Request, ptcMCPPath))
-		return
-	case isGet && path == mcpInfoPath:
+	if c.Request.Method == http.MethodGet && c.Param("path") == mcpInfoPath {
 		r.replyMCPInfo(c, mcpEndpointURL(c.Request))
-		return
-	case strings.HasPrefix(path, ptcPathPrefix):
-		// When the global gate is disabled, make this endpoint indistinguishable
-		// from one that was never deployed.
-		// PTC is not subject to EXECUTE_SKILL_ENABLED and the endpoint is always open. This is a clear product decision:
-		// This switch is semantically a gate for skill execution, and run_code / run_shell is another ability.
-		// Sharing a switch will force anyone who wants to enable skill execution to enable arbitrary code execution along with it, and vice versa.
-		// The trade-off is that this deployment has no means of turning off PTC - isolation on the sandbox side therefore becomes a must rather than an option.
-		if r.PTCMCPHandler == nil {
-			sharedrest.MarkLocalizedCacheableResponse(c)
-			infrarest.ReplyError(c, infraerrors.NewHTTPError(
-				c.Request.Context(), http.StatusServiceUnavailable, infraerrors.ErrExtMCPPTCUnavailable, nil))
-			return
-		}
-		r.PTCMCPHandler.ServeHTTP(c.Writer, c.Request)
 		return
 	}
 	r.MCPHandler.ServeHTTP(c.Writer, c.Request)
@@ -198,18 +143,11 @@ func (r *restPublicHandler) handleMCP(c *gin.Context) {
 
 // MCP catch-all subpaths are centralized so this list matches dispatch order.
 const (
-	mcpPath           = "/mcp"
-	ptcMCPPath        = "/mcp/ptc"
-	ptcPathPrefix     = "/ptc"
-	mcpInfoPath       = "/info"
-	ptcInfoPath       = "/ptc/info"
-	ptcToolkitPath    = "/ptc/toolkit"
-	legacyToolkitPath = "/toolkit"
+	mcpPath     = "/mcp"
+	mcpInfoPath = "/info"
 )
 
-// replyMCPInfo returns the self-description for an MCP endpoint.
-//
-// /mcp/info and /mcp/ptc/info share this implementation; only the endpoint differs.
+// replyMCPInfo returns the self-description for the MCP endpoint.
 func (r *restPublicHandler) replyMCPInfo(c *gin.Context, endpoint string) {
 	info, err := buildMCPInfo(endpoint, string(common.GetLanguageFromCtx(c.Request.Context())))
 	if err != nil {
@@ -251,19 +189,4 @@ func requestScheme(req *http.Request) string {
 		scheme = p
 	}
 	return scheme
-}
-
-// newPTCMCPHandlerOrNil assembles the PTC MCP endpoint and returns nil on failure.
-//
-// PTC depends on embedded tool metadata. A failure must not prevent the main
-// MCP surface or REST APIs from starting; the PTC route reports a visible 503.
-func newPTCMCPHandlerOrNil(logger interfaces.Logger) http.Handler {
-	handler, err := mcp.NewPTCMCPHandler()
-	if err != nil {
-		if logger != nil {
-			logger.Errorf("[RestPublicHandler] PTC MCP endpoint unavailable: %v", err)
-		}
-		return nil
-	}
-	return handler
 }

@@ -194,21 +194,6 @@ def test_missing_artifact_points_at_the_build_step(monkeypatch):
     assert "make -C infra/sandbox bkn-tools" in str(excinfo.value)
 
 
-def test_version_check_compares_image_against_server(fake_surface, monkeypatch):
-    """When the image lags behind the server, the symptom is a signature mismatch and the error does not reveal the root cause, so expose a directly queryable version."""
-    monkeypatch.delenv("BKN_SANDBOX_MCP_URL", raising=False)
-    bkn.configure_runtime({"token": "tok", "mcp": "http://svc/mcp/"})
-
-    monkeypatch.setattr(bkn, "_fetch_toolkit", lambda: {"version": "sha256:fake"})
-    assert bkn.check_against_server()["in_sync"] is True
-
-    monkeypatch.setattr(bkn, "_fetch_toolkit", lambda: {"version": "sha256:newer"})
-    result = bkn.check_against_server()
-    assert result["in_sync"] is False
-    assert result["local"] == "sha256:fake"
-    assert result["remote"] == "sha256:newer"
-
-
 def test_shipped_artifact_is_importable_and_versioned():
     """The artifact in the image must be importable and include the version written at build time.
 
