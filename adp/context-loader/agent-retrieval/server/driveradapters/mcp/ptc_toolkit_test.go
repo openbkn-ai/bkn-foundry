@@ -571,3 +571,28 @@ func TestRenderPTCStubEscapesBackslashes(t *testing.T) {
 		}
 	}
 }
+
+// TestPTCHintsCoverRoutingTools guards the second instruction surface.
+//
+// run_code sees the PTC toolkit digest, which renders each tool's title and its
+// ptc_hints - not the tool description and not the server instructions. Routing
+// advice added only to instructions.txt therefore never reaches the sandbox, which
+// is where the schema-wide searches and the node-by-node parent-chain crawls were
+// written. Both locales must carry the routing hints, or one surface silently
+// drifts from the other.
+func TestPTCHintsCoverRoutingTools(t *testing.T) {
+	for _, locale := range []string{"zh-CN", "en-US"} {
+		bundle := loadMCPLocaleBundle(locale)
+		for _, tool := range []string{"get_kn_detail", "search_schema", "explore_subgraph"} {
+			if len(bundle.PTCHints(tool)) == 0 {
+				t.Fatalf("%s: %s has no PTC hints", locale, tool)
+			}
+		}
+		if joined := strings.Join(bundle.PTCHints("search_schema"), " "); !strings.Contains(joined, "concept_groups") {
+			t.Fatalf("%s: search_schema hint does not mention concept_groups: %s", locale, joined)
+		}
+		if joined := strings.Join(bundle.PTCHints("explore_subgraph"), " "); !strings.Contains(joined, "backward") {
+			t.Fatalf("%s: explore_subgraph hint does not mention backward: %s", locale, joined)
+		}
+	}
+}

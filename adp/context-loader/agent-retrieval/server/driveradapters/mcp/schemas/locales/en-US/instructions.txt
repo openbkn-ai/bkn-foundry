@@ -22,8 +22,12 @@ The next user question starts a new Interaction and continues using the current 
 
 Suggested exploration order:
 1. Call list_knowledge_networks first to obtain a kn_id. Most other tools require kn_id.
-2. Call search_schema with natural language to discover object types, relation types, action types, metric types, data_source.id, supported condition operations, and physical columns.
-3. Pick the query tool based on the task.
+2. Call get_kn_detail (detail_level=summary by default, compact) to read the concept groups. Each group carries name/tags/comment; use them to pick the 1-3 groups relevant to the question.
+3. Call search_schema within those groups: pass search_scope={"concept_groups":[chosen group ids]}. It returns object types, relation types, action types, metric types, data_source.id, supported condition operations, and physical columns.
+   Fall back to searching the whole network - omit concept_groups - when the group list is empty, when the semantics do not tell you which group to pick, or when the question spans more than three groups.
+   Omitting the groups is not an error; it just recalls across the whole network and returns more, noisier schema. Narrow it when you can.
+4. Call get_object_types(ids) for a full field mapping, get_relation_types(ids) for mapping rules. Do not start at detail_level=full.
+5. Pick the query tool based on the task.
 
 Query routing:
 - Use query_object_instance for single object-type filtering, sorting, and cursor-style pagination.
@@ -31,6 +35,8 @@ Query routing:
 - Quote MySQL identifiers with backticks when needed (for example, `order_id`); double quotes are string literals, not identifiers.
 - Use query_instance_subgraph when you can already name the path - which object types it passes through and which relation types connect them - to pull instances along that template, with per-node filters and sorting.
 - Use explore_subgraph when the topology is unknown and the question is what something connects to. Give a source object type, a direction and a hop count; the engine finds the paths. Do NOT enumerate relation types to hand-assemble a path for query_instance_subgraph instead - that turns discovery into a combinatorial search.
+- For reverse lookups - which finished goods use this part, what does this record roll up to - use explore_subgraph with direction=backward to walk incoming edges. Do NOT loop over query_object_instance inside run_code to crawl the parent chain node by node: that burns the interaction's operation budget and gets cut off partway.
+  Note that path_length caps at 3. Deeper hierarchies (multi-level BOM and the like) will not reach the root this way; use a published function, or page the whole table back once and walk it locally - run_sql has no WITH/CTE, so a recursive query cannot be expressed.
 - Use get_action_info to discover actions that can be executed for object instances.
 
 Metrics, object type first. Never re-derive a modelled metric in run_sql — its formula lives in the metric definition:

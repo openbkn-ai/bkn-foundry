@@ -175,9 +175,19 @@ type ActionType struct {
 }
 
 // ConceptGroup BKN concept group structure used by exported knowledge-network detail.
+//
+// Tags and Comment carry the group's semantics. BKN stores them (t_concept_group
+// f_tags / f_comment) and returns them on the export path, but this struct used to
+// declare neither, so JSON decoding dropped them silently and an agent saw nothing
+// but an opaque id and name. Without them there is no basis on which to pick a
+// group, so search_scope.concept_groups - the one knob that actually narrows
+// BKN-side recall - could never be used and every search fell back to the whole
+// network.
 type ConceptGroup struct {
 	ID            string          `json:"id"`
 	Name          string          `json:"name"`
+	Tags          []string        `json:"tags,omitempty"`
+	Comment       string          `json:"comment,omitempty"`
 	ObjectTypeIDs []string        `json:"object_type_ids,omitempty"`
 	ObjectTypes   []*ObjectType   `json:"object_types,omitempty"`
 	RelationTypes []*RelationType `json:"relation_types,omitempty"`

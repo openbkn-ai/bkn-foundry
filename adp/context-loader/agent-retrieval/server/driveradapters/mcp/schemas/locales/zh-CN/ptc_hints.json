@@ -10,5 +10,18 @@
     "或 list_resources 的 resource_id；不可原样写 'resource_id' 字面量。",
     "列名用物理列名。仅单条 SELECT，无 CTE/UNION。",
     "run_sql(sql=\"SELECT team_name, COUNT(*) c FROM {{.<resource_id>}} GROUP BY team_name\")"
+  ],
+  "get_kn_detail": [
+    "先读 concept_groups：每组带 name/tags/comment，是收敛检索范围的入口。",
+    "据此选 1-3 个与问题相关的分组，再传给 search_schema 的 search_scope。"
+  ],
+  "search_schema": [
+    "优先带 search_scope={\"concept_groups\":[分组ID]} 收敛范围，分组来自 get_kn_detail。",
+    "判断不出该选哪个、或问题跨三个以上分组时，才不传走全网——不传不报错，只是更大更杂。"
+  ],
+  "explore_subgraph": [
+    "反查用途（这个零件被哪些成品用到）传 direction=\"backward\" 沿入边走。",
+    "别在循环里逐节点调 query_object_instance 自己爬父链：会耗光本次交互的操作预算。",
+    "path_length 上限 3。更深的层级（多级 BOM）到不了根，改用已发布函数或分页取回全表本地遍历。"
   ]
 }

@@ -51,11 +51,22 @@
           "properties": {
             "id": {
               "type": "string",
-              "description": "概念分组 ID，可传给 search_instance 的 concept_groups"
+              "description": "概念分组 ID，可传给 search_schema 的 search_scope.concept_groups、search_instance 与 explore_subgraph 的 concept_groups"
             },
             "name": {
               "type": "string",
               "description": "分组名"
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "分组标签。与 name/comment 一起作为选簇依据。"
+            },
+            "comment": {
+              "type": "string",
+              "description": "分组语义说明。判断该分组与当前问题是否相关，就看这里；不必展开 object_type_ids。"
             },
             "object_type_ids": {
               "type": "array",
@@ -67,7 +78,7 @@
           },
           "additionalProperties": true
         },
-        "description": "概念组"
+        "description": "概念组。每组带 name/tags/comment 语义说明，据此选出 1-3 个相关分组，再传给 search_schema 的 search_scope.concept_groups 收敛 Schema 召回范围。"
       },
       "object_types": {
         "type": "array",

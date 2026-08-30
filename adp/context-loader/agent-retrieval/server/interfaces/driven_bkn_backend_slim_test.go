@@ -9,6 +9,7 @@ package interfaces
 import (
 	"testing"
 
+	"github.com/bytedance/sonic"
 	"github.com/smartystreets/goconvey/convey"
 )
 
@@ -51,6 +52,8 @@ func newDetailFixture() *KnowledgeNetworkDetail {
 		ActionTypes:   []*ActionType{act},
 		ConceptGroups: []*ConceptGroup{{
 			ID: "cg1", Name: "core", ObjectTypeIDs: []string{"ot_order"},
+			Tags:          []string{"sales", "core"},
+			Comment:       "orders and their customers",
 			ObjectTypes:   []*ObjectType{obj}, // duplicate of top-level
 			RelationTypes: []*RelationType{rel},
 			ActionTypes:   []*ActionType{act},
@@ -92,6 +95,11 @@ func TestSlim_Summary(t *testing.T) {
 		convey.So(g.ObjectTypes, convey.ShouldBeNil)
 		convey.So(g.RelationTypes, convey.ShouldBeNil)
 		convey.So(g.ActionTypes, convey.ShouldBeNil)
+		// The group semantics are the whole point of listing groups: an agent picks
+		// which ones to pass to search_scope.concept_groups from these, so summary
+		// must not strip them the way it strips the duplicated type arrays.
+		convey.So(g.Tags, convey.ShouldResemble, []string{"sales", "core"})
+		convey.So(g.Comment, convey.ShouldEqual, "orders and their customers")
 	})
 }
 
@@ -110,6 +118,8 @@ func TestSlim_Full_KeepsPropertiesButStillDedups(t *testing.T) {
 		convey.So(g.ObjectTypes, convey.ShouldBeNil)
 		convey.So(g.RelationTypes, convey.ShouldBeNil)
 		convey.So(g.ActionTypes, convey.ShouldBeNil)
+		convey.So(g.Tags, convey.ShouldResemble, []string{"sales", "core"})
+		convey.So(g.Comment, convey.ShouldEqual, "orders and their customers")
 	})
 }
 
@@ -170,5 +180,36 @@ func TestFilterRelationTypes(t *testing.T) {
 		matched, missing = d.FilterRelationTypes([]string{"places", "ghost"})
 		convey.So(len(matched), convey.ShouldEqual, 1)
 		convey.So(missing, convey.ShouldResemble, []string{"ghost"})
+	})
+}
+
+// TestConceptGroupDecode_KeepsSemantics guards the boundary this struct sits on.
+//
+// BKN returns tags and comment for every concept group, but this struct used to
+// declare neither, and decoding drops undeclared keys without erroring - so the
+// semantics vanished with nothing in the logs to show for it, and an agent had
+// only opaque ids to choose from. Decoding a realistic payload is the only way to
+// notice if the fields are dropped again.
+func TestConceptGroupDecode_KeepsSemantics(t *testing.T) {
+	convey.Convey("decoding a BKN concept group keeps tags and comment", t, func() {
+		const payload = `{
+			"id": "kn-1",
+			"concept_groups": [{
+				"id": "cg_inventory",
+				"name": "库存与可供",
+				"tags": ["可供", "库存"],
+				"comment": "库存、仓库、可用量、理论可产",
+				"object_type_ids": ["ot_inventory"]
+			}]
+		}`
+
+		var detail KnowledgeNetworkDetail
+		convey.So(sonic.Unmarshal([]byte(payload), &detail), convey.ShouldBeNil)
+		convey.So(detail.ConceptGroups, convey.ShouldHaveLength, 1)
+
+		g := detail.ConceptGroups[0]
+		convey.So(g.ID, convey.ShouldEqual, "cg_inventory")
+		convey.So(g.Tags, convey.ShouldResemble, []string{"可供", "库存"})
+		convey.So(g.Comment, convey.ShouldEqual, "库存、仓库、可用量、理论可产")
 	})
 }
