@@ -246,6 +246,6 @@
         "None": "无"
     },
     "template": {
-        "python": "from typing import Dict, Any\r\n\r\ndef handler(event: Dict[str, Any]) -> Any:\r\n    \"\"\"\r\n    通用Python工具处理函数。\r\n    \r\n    每个文件都需要导出一个名为 `handler` 的函数。这个函数是工具的入口点。\r\n    \r\n    Parameters:\r\n    event: dict\r\n        表示函数执行的主要输入参数。\r\n        可以通过 event.get(\"key\", default_value) 获取具体的输入值。\r\n        \r\n    Return:\r\n    Any data object\r\n        函数的返回数据，应根据用户需求定义具体的输出格式。\r\n        返回的数据应与声明的输出参数匹配。\r\n        \r\n    请记得在元数据中填写input/output，这有助于LLM识别和使用工具。\r\n    \"\"\"\r\n\r\n    # TODO: 根据需求插入实际逻辑\r\n    # 示例：\r\n    # name = event.get(\"name\", \"default\")\r\n    # return {\"message\": f\"Hello, {name}\"}\r\n\r\n    result = {}\r\n    return result\r\n"
+        "python": "from sandbox_sdk import tool\n\n\n@tool\ndef my_tool(name: str, count: int = 1) -> dict:\n    \"\"\"\n    一句话描述这个工具做什么（这句会成为工具的描述）。\n\n    参数的类型注解 + 下面的说明会被自动推导成输入 schema，不需要在别处\n    再手填 inputs / outputs。带默认值的参数即为可选。\n\n    Parameters:\n    name (str): 参数说明。\n    count (int): 参数说明。\n\n    Returns:\n    dict: 返回值说明；返回任意可 JSON 序列化的对象即可。\n    \"\"\"\n    # TODO: 实现业务逻辑\n    return {\"message\": f\"hello {name}\", \"count\": count}\n\n\n# 需要访问知识网络时，额外从 sandbox_sdk 导入 bkn，以调用方身份读取 BKN：\n#   from sandbox_sdk import tool, bkn\n#   detail = bkn.get_kn_detail(kn_id)                       # 取知识网络 schema\n#   rows = bkn.query_object_instance(kn_id=kn_id, ot_id=ot_id, limit=10)\n# 凭据与会话上下文由平台经环境变量注入，函数里看不到、也不用传。\n\n# 旧的 handler(event) 写法仍受支持，但推荐用上面的 @tool：签名即 schema，\n# 免去手填 inputs/outputs。\n"
     }
 }
