@@ -19,14 +19,17 @@ func described(name string) *interfaces.ParameterDef {
 // and those two fields are the ones that get sent wrong.
 func TestUndescribedParametersReachesIntoSubParameters(t *testing.T) {
 	demands := described("demands")
+	demands.Type = interfaces.ParameterTypeArray
 	demands.SubParameters = []*interfaces.ParameterDef{
-		{Name: "items", Description: "one demand", SubParameters: []*interfaces.ParameterDef{
+		// The element node carries no description of its own and does not need
+		// one; its fields do.
+		{Name: "items", Type: interfaces.ParameterTypeObject, SubParameters: []*interfaces.ParameterDef{
 			described("product"),
 			{Name: "qty", Description: "  "},
 		}},
 	}
 
-	missing := undescribedParameters([]*interfaces.ParameterDef{demands}, "")
+	missing := undescribedParameters([]*interfaces.ParameterDef{demands}, "", "")
 	if len(missing) != 1 || missing[0] != "demands.items.qty" {
 		t.Fatalf("missing = %v, want [demands.items.qty]", missing)
 	}
@@ -48,13 +51,6 @@ func TestValidateParameterDescriptions(t *testing.T) {
 			input: &interfaces.FunctionInput{Description: "returns a constant"},
 		},
 		{
-			// A function that says nothing about itself is worse than a parameter
-			// that does: the caller cannot even tell whether to reach for it.
-			name:    "empty function description is refused",
-			input:   &interfaces.FunctionInput{Description: "  ", Inputs: []*interfaces.ParameterDef{described("product")}},
-			wantErr: "function description is empty",
-		},
-		{
 			name: "empty parameter description is refused",
 			input: &interfaces.FunctionInput{Description: "computes coverage", Inputs: []*interfaces.ParameterDef{
 				described("product"),
@@ -70,6 +66,40 @@ func TestValidateParameterDescriptions(t *testing.T) {
 				{Name: "depth", Description: "\t\n "},
 			}},
 			wantErr: "depth",
+		},
+		{
+			// List[str]. The SDK invents items to carry the element type and no
+			// docstring can reach it, so demanding a description there would
+			// reject the function with an error its author cannot act on.
+			name: "array element placeholder is not required to describe itself",
+			input: &interfaces.FunctionInput{Inputs: []*interfaces.ParameterDef{func() *interfaces.ParameterDef {
+				tags := described("tags")
+				tags.Type = interfaces.ParameterTypeArray
+				tags.SubParameters = []*interfaces.ParameterDef{{Name: "items", Type: interfaces.ParameterTypeString}}
+				return tags
+			}()}},
+		},
+		{
+			// Dict[str, int], where values plays the same role as items above.
+			name: "dict value placeholder is not required to describe itself",
+			input: &interfaces.FunctionInput{Inputs: []*interfaces.ParameterDef{func() *interfaces.ParameterDef {
+				quotas := described("quotas")
+				quotas.Type = interfaces.ParameterTypeObject
+				quotas.SubParameters = []*interfaces.ParameterDef{{Name: "values", Type: interfaces.ParameterTypeNumber}}
+				return quotas
+			}()}},
+		},
+		{
+			// A named field that happens to be called values is the author's to
+			// describe: the placeholder rule only applies to a lone child.
+			name: "a named sibling called values is still required",
+			input: &interfaces.FunctionInput{Inputs: []*interfaces.ParameterDef{func() *interfaces.ParameterDef {
+				cfg := described("cfg")
+				cfg.Type = interfaces.ParameterTypeObject
+				cfg.SubParameters = []*interfaces.ParameterDef{described("mode"), {Name: "values"}}
+				return cfg
+			}()}},
+			wantErr: "cfg.values",
 		},
 	}
 	for _, tc := range cases {

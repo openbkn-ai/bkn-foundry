@@ -511,13 +511,11 @@ func createParameterSchema(param *interfaces.ParameterDef) *openapi3.Schema {
 // job; this only stops the field going empty.
 //
 // Outputs are left alone deliberately. A missing output description costs a
-// reader some guessing; a missing input description costs a failed call.
+// reader some guessing; a missing input description costs a failed call. The
+// function's own description is left to ValidateOperatorDesc, which already
+// refuses it with a localised code of its own.
 func validateParameterDescriptions(ctx context.Context, input *interfaces.FunctionInput) error {
-	if strings.TrimSpace(input.Description) == "" {
-		return errors.DefaultHTTPError(ctx, http.StatusBadRequest,
-			"function description is empty: state what the function does, in the docstring")
-	}
-	for _, missing := range undescribedParameters(input.Inputs, "") {
+	for _, missing := range undescribedParameters(input.Inputs, "", "") {
 		return errors.DefaultHTTPError(ctx, http.StatusBadRequest,
 			fmt.Sprintf("input parameter %q has no description: state what the value has to be, not just its type", missing))
 	}
@@ -528,7 +526,15 @@ func validateParameterDescriptions(ctx context.Context, input *interfaces.Functi
 // meaning of a composite argument lives. The demands parameter of a real
 // published function is an array of objects, and its product and qty fields are
 // the ones a caller gets wrong - naming only "demands" would report nothing.
-func undescribedParameters(params []*interfaces.ParameterDef, prefix string) []string {
+//
+// Structural placeholders are skipped. List[X] and Dict[K,V] have no field for
+// the author to describe: the SDK invents a child called items or values to
+// carry the element type, and no docstring or signature can reach it, so
+// demanding a description there would reject a plain List[str] with an error the
+// author cannot act on. createParameterSchema already treats the array case this
+// way, letting items inherit the parent's description. Their own children are
+// still checked - the fields of a List[Demand] element are the author's to name.
+func undescribedParameters(params []*interfaces.ParameterDef, parentType, prefix string) []string {
 	var missing []string
 	for _, param := range params {
 		if param == nil {
@@ -538,10 +544,27 @@ func undescribedParameters(params []*interfaces.ParameterDef, prefix string) []s
 		if prefix != "" {
 			path = prefix + "." + param.Name
 		}
-		if strings.TrimSpace(param.Description) == "" {
+		if !isStructuralPlaceholder(param, parentType, len(params)) &&
+			strings.TrimSpace(param.Description) == "" {
 			missing = append(missing, path)
 		}
-		missing = append(missing, undescribedParameters(param.SubParameters, path)...)
+		missing = append(missing, undescribedParameters(param.SubParameters, string(param.Type), path)...)
 	}
 	return missing
+}
+
+// isStructuralPlaceholder reports whether the SDK invented this node rather than
+// the author declaring it: the sole child of an array is its element type, and
+// the sole child named values under an object is a Dict's value type.
+func isStructuralPlaceholder(param *interfaces.ParameterDef, parentType string, siblings int) bool {
+	if siblings != 1 {
+		return false
+	}
+	switch parentType {
+	case string(interfaces.ParameterTypeArray):
+		return param.Name == "items"
+	case string(interfaces.ParameterTypeObject):
+		return param.Name == "values"
+	}
+	return false
 }
