@@ -28,6 +28,23 @@ func TestLifecycleBodyIgnoresRetiredBusinessDomainOnBusinessRefs(t *testing.T) {
 	}
 }
 
+func TestLifecycleBodyIgnoresRetiredBusinessDomainOnOperationBusinessEdges(t *testing.T) {
+	body := `{"operation_business_edges":[{"operation_id":"op-1","role":"read",` +
+		`"observed_at":"2026-08-30T00:00:00Z","business_ref":{"ref_type":"object_type",` +
+		`"ref_id":"kn-1/object_type/material","business_domain_id":"bd_public","version":"1"}}]}`
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(body))
+	response := httptest.NewRecorder()
+
+	var decoded evidenceEventRequest
+	if err := decodeLifecycleBody(response, request, &decoded); err != nil {
+		t.Fatalf("pre-0.1.5 producer payload must stay acceptable: %v", err)
+	}
+	edges := operationBusinessEdgesFromWire(decoded.OperationBusinessEdges)
+	if len(edges) != 1 || edges[0].OperationID != "op-1" || edges[0].BusinessRef.RefID != "kn-1/object_type/material" {
+		t.Fatalf("operation business edge did not survive the compatibility shim: %#v", edges)
+	}
+}
+
 func TestLifecycleBodyStillRejectsUnknownFields(t *testing.T) {
 	body := `{"business_refs":[{"ref_type":"object_type","ref_id":"kn-1/object_type/material","not_a_field":"x"}]}`
 	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/evidence/events", strings.NewReader(body))

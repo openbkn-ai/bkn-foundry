@@ -6,6 +6,8 @@
 package httphandler
 
 import (
+	"time"
+
 	sessionvo "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 )
 
@@ -34,6 +36,31 @@ func businessRefsFromWire(refs []businessRefRequest) []sessionvo.BusinessRef {
 	result := make([]sessionvo.BusinessRef, 0, len(refs))
 	for _, ref := range refs {
 		result = append(result, ref.BusinessRef)
+	}
+	return result
+}
+
+// operationBusinessEdgeRequest carries the same tolerance one level down: the
+// edge embeds a business ref, and DisallowUnknownFields applies to nested
+// objects as well, so an un-upgraded producer that sends operation_business_edges
+// would be rejected even though its business_refs are accepted.
+type operationBusinessEdgeRequest struct {
+	OperationID string                          `json:"operation_id" binding:"required"`
+	BusinessRef businessRefRequest              `json:"business_ref" binding:"required"`
+	Role        sessionvo.OperationBusinessRole `json:"role" binding:"required"`
+	ObservedAt  time.Time                       `json:"observed_at" binding:"required"`
+}
+
+func operationBusinessEdgesFromWire(edges []operationBusinessEdgeRequest) []sessionvo.OperationBusinessEdge {
+	if len(edges) == 0 {
+		return nil
+	}
+	result := make([]sessionvo.OperationBusinessEdge, 0, len(edges))
+	for _, edge := range edges {
+		result = append(result, sessionvo.OperationBusinessEdge{
+			OperationID: edge.OperationID, BusinessRef: edge.BusinessRef.BusinessRef,
+			Role: edge.Role, ObservedAt: edge.ObservedAt,
+		})
 	}
 	return result
 }

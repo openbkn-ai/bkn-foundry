@@ -679,7 +679,7 @@ definitions:
         type: string
       operation_business_edges:
         items:
-          $ref: '#/definitions/sessionvo.OperationBusinessEdge'
+          $ref: '#/definitions/httphandler.operationBusinessEdgeRequest'
         type: array
       operation_id:
         type: string
@@ -871,6 +871,22 @@ definitions:
     required:
     - idempotency_key
     - outcome
+    type: object
+  httphandler.operationBusinessEdgeRequest:
+    properties:
+      business_ref:
+        $ref: '#/definitions/httphandler.businessRefRequest'
+      observed_at:
+        type: string
+      operation_id:
+        type: string
+      role:
+        $ref: '#/definitions/sessionvo.OperationBusinessRole'
+    required:
+    - business_ref
+    - observed_at
+    - operation_id
+    - role
     type: object
   httphandler.operationCallFactsResponse:
     properties:
@@ -1534,22 +1550,6 @@ definitions:
     - row_version
     - tool_name
     - updated_at
-    type: object
-  sessionvo.OperationBusinessEdge:
-    properties:
-      business_ref:
-        $ref: '#/definitions/sessionvo.BusinessRef'
-      observed_at:
-        type: string
-      operation_id:
-        type: string
-      role:
-        $ref: '#/definitions/sessionvo.OperationBusinessRole'
-    required:
-    - business_ref
-    - observed_at
-    - operation_id
-    - role
     type: object
   sessionvo.OperationBusinessRole:
     enum:

@@ -3348,7 +3348,7 @@ const docTemplate = `{
                 "operation_business_edges": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.OperationBusinessEdge"
+                        "$ref": "#/definitions/httphandler.operationBusinessEdgeRequest"
                     }
                 },
                 "operation_id": {
@@ -3600,6 +3600,29 @@ const docTemplate = `{
                 },
                 "reason": {
                     "type": "string"
+                }
+            }
+        },
+        "httphandler.operationBusinessEdgeRequest": {
+            "type": "object",
+            "required": [
+                "business_ref",
+                "observed_at",
+                "operation_id",
+                "role"
+            ],
+            "properties": {
+                "business_ref": {
+                    "$ref": "#/definitions/httphandler.businessRefRequest"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
                 }
             }
         },
@@ -4543,29 +4566,6 @@ const docTemplate = `{
                 },
                 "updated_at": {
                     "type": "string"
-                }
-            }
-        },
-        "sessionvo.OperationBusinessEdge": {
-            "type": "object",
-            "required": [
-                "business_ref",
-                "observed_at",
-                "operation_id",
-                "role"
-            ],
-            "properties": {
-                "business_ref": {
-                    "$ref": "#/definitions/sessionvo.BusinessRef"
-                },
-                "observed_at": {
-                    "type": "string"
-                },
-                "operation_id": {
-                    "type": "string"
-                },
-                "role": {
-                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
                 }
             }
         },
