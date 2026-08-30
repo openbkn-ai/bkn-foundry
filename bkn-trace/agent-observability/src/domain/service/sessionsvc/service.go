@@ -405,7 +405,7 @@ func (s *Service) GetInteraction(ctx context.Context, owner sessionvo.Owner, int
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interaction, found := tx.PeekInteraction(interactionID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
 		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
@@ -421,7 +421,7 @@ func (s *Service) GetOperation(ctx context.Context, owner sessionvo.Owner, opera
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operation, found := tx.PeekOperation(operationID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseOperationNotFound)
 		}
 		if _, err := ownedConversation(tx, owner, operation.ConversationID); err != nil {
 			return err
@@ -441,7 +441,7 @@ func (s *Service) ListOperationCallFacts(
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interaction, found := tx.PeekInteraction(interactionID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
 		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
@@ -465,14 +465,14 @@ func (s *Service) GetOperationCallFact(
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operation, found := tx.PeekOperation(operationID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseOperationNotFound)
 		}
 		if _, err := ownedConversation(tx, owner, operation.ConversationID); err != nil {
 			return err
 		}
 		fact, found := tx.FindOperationCallFact(operationID, attempt)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseOperationCallFactNotFound)
 		}
 		result = fact
 		return nil
@@ -618,7 +618,7 @@ func (s *Service) GetReceipt(ctx context.Context, owner sessionvo.Owner, receipt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		receipt, found := tx.PeekReceipt(receiptID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseReceiptNotFound)
 		}
 		if _, err := ownedConversation(tx, owner, receipt.ConversationID); err != nil {
 			return err
@@ -777,7 +777,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interactionRef, found := tx.PeekInteraction(command.InteractionID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
 		conversation, err := ownedConversation(tx, command.Owner, interactionRef.ConversationID)
 		if err != nil {
@@ -785,7 +785,7 @@ func (s *Service) TerminateInteraction(ctx context.Context, command TerminateInt
 		}
 		interaction, found := tx.FindInteraction(command.InteractionID)
 		if !found || interaction.ConversationID != conversation.ID {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotInConversation)
 		}
 		if interaction.IsTerminal() && command.DeriveManifest {
 			if managedTerminalReplayMatches(interaction, command) {
@@ -986,7 +986,7 @@ func (s *Service) EnsureOperationWithDisposition(
 		}
 		interaction, found := tx.FindInteraction(command.InteractionID)
 		if !found || interaction.ConversationID != conversation.ID {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotInConversation)
 		}
 		if interaction.ExecutionStatus != sessionvo.InteractionActive ||
 			!interaction.LeaseExpiresAt.After(tx.Now()) {
@@ -1000,13 +1000,13 @@ func (s *Service) EnsureOperationWithDisposition(
 		if command.ParentOperationID != "" {
 			parent, found := tx.FindOperation(command.ParentOperationID)
 			if !found {
-				return resourceNotDisclosed()
+				return resourceNotDisclosed(CauseParentOperationNotFound)
 			}
 			if _, err := ownedConversation(tx, command.Owner, parent.ConversationID); err != nil {
 				return err
 			}
 			if parent.InteractionID != interaction.ID {
-				return resourceNotDisclosed()
+				return resourceNotDisclosed(CauseParentOperationOtherInteraction)
 			}
 		}
 		// Capacity is checked before the lease is renewed, and only for a key that
@@ -1017,7 +1017,8 @@ func (s *Service) EnsureOperationWithDisposition(
 		// it has no rollback and keeps the renewal written by the failed call.
 		if _, found := tx.FindOperationByKey(interaction.ID, command.OperationKey); !found &&
 			len(tx.ListOperations(interaction.ID)) >= s.capacity.MaxOperationsPerInteraction {
-			return domainError(CodeOperationRequired, "interaction operation capacity was reached")
+			return domainErrorWithCause(CodeOperationRequired,
+				"interaction operation capacity was reached", CauseOperationCapacityReached)
 		}
 		renewInteractionLease(tx, &interaction)
 		if existing, found := tx.FindOperationByKey(interaction.ID, command.OperationKey); found {
@@ -1137,7 +1138,7 @@ func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemp
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operationRef, found := tx.PeekOperation(command.OperationID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseOperationNotFound)
 		}
 		conversation, err := ownedConversation(tx, command.Owner, operationRef.ConversationID)
 		if err != nil {
@@ -1148,12 +1149,12 @@ func (s *Service) StartOperationAttempt(ctx context.Context, command StartAttemp
 		}
 		interaction, found := tx.FindInteraction(operationRef.InteractionID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
 		current, found := tx.FindOperation(command.OperationID)
 		if !found || current.ConversationID != conversation.ID ||
 			current.InteractionID != interaction.ID {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseOperationNotInConversation)
 		}
 		if interaction.ExecutionStatus != sessionvo.InteractionActive ||
 			!interaction.LeaseExpiresAt.After(tx.Now()) {
@@ -1260,7 +1261,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 	err = s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		operationRef, found := tx.PeekOperation(command.OperationID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseOperationNotFound)
 		}
 		conversation, err := ownedConversation(tx, command.Owner, operationRef.ConversationID)
 		if err != nil {
@@ -1268,12 +1269,12 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		}
 		interaction, found := tx.FindInteraction(operationRef.InteractionID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
 		current, found := tx.FindOperation(command.OperationID)
 		if !found || current.ConversationID != conversation.ID ||
 			current.InteractionID != interaction.ID {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseOperationNotInConversation)
 		}
 		if interaction.ExecutionStatus == sessionvo.InteractionActive &&
 			!interaction.LeaseExpiresAt.After(tx.Now()) {
@@ -1281,7 +1282,7 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		}
 		claimedReceipt, found := tx.FindReceipt(command.ReceiptID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseReceiptNotFound)
 		}
 		if _, err := ownedConversation(tx, command.Owner, claimedReceipt.ConversationID); err != nil {
 			return err
@@ -1289,14 +1290,14 @@ func (s *Service) finishOperationAttempt(ctx context.Context, command FinishAtte
 		if claimedReceipt.ConversationID != conversation.ID ||
 			claimedReceipt.InteractionID != interaction.ID ||
 			claimedReceipt.OperationID != current.ID {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseReceiptNotInScope)
 		}
 		if current.Attempt != command.Attempt {
 			return domainError(CodeIdempotencyConflict, "operation attempt or receipt does not match")
 		}
 		currentReceipt, found := tx.FindReceiptByOperationAttempt(current.ID, command.Attempt)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseReceiptNotFound)
 		}
 		if currentReceipt.ID != claimedReceipt.ID {
 			return domainError(CodeIdempotencyConflict, "operation attempt or receipt does not match")
@@ -1639,7 +1640,7 @@ func (s *Service) ListAssemblyRevisions(ctx context.Context, owner sessionvo.Own
 	err := s.store.WithinTransaction(ctx, func(tx isessionstore.Transaction) error {
 		interaction, found := tx.PeekInteraction(interactionID)
 		if !found {
-			return resourceNotDisclosed()
+			return resourceNotDisclosed(CauseInteractionNotFound)
 		}
 		if _, err := ownedConversation(tx, owner, interaction.ConversationID); err != nil {
 			return err
@@ -1790,22 +1791,23 @@ func evidenceReferenceCount(receipts []sessionvo.Receipt, replacingReceiptID str
 func ownedConversation(tx isessionstore.Transaction, owner sessionvo.Owner, conversationID string) (sessionvo.Conversation, error) {
 	conversation, found := tx.FindConversation(conversationID)
 	if !found {
-		return sessionvo.Conversation{}, domainError(
-			CodeResourceNotDisclosed,
-			"request was not found in the authorized scope",
-		)
+		return sessionvo.Conversation{}, resourceNotDisclosed(CauseConversationNotFound)
 	}
+	// Owner is compared whole: tenant, business domain, application principal,
+	// effective subject type and id, delegation. One differing field is enough, and
+	// the same OAuth client reaching in from another process is the usual way that
+	// happens - which reads to the caller exactly like the conversation not existing.
 	if !conversation.Owner.Equal(owner) {
-		return sessionvo.Conversation{}, domainError(
-			CodeResourceNotDisclosed,
-			"request was not found in the authorized scope",
-		)
+		return sessionvo.Conversation{}, resourceNotDisclosed(CauseConversationOwnerMismatch)
 	}
 	return conversation, nil
 }
 
-func resourceNotDisclosed() error {
-	return domainError(CodeResourceNotDisclosed, "request was not found in the authorized scope")
+// resourceNotDisclosed answers the caller with one deliberately opaque sentence and
+// records, for the server alone, which check actually failed. cause never leaves the
+// process; see DomainError.Cause.
+func resourceNotDisclosed(cause string) error {
+	return domainErrorWithCause(CodeResourceNotDisclosed, "request was not found in the authorized scope", cause)
 }
 
 func requireActiveConversation(conversation sessionvo.Conversation) error {
