@@ -34,6 +34,11 @@ const evidenceAllowUnauthenticatedQueryEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_QU
 const evidenceHydraAdminURLEnv = "BKN_TRACE_HYDRA_ADMIN_URL"
 const evidenceDeploymentTenantIDEnv = "BKN_TRACE_DEPLOYMENT_TENANT_ID"
 
+// Operator kill switch for the public lifecycle write surface. Set to "false"
+// to make every public lifecycle call answer 503 authorization_unavailable;
+// anything else (including an unset variable) keeps the surface open.
+const evidencePublicLifecycleEnabledEnv = "BKN_TRACE_PUBLIC_LIFECYCLE_ENABLED"
+
 type EvidenceHandlerSecurityConfig struct {
 	IngestToken                string
 	HydraAdminURL              string
@@ -41,6 +46,7 @@ type EvidenceHandlerSecurityConfig struct {
 	QueryHTTPClient            *http.Client
 	AllowUnauthenticatedIngest bool
 	AllowUnauthenticatedQuery  bool
+	DisablePublicLifecycle     bool
 	AuthorizationScopeResolver iauthorizationscope.Resolver
 }
 
@@ -52,6 +58,7 @@ type EvidenceHandler struct {
 	queryHTTPClient            *http.Client
 	allowUnauthenticatedIngest bool
 	allowUnauthenticatedQuery  bool
+	publicLifecycleDisabled    bool
 	authorizationScopeResolver iauthorizationscope.Resolver
 }
 
@@ -79,6 +86,7 @@ func NewEvidenceHandlerWithAuthorizationScopeResolver(
 		DeploymentTenantID:         os.Getenv(evidenceDeploymentTenantIDEnv),
 		AllowUnauthenticatedIngest: allowUnauthenticated,
 		AllowUnauthenticatedQuery:  allowUnauthenticatedQuery,
+		DisablePublicLifecycle:     publicLifecycleDisabled(os.Getenv(evidencePublicLifecycleEnabledEnv)),
 		AuthorizationScopeResolver: resolver,
 	})
 }
@@ -107,6 +115,7 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 		queryHTTPClient:            queryHTTPClient,
 		allowUnauthenticatedIngest: config.AllowUnauthenticatedIngest,
 		allowUnauthenticatedQuery:  config.AllowUnauthenticatedQuery,
+		publicLifecycleDisabled:    config.DisablePublicLifecycle,
 		authorizationScopeResolver: config.AuthorizationScopeResolver,
 	}
 }
@@ -820,6 +829,10 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 // trust caller-supplied owner headers.
 func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if h.publicLifecycleDisabled {
+			writeLifecycleError(w, r, http.StatusServiceUnavailable, "authorization_unavailable", "public lifecycle writes are disabled for this deployment")
+			return
+		}
 		if failure := h.applyOAuthIdentity(r); failure != nil {
 			writeLifecycleAuthorizationFailure(w, r, failure)
 			return
@@ -1185,4 +1198,11 @@ func secureTokenEqual(actual, expected string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) == 1
+}
+
+// publicLifecycleDisabled reads the operator kill switch. The surface stays open
+// unless the deployment explicitly says "false", so an unset variable and a
+// handler built without the env constructor both keep the previous behaviour.
+func publicLifecycleDisabled(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), "false")
 }

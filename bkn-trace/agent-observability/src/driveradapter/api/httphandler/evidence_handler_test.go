@@ -205,7 +205,6 @@ func TestPublicLifecycleIdentityRejectsAnonymousQueryCompatibilityMode(t *testin
 	request.Header.Set("x-account-id", "forged-user")
 	request.Header.Set("x-account-type", "user")
 	request.Header.Set("x-tenant-id", "forged-tenant")
-	request.Header.Set("x-tenant-id", "forged-domain")
 	response := httptest.NewRecorder()
 	nextCalled := false
 
@@ -215,6 +214,43 @@ func TestPublicLifecycleIdentityRejectsAnonymousQueryCompatibilityMode(t *testin
 
 	if response.Code != http.StatusUnauthorized || nextCalled {
 		t.Fatalf("anonymous compatibility mode authorized public lifecycle: %d %s", response.Code, response.Body.String())
+	}
+}
+
+func TestPublicLifecycleIdentityRejectsDisabledSurface(t *testing.T) {
+	handler := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
+		DeploymentTenantID:         "tenant-1",
+		AuthorizationScopeResolver: &fakeAccessScopeResolver{},
+		DisablePublicLifecycle:     true,
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", nil)
+	request.Header.Set("x-account-id", "user-1")
+	request.Header.Set("x-account-type", "user")
+	response := httptest.NewRecorder()
+	nextCalled := false
+
+	handler.RequirePublicLifecycleIdentity(func(http.ResponseWriter, *http.Request) {
+		nextCalled = true
+	})(response, request)
+
+	if response.Code != http.StatusServiceUnavailable || nextCalled {
+		t.Fatalf("disabled public lifecycle surface accepted a write: %d %s", response.Code, response.Body.String())
+	}
+	if !strings.Contains(response.Body.String(), "authorization_unavailable") {
+		t.Fatalf("disabled public lifecycle surface must answer authorization_unavailable: %s", response.Body.String())
+	}
+}
+
+func TestPublicLifecycleEnabledEnvOnlyDisablesOnExplicitFalse(t *testing.T) {
+	for _, value := range []string{"", "true", "TRUE", "1", "yes"} {
+		if publicLifecycleDisabled(value) {
+			t.Fatalf("value %q must keep the public lifecycle surface open", value)
+		}
+	}
+	for _, value := range []string{"false", "FALSE", " false "} {
+		if !publicLifecycleDisabled(value) {
+			t.Fatalf("value %q must disable the public lifecycle surface", value)
+		}
 	}
 }
 

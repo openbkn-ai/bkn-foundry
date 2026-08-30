@@ -66,6 +66,10 @@ evidence:
     # injected after gateway authentication and never accepted from Studio.
     deploymentTenantID: openbkn-local
     allowUnauthenticated: false
+    # Kill switch for the public lifecycle write surface. Set to false to make
+    # every public lifecycle call answer 503 authorization_unavailable without
+    # taking the query surface down with it.
+    publicLifecycleEnabled: true
 
 bknSafe:
   baseURL: http://bkn-safe:3000

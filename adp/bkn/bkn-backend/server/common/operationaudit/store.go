@@ -123,12 +123,17 @@ func (s *Store) Record(ctx context.Context, entry Entry) error {
 	}
 
 	query := "INSERT INTO " + tableName + " (event_id,event_time,recorded_at,tenant_id,knowledge_network_id,actor_id,actor_name,actor_type,auth_method,credential_id,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,change_summary,schema_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id = VALUES(event_id)"
-	_, err = s.db.ExecContext(ctx, query,
+	arguments := []any{
 		entry.EventID, entry.EventTime, entry.RecordedAt, entry.TenantID, entry.KnowledgeNetworkID,
 		entry.ActorID, entry.ActorName, entry.ActorType, entry.AuthMethod, entry.CredentialID, entry.RequestID, entry.SourceChannel,
 		entry.Method, entry.Action, entry.TargetType, entry.TargetID, entry.TargetName, entry.Outcome, entry.FailureCode,
 		entry.FailureMessage, string(summary), entry.SchemaVersion,
-	)
+	}
+	_, err = s.db.ExecContext(ctx, query, arguments...)
+	if isLegacyBusinessDomainColumnError(err) {
+		legacyQuery := "INSERT INTO " + tableName + " (event_id,event_time,recorded_at,tenant_id,knowledge_network_id,actor_id,actor_name,actor_type,auth_method,credential_id,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,change_summary,schema_version,business_domain_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id = VALUES(event_id)"
+		_, err = s.db.ExecContext(ctx, legacyQuery, append(arguments, "")...)
+	}
 	if err != nil {
 		return fmt.Errorf("insert operation audit event: %w", err)
 	}
@@ -329,4 +334,21 @@ func scanEntry(row scanner) (Entry, error) {
 		}
 	}
 	return entry, nil
+}
+
+// A 0.1.5 binary can reach a database that still carries the pre-0.1.5
+// business_domain_id column: an upgrade that bypasses the Helm migration hook
+// (`kubectl set image`) or a data-migrator run that has not finished yet. That
+// column is NOT NULL without a default, so the tenant-only INSERT above fails
+// with "Field 'business_domain_id' doesn't have a default value" and every
+// management fact would be dropped for the whole window. Retry once against the
+// legacy shape instead. Both directions self-heal: once the column is gone the
+// first statement succeeds and the fallback is never reached. Delete this
+// fallback when 0.1.5 is the minimum supported schema.
+func isLegacyBusinessDomainColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "business_domain_id") && strings.Contains(message, "default value")
 }

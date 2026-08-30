@@ -26,6 +26,15 @@ releases:
   kafka-connect:
     chart: kafka-connect
     version: main
+  # Installed before every Evidence producer. The producers deliver trace
+  # envelopes to agent-observability, and each release relaxes the owner
+  # contract in lockstep: a producer that ships ahead of agent-observability
+  # sends an envelope the older consumer still rejects, which parks the outbox
+  # in retry and blocks the stream head until the consumer catches up. Consumer
+  # first is the only ordering that has no such window.
+  agent-observability:
+    chart: agent-observability
+    version: main
   vega-backend:
     chart: vega-backend
     version: main
@@ -49,9 +58,6 @@ releases:
     version: main
   bkn-agent:
     chart: bkn-agent
-    version: main
-  agent-observability:
-    chart: agent-observability
     version: main
   otelcol-contrib:
     chart: otelcol-contrib

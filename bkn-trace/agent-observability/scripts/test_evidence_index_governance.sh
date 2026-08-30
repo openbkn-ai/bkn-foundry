@@ -127,6 +127,18 @@ if ! grep -A1 -Fq 'name: BKN_TRACE_DEPLOYMENT_TENANT_ID
   echo "single-tenant deployments must inject the trusted deployment tenant" >&2
   exit 1
 fi
+if ! grep -A1 -Fq 'name: BKN_TRACE_PUBLIC_LIFECYCLE_ENABLED
+              value: "true"' <<<"${default_rendered}"; then
+  echo "public lifecycle writes must be rendered as an explicit switch" >&2
+  exit 1
+fi
+disabled_lifecycle_rendered="$(render_chart agent-observability "${chart_dir}" \
+  --set evidence.queryAuth.publicLifecycleEnabled=false)"
+if ! grep -A1 -Fq 'name: BKN_TRACE_PUBLIC_LIFECYCLE_ENABLED
+              value: "false"' <<<"${disabled_lifecycle_rendered}"; then
+  echo "operators must be able to turn the public lifecycle write surface off" >&2
+  exit 1
+fi
 legacy_rendered="$(render_chart agent-observability "${chart_dir}" \
   --set evidence.store=opensearch \
   --set evidence.index=bkn-trace-evidence-test \
