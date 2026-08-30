@@ -30,7 +30,7 @@ type toolboxMarketResponse struct {
 
 func (c *OperatorIntegrationClient) ListToolboxMarket(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 ) (*toolboxMarketResponse, error) {
 	query := url.Values{}
@@ -42,7 +42,7 @@ func (c *OperatorIntegrationClient) ListToolboxMarket(
 
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/tool-box/market?%s", query.Encode())
 	var resp toolboxMarketResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -63,7 +63,7 @@ type mcpMarketResponse struct {
 
 func (c *OperatorIntegrationClient) ListMcpMarket(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 ) (*mcpMarketResponse, error) {
 	query := url.Values{}
@@ -75,7 +75,7 @@ func (c *OperatorIntegrationClient) ListMcpMarket(
 
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/market/list?%s", query.Encode())
 	var resp mcpMarketResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -97,7 +97,7 @@ type skillMarketResponse struct {
 
 func (c *OperatorIntegrationClient) ListSkillMarket(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	page, pageSize int,
 ) (*skillMarketResponse, error) {
 	query := url.Values{}
@@ -109,7 +109,7 @@ func (c *OperatorIntegrationClient) ListSkillMarket(
 
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/market?%s", query.Encode())
 	var resp skillMarketResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -117,7 +117,7 @@ func (c *OperatorIntegrationClient) ListSkillMarket(
 
 func (c *OperatorIntegrationClient) DownloadSkillMarketPackage(
 	ctx context.Context,
-	businessDomain, skillID, userID string,
+	skillID, userID string,
 ) ([]byte, string, error) {
 	path := fmt.Sprintf(
 		"/api/agent-operator-integration/v1/skills/market/%s/management/download",
@@ -131,7 +131,6 @@ func (c *OperatorIntegrationClient) DownloadSkillMarketPackage(
 
 	req.Header.Set("Accept", "application/octet-stream")
 	applyLanguageHeader(ctx, req.Header)
-	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)
 	}

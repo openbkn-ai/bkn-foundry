@@ -466,13 +466,12 @@ func ParseNetworkFile(text string, sourcePath string) (*BknNetwork, error) {
 
 	network := &BknNetwork{
 		BknNetworkFrontmatter: BknNetworkFrontmatter{
-			Type:           strVal(fmData, "type"),
-			ID:             strVal(fmData, "id"),
-			Name:           strVal(fmData, "name"),
-			Tags:           strSliceVal(fmData, "tags"),
-			Version:        strVal(fmData, "version"),
-			Branch:         strVal(fmData, "branch"),
-			BusinessDomain: strVal(fmData, "business_domain"),
+			Type:    strVal(fmData, "type"),
+			ID:      strVal(fmData, "id"),
+			Name:    strVal(fmData, "name"),
+			Tags:    strSliceVal(fmData, "tags"),
+			Version: strVal(fmData, "version"),
+			Branch:  strVal(fmData, "branch"),
 		},
 		Description: extractBodyDescription(text),
 		RawContent:  text,

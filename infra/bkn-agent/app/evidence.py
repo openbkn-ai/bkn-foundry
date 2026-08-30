@@ -362,7 +362,6 @@ def _artifact(
         "content_hash": artifact_content_hash(content),
         "content": content,
         "bkn.tenant.id": ctx.tenant_id,
-        "business_domain": ctx.business_domain,
         "bkn.account.id": account_id,
         "bkn.account.type": account_type,
         "agent_or_app": current.agent_id,
@@ -702,7 +701,7 @@ def build_batch(
     events: list[dict[str, Any]], account_id: str, account_type: str
 ) -> dict[str, Any] | None:
     ctx = observability.current_context()
-    if not ctx or (not ctx.tenant_id and not ctx.business_domain) or not events:
+    if not ctx or not ctx.tenant_id or not events:
         return None
     current = _interaction.get()
     conversation_id = current.conversation_id if current else ctx.conversation_id
@@ -711,7 +710,6 @@ def build_batch(
         "traceparent": ctx.traceparent,
         "bkn.request.id": ctx.request_id,
         "bkn.tenant.id": ctx.tenant_id,
-        "business_domain": ctx.business_domain,
         "bkn.account.id": account_id,
         "bkn.account.type": account_type,
         "bkn.application.principal.id": (
@@ -744,7 +742,7 @@ def _ledger_ref_type(value: Any) -> str | None:
     return value if value in allowed else None
 
 
-def _ledger_business_refs(event: dict[str, Any], business_domain: str) -> list[dict[str, Any]]:
+def _ledger_business_refs(event: dict[str, Any]) -> list[dict[str, Any]]:
     payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
     candidates: list[Any] = []
     for field in ("source_refs", "resource_refs", "field_refs", "business_refs"):
@@ -758,7 +756,7 @@ def _ledger_business_refs(event: dict[str, Any], business_domain: str) -> list[d
             continue
         ref_id = str(candidate.get("ref_id") or "").strip()
         ref_type = _ledger_ref_type(candidate.get("ref_type"))
-        if not ref_id or not ref_type or not business_domain:
+        if not ref_id or not ref_type:
             continue
         key = (ref_type, ref_id)
         if key in seen:
@@ -767,7 +765,6 @@ def _ledger_business_refs(event: dict[str, Any], business_domain: str) -> list[d
         ref = {
             "ref_type": ref_type,
             "ref_id": ref_id,
-            "business_domain_id": business_domain,
             "version": str(
                 candidate.get("version")
                 or candidate.get("version_status")
@@ -797,7 +794,6 @@ def build_ledger_events(batch: dict[str, Any]) -> list[dict[str, Any]]:
     events = batch.get("events") if isinstance(batch, dict) else None
     if not isinstance(trace, dict) or not isinstance(events, list):
         return []
-    business_domain = str(trace.get("business_domain") or "").strip()
     conversation_id = str(trace.get("bkn.conversation.id") or "").strip()
     result: list[dict[str, Any]] = []
     for event in events:
@@ -813,7 +809,7 @@ def build_ledger_events(batch: dict[str, Any]) -> list[dict[str, Any]]:
         observed_at = str(event.get("observed_at") or "").strip()
         emitted_at = str(event.get("emitted_at") or observed_at).strip()
         stream_key = operation_id or f"interaction:{interaction_id}"
-        refs = _ledger_business_refs(event, business_domain)
+        refs = _ledger_business_refs(event)
         ledger = {
             "bkn.trace.schema.version": LEDGER_CONTRACT_VERSION,
             "event_id": event_id,
@@ -984,7 +980,6 @@ def _ingest_headers(identity: Any = None) -> dict[str, str]:
     if isinstance(identity, observability.TraceContext):
         values = {
             "tenant": identity.tenant_id,
-            "business_domain": identity.business_domain,
             "application": identity.application_principal_id or identity.account_id,
             "subject_type": identity.effective_subject_type
             or ("service" if identity.account_type in {"app", "service"} else "user"),
@@ -994,7 +989,6 @@ def _ingest_headers(identity: Any = None) -> dict[str, str]:
     elif isinstance(identity, dict):
         values = {
             "tenant": identity.get("bkn.tenant.id"),
-            "business_domain": identity.get("business_domain"),
             "application": identity.get("bkn.application.principal.id"),
             "subject_type": identity.get("bkn.effective.subject.type"),
             "subject": identity.get("bkn.effective.subject.id") or identity.get("bkn.account.id"),
@@ -1004,7 +998,6 @@ def _ingest_headers(identity: Any = None) -> dict[str, str]:
         return headers
     mapping = {
         "X-BKN-Tenant-ID": values["tenant"],
-        "X-Business-Domain-ID": values["business_domain"],
         "X-BKN-Application-Principal-ID": values["application"],
         "X-BKN-Effective-Subject-Type": values["subject_type"],
         "X-BKN-Effective-Subject-ID": values["subject"],

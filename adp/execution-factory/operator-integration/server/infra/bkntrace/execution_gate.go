@@ -104,6 +104,6 @@ func (s *redisExecutionStore) Set(ctx context.Context, key, value string) error 
 }
 
 func (a Action) executionKey() string {
-	scope := strings.Join([]string{a.accountType, a.accountID, a.businessDomain, a.instanceID}, "\x00")
+	scope := strings.Join([]string{a.accountType, a.accountID, a.instanceID}, "\x00")
 	return "bkn-trace:action-execution:" + digest(scope)
 }

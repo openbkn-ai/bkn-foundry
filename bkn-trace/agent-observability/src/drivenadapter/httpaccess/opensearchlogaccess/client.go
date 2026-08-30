@@ -128,9 +128,6 @@ func buildDetailQuery(logID string, scope observabilityvo.SourceAccessScope) map
 		map[string]any{"term": map[string]any{"attributes.tenant_id.keyword": scope.TenantID}},
 		map[string]any{"term": map[string]any{"attributes.trust_level.keyword": "trusted"}},
 	}
-	if scope.BusinessDomain != "" {
-		filters = append(filters, map[string]any{"term": map[string]any{"attributes.business_domain_id.keyword": scope.BusinessDomain}})
-	}
 	return map[string]any{
 		"size": 1, "track_total_hits": false,
 		"query": map[string]any{"bool": map[string]any{"filter": filters}},
@@ -157,7 +154,6 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		}
 	}
 	addTerm("attributes.tenant_id.keyword", query.AuthorizedTenantID)
-	addTerm("attributes.business_domain_id.keyword", query.AuthorizedBusinessDomain)
 	addTerm("attributes.trust_level.keyword", "trusted")
 	authorizedCategories := intersectValues(query.Categories, query.AuthorizedCategories)
 	if len(query.Categories) == 0 {
@@ -281,7 +277,6 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 		ServiceName:         stringAttribute(document.Resource, "service.name", stringAttribute(document.Attributes, "service.name", "")),
 		Environment:         stringAttribute(document.Resource, "deployment.environment", ""),
 		TenantID:            stringAttribute(document.Attributes, "tenant_id", ""),
-		BusinessDomain:      stringAttribute(document.Attributes, "business_domain_id", ""),
 		ActorID:             stringAttribute(document.Attributes, "actor_id", ""),
 		EffectiveSubjectID:  stringAttribute(document.Attributes, "effective_subject_id", ""),
 		ApplicationID:       stringAttribute(document.Attributes, "application_id", ""),

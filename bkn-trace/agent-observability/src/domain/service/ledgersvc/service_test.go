@@ -253,7 +253,7 @@ func TestEvidenceLedgerRejectsUnknownBusinessRefAndOperationRole(t *testing.T) {
 
 	unknownRef := testEvent()
 	unknownRef.BusinessRefs = []sessionvo.BusinessRef{{
-		RefType: "result", RefID: "result:1", BusinessDomainID: "domain-1", Version: "1",
+		RefType: "result", RefID: "result:1", Version: "1",
 	}}
 	if _, err := ledgersvc.New(ledgerstore.New()).Ingest(context.Background(), unknownRef); !ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) {
 		t.Fatalf("unknown business ref type must be rejected, got %v", err)
@@ -264,7 +264,7 @@ func TestEvidenceLedgerRejectsUnknownBusinessRefAndOperationRole(t *testing.T) {
 		OperationID: unknownRole.OperationID,
 		BusinessRef: sessionvo.BusinessRef{
 			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
-			BusinessDomainID: "domain-1", Version: "1",
+			Version: "1",
 		},
 		Role: "guess", ObservedAt: unknownRole.ObservedAt,
 	}}
@@ -279,7 +279,7 @@ func TestEvidenceLedgerRejectsBusinessRefTypePrefixMismatch(t *testing.T) {
 	businessRefMismatch := testEvent()
 	businessRefMismatch.BusinessRefs = []sessionvo.BusinessRef{{
 		RefType: sessionvo.BusinessRefObjectType, RefID: "resource:forecast",
-		BusinessDomainID: "domain-1", Version: "1",
+		Version: "1",
 	}}
 	if _, err := ledgersvc.New(ledgerstore.New()).Ingest(context.Background(), businessRefMismatch); !ledgersvc.IsCode(err, ledgersvc.CodeInvalidEvent) {
 		t.Fatalf("business ref with mismatched canonical prefix must be rejected, got %v", err)
@@ -290,7 +290,7 @@ func TestEvidenceLedgerRejectsBusinessRefTypePrefixMismatch(t *testing.T) {
 		OperationID: edgeMismatch.OperationID,
 		BusinessRef: sessionvo.BusinessRef{
 			RefType: sessionvo.BusinessRefDataResource, RefID: "object:forecast",
-			BusinessDomainID: "domain-1", Version: "1",
+			Version: "1",
 		},
 		Role: sessionvo.OperationRoleRead, ObservedAt: edgeMismatch.ObservedAt,
 	}}
@@ -313,7 +313,7 @@ func TestEvidenceLedgerRejectsInvalidExecutionTimesAndForeignOperationEdges(t *t
 		OperationID: "op-from-another-event",
 		BusinessRef: sessionvo.BusinessRef{
 			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
-			BusinessDomainID: "domain-1", Version: "1",
+			Version: "1",
 		},
 		Role: sessionvo.OperationRoleRead, ObservedAt: foreignOperation.ObservedAt,
 	}}
@@ -326,7 +326,7 @@ func TestEvidenceLedgerRejectsInvalidExecutionTimesAndForeignOperationEdges(t *t
 		OperationID: edgeOutsideEvent.OperationID,
 		BusinessRef: sessionvo.BusinessRef{
 			RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
-			BusinessDomainID: "domain-1", Version: "1",
+			Version: "1",
 		},
 		Role: sessionvo.OperationRoleRead, ObservedAt: edgeOutsideEvent.EmittedAt.Add(time.Second),
 	}}
@@ -366,8 +366,7 @@ func testEvent() ledgervo.Event {
 		EventID: "evt-1", EventType: "operation.output.observed", SchemaVersion: "3.0.0",
 		PayloadHash: ledgervo.CanonicalPayloadHash(envelope),
 		Owner: sessionvo.Owner{
-			TenantID: "tenant-1", BusinessDomainID: "domain-1",
-			ApplicationPrincipalID: "app-1", EffectiveSubjectType: sessionvo.SubjectService,
+			TenantID: "tenant-1", ApplicationPrincipalID: "app-1", EffectiveSubjectType: sessionvo.SubjectService,
 			EffectiveSubjectID: "agent-1",
 		},
 		ConversationID: "conv-1", InteractionID: "int-1", OperationID: "op-1", Attempt: 1,

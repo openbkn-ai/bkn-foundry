@@ -43,7 +43,7 @@ func TestSourceLimitsReceiptCandidatesToRequestedLimitPlusLookahead(t *testing.T
 	)
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		Scope: evidencevo.QueryScope{
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		},
 		Limit: 20,
 	})
@@ -93,14 +93,14 @@ func TestSourceCollapsesBatchCandidatesPerSelectedTrace(t *testing.T) {
 			}
 		}
 		_, _ = io.WriteString(w, `{"hits":{"hits":[
-			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":25},"hits":[{"_source":{"receipt_id":"receipt-heavy","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-heavy","conversation_id":"conv-heavy","interaction_id":"interaction-heavy","request_id":"request-heavy","issued_at":"2026-08-19T09:00:00Z"}}]}}}},
-			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":1},"hits":[{"_source":{"receipt_id":"receipt-next","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-next","conversation_id":"conv-next","interaction_id":"interaction-next","request_id":"request-next","issued_at":"2026-08-19T08:59:00Z"}}]}}}}
+			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":25},"hits":[{"_source":{"receipt_id":"receipt-heavy","owner":{"tenant_id":"tenant-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-heavy","conversation_id":"conv-heavy","interaction_id":"interaction-heavy","request_id":"request-heavy","issued_at":"2026-08-19T09:00:00Z"}}]}}}},
+			{"inner_hits":{"selected_receipts":{"hits":{"total":{"value":1},"hits":[{"_source":{"receipt_id":"receipt-next","owner":{"tenant_id":"tenant-1","effective_subject_type":"user","effective_subject_id":"user-1"},"trace_id":"trace-next","conversation_id":"conv-next","interaction_id":"interaction-next","request_id":"request-next","issued_at":"2026-08-19T08:59:00Z"}}]}}}}
 		]}}`)
 	}))
 	t.Cleanup(server.Close)
 	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", nil)
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
-		Scope:    evidencevo.QueryScope{TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user"},
+		Scope:    evidencevo.QueryScope{TenantID: "tenant-1", AccountID: "user-1", AccountType: "user"},
 		TraceIDs: []string{"trace-heavy", "trace-next"}, Limit: 40,
 	})
 	if err != nil {
@@ -125,7 +125,7 @@ func TestSourceLimitsInteractionExpansionToCandidateBudget(t *testing.T) {
 			t.Fatalf("query %d must be bounded by limit plus lookahead, got %#v", searches, query["size"])
 		}
 		if searches == 1 {
-			_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{"receipt_id":"rcpt-1","interaction_id":"int-1","owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1"}}}]}}`)
+			_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{"receipt_id":"rcpt-1","interaction_id":"int-1","owner":{"tenant_id":"tenant-1"}}}]}}`)
 			return
 		}
 		_, _ = io.WriteString(w, `{"hits":{"hits":[]}}`)
@@ -134,7 +134,7 @@ func TestSourceLimitsInteractionExpansionToCandidateBudget(t *testing.T) {
 
 	source := opensearchcoreprojection.New(opensearch.New(server.URL, opensearch.AuthConfig{}, time.Second), "bkn-trace-core", nil)
 	if _, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
-		Scope: evidencevo.QueryScope{TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user"},
+		Scope: evidencevo.QueryScope{TenantID: "tenant-1", AccountID: "user-1", AccountType: "user"},
 		Limit: 20,
 	}); err != nil {
 		t.Fatalf("load projection: %v", err)
@@ -163,7 +163,7 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 		}
 		if searches == 1 {
 			for _, field := range []string{
-				"owner.tenant_id.keyword", "owner.business_domain_id.keyword",
+				"owner.tenant_id.keyword",
 				"request_id.keyword", "trace_id.keyword", "interaction_id.keyword",
 			} {
 				if !strings.Contains(queryBody, field) {
@@ -171,7 +171,7 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 				}
 			}
 			for _, field := range []string{
-				"owner.tenant_id", "owner.business_domain_id",
+				"owner.tenant_id",
 				"request_id", "trace_id", "interaction_id",
 			} {
 				if strings.Contains(queryBody, `"`+field+`":{"value"`) {
@@ -182,24 +182,24 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 		_, _ = io.WriteString(w, `{
 			"hits":{"hits":[{"_source":{
 				"receipt_id":"rcpt-1","schema_version":"3.0.0",
-				"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"openbkn-sdk","effective_subject_type":"user","effective_subject_id":"user-1"},
+				"owner":{"tenant_id":"tenant-1","application_principal_id":"openbkn-sdk","effective_subject_type":"user","effective_subject_id":"user-1"},
 				"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-1",
 				"operation_key":"forecast-query","tool_name":"run_sql","receipt_status":"completed","evidence_durability":"durable",
 				"request_id":"req-1","trace_id":"11111111111111111111111111111111",
 				"business_refs":[
-					{"ref_type":"knowledge_network","ref_id":"kn:supplychain_hd0202","business_domain_id":"domain-1","version":"v3"},
-					{"ref_type":"object_type","ref_id":"object:supplychain_hd0202:forecast","business_domain_id":"domain-1","version":"v3"}
+					{"ref_type":"knowledge_network","ref_id":"kn:supplychain_hd0202","version":"v3"},
+					{"ref_type":"object_type","ref_id":"object:supplychain_hd0202:forecast","version":"v3"}
 				],
 				"knowledge_network_ids":["supplychain_hd0202"],
 				"artifact_refs":[],"partial_reasons":[],
 				"issued_at":"2026-08-02T07:35:26Z","terminal_at":"2026-08-02T07:35:27Z"
 			}}, {"_source":{
 				"receipt_id":"rcpt-2","schema_version":"3.0.0",
-				"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"openbkn-sdk","effective_subject_type":"user","effective_subject_id":"user-1"},
+				"owner":{"tenant_id":"tenant-1","application_principal_id":"openbkn-sdk","effective_subject_type":"user","effective_subject_id":"user-1"},
 				"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-2",
 				"operation_key":"data-query","tool_name":"run_sql","receipt_status":"completed","evidence_durability":"durable",
 				"request_id":"req-2","trace_id":"44444444444444444444444444444444",
-				"business_refs":[{"ref_type":"data_resource","ref_id":"resource:forecast","business_domain_id":"domain-1","version":"v3"}],
+				"business_refs":[{"ref_type":"data_resource","ref_id":"resource:forecast","version":"v3"}],
 				"artifact_refs":[],"partial_reasons":[],
 				"issued_at":"2026-08-02T07:35:27Z","terminal_at":"2026-08-02T07:35:28Z"
 			}}]}}
@@ -212,13 +212,13 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 			ArtifactID: "question-1", ArtifactType: evidencevo.ArtifactTypeQuestion,
 			RequestID: "req-lifecycle-start", TraceID: "22222222222222222222222222222222", InteractionID: "int-1",
 			Content: "6月份有哪些需求预测单？", ObservedAt: "2026-08-02T07:35:25Z",
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		},
 		{
 			ArtifactID: "answer-1", ArtifactType: evidencevo.ArtifactTypeResult,
 			RequestID: "req-lifecycle-complete", TraceID: "33333333333333333333333333333333", InteractionID: "int-1",
 			Content: map[string]any{"summary": "6月份共有63条，需求总量11594。"}, ObservedAt: "2026-08-02T07:35:28Z",
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		},
 	}}}
 	source := opensearchcoreprojection.New(
@@ -232,9 +232,9 @@ func TestSourceBuildsAuthorizedExecutionProjectionFromCoreReceiptsAndArtifacts(t
 		TraceID:       "11111111111111111111111111111111",
 		InteractionID: "int-1",
 		Scope: evidencevo.QueryScope{
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 			AccessProfile: &evidencevo.AccessProfile{
-				TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "user-1",
+				TenantID: "tenant-1", EffectiveSubjectID: "user-1",
 				ApplicationPrincipalID: "openbkn-studio", AccountActive: true, TenantActive: true,
 			},
 		},
@@ -280,7 +280,7 @@ func TestRequestProjectionHydratesArtifactsByReceiptInteraction(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
 			"receipt_id":"rcpt-request","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"openbkn-sdk","effective_subject_type":"user","effective_subject_id":"user-1"},
+			"owner":{"tenant_id":"tenant-1","application_principal_id":"openbkn-sdk","effective_subject_type":"user","effective_subject_id":"user-1"},
 			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-1",
 			"tool_name":"search_schema","receipt_status":"completed","evidence_durability":"durable",
 			"request_id":"req-1","trace_id":"11111111111111111111111111111111",
@@ -294,13 +294,13 @@ func TestRequestProjectionHydratesArtifactsByReceiptInteraction(t *testing.T) {
 			ArtifactID: "question-1", ArtifactType: evidencevo.ArtifactTypeQuestion,
 			RequestID: "req-lifecycle", TraceID: "22222222222222222222222222222222", InteractionID: "int-1",
 			Content: "6月份有哪些需求预测单？", ObservedAt: "2026-08-02T07:35:25Z",
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		},
 		{
 			ArtifactID: "other-operation-data", ArtifactType: evidencevo.ArtifactTypeDataResult,
 			RequestID: "req-2", TraceID: "22222222222222222222222222222223", InteractionID: "int-1",
 			OperationID: "op-2", Content: map[string]any{"total": 11594}, ObservedAt: "2026-08-02T07:35:27Z",
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		},
 	}}}
 	source := opensearchcoreprojection.New(
@@ -309,7 +309,7 @@ func TestRequestProjectionHydratesArtifactsByReceiptInteraction(t *testing.T) {
 
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		RequestID: "req-1", Scope: evidencevo.QueryScope{
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		},
 	})
 	if err != nil {
@@ -330,7 +330,7 @@ func TestSourceProjectsQueryArtifactAsDataQueryReference(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
 			"receipt_id":"rcpt-query","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"user-1"},
+			"owner":{"tenant_id":"tenant-1","effective_subject_type":"user","effective_subject_id":"user-1"},
 			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-query",
 			"tool_name":"run_sql","receipt_status":"completed","evidence_durability":"durable",
 			"request_id":"req-query","trace_id":"11111111111111111111111111111111",
@@ -345,14 +345,13 @@ func TestSourceProjectsQueryArtifactAsDataQueryReference(t *testing.T) {
 			ArtifactID: "query-1", ArtifactType: evidencevo.ArtifactTypeQuery,
 			RequestID: "req-query", TraceID: "11111111111111111111111111111111",
 			InteractionID: "int-1", OperationID: "op-query", Content: "SELECT * FROM inventory",
-			ObservedAt: "2026-08-02T07:35:26Z", TenantID: "tenant-1", BusinessDomain: "domain-1",
-			AccountID: "user-1", AccountType: "user",
+			ObservedAt: "2026-08-02T07:35:26Z", TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		}}}},
 	)
 
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		RequestID: "req-query", Scope: evidencevo.QueryScope{
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 		},
 	})
 	if err != nil {
@@ -383,7 +382,7 @@ func TestSourceUsesManagedKnowledgeNetworksAsBusinessCandidates(t *testing.T) {
 		}
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
 			"receipt_id":"rcpt-managed","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"other-app","effective_subject_type":"user","effective_subject_id":"other-user"},
+			"owner":{"tenant_id":"tenant-1","application_principal_id":"other-app","effective_subject_type":"user","effective_subject_id":"other-user"},
 			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-1",
 			"tool_name":"query_object_instance","receipt_status":"completed","evidence_durability":"durable",
 			"request_id":"req-1","trace_id":"11111111111111111111111111111111",
@@ -398,9 +397,9 @@ func TestSourceUsesManagedKnowledgeNetworksAsBusinessCandidates(t *testing.T) {
 	)
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		Scope: evidencevo.QueryScope{
-			TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "builder-1", AccountType: "user",
+			TenantID: "tenant-1", AccountID: "builder-1", AccountType: "user",
 			AccessProfile: &evidencevo.AccessProfile{
-				TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+				TenantID: "tenant-1", EffectiveSubjectID: "builder-1",
 				Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-managed"},
 				AccountActive: true, TenantActive: true,
 			},
@@ -420,7 +419,7 @@ func TestSourceProjectsAuthorizedInteractionForManagedBuilder(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
 			"receipt_id":"rcpt-schema","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"cursor","effective_subject_type":"user","effective_subject_id":"admin"},
+			"owner":{"tenant_id":"tenant-1","application_principal_id":"cursor","effective_subject_type":"user","effective_subject_id":"admin"},
 			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-schema",
 			"tool_name":"search_schema","receipt_status":"completed","evidence_durability":"durable",
 			"request_id":"req-schema","trace_id":"11111111111111111111111111111111",
@@ -428,11 +427,11 @@ func TestSourceProjectsAuthorizedInteractionForManagedBuilder(t *testing.T) {
 			"issued_at":"2026-08-02T07:35:26Z","terminal_at":"2026-08-02T07:35:27Z"
 		}}, {"_source":{
 			"receipt_id":"rcpt-sql","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"cursor","effective_subject_type":"user","effective_subject_id":"admin"},
+			"owner":{"tenant_id":"tenant-1","application_principal_id":"cursor","effective_subject_type":"user","effective_subject_id":"admin"},
 			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-sql",
 			"tool_name":"run_sql","receipt_status":"completed","evidence_durability":"durable",
 			"request_id":"req-sql","trace_id":"22222222222222222222222222222222",
-			"business_refs":[{"ref_type":"data_resource","ref_id":"resource:inventory","business_domain_id":"domain-1","version":"v1"}],
+			"business_refs":[{"ref_type":"data_resource","ref_id":"resource:inventory","version":"v1"}],
 			"issued_at":"2026-08-02T07:35:28Z","terminal_at":"2026-08-02T07:35:29Z"
 		}}]}}`)
 	}))
@@ -442,14 +441,12 @@ func TestSourceProjectsAuthorizedInteractionForManagedBuilder(t *testing.T) {
 		{
 			ArtifactID: "question-1", ArtifactType: evidencevo.ArtifactTypeQuestion,
 			RequestID: "req-start", InteractionID: "int-1", Content: "查询库存",
-			ObservedAt: "2026-08-02T07:35:25Z", TenantID: "tenant-1", BusinessDomain: "domain-1",
-			AccountID: "admin", AccountType: "user",
+			ObservedAt: "2026-08-02T07:35:25Z", TenantID: "tenant-1", AccountID: "admin", AccountType: "user",
 		},
 		{
 			ArtifactID: "result-1", ArtifactType: evidencevo.ArtifactTypeResult,
 			RequestID: "req-finish", InteractionID: "int-1", Content: "库存为 100",
-			ObservedAt: "2026-08-02T07:35:30Z", TenantID: "tenant-1", BusinessDomain: "domain-1",
-			AccountID: "admin", AccountType: "user",
+			ObservedAt: "2026-08-02T07:35:30Z", TenantID: "tenant-1", AccountID: "admin", AccountType: "user",
 		},
 	}}}
 	source := opensearchcoreprojection.New(
@@ -459,7 +456,7 @@ func TestSourceProjectsAuthorizedInteractionForManagedBuilder(t *testing.T) {
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		InteractionID: "int-1",
 		Scope: evidencevo.QueryScope{AccessProfile: &evidencevo.AccessProfile{
-			TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder",
+			TenantID: "tenant-1", EffectiveSubjectID: "builder",
 			Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-managed"},
 			AccountActive: true, TenantActive: true,
 		}},
@@ -481,13 +478,13 @@ func TestSourceReturnsCompleteInteractionWhenOneManagedNetworkMatches(t *testing
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
 			"receipt_id":"rcpt-managed","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"owner"},
+			"owner":{"tenant_id":"tenant-1","effective_subject_type":"user","effective_subject_id":"owner"},
 			"interaction_id":"int-1","operation_id":"op-managed","tool_name":"search_schema",
 			"request_id":"req-managed","trace_id":"11111111111111111111111111111111",
 			"knowledge_network_ids":["kn-managed"],"issued_at":"2026-08-02T07:35:26Z"
 		}}, {"_source":{
 			"receipt_id":"rcpt-unmanaged","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","effective_subject_type":"user","effective_subject_id":"owner"},
+			"owner":{"tenant_id":"tenant-1","effective_subject_type":"user","effective_subject_id":"owner"},
 			"interaction_id":"int-1","operation_id":"op-unmanaged","tool_name":"search_schema",
 			"request_id":"req-unmanaged","trace_id":"22222222222222222222222222222222",
 			"knowledge_network_ids":["kn-unmanaged"],"issued_at":"2026-08-02T07:35:27Z"
@@ -499,7 +496,7 @@ func TestSourceReturnsCompleteInteractionWhenOneManagedNetworkMatches(t *testing
 	result, err := source.LoadExecutionProjection(context.Background(), iprojectionsource.Query{
 		InteractionID: "int-1",
 		Scope: evidencevo.QueryScope{AccessProfile: &evidencevo.AccessProfile{
-			TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder",
+			TenantID: "tenant-1", EffectiveSubjectID: "builder",
 			Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-managed"},
 			AccountActive: true, TenantActive: true,
 		}},
@@ -525,7 +522,7 @@ func TestSourceUsesApplicationPrincipalAsTechnicalOwnerCandidate(t *testing.T) {
 		}
 		_, _ = io.WriteString(w, `{"hits":{"hits":[{"_source":{
 			"receipt_id":"rcpt-app","schema_version":"3.0.0",
-			"owner":{"tenant_id":"tenant-1","business_domain_id":"domain-1","application_principal_id":"app-a","effective_subject_type":"user","effective_subject_id":"other-user"},
+			"owner":{"tenant_id":"tenant-1","application_principal_id":"app-a","effective_subject_type":"user","effective_subject_id":"other-user"},
 			"conversation_id":"conv-1","interaction_id":"int-1","operation_id":"op-1",
 			"tool_name":"query_object_instance","receipt_status":"completed","evidence_durability":"durable",
 			"request_id":"req-1","trace_id":"11111111111111111111111111111111",
@@ -541,8 +538,7 @@ func TestSourceUsesApplicationPrincipalAsTechnicalOwnerCandidate(t *testing.T) {
 		Scope: evidencevo.QueryScope{
 			View: evidencevo.AccessViewTechnical,
 			AccessProfile: &evidencevo.AccessProfile{
-				TenantID: "tenant-1", BusinessDomain: "domain-1",
-				EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
+				TenantID: "tenant-1", EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a",
 				AccountActive: true, TenantActive: true,
 			},
 		},

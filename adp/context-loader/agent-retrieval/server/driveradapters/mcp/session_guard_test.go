@@ -221,8 +221,7 @@ func TestLifecycleAvailabilityErrorPreservesEvidenceAuthorizationFailure(t *test
 
 func trustedSessionGuardContext() context.Context {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		TenantID: "tenant-1"})
 	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
@@ -905,12 +904,11 @@ func TestLifecycleRequestDropsCallerSuppliedOwnerIdentity(t *testing.T) {
 		"idempotency_key":          "create-1",
 		"lease_seconds":            600,
 		"tenant_id":                "forged-tenant",
-		"business_domain_id":       "forged-domain",
 		"application_principal_id": "forged-app",
 		"effective_subject_id":     "forged-user",
 	})
 	for _, field := range []string{
-		"lease_seconds", "tenant_id", "business_domain_id", "application_principal_id", "effective_subject_id",
+		"lease_seconds", "tenant_id", "application_principal_id", "effective_subject_id",
 	} {
 		if _, exists := body[field]; exists {
 			t.Fatalf("caller-supplied trusted field %s leaked into Core JSON: %#v", field, body)

@@ -43,8 +43,7 @@
             "id": { "type": "string", "description": "知识网络 ID（即 kn_id，供其余查询工具使用）" },
             "name": { "type": "string", "description": "知识网络名称" },
             "description": { "type": "string", "description": "描述" },
-            "module_type": { "type": "string", "description": "模块类型" },
-            "business_domain": { "type": "string", "description": "业务域" }
+            "module_type": { "type": "string", "description": "模块类型" }
           },
           "additionalProperties": true
         }

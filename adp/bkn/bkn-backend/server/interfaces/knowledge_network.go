@@ -108,8 +108,7 @@ type KN struct {
 
 	SkillContent string `json:"skill_content,omitempty" mapstructure:"skill_content"`
 
-	Branch         string `json:"branch,omitempty" mapstructure:"branch"`
-	BusinessDomain string `json:"business_domain,omitempty" mapstructure:"business_domain"`
+	Branch string `json:"branch,omitempty" mapstructure:"branch"`
 
 	ConceptGroups []*ConceptGroup     `json:"concept_groups,omitempty" mapstructure:"concept_groups"`
 	ObjectTypes   []*ObjectType       `json:"object_types,omitempty" mapstructure:"object_types"`
@@ -225,7 +224,6 @@ type KNsQueryParams struct {
 	PaginationQueryParameters
 	NamePattern    string
 	Tag            string
-	BusinessDomain string
 	Branch         string
 	// CandidateIDs restricts an internal detail query to permission-filtered IDs.
 	CandidateIDs []string `json:"-" form:"-"`

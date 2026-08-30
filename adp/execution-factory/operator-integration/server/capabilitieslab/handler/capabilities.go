@@ -18,22 +18,20 @@ import (
 )
 
 type CapabilitiesHandler struct {
-	Service               *logic.Service
-	DefaultBusinessDomain string
-	Features              config.FeatureFlags
-	ServiceVersion        string
-	MetricsEnabled        bool
-	MetricsCollector      *observability.Metrics
+	Service          *logic.Service
+	Features         config.FeatureFlags
+	ServiceVersion   string
+	MetricsEnabled   bool
+	MetricsCollector *observability.Metrics
 }
 
 func NewCapabilitiesHandler(cfg config.Config, service *logic.Service, metrics *observability.Metrics) *CapabilitiesHandler {
 	return &CapabilitiesHandler{
-		Service:               service,
-		DefaultBusinessDomain: cfg.DefaultBusinessDomain,
-		Features:              cfg.Features,
-		ServiceVersion:        cfg.ServiceVersion,
-		MetricsCollector:      metrics,
-		MetricsEnabled:        cfg.MetricsEnabled,
+		Service:          service,
+		Features:         cfg.Features,
+		ServiceVersion:   cfg.ServiceVersion,
+		MetricsCollector: metrics,
+		MetricsEnabled:   cfg.MetricsEnabled,
 	}
 }
 
@@ -101,13 +99,11 @@ func (h *CapabilitiesHandler) Health(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ListCapabilities(c *gin.Context) {
-	bd := h.businessDomain(c)
 	page := queryInt(c, "page", 1)
 	pageSize := queryInt(c, "page_size", 20)
 
 	resp, err := h.Service.ListCapabilities(
 		c.Request.Context(),
-		bd,
 		c.Query("kind"),
 		c.Query("keyword"),
 		c.Query("group_id"),
@@ -124,8 +120,7 @@ func (h *CapabilitiesHandler) ListCapabilities(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) GetCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
-	resp, err := h.Service.GetCapability(c.Request.Context(), bd, c.Param("id"))
+	resp, err := h.Service.GetCapability(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeNotFound(c, err.Error())
 		return
@@ -135,11 +130,10 @@ func (h *CapabilitiesHandler) GetCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ListGroups(c *gin.Context) {
-	bd := h.businessDomain(c)
 	page := queryInt(c, "page", 1)
 	pageSize := queryInt(c, "page_size", 50)
 
-	resp, err := h.Service.ListGroups(c.Request.Context(), bd, c.Query("keyword"), page, pageSize)
+	resp, err := h.Service.ListGroups(c.Request.Context(), c.Query("keyword"), page, pageSize)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -149,7 +143,6 @@ func (h *CapabilitiesHandler) ListGroups(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) CreateHttpCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.CreateHttpCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -161,7 +154,7 @@ func (h *CapabilitiesHandler) CreateHttpCapability(c *gin.Context) {
 		req.Group.Mode = "auto"
 	}
 
-	resp, err := h.Service.CreateHttpCapability(c.Request.Context(), bd, req)
+	resp, err := h.Service.CreateHttpCapability(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -171,7 +164,6 @@ func (h *CapabilitiesHandler) CreateHttpCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ImportOpenApiCapabilities(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.ImportOpenApiCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -183,7 +175,7 @@ func (h *CapabilitiesHandler) ImportOpenApiCapabilities(c *gin.Context) {
 		req.Group.Mode = "auto"
 	}
 
-	resp, err := h.Service.ImportOpenApiCapabilities(c.Request.Context(), bd, req)
+	resp, err := h.Service.ImportOpenApiCapabilities(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -193,7 +185,6 @@ func (h *CapabilitiesHandler) ImportOpenApiCapabilities(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) DebugCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.DebugCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -201,7 +192,7 @@ func (h *CapabilitiesHandler) DebugCapability(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.DebugCapability(c.Request.Context(), bd, c.Param("id"), req)
+	resp, err := h.Service.DebugCapability(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -211,9 +202,8 @@ func (h *CapabilitiesHandler) DebugCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ListVersions(c *gin.Context) {
-	bd := h.businessDomain(c)
 
-	resp, err := h.Service.ListVersions(c.Request.Context(), bd, c.Param("id"))
+	resp, err := h.Service.ListVersions(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -223,7 +213,6 @@ func (h *CapabilitiesHandler) ListVersions(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) RepublishVersion(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.RepublishVersionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -231,7 +220,7 @@ func (h *CapabilitiesHandler) RepublishVersion(c *gin.Context) {
 		return
 	}
 
-	if err := h.Service.RepublishVersion(c.Request.Context(), bd, c.Param("id"), req); err != nil {
+	if err := h.Service.RepublishVersion(c.Request.Context(), c.Param("id"), req); err != nil {
 		writeBadGateway(c, err.Error())
 		return
 	}
@@ -240,7 +229,6 @@ func (h *CapabilitiesHandler) RepublishVersion(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) PublishCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.PublishCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -253,7 +241,7 @@ func (h *CapabilitiesHandler) PublishCapability(c *gin.Context) {
 		status = "published"
 	}
 
-	if err := h.Service.PublishCapability(c.Request.Context(), bd, c.Param("id"), status); err != nil {
+	if err := h.Service.PublishCapability(c.Request.Context(), c.Param("id"), status); err != nil {
 		writeBadGateway(c, err.Error())
 		return
 	}
@@ -262,7 +250,6 @@ func (h *CapabilitiesHandler) PublishCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) EnableOrchestration(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.EnableOrchestrationRequest
 	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
@@ -270,7 +257,7 @@ func (h *CapabilitiesHandler) EnableOrchestration(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.EnableOrchestration(c.Request.Context(), bd, c.Param("id"), req)
+	resp, err := h.Service.EnableOrchestration(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -280,9 +267,8 @@ func (h *CapabilitiesHandler) EnableOrchestration(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) DisableOrchestration(c *gin.Context) {
-	bd := h.businessDomain(c)
 
-	resp, err := h.Service.DisableOrchestration(c.Request.Context(), bd, c.Param("id"))
+	resp, err := h.Service.DisableOrchestration(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -292,9 +278,8 @@ func (h *CapabilitiesHandler) DisableOrchestration(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) GetOrchestration(c *gin.Context) {
-	bd := h.businessDomain(c)
 
-	resp, err := h.Service.GetOrchestrationDetail(c.Request.Context(), bd, c.Param("id"))
+	resp, err := h.Service.GetOrchestrationDetail(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -304,7 +289,6 @@ func (h *CapabilitiesHandler) GetOrchestration(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) UpdateOrchestrationConfig(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.UpdateOrchestrationConfigRequest
 	if err := c.ShouldBindJSON(&req); err != nil && err != io.EOF {
@@ -312,7 +296,7 @@ func (h *CapabilitiesHandler) UpdateOrchestrationConfig(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.UpdateOrchestrationConfig(c.Request.Context(), bd, c.Param("id"), req)
+	resp, err := h.Service.UpdateOrchestrationConfig(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -322,7 +306,6 @@ func (h *CapabilitiesHandler) UpdateOrchestrationConfig(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) UpdateHttpCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.UpdateHttpCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -330,7 +313,7 @@ func (h *CapabilitiesHandler) UpdateHttpCapability(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.UpdateHttpCapability(c.Request.Context(), bd, c.Param("id"), req)
+	resp, err := h.Service.UpdateHttpCapability(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -340,9 +323,8 @@ func (h *CapabilitiesHandler) UpdateHttpCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) DeleteCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
-	if err := h.Service.DeleteCapability(c.Request.Context(), bd, c.Param("id")); err != nil {
+	if err := h.Service.DeleteCapability(c.Request.Context(), c.Param("id")); err != nil {
 		writeBadGateway(c, err.Error())
 		return
 	}
@@ -351,7 +333,6 @@ func (h *CapabilitiesHandler) DeleteCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) RegisterMcpCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.RegisterMcpCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -359,7 +340,7 @@ func (h *CapabilitiesHandler) RegisterMcpCapability(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.RegisterMcpCapability(c.Request.Context(), bd, req)
+	resp, err := h.Service.RegisterMcpCapability(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -369,7 +350,6 @@ func (h *CapabilitiesHandler) RegisterMcpCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) RegisterSkillCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -404,7 +384,7 @@ func (h *CapabilitiesHandler) RegisterSkillCapability(c *gin.Context) {
 		MimeType: mimeType,
 	}
 
-	resp, err := h.Service.RegisterSkillCapability(c.Request.Context(), bd, req)
+	resp, err := h.Service.RegisterSkillCapability(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -414,7 +394,6 @@ func (h *CapabilitiesHandler) RegisterSkillCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) PublishGroup(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.PublishCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -427,7 +406,7 @@ func (h *CapabilitiesHandler) PublishGroup(c *gin.Context) {
 		status = "published"
 	}
 
-	if err := h.Service.PublishGroup(c.Request.Context(), bd, c.Param("group_id"), status); err != nil {
+	if err := h.Service.PublishGroup(c.Request.Context(), c.Param("group_id"), status); err != nil {
 		writeBadGateway(c, err.Error())
 		return
 	}
@@ -436,11 +415,9 @@ func (h *CapabilitiesHandler) PublishGroup(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ExportCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	payload, componentType, err := h.Service.ExportCapability(
 		c.Request.Context(),
-		bd,
 		c.Param("id"),
 	)
 	if err != nil {
@@ -457,7 +434,6 @@ func (h *CapabilitiesHandler) ExportCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ImportCapabilityPackage(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -480,7 +456,6 @@ func (h *CapabilitiesHandler) ImportCapabilityPackage(c *gin.Context) {
 
 	resp, err := h.Service.ImportCapabilityPackage(
 		c.Request.Context(),
-		bd,
 		c.PostForm("type"),
 		c.PostForm("mode"),
 		content,
@@ -494,13 +469,11 @@ func (h *CapabilitiesHandler) ImportCapabilityPackage(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ListCatalog(c *gin.Context) {
-	bd := h.businessDomain(c)
 	page := queryInt(c, "page", 1)
 	pageSize := queryInt(c, "page_size", 20)
 
 	resp, err := h.Service.ListCatalog(
 		c.Request.Context(),
-		bd,
 		c.Query("kind"),
 		c.Query("keyword"),
 		page,
@@ -515,7 +488,6 @@ func (h *CapabilitiesHandler) ListCatalog(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) InstallFromCatalog(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.InstallCatalogRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -523,7 +495,7 @@ func (h *CapabilitiesHandler) InstallFromCatalog(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.InstallFromCatalog(c.Request.Context(), bd, req)
+	resp, err := h.Service.InstallFromCatalog(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -533,7 +505,6 @@ func (h *CapabilitiesHandler) InstallFromCatalog(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) CreateFunctionCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.CreateFunctionCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -541,7 +512,7 @@ func (h *CapabilitiesHandler) CreateFunctionCapability(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.CreateFunctionCapability(c.Request.Context(), bd, req)
+	resp, err := h.Service.CreateFunctionCapability(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -551,7 +522,6 @@ func (h *CapabilitiesHandler) CreateFunctionCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ExecutePython(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.ExecutePythonRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -559,7 +529,7 @@ func (h *CapabilitiesHandler) ExecutePython(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.ExecutePython(c.Request.Context(), bd, req)
+	resp, err := h.Service.ExecutePython(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -569,9 +539,8 @@ func (h *CapabilitiesHandler) ExecutePython(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) GetPythonTemplate(c *gin.Context) {
-	bd := h.businessDomain(c)
 
-	template, err := h.Service.GetPythonTemplate(c.Request.Context(), bd)
+	template, err := h.Service.GetPythonTemplate(c.Request.Context())
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -581,7 +550,6 @@ func (h *CapabilitiesHandler) GetPythonTemplate(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ParseMcpSse(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.ParseMcpSseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -589,7 +557,7 @@ func (h *CapabilitiesHandler) ParseMcpSse(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.ParseMcpSse(c.Request.Context(), bd, req)
+	resp, err := h.Service.ParseMcpSse(c.Request.Context(), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -599,9 +567,8 @@ func (h *CapabilitiesHandler) ParseMcpSse(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) GetSkillContent(c *gin.Context) {
-	bd := h.businessDomain(c)
 
-	resp, err := h.Service.GetSkillContent(c.Request.Context(), bd, c.Param("id"))
+	resp, err := h.Service.GetSkillContent(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -611,7 +578,6 @@ func (h *CapabilitiesHandler) GetSkillContent(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ReadSkillFile(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.ReadSkillFileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -619,21 +585,13 @@ func (h *CapabilitiesHandler) ReadSkillFile(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.ReadSkillFile(c.Request.Context(), bd, c.Param("id"), req)
+	resp, err := h.Service.ReadSkillFile(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
 	}
 
 	c.JSON(http.StatusOK, resp)
-}
-
-func (h *CapabilitiesHandler) businessDomain(c *gin.Context) string {
-	if bd := c.GetHeader("x-business-domain"); bd != "" {
-		return bd
-	}
-
-	return h.DefaultBusinessDomain
 }
 
 func queryInt(c *gin.Context, key string, fallback int) int {

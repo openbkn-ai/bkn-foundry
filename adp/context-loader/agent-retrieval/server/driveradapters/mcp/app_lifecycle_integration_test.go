@@ -31,7 +31,6 @@ func TestMCPProtocolLifecycleThreeRoundsAcrossConversationsAndReconnect(t *testi
 	core := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		for name, want := range map[string]string{
 			"X-BKN-Tenant-ID":                "tenant-1",
-			"X-Business-Domain-ID":           "domain-1",
 			"X-BKN-Application-Principal-ID": "client-1",
 			"X-BKN-Effective-Subject-Type":   "user",
 			"X-BKN-Effective-Subject-ID":     "user-1",
@@ -234,8 +233,7 @@ func callInvalidSQLRound(
 func trustedMCPIntegrationContext(parent context.Context, sequence uint64) context.Context {
 	ctx := common.SetTraceContextToCtx(parent, common.TraceContext{
 		RequestID: fmt.Sprintf("req_mcp_integration_%04d", sequence),
-		TenantID:  "tenant-1", BusinessDomain: "domain-1",
-	})
+		TenantID:  "tenant-1"})
 	traceID := trace.TraceID{0x4b, 0x3d, 0x59, 0xda, 0xef, 0xf5, 0xbf, 0xbb, 0x23, 0xd4, 0x6c, 0x47, 0xa5, 0x05, 0x1e, 0xc9}
 	spanID := trace.SpanID{0x00, 0xf0, 0x67, 0xaa, 0x0b, 0xa9, 0x02, 0xb7}
 	ctx = trace.ContextWithSpanContext(ctx, trace.NewSpanContext(trace.SpanContextConfig{

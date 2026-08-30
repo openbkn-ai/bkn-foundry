@@ -108,8 +108,8 @@ spec:
             {{- end }}
             - name: BKN_TRACE_DEPLOYMENT_TENANT_ID
               value: {{ required "evidence.queryAuth.deploymentTenantID is required" .Values.evidence.queryAuth.deploymentTenantID | quote }}
-            - name: BKN_TRACE_PUBLIC_LIFECYCLE_BUSINESS_DOMAINS
-              value: {{ required "evidence.queryAuth.publicLifecycleBusinessDomains must be non-empty" (.Values.evidence.queryAuth.publicLifecycleBusinessDomains | join ",") | quote }}
+            - name: BKN_TRACE_PUBLIC_LIFECYCLE_ENABLED
+              value: {{ .Values.evidence.queryAuth.publicLifecycleEnabled | quote }}
             {{- if .Values.businessResolver.enabled }}
             - name: BKN_TRACE_BKN_RESOLVER_URL
               value: {{ .Values.businessResolver.bknBaseURL | quote }}

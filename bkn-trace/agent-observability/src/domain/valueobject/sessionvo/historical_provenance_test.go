@@ -21,7 +21,7 @@ func TestHistoricalProvenanceBuildRequestCanonicalizesFactsAndExplicitNetworks(t
 	}
 
 	request, err := NewHistoricalProvenanceBuildRequest("interaction-1", Owner{
-		TenantID: "tenant-1", BusinessDomainID: "domain-1",
+		TenantID: "tenant-1",
 	}, facts)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
@@ -38,7 +38,7 @@ func TestHistoricalProvenanceBuildRequestCanonicalizesFactsAndExplicitNetworks(t
 
 	reversed := []OperationCallFact{facts[2], facts[0], facts[1]}
 	second, err := NewHistoricalProvenanceBuildRequest("interaction-1", Owner{
-		TenantID: "tenant-1", BusinessDomainID: "domain-1",
+		TenantID: "tenant-1",
 	}, reversed)
 	if err != nil {
 		t.Fatalf("build reversed request: %v", err)

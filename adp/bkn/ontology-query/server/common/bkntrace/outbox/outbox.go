@@ -48,7 +48,6 @@ var ErrDisabled = errors.New("bkn trace producer outbox is disabled")
 // does not depend on the original HTTP request still being available.
 type Owner struct {
 	TenantID               string `json:"tenant_id"`
-	BusinessDomainID       string `json:"business_domain_id"`
 	ApplicationPrincipalID string `json:"application_principal_id"`
 	EffectiveSubjectType   string `json:"effective_subject_type"`
 	EffectiveSubjectID     string `json:"effective_subject_id"`
@@ -56,7 +55,7 @@ type Owner struct {
 }
 
 func (o Owner) Valid() bool {
-	return o.TenantID != "" && o.BusinessDomainID != "" && o.ApplicationPrincipalID != "" &&
+	return o.TenantID != "" && o.ApplicationPrincipalID != "" &&
 		o.EffectiveSubjectID != "" && (o.EffectiveSubjectType == "user" || o.EffectiveSubjectType == "service")
 }
 
@@ -545,7 +544,6 @@ func (w *Worker) deliver(record *Record) {
 	req.Header.Set("X-BKN-Trace-Query-Token", w.repository.config.QueryGatewayToken)
 	req.Header.Set("X-BKN-Trace-Ingest-Token", w.repository.config.IngestToken)
 	req.Header.Set("X-BKN-Tenant-ID", record.Owner.TenantID)
-	req.Header.Set("X-Business-Domain-ID", record.Owner.BusinessDomainID)
 	req.Header.Set("X-BKN-Application-Principal-ID", record.Owner.ApplicationPrincipalID)
 	req.Header.Set("X-BKN-Effective-Subject-Type", record.Owner.EffectiveSubjectType)
 	req.Header.Set("X-BKN-Effective-Subject-ID", record.Owner.EffectiveSubjectID)
@@ -553,7 +551,6 @@ func (w *Worker) deliver(record *Record) {
 	req.Header.Set("x-account-id", record.Owner.EffectiveSubjectID)
 	req.Header.Set("x-account-type", record.Owner.EffectiveSubjectType)
 	req.Header.Set("x-tenant-id", record.Owner.TenantID)
-	req.Header.Set("x-business-domain", record.Owner.BusinessDomainID)
 	resp, err := w.client.Do(req)
 	if err != nil {
 		_, _ = w.repository.Complete(context.Background(), record, StatusRetry, "core_timeout", retryAt(record.Attempts))

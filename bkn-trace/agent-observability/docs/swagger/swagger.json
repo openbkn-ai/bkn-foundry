@@ -62,13 +62,6 @@
                 "summary": "List managed Conversations in the authorized owner scope",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "type": "integer",
                         "description": "Page size, 1..100",
                         "name": "limit",
@@ -125,13 +118,6 @@
                 ],
                 "summary": "Create or return the current managed Conversation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "description": "Managed Conversation request",
                         "name": "request",
@@ -205,13 +191,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Conversation ID",
                         "name": "conversation_id",
                         "in": "path",
@@ -276,13 +255,6 @@
                 ],
                 "summary": "Close one managed Conversation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -372,13 +344,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Conversation ID",
                         "name": "conversation_id",
                         "in": "path",
@@ -464,13 +429,6 @@
                 ],
                 "summary": "Ensure an idempotent Operation intent and durable Receipt",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Conversation ID",
@@ -566,13 +524,6 @@
                 "summary": "Create a new managed Conversation generation",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "description": "New generation request",
                         "name": "request",
                         "in": "body",
@@ -647,13 +598,6 @@
                 "summary": "Ensure the current managed Conversation",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "description": "Managed Conversation request",
                         "name": "request",
                         "in": "body",
@@ -727,13 +671,6 @@
                 ],
                 "summary": "Resume an active managed Conversation by Core ID",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "description": "Conversation resume request",
                         "name": "request",
@@ -1000,13 +937,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1120,13 +1050,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1220,13 +1143,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1318,13 +1234,6 @@
                 ],
                 "summary": "Fail one managed Interaction",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Interaction ID",
@@ -1421,13 +1330,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1521,13 +1423,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1618,13 +1513,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Interaction ID",
                         "name": "interaction_id",
                         "in": "path",
@@ -1686,13 +1574,6 @@
                 ],
                 "summary": "Get one Operation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1759,13 +1640,6 @@
                 ],
                 "summary": "Start the next retry attempt for an Operation",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -1852,13 +1726,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Operation ID",
                         "name": "operation_id",
                         "in": "path",
@@ -1936,13 +1803,6 @@
                 ],
                 "summary": "Complete one Operation attempt",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Operation ID",
@@ -2039,13 +1899,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Operation ID",
                         "name": "operation_id",
                         "in": "path",
@@ -2137,13 +1990,6 @@
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
                         "description": "Receipt ID",
                         "name": "receipt_id",
                         "in": "path",
@@ -2212,13 +2058,6 @@
                 "summary": "List request projections from durable Receipts",
                 "parameters": [
                     {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
-                    {
                         "type": "integer",
                         "description": "Page size, 1..100",
                         "name": "limit",
@@ -2274,13 +2113,6 @@
                 ],
                 "summary": "Get one request projection from durable Receipts",
                 "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Deployment-approved business domain",
-                        "name": "x-business-domain",
-                        "in": "header",
-                        "required": true
-                    },
                     {
                         "type": "string",
                         "description": "Request ID",
@@ -2392,12 +2224,6 @@
                         "type": "string",
                         "description": "Agent or application",
                         "name": "agent_or_app",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Business domain",
-                        "name": "business_domain",
                         "in": "query"
                     },
                     {
@@ -2916,9 +2742,6 @@
                 "bkn.tenant.id": {
                     "type": "string"
                 },
-                "business_domain": {
-                    "type": "string"
-                },
                 "business_refs": {
                     "type": "array",
                     "items": {
@@ -3218,9 +3041,6 @@
                 "application_principal_id": {
                     "type": "string"
                 },
-                "business_domain": {
-                    "type": "string"
-                },
                 "completed_at": {
                     "type": "string"
                 },
@@ -3326,6 +3146,32 @@
                 },
                 "unresolved_ref_count": {
                     "type": "integer"
+                }
+            }
+        },
+        "httphandler.businessRefRequest": {
+            "type": "object",
+            "required": [
+                "ref_id",
+                "ref_type",
+                "version"
+            ],
+            "properties": {
+                "as_of": {
+                    "type": "string"
+                },
+                "display_hint": {
+                    "type": "string"
+                },
+                "ref_id": {
+                    "description": "RefID uses the complete canonical shape defined by RefType, including every required scope segment.",
+                    "type": "string"
+                },
+                "ref_type": {
+                    "$ref": "#/definitions/sessionvo.BusinessRefType"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },
@@ -3446,7 +3292,7 @@
                 "business_refs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.BusinessRef"
+                        "$ref": "#/definitions/httphandler.businessRefRequest"
                     }
                 },
                 "causation_event_ids": {
@@ -3494,7 +3340,7 @@
                 "operation_business_edges": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.OperationBusinessEdge"
+                        "$ref": "#/definitions/httphandler.operationBusinessEdgeRequest"
                     }
                 },
                 "operation_id": {
@@ -3577,7 +3423,7 @@
                 "business_refs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/sessionvo.BusinessRef"
+                        "$ref": "#/definitions/httphandler.businessRefRequest"
                     }
                 },
                 "error": {
@@ -3746,6 +3592,29 @@
                 },
                 "reason": {
                     "type": "string"
+                }
+            }
+        },
+        "httphandler.operationBusinessEdgeRequest": {
+            "type": "object",
+            "required": [
+                "business_ref",
+                "observed_at",
+                "operation_id",
+                "role"
+            ],
+            "properties": {
+                "business_ref": {
+                    "$ref": "#/definitions/httphandler.businessRefRequest"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
                 }
             }
         },
@@ -4145,16 +4014,12 @@
         "sessionvo.BusinessRef": {
             "type": "object",
             "required": [
-                "business_domain_id",
                 "ref_id",
                 "ref_type",
                 "version"
             ],
             "properties": {
                 "as_of": {
-                    "type": "string"
-                },
-                "business_domain_id": {
                     "type": "string"
                 },
                 "display_hint": {
@@ -4696,29 +4561,6 @@
                 }
             }
         },
-        "sessionvo.OperationBusinessEdge": {
-            "type": "object",
-            "required": [
-                "business_ref",
-                "observed_at",
-                "operation_id",
-                "role"
-            ],
-            "properties": {
-                "business_ref": {
-                    "$ref": "#/definitions/sessionvo.BusinessRef"
-                },
-                "observed_at": {
-                    "type": "string"
-                },
-                "operation_id": {
-                    "type": "string"
-                },
-                "role": {
-                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
-                }
-            }
-        },
         "sessionvo.OperationBusinessRole": {
             "type": "string",
             "enum": [
@@ -4823,16 +4665,12 @@
             "type": "object",
             "required": [
                 "application_principal_id",
-                "business_domain_id",
                 "effective_subject_id",
                 "effective_subject_type",
                 "tenant_id"
             ],
             "properties": {
                 "application_principal_id": {
-                    "type": "string"
-                },
-                "business_domain_id": {
                     "type": "string"
                 },
                 "delegation_id": {

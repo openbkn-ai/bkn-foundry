@@ -54,8 +54,7 @@ func TestQueryUsesLatestImmutableRevisionEventSetAndEnforcesOwner(t *testing.T) 
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", BusinessDomainID: "domain-1",
-		ApplicationPrincipalID: "app-1", EffectiveSubjectType: sessionvo.SubjectService,
+		TenantID: "tenant-1", ApplicationPrincipalID: "app-1", EffectiveSubjectType: sessionvo.SubjectService,
 		EffectiveSubjectID: "agent-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
@@ -112,7 +111,7 @@ func TestQueryAuthorizesManagedKnowledgeNetworkInteraction(t *testing.T) {
 
 	sessions, ledger, owner, interaction := queryFixture(t)
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+		TenantID: "tenant-1", EffectiveSubjectID: "builder-1",
 		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"supplychain"},
 		AccountActive: true, TenantActive: true,
 	}
@@ -143,7 +142,7 @@ func TestQueryReturnsCompleteManagedInteractionWithoutPerEdgeAuthorization(t *te
 		OperationID: edgeOnly.OperationID,
 		BusinessRef: sessionvo.BusinessRef{
 			RefType: sessionvo.BusinessRefObjectType, RefID: "object:restricted:salary",
-			BusinessDomainID: owner.BusinessDomainID, Version: "2026.07",
+			Version: "2026.07",
 		},
 		Role: sessionvo.OperationRoleRead, ObservedAt: edgeOnly.ObservedAt,
 	}}
@@ -152,7 +151,7 @@ func TestQueryReturnsCompleteManagedInteractionWithoutPerEdgeAuthorization(t *te
 	}
 
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+		TenantID: "tenant-1", EffectiveSubjectID: "builder-1",
 		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"supplychain"},
 		AccountActive: true, TenantActive: true,
 	}
@@ -176,7 +175,7 @@ func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T
 	sessions, ledger, owner, interaction := queryFixture(t)
 	tests := map[string]evidencevo.AccessProfile{
 		"partial network scope": {
-			TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "builder-1",
+			TenantID: "tenant-1", EffectiveSubjectID: "builder-1",
 			Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"other-network"},
 			AccountActive: true, TenantActive: true,
 		},
@@ -198,7 +197,7 @@ func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T
 	}
 
 	admin := evidencevo.AccessProfile{
-		TenantID: "tenant-1", BusinessDomain: "domain-1", EffectiveSubjectID: "admin-1",
+		TenantID: "tenant-1", EffectiveSubjectID: "admin-1",
 		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
 	}
 	requester := owner
@@ -227,7 +226,7 @@ func TestQueryProjectsResolvedBusinessNamesWithoutChangingRecordAuthorization(t 
 	}}
 	service := assemblysvc.NewQueryServiceWithBusinessResolver(sessions, ledger, resolver)
 	view, err := service.GetInteractionAuthorized(context.Background(), owner, interaction.ID, evidencevo.QueryScope{
-		TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "agent-1", AccountType: "service",
+		TenantID: "tenant-1", AccountID: "agent-1", AccountType: "service",
 		Authorization: "Bearer current-user-token",
 	})
 	if err != nil {
@@ -315,7 +314,7 @@ func TestQueryDoesNotReuseAuthorizationAcrossBusinessRefTypes(t *testing.T) {
 	second.InteractionID = interaction.ID
 	second.BusinessRefs = []sessionvo.BusinessRef{{
 		RefType: sessionvo.BusinessRefProperty, RefID: sharedID,
-		BusinessDomainID: owner.BusinessDomainID, Version: "2026.07",
+		Version: "2026.07",
 	}}
 	if _, err := ledger.Commit(context.Background(), second); err != nil {
 		t.Fatalf("commit type-confused ref: %v", err)
@@ -341,7 +340,7 @@ func TestQueryAllowsOnlyEarlierImmutableClaimSupportFromSameConversation(t *test
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", BusinessDomainID: "domain-1", ApplicationPrincipalID: "app-1",
+		TenantID: "tenant-1", ApplicationPrincipalID: "app-1",
 		EffectiveSubjectType: sessionvo.SubjectService, EffectiveSubjectID: "agent-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
@@ -432,7 +431,7 @@ func queryFixture(t *testing.T) (*sessionstore.Store, *ledgerstore.Store, sessio
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", BusinessDomainID: "domain-1", ApplicationPrincipalID: "app-1",
+		TenantID: "tenant-1", ApplicationPrincipalID: "app-1",
 		EffectiveSubjectType: sessionvo.SubjectService, EffectiveSubjectID: "agent-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
@@ -451,11 +450,11 @@ func queryFixture(t *testing.T) (*sessionstore.Store, *ledgerstore.Store, sessio
 	event.Owner, event.ConversationID, event.InteractionID = owner, conversation.ID, interaction.ID
 	objectRef := sessionvo.BusinessRef{
 		RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast",
-		BusinessDomainID: "domain-1", Version: "2026.07",
+		Version: "2026.07",
 	}
 	propertyRef := sessionvo.BusinessRef{
 		RefType: sessionvo.BusinessRefProperty, RefID: "property:supplychain:forecast:qty",
-		BusinessDomainID: "domain-1", Version: "2026.07",
+		Version: "2026.07",
 	}
 	event.BusinessRefs = []sessionvo.BusinessRef{objectRef, propertyRef}
 	event.OperationBusinessEdges = []sessionvo.OperationBusinessEdge{

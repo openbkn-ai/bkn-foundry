@@ -17,7 +17,7 @@ const maxAllKindWindow = 300
 
 func (s *Service) ListCapabilities(
 	ctx context.Context,
-	businessDomain, kind, keyword, groupID, status string,
+	kind, keyword, groupID, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
 	if page < 1 {
@@ -39,21 +39,21 @@ func (s *Service) ListCapabilities(
 
 	switch kind {
 	case "http":
-		return s.listHttpCapabilitiesPaged(ctx, businessDomain, needle, groupID, status, page, pageSize)
+		return s.listHttpCapabilitiesPaged(ctx, needle, groupID, status, page, pageSize)
 	case "mcp":
-		return s.listMcpCapabilitiesPaged(ctx, businessDomain, needle, status, page, pageSize)
+		return s.listMcpCapabilitiesPaged(ctx, needle, status, page, pageSize)
 	case "skill":
-		return s.listSkillCapabilitiesPaged(ctx, businessDomain, needle, status, page, pageSize)
+		return s.listSkillCapabilitiesPaged(ctx, needle, status, page, pageSize)
 	case "function":
-		return s.listFunctionCapabilitiesPaged(ctx, businessDomain, needle, groupID, status, page, pageSize)
+		return s.listFunctionCapabilitiesPaged(ctx, needle, groupID, status, page, pageSize)
 	default:
-		return s.listAllCapabilitiesPaged(ctx, businessDomain, needle, groupID, status, page, pageSize)
+		return s.listAllCapabilitiesPaged(ctx, needle, groupID, status, page, pageSize)
 	}
 }
 
 func (s *Service) listAllCapabilitiesPaged(
 	ctx context.Context,
-	businessDomain, keyword, groupID, status string,
+	keyword, groupID, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
 	windowSize := page * pageSize
@@ -61,22 +61,22 @@ func (s *Service) listAllCapabilitiesPaged(
 		windowSize = maxAllKindWindow
 	}
 
-	httpItems, _, err := s.collectHttpCapabilities(ctx, businessDomain, keyword, groupID, windowSize)
+	httpItems, _, err := s.collectHttpCapabilities(ctx, keyword, groupID, windowSize)
 	if err != nil {
 		return nil, err
 	}
 
-	mcpItems, _, err := s.collectMcpCapabilities(ctx, businessDomain, keyword, windowSize)
+	mcpItems, _, err := s.collectMcpCapabilities(ctx, keyword, windowSize)
 	if err != nil {
 		return nil, err
 	}
 
-	skillItems, _, err := s.collectSkillCapabilities(ctx, businessDomain, keyword, windowSize)
+	skillItems, _, err := s.collectSkillCapabilities(ctx, keyword, windowSize)
 	if err != nil {
 		return nil, err
 	}
 
-	functionItems, _, err := s.collectFunctionCapabilities(ctx, businessDomain, keyword, groupID, windowSize)
+	functionItems, _, err := s.collectFunctionCapabilities(ctx, keyword, groupID, windowSize)
 	if err != nil {
 		return nil, err
 	}
@@ -104,20 +104,20 @@ func (s *Service) listAllCapabilitiesPaged(
 
 func (s *Service) listHttpCapabilitiesPaged(
 	ctx context.Context,
-	businessDomain, keyword, groupID, status string,
+	keyword, groupID, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
 	if groupID != "" {
-		return s.listHttpCapabilitiesInGroupPaged(ctx, businessDomain, keyword, groupID, status, page, pageSize)
+		return s.listHttpCapabilitiesInGroupPaged(ctx, keyword, groupID, status, page, pageSize)
 	}
 
-	boxResp, err := s.Client.ListToolboxes(ctx, businessDomain, "", 1, 100, true)
+	boxResp, err := s.Client.ListToolboxes(ctx, "", 1, 100, true)
 	if err != nil {
 		return nil, err
 	}
 
 	boxes := filterOpenAPIToolboxes(boxResp.Data, "")
-	total, err := s.countHttpTools(ctx, businessDomain, keyword, boxes)
+	total, err := s.countHttpTools(ctx, keyword, boxes)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,6 @@ func (s *Service) listHttpCapabilitiesPaged(
 		for {
 			resp, pageErr := s.Client.ListToolsPaged(
 				ctx,
-				businessDomain,
 				box.BoxID,
 				keyword,
 				toolPage,
@@ -180,15 +179,15 @@ func (s *Service) listHttpCapabilitiesPaged(
 
 func (s *Service) listHttpCapabilitiesInGroupPaged(
 	ctx context.Context,
-	businessDomain, keyword, groupID, status string,
+	keyword, groupID, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
-	box, err := s.findToolbox(ctx, businessDomain, groupID)
+	box, err := s.findToolbox(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := s.Client.ListToolsPaged(ctx, businessDomain, groupID, keyword, page, pageSize)
+	resp, err := s.Client.ListToolsPaged(ctx, groupID, keyword, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -213,27 +212,27 @@ func (s *Service) listHttpCapabilitiesInGroupPaged(
 
 func (s *Service) collectHttpCapabilities(
 	ctx context.Context,
-	businessDomain, keyword, groupID string,
+	keyword, groupID string,
 	limit int,
 ) ([]model.Capability, int, error) {
 	if groupID != "" {
-		return s.collectHttpCapabilitiesInGroup(ctx, businessDomain, keyword, groupID, limit)
+		return s.collectHttpCapabilitiesInGroup(ctx, keyword, groupID, limit)
 	}
 
-	boxResp, err := s.Client.ListToolboxes(ctx, businessDomain, "", 1, 100, true)
+	boxResp, err := s.Client.ListToolboxes(ctx, "", 1, 100, true)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	boxes := filterOpenAPIToolboxes(boxResp.Data, groupID)
-	total, err := s.countHttpTools(ctx, businessDomain, keyword, boxes)
+	total, err := s.countHttpTools(ctx, keyword, boxes)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	items := make([]model.Capability, 0)
 	for _, box := range boxes {
-		tools, listErr := s.listToolsForBox(ctx, businessDomain, box, keyword)
+		tools, listErr := s.listToolsForBox(ctx, box, keyword)
 		if listErr != nil {
 			return nil, 0, listErr
 		}
@@ -254,17 +253,17 @@ func (s *Service) collectHttpCapabilities(
 
 func (s *Service) collectHttpCapabilitiesInGroup(
 	ctx context.Context,
-	businessDomain, keyword, groupID string,
+	keyword, groupID string,
 	limit int,
 ) ([]model.Capability, int, error) {
-	box, err := s.findToolbox(ctx, businessDomain, groupID)
+	box, err := s.findToolbox(ctx, groupID)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	boxInfo := toolboxInfoFromSnapshot(box)
 
-	tools, listErr := s.listToolsForBox(ctx, businessDomain, boxInfo, keyword)
+	tools, listErr := s.listToolsForBox(ctx, boxInfo, keyword)
 	if listErr != nil {
 		return nil, 0, listErr
 	}
@@ -287,17 +286,16 @@ func (s *Service) collectHttpCapabilitiesInGroup(
 
 func (s *Service) listToolsForBox(
 	ctx context.Context,
-	businessDomain string,
 	box client.ToolboxInfo,
 	keyword string,
 ) ([]client.ToolInfo, error) {
 	if keyword == "" {
-		return s.Client.ListTools(ctx, businessDomain, box.BoxID)
+		return s.Client.ListTools(ctx, box.BoxID)
 	}
 
 	tools := make([]client.ToolInfo, 0)
 	for page := 1; ; page++ {
-		resp, err := s.Client.ListToolsPaged(ctx, businessDomain, box.BoxID, keyword, page, 100)
+		resp, err := s.Client.ListToolsPaged(ctx, box.BoxID, keyword, page, 100)
 		if err != nil {
 			return nil, err
 		}
@@ -312,7 +310,7 @@ func (s *Service) listToolsForBox(
 
 func (s *Service) countHttpTools(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	boxes []client.ToolboxInfo,
 ) (int, error) {
 	if keyword == "" {
@@ -325,7 +323,7 @@ func (s *Service) countHttpTools(
 
 	total := 0
 	for _, box := range boxes {
-		resp, err := s.Client.ListToolsPaged(ctx, businessDomain, box.BoxID, keyword, 1, 1)
+		resp, err := s.Client.ListToolsPaged(ctx, box.BoxID, keyword, 1, 1)
 		if err != nil {
 			return 0, err
 		}
@@ -380,10 +378,10 @@ func groupFromBox(box client.ToolboxInfo) *model.Group {
 
 func (s *Service) listMcpCapabilitiesPaged(
 	ctx context.Context,
-	businessDomain, keyword, status string,
+	keyword, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
-	resp, err := s.Client.ListMcps(ctx, businessDomain, keyword, page, pageSize)
+	resp, err := s.Client.ListMcps(ctx, keyword, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -398,7 +396,7 @@ func (s *Service) listMcpCapabilitiesPaged(
 
 func (s *Service) collectMcpCapabilities(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	limit int,
 ) ([]model.Capability, int, error) {
 	pageSize := limit
@@ -406,7 +404,7 @@ func (s *Service) collectMcpCapabilities(
 		pageSize = 100
 	}
 
-	resp, err := s.Client.ListMcps(ctx, businessDomain, keyword, 1, pageSize)
+	resp, err := s.Client.ListMcps(ctx, keyword, 1, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -417,10 +415,10 @@ func (s *Service) collectMcpCapabilities(
 
 func (s *Service) listSkillCapabilitiesPaged(
 	ctx context.Context,
-	businessDomain, keyword, status string,
+	keyword, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
-	resp, err := s.Client.ListSkills(ctx, businessDomain, keyword, page, pageSize)
+	resp, err := s.Client.ListSkills(ctx, keyword, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -435,7 +433,7 @@ func (s *Service) listSkillCapabilitiesPaged(
 
 func (s *Service) collectSkillCapabilities(
 	ctx context.Context,
-	businessDomain, keyword string,
+	keyword string,
 	limit int,
 ) ([]model.Capability, int, error) {
 	pageSize := limit
@@ -443,7 +441,7 @@ func (s *Service) collectSkillCapabilities(
 		pageSize = 100
 	}
 
-	resp, err := s.Client.ListSkills(ctx, businessDomain, keyword, 1, pageSize)
+	resp, err := s.Client.ListSkills(ctx, keyword, 1, pageSize)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -521,20 +519,20 @@ func filterFunctionToolboxes(boxes []client.ToolboxInfo, groupID string) []clien
 
 func (s *Service) listFunctionCapabilitiesPaged(
 	ctx context.Context,
-	businessDomain, keyword, groupID, status string,
+	keyword, groupID, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
 	if groupID != "" {
-		return s.listFunctionCapabilitiesInGroupPaged(ctx, businessDomain, keyword, groupID, status, page, pageSize)
+		return s.listFunctionCapabilitiesInGroupPaged(ctx, keyword, groupID, status, page, pageSize)
 	}
 
-	boxResp, err := s.Client.ListToolboxes(ctx, businessDomain, "", 1, 100, true)
+	boxResp, err := s.Client.ListToolboxes(ctx, "", 1, 100, true)
 	if err != nil {
 		return nil, err
 	}
 
 	boxes := filterFunctionToolboxes(boxResp.Data, "")
-	total, err := s.countHttpTools(ctx, businessDomain, keyword, boxes)
+	total, err := s.countHttpTools(ctx, keyword, boxes)
 	if err != nil {
 		return nil, err
 	}
@@ -552,7 +550,6 @@ func (s *Service) listFunctionCapabilitiesPaged(
 		for {
 			resp, pageErr := s.Client.ListToolsPaged(
 				ctx,
-				businessDomain,
 				box.BoxID,
 				keyword,
 				toolPage,
@@ -592,15 +589,15 @@ func (s *Service) listFunctionCapabilitiesPaged(
 
 func (s *Service) listFunctionCapabilitiesInGroupPaged(
 	ctx context.Context,
-	businessDomain, keyword, groupID, status string,
+	keyword, groupID, status string,
 	page, pageSize int,
 ) (*model.CapabilityListResponse, error) {
-	box, err := s.findToolbox(ctx, businessDomain, groupID)
+	box, err := s.findToolbox(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := s.Client.ListToolsPaged(ctx, businessDomain, groupID, keyword, page, pageSize)
+	resp, err := s.Client.ListToolsPaged(ctx, groupID, keyword, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
@@ -623,27 +620,27 @@ func (s *Service) listFunctionCapabilitiesInGroupPaged(
 
 func (s *Service) collectFunctionCapabilities(
 	ctx context.Context,
-	businessDomain, keyword, groupID string,
+	keyword, groupID string,
 	limit int,
 ) ([]model.Capability, int, error) {
 	if groupID != "" {
-		return s.collectFunctionCapabilitiesInGroup(ctx, businessDomain, keyword, groupID, limit)
+		return s.collectFunctionCapabilitiesInGroup(ctx, keyword, groupID, limit)
 	}
 
-	boxResp, err := s.Client.ListToolboxes(ctx, businessDomain, "", 1, 100, true)
+	boxResp, err := s.Client.ListToolboxes(ctx, "", 1, 100, true)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	boxes := filterFunctionToolboxes(boxResp.Data, groupID)
-	total, err := s.countHttpTools(ctx, businessDomain, keyword, boxes)
+	total, err := s.countHttpTools(ctx, keyword, boxes)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	items := make([]model.Capability, 0)
 	for _, box := range boxes {
-		tools, listErr := s.listToolsForBox(ctx, businessDomain, box, keyword)
+		tools, listErr := s.listToolsForBox(ctx, box, keyword)
 		if listErr != nil {
 			return nil, 0, listErr
 		}
@@ -662,16 +659,16 @@ func (s *Service) collectFunctionCapabilities(
 
 func (s *Service) collectFunctionCapabilitiesInGroup(
 	ctx context.Context,
-	businessDomain, keyword, groupID string,
+	keyword, groupID string,
 	limit int,
 ) ([]model.Capability, int, error) {
-	box, err := s.findToolbox(ctx, businessDomain, groupID)
+	box, err := s.findToolbox(ctx, groupID)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	boxInfo := toolboxInfoFromSnapshot(box)
-	tools, err := s.listToolsForBox(ctx, businessDomain, boxInfo, keyword)
+	tools, err := s.listToolsForBox(ctx, boxInfo, keyword)
 	if err != nil {
 		return nil, 0, err
 	}

@@ -14,7 +14,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
@@ -22,20 +21,19 @@ import (
 )
 
 type operatorManager struct {
-	Logger                interfaces.Logger
-	DBOperatorManager     model.IOperatorRegisterDB
-	DBTx                  model.DBTx
-	CategoryManager       interfaces.CategoryManager
-	UserMgnt              interfaces.UserManagement
-	Validator             interfaces.Validator
-	Proxy                 interfaces.ProxyHandler
-	OpReleaseDB           model.IOperatorReleaseDB
-	OpReleaseHistoryDB    model.IOperatorReleaseHistoryDB
-	AuthService           interfaces.IAuthorizationService
-	AuditLog              interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
-	MQClient              mq.MQClient
-	BusinessDomainService interfaces.IBusinessDomainService
-	MetadataService       interfaces.IMetadataService
+	Logger             interfaces.Logger
+	DBOperatorManager  model.IOperatorRegisterDB
+	DBTx               model.DBTx
+	CategoryManager    interfaces.CategoryManager
+	UserMgnt           interfaces.UserManagement
+	Validator          interfaces.Validator
+	Proxy              interfaces.ProxyHandler
+	OpReleaseDB        model.IOperatorReleaseDB
+	OpReleaseHistoryDB model.IOperatorReleaseHistoryDB
+	AuthService        interfaces.IAuthorizationService
+	AuditLog           interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
+	MQClient           mq.MQClient
+	MetadataService    interfaces.IMetadataService
 }
 
 var (
@@ -48,20 +46,19 @@ func NewOperatorManager() interfaces.OperatorManager {
 	once.Do(func() {
 		conf := config.NewConfigLoader()
 		om = &operatorManager{
-			Logger:                conf.GetLogger(),
-			DBOperatorManager:     dbaccess.NewOperatorManagerDB(),
-			DBTx:                  dbaccess.NewBaseTx(),
-			CategoryManager:       category.NewCategoryManager(),
-			UserMgnt:              drivenadapters.NewUserManagementClient(),
-			Validator:             validator.NewValidator(),
-			Proxy:                 proxy.NewProxyServer(),
-			OpReleaseDB:           dbaccess.NewOperatorReleaseDB(),
-			OpReleaseHistoryDB:    dbaccess.NewOperatorReleaseHistoryDB(),
-			AuthService:           auth.NewAuthServiceImpl(),
-			AuditLog:              metric.NewAuditLogBuilder(),
-			MQClient:              mq.NewMQClient(),
-			BusinessDomainService: business_domain.NewBusinessDomainService(),
-			MetadataService:       metadata.NewMetadataService(),
+			Logger:             conf.GetLogger(),
+			DBOperatorManager:  dbaccess.NewOperatorManagerDB(),
+			DBTx:               dbaccess.NewBaseTx(),
+			CategoryManager:    category.NewCategoryManager(),
+			UserMgnt:           drivenadapters.NewUserManagementClient(),
+			Validator:          validator.NewValidator(),
+			Proxy:              proxy.NewProxyServer(),
+			OpReleaseDB:        dbaccess.NewOperatorReleaseDB(),
+			OpReleaseHistoryDB: dbaccess.NewOperatorReleaseHistoryDB(),
+			AuthService:        auth.NewAuthServiceImpl(),
+			AuditLog:           metric.NewAuditLogBuilder(),
+			MQClient:           mq.NewMQClient(),
+			MetadataService:    metadata.NewMetadataService(),
 		}
 	})
 	return om

@@ -87,7 +87,6 @@ func TestBuildTraceHeaders(t *testing.T) {
 func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 	ctx := SetTraceContextToCtx(context.Background(), TraceContext{
 		RequestID:          "req_01JZVALIDREQUESTID000000024",
-		BusinessDomain:     "domain-finance-001",
 		InteractionID:      "third-party-interaction-0001",
 		OperationID:        "data-query-0001",
 		CausationEventID:   "retrieval-completed-0001",
@@ -97,13 +96,11 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		ObservedAtProvided: true,
 	})
 	headers := BuildTraceHeaders(ctx)
-	require.Equal(t, "domain-finance-001", headers[HeaderBusinessDomain])
 	require.Equal(t, "third-party-interaction-0001", headers[HeaderBKNInteractionID])
 	require.Equal(t, "data-query-0001", headers[HeaderBKNOperationID])
 	require.Equal(t, "retrieval-completed-0001", headers[HeaderBKNCausationEventID])
 	require.Equal(t, "agent-answer-0001", headers[HeaderBKNClaimID])
 	require.Equal(t, "3", headers[HeaderBKNAttempt])
-	require.Contains(t, headers[HeaderBaggage], "business_domain=domain-finance-001")
 
 	invalid := map[string]string{
 		HeaderBKNRequestID:        "req_01JZVALIDREQUESTID000000025",

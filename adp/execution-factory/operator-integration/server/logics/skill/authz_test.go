@@ -41,7 +41,7 @@ func TestSkillIndexBuildAuthz(t *testing.T) {
 			}
 			expectDenied(authService)
 			resp, err := svc.CreateTask(skillPublicCtx(), &interfaces.CreateSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1", UserID: "user-1",
+				UserID:      "user-1",
 				ExecuteType: interfaces.SkillIndexBuildExecuteTypeFull,
 			})
 			So(resp, ShouldBeNil)
@@ -57,7 +57,7 @@ func TestSkillIndexBuildAuthz(t *testing.T) {
 			}
 			expectDenied(authService)
 			resp, err := svc.CancelTask(skillPublicCtx(), &interfaces.CancelSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1", UserID: "user-1", TaskID: "task-1",
+				UserID: "user-1", TaskID: "task-1",
 			})
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
@@ -72,7 +72,7 @@ func TestSkillIndexBuildAuthz(t *testing.T) {
 			}
 			expectDenied(authService)
 			resp, err := svc.RetryTask(skillPublicCtx(), &interfaces.RetrySkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1", UserID: "user-1", TaskID: "task-1",
+				UserID: "user-1", TaskID: "task-1",
 			})
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
@@ -93,7 +93,7 @@ func TestSkillIndexBuildAuthz(t *testing.T) {
 			taskRepo.EXPECT().Insert(gomock.Any(), gomock.Nil(), gomock.Any()).Return(nil)
 
 			resp, err := svc.CreateTask(skillPublicCtx(), &interfaces.CreateSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1", UserID: "user-1",
+				UserID:      "user-1",
 				ExecuteType: interfaces.SkillIndexBuildExecuteTypeFull,
 			})
 			So(err, ShouldBeNil)
@@ -112,7 +112,7 @@ func TestSkillIndexBuildAuthz(t *testing.T) {
 			taskRepo.EXPECT().Insert(gomock.Any(), gomock.Nil(), gomock.Any()).Return(nil)
 
 			resp, err := svc.CreateTask(context.Background(), &interfaces.CreateSkillIndexBuildTaskReq{
-				BusinessDomainID: "bd-1", UserID: "user-1",
+				UserID:      "user-1",
 				ExecuteType: interfaces.SkillIndexBuildExecuteTypeFull,
 			})
 			So(err, ShouldBeNil)
@@ -140,7 +140,7 @@ func TestGetSkillReleaseHistoryAuthz(t *testing.T) {
 				interfaces.AuthOperationTypeView).Return(false, nil)
 
 			resp, err := reader.GetSkillReleaseHistory(skillPublicCtx(), &interfaces.GetSkillReleaseHistoryReq{
-				BusinessDomainID: "bd-1", UserID: "user-1", SkillID: "skill-1",
+				UserID: "user-1", SkillID: "skill-1",
 			})
 			So(resp, ShouldBeNil)
 			So(err, ShouldNotBeNil)
@@ -161,7 +161,7 @@ func TestGetSkillReleaseHistoryAuthz(t *testing.T) {
 				Return([]*model.SkillReleaseHistoryDB{{SkillID: "skill-1", Version: "v1"}}, nil)
 
 			resp, err := reader.GetSkillReleaseHistory(skillPublicCtx(), &interfaces.GetSkillReleaseHistoryReq{
-				BusinessDomainID: "bd-1", UserID: "user-1", SkillID: "skill-1",
+				UserID: "user-1", SkillID: "skill-1",
 			})
 			So(err, ShouldBeNil)
 			So(len(resp), ShouldEqual, 1)
@@ -178,7 +178,7 @@ func TestGetSkillReleaseHistoryAuthz(t *testing.T) {
 				Return([]*model.SkillReleaseHistoryDB{}, nil)
 
 			resp, err := reader.GetSkillReleaseHistory(context.Background(), &interfaces.GetSkillReleaseHistoryReq{
-				BusinessDomainID: "bd-1", UserID: "user-1", SkillID: "skill-1",
+				UserID: "user-1", SkillID: "skill-1",
 			})
 			So(err, ShouldBeNil)
 			So(resp, ShouldBeEmpty)

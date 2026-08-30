@@ -591,9 +591,6 @@ components:
             type: object
             description: "工具箱信息"
             properties:
-              business_domain_id:
-                type: string
-                description: 业务域Id
               box_id:
                 type: string
                 description: "工具箱ID"

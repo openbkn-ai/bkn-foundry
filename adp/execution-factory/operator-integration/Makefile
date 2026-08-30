@@ -11,7 +11,6 @@ DEV_CONFIG_PROFILE ?= $(shell d="$(CURDIR)"; \
 	done; \
 	printf "%s/.env/execution-factory" "$(CURDIR)")
 AUTH_ENABLED ?= true
-BUSINESS_DOMAIN_ENABLED ?= true
 
 help:
 	@echo "operator-integration - available commands:"
@@ -37,7 +36,6 @@ dev:
 	@test -f "$(DEV_CONFIG_PROFILE)/observability.yaml"
 	CONFIG_PROFILE="$(DEV_CONFIG_PROFILE)" \
 	AUTH_ENABLED="$(AUTH_ENABLED)" \
-	BUSINESS_DOMAIN_ENABLED="$(BUSINESS_DOMAIN_ENABLED)" \
 	go run ./server/main.go
 
 generate-mock:

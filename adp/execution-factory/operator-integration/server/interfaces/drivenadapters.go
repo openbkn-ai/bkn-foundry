@@ -478,54 +478,6 @@ const (
 	AuditLogOperation AuditLogType = "operation" // Operation log.
 )
 
-// BusinessDomainResource business domain resource information.
-type BusinessDomainResource struct {
-	BDID string `json:"bd_id"` // Business domain ID.
-	ID   string `json:"id"`    // Resource ID.
-	Type string `json:"type"`  // Resource type.
-}
-
-// BusinessDomainResourceListRequest Business domain resource list query request.
-type BusinessDomainResourceListRequest struct {
-	BDID   string `json:"bd_id"`  // Business domain ID.
-	ID     string `json:"id"`     // Resource ID.
-	Type   string `json:"type"`   // Resource type.
-	Limit  int    `json:"limit"`  // Data volume, default: 20, -1 means no paging, full query.
-	Offset int    `json:"offset"` // Data offset, default 0.
-}
-
-// BusinessDomainResourceListResponse Business domain resource list query response.
-type BusinessDomainResourceListResponse struct {
-	Limit  int                       `json:"limit"`  // Data volume.
-	Offset int                       `json:"offset"` // data offset.
-	Total  int                       `json:"total"`  // Total data.
-	Items  []*BusinessDomainResource `json:"items"`  // Data content.
-}
-
-// BusinessDomainResourceAssociateRequest Business domain resource association request.
-type BusinessDomainResourceAssociateRequest struct {
-	BDID string `json:"bd_id"` // Business domain ID.
-	ID   string `json:"id"`    // Resource ID.
-	Type string `json:"type"`  // Resource type.
-}
-
-// BusinessDomainResourceDisassociateRequest Business domain resource disassociation request.
-type BusinessDomainResourceDisassociateRequest struct {
-	BDID string `json:"bd_id"` // Business domain ID.
-	ID   string `json:"id"`    // Resource ID.
-	Type string `json:"type"`  // Resource type.
-}
-
-// BusinessDomainManagement business domain management service interface.
-type BusinessDomainManagement interface {
-	// Resource association.
-	AssociateResource(ctx context.Context, req *BusinessDomainResourceAssociateRequest) error
-	// Resource disassociation.
-	DisassociateResource(ctx context.Context, req *BusinessDomainResourceDisassociateRequest) error
-	// Resource list query.
-	ResourceList(ctx context.Context, req *BusinessDomainResourceListRequest) (*BusinessDomainResourceListResponse, error)
-}
-
 // ExecuteCodeReq execute code request.
 type ExecuteCodeReq struct {
 	Code                  string            `json:"code" validate:"required"`                                    // Execute code.

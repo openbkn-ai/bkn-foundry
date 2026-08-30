@@ -19,7 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"vega-backend/common/operationaudit"
-	"vega-backend/interfaces"
 )
 
 func TestCaptureOperationAuditRequestRestoresOversizedBody(t *testing.T) {
@@ -60,7 +59,6 @@ func TestOperationAuditRecordsBoundedManagementFact(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/vega-backend/v1/catalogs", strings.NewReader(`{"name":"供应链数据源","connector_config":{"password":"secret"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-tenant-id", "tenant-a")
-	req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain-a")
 	req.Header.Set("bkn-request-id", "req-a")
 	w := httptest.NewRecorder()
 	engine.ServeHTTP(w, req)
@@ -71,7 +69,6 @@ func TestOperationAuditRecordsBoundedManagementFact(t *testing.T) {
 	assert.Equal(t, "catalog", entry.TargetType)
 	assert.Equal(t, "供应链数据源", entry.TargetName)
 	assert.Equal(t, "tenant-a", entry.TenantID)
-	assert.Equal(t, "domain-a", entry.BusinessDomainID)
 	assert.Equal(t, "success", entry.Outcome)
 	assert.NotContains(t, entry.TargetName, "secret")
 }

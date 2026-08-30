@@ -318,7 +318,7 @@ func (s *Service) canPageCanonicalConversation(options evidencevo.SummaryQueryOp
 	// path; this fast path is intentionally limited to the conversation view.
 	return options.InteractionID == "" && options.TraceID == "" && options.Status == "" &&
 		options.AgentOrApp == "" && options.ExcludeAgentOrApp == "" && options.Service == "" &&
-		options.Tool == "" && options.ErrorKeyword == "" && options.BusinessDomain == "" && options.KnowledgeNetwork == "" &&
+		options.Tool == "" && options.ErrorKeyword == "" && options.KnowledgeNetwork == "" &&
 		options.EvidenceCompleteness == "" && options.Keyword == "" && options.From.IsZero() && options.To.IsZero()
 }
 
@@ -332,7 +332,6 @@ func canonicalInteractionListSummary(
 		AgentOrApp:  conversation.AgentName, AgentName: conversation.AgentName,
 		ApplicationPrincipalID: conversation.Owner.ApplicationPrincipalID,
 		EffectiveSubjectID:     conversation.Owner.EffectiveSubjectID,
-		BusinessDomain:         conversation.Owner.BusinessDomainID,
 	}
 	applyInteractionState(
 		&entry.Status, &entry.EvidenceCompleteness, &entry.PartialReasons,
@@ -354,7 +353,7 @@ func mergeCanonicalInteractionFacts(
 	facts.StartedAt, facts.CompletedAt, facts.DurationMS = canonical.StartedAt, canonical.CompletedAt, canonical.DurationMS
 	facts.AgentOrApp, facts.AgentName = canonical.AgentOrApp, canonical.AgentName
 	facts.ApplicationPrincipalID = canonical.ApplicationPrincipalID
-	facts.EffectiveSubjectID, facts.BusinessDomain = canonical.EffectiveSubjectID, canonical.BusinessDomain
+	facts.EffectiveSubjectID = canonical.EffectiveSubjectID
 	facts.Status, facts.EvidenceCompleteness = canonical.Status, canonical.EvidenceCompleteness
 	facts.PartialReasons = canonical.PartialReasons
 	return facts
@@ -375,7 +374,7 @@ func buildConversationSummary(conversationID string, requests []evidencevo.Reque
 	return evidencevo.ConversationSummary{
 		ConversationID: conversationID,
 		StartedAt:      base.StartedAt, CompletedAt: base.CompletedAt,
-		Initiator: base.Initiator, AgentOrApp: base.AgentOrApp, BusinessDomain: base.BusinessDomain,
+		Initiator: base.Initiator, AgentOrApp: base.AgentOrApp,
 		AgentName: base.AgentName, ApplicationPrincipalID: base.ApplicationPrincipalID,
 		EffectiveSubjectID: base.EffectiveSubjectID,
 		KnowledgeNetworks:  base.KnowledgeNetworks, QuestionPreview: questionPreview, ResultPreview: resultPreview,
@@ -468,7 +467,7 @@ func buildInteractionListSummary(interactionID string, requests []evidencevo.Req
 	return evidencevo.InteractionListSummary{
 		InteractionID: interactionID, ConversationID: conversationID,
 		StartedAt: base.StartedAt, CompletedAt: base.CompletedAt,
-		Initiator: base.Initiator, AgentOrApp: base.AgentOrApp, BusinessDomain: base.BusinessDomain,
+		Initiator: base.Initiator, AgentOrApp: base.AgentOrApp,
 		AgentName: base.AgentName, ApplicationPrincipalID: base.ApplicationPrincipalID,
 		EffectiveSubjectID: base.EffectiveSubjectID,
 		KnowledgeNetworks:  base.KnowledgeNetworks, QuestionPreview: base.QuestionPreview, ResultPreview: base.ResultPreview,
@@ -528,9 +527,6 @@ func matchesInteractionSummaryFilters(
 		entry.ApplicationPrincipalID != options.AgentOrApp && entry.EffectiveSubjectID != options.AgentOrApp {
 		return false
 	}
-	if options.BusinessDomain != "" && entry.BusinessDomain != options.BusinessDomain {
-		return false
-	}
 	if options.KnowledgeNetwork != "" && !containsSummaryValue(entry.KnowledgeNetworks, options.KnowledgeNetwork) {
 		return false
 	}
@@ -541,7 +537,7 @@ func matchesInteractionSummaryFilters(
 		haystack := strings.ToLower(strings.Join([]string{
 			entry.InteractionID, entry.ConversationID, entry.QuestionPreview, entry.ResultPreview,
 			entry.AgentOrApp, entry.AgentName, entry.ApplicationPrincipalID, entry.EffectiveSubjectID,
-			entry.BusinessDomain, entry.ErrorSummary,
+			entry.ErrorSummary,
 		}, "\n"))
 		if !strings.Contains(haystack, keyword) {
 			return false
@@ -589,7 +585,6 @@ func aggregateRequestGroup(requests []evidencevo.RequestSummary) (evidencevo.Req
 		firstNonEmptySummary(&result.AgentName, request.AgentName)
 		firstNonEmptySummary(&result.ApplicationPrincipalID, request.ApplicationPrincipalID)
 		firstNonEmptySummary(&result.EffectiveSubjectID, request.EffectiveSubjectID)
-		firstNonEmptySummary(&result.BusinessDomain, request.BusinessDomain)
 		firstNonEmptySummary(&result.ErrorSummary, request.ErrorSummary)
 		firstNonEmptySummary(&result.InteractionQuestionArtifactRef, request.InteractionQuestionArtifactRef)
 		firstNonEmptySummary(&result.InteractionResultArtifactRef, request.InteractionResultArtifactRef)
@@ -894,7 +889,6 @@ func (s *Service) appendCanonicalInteractions(
 				AgentOrApp: conversation.AgentName, AgentName: conversation.AgentName,
 				ApplicationPrincipalID: conversation.Owner.ApplicationPrincipalID,
 				EffectiveSubjectID:     conversation.Owner.EffectiveSubjectID,
-				BusinessDomain:         conversation.Owner.BusinessDomainID,
 				Status:                 string(interaction.ExecutionStatus),
 				EvidenceCompleteness:   string(interaction.EvidenceStatus),
 			}
@@ -913,7 +907,7 @@ func (s *Service) appendCanonicalInteractions(
 
 func canReadCanonicalConversation(conversation sessionvo.Conversation, scope evidencevo.QueryScope) bool {
 	record := evidencevo.RecordScope{
-		TenantID: conversation.Owner.TenantID, BusinessDomain: conversation.Owner.BusinessDomainID,
+		TenantID:               conversation.Owner.TenantID,
 		EffectiveSubjectID:     conversation.Owner.EffectiveSubjectID,
 		ApplicationPrincipalID: conversation.Owner.ApplicationPrincipalID,
 	}
@@ -925,9 +919,6 @@ func canReadCanonicalConversation(conversation sessionvo.Conversation, scope evi
 		return evidencevo.CanReadRecord(*scope.AccessProfile, record, view)
 	}
 	if scope.TenantID == "" || record.TenantID == "" || scope.TenantID != record.TenantID {
-		return false
-	}
-	if record.BusinessDomain != "" && scope.BusinessDomain != record.BusinessDomain {
 		return false
 	}
 	return scope.AccountID != "" &&
@@ -1509,7 +1500,7 @@ func (s *Service) listTraceIdentityPage(ctx context.Context, options evidencevo.
 	}
 	ids := summaryIdentityIDs(identityPage.Entries)
 	_, traces, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
-		Scope: options.Scope, BusinessDomain: options.BusinessDomain,
+		Scope:    options.Scope,
 		TraceIDs: ids, Limit: selectedSummaryCandidateLimit(len(ids)),
 	}, summaryLoadMetadata{})
 	if err != nil {
@@ -1560,7 +1551,7 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 	}
 	ids := summaryIdentityIDs(identityPage.Entries)
 	requests, _, metadata, err := s.loadProjectedExecutionSummaries(ctx, iprojectionsource.Query{
-		Scope: options.Scope, BusinessDomain: options.BusinessDomain,
+		Scope:           options.Scope,
 		ConversationIDs: ids, Limit: selectedSummaryCandidateLimit(len(ids)),
 	}, summaryLoadMetadata{})
 	if err != nil {
@@ -1610,7 +1601,6 @@ func canUseSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {
 	return trustedQueryScope(options.Scope) &&
 		(options.Scope.AccessProfile == nil || options.Scope.AccessProfile.AccountActive && options.Scope.AccessProfile.TenantActive) &&
 		summaryAccessBoundaryMatches(options.Scope) &&
-		(options.BusinessDomain == "" || options.BusinessDomain == options.Scope.BusinessDomain) &&
 		(options.Scope.AccessProfile == nil || !evidencevo.NeedsCrossAccountCandidates(options.Scope) || evidencevo.HasTenantWideTraceAccess(*options.Scope.AccessProfile)) &&
 		options.TraceID == "" && options.ConversationID == "" && options.InteractionID == "" &&
 		!hasSummaryContentFilters(options)
@@ -1627,12 +1617,11 @@ func summaryAccessBoundaryMatches(scope evidencevo.QueryScope) bool {
 		return true
 	}
 	profile := *scope.AccessProfile
-	return profile.TenantID != "" && scope.TenantID == profile.TenantID &&
-		profile.BusinessDomain != "" && scope.BusinessDomain == profile.BusinessDomain
+	return profile.TenantID != "" && scope.TenantID == profile.TenantID
 }
 
 func summaryIdentityQuery(options evidencevo.SummaryQueryOptions) isessionstore.SummaryPageQuery {
-	return isessionstore.SummaryPageQuery{Scope: options.Scope, From: options.From, To: options.To, BusinessDomain: options.BusinessDomain, Limit: normalizeSummaryLimit(options.Limit), Offset: summaryQueryOffset(options)}
+	return isessionstore.SummaryPageQuery{Scope: options.Scope, From: options.From, To: options.To, Limit: normalizeSummaryLimit(options.Limit), Offset: summaryQueryOffset(options)}
 }
 
 func summaryIdentityIDs(entries []isessionstore.SummaryIdentity) []string {
@@ -1737,7 +1726,7 @@ func (s *Service) loadExecutionSummariesWithCandidateLimit(ctx context.Context, 
 	}
 	result, err := s.projectionSource.LoadExecutionProjection(ctx, iprojectionsource.Query{
 		Scope: options.Scope, From: options.From, To: options.To,
-		BusinessDomain: options.BusinessDomain, Status: options.Status,
+		Status:  options.Status,
 		TraceID: options.TraceID, InteractionID: options.InteractionID,
 		Limit: candidateLimit,
 	})
@@ -1893,9 +1882,6 @@ func matchesRequestFilters(summary evidencevo.RequestSummary, options evidencevo
 	if options.AgentOrApp != "" && !matchesAgentIdentity(summary, options.AgentOrApp) {
 		return false
 	}
-	if options.BusinessDomain != "" && summary.BusinessDomain != options.BusinessDomain {
-		return false
-	}
 	if options.KnowledgeNetwork != "" && !containsSummaryValue(summary.KnowledgeNetworks, options.KnowledgeNetwork) {
 		return false
 	}
@@ -1910,7 +1896,7 @@ func matchesRequestFilters(summary evidencevo.RequestSummary, options evidencevo
 			summary.RequestID, summary.ConversationID, summary.InteractionID,
 			summary.QuestionPreview, summary.ResultPreview, summary.AgentOrApp, summary.AgentName,
 			summary.ApplicationPrincipalID, summary.EffectiveSubjectID,
-			summary.BusinessDomain, summary.ErrorSummary,
+			summary.ErrorSummary,
 		}, summary.BusinessRefs...), "\n"))
 		if !strings.Contains(haystack, keyword) {
 			return false
@@ -1958,16 +1944,13 @@ func matchesTraceFilters(summary evidencevo.TraceSummary, options evidencevo.Sum
 		!strings.Contains(strings.ToLower(summary.ErrorSummary), keyword) {
 		return false
 	}
-	if options.BusinessDomain != "" && summary.BusinessDomain != options.BusinessDomain {
-		return false
-	}
 	if !matchesTimeRange(summary.StartedAt, options.From, options.To) {
 		return false
 	}
 	if keyword := strings.ToLower(strings.TrimSpace(options.Keyword)); keyword != "" {
 		haystack := strings.ToLower(strings.Join([]string{
 			summary.TraceID, summary.RequestID, summary.ConversationID, summary.InteractionID,
-			summary.AgentOrApp, summary.BusinessDomain, summary.RootService,
+			summary.AgentOrApp, summary.RootService,
 			summary.RootOperation, summary.ErrorSummary,
 		}, "\n"))
 		return strings.Contains(haystack, keyword)

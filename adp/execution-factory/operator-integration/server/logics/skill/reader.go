@@ -14,20 +14,18 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
 type skillReader struct {
-	skillRepo             model.ISkillRepository
-	releaseRepo           model.ISkillReleaseDB
-	releaseHistoryRepo    model.ISkillReleaseHistoryDB
-	fileRepo              model.ISkillFileIndex
-	assetStore            skillAssetStore
-	AuthService           interfaces.IAuthorizationService
-	BusinessDomainService interfaces.IBusinessDomainService
-	Logger                interfaces.Logger
+	skillRepo          model.ISkillRepository
+	releaseRepo        model.ISkillReleaseDB
+	releaseHistoryRepo model.ISkillReleaseHistoryDB
+	fileRepo           model.ISkillFileIndex
+	assetStore         skillAssetStore
+	AuthService        interfaces.IAuthorizationService
+	Logger             interfaces.Logger
 }
 
 var (
@@ -40,14 +38,13 @@ func NewSkillReader() interfaces.SkillReader {
 	readerOnce.Do(func() {
 		conf := config.NewConfigLoader()
 		readerInst = &skillReader{
-			skillRepo:             dbaccess.NewSkillRepositoryDB(),
-			releaseRepo:           dbaccess.NewSkillReleaseDB(),
-			releaseHistoryRepo:    dbaccess.NewSkillReleaseHistoryDB(),
-			fileRepo:              dbaccess.NewSkillFileIndexDB(),
-			assetStore:            newOSSGatewaySkillAssetStore(),
-			AuthService:           auth.NewAuthServiceImpl(),
-			BusinessDomainService: business_domain.NewBusinessDomainService(),
-			Logger:                conf.GetLogger(),
+			skillRepo:          dbaccess.NewSkillRepositoryDB(),
+			releaseRepo:        dbaccess.NewSkillReleaseDB(),
+			releaseHistoryRepo: dbaccess.NewSkillReleaseHistoryDB(),
+			fileRepo:           dbaccess.NewSkillFileIndexDB(),
+			assetStore:         newOSSGatewaySkillAssetStore(),
+			AuthService:        auth.NewAuthServiceImpl(),
+			Logger:             conf.GetLogger(),
 		}
 	})
 	return readerInst
@@ -157,7 +154,6 @@ func (r *skillReader) ReadSkillFile(ctx context.Context, req *interfaces.ReadSki
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 		"rel_path": req.RelPath,
 	})

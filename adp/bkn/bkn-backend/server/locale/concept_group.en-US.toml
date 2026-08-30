@@ -104,16 +104,6 @@ Description = "Begin Transaction Failed"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
 ErrorLink = ""
 
-[BknBackend.ConceptGroup.InternalError.BindBusinessDomainFailed]
-Description = "Bind Business Domain Failed"
-Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = ""
-
-[BknBackend.ConceptGroup.InternalError.UnbindBusinessDomainFailed]
-Description = "Unbind Business Domain Failed"
-Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."
-ErrorLink = ""
-
 [BknBackend.ConceptGroup.InternalError.CheckConceptGroupIfExistFailed]
 Description = "Check Concept Group Exist Failed"
 Solution = "Please try again. If the error occurs again, please submit the work order or contact technical support."

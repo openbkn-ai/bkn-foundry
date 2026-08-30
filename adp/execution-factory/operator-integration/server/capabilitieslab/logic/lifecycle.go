@@ -15,10 +15,10 @@ import (
 
 func (s *Service) UpdateHttpCapability(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.UpdateHttpCapabilityRequest,
 ) (*model.Capability, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
@@ -41,15 +41,15 @@ func (s *Service) UpdateHttpCapability(
 		FallbackDescription: capability.Description,
 		OpenAPISpec:         openapiSpec,
 	}
-	if err := s.Client.UpdateTool(ctx, businessDomain, capability.BoxID, capability.ToolID, payload); err != nil {
+	if err := s.Client.UpdateTool(ctx, capability.BoxID, capability.ToolID, payload); err != nil {
 		return nil, err
 	}
 
-	return s.GetCapability(ctx, businessDomain, capabilityID)
+	return s.GetCapability(ctx, capabilityID)
 }
 
-func (s *Service) DeleteCapability(ctx context.Context, businessDomain, capabilityID string) error {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+func (s *Service) DeleteCapability(ctx context.Context, capabilityID string) error {
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return err
 	}
@@ -59,17 +59,17 @@ func (s *Service) DeleteCapability(ctx context.Context, businessDomain, capabili
 		if capability.BoxID == "" || capability.ToolID == "" {
 			return errors.New("missing tool reference")
 		}
-		return s.Client.DeleteTools(ctx, businessDomain, capability.BoxID, []string{capability.ToolID})
+		return s.Client.DeleteTools(ctx, capability.BoxID, []string{capability.ToolID})
 	case "mcp":
 		if capability.McpID == "" {
 			return errors.New("missing mcp id")
 		}
-		return s.Client.DeleteMcp(ctx, businessDomain, capability.McpID)
+		return s.Client.DeleteMcp(ctx, capability.McpID)
 	case "skill":
 		if capability.SkillID == "" {
 			return errors.New("missing skill id")
 		}
-		return s.Client.DeleteSkill(ctx, businessDomain, capability.SkillID)
+		return s.Client.DeleteSkill(ctx, capability.SkillID)
 	default:
 		return fmt.Errorf("unsupported capability kind")
 	}
@@ -77,10 +77,9 @@ func (s *Service) DeleteCapability(ctx context.Context, businessDomain, capabili
 
 func (s *Service) RegisterMcpCapability(
 	ctx context.Context,
-	businessDomain string,
 	req model.RegisterMcpCapabilityRequest,
 ) (*model.Capability, error) {
-	mcpID, err := s.Client.RegisterMcp(ctx, businessDomain, client.RegisterMcpPayload{
+	mcpID, err := s.Client.RegisterMcp(ctx, client.RegisterMcpPayload{
 		Name:         req.Name,
 		Description:  req.Description,
 		Mode:         req.Mode,
@@ -93,15 +92,14 @@ func (s *Service) RegisterMcpCapability(
 		return nil, err
 	}
 
-	return s.GetCapability(ctx, businessDomain, BuildMcpCapabilityID(mcpID))
+	return s.GetCapability(ctx, BuildMcpCapabilityID(mcpID))
 }
 
 func (s *Service) RegisterSkillCapability(
 	ctx context.Context,
-	businessDomain string,
 	req model.RegisterSkillCapabilityRequest,
 ) (*model.Capability, error) {
-	skill, err := s.Client.RegisterSkill(ctx, businessDomain, client.RegisterSkillPayload{
+	skill, err := s.Client.RegisterSkill(ctx, client.RegisterSkillPayload{
 		FileType: req.FileType,
 		Category: req.Category,
 		Source:   req.Source,
@@ -113,5 +111,5 @@ func (s *Service) RegisterSkillCapability(
 		return nil, err
 	}
 
-	return s.GetCapability(ctx, businessDomain, BuildSkillCapabilityID(skill.SkillID))
+	return s.GetCapability(ctx, BuildSkillCapabilityID(skill.SkillID))
 }

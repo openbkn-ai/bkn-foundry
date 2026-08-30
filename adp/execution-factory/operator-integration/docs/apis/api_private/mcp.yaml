@@ -22,12 +22,6 @@ paths:
       summary: MCP工具执行接口
       description: MCP工具执行接口，作为MCP Server ToolHandler的实际执行方，执行工具的实际逻辑
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_tool_id
           in: path
           required: true
@@ -66,12 +60,6 @@ paths:
       summary: 代理获取MCP工具列表
       description: 通过代理的方式，获取指定MCP服务的工具列表，作为MCP Client的代理方，上游调用方不需要使用MCP Client，直接调用此接口获取工具列表
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: user_id
           in: header
           required: true
@@ -103,12 +91,6 @@ paths:
       summary: 代理调用MCP工具
       description: 通过代理的方式，调用指定MCP服务的工具，作为MCP Client的代理方，上游调用方不需要使用MCP Client，直接调用此接口调用工具
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: user_id
           in: header
           required: true
@@ -152,12 +134,6 @@ paths:
       summary: 注册内置MCP服务
       description: 注册内置MCP服务
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         required: true
         content:
@@ -212,12 +188,6 @@ paths:
       tags: [MCP Server Builtin Manage]
       summary: 注销内置MCP服务
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: mcp_id
           in: path
           required: true

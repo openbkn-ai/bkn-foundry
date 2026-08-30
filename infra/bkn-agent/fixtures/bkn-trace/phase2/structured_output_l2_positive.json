@@ -6,7 +6,6 @@
     "trace_id": "7a220000000000000000000000000002",
     "traceparent": "00-7a220000000000000000000000000002-7a22000000000001-01",
     "bkn.request.id": "req_bkn_agent_phase2_structured_0002",
-    "business_domain": "acct_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "user"
   },

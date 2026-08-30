@@ -20,7 +20,7 @@ npm install -g @openbkn/bkn-sdk
 
 ### 🛡️ 完整安装：准备一个可登录的业务用户
 
-完整安装（`./deploy.sh openbkn install`，未加 `--minimum`，已启用 `auth` 与 `businessDomain`）下平台**必须鉴权**才能使用业务能力。下面有**两条路径**得到一个可登录账号，按你的喜好二选一即可：
+完整安装（`./deploy.sh openbkn install`，未加 `--minimum`，已启用 `auth`）下平台**必须鉴权**才能使用业务能力。下面有**两条路径**得到一个可登录账号，按你的喜好二选一即可：
 
 #### 路径 A（推荐）：让 `bash deploy/onboard.sh` 自动准备
 
@@ -55,7 +55,7 @@ openbkn admin user roles <userId>                             # 确认已挂角�
 
 - **路径 A 默认密码 `111111`**（onboard 给 `test` 设置的）；**路径 B 没有固定默认密码** —— `user create` 为每个用户随机生成初始密码，仅在创建响应中返回一次。请按实际路径取。
 - 角色与权限说明见 [安装与部署 — 完整安装后的管理员命令（`openbkn admin`）](install.md#-完整安装后的管理员命令openbkn-admin) 与 [BKN Safe](manual/bkn-safe.md#-管理员工具openbkn-admin)。生产环境请只赋必要角色；上面「挂齐所有角色」适合本地 / POC / 快速开始。
-- **最小化安装**（`--minimum`）下鉴权与业务域服务被裁剪，**两条路径都不需要**：直接用 `openbkn auth login <平台地址> --no-auth` 即可。
+- **最小化安装**（`--minimum`）下鉴权服务被裁剪，**两条路径都不需要**：直接用 `openbkn auth login <平台地址> --no-auth` 即可。
 
 若你已从运维处拿到**可登录的现有账号**（或安装文档给出的初始用户），两条路径都可以跳过，直接进入下节「登录平台」。
 

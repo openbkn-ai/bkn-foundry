@@ -97,12 +97,6 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 		return releaseList, nil
 	}
 
-	businessDomainIds := strings.Split(req.BusinessDomainID, ",")
-	resourceToBdMap, err := s.BusinessDomainService.BatchResourceList(ctx, businessDomainIds, interfaces.AuthResourceTypeMCP)
-	if err != nil {
-		return
-	}
-
 	queryBuilder := auth.NewQueryBuilder[model.MCPServerReleaseDB]().
 		SetPage(req.Page, req.PageSize).SetAll(req.All).
 		SetQueryFunctions(queryTotal, queryBatch).
@@ -120,13 +114,6 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 				return nil, err
 			}
 			return s.AuthService.ResourceListIDs(newCtx, accessor, interfaces.AuthResourceTypeMCP, interfaces.AuthOperationTypePublicAccess)
-		}).
-		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			resourceIDs := make([]string, 0, len(resourceToBdMap))
-			for resourceID := range resourceToBdMap {
-				resourceIDs = append(resourceIDs, resourceID)
-			}
-			return resourceIDs, nil
 		})
 	resp, err := queryBuilder.Execute(ctx)
 	if err != nil {
@@ -147,7 +134,6 @@ func (s *mcpServiceImpl) QueryRelease(ctx context.Context, req *interfaces.MCPSe
 		return
 	}
 	for _, config := range data {
-		config.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, config.MCPID, req.BusinessDomainID)
 		config.CreateUser = utils.GetValueOrDefault(userMap, config.CreateUser, interfaces.UnknownUser)
 		config.UpdateUser = utils.GetValueOrDefault(userMap, config.UpdateUser, interfaces.UnknownUser)
 		config.ReleaseUser = utils.GetValueOrDefault(userMap, config.ReleaseUser, interfaces.UnknownUser)

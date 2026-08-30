@@ -119,18 +119,17 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 
 		url := "/api/bkn-backend/v1/bkns"
 
-		Convey("Success with business domain header\n", func() {
+		Convey("Success with authenticated request\n", func() {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
 
 			req := newMultipartRequest(t, url, "test.tar", newValidBKNTar(t))
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 
 			So(w.Result().StatusCode, ShouldEqual, http.StatusOK)
 		})
 
-		Convey("Success without business domain header (optional)\n", func() {
+		Convey("Success without optional headers\n", func() {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("kn1", nil)
 
 			req := newMultipartRequest(t, url, "test.tar", newValidBKNTar(t))
@@ -182,7 +181,6 @@ func Test_BKNRestHandler_UploadBKN(t *testing.T) {
 			kns.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", err)
 
 			req := newMultipartRequest(t, url, "test.tar", newValidBKNTar(t))
-			req.Header.Set(interfaces.HTTP_HEADER_BUSINESS_DOMAIN, "domain1")
 			w := httptest.NewRecorder()
 			engine.ServeHTTP(w, req)
 

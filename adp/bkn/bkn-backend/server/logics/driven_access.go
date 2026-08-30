@@ -18,7 +18,6 @@ var (
 	AOA            interfaces.AgentOperatorAccess
 	ASA            interfaces.ActionScheduleAccess
 	ATA            interfaces.ActionTypeAccess
-	BSA            interfaces.BusinessSystemAccess
 	CGA            interfaces.ConceptGroupAccess
 	KNA            interfaces.KNAccess
 	MA             interfaces.MetricAccess
@@ -46,10 +45,6 @@ func SetActionScheduleAccess(asa interfaces.ActionScheduleAccess) {
 
 func SetActionTypeAccess(ata interfaces.ActionTypeAccess) {
 	ATA = ata
-}
-
-func SetBusinessSystemAccess(bsa interfaces.BusinessSystemAccess) {
-	BSA = bsa
 }
 
 func SetConceptGroupAccess(cga interfaces.ConceptGroupAccess) {

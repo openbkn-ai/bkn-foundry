@@ -51,7 +51,7 @@ ErrorLink = ""
 
 [BknBackend.OperationAudit.MissingScope]
 Description = "缺少操作审计查询作用域。"
-Solution = "请提供租户和业务域标识。"
+Solution = "请提供租户标识。"
 ErrorLink = ""
 
 [BknBackend.OperationAudit.AccessDenied]

@@ -16,7 +16,6 @@ import (
 
 func (s *Service) ImportOpenApiCapabilities(
 	ctx context.Context,
-	businessDomain string,
 	req model.ImportOpenApiCapabilityRequest,
 ) (*model.ImportOpenApiCapabilityResponse, error) {
 	createReq := model.CreateHttpCapabilityRequest{
@@ -31,7 +30,7 @@ func (s *Service) ImportOpenApiCapabilities(
 		createReq.Group.Mode = "auto"
 	}
 
-	groupName, boxID, err := s.resolveGroup(ctx, businessDomain, createReq)
+	groupName, boxID, err := s.resolveGroup(ctx, createReq)
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +53,7 @@ func (s *Service) ImportOpenApiCapabilities(
 			Category:    category,
 		}, category)
 
-		bundle, bundleErr := s.Client.RegisterOpenAPIBundle(ctx, businessDomain, bundleReq)
+		bundle, bundleErr := s.Client.RegisterOpenAPIBundle(ctx, bundleReq)
 		if bundleErr != nil {
 			return nil, bundleErr
 		}
@@ -66,7 +65,7 @@ func (s *Service) ImportOpenApiCapabilities(
 		}
 
 		for i, toolID := range bundle.ToolIDs {
-			capability, capErr := s.GetCapability(ctx, businessDomain, BuildHttpCapabilityID(bundle.BoxID, toolID))
+			capability, capErr := s.GetCapability(ctx, BuildHttpCapabilityID(bundle.BoxID, toolID))
 			if capErr != nil {
 				continue
 			}
@@ -87,7 +86,7 @@ func (s *Service) ImportOpenApiCapabilities(
 	}
 
 	if boxID == "" {
-		created, createErr := s.Client.CreateToolbox(ctx, businessDomain, client.CreateToolboxPayload(
+		created, createErr := s.Client.CreateToolbox(ctx, client.CreateToolboxPayload(
 			groupName, req.Description, req.ServiceURL, category,
 		))
 		if createErr != nil {
@@ -101,14 +100,14 @@ func (s *Service) ImportOpenApiCapabilities(
 		return nil, payloadErr
 	}
 
-	toolResp, toolErr := s.Client.CreateTool(ctx, businessDomain, boxID, toolPayload)
+	toolResp, toolErr := s.Client.CreateTool(ctx, boxID, toolPayload)
 	if toolErr != nil {
 		return nil, toolErr
 	}
 
 	response := &model.ImportOpenApiCapabilityResponse{BoxID: boxID}
 	for _, toolID := range toolResp.SuccessIDs {
-		capability, capErr := s.GetCapability(ctx, businessDomain, BuildHttpCapabilityID(boxID, toolID))
+		capability, capErr := s.GetCapability(ctx, BuildHttpCapabilityID(boxID, toolID))
 		if capErr != nil {
 			continue
 		}
@@ -127,7 +126,7 @@ func (s *Service) ImportOpenApiCapabilities(
 
 func (s *Service) DebugCapability(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.DebugCapabilityRequest,
 ) (*model.DebugCapabilityResponse, error) {
 	kind := ParseCapabilityKind(capabilityID)
@@ -139,7 +138,7 @@ func (s *Service) DebugCapability(
 			return nil, errors.New("invalid capability id")
 		}
 
-		resp, err := s.Client.DebugTool(ctx, businessDomain, boxID, toolID, client.DebugToolRequest{
+		resp, err := s.Client.DebugTool(ctx, boxID, toolID, client.DebugToolRequest{
 			Body:    req.Body,
 			Query:   req.Query,
 			Path:    req.Path,
@@ -171,7 +170,7 @@ func (s *Service) DebugCapability(
 			return nil, errors.New("tool_name is required for mcp debug")
 		}
 
-		resp, err := s.Client.DebugMcpTool(ctx, businessDomain, mcpID, req.ToolName, req.Body)
+		resp, err := s.Client.DebugMcpTool(ctx, mcpID, req.ToolName, req.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -195,16 +194,16 @@ func parseToolCapabilityID(capabilityID string) (boxID, toolID string, ok bool) 
 
 func (s *Service) ListVersions(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) (*model.VersionListResponse, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
 
 	switch capability.Kind {
 	case "skill":
-		history, histErr := s.Client.GetSkillHistory(ctx, businessDomain, capability.SkillID)
+		history, histErr := s.Client.GetSkillHistory(ctx, capability.SkillID)
 		if histErr != nil {
 			return nil, histErr
 		}
@@ -230,7 +229,7 @@ func (s *Service) ListVersions(
 			}, nil
 		}
 
-		history, histErr := s.Client.GetOperatorHistory(ctx, businessDomain, capability.Orchestration.OperatorID)
+		history, histErr := s.Client.GetOperatorHistory(ctx, capability.Orchestration.OperatorID)
 		if histErr != nil {
 			return nil, histErr
 		}
@@ -277,10 +276,10 @@ func ensureCurrentVersionEntry(capability *model.Capability, versions []model.Ve
 
 func (s *Service) RepublishVersion(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.RepublishVersionRequest,
 ) error {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return err
 	}
@@ -289,14 +288,14 @@ func (s *Service) RepublishVersion(
 	switch capability.Kind {
 	case "skill":
 		if mode == "publish" {
-			return s.Client.PublishSkillHistory(ctx, businessDomain, capability.SkillID, req.Version)
+			return s.Client.PublishSkillHistory(ctx, capability.SkillID, req.Version)
 		}
-		return s.Client.RepublishSkillHistory(ctx, businessDomain, capability.SkillID, req.Version)
+		return s.Client.RepublishSkillHistory(ctx, capability.SkillID, req.Version)
 	case "http":
 		if capability.Orchestration == nil || !capability.Orchestration.Enabled || capability.Orchestration.OperatorID == "" {
 			return errors.New("historical version restore is only available after orchestration is enabled")
 		}
-		return s.Client.UpdateOperatorStatus(ctx, businessDomain, s.DefaultUserID, capability.Orchestration.OperatorID, "published", req.Version)
+		return s.Client.UpdateOperatorStatus(ctx, s.DefaultUserID, capability.Orchestration.OperatorID, "published", req.Version)
 	default:
 		return errors.New("republish not supported for this capability kind")
 	}
@@ -304,10 +303,10 @@ func (s *Service) RepublishVersion(
 
 func (s *Service) PublishCapability(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	status string,
 ) error {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return err
 	}
@@ -317,11 +316,11 @@ func (s *Service) PublishCapability(
 		if capability.BoxID == "" {
 			return errors.New("missing group for capability")
 		}
-		return s.Client.UpdateToolboxStatus(ctx, businessDomain, capability.BoxID, status)
+		return s.Client.UpdateToolboxStatus(ctx, capability.BoxID, status)
 	case "skill":
-		return s.Client.UpdateSkillStatus(ctx, businessDomain, capability.SkillID, mapSkillPublishStatus(status))
+		return s.Client.UpdateSkillStatus(ctx, capability.SkillID, mapSkillPublishStatus(status))
 	case "mcp":
-		return s.Client.UpdateMcpStatus(ctx, businessDomain, capability.McpID, mapMcpPublishStatus(status))
+		return s.Client.UpdateMcpStatus(ctx, capability.McpID, mapMcpPublishStatus(status))
 	default:
 		return errors.New("publish not supported for this capability kind")
 	}
@@ -349,10 +348,10 @@ func mapMcpPublishStatus(status string) string {
 
 func (s *Service) EnableOrchestration(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.EnableOrchestrationRequest,
 ) (*model.EnableOrchestrationResponse, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +367,7 @@ func (s *Service) EnableOrchestration(
 		}, nil
 	}
 
-	tool, err := s.Client.GetTool(ctx, businessDomain, capability.BoxID, capability.ToolID)
+	tool, err := s.Client.GetTool(ctx, capability.BoxID, capability.ToolID)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +379,6 @@ func (s *Service) EnableOrchestration(
 
 	ids, regErr := s.Client.RegisterOperatorOpenAPI(
 		ctx,
-		businessDomain,
 		openapiSpec,
 		operatorInfoForCapability(capability),
 		operatorExecuteControlToMap(req.OperatorExecuteControl),
@@ -393,7 +391,7 @@ func (s *Service) EnableOrchestration(
 		return nil, errors.New("operator registration failed")
 	}
 
-	operator, _ := s.Client.GetOperator(ctx, businessDomain, ids[0])
+	operator, _ := s.Client.GetOperator(ctx, ids[0])
 	return &model.EnableOrchestrationResponse{
 		OperatorID: ids[0],
 		Audit:      auditFromOperator(operator),
@@ -460,9 +458,9 @@ func operatorExecuteControlToMap(control model.OperatorExecuteControl) map[strin
 
 func (s *Service) DisableOrchestration(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) (*model.DisableOrchestrationResponse, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +473,7 @@ func (s *Service) DisableOrchestration(
 		return &model.DisableOrchestrationResponse{Enabled: false}, nil
 	}
 
-	if err := s.Client.UpdateOperatorStatus(ctx, businessDomain, s.DefaultUserID, capability.Orchestration.OperatorID, "offline"); err != nil {
+	if err := s.Client.UpdateOperatorStatus(ctx, s.DefaultUserID, capability.Orchestration.OperatorID, "offline"); err != nil {
 		return nil, err
 	}
 
@@ -487,10 +485,10 @@ func (s *Service) DisableOrchestration(
 
 func (s *Service) UpdateOrchestrationConfig(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 	req model.UpdateOrchestrationConfigRequest,
 ) (*model.OrchestrationDetailResponse, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +501,7 @@ func (s *Service) UpdateOrchestrationConfig(
 		return nil, errors.New("enable orchestration before saving operator settings")
 	}
 
-	tool, err := s.Client.GetTool(ctx, businessDomain, capability.BoxID, capability.ToolID)
+	tool, err := s.Client.GetTool(ctx, capability.BoxID, capability.ToolID)
 	if err != nil {
 		return nil, err
 	}
@@ -521,7 +519,6 @@ func (s *Service) UpdateOrchestrationConfig(
 
 	if err := s.Client.UpdateOperatorConfig(
 		ctx,
-		businessDomain,
 		s.DefaultUserID,
 		capability.Orchestration.OperatorID,
 		capability.Name,
@@ -533,11 +530,11 @@ func (s *Service) UpdateOrchestrationConfig(
 	); err != nil {
 		return nil, err
 	}
-	if err := s.Client.UpdateOperatorStatus(ctx, businessDomain, s.DefaultUserID, capability.Orchestration.OperatorID, "published"); err != nil {
+	if err := s.Client.UpdateOperatorStatus(ctx, s.DefaultUserID, capability.Orchestration.OperatorID, "published"); err != nil {
 		return nil, err
 	}
 
-	operator, _ := s.Client.GetOperator(ctx, businessDomain, capability.Orchestration.OperatorID)
+	operator, _ := s.Client.GetOperator(ctx, capability.Orchestration.OperatorID)
 	return &model.OrchestrationDetailResponse{
 		Enabled:    true,
 		OperatorID: capability.Orchestration.OperatorID,
@@ -547,6 +544,6 @@ func (s *Service) UpdateOrchestrationConfig(
 	}, nil
 }
 
-func (s *Service) PublishGroup(ctx context.Context, businessDomain, groupID, status string) error {
-	return s.Client.UpdateToolboxStatus(ctx, businessDomain, groupID, status)
+func (s *Service) PublishGroup(ctx context.Context, groupID, status string) error {
+	return s.Client.UpdateToolboxStatus(ctx, groupID, status)
 }

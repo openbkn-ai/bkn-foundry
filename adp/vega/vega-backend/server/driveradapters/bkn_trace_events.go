@@ -20,16 +20,11 @@ import (
 func vegaTraceRequestContext(c *gin.Context, ctx context.Context) bkntrace.RequestContext {
 	traceContext, _ := common.GetTraceContextFromCtx(ctx)
 	accountInfo, _ := ctx.Value(interfaces.ACCOUNT_INFO_KEY).(interfaces.AccountInfo)
-	businessDomain := strings.TrimSpace(c.GetHeader("x-business-domain"))
-	if businessDomain == "" {
-		businessDomain = strings.TrimSpace(traceContext.BusinessDomain)
-	}
 	return bkntrace.RequestContext{
 		RequestID:          traceContext.RequestID,
 		AccountID:          accountInfo.ID,
 		AccountType:        accountInfo.Type,
 		TenantID:           strings.TrimSpace(c.GetHeader("x-tenant-id")),
-		BusinessDomain:     businessDomain,
 		InteractionID:      traceContext.InteractionID,
 		OperationID:        traceContext.OperationID,
 		CausationEventID:   traceContext.CausationEventID,

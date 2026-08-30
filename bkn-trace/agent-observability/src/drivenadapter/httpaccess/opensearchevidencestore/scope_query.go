@@ -55,7 +55,6 @@ func scopeBoundaryMust(scope evidencevo.QueryScope) []map[string]any {
 		value string
 	}{
 		{"bkn.tenant.id", scope.TenantID},
-		{"business_domain", scope.BusinessDomain},
 	} {
 		if item.value != "" {
 			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})

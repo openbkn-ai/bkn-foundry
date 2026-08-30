@@ -14,7 +14,7 @@ This walkthrough assumes BKN Foundry is already [installed and deployed](install
 
 ### Step 1: Authenticate
 
-A **full install** (`./deploy.sh openbkn install`, no `--minimum`, with auth + business-domain enabled) requires a real user to sign in. Pick **one** of the two paths below to obtain a sign-in account:
+A **full install** (`./deploy.sh openbkn install`, no `--minimum`, with auth enabled) requires a real user to sign in. Pick **one** of the two paths below to obtain a sign-in account:
 
 #### Path A (recommended): let `bash deploy/onboard.sh` prepare it
 
@@ -79,7 +79,7 @@ Pick the row matching the path you just took:
 
 After a successful browser login, the page states you can close the tab and explains what to run on a machine **without** a browser (SSH, CI, containers, etc.). **Keep the shown credentials secure** — anyone with the **refresh token** and **client secret** can obtain new access tokens; do not commit them to source control.
 
-- After login, run `openbkn config show` to see the active business domain (minimal installs still have a default domain — they simply do not ship the two commands below).
+- After login, run `openbkn config show` to verify the active platform configuration.
 
 ```bash
 openbkn config show
@@ -93,17 +93,9 @@ openbkn context info
 
 (Use `openbkn context tools <kn-id>` for one knowledge network. Context Loader's tools do not appear in the execution factory's `/tool-box/list`; that is expected.)
 
-If later commands return empty results, the domain may be wrong. The next two commands — **`openbkn config list-bd`** and **`openbkn config set-bd`** — require the platform’s **business-domain management service**. **`--minimum` / minimal installs omit that service**, so **these two CLI subcommands are not available** (e.g. `list-bd` returns **404**). That does **not** mean there is no business domain or that `config show` is wrong — on minimal installs **do not run** the commands below; trust `config show`. Use them only on a **full install** when you need to **list or switch** among multiple domains:
-
-```bash
-openbkn config list-bd
-openbkn config set-bd <uuid>
-```
-
 > **Note**
 >
 > - **`openbkn auth whoami`** needs an `id_token` from OAuth login. If you used `openbkn auth login … --no-auth` (or the platform is a minimal / no-auth install), the CLI is in **no-auth** mode and `whoami` will report no `id_token` — **expected**; use `openbkn auth status` to confirm no-auth.
-> - **`openbkn config list-bd` / `set-bd`**: As above, **minimal installs do not include** the backend for these two subcommands. Use `config show` for the default domain. On a **full install**, use `list-bd` / `set-bd` to list or switch domains; if `list-bd` still returns **404**, check gateway routing or whether the service is deployed.
 
 ### Step 2: Connect a Database (register a Vega catalog)
 

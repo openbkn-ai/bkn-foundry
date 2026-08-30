@@ -95,7 +95,6 @@ print(json.dumps({
 }))')"
     resp="$(curl -s --max-time 15 -X POST "${base}/storages" \
         -H 'Content-Type: application/json' \
-        -H 'x-business-domain: bd_public' \
         -d "${body}" 2>/dev/null)"
 
     if printf '%s' "${resp}" | grep -qE '"status":"ok"|"storage_id"|"id"'; then

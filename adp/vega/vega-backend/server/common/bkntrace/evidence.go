@@ -51,24 +51,23 @@ const (
 type Event map[string]any
 
 type Artifact struct {
-	ArtifactID     string   `json:"artifact_id"`
-	ArtifactType   string   `json:"artifact_type"`
-	RequestID      string   `json:"bkn.request.id"`
-	TraceID        string   `json:"trace_id,omitempty"`
-	InteractionID  string   `json:"interaction_id,omitempty"`
-	OperationID    string   `json:"operation_id,omitempty"`
-	SourceRef      string   `json:"source_ref,omitempty"`
-	BusinessRefs   []string `json:"business_refs,omitempty"`
-	ContentType    string   `json:"content_type"`
-	SchemaVersion  string   `json:"schema_version"`
-	ObservedAt     string   `json:"observed_at"`
-	ContentHash    string   `json:"content_hash,omitempty"`
-	Content        any      `json:"content"`
-	TenantID       string   `json:"bkn.tenant.id,omitempty"`
-	BusinessDomain string   `json:"business_domain,omitempty"`
-	AccountID      string   `json:"bkn.account.id"`
-	AccountType    string   `json:"bkn.account.type"`
-	AgentOrApp     string   `json:"agent_or_app,omitempty"`
+	ArtifactID    string   `json:"artifact_id"`
+	ArtifactType  string   `json:"artifact_type"`
+	RequestID     string   `json:"bkn.request.id"`
+	TraceID       string   `json:"trace_id,omitempty"`
+	InteractionID string   `json:"interaction_id,omitempty"`
+	OperationID   string   `json:"operation_id,omitempty"`
+	SourceRef     string   `json:"source_ref,omitempty"`
+	BusinessRefs  []string `json:"business_refs,omitempty"`
+	ContentType   string   `json:"content_type"`
+	SchemaVersion string   `json:"schema_version"`
+	ObservedAt    string   `json:"observed_at"`
+	ContentHash   string   `json:"content_hash,omitempty"`
+	Content       any      `json:"content"`
+	TenantID      string   `json:"bkn.tenant.id,omitempty"`
+	AccountID     string   `json:"bkn.account.id"`
+	AccountType   string   `json:"bkn.account.type"`
+	AgentOrApp    string   `json:"agent_or_app,omitempty"`
 }
 
 type RequestContext struct {
@@ -76,7 +75,6 @@ type RequestContext struct {
 	AccountID          string
 	AccountType        string
 	TenantID           string
-	BusinessDomain     string
 	InteractionID      string
 	OperationID        string
 	CausationEventID   string
@@ -116,7 +114,6 @@ type eventContext struct {
 	accountID        string
 	accountType      string
 	tenantID         string
-	businessDomain   string
 	interactionID    string
 	operationID      string
 	causationEventID string
@@ -229,8 +226,8 @@ func buildArtifact(ec eventContext, subject DataQuerySubject, refs []EvidenceRef
 		InteractionID: ec.interactionID, OperationID: ec.operationID, SourceRef: sourceRef,
 		BusinessRefs: businessRefs, ContentType: "application/json",
 		SchemaVersion: ArtifactContractVersion, ObservedAt: ec.observedAt,
-		Content:  content,
-		TenantID: ec.tenantID, BusinessDomain: ec.businessDomain,
+		Content:   content,
+		TenantID:  ec.tenantID,
 		AccountID: ec.accountID, AccountType: ec.accountType, AgentOrApp: ModuleName,
 	}
 }
@@ -298,7 +295,7 @@ func EmitDataQueryEvidence(
 		ContractVersion: ArtifactContractVersion,
 		Trace: map[string]any{
 			"trace_id": ec.traceID, "traceparent": ec.traceparent, "bkn.request.id": ec.requestID,
-			"bkn.tenant.id": ec.tenantID, "business_domain": ec.businessDomain,
+			"bkn.tenant.id":  ec.tenantID,
 			"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
 		},
 		Events: events,
@@ -345,7 +342,6 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 			"traceparent":      ec.traceparent,
 			"bkn.request.id":   ec.requestID,
 			"bkn.tenant.id":    ec.tenantID,
-			"business_domain":  ec.businessDomain,
 			"bkn.account.id":   ec.accountID,
 			"bkn.account.type": ec.accountType,
 		},
@@ -561,10 +557,6 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 	if spanContext.TraceFlags().IsSampled() {
 		flags = "01"
 	}
-	businessDomain := strings.TrimSpace(reqCtx.BusinessDomain)
-	if businessDomain == "" {
-		businessDomain = accountID
-	}
 	attempt := reqCtx.Attempt
 	if attempt < 1 || attempt > 1000 {
 		attempt = 1
@@ -577,7 +569,6 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		accountID:        accountID,
 		accountType:      accountType,
 		tenantID:         strings.TrimSpace(reqCtx.TenantID),
-		businessDomain:   businessDomain,
 		interactionID:    interactionID,
 		operationID:      operationID,
 		causationEventID: strings.TrimSpace(reqCtx.CausationEventID),

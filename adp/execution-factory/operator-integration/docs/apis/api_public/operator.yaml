@@ -28,12 +28,6 @@ paths:
           required: true
           schema:
             type: string
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         content:
           application/json:
@@ -132,12 +126,6 @@ paths:
           required: true
           schema:
             type: string
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: page
           in: query
           description: "页码，从1开始，默认为1"
@@ -398,12 +386,6 @@ paths:
           required: true
           schema:
             type: string
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         content:
           application/json:
@@ -635,12 +617,6 @@ paths:
           required: true
           schema:
             type: string
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: page
           in: query
           description: "页码，从1开始，默认为1"
@@ -823,12 +799,6 @@ paths:
           required: true
           schema:
             type: string
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         required: true
         content:

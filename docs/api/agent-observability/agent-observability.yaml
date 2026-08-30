@@ -291,8 +291,6 @@ definitions:
         type: string
       bkn.tenant.id:
         type: string
-      business_domain:
-        type: string
       business_refs:
         items:
           type: string
@@ -491,8 +489,6 @@ definitions:
         type: string
       application_principal_id:
         type: string
-      business_domain:
-        type: string
       completed_at:
         type: string
       conversation_id:
@@ -564,6 +560,25 @@ definitions:
       unresolved_ref_count:
         type: integer
     type: object
+  httphandler.businessRefRequest:
+    properties:
+      as_of:
+        type: string
+      display_hint:
+        type: string
+      ref_id:
+        description: RefID uses the complete canonical shape defined by RefType, including
+          every required scope segment.
+        type: string
+      ref_type:
+        $ref: '#/definitions/sessionvo.BusinessRefType'
+      version:
+        type: string
+    required:
+    - ref_id
+    - ref_type
+    - version
+    type: object
   httphandler.closeConversationRequest:
     properties:
       idempotency_key:
@@ -632,7 +647,7 @@ definitions:
         type: string
       business_refs:
         items:
-          $ref: '#/definitions/sessionvo.BusinessRef'
+          $ref: '#/definitions/httphandler.businessRefRequest'
         type: array
       causation_event_ids:
         items:
@@ -664,7 +679,7 @@ definitions:
         type: string
       operation_business_edges:
         items:
-          $ref: '#/definitions/sessionvo.OperationBusinessEdge'
+          $ref: '#/definitions/httphandler.operationBusinessEdgeRequest'
         type: array
       operation_id:
         type: string
@@ -730,7 +745,7 @@ definitions:
         type: array
       business_refs:
         items:
-          $ref: '#/definitions/sessionvo.BusinessRef'
+          $ref: '#/definitions/httphandler.businessRefRequest'
         type: array
       error:
         $ref: '#/definitions/sessionvo.PayloadEnvelope'
@@ -856,6 +871,22 @@ definitions:
     required:
     - idempotency_key
     - outcome
+    type: object
+  httphandler.operationBusinessEdgeRequest:
+    properties:
+      business_ref:
+        $ref: '#/definitions/httphandler.businessRefRequest'
+      observed_at:
+        type: string
+      operation_id:
+        type: string
+      role:
+        $ref: '#/definitions/sessionvo.OperationBusinessRole'
+    required:
+    - business_ref
+    - observed_at
+    - operation_id
+    - role
     type: object
   httphandler.operationCallFactsResponse:
     properties:
@@ -1123,8 +1154,6 @@ definitions:
     properties:
       as_of:
         type: string
-      business_domain_id:
-        type: string
       display_hint:
         type: string
       ref_id:
@@ -1136,7 +1165,6 @@ definitions:
       version:
         type: string
     required:
-    - business_domain_id
     - ref_id
     - ref_type
     - version
@@ -1523,22 +1551,6 @@ definitions:
     - tool_name
     - updated_at
     type: object
-  sessionvo.OperationBusinessEdge:
-    properties:
-      business_ref:
-        $ref: '#/definitions/sessionvo.BusinessRef'
-      observed_at:
-        type: string
-      operation_id:
-        type: string
-      role:
-        $ref: '#/definitions/sessionvo.OperationBusinessRole'
-    required:
-    - business_ref
-    - observed_at
-    - operation_id
-    - role
-    type: object
   sessionvo.OperationBusinessRole:
     enum:
     - read
@@ -1616,8 +1628,6 @@ definitions:
     properties:
       application_principal_id:
         type: string
-      business_domain_id:
-        type: string
       delegation_id:
         type: string
       effective_subject_id:
@@ -1628,7 +1638,6 @@ definitions:
         type: string
     required:
     - application_principal_id
-    - business_domain_id
     - effective_subject_id
     - effective_subject_type
     - tenant_id
@@ -1862,11 +1871,6 @@ paths:
   /conversations:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Page size, 1..100
         in: query
         name: limit
@@ -1903,11 +1907,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Managed Conversation request
         in: body
         name: request
@@ -1953,11 +1952,6 @@ paths:
   /conversations/{conversation_id}:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -2000,11 +1994,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -2061,11 +2050,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -2122,11 +2106,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Conversation ID
         in: path
         name: conversation_id
@@ -2188,11 +2167,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: New generation request
         in: body
         name: request
@@ -2240,11 +2214,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Managed Conversation request
         in: body
         name: request
@@ -2292,11 +2261,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Conversation resume request
         in: body
         name: request
@@ -2472,11 +2436,6 @@ paths:
   /interactions/{interaction_id}:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2553,11 +2512,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2618,11 +2572,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2683,11 +2632,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2751,11 +2695,6 @@ paths:
         Operations and Receipts. Ordinary Agents do not submit concurrency or closure
         internals.
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2816,11 +2755,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2879,11 +2813,6 @@ paths:
   /interactions/{interaction_id}/operations:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Interaction ID
         in: path
         name: interaction_id
@@ -2924,11 +2853,6 @@ paths:
   /operations/{operation_id}:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -2971,11 +2895,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -3030,11 +2949,6 @@ paths:
   /operations/{operation_id}/attempts/{attempt}:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -3086,11 +3000,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -3152,11 +3061,6 @@ paths:
       consumes:
       - application/json
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Operation ID
         in: path
         name: operation_id
@@ -3216,11 +3120,6 @@ paths:
   /receipts/{receipt_id}:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Receipt ID
         in: path
         name: receipt_id
@@ -3265,11 +3164,6 @@ paths:
   /requests:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Page size, 1..100
         in: query
         name: limit
@@ -3305,11 +3199,6 @@ paths:
   /requests/{request_id}:
     get:
       parameters:
-      - description: Deployment-approved business domain
-        in: header
-        name: x-business-domain
-        required: true
-        type: string
       - description: Request ID
         in: path
         name: request_id
@@ -3387,10 +3276,6 @@ paths:
       - description: Agent or application
         in: query
         name: agent_or_app
-        type: string
-      - description: Business domain
-        in: query
-        name: business_domain
         type: string
       - description: Trace, request, operation, or error keyword
         in: query

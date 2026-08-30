@@ -17,7 +17,6 @@ const (
 	HTTP_HEADER_METHOD_OVERRIDE = "x-http-method-override"
 	HTTP_HEADER_ACCOUNT_ID      = "x-account-id"
 	HTTP_HEADER_ACCOUNT_TYPE    = "x-account-type"
-	HTTP_HEADER_BUSINESS_DOMAIN = "x-business-domain"
 
 	X_REQUEST_TOOK = "x-request-took"
 

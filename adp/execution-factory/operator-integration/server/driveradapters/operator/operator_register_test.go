@@ -313,16 +313,13 @@ func TestOperatorQueryPage(t *testing.T) {
 			Logger:          mockLogger,
 		}
 		path := "/operator/info/list"
-		headers := map[string]string{
-			"x-business-domain": "domain123",
-		}
+		headers := map[string]string{}
 		Convey("校验默认值，默认查询第一页，页面大小为10", func() {
 			req := &interfaces.PageQueryRequest{
-				BusinessDomainID: "domain123",
-				Page:             1,
-				PageSize:         10,
-				SortOrder:        "desc",
-				SortBy:           "update_time",
+				Page:      1,
+				PageSize:  10,
+				SortOrder: "desc",
+				SortBy:    "update_time",
 			}
 			mockOperatorManager.EXPECT().GetOperatorQueryPage(gomock.Any(),
 				req).Return(&interfaces.PageQueryResponse{}, nil)

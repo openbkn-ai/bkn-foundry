@@ -145,9 +145,6 @@ func (s *actionSchedulerService) ExecuteAction(ctx context.Context, req *interfa
 	if accountInfo := ctx.Value(interfaces.ACCOUNT_INFO_KEY); accountInfo != nil {
 		executor = accountInfo.(interfaces.AccountInfo)
 	}
-	if businessDomain := ctx.Value(interfaces.BUSINESS_DOMAIN_KEY); businessDomain != nil && req.BusinessDomain == "" {
-		req.BusinessDomain = businessDomain.(string)
-	}
 
 	// Reserved: Permission check hook
 	if s.permissionCheckHook != nil {
@@ -283,9 +280,6 @@ func (s *actionSchedulerService) executeAsync(execution *interfaces.ActionExecut
 	ctx := context.Background()
 	// Restore account info from execution record for downstream API calls (user_id header)
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, execution.Executor)
-	if req.BusinessDomain != "" {
-		ctx = context.WithValue(ctx, interfaces.BUSINESS_DOMAIN_KEY, req.BusinessDomain)
-	}
 
 	logger.Infof("Starting async execution: %s, mode: %s, target instances: %d",
 		execution.ID, execution.ExecutionMode, len(req.Instances))

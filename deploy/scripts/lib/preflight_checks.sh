@@ -1112,11 +1112,6 @@ preflight_check_config_yaml() {
     else
         preflight_ok "config.yaml: registry field present"
     fi
-    if grep -qE 'businessDomain' "${cfg}"; then
-        preflight_ok "config.yaml: businessDomain present"
-    else
-        preflight_ok "config.yaml: no businessDomain (optional; only add or use --set when you need business-domain features; otherwise leave unset)"
-    fi
 }
 
 # --- P2: locale / tz / apparmor / tmp / overlay / route / GPU ----------------

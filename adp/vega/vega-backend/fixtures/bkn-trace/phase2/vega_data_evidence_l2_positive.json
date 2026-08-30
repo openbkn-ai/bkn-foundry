@@ -7,7 +7,6 @@
     "trace_id": "73220000000000000000000000000001",
     "traceparent": "00-73220000000000000000000000000001-7322000000000001-01",
     "bkn.request.id": "req_vega_phase2_data_evidence_0001",
-    "business_domain": "domain_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "user"
   },

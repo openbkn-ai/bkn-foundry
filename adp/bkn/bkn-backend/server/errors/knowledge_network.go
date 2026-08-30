@@ -11,7 +11,6 @@ const (
 	// 400
 	BknBackend_KnowledgeNetwork_Duplicated_Name                    = "BknBackend.KnowledgeNetwork.Duplicated.Name"
 	BknBackend_KnowledgeNetwork_InvalidParameter                   = "BknBackend.KnowledgeNetwork.InvalidParameter"
-	BknBackend_KnowledgeNetwork_InvalidParameter_BusinessDomain    = "BknBackend.KnowledgeNetwork.InvalidParameter.BusinessDomain"
 	BknBackend_KnowledgeNetwork_InvalidParameter_ConceptCondition  = "BknBackend.KnowledgeNetwork.InvalidParameter.ConceptCondition"
 	BknBackend_KnowledgeNetwork_InvalidParameter_Direction         = "BknBackend.KnowledgeNetwork.InvalidParameter.Direction"
 	BknBackend_KnowledgeNetwork_InvalidParameter_IncludeStatistics = "BknBackend.KnowledgeNetwork.InvalidParameter.IncludeStatistics"
@@ -31,8 +30,6 @@ const (
 	// 500
 	BknBackend_KnowledgeNetwork_InternalError                             = "BknBackend.KnowledgeNetwork.InternalError"
 	BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed      = "BknBackend.KnowledgeNetwork.InternalError.BeginTransactionFailed"
-	BknBackend_KnowledgeNetwork_InternalError_BindBusinessDomainFailed    = "BknBackend.KnowledgeNetwork.InternalError.BindBusinessDomainFailed"
-	BknBackend_KnowledgeNetwork_InternalError_UnbindBusinessDomainFailed  = "BknBackend.KnowledgeNetwork.InternalError.UnbindBusinessDomainFailed"
 	BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed        = "BknBackend.KnowledgeNetwork.InternalError.CheckKNIfExistFailed"
 	BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed             = "BknBackend.KnowledgeNetwork.InternalError.GetKNByIDFailed"
 	BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed              = "BknBackend.KnowledgeNetwork.InternalError.UpdateKNFailed"
@@ -58,7 +55,6 @@ var (
 		// 400
 		BknBackend_KnowledgeNetwork_Duplicated_Name,
 		BknBackend_KnowledgeNetwork_InvalidParameter,
-		BknBackend_KnowledgeNetwork_InvalidParameter_BusinessDomain,
 		BknBackend_KnowledgeNetwork_InvalidParameter_ConceptCondition,
 		BknBackend_KnowledgeNetwork_InvalidParameter_Direction,
 		BknBackend_KnowledgeNetwork_InvalidParameter_IncludeStatistics,
@@ -79,8 +75,6 @@ var (
 		BknBackend_KnowledgeNetwork_InternalError,
 		BknBackend_KnowledgeNetwork_InternalError_CheckKNIfExistFailed,
 		BknBackend_KnowledgeNetwork_InternalError_BeginTransactionFailed,
-		BknBackend_KnowledgeNetwork_InternalError_BindBusinessDomainFailed,
-		BknBackend_KnowledgeNetwork_InternalError_UnbindBusinessDomainFailed,
 		BknBackend_KnowledgeNetwork_InternalError_GetKNByIDFailed,
 		BknBackend_KnowledgeNetwork_InternalError_UpdateKNFailed,
 		BknBackend_KnowledgeNetwork_InternalError_CreateKNFailed,

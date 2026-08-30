@@ -22,7 +22,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/Page"
@@ -78,7 +77,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
       requestBody:
@@ -120,7 +118,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - name: task_id
@@ -163,7 +160,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - name: task_id
@@ -211,7 +207,6 @@ paths:
       tags:
         - "Skill 索引"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - name: task_id
@@ -259,7 +254,6 @@ paths:
       tags:
         - "Skill 市场"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/Page"
@@ -321,7 +315,6 @@ paths:
       tags:
         - "Skill 市场"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/SkillID"
@@ -364,7 +357,6 @@ paths:
       tags:
         - "Skill 读取"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/SkillID"
@@ -407,7 +399,6 @@ paths:
       tags:
         - "Skill 读取"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/SkillID"
@@ -456,7 +447,6 @@ paths:
       tags:
         - "Skill 执行"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/SkillID"
@@ -505,7 +495,6 @@ paths:
       tags:
         - "Skill - Management Read"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/SkillID"
@@ -550,7 +539,6 @@ paths:
       tags:
         - "Skill - Management Read"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/SkillID"
@@ -599,7 +587,6 @@ paths:
       tags:
         - "Skill - Management Read"
       parameters:
-        - $ref: "#/components/parameters/BusinessDomain"
         - $ref: "#/components/parameters/AccountID"
         - $ref: "#/components/parameters/AccountType"
         - $ref: "#/components/parameters/SkillID"
@@ -634,13 +621,6 @@ paths:
 
 components:
   parameters:
-    BusinessDomain:
-      name: x-business-domain
-      in: header
-      description: "业务域 ID"
-      required: true
-      schema:
-        type: string
     AccountID:
       name: x-account-id
       in: header
@@ -1012,8 +992,6 @@ components:
         update_time:
           type: integer
           format: int64
-        business_domain_id:
-          type: string
         category:
           type: string
           enum:
@@ -1073,8 +1051,6 @@ components:
             - "other_category"
             - "system"
         category_name:
-          type: string
-        business_domain_id:
           type: string
 
     GetSkillContentResp:

@@ -148,8 +148,7 @@ func TestTwoPointTwoEvidenceAndBusinessGraphsExposeExactArtifactRelationships(t 
 		t.Fatalf("seed 2.2 trace: errors=%+v err=%v", validationErrors, err)
 	}
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant_e2e", BusinessDomain: "supplychain_e2e",
-		AccountID: "account_e2e_admin", AccountType: "user",
+		TenantID: "tenant_e2e", AccountID: "account_e2e_admin", AccountType: "user",
 	}
 
 	chain, found, err := service.GetEvidenceChainByTraceID(context.Background(), "11111111111111111111111111111111", evidencevo.EvidenceQueryOptions{Scope: scope})

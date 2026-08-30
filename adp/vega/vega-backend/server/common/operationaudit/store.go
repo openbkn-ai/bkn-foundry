@@ -30,39 +30,37 @@ var (
 )
 
 type Entry struct {
-	EventID          string
-	EventTime        time.Time
-	RecordedAt       time.Time
-	TenantID         string
-	BusinessDomainID string
-	ActorID          string
-	ActorName        string
-	ActorType        string
-	AuthMethod       string
-	RequestID        string
-	SourceChannel    string
-	Method           string
-	Action           string
-	TargetType       string
-	TargetID         string
-	TargetName       string
-	Outcome          string
-	FailureCode      string
-	FailureMessage   string
-}
-
-type Filter struct {
-	From, To       time.Time
-	BeforeTime     time.Time
-	BeforeEventID  string
+	EventID        string
+	EventTime      time.Time
+	RecordedAt     time.Time
 	TenantID       string
-	BusinessDomain string
-	Limit          int
 	ActorID        string
+	ActorName      string
+	ActorType      string
+	AuthMethod     string
+	RequestID      string
+	SourceChannel  string
+	Method         string
 	Action         string
 	TargetType     string
 	TargetID       string
+	TargetName     string
 	Outcome        string
+	FailureCode    string
+	FailureMessage string
+}
+
+type Filter struct {
+	From, To      time.Time
+	BeforeTime    time.Time
+	BeforeEventID string
+	TenantID      string
+	Limit         int
+	ActorID       string
+	Action        string
+	TargetType    string
+	TargetID      string
+	Outcome       string
 }
 
 type Page struct {
@@ -89,12 +87,20 @@ func (s *Store) Record(ctx context.Context, entry Entry) error {
 	if err := validate(entry); err != nil {
 		return err
 	}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO "+tableName+" (event_id,event_time,recorded_at,tenant_id,business_domain_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)",
-		entry.EventID, entry.EventTime, entry.RecordedAt, entry.TenantID, entry.BusinessDomainID,
+	arguments := []any{
+		entry.EventID, entry.EventTime, entry.RecordedAt, entry.TenantID,
 		entry.ActorID, entry.ActorName, entry.ActorType, entry.AuthMethod, entry.RequestID,
 		entry.SourceChannel, entry.Method, entry.Action, entry.TargetType, entry.TargetID,
 		entry.TargetName, entry.Outcome, entry.FailureCode, entry.FailureMessage,
+	}
+	_, err := s.db.ExecContext(ctx, "INSERT INTO "+tableName+" (event_id,event_time,recorded_at,tenant_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)",
+		arguments...,
 	)
+	if isLegacyBusinessDomainColumnError(err) {
+		_, err = s.db.ExecContext(ctx, "INSERT INTO "+tableName+" (event_id,event_time,recorded_at,tenant_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,business_domain_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)",
+			append(arguments, "")...,
+		)
+	}
 	if err != nil {
 		return fmt.Errorf("record operation audit: %w", err)
 	}
@@ -105,8 +111,8 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if s == nil || s.db == nil {
 		return Page{}, errors.New("operation audit store is not configured")
 	}
-	if filter.TenantID == "" || filter.BusinessDomain == "" || filter.From.IsZero() || filter.To.IsZero() || !filter.From.Before(filter.To) {
-		return Page{}, errors.New("tenant, business domain and a valid time range are required")
+	if filter.TenantID == "" || filter.From.IsZero() || filter.To.IsZero() || !filter.From.Before(filter.To) {
+		return Page{}, errors.New("tenant and a valid time range are required")
 	}
 	limit := filter.Limit
 	if limit <= 0 {
@@ -115,8 +121,8 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if limit > 500 {
 		limit = 500
 	}
-	query := "SELECT event_id,event_time,recorded_at,tenant_id,business_domain_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM " + tableName + " WHERE tenant_id=? AND business_domain_id=? AND event_time>=? AND event_time<?"
-	args := []any{filter.TenantID, filter.BusinessDomain, filter.From, filter.To}
+	query := "SELECT event_id,event_time,recorded_at,tenant_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM " + tableName + " WHERE tenant_id=? AND event_time>=? AND event_time<?"
+	args := []any{filter.TenantID, filter.From, filter.To}
 	for _, condition := range []struct{ column, value string }{
 		{"actor_id", filter.ActorID}, {"action", filter.Action}, {"target_type", filter.TargetType}, {"target_id", filter.TargetID}, {"outcome", filter.Outcome},
 	} {
@@ -142,7 +148,7 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	entries := make([]Entry, 0, limit+1)
 	for rows.Next() {
 		var entry Entry
-		if err := rows.Scan(&entry.EventID, &entry.EventTime, &entry.RecordedAt, &entry.TenantID, &entry.BusinessDomainID, &entry.ActorID, &entry.ActorName, &entry.ActorType, &entry.AuthMethod, &entry.RequestID, &entry.SourceChannel, &entry.Method, &entry.Action, &entry.TargetType, &entry.TargetID, &entry.TargetName, &entry.Outcome, &entry.FailureCode, &entry.FailureMessage); err != nil {
+		if err := rows.Scan(&entry.EventID, &entry.EventTime, &entry.RecordedAt, &entry.TenantID, &entry.ActorID, &entry.ActorName, &entry.ActorType, &entry.AuthMethod, &entry.RequestID, &entry.SourceChannel, &entry.Method, &entry.Action, &entry.TargetType, &entry.TargetID, &entry.TargetName, &entry.Outcome, &entry.FailureCode, &entry.FailureMessage); err != nil {
 			return Page{}, err
 		}
 		entries = append(entries, entry)
@@ -158,16 +164,16 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	return page, nil
 }
 
-func (s *Store) Get(ctx context.Context, eventID, tenantID, businessDomain string) (Entry, bool, error) {
+func (s *Store) Get(ctx context.Context, eventID, tenantID string) (Entry, bool, error) {
 	if s == nil || s.db == nil {
 		return Entry{}, false, errors.New("operation audit store is not configured")
 	}
-	if strings.TrimSpace(eventID) == "" || strings.TrimSpace(tenantID) == "" || strings.TrimSpace(businessDomain) == "" {
-		return Entry{}, false, errors.New("event id, tenant and business domain are required")
+	if strings.TrimSpace(eventID) == "" || strings.TrimSpace(tenantID) == "" {
+		return Entry{}, false, errors.New("event id and tenant are required")
 	}
-	row := s.db.QueryRowContext(ctx, "SELECT event_id,event_time,recorded_at,tenant_id,business_domain_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM "+tableName+" WHERE event_id=? AND tenant_id=? AND business_domain_id=?", eventID, tenantID, businessDomain)
+	row := s.db.QueryRowContext(ctx, "SELECT event_id,event_time,recorded_at,tenant_id,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message FROM "+tableName+" WHERE event_id=? AND tenant_id=?", eventID, tenantID)
 	var entry Entry
-	err := row.Scan(&entry.EventID, &entry.EventTime, &entry.RecordedAt, &entry.TenantID, &entry.BusinessDomainID, &entry.ActorID, &entry.ActorName, &entry.ActorType, &entry.AuthMethod, &entry.RequestID, &entry.SourceChannel, &entry.Method, &entry.Action, &entry.TargetType, &entry.TargetID, &entry.TargetName, &entry.Outcome, &entry.FailureCode, &entry.FailureMessage)
+	err := row.Scan(&entry.EventID, &entry.EventTime, &entry.RecordedAt, &entry.TenantID, &entry.ActorID, &entry.ActorName, &entry.ActorType, &entry.AuthMethod, &entry.RequestID, &entry.SourceChannel, &entry.Method, &entry.Action, &entry.TargetType, &entry.TargetID, &entry.TargetName, &entry.Outcome, &entry.FailureCode, &entry.FailureMessage)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Entry{}, false, nil
 	}
@@ -178,7 +184,7 @@ func (s *Store) Get(ctx context.Context, eventID, tenantID, businessDomain strin
 }
 
 func validate(entry Entry) error {
-	for _, value := range []struct{ name, value string }{{"event id", entry.EventID}, {"tenant", entry.TenantID}, {"business domain", entry.BusinessDomainID}, {"actor id", entry.ActorID}, {"actor name", entry.ActorName}, {"request id", entry.RequestID}, {"action", entry.Action}, {"target type", entry.TargetType}, {"target id", entry.TargetID}, {"outcome", entry.Outcome}} {
+	for _, value := range []struct{ name, value string }{{"event id", entry.EventID}, {"tenant", entry.TenantID}, {"actor id", entry.ActorID}, {"actor name", entry.ActorName}, {"request id", entry.RequestID}, {"action", entry.Action}, {"target type", entry.TargetType}, {"target id", entry.TargetID}, {"outcome", entry.Outcome}} {
 		if strings.TrimSpace(value.value) == "" {
 			return fmt.Errorf("%s is required", value.name)
 		}
@@ -193,4 +199,21 @@ func validate(entry Entry) error {
 		return errors.New("operation audit fact exceeds bounded field size")
 	}
 	return nil
+}
+
+// A 0.1.5 binary can reach a database that still carries the pre-0.1.5
+// business_domain_id column: an upgrade that bypasses the Helm migration hook
+// (`kubectl set image`) or a data-migrator run that has not finished yet. That
+// column is NOT NULL without a default, so the tenant-only INSERT above fails
+// with "Field 'business_domain_id' doesn't have a default value" and every
+// management fact would be dropped for the whole window. Retry once against the
+// legacy shape instead. Both directions self-heal: once the column is gone the
+// first statement succeeds and the fallback is never reached. Delete this
+// fallback when 0.1.5 is the minimum supported schema.
+func isLegacyBusinessDomainColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "business_domain_id") && strings.Contains(message, "default value")
 }

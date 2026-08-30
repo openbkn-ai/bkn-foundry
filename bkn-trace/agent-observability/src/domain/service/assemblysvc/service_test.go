@@ -251,9 +251,9 @@ func TestAssembleReturnsTypedBusinessDimensionsAndKeepsVersionsDistinct(t *testi
 	asOf := time.Date(2026, 6, 30, 23, 59, 59, 0, time.UTC)
 	event := semanticEvent("evt-query", "op-query", 1)
 	event.BusinessRefs = []sessionvo.BusinessRef{
-		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-1", Version: "1", AsOf: &asOf},
-		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", BusinessDomainID: "domain-1", Version: "2", AsOf: &asOf},
-		{RefType: sessionvo.BusinessRefProperty, RefID: "property:supplychain:forecast:qty", BusinessDomainID: "domain-1", Version: "1"},
+		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", Version: "1", AsOf: &asOf},
+		{RefType: sessionvo.BusinessRefObjectType, RefID: "object:supplychain:forecast", Version: "2", AsOf: &asOf},
+		{RefType: sessionvo.BusinessRefProperty, RefID: "property:supplychain:forecast:qty", Version: "1"},
 	}
 	event.EvidenceRefs = []sessionvo.EvidenceRef{evidenceRef("evidence:june")}
 	event.ArtifactRefs = []string{"artifact:query-result", "artifact:answer"}
@@ -306,7 +306,7 @@ func TestAssembleRichInteractionKeepsAllBusinessDimensionsAndClaimSpecificSuppor
 	for index, refType := range refTypes {
 		ref := sessionvo.BusinessRef{
 			RefType: refType, RefID: refIDs[index],
-			BusinessDomainID: "domain-1", Version: "2026.07",
+			Version: "2026.07",
 		}
 		query.BusinessRefs = append(query.BusinessRefs, ref)
 		query.OperationBusinessEdges = append(query.OperationBusinessEdges, sessionvo.OperationBusinessEdge{

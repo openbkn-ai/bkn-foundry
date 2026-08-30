@@ -131,13 +131,6 @@
             "explode": true
           },
           {
-            "name": "business_domain_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
             "name": "actor_id",
             "in": "query",
             "schema": {
@@ -350,13 +343,6 @@
             },
             "style": "form",
             "explode": true
-          },
-          {
-            "name": "business_domain_id",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
           },
           {
             "name": "actor_id",
@@ -761,9 +747,6 @@
           "tenant_id": {
             "type": "string"
           },
-          "business_domain_id": {
-            "type": "string"
-          },
           "actor_id": {
             "type": "string"
           },
@@ -1004,7 +987,6 @@
             },
             "then": {
               "required": [
-                "business_domain_id",
                 "request_id",
                 "attributes"
               ],

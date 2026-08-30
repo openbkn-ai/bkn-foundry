@@ -254,7 +254,7 @@ ErrorLink = ""
 
 [VegaBackend.OperationAudit.MissingScope]
 Description = "The operation-audit scope is incomplete."
-Solution = "Provide x-tenant-id and x-business-domain headers."
+Solution = "Provide the x-tenant-id header."
 ErrorLink = ""
 
 [VegaBackend.OperationAudit.AccessDenied]

@@ -156,11 +156,10 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		)
 	}
 	for field, value := range map[string]string{
-		"owner.tenant_id":          query.Scope.TenantID,
-		"owner.business_domain_id": firstNonEmpty(query.BusinessDomain, query.Scope.BusinessDomain),
-		"request_id":               query.RequestID,
-		"trace_id":                 query.TraceID,
-		"interaction_id":           query.InteractionID,
+		"owner.tenant_id": query.Scope.TenantID,
+		"request_id":      query.RequestID,
+		"trace_id":        query.TraceID,
+		"interaction_id":  query.InteractionID,
 	} {
 		if value != "" {
 			must = append(must, exactKeywordQuery(field, value))
@@ -274,8 +273,7 @@ func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iproje
 	}
 	must := []map[string]any{{"exists": map[string]any{"field": "receipt_id"}}}
 	for field, value := range map[string]string{
-		"owner.tenant_id":          query.Scope.TenantID,
-		"owner.business_domain_id": firstNonEmpty(query.BusinessDomain, query.Scope.BusinessDomain),
+		"owner.tenant_id": query.Scope.TenantID,
 	} {
 		if value != "" {
 			must = append(must, exactKeywordQuery(field, value))
@@ -371,7 +369,6 @@ func interactionMatchesScope(receipts []receiptDocument, scope evidencevo.QueryS
 	}
 	record := evidencevo.RecordScope{
 		TenantID:               receipts[0].Owner.TenantID,
-		BusinessDomain:         receipts[0].Owner.BusinessDomainID,
 		EffectiveSubjectID:     receipts[0].Owner.EffectiveSubjectID,
 		ApplicationPrincipalID: receipts[0].Owner.ApplicationPrincipalID,
 		KnowledgeNetworkIDs:    knowledgeNetworkIDs,
@@ -387,8 +384,7 @@ func matchesReceiptQuery(receipt receiptDocument, query iprojectionsource.Query)
 		query.TraceID != "" && receipt.TraceID != query.TraceID ||
 		len(query.TraceIDs) > 0 && !containsProjectionID(query.TraceIDs, receipt.TraceID) ||
 		len(query.ConversationIDs) > 0 && !containsProjectionID(query.ConversationIDs, receipt.ConversationID) ||
-		query.InteractionID != "" && receipt.InteractionID != query.InteractionID ||
-		query.BusinessDomain != "" && receipt.Owner.BusinessDomainID != query.BusinessDomain {
+		query.InteractionID != "" && receipt.InteractionID != query.InteractionID {
 		return false
 	}
 	if query.From.IsZero() && query.To.IsZero() {
@@ -418,7 +414,7 @@ func exactKeywordQuery(field string, value string) map[string]any {
 func receiptMatchesScope(receipt receiptDocument, scope evidencevo.QueryScope) bool {
 	networks := receiptKnowledgeNetworks(receipt)
 	record := evidencevo.RecordScope{
-		TenantID: receipt.Owner.TenantID, BusinessDomain: receipt.Owner.BusinessDomainID,
+		TenantID:               receipt.Owner.TenantID,
 		EffectiveSubjectID:     receipt.Owner.EffectiveSubjectID,
 		ApplicationPrincipalID: receipt.Owner.ApplicationPrincipalID,
 		KnowledgeNetworkIDs:    networks,
@@ -427,7 +423,6 @@ func receiptMatchesScope(receipt receiptDocument, scope evidencevo.QueryScope) b
 		return evidencevo.CanReadRecord(*scope.AccessProfile, record, evidencevo.AccessViewBusiness)
 	}
 	return receipt.Owner.TenantID == scope.TenantID &&
-		receipt.Owner.BusinessDomainID == scope.BusinessDomain &&
 		string(receipt.Owner.EffectiveSubjectType) == scope.AccountType &&
 		receipt.Owner.EffectiveSubjectID == scope.AccountID
 }
@@ -443,7 +438,6 @@ func tracesFromReceipts(receipts []receiptDocument) []evidencevo.NormalizedTrace
 			value := evidencevo.NormalizedTrace{
 				TraceID: receipt.TraceID, RequestID: receipt.RequestID,
 				ConversationID: receipt.ConversationID, TenantID: receipt.Owner.TenantID,
-				BusinessDomain:         receipt.Owner.BusinessDomainID,
 				AccountID:              receipt.Owner.EffectiveSubjectID,
 				AccountType:            string(receipt.Owner.EffectiveSubjectType),
 				EffectiveSubjectID:     receipt.Owner.EffectiveSubjectID,

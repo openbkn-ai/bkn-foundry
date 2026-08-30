@@ -157,7 +157,6 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 			"f_bkn_raw_content",
 			"f_skill_content",
 			"f_branch",
-			"f_business_domain",
 			"f_creator",
 			"f_creator_type",
 			"f_create_time",
@@ -175,7 +174,6 @@ func (kna *knowledgeNetworkAccess) CreateKN(ctx context.Context, tx *sql.Tx, KN 
 			KN.BKNRawContent,
 			KN.SkillContent,
 			KN.Branch,
-			KN.BusinessDomain,
 			KN.Creator.ID,
 			KN.Creator.Type,
 			KN.CreateTime,
@@ -220,7 +218,6 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 		"f_bkn_raw_content",
 		"f_skill_content",
 		"f_branch",
-		"f_business_domain",
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
@@ -286,7 +283,6 @@ func (kna *knowledgeNetworkAccess) ListKNs(ctx context.Context, query interfaces
 			&KN.BKNRawContent,
 			&KN.SkillContent,
 			&KN.Branch,
-			&KN.BusinessDomain,
 			&KN.Creator.ID,
 			&KN.Creator.Type,
 			&KN.CreateTime,
@@ -359,7 +355,6 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		"f_bkn_raw_content",
 		"f_skill_content",
 		"f_branch",
-		"f_business_domain",
 		"f_creator",
 		"f_creator_type",
 		"f_create_time",
@@ -392,7 +387,6 @@ func (kna *knowledgeNetworkAccess) GetKNByID(ctx context.Context,
 		&KN.BKNRawContent,
 		&KN.SkillContent,
 		&KN.Branch,
-		&KN.BusinessDomain,
 		&KN.Creator.ID,
 		&KN.Creator.Type,
 		&KN.CreateTime,
@@ -576,10 +570,6 @@ func processQueryCondition(query interfaces.KNsQueryParams, subBuilder sq.Select
 
 	if query.Tag != "" {
 		subBuilder = subBuilder.Where(sq.Expr("instr(f_tags, ?) > 0", `"`+query.Tag+`"`))
-	}
-
-	if query.BusinessDomain != "" {
-		subBuilder = subBuilder.Where(sq.Eq{"f_business_domain": query.BusinessDomain})
 	}
 
 	if len(query.CandidateIDs) > 0 {

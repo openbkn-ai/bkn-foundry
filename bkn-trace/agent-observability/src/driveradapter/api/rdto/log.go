@@ -28,7 +28,6 @@ type OperationAuditRecord struct {
 	CredentialID      string                    `json:"credential_id,omitempty"`
 	CredentialName    string                    `json:"credential_name,omitempty"`
 	TenantID          string                    `json:"tenant_id"`
-	BusinessDomainID  string                    `json:"business_domain_id,omitempty"`
 	SourceChannel     string                    `json:"source_channel"`
 	SourceID          string                    `json:"source_id"`
 	BusinessModule    string                    `json:"business_module"`
@@ -82,7 +81,7 @@ func NewOperationAuditRecord(record observabilityvo.LogRecord) OperationAuditRec
 		EventTime: eventTime, RecordedAt: recordedAt,
 		ActorID: record.ActorID, ActorNameSnapshot: record.ActorNameSnapshot, ActorType: record.ActorType,
 		AuthMethod: record.AuthMethod, CredentialID: record.CredentialID, CredentialName: record.CredentialName,
-		TenantID: record.TenantID, BusinessDomainID: record.BusinessDomain,
+		TenantID:      record.TenantID,
 		SourceChannel: record.SourceChannel, SourceID: record.SourceID, BusinessModule: record.BusinessModule,
 		Outcome:     record.Outcome,
 		FailureCode: record.FailureCode, FailureMessage: record.FailureMessage,

@@ -268,7 +268,6 @@ Authorization: Bearer {access_token}
 ```
 
 - Requiring clients to send non-standard headers (e.g., a custom `token` header) as a necessary authentication condition is **forbidden**.
-- Business domain identifiers **SHOULD** be passed via the `x-business-domain` header, decoupled from authentication.
 
 ---
 

@@ -22,13 +22,12 @@ type CategoryEntry struct {
 
 var filenamePattern = regexp.MustCompile(`filename="?([^";]+)"?`)
 
-func (c *OperatorIntegrationClient) ListCategories(ctx context.Context, businessDomain string) ([]CategoryEntry, error) {
+func (c *OperatorIntegrationClient) ListCategories(ctx context.Context) ([]CategoryEntry, error) {
 	var resp []CategoryEntry
 	if err := c.doJSON(
 		ctx,
 		http.MethodGet,
 		"/api/agent-operator-integration/v1/operator/category",
-		businessDomain,
 		nil,
 		&resp,
 	); err != nil {
@@ -42,25 +41,25 @@ func (c *OperatorIntegrationClient) ListCategories(ctx context.Context, business
 
 func (c *OperatorIntegrationClient) UpdateMcp(
 	ctx context.Context,
-	businessDomain, mcpID string,
+	mcpID string,
 	body map[string]interface{},
 ) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/%s", mcpID)
-	return c.doJSON(ctx, http.MethodPut, path, businessDomain, body, nil)
+	return c.doJSON(ctx, http.MethodPut, path, body, nil)
 }
 
 func (c *OperatorIntegrationClient) UpdateSkillMetadata(
 	ctx context.Context,
-	businessDomain, skillID string,
+	skillID string,
 	body map[string]interface{},
 ) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s/metadata", skillID)
-	return c.doJSON(ctx, http.MethodPut, path, businessDomain, body, nil)
+	return c.doJSON(ctx, http.MethodPut, path, body, nil)
 }
 
 func (c *OperatorIntegrationClient) DownloadSkillPackage(
 	ctx context.Context,
-	businessDomain, skillID string,
+	skillID string,
 ) ([]byte, string, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s/management/download", skillID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+path, nil)
@@ -69,7 +68,6 @@ func (c *OperatorIntegrationClient) DownloadSkillPackage(
 	}
 	req.Header.Set("Accept", "application/octet-stream")
 	applyLanguageHeader(ctx, req.Header)
-	req.Header.Set("x-business-domain", businessDomain)
 
 	res, err := c.HTTP.Do(req)
 	if err != nil {
@@ -95,17 +93,17 @@ func (c *OperatorIntegrationClient) DownloadSkillPackage(
 
 func (c *OperatorIntegrationClient) ListMcpTools(
 	ctx context.Context,
-	businessDomain, mcpID string,
+	mcpID string,
 ) ([]map[string]interface{}, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/proxy/%s/tools", mcpID)
 	var resp struct {
 		Tools []map[string]interface{} `json:"tools"`
 	}
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		// Fallback: some deployments expose tools under the legacy path.
 		legacyPath := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/%s/tools", mcpID)
 		var legacy []map[string]interface{}
-		if legacyErr := c.doJSON(ctx, http.MethodGet, legacyPath, businessDomain, nil, &legacy); legacyErr != nil {
+		if legacyErr := c.doJSON(ctx, http.MethodGet, legacyPath, nil, &legacy); legacyErr != nil {
 			return nil, err
 		}
 		return legacy, nil
@@ -118,7 +116,7 @@ func (c *OperatorIntegrationClient) ListMcpTools(
 
 func (c *OperatorIntegrationClient) UpdateSkillPackage(
 	ctx context.Context,
-	businessDomain, skillID string,
+	skillID string,
 	payload RegisterSkillPayload,
 ) error {
 	var body bytes.Buffer
@@ -157,7 +155,6 @@ func (c *OperatorIntegrationClient) UpdateSkillPackage(
 	}
 	req.Header.Set("Accept", "application/json")
 	applyLanguageHeader(ctx, req.Header)
-	req.Header.Set("x-business-domain", businessDomain)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	res, err := c.HTTP.Do(req)

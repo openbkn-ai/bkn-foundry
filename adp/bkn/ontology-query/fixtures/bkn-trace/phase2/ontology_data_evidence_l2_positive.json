@@ -7,7 +7,6 @@
     "trace_id": "72220000000000000000000000000001",
     "traceparent": "00-72220000000000000000000000000001-7222000000000001-01",
     "bkn.request.id": "req_ontology_data_0001",
-    "business_domain": "domain_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "user"
   },

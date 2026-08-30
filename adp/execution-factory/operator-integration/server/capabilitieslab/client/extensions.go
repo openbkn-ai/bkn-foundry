@@ -123,7 +123,7 @@ type debugMcpResponse struct {
 	IsError bool   `json:"is_error"`
 }
 
-func (c *OperatorIntegrationClient) ListMcps(ctx context.Context, businessDomain, keyword string, page, pageSize int) (*mcpListResponse, error) {
+func (c *OperatorIntegrationClient) ListMcps(ctx context.Context, keyword string, page, pageSize int) (*mcpListResponse, error) {
 	query := url.Values{}
 	query.Set("page", fmt.Sprintf("%d", page))
 	query.Set("page_size", fmt.Sprintf("%d", pageSize))
@@ -133,13 +133,13 @@ func (c *OperatorIntegrationClient) ListMcps(ctx context.Context, businessDomain
 
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/list?%s", query.Encode())
 	var resp mcpListResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *OperatorIntegrationClient) ListSkills(ctx context.Context, businessDomain, keyword string, page, pageSize int) (*skillListResponse, error) {
+func (c *OperatorIntegrationClient) ListSkills(ctx context.Context, keyword string, page, pageSize int) (*skillListResponse, error) {
 	query := url.Values{}
 	query.Set("page", fmt.Sprintf("%d", page))
 	query.Set("page_size", fmt.Sprintf("%d", pageSize))
@@ -149,55 +149,55 @@ func (c *OperatorIntegrationClient) ListSkills(ctx context.Context, businessDoma
 
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills?%s", query.Encode())
 	var resp skillListResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *OperatorIntegrationClient) GetSkill(ctx context.Context, businessDomain, skillID string) (*SkillDetailResponse, error) {
+func (c *OperatorIntegrationClient) GetSkill(ctx context.Context, skillID string) (*SkillDetailResponse, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s", url.PathEscape(skillID))
 	var resp SkillDetailResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *OperatorIntegrationClient) GetSkillHistory(ctx context.Context, businessDomain, skillID string) ([]skillHistoryEntry, error) {
+func (c *OperatorIntegrationClient) GetSkillHistory(ctx context.Context, skillID string) ([]skillHistoryEntry, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s/history", url.PathEscape(skillID))
 	var resp []skillHistoryEntry
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-func (c *OperatorIntegrationClient) RepublishSkillHistory(ctx context.Context, businessDomain, skillID, version string) error {
+func (c *OperatorIntegrationClient) RepublishSkillHistory(ctx context.Context, skillID, version string) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s/history/republish", url.PathEscape(skillID))
-	return c.doJSON(ctx, http.MethodPost, path, businessDomain, map[string]string{"version": version}, nil)
+	return c.doJSON(ctx, http.MethodPost, path, map[string]string{"version": version}, nil)
 }
 
-func (c *OperatorIntegrationClient) PublishSkillHistory(ctx context.Context, businessDomain, skillID, version string) error {
+func (c *OperatorIntegrationClient) PublishSkillHistory(ctx context.Context, skillID, version string) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s/history/publish", url.PathEscape(skillID))
-	return c.doJSON(ctx, http.MethodPost, path, businessDomain, map[string]string{"version": version}, nil)
+	return c.doJSON(ctx, http.MethodPost, path, map[string]string{"version": version}, nil)
 }
 
-func (c *OperatorIntegrationClient) UpdateSkillStatus(ctx context.Context, businessDomain, skillID, status string) error {
+func (c *OperatorIntegrationClient) UpdateSkillStatus(ctx context.Context, skillID, status string) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/skills/%s/status", url.PathEscape(skillID))
-	return c.doJSON(ctx, http.MethodPut, path, businessDomain, map[string]string{"status": status}, nil)
+	return c.doJSON(ctx, http.MethodPut, path, map[string]string{"status": status}, nil)
 }
 
-func (c *OperatorIntegrationClient) GetOperatorHistory(ctx context.Context, businessDomain, operatorID string) ([]operatorHistoryEntry, error) {
+func (c *OperatorIntegrationClient) GetOperatorHistory(ctx context.Context, operatorID string) ([]operatorHistoryEntry, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/operator/history/%s", url.PathEscape(operatorID))
 	var resp []operatorHistoryEntry
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
 }
 
-func (c *OperatorIntegrationClient) ListOperatorsByName(ctx context.Context, businessDomain, name string) (*operatorListResponse, error) {
+func (c *OperatorIntegrationClient) ListOperatorsByName(ctx context.Context, name string) (*operatorListResponse, error) {
 	query := url.Values{}
 	query.Set("page", "1")
 	query.Set("page_size", "20")
@@ -207,16 +207,16 @@ func (c *OperatorIntegrationClient) ListOperatorsByName(ctx context.Context, bus
 
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/operator/info/list?%s", query.Encode())
 	var resp operatorListResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *OperatorIntegrationClient) GetOperator(ctx context.Context, businessDomain, operatorID string) (*OperatorDetailResponse, error) {
+func (c *OperatorIntegrationClient) GetOperator(ctx context.Context, operatorID string) (*OperatorDetailResponse, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/operator/info/%s", url.PathEscape(operatorID))
 	var resp OperatorDetailResponse
-	if err := c.doJSON(ctx, http.MethodGet, path, businessDomain, nil, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -224,7 +224,7 @@ func (c *OperatorIntegrationClient) GetOperator(ctx context.Context, businessDom
 
 func (c *OperatorIntegrationClient) UpdateOperatorStatus(
 	ctx context.Context,
-	businessDomain, userID, operatorID, status string,
+	userID, operatorID, status string,
 	version ...string,
 ) error {
 	item := map[string]string{"operator_id": operatorID, "status": status}
@@ -232,12 +232,12 @@ func (c *OperatorIntegrationClient) UpdateOperatorStatus(
 		item["version"] = version[0]
 	}
 	body := []map[string]string{item}
-	return c.doJSONWithUser(ctx, http.MethodPost, "/api/agent-operator-integration/v1/operator/status", businessDomain, userID, body, nil)
+	return c.doJSONWithUser(ctx, http.MethodPost, "/api/agent-operator-integration/v1/operator/status", userID, body, nil)
 }
 
 func (c *OperatorIntegrationClient) UpdateOperatorConfig(
 	ctx context.Context,
-	businessDomain, userID, operatorID string,
+	userID, operatorID string,
 	name, description, metadataType string,
 	data interface{},
 	operatorInfo map[string]interface{},
@@ -269,7 +269,6 @@ func (c *OperatorIntegrationClient) UpdateOperatorConfig(
 		ctx,
 		http.MethodPost,
 		"/api/agent-operator-integration/v1/operator/info",
-		businessDomain,
 		userID,
 		body,
 		nil,
@@ -278,13 +277,13 @@ func (c *OperatorIntegrationClient) UpdateOperatorConfig(
 
 func (c *OperatorIntegrationClient) DebugTool(
 	ctx context.Context,
-	businessDomain, boxID, toolID string,
+	boxID, toolID string,
 	req DebugToolRequest,
 ) (*debugToolResponse, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/tool-box/%s/tool/%s/debug",
 		url.PathEscape(boxID), url.PathEscape(toolID))
 	var resp debugToolResponse
-	if err := c.doJSON(ctx, http.MethodPost, path, businessDomain, req, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, path, req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -292,26 +291,25 @@ func (c *OperatorIntegrationClient) DebugTool(
 
 func (c *OperatorIntegrationClient) DebugMcpTool(
 	ctx context.Context,
-	businessDomain, mcpID, toolName string,
+	mcpID, toolName string,
 	args map[string]interface{},
 ) (*debugMcpResponse, error) {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/mcp/%s/tool/%s/debug",
 		url.PathEscape(mcpID), url.PathEscape(toolName))
 	var resp debugMcpResponse
-	if err := c.doJSON(ctx, http.MethodPost, path, businessDomain, args, &resp); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, path, args, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *OperatorIntegrationClient) UpdateToolboxStatus(ctx context.Context, businessDomain, boxID, status string) error {
+func (c *OperatorIntegrationClient) UpdateToolboxStatus(ctx context.Context, boxID, status string) error {
 	path := fmt.Sprintf("/api/agent-operator-integration/v1/tool-box/%s/status", url.PathEscape(boxID))
-	return c.doJSON(ctx, http.MethodPost, path, businessDomain, map[string]string{"status": status}, nil)
+	return c.doJSON(ctx, http.MethodPost, path, map[string]string{"status": status}, nil)
 }
 
 func (c *OperatorIntegrationClient) RegisterOperatorOpenAPI(
 	ctx context.Context,
-	businessDomain string,
 	openapiSpec string,
 	operatorInfo map[string]interface{},
 	executeControl map[string]interface{},
@@ -348,7 +346,7 @@ func (c *OperatorIntegrationClient) RegisterOperatorOpenAPI(
 		Status     string `json:"status"`
 	}
 	if err := c.doJSON(ctx, http.MethodPost,
-		"/api/agent-operator-integration/v1/operator/register", businessDomain, body, &resp); err != nil {
+		"/api/agent-operator-integration/v1/operator/register", body, &resp); err != nil {
 		return nil, err
 	}
 

@@ -17,7 +17,7 @@ import (
 
 func (c *OperatorIntegrationClient) ExportImpex(
 	ctx context.Context,
-	businessDomain, userID, componentType, id string,
+	userID, componentType, id string,
 ) (json.RawMessage, error) {
 	path := fmt.Sprintf(
 		"/api/agent-operator-integration/v1/impex/export/%s/%s",
@@ -32,7 +32,6 @@ func (c *OperatorIntegrationClient) ExportImpex(
 
 	req.Header.Set("Accept", "application/json")
 	applyLanguageHeader(ctx, req.Header)
-	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)
 	}
@@ -61,7 +60,7 @@ func (c *OperatorIntegrationClient) ExportImpex(
 
 func (c *OperatorIntegrationClient) ImportImpex(
 	ctx context.Context,
-	businessDomain, userID, componentType, mode string,
+	userID, componentType, mode string,
 	data []byte,
 ) error {
 	var body bytes.Buffer
@@ -95,7 +94,6 @@ func (c *OperatorIntegrationClient) ImportImpex(
 	req.Header.Set("Accept", "application/json")
 	applyLanguageHeader(ctx, req.Header)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	req.Header.Set("x-business-domain", businessDomain)
 	if userID != "" {
 		req.Header.Set("user_id", userID)
 	}

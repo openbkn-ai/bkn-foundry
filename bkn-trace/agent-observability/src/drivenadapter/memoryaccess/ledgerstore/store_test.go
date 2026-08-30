@@ -20,7 +20,7 @@ func TestListInteractionEventsReturnsOnlyAuthorizedInteractionInIngestOrder(t *t
 	t.Parallel()
 
 	store := ledgerstore.New()
-	owner := sessionvo.Owner{TenantID: "tenant-1", BusinessDomainID: "domain-1"}
+	owner := sessionvo.Owner{TenantID: "tenant-1"}
 	for _, event := range []ledgervo.Event{
 		ledgerEvent("evt-2", owner, "int-1", 2),
 		ledgerEvent("evt-other", owner, "int-2", 1),

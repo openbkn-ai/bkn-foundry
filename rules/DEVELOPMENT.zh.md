@@ -268,7 +268,6 @@ Authorization: Bearer {access_token}
 ```
 
 - **禁止**要求客户端额外发送非标准 header（如自定义 `token` header）作为认证的必要条件。
-- 业务域标识**应该**通过 `x-business-domain` header 传递，与认证解耦。
 
 ---
 

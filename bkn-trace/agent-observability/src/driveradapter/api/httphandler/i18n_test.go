@@ -66,7 +66,7 @@ func TestLocalizedAuthenticationRejectionPreservesMachineContractAndPropagatesLo
 		nil,
 	)
 	request.Header.Set("Authorization", "Bearer inactive-token")
-	request.Header.Set("x-business-domain", "bd-demo")
+	request.Header.Set("x-tenant-id", "bd-demo")
 	request.Header.Set(sharedrest.AcceptLanguageHeader, "en-GB,en;q=0.9,zh-CN;q=0.8")
 	response := httptest.NewRecorder()
 
@@ -296,13 +296,12 @@ func localizedTestHandler(handler http.Handler) http.Handler {
 
 func trustedTraceQueryContext(ctx context.Context) context.Context {
 	return context.WithValue(ctx, trustedQueryScopeContextKey{}, evidencevo.QueryScope{
-		TenantID: "tenant-1", BusinessDomain: "domain-1", AccountID: "user-1", AccountType: "user",
+		TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
 	})
 }
 
 func setI18nTrustedOwnerHeaders(request *http.Request) {
 	request.Header.Set("X-BKN-Tenant-ID", "tenant-1")
-	request.Header.Set("X-Business-Domain-ID", "domain-1")
 	request.Header.Set("X-BKN-Application-Principal-ID", "app-1")
 	request.Header.Set("X-BKN-Effective-Subject-Type", "user")
 	request.Header.Set("X-BKN-Effective-Subject-ID", "user-1")

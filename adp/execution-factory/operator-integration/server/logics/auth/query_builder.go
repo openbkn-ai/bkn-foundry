@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/utils"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 )
 
@@ -35,15 +34,14 @@ import (
 // queryTotalWithIDsFunc: function to query the total amount of data based on the permission ID list.
 // resourceListFunc: function to obtain the list of resource IDs to which the user has permissions.
 type QueryBuilder[T any, PT interfaces.PtrBizIdentifiable[T]] struct {
-	page                           int
-	pageSize                       int
-	all                            bool
-	queryTotalFunc                 QueryTotalFunc
-	queryBatchFunc                 QueryBatchFunc[T, PT]
-	queryTotalWithIDsFunc          QueryTotalWithIDsFunc
-	queryBatchWithIDsFunc          QueryBatchWithIDsFunc[T, PT]
-	resourceListFunc               ResourceListFunc
-	businessDomainResourceListFunc BusinessDomainResourceListFunc
+	page                  int
+	pageSize              int
+	all                   bool
+	queryTotalFunc        QueryTotalFunc
+	queryBatchFunc        QueryBatchFunc[T, PT]
+	queryTotalWithIDsFunc QueryTotalWithIDsFunc
+	queryBatchWithIDsFunc QueryBatchWithIDsFunc[T, PT]
+	resourceListFunc      ResourceListFunc
 }
 
 // QueryTotalFunc is a function that queries the total amount of data.
@@ -60,9 +58,6 @@ type QueryBatchWithIDsFunc[T any, PT interfaces.PtrBizIdentifiable[T]] func(ctx 
 
 // ResourceListFunc is a function that obtains the list of resource IDs that the user has permissions for.
 type ResourceListFunc func(ctx context.Context) ([]string, error)
-
-// BusinessDomainResourceListFunc Function type to obtain business domain resource ID list.
-type BusinessDomainResourceListFunc func(ctx context.Context) ([]string, error)
 
 // NewQueryBuilder creates a new query builder.
 func NewQueryBuilder[T any, PT interfaces.PtrBizIdentifiable[T]]() *QueryBuilder[T, PT] {
@@ -106,12 +101,6 @@ func (b *QueryBuilder[T, PT]) SetAuthFilter(resourceListFunc ResourceListFunc) *
 	return b
 }
 
-// SetBusinessDomainFilter sets the business domain resource filtering function.
-func (b *QueryBuilder[T, PT]) SetBusinessDomainFilter(businessDomainResourceListFunc BusinessDomainResourceListFunc) *QueryBuilder[T, PT] {
-	b.businessDomainResourceListFunc = businessDomainResourceListFunc
-	return b
-}
-
 // SetFilteredQueryFunctions sets query functions with permission filtering.
 func (b *QueryBuilder[T, PT]) SetFilteredQueryFunctions(
 	queryTotalWithIDs QueryTotalWithIDsFunc,
@@ -132,40 +121,15 @@ func (b *QueryBuilder[T, PT]) Execute(ctx context.Context) (*interfaces.QueryRes
 	return b.SelectListWithAuthBatchWithThresholds(ctx)
 }
 
-// getFilteredResourceIDs Gets a list of resource IDs that have been double filtered by business domain and permissions.
-// Business domain filtering is the first layer, and authority filtering is the second layer.
-// Core principle: The business domain is the first layer of filtering restrictions. Even if you have permission to access all resources, if there are no results in the business domain, an empty list must be returned.
+// getFilteredResourceIDs returns the resource IDs allowed by authorization.
 func (b *QueryBuilder[T, PT]) getFilteredResourceIDs(ctx context.Context) ([]string, bool, error) {
 	ctx, _ = oteltrace.StartInternalSpan(ctx)
 	defer oteltrace.EndSpan(ctx, nil)
 
 	var (
-		businessDomainIDs      []string
-		authorizedIDs          []string
-		hasFullAccess          bool
-		businessDomainBypassed bool
+		authorizedIDs []string
+		hasFullAccess bool
 	)
-
-	// Serial call to business domain resource list function.
-	if b.businessDomainResourceListFunc != nil {
-		ids, err := b.businessDomainResourceListFunc(ctx)
-		if err != nil {
-			return nil, false, err
-		}
-		businessDomainIDs = ids
-		for _, id := range ids {
-			if id == interfaces.ResourceIDAll {
-				businessDomainBypassed = true
-				break
-			}
-		}
-	}
-
-	// Early termination strategy: If the business domain does not return any resource ID, an empty list will be returned directly.
-	// This is the core embodiment of the first layer of filtering. Regardless of the permissions, when the business domain is empty, empty will be returned directly.
-	if len(businessDomainIDs) == 0 && b.businessDomainResourceListFunc != nil && !businessDomainBypassed {
-		return []string{}, false, nil
-	}
 
 	// Serial call to permission resource list function.
 	if b.resourceListFunc != nil {
@@ -186,27 +150,10 @@ func (b *QueryBuilder[T, PT]) getFilteredResourceIDs(ctx context.Context) ([]str
 		hasFullAccess = true
 	}
 
-	// Calculate the filtered list of resource IDs.
-	var filteredIDs []string
-
 	if hasFullAccess {
-		// If you have access to all resources, only business domain filtering is applied.
-		// The business domain serves as the first layer of filtering. Even if you have permission, you can only access resources within the business domain.
-		if businessDomainBypassed {
-			return nil, true, nil
-		}
-		filteredIDs = businessDomainIDs
-	} else {
-		// In the case of limited permissions, calculate the intersection of business domains and permissions.
-		// The utils.CalculateIntersection function internally handles the case of empty lists.
-		if businessDomainBypassed {
-			filteredIDs = authorizedIDs
-		} else {
-			filteredIDs = utils.CalculateIntersection(businessDomainIDs, authorizedIDs)
-		}
+		return nil, true, nil
 	}
-
-	return filteredIDs, false, nil
+	return authorizedIDs, false, nil
 }
 
 // SelectListWithAuthBatchWithThresholds permission query function with threshold parameters.
@@ -222,7 +169,7 @@ func (b *QueryBuilder[T, PT]) SelectListWithAuthBatchWithThresholds(ctx context.
 		b.pageSize = 10
 	}
 
-	// Use a unified method to obtain a resource ID list that is double filtered by business domain and permissions.
+	// Use authorization to obtain the resource ID list.
 	filteredIDs, hasFullAccess, err := b.getFilteredResourceIDs(ctx)
 	if err != nil {
 		return nil, err

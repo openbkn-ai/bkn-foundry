@@ -178,8 +178,7 @@ func (s *Store) listArtifactProjection(ctx context.Context, query iprojectionsou
 func matchesProjectionTrace(trace evidencevo.NormalizedTrace, query iprojectionsource.Query) bool {
 	if query.RequestID != "" && trace.RequestID != query.RequestID ||
 		query.TraceID != "" && trace.TraceID != query.TraceID ||
-		query.InteractionID != "" && !traceHasInteraction(trace, query.InteractionID) ||
-		query.BusinessDomain != "" && trace.BusinessDomain != query.BusinessDomain {
+		query.InteractionID != "" && !traceHasInteraction(trace, query.InteractionID) {
 		return false
 	}
 	if query.From.IsZero() && query.To.IsZero() {
@@ -197,8 +196,7 @@ func matchesProjectionTrace(trace evidencevo.NormalizedTrace, query iprojections
 func matchesProjectionArtifact(artifact evidencevo.EvidenceArtifact, query iprojectionsource.Query) bool {
 	if query.RequestID != "" && artifact.RequestID != query.RequestID ||
 		query.TraceID != "" && artifact.TraceID != query.TraceID ||
-		query.InteractionID != "" && artifact.InteractionID != query.InteractionID ||
-		query.BusinessDomain != "" && artifact.BusinessDomain != query.BusinessDomain {
+		query.InteractionID != "" && artifact.InteractionID != query.InteractionID {
 		return false
 	}
 	if query.From.IsZero() && query.To.IsZero() {
@@ -314,7 +312,6 @@ func appendProjectionIdentityFilters(must []map[string]any, query iprojectionsou
 	}{
 		{"bkn.request.id", query.RequestID},
 		{"trace_id", query.TraceID},
-		{"business_domain", query.BusinessDomain},
 	} {
 		if item.value != "" {
 			must = append(must, map[string]any{"bool": exactTermQuery(item.field, item.value)})

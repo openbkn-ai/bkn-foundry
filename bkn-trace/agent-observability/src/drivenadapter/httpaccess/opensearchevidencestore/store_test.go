@@ -243,7 +243,7 @@ func TestStoreEvidencePaginatesLegacyHistoryBeyondOneThousand(t *testing.T) {
 					"sort": []any{"2026-07-23T01:02:03Z", docID},
 					"_source": map[string]any{
 						"document_id": docID, "trace_id": "trace_index_001", "bkn.request.id": "req_index_001",
-						"bkn.tenant.id": "tenant_index", "business_domain": "bd_index", "bkn.account.id": "acct_index", "bkn.account.type": "app",
+						"bkn.tenant.id": "tenant_index", "bkn.account.id": "acct_index", "bkn.account.type": "app",
 						"events": []any{}, "ingested_at": "2026-07-23T01:02:03Z",
 					},
 				})
@@ -354,13 +354,13 @@ func TestGetEvidenceByTraceIDPushesOwnershipScopeIntoSearch(t *testing.T) {
 		return jsonResponse(`{"hits":{"hits":[]}}`), nil
 	})
 	store := New(client, "bkn-trace-evidence-test")
-	scope := evidencevo.QueryScope{TenantID: "tenant_index", BusinessDomain: "bd_index", AccountID: "acct_index", AccountType: "app"}
+	scope := evidencevo.QueryScope{TenantID: "tenant_index", AccountID: "acct_index", AccountType: "app"}
 
 	if _, err := store.GetEvidenceByTraceID(context.Background(), "trace_index_001", evidencevo.EvidenceQueryOptions{Scope: scope}); err != nil {
 		t.Fatalf("query evidence: %v", err)
 	}
 	body, _ := json.Marshal(query)
-	for _, field := range []string{"bkn.tenant.id.keyword", "business_domain.keyword", "bkn.account.id.keyword", "bkn.account.type.keyword"} {
+	for _, field := range []string{"bkn.tenant.id.keyword", "bkn.account.id.keyword", "bkn.account.type.keyword"} {
 		if !strings.Contains(string(body), field) {
 			t.Fatalf("ownership field %s missing from query: %s", field, body)
 		}
@@ -535,7 +535,7 @@ func TestStoreEvidenceUpdatesMappingForExistingIndex(t *testing.T) {
 			if err != nil {
 				t.Fatalf("read mapping update: %v", err)
 			}
-			for _, field := range []string{`"business_domain"`, `"account"`, `"tenant"`} {
+			for _, field := range []string{`"account"`, `"tenant"`} {
 				if !strings.Contains(string(body), field) {
 					t.Fatalf("mapping update missing %s: %s", field, body)
 				}
@@ -706,7 +706,6 @@ func normalizedTrace() evidencevo.NormalizedTrace {
 		RequestID:      "req_index_001",
 		ConversationID: "conversation_index_001",
 		TenantID:       "tenant_index",
-		BusinessDomain: "bd_index",
 		AccountID:      "acct_index",
 		AccountType:    "app",
 		SchemaVersion:  evidencevo.ContractVersion,

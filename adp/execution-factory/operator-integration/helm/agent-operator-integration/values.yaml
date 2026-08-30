@@ -101,10 +101,6 @@ service:
 auth:
   enabled: true
 
-# Business domain switch.
-businessDomain:
-  enabled: true
-
 depServices:
   class-443:
     ingressClass: class-443

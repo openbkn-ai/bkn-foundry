@@ -101,6 +101,7 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	definitions := []string{
 		"assemblysvc.BusinessRefView",
 		"assemblysvc.ProjectedResult",
+		"httphandler.businessRefRequest",
 		"httphandler.evidenceEventRequest",
 		"httphandler.ensureOperationRequest",
 		"httphandler.finishAttemptRequest",
@@ -116,11 +117,19 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 		"sessionvo.OperationCallFact",
 		"sessionvo.OperationProtocol",
 		"sessionvo.PayloadEnvelope",
-		"sessionvo.OperationBusinessEdge",
+		"httphandler.operationBusinessEdgeRequest",
 		"sessionvo.OperationBusinessRole",
 		"sessionvo.Receipt",
 	}
 	for _, definition := range definitions {
+		// A definition that no document carries compares equal everywhere, so the
+		// assertion below would silently pass for a name that has been renamed out
+		// of the contract. Fail on the missing name instead.
+		for name, document := range documents {
+			if _, ok := document.Definitions[definition]; !ok {
+				t.Fatalf("%s does not define %s", name, definition)
+			}
+		}
 		assertAllEqual(t, documents, "definition "+definition, func(document swaggerDocument) any {
 			return document.Definitions[definition]
 		})
@@ -179,7 +188,7 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	result := documents["swagger.json"].Definitions["httphandler.operationResult"]
 	assertStringSet(t, result.Required, "operation", "receipt", "created", "execute")
 	businessRef := documents["swagger.json"].Definitions["sessionvo.BusinessRef"]
-	assertStringSet(t, businessRef.Required, "ref_type", "ref_id", "business_domain_id", "version")
+	assertStringSet(t, businessRef.Required, "ref_type", "ref_id", "version")
 
 	complete := documents["swagger.json"].Paths[completePath].Post
 	body := findParameter(t, complete.Parameters, "request", "body")
@@ -286,7 +295,7 @@ func TestLifecycleSourceRequiredTagsDriveSwagger(t *testing.T) {
 		t.Fatalf("parse operation value object: %v", err)
 	}
 	required := map[string][]string{
-		"BusinessRef": {"RefType", "RefID", "BusinessDomainID", "Version"},
+		"BusinessRef": {"RefType", "RefID", "Version"},
 	}
 	for typeName, fields := range required {
 		structType := findStruct(t, file, typeName)

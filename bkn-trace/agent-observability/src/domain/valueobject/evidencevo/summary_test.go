@@ -149,14 +149,13 @@ func TestBuildExecutionSummariesMarksTwoPointOneWithoutArtifactsContentUnavailab
 func TestBuildExecutionSummariesDoesNotInventUnavailableFields(t *testing.T) {
 	trace := summaryTrace("trace_summary_sparse", "req_summary_sparse", "", "")
 	trace.Events[0].Producer = ""
-	trace.BusinessDomain = ""
 	trace.Events[0].ObservedAt = ""
 	trace.Events[0].EmittedAt = ""
 
 	requests, executions := BuildExecutionSummaries([]NormalizedTrace{trace}, nil)
 
 	if requests[0].StartedAt != "" || requests[0].CompletedAt != "" || requests[0].AgentOrApp != "" ||
-		requests[0].DurationMS != 0 || requests[0].BusinessDomain != "" {
+		requests[0].DurationMS != 0 {
 		t.Fatalf("sparse source fields must remain empty: %+v", requests[0])
 	}
 	if executions[0].StartedAt != "" || executions[0].CompletedAt != "" || executions[0].DurationMS != 0 {
@@ -167,7 +166,7 @@ func TestBuildExecutionSummariesDoesNotInventUnavailableFields(t *testing.T) {
 func TestBuildExecutionSummariesDoesNotInferAgentRootOrCompletionFromProducerOperationAndEmission(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_running", RequestID: "req_running",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
 			EventID: "event_running", EventType: "data.query.observed",
@@ -269,7 +268,7 @@ func TestBuildExecutionSummariesCompletesFinishedRetrievalAndDataQueryRequests(t
 func TestBuildExecutionSummariesUsesOnlyArtifactsExplicitlyReferencedByEvents(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_linked", RequestID: "req_summary",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{
 			{
@@ -310,7 +309,7 @@ func TestBuildExecutionSummariesUsesOnlyArtifactsExplicitlyReferencedByEvents(t 
 func TestBuildExecutionSummariesKeepsOperationTimingSeparateFromInteractionArtifacts(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_operation_timing", RequestID: "req_operation_timing",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{
 			{
@@ -428,7 +427,7 @@ func TestBuildExecutionSummariesKeepsRecoveredToolFailureOnOperation(t *testing.
 func TestBuildExecutionSummariesDoesNotCopyInteractionResultIntoOperation(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_failed_operation", RequestID: "req_failed_operation",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion:  ArtifactContractVersion,
 		ConversationID: "conv_supply_chain",
 		Events: []EvidenceEvent{
@@ -478,7 +477,7 @@ func TestBuildExecutionSummariesDoesNotCopyInteractionResultIntoOperation(t *tes
 func TestBuildExecutionSummariesExplainsFailedOperationEvidenceWithoutRequiringTurnContent(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_failed_receipt", RequestID: "req_failed_receipt",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion, ConversationID: "conv_supply_chain",
 		Events: []EvidenceEvent{
 			{
@@ -508,7 +507,7 @@ func TestBuildExecutionSummariesExplainsFailedOperationEvidenceWithoutRequiringT
 func TestBuildExecutionSummariesKeepsInteractionQuestionOutOfOperation(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_schema_search", RequestID: "req_schema_search",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion:  ArtifactContractVersion,
 		ConversationID: "conv_supply_chain",
 		Events: []EvidenceEvent{
@@ -545,7 +544,7 @@ func TestBuildExecutionSummariesKeepsInteractionQuestionOutOfOperation(t *testin
 func TestBuildExecutionSummariesUsesRunSQLRowCount(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_run_sql", RequestID: "req_run_sql",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		Events: []EvidenceEvent{{
 			EventID: "event_run_sql", EventType: "data.query.observed",
 			ObservedAt: "2026-08-08T08:00:00Z", EmittedAt: "2026-08-08T08:00:01Z",
@@ -568,7 +567,7 @@ func TestBuildExecutionSummariesUsesRunSQLRowCount(t *testing.T) {
 func TestBuildExecutionSummariesUsesStructuredRunSQLFailure(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_run_sql_failed", RequestID: "req_run_sql_failed",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
 			EventID: "event_run_sql_failed", EventType: "data.query.observed",
@@ -597,7 +596,7 @@ func TestBuildExecutionSummariesUsesStructuredRunSQLFailure(t *testing.T) {
 func TestBuildExecutionSummariesUsesDurableReceiptAsOperationCompletenessAuthority(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_durable_receipt", RequestID: "req_durable_receipt",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
 			EventID: "receipt:receipt_durable", EventType: "retrieval.completed",
@@ -621,7 +620,7 @@ func TestBuildExecutionSummariesUsesDurableReceiptAsOperationCompletenessAuthori
 func TestBuildExecutionSummariesKeepsReceiptPartialReasons(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_partial_receipt", RequestID: "req_partial_receipt",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
 			EventID: "receipt:receipt_partial", EventType: "retrieval.completed",
@@ -651,7 +650,7 @@ func TestBuildExecutionSummariesRequiresAllTracesTerminalBeforeRequestCompletion
 	result := summaryArtifact(t, "artifact_completed_result", ArtifactTypeResult, completed.TraceID, map[string]any{"text": "完成结果"})
 	running := NormalizedTrace{
 		TraceID: "trace_running_mixed", RequestID: "req_summary",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
 			EventID: "event_running_mixed", EventType: "data.query.observed",
@@ -662,7 +661,7 @@ func TestBuildExecutionSummariesRequiresAllTracesTerminalBeforeRequestCompletion
 	}
 	unknown := NormalizedTrace{
 		TraceID: "trace_unknown_mixed", RequestID: "req_summary",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 	}
 	failed := running
@@ -698,7 +697,7 @@ func TestBuildExecutionSummariesRequiresAllTracesTerminalBeforeRequestCompletion
 func TestBuildExecutionSummariesIgnoresArtifactWhoseTypeDoesNotMatchLinkRole(t *testing.T) {
 	trace := NormalizedTrace{
 		TraceID: "trace_type_mismatch", RequestID: "req_summary",
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
 			EventID: "event_type_mismatch", EventType: "claim.created",
@@ -734,7 +733,7 @@ func TestBuildExecutionSummariesIgnoresArtifactWhoseTypeDoesNotMatchLinkRole(t *
 func summaryTrace(traceID, requestID, observedAt, emittedAt string) NormalizedTrace {
 	return NormalizedTrace{
 		TraceID: traceID, RequestID: requestID,
-		TenantID: "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		SchemaVersion: ContractVersion,
 		Events: []EvidenceEvent{{
 			EventID: "event_" + traceID, EventType: "claim.created",
@@ -757,7 +756,7 @@ func summaryArtifact(t *testing.T, artifactID string, artifactType ArtifactType,
 		ContentType: "application/json", SchemaVersion: ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:01Z", Content: content,
 		BusinessRefs: []string{"object:kn_supply:forecast"},
-		TenantID:     "tenant_demo", BusinessDomain: "bd_demo", AccountID: "acct_demo", AccountType: "app",
+		TenantID:     "tenant_demo", AccountID: "acct_demo", AccountType: "app",
 		AgentOrApp: "supply-chain-agent", Initiator: "studio-user",
 	})
 	if len(validationErrors) != 0 {

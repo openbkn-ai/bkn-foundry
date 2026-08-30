@@ -14,19 +14,19 @@ import (
 
 func (s *Service) resolveOrchestrationForTool(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 	tool client.ToolInfo,
 ) *model.Orchestration {
-	if lineage, ok := s.resolveOperatorLineage(ctx, businessDomain, boxID, tool); ok {
+	if lineage, ok := s.resolveOperatorLineage(ctx, boxID, tool); ok {
 		return lineage
 	}
 
-	return s.resolveOrchestrationByName(ctx, businessDomain, tool.Name)
+	return s.resolveOrchestrationByName(ctx, tool.Name)
 }
 
 func (s *Service) resolveOperatorLineage(
 	ctx context.Context,
-	businessDomain, boxID string,
+	boxID string,
 	tool client.ToolInfo,
 ) (*model.Orchestration, bool) {
 	if tool.SourceType == "operator" && tool.SourceID != "" {
@@ -40,7 +40,6 @@ func (s *Service) resolveOperatorLineage(
 	if tool.ResourceObject == "operator" && boxID != "" && tool.ToolID != "" {
 		lineage, err := s.Client.GetToolSourceLineage(
 			ctx,
-			businessDomain,
 			boxID,
 			tool.ToolID,
 			s.DefaultUserID,
@@ -59,13 +58,13 @@ func (s *Service) resolveOperatorLineage(
 
 func (s *Service) resolveOrchestrationByName(
 	ctx context.Context,
-	businessDomain, toolName string,
+	toolName string,
 ) *model.Orchestration {
 	if toolName == "" {
 		return nil
 	}
 
-	resp, err := s.Client.ListOperatorsByName(ctx, businessDomain, toolName)
+	resp, err := s.Client.ListOperatorsByName(ctx, toolName)
 	if err != nil || len(resp.Data) == 0 {
 		return nil
 	}

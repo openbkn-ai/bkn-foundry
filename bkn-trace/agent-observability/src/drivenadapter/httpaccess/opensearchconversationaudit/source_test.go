@@ -36,7 +36,7 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 		"generation": 1, "status": "active", "one_shot": false, "row_version": 1,
 		"created_at": createdAt.Format(time.RFC3339Nano), "updated_at": createdAt.Format(time.RFC3339Nano),
 		"owner": map[string]any{
-			"tenant_id": "tenant-a", "business_domain_id": "domain-a", "application_principal_id": "app-a",
+			"tenant_id": "tenant-a", "application_principal_id": "app-a",
 			"effective_subject_type": "user", "effective_subject_id": "user-a",
 		},
 	}
@@ -50,7 +50,7 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 	source := New(backend, "openbkn-core-projection")
 
 	page, err := source.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a", ConversationID: "conv-a", Limit: 20,
+		AuthorizedTenantID: "tenant-a", ConversationID: "conv-a", Limit: 20,
 	})
 	if err != nil {
 		t.Fatalf("search conversation audit: %v", err)
@@ -74,7 +74,7 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 		t.Fatalf("decode search query: %v", err)
 	}
 	encoded, _ := json.Marshal(query)
-	for _, expected := range []string{"owner.tenant_id.keyword", "owner.business_domain_id.keyword", "external_conversation_key", "conversation_id.keyword"} {
+	for _, expected := range []string{"owner.tenant_id.keyword", "external_conversation_key", "conversation_id.keyword"} {
 		if !containsString(string(encoded), expected) {
 			t.Fatalf("trusted projection filter %q missing from %s", expected, encoded)
 		}
@@ -84,7 +84,7 @@ func TestSearchProjectsConversationCreatedFromAuthoritativeProjection(t *testing
 func TestSearchReturnsExactEmptyForRequestRuntimeCorrelation(t *testing.T) {
 	backend := &fakeSearchClient{}
 	page, err := New(backend, "openbkn-core-projection").Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedBusinessDomain: "domain-a", RequestID: "req-a",
+		AuthorizedTenantID: "tenant-a", RequestID: "req-a",
 	})
 	if err != nil || backend.calls != 0 || len(page.Records) != 0 || page.Count != 0 || page.CountAccuracy != "exact" {
 		t.Fatalf("page=%+v calls=%d err=%v", page, backend.calls, err)

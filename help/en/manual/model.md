@@ -129,7 +129,7 @@ openbkn call /api/mf-model-manager/v1/llm/test -d '{
 
 #### Chat with an LLM directly (Model Factory)
 
-To talk to a registered LLM **without** going through an agent, call the Model Factory **Chat Completions** API. `openbkn call` injects the current platform auth and business domain for you.
+To talk to a registered LLM **without** going through an agent, call the Model Factory **Chat Completions** API. `openbkn call` injects the current platform authentication for you.
 
 - **Endpoint**: `POST /api/mf-model-api/v1/chat/completions`
 - **`model`**: use the registered **`model_name`** from **`llm/list`** (usually the same string as upstream `api_model`)

@@ -96,7 +96,6 @@ func logFilterHash(query observabilityvo.LogQuery) string {
 		Services        []string   `json:"services,omitempty"`
 		Environments    []string   `json:"environments,omitempty"`
 		EventNames      []string   `json:"event_names,omitempty"`
-		BusinessDomain  string     `json:"business_domain,omitempty"`
 		ActorID         string     `json:"actor_id,omitempty"`
 		ActorQuery      string     `json:"actor,omitempty"`
 		ApplicationID   string     `json:"application_id,omitempty"`
@@ -116,8 +115,8 @@ func logFilterHash(query observabilityvo.LogQuery) string {
 		TargetType: query.TargetType, TargetID: query.TargetID, Outcomes: normalizedStrings(query.Outcomes),
 		Categories: normalizedStrings(query.Categories), SeverityMinimum: query.SeverityMinimum,
 		Services: normalizedStrings(query.Services), Environments: normalizedStrings(query.Environments),
-		EventNames: normalizedStrings(query.EventNames), BusinessDomain: query.BusinessDomain,
-		ActorID: query.ActorID, ActorQuery: query.ActorQuery, ApplicationID: query.ApplicationID,
+		EventNames: normalizedStrings(query.EventNames),
+		ActorID:    query.ActorID, ActorQuery: query.ActorQuery, ApplicationID: query.ApplicationID,
 		ResourceType: query.ResourceType, ResourceID: query.ResourceID,
 		ConversationID: query.ConversationID, InteractionID: query.InteractionID,
 		OperationID: query.OperationID, RequestID: query.RequestID,

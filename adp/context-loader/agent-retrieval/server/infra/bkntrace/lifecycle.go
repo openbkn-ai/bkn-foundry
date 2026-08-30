@@ -59,7 +59,6 @@ type errorEnvelope struct {
 
 type Owner struct {
 	TenantID               string `json:"tenant_id"`
-	BusinessDomainID       string `json:"business_domain_id"`
 	ApplicationPrincipalID string `json:"application_principal_id"`
 	EffectiveSubjectType   string `json:"effective_subject_type"`
 	EffectiveSubjectID     string `json:"effective_subject_id"`
@@ -134,12 +133,11 @@ type Operation struct {
 }
 
 type BusinessRef struct {
-	RefType          string     `json:"ref_type"`
-	RefID            string     `json:"ref_id"`
-	BusinessDomainID string     `json:"business_domain_id"`
-	Version          string     `json:"version"`
-	AsOf             *time.Time `json:"as_of,omitempty"`
-	DisplayHint      string     `json:"display_hint,omitempty"`
+	RefType     string     `json:"ref_type"`
+	RefID       string     `json:"ref_id"`
+	Version     string     `json:"version"`
+	AsOf        *time.Time `json:"as_of,omitempty"`
+	DisplayHint string     `json:"display_hint,omitempty"`
 }
 
 type Receipt struct {
@@ -503,8 +501,8 @@ func (c *LifecycleClient) do(
 
 func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error {
 	traceContext, ok := common.GetTraceContextFromCtx(ctx)
-	if !ok || traceContext.TenantID == "" || traceContext.BusinessDomain == "" {
-		return fmt.Errorf("trusted tenant and business domain context is required")
+	if !ok || traceContext.TenantID == "" {
+		return fmt.Errorf("trusted tenant context is required")
 	}
 	auth, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || auth.AccountID == "" || auth.AccountType == interfaces.AccessorTypeAnonymous {
@@ -524,9 +522,7 @@ func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error 
 	headers.Set("x-account-id", auth.AccountID)
 	headers.Set("x-account-type", string(auth.AccountType))
 	headers.Set("x-tenant-id", traceContext.TenantID)
-	headers.Set("x-business-domain", traceContext.BusinessDomain)
 	headers.Set("X-BKN-Tenant-ID", traceContext.TenantID)
-	headers.Set("X-Business-Domain-ID", traceContext.BusinessDomain)
 	headers.Set("X-BKN-Application-Principal-ID", applicationID)
 	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
 	headers.Set("X-BKN-Effective-Subject-ID", auth.AccountID)

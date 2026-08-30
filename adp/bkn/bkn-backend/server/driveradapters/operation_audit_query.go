@@ -19,7 +19,6 @@ import (
 	"bkn-backend/common/bkntrace"
 	"bkn-backend/common/operationaudit"
 	berrors "bkn-backend/errors"
-	"bkn-backend/interfaces"
 )
 
 const maximumOperationAuditRange = 30 * 24 * time.Hour
@@ -38,19 +37,18 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 		return
 	}
 	filter := operationaudit.Filter{
-		TenantID:         strings.TrimSpace(c.GetHeader("x-tenant-id")),
-		BusinessDomainID: strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
-		From:             from,
-		To:               to,
-		ActorID:          strings.TrimSpace(c.Query("actor_id")),
-		Action:           strings.TrimSpace(c.Query("action")),
-		TargetType:       strings.TrimSpace(c.Query("target_type")),
-		TargetID:         strings.TrimSpace(c.Query("target_id")),
-		Outcome:          strings.TrimSpace(c.Query("outcome")),
+		TenantID:   strings.TrimSpace(c.GetHeader("x-tenant-id")),
+		From:       from,
+		To:         to,
+		ActorID:    strings.TrimSpace(c.Query("actor_id")),
+		Action:     strings.TrimSpace(c.Query("action")),
+		TargetType: strings.TrimSpace(c.Query("target_type")),
+		TargetID:   strings.TrimSpace(c.Query("target_id")),
+		Outcome:    strings.TrimSpace(c.Query("outcome")),
 	}
-	if filter.TenantID == "" || filter.BusinessDomainID == "" {
+	if filter.TenantID == "" {
 		replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_MissingScope, gin.H{
-			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+			"required_headers": []string{"x-tenant-id"},
 		})
 		return
 	}
@@ -95,12 +93,11 @@ func (r *restHandler) GetOperationAudit(c *gin.Context) {
 		return
 	}
 	scope := operationaudit.Scope{
-		TenantID:         strings.TrimSpace(c.GetHeader("x-tenant-id")),
-		BusinessDomainID: strings.TrimSpace(c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)),
+		TenantID: strings.TrimSpace(c.GetHeader("x-tenant-id")),
 	}
-	if scope.TenantID == "" || scope.BusinessDomainID == "" {
+	if scope.TenantID == "" {
 		replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_MissingScope, gin.H{
-			"required_headers": []string{"x-tenant-id", interfaces.HTTP_HEADER_BUSINESS_DOMAIN},
+			"required_headers": []string{"x-tenant-id"},
 		})
 		return
 	}
@@ -189,7 +186,6 @@ type operationAuditResponseDTO struct {
 	EventTime          string         `json:"event_time"`
 	RecordedAt         string         `json:"recorded_at"`
 	TenantID           string         `json:"tenant_id"`
-	BusinessDomainID   string         `json:"business_domain_id"`
 	KnowledgeNetworkID string         `json:"knowledge_network_id"`
 	ActorID            string         `json:"actor_id"`
 	ActorName          string         `json:"actor_name"`
@@ -221,7 +217,7 @@ func operationAuditResponses(entries []operationaudit.Entry) []operationAuditRes
 func operationAuditResponse(entry operationaudit.Entry) operationAuditResponseDTO {
 	return operationAuditResponseDTO{
 		EventID: entry.EventID, EventTime: entry.EventTime.UTC().Format(time.RFC3339Nano), RecordedAt: entry.RecordedAt.UTC().Format(time.RFC3339Nano),
-		TenantID: entry.TenantID, BusinessDomainID: entry.BusinessDomainID, KnowledgeNetworkID: entry.KnowledgeNetworkID,
+		TenantID: entry.TenantID, KnowledgeNetworkID: entry.KnowledgeNetworkID,
 		ActorID: entry.ActorID, ActorName: entry.ActorName, ActorType: entry.ActorType, AuthMethod: entry.AuthMethod, CredentialID: entry.CredentialID,
 		RequestID: entry.RequestID, SourceChannel: entry.SourceChannel, Method: entry.Method, Action: entry.Action,
 		TargetType: entry.TargetType, TargetID: entry.TargetID, TargetName: entry.TargetName, Outcome: entry.Outcome,

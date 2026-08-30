@@ -34,8 +34,6 @@ const (
 	BknBackend_ConceptGroup_InternalError_AddObjectTypesToConceptGroupFailed   = "BknBackend.ConceptGroup.InternalError.AddObjectTypesToConceptGroupFailed"
 	BknBackend_ConceptGroup_InternalError_MissingTransaction                   = "BknBackend.ConceptGroup.InternalError.MissingTransaction"
 	BknBackend_ConceptGroup_InternalError_BeginTransactionFailed               = "BknBackend.ConceptGroup.InternalError.BeginTransactionFailed"
-	BknBackend_ConceptGroup_InternalError_BindBusinessDomainFailed             = "BknBackend.ConceptGroup.InternalError.BindBusinessDomainFailed"
-	BknBackend_ConceptGroup_InternalError_UnbindBusinessDomainFailed           = "BknBackend.ConceptGroup.InternalError.UnbindBusinessDomainFailed"
 	BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed       = "BknBackend.ConceptGroup.InternalError.CheckConceptGroupIfExistFailed"
 	BknBackend_ConceptGroup_InternalError_GetConceptGroupByIDFailed            = "BknBackend.ConceptGroup.InternalError.GetConceptGroupByIDFailed"
 	BknBackend_ConceptGroup_InternalError_UpdateConceptGroupFailed             = "BknBackend.ConceptGroup.InternalError.UpdateConceptGroupFailed"
@@ -80,8 +78,6 @@ var (
 		BknBackend_ConceptGroup_InternalError_MissingTransaction,
 		BknBackend_ConceptGroup_InternalError_CheckConceptGroupIfExistFailed,
 		BknBackend_ConceptGroup_InternalError_BeginTransactionFailed,
-		BknBackend_ConceptGroup_InternalError_BindBusinessDomainFailed,
-		BknBackend_ConceptGroup_InternalError_UnbindBusinessDomainFailed,
 		BknBackend_ConceptGroup_InternalError_GetConceptGroupByIDFailed,
 		BknBackend_ConceptGroup_InternalError_UpdateConceptGroupFailed,
 		BknBackend_ConceptGroup_InternalError_CreateConceptGroupFailed,

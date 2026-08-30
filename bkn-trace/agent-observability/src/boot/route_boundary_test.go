@@ -73,9 +73,8 @@ func TestPublicManagedLifecycleFlowUsesServerDerivedOwner(t *testing.T) {
 	evidenceHandler := httphandler.NewEvidenceHandlerWithSecurityConfig(
 		evidencesvc.New(evidencestore.New()),
 		httphandler.EvidenceHandlerSecurityConfig{
-			HydraAdminURL:                  "http://hydra.test",
-			DeploymentTenantID:             "openbkn-local",
-			PublicLifecycleBusinessDomains: "customer-service,inventory",
+			HydraAdminURL:      "http://hydra.test",
+			DeploymentTenantID: "openbkn-local",
 			QueryHTTPClient: &http.Client{Transport: routeBoundaryRoundTrip(func(request *http.Request) (*http.Response, error) {
 				if request.URL.Path != "/admin/oauth2/introspect" {
 					t.Fatalf("unexpected OAuth introspection path: %s", request.URL.Path)
@@ -180,8 +179,7 @@ func (routeBoundaryScopeResolver) Resolve(
 	identity iauthorizationscope.TrustedIdentity,
 ) (evidencevo.AccessProfile, error) {
 	return evidencevo.AccessProfile{
-		TenantID: identity.TenantID, BusinessDomain: identity.BusinessDomain,
-		ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
+		TenantID: identity.TenantID, ActorID: identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
 		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
 		AccountActive: true, TenantActive: true,
 	}, nil
@@ -207,7 +205,7 @@ func publicLifecycleRequest(
 	}
 	request := httptest.NewRequest(method, path, reader)
 	request.Header.Set("Authorization", "Bearer lifecycle-token")
-	request.Header.Set("x-business-domain", "customer-service")
+	request.Header.Set("x-tenant-id", "customer-service")
 	response := httptest.NewRecorder()
 
 	handler.ServeHTTP(response, request)
@@ -224,8 +222,7 @@ func publicLifecycleRequest(
 
 func assertPublicLifecycleOwner(t *testing.T, owner sessionvo.Owner) {
 	t.Helper()
-	if owner.TenantID != "openbkn-local" || owner.BusinessDomainID != "customer-service" ||
-		owner.ApplicationPrincipalID != "openbkn-cli" ||
+	if owner.TenantID != "openbkn-local" || owner.ApplicationPrincipalID != "openbkn-cli" ||
 		owner.EffectiveSubjectType != sessionvo.SubjectUser || owner.EffectiveSubjectID != "user-1" {
 		t.Fatalf("lifecycle owner was not derived from OAuth: %+v", owner)
 	}
@@ -252,7 +249,7 @@ func TestPublicTypedTraceListRouteIsRegistered(t *testing.T) {
 		request.Header.Set("x-account-id", "user-1")
 		request.Header.Set("x-account-type", "user")
 		request.Header.Set("x-tenant-id", "tenant-1")
-		request.Header.Set("x-business-domain", "domain-1")
+		request.Header.Set("x-tenant-id", "domain-1")
 		response := httptest.NewRecorder()
 
 		app.server.ServeHTTP(response, request)
@@ -322,7 +319,7 @@ func TestLegacyLogFacetRouteIsUnavailable(t *testing.T) {
 	request.Header.Set("x-account-id", "admin-1")
 	request.Header.Set("x-account-type", "user")
 	request.Header.Set("x-tenant-id", "tenant-1")
-	request.Header.Set("x-business-domain", "domain-1")
+	request.Header.Set("x-tenant-id", "domain-1")
 	response := httptest.NewRecorder()
 
 	app.server.ServeHTTP(response, request)
@@ -352,7 +349,7 @@ func TestCommunityTraceDetailDoesNotDispatchEnterpriseSubresources(t *testing.T)
 	request.Header.Set("x-account-id", "user-1")
 	request.Header.Set("x-account-type", "user")
 	request.Header.Set("x-tenant-id", "tenant-1")
-	request.Header.Set("x-business-domain", "domain-1")
+	request.Header.Set("x-tenant-id", "domain-1")
 	response := httptest.NewRecorder()
 
 	app.server.ServeHTTP(response, request)
@@ -390,7 +387,7 @@ func TestPublicRouteMountsEnterpriseExtensionOnlyWhenAssembled(t *testing.T) {
 	request.Header.Set("x-account-id", "user-1")
 	request.Header.Set("x-account-type", "user")
 	request.Header.Set("x-tenant-id", "tenant-1")
-	request.Header.Set("x-business-domain", "domain-1")
+	request.Header.Set("x-tenant-id", "domain-1")
 	app.server.ServeHTTP(response, request)
 	if response.Code != http.StatusNoContent {
 		t.Fatalf("assembled enterprise route = %d, want 204", response.Code)

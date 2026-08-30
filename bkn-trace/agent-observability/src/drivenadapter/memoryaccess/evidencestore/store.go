@@ -136,7 +136,6 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 		if query.RequestID != "" && trace.RequestID != query.RequestID ||
 			query.TraceID != "" && trace.TraceID != query.TraceID ||
 			query.InteractionID != "" && !memoryTraceHasInteraction(trace, query.InteractionID) ||
-			query.BusinessDomain != "" && trace.BusinessDomain != query.BusinessDomain ||
 			!memoryTraceInRange(trace, query.From, query.To) {
 			continue
 		}
@@ -147,7 +146,6 @@ func (s *Store) LoadExecutionProjection(ctx context.Context, query iprojectionso
 		if query.RequestID != "" && artifact.RequestID != query.RequestID ||
 			query.TraceID != "" && artifact.TraceID != query.TraceID ||
 			query.InteractionID != "" && artifact.InteractionID != query.InteractionID ||
-			query.BusinessDomain != "" && artifact.BusinessDomain != query.BusinessDomain ||
 			!memoryTimeInRange(artifact.ObservedAt, query.From, query.To) {
 			continue
 		}
@@ -267,7 +265,7 @@ func (s *Store) GetEvidenceByRequestID(_ context.Context, requestID string, opti
 }
 
 func filterByScope(traces []evidencevo.NormalizedTrace, scope evidencevo.QueryScope) []evidencevo.NormalizedTrace {
-	if scope.AccountID == "" && scope.AccountType == "" && scope.TenantID == "" && scope.BusinessDomain == "" {
+	if scope.AccountID == "" && scope.AccountType == "" && scope.TenantID == "" {
 		return traces
 	}
 	filtered := make([]evidencevo.NormalizedTrace, 0, len(traces))

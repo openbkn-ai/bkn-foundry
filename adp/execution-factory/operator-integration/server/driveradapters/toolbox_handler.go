@@ -7,7 +7,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/toolbox"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/infra/config"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
 // ToolBoxRestHandler toolbox rest interface.
@@ -20,9 +19,8 @@ type ToolBoxRestHandler interface {
 }
 
 type toolboxRestHandler struct {
-	ToolBoxHandler        toolbox.ToolBoxHandler
-	Logger                interfaces.Logger
-	businessDomainService interfaces.IBusinessDomainService
+	ToolBoxHandler toolbox.ToolBoxHandler
+	Logger         interfaces.Logger
 }
 
 var (
@@ -34,9 +32,8 @@ func NewToolBoxRestHandler() ToolBoxRestHandler {
 	tOnce.Do(func() {
 		confLoader := config.NewConfigLoader()
 		tHandler = &toolboxRestHandler{
-			ToolBoxHandler:        toolbox.NewToolBoxHandler(),
-			Logger:                confLoader.GetLogger(),
-			businessDomainService: business_domain.NewBusinessDomainService(),
+			ToolBoxHandler: toolbox.NewToolBoxHandler(),
+			Logger:         confLoader.GetLogger(),
 		}
 	})
 	return tHandler
@@ -46,7 +43,7 @@ func NewToolBoxRestHandler() ToolBoxRestHandler {
 func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 	// Toolbox related interfaces.
 	// Query toolbox information.
-	engine.GET("/tool-box/list", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
+	engine.GET("/tool-box/list", r.ToolBoxHandler.QueryToolBoxPage)
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
 	engine.GET("/tool-box/:box_id/tool/:tool_id", r.ToolBoxHandler.QueryTool)
 	engine.GET("/tool-box/:box_id/tools/list", r.ToolBoxHandler.QueryBoxToolPage)
@@ -55,11 +52,11 @@ func (r *toolboxRestHandler) RegisterPrivate(engine *gin.RouterGroup) {
 
 // RegisterPublic Register external API.
 func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
-	engine.POST("/tool-box", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.CreateToolBox)
+	engine.POST("/tool-box", r.ToolBoxHandler.CreateToolBox)
 	engine.POST("/tool-box/:box_id", r.ToolBoxHandler.UpdateToolBox)
 	engine.GET("/tool-box/:box_id", r.ToolBoxHandler.QueryToolBox)
-	engine.DELETE("/tool-box/:box_id", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.DeleteToolBox)
-	engine.GET("/tool-box/list", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryToolBoxPage)
+	engine.DELETE("/tool-box/:box_id", r.ToolBoxHandler.DeleteToolBox)
+	engine.GET("/tool-box/list", r.ToolBoxHandler.QueryToolBoxPage)
 	// POST /api/agent-operator-integration/v1/tool-box/names Batch names based on toolbox ID (front-end object-level authorization page echo)
 	engine.POST("/tool-box/names", r.ToolBoxHandler.QueryToolBoxNamesByIDs)
 	// Tools.
@@ -76,12 +73,12 @@ func (r *toolboxRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	// Operators converted into tools.
 	engine.POST("/operator/convert/tool", r.ToolBoxHandler.OperatorToTool)
 	// OpenAPI capability package: operator registration + convert tool (unified bloodline)
-	engine.POST("/capabilities/openapi-bundle", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.RegisterOpenApiBundle)
+	engine.POST("/capabilities/openapi-bundle", r.ToolBoxHandler.RegisterOpenApiBundle)
 	// Get published toolbox information in batches.
 	engine.GET("/tool-box/market/:box_id/:fields", r.ToolBoxHandler.GetReleaseToolBoxInfo)
 
 	// Toolbox Market Interface.
-	engine.GET("/tool-box/market", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.QueryMarketToolBoxPage)
+	engine.GET("/tool-box/market", r.ToolBoxHandler.QueryMarketToolBoxPage)
 	engine.GET("/tool-box/market/:box_id", r.ToolBoxHandler.QueryMarketToolBox)
-	engine.GET("/tool-box/market/tools", middlewareBusinessDomain(true, r.businessDomainService), r.ToolBoxHandler.GetMarketToolList)
+	engine.GET("/tool-box/market/tools", r.ToolBoxHandler.GetMarketToolList)
 }

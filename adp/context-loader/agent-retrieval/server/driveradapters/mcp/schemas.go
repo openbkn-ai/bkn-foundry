@@ -295,14 +295,13 @@ func receiptOutputSchema() map[string]any {
 func ownerOutputSchema() map[string]any {
 	properties := map[string]any{
 		"tenant_id":                stringSchema(),
-		"business_domain_id":       stringSchema(),
 		"application_principal_id": stringSchema(),
 		"effective_subject_type":   enumSchema("user", "service"),
 		"effective_subject_id":     stringSchema(),
 		"delegation_id":            stringSchema(),
 	}
 	return closedSchema(properties, []string{
-		"tenant_id", "business_domain_id", "application_principal_id",
+		"tenant_id", "application_principal_id",
 		"effective_subject_type", "effective_subject_id",
 	})
 }
@@ -330,12 +329,11 @@ func businessRefOutputSchema() map[string]any {
 			"knowledge_network", "logic", "metric", "object_instance",
 			"object_type", "property", "relation_type",
 		),
-		"ref_id":             stringSchema(),
-		"business_domain_id": stringSchema(),
-		"version":            stringSchema(),
-		"as_of":              dateTimeSchema(),
-		"display_hint":       stringSchema(),
-	}, []string{"ref_type", "ref_id", "business_domain_id", "version"})
+		"ref_id":       stringSchema(),
+		"version":      stringSchema(),
+		"as_of":        dateTimeSchema(),
+		"display_hint": stringSchema(),
+	}, []string{"ref_type", "ref_id", "version"})
 }
 
 func closedSchema(properties map[string]any, required []string) map[string]any {

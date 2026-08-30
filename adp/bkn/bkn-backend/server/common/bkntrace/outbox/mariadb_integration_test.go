@@ -46,7 +46,7 @@ func TestMariaDBRepositoryIntegration(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	owner := Owner{
-		TenantID: "e2e", BusinessDomainID: "e2e", ApplicationPrincipalID: "integration-test",
+		TenantID: "e2e", ApplicationPrincipalID: "integration-test",
 		EffectiveSubjectType: "service", EffectiveSubjectID: "integration-test",
 	}
 	first, err := repository.Enqueue(context.Background(), integrationEvent(suffix+"-1", now), owner)

@@ -7,7 +7,7 @@
 
 ## 1. Background
 
-BKN Foundry consists of multiple modules across business domains (ontology, vega, execution-factory, etc.), developed in parallel by multiple teams. This specification applies to all BKN Foundry modules.
+BKN Foundry consists of multiple product modules (ontology, vega, execution-factory, etc.), developed in parallel by multiple teams. This specification applies to all BKN Foundry modules.
 
 Tests are primarily authored, executed, and maintained by AI Agents; humans review and approve.
 

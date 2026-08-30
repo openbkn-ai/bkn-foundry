@@ -41,7 +41,6 @@ func testTraceContext() context.Context {
 	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
 	ctx = common.SetTraceContextToCtx(ctx, common.TraceContext{
 		RequestID:          "req_context_loader_phase2_0001",
-		BusinessDomain:     "domain_demo",
 		InteractionID:      "int_context_loader_0001",
 		OperationID:        "op_context_retrieval_0001",
 		CausationEventID:   "evt_agent_tool_called_0001",
@@ -255,7 +254,7 @@ func TestBuildSchemaDefinitionEventsUsesKnowledgeNetworkAndSchemaRefs(t *testing
 func TestBuildRunSQLEventsUsesDataQueryFactWithoutLeakingSQLOrRows(t *testing.T) {
 	ctx := withDeclaredBusinessRefs(testTraceContext(), []BusinessRef{{
 		RefType: "object_type", RefID: "object:supplychain_hd0202:bkn_supply_forecast",
-		BusinessDomainID: "domain-1", Version: "schema-v3",
+		Version: "schema-v3",
 	}})
 	events := BuildRunSQLEvents(
 		ctx,
@@ -795,7 +794,7 @@ func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
 		common.HeaderBKNInteractionID:   "int_context_loader_0002",
 		common.HeaderBKNOperationID:     "op_context_retrieval_0002",
 		common.HeaderBKNAttempt:         "1",
-		common.HeaderBusinessDomain:     "domain_demo",
+		common.HeaderTenantID:           "tenant_demo",
 		common.HeaderBKNEventObservedAt: "2026-07-27T09:00:00Z",
 	}
 	traceID := trace.TraceID{0x71, 0x22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
@@ -874,9 +873,7 @@ func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 			"x-account-id":                   "acct_demo",
 			"x-account-type":                 "user",
 			"x-tenant-id":                    "tenant_demo",
-			"x-business-domain":              "domain_demo",
 			"X-BKN-Tenant-ID":                "tenant_demo",
-			"X-Business-Domain-ID":           "domain_demo",
 			"X-BKN-Application-Principal-ID": "context-loader",
 			"X-BKN-Effective-Subject-Type":   "user",
 			"X-BKN-Effective-Subject-ID":     "acct_demo",
@@ -916,7 +913,7 @@ func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 	payload := batch{
 		Trace: map[string]any{
 			"trace_id": "71210000000000000000000000000001", "bkn.request.id": "req_context_loader_phase2_0001",
-			"bkn.tenant.id": "tenant_demo", "business_domain": "domain_demo",
+			"bkn.tenant.id":  "tenant_demo",
 			"bkn.account.id": "acct_demo", "bkn.account.type": "user",
 			"bkn.conversation.id": "conv_demo",
 		},
@@ -984,7 +981,6 @@ func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
 			"bkn.request.id":      event["request_id"],
 			"bkn.conversation.id": event["conversation_id"],
 			"bkn.tenant.id":       r.Header.Get("x-tenant-id"),
-			"business_domain":     r.Header.Get("x-business-domain"),
 			"bkn.account.id":      r.Header.Get("x-account-id"),
 			"bkn.account.type":    r.Header.Get("x-account-type"),
 		}

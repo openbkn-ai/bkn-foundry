@@ -45,10 +45,6 @@ antiAffinity:
 auth:
   enabled: true
 
-# Business-domain switch.
-businessDomain:
-  enabled: true
-
 # Microservice communication dependency configuration.
 depServices:
   class-443:
@@ -95,10 +91,6 @@ depServices:
   mf-model-api:
     host: mf-model-api
     port: 9898
-    protocol: http
-  business-system:
-    host: business-system-service
-    port: 80
     protocol: http
   ontology-query:
     host: ontology-query-svc

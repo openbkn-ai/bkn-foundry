@@ -53,8 +53,7 @@ func TestGuardBeginUsesCoreCreatedAtForOperationEvidence(t *testing.T) {
 		}
 	})
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_cursor_operation_0001", TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		RequestID: "req_cursor_operation_0001", TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 	})
@@ -84,9 +83,7 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 			"x-account-id":                   "user-1",
 			"x-account-type":                 "user",
 			"x-tenant-id":                    "tenant-1",
-			"x-business-domain":              "domain-1",
 			"X-BKN-Tenant-ID":                "tenant-1",
-			"X-Business-Domain-ID":           "domain-1",
 			"X-BKN-Application-Principal-ID": "client-1",
 			"X-BKN-Effective-Subject-Type":   "user",
 			"X-BKN-Effective-Subject-ID":     "user-1",
@@ -169,8 +166,7 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	defer server.Close()
 
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		TenantID: "tenant-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser, AuthMethod: "api_key",
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1", VisitorName: "供应链管理员"},
@@ -305,8 +301,7 @@ func TestLifecycleClientStartsExplicitRetryWithAuthoritativeLease(t *testing.T) 
 
 func trustedLifecycleTestContext() context.Context {
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		TenantID: "tenant-1", BusinessDomain: "domain-1",
-	})
+		TenantID: "tenant-1"})
 	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
@@ -373,7 +368,7 @@ func TestGuardFinishCreatesCorrelationWhenCallerHasNoSpan(t *testing.T) {
 	outcome.eventIDs = []string{"evt_durable"}
 	outcome.businessRefs = []BusinessRef{{
 		RefType: "data_resource", RefID: "resource:forecast_resource",
-		BusinessDomainID: "domain-demo", Version: "unversioned",
+		Version: "unversioned",
 	}}
 
 	_, apiErr, err := NewGuard(client).Finish(

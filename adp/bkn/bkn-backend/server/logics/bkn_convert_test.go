@@ -22,11 +22,10 @@ func Test_ToADPNetWork(t *testing.T) {
 	Convey("Test ToADPNetWork\n", t, func() {
 		bknNet := &bknsdk.BknNetwork{
 			BknNetworkFrontmatter: bknsdk.BknNetworkFrontmatter{
-				ID:             "kn1",
-				Name:           "Test KN",
-				Tags:           []string{"tag1"},
-				Branch:         "main",
-				BusinessDomain: "domain1",
+				ID:     "kn1",
+				Name:   "Test KN",
+				Tags:   []string{"tag1"},
+				Branch: "main",
 			},
 			Description: "desc",
 			RawContent:  "raw",
@@ -40,7 +39,6 @@ func Test_ToADPNetWork(t *testing.T) {
 		So(kn.Comment, ShouldEqual, "desc")
 		So(kn.BKNRawContent, ShouldEqual, "raw")
 		So(kn.Branch, ShouldEqual, "main")
-		So(kn.BusinessDomain, ShouldEqual, "domain1")
 	})
 }
 
@@ -54,8 +52,7 @@ func Test_ToBKNNetWork(t *testing.T) {
 				Comment:       "desc",
 				BKNRawContent: "raw",
 			},
-			Branch:         "main",
-			BusinessDomain: "domain1",
+			Branch: "main",
 		}
 
 		bknNet := ToBKNNetWork(kn)
@@ -66,7 +63,6 @@ func Test_ToBKNNetWork(t *testing.T) {
 		So(bknNet.Description, ShouldEqual, "desc")
 		So(bknNet.RawContent, ShouldEqual, "raw")
 		So(bknNet.Branch, ShouldEqual, "main")
-		So(bknNet.BusinessDomain, ShouldEqual, "domain1")
 		So(bknNet.Type, ShouldEqual, interfaces.MODULE_TYPE_KN)
 	})
 }

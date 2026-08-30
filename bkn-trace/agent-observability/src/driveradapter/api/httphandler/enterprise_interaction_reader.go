@@ -50,7 +50,6 @@ func trustedListOptions(ctx context.Context, query enterpriseroute.ListQuery) (e
 	return evidencevo.SummaryQueryOptions{
 		ConversationID: query.ConversationID, Page: query.Page, Limit: query.PageSize, Keyword: query.Keyword, Status: query.Status,
 		AgentOrApp: query.AgentOrApp, ExcludeAgentOrApp: query.ExcludeAgentOrApp,
-		BusinessDomain:   query.BusinessDomain,
 		KnowledgeNetwork: query.KnowledgeNetwork, EvidenceCompleteness: query.EvidenceCompleteness,
 		Scope: scope,
 	}, true
@@ -94,7 +93,7 @@ func (r enterpriseInteractionFactsReader) ReadInteraction(
 	}
 	sourceRead := enterpriseroute.SourceReadContext{
 		Authorization: scope.Authorization, TenantID: scope.TenantID,
-		BusinessDomain: scope.BusinessDomain, AccountID: scope.AccountID, AccountType: scope.AccountType,
+		AccountID: scope.AccountID, AccountType: scope.AccountType,
 		EffectiveSubjectID: scope.AccountID, EffectiveSubjectType: trustedSubjectType(scope.AccountType),
 	}
 	if scope.AccessProfile != nil {

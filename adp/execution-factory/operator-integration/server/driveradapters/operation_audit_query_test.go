@@ -34,7 +34,7 @@ func (s *executionAuditQueryStoreStub) List(_ context.Context, _ operationaudit.
 	return operationaudit.Page{}, nil
 }
 
-func (s *executionAuditQueryStoreStub) Get(_ context.Context, _, _, _ string) (operationaudit.Entry, bool, error) {
+func (s *executionAuditQueryStoreStub) Get(_ context.Context, _, _ string) (operationaudit.Entry, bool, error) {
 	if s.getErr != nil {
 		return operationaudit.Entry{}, false, s.getErr
 	}
@@ -78,7 +78,6 @@ func TestExecutionOperationAuditUsesSharedAdminCapability(t *testing.T) {
 
 	request := httptest.NewRequest(http.MethodGet, "/operation-audits?from=2026-08-01T00:00:00Z&to=2026-08-08T00:00:00Z", nil)
 	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set(string(interfaces.HeaderXBusinessDomain), "domain-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 
@@ -192,7 +191,6 @@ func TestExecutionOperationAuditErrorsAreLocalized(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
 			request.Header.Set(sharedrest.AcceptLanguageHeader, test.language)
 			request.Header.Set("x-tenant-id", "tenant-a")
-			request.Header.Set(string(interfaces.HeaderXBusinessDomain), "domain-a")
 			response := httptest.NewRecorder()
 			engine.ServeHTTP(response, request)
 

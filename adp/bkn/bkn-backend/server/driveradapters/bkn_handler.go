@@ -75,9 +75,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 	// Read form parameters.
 	branch := c.DefaultQuery("branch", interfaces.MAIN_BRANCH)
 
-	// Read the optional business domain from the header.
-	businessDomain := c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)
-
 	logger.Debugf("Upload BKN: branch=%s, filename=%s, size=%d",
 		branch, header.Filename, header.Size)
 
@@ -92,7 +89,6 @@ func (r *restHandler) UploadBKN(c *gin.Context) {
 		return
 	}
 	bknNetwork.Branch = branch
-	bknNetwork.BusinessDomain = businessDomain
 
 	// Import the network.
 	kn := logics.ToADPNetWork(bknNetwork)

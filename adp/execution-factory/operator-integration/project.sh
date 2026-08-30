@@ -54,10 +54,8 @@ do
         cp -f ./server/infra/config/observability.yaml "$config_dir/" || exit 1
 
         echo "$AUTH_ENABLED"
-        echo "$BUSINESS_DOMAIN_ENABLED"
 
         export AUTH_ENABLED=true
-        export BUSINESS_DOMAIN_ENABLED=true
 
         go run ./server/main.go;;
     "h")

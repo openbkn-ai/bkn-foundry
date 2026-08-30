@@ -254,7 +254,7 @@ ErrorLink = ""
 
 [VegaBackend.OperationAudit.MissingScope]
 Description = "操作审计查询范围不完整。"
-Solution = "请提供 x-tenant-id 和 x-business-domain 请求头。"
+Solution = "请提供 x-tenant-id 请求头。"
 ErrorLink = ""
 
 [VegaBackend.OperationAudit.AccessDenied]

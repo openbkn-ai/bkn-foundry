@@ -4,7 +4,6 @@ id: yzm_mock_system2
 name: 员工入职系统-resource版本
 tags: []
 branch: main
-business_domain: bd_public
 ---
 
 # 员工入职系统-resource版本

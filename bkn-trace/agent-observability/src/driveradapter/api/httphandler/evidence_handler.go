@@ -33,29 +33,33 @@ const evidenceIngestTokenHeader = "X-BKN-Trace-Ingest-Token"
 const evidenceAllowUnauthenticatedQueryEnv = "BKN_TRACE_ALLOW_UNAUTHENTICATED_QUERY"
 const evidenceHydraAdminURLEnv = "BKN_TRACE_HYDRA_ADMIN_URL"
 const evidenceDeploymentTenantIDEnv = "BKN_TRACE_DEPLOYMENT_TENANT_ID"
-const publicLifecycleBusinessDomainsEnv = "BKN_TRACE_PUBLIC_LIFECYCLE_BUSINESS_DOMAINS"
+
+// Operator kill switch for the public lifecycle write surface. Set to "false"
+// to make every public lifecycle call answer 503 authorization_unavailable;
+// anything else (including an unset variable) keeps the surface open.
+const evidencePublicLifecycleEnabledEnv = "BKN_TRACE_PUBLIC_LIFECYCLE_ENABLED"
 
 type EvidenceHandlerSecurityConfig struct {
-	IngestToken                    string
-	HydraAdminURL                  string
-	DeploymentTenantID             string
-	PublicLifecycleBusinessDomains string
-	QueryHTTPClient                *http.Client
-	AllowUnauthenticatedIngest     bool
-	AllowUnauthenticatedQuery      bool
-	AuthorizationScopeResolver     iauthorizationscope.Resolver
+	IngestToken                string
+	HydraAdminURL              string
+	DeploymentTenantID         string
+	QueryHTTPClient            *http.Client
+	AllowUnauthenticatedIngest bool
+	AllowUnauthenticatedQuery  bool
+	DisablePublicLifecycle     bool
+	AuthorizationScopeResolver iauthorizationscope.Resolver
 }
 
 type EvidenceHandler struct {
-	evidenceService                *evidencesvc.Service
-	ingestToken                    string
-	hydraAdminURL                  string
-	deploymentTenantID             string
-	publicLifecycleBusinessDomains map[string]struct{}
-	queryHTTPClient                *http.Client
-	allowUnauthenticatedIngest     bool
-	allowUnauthenticatedQuery      bool
-	authorizationScopeResolver     iauthorizationscope.Resolver
+	evidenceService            *evidencesvc.Service
+	ingestToken                string
+	hydraAdminURL              string
+	deploymentTenantID         string
+	queryHTTPClient            *http.Client
+	allowUnauthenticatedIngest bool
+	allowUnauthenticatedQuery  bool
+	publicLifecycleDisabled    bool
+	authorizationScopeResolver iauthorizationscope.Resolver
 }
 
 type trustedQueryScopeContextKey struct{}
@@ -77,13 +81,13 @@ func NewEvidenceHandlerWithAuthorizationScopeResolver(
 	allowUnauthenticated := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedIngestEnv)), "true")
 	allowUnauthenticatedQuery := strings.EqualFold(strings.TrimSpace(os.Getenv(evidenceAllowUnauthenticatedQueryEnv)), "true")
 	return NewEvidenceHandlerWithSecurityConfig(evidenceService, EvidenceHandlerSecurityConfig{
-		IngestToken:                    os.Getenv(evidenceIngestTokenEnv),
-		HydraAdminURL:                  os.Getenv(evidenceHydraAdminURLEnv),
-		DeploymentTenantID:             os.Getenv(evidenceDeploymentTenantIDEnv),
-		PublicLifecycleBusinessDomains: os.Getenv(publicLifecycleBusinessDomainsEnv),
-		AllowUnauthenticatedIngest:     allowUnauthenticated,
-		AllowUnauthenticatedQuery:      allowUnauthenticatedQuery,
-		AuthorizationScopeResolver:     resolver,
+		IngestToken:                os.Getenv(evidenceIngestTokenEnv),
+		HydraAdminURL:              os.Getenv(evidenceHydraAdminURLEnv),
+		DeploymentTenantID:         os.Getenv(evidenceDeploymentTenantIDEnv),
+		AllowUnauthenticatedIngest: allowUnauthenticated,
+		AllowUnauthenticatedQuery:  allowUnauthenticatedQuery,
+		DisablePublicLifecycle:     publicLifecycleDisabled(os.Getenv(evidencePublicLifecycleEnabledEnv)),
+		AuthorizationScopeResolver: resolver,
 	})
 }
 
@@ -104,15 +108,15 @@ func NewEvidenceHandlerWithSecurityConfig(evidenceService *evidencesvc.Service, 
 	}
 	queryHTTPClient = observabilitylocale.WrapHTTPClient(queryHTTPClient)
 	return &EvidenceHandler{
-		evidenceService:                evidenceService,
-		ingestToken:                    strings.TrimSpace(config.IngestToken),
-		hydraAdminURL:                  strings.TrimRight(strings.TrimSpace(config.HydraAdminURL), "/"),
-		deploymentTenantID:             strings.TrimSpace(config.DeploymentTenantID),
-		publicLifecycleBusinessDomains: parsePublicLifecycleBusinessDomains(config.PublicLifecycleBusinessDomains),
-		queryHTTPClient:                queryHTTPClient,
-		allowUnauthenticatedIngest:     config.AllowUnauthenticatedIngest,
-		allowUnauthenticatedQuery:      config.AllowUnauthenticatedQuery,
-		authorizationScopeResolver:     config.AuthorizationScopeResolver,
+		evidenceService:            evidenceService,
+		ingestToken:                strings.TrimSpace(config.IngestToken),
+		hydraAdminURL:              strings.TrimRight(strings.TrimSpace(config.HydraAdminURL), "/"),
+		deploymentTenantID:         strings.TrimSpace(config.DeploymentTenantID),
+		queryHTTPClient:            queryHTTPClient,
+		allowUnauthenticatedIngest: config.AllowUnauthenticatedIngest,
+		allowUnauthenticatedQuery:  config.AllowUnauthenticatedQuery,
+		publicLifecycleDisabled:    config.DisablePublicLifecycle,
+		authorizationScopeResolver: config.AuthorizationScopeResolver,
 	}
 }
 
@@ -764,13 +768,12 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 		}
 		tenantID = h.deploymentTenantID
 	}
-	businessDomain := strings.TrimSpace(r.Header.Get("x-business-domain"))
-	if accountID == "" || accountType == "" || strings.EqualFold(accountType, "anonymous") || tenantID == "" && businessDomain == "" {
-		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_REQUIRED", "trusted account and tenant or business domain context is required")
+	if accountID == "" || accountType == "" || strings.EqualFold(accountType, "anonymous") || tenantID == "" {
+		writeQueryAuthorizationError(w, r, http.StatusUnauthorized, "QUERY_IDENTITY_REQUIRED", "trusted account and tenant context is required")
 		return evidencevo.QueryScope{}, false
 	}
 	scope := evidencevo.QueryScope{
-		TenantID: tenantID, BusinessDomain: businessDomain, AccountID: accountID, AccountType: accountType,
+		TenantID: tenantID, AccountID: accountID, AccountType: accountType,
 		Authorization: strings.TrimSpace(r.Header.Get("Authorization")),
 		// Evidence and assembly queries retain the business view. Technical view is
 		// selected only by the unified log service after record-scope authorization.
@@ -789,7 +792,7 @@ func (h *EvidenceHandler) queryScopeFromRequest(w http.ResponseWriter, r *http.R
 			applicationPrincipalID = accountID
 		}
 		profile, err := h.authorizationScopeResolver.Resolve(r.Context(), scope.Authorization, iauthorizationscope.TrustedIdentity{
-			TenantID: tenantID, BusinessDomain: businessDomain, ActorID: accountID,
+			TenantID: tenantID, ActorID: accountID,
 			EffectiveSubjectID:     effectiveSubjectID,
 			ApplicationPrincipalID: applicationPrincipalID,
 			DelegationID:           strings.TrimSpace(r.Header.Get("X-BKN-Delegation-ID")),
@@ -826,17 +829,16 @@ func (h *EvidenceHandler) RequireTrustedQueryIdentity(next http.HandlerFunc) htt
 // trust caller-supplied owner headers.
 func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if h.publicLifecycleDisabled {
+			writeLifecycleError(w, r, http.StatusServiceUnavailable, "authorization_unavailable", "public lifecycle writes are disabled for this deployment")
+			return
+		}
 		if failure := h.applyOAuthIdentity(r); failure != nil {
 			writeLifecycleAuthorizationFailure(w, r, failure)
 			return
 		}
-		businessDomain := strings.TrimSpace(r.Header.Get("x-business-domain"))
-		if h.deploymentTenantID == "" || len(h.publicLifecycleBusinessDomains) == 0 || h.authorizationScopeResolver == nil {
+		if h.deploymentTenantID == "" || h.authorizationScopeResolver == nil {
 			writeLifecycleError(w, r, http.StatusServiceUnavailable, "authorization_unavailable", "public lifecycle authorization scope is not configured")
-			return
-		}
-		if _, approved := h.publicLifecycleBusinessDomains[businessDomain]; businessDomain == "" || !approved {
-			writeLifecycleError(w, r, http.StatusForbidden, "permission_denied", "requested business domain is not approved for public lifecycle writes")
 			return
 		}
 		accountID := strings.TrimSpace(r.Header.Get("x-account-id"))
@@ -847,7 +849,7 @@ func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) 
 			resolverApplicationPrincipalID = accountID
 		}
 		profile, err := h.authorizationScopeResolver.Resolve(r.Context(), strings.TrimSpace(r.Header.Get("Authorization")), iauthorizationscope.TrustedIdentity{
-			TenantID: h.deploymentTenantID, BusinessDomain: businessDomain, ActorID: accountID,
+			TenantID: h.deploymentTenantID, ActorID: accountID,
 			EffectiveSubjectID: effectiveSubjectID, ApplicationPrincipalID: resolverApplicationPrincipalID,
 		})
 		if err != nil {
@@ -864,7 +866,7 @@ func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) 
 			applicationPrincipalID = strings.TrimSpace(r.Header.Get("X-BKN-Authenticated-Client-ID"))
 		}
 		if !ok || !profile.AccountActive || !profile.TenantActive ||
-			profile.TenantID == "" || profile.BusinessDomain == "" ||
+			profile.TenantID == "" ||
 			applicationPrincipalID == "" || profile.EffectiveSubjectID == "" {
 			writeLifecycleError(
 				w, r, http.StatusForbidden, "permission_denied",
@@ -872,7 +874,7 @@ func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) 
 			)
 			return
 		}
-		if profile.TenantID != h.deploymentTenantID || profile.BusinessDomain != businessDomain {
+		if profile.TenantID != h.deploymentTenantID {
 			writeLifecycleError(
 				w, r, http.StatusForbidden, "permission_denied",
 				"authenticated lifecycle owner scope does not match the authorized request",
@@ -881,7 +883,6 @@ func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) 
 		}
 
 		r.Header.Set("X-BKN-Tenant-ID", profile.TenantID)
-		r.Header.Set("X-Business-Domain-ID", profile.BusinessDomain)
 		r.Header.Set("X-BKN-Application-Principal-ID", applicationPrincipalID)
 		r.Header.Set("X-BKN-Effective-Subject-Type", subjectType)
 		r.Header.Set("X-BKN-Effective-Subject-ID", profile.EffectiveSubjectID)
@@ -892,7 +893,7 @@ func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) 
 		}
 
 		scope := evidencevo.QueryScope{
-			TenantID: profile.TenantID, BusinessDomain: profile.BusinessDomain,
+			TenantID:  profile.TenantID,
 			AccountID: profile.EffectiveSubjectID, AccountType: accountType,
 			Authorization: strings.TrimSpace(r.Header.Get("Authorization")), View: evidencevo.AccessViewBusiness,
 			AccessProfile: &profile,
@@ -900,16 +901,6 @@ func (h *EvidenceHandler) RequirePublicLifecycleIdentity(next http.HandlerFunc) 
 		ctx := context.WithValue(r.Context(), trustedQueryScopeContextKey{}, scope)
 		next(w, r.WithContext(ctx))
 	}
-}
-
-func parsePublicLifecycleBusinessDomains(value string) map[string]struct{} {
-	domains := make(map[string]struct{})
-	for _, domain := range strings.Split(value, ",") {
-		if domain = strings.TrimSpace(domain); domain != "" {
-			domains[domain] = struct{}{}
-		}
-	}
-	return domains
 }
 
 func publicLifecycleSubjectType(accountType string) (string, bool) {
@@ -936,15 +927,14 @@ func (h *EvidenceHandler) RequireTrustedLifecycleIdentity(next http.HandlerFunc)
 		if !ok {
 			return
 		}
-		if scope.TenantID == "" || scope.BusinessDomain == "" {
+		if scope.TenantID == "" {
 			writeLifecycleError(
 				w, r, http.StatusUnauthorized, "permission_denied",
-				"trusted tenant and business domain context is required",
+				"trusted tenant context is required",
 			)
 			return
 		}
 		r.Header.Set("X-BKN-Tenant-ID", scope.TenantID)
-		r.Header.Set("X-Business-Domain-ID", scope.BusinessDomain)
 		if _, ok := trustedOwnerFromRequest(r); !ok {
 			writeLifecycleError(
 				w, r, http.StatusUnauthorized, "permission_denied",
@@ -1208,4 +1198,11 @@ func secureTokenEqual(actual, expected string) bool {
 		return false
 	}
 	return subtle.ConstantTimeCompare([]byte(actual), []byte(expected)) == 1
+}
+
+// publicLifecycleDisabled reads the operator kill switch. The surface stays open
+// unless the deployment explicitly says "false", so an unset variable and a
+// handler built without the env constructor both keep the previous behaviour.
+func publicLifecycleDisabled(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(value), "false")
 }

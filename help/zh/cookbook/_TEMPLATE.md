@@ -12,7 +12,7 @@
 ## 2. Prerequisites（前置条件）
 
 - 已通过 `openbkn auth login <平台地址>` 登录。
-- 业务域：`openbkn config show` 确认；不对就 `openbkn config set-bd <uuid>`。
+- 租户上下文：使用 `openbkn config show` 确认当前平台配置。
 - <列出本 Recipe 特有的依赖：数据源 / 文件 / 已有 KN 等>
 
 ## 3. Steps（操作步骤）

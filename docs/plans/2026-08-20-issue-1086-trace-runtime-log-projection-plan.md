@@ -13,7 +13,7 @@ unchanged.
 - Add adapter tests for exact Trace, Request, Conversation, Interaction and
   Operation filters.
 - Require completed/failed Receipt status and use `terminal_at` as event time.
-- Test tenant/business-domain isolation and record-scope authorization
+- Test tenant isolation and record-scope authorization
   candidates.
 - Return exact empty results for incompatible fixed filters, including Span.
 

@@ -26,8 +26,7 @@ func ToADPNetWork(bknNetwork *bknsdk.BknNetwork) *interfaces.KN {
 
 		SkillContent: bknNetwork.SkillContent,
 
-		Branch:         bknNetwork.Branch,
-		BusinessDomain: bknNetwork.BusinessDomain,
+		Branch: bknNetwork.Branch,
 	}
 }
 
@@ -39,8 +38,7 @@ func ToBKNNetWork(kn *interfaces.KN) *bknsdk.BknNetwork {
 			Name: kn.KNName,
 			Tags: kn.Tags,
 
-			Branch:         kn.Branch,
-			BusinessDomain: kn.BusinessDomain,
+			Branch: kn.Branch,
 		},
 		Summary:      bknsdk.ExtractSummary(kn.Comment),
 		Description:  kn.Comment,

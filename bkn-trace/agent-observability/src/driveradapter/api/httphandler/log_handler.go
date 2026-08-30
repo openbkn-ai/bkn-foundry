@@ -270,7 +270,7 @@ func parseLogQuery(r *http.Request) (observabilityvo.LogQuery, error) {
 		Query: values.Get("q"), TimeFrom: timeFrom, TimeTo: timeTo,
 		BusinessModule: businessModule, Action: strings.TrimSpace(values.Get("action")),
 		TargetType: strings.TrimSpace(values.Get("target_type")), TargetID: strings.TrimSpace(values.Get("target_id")),
-		Outcomes: outcomes, Categories: categories, BusinessDomain: values.Get("business_domain_id"),
+		Outcomes: outcomes, Categories: categories,
 		ActorID: strings.TrimSpace(values.Get("actor_id")), ActorQuery: strings.TrimSpace(values.Get("actor")), ApplicationID: values.Get("application_id"),
 		ConversationID: values.Get("conversation_id"), InteractionID: values.Get("interaction_id"),
 		OperationID: values.Get("operation_id"), RequestID: values.Get("request_id"),

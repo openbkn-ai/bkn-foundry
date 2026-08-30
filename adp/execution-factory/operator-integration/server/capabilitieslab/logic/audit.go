@@ -101,11 +101,11 @@ func compactAudit(audit *model.Audit) *model.Audit {
 	return audit
 }
 
-func (s *Service) enrichOrchestrationAudit(ctx context.Context, businessDomain string, orchestration *model.Orchestration) {
+func (s *Service) enrichOrchestrationAudit(ctx context.Context, orchestration *model.Orchestration) {
 	if orchestration == nil || orchestration.OperatorID == "" {
 		return
 	}
-	operator, err := s.Client.GetOperator(ctx, businessDomain, orchestration.OperatorID)
+	operator, err := s.Client.GetOperator(ctx, orchestration.OperatorID)
 	if err != nil {
 		return
 	}

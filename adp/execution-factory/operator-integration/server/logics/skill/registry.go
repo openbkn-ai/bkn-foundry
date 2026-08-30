@@ -24,7 +24,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/common"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/sandbox"
@@ -34,21 +33,20 @@ import (
 )
 
 type skillRegistry struct {
-	parser                *skillParser
-	skillRepo             model.ISkillRepository
-	fileRepo              model.ISkillFileIndex
-	releaseRepo           model.ISkillReleaseDB
-	releaseHistoryRepo    model.ISkillReleaseHistoryDB
-	assetStore            skillAssetStore
-	indexSync             interfaces.SkillIndexSyncService
-	sandboxClient         interfaces.SandBoxControlPlane
-	sessionPool           sandbox.SessionPool
-	dbTx                  model.DBTx
-	AuthService           interfaces.IAuthorizationService
-	BusinessDomainService interfaces.IBusinessDomainService
-	UserMgnt              interfaces.UserManagement
-	Logger                interfaces.Logger
-	CategoryManager       interfaces.CategoryManager
+	parser             *skillParser
+	skillRepo          model.ISkillRepository
+	fileRepo           model.ISkillFileIndex
+	releaseRepo        model.ISkillReleaseDB
+	releaseHistoryRepo model.ISkillReleaseHistoryDB
+	assetStore         skillAssetStore
+	indexSync          interfaces.SkillIndexSyncService
+	sandboxClient      interfaces.SandBoxControlPlane
+	sessionPool        sandbox.SessionPool
+	dbTx               model.DBTx
+	AuthService        interfaces.IAuthorizationService
+	UserMgnt           interfaces.UserManagement
+	Logger             interfaces.Logger
+	CategoryManager    interfaces.CategoryManager
 }
 
 var (
@@ -62,21 +60,20 @@ const maxSkillReleaseHistoryVersions = 10
 func NewSkillRegistry() interfaces.SkillRegistry {
 	registryOnce.Do(func() {
 		registryInst = &skillRegistry{
-			Logger:                config.NewConfigLoader().GetLogger(),
-			parser:                newSkillParser(),
-			skillRepo:             dbaccess.NewSkillRepositoryDB(),
-			fileRepo:              dbaccess.NewSkillFileIndexDB(),
-			releaseRepo:           dbaccess.NewSkillReleaseDB(),
-			releaseHistoryRepo:    dbaccess.NewSkillReleaseHistoryDB(),
-			assetStore:            newOSSGatewaySkillAssetStore(),
-			indexSync:             NewSkillIndexSyncService(),
-			sandboxClient:         drivenadapters.NewSandBoxControlPlaneClient(),
-			sessionPool:           sandbox.GetSessionPool(),
-			dbTx:                  dbaccess.NewBaseTx(),
-			AuthService:           auth.NewAuthServiceImpl(),
-			BusinessDomainService: business_domain.NewBusinessDomainService(),
-			UserMgnt:              drivenadapters.NewUserManagementClient(),
-			CategoryManager:       category.NewCategoryManager(),
+			Logger:             config.NewConfigLoader().GetLogger(),
+			parser:             newSkillParser(),
+			skillRepo:          dbaccess.NewSkillRepositoryDB(),
+			fileRepo:           dbaccess.NewSkillFileIndexDB(),
+			releaseRepo:        dbaccess.NewSkillReleaseDB(),
+			releaseHistoryRepo: dbaccess.NewSkillReleaseHistoryDB(),
+			assetStore:         newOSSGatewaySkillAssetStore(),
+			indexSync:          NewSkillIndexSyncService(),
+			sandboxClient:      drivenadapters.NewSandBoxControlPlaneClient(),
+			sessionPool:        sandbox.GetSessionPool(),
+			dbTx:               dbaccess.NewBaseTx(),
+			AuthService:        auth.NewAuthServiceImpl(),
+			UserMgnt:           drivenadapters.NewUserManagementClient(),
+			CategoryManager:    category.NewCategoryManager(),
 		}
 	})
 	return registryInst
@@ -89,7 +86,6 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
-		"bd_id":   req.BusinessDomainID,
 	})
 	// Check new permissions.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -140,11 +136,6 @@ func (r *skillRegistry) RegisterSkill(ctx context.Context, req *interfaces.Regis
 			return nil, err
 		}
 	}
-	// Associate skills to business domains.
-	err = r.BusinessDomainService.AssociateResource(ctx, req.BusinessDomainID, skillID, interfaces.AuthResourceTypeSkill)
-	if err != nil {
-		return nil, err
-	}
 	// Triggering a new policy, the creator has all operating permissions on the current resources by default.
 	err = r.AuthService.CreateOwnerPolicy(ctx, accessor, &interfaces.AuthResource{
 		ID:   skill.SkillID,
@@ -178,7 +169,6 @@ func (r *skillRegistry) UpdateSkillMetadata(ctx context.Context, req *interfaces
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 	})
 
 	skill, err := r.skillRepo.SelectSkillByID(ctx, nil, req.SkillID)
@@ -258,7 +248,6 @@ func (r *skillRegistry) UpdateSkillPackage(ctx context.Context, req *interfaces.
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id":  req.SkillID,
 		"user_id":   req.UserID,
-		"bd_id":     req.BusinessDomainID,
 		"file_type": req.FileType,
 	})
 
@@ -372,7 +361,6 @@ func (r *skillRegistry) RepublishSkillHistory(ctx context.Context, req *interfac
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"version":  req.Version,
 	})
 
@@ -448,7 +436,6 @@ func (r *skillRegistry) PublishSkillHistory(ctx context.Context, req *interfaces
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"version":  req.Version,
 	})
 
@@ -539,7 +526,6 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 	})
 	// Check delete permissions.
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -618,10 +604,6 @@ func (r *skillRegistry) DeleteSkill(ctx context.Context, req *interfaces.DeleteS
 	if err = r.skillRepo.DeleteSkillByID(ctx, tx, req.SkillID); err != nil {
 		return err
 	}
-	// Cancel the association between skills and business domains.
-	if err = r.BusinessDomainService.DisassociateResource(ctx, req.BusinessDomainID, req.SkillID, interfaces.AuthResourceTypeSkill); err != nil {
-		return err
-	}
 	// Delete the permission policy of a skill.
 	if err = r.AuthService.DeletePolicy(ctx, []string{req.SkillID}, interfaces.AuthResourceTypeSkill); err != nil {
 		return err
@@ -642,7 +624,6 @@ func (r *skillRegistry) UpdateSkillStatus(ctx context.Context, req *interfaces.U
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"status":   req.Status,
 	})
 	// Acquire skills.
@@ -762,7 +743,6 @@ func (r *skillRegistry) DownloadSkill(ctx context.Context, req *interfaces.Downl
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"skill_id": req.SkillID,
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 	})
 
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -797,7 +777,6 @@ func (r *skillRegistry) ExecuteSkill(ctx context.Context, req *interfaces.Execut
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 	})
 
@@ -916,7 +895,6 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
-		"bd_id":   req.BusinessDomainID,
 	})
 	resp = &interfaces.QuerySkillListResp{
 		CommonPageResult: interfaces.CommonPageResult{
@@ -942,7 +920,7 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 		filter["category"] = req.Category.String()
 	}
 
-	authResp, resourceToBdMap, err := r.querySkillListPage(ctx, filter, req.CommonPageParams, req.UserID, interfaces.AuthOperationTypeView)
+	authResp, err := r.querySkillListPage(ctx, filter, req.CommonPageParams, req.UserID, interfaces.AuthOperationTypeView)
 	if err != nil {
 		return nil, err
 	}
@@ -950,7 +928,7 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 	if len(authResp.Data) == 0 {
 		return resp, nil
 	}
-	skillInfos, err := r.assembleSkillInfoList(ctx, authResp.Data, resourceToBdMap)
+	skillInfos, err := r.assembleSkillInfoList(ctx, authResp.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -959,7 +937,7 @@ func (r *skillRegistry) QuerySkillList(ctx context.Context, req *interfaces.Quer
 }
 
 // Assemble Skill Market Summary List.
-func (r *skillRegistry) assembleMarketSkillInfoList(ctx context.Context, releaseDB []*model.SkillReleaseDB, resourceToBdMap map[string]string) (skillInfos []*interfaces.SkillInfo, err error) {
+func (r *skillRegistry) assembleMarketSkillInfoList(ctx context.Context, releaseDB []*model.SkillReleaseDB) (skillInfos []*interfaces.SkillInfo, err error) {
 	var userIDs []string
 	skillInfos = []*interfaces.SkillInfo{}
 	for _, relese := range releaseDB {
@@ -971,18 +949,16 @@ func (r *skillRegistry) assembleMarketSkillInfoList(ctx context.Context, release
 	if err != nil {
 		return
 	}
-	businessDomainIDStr, _ := infracommon.GetBusinessDomainFromCtx(ctx)
 	for _, skill := range skillInfos {
 		skill.CreateUser = utils.GetValueOrDefault(userMap, skill.CreateUser, interfaces.UnknownUser)
 		skill.UpdateUser = utils.GetValueOrDefault(userMap, skill.UpdateUser, interfaces.UnknownUser)
 		skill.ReleaseUser = utils.GetValueOrDefault(userMap, skill.ReleaseUser, interfaces.UnknownUser)
-		skill.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, skill.SkillID, businessDomainIDStr)
 	}
 	return
 }
 
 // Assembly skills return information list.
-func (r *skillRegistry) assembleSkillInfoList(ctx context.Context, skillDBs []*model.SkillRepositoryDB, resourceToBdMap map[string]string) (skillInfos []*interfaces.SkillInfo, err error) {
+func (r *skillRegistry) assembleSkillInfoList(ctx context.Context, skillDBs []*model.SkillRepositoryDB) (skillInfos []*interfaces.SkillInfo, err error) {
 	var userIDs []string
 	skillInfos = []*interfaces.SkillInfo{}
 	for _, skill := range skillDBs {
@@ -994,17 +970,15 @@ func (r *skillRegistry) assembleSkillInfoList(ctx context.Context, skillDBs []*m
 	if err != nil {
 		return
 	}
-	businessDomainIDStr, _ := infracommon.GetBusinessDomainFromCtx(ctx)
 	for _, skill := range skillInfos {
 		skill.CreateUser = utils.GetValueOrDefault(userMap, skill.CreateUser, interfaces.UnknownUser)
 		skill.UpdateUser = utils.GetValueOrDefault(userMap, skill.UpdateUser, interfaces.UnknownUser)
-		skill.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, skill.SkillID, businessDomainIDStr)
 	}
 	return
 }
 
 func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams, userID string, operations ...interfaces.AuthOperationType) (
-	authResp *interfaces.QueryResponse[model.SkillReleaseDB], resourceToBdMap map[string]string, err error) {
+	authResp *interfaces.QueryResponse[model.SkillReleaseDB], err error) {
 	// Build query executor.
 	sortField := "f_update_time"
 	switch pageParamsReq.SortBy {
@@ -1059,12 +1033,6 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 		}
 		return skills, nil
 	}
-	businessDomainStr, _ := infracommon.GetBusinessDomainFromCtx(ctx)
-	businessDomainIDs := strings.Split(businessDomainStr, ",")
-	resourceToBdMap, err = r.BusinessDomainService.BatchResourceList(ctx, businessDomainIDs, interfaces.AuthResourceTypeSkill)
-	if err != nil {
-		return
-	}
 	queryBuilder := auth.NewQueryBuilder[model.SkillReleaseDB]().
 		SetPage(pageParamsReq.Page, pageParamsReq.PageSize).SetAll(pageParamsReq.All).
 		SetQueryFunctions(queryTotal, queryBatch).
@@ -1077,15 +1045,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 				filter["in"] = ids
 				return queryBatch(newCtx, pageSize, offset, cursorValue)
 			},
-		).
-		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			// Filter related skills from business domain.
-			resourceIDs := make([]string, 0, len(resourceToBdMap))
-			for resourceID := range resourceToBdMap {
-				resourceIDs = append(resourceIDs, resourceID)
-			}
-			return resourceIDs, nil
-		})
+		)
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		// If it is an external interface, permission check.
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
@@ -1103,7 +1063,7 @@ func (r *skillRegistry) queryReleaseListPage(ctx context.Context, filter map[str
 }
 
 func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[string]interface{}, pageParamsReq interfaces.CommonPageParams, userID string, operations ...interfaces.AuthOperationType) (
-	authResp *interfaces.QueryResponse[model.SkillRepositoryDB], resourceToBdMap map[string]string, err error) {
+	authResp *interfaces.QueryResponse[model.SkillRepositoryDB], err error) {
 	// Build query executor.
 	sortField := "f_update_time"
 	switch pageParamsReq.SortBy {
@@ -1158,12 +1118,6 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 		}
 		return skills, nil
 	}
-	businessDomainStr, _ := infracommon.GetBusinessDomainFromCtx(ctx)
-	businessDomainIDs := strings.Split(businessDomainStr, ",")
-	resourceToBdMap, err = r.BusinessDomainService.BatchResourceList(ctx, businessDomainIDs, interfaces.AuthResourceTypeSkill)
-	if err != nil {
-		return
-	}
 	queryBuilder := auth.NewQueryBuilder[model.SkillRepositoryDB]().
 		SetPage(pageParamsReq.Page, pageParamsReq.PageSize).SetAll(pageParamsReq.All).
 		SetQueryFunctions(queryTotal, queryBatch).
@@ -1176,15 +1130,7 @@ func (r *skillRegistry) querySkillListPage(ctx context.Context, filter map[strin
 				filter["in"] = ids
 				return queryBatch(newCtx, pageSize, offset, cursorValue)
 			},
-		).
-		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			// Filter related skills from business domain.
-			resourceIDs := make([]string, 0, len(resourceToBdMap))
-			for resourceID := range resourceToBdMap {
-				resourceIDs = append(resourceIDs, resourceID)
-			}
-			return resourceIDs, nil
-		})
+		)
 	if infracommon.IsPublicAPIFromCtx(ctx) {
 		// If it is an external interface, permission check.
 		queryBuilder.SetAuthFilter(func(newCtx context.Context) ([]string, error) {
@@ -1208,7 +1154,6 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id": req.UserID,
-		"bd_id":   req.BusinessDomainID,
 	})
 
 	resp = &interfaces.QuerySkillMarketListResp{
@@ -1235,7 +1180,7 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 		filter["category"] = req.Category.String()
 	}
 
-	authResp, resourceToBdMap, err := r.queryReleaseListPage(ctx, filter, req.CommonPageParams, req.UserID,
+	authResp, err := r.queryReleaseListPage(ctx, filter, req.CommonPageParams, req.UserID,
 		interfaces.AuthOperationTypePublicAccess)
 	if err != nil {
 		return nil, err
@@ -1244,7 +1189,7 @@ func (r *skillRegistry) QuerySkillMarketList(ctx context.Context, req *interface
 	if len(authResp.Data) == 0 {
 		return resp, nil
 	}
-	skillInfos, err := r.assembleMarketSkillInfoList(ctx, authResp.Data, resourceToBdMap)
+	skillInfos, err := r.assembleMarketSkillInfoList(ctx, authResp.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -1259,7 +1204,6 @@ func (r *skillRegistry) GetSkillMarketDetail(ctx context.Context, req *interface
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 	})
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)
@@ -1295,7 +1239,6 @@ func (r *skillRegistry) GetSkillDetail(ctx context.Context, req *interfaces.GetS
 	defer oteltrace.EndSpan(ctx, err)
 	telemetry.SetSpanAttributes(ctx, map[string]interface{}{
 		"user_id":  req.UserID,
-		"bd_id":    req.BusinessDomainID,
 		"skill_id": req.SkillID,
 	})
 	accessor, err := r.AuthService.GetAccessor(ctx, req.UserID)

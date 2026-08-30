@@ -73,14 +73,12 @@ type Receipt struct {
 type BusinessRef struct {
 	RefType BusinessRefType `json:"ref_type" binding:"required"`
 	// RefID uses the complete canonical shape defined by RefType, including every required scope segment.
-	RefID            string     `json:"ref_id" binding:"required"`
-	BusinessDomainID string     `json:"business_domain_id" binding:"required"`
-	Version          string     `json:"version" binding:"required"`
-	AsOf             *time.Time `json:"as_of,omitempty"`
-	DisplayHint      string     `json:"display_hint,omitempty"`
+	RefID       string     `json:"ref_id" binding:"required"`
+	Version     string     `json:"version" binding:"required"`
+	AsOf        *time.Time `json:"as_of,omitempty"`
+	DisplayHint string     `json:"display_hint,omitempty"`
 }
 
-func (ref BusinessRef) IsCanonicalForBusinessDomain(businessDomainID string) bool {
-	return ref.BusinessDomainID == businessDomainID && ref.Version != "" &&
-		ref.RefType.MatchesCanonicalRefID(ref.RefID)
+func (ref BusinessRef) IsCanonical() bool {
+	return ref.Version != "" && ref.RefType.MatchesCanonicalRefID(ref.RefID)
 }

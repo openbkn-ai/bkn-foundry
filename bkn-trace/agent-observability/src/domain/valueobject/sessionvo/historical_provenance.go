@@ -22,7 +22,6 @@ const HistoricalProvenanceBuildRequestedEventType = "historical_provenance.build
 type HistoricalProvenanceBuildRequest struct {
 	InteractionID       string              `json:"interaction_id"`
 	TenantID            string              `json:"tenant_id"`
-	BusinessDomainID    string              `json:"business_domain_id"`
 	FactsHash           string              `json:"facts_hash"`
 	KnowledgeNetworkIDs []string            `json:"knowledge_network_ids"`
 	Facts               []OperationCallFact `json:"facts"`
@@ -33,7 +32,7 @@ func NewHistoricalProvenanceBuildRequest(
 	owner Owner,
 	facts []OperationCallFact,
 ) (HistoricalProvenanceBuildRequest, error) {
-	if interactionID == "" || owner.TenantID == "" || owner.BusinessDomainID == "" {
+	if interactionID == "" || owner.TenantID == "" {
 		return HistoricalProvenanceBuildRequest{}, errors.New("historical provenance scope is required")
 	}
 	canonicalFacts := append([]OperationCallFact(nil), facts...)
@@ -57,7 +56,6 @@ func NewHistoricalProvenanceBuildRequest(
 	return HistoricalProvenanceBuildRequest{
 		InteractionID:       interactionID,
 		TenantID:            owner.TenantID,
-		BusinessDomainID:    owner.BusinessDomainID,
 		FactsHash:           hex.EncodeToString(sum[:]),
 		KnowledgeNetworkIDs: explicitKnowledgeNetworkIDs(canonicalFacts),
 		Facts:               canonicalFacts,

@@ -23,12 +23,6 @@ paths:
         - "算子管理"
 
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
 
       requestBody:
         content:
@@ -122,12 +116,6 @@ paths:
       tags:
         - "算子管理"
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: page
           in: query
           description: "页码，从1开始，默认为1"
@@ -549,12 +537,6 @@ paths:
       tags:
         - "算子市场"
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
         - name: page
           in: query
           description: "页码，从1开始，默认为1"
@@ -717,12 +699,6 @@ paths:
       tags:
         - "内置算子"
       parameters:
-        - name: x-business-domain
-          in: header
-          required: true
-          schema:
-            type: string
-          description: 业务域ID
       requestBody:
         required: true
         content:
@@ -1019,9 +995,6 @@ components:
       type: object
       description: "算子信息"
       properties:
-        business_domain_id:
-          type: string
-          description: 业务域Id
         name:
           type: string
           description: "算子名称"

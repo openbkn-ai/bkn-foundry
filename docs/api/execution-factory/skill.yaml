@@ -27,7 +27,7 @@ info:
     **时间戳一律是纳秒**：所有 `*_time` 字段由 `time.Now().UnixNano()` 生成。
 
     **认证**：`Authorization: Bearer <token>`（OAuth access token 或 `bak_` 前缀的
-    AppKey）。**本面所有接口都要求 `x-business-domain` 头**（路由组统一加了中间件）。
+    AppKey）。
 
     **内部面（`internal-v1`）的读授权按档位**：`/content` 与 `/files/read` 在公开面
     一律按账户判定（`execute` / `public_access` / `view` 三者有其一），内部面则看
@@ -101,7 +101,7 @@ paths:
           page_size: 3
         provides:
           skill_id: data[0].skill_id
-      description: 按业务域分页列出技能，支持按名称、状态、分类、创建人过滤。
+      description: 分页列出当前租户可访问的技能，支持按名称、状态、分类、创建人过滤。
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
@@ -1277,8 +1277,6 @@ components:
         status:
           $ref: '#/components/schemas/BizStatus'
         source:
-          type: string
-        business_domain_id:
           type: string
         category:
           type: string

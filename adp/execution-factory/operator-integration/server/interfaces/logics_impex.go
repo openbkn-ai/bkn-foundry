@@ -33,11 +33,10 @@ type ExportConfigReq struct {
 
 // ImportConfigReq import configuration request.
 type ImportConfigReq struct {
-	BusinessDomainID string          `header:"x-business-domain" validate:"required"`              // Business domain ID.
-	UserID           string          `header:"user_id" validate:"required"`                        // User ID.
-	Type             ComponentType   `uri:"type" validate:"required,oneof=operator toolbox mcp"`   // Component type.
-	Mode             ImportType      `form:"mode" default:"create" validate:"oneof=create upsert"` // Configure import type.
-	Data             json.RawMessage `form:"data" validate:"required"`
+	UserID string          `header:"user_id" validate:"required"`                        // User ID.
+	Type   ComponentType   `uri:"type" validate:"required,oneof=operator toolbox mcp"`   // Component type.
+	Mode   ImportType      `form:"mode" default:"create" validate:"oneof=create upsert"` // Configure import type.
+	Data   json.RawMessage `form:"data" validate:"required"`
 }
 
 // ComponentImpexConfigModel component import and export configuration model.

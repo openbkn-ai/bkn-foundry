@@ -13,7 +13,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/mcpinstance"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metric"
@@ -39,7 +38,6 @@ type mcpServiceImpl struct {
 	ToolService               interfaces.IToolService
 	AuditLog                  interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
 	MCPInstanceService        interfaces.InstanceService
-	BusinessDomainService     interfaces.IBusinessDomainService
 }
 
 // NewMCPServiceImpl initializes the MCP service.
@@ -58,7 +56,6 @@ func NewMCPServiceImpl() interfaces.IMCPService {
 			AuthService:               auth.NewAuthServiceImpl(),
 			ToolService:               toolbox.NewToolServiceImpl(),
 			AuditLog:                  metric.NewAuditLogBuilder(),
-			BusinessDomainService:     business_domain.NewBusinessDomainService(),
 		}
 		s.MCPInstanceService = mcpinstance.NewMCPInstanceService(s)
 		mcpService = s

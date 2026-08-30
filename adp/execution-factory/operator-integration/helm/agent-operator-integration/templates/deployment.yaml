@@ -82,8 +82,6 @@ spec:
             {{- end}}
               - name: AUTH_ENABLED
                 value: {{ .Values.auth.enabled | quote }}
-              - name: BUSINESS_DOMAIN_ENABLED
-                value: {{ .Values.businessDomain.enabled | quote }}
             {{- if .Values.observability.evidence.ingest_url }}
               - name: BKN_TRACE_EVIDENCE_INGEST_URL
                 value: {{ .Values.observability.evidence.ingest_url | quote }}

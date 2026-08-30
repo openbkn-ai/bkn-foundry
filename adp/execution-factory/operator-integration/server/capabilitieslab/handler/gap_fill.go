@@ -13,7 +13,7 @@ import (
 )
 
 func (h *CapabilitiesHandler) ListCategories(c *gin.Context) {
-	items, err := h.Service.ListCategories(c.Request.Context(), h.businessDomain(c))
+	items, err := h.Service.ListCategories(c.Request.Context())
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -31,7 +31,6 @@ func (h *CapabilitiesHandler) ListCategories(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) UpdateCapability(c *gin.Context) {
-	bd := h.businessDomain(c)
 
 	var req model.UpdateCapabilityRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -39,7 +38,7 @@ func (h *CapabilitiesHandler) UpdateCapability(c *gin.Context) {
 		return
 	}
 
-	resp, err := h.Service.UpdateCapability(c.Request.Context(), bd, c.Param("id"), req)
+	resp, err := h.Service.UpdateCapability(c.Request.Context(), c.Param("id"), req)
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -49,8 +48,7 @@ func (h *CapabilitiesHandler) UpdateCapability(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) DownloadSkillPackage(c *gin.Context) {
-	bd := h.businessDomain(c)
-	payload, filename, err := h.Service.DownloadSkillPackage(c.Request.Context(), bd, c.Param("id"))
+	payload, filename, err := h.Service.DownloadSkillPackage(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return
@@ -61,7 +59,6 @@ func (h *CapabilitiesHandler) DownloadSkillPackage(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) UpdateSkillPackage(c *gin.Context) {
-	bd := h.businessDomain(c)
 	file, header, err := c.Request.FormFile("file")
 	if err != nil {
 		writeFileRequired(c)
@@ -80,7 +77,7 @@ func (h *CapabilitiesHandler) UpdateSkillPackage(c *gin.Context) {
 		fileType = "zip"
 	}
 
-	resp, err := h.Service.UpdateSkillPackage(c.Request.Context(), bd, c.Param("id"), model.RegisterSkillCapabilityRequest{
+	resp, err := h.Service.UpdateSkillPackage(c.Request.Context(), c.Param("id"), model.RegisterSkillCapabilityRequest{
 		FileType: fileType,
 		Filename: header.Filename,
 		Content:  content,
@@ -95,8 +92,7 @@ func (h *CapabilitiesHandler) UpdateSkillPackage(c *gin.Context) {
 }
 
 func (h *CapabilitiesHandler) ListMcpTools(c *gin.Context) {
-	bd := h.businessDomain(c)
-	tools, err := h.Service.ListMcpTools(c.Request.Context(), bd, c.Param("id"))
+	tools, err := h.Service.ListMcpTools(c.Request.Context(), c.Param("id"))
 	if err != nil {
 		writeBadGateway(c, err.Error())
 		return

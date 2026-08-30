@@ -16,8 +16,7 @@ import (
 
 func TestEnterpriseInteractionReaderUsesTrustedTechnicalScope(t *testing.T) {
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant-1", BusinessDomain: "domain-1",
-		AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
+		TenantID: "tenant-1", AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
 		AccessProfile: &evidencevo.AccessProfile{
 			ApplicationPrincipalID: "openbkn-studio", EffectiveSubjectID: "user-1", DelegationID: "delegation-1",
 		},
@@ -39,7 +38,7 @@ func TestEnterpriseInteractionReaderUsesTrustedTechnicalScope(t *testing.T) {
 	if facts.Summary.InteractionID != "int-1" || len(facts.Operations) != 1 || facts.Operations[0].Fact.OperationID != "op-1" {
 		t.Fatalf("ReadInteraction() = %+v, want summary and one operation", facts)
 	}
-	if facts.SourceRead.Authorization != "" || facts.SourceRead.AccountID != "user-1" || facts.SourceRead.BusinessDomain != "domain-1" {
+	if facts.SourceRead.Authorization != "" || facts.SourceRead.AccountID != "user-1" {
 		t.Fatalf("ReadInteraction() source read context = %+v, want current caller context without response serialization", facts.SourceRead)
 	}
 	if facts.SourceRead.ApplicationPrincipalID != "openbkn-studio" || facts.SourceRead.EffectiveSubjectType != "user" ||
@@ -53,8 +52,7 @@ func TestEnterpriseInteractionReaderUsesTrustedTechnicalScope(t *testing.T) {
 
 func TestEnterpriseInteractionReaderListsOnlyTrustedTechnicalScope(t *testing.T) {
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant-1", BusinessDomain: "domain-1",
-		AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
+		TenantID: "tenant-1", AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
 	}
 	reader := NewEnterpriseInteractionFactsReader(
 		fakeInteractionSummarySource{

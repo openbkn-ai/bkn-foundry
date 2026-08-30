@@ -99,8 +99,8 @@ func (source *Source) Get(ctx context.Context, eventID string) (observabilityvo.
 	}
 	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
 	page, err := source.Search(ctx, observabilityvo.LogQuery{
-		AuthorizedTenantID: scope.TenantID, AuthorizedBusinessDomain: scope.BusinessDomain,
-		ConversationID: conversationID, Limit: 1,
+		AuthorizedTenantID: scope.TenantID,
+		ConversationID:     conversationID, Limit: 1,
 	})
 	if err != nil || len(page.Records) == 0 {
 		return observabilityvo.LogRecord{}, false, err
@@ -123,7 +123,6 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 		}
 	}
 	addTerm("owner.tenant_id.keyword", query.AuthorizedTenantID)
-	addTerm("owner.business_domain_id.keyword", query.AuthorizedBusinessDomain)
 	addTerm("owner.effective_subject_id.keyword", query.ActorID)
 	addTerm("conversation_id.keyword", firstNonEmpty(query.ConversationID, query.TargetID))
 	if query.TimeFrom != nil || query.TimeTo != nil {
@@ -167,7 +166,7 @@ func projectConversation(conversation sessionvo.Conversation) observabilityvo.Lo
 		EventTimestamp: conversation.CreatedAt, ObservedTimestamp: conversation.CreatedAt,
 		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "Started an Agent business conversation",
 		ServiceName: "bkn-trace-core", Environment: "unknown", TenantID: conversation.Owner.TenantID,
-		BusinessDomain: conversation.Owner.BusinessDomainID, ActorID: conversation.Owner.EffectiveSubjectID,
+		ActorID:            conversation.Owner.EffectiveSubjectID,
 		EffectiveSubjectID: conversation.Owner.EffectiveSubjectID,
 		ApplicationID:      conversation.Owner.ApplicationPrincipalID, IngressPrincipal: "bkn-trace-core", TrustLevel: "trusted",
 		ConversationID: conversation.ID, RequestID: conversation.CreationRequestID,

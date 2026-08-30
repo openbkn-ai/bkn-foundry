@@ -45,7 +45,7 @@ func (c *Client) Search(ctx context.Context, q observabilityvo.LogQuery) (observ
 		return observabilityvo.SourcePage{CountAccuracy: "partial"}, nil
 	}
 	auth := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
-	if auth == "" || q.AuthorizedTenantID == "" || q.AuthorizedBusinessDomain == "" {
+	if auth == "" || q.AuthorizedTenantID == "" {
 		return observabilityvo.SourcePage{}, errors.New("model manager audit source requires caller authorization and trusted scope")
 	}
 	v := url.Values{}
@@ -71,7 +71,7 @@ func (c *Client) Search(ctx context.Context, q observabilityvo.LogQuery) (observ
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	headers(req, auth, q.AuthorizedTenantID, q.AuthorizedBusinessDomain)
+	headers(req, auth, q.AuthorizedTenantID)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
@@ -100,14 +100,14 @@ func (c *Client) Search(ctx context.Context, q observabilityvo.LogQuery) (observ
 func (c *Client) Get(ctx context.Context, id string) (observabilityvo.LogRecord, bool, error) {
 	auth := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
 	s := observabilityvo.SourceAccessScopeFromContext(ctx)
-	if auth == "" || s.TenantID == "" || s.BusinessDomain == "" {
+	if auth == "" || s.TenantID == "" {
 		return observabilityvo.LogRecord{}, false, errors.New("model manager audit source requires caller authorization and trusted scope")
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/mf-model-manager/v1/operation-audits/"+url.PathEscape(strip(id)), nil)
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	headers(req, auth, s.TenantID, s.BusinessDomain)
+	headers(req, auth, s.TenantID)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
@@ -127,25 +127,24 @@ func (c *Client) Get(ctx context.Context, id string) (observabilityvo.LogRecord,
 }
 
 type entry struct {
-	EventID          string    `json:"event_id"`
-	EventTime        time.Time `json:"event_time"`
-	RecordedAt       time.Time `json:"recorded_at"`
-	TenantID         string    `json:"tenant_id"`
-	BusinessDomainID string    `json:"business_domain_id"`
-	ActorID          string    `json:"actor_id"`
-	ActorName        string    `json:"actor_name"`
-	ActorType        string    `json:"actor_type"`
-	AuthMethod       string    `json:"auth_method"`
-	RequestID        string    `json:"request_id"`
-	SourceChannel    string    `json:"source_channel"`
-	Method           string    `json:"method"`
-	Action           string    `json:"action"`
-	TargetType       string    `json:"target_type"`
-	TargetID         string    `json:"target_id"`
-	TargetName       string    `json:"target_name"`
-	Outcome          string    `json:"outcome"`
-	FailureCode      string    `json:"failure_code"`
-	FailureMessage   string    `json:"failure_message"`
+	EventID        string    `json:"event_id"`
+	EventTime      time.Time `json:"event_time"`
+	RecordedAt     time.Time `json:"recorded_at"`
+	TenantID       string    `json:"tenant_id"`
+	ActorID        string    `json:"actor_id"`
+	ActorName      string    `json:"actor_name"`
+	ActorType      string    `json:"actor_type"`
+	AuthMethod     string    `json:"auth_method"`
+	RequestID      string    `json:"request_id"`
+	SourceChannel  string    `json:"source_channel"`
+	Method         string    `json:"method"`
+	Action         string    `json:"action"`
+	TargetType     string    `json:"target_type"`
+	TargetID       string    `json:"target_id"`
+	TargetName     string    `json:"target_name"`
+	Outcome        string    `json:"outcome"`
+	FailureCode    string    `json:"failure_code"`
+	FailureMessage string    `json:"failure_message"`
 }
 
 func project(e entry) observabilityvo.LogRecord {
@@ -153,12 +152,11 @@ func project(e entry) observabilityvo.LogRecord {
 	if e.Outcome != "success" {
 		sev, text = 17, "ERROR"
 	}
-	return observabilityvo.LogRecord{EventID: e.EventID, EventTime: e.EventTime, RecordedAt: e.RecordedAt, ActorNameSnapshot: first(e.ActorName, e.ActorID), ActorType: first(e.ActorType, "user"), AuthMethod: first(e.AuthMethod, "unknown"), SourceChannel: first(e.SourceChannel, "api"), BusinessModule: "model_management", Action: e.Action, TargetType: e.TargetType, TargetID: e.TargetID, TargetNameSnapshot: first(e.TargetName, e.TargetID), FailureCode: e.FailureCode, FailureMessage: e.FailureMessage, SchemaVersion: "1.0", LogID: sourceID + ":" + e.EventID, SourceID: sourceID, SourceLogID: e.EventID, Category: observabilityvo.CategoryAuditAdmin, EventName: "model_management.changed", EventTimestamp: e.EventTime, ObservedTimestamp: e.RecordedAt, SeverityNumber: sev, SeverityText: text, Outcome: e.Outcome, SafeSummary: strings.TrimSpace(strings.Join([]string{e.Method, e.Action, e.TargetType, first(e.TargetName, e.TargetID)}, " ")), ServiceName: "mf-model-manager", Environment: "unknown", TenantID: e.TenantID, BusinessDomain: e.BusinessDomainID, ActorID: e.ActorID, EffectiveSubjectID: e.ActorID, RequestID: e.RequestID, IngressPrincipal: "model-manager", TrustLevel: "trusted", ResourceRef: &observabilityvo.ResourceRef{ResourceType: e.TargetType, ResourceID: e.TargetID}, Attributes: map[string]any{"method": e.Method}}
+	return observabilityvo.LogRecord{EventID: e.EventID, EventTime: e.EventTime, RecordedAt: e.RecordedAt, ActorNameSnapshot: first(e.ActorName, e.ActorID), ActorType: first(e.ActorType, "user"), AuthMethod: first(e.AuthMethod, "unknown"), SourceChannel: first(e.SourceChannel, "api"), BusinessModule: "model_management", Action: e.Action, TargetType: e.TargetType, TargetID: e.TargetID, TargetNameSnapshot: first(e.TargetName, e.TargetID), FailureCode: e.FailureCode, FailureMessage: e.FailureMessage, SchemaVersion: "1.0", LogID: sourceID + ":" + e.EventID, SourceID: sourceID, SourceLogID: e.EventID, Category: observabilityvo.CategoryAuditAdmin, EventName: "model_management.changed", EventTimestamp: e.EventTime, ObservedTimestamp: e.RecordedAt, SeverityNumber: sev, SeverityText: text, Outcome: e.Outcome, SafeSummary: strings.TrimSpace(strings.Join([]string{e.Method, e.Action, e.TargetType, first(e.TargetName, e.TargetID)}, " ")), ServiceName: "mf-model-manager", Environment: "unknown", TenantID: e.TenantID, ActorID: e.ActorID, EffectiveSubjectID: e.ActorID, RequestID: e.RequestID, IngressPrincipal: "model-manager", TrustLevel: "trusted", ResourceRef: &observabilityvo.ResourceRef{ResourceType: e.TargetType, ResourceID: e.TargetID}, Attributes: map[string]any{"method": e.Method}}
 }
-func headers(r *http.Request, a, t, d string) {
+func headers(r *http.Request, a, t string) {
 	r.Header.Set("Authorization", a)
 	r.Header.Set("x-tenant-id", t)
-	r.Header.Set("x-business-domain", d)
 }
 func strip(id string) string { return strings.TrimPrefix(id, sourceID+":") }
 func limit(v int) int {

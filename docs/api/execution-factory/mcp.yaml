@@ -93,8 +93,6 @@ paths:
 
         `mode` 此处只接受 `sse` / `stream`（见文件头说明）。`creation_type`
         为 `tool_imported` 时用 `tool_configs` 指定要打包哪些工具。
-      parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
       requestBody:
         required: true
         content:
@@ -146,9 +144,8 @@ paths:
           page_size: 3
         provides:
           mcp_id: data[0].mcp_id
-      description: 按业务域分页列出已登记的 MCP Server，支持按名称、来源、分类、状态、运行模式过滤。
+      description: 分页列出当前租户可访问的 MCP Server，支持按名称、来源、分类、状态、运行模式过滤。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/SortBy'
@@ -223,7 +220,6 @@ paths:
                         description: aaa
                         mode: stream
                         url: http://agent-operator-integration:9000/api/agent-operator-integration/internal-v1/mcp/app/5a09efa5-d315-4450-adb3-5b2799d50b7f/1/stream
-                        business_domain_id: default
                         version: 1
                         creation_type: tool_imported
                         status: published
@@ -306,7 +302,6 @@ paths:
       operationId: deleteMCPServer
       description: 删除登记的 MCP Server。已被 Agent 挂载的服务删除后调用方会拿到 404。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/MCPID'
       responses:
         '200':
@@ -417,7 +412,6 @@ paths:
         已发布的 MCP Server 列表。比 `/mcp/list` 多一个 `release_user` 过滤条件，
         其余参数一致。
       parameters:
-        - $ref: '#/components/parameters/BusinessDomain'
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
         - $ref: '#/components/parameters/SortBy'
@@ -713,13 +707,6 @@ components:
       $ref: '../_shared/auth.yaml#/components/securitySchemes/AppKey'
 
   parameters:
-    BusinessDomain:
-      name: x-business-domain
-      in: header
-      required: true
-      schema:
-        type: string
-      description: 业务域 ID。MCP Server 按业务域隔离，缺失返回 400。
     MCPID:
       name: mcp_id
       in: path
@@ -1004,8 +991,6 @@ components:
         - type: object
           properties:
             mcp_id:
-              type: string
-            business_domain_id:
               type: string
             version:
               type: integer

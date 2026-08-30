@@ -36,18 +36,16 @@ func TestSkillManagementReader(t *testing.T) {
 			mockFileRepo := mocks.NewMockISkillFileIndex(ctrl)
 			mockAssetStore := mocks.NewMockskillAssetStore(ctrl)
 			mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
-			mockBusinessDomainService := mocks.NewMockIBusinessDomainService(ctrl)
 			reader := &skillManagementReader{
 				skillRepo: &stubSkillRepo{
 					selectByID: func(ctx context.Context, tx *sql.Tx, skillID string) (*model.SkillRepositoryDB, error) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mockAuthService,
-				BusinessDomainService: mockBusinessDomainService,
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", SkillMD).
@@ -61,8 +59,7 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/SKILL.md", nil)
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
+				SkillID: "skill-1",
 			})
 
 			So(err, ShouldBeNil)
@@ -95,17 +92,15 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-2",
-				ResponseMode:     "content",
+				SkillID:      "skill-2",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -127,16 +122,14 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-deleted",
+				SkillID: "skill-deleted",
 			})
 
 			So(resp, ShouldBeNil)
@@ -156,11 +149,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mockAuthService,
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			ctx := common.SetPublicAPIToCtx(context.Background(), true)
@@ -179,9 +171,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/SKILL.md", nil)
 
 			resp, err := reader.GetManagementContent(ctx, &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "user-view",
-				SkillID:          "skill-1",
+				UserID:  "user-view",
+				SkillID: "skill-1",
 			})
 
 			So(err, ShouldBeNil)
@@ -197,11 +188,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mockAuthService,
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			ctx := common.SetPublicAPIToCtx(context.Background(), true)
@@ -213,9 +203,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return(false, nil)
 
 			resp, err := reader.GetManagementContent(ctx, &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				UserID:           "no-perm-user",
-				SkillID:          "skill-1",
+				UserID:  "no-perm-user",
+				SkillID: "skill-1",
 			})
 
 			So(resp, ShouldBeNil)
@@ -232,16 +221,14 @@ func TestSkillManagementReader(t *testing.T) {
 						return nil, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-nonexistent",
+				SkillID: "skill-nonexistent",
 			})
 
 			So(resp, ShouldBeNil)
@@ -260,11 +247,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", SkillMD).
@@ -276,8 +262,7 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/SKILL.md", nil)
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
+				SkillID: "skill-1",
 			})
 
 			So(err, ShouldBeNil)
@@ -295,11 +280,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mockAuthService,
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mockAuthService,
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", SkillMD).
@@ -311,9 +295,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return([]byte("# SKILL.md from OSS"), nil)
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				ResponseMode:     "content",
+				SkillID:      "skill-1",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -341,17 +324,15 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-2",
-				ResponseMode:     "content",
+				SkillID:      "skill-2",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -379,17 +360,15 @@ func TestSkillManagementReader(t *testing.T) {
 						}, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.GetManagementContent(context.Background(), &interfaces.GetManagementContentReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-2",
-				ResponseMode:     "url",
+				SkillID:      "skill-2",
+				ResponseMode: "url",
 			})
 
 			So(err, ShouldBeNil)
@@ -408,11 +387,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", "scripts/main.py").
@@ -425,9 +403,8 @@ func TestSkillManagementReader(t *testing.T) {
 				Return("https://download/skill-1/scripts/main.py", nil)
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "scripts/main.py",
+				SkillID: "skill-1",
+				RelPath: "scripts/main.py",
 			})
 
 			So(err, ShouldBeNil)
@@ -446,11 +423,10 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mockAssetStore,
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mockAssetStore,
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", "scripts/main.py").
@@ -463,10 +439,9 @@ func TestSkillManagementReader(t *testing.T) {
 				Return([]byte("print('hello')\n"), nil)
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "scripts/main.py",
-				ResponseMode:     "content",
+				SkillID:      "skill-1",
+				RelPath:      "scripts/main.py",
+				ResponseMode: "content",
 			})
 
 			So(err, ShouldBeNil)
@@ -482,17 +457,15 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mocks.NewMockISkillFileIndex(ctrl),
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mocks.NewMockISkillFileIndex(ctrl),
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "../../etc/passwd",
+				SkillID: "skill-1",
+				RelPath: "../../etc/passwd",
 			})
 
 			So(resp, ShouldBeNil)
@@ -510,20 +483,18 @@ func TestSkillManagementReader(t *testing.T) {
 						return validRepo, nil
 					},
 				},
-				fileRepo:              mockFileRepo,
-				assetStore:            mocks.NewMockskillAssetStore(ctrl),
-				AuthService:           mocks.NewMockIAuthorizationService(ctrl),
-				BusinessDomainService: mocks.NewMockIBusinessDomainService(ctrl),
-				Logger:                logger.DefaultLogger(),
+				fileRepo:    mockFileRepo,
+				assetStore:  mocks.NewMockskillAssetStore(ctrl),
+				AuthService: mocks.NewMockIAuthorizationService(ctrl),
+				Logger:      logger.DefaultLogger(),
 			}
 
 			mockFileRepo.EXPECT().SelectSkillFileByPath(gomock.Any(), gomock.Nil(), "skill-1", "v1", "missing.py").
 				Return(nil, nil)
 
 			resp, err := reader.ReadManagementFile(context.Background(), &interfaces.ReadManagementFileReq{
-				BusinessDomainID: "bd-1",
-				SkillID:          "skill-1",
-				RelPath:          "missing.py",
+				SkillID: "skill-1",
+				RelPath: "missing.py",
 			})
 
 			So(resp, ShouldBeNil)

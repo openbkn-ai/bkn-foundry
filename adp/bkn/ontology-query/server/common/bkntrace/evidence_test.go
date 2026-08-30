@@ -33,7 +33,7 @@ func testTraceContext() context.Context {
 
 func testRequestContext() RequestContext {
 	return RequestContext{
-		RequestID: "req_ontology_data_0001", AccountID: "acct_demo", AccountType: "user", BusinessDomain: "domain_demo",
+		RequestID: "req_ontology_data_0001", AccountID: "acct_demo", AccountType: "user",
 		InteractionID: "int_data_query_001", OperationID: "op_data_query_001", CausationEventID: "evt_tool_called_001", Attempt: 1,
 		ObservedAt: "2026-07-25T08:00:00Z",
 	}

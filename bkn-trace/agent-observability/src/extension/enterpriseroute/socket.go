@@ -43,7 +43,6 @@ type ListQuery struct {
 	// ExcludeAgentOrApp is supplied only by the assembled EE module. It is
 	// intentionally absent from the public HTTP query surface.
 	ExcludeAgentOrApp    string
-	BusinessDomain       string
 	KnowledgeNetwork     string
 	EvidenceCompleteness string
 }
@@ -53,7 +52,6 @@ type ListQuery struct {
 type SourceReadContext struct {
 	Authorization          string `json:"-"`
 	TenantID               string `json:"-"`
-	BusinessDomain         string `json:"-"`
 	AccountID              string `json:"-"`
 	AccountType            string `json:"-"`
 	ApplicationPrincipalID string `json:"-"`

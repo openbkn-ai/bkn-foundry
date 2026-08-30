@@ -62,7 +62,6 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             "path": "/api/mf-model-manager/v1/llm/edit",
             "headers": [
                 (b"x-tenant-id", b"tenant-1"),
-                (b"x-business-domain", b"domain-1"),
                 (b"x-account-id", b"user-1"),
                 (b"bkn-request-id", b"req-audit-write-failure"),
             ],
@@ -85,6 +84,95 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             "update" in message
             for message in logs.output
         ))
+
+    async def test_writes_tenant_scoped_audit_without_business_domain(self):
+        async def receive():
+            return {"type": "http.request", "body": b'{"model_id":"model-1"}', "more_body": False}
+
+        request = Request({
+            "type": "http",
+            "method": "POST",
+            "path": "/api/mf-model-manager/v1/llm/edit",
+            "headers": [
+                (b"x-tenant-id", b"tenant-1"),
+                (b"x-account-id", b"user-1"),
+                (b"bkn-request-id", b"req-audit-tenant-only"),
+            ],
+            "query_string": b"",
+            "path_params": {},
+        }, receive)
+
+        async def call_next(_request):
+            return Response(status_code=200)
+
+        captured = []
+        with patch.object(operation_audit, "_actor_name", return_value="user-1"), \
+             patch.object(operation_audit, "_write", side_effect=captured.append):
+            response = await operation_audit.operation_audit_middleware(request, call_next)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(captured[0]["tenant_id"], "tenant-1")
+        self.assertNotIn("business_domain_id", captured[0])
+
+
+class TestOperationAuditLegacySchemaFallback(unittest.TestCase):
+    """A 0.1.5 image can start against a database that has not run the 0.1.5
+    migration; the audit write must still land instead of being lost."""
+
+    def _write_with_cursor(self, cursor):
+        class _Connection:
+            def cursor(self_inner):
+                return cursor
+
+            def commit(self_inner):
+                self_inner.committed = True
+
+            def close(self_inner):
+                pass
+
+        class _Pool:
+            def connection(self_inner):
+                return _Connection()
+
+        class _PymysqlPool:
+            @staticmethod
+            def get_pool():
+                return _Pool()
+
+        with patch.object(operation_audit, "PymysqlPool", _PymysqlPool):
+            operation_audit._write({"event_id": "evt-1", "tenant_id": "tenant-1"})
+
+    def test_retries_with_legacy_column_when_database_is_not_migrated(self):
+        executed = []
+
+        class _Cursor:
+            def execute(self_inner, statement, entry):
+                executed.append((statement, entry))
+                if len(executed) == 1:
+                    raise RuntimeError(
+                        "(1364, \"Field 'business_domain_id' doesn't have a default value\")"
+                    )
+
+            def close(self_inner):
+                pass
+
+        self._write_with_cursor(_Cursor())
+
+        self.assertEqual(len(executed), 2)
+        self.assertNotIn("business_domain_id", executed[0][0])
+        self.assertIn("business_domain_id", executed[1][0])
+        self.assertEqual(executed[1][1]["business_domain_id"], "")
+
+    def test_reraises_unrelated_database_errors(self):
+        class _Cursor:
+            def execute(self_inner, statement, entry):
+                raise RuntimeError("(1146, \"Table 't_model_manager_operation_audit' doesn't exist\")")
+
+            def close(self_inner):
+                pass
+
+        with self.assertRaises(RuntimeError):
+            self._write_with_cursor(_Cursor())
 
 
 if __name__ == "__main__":

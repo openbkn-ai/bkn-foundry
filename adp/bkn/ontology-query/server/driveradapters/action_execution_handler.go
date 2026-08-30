@@ -61,10 +61,6 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	}
 	ctx = context.WithValue(ctx, interfaces.ACCOUNT_INFO_KEY, accountInfo)
 
-	// Pass x-business-domain header to context for MCP execution
-	businessDomain := c.GetHeader(interfaces.HTTP_HEADER_BUSINESS_DOMAIN)
-	ctx = context.WithValue(ctx, interfaces.BUSINESS_DOMAIN_KEY, businessDomain)
-
 	oteltrace.AddHttpAttrs4API(span, oteltrace.GetAttrsByGinCtx(c))
 	otellog.LogInfo(ctx, fmt.Sprintf("行动执行请求参数: [%s,%v]", c.Request.RequestURI, c.Request.Body))
 
@@ -93,8 +89,6 @@ func (r *restHandler) ExecuteAction(c *gin.Context, visitor hydra.Visitor) {
 	req.KNID = knID
 	req.Branch = branch
 	req.ActionTypeID = atID
-	req.BusinessDomain = businessDomain
-
 	// Note: _instance_identities is optional
 	// If not provided, the action will apply to all entities matching the action type's conditions
 

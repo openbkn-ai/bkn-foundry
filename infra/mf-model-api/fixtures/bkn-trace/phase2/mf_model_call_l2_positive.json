@@ -8,7 +8,6 @@
     "trace_id": "81230000000000000000000000000001",
     "traceparent": "00-81230000000000000000000000000001-8123000000000001-01",
     "bkn.request.id": "req_mf_model_phase2_call_0001",
-    "business_domain": "domain_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "user"
   },

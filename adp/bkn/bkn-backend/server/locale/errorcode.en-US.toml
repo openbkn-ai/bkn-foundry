@@ -51,7 +51,7 @@ ErrorLink = ""
 
 [BknBackend.OperationAudit.MissingScope]
 Description = "The operation-audit query scope is missing."
-Solution = "Provide the tenant and business-domain identifiers."
+Solution = "Provide the tenant identifier."
 ErrorLink = ""
 
 [BknBackend.OperationAudit.AccessDenied]

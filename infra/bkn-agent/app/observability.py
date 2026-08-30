@@ -39,7 +39,6 @@ class TraceContext:
     upstream_span_id: Optional[str] = None
     conversation_id: Optional[str] = None
     tenant_id: Optional[str] = None
-    business_domain: Optional[str] = None
     account_id: Optional[str] = None
     account_type: Optional[str] = None
     application_principal_id: Optional[str] = None
@@ -185,7 +184,6 @@ def build_context(headers) -> TraceContext:
         else format_traceparent(trace_id, _new_span_id())
     )
     tenant_id = (headers.get("x-tenant-id") or "").strip() or None
-    business_domain = (headers.get("x-business-domain") or "").strip() or None
     account_id = (headers.get("x-account-id") or "").strip() or None
     account_type = (headers.get("x-account-type") or "").strip() or None
     application_principal_id = (
@@ -219,7 +217,6 @@ def build_context(headers) -> TraceContext:
         upstream_span_id=span_id,
         conversation_id=conversation_id,
         tenant_id=tenant_id,
-        business_domain=business_domain,
         account_id=account_id,
         account_type=account_type,
         application_principal_id=application_principal_id,
@@ -269,11 +266,6 @@ def response_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
 def outbound_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
     """Trace context headers for downstream HTTP/toolbox/MCP calls."""
     ctx = ctx or current_context()
-    business = (
-        {"x-business-domain": ctx.business_domain}
-        if ctx and ctx.business_domain
-        else {}
-    )
     tenant = {"x-tenant-id": ctx.tenant_id} if ctx and ctx.tenant_id else {}
     identity = {}
     if ctx and ctx.account_id and ctx.account_type:
@@ -285,7 +277,6 @@ def outbound_headers(ctx: Optional[TraceContext] = None) -> dict[str, str]:
     return {
         **response_headers(ctx),
         **tenant,
-        **business,
         **identity,
         **replay,
         **_current_operation_headers.get(),

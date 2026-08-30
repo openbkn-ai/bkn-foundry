@@ -129,7 +129,7 @@ openbkn call /api/mf-model-manager/v1/llm/test -d '{
 
 #### 通过模型工厂直接与 LLM 对话
 
-不经过智能体时，可对**模型工厂**的 Chat Completions 接口发请求，与已注册大模型对话。`openbkn call` 会自动带上当前平台的认证与业务域。
+不经过智能体时，可对**模型工厂**的 Chat Completions 接口发请求，与已注册大模型对话。`openbkn call` 会自动带上当前平台认证。
 
 - **路径**：`POST /api/mf-model-api/v1/chat/completions`
 - **`model`**：填写已在模型管理器中注册的 **`model_name`**（与 **`llm/list`** 中名称一致，通常与上游 `api_model` 相同）

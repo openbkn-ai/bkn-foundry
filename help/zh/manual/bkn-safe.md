@@ -2,7 +2,7 @@
 
 ## 📖 概述
 
-**BKN Safe** 是**横切的安全层**：在数据访问、模型输出与工具调用上提供统一的**身份**、**权限**、**策略**与**审计**。完整安装可能对接 OAuth2/OIDC（如 Hydra）与业务域服务。
+**BKN Safe** 是**横切的安全层**：在数据访问、模型输出与工具调用上提供统一的**身份**、**权限**、**策略**与**审计**。完整安装可能对接 OAuth2/OIDC（如 Hydra）。
 
 使用 **`--minimum` 安装**时，多数认证组件关闭，便于实验环境快速上手，部分 API 可能无需 Token。生产环境请按随产品提供的部署与安全文档启用完整认证配置。
 
@@ -10,7 +10,7 @@
 
 ### 🛡️ 管理员工具：openbkn admin
 
-BKN Safe 在**完整安装**下（启用 `auth.enabled=true` 与 `businessDomain.enabled=true`）的日常**管理面**（用户、组织、角色、模型、审计）通过 `openbkn admin` 子命令组操作 — 与本页下文面向终端用户的 `openbkn` 命令同属 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，无需安装独立 CLI。
+BKN Safe 在**完整安装**下（启用 `auth.enabled=true`）的日常**管理面**（用户、组织、角色、模型、审计）通过 `openbkn admin` 子命令组操作 — 与本页下文面向终端用户的 `openbkn` 命令同属 [`@openbkn/bkn-sdk`](https://github.com/openbkn-ai/bkn-sdk)，无需安装独立 CLI。
 
 ```bash
 npm install -g @openbkn/bkn-sdk                     # Node.js 22+
@@ -172,29 +172,12 @@ openbkn auth use dev
 openbkn agent list --limit 5
 ```
 
-#### 配置与业务域
+#### 配置
 
 ```bash
 # 显示当前完整配置
 openbkn config show
 
-# 列出所有已配置的业务域
-openbkn config list-bd
-
-# 设置当前业务域
-openbkn config set-bd bd_sales
-```
-
-**`config list-bd` / `config set-bd` 与最小化安装**：**`--minimum` / 最小化安装** **不包含**这两条子命令依赖的**业务域管理服务**（未随最小化部署），`list-bd` 常 **404** 等，属部署裁剪，不是 CLI 故障。平台仍有默认业务域，请用 `config show` 查看。**完整安装**下再用 `list-bd` / `set-bd` 枚举或切换域；若仍失败，再查网关或相关服务。
-
-**业务域优先级说明**：当设置了业务域后，所有 API 调用会在请求头中携带 `X-Business-Domain` 字段。平台根据此字段进行数据隔离与权限控制。优先级为：命令行 `--bd` 参数 > `openbkn config set-bd` 配置 > 默认业务域。
-
-```bash
-# 命令级覆盖业务域
-openbkn agent list --bd bd_finance
-
-# 查看当前生效的业务域配置
-openbkn config show | grep business_domain
 ```
 
 #### 端到端流程
@@ -206,14 +189,11 @@ openbkn auth login https://openbkn.example.com --alias prod -k -u <用户名> -p
 # 2. 确认身份
 openbkn auth whoami
 
-# 3. 设置业务域
-openbkn config set-bd bd_sales
-
-# 4. 开始使用平台功能
+# 3. 开始使用平台功能
 openbkn bkn list --limit 5
 openbkn agent list --limit 5
 
-# 5. 会话结束后登出
+# 4. 会话结束后登出
 openbkn auth logout
 ```
 
@@ -235,17 +215,7 @@ console.log('平台:', status.baseUrl, '是否有 token:', status.hasToken, '是
 const me = auth.whoami();
 console.log(me.userId, me.username);
 
-// 列出可用业务域（无 typed 方法 —— 用通用 passthrough）
-const domains = await bkn.call('/api/bkn-backend/v1/business-domains', { method: 'GET' });
-console.log('业务域:', domains);
-
-// 将后续请求限定到某个业务域
-const scoped = createClient({
-  baseUrl: 'https://<访问地址>',
-  token: process.env.BKN_TOKEN,
-  businessDomain: 'bd_sales',
-});
-const catalogs = await scoped.call('/api/vega-backend/v1/catalogs', { method: 'GET' });
+const catalogs = await bkn.call('/api/vega-backend/v1/catalogs', { method: 'GET' });
 console.log('catalogs:', catalogs);
 ```
 

@@ -43,7 +43,7 @@ func TestTraceContextHelpers(t *testing.T) {
 
 func TestBuildTraceHeadersForChildOperation(t *testing.T) {
 	ctx := SetTraceContextToCtx(context.Background(), TraceContext{
-		RequestID: "req_01JZVALIDREQUESTID000000014", BusinessDomain: "domain-demo",
+		RequestID:     "req_01JZVALIDREQUESTID000000014",
 		InteractionID: "third-party-interaction", OperationID: "parent-operation",
 		CausationEventID: "parent-event", Attempt: 2, ObservedAt: "2026-07-25T08:00:00Z",
 	})
@@ -53,7 +53,7 @@ func TestBuildTraceHeadersForChildOperation(t *testing.T) {
 	if first[HeaderBKNOperationID] == "parent-operation" || first[HeaderBKNOperationID] != replay[HeaderBKNOperationID] || first[HeaderBKNOperationID] == second[HeaderBKNOperationID] {
 		t.Fatalf("child operation identity is not stable and collision-free: %#v %#v %#v", first, replay, second)
 	}
-	if first[HeaderBKNCausationEventID] != "parent-event" || first[HeaderBusinessDomain] != "domain-demo" || first[HeaderBKNEventObservedAt] != "2026-07-25T08:00:00Z" {
+	if first[HeaderBKNCausationEventID] != "parent-event" || first[HeaderBKNEventObservedAt] != "2026-07-25T08:00:00Z" {
 		t.Fatalf("replay envelope was not propagated: %#v", first)
 	}
 }

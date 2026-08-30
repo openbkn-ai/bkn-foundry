@@ -478,9 +478,6 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(string(values), `default_tenant_id: "openbkn-local"`) {
 		t.Fatalf("Helm lifecycle values must align with the observability single-tenant scope: %s", values)
 	}
-	if !strings.Contains(string(values), `default_business_domain: "bd_public"`) {
-		t.Fatalf("Helm lifecycle values must carry the platform default business domain: %s", values)
-	}
 	deploymentPath := filepath.Clean("../../../helm/agent-retrieval/templates/deployment.yaml")
 	deployment, err := os.ReadFile(deploymentPath)
 	if err != nil {

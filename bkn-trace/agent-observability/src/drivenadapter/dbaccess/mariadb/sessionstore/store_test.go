@@ -52,7 +52,7 @@ func TestMigrationPlanReturnsOnlyUnappliedVersions(t *testing.T) {
 	}
 }
 
-func TestMigrationPlanUpgradesExistingCoreSchemaWithProvenanceTable(t *testing.T) {
+func TestMigrationPlanUpgradesExistingCoreSchemaWithoutBusinessDomain(t *testing.T) {
 	migrations := Migrations()
 	applied := make(map[string]string, 4)
 	for _, migration := range migrations[:4] {
@@ -60,11 +60,12 @@ func TestMigrationPlanUpgradesExistingCoreSchemaWithProvenanceTable(t *testing.T
 	}
 	plan, err := migrationPlan(migrations, applied)
 	if err != nil {
-		t.Fatalf("plan provenance schema migration: %v", err)
+		t.Fatalf("plan tenant-only schema migration: %v", err)
 	}
-	if len(plan) != 3 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
-		plan[2].Version != "019" || !strings.Contains(plan[2].SQL, "bkn_trace_ee_historical_provenance_projections") {
-		t.Fatalf("unexpected provenance schema plan: %#v", plan)
+	if len(plan) != 4 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
+		plan[2].Version != "019" || !strings.Contains(plan[2].SQL, "bkn_trace_ee_historical_provenance_projections") ||
+		plan[3].Version != "020" || !strings.Contains(plan[3].SQL, "DROP COLUMN IF EXISTS business_domain_id") {
+		t.Fatalf("unexpected tenant-only schema plan: %#v", plan)
 	}
 }
 
@@ -78,10 +79,11 @@ func TestMigrationPlanAddsLocaleToExistingProvenanceHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan provenance locale migration: %v", err)
 	}
-	if len(plan) != 2 || plan[0].Version != "018" ||
+	if len(plan) != 3 || plan[0].Version != "018" ||
 		!strings.Contains(plan[0].SQL, "ADD COLUMN IF NOT EXISTS locale") ||
 		!strings.Contains(plan[0].SQL, "DEFAULT 'zh-CN'") ||
-		plan[1].Version != "019" || !strings.Contains(plan[1].SQL, "bkn_trace_ee_historical_provenance_tombstones") {
+		plan[1].Version != "019" || !strings.Contains(plan[1].SQL, "bkn_trace_ee_historical_provenance_tombstones") ||
+		plan[2].Version != "020" || !strings.Contains(plan[2].SQL, "DROP COLUMN IF EXISTS business_domain_id") {
 		t.Fatalf("unexpected provenance locale migration plan: %#v", plan)
 	}
 }

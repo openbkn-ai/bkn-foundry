@@ -109,9 +109,6 @@ func SerializeBknNetwork(doc *BknNetwork) string {
 	if doc.Branch != "" {
 		_, _ = fmt.Fprintf(&sb, "branch: %s\n", doc.Branch)
 	}
-	if doc.BusinessDomain != "" {
-		_, _ = fmt.Fprintf(&sb, "business_domain: %s\n", doc.BusinessDomain)
-	}
 	_, _ = fmt.Fprintf(&sb, "---\n\n")
 
 	_, _ = fmt.Fprintf(&sb, "# %s\n\n", doc.Name)

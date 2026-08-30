@@ -5,8 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/driveradapters/mcp"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 )
 
 type MCPRestHandler interface {
@@ -18,9 +16,8 @@ type MCPRestHandler interface {
 }
 
 type mcpRestHandler struct {
-	MCPPublicHandler      mcp.MCPPublicHandler
-	MCPPrivateHandler     mcp.MCPPrivateHandler
-	businessDomainService interfaces.IBusinessDomainService
+	MCPPublicHandler  mcp.MCPPublicHandler
+	MCPPrivateHandler mcp.MCPPrivateHandler
 }
 
 var (
@@ -31,9 +28,8 @@ var (
 func NewMCPRestHandler() MCPRestHandler {
 	mcpRestHandlerOnce.Do(func() {
 		mHandler = &mcpRestHandler{
-			MCPPublicHandler:      mcp.NewMCPHandler(),
-			MCPPrivateHandler:     mcp.NewMCPHandler(),
-			businessDomainService: business_domain.NewBusinessDomainService(),
+			MCPPublicHandler:  mcp.NewMCPHandler(),
+			MCPPrivateHandler: mcp.NewMCPHandler(),
 		}
 	})
 	return mHandler
@@ -58,11 +54,11 @@ func (r *mcpRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	// MCP service parsing POST /api/agent-operator-integration/v1/mcp/parse/sse.
 	mcpGroup.POST("/parse/sse", r.MCPPublicHandler.ParseSSE)
 	// Add MCP Server configuration POST /api/agent-operator-integration/v1/mcp.
-	mcpGroup.POST("/", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.AddMCPServer)
+	mcpGroup.POST("/", r.MCPPublicHandler.AddMCPServer)
 	// Delete MCP Server configuration POST /api/agent-operator-integration/v1/mcp/delete.
-	mcpGroup.DELETE("/:mcp_id", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.DeleteMCPServer)
+	mcpGroup.DELETE("/:mcp_id", r.MCPPublicHandler.DeleteMCPServer)
 	// Get the MCP Server configuration list GET /api/agent-operator-integration/v1/mcp/list.
-	mcpGroup.GET("/list", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.QueryMCPServerPage)
+	mcpGroup.GET("/list", r.MCPPublicHandler.QueryMCPServerPage)
 	// Get MCP Server configuration details GET /api/agent-operator-integration/v1/mcp/{mcp_id}
 	mcpGroup.GET("/:mcp_id", r.MCPPublicHandler.QueryMCPServerDetail)
 	// Edit MCP Server configuration POST /api/agent-operator-integration/v1/mcp/{mcp_id}
@@ -73,9 +69,9 @@ func (r *mcpRestHandler) RegisterPublic(engine *gin.RouterGroup) {
 	mcpGroup.POST("/:mcp_id/tool/:tool_name/debug", r.MCPPublicHandler.DebugTool)
 
 	// MCP service market related interfaces.
-	mcpGroup.GET("/market/list", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.QueryMCPServerMarketList)
+	mcpGroup.GET("/market/list", r.MCPPublicHandler.QueryMCPServerMarketList)
 	// Batch query MCP service market details GET /api/agent-operator-integration/v1/mcp/market/{mcp_ids}/{fields}
-	mcpGroup.GET("/market/batch/:mcp_ids/:fields", middlewareBusinessDomain(true, r.businessDomainService), r.MCPPublicHandler.QueryMCPServerMarketBatch)
+	mcpGroup.GET("/market/batch/:mcp_ids/:fields", r.MCPPublicHandler.QueryMCPServerMarketBatch)
 	mcpGroup.GET("/market/:mcp_id", r.MCPPublicHandler.QueryMCPServerMarketDetail)
 
 	// MCP proxy related interfaces.

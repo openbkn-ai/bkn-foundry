@@ -22,9 +22,9 @@ type ImportCapabilityPackageResult struct {
 
 func (s *Service) ExportCapability(
 	ctx context.Context,
-	businessDomain, capabilityID string,
+	capabilityID string,
 ) (json.RawMessage, string, error) {
-	capability, err := s.GetCapability(ctx, businessDomain, capabilityID)
+	capability, err := s.GetCapability(ctx, capabilityID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -33,7 +33,7 @@ func (s *Service) ExportCapability(
 		if capability.SkillID == "" {
 			return nil, "", fmt.Errorf("skill capability missing id")
 		}
-		payload, filename, downloadErr := s.Client.DownloadSkillPackage(ctx, businessDomain, capability.SkillID)
+		payload, filename, downloadErr := s.Client.DownloadSkillPackage(ctx, capability.SkillID)
 		if downloadErr != nil {
 			return nil, "", downloadErr
 		}
@@ -55,7 +55,6 @@ func (s *Service) ExportCapability(
 
 	payload, exportErr := s.Client.ExportImpex(
 		ctx,
-		businessDomain,
 		s.DefaultUserID,
 		componentType,
 		sourceID,
@@ -69,7 +68,7 @@ func (s *Service) ExportCapability(
 
 func (s *Service) ImportCapabilityPackage(
 	ctx context.Context,
-	businessDomain, componentType, mode string,
+	componentType, mode string,
 	data []byte,
 ) (*ImportCapabilityPackageResult, error) {
 	if len(data) == 0 {
@@ -88,7 +87,7 @@ func (s *Service) ImportCapabilityPackage(
 		mode = "create"
 	}
 
-	if err := s.Client.ImportImpex(ctx, businessDomain, s.DefaultUserID, componentType, mode, data); err != nil {
+	if err := s.Client.ImportImpex(ctx, s.DefaultUserID, componentType, mode, data); err != nil {
 		return nil, err
 	}
 

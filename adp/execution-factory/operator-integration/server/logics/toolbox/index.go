@@ -15,7 +15,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/interfaces/model"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/auth"
-	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/business_domain"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/category"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/intcomp"
 	"github.com/openbkn-ai/bkn-foundry/adp/execution-factory/operator-integration/server/logics/metadata"
@@ -35,22 +34,21 @@ var (
 
 // ToolServiceImpl toolbox.
 type ToolServiceImpl struct {
-	DBTx                  model.DBTx
-	ToolBoxDB             model.IToolboxDB
-	ToolDB                model.IToolDB
-	Proxy                 interfaces.ProxyHandler
-	CategoryManager       interfaces.CategoryManager
-	Logger                interfaces.Logger
-	UserMgnt              interfaces.UserManagement
-	Validator             interfaces.Validator
-	OperatorMgnt          interfaces.OperatorManager
-	IntCompConfigSvc      interfaces.IIntCompConfigService
-	AuthService           interfaces.IAuthorizationService
-	AuditLog              interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
-	BusinessDomainService interfaces.IBusinessDomainService
-	MetadataService       interfaces.IMetadataService
-	ActionEvidence        bkntrace.Emitter
-	ActionExecutions      bkntrace.ExecutionGate
+	DBTx             model.DBTx
+	ToolBoxDB        model.IToolboxDB
+	ToolDB           model.IToolDB
+	Proxy            interfaces.ProxyHandler
+	CategoryManager  interfaces.CategoryManager
+	Logger           interfaces.Logger
+	UserMgnt         interfaces.UserManagement
+	Validator        interfaces.Validator
+	OperatorMgnt     interfaces.OperatorManager
+	IntCompConfigSvc interfaces.IIntCompConfigService
+	AuthService      interfaces.IAuthorizationService
+	AuditLog         interfaces.LogModelOperator[*metric.AuditLogBuilderParams]
+	MetadataService  interfaces.IMetadataService
+	ActionEvidence   bkntrace.Emitter
+	ActionExecutions bkntrace.ExecutionGate
 }
 
 // NewToolServiceImpl creates a toolbox service.
@@ -59,22 +57,21 @@ func NewToolServiceImpl() interfaces.IToolService {
 		conf := config.NewConfigLoader()
 		redisClient, _, _ := conf.RedisConfig.GetClient()
 		toolService = &ToolServiceImpl{
-			DBTx:                  dbaccess.NewBaseTx(),
-			ToolBoxDB:             dbaccess.NewToolboxDB(),
-			ToolDB:                dbaccess.NewToolDB(),
-			Proxy:                 proxy.NewProxyServer(),
-			Logger:                conf.GetLogger(),
-			UserMgnt:              drivenadapters.NewUserManagementClient(),
-			Validator:             validator.NewValidator(),
-			CategoryManager:       category.NewCategoryManager(),
-			OperatorMgnt:          operator.NewOperatorManager(),
-			IntCompConfigSvc:      intcomp.NewIntCompConfigService(),
-			AuthService:           auth.NewAuthServiceImpl(),
-			AuditLog:              metric.NewAuditLogBuilder(),
-			BusinessDomainService: business_domain.NewBusinessDomainService(),
-			MetadataService:       metadata.NewMetadataService(),
-			ActionEvidence:        bkntrace.NewHTTPEmitter(),
-			ActionExecutions:      bkntrace.NewRedisExecutionGate(redisClient),
+			DBTx:             dbaccess.NewBaseTx(),
+			ToolBoxDB:        dbaccess.NewToolboxDB(),
+			ToolDB:           dbaccess.NewToolDB(),
+			Proxy:            proxy.NewProxyServer(),
+			Logger:           conf.GetLogger(),
+			UserMgnt:         drivenadapters.NewUserManagementClient(),
+			Validator:        validator.NewValidator(),
+			CategoryManager:  category.NewCategoryManager(),
+			OperatorMgnt:     operator.NewOperatorManager(),
+			IntCompConfigSvc: intcomp.NewIntCompConfigService(),
+			AuthService:      auth.NewAuthServiceImpl(),
+			AuditLog:         metric.NewAuditLogBuilder(),
+			MetadataService:  metadata.NewMetadataService(),
+			ActionEvidence:   bkntrace.NewHTTPEmitter(),
+			ActionExecutions: bkntrace.NewRedisExecutionGate(redisClient),
 		}
 	})
 	return toolService

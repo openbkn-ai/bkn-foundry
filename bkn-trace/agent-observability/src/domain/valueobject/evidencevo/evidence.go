@@ -32,7 +32,6 @@ type TraceContext struct {
 	RequestID      string `json:"bkn.request.id"`
 	ConversationID string `json:"bkn.conversation.id,omitempty"`
 	TenantID       string `json:"bkn.tenant.id,omitempty"`
-	BusinessDomain string `json:"business_domain,omitempty"`
 	AccountID      string `json:"bkn.account.id"`
 	AccountType    string `json:"bkn.account.type"`
 }
@@ -364,7 +363,6 @@ type NormalizedTrace struct {
 	RequestID              string
 	ConversationID         string
 	TenantID               string
-	BusinessDomain         string
 	AccountID              string
 	AccountType            string
 	EffectiveSubjectID     string
@@ -385,13 +383,12 @@ type EvidenceQueryOptions struct {
 }
 
 type QueryScope struct {
-	TenantID       string
-	BusinessDomain string
-	AccountID      string
-	AccountType    string
-	Authorization  string         `json:"-"`
-	AccessProfile  *AccessProfile `json:"-"`
-	View           AccessView     `json:"-"`
+	TenantID      string
+	AccountID     string
+	AccountType   string
+	Authorization string         `json:"-"`
+	AccessProfile *AccessProfile `json:"-"`
+	View          AccessView     `json:"-"`
 }
 
 func SameOwnership(existing NormalizedTrace, incoming NormalizedTrace) bool {
@@ -399,7 +396,6 @@ func SameOwnership(existing NormalizedTrace, incoming NormalizedTrace) bool {
 		existing.RequestID == incoming.RequestID &&
 		compatibleOptionalIdentity(existing.ConversationID, incoming.ConversationID) &&
 		existing.TenantID == incoming.TenantID &&
-		existing.BusinessDomain == incoming.BusinessDomain &&
 		existing.AccountID == incoming.AccountID &&
 		existing.AccountType == incoming.AccountType
 }
@@ -412,16 +408,13 @@ func MatchesScope(trace NormalizedTrace, scope QueryScope) bool {
 	if scope.AccessProfile != nil {
 		return CanReadRecord(*scope.AccessProfile, trace.RecordScope(), defaultAccessView(scope.View))
 	}
-	if trace.AccountID == "" || trace.AccountType == "" || trace.TenantID == "" && trace.BusinessDomain == "" {
+	if trace.AccountID == "" || trace.AccountType == "" || trace.TenantID == "" {
 		return false
 	}
 	if trace.AccountID != scope.AccountID || trace.AccountType != scope.AccountType {
 		return false
 	}
 	if trace.TenantID != "" && trace.TenantID != scope.TenantID {
-		return false
-	}
-	if trace.BusinessDomain != "" && trace.BusinessDomain != scope.BusinessDomain {
 		return false
 	}
 	return true
@@ -437,7 +430,7 @@ func (trace NormalizedTrace) RecordScope() RecordScope {
 		applicationPrincipalID = trace.AccountID
 	}
 	return RecordScope{
-		TenantID: trace.TenantID, BusinessDomain: trace.BusinessDomain,
+		TenantID:           trace.TenantID,
 		EffectiveSubjectID: effectiveSubjectID, ApplicationPrincipalID: applicationPrincipalID,
 		KnowledgeNetworkIDs: trace.KnowledgeNetworkIDs,
 	}

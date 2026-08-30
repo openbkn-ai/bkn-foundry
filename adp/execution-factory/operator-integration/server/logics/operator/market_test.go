@@ -147,21 +147,19 @@ func TestQueryOperatorMarketList(t *testing.T) {
 	mockAuthService := mocks.NewMockIAuthorizationService(ctrl)
 	mockAuditLog := mocks.NewMockLogModelOperator[*metric.AuditLogBuilderParams](ctrl)
 	mockMetadataService := mocks.NewMockIMetadataService(ctrl)
-	mockBusinessDomainService := mocks.NewMockIBusinessDomainService(ctrl)
 	operator := &operatorManager{
-		Logger:                logger.DefaultLogger(),
-		DBOperatorManager:     mockDBOperatorManager,
-		DBTx:                  mockDBTx,
-		CategoryManager:       mockCategoryManager,
-		UserMgnt:              mockUserMgnt,
-		Validator:             mockValidator,
-		Proxy:                 mockProxy,
-		OpReleaseDB:           mockOpReleaseDB,
-		OpReleaseHistoryDB:    mockOpReleaseHistoryDB,
-		AuthService:           mockAuthService,
-		AuditLog:              mockAuditLog,
-		MetadataService:       mockMetadataService,
-		BusinessDomainService: mockBusinessDomainService,
+		Logger:             logger.DefaultLogger(),
+		DBOperatorManager:  mockDBOperatorManager,
+		DBTx:               mockDBTx,
+		CategoryManager:    mockCategoryManager,
+		UserMgnt:           mockUserMgnt,
+		Validator:          mockValidator,
+		Proxy:              mockProxy,
+		OpReleaseDB:        mockOpReleaseDB,
+		OpReleaseHistoryDB: mockOpReleaseHistoryDB,
+		AuthService:        mockAuthService,
+		AuditLog:           mockAuditLog,
+		MetadataService:    mockMetadataService,
 	}
 	Convey("TestQueryOperatorMarketList: 算子市场查询列表", t, func() {
 		req := &interfaces.PageQueryOperatorMarketReq{
@@ -235,7 +233,6 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// Convey("External interface: Failed to pull data (db)", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
-		// 	mockBusinessDomainService.EXPECT().BatchResourceList(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).Times(1)
 		// 	mockOpReleaseDB.EXPECT().SelectByWhereClause(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("SelectByWhereClause"))
 		// 	_, err := operator.QueryOperatorMarketList(ctx, req)
 		// 	So(err, ShouldNotBeNil)
@@ -243,7 +240,6 @@ func TestQueryOperatorMarketList(t *testing.T) {
 		// Convey("External interface: Failed to obtain accessor information", func() {.
 		// 	req.Category = interfaces.CategoryTypeOther
 		// 	mockCategoryManager.EXPECT().CheckCategory(gomock.Any()).Return(true).Times(1)
-		// 	mockBusinessDomainService.EXPECT().BatchResourceList(gomock.Any(), gomock.Any(), gomock.Any()).Return(map[string]string{}, nil).Times(1)
 		// 	mockOpReleaseDB.EXPECT().SelectByWhereClause(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(releaseList, nil)
 		// 	mockAuthService.EXPECT().GetAccessor(gomock.Any(), gomock.Any()).Return(nil, mocks.MockFuncErr("GetAccessor"))
 		// 	_, err := operator.QueryOperatorMarketList(ctx, req)

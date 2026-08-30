@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -195,13 +194,6 @@ func (s *mcpServiceImpl) addMCPConfig(ctx context.Context, tx *sql.Tx, mcpConfig
 		return "", err
 	}
 
-	// Associated business domains.
-	businessDomainId, _ := icommon.GetBusinessDomainFromCtx(ctx)
-	err = s.BusinessDomainService.AssociateResource(ctx, businessDomainId, MCPID, interfaces.AuthResourceTypeMCP)
-	if err != nil {
-		return "", err
-	}
-
 	return MCPID, nil
 }
 
@@ -319,13 +311,6 @@ func (s *mcpServiceImpl) DeleteMCPServer(ctx context.Context, req *interfaces.MC
 		if err != nil {
 			return err
 		}
-	}
-
-	// Unassociate business domain.
-	businessDomainId, _ := icommon.GetBusinessDomainFromCtx(ctx)
-	err = s.BusinessDomainService.DisassociateResource(ctx, businessDomainId, req.MCPID, interfaces.AuthResourceTypeMCP)
-	if err != nil {
-		return
 	}
 
 	// Trigger permission policy deletion.
@@ -474,12 +459,6 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		return configList, nil
 	}
 
-	businessDomainIds := strings.Split(req.BusinessDomainID, ",")
-	resourceToBdMap, err := s.BusinessDomainService.BatchResourceList(ctx, businessDomainIds, interfaces.AuthResourceTypeMCP)
-	if err != nil {
-		return
-	}
-
 	queryBuilder := auth.NewQueryBuilder[model.MCPServerConfigDB]().
 		SetPage(req.Page, req.PageSize).SetAll(req.All).
 		SetQueryFunctions(queryTotalFunc, queryBatchFunc).
@@ -497,13 +476,6 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 				return nil, err
 			}
 			return s.AuthService.ResourceListIDs(newCtx, accessor, interfaces.AuthResourceTypeMCP, interfaces.AuthOperationTypeView)
-		}).
-		SetBusinessDomainFilter(func(newCtx context.Context) ([]string, error) {
-			resourceIDs := make([]string, 0, len(resourceToBdMap))
-			for resourceID := range resourceToBdMap {
-				resourceIDs = append(resourceIDs, resourceID)
-			}
-			return resourceIDs, nil
 		})
 	resp, err := queryBuilder.Execute(ctx)
 	if err != nil {
@@ -529,7 +501,6 @@ func (s *mcpServiceImpl) QueryPage(ctx context.Context, req *interfaces.MCPServe
 		return
 	}
 	for _, config := range data {
-		config.BusinessDomainID = utils.GetValueOrDefault(resourceToBdMap, config.MCPID, req.BusinessDomainID)
 		config.CreateUser = utils.GetValueOrDefault(userMap, config.CreateUser, interfaces.UnknownUser)
 		config.UpdateUser = utils.GetValueOrDefault(userMap, config.UpdateUser, interfaces.UnknownUser)
 		config.ToolConfigs = toolConfigMap[s.genToolConfigMapKey(config.MCPID, config.Version)]

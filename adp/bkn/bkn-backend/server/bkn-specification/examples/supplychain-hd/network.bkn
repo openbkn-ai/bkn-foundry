@@ -3,7 +3,6 @@ type: knowledge_network
 id: supplychain-hd
 name: HD供应链业务知识网络
 tags: [供应链, 采购, 库存, MRP]
-business_domain: supplychain
 ---
 
 # HD供应链业务知识网络

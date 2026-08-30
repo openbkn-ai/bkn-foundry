@@ -43,9 +43,6 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 		if r.URL.Path != "/api/agent-operator-integration/v1/function/execute" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.Header.Get("x-business-domain"); got != "bd_public" {
-			t.Fatalf("x-business-domain = %q", got)
-		}
 		if got := r.Header.Get(sharedrest.AcceptLanguageHeader); got != sharedrest.AmericanEnglish {
 			t.Fatalf("Accept-Language = %q, want %q", got, sharedrest.AmericanEnglish)
 		}
@@ -64,7 +61,6 @@ func TestExecuteFunctionForwardsSandboxRuntimeContext(t *testing.T) {
 
 	_, err := client.ExecuteFunction(
 		sharedrest.WithLanguage(context.Background(), sharedrest.AmericanEnglish),
-		"bd_public",
 		"user_001",
 		ExecuteFunctionRequest{
 			Code:           "def handler(event):\n    return event\n",

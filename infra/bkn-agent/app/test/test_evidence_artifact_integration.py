@@ -15,7 +15,6 @@ def _ctx():
         entry_boundary="external",
         upstream_span_id="1234567890abcdef",
         tenant_id="tenant-test",
-        business_domain="domain-test",
     )
 
 

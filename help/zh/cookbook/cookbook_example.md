@@ -14,7 +14,7 @@
 ## 2. Prerequisites（前置条件）
 
 - 已通过 `openbkn auth login <平台地址>` 登录。
-- 业务域选择正确：`openbkn config show`；不对就 `openbkn config set-bd <uuid>`。
+- 租户上下文正确：使用 `openbkn config show` 确认当前平台配置。
 - 准备一个 BKN Foundry 可访问的 **数据源**（CSV 会先入到该数据源做中间存储）。
 - 本地 CSV 文件（首行表头，UTF-8）。下文以两份为例：`物料.csv`、`库存.csv`，均含 `material_code`、`material_name` 两列。
 
