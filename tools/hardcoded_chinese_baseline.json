@@ -1,7 +1,7 @@
 {
   "version": 1,
   "generated_by": "python3 tools/check_hardcoded_chinese.py --update-baseline",
-  "violation_count": 2589,
+  "violation_count": 2583,
   "violations": {
     "adp/bkn/bkn-backend/script/delete_concept_index/script.py": [
       "028026370fec2a882dbb",
@@ -2604,14 +2604,8 @@
     ],
     "infra/sandbox/runtime/sandbox_sdk/_bkn_tools.py": [
       "e11af572d320715cc7cf",
-      "6739e07571f8a83dd6b8",
-      "9f2b1bf53ccc4803c4f2",
       "c35de7618fd628504b0c",
-      "0746ff518eb30c61975d",
-      "0cc98c3895b2ebbc8b0e",
-      "c8eef7ba714c0f8c283f",
-      "b4086b63cd06baac27cf",
-      "ef98c306b3f43c9c48e2"
+      "c8eef7ba714c0f8c283f"
     ],
     "infra/sandbox/runtime/sandbox_sdk/bkn.py": [
       "8128551e0e0075685c0d",
