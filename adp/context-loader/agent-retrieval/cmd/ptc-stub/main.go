@@ -7,7 +7,8 @@
 //
 // The sandbox image requires a copy of the BKN capability surface (infra/sandbox/runtime/sandbox_sdk/_bkn_tools.py),
 // But that Python was not handwritten, it was rendered from the MCP tool directory. Only one copy of the rendering rule is allowed:
-// Online GET /mcp/ptc/toolkit uses the same BuildPTCToolkit as here, so the product and endpoint.
+// The server reports the same hash as toolkit_version on GET /mcp/info, built by
+// this same BuildPTCToolkit, so a stale image is visible by comparing the two.
 // The returned stub is byte-for-byte identical. Use Python to implement rendering again, and create a second copy that will drift separately.
 // Rules - that's what moving rendering to the server eliminates.
 //

@@ -17,12 +17,13 @@ sandbox_sdk.bkn —— 沙箱内的 BKN 能力面
 【能力面从哪来】
 _bkn_tools.py 与本模块一同随镜像发布，沙箱因此不依赖网络就能 import。
 那份 Python 不是手写的，是构建期由 `go run ./cmd/ptc-stub` 从 MCP 工具目录
-渲染出来的——与线上 `GET /mcp/ptc/toolkit` 走同一个 BuildPTCToolkit，逐字节
+渲染出来的——与服务端 /mcp/info 报的 toolkit_version 走同一个 BuildPTCToolkit，逐字节
 相同。渲染规则只此一份；用 Python 再实现一遍就又有了会各自漂移的第二份。
 
 代价是产物与服务端工具面可能不同步。靠版本管理兜：产物里带
 __toolkit_version__（内容哈希），CI 重新生成并比对，改了 schema 不重新生成
-就红。运行时也能自查，见 check_against_server()。
+就红。运行时若怀疑镜像滞后，把 toolkit_version() 与服务端 /mcp/info 的
+    toolkit_version 比一下即可。
 
 【凭据与会话上下文从哪来】
 默认走进程级环境变量（BKN_TOKEN / BKN_CONVERSATION_ID / BKN_INTERACTION_ID），
@@ -60,9 +61,6 @@ _MCP_URL_ENV = "BKN_SANDBOX_MCP_URL"
 _TOKEN_ENV = "BKN_TOKEN"
 _CONVERSATION_ENV = "BKN_CONVERSATION_ID"
 _INTERACTION_ENV = "BKN_INTERACTION_ID"
-
-# 取工具包用的地址由 MCP 地址推导：/mcp/ 与 /mcp/ptc/toolkit 同源。
-_TOOLKIT_SUFFIX = "ptc/toolkit"
 
 # 显式不走代理：MCP 端点是集群内地址，任何继承来的代理配置都只会让请求发不出去；
 # 且 urllib 一旦认定要走代理就改发 absolute-form 请求行（POST http://host/path），
@@ -126,15 +124,6 @@ def _business_context() -> dict:
             if value:
                 context[key] = value
     return context
-
-
-def _fetch_toolkit() -> dict:
-    request = urllib.request.Request(
-        _mcp_url() + _TOOLKIT_SUFFIX,
-        headers={"Authorization": "Bearer " + _token()},
-    )
-    with _OPENER.open(request, timeout=30) as response:
-        return json.loads(response.read().decode("utf-8"))
 
 
 def _load_capability_module():
@@ -203,14 +192,3 @@ def toolkit_version() -> Optional[str]:
     值由 cmd/ptc-stub 在构建期写进产物，不是运行时算的。
     """
     return _VERSION
-
-
-def check_against_server() -> dict:
-    """比对镜像里的能力面与服务端当前工具面是否同版本。
-
-    诊断用，正常调用路径不会碰它——那条路完全离线。镜像滞后于服务端时，
-    症状是签名对不上导致调用失败，而失败信息里看不出根因，所以留一个能直接问的口子。
-    """
-    local = toolkit_version() or getattr(_impl(), "__toolkit_version__", None)
-    remote = str(_fetch_toolkit().get("version") or "") or None
-    return {"local": local, "remote": remote, "in_sync": bool(local and local == remote)}
