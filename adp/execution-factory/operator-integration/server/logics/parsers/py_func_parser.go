@@ -2,6 +2,7 @@ package parsers
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -57,6 +58,9 @@ func (p *pythonFunctionParser) validate(ctx context.Context, inputValue any) (in
 	// Validate parameter definitions.
 	err = p.Validator.ValidatorStruct(ctx, input)
 	if err != nil {
+		return
+	}
+	if err = validateParameterDescriptions(ctx, input); err != nil {
 		return
 	}
 	if input.Inputs == nil {
@@ -484,4 +488,83 @@ func createParameterSchema(param *interfaces.ParameterDef) *openapi3.Schema {
 		}
 	}
 	return propertySchema
+}
+
+// validateParameterDescriptions refuses a function whose parameters say nothing
+// about themselves.
+//
+// A parameter description is the only place a caller can learn what a value has
+// to be before sending it. Not its type - the schema carries that - but its
+// meaning: that demand_end has to equal the forecast order's enddate rather than
+// its startdate, that a product code is the BOM root and an intermediate material
+// will not do. Every one of those is discoverable today only by calling and
+// reading the failure.
+//
+// The link from a docstring to the agent already works: infer-schema lifts it,
+// the catalogue schema stores it, get_action_info delivers it. Nothing ever
+// required anyone to write it, so descriptions filled in once decay as the next
+// function ships without them.
+//
+// This checks that something was written, not that it is right - "demand_end: the
+// demand cut-off date" passes and is exactly the kind of restatement that misled
+// a caller into sending startdate. Keeping the description accurate stays a human
+// job; this only stops the field going empty.
+//
+// Outputs are left alone deliberately. A missing output description costs a
+// reader some guessing; a missing input description costs a failed call. The
+// function's own description is left to ValidateOperatorDesc, which already
+// refuses it with a localised code of its own.
+func validateParameterDescriptions(ctx context.Context, input *interfaces.FunctionInput) error {
+	for _, missing := range undescribedParameters(input.Inputs, "", "") {
+		return errors.DefaultHTTPError(ctx, http.StatusBadRequest,
+			fmt.Sprintf("input parameter %q has no description: state what the value has to be, not just its type", missing))
+	}
+	return nil
+}
+
+// undescribedParameters walks into sub_parameters, because that is where the
+// meaning of a composite argument lives. The demands parameter of a real
+// published function is an array of objects, and its product and qty fields are
+// the ones a caller gets wrong - naming only "demands" would report nothing.
+//
+// Structural placeholders are skipped. List[X] and Dict[K,V] have no field for
+// the author to describe: the SDK invents a child called items or values to
+// carry the element type, and no docstring or signature can reach it, so
+// demanding a description there would reject a plain List[str] with an error the
+// author cannot act on. createParameterSchema already treats the array case this
+// way, letting items inherit the parent's description. Their own children are
+// still checked - the fields of a List[Demand] element are the author's to name.
+func undescribedParameters(params []*interfaces.ParameterDef, parentType, prefix string) []string {
+	var missing []string
+	for _, param := range params {
+		if param == nil {
+			continue
+		}
+		path := param.Name
+		if prefix != "" {
+			path = prefix + "." + param.Name
+		}
+		if !isStructuralPlaceholder(param, parentType, len(params)) &&
+			strings.TrimSpace(param.Description) == "" {
+			missing = append(missing, path)
+		}
+		missing = append(missing, undescribedParameters(param.SubParameters, string(param.Type), path)...)
+	}
+	return missing
+}
+
+// isStructuralPlaceholder reports whether the SDK invented this node rather than
+// the author declaring it: the sole child of an array is its element type, and
+// the sole child named values under an object is a Dict's value type.
+func isStructuralPlaceholder(param *interfaces.ParameterDef, parentType string, siblings int) bool {
+	if siblings != 1 {
+		return false
+	}
+	switch parentType {
+	case string(interfaces.ParameterTypeArray):
+		return param.Name == "items"
+	case string(interfaces.ParameterTypeObject):
+		return param.Name == "values"
+	}
+	return false
 }
