@@ -50,6 +50,22 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
+		// The REST surface is a capability layer. A managed Interaction records one
+		// agent turn - which question was asked, what it read, what it concluded -
+		// and the callers here are not agents: Studio answering a click, a CLI
+		// operator, one service asking another. Minting a conversation and an
+		// interaction to satisfy the guard would produce single-operation records
+		// that dilute the concept rather than document anything, so an absent
+		// bkn_context passes through instead of being refused.
+		//
+		// Naming a session still works and still records, so a caller that had
+		// wired the context up does not silently lose its evidence. The MCP surface,
+		// where an agent actually calls, keeps the requirement: that middleware is
+		// separate and untouched, as is /mcp/proxy/.../call below.
+		if !hasBusinessContext(input) && !isProxyToolCall(c.Request) {
+			c.Next()
+			return
+		}
 		businessContext, apiErr := parseHTTPBusinessContext(input, httpKnowledgeNetworkID(c, input))
 		if apiErr != nil {
 			writeLifecycleHTTPError(c, lifecycleHTTPStatus(apiErr.Code), *apiErr)
@@ -155,8 +171,31 @@ func isLifecycleBusinessRequest(request *http.Request) bool {
 	if request.Method != http.MethodPost {
 		return false
 	}
-	return strings.Contains(request.URL.Path, "/kn/") ||
-		(strings.Contains(request.URL.Path, "/mcp/proxy/") && strings.HasSuffix(request.URL.Path, "/call"))
+	return strings.Contains(request.URL.Path, "/kn/") || isProxyToolCall(request)
+}
+
+// isProxyToolCall reports whether this is a tool call proxied over HTTP. It is an
+// agent calling a tool by another name, so the managed context stays mandatory
+// there even though the transport is the same one the /kn/ capability routes use.
+func isProxyToolCall(request *http.Request) bool {
+	return strings.Contains(request.URL.Path, "/mcp/proxy/") &&
+		strings.HasSuffix(request.URL.Path, "/call")
+}
+
+// hasBusinessContext reports whether the caller named a session to attach to.
+//
+// The rule the caller has to remember is one line: state an id and the call is
+// managed, state none and it is ad hoc. So an absent bkn_context and an empty one
+// mean the same thing, and neither is an error. A partial context is - a caller
+// passing one id and not the other is wiring the context up and got it wrong,
+// which parseHTTPBusinessContext reports rather than letting the call through
+// half-attached.
+func hasBusinessContext(input map[string]any) bool {
+	raw, ok := input["bkn_context"].(map[string]any)
+	if !ok {
+		return false
+	}
+	return httpString(raw["conversation_id"]) != "" || httpString(raw["interaction_id"]) != ""
 }
 
 func parseHTTPBusinessContext(input map[string]any, currentKNID string) (bkntrace.BusinessContext, *bkntrace.APIError) {
