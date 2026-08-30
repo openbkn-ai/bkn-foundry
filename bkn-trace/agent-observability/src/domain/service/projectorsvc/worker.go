@@ -142,7 +142,7 @@ func (w *Worker) RunOnce(ctx context.Context) (RunResult, error) {
 func (w *Worker) project(ctx context.Context, item iprojectionoutbox.Item) error {
 	if item.EventType == historicalProvenanceBuildRequested {
 		if w.provenance == nil {
-			return iprojectionoutbox.Permanent(errors.New("historical provenance handler is not assembled"))
+			return errors.New("historical provenance handler is not assembled")
 		}
 		return w.provenance.HandleHistoricalProvenance(ctx, item)
 	}

@@ -190,6 +190,28 @@ func TestHistoricalProvenanceEventUsesDedicatedHandlerBeforeDelivery(t *testing.
 	}
 }
 
+func TestHistoricalProvenanceEventRetriesWhenHandlerIsTemporarilyUnavailable(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
+	store := &fakeOutboxStore{items: []iprojectionoutbox.Item{{
+		ID: 1, EventID: "evt-provenance", EventType: "historical_provenance.build_requested",
+		CreatedAt: now,
+	}}}
+	worker := projectorsvc.NewWorker(store, &fakeProjectionSink{}, projectorsvc.WorkerOptions{
+		Now:        func() time.Time { return now },
+		FullJitter: func(time.Duration) time.Duration { return 0 },
+	})
+
+	result, err := worker.RunOnce(context.Background())
+	if err != nil {
+		t.Fatalf("run worker: %v", err)
+	}
+	if result.Retried != 1 || result.Dead != 0 || len(store.retried) != 1 || len(store.dead) != 0 {
+		t.Fatalf("unassembled handler must preserve event for retry: %#v", result)
+	}
+}
+
 type fakeOutboxStore struct {
 	items               []iprojectionoutbox.Item
 	retried             []iprojectionoutbox.Item

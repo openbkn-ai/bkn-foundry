@@ -12,7 +12,27 @@ import (
 	"testing"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 )
+
+func TestHistoricalProvenanceHandlerIsAvailableOnlyWhenRegistered(t *testing.T) {
+	ResetForTest()
+	t.Cleanup(ResetForTest)
+	if HistoricalProvenanceHandler() != nil {
+		t.Fatal("unexpected handler before registration")
+	}
+	handler := projectionHandlerFunc(func(context.Context, iprojectionoutbox.Item) error { return nil })
+	RegisterHistoricalProvenanceHandler(handler)
+	if HistoricalProvenanceHandler() == nil {
+		t.Fatal("registered handler is unavailable")
+	}
+}
+
+type projectionHandlerFunc func(context.Context, iprojectionoutbox.Item) error
+
+func (f projectionHandlerFunc) HandleHistoricalProvenance(ctx context.Context, item iprojectionoutbox.Item) error {
+	return f(ctx, item)
+}
 
 func TestCommunityBuildHasNoEnterpriseRoutes(t *testing.T) {
 	ResetForTest()
