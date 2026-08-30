@@ -83,6 +83,14 @@ func BuildMCPInfo(endpoint string) (*MCPInfo, error) {
 // BuildMCPInfoForLocale builds the MCP self-description using the requested
 // effective locale. endpoint is the public MCP Streamable HTTP address.
 func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
+	return buildMCPInfoForLocale(endpoint, localeName, true)
+}
+
+// buildMCPInfoForLocale carries a flag because the toolkit renderer builds its
+// tool list from this document: BuildPTCToolkit calls back in here, so filling
+// toolkit_version unconditionally would recurse forever. The renderer asks for
+// the document without it.
+func buildMCPInfoForLocale(endpoint, localeName string, withToolkitVersion bool) (*MCPInfo, error) {
 	data, err := schemasFS.ReadFile("schemas/tools_meta.json")
 	if err != nil {
 		return nil, fmt.Errorf("read tools_meta.json: %w", err)
@@ -188,12 +196,15 @@ func BuildMCPInfoForLocale(endpoint, localeName string) (*MCPInfo, error) {
 		},
 	})
 
-	// Rendered from the same tools the caller just saw, so it is the hash of this
-	// answer rather than of some other view. A failure here is not worth failing
-	// the whole document over - the field is omitempty and the rest still helps.
+	// The hash the sandbox image carries, not a hash of this document: the point
+	// is to be comparable with __toolkit_version__. A failure here is not worth
+	// failing the whole document over - the field is omitempty and the rest of
+	// the answer still helps.
 	toolkitVersion := ""
-	if toolkit, tkErr := buildPTCToolkitVariant(ptcUsableTools(&MCPInfo{Tools: tools}), defaultPTCServicePort, locale, false); tkErr == nil {
-		toolkitVersion = toolkit.Version
+	if withToolkitVersion {
+		if v, tkErr := ImageToolkitVersion(); tkErr == nil {
+			toolkitVersion = v
+		}
 	}
 
 	return &MCPInfo{

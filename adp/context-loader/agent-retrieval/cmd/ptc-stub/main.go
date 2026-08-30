@@ -26,19 +26,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/driveradapters/mcp"
 )
 
-// endpoint only affects the self-describing address field in the tool directory and does not affect the function definition of stub; it does not affect the build period.
-// The actual request can be based on a clear placeholder value to prevent the address of a certain machine from being mixed into the product.
-const buildTimeEndpoint = "http://agent-retrieval/api/agent-retrieval/v1/mcp"
-
-// The same goes for sandboxPort: the sandbox return address is covered by _configure(event) at runtime, and the one in the product is just.
-// Default value. Hard-coded into the cluster service port, consistent with defaultPTCServicePort.
-const sandboxPort = 30779
+// Both values live in the mcp package alongside the renderer, so the server can
+// report the same hash on /mcp/info; keeping a second copy here is how the two
+// drifted apart in the first place.
 
 func main() {
 	versionOnly := flag.Bool("version", false, "只打印工具面内容哈希")
 	flag.Parse()
 
-	toolkit, err := mcp.BuildPTCToolkit(buildTimeEndpoint, sandboxPort)
+	toolkit, err := mcp.BuildPTCToolkit(mcp.ImageBuildEndpoint, mcp.ImageSandboxPort)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "render PTC stub: %v\n", err)
 		os.Exit(1)

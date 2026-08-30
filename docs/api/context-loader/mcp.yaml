@@ -177,83 +177,6 @@ components:
         不与 `Mcp-Session-Id` 绑定。
 
   schemas:
-    PTCToolkit:
-      type: object
-      required: [version, tools, stub, sandbox_mcp_url]
-      properties:
-        version:
-          type: string
-          description: |
-            内容哈希（`sha256:<hex>`），覆盖工具全表与 stub。客户端按它缓存：
-            只要模型看到的工具面变了，它就变。
-          example: sha256:cf2da95c884b63d0...
-        tools:
-          type: array
-          description: |
-            要暴露给模型的工具全表。遍历它建工具，不要按名字硬编码。
-          items:
-            $ref: '#/components/schemas/PTCTool'
-        stub:
-          type: string
-          description: |
-            沙箱侧的 Python 实现，只依赖标准库（MCP streamable HTTP 就是 JSON-RPC
-            over POST，urllib 足够），沙箱镜像无需预装任何东西。
-
-            `wrap: handler` 的工具执行时把它拼在模型代码前面。它导出 `_configure(event)`，
-            由入口调用以注入 MCP 地址、凭据与 `bkn_context`，并把当前目录切到本次
-            对话的工作目录。
-        sandbox_mcp_url:
-          type: string
-          format: uri
-          description: 沙箱回访本服务的集群内地址（结尾必带 `/`，缺了会 307 而 urllib 不对 POST 跟随重定向）。
-          example: http://agent-retrieval:30779/api/agent-retrieval/v1/mcp/
-        digest:
-          type: string
-          description: |
-            兼容字段：等同于 `tools` 里 `run_code` 的 `description`。新客户端读 `tools` 即可。
-
-    PTCTool:
-      type: object
-      required: [name, description, input_schema, language, wrap]
-      properties:
-        name:
-          type: string
-          description: 工具名，直接用作暴露给模型的工具名。
-          example: run_shell
-        description:
-          type: string
-          description: 工具描述，原样作为模型看到的说明，不要截断或改写。
-        input_schema:
-          type: object
-          description: 入参 JSON Schema，顶层恒为 `object`。
-        language:
-          type: string
-          enum: [python, shell]
-          description: |
-            直接填进执行工厂 `POST /function/execute` 的 `language` 字段。
-            沙箱控制面只认 `python` / `javascript` / `shell`，填 `bash` 会被 422 拒掉。
-        wrap:
-          type: string
-          enum: [handler, cd_workdir]
-          description: |
-            客户端该如何把模型的入参组装成 `code`：
-
-            - `handler` —— 取 `stub`，后面拼 `def handler(event):`，模型的 `code` 缩进
-              进函数体，首行调用 `_configure(event)`；凭据与 `bkn_context` 走 `event`
-              下发（**不要用 `env_vars`**：沙箱会话是池化复用的，env 会把上一个调用方
-              的值留在容器里）。
-            - `cd_workdir` —— 在模型给的 `command` 前面拼一行 `cd` 到本次对话的工作
-              目录，使其与 `run_code` 共用同一批文件。目录路径按下述规则由
-              `conversation_id` 算出。
-
-            工作目录规则（与 `stub` 内的实现逐字一致，两边都必须遵守）：
-            把 `conversation_id` 中 `[A-Za-z0-9_-]` 以外的字符逐个替换成 `-`，截断到
-            64 字符，得到 `safe`；目录为 `/workspace/conv-<safe>`，`safe` 为空时用
-            `/workspace/shared`。
-
-            用归一化而不是哈希，是因为浏览器的 `crypto.subtle` 只在安全源下可用，
-            而部署常常是裸 HTTP，算不了 sha1。
-
     MCPInfo:
       type: object
       properties:
@@ -292,6 +215,13 @@ components:
           example: [zh-CN, en-US]
         tool_count:
           type: integer
+        toolkit_version:
+          type: string
+          description: |
+            当前工具面的内容哈希，与沙箱镜像里的 `__toolkit_version__` 同源同算法。
+            镜像滞后于服务端时，症状只是签名对不上、失败信息里看不出根因；
+            比对这两个值即可判定。
+          example: "sha256:55dd56a2d9df5a549923c85826e6cfeec4a49c4f3fce6a25f19bd7c807d24843"
           description: 工具数量。
         tools:
           type: array
