@@ -16,6 +16,7 @@ import (
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
+	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 )
 
 // InteractionFacts is the one Core-owned input EE receives for a selected
@@ -81,10 +82,35 @@ type Registrar interface {
 // creates the public route tree.
 type Mounter func(Registrar, Reader)
 
+// HistoricalProvenanceEventHandler is assembled only by the EE overlay. Core
+// retains the outbox lease; the overlay never leases or scans the outbox.
+type HistoricalProvenanceEventHandler interface {
+	HandleHistoricalProvenance(context.Context, iprojectionoutbox.Item) error
+}
+
 var registry struct {
 	sync.Mutex
-	mounter Mounter
-	frozen  bool
+	mounter    Mounter
+	provenance HistoricalProvenanceEventHandler
+	frozen     bool
+}
+
+func RegisterHistoricalProvenanceHandler(handler HistoricalProvenanceEventHandler) {
+	if handler == nil {
+		panic("enterpriseroute: RegisterHistoricalProvenanceHandler(nil)")
+	}
+	registry.Lock()
+	defer registry.Unlock()
+	if registry.frozen || registry.provenance != nil {
+		panic("enterpriseroute: provenance handler already frozen or registered")
+	}
+	registry.provenance = handler
+}
+
+func HistoricalProvenanceHandler() HistoricalProvenanceEventHandler {
+	registry.Lock()
+	defer registry.Unlock()
+	return registry.provenance
 }
 
 // Register installs the one enterprise route mounter for this Core service.
@@ -144,5 +170,6 @@ func ResetForTest() {
 	registry.Lock()
 	defer registry.Unlock()
 	registry.mounter = nil
+	registry.provenance = nil
 	registry.frozen = false
 }
