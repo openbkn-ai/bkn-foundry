@@ -215,6 +215,7 @@ components:
           example: [zh-CN, en-US]
         tool_count:
           type: integer
+          description: 工具数量。
         toolkit_version:
           type: string
           description: |
@@ -222,7 +223,6 @@ components:
             镜像滞后于服务端时，症状只是签名对不上、失败信息里看不出根因；
             比对这两个值即可判定。
           example: "sha256:55dd56a2d9df5a549923c85826e6cfeec4a49c4f3fce6a25f19bd7c807d24843"
-          description: 工具数量。
         tools:
           type: array
           items:
