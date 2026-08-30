@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -345,7 +346,7 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 	}
 	params := req.HTTPRequestParams
 	if tool.SourceType == model.SourceTypeFunction {
-		params = functionRuntimeHeaders(params, req, metadata.GetServerURL())
+		params = functionRuntimeHeaders(params, req, url)
 	}
 	proxyReq := &interfaces.HTTPRequest{
 		ClientID: req.ToolID,
@@ -363,8 +364,8 @@ func (s *ToolServiceImpl) executeTool(ctx context.Context, req *interfaces.Execu
 // functionRuntimeHeaders adds server-captured identity and lifecycle headers only for the
 // platform-owned Function Runtime. Imported Function metadata can contain arbitrary server URLs,
 // so sending these headers to any other endpoint would disclose the caller credential.
-func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces.ExecuteToolReq, serverURL string) interfaces.HTTPRequestParams {
-	if !isTrustedFunctionRuntime(serverURL) || req == nil || req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
+func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces.ExecuteToolReq, targetURL string) interfaces.HTTPRequestParams {
+	if !isTrustedFunctionRuntime(targetURL) || req == nil || req.RequestAuthorization == "" || req.BKNConversationID == "" || req.BKNInteractionID == "" {
 		return params
 	}
 	headers := make(map[string]any, len(params.Headers)+3)
@@ -378,8 +379,18 @@ func functionRuntimeHeaders(params interfaces.HTTPRequestParams, req *interfaces
 	return params
 }
 
-func isTrustedFunctionRuntime(serverURL string) bool {
-	return strings.TrimRight(serverURL, "/") == strings.TrimRight(interfaces.AOIServerURL, "/")
+func isTrustedFunctionRuntime(targetURL string) bool {
+	target, err := url.Parse(targetURL)
+	if err != nil || target.User != nil || target.RawQuery != "" || target.Fragment != "" {
+		return false
+	}
+	trusted, err := url.Parse(interfaces.AOIServerURL)
+	if err != nil || target.Scheme != trusted.Scheme || target.Host != trusted.Host {
+		return false
+	}
+	expectedPathPrefix := strings.TrimRight(interfaces.AOPInternalV1Prefix, "/") + "/function/exec/"
+	version := strings.TrimPrefix(target.EscapedPath(), expectedPathPrefix)
+	return version != target.EscapedPath() && version != "" && !strings.Contains(version, "/")
 }
 
 func actionExecutionSpanAttrs(ctx context.Context, operation string, err error, refs map[string]interface{}) map[string]interface{} {

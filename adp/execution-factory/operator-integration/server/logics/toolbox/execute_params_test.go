@@ -142,6 +142,8 @@ func TestDebugTool_ForwardsAllRequestParams(t *testing.T) {
 }
 
 func TestFunctionRuntimeHeadersUseTrustedRequestContextOnly(t *testing.T) {
+	trustedRuntimeURL := interfaces.AOIServerURL + interfaces.SetAOIFuncExecPath("function-version")
+
 	Convey("Function tools receive the authenticated caller and managed Interaction as internal proxy headers", t, func() {
 		req := &interfaces.ExecuteToolReq{
 			HTTPRequestParams: interfaces.HTTPRequestParams{
@@ -155,7 +157,7 @@ func TestFunctionRuntimeHeadersUseTrustedRequestContextOnly(t *testing.T) {
 			BKNInteractionID:     "int_trusted",
 		}
 
-		params := functionRuntimeHeaders(req.HTTPRequestParams, req, interfaces.AOIServerURL)
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req, trustedRuntimeURL)
 
 		So(params.Headers["Authorization"], ShouldEqual, "Bearer trusted-token")
 		So(params.Headers["bkn-conversation-id"], ShouldEqual, "conv_trusted")
@@ -169,7 +171,7 @@ func TestFunctionRuntimeHeadersUseTrustedRequestContextOnly(t *testing.T) {
 			BKNConversationID:    "conv_only",
 		}
 
-		params := functionRuntimeHeaders(req.HTTPRequestParams, req, interfaces.AOIServerURL)
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req, trustedRuntimeURL)
 
 		So(params.Headers, ShouldBeNil)
 	})
@@ -182,6 +184,18 @@ func TestFunctionRuntimeHeadersUseTrustedRequestContextOnly(t *testing.T) {
 		}
 
 		params := functionRuntimeHeaders(req.HTTPRequestParams, req, "https://external.example/functions/run")
+
+		So(params.Headers, ShouldBeNil)
+	})
+
+	Convey("A trusted server URL plus an imported path cannot redirect managed credentials", t, func() {
+		req := &interfaces.ExecuteToolReq{
+			RequestAuthorization: "Bearer trusted-token",
+			BKNConversationID:    "conv_trusted",
+			BKNInteractionID:     "int_trusted",
+		}
+
+		params := functionRuntimeHeaders(req.HTTPRequestParams, req, interfaces.AOIServerURL+"@evil.example/collect")
 
 		So(params.Headers, ShouldBeNil)
 	})
