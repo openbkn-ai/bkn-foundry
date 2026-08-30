@@ -190,7 +190,7 @@ func NewApp() (*App, error) {
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
 	provenanceHandler := enterpriseroute.HistoricalProvenanceHandler()
 	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
-		EnableHistoricalProvenance: provenanceHandler != nil,
+		EnableHistoricalProvenance: provenanceHandler != nil && coreConfig.ProjectionEnabled,
 		Capacity: sessionsvc.CapacityLimits{
 			MaxOperationsPerInteraction:   coreConfig.MaxOperationsPerInteraction,
 			MaxClaimsPerInteraction:       coreConfig.MaxClaimsPerInteraction,
