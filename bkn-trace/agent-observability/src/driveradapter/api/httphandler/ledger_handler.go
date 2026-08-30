@@ -67,7 +67,7 @@ type evidenceEventRequest struct {
 	ObservedAt             time.Time                         `json:"observed_at" binding:"required"`
 	EmittedAt              time.Time                         `json:"emitted_at" binding:"required"`
 	Envelope               json.RawMessage                   `json:"envelope" binding:"required"`
-	BusinessRefs           []sessionvo.BusinessRef           `json:"business_refs,omitempty"`
+	BusinessRefs           []businessRefRequest              `json:"business_refs,omitempty"`
 	ArtifactRefs           []string                          `json:"artifact_refs,omitempty"`
 	EvidenceRefs           []sessionvo.EvidenceRef           `json:"evidence_refs,omitempty"`
 	Claims                 []sessionvo.Claim                 `json:"claims,omitempty"`
@@ -111,7 +111,7 @@ func (h *LedgerHandler) Ingest(w http.ResponseWriter, r *http.Request) {
 		ProducerEpoch: request.ProducerEpoch, ProducerSequence: request.ProducerSequence,
 		CausationEventIDs: request.CausationEventIDs, StartedAt: request.StartedAt,
 		ObservedAt: request.ObservedAt, EmittedAt: request.EmittedAt, Envelope: request.Envelope,
-		BusinessRefs: request.BusinessRefs, ArtifactRefs: request.ArtifactRefs,
+		BusinessRefs: businessRefsFromWire(request.BusinessRefs), ArtifactRefs: request.ArtifactRefs,
 		EvidenceRefs: request.EvidenceRefs, Claims: request.Claims,
 		OperationBusinessEdges: request.OperationBusinessEdges,
 	})
