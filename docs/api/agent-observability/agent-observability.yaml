@@ -560,6 +560,25 @@ definitions:
       unresolved_ref_count:
         type: integer
     type: object
+  httphandler.businessRefRequest:
+    properties:
+      as_of:
+        type: string
+      display_hint:
+        type: string
+      ref_id:
+        description: RefID uses the complete canonical shape defined by RefType, including
+          every required scope segment.
+        type: string
+      ref_type:
+        $ref: '#/definitions/sessionvo.BusinessRefType'
+      version:
+        type: string
+    required:
+    - ref_id
+    - ref_type
+    - version
+    type: object
   httphandler.closeConversationRequest:
     properties:
       idempotency_key:
@@ -628,7 +647,7 @@ definitions:
         type: string
       business_refs:
         items:
-          $ref: '#/definitions/sessionvo.BusinessRef'
+          $ref: '#/definitions/httphandler.businessRefRequest'
         type: array
       causation_event_ids:
         items:
@@ -726,7 +745,7 @@ definitions:
         type: array
       business_refs:
         items:
-          $ref: '#/definitions/sessionvo.BusinessRef'
+          $ref: '#/definitions/httphandler.businessRefRequest'
         type: array
       error:
         $ref: '#/definitions/sessionvo.PayloadEnvelope'

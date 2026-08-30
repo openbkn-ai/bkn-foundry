@@ -21,7 +21,10 @@ import (
 // known to be on 0.1.5.
 type businessRefRequest struct {
 	sessionvo.BusinessRef
-	RetiredBusinessDomainID string `json:"business_domain_id,omitempty"`
+	// Kept out of the published contract: 0.1.5 documents the tenant-only shape,
+	// and this field only exists so an older producer is not rejected for sending
+	// a key the platform now ignores.
+	RetiredBusinessDomainID string `json:"business_domain_id,omitempty" swaggerignore:"true"`
 }
 
 func businessRefsFromWire(refs []businessRefRequest) []sessionvo.BusinessRef {
