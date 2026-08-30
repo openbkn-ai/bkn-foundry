@@ -101,6 +101,7 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	definitions := []string{
 		"assemblysvc.BusinessRefView",
 		"assemblysvc.ProjectedResult",
+		"httphandler.businessRefRequest",
 		"httphandler.evidenceEventRequest",
 		"httphandler.ensureOperationRequest",
 		"httphandler.finishAttemptRequest",
@@ -116,11 +117,19 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 		"sessionvo.OperationCallFact",
 		"sessionvo.OperationProtocol",
 		"sessionvo.PayloadEnvelope",
-		"sessionvo.OperationBusinessEdge",
+		"httphandler.operationBusinessEdgeRequest",
 		"sessionvo.OperationBusinessRole",
 		"sessionvo.Receipt",
 	}
 	for _, definition := range definitions {
+		// A definition that no document carries compares equal everywhere, so the
+		// assertion below would silently pass for a name that has been renamed out
+		// of the contract. Fail on the missing name instead.
+		for name, document := range documents {
+			if _, ok := document.Definitions[definition]; !ok {
+				t.Fatalf("%s does not define %s", name, definition)
+			}
+		}
 		assertAllEqual(t, documents, "definition "+definition, func(document swaggerDocument) any {
 			return document.Definitions[definition]
 		})
