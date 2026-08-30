@@ -27,16 +27,87 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/adp/context-loader/agent-retrieval/server/interfaces"
 )
 
-func TestLifecycleMiddlewareFailsClosedAcrossRESTBusinessEntrypoints(t *testing.T) {
+// TestRESTCapabilityRoutesDoNotRequireManagedContext pins the split between the
+// two surfaces this middleware covers.
+//
+// A managed Interaction records one agent turn. The /kn/ routes are the capability
+// layer - Studio answering a click, a CLI operator, one service asking another -
+// and minting a conversation and an interaction for each of those produced
+// single-operation records that documented nothing. They pass through now.
+//
+// A tool call proxied over HTTP is an agent calling a tool by another name, so it
+// keeps the requirement even though it arrives on the same transport.
+func TestRESTCapabilityRoutesDoNotRequireManagedContext(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	paths := []string{
-		"/api/agent-retrieval/v1/kn/execute_action",
-		"/api/agent-retrieval/v1/kn/run_sql",
-		"/api/agent-retrieval/internal-v1/kn/search_schema",
-		"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call",
+	cases := []struct {
+		path      string
+		wantCalls int
+	}{
+		{"/api/agent-retrieval/v1/kn/execute_action", 1},
+		{"/api/agent-retrieval/v1/kn/run_sql", 1},
+		{"/api/agent-retrieval/internal-v1/kn/search_schema", 1},
+		{"/api/agent-retrieval/internal-v1/mcp/proxy/mcp-1/tools/tool-1/call", 0},
 	}
-	for _, path := range paths {
-		t.Run(path, func(t *testing.T) {
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			downstreamCalls := 0
+			var seenBody map[string]any
+			router := gin.New()
+			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
+			// The handler binds its body the way the real ones do. A stub that
+			// ignores the body cannot tell a request that was let through from one
+			// that arrived drained, which is exactly the gap that let a middleware
+			// consuming the body without putting it back look correct.
+			router.POST("/*path", func(c *gin.Context) {
+				downstreamCalls++
+				if err := c.ShouldBindJSON(&seenBody); err != nil {
+					t.Errorf("%s: handler could not bind the body: %v", tc.path, err)
+				}
+				c.Status(http.StatusNoContent)
+			})
+
+			request := httptest.NewRequest(http.MethodPost, tc.path, bytes.NewBufferString(`{"query":"q"}`))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+
+			if downstreamCalls != tc.wantCalls {
+				t.Fatalf("%s: downstream calls = %d, want %d (status %d, body %s)",
+					tc.path, downstreamCalls, tc.wantCalls, response.Code, response.Body)
+			}
+			if tc.wantCalls > 0 && seenBody["query"] != "q" {
+				t.Fatalf("%s: handler saw %#v, want the original body", tc.path, seenBody)
+			}
+		})
+	}
+}
+
+// TestRESTContextOptionalityBoundary pins where "ad hoc" ends.
+//
+// The rule is one line - state an id and the call is managed, state none and it
+// is ad hoc - so an empty bkn_context is the same as no bkn_context and passes
+// through. A partial one does not: a caller passing one id and not the other is
+// wiring the context up and got it wrong, and half-attaching the call would be
+// worse than refusing it.
+//
+// The second case also guards against making the context inert rather than
+// optional: a stated session must still be validated and recorded.
+func TestRESTContextOptionalityBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cases := []struct {
+		name      string
+		body      string
+		wantCalls int
+		wantCode  string
+	}{
+		{"empty context is ad hoc", `{"sql":"select 1","bkn_context":{}}`, 1, ""},
+		{"partial context is refused", `{"sql":"select 1","bkn_context":{"conversation_id":"c1"}}`, 0, "interaction_required"},
+		{"non-object context is refused", `{"sql":"select 1","bkn_context":"c1"}`, 0, "conversation_required"},
+		{"context without ids is refused", `{"sql":"select 1","bkn_context":{"parent_operation_id":"op1"}}`, 0, "conversation_required"},
+		{"misspelt field is refused", `{"sql":"select 1","bkn_context":{"conversationId":"c1"}}`, 0, "invalid_business_context"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
 			downstreamCalls := 0
 			router := gin.New()
 			router.Use(middlewareLifecycle(bkntrace.NewLifecycleClient("", nil)))
@@ -45,23 +116,30 @@ func TestLifecycleMiddlewareFailsClosedAcrossRESTBusinessEntrypoints(t *testing.
 				c.Status(http.StatusNoContent)
 			})
 
-			request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{"query":"unsafe"}`))
+			request := httptest.NewRequest(
+				http.MethodPost,
+				"/api/agent-retrieval/v1/kn/run_sql",
+				bytes.NewBufferString(tc.body),
+			)
 			request.Header.Set("Content-Type", "application/json")
 			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 
-			if downstreamCalls != 0 {
-				t.Fatalf("%s bypassed lifecycle guard", path)
+			if downstreamCalls != tc.wantCalls {
+				t.Fatalf("downstream calls = %d, want %d (status %d, body %s)",
+					downstreamCalls, tc.wantCalls, response.Code, response.Body)
+			}
+			if tc.wantCode == "" {
+				return
 			}
 			var envelope struct {
 				Error bkntrace.APIError `json:"error"`
 			}
 			if err := json.Unmarshal(response.Body.Bytes(), &envelope); err != nil {
-				t.Fatalf("%s returned invalid error envelope: %v body=%s", path, err, response.Body.String())
+				t.Fatalf("invalid error envelope: %v body=%s", err, response.Body.String())
 			}
-			if envelope.Error.Code != "conversation_required" ||
-				envelope.Error.RequiredAction != "create_conversation" {
-				t.Fatalf("%s returned wrong lifecycle error: %#v", path, envelope.Error)
+			if envelope.Error.Code != tc.wantCode {
+				t.Fatalf("error code = %q, want %q", envelope.Error.Code, tc.wantCode)
 			}
 		})
 	}
@@ -102,7 +180,7 @@ func (h *countingQueryToolsHandler) RunSQL(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-func TestRegisteredOperatorAndMCPProxyRoutesCannotBypassLifecycle(t *testing.T) {
+func TestRegisteredProxyRouteCannotBypassLifecycle(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	queryTools := &countingQueryToolsHandler{}
 	publicEngine := gin.New()
@@ -129,8 +207,10 @@ func TestRegisteredOperatorAndMCPProxyRoutesCannotBypassLifecycle(t *testing.T) 
 	publicRequest.Header.Set("Content-Type", "application/json")
 	publicResponse := httptest.NewRecorder()
 	publicEngine.ServeHTTP(publicResponse, publicRequest)
-	if queryTools.calls != 0 || publicResponse.Code != http.StatusBadRequest {
-		t.Fatalf("operator toolbox bypassed lifecycle: calls=%d status=%d body=%s",
+	// The capability route reaches its handler now; only the proxied tool call
+	// below still has to be refused.
+	if queryTools.calls != 1 {
+		t.Fatalf("registered capability route did not reach its handler: calls=%d status=%d body=%s",
 			queryTools.calls, publicResponse.Code, publicResponse.Body)
 	}
 
