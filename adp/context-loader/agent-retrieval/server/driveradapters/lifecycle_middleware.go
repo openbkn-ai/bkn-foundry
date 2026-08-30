@@ -50,6 +50,28 @@ func middlewareLifecycle(client *bkntrace.LifecycleClient) gin.HandlerFunc {
 			})
 			return
 		}
+		// The REST surface is a capability layer. A managed Interaction records one
+		// agent turn - which question was asked, what it read, what it concluded -
+		// and the callers here are not agents: Studio answering a click, a CLI
+		// operator, one service asking another. Minting a conversation and an
+		// interaction to satisfy the guard would produce single-operation records
+		// that dilute the concept rather than document anything, so an absent
+		// bkn_context passes through instead of being refused.
+		//
+		// Naming a session still works and still records, so a caller that had
+		// wired the context up does not silently lose its evidence. The MCP surface,
+		// where an agent actually calls, keeps the requirement: that middleware is
+		// separate and untouched, as is /mcp/proxy/.../call below.
+		if !hasBusinessContext(input) && !isProxyToolCall(c.Request) {
+			// io.ReadAll above drained the body. The managed path rebuilds it after
+			// stripping bkn_context; this path has nothing to strip but still has to
+			// hand the handler something to read, or every request this branch exists
+			// to admit reaches it empty and fails to bind.
+			c.Request.Body = io.NopCloser(bytes.NewReader(raw))
+			c.Request.ContentLength = int64(len(raw))
+			c.Next()
+			return
+		}
 		businessContext, apiErr := parseHTTPBusinessContext(input, httpKnowledgeNetworkID(c, input))
 		if apiErr != nil {
 			writeLifecycleHTTPError(c, lifecycleHTTPStatus(apiErr.Code), *apiErr)
@@ -155,8 +177,36 @@ func isLifecycleBusinessRequest(request *http.Request) bool {
 	if request.Method != http.MethodPost {
 		return false
 	}
-	return strings.Contains(request.URL.Path, "/kn/") ||
-		(strings.Contains(request.URL.Path, "/mcp/proxy/") && strings.HasSuffix(request.URL.Path, "/call"))
+	return strings.Contains(request.URL.Path, "/kn/") || isProxyToolCall(request)
+}
+
+// isProxyToolCall reports whether this is a tool call proxied over HTTP. It is an
+// agent calling a tool by another name, so the managed context stays mandatory
+// there even though the transport is the same one the /kn/ capability routes use.
+func isProxyToolCall(request *http.Request) bool {
+	return strings.Contains(request.URL.Path, "/mcp/proxy/") &&
+		strings.HasSuffix(request.URL.Path, "/call")
+}
+
+// hasBusinessContext reports whether this call has to go through the guard.
+//
+// The rule the caller has to remember is one line: state an id and the call is
+// managed, state none and it is ad hoc. Only two shapes are ad hoc - no
+// bkn_context at all, and an empty one. Everything else goes to
+// parseHTTPBusinessContext to be judged, including the shapes that carry no id:
+// one id and not the other, a bkn_context that is not an object, and an object
+// holding only parent_operation_id, business_refs or a misspelt field. Each of
+// those is a caller wiring the context up and getting it wrong, and admitting it
+// as ad hoc would answer a mistake with silence.
+func hasBusinessContext(input map[string]any) bool {
+	value, stated := input["bkn_context"]
+	if !stated {
+		return false
+	}
+	if fields, ok := value.(map[string]any); ok && len(fields) == 0 {
+		return false
+	}
+	return true
 }
 
 func parseHTTPBusinessContext(input map[string]any, currentKNID string) (bkntrace.BusinessContext, *bkntrace.APIError) {
