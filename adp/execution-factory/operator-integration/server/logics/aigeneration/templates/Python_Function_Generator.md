@@ -21,7 +21,7 @@
 
 2. **工具函数 (@tool)**:
     - 写一个带类型注解的普通函数，用 `@tool` 装饰。**不要**写 `handler(event)`。
-    - 函数的**签名、类型注解、docstring 会被自动推导成工具的输入/输出 schema**。因此不需要、也不要在别处再手填 inputs/outputs 元数据。
+    - 函数的**签名、类型注解、默认值会被自动推导成工具的输入/输出 schema**；docstring 整体成为工具的描述。因此不需要、也不要在别处再手填 inputs/outputs 元数据。docstring 里的参数说明只是给人读的，不会进入每个参数的 schema description，所以参数含义尽量用清晰的形参名表达。
     - 每个业务入参对应一个函数形参；带默认值的形参即为可选参数。
     - 返回任意可 JSON 序列化的对象（通常是 `dict`）。
     ```python
@@ -59,7 +59,8 @@
         detail = bkn.get_kn_detail(kn_id, detail_level="summary")
         return {"object_types": [ot["name"] for ot in detail.get("object_types", [])]}
     ```
-    - 常用能力：`bkn.get_kn_detail(kn_id)` 取 schema、`bkn.search_schema(kn_id, query)` 按语义找对象类、`bkn.query_object_instance(kn_id=..., ot_id=..., limit=...)` 查实例、`bkn.run_sql(sql=...)` 只读聚合。
+    - 常用能力：`bkn.get_kn_detail(kn_id)` 取 schema、`bkn.search_schema(kn_id, query)` 按语义找对象类、`bkn.query_object_instance(kn_id=..., ot_id=..., limit=...)` 查实例。
+    - 需要聚合时用 `bkn.run_sql(sql=...)`，但 SQL 里的表名必须写成占位符 `{{.<resource_id>}}`，`<resource_id>` 先从 `bkn.search_schema` 返回的 `data_source.id`（或 `bkn.list_resources`）取，**不要直接写真实表名**（会被拒）。列名用物理列名，可让 `search_schema(..., include_columns=True)` 返回。
 
 ## 逻辑实现规则
 

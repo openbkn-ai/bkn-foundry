@@ -140,7 +140,7 @@
 
 ### 3. 基于函数代码补全元数据
 - 如果 inputs_json 或 outputs_json 不完整，根据代码逻辑推断缺失的参数
-- 识别代码中使用的 event.get() 调用，确保对应的 inputs 元数据存在
+- 识别 `@tool` 函数的形参（含类型注解与默认值）作为 inputs 的主要来源；旧式 `handler(event)` 里的 `event.get()` 调用同样识别。确保对应的 inputs 元数据存在
 - 识别 return 语句返回的字段，确保对应的 outputs 元数据存在
 
 - 如果代码和 inputs_json 或 outputs_json 中定义的参数不一致，根据代码逻辑和业务需求，调整元数据
@@ -227,22 +227,19 @@
 
 ### 输入函数代码
 ```python
-def handler(event):
-    content = event.get("content", {})
-    file_info = content.get("file_info", {})
-    name = file_info.get("name", "")
-    size = file_info.get("size", 0)
-    is_file = file_info.get("is_file", True)
+from sandbox_sdk import tool
 
-    file_list = content.get("file_list", [])
 
+@tool
+def process_files(name: str, size: int = 0, is_file: bool = True, file_list: list = None) -> dict:
+    """处理文件信息并统计数量。"""
     result = {
         "success": True,
         "message": "处理完成",
-        "processed_count": len(file_list)
+        "processed_count": len(file_list or []),
     }
     return result
 ```
 
 ### 输出元数据
-{"name":"file_processor","description":"处理文件信息并返回处理结果","use_rule":"确保传入的 content 对象包含 file_info 字段，file_list 可选。返回结果包含处理状态和统计信息。","inputs":[{"name":"content","type":"object","description":"请求对象","required":false,"default":{},"sub_parameters":[{"name":"file_info","type":"object","description":"文件信息","required":false,"default":{},"sub_parameters":[{"name":"name","type":"string","description":"文件名","required":false,"default":""},{"name":"size","type":"number","description":"文件大小","required":false,"default":0},{"name":"is_file","type":"boolean","description":"是否是文件","required":false,"default":true}]},{"name":"file_list","type":"array","description":"文件列表","required":false,"default":[],"sub_parameters":[{"name":"[Array Item]","type":"string","description":"文件路径","required":true}]}]}],"outputs":[{"name":"success","type":"boolean","description":"操作是否成功","required":true,"default":null},{"name":"message","type":"string","description":"返回消息","required":true,"default":null},{"name":"processed_count","type":"number","description":"处理的项目数量","required":true,"default":null}]}
+{"name":"process_files","description":"处理文件信息并统计数量","use_rule":"name 必填；size、is_file、file_list 可选。返回结果包含处理状态和统计信息。","inputs":[{"name":"name","type":"string","description":"文件名","required":true},{"name":"size","type":"number","description":"文件大小","required":false,"default":0},{"name":"is_file","type":"boolean","description":"是否是文件","required":false,"default":true},{"name":"file_list","type":"array","description":"文件列表","required":false,"default":null,"sub_parameters":[{"name":"[Array Item]","type":"string","description":"文件路径","required":true}]}],"outputs":[{"name":"success","type":"boolean","description":"操作是否成功","required":true,"default":null},{"name":"message","type":"string","description":"返回消息","required":true,"default":null},{"name":"processed_count","type":"number","description":"处理的项目数量","required":true,"default":null}]}

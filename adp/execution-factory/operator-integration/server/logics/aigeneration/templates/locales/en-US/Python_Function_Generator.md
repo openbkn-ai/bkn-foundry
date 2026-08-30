@@ -18,7 +18,7 @@ Write a Python script that follows the format below. Use the user's natural-lang
 
 2. The `@tool` function
    - Write a plain, type-annotated function decorated with `@tool`. Do **not** write `handler(event)`.
-   - The function's **signature, type annotations, and docstring are inferred into the tool's input/output schema automatically**. There is no separate input/output metadata to fill in, so do not add any.
+   - The function's **signature, type annotations, and defaults are inferred into the tool's input/output schema automatically**; the docstring as a whole becomes the tool description. There is no separate input/output metadata to fill in, so do not add any. Parameter notes in the docstring are for humans and do not become per-parameter schema descriptions, so let clear parameter names carry the meaning.
    - One business input maps to one function parameter; a parameter with a default value is optional.
    - Return any JSON-serialisable object (usually a `dict`).
 
@@ -58,7 +58,8 @@ def kn_summary(kn_id: str) -> dict:
     return {"object_types": [ot["name"] for ot in detail.get("object_types", [])]}
 ```
 
-   - Common capabilities: `bkn.get_kn_detail(kn_id)` for the schema, `bkn.search_schema(kn_id, query)` to find object types semantically, `bkn.query_object_instance(kn_id=..., ot_id=..., limit=...)` for instances, `bkn.run_sql(sql=...)` for read-only aggregation.
+   - Common capabilities: `bkn.get_kn_detail(kn_id)` for the schema, `bkn.search_schema(kn_id, query)` to find object types semantically, `bkn.query_object_instance(kn_id=..., ot_id=..., limit=...)` for instances.
+   - For aggregation use `bkn.run_sql(sql=...)`, but table names in the SQL must be the placeholder `{{.<resource_id>}}`, where `<resource_id>` comes from the `data_source.id` returned by `bkn.search_schema` (or from `bkn.list_resources`) — do **not** write a real table name (it is rejected). Use physical column names, which `search_schema(..., include_columns=True)` returns.
 
 ## Implementation rules
 
