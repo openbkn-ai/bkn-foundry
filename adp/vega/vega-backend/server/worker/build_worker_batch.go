@@ -11,6 +11,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync/atomic"
 
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
@@ -339,7 +341,8 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 
-	hasEmbedding := buildTaskHasEmbedding(buildTaskInfo)
+	embeddingConfig := buildTaskEmbeddingConfig(buildTaskInfo)
+	hasEmbedding := len(embeddingConfig) > 0
 	pipeline := &embeddingPipeline{mfs: bbw.mfs}
 
 	syncedCount := buildTaskInfo.SyncedCount
@@ -407,6 +410,16 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 
 		totalRows := result.Total
 		readRows := len(result.Entries)
+		if firstQuery {
+			firstQuery = false
+			if totalRows > 0 || readRows > 0 {
+				totalCount := int64(totalRows)
+				if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID,
+					interfaces.BuildTaskProgress{TotalCount: &totalCount}); err != nil {
+					return fmt.Errorf("set build task total count: %w", err)
+				}
+			}
+		}
 
 		if readRows > 0 {
 			// Update lastBatchKeyValues with the last values in this batch
@@ -435,23 +448,19 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 			}
 
 			if hasEmbedding {
-				if err := pipeline.enrich(ctx, indexDocuments, buildTaskEmbeddingConfig(buildTaskInfo)); err != nil {
+				if err := pipeline.enrich(ctx, indexDocuments, embeddingConfig); err != nil {
 					return fmt.Errorf("vectorize batch: %w", err)
 				}
 			}
+			logger.Infof("Indexing batch task %s: source rows=%d, vector fields=%s", buildTaskInfo.ID,
+				readRows, formatEmbeddingFields(embeddingConfig))
 			_, err = bbw.lim.IndexDocuments(ctx, indexName, indexDocuments)
 			if err != nil {
 				return fmt.Errorf("index documents failed: %w", err)
 			}
 
 			syncedCount += int64(readRows)
-			// Set firstQuery to false after the first query
 			progress := interfaces.BuildTaskProgress{SyncedCount: &syncedCount}
-			if firstQuery {
-				firstQuery = false
-				totalCount := int64(totalRows)
-				progress.TotalCount = &totalCount
-			}
 			syncedMarkStr, err := sync_checkpoint.EncodeBatch(lastBatchKeyValues)
 			if err != nil {
 				return fmt.Errorf("encode synced mark: %w", err)
@@ -501,4 +510,20 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		}
 	}
 	return nil
+}
+
+func formatEmbeddingFields(config map[string]*interfaces.SmallModel) string {
+	if len(config) == 0 {
+		return "none"
+	}
+	fields := make([]string, 0, len(config))
+	for field, model := range config {
+		dimension := 0
+		if model != nil {
+			dimension = model.EmbeddingDim
+		}
+		fields = append(fields, fmt.Sprintf("%s(%d)", field, dimension))
+	}
+	sort.Strings(fields)
+	return strings.Join(fields, ",")
 }

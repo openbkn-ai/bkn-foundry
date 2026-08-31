@@ -119,8 +119,12 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		lim.EXPECT().CheckIndexExist(gomock.Any(), indexName).Return(false, nil)
 		lim.EXPECT().CreateIndex(gomock.Any(), indexName, gomock.Any()).Return(nil)
 		var progressMarks []string
+		var totalCounts []int64
 		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+				if progress.TotalCount != nil {
+					totalCounts = append(totalCounts, *progress.TotalCount)
+				}
 				if progress.SyncedMark != nil {
 					progressMarks = append(progressMarks, *progress.SyncedMark)
 				}
@@ -142,6 +146,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		err = bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1", ConnectorType: "mysql"}, resource, task)
 
 		require.NoError(t, err)
+		assert.Equal(t, []int64{0}, totalCounts)
 		assert.Equal(t, []string{"", `{"mode":"batch","cursor":[]}`}, progressMarks)
 		assert.Equal(t, `{"mode":"batch","cursor":[]}`, resource.SyncMark)
 		require.NoError(t, mockDB.ExpectationsWereMet())
@@ -185,6 +190,12 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 			})
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
+		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(
+			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
+				require.NotNil(t, progress.TotalCount)
+				assert.EqualValues(t, 1, *progress.TotalCount)
+				return true, nil
+			})
 		indexed := false
 		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {

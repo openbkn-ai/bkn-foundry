@@ -10,17 +10,32 @@ package opensearch
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/mitchellh/mapstructure"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/opensearch-project/opensearch-go/v2"
 	"github.com/opensearch-project/opensearch-go/v2/opensearchapi"
 
 	"vega-backend/interfaces"
 )
+
+const (
+	defaultBulkRequestMaxBytes = 32 * 1024 * 1024
+)
+
+type bulkRequestError struct {
+	statusCode int
+	detail     string
+}
+
+func (e *bulkRequestError) Error() string {
+	return fmt.Sprintf("OpenSearch bulk request returned HTTP %d: %s", e.statusCode, e.detail)
+}
 
 type opensearchConfig struct {
 	Host          string   `mapstructure:"host"`
@@ -35,6 +50,8 @@ type OpenSearchConnector struct {
 	enabled bool
 	Config  *opensearchConfig
 	client  *opensearch.Client
+
+	bulkRequestMaxBytes int
 }
 
 // ValidateAnalyzer verifies that a configured analyzer is available in the connected OpenSearch cluster.
@@ -353,29 +370,165 @@ func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, indexName str
 		return nil, err
 	}
 
-	var bulkBody strings.Builder
-	for _, doc := range documents {
-		opMeta := map[string]map[string]string{
-			"index": {
-				"_index": indexName,
-			},
+	encodedDocuments := make([][]byte, 0, len(documents))
+	for _, document := range documents {
+		encoded, err := encodeBulkDocument(indexName, document, c.bulkMaxBytes())
+		if err != nil {
+			return nil, err
 		}
-		// if _id in doc, use it as document id
-		if docID, ok := doc["_id"].(string); ok {
-			opMeta["index"]["_id"] = docID
-			delete(doc, "_id")
-		}
+		encodedDocuments = append(encodedDocuments, encoded)
+	}
+	return c.indexBulkDocuments(ctx, encodedDocuments)
+}
 
-		if err := sonic.ConfigDefault.NewEncoder(&bulkBody).Encode(opMeta); err != nil {
+func (c *OpenSearchConnector) bulkMaxBytes() int {
+	if c.bulkRequestMaxBytes > 0 {
+		return c.bulkRequestMaxBytes
+	}
+	return defaultBulkRequestMaxBytes
+}
+
+func encodeBulkDocument(indexName string, document map[string]any, maxBytes int) ([]byte, error) {
+	if document == nil {
+		return nil, errors.New("bulk document is required")
+	}
+	opMeta := map[string]map[string]string{"index": {"_index": indexName}}
+	body := make(map[string]any, len(document))
+	for key, value := range document {
+		if key == "_id" {
+			if documentID, ok := value.(string); ok {
+				opMeta["index"]["_id"] = documentID
+				continue
+			}
+		}
+		body[key] = value
+	}
+	opBytes, err := sonic.Marshal(opMeta)
+	if err != nil {
+		return nil, fmt.Errorf("marshal bulk operation metadata: %w", err)
+	}
+	bodyBytes, err := sonic.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal bulk document: %w", err)
+	}
+	encoded := make([]byte, 0, len(opBytes)+len(bodyBytes)+2)
+	encoded = append(encoded, opBytes...)
+	encoded = append(encoded, '\n')
+	encoded = append(encoded, bodyBytes...)
+	encoded = append(encoded, '\n')
+	if len(encoded) > maxBytes {
+		return nil, fmt.Errorf("bulk document is %d bytes, exceeding the %d byte request limit", len(encoded), maxBytes)
+	}
+	return encoded, nil
+}
+
+func (c *OpenSearchConnector) indexBulkDocuments(ctx context.Context, documents [][]byte) ([]string, error) {
+	var documentIDs []string
+	maxBytes := c.bulkMaxBytes()
+	chunkDocuments := make([][]byte, 0)
+	chunkBytes := 0
+	for _, document := range documents {
+		if len(chunkDocuments) > 0 && chunkBytes+len(document) > maxBytes {
+			ids, err := c.indexBulkChunk(ctx, chunkDocuments)
+			if err != nil {
+				return nil, err
+			}
+			documentIDs = append(documentIDs, ids...)
+			chunkDocuments = chunkDocuments[:0]
+			chunkBytes = 0
+		}
+		chunkDocuments = append(chunkDocuments, document)
+		chunkBytes += len(document)
+	}
+	if len(chunkDocuments) > 0 {
+		ids, err := c.indexBulkChunk(ctx, chunkDocuments)
+		if err != nil {
 			return nil, err
 		}
-		if err := sonic.ConfigDefault.NewEncoder(&bulkBody).Encode(doc); err != nil {
-			return nil, err
-		}
+		documentIDs = append(documentIDs, ids...)
+	}
+	return documentIDs, nil
+}
+
+func (c *OpenSearchConnector) indexBulkChunk(ctx context.Context, documents [][]byte) ([]string, error) {
+	ids, err := c.sendBulkRequest(ctx, documents)
+	if err == nil {
+		return ids, nil
+	}
+	if !shouldSplitBulkRequest(err) || len(documents) == 1 {
+		return nil, err
 	}
 
+	splitAt := splitBulkDocumentsByBytes(documents)
+	leftDocuments := documents[:splitAt+1]
+	rightDocuments := documents[splitAt+1:]
+	logger.Warnf("OpenSearch bulk request rejected; splitting %d documents into %d and %d documents by serialized bytes: %v",
+		len(documents), len(leftDocuments), len(rightDocuments), err)
+	leftIDs, err := c.sendBulkRequest(ctx, leftDocuments)
+	if err != nil {
+		return nil, err
+	}
+	rightIDs, err := c.sendBulkRequest(ctx, rightDocuments)
+	if err != nil {
+		return nil, err
+	}
+	return append(leftIDs, rightIDs...), nil
+}
+
+// splitBulkDocumentsByBytes 返回左批最后一条文档的下标。
+// 该下标属于左批，右批从下一条文档开始。优先选择字节数最接近总量一半的切点；
+// 首条文档本身超过一半或最后一条文档导致右批为空时，选择能保证两批非空的切点。
+// 调用方必须传入至少两条文档。
+func splitBulkDocumentsByBytes(documents [][]byte) int {
+	totalBytes := 0
+	for _, document := range documents {
+		totalBytes += len(document)
+	}
+	targetBytes := totalBytes / 2
+	currentBytes := 0
+	for i, document := range documents {
+		if currentBytes+len(document) > targetBytes {
+			if i == 0 {
+				return 0
+			}
+			if i == len(documents)-1 {
+				return i - 1
+			}
+			leftDistance := targetBytes - currentBytes
+			rightDistance := currentBytes + len(document) - targetBytes
+			if leftDistance <= rightDistance {
+				return i - 1
+			}
+			return i
+		}
+		currentBytes += len(document)
+	}
+	return len(documents) - 2
+}
+
+func shouldSplitBulkRequest(err error) bool {
+	var requestErr *bulkRequestError
+	if !errors.As(err, &requestErr) {
+		return false
+	}
+	if requestErr.statusCode == http.StatusRequestEntityTooLarge {
+		return true
+	}
+	return requestErr.statusCode == http.StatusTooManyRequests &&
+		strings.Contains(strings.ToLower(requestErr.detail), "rejected_execution_exception")
+}
+
+func (c *OpenSearchConnector) sendBulkRequest(ctx context.Context, documents [][]byte) ([]string, error) {
+	size := 0
+	for _, document := range documents {
+		size += len(document)
+	}
+	body := make([]byte, 0, size)
+	for _, document := range documents {
+		body = append(body, document...)
+	}
 	req := opensearchapi.BulkRequest{
-		Body:    strings.NewReader(bulkBody.String()),
+		Body:    bytes.NewReader(body),
 		Refresh: "true",
 	}
 
@@ -386,43 +539,52 @@ func (c *OpenSearchConnector) CreateDocuments(ctx context.Context, indexName str
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.IsError() {
-		return nil, fmt.Errorf("failed to create documents: %s", resp.String())
+		return nil, &bulkRequestError{statusCode: resp.StatusCode, detail: resp.String()}
 	}
 
-	var result map[string]interface{}
+	var result map[string]any
 	if err := sonic.ConfigDefault.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
-	if errors, ok := result["errors"].(bool); ok && errors {
-		// Traverse all the operation results and check if there are any failures
-		if items, ok := result["items"].([]interface{}); ok {
-			for _, item := range items {
-				if itemMap, ok := item.(map[string]interface{}); ok {
-					if indexResult, ok := itemMap["index"].(map[string]interface{}); ok {
-						if errorObj, ok := indexResult["error"].(map[string]interface{}); ok {
-							// Find the failed document and return an error
-							return nil, fmt.Errorf("failed to create document, error type: %s, reason: %s", errorObj["type"].(string), errorObj["reason"].(string))
-						}
-					}
-				}
-			}
-		}
+	if hasErrors, ok := result["errors"].(bool); ok && hasErrors {
+		return nil, bulkResponseError(result)
 	}
-
-	var docIDs []string
-	if items, ok := result["items"].([]interface{}); ok {
+	var documentIDs []string
+	if items, ok := result["items"].([]any); ok {
 		for _, item := range items {
-			if itemMap, ok := item.(map[string]interface{}); ok {
-				if indexResult, ok := itemMap["index"].(map[string]interface{}); ok {
-					if docID, ok := indexResult["_id"].(string); ok {
-						docIDs = append(docIDs, docID)
+			if itemMap, ok := item.(map[string]any); ok {
+				if indexResult, ok := itemMap["index"].(map[string]any); ok {
+					if documentID, ok := indexResult["_id"].(string); ok {
+						documentIDs = append(documentIDs, documentID)
 					}
 				}
 			}
 		}
 	}
+	return documentIDs, nil
+}
 
-	return docIDs, nil
+func bulkResponseError(result map[string]any) error {
+	items, ok := result["items"].([]any)
+	if !ok {
+		return errors.New("bulk response contains failed operations")
+	}
+	for _, item := range items {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		indexResult, ok := itemMap["index"].(map[string]any)
+		if !ok {
+			continue
+		}
+		errorObject, ok := indexResult["error"].(map[string]any)
+		if !ok {
+			continue
+		}
+		return fmt.Errorf("failed to create document, error type: %v, reason: %v", errorObject["type"], errorObject["reason"])
+	}
+	return errors.New("bulk response contains failed operations")
 }
 
 // IndexDocuments replaces complete documents when their IDs already exist and
