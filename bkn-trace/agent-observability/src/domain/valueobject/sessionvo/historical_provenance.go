@@ -24,6 +24,7 @@ type HistoricalProvenanceBuildRequest struct {
 	FactsHash           string              `json:"facts_hash"`
 	KnowledgeNetworkIDs []string            `json:"knowledge_network_ids"`
 	Facts               []OperationCallFact `json:"facts"`
+	ProjectionReadGrant string              `json:"projection_read_grant"`
 }
 
 func NewHistoricalProvenanceBuildRequest(

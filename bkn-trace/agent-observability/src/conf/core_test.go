@@ -10,6 +10,14 @@ import (
 	"time"
 )
 
+func TestCoreConfigRejectsMalformedProjectionGrantPrivateKey(t *testing.T) {
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY", "not-base64")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("malformed projection grant private key must be rejected")
+	}
+}
+
 func TestCoreConfigRequiresExplicitMariaDBDSN(t *testing.T) {
 	t.Setenv("BKN_TRACE_CORE_STORE", "mariadb")
 	t.Setenv("BKN_TRACE_CORE_MARIADB_DSN", "trace:secret@tcp(mariadb:3306)/trace?parseTime=true")

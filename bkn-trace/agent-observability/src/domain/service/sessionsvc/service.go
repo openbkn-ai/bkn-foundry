@@ -13,6 +13,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -22,11 +23,15 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/sessionvo"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
 )
 
 var ErrInvalidOwner = errors.New("trusted conversation owner is incomplete")
 
-const defaultAssemblyTimeout = 5 * time.Minute
+const (
+	defaultAssemblyTimeout    = 5 * time.Minute
+	defaultProjectionGrantTTL = 5 * time.Minute
+)
 
 type CapacityLimits struct {
 	MaxOperationsPerInteraction   int
@@ -45,6 +50,11 @@ type Options struct {
 	NewID                      func(prefix string) string
 	EvidenceCollectionState    func() string
 	EnableHistoricalProvenance bool
+	ProjectionGrantIssuer      string
+	ProjectionGrantKeyID       string
+	ProjectionGrantAudience    string
+	ProjectionGrantTTL         time.Duration
+	ProjectionGrantSigner      func(projectiongrant.Claims) (string, error)
 	AssemblyTimeout            time.Duration
 	Capacity                   CapacityLimits
 	Metrics                    icoremetrics.Recorder
@@ -56,6 +66,11 @@ type Service struct {
 	newID                      func(string) string
 	evidenceCollectionState    func() string
 	enableHistoricalProvenance bool
+	projectionGrantIssuer      string
+	projectionGrantKeyID       string
+	projectionGrantAudience    string
+	projectionGrantTTL         time.Duration
+	projectionGrantSigner      func(projectiongrant.Claims) (string, error)
 	assemblyTimeout            time.Duration
 	capacity                   CapacityLimits
 	metrics                    icoremetrics.Recorder
@@ -82,6 +97,10 @@ func New(store isessionstore.Store, options Options) *Service {
 	if assemblyTimeout <= 0 {
 		assemblyTimeout = defaultAssemblyTimeout
 	}
+	projectionGrantTTL := options.ProjectionGrantTTL
+	if projectionGrantTTL <= 0 {
+		projectionGrantTTL = defaultProjectionGrantTTL
+	}
 	capacity := options.Capacity
 	if capacity.MaxOperationsPerInteraction <= 0 {
 		capacity.MaxOperationsPerInteraction = defaultCapacityLimits.MaxOperationsPerInteraction
@@ -96,6 +115,11 @@ func New(store isessionstore.Store, options Options) *Service {
 		store: store, now: now, newID: newID,
 		evidenceCollectionState:    evidenceCollectionState,
 		enableHistoricalProvenance: options.EnableHistoricalProvenance,
+		projectionGrantIssuer:      strings.TrimSpace(options.ProjectionGrantIssuer),
+		projectionGrantKeyID:       strings.TrimSpace(options.ProjectionGrantKeyID),
+		projectionGrantAudience:    strings.TrimSpace(options.ProjectionGrantAudience),
+		projectionGrantTTL:         projectionGrantTTL,
+		projectionGrantSigner:      options.ProjectionGrantSigner,
 		assemblyTimeout:            assemblyTimeout,
 		capacity:                   capacity,
 		metrics:                    metrics,
@@ -1923,18 +1947,42 @@ func (s *Service) appendHistoricalProvenanceBuildRequest(
 	tx isessionstore.Transaction,
 	interaction sessionvo.Interaction,
 ) error {
+	if s.projectionGrantSigner == nil || s.projectionGrantIssuer == "" || s.projectionGrantKeyID == "" || s.projectionGrantAudience == "" {
+		return errors.New("historical provenance projection grant signer is not configured")
+	}
 	request, err := sessionvo.NewHistoricalProvenanceBuildRequest(
 		interaction.ID, tx.ListOperationCallFacts(interaction.ID),
 	)
 	if err != nil {
 		return err
 	}
+	eventID := s.newID("evt")
+	issuedAt := tx.Now().UTC()
+	grant, err := s.projectionGrantSigner(projectiongrant.Claims{
+		Version:             1,
+		Issuer:              s.projectionGrantIssuer,
+		KeyID:               s.projectionGrantKeyID,
+		Audience:            s.projectionGrantAudience,
+		EventID:             eventID,
+		InteractionID:       request.InteractionID,
+		FactsHash:           request.FactsHash,
+		KnowledgeNetworkIDs: request.KnowledgeNetworkIDs,
+		IssuedAt:            issuedAt,
+		ExpiresAt:           issuedAt.Add(s.projectionGrantTTL),
+	})
+	if err != nil {
+		return fmt.Errorf("sign historical provenance projection grant: %w", err)
+	}
+	if strings.TrimSpace(grant) == "" {
+		return errors.New("historical provenance projection grant signer returned an empty grant")
+	}
+	request.ProjectionReadGrant = grant
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return err
 	}
 	tx.AppendProjection(sessionvo.ProjectionMutation{
-		EventID:          s.newID("evt"),
+		EventID:          eventID,
 		AggregateType:    "interaction",
 		AggregateID:      interaction.ID,
 		AggregateVersion: interaction.RowVersion,
