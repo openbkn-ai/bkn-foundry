@@ -70,7 +70,6 @@ func bknTraceRequestContext(c *gin.Context, vis hydra.Visitor) bkntrace.RequestC
 		RequestID:              requestID,
 		AccountID:              accountID,
 		AccountType:            accountType,
-		TenantID:               strings.TrimSpace(c.GetHeader("x-tenant-id")),
 		ApplicationPrincipalID: strings.TrimSpace(os.Getenv("BKN_TRACE_APPLICATION_PRINCIPAL_ID")),
 		EffectiveSubjectID:     accountID,
 		EffectiveSubjectType:   bknTraceSubjectType(accountType),

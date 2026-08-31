@@ -62,9 +62,6 @@ evidence:
     allowUnauthenticated: false
   queryAuth:
     hydraAdminURL: http://bkn-safe-hydra-admin:4445
-    # 0.1.3 is deployed as a single tenant. This trusted server-side value is
-    # injected after gateway authentication and never accepted from Studio.
-    deploymentTenantID: openbkn-local
     allowUnauthenticated: false
     # Kill switch for the public lifecycle write surface. Set to false to make
     # every public lifecycle call answer 503 authorization_unavailable without

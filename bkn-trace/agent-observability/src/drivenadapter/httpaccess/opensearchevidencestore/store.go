@@ -41,7 +41,6 @@ type document struct {
 	TraceID                string                     `json:"trace_id"`
 	RequestID              string                     `json:"bkn.request.id"`
 	ConversationID         string                     `json:"bkn.conversation.id,omitempty"`
-	TenantID               string                     `json:"bkn.tenant.id,omitempty"`
 	AccountID              string                     `json:"bkn.account.id"`
 	AccountType            string                     `json:"bkn.account.type"`
 	EffectiveSubjectID     string                     `json:"effective_subject_id,omitempty"`
@@ -210,7 +209,7 @@ func (s *Store) search(ctx context.Context, field string, value string, options 
 	if err != nil {
 		return evidencevo.EvidenceQueryResult{}, err
 	}
-	if options.Scope.AccountID != "" || options.Scope.AccountType != "" || options.Scope.TenantID != "" {
+	if options.Scope.AccountID != "" || options.Scope.AccountType != "" {
 		filtered := make([]evidencevo.NormalizedTrace, 0, len(traces))
 		for _, trace := range traces {
 			if evidencevo.MatchesScope(trace, options.Scope) {
@@ -326,14 +325,13 @@ func (s *Store) ensureIndex(ctx context.Context) error {
 	return nil
 }
 
-const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200,"index.refresh_interval":"5s"},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"effective_subject_id":{"type":"keyword"},"application_principal_id":{"type":"keyword"},"knowledge_network_ids":{"type":"keyword"},"bkn":{"properties":{"conversation":{"properties":{"id":{"type":"keyword"}}},"tenant":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"observed_start":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"ingested_at":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"aggregate":{"type":"boolean"}}}}`
+const evidenceIndexMapping = `{"settings":{"index.mapping.total_fields.limit":200,"index.refresh_interval":"5s"},"mappings":{"dynamic":false,"properties":{"document_id":{"type":"keyword"},"trace_id":{"type":"keyword"},"effective_subject_id":{"type":"keyword"},"application_principal_id":{"type":"keyword"},"knowledge_network_ids":{"type":"keyword"},"bkn":{"properties":{"conversation":{"properties":{"id":{"type":"keyword"}}},"account":{"properties":{"id":{"type":"keyword"},"type":{"type":"keyword"}}},"request":{"properties":{"id":{"type":"keyword"}}},"trace":{"properties":{"schema":{"properties":{"version":{"type":"keyword"}}}}}}},"events":{"type":"object","enabled":false},"claim_ids":{"type":"keyword"},"accepted_event_count":{"type":"integer"},"claim_count":{"type":"integer"},"evidence_ref_count":{"type":"integer"},"business_ref_count":{"type":"integer"},"observed_start":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"ingested_at":{"type":"date","format":"strict_date_optional_time_nanos||strict_date_optional_time||epoch_millis"},"aggregate":{"type":"boolean"}}}}`
 
 func toDocument(trace evidencevo.NormalizedTrace, ingestedAt time.Time) document {
 	doc := document{
 		TraceID:                trace.TraceID,
 		RequestID:              trace.RequestID,
 		ConversationID:         trace.ConversationID,
-		TenantID:               trace.TenantID,
 		AccountID:              trace.AccountID,
 		AccountType:            trace.AccountType,
 		EffectiveSubjectID:     trace.EffectiveSubjectID,
@@ -372,7 +370,6 @@ func fromDocument(doc document) evidencevo.NormalizedTrace {
 		TraceID:                doc.TraceID,
 		RequestID:              doc.RequestID,
 		ConversationID:         doc.ConversationID,
-		TenantID:               doc.TenantID,
 		AccountID:              doc.AccountID,
 		AccountType:            doc.AccountType,
 		EffectiveSubjectID:     doc.EffectiveSubjectID,

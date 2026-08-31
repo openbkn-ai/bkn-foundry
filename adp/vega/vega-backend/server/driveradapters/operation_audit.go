@@ -55,12 +55,7 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 			logger.Errorf("operation audit fact rejected: action=%s target_type=%s missing verified actor", rule.Action, rule.TargetType)
 			return
 		}
-		tenantID := strings.TrimSpace(c.GetHeader("x-tenant-id"))
 		requestID := operationAuditRequestID(c)
-		if tenantID == "" {
-			logger.Errorf("operation audit fact rejected: request_id=%s action=%s missing tenant", requestID, rule.Action)
-			return
-		}
 		actorName := operationAuditActorName(c.Request.Context(), c.GetHeader("Authorization"), actor.ID)
 		if actorName == "" {
 			actorName = actor.ID
@@ -69,12 +64,23 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		targetID, targetName := operationAuditTarget(c, rule.TargetType, request, requestID)
 		outcome, failureCode, failureMessage := operationAuditOutcome(c)
 		entry := operationaudit.Entry{
-			EventID: operationaudit.EventID(tenantID, requestID, c.Request.Method, c.FullPath()), EventTime: now, RecordedAt: now,
-			TenantID: tenantID,
-			ActorID:  actor.ID, ActorName: actorName, ActorType: firstNonEmpty(string(actor.Type), "user"), AuthMethod: operationAuditAuthMethod(c.GetHeader("Authorization")),
-			RequestID: requestID, SourceChannel: operationAuditSourceChannel(c.FullPath()), Method: c.Request.Method,
-			Action: rule.Action, TargetType: rule.TargetType, TargetID: targetID, TargetName: targetName,
-			Outcome: outcome, FailureCode: failureCode, FailureMessage: failureMessage,
+			EventID:        operationaudit.EventID(requestID, c.Request.Method, c.FullPath()),
+			EventTime:      now,
+			RecordedAt:     now,
+			ActorID:        actor.ID,
+			ActorName:      actorName,
+			ActorType:      firstNonEmpty(string(actor.Type), "user"),
+			AuthMethod:     operationAuditAuthMethod(c.GetHeader("Authorization")),
+			RequestID:      requestID,
+			SourceChannel:  operationAuditSourceChannel(c.FullPath()),
+			Method:         c.Request.Method,
+			Action:         rule.Action,
+			TargetType:     rule.TargetType,
+			TargetID:       targetID,
+			TargetName:     targetName,
+			Outcome:        outcome,
+			FailureCode:    failureCode,
+			FailureMessage: failureMessage,
 		}
 		if err := r.auditRecorder.Record(c.Request.Context(), entry); err != nil {
 			logger.Errorf("operation audit persistence failed: request_id=%s action=%s target_type=%s error=%v", requestID, rule.Action, rule.TargetType, err)

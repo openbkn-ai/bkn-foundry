@@ -114,7 +114,7 @@ func TestStartInteractionRetryUsesStableHostHintsAcrossTransportSessions(t *test
 	})}
 	t.Setenv("BKN_TRACE_EVIDENCE_INGEST_URL", "")
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req-host-retry-1", TenantID: "tenant-1"})
+		RequestID: "req-host-retry-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},
@@ -170,7 +170,7 @@ func TestStartInteractionRejectsConversationThatConflictsWithHostMapping(t *test
 		}
 	})}
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req-host-conflict-1", TenantID: "tenant-1"})
+		RequestID: "req-host-conflict-1"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "cursor-app"},

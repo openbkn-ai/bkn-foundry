@@ -63,7 +63,7 @@ type AccessCapabilities struct {
 }
 
 func CapabilitiesFor(profile evidencevo.AccessProfile) AccessCapabilities {
-	if !profile.AccountActive || !profile.TenantActive {
+	if !profile.AccountActive {
 		return AccessCapabilities{AllowedLogCategories: []string{}}
 	}
 

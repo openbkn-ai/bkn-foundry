@@ -22,10 +22,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic"
-	"go.opentelemetry.io/otel/trace"
 	"ontology-query/common/bkntrace/outbox"
 	"ontology-query/interfaces"
+
+	"github.com/bytedance/sonic"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -70,7 +71,6 @@ type RequestContext struct {
 	RequestID              string
 	AccountID              string
 	AccountType            string
-	TenantID               string
 	ApplicationPrincipalID string
 	EffectiveSubjectID     string
 	EffectiveSubjectType   string
@@ -304,9 +304,12 @@ func trustedOwner(reqCtx RequestContext, ec eventContext) outbox.Owner {
 	if subjectType == "" {
 		subjectType = coreSubjectType(ec.accountType)
 	}
-	return outbox.Owner{TenantID: strings.TrimSpace(reqCtx.TenantID),
-		ApplicationPrincipalID: strings.TrimSpace(reqCtx.ApplicationPrincipalID), EffectiveSubjectType: subjectType,
-		EffectiveSubjectID: subjectID, DelegationID: strings.TrimSpace(reqCtx.DelegationID)}
+	return outbox.Owner{
+		ApplicationPrincipalID: strings.TrimSpace(reqCtx.ApplicationPrincipalID),
+		EffectiveSubjectType:   subjectType,
+		EffectiveSubjectID:     subjectID,
+		DelegationID:           strings.TrimSpace(reqCtx.DelegationID),
+	}
 }
 
 func coreSubjectType(accountType string) string {

@@ -50,7 +50,7 @@ func NewManagementHandlerWithAuth(service sandbox.SandboxManagementService, auth
 // Disclaimer; this prefix is ​​opened to Ingress in order to make it accessible to Studio's sandbox runtime page (see #326). Walk in public.
 // middlewareIntrospectVerify can obtain the verified true identity, and then superimpose the super-control judgment closure.
 //
-// The response contains cross-tenant information such as user_id, workspace_path, pod_name, python_package_index_url, etc.
+// The response contains platform-wide sensitive information such as user_id, workspace_path, pod_name, python_package_index_url, etc.
 // Therefore limit the visibility of super pipes.
 func (h *managementHandler) RegisterPublic(engine *gin.RouterGroup) {
 	// Lazy construction: The authorization service will load the global configuration, and placing it in the constructor will only register internal callers.

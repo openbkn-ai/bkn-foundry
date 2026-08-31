@@ -226,7 +226,6 @@ def build_evidence_payload(trace_id: str, span_id: str, request_id: str) -> dict
             "trace_id": trace_id,
             "bkn.request.id": request_id,
             "traceparent": f"00-{trace_id}-{span_id}-01",
-            "bkn.tenant.id": "tenant_e2e_lite",
             "bkn.account.id": "acct_e2e_lite",
             "bkn.account.type": "app",
         },

@@ -209,7 +209,6 @@ func contextLogAttributes(ctx context.Context) []otellogapi.KeyValue {
 	attrs := []otellogapi.KeyValue{otellogapi.String("schema_version", "1.0.0")}
 	traceContext, hasTraceContext := common.GetTraceContextFromCtx(ctx)
 	if hasTraceContext {
-		attrs = appendNonEmptyLogAttribute(attrs, "tenant_id", traceContext.TenantID)
 		attrs = appendNonEmptyLogAttribute(attrs, "request_id", traceContext.RequestID)
 		attrs = appendNonEmptyLogAttribute(attrs, "conversation_id", traceContext.ConversationID)
 		attrs = appendNonEmptyLogAttribute(attrs, "interaction_id", traceContext.InteractionID)

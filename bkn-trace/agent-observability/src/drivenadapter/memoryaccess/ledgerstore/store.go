@@ -86,15 +86,12 @@ func (s *Store) Commit(ctx context.Context, event ledgervo.Event) (ledgervo.Dura
 	}
 	events := make([]ledgervo.Event, 0, len(s.ledger)+1)
 	for _, record := range s.ledger {
-		if record.event.Owner.TenantID == event.Owner.TenantID &&
-			record.event.InteractionID == event.InteractionID {
+		if record.event.InteractionID == event.InteractionID {
 			events = append(events, record.event)
 		}
 	}
 	for _, causeID := range event.CausationEventIDs {
-		if cause, found := s.ledger[causeID]; found &&
-			(cause.event.Owner.TenantID != event.Owner.TenantID ||
-				cause.event.InteractionID != event.InteractionID) {
+		if cause, found := s.ledger[causeID]; found && cause.event.InteractionID != event.InteractionID {
 			s.conflicts++
 			return ledgervo.DurableAck{}, ievidenceledger.ErrCausalityConflict
 		}
@@ -104,9 +101,9 @@ func (s *Store) Commit(ctx context.Context, event ledgervo.Event) (ledgervo.Dura
 		s.conflicts++
 		return ledgervo.DurableAck{}, ievidenceledger.ErrCausalityConflict
 	}
-	streamKey := event.Owner.TenantID + "\x00" + event.ProducerStreamID + "\x00" +
+	streamKey := event.ProducerStreamID + "\x00" +
 		strconv.FormatUint(event.ProducerEpoch, 10) + "\x00" + strconv.FormatUint(event.ProducerSequence, 10)
-	producerKey := event.Owner.TenantID + "\x00" + event.ProducerStreamID
+	producerKey := event.ProducerStreamID
 	if currentEpoch, found := s.streamEpochs[producerKey]; found && event.ProducerEpoch < currentEpoch {
 		s.conflicts++
 		return ledgervo.DurableAck{}, ievidenceledger.ErrSequenceConflict

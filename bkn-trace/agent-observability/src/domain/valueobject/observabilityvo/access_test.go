@@ -30,8 +30,9 @@ func TestCapabilitiesFollowTheExistingSixRoleLogMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.role, func(t *testing.T) {
 			profile := evidencevo.AccessProfile{
-				TenantID: "tenant-a", EffectiveSubjectID: "subject-a", Roles: []string{test.role},
-				AccountActive: true, TenantActive: true,
+				EffectiveSubjectID: "subject-a",
+				Roles:              []string{test.role},
+				AccountActive:      true,
 			}
 			capabilities := CapabilitiesFor(profile)
 			actual, expected := append([]string(nil), capabilities.AllowedLogCategories...), append([]string(nil), test.categories...)
@@ -52,8 +53,8 @@ func TestInactiveAccountHasNoObservabilityCapabilities(t *testing.T) {
 }
 
 func TestArchiveManagementIsAServiceSideAdministratorCapability(t *testing.T) {
-	admin := CapabilitiesFor(evidencevo.AccessProfile{TenantID: "tenant-a", AccountActive: true, TenantActive: true, Roles: []string{"admin"}})
-	user := CapabilitiesFor(evidencevo.AccessProfile{TenantID: "tenant-a", AccountActive: true, TenantActive: true, Roles: []string{"normal_user"}})
+	admin := CapabilitiesFor(evidencevo.AccessProfile{AccountActive: true, Roles: []string{"admin"}})
+	user := CapabilitiesFor(evidencevo.AccessProfile{AccountActive: true, Roles: []string{"normal_user"}})
 	if !admin.ObservabilityArchiveManage || user.ObservabilityArchiveManage {
 		t.Fatalf("archive capability must be server-derived for administrators only: admin=%+v user=%+v", admin, user)
 	}

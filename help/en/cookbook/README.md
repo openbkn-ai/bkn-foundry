@@ -18,7 +18,7 @@ Name new files `NN-short-slug.md` and keep the structure consistent:
 
 0. **Metadata card** (top blockquote) — difficulty, time, modules touched, CLI version
 1. **Goal** — open with "**After this recipe you will have:** ..."; outcome-oriented and observable
-2. **Prerequisites** — versions, login, tenant context, recipe-specific dependencies
+2. **Prerequisites** — versions, login, account context, recipe-specific dependencies
 3. **Steps** — numbered steps with runnable commands; split into `### 3.x` once you have more than one step; put alternative or advanced paths inside `<details>`
 4. **Expected output** — start with one "**Success criterion**" line, then a trimmed real snippet
 5. **Troubleshooting** — the "Symptom" column should be the **literal output or error a reader will see**

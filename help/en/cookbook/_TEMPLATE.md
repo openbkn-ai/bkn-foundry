@@ -12,7 +12,7 @@
 ## 2. Prerequisites
 
 - Logged in via `openbkn auth login <platform-url>`.
-- Tenant context: use `openbkn config show` to confirm the active platform configuration.
+- Account context: use `openbkn config show` to confirm the active platform configuration.
 - <List recipe-specific dependencies: datasource / files / an existing KN, etc.>
 
 ## 3. Steps

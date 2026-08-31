@@ -114,7 +114,7 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodGet, "/test", http.NoBody)
 		c.Request.Header.Set(common.HeaderBKNRequestID, "req_01JZVALIDREQUESTID000000002")
-		c.Request.Header.Set(string(interfaces.HeaderXAccountType), "tenant")
+		c.Request.Header.Set(string(interfaces.HeaderXAccountType), "service")
 		c.Request.Header.Set(common.HeaderBaggage, "bkn.account.type=admin,bkn.account.id=user-1,prompt=raw,bkn.runtime.env=test")
 
 		mw := middlewareHeaderAuthContext()
@@ -130,7 +130,7 @@ func TestMiddlewareHeaderAuthContext_SetsTraceContext(t *testing.T) {
 		header := common.GetHeaderFromCtx(c.Request.Context())
 		convey.So(header[common.HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
 		convey.So(header[common.HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000002")
-		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=tenant,bkn.runtime.env=test")
+		convey.So(header[common.HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service,bkn.runtime.env=test")
 	})
 
 	convey.Convey("middlewareHeaderAuthContext falls back to x-request-id and generates missing ids", t, func() {

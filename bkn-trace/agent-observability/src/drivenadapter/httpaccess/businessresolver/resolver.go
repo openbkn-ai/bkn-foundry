@@ -253,9 +253,6 @@ func (r *Resolver) getJSON(ctx context.Context, scope evidencevo.QueryScope, bas
 	if scope.Authorization != "" {
 		req.Header.Set("Authorization", scope.Authorization)
 	}
-	if scope.TenantID != "" {
-		req.Header.Set("x-tenant-id", scope.TenantID)
-	}
 	response, err := r.client.Do(req)
 	if err != nil {
 		return 0, err

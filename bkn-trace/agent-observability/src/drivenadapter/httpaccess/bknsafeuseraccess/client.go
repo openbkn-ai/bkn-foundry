@@ -90,7 +90,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	}
 	records := make([]observabilityvo.LogRecord, 0, len(payload.Logs))
 	for _, entry := range payload.Logs {
-		records = append(records, project(entry, query.AuthorizedTenantID))
+		records = append(records, project(entry))
 	}
 	return observabilityvo.SourcePage{Records: records, Count: payload.Total, CountAccuracy: "exact"}, nil
 }
@@ -120,8 +120,7 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	if err := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes)).Decode(&entry); err != nil {
 		return observabilityvo.LogRecord{}, false, fmt.Errorf("decode BKN Safe access detail: %w", err)
 	}
-	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
-	return project(entry, scope.TenantID), true, nil
+	return project(entry), true, nil
 }
 
 type accessLog struct {
@@ -138,7 +137,7 @@ type accessLog struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
-func project(entry accessLog, tenantID string) observabilityvo.LogRecord {
+func project(entry accessLog) observabilityvo.LogRecord {
 	action := strings.TrimSpace(entry.Action)
 	outcome := strings.TrimSpace(entry.Outcome)
 	eventName := "login.succeeded"
@@ -155,14 +154,42 @@ func project(entry accessLog, tenantID string) observabilityvo.LogRecord {
 	actorName := firstNonEmpty(entry.ActorNameSnapshot, entry.ActorID, "Unknown user")
 	targetID := firstNonEmpty(entry.ActorID, entry.ActorNameSnapshot)
 	return observabilityvo.LogRecord{
-		EventID: entry.ID, EventTime: entry.CreatedAt, RecordedAt: entry.CreatedAt,
-		ActorNameSnapshot: actorName, ActorType: "user", AuthMethod: firstNonEmpty(entry.AuthMethod, "unknown"), SourceChannel: firstNonEmpty(entry.SourceChannel, "web"),
-		BusinessModule: "system_management", Action: action, TargetType: "user", TargetID: targetID, TargetNameSnapshot: actorName,
-		FailureCode: entry.FailureCode, SchemaVersion: "1.0", LogID: sourceID + ":" + entry.ID, SourceID: sourceID, SourceLogID: entry.ID,
-		Category: observabilityvo.CategoryAccessUser, EventName: eventName, EventTimestamp: entry.CreatedAt, ObservedTimestamp: entry.CreatedAt,
-		SeverityNumber: severityNumber, SeverityText: severityText, Outcome: outcome, SafeSummary: accessSummary(action, actorName, outcome), ServiceName: "bkn-safe-access", Environment: "unknown", TenantID: tenantID,
-		ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID, RequestID: entry.RequestID, IngressPrincipal: "bkn-safe", TrustLevel: "trusted",
-		ResourceRef: &observabilityvo.ResourceRef{ResourceType: "user", ResourceID: targetID}, Attributes: map[string]any{"client_ip": entry.ClientIP},
+		EventID:            entry.ID,
+		EventTime:          entry.CreatedAt,
+		RecordedAt:         entry.CreatedAt,
+		ActorNameSnapshot:  actorName,
+		ActorType:          "user",
+		AuthMethod:         firstNonEmpty(entry.AuthMethod, "unknown"),
+		SourceChannel:      firstNonEmpty(entry.SourceChannel, "web"),
+		BusinessModule:     "system_management",
+		Action:             action,
+		TargetType:         "user",
+		TargetID:           targetID,
+		TargetNameSnapshot: actorName,
+		FailureCode:        entry.FailureCode,
+		SchemaVersion:      "1.0", LogID: sourceID + ":" + entry.ID,
+		SourceID:           sourceID,
+		SourceLogID:        entry.ID,
+		Category:           observabilityvo.CategoryAccessUser,
+		EventName:          eventName,
+		EventTimestamp:     entry.CreatedAt,
+		ObservedTimestamp:  entry.CreatedAt,
+		SeverityNumber:     severityNumber,
+		SeverityText:       severityText,
+		Outcome:            outcome,
+		SafeSummary:        accessSummary(action, actorName, outcome),
+		ServiceName:        "bkn-safe-access",
+		Environment:        "unknown",
+		ActorID:            entry.ActorID,
+		EffectiveSubjectID: entry.ActorID,
+		RequestID:          entry.RequestID,
+		IngressPrincipal:   "bkn-safe",
+		TrustLevel:         "trusted",
+		ResourceRef: &observabilityvo.ResourceRef{
+			ResourceType: "user",
+			ResourceID:   targetID,
+		},
+		Attributes: map[string]any{"client_ip": entry.ClientIP},
 	}
 }
 

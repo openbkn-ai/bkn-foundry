@@ -31,7 +31,6 @@ type TraceContext struct {
 	Traceparent    string `json:"traceparent"`
 	RequestID      string `json:"bkn.request.id"`
 	ConversationID string `json:"bkn.conversation.id,omitempty"`
-	TenantID       string `json:"bkn.tenant.id,omitempty"`
 	AccountID      string `json:"bkn.account.id"`
 	AccountType    string `json:"bkn.account.type"`
 }
@@ -362,7 +361,6 @@ type NormalizedTrace struct {
 	TraceID                string
 	RequestID              string
 	ConversationID         string
-	TenantID               string
 	AccountID              string
 	AccountType            string
 	EffectiveSubjectID     string
@@ -383,7 +381,6 @@ type EvidenceQueryOptions struct {
 }
 
 type QueryScope struct {
-	TenantID      string
 	AccountID     string
 	AccountType   string
 	Authorization string         `json:"-"`
@@ -395,7 +392,6 @@ func SameOwnership(existing NormalizedTrace, incoming NormalizedTrace) bool {
 	return existing.TraceID == incoming.TraceID &&
 		existing.RequestID == incoming.RequestID &&
 		compatibleOptionalIdentity(existing.ConversationID, incoming.ConversationID) &&
-		existing.TenantID == incoming.TenantID &&
 		existing.AccountID == incoming.AccountID &&
 		existing.AccountType == incoming.AccountType
 }
@@ -408,13 +404,10 @@ func MatchesScope(trace NormalizedTrace, scope QueryScope) bool {
 	if scope.AccessProfile != nil {
 		return CanReadRecord(*scope.AccessProfile, trace.RecordScope(), defaultAccessView(scope.View))
 	}
-	if trace.AccountID == "" || trace.AccountType == "" || trace.TenantID == "" {
+	if trace.AccountID == "" || trace.AccountType == "" {
 		return false
 	}
 	if trace.AccountID != scope.AccountID || trace.AccountType != scope.AccountType {
-		return false
-	}
-	if trace.TenantID != "" && trace.TenantID != scope.TenantID {
 		return false
 	}
 	return true
@@ -430,7 +423,6 @@ func (trace NormalizedTrace) RecordScope() RecordScope {
 		applicationPrincipalID = trace.AccountID
 	}
 	return RecordScope{
-		TenantID:           trace.TenantID,
 		EffectiveSubjectID: effectiveSubjectID, ApplicationPrincipalID: applicationPrincipalID,
 		KnowledgeNetworkIDs: trace.KnowledgeNetworkIDs,
 	}

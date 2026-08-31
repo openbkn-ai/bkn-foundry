@@ -54,13 +54,13 @@ func TestResolveBuildsProfileFromCurrentSafeIdentityAndNetworkGrants(t *testing.
 
 	client := New(server.URL, server.Client())
 	profile, err := client.Resolve(context.Background(), "Bearer current-token", iauthorizationscope.TrustedIdentity{
-		TenantID: "tenant-a", ActorID: "actor-a",
+		ActorID:            "actor-a",
 		EffectiveSubjectID: "user-a", ApplicationPrincipalID: "app-a", DelegationID: "delegation-a",
 	})
 	if err != nil {
 		t.Fatalf("resolve profile: %v", err)
 	}
-	if !profile.AccountActive || !profile.TenantActive || profile.ActorID != "actor-a" ||
+	if !profile.AccountActive || profile.ActorID != "actor-a" ||
 		profile.EffectiveSubjectID != "user-a" || profile.ApplicationPrincipalID != "app-a" {
 		t.Fatalf("unexpected trusted identity projection: %+v", profile)
 	}
@@ -92,7 +92,8 @@ func TestResolveDoesNotTreatGlobalAdminWildcardAsNetworkManagement(t *testing.T)
 
 	profile, err := New(server.URL, server.Client()).Resolve(
 		context.Background(), "Bearer current-token", iauthorizationscope.TrustedIdentity{
-			TenantID: "tenant-a", ActorID: "actor-a", EffectiveSubjectID: "actor-a",
+			ActorID:            "actor-a",
+			EffectiveSubjectID: "actor-a",
 		},
 	)
 	if err != nil {
@@ -118,7 +119,8 @@ func TestResolveKeepsOwnerScopeWhenDirectGrantEndpointIsNotDeployed(t *testing.T
 
 	profile, err := New(server.URL, server.Client()).Resolve(
 		context.Background(), "Bearer current-token", iauthorizationscope.TrustedIdentity{
-			TenantID: "tenant-a", ActorID: "actor-a", EffectiveSubjectID: "user-a",
+			ActorID:            "actor-a",
+			EffectiveSubjectID: "user-a",
 		},
 	)
 	if err != nil {
@@ -143,7 +145,8 @@ func TestResolveFailsClosedForDisabledOrMismatchedIdentity(t *testing.T) {
 		}))
 		client := New(server.URL, server.Client())
 		_, err := client.Resolve(context.Background(), "Bearer token", iauthorizationscope.TrustedIdentity{
-			TenantID: "tenant-a", ActorID: "actor-a", EffectiveSubjectID: "user-a",
+			ActorID:            "actor-a",
+			EffectiveSubjectID: "user-a",
 		})
 		server.Close()
 		if err == nil {
@@ -170,7 +173,8 @@ func TestResolveClassifiesSafeDenialAndUnavailable(t *testing.T) {
 			})}
 			_, err := New("http://safe.test", client).Resolve(
 				context.Background(), "Bearer token", iauthorizationscope.TrustedIdentity{
-					TenantID: "tenant-a", ActorID: "actor-a", EffectiveSubjectID: "actor-a",
+					ActorID:            "actor-a",
+					EffectiveSubjectID: "actor-a",
 				},
 			)
 			if !errors.Is(err, test.want) {
@@ -182,8 +186,9 @@ func TestResolveClassifiesSafeDenialAndUnavailable(t *testing.T) {
 
 func TestResolveFingerprintIsStableAndChangesWithManagedScope(t *testing.T) {
 	first := fingerprintInput{
-		TenantID: "tenant-a", ActorID: "actor-a",
-		EffectiveSubjectID: "user-a", Roles: []string{"normal_user", "network_builder"},
+		ActorID:                    "actor-a",
+		EffectiveSubjectID:         "user-a",
+		Roles:                      []string{"normal_user", "network_builder"},
 		ManagedKnowledgeNetworkIDs: []string{"kn-b", "kn-a"},
 	}
 	second := first

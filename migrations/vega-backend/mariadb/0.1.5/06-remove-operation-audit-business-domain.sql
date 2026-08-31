@@ -5,7 +5,10 @@
 
 USE openbkn;
 
--- Operation-audit records are scoped by tenant only.
+-- Operation-audit records are scoped by authenticated actor authorization.
 ALTER TABLE t_vega_operation_audit
+    DROP INDEX IF EXISTS idx_vega_audit_tenant_time,
     DROP INDEX IF EXISTS idx_vega_audit_domain_time,
-    DROP COLUMN IF EXISTS business_domain_id;
+    DROP COLUMN IF EXISTS business_domain_id,
+    DROP COLUMN IF EXISTS tenant_id,
+    ADD INDEX IF NOT EXISTS idx_vega_audit_time (event_time, event_id);

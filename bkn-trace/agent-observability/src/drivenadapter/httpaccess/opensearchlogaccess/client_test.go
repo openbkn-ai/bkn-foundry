@@ -29,7 +29,7 @@ func (client *fakeSearchClient) Search(_ context.Context, _ string, query []byte
 func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 	backend := &fakeSearchClient{response: []byte(`{
 		"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"source-log-a","_source":{
-				"attributes":{"log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","tenant_id":"tenant-a","log_category":"runtime.business","event_name":"knowledge.read.completed","effective_subject_id":"builder-a","request_id":"req-a","conversation_id":"conversation-a","interaction_id":"interaction-a","operation_id":"operation-a","knowledge_network_ids":["kn-a"],"ingress_principal":"otel-gateway","trust_level":"trusted"},
+				"attributes":{"log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","log_category":"runtime.business","event_name":"knowledge.read.completed","effective_subject_id":"builder-a","request_id":"req-a","conversation_id":"conversation-a","interaction_id":"interaction-a","operation_id":"operation-a","knowledge_network_ids":["kn-a"],"ingress_principal":"otel-gateway","trust_level":"trusted"},
 			"body":"读取需求预测对象","observedTimestamp":"2026-08-01T11:35:47Z","@timestamp":"2026-08-01T11:35:46Z",
 			"resource":{"service.name":"context-loader","deployment.environment":"production"},
 			"severity":{"text":"INFO","number":9},"traceId":"trace-a","spanId":"span-a"
@@ -37,7 +37,7 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 	client := New(backend, "ss4o_logs-default-namespace")
 	page, err := client.Search(context.Background(), observabilityvo.LogQuery{
 		TraceID: "trace-a", Limit: 20,
-		AuthorizedTenantID: "tenant-a", AuthorizedSubjectID: "builder-a",
+		AuthorizedSubjectID:           "builder-a",
 		AuthorizedCategories:          []string{observabilityvo.CategoryRuntimeBusiness},
 		AuthorizedKnowledgeNetworkIDs: []string{"kn-a"},
 		RequireRecordScope:            true,
@@ -50,7 +50,7 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 		t.Fatalf("decode native query: %v", err)
 	}
 	encoded, _ := json.Marshal(query)
-	for _, expected := range []string{"attributes.tenant_id.keyword", "attributes.log_category.keyword", "attributes.knowledge_network_ids.keyword", "traceId.keyword"} {
+	for _, expected := range []string{"attributes.log_category.keyword", "attributes.knowledge_network_ids.keyword", "traceId.keyword"} {
 		if !containsBytes(encoded, expected) {
 			t.Fatalf("trusted filter %s was not pushed down: %s", expected, encoded)
 		}
@@ -64,7 +64,7 @@ func TestSearchPushesTrustedScopeAndMapsSS4ODocuments(t *testing.T) {
 		t.Fatalf("expected one mapped log, got %+v", page)
 	}
 	record := page.Records[0]
-	if record.LogID != "context-loader:source-log-a" || record.SourceID != "context-loader" || record.SourceLogID != "source-log-a" || record.TenantID != "tenant-a" || record.Category != observabilityvo.CategoryRuntimeBusiness ||
+	if record.LogID != "context-loader:source-log-a" || record.SourceID != "context-loader" || record.SourceLogID != "source-log-a" || record.Category != observabilityvo.CategoryRuntimeBusiness ||
 		record.ServiceName != "context-loader" || record.TraceID != "trace-a" || len(record.KnowledgeNetworkIDs) != 1 {
 		t.Fatalf("unexpected SS4O projection: %+v", record)
 	}
@@ -78,7 +78,7 @@ func TestSearchReplaysNativeSearchAfterValues(t *testing.T) {
 	client := New(backend, "logs")
 	positionTime := time.Date(2026, 8, 1, 10, 0, 0, 123456789, time.UTC)
 	_, err := client.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
 		PageBefore: &observabilityvo.SourcePosition{
 			EventTimestamp: positionTime, LogID: "source-log-a",
 			SearchAfter: []any{"2026-08-01T10:00:00.123456Z", "context-loader", "source-log-a"},
@@ -100,7 +100,7 @@ func TestSearchReplaysNativeSearchAfterValues(t *testing.T) {
 
 func TestBuildQueryReplaysNativeSearchAfterWithoutAParsedTimestamp(t *testing.T) {
 	query := buildQuery(observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
 		PageBefore: &observabilityvo.SourcePosition{
 			LogID: "source-log-a", SearchAfter: []any{"invalid-legacy-time", "context-loader", "source-log-a"},
 		},
@@ -113,7 +113,7 @@ func TestBuildQueryReplaysNativeSearchAfterWithoutAParsedTimestamp(t *testing.T)
 
 func TestBuildQueryUsesTheContractTieBreakers(t *testing.T) {
 	query := buildQuery(observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
 	})
 	sorts, _ := query["sort"].([]any)
 	encoded, _ := json.Marshal(sorts)
@@ -126,7 +126,6 @@ func TestBuildQueryUsesTheContractTieBreakers(t *testing.T) {
 func TestBuildQueryFreezesObservedTimestampAtTheGatewayWatermark(t *testing.T) {
 	watermark := time.Date(2026, 8, 1, 12, 0, 0, 123, time.UTC)
 	body, err := json.Marshal(buildQuery(observabilityvo.LogQuery{
-		AuthorizedTenantID:   "tenant-a",
 		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeSystem},
 		ObservedBefore:       &watermark,
 	}))
@@ -143,7 +142,7 @@ func TestSearchUsesCandidateScopeInsteadOfRequiringEveryManagedNetwork(t *testin
 	positionTime := time.Date(2026, 8, 1, 10, 0, 0, 0, time.UTC)
 	client := New(backend, "logs")
 	_, err := client.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedSubjectID: "builder-a", AuthorizedApplicationID: "app-a",
+		AuthorizedSubjectID: "builder-a", AuthorizedApplicationID: "app-a",
 		AuthorizedCategories:          []string{observabilityvo.CategoryRuntimeBusiness},
 		AuthorizedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"}, RequireRecordScope: true,
 		PageBefore: &observabilityvo.SourcePosition{EventTimestamp: positionTime, LogID: "log-20"},
@@ -164,14 +163,14 @@ func TestSearchUsesCandidateScopeInsteadOfRequiringEveryManagedNetwork(t *testin
 func TestListLogIDCanRoundTripThroughGet(t *testing.T) {
 	backend := &fakeSearchClient{response: []byte(`{
 		"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_id":"source-log-a","_source":{
-			"attributes":{"schema_version":"1.0.0","log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","tenant_id":"tenant-a","log_category":"runtime.business","event_name":"knowledge.read.completed","outcome":"success","safe_summary":"读取需求预测对象","trust_level":"trusted","tool_name":"run_sql"},
+			"attributes":{"schema_version":"1.0.0","log_id":"context-loader:source-log-a","source_id":"context-loader","source_log_id":"source-log-a","log_category":"runtime.business","event_name":"knowledge.read.completed","outcome":"success","safe_summary":"读取需求预测对象","trust_level":"trusted","tool_name":"run_sql"},
 			"observedTimestamp":"2026-08-01T11:35:47Z","@timestamp":"2026-08-01T11:35:46Z",
 			"resource":{"service.name":"context-loader","deployment.environment":"production"},
 			"severity":{"text":"INFO","number":9}
 		}}]}}`)}
 	client := New(backend, "ss4o_logs-default-namespace")
 	page, err := client.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
+		AuthorizedCategories: []string{observabilityvo.CategoryRuntimeBusiness},
 	})
 	if err != nil || len(page.Records) != 1 {
 		t.Fatalf("list log: records=%d err=%v", len(page.Records), err)
@@ -180,8 +179,7 @@ func TestListLogIDCanRoundTripThroughGet(t *testing.T) {
 	if page.Records[0].ToolName != "run_sql" {
 		t.Fatalf("tool identity was not projected into log record: %+v", page.Records[0])
 	}
-	ctx := observabilityvo.WithSourceAccessScope(context.Background(), observabilityvo.SourceAccessScope{
-		TenantID: "tenant-a"})
+	ctx := context.Background()
 	record, found, err := client.Get(ctx, listedLogID)
 	if err != nil || !found {
 		t.Fatalf("get log: found=%v err=%v", found, err)
@@ -189,19 +187,19 @@ func TestListLogIDCanRoundTripThroughGet(t *testing.T) {
 	if record.LogID != listedLogID || record.SourceLogID != "source-log-a" {
 		t.Fatalf("list log_id did not round-trip through detail: listed=%q record=%+v", listedLogID, record)
 	}
-	for _, expected := range []string{"attributes.log_id.keyword", listedLogID, "attributes.tenant_id.keyword", "tenant-a"} {
+	for _, expected := range []string{"attributes.log_id.keyword", listedLogID} {
 		if !containsBytes(backend.query, expected) {
 			t.Fatalf("detail query is missing %q: %s", expected, backend.query)
 		}
 	}
 }
 
-func TestGetFailsClosedWithoutTrustedTenantScope(t *testing.T) {
-	backend := &fakeSearchClient{}
+func TestGetReturnsNotFoundForAnAbsentLog(t *testing.T) {
+	backend := &fakeSearchClient{response: []byte(`{"hits":{"hits":[]}}`)}
 	client := New(backend, "ss4o_logs-default-namespace")
 	_, found, err := client.Get(context.Background(), "context-loader:source-log-a")
-	if err == nil || found || len(backend.query) != 0 {
-		t.Fatalf("detail lookup must fail before querying without trusted tenant scope: found=%v err=%v query=%s", found, err, backend.query)
+	if err != nil || found || len(backend.query) == 0 {
+		t.Fatalf("absent detail must return not found after querying: found=%v err=%v query=%s", found, err, backend.query)
 	}
 }
 

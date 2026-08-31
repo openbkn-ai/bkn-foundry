@@ -109,7 +109,6 @@ type eventContext struct {
 	applicationID    string
 	applicationName  string
 	subjectType      string
-	tenantID         string
 	conversationID   string
 	interactionID    string
 	operationID      string
@@ -197,7 +196,6 @@ func RecordInteractionArtifact(
 		"observed_at":              ec.observedAt,
 		"content_hash":             contentHash,
 		"content":                  content,
-		"bkn.tenant.id":            ec.tenantID,
 		"bkn.account.id":           ec.accountID,
 		"bkn.account.type":         ec.accountType,
 		"effective_subject_id":     ec.accountID,
@@ -610,7 +608,6 @@ func SubmitEvents(ctx context.Context, logger interfaces.Logger, req any, events
 		"trace_id":                     ec.traceID,
 		"traceparent":                  ec.traceparent,
 		"bkn.request.id":               ec.requestID,
-		"bkn.tenant.id":                ec.tenantID,
 		"bkn.account.id":               ec.accountID,
 		"bkn.account.type":             ec.accountType,
 		"bkn.application.principal.id": ec.applicationID,
@@ -979,7 +976,6 @@ func setEvidenceIngestHeaders(headers http.Header, traceBlock map[string]any) {
 	}
 	accountID := stringValue(traceBlock["bkn.account.id"])
 	accountType := stringValue(traceBlock["bkn.account.type"])
-	tenantID := stringValue(traceBlock["bkn.tenant.id"])
 	applicationID := stringValue(traceBlock["bkn.application.principal.id"])
 	if applicationID == "" {
 		applicationID = ModuleName
@@ -990,8 +986,6 @@ func setEvidenceIngestHeaders(headers http.Header, traceBlock map[string]any) {
 	}
 	headers.Set("x-account-id", accountID)
 	headers.Set("x-account-type", accountType)
-	headers.Set("x-tenant-id", tenantID)
-	headers.Set("X-BKN-Tenant-ID", tenantID)
 	headers.Set("X-BKN-Application-Principal-ID", applicationID)
 	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
 	headers.Set("X-BKN-Effective-Subject-ID", accountID)
@@ -1155,7 +1149,6 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 		applicationID:    applicationID,
 		applicationName:  applicationName,
 		subjectType:      subjectType,
-		tenantID:         strings.TrimSpace(traceContext.TenantID),
 		conversationID:   strings.TrimSpace(traceContext.ConversationID),
 		interactionID:    strings.TrimSpace(traceContext.InteractionID),
 		operationID:      strings.TrimSpace(traceContext.OperationID),
@@ -1169,7 +1162,7 @@ func baseEventContext(ctx context.Context) (eventContext, bool) {
 func traceBlockFromEventContext(ec eventContext) map[string]any {
 	return map[string]any{
 		"trace_id": ec.traceID, "traceparent": ec.traceparent,
-		"bkn.request.id": ec.requestID, "bkn.tenant.id": ec.tenantID,
+		"bkn.request.id":               ec.requestID,
 		"bkn.account.id":               ec.accountID,
 		"bkn.account.type":             ec.accountType,
 		"bkn.application.principal.id": ec.applicationID,

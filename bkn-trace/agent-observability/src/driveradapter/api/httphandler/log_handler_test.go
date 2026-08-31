@@ -63,9 +63,9 @@ func (source handlerLogSource) Metadata() observabilityvo.SourceStatus {
 
 func TestLogHandlerReturnsOnlyTheOperationAuditContract(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", ActorID: "builder-a", EffectiveSubjectID: "builder-a",
+		ActorID: "builder-a", EffectiveSubjectID: "builder-a",
 		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-a"},
-		AccountActive: true, TenantActive: true, Fingerprint: "sha256:profile-a",
+		AccountActive: true, Fingerprint: "sha256:profile-a",
 	}
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{{
 		SchemaVersion: "1.0", EventID: "event-a", EventTime: time.Now().UTC(), RecordedAt: time.Now().UTC(),
@@ -76,14 +76,12 @@ func TestLogHandlerReturnsOnlyTheOperationAuditContract(t *testing.T) {
 		Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed",
 		EventTimestamp: time.Now().UTC(), ObservedTimestamp: time.Now().UTC(),
 		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "读取需求预测对象",
-		ServiceName: "context-loader", Environment: "local", TenantID: "tenant-a", EffectiveSubjectID: "other-a", IngressPrincipal: "otel-collector", TrustLevel: "trusted",
+		ServiceName: "context-loader", Environment: "local", EffectiveSubjectID: "other-a", IngressPrincipal: "otel-collector", TrustLevel: "trusted",
 		KnowledgeNetworkIDs: []string{"kn-a"}, TraceID: "4b3d59daeff5bfbb23d46c47a5051ec9",
 	}})
 	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?business_module=domain_knowledge_network&limit=20", nil)
 	request.Header.Set("x-account-id", "builder-a")
 	request.Header.Set("x-account-type", "user")
-	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set("x-tenant-id", "domain-a")
 	response := httptest.NewRecorder()
 
 	handler.ListLogs(response, request)
@@ -129,15 +127,12 @@ func TestLogHandlerReturnsOnlyTheOperationAuditContract(t *testing.T) {
 
 func TestLogHandlerReturnsStableAccessDeniedForNormalUserGlobalSearch(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", ActorID: "user-a", EffectiveSubjectID: "user-a",
-		Roles: []string{"normal_user"}, AccountActive: true, TenantActive: true,
-	}
+		ActorID: "user-a", EffectiveSubjectID: "user-a",
+		Roles: []string{"normal_user"}, AccountActive: true}
 	handler := newTestLogHandler(profile, nil)
 	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs", nil)
 	request.Header.Set("x-account-id", "user-a")
 	request.Header.Set("x-account-type", "user")
-	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set("x-tenant-id", "domain-a")
 	response := httptest.NewRecorder()
 
 	handler.ListLogs(response, request)
@@ -149,12 +144,11 @@ func TestLogHandlerReturnsStableAccessDeniedForNormalUserGlobalSearch(t *testing
 
 func TestLogHandlerReturnsAuthorizedDetailAndHidesUnauthorizedDetail(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "user-a",
-		Roles: []string{"normal_user"}, AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID: "user-a",
+		Roles:              []string{"normal_user"}, AccountActive: true}
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{
-		{LogID: "owned", Category: observabilityvo.CategoryRuntimeBusiness, TenantID: "tenant-a", EffectiveSubjectID: "user-a", TraceID: "trace-a"},
-		{LogID: "other", Category: observabilityvo.CategoryRuntimeBusiness, TenantID: "tenant-a", EffectiveSubjectID: "user-b", TraceID: "trace-a"},
+		{LogID: "owned", Category: observabilityvo.CategoryRuntimeBusiness, EffectiveSubjectID: "user-a", TraceID: "trace-a"},
+		{LogID: "other", Category: observabilityvo.CategoryRuntimeBusiness, EffectiveSubjectID: "user-b", TraceID: "trace-a"},
 	})
 
 	ownedRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs/owned", nil)
@@ -176,9 +170,8 @@ func TestLogHandlerReturnsAuthorizedDetailAndHidesUnauthorizedDetail(t *testing.
 
 func TestLogHandlerUsesEventIDInDetailValidation(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "admin-a",
-		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID: "admin-a",
+		Roles:              []string{"admin"}, AccountActive: true}
 	handler := newTestLogHandler(profile, nil)
 	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs/", nil)
 	setLogTestIdentity(request, "admin-a")
@@ -193,13 +186,12 @@ func TestLogHandlerUsesEventIDInDetailValidation(t *testing.T) {
 
 func TestLogHandlerReturnsAuthorizedFacetsSourcesAndPolicies(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "admin-a",
-		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID: "admin-a",
+		Roles:              []string{"admin"}, AccountActive: true}
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{{
 		LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-		TenantID: "tenant-a", EffectiveSubjectID: "admin-a",
-		EventTimestamp: time.Now().UTC(),
+		EffectiveSubjectID: "admin-a",
+		EventTimestamp:     time.Now().UTC(),
 	}})
 
 	tests := []struct {
@@ -299,14 +291,14 @@ func TestParseLogQueryRejectsUnregisteredAndMalformedFilters(t *testing.T) {
 
 func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "admin-a",
-		Roles: []string{"admin"}, AccountActive: true, TenantActive: true, Fingerprint: "sha256:scope-a",
+		EffectiveSubjectID: "admin-a",
+		Roles:              []string{"admin"}, AccountActive: true, Fingerprint: "sha256:scope-a",
 	}
 	base := time.Now().UTC().Truncate(time.Second)
 	handler := newTestLogHandler(profile, []observabilityvo.LogRecord{
-		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a", EventTimestamp: base},
-		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a", EventTimestamp: base.Add(-time.Second)},
-		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a", EventTimestamp: base.Add(-2 * time.Second)},
+		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, EventTimestamp: base},
+		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, EventTimestamp: base.Add(-time.Second)},
+		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, EventTimestamp: base.Add(-2 * time.Second)},
 	})
 	firstRequest := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?limit=2", nil)
 	setLogTestIdentity(firstRequest, "admin-a")
@@ -338,9 +330,8 @@ func TestLogHandlerReturnsCursorInvalidAndCursorStaleContracts(t *testing.T) {
 
 func TestLogHandlerUsesCanonicalObservabilityErrorEnvelope(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "admin-a",
-		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID: "admin-a",
+		Roles:              []string{"admin"}, AccountActive: true}
 	handler := newTestLogHandler(profile, nil)
 	request := authenticatedQueryRequest(http.MethodGet, "/api/observability/v1/logs?trace_id=invalid", nil)
 	request.Header.Set("X-Request-ID", "req-error-contract")
@@ -369,9 +360,8 @@ func TestLogHandlerUsesCanonicalObservabilityErrorEnvelope(t *testing.T) {
 
 func TestLogHandlerForwardsCallerAuthorizationToSourceAdapters(t *testing.T) {
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "audit-a",
-		Roles: []string{"audit"}, AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID: "audit-a",
+		Roles:              []string{"audit"}, AccountActive: true}
 	source := &authCapturingLogSource{}
 	resolver := &fakeAccessScopeResolver{profile: profile}
 	authorizer := NewEvidenceHandlerWithSecurityConfig(evidencesvc.New(evidencestore.New()), EvidenceHandlerSecurityConfig{
@@ -458,8 +448,6 @@ func containsJSONCode(payload []byte, expected string) bool {
 func setLogTestIdentity(request *http.Request, subject string) {
 	request.Header.Set("x-account-id", subject)
 	request.Header.Set("x-account-type", "user")
-	request.Header.Set("x-tenant-id", "tenant-a")
-	request.Header.Set("x-tenant-id", "domain-a")
 }
 
 func containsJSONEventID(payload []byte, expected string) bool {

@@ -29,7 +29,7 @@ All REST and MCP business tool calls must belong to an active Conversation and a
 
 - Conversation and Interaction must be created through `bkn_start_interaction`, `Mcp-Session-Id` cannot replace business Conversation.
 - When the context is missing, invalid, unauthorized, expired or final, the Context Loader returns a stable error code, `required_action` and a security prompt, and the number of downstream business calls must be 0.
-- The Context Loader uses a trusted authentication context to determine the tenant, application principal, and effective subject; the caller cannot override the Owner in JSON.
+- The Context Loader uses a trusted authentication context to determine the application principal and effective subject; the caller cannot override the Owner in JSON.
 - The Context Loader derives the Operation idempotent identity from the trusted request association, tool name, and normalized input. Network retry reuses `bkn-request-id`, or carries a stable `X-OpenBKN-Client-Invocation-Id`; an existing pending Receipt returns `receipt_pending`, and downstream side effects must not be repeated.
 
 ## 3. Downstream sub-call contract

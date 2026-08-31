@@ -49,20 +49,28 @@ func OperationAudit(recorder interface {
 			c.Request.Header.Set(infra.HeaderBKNRequestID, requestID)
 			c.Header(infra.HeaderBKNRequestID, requestID)
 		}
-		tenantID := strings.TrimSpace(c.GetHeader("x-tenant-id"))
-		if tenantID == "" {
-			return
-		}
 		actorName := executionAuditActorName(c.Request.Context(), auth)
 		targetID, targetName := executionAuditTarget(c, rule.TargetType, body, requestID)
 		outcome, failureCode, failureMessage := executionAuditOutcome(c.Writer.Status())
 		now := time.Now().UTC()
 		entry := operationaudit.Entry{
-			EventID: operationaudit.EventID(tenantID, requestID, c.Request.Method, c.FullPath()), EventTime: now, RecordedAt: now,
-			TenantID: tenantID,
-			ActorID:  auth.AccountID, ActorName: actorName, ActorType: executionAuditActorType(auth), AuthMethod: executionAuditAuthMethod(c.GetHeader("Authorization")),
-			RequestID: requestID, SourceChannel: "api", Method: c.Request.Method, Action: rule.Action,
-			TargetType: rule.TargetType, TargetID: targetID, TargetName: targetName, Outcome: outcome, FailureCode: failureCode, FailureMessage: failureMessage,
+			EventID:        operationaudit.EventID(requestID, c.Request.Method, c.FullPath()),
+			EventTime:      now,
+			RecordedAt:     now,
+			ActorID:        auth.AccountID,
+			ActorName:      actorName,
+			ActorType:      executionAuditActorType(auth),
+			AuthMethod:     executionAuditAuthMethod(c.GetHeader("Authorization")),
+			RequestID:      requestID,
+			SourceChannel:  "api",
+			Method:         c.Request.Method,
+			Action:         rule.Action,
+			TargetType:     rule.TargetType,
+			TargetID:       targetID,
+			TargetName:     targetName,
+			Outcome:        outcome,
+			FailureCode:    failureCode,
+			FailureMessage: failureMessage,
 		}
 		if err := recorder.Record(c.Request.Context(), entry); err != nil { /* management result is never rolled back for audit failure */
 		}

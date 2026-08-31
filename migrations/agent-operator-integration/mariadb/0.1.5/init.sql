@@ -440,7 +440,6 @@ CREATE TABLE IF NOT EXISTS `t_execution_factory_operation_audit` (
   `event_id` varchar(80) NOT NULL,
   `event_time` datetime(6) NOT NULL,
   `recorded_at` datetime(6) NOT NULL,
-  `tenant_id` varchar(128) NOT NULL,
   `actor_id` varchar(128) NOT NULL,
   `actor_name` varchar(256) NOT NULL,
   `actor_type` varchar(32) NOT NULL,
@@ -456,7 +455,7 @@ CREATE TABLE IF NOT EXISTS `t_execution_factory_operation_audit` (
   `failure_code` varchar(128) NOT NULL DEFAULT '',
   `failure_message` varchar(512) NOT NULL DEFAULT '',
   PRIMARY KEY (`event_id`),
-  KEY `idx_execution_audit_tenant_time` (`tenant_id`,`event_time`,`event_id`),
+  KEY `idx_execution_audit_time` (`event_time`,`event_id`),
   KEY `idx_execution_audit_request` (`request_id`),
   KEY `idx_execution_audit_actor` (`actor_id`,`event_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Execution Factory management operation audit';

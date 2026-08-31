@@ -38,7 +38,7 @@ func TestSearchForwardsCallerAuthorizationFiltersAtSourceAndDropsDetail(t *testi
 	page, err := client.Search(ctx, observabilityvo.LogQuery{
 		ActorID: "admin-a", Action: "users", TargetType: "users", TargetID: "user-a",
 		Outcomes: []string{"failure"}, TimeFrom: &from, Limit: 20,
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
+		AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
 	})
 	if err != nil {
 		t.Fatalf("search audit source: %v", err)
@@ -86,7 +86,7 @@ func TestSearchExcludesLegacyAccessRowsFromManagementAuditResults(t *testing.T) 
 	ctx := observabilityvo.WithSourceAuthorization(context.Background(), "Bearer token-a")
 
 	page, err := client.Search(ctx, observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
+		AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
 	})
 	if err != nil {
 		t.Fatalf("search audit source: %v", err)
@@ -105,7 +105,7 @@ func TestSearchRequiresForwardedCallerAuthorization(t *testing.T) {
 		return nil, nil
 	})})
 	_, err := client.Search(context.Background(), observabilityvo.LogQuery{
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
+		AuthorizedCategories: []string{observabilityvo.CategoryAuditAdmin},
 	})
 	if err == nil {
 		t.Fatal("missing source authorization must fail")
@@ -176,7 +176,7 @@ func TestProjectAuditLogUsesStableOperationOutcomes(t *testing.T) {
 		{status: http.StatusNoContent, want: "success"},
 	}
 	for _, test := range tests {
-		record := projectAuditLog(auditLog{ID: "audit-a", Status: test.status}, "tenant-a")
+		record := projectAuditLog(auditLog{ID: "audit-a", Status: test.status})
 		if record.Outcome != test.want {
 			t.Errorf("status %d projected as %q, want %q", test.status, record.Outcome, test.want)
 		}
@@ -194,7 +194,7 @@ func TestProjectAuditLogNormalizesOnlyKnownLegacyRouteActions(t *testing.T) {
 		{method: http.MethodPost, resource: "object-grants", action: "grant", want: "grant"},
 	}
 	for _, test := range tests {
-		record := projectAuditLog(auditLog{Method: test.method, Resource: test.resource, Action: test.action}, "tenant-a")
+		record := projectAuditLog(auditLog{Method: test.method, Resource: test.resource, Action: test.action})
 		if record.Action != test.want {
 			t.Errorf("%s %s action %q projected as %q, want %q", test.method, test.resource, test.action, record.Action, test.want)
 		}

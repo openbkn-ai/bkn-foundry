@@ -61,7 +61,6 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             "method": "POST",
             "path": "/api/mf-model-manager/v1/llm/edit",
             "headers": [
-                (b"x-tenant-id", b"tenant-1"),
                 (b"x-account-id", b"user-1"),
                 (b"bkn-request-id", b"req-audit-write-failure"),
             ],
@@ -85,7 +84,7 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             for message in logs.output
         ))
 
-    async def test_writes_tenant_scoped_audit_without_business_domain(self):
+    async def test_writes_actor_scoped_audit_without_removed_platform_fields(self):
         async def receive():
             return {"type": "http.request", "body": b'{"model_id":"model-1"}', "more_body": False}
 
@@ -94,9 +93,8 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             "method": "POST",
             "path": "/api/mf-model-manager/v1/llm/edit",
             "headers": [
-                (b"x-tenant-id", b"tenant-1"),
                 (b"x-account-id", b"user-1"),
-                (b"bkn-request-id", b"req-audit-tenant-only"),
+                (b"bkn-request-id", b"req-audit-actor-only"),
             ],
             "query_string": b"",
             "path_params": {},
@@ -111,7 +109,7 @@ class TestOperationAuditFailureReporting(unittest.IsolatedAsyncioTestCase):
             response = await operation_audit.operation_audit_middleware(request, call_next)
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(captured[0]["tenant_id"], "tenant-1")
+        self.assertNotIn("tenant_id", captured[0])
         self.assertNotIn("business_domain_id", captured[0])
 
 
@@ -140,7 +138,7 @@ class TestOperationAuditLegacySchemaFallback(unittest.TestCase):
                 return _Pool()
 
         with patch.object(operation_audit, "PymysqlPool", _PymysqlPool):
-            operation_audit._write({"event_id": "evt-1", "tenant_id": "tenant-1"})
+            operation_audit._write({"event_id": "evt-1"})
 
     def test_retries_with_legacy_column_when_database_is_not_migrated(self):
         executed = []

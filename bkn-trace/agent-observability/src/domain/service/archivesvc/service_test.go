@@ -22,7 +22,7 @@ func TestCreateWritesVerifiedBundleBeforePurgingFrozenCandidates(t *testing.T) {
 	storage := &fakeObjectStore{}
 	service := New(NewMemoryStore(), source, storage, Options{Now: func() time.Time { return now }})
 
-	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog, "tenant-a")
+	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog)
 	if err != nil {
 		t.Fatalf("create archive: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestCreateDoesNotPurgeWhenBundleVerificationFails(t *testing.T) {
 	source := &fakeSource{candidates: []Candidate{{ID: "trace-1", OccurredAt: now.AddDate(0, 0, -8), Payload: []byte(`{"id":"trace-1"}`)}}}
 	service := New(NewMemoryStore(), source, &fakeObjectStore{verifyErr: errors.New("mismatch")}, Options{Now: func() time.Time { return now }})
 
-	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace, "tenant-a")
+	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace)
 	if err == nil || job.Status != observabilityvo.ArchiveStatusFailed || len(source.purged) != 0 {
 		t.Fatalf("verification failure must retain hot data: job=%+v err=%v purged=%v", job, err, source.purged)
 	}
@@ -46,14 +46,14 @@ func TestKindsDoNotBlockEachOtherButIncompleteCleanupBlocksSameKind(t *testing.T
 	now := time.Date(2026, time.August, 14, 8, 0, 0, 0, time.UTC)
 	source := &fakeSource{candidates: []Candidate{{ID: "one", OccurredAt: now.AddDate(0, 0, -31), Payload: []byte(`{}`)}}, purgeErr: errors.New("delete failed")}
 	service := New(NewMemoryStore(), source, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
-	job, _ := service.Create(context.Background(), observabilityvo.ArchiveKindLog, "tenant-a")
+	job, _ := service.Create(context.Background(), observabilityvo.ArchiveKindLog)
 	if job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
 		t.Fatalf("expected cleanup incomplete, got %s", job.Status)
 	}
-	if _, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog, "tenant-a"); !errors.Is(err, ErrCleanupRequired) {
+	if _, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog); !errors.Is(err, ErrCleanupRequired) {
 		t.Fatalf("same kind should require cleanup first: %v", err)
 	}
-	if _, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace, "tenant-a"); err != nil && !errors.Is(err, ErrNothingToArchive) {
+	if _, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace); err != nil && !errors.Is(err, ErrNothingToArchive) {
 		t.Fatalf("other archive kind must remain independent: %v", err)
 	}
 }
@@ -62,12 +62,12 @@ func TestRetryCleanupReusesFrozenCandidatePayload(t *testing.T) {
 	now := time.Date(2026, time.August, 14, 8, 0, 0, 0, time.UTC)
 	source := &fakeSource{candidates: []Candidate{{ID: "trace-1", OccurredAt: now.AddDate(0, 0, -8), Payload: []byte(`{"technical_trace_ids":["trace-a"]}`)}}, purgeErr: errors.New("temporary delete failure")}
 	service := New(NewMemoryStore(), source, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
-	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace, "tenant-a")
+	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace)
 	if err != nil || job.Status != observabilityvo.ArchiveStatusCleanupIncomplete {
 		t.Fatalf("expected incomplete cleanup, job=%+v err=%v", job, err)
 	}
 	source.purgeErr = nil
-	job, err = service.RetryCleanup(context.Background(), job.ID, "tenant-a")
+	job, err = service.RetryCleanup(context.Background(), job.ID)
 	if err != nil || job.Status != observabilityvo.ArchiveStatusCompleted || !source.purged["trace-1"] {
 		t.Fatalf("retry must purge the frozen candidate: job=%+v err=%v purged=%v", job, err, source.purged)
 	}
@@ -79,7 +79,7 @@ func TestCreatePersistsVerifiedManifestAndCandidatesBeforePurge(t *testing.T) {
 	source := &checkingSource{store: store, candidates: []Candidate{{ID: "trace-1", OccurredAt: now.AddDate(0, 0, -8), Payload: []byte(`{"technical_trace_ids":["trace-a"]}`)}}}
 	service := New(store, source, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
 
-	if _, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace, "tenant-a"); err != nil {
+	if _, err := service.Create(context.Background(), observabilityvo.ArchiveKindTrace); err != nil {
 		t.Fatalf("create archive: %v", err)
 	}
 	if !source.manifestPersisted || !source.candidatesPersisted {
@@ -92,7 +92,7 @@ func TestCompletedArchiveDoesNotRetainRetryPayload(t *testing.T) {
 	store := NewMemoryStore()
 	service := New(store, &fakeSource{candidates: []Candidate{{ID: "log-1", OccurredAt: now.AddDate(0, 0, -31), Payload: []byte(`{"id":"log-1"}`)}}}, &fakeObjectStore{}, Options{Now: func() time.Time { return now }})
 
-	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog, "tenant-a")
+	job, err := service.Create(context.Background(), observabilityvo.ArchiveKindLog)
 	if err != nil {
 		t.Fatalf("create archive: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestCompletedArchiveDoesNotRetainRetryPayload(t *testing.T) {
 
 func TestOpenDownloadReadsTheArchivedDataBundleInsteadOfReturningStorageURL(t *testing.T) {
 	store := NewMemoryStore()
-	job := Job{ID: "arc_log_1", TenantID: "tenant-a", Kind: observabilityvo.ArchiveKindLog, Status: observabilityvo.ArchiveStatusCompleted, ManifestRef: "archive/manifest.json"}
+	job := Job{ID: "arc_log_1", Kind: observabilityvo.ArchiveKindLog, Status: observabilityvo.ArchiveStatusCompleted, ManifestRef: "archive/manifest.json"}
 	if err := store.Create(job); err != nil {
 		t.Fatalf("create job: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestOpenDownloadReadsTheArchivedDataBundleInsteadOfReturningStorageURL(t *t
 	}}
 	service := New(store, &fakeSource{}, objectStore, Options{})
 
-	download, err := service.OpenDownload(context.Background(), job.ID, "tenant-a")
+	download, err := service.OpenDownload(context.Background(), job.ID)
 	if err != nil {
 		t.Fatalf("open archive download: %v", err)
 	}
@@ -134,10 +134,10 @@ type fakeSource struct {
 	purgeErr   error
 }
 
-func (source *fakeSource) Freeze(_ context.Context, _ observabilityvo.ArchiveKind, _ string, _ observabilityvo.ArchiveRange) ([]Candidate, error) {
+func (source *fakeSource) Freeze(_ context.Context, _ observabilityvo.ArchiveKind, _ observabilityvo.ArchiveRange) ([]Candidate, error) {
 	return append([]Candidate(nil), source.candidates...), nil
 }
-func (source *fakeSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind, _ string, candidates []Candidate) error {
+func (source *fakeSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind, candidates []Candidate) error {
 	if source.purged == nil {
 		source.purged = map[string]bool{}
 	}
@@ -180,12 +180,12 @@ type checkingSource struct {
 	candidatesPersisted bool
 }
 
-func (source *checkingSource) Freeze(_ context.Context, _ observabilityvo.ArchiveKind, _ string, _ observabilityvo.ArchiveRange) ([]Candidate, error) {
+func (source *checkingSource) Freeze(_ context.Context, _ observabilityvo.ArchiveKind, _ observabilityvo.ArchiveRange) ([]Candidate, error) {
 	return append([]Candidate(nil), source.candidates...), nil
 }
 
-func (source *checkingSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind, _ string, candidates []Candidate) error {
-	job, ok := source.store.Latest("tenant-a", observabilityvo.ArchiveKindTrace)
+func (source *checkingSource) Purge(_ context.Context, _ observabilityvo.ArchiveKind, candidates []Candidate) error {
+	job, ok := source.store.Latest(observabilityvo.ArchiveKindTrace)
 	if !ok || len(candidates) != 1 || len(job.Candidates) != 1 {
 		return errors.New("verified archive state is unavailable before purge")
 	}

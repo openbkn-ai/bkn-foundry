@@ -31,8 +31,9 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	owner := Owner{
-		TenantID: "t1", ApplicationPrincipalID: "ontology-query",
-		EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1",
+		ApplicationPrincipalID: "ontology-query",
+		EffectiveSubjectType:   "service",
+		EffectiveSubjectID:     "svc-1",
 	}
 	event := Event{
 		EventID: "evt-1", EventType: "data.query.observed", ConversationID: "c1", InteractionID: "i1",
@@ -48,7 +49,7 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO "+tableOutbox)).
 		WithArgs(
-			"evt-1", sqlmock.AnyArg(), "data.query.observed", "3.0.0", "t1", "bkn-ontology", "ontology-query",
+			"evt-1", sqlmock.AnyArg(), "data.query.observed", "3.0.0", "bkn-ontology", "ontology-query",
 			uint64(3), uint64(7), sqlmock.AnyArg(), StatusPending, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(),
 		).
 		WillReturnResult(sqlmock.NewResult(1, 1))
@@ -85,9 +86,19 @@ func TestEnqueueRejectsZeroEpoch(t *testing.T) {
 	mock.ExpectRollback()
 
 	_, err = repository.Enqueue(context.Background(), Event{
-		EventID: "evt-zero", EventType: "data.query.observed", ConversationID: "c1", InteractionID: "i1",
-		StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`),
-	}, Owner{TenantID: "t1", ApplicationPrincipalID: "ontology-query", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"})
+		EventID:        "evt-zero",
+		EventType:      "data.query.observed",
+		ConversationID: "c1",
+		InteractionID:  "i1",
+		StartedAt:      now,
+		ObservedAt:     now,
+		EmittedAt:      now,
+		Envelope:       []byte(`{"payload":{}}`),
+	}, Owner{
+		ApplicationPrincipalID: "ontology-query",
+		EffectiveSubjectType:   "service",
+		EffectiveSubjectID:     "svc-1",
+	})
 	if err == nil {
 		t.Fatal("Enqueue() accepted epoch 0")
 	}

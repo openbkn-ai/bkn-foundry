@@ -225,7 +225,6 @@ func (service *Service) listPage(
 	if err := applyLogTimeWindow(&sourceQuery, queryWatermark); err != nil {
 		return observabilityvo.ListResult{}, ErrInvalidQuery
 	}
-	sourceQuery.AuthorizedTenantID = profile.TenantID
 	sourceQuery.AuthorizedSubjectID = profile.EffectiveSubjectID
 	sourceQuery.AuthorizedApplicationID = profile.ApplicationPrincipalID
 	sourceQuery.AuthorizedCategories = append([]string(nil), effectiveCategories...)
@@ -340,11 +339,16 @@ func (service *Service) listPage(
 		}
 		if len(positions) > 0 {
 			result.NextCursor = encodeCursor(service.cursorKey, cursorPayload{
-				Version: cursorVersion, SortVersion: cursorSortVersion, FilterHash: logFilterHash(query),
-				TenantID: profile.TenantID, EffectiveSubject: profile.EffectiveSubjectID,
-				ApplicationID: profile.ApplicationPrincipalID, ScopeFingerprint: profile.Fingerprint,
-				VisibleSources: visibleSourceIDs, Positions: positions, QueryWatermark: queryWatermark,
-				ExpiresAt: time.Now().Add(cursorTTL),
+				Version:          cursorVersion,
+				SortVersion:      cursorSortVersion,
+				FilterHash:       logFilterHash(query),
+				EffectiveSubject: profile.EffectiveSubjectID,
+				ApplicationID:    profile.ApplicationPrincipalID,
+				ScopeFingerprint: profile.Fingerprint,
+				VisibleSources:   visibleSourceIDs,
+				Positions:        positions,
+				QueryWatermark:   queryWatermark,
+				ExpiresAt:        time.Now().Add(cursorTTL),
 			})
 		}
 	}
@@ -487,9 +491,6 @@ func (service *Service) Get(
 	} else if !capabilities.GlobalLogSearch {
 		detailCategories = []string{observabilityvo.CategoryRuntimeBusiness, observabilityvo.CategoryRuntimeModel}
 	}
-	ctx = observabilityvo.WithSourceAccessScope(ctx, observabilityvo.SourceAccessScope{
-		TenantID: profile.TenantID,
-	})
 	visibleSources := service.visibleSources(detailCategories)
 	if service.operationAuditOnly {
 		visibleSources = operationAuditSources(visibleSources)
@@ -562,9 +563,12 @@ func (service *Service) Sources(ctx context.Context, profile evidencevo.AccessPr
 	now := time.Now().UTC()
 	from := now.Add(-time.Hour)
 	query := observabilityvo.LogQuery{
-		Limit: 1, AuthorizedTenantID: profile.TenantID,
-		TimeFrom: &from, TimeTo: &now, ObservedBefore: &now,
-		AuthorizedSubjectID: profile.EffectiveSubjectID, AuthorizedApplicationID: profile.ApplicationPrincipalID,
+		Limit:                         1,
+		TimeFrom:                      &from,
+		TimeTo:                        &now,
+		ObservedBefore:                &now,
+		AuthorizedSubjectID:           profile.EffectiveSubjectID,
+		AuthorizedApplicationID:       profile.ApplicationPrincipalID,
 		AuthorizedCategories:          append([]string(nil), capabilities.AllowedLogCategories...),
 		AuthorizedKnowledgeNetworkIDs: append([]string(nil), profile.ManagedKnowledgeNetworkIDs...),
 		RequireRecordScope:            hasRole(profile, "network_builder") && !hasRole(profile, "admin", "super_admin"),
@@ -593,8 +597,11 @@ func (service *Service) Policies(profile evidencevo.AccessProfile) ([]observabil
 			retentionDays = 365
 		}
 		policies = append(policies, observabilityvo.LogPolicy{
-			Scope: map[string]string{"tenant_id": profile.TenantID}, PolicyRevision: "r6.2-default",
-			Category: category, RetentionDays: retentionDays, PolicyKind: kind,
+			Scope:          map[string]string{},
+			PolicyRevision: "r6.2-default",
+			Category:       category,
+			RetentionDays:  retentionDays,
+			PolicyKind:     kind,
 		})
 	}
 	return policies, nil
@@ -806,9 +813,6 @@ func canReadLog(
 		!observabilityvo.IsRegisteredLogEvent(record.Category, record.EventName) {
 		return false
 	}
-	if profile.TenantID == "" || record.TenantID == "" || profile.TenantID != record.TenantID {
-		return false
-	}
 	if associated && !capabilities.GlobalLogSearch {
 		if isOperationAuditCategory(record.Category) {
 			return record.ActorID != "" && record.ActorID == profile.EffectiveSubjectID
@@ -825,7 +829,6 @@ func canReadLog(
 	}
 
 	recordScope := evidencevo.RecordScope{
-		TenantID:           record.TenantID,
 		EffectiveSubjectID: record.EffectiveSubjectID, ApplicationPrincipalID: record.ApplicationID,
 		KnowledgeNetworkIDs: record.KnowledgeNetworkIDs,
 	}
@@ -838,7 +841,8 @@ func canReadLog(
 		return evidencevo.CanReadRecord(profile, recordScope, evidencevo.AccessViewBusiness) ||
 			hasRole(profile, "admin", "super_admin")
 	case observabilityvo.CategoryRuntimeSystem:
-		return evidencevo.CanReadRecord(profile, recordScope, evidencevo.AccessViewTechnical)
+		return hasRole(profile, "admin", "super_admin") ||
+			evidencevo.CanReadRecord(profile, recordScope, evidencevo.AccessViewTechnical)
 	default:
 		return true
 	}

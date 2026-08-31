@@ -265,7 +265,7 @@ func (s *Store) GetEvidenceByRequestID(_ context.Context, requestID string, opti
 }
 
 func filterByScope(traces []evidencevo.NormalizedTrace, scope evidencevo.QueryScope) []evidencevo.NormalizedTrace {
-	if scope.AccountID == "" && scope.AccountType == "" && scope.TenantID == "" {
+	if scope.AccountID == "" && scope.AccountType == "" {
 		return traces
 	}
 	filtered := make([]evidencevo.NormalizedTrace, 0, len(traces))

@@ -84,7 +84,7 @@ func (s *Store) listEvidenceProjection(ctx context.Context, query iprojectionsou
 }
 
 func (s *Store) listEvidenceProjectionPage(ctx context.Context, query iprojectionsource.Query, searchAfter []any, size int) ([]evidenceHit, error) {
-	must := ownershipMust(query.Scope)
+	must := scopeCandidateMust(query.Scope)
 	must = append(must, map[string]any{
 		"bool": map[string]any{
 			"should": []map[string]any{
@@ -225,10 +225,11 @@ type artifactProjectionHit struct {
 }
 
 func (s *Store) listArtifactProjectionPage(ctx context.Context, query iprojectionsource.Query, searchAfter []any, size int) ([]artifactProjectionHit, error) {
-	must := ownershipMust(query.Scope)
+	must := scopeCandidateMust(query.Scope)
 	if len(query.AuthorizedInteractionIDs) > 0 {
-		must = scopeBoundaryMust(query.Scope)
-		must = append(must, map[string]any{"terms": map[string]any{"interaction_id": query.AuthorizedInteractionIDs}})
+		must = []map[string]any{
+			{"terms": map[string]any{"interaction_id": query.AuthorizedInteractionIDs}},
+		}
 	}
 	must = appendProjectionIdentityFilters(must, query)
 	if query.InteractionID != "" {
@@ -359,10 +360,6 @@ func appendEvidenceTimeFilter(must []map[string]any, query iprojectionsource.Que
 			"minimum_should_match": 1,
 		},
 	})
-}
-
-func ownershipMust(scope evidencevo.QueryScope) []map[string]any {
-	return scopeCandidateMust(scope)
 }
 
 func projectionTracesFromHits(hits []evidenceHit, scope evidencevo.QueryScope) []evidencevo.NormalizedTrace {

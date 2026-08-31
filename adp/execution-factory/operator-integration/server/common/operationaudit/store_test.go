@@ -25,23 +25,23 @@ func TestRecordFallsBackToLegacyBusinessDomainColumn(t *testing.T) {
 	store := NewStore(db)
 	eventTime := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
 	entry := Entry{
-		EventID: "evt-1", EventTime: eventTime, RecordedAt: eventTime, TenantID: "tenant-a",
+		EventID: "evt-1", EventTime: eventTime, RecordedAt: eventTime,
 		ActorID: "user-a", ActorName: "Alice", ActorType: "user", AuthMethod: "oauth",
 		RequestID: "req-a", SourceChannel: "api", Method: "POST", Action: "create",
 		TargetType: "toolbox", TargetID: "toolbox-a", TargetName: "Toolbox A", Outcome: "success",
 	}
-	tenantOnlyArgs := []driver.Value{
-		entry.EventID, entry.EventTime, entry.RecordedAt, entry.TenantID, entry.ActorID,
+	currentArgs := []driver.Value{
+		entry.EventID, entry.EventTime, entry.RecordedAt, entry.ActorID,
 		entry.ActorName, entry.ActorType, entry.AuthMethod, entry.RequestID, entry.SourceChannel,
 		entry.Method, entry.Action, entry.TargetType, entry.TargetID, entry.TargetName,
 		entry.Outcome, entry.FailureCode, entry.FailureMessage,
 	}
 
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO " + tableName)).
-		WithArgs(tenantOnlyArgs...).
+		WithArgs(currentArgs...).
 		WillReturnError(errors.New("Error 1364 (HY000): Field 'business_domain_id' doesn't have a default value"))
 	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO " + tableName)).
-		WithArgs(append(tenantOnlyArgs, "")...).
+		WithArgs(append(currentArgs, "")...).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	if err := store.Record(context.Background(), entry); err != nil {

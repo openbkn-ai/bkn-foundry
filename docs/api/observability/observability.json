@@ -31,7 +31,6 @@
     "managed_knowledge_network_scope_source": "BKN Safe GET /api/safe/v1/me/knowledge-network-grants (current-subject direct instance grants only)",
     "access_scope_inputs": [
       "account_status",
-      "tenant_membership",
       "current_builtin_roles",
       "effective_subject",
       "application_principal",
@@ -554,10 +553,9 @@
       "Cursor": {
         "name": "cursor",
         "in": "query",
-        "description": "不透明签名游标，绑定过滤条件、tenant_id、effective_subject_id、access_scope_fingerprint、query_watermark、可见来源和各来源 keyset。access_scope_fingerprint 由账号、租户、当前内置角色、应用归属和知识网络管理范围规范化计算。",
+        "description": "不透明签名游标，绑定过滤条件、effective_subject_id、access_scope_fingerprint、query_watermark、可见来源和各来源 keyset。access_scope_fingerprint 由账号、当前内置角色、应用归属和知识网络管理范围规范化计算。",
         "x-openbkn-cursor-binding": [
           "normalized_filter_hash",
-          "tenant_id",
           "effective_subject_id",
           "access_scope_fingerprint",
           "query_watermark",
@@ -645,8 +643,8 @@
       },
       "ResourceScope": {
         "type": "string",
-        "description": "带租户命名空间的严格资源范围；来源和字段授权使用独立带类型 scope。",
-        "pattern": "^(platform:[^:]+|environment:[^:]+:[^:]+|domain:[^:]+:[^:]+|source:[^:]+:[^:]+|field:[^:]+:[^:]+:[a-z][a-z0-9_]{0,63})$"
+        "description": "严格资源范围；来源和字段授权使用独立带类型 scope。",
+        "pattern": "^(platform:[^:]+|environment:[^:]+:[^:]+|source:[^:]+:[^:]+|field:[^:]+:[^:]+:[a-z][a-z0-9_]{0,63})$"
       },
       "Outcome": {
         "type": "string",
@@ -692,7 +690,6 @@
           "safe_summary",
           "service_name",
           "deployment_environment",
-          "tenant_id",
           "ingress_principal",
           "trust_level"
         ],
@@ -742,9 +739,6 @@
             "type": "string"
           },
           "deployment_environment": {
-            "type": "string"
-          },
-          "tenant_id": {
             "type": "string"
           },
           "actor_id": {

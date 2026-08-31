@@ -28,11 +28,11 @@ func NewTraceArchiveSource(store *Store) *TraceArchiveSource {
 	return &TraceArchiveSource{store: store}
 }
 
-func (source *TraceArchiveSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, tenantID string, archiveRange observabilityvo.ArchiveRange) ([]archivesvc.Candidate, error) {
+func (source *TraceArchiveSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) ([]archivesvc.Candidate, error) {
 	if kind != observabilityvo.ArchiveKindTrace {
 		return nil, nil
 	}
-	rows, err := source.store.db.QueryContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions i JOIN bkn_trace_conversations c ON c.conversation_id=i.conversation_id WHERE c.tenant_id=? AND i.execution_status<>? AND i.terminal_at<? ORDER BY i.terminal_at ASC, i.interaction_id ASC`, tenantID, sessionvo.InteractionActive, archiveRange.To.UTC())
+	rows, err := source.store.db.QueryContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE execution_status<>? AND terminal_at<? ORDER BY terminal_at ASC, interaction_id ASC`, sessionvo.InteractionActive, archiveRange.To.UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (source *TraceArchiveSource) packageInteraction(ctx context.Context, intera
 	return payload, *interaction.TerminalAt, nil
 }
 
-func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, tenantID string, candidates []archivesvc.Candidate) error {
+func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, candidates []archivesvc.Candidate) error {
 	if kind != observabilityvo.ArchiveKindTrace {
 		return nil
 	}
@@ -95,7 +95,7 @@ func (source *TraceArchiveSource) Purge(ctx context.Context, kind observabilityv
 	defer func() { _ = tx.Rollback() }()
 	for _, candidate := range candidates {
 		var id string
-		err := tx.QueryRowContext(ctx, `SELECT i.interaction_id FROM bkn_trace_interactions i JOIN bkn_trace_conversations c ON c.conversation_id=i.conversation_id WHERE i.interaction_id=? AND c.tenant_id=? AND i.execution_status<>? FOR UPDATE`, candidate.ID, tenantID, sessionvo.InteractionActive).Scan(&id)
+		err := tx.QueryRowContext(ctx, `SELECT interaction_id FROM bkn_trace_interactions WHERE interaction_id=? AND execution_status<>? FOR UPDATE`, candidate.ID, sessionvo.InteractionActive).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			continue
 		}

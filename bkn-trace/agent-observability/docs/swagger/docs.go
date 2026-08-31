@@ -2747,9 +2747,6 @@ const docTemplate = `{
                 "bkn.request.id": {
                     "type": "string"
                 },
-                "bkn.tenant.id": {
-                    "type": "string"
-                },
                 "business_refs": {
                     "type": "array",
                     "items": {
@@ -4674,8 +4671,7 @@ const docTemplate = `{
             "required": [
                 "application_principal_id",
                 "effective_subject_id",
-                "effective_subject_type",
-                "tenant_id"
+                "effective_subject_type"
             ],
             "properties": {
                 "application_principal_id": {
@@ -4689,9 +4685,6 @@ const docTemplate = `{
                 },
                 "effective_subject_type": {
                     "$ref": "#/definitions/sessionvo.SubjectType"
-                },
-                "tenant_id": {
-                    "type": "string"
                 }
             }
         },

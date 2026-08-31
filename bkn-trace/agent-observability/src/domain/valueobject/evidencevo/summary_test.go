@@ -165,14 +165,22 @@ func TestBuildExecutionSummariesDoesNotInventUnavailableFields(t *testing.T) {
 
 func TestBuildExecutionSummariesDoesNotInferAgentRootOrCompletionFromProducerOperationAndEmission(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_running", RequestID: "req_running",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_running",
+		RequestID:     "req_running",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
-			EventID: "event_running", EventType: "data.query.observed",
-			ObservedAt: "2026-07-26T08:00:00Z", EmittedAt: "2026-07-26T08:00:01Z",
-			Producer: "vega-backend", TraceID: "trace_running", SpanID: "span_running",
-			RequestID: "req_running", OperationName: "data.query", OperationID: "op_query",
+			EventID:       "event_running",
+			EventType:     "data.query.observed",
+			ObservedAt:    "2026-07-26T08:00:00Z",
+			EmittedAt:     "2026-07-26T08:00:01Z",
+			Producer:      "vega-backend",
+			TraceID:       "trace_running",
+			SpanID:        "span_running",
+			RequestID:     "req_running",
+			OperationName: "data.query",
+			OperationID:   "op_query",
 			Payload: map[string]any{
 				"query_artifact_ref":  "artifact:query_running",
 				"result_artifact_ref": "artifact:data_running",
@@ -267,21 +275,31 @@ func TestBuildExecutionSummariesCompletesFinishedRetrievalAndDataQueryRequests(t
 
 func TestBuildExecutionSummariesUsesOnlyArtifactsExplicitlyReferencedByEvents(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_linked", RequestID: "req_summary",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_linked",
+		RequestID:     "req_summary",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{
 			{
-				EventID: "event_question", EventType: "agent.interaction.started",
-				ObservedAt: "2026-07-26T08:00:00Z", EmittedAt: "2026-07-26T08:00:00Z",
-				TraceID: "trace_linked", RequestID: "req_summary", OperationName: "agent.run",
-				Payload: map[string]any{"agent_id": "agent-explicit", "question_artifact_ref": "artifact:linked_question"},
+				EventID:       "event_question",
+				EventType:     "agent.interaction.started",
+				ObservedAt:    "2026-07-26T08:00:00Z",
+				EmittedAt:     "2026-07-26T08:00:00Z",
+				TraceID:       "trace_linked",
+				RequestID:     "req_summary",
+				OperationName: "agent.run",
+				Payload:       map[string]any{"agent_id": "agent-explicit", "question_artifact_ref": "artifact:linked_question"},
 			},
 			{
-				EventID: "event_result", EventType: "claim.created",
-				ObservedAt: "2026-07-26T08:00:02Z", EmittedAt: "2026-07-26T08:00:02Z",
-				TraceID: "trace_linked", RequestID: "req_summary", OperationName: "claim.create",
-				Payload: map[string]any{"claim_id": "claim_linked", "result_artifact_ref": "artifact:linked_result"},
+				EventID:       "event_result",
+				EventType:     "claim.created",
+				ObservedAt:    "2026-07-26T08:00:02Z",
+				EmittedAt:     "2026-07-26T08:00:02Z",
+				TraceID:       "trace_linked",
+				RequestID:     "req_summary",
+				OperationName: "claim.create",
+				Payload:       map[string]any{"claim_id": "claim_linked", "result_artifact_ref": "artifact:linked_result"},
 			},
 		},
 	}
@@ -308,20 +326,28 @@ func TestBuildExecutionSummariesUsesOnlyArtifactsExplicitlyReferencedByEvents(t 
 
 func TestBuildExecutionSummariesKeepsOperationTimingSeparateFromInteractionArtifacts(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_operation_timing", RequestID: "req_operation_timing",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_operation_timing",
+		RequestID:     "req_operation_timing",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{
 			{
-				EventID: "event_question_link", EventType: "agent.interaction.started",
-				ObservedAt: "2026-08-02T09:00:01Z", EmittedAt: "2026-08-02T09:00:01Z",
-				TraceID: "trace_operation_timing", RequestID: "req_operation_timing",
-				Payload: map[string]any{"question_artifact_ref": "artifact:question_operation_timing"},
+				EventID:    "event_question_link",
+				EventType:  "agent.interaction.started",
+				ObservedAt: "2026-08-02T09:00:01Z",
+				EmittedAt:  "2026-08-02T09:00:01Z",
+				TraceID:    "trace_operation_timing",
+				RequestID:  "req_operation_timing",
+				Payload:    map[string]any{"question_artifact_ref": "artifact:question_operation_timing"},
 			},
 			{
-				EventID: "event_result_link", EventType: "claim.created",
-				ObservedAt: "2026-08-02T09:00:02Z", EmittedAt: "2026-08-02T09:00:02Z",
-				TraceID: "trace_operation_timing", RequestID: "req_operation_timing",
+				EventID:    "event_result_link",
+				EventType:  "claim.created",
+				ObservedAt: "2026-08-02T09:00:02Z",
+				EmittedAt:  "2026-08-02T09:00:02Z",
+				TraceID:    "trace_operation_timing",
+				RequestID:  "req_operation_timing",
 				Payload: map[string]any{
 					"claim_id":            "claim_operation_timing",
 					"result_artifact_ref": "artifact:result_operation_timing",
@@ -426,22 +452,32 @@ func TestBuildExecutionSummariesKeepsRecoveredToolFailureOnOperation(t *testing.
 
 func TestBuildExecutionSummariesDoesNotCopyInteractionResultIntoOperation(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_failed_operation", RequestID: "req_failed_operation",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:        "trace_failed_operation",
+		RequestID:      "req_failed_operation",
+		AccountID:      "acct_demo",
+		AccountType:    "app",
 		SchemaVersion:  ArtifactContractVersion,
 		ConversationID: "conv_supply_chain",
 		Events: []EvidenceEvent{
 			{
-				EventID: "event_operation_failed", EventType: "tool.result.observed",
-				ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
-				TraceID: "trace_failed_operation", RequestID: "req_failed_operation",
-				InteractionID: "int_supply_chain", OperationID: "op_run_sql", OperationName: "run_sql",
-				Payload: map[string]any{"status": "failed", "error_code": "READ_POLICY_REJECTED"},
+				EventID:       "event_operation_failed",
+				EventType:     "tool.result.observed",
+				ObservedAt:    "2026-08-04T08:00:00Z",
+				EmittedAt:     "2026-08-04T08:00:01Z",
+				TraceID:       "trace_failed_operation",
+				RequestID:     "req_failed_operation",
+				InteractionID: "int_supply_chain",
+				OperationID:   "op_run_sql",
+				OperationName: "run_sql",
+				Payload:       map[string]any{"status": "failed", "error_code": "READ_POLICY_REJECTED"},
 			},
 			{
-				EventID: "event_interaction_result_link", EventType: "claim.created",
-				ObservedAt: "2026-08-04T08:00:02Z", EmittedAt: "2026-08-04T08:00:02Z",
-				TraceID: "trace_failed_operation", RequestID: "req_failed_operation",
+				EventID:       "event_interaction_result_link",
+				EventType:     "claim.created",
+				ObservedAt:    "2026-08-04T08:00:02Z",
+				EmittedAt:     "2026-08-04T08:00:02Z",
+				TraceID:       "trace_failed_operation",
+				RequestID:     "req_failed_operation",
 				InteractionID: "int_supply_chain",
 				Payload:       map[string]any{"result_artifact_ref": "artifact:interaction_result"},
 			},
@@ -476,15 +512,23 @@ func TestBuildExecutionSummariesDoesNotCopyInteractionResultIntoOperation(t *tes
 
 func TestBuildExecutionSummariesExplainsFailedOperationEvidenceWithoutRequiringTurnContent(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_failed_receipt", RequestID: "req_failed_receipt",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
-		SchemaVersion: ArtifactContractVersion, ConversationID: "conv_supply_chain",
+		TraceID:        "trace_failed_receipt",
+		RequestID:      "req_failed_receipt",
+		AccountID:      "acct_demo",
+		AccountType:    "app",
+		SchemaVersion:  ArtifactContractVersion,
+		ConversationID: "conv_supply_chain",
 		Events: []EvidenceEvent{
 			{
-				EventID: "receipt:failed", EventType: "retrieval.completed",
-				ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
-				TraceID: "trace_failed_receipt", RequestID: "req_failed_receipt",
-				InteractionID: "int_supply_chain", OperationID: "op_run_sql", OperationName: "run_sql",
+				EventID:       "receipt:failed",
+				EventType:     "retrieval.completed",
+				ObservedAt:    "2026-08-04T08:00:00Z",
+				EmittedAt:     "2026-08-04T08:00:01Z",
+				TraceID:       "trace_failed_receipt",
+				RequestID:     "req_failed_receipt",
+				InteractionID: "int_supply_chain",
+				OperationID:   "op_run_sql",
+				OperationName: "run_sql",
 				Payload: map[string]any{
 					"status": "failed", "evidence_durability": "failed",
 				},
@@ -506,16 +550,23 @@ func TestBuildExecutionSummariesExplainsFailedOperationEvidenceWithoutRequiringT
 
 func TestBuildExecutionSummariesKeepsInteractionQuestionOutOfOperation(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_schema_search", RequestID: "req_schema_search",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:        "trace_schema_search",
+		RequestID:      "req_schema_search",
+		AccountID:      "acct_demo",
+		AccountType:    "app",
 		SchemaVersion:  ArtifactContractVersion,
 		ConversationID: "conv_supply_chain",
 		Events: []EvidenceEvent{
 			{
-				EventID: "event_schema_search", EventType: "retrieval.completed",
-				ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
-				TraceID: "trace_schema_search", RequestID: "req_schema_search",
-				InteractionID: "int_supply_chain", OperationID: "op_schema_search", OperationName: "search_schema",
+				EventID:       "event_schema_search",
+				EventType:     "retrieval.completed",
+				ObservedAt:    "2026-08-04T08:00:00Z",
+				EmittedAt:     "2026-08-04T08:00:01Z",
+				TraceID:       "trace_schema_search",
+				RequestID:     "req_schema_search",
+				InteractionID: "int_supply_chain",
+				OperationID:   "op_schema_search",
+				OperationName: "search_schema",
 				Payload: map[string]any{
 					"question_artifact_ref": "artifact:interaction_question",
 					"candidate_count":       3,
@@ -543,14 +594,21 @@ func TestBuildExecutionSummariesKeepsInteractionQuestionOutOfOperation(t *testin
 
 func TestBuildExecutionSummariesUsesRunSQLRowCount(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_run_sql", RequestID: "req_run_sql",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:     "trace_run_sql",
+		RequestID:   "req_run_sql",
+		AccountID:   "acct_demo",
+		AccountType: "app",
 		Events: []EvidenceEvent{{
-			EventID: "event_run_sql", EventType: "data.query.observed",
-			ObservedAt: "2026-08-08T08:00:00Z", EmittedAt: "2026-08-08T08:00:01Z",
-			TraceID: "trace_run_sql", RequestID: "req_run_sql",
-			InteractionID: "int_run_sql", OperationID: "op_run_sql", OperationName: "context.run_sql",
-			Payload: map[string]any{"row_count": 10, "query_type": "sql"},
+			EventID:       "event_run_sql",
+			EventType:     "data.query.observed",
+			ObservedAt:    "2026-08-08T08:00:00Z",
+			EmittedAt:     "2026-08-08T08:00:01Z",
+			TraceID:       "trace_run_sql",
+			RequestID:     "req_run_sql",
+			InteractionID: "int_run_sql",
+			OperationID:   "op_run_sql",
+			OperationName: "context.run_sql",
+			Payload:       map[string]any{"row_count": 10, "query_type": "sql"},
 		}},
 	}
 
@@ -566,19 +624,29 @@ func TestBuildExecutionSummariesUsesRunSQLRowCount(t *testing.T) {
 
 func TestBuildExecutionSummariesUsesStructuredRunSQLFailure(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_run_sql_failed", RequestID: "req_run_sql_failed",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_run_sql_failed",
+		RequestID:     "req_run_sql_failed",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
-			EventID: "event_run_sql_failed", EventType: "data.query.observed",
+			EventID:       "event_run_sql_failed",
+			EventType:     "data.query.observed",
 			SchemaVersion: ArtifactContractVersion,
-			ObservedAt:    "2026-08-08T08:00:00Z", EmittedAt: "2026-08-08T08:00:01Z",
-			TraceID: "trace_run_sql_failed", RequestID: "req_run_sql_failed",
-			InteractionID: "int_run_sql", OperationID: "op_run_sql", OperationName: "context.run_sql",
+			ObservedAt:    "2026-08-08T08:00:00Z",
+			EmittedAt:     "2026-08-08T08:00:01Z",
+			TraceID:       "trace_run_sql_failed",
+			RequestID:     "req_run_sql_failed",
+			InteractionID: "int_run_sql",
+			OperationID:   "op_run_sql",
+			OperationName: "context.run_sql",
 			Payload: map[string]any{
-				"status": "error", "error_stage": "vega_query",
-				"error_code": "RUN_SQL_VEGA_QUERY_FAILED", "safe_error_summary": "unknown column available_qty",
-				"row_count": 0, "query_type": "sql",
+				"status":             "error",
+				"error_stage":        "vega_query",
+				"error_code":         "RUN_SQL_VEGA_QUERY_FAILED",
+				"safe_error_summary": "unknown column available_qty",
+				"row_count":          0,
+				"query_type":         "sql",
 			},
 		}},
 	}
@@ -595,17 +663,25 @@ func TestBuildExecutionSummariesUsesStructuredRunSQLFailure(t *testing.T) {
 
 func TestBuildExecutionSummariesUsesDurableReceiptAsOperationCompletenessAuthority(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_durable_receipt", RequestID: "req_durable_receipt",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_durable_receipt",
+		RequestID:     "req_durable_receipt",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
-			EventID: "receipt:receipt_durable", EventType: "retrieval.completed",
-			ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
-			TraceID: "trace_durable_receipt", RequestID: "req_durable_receipt",
-			InteractionID: "int_supply_chain", OperationID: "op_search_schema", OperationName: "search_schema",
+			EventID:       "receipt:receipt_durable",
+			EventType:     "retrieval.completed",
+			ObservedAt:    "2026-08-04T08:00:00Z",
+			EmittedAt:     "2026-08-04T08:00:01Z",
+			TraceID:       "trace_durable_receipt",
+			RequestID:     "req_durable_receipt",
+			InteractionID: "int_supply_chain",
+			OperationID:   "op_search_schema",
+			OperationName: "search_schema",
 			Payload: map[string]any{
-				"status": "completed", "evidence_durability": "durable",
-				"partial_reasons": []string{},
+				"status":              "completed",
+				"evidence_durability": "durable",
+				"partial_reasons":     []string{},
 			},
 		}},
 	}
@@ -619,17 +695,25 @@ func TestBuildExecutionSummariesUsesDurableReceiptAsOperationCompletenessAuthori
 
 func TestBuildExecutionSummariesKeepsReceiptPartialReasons(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_partial_receipt", RequestID: "req_partial_receipt",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_partial_receipt",
+		RequestID:     "req_partial_receipt",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
-			EventID: "receipt:receipt_partial", EventType: "retrieval.completed",
-			ObservedAt: "2026-08-04T08:00:00Z", EmittedAt: "2026-08-04T08:00:01Z",
-			TraceID: "trace_partial_receipt", RequestID: "req_partial_receipt",
-			InteractionID: "int_supply_chain", OperationID: "op_run_sql", OperationName: "run_sql",
+			EventID:       "receipt:receipt_partial",
+			EventType:     "retrieval.completed",
+			ObservedAt:    "2026-08-04T08:00:00Z",
+			EmittedAt:     "2026-08-04T08:00:01Z",
+			TraceID:       "trace_partial_receipt",
+			RequestID:     "req_partial_receipt",
+			InteractionID: "int_supply_chain",
+			OperationID:   "op_run_sql",
+			OperationName: "run_sql",
 			Payload: map[string]any{
-				"status": "completed", "evidence_durability": "durable",
-				"partial_reasons": []any{"business_refs_unresolved"},
+				"status":              "completed",
+				"evidence_durability": "durable",
+				"partial_reasons":     []any{"business_refs_unresolved"},
 			},
 		}},
 	}
@@ -649,19 +733,27 @@ func TestBuildExecutionSummariesRequiresAllTracesTerminalBeforeRequestCompletion
 	completed.Events[0].Payload["result_artifact_ref"] = "artifact:artifact_completed_result"
 	result := summaryArtifact(t, "artifact_completed_result", ArtifactTypeResult, completed.TraceID, map[string]any{"text": "完成结果"})
 	running := NormalizedTrace{
-		TraceID: "trace_running_mixed", RequestID: "req_summary",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_running_mixed",
+		RequestID:     "req_summary",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
-			EventID: "event_running_mixed", EventType: "data.query.observed",
-			ObservedAt: "2026-07-26T08:00:03Z", EmittedAt: "2026-07-26T08:00:03Z",
-			TraceID: "trace_running_mixed", RequestID: "req_summary", OperationName: "data.query",
-			Payload: map[string]any{"status": "running"},
+			EventID:       "event_running_mixed",
+			EventType:     "data.query.observed",
+			ObservedAt:    "2026-07-26T08:00:03Z",
+			EmittedAt:     "2026-07-26T08:00:03Z",
+			TraceID:       "trace_running_mixed",
+			RequestID:     "req_summary",
+			OperationName: "data.query",
+			Payload:       map[string]any{"status": "running"},
 		}},
 	}
 	unknown := NormalizedTrace{
-		TraceID: "trace_unknown_mixed", RequestID: "req_summary",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_unknown_mixed",
+		RequestID:     "req_summary",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 	}
 	failed := running
@@ -696,14 +788,20 @@ func TestBuildExecutionSummariesRequiresAllTracesTerminalBeforeRequestCompletion
 
 func TestBuildExecutionSummariesIgnoresArtifactWhoseTypeDoesNotMatchLinkRole(t *testing.T) {
 	trace := NormalizedTrace{
-		TraceID: "trace_type_mismatch", RequestID: "req_summary",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_type_mismatch",
+		RequestID:     "req_summary",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ArtifactContractVersion,
 		Events: []EvidenceEvent{{
-			EventID: "event_type_mismatch", EventType: "claim.created",
+			EventID:       "event_type_mismatch",
+			EventType:     "claim.created",
 			SchemaVersion: ArtifactContractVersion,
-			ObservedAt:    "2026-07-26T08:00:00Z", EmittedAt: "2026-07-26T08:00:00Z",
-			TraceID: "trace_type_mismatch", RequestID: "req_summary", OperationName: "claim.create",
+			ObservedAt:    "2026-07-26T08:00:00Z",
+			EmittedAt:     "2026-07-26T08:00:00Z",
+			TraceID:       "trace_type_mismatch",
+			RequestID:     "req_summary",
+			OperationName: "claim.create",
 			Payload: map[string]any{
 				"claim_id":            "claim_type_mismatch",
 				"result_artifact_ref": "artifact:artifact_wrong_claim_result",
@@ -732,17 +830,29 @@ func TestBuildExecutionSummariesIgnoresArtifactWhoseTypeDoesNotMatchLinkRole(t *
 
 func summaryTrace(traceID, requestID, observedAt, emittedAt string) NormalizedTrace {
 	return NormalizedTrace{
-		TraceID: traceID, RequestID: requestID,
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       traceID,
+		RequestID:     requestID,
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: ContractVersion,
 		Events: []EvidenceEvent{{
-			EventID: "event_" + traceID, EventType: "claim.created",
-			ObservedAt: observedAt, EmittedAt: emittedAt, Producer: "supply-chain-agent",
-			TraceID: traceID, SpanID: "span_" + traceID, RequestID: requestID,
-			OperationName: "agent.answer", ClaimID: "claim_" + traceID,
+			EventID:       "event_" + traceID,
+			EventType:     "claim.created",
+			ObservedAt:    observedAt,
+			EmittedAt:     emittedAt,
+			Producer:      "supply-chain-agent",
+			TraceID:       traceID,
+			SpanID:        "span_" + traceID,
+			RequestID:     requestID,
+			OperationName: "agent.answer",
+			ClaimID:       "claim_" + traceID,
 			Payload: map[string]any{
-				"claim_id": "claim_" + traceID, "visibility": "visible",
-				"business_refs": []any{map[string]any{"ref_id": "object:kn_supply:forecast", "visibility": "visible"}},
+				"claim_id":   "claim_" + traceID,
+				"visibility": "visible",
+				"business_refs": []any{map[string]any{
+					"ref_id":     "object:kn_supply:forecast",
+					"visibility": "visible",
+				}},
 			},
 		}},
 	}
@@ -751,13 +861,19 @@ func summaryTrace(traceID, requestID, observedAt, emittedAt string) NormalizedTr
 func summaryArtifact(t *testing.T, artifactID string, artifactType ArtifactType, traceID string, content any) EvidenceArtifact {
 	t.Helper()
 	artifact, validationErrors := NormalizeArtifact(EvidenceArtifact{
-		ArtifactID: artifactID, ArtifactType: artifactType,
-		RequestID: "req_summary", TraceID: traceID,
-		ContentType: "application/json", SchemaVersion: ArtifactContractVersion,
-		ObservedAt: "2026-07-26T08:00:01Z", Content: content,
-		BusinessRefs: []string{"object:kn_supply:forecast"},
-		TenantID:     "tenant_demo", AccountID: "acct_demo", AccountType: "app",
-		AgentOrApp: "supply-chain-agent", Initiator: "studio-user",
+		ArtifactID:    artifactID,
+		ArtifactType:  artifactType,
+		RequestID:     "req_summary",
+		TraceID:       traceID,
+		ContentType:   "application/json",
+		SchemaVersion: ArtifactContractVersion,
+		ObservedAt:    "2026-07-26T08:00:01Z",
+		Content:       content,
+		BusinessRefs:  []string{"object:kn_supply:forecast"},
+		AccountID:     "acct_demo",
+		AccountType:   "app",
+		AgentOrApp:    "supply-chain-agent",
+		Initiator:     "studio-user",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize summary artifact: %+v", validationErrors)

@@ -241,7 +241,7 @@ func TestExecutionGateDeduplicatesSameActionAcrossAttempts(t *testing.T) {
 	}
 }
 
-func TestExecutionGateIsolatesSameActionIDAcrossTenants(t *testing.T) {
+func TestExecutionGateIsolatesSameActionIDAcrossAccounts(t *testing.T) {
 	gate := NewExecutionGate(&memoryExecutionStore{values: map[string]string{}})
 	first, ok := ParseAction(testHeaders(), "box", "tool", "user")
 	if !ok {
@@ -253,7 +253,7 @@ func TestExecutionGateIsolatesSameActionIDAcrossTenants(t *testing.T) {
 	firstState, firstErr := gate.Acquire(context.Background(), first)
 	secondState, secondErr := gate.Acquire(context.Background(), second)
 	if firstErr != nil || secondErr != nil || !firstState.Acquired || !secondState.Acquired {
-		t.Fatalf("tenant-scoped actions must acquire independently: first=%+v/%v second=%+v/%v", firstState, firstErr, secondState, secondErr)
+		t.Fatalf("account-scoped actions must acquire independently: first=%+v/%v second=%+v/%v", firstState, firstErr, secondState, secondErr)
 	}
 }
 

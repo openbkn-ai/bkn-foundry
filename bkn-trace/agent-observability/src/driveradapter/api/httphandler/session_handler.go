@@ -519,7 +519,6 @@ func (h *SessionHandler) GetInteractionBusinessGraph(w http.ResponseWriter, r *h
 
 func trustedQueryScope(r *http.Request, owner sessionvo.Owner) evidencevo.QueryScope {
 	return evidencevo.QueryScope{
-		TenantID:  owner.TenantID,
 		AccountID: owner.EffectiveSubjectID, AccountType: string(owner.EffectiveSubjectType),
 		Authorization: strings.TrimSpace(r.Header.Get("Authorization")),
 	}
@@ -696,13 +695,12 @@ func terminalStatusForAction(action string) (sessionvo.InteractionStatus, bool) 
 
 func trustedOwnerFromRequest(r *http.Request) (sessionvo.Owner, bool) {
 	owner := sessionvo.Owner{
-		TenantID:               strings.TrimSpace(r.Header.Get("X-BKN-Tenant-ID")),
 		ApplicationPrincipalID: strings.TrimSpace(r.Header.Get("X-BKN-Application-Principal-ID")),
 		EffectiveSubjectType:   sessionvo.SubjectType(strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-Type"))),
 		EffectiveSubjectID:     strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-ID")),
 		DelegationID:           strings.TrimSpace(r.Header.Get("X-BKN-Delegation-ID")),
 	}
-	valid := owner.TenantID != "" && owner.ApplicationPrincipalID != "" && owner.EffectiveSubjectID != "" &&
+	valid := owner.ApplicationPrincipalID != "" && owner.EffectiveSubjectID != "" &&
 		(owner.EffectiveSubjectType == sessionvo.SubjectUser || owner.EffectiveSubjectType == sessionvo.SubjectService)
 	return owner, valid
 }

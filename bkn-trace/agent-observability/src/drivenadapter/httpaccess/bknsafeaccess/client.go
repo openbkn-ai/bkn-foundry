@@ -59,7 +59,6 @@ type knowledgeNetworkGrantsResponse struct {
 }
 
 type fingerprintInput struct {
-	TenantID                   string
 	ActorID                    string
 	EffectiveSubjectID         string
 	ApplicationPrincipalID     string
@@ -81,7 +80,7 @@ func (c *Client) Resolve(
 	identity iauthorizationscope.TrustedIdentity,
 ) (evidencevo.AccessProfile, error) {
 	if c.baseURL == "" || strings.TrimSpace(authorization) == "" ||
-		identity.TenantID == "" || identity.ActorID == "" || identity.EffectiveSubjectID == "" {
+		identity.ActorID == "" || identity.EffectiveSubjectID == "" {
 		return evidencevo.AccessProfile{}, fmt.Errorf("%w: trusted authorization identity is incomplete", iauthorizationscope.ErrDenied)
 	}
 
@@ -104,18 +103,22 @@ func (c *Client) Resolve(
 	roles := currentBuiltInRoles(me.Roles)
 	managedNetworks := concreteManagedNetworks(grants)
 	input := fingerprintInput{
-		TenantID: identity.TenantID,
-		ActorID:  identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
-		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
-		Roles: roles, ManagedKnowledgeNetworkIDs: managedNetworks,
+		ActorID:                    identity.ActorID,
+		EffectiveSubjectID:         identity.EffectiveSubjectID,
+		ApplicationPrincipalID:     identity.ApplicationPrincipalID,
+		DelegationID:               identity.DelegationID,
+		Roles:                      roles,
+		ManagedKnowledgeNetworkIDs: managedNetworks,
 	}
 	return evidencevo.AccessProfile{
-		TenantID: identity.TenantID,
-		ActorID:  identity.ActorID, EffectiveSubjectID: identity.EffectiveSubjectID,
-		ApplicationPrincipalID: identity.ApplicationPrincipalID, DelegationID: identity.DelegationID,
-		Roles: roles, ManagedKnowledgeNetworkIDs: managedNetworks,
-		AccountActive: true, TenantActive: true,
-		Fingerprint: accessScopeFingerprint(input),
+		ActorID:                    identity.ActorID,
+		EffectiveSubjectID:         identity.EffectiveSubjectID,
+		ApplicationPrincipalID:     identity.ApplicationPrincipalID,
+		DelegationID:               identity.DelegationID,
+		Roles:                      roles,
+		ManagedKnowledgeNetworkIDs: managedNetworks,
+		AccountActive:              true,
+		Fingerprint:                accessScopeFingerprint(input),
 	}, nil
 }
 
@@ -194,7 +197,6 @@ func accessScopeFingerprint(input fingerprintInput) string {
 	sort.Strings(roles)
 	sort.Strings(networks)
 	body, _ := json.Marshal(struct {
-		TenantID                   string   `json:"tenant_id"`
 		ActorID                    string   `json:"actor_id"`
 		EffectiveSubjectID         string   `json:"effective_subject_id"`
 		ApplicationPrincipalID     string   `json:"application_principal_id"`
@@ -202,8 +204,12 @@ func accessScopeFingerprint(input fingerprintInput) string {
 		Roles                      []string `json:"roles"`
 		ManagedKnowledgeNetworkIDs []string `json:"managed_knowledge_network_ids"`
 	}{
-		input.TenantID, input.ActorID, input.EffectiveSubjectID,
-		input.ApplicationPrincipalID, input.DelegationID, roles, networks,
+		input.ActorID,
+		input.EffectiveSubjectID,
+		input.ApplicationPrincipalID,
+		input.DelegationID,
+		roles,
+		networks,
 	})
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])

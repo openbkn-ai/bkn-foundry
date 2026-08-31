@@ -52,7 +52,7 @@ func TestMigrationPlanReturnsOnlyUnappliedVersions(t *testing.T) {
 	}
 }
 
-func TestMigrationPlanUpgradesExistingCoreSchemaWithoutBusinessDomain(t *testing.T) {
+func TestMigrationPlanUpgradesExistingCoreSchemaThroughTenantRemoval(t *testing.T) {
 	migrations := Migrations()
 	applied := make(map[string]string, 4)
 	for _, migration := range migrations[:4] {
@@ -60,7 +60,7 @@ func TestMigrationPlanUpgradesExistingCoreSchemaWithoutBusinessDomain(t *testing
 	}
 	plan, err := migrationPlan(migrations, applied)
 	if err != nil {
-		t.Fatalf("plan tenant-only schema migration: %v", err)
+		t.Fatalf("plan latest schema migration: %v", err)
 	}
 	if len(plan) != 5 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
 		plan[2].Version != "019" || !strings.Contains(plan[2].SQL, "bkn_trace_ee_historical_provenance_projections") ||

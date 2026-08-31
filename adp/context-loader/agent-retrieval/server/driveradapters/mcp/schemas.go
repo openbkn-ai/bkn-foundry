@@ -294,15 +294,15 @@ func receiptOutputSchema() map[string]any {
 
 func ownerOutputSchema() map[string]any {
 	properties := map[string]any{
-		"tenant_id":                stringSchema(),
 		"application_principal_id": stringSchema(),
 		"effective_subject_type":   enumSchema("user", "service"),
 		"effective_subject_id":     stringSchema(),
 		"delegation_id":            stringSchema(),
 	}
 	return closedSchema(properties, []string{
-		"tenant_id", "application_principal_id",
-		"effective_subject_type", "effective_subject_id",
+		"application_principal_id",
+		"effective_subject_type",
+		"effective_subject_id",
 	})
 }
 

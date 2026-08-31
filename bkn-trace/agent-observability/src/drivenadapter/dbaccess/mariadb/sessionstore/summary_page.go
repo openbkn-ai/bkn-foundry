@@ -119,16 +119,13 @@ func summaryOwnerWhere(alias string, query isessionstore.SummaryPageQuery) ([]st
 	scope := query.Scope
 	where := make([]string, 0, 4)
 	args := make([]any, 0, 8)
-	if scope.TenantID != "" {
-		where, args = append(where, alias+".tenant_id=?"), append(args, scope.TenantID)
-	}
 	if scope.AccessProfile == nil {
 		where = append(where, alias+".effective_subject_type=?", alias+".effective_subject_id=?")
 		args = append(args, scope.AccountType, scope.AccountID)
 		return where, args
 	}
 	profile := *scope.AccessProfile
-	if evidencevo.HasTenantWideTraceAccess(profile) {
+	if evidencevo.HasGlobalTraceAccess(profile) {
 		return where, args
 	}
 	owner := make([]string, 0, 2)

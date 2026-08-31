@@ -97,10 +97,8 @@ func (source *Source) Get(ctx context.Context, eventID string) (observabilityvo.
 	if conversationID == eventID || conversationID == "" {
 		return observabilityvo.LogRecord{}, false, nil
 	}
-	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
 	page, err := source.Search(ctx, observabilityvo.LogQuery{
-		AuthorizedTenantID: scope.TenantID,
-		ConversationID:     conversationID, Limit: 1,
+		ConversationID: conversationID, Limit: 1,
 	})
 	if err != nil || len(page.Records) == 0 {
 		return observabilityvo.LogRecord{}, false, err
@@ -122,7 +120,6 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 			filters = append(filters, map[string]any{"term": map[string]any{field: value}})
 		}
 	}
-	addTerm("owner.tenant_id.keyword", query.AuthorizedTenantID)
 	addTerm("owner.effective_subject_id.keyword", query.ActorID)
 	addTerm("conversation_id.keyword", firstNonEmpty(query.ConversationID, query.TargetID))
 	if query.TimeFrom != nil || query.TimeTo != nil {
@@ -157,19 +154,39 @@ func projectConversation(conversation sessionvo.Conversation) observabilityvo.Lo
 	eventID := eventPrefix + conversation.ID
 	targetName := firstNonEmpty(conversation.AgentName, "Agent business conversation")
 	return observabilityvo.LogRecord{
-		EventID: eventID, EventTime: conversation.CreatedAt, RecordedAt: conversation.CreatedAt,
-		ActorNameSnapshot: firstNonEmpty(conversation.ActorNameSnapshot, conversation.Owner.EffectiveSubjectID), ActorType: actorType(conversation.Owner.EffectiveSubjectType),
-		AuthMethod: firstNonEmpty(conversation.CreationAuthMethod, "unknown"), SourceChannel: "api", BusinessModule: "domain_knowledge_network", Action: "create",
-		TargetType: "conversation", TargetID: conversation.ID, TargetNameSnapshot: targetName,
-		SchemaVersion: "1.0", LogID: sourceID + ":" + eventID, SourceID: sourceID, SourceLogID: eventID,
-		Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created",
-		EventTimestamp: conversation.CreatedAt, ObservedTimestamp: conversation.CreatedAt,
-		SeverityNumber: 9, SeverityText: "INFO", Outcome: "success", SafeSummary: "Started an Agent business conversation",
-		ServiceName: "bkn-trace-core", Environment: "unknown", TenantID: conversation.Owner.TenantID,
+		EventID:            eventID,
+		EventTime:          conversation.CreatedAt,
+		RecordedAt:         conversation.CreatedAt,
+		ActorNameSnapshot:  firstNonEmpty(conversation.ActorNameSnapshot, conversation.Owner.EffectiveSubjectID),
+		ActorType:          actorType(conversation.Owner.EffectiveSubjectType),
+		AuthMethod:         firstNonEmpty(conversation.CreationAuthMethod, "unknown"),
+		SourceChannel:      "api",
+		BusinessModule:     "domain_knowledge_network",
+		Action:             "create",
+		TargetType:         "conversation",
+		TargetID:           conversation.ID,
+		TargetNameSnapshot: targetName,
+		SchemaVersion:      "1.0",
+		LogID:              sourceID + ":" + eventID,
+		SourceID:           sourceID,
+		SourceLogID:        eventID,
+		Category:           observabilityvo.CategoryRuntimeBusiness,
+		EventName:          "conversation.created",
+		EventTimestamp:     conversation.CreatedAt,
+		ObservedTimestamp:  conversation.CreatedAt,
+		SeverityNumber:     9,
+		SeverityText:       "INFO",
+		Outcome:            "success",
+		SafeSummary:        "Started an Agent business conversation",
+		ServiceName:        "bkn-trace-core",
+		Environment:        "unknown",
 		ActorID:            conversation.Owner.EffectiveSubjectID,
 		EffectiveSubjectID: conversation.Owner.EffectiveSubjectID,
-		ApplicationID:      conversation.Owner.ApplicationPrincipalID, IngressPrincipal: "bkn-trace-core", TrustLevel: "trusted",
-		ConversationID: conversation.ID, RequestID: conversation.CreationRequestID,
+		ApplicationID:      conversation.Owner.ApplicationPrincipalID,
+		IngressPrincipal:   "bkn-trace-core",
+		TrustLevel:         "trusted",
+		ConversationID:     conversation.ID,
+		RequestID:          conversation.CreationRequestID,
 		Attributes: map[string]any{
 			"operation_type": "conversation.create", "operation_status": "completed",
 			"business_context":          firstNonEmpty(conversation.BusinessContext, "managed"),

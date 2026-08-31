@@ -122,11 +122,6 @@ if ! render_chart agent-observability "${chart_dir}" --set-json 'observability.a
   echo "existing releases without observability.archive must remain upgradeable" >&2
   exit 1
 fi
-if ! grep -A1 -Fq 'name: BKN_TRACE_DEPLOYMENT_TENANT_ID
-              value: "openbkn-local"' <<<"${default_rendered}"; then
-  echo "single-tenant deployments must inject the trusted deployment tenant" >&2
-  exit 1
-fi
 if ! grep -A1 -Fq 'name: BKN_TRACE_PUBLIC_LIFECYCLE_ENABLED
               value: "true"' <<<"${default_rendered}"; then
   echo "public lifecycle writes must be rendered as an explicit switch" >&2

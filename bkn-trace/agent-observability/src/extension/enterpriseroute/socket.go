@@ -51,7 +51,6 @@ type ListQuery struct {
 // is intentionally an in-process value, not a wire DTO.
 type SourceReadContext struct {
 	Authorization          string `json:"-"`
-	TenantID               string `json:"-"`
 	AccountID              string `json:"-"`
 	AccountType            string `json:"-"`
 	ApplicationPrincipalID string `json:"-"`

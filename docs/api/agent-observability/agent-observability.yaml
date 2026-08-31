@@ -289,8 +289,6 @@ definitions:
         type: string
       bkn.request.id:
         type: string
-      bkn.tenant.id:
-        type: string
       business_refs:
         items:
           type: string
@@ -1634,13 +1632,10 @@ definitions:
         type: string
       effective_subject_type:
         $ref: '#/definitions/sessionvo.SubjectType'
-      tenant_id:
-        type: string
     required:
     - application_principal_id
     - effective_subject_id
     - effective_subject_type
-    - tenant_id
     type: object
   sessionvo.PayloadEnvelope:
     properties:

@@ -27,7 +27,6 @@ type OperationAuditRecord struct {
 	AuthMethod        string                    `json:"auth_method"`
 	CredentialID      string                    `json:"credential_id,omitempty"`
 	CredentialName    string                    `json:"credential_name,omitempty"`
-	TenantID          string                    `json:"tenant_id"`
 	SourceChannel     string                    `json:"source_channel"`
 	SourceID          string                    `json:"source_id"`
 	BusinessModule    string                    `json:"business_module"`
@@ -77,25 +76,45 @@ func NewOperationAuditRecord(record observabilityvo.LogRecord) OperationAuditRec
 		recordedAt = record.ObservedTimestamp
 	}
 	return OperationAuditRecord{
-		SchemaVersion: "1.0", EventID: eventID, LogCategory: record.Category, EventName: record.EventName,
-		EventTime: eventTime, RecordedAt: recordedAt,
-		ActorID: record.ActorID, ActorNameSnapshot: record.ActorNameSnapshot, ActorType: record.ActorType,
-		AuthMethod: record.AuthMethod, CredentialID: record.CredentialID, CredentialName: record.CredentialName,
-		TenantID:      record.TenantID,
-		SourceChannel: record.SourceChannel, SourceID: record.SourceID, BusinessModule: record.BusinessModule,
-		Outcome:     record.Outcome,
-		FailureCode: record.FailureCode, FailureMessage: record.FailureMessage,
+		SchemaVersion:     "1.0",
+		EventID:           eventID,
+		LogCategory:       record.Category,
+		EventName:         record.EventName,
+		EventTime:         eventTime,
+		RecordedAt:        recordedAt,
+		ActorID:           record.ActorID,
+		ActorNameSnapshot: record.ActorNameSnapshot,
+		ActorType:         record.ActorType,
+		AuthMethod:        record.AuthMethod,
+		CredentialID:      record.CredentialID,
+		CredentialName:    record.CredentialName,
+		SourceChannel:     record.SourceChannel,
+		SourceID:          record.SourceID,
+		BusinessModule:    record.BusinessModule,
+		Outcome:           record.Outcome,
+		FailureCode:       record.FailureCode,
+		FailureMessage:    record.FailureMessage,
 		Facts: OperationAuditFacts{
-			Action: record.Action, Method: stringAttribute(record.Attributes, "method"),
-			StatusCode: intAttribute(record.Attributes, "status_code"), ClientIP: stringAttribute(record.Attributes, "client_ip"),
-			TargetType: record.TargetType, TargetID: record.TargetID, TargetNameSnapshot: record.TargetNameSnapshot,
-			Detail: mapAttribute(record.Attributes, "detail"), OperationType: stringAttribute(record.Attributes, "operation_type"),
-			OperationStatus: stringAttribute(record.Attributes, "operation_status"), BusinessContext: stringAttribute(record.Attributes, "business_context"),
+			Action:             record.Action,
+			Method:             stringAttribute(record.Attributes, "method"),
+			StatusCode:         intAttribute(record.Attributes, "status_code"),
+			ClientIP:           stringAttribute(record.Attributes, "client_ip"),
+			TargetType:         record.TargetType,
+			TargetID:           record.TargetID,
+			TargetNameSnapshot: record.TargetNameSnapshot,
+			Detail:             mapAttribute(record.Attributes, "detail"),
+			OperationType:      stringAttribute(record.Attributes, "operation_type"),
+			OperationStatus:    stringAttribute(record.Attributes, "operation_status"),
+			BusinessContext:    stringAttribute(record.Attributes, "business_context"),
 		},
 		Correlation: OperationAuditCorrelation{
-			RequestID: record.RequestID, TraceID: record.TraceID, SpanID: record.SpanID,
-			ConversationID: record.ConversationID, InteractionID: record.InteractionID,
-			OperationID: record.OperationID, TaskID: record.TaskID,
+			RequestID:      record.RequestID,
+			TraceID:        record.TraceID,
+			SpanID:         record.SpanID,
+			ConversationID: record.ConversationID,
+			InteractionID:  record.InteractionID,
+			OperationID:    record.OperationID,
+			TaskID:         record.TaskID,
 		},
 		Attributes: extensionAttributes(record.Attributes),
 	}

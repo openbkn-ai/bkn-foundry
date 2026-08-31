@@ -361,7 +361,6 @@ def _artifact(
         "observed_at": current.observed_at,
         "content_hash": artifact_content_hash(content),
         "content": content,
-        "bkn.tenant.id": ctx.tenant_id,
         "bkn.account.id": account_id,
         "bkn.account.type": account_type,
         "agent_or_app": current.agent_id,
@@ -701,7 +700,7 @@ def build_batch(
     events: list[dict[str, Any]], account_id: str, account_type: str
 ) -> dict[str, Any] | None:
     ctx = observability.current_context()
-    if not ctx or not ctx.tenant_id or not events:
+    if not ctx or not events:
         return None
     current = _interaction.get()
     conversation_id = current.conversation_id if current else ctx.conversation_id
@@ -709,7 +708,6 @@ def build_batch(
         "trace_id": ctx.trace_id,
         "traceparent": ctx.traceparent,
         "bkn.request.id": ctx.request_id,
-        "bkn.tenant.id": ctx.tenant_id,
         "bkn.account.id": account_id,
         "bkn.account.type": account_type,
         "bkn.application.principal.id": (
@@ -979,7 +977,6 @@ def _ingest_headers(identity: Any = None) -> dict[str, str]:
     headers = {"X-BKN-Trace-Ingest-Token": token} if token else {}
     if isinstance(identity, observability.TraceContext):
         values = {
-            "tenant": identity.tenant_id,
             "application": identity.application_principal_id or identity.account_id,
             "subject_type": identity.effective_subject_type
             or ("service" if identity.account_type in {"app", "service"} else "user"),
@@ -988,7 +985,6 @@ def _ingest_headers(identity: Any = None) -> dict[str, str]:
         }
     elif isinstance(identity, dict):
         values = {
-            "tenant": identity.get("bkn.tenant.id"),
             "application": identity.get("bkn.application.principal.id"),
             "subject_type": identity.get("bkn.effective.subject.type"),
             "subject": identity.get("bkn.effective.subject.id") or identity.get("bkn.account.id"),
@@ -997,7 +993,6 @@ def _ingest_headers(identity: Any = None) -> dict[str, str]:
     else:
         return headers
     mapping = {
-        "X-BKN-Tenant-ID": values["tenant"],
         "X-BKN-Application-Principal-ID": values["application"],
         "X-BKN-Effective-Subject-Type": values["subject_type"],
         "X-BKN-Effective-Subject-ID": values["subject"],

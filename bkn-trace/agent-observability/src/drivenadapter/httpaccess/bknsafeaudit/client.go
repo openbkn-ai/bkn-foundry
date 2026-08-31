@@ -111,7 +111,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 			// legacy access duplicates to the public operation-log contract.
 			continue
 		}
-		records = append(records, projectAuditLog(entry, query.AuthorizedTenantID))
+		records = append(records, projectAuditLog(entry))
 	}
 	var lastPosition *observabilityvo.SourcePosition
 	if len(payload.Logs) > 0 {
@@ -167,8 +167,7 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	if err := json.NewDecoder(io.LimitReader(response.Body, maxResponseBytes)).Decode(&entry); err != nil {
 		return observabilityvo.LogRecord{}, false, fmt.Errorf("decode BKN Safe audit detail: %w", err)
 	}
-	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
-	return projectAuditLog(entry, scope.TenantID), true, nil
+	return projectAuditLog(entry), true, nil
 }
 
 type auditLog struct {
@@ -190,10 +189,7 @@ type auditLog struct {
 	CreatedAt         time.Time `json:"created_at"`
 }
 
-func projectAuditLog(entry auditLog, tenantID string) observabilityvo.LogRecord {
-	// BKN Safe is deployed inside one OpenBKN tenant boundary and its legacy audit
-	// table has no tenant column. The forwarded caller token authorizes the source
-	// read; the adapter stamps that deployment tenant onto the safe projection.
+func projectAuditLog(entry auditLog) observabilityvo.LogRecord {
 	outcome := auditOutcome(entry.Status)
 	severityNumber := 9
 	severityText := "INFO"
@@ -236,7 +232,7 @@ func projectAuditLog(entry auditLog, tenantID string) observabilityvo.LogRecord 
 		EventTimestamp: entry.CreatedAt, ObservedTimestamp: entry.CreatedAt,
 		SeverityNumber: severityNumber, SeverityText: severityText, Outcome: outcome,
 		SafeSummary: summary, ServiceName: "bkn-safe-admin", Environment: "unknown",
-		TenantID: tenantID, ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID, RequestID: entry.RequestID,
+		ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID, RequestID: entry.RequestID,
 		IngressPrincipal: "bkn-safe", TrustLevel: "trusted",
 		ResourceRef: &observabilityvo.ResourceRef{ResourceType: entry.Resource, ResourceID: entry.TargetID},
 		Attributes: map[string]any{

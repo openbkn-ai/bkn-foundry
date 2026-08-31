@@ -46,7 +46,7 @@ flowchart LR
   - 破坏性变更：只能新增 `/api/v2`，并提供 deprecation window（例如 2 个 release 或 90 天）
 - **契约规范**：
   - HTTP：OpenAPI 3.1（统一错误模型 + 分页/过滤/排序）
-  - Skill：Claude Skills（tool/function calling），需声明权限/租户/审计与输入/输出 schema
+  - Skill：Claude Skills（tool/function calling），需声明身份与资源权限、审计及输入/输出 schema
 
 - **兼容性定义（必须满足）**：
   - **输入兼容（Request/Input）**：老客户端/老调用方缺字段、旧字段值仍可处理；不得把可选字段改为必填。

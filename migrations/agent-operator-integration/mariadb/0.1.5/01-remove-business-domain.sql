@@ -5,8 +5,10 @@
 
 USE openbkn;
 
--- Operation audits are scoped by tenant and authorization only.
+-- Operation audits are scoped by resource authorization only.
 ALTER TABLE t_execution_factory_operation_audit
   DROP INDEX IF EXISTS idx_execution_audit_scope_time,
+  DROP INDEX IF EXISTS idx_execution_audit_tenant_time,
   DROP COLUMN IF EXISTS business_domain_id,
-  ADD INDEX IF NOT EXISTS idx_execution_audit_tenant_time (tenant_id, event_time, event_id);
+  DROP COLUMN IF EXISTS tenant_id,
+  ADD INDEX IF NOT EXISTS idx_execution_audit_time (event_time, event_id);

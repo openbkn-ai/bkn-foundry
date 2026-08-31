@@ -36,7 +36,7 @@ func (s *operationAuditQueryStoreStub) List(_ context.Context, _ operationaudit.
 	return operationaudit.Page{}, nil
 }
 
-func (s *operationAuditQueryStoreStub) Get(_ context.Context, _, _ string) (operationaudit.Entry, bool, error) {
+func (s *operationAuditQueryStoreStub) Get(_ context.Context, _ string) (operationaudit.Entry, bool, error) {
 	if s.getErr != nil {
 		return operationaudit.Entry{}, false, s.getErr
 	}
@@ -140,7 +140,6 @@ func TestOperationAuditErrorsAreLocalized(t *testing.T) {
 
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
 			request.Header.Set("Authorization", "Bearer token")
-			request.Header.Set("x-tenant-id", "tenant-a")
 			request.Header.Set(rest.AcceptLanguageHeader, test.language)
 			response := httptest.NewRecorder()
 			engine.ServeHTTP(response, request)

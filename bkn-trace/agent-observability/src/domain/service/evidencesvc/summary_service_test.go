@@ -31,11 +31,20 @@ type fixedTraceStatsSource map[string]int
 
 func pageSummaryTrace(traceID, requestID, at, account, domain string) evidencevo.NormalizedTrace {
 	return evidencevo.NormalizedTrace{
-		TraceID: traceID, RequestID: requestID, TenantID: "tenant_demo", AccountID: account, AccountType: "app", SchemaVersion: evidencevo.ArtifactContractVersion,
+		TraceID:       traceID,
+		RequestID:     requestID,
+		AccountID:     account,
+		AccountType:   "app",
+		SchemaVersion: evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event-" + traceID, EventType: "agent.interaction.started", TraceID: traceID,
-			RequestID: requestID, ObservedAt: at, EmittedAt: at, OperationName: "agent.run",
-			Payload: map[string]any{"agent_id": "agent-demo"},
+			EventID:       "event-" + traceID,
+			EventType:     "agent.interaction.started",
+			TraceID:       traceID,
+			RequestID:     requestID,
+			ObservedAt:    at,
+			EmittedAt:     at,
+			OperationName: "agent.run",
+			Payload:       map[string]any{"agent_id": "agent-demo"},
 		}},
 	}
 }
@@ -197,18 +206,17 @@ func TestSummaryOffsetClampsOverflowingPage(t *testing.T) {
 
 func TestSummaryIdentityPageRequiresExactAuthorizationBoundary(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
-		TenantID: "tenant_demo", EffectiveSubjectID: "acct_demo",
-		AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID: "acct_demo",
+		AccountActive:      true}
 	scope := summaryScope("acct_demo")
 	scope.AccessProfile = profile
 	if !canUseSummaryIdentityPage(evidencevo.SummaryQueryOptions{Scope: scope}) {
 		t.Fatal("matching trusted boundary must allow the identity page")
 	}
-	mismatchedProfile := *profile
-	mismatchedProfile.TenantID = "other-tenant"
-	scope.AccessProfile = &mismatchedProfile
-	if canUseSummaryIdentityPage(evidencevo.SummaryQueryOptions{Scope: scope}) {
+	mismatchedScope := scope
+	mismatchedScope.AccountID = "other-account"
+	mismatchedScope.AccessProfile = profile
+	if canUseSummaryIdentityPage(evidencevo.SummaryQueryOptions{Scope: mismatchedScope}) {
 		t.Fatal("profile/scope mismatch must fall back before counting identities")
 	}
 }
@@ -534,8 +542,9 @@ func TestListConversationsSeparatesAgentDisplayNameFromTrustedIdentity(t *testin
 	)
 	sessions := sessionstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant_demo", ApplicationPrincipalID: "266c6a42-6131-4d62-8f39-853e7093701c",
-		EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+		ApplicationPrincipalID: "266c6a42-6131-4d62-8f39-853e7093701c",
+		EffectiveSubjectType:   sessionvo.SubjectUser,
+		EffectiveSubjectID:     "acct_demo",
 	}
 	err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		tx.SaveConversation(sessionvo.Conversation{
@@ -997,16 +1006,23 @@ func TestListRequestsFiltersReliableProjectionFields(t *testing.T) {
 func TestListRequestsFiltersByConversationAndInteraction(t *testing.T) {
 	store := evidencestore.New()
 	trace := evidencevo.NormalizedTrace{
-		TraceID: "trace_identity", RequestID: "req_identity",
+		TraceID:        "trace_identity",
+		RequestID:      "req_identity",
 		ConversationID: "conversation_supply_chain",
-		TenantID:       "tenant_demo", AccountID: "acct_demo", AccountType: "app",
-		SchemaVersion: evidencevo.ArtifactContractVersion,
+		AccountID:      "acct_demo",
+		AccountType:    "app",
+		SchemaVersion:  evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event_identity", EventType: "agent.interaction.started",
+			EventID:       "event_identity",
+			EventType:     "agent.interaction.started",
 			SchemaVersion: evidencevo.ArtifactContractVersion,
-			ObservedAt:    "2026-07-27T08:00:00Z", EmittedAt: "2026-07-27T08:00:00Z",
-			Producer: "bkn-agent", TraceID: "trace_identity", SpanID: "span_identity",
-			RequestID: "req_identity", InteractionID: "interaction_june_forecast",
+			ObservedAt:    "2026-07-27T08:00:00Z",
+			EmittedAt:     "2026-07-27T08:00:00Z",
+			Producer:      "bkn-agent",
+			TraceID:       "trace_identity",
+			SpanID:        "span_identity",
+			RequestID:     "req_identity",
+			InteractionID: "interaction_june_forecast",
 			OperationName: "agent.chat",
 			Payload:       map[string]any{"agent_id": "agent_supply_chain"},
 		}},
@@ -1051,16 +1067,23 @@ func TestGetInteractionSummaryAggregatesMultipleRequestsAndTraces(t *testing.T) 
 		{"req_sql", "trace_sql", "2026-07-27T08:00:01Z"},
 	} {
 		trace := evidencevo.NormalizedTrace{
-			TraceID: item.traceID, RequestID: item.requestID,
+			TraceID:        item.traceID,
+			RequestID:      item.requestID,
 			ConversationID: "conversation_supply_chain",
-			TenantID:       "tenant_demo", AccountID: "acct_demo", AccountType: "app",
-			SchemaVersion: evidencevo.ArtifactContractVersion,
+			AccountID:      "acct_demo",
+			AccountType:    "app",
+			SchemaVersion:  evidencevo.ArtifactContractVersion,
 			Events: []evidencevo.EvidenceEvent{{
-				EventID: "event_" + item.traceID, EventType: "agent.interaction.started",
+				EventID:       "event_" + item.traceID,
+				EventType:     "agent.interaction.started",
 				SchemaVersion: evidencevo.ArtifactContractVersion,
-				ObservedAt:    item.at, EmittedAt: item.at,
-				Producer: "third-party-agent", TraceID: item.traceID, SpanID: "1000000000000001",
-				RequestID: item.requestID, InteractionID: "interaction_june_forecast",
+				ObservedAt:    item.at,
+				EmittedAt:     item.at,
+				Producer:      "third-party-agent",
+				TraceID:       item.traceID,
+				SpanID:        "1000000000000001",
+				RequestID:     item.requestID,
+				InteractionID: "interaction_june_forecast",
 				OperationName: "agent.run",
 				Payload:       map[string]any{"app_ref": "supply-chain-agent"},
 			}},
@@ -1148,8 +1171,9 @@ func TestListInteractionsIncludesCanonicalInteractionWithoutRequests(t *testing.
 	)
 	sessions := sessionstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant_demo", ApplicationPrincipalID: "cursor-agent",
-		EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+		ApplicationPrincipalID: "cursor-agent",
+		EffectiveSubjectType:   sessionvo.SubjectUser,
+		EffectiveSubjectID:     "acct_demo",
 	}
 	secondTerminalAt := time.Date(2026, 8, 10, 8, 5, 2, 0, time.UTC)
 	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
@@ -1198,8 +1222,9 @@ func TestGetInteractionSummaryReturnsAuthorizedCanonicalInteractionWithoutReques
 	evidenceStore := evidencestore.New()
 	sessions := sessionstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant_demo", ApplicationPrincipalID: "cursor-agent",
-		EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+		ApplicationPrincipalID: "cursor-agent",
+		EffectiveSubjectType:   sessionvo.SubjectUser,
+		EffectiveSubjectID:     "acct_demo",
 	}
 	terminalAt := time.Date(2026, 8, 10, 8, 5, 2, 0, time.UTC)
 	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
@@ -1240,8 +1265,9 @@ func TestCanonicalInteractionWithoutRequestsDoesNotBypassRecordScope(t *testing.
 	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		tx.SaveConversation(sessionvo.Conversation{
 			ID: "conversation_private", Owner: sessionvo.Owner{
-				TenantID: "tenant_demo", ApplicationPrincipalID: "private-agent",
-				EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "other_account",
+				ApplicationPrincipalID: "private-agent",
+				EffectiveSubjectType:   sessionvo.SubjectUser,
+				EffectiveSubjectID:     "other_account",
 			},
 			Status: sessionvo.ConversationActive, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 		})
@@ -1319,8 +1345,9 @@ func TestListInteractionsKeepsChronologicalRoundNumbersWhileReturningNewestFirst
 func TestListConversationInteractionsPagesCanonicalTurnsBeforeLoadingFacts(t *testing.T) {
 	sessions := sessionstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant_demo", ApplicationPrincipalID: "cursor-agent",
-		EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+		ApplicationPrincipalID: "cursor-agent",
+		EffectiveSubjectType:   sessionvo.SubjectUser,
+		EffectiveSubjectID:     "acct_demo",
 	}
 	if err := sessions.WithinTransaction(context.Background(), func(tx isessionstore.Transaction) error {
 		tx.SaveConversation(sessionvo.Conversation{
@@ -1402,7 +1429,8 @@ func TestListInteractionsFallsBackToProjectionWhenConversationIsNotInLifecycle(t
 		tx.SaveConversation(sessionvo.Conversation{
 			ID: "conversation_legacy",
 			Owner: sessionvo.Owner{
-				TenantID: "tenant_demo", EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+				EffectiveSubjectType: sessionvo.SubjectUser,
+				EffectiveSubjectID:   "acct_demo",
 			},
 			Status: sessionvo.ConversationClosed,
 		})
@@ -1488,14 +1516,20 @@ func TestListRequestsKeepsRecordAuthorizedBusinessRefsWithoutResolverAuthorizati
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_refs", "trace_refs", "2026-07-26T09:00:00Z", "查询业务引用", "返回业务结果", "agent-a", "bd_demo", "acct_demo")
 	if err := store.StoreEvidence(context.Background(), evidencevo.NormalizedTrace{
-		TraceID: "trace_refs", RequestID: "req_refs",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_refs",
+		RequestID:     "req_refs",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event_refs", EventType: "claim.created",
+			EventID:       "event_refs",
+			EventType:     "claim.created",
 			SchemaVersion: evidencevo.ArtifactContractVersion,
-			ObservedAt:    "2026-07-26T09:00:01Z", EmittedAt: "2026-07-26T09:00:01Z",
-			TraceID: "trace_refs", RequestID: "req_refs", OperationName: "claim.create",
+			ObservedAt:    "2026-07-26T09:00:01Z",
+			EmittedAt:     "2026-07-26T09:00:01Z",
+			TraceID:       "trace_refs",
+			RequestID:     "req_refs",
+			OperationName: "claim.create",
 			Payload: map[string]any{
 				"claim_id": "claim_refs",
 				"business_refs": []any{
@@ -1543,12 +1577,18 @@ func TestListRequestsResolvesAllSummaryBusinessRefsOncePerQuery(t *testing.T) {
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_resolver_batch", "trace_resolver_batch", "2026-07-26T09:00:00Z", "批量授权问题", "批量授权结果", "agent-a", "bd_demo", "acct_demo")
 	support, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
-		ArtifactID: "support_resolver_batch", ArtifactType: evidencevo.ArtifactTypeDataResult,
-		RequestID: "req_resolver_batch", TraceID: "trace_resolver_batch",
-		SourceRef: "resource:orders", BusinessRefs: []string{"object:kn_demo:item", "object:kn_demo:item"},
-		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
-		ObservedAt: "2026-07-26T09:00:01Z", Content: map[string]any{"count": 12},
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		ArtifactID:    "support_resolver_batch",
+		ArtifactType:  evidencevo.ArtifactTypeDataResult,
+		RequestID:     "req_resolver_batch",
+		TraceID:       "trace_resolver_batch",
+		SourceRef:     "resource:orders",
+		BusinessRefs:  []string{"object:kn_demo:item", "object:kn_demo:item"},
+		ContentType:   "application/json",
+		SchemaVersion: evidencevo.ArtifactContractVersion,
+		ObservedAt:    "2026-07-26T09:00:01Z",
+		Content:       map[string]any{"count": 12},
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize support artifact: %+v", validationErrors)
@@ -1557,14 +1597,20 @@ func TestListRequestsResolvesAllSummaryBusinessRefsOncePerQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := store.StoreEvidence(context.Background(), evidencevo.NormalizedTrace{
-		TraceID: "trace_resolver_batch", RequestID: "req_resolver_batch",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_resolver_batch",
+		RequestID:     "req_resolver_batch",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event_resolver_batch", EventType: "data.query.observed",
+			EventID:       "event_resolver_batch",
+			EventType:     "data.query.observed",
 			SchemaVersion: evidencevo.ArtifactContractVersion,
-			ObservedAt:    "2026-07-26T09:00:01Z", EmittedAt: "2026-07-26T09:00:01Z",
-			TraceID: "trace_resolver_batch", RequestID: "req_resolver_batch", OperationName: "data.query",
+			ObservedAt:    "2026-07-26T09:00:01Z",
+			EmittedAt:     "2026-07-26T09:00:01Z",
+			TraceID:       "trace_resolver_batch",
+			RequestID:     "req_resolver_batch",
+			OperationName: "data.query",
 			Payload: map[string]any{
 				"result_artifact_ref": "artifact:support_resolver_batch",
 				"resource_refs": []any{
@@ -1656,12 +1702,18 @@ func TestListRequestsFailsClosedWithoutTrustedScope(t *testing.T) {
 
 func TestListRequestsReportsBoundedProjectionTruncationAndPushdownQuery(t *testing.T) {
 	trace := evidencevo.NormalizedTrace{
-		TraceID: "trace_capped", RequestID: "req_capped",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:     "trace_capped",
+		RequestID:   "req_capped",
+		AccountID:   "acct_demo",
+		AccountType: "app",
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event_capped", EventType: "agent.interaction.started",
-			ObservedAt: "2026-07-26T09:00:00Z", RequestID: "req_capped", TraceID: "trace_capped",
-			OperationName: "agent.run", Payload: map[string]any{"agent_id": "agent-capped"},
+			EventID:       "event_capped",
+			EventType:     "agent.interaction.started",
+			ObservedAt:    "2026-07-26T09:00:00Z",
+			RequestID:     "req_capped",
+			TraceID:       "trace_capped",
+			OperationName: "agent.run",
+			Payload:       map[string]any{"agent_id": "agent-capped"},
 		}},
 	}
 	source := &capturingProjectionSource{result: iprojectionsource.Result{
@@ -1731,14 +1783,20 @@ func TestStatusFilteredAggregateListsPreserveCompatibilityWindow(t *testing.T) {
 
 func TestListInteractionsPushesExactInteractionIDToProjection(t *testing.T) {
 	trace := evidencevo.NormalizedTrace{
-		TraceID: "trace_interaction_target", RequestID: "req_interaction_target",
+		TraceID:        "trace_interaction_target",
+		RequestID:      "req_interaction_target",
 		ConversationID: "conversation_target",
-		TenantID:       "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		AccountID:      "acct_demo",
+		AccountType:    "app",
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event_interaction_target", EventType: "agent.interaction.started",
-			ObservedAt: "2026-07-26T09:00:00Z", RequestID: "req_interaction_target",
-			TraceID: "trace_interaction_target", InteractionID: "interaction_target",
-			OperationName: "agent.run", Payload: map[string]any{"agent_id": "agent-target"},
+			EventID:       "event_interaction_target",
+			EventType:     "agent.interaction.started",
+			ObservedAt:    "2026-07-26T09:00:00Z",
+			RequestID:     "req_interaction_target",
+			TraceID:       "trace_interaction_target",
+			InteractionID: "interaction_target",
+			OperationName: "agent.run",
+			Payload:       map[string]any{"agent_id": "agent-target"},
 		}},
 	}
 	source := &capturingProjectionSource{result: iprojectionsource.Result{
@@ -1762,15 +1820,21 @@ func TestExactRequestSummaryAndTraceLookupDoNotCallListProjection(t *testing.T) 
 	store := evidencestore.New()
 	seedSummaryRequest(t, store, "req_exact", "trace_exact", "2026-07-26T09:00:00Z", "精确问题", "精确结果", "agent-exact", "bd_demo", "acct_demo")
 	if err := store.StoreEvidence(context.Background(), evidencevo.NormalizedTrace{
-		TraceID: "trace_exact", RequestID: "req_exact",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:       "trace_exact",
+		RequestID:     "req_exact",
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 		SchemaVersion: evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event_exact_append", EventType: "claim.created",
+			EventID:       "event_exact_append",
+			EventType:     "claim.created",
 			SchemaVersion: evidencevo.ArtifactContractVersion,
-			ObservedAt:    "2026-07-26T09:00:01Z", EmittedAt: "2026-07-26T09:00:01Z",
-			TraceID: "trace_exact", RequestID: "req_exact", OperationName: "claim.append",
-			Payload: map[string]any{"claim_id": "claim_exact_append"},
+			ObservedAt:    "2026-07-26T09:00:01Z",
+			EmittedAt:     "2026-07-26T09:00:01Z",
+			TraceID:       "trace_exact",
+			RequestID:     "req_exact",
+			OperationName: "claim.append",
+			Payload:       map[string]any{"claim_id": "claim_exact_append"},
 		}},
 	}); err != nil {
 		t.Fatalf("append exact trace batch: %v", err)
@@ -1795,14 +1859,21 @@ func TestExactRequestSummaryAndTraceLookupDoNotCallListProjection(t *testing.T) 
 
 func TestExactRequestSummaryAndTraceLookupFallsBackToReceiptProjection(t *testing.T) {
 	trace := evidencevo.NormalizedTrace{
-		TraceID: "trace_receipt", RequestID: "req_receipt",
+		TraceID:        "trace_receipt",
+		RequestID:      "req_receipt",
 		ConversationID: "conversation_supply_chain",
-		TenantID:       "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		AccountID:      "acct_demo",
+		AccountType:    "app",
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "receipt:receipt_1", EventType: "retrieval.completed",
-			ObservedAt: "2026-08-02T09:00:00Z", EmittedAt: "2026-08-02T09:00:01Z",
-			RequestID: "req_receipt", TraceID: "trace_receipt", InteractionID: "interaction_july",
-			OperationID: "op_run_sql", OperationName: "run_sql",
+			EventID:       "receipt:receipt_1",
+			EventType:     "retrieval.completed",
+			ObservedAt:    "2026-08-02T09:00:00Z",
+			EmittedAt:     "2026-08-02T09:00:01Z",
+			RequestID:     "req_receipt",
+			TraceID:       "trace_receipt",
+			InteractionID: "interaction_july",
+			OperationID:   "op_run_sql",
+			OperationName: "run_sql",
 			Payload: map[string]any{
 				"status": "completed", "operation_key": "forecast-data-query",
 			},
@@ -1843,14 +1914,22 @@ func TestExactRequestSummaryAndTraceLookupFallsBackToReceiptProjection(t *testin
 
 func TestExactRequestSummaryKeepsInteractionContentOutOfOperation(t *testing.T) {
 	receipt := evidencevo.NormalizedTrace{
-		TraceID: "trace_enriched", RequestID: "req_enriched", ConversationID: "conversation_supply_chain",
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		TraceID:        "trace_enriched",
+		RequestID:      "req_enriched",
+		ConversationID: "conversation_supply_chain",
+		AccountID:      "acct_demo",
+		AccountType:    "app",
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "receipt:enriched", EventType: "retrieval.completed",
-			ObservedAt: "2026-08-02T09:00:01Z", EmittedAt: "2026-08-02T09:00:02Z",
-			RequestID: "req_enriched", TraceID: "trace_enriched", InteractionID: "interaction_june",
-			OperationID: "op_enriched", OperationName: "run_sql",
-			Payload: map[string]any{"status": "completed", "operation_key": "june-query"},
+			EventID:       "receipt:enriched",
+			EventType:     "retrieval.completed",
+			ObservedAt:    "2026-08-02T09:00:01Z",
+			EmittedAt:     "2026-08-02T09:00:02Z",
+			RequestID:     "req_enriched",
+			TraceID:       "trace_enriched",
+			InteractionID: "interaction_june",
+			OperationID:   "op_enriched",
+			OperationName: "run_sql",
+			Payload:       map[string]any{"status": "completed", "operation_key": "june-query"},
 		}},
 	}
 	interactionTrace := receipt
@@ -1908,11 +1987,18 @@ func summaryServiceArtifact(
 ) evidencevo.EvidenceArtifact {
 	t.Helper()
 	artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
-		ArtifactID: id, ArtifactType: typeName, RequestID: requestID, TraceID: traceID,
-		InteractionID: interactionID, ContentType: "application/json",
-		SchemaVersion: evidencevo.ArtifactContractVersion, ObservedAt: "2026-08-02T09:00:00Z",
-		Content: map[string]any{"text": text}, BusinessRefs: []string{"object:kn_demo:forecast"},
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+		ArtifactID:    id,
+		ArtifactType:  typeName,
+		RequestID:     requestID,
+		TraceID:       traceID,
+		InteractionID: interactionID,
+		ContentType:   "application/json",
+		SchemaVersion: evidencevo.ArtifactContractVersion,
+		ObservedAt:    "2026-08-02T09:00:00Z",
+		Content:       map[string]any{"text": text},
+		BusinessRefs:  []string{"object:kn_demo:forecast"},
+		AccountID:     "acct_demo",
+		AccountType:   "app",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize summary artifact: %+v", validationErrors)
@@ -1950,8 +2036,9 @@ func TestListTraceExecutionsUsesCanonicalConversationAgentName(t *testing.T) {
 		tx.SaveConversation(sessionvo.Conversation{
 			ID: "conversation_trace_agent_name", AgentName: "供应链分析助手",
 			Owner: sessionvo.Owner{
-				TenantID: "tenant_demo", ApplicationPrincipalID: "266c6a42-6131-4d62-8f39-853e7093701c",
-				EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "acct_demo",
+				ApplicationPrincipalID: "266c6a42-6131-4d62-8f39-853e7093701c",
+				EffectiveSubjectType:   sessionvo.SubjectUser,
+				EffectiveSubjectID:     "acct_demo",
 			},
 		})
 		return nil
@@ -2052,12 +2139,16 @@ func TestExactRequestAndTracePropagateArtifactQueryTruncation(t *testing.T) {
 	seedSummaryRequest(t, store, "req_artifact_cap", "trace_artifact_cap", "2026-07-26T09:00:00Z", "问题", "结果", "agent-a", "bd_demo", "acct_demo")
 	for index := 0; index < MaxEvidenceQueryLimit-1; index++ {
 		artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
-			ArtifactID:   "zz_filler_" + time.Unix(int64(index), 0).UTC().Format("150405.000000000"),
-			ArtifactType: evidencevo.ArtifactTypeDataResult,
-			RequestID:    "req_artifact_cap", TraceID: "trace_artifact_cap",
-			ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
-			ObservedAt: "2026-07-26T09:00:00Z", Content: map[string]any{"row_count": index},
-			TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "app",
+			ArtifactID:    "zz_filler_" + time.Unix(int64(index), 0).UTC().Format("150405.000000000"),
+			ArtifactType:  evidencevo.ArtifactTypeDataResult,
+			RequestID:     "req_artifact_cap",
+			TraceID:       "trace_artifact_cap",
+			ContentType:   "application/json",
+			SchemaVersion: evidencevo.ArtifactContractVersion,
+			ObservedAt:    "2026-07-26T09:00:00Z",
+			Content:       map[string]any{"row_count": index},
+			AccountID:     "acct_demo",
+			AccountType:   "app",
 		})
 		if len(validationErrors) != 0 {
 			t.Fatalf("normalize filler artifact %d: %+v", index, validationErrors)
@@ -2103,11 +2194,17 @@ func seedSummaryRequest(t *testing.T, store *evidencestore.Store, requestID, tra
 		{"result_" + requestID, evidencevo.ArtifactTypeResult, result},
 	} {
 		artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
-			ArtifactID: item.id, ArtifactType: item.artifactType,
-			RequestID: requestID, TraceID: traceID, ContentType: "application/json",
-			SchemaVersion: evidencevo.ArtifactContractVersion, ObservedAt: at,
-			Content: map[string]any{"text": item.text}, AgentOrApp: agent,
-			TenantID: "tenant_demo", AccountID: account, AccountType: "app",
+			ArtifactID:    item.id,
+			ArtifactType:  item.artifactType,
+			RequestID:     requestID,
+			TraceID:       traceID,
+			ContentType:   "application/json",
+			SchemaVersion: evidencevo.ArtifactContractVersion,
+			ObservedAt:    at,
+			Content:       map[string]any{"text": item.text},
+			AgentOrApp:    agent,
+			AccountID:     account,
+			AccountType:   "app",
 		})
 		if len(validationErrors) != 0 {
 			t.Fatalf("normalize artifact: %+v", validationErrors)
@@ -2121,8 +2218,10 @@ func seedSummaryRequest(t *testing.T, store *evidencestore.Store, requestID, tra
 func seedSummaryTrace(t *testing.T, store *evidencestore.Store, requestID, traceID, at, agent, domain, account string) {
 	t.Helper()
 	trace := evidencevo.NormalizedTrace{
-		TraceID: traceID, RequestID: requestID,
-		TenantID: "tenant_demo", AccountID: account, AccountType: "app",
+		TraceID:       traceID,
+		RequestID:     requestID,
+		AccountID:     account,
+		AccountType:   "app",
 		SchemaVersion: evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{
 			{
@@ -2174,10 +2273,14 @@ func seedBusinessProvenanceRequestWithAgent(
 	t.Helper()
 	identity := map[string]any{identityKey: agent, "question_artifact_ref": "artifact:question_" + requestID}
 	trace := evidencevo.NormalizedTrace{
-		TraceID: traceID, RequestID: requestID, ConversationID: conversationID,
-		TenantID: "tenant_demo", AccountID: account, AccountType: "app",
-		ApplicationPrincipalID: "openbkn-studio", EffectiveSubjectID: account,
-		SchemaVersion: evidencevo.ArtifactContractVersion,
+		TraceID:                traceID,
+		RequestID:              requestID,
+		ConversationID:         conversationID,
+		AccountID:              account,
+		AccountType:            "app",
+		ApplicationPrincipalID: "openbkn-studio",
+		EffectiveSubjectID:     account,
+		SchemaVersion:          evidencevo.ArtifactContractVersion,
 		Events: []evidencevo.EvidenceEvent{
 			{
 				EventID: "question_event_" + traceID, EventType: "agent.interaction.started",
@@ -2211,11 +2314,18 @@ func seedBusinessProvenanceRequestWithAgent(
 		{"result_" + requestID, evidencevo.ArtifactTypeResult, result},
 	} {
 		artifact, validationErrors := evidencevo.NormalizeArtifact(evidencevo.EvidenceArtifact{
-			ArtifactID: item.id, ArtifactType: item.artifactType,
-			RequestID: requestID, TraceID: traceID, InteractionID: interactionID,
-			ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion, ObservedAt: at,
-			Content: map[string]any{"text": item.text}, AgentOrApp: agent,
-			TenantID: "tenant_demo", AccountID: account, AccountType: "app",
+			ArtifactID:    item.id,
+			ArtifactType:  item.artifactType,
+			RequestID:     requestID,
+			TraceID:       traceID,
+			InteractionID: interactionID,
+			ContentType:   "application/json",
+			SchemaVersion: evidencevo.ArtifactContractVersion,
+			ObservedAt:    at,
+			Content:       map[string]any{"text": item.text},
+			AgentOrApp:    agent,
+			AccountID:     account,
+			AccountType:   "app",
 		})
 		if len(validationErrors) != 0 {
 			t.Fatalf("normalize artifact: %+v", validationErrors)
@@ -2229,15 +2339,23 @@ func seedBusinessProvenanceRequestWithAgent(
 func seedTwoPointOneSummaryTrace(t *testing.T, store *evidencestore.Store, requestID, traceID, at, domain, account string) {
 	t.Helper()
 	trace := evidencevo.NormalizedTrace{
-		TraceID: traceID, RequestID: requestID,
-		TenantID: "tenant_demo", AccountID: account, AccountType: "app",
+		TraceID:       traceID,
+		RequestID:     requestID,
+		AccountID:     account,
+		AccountType:   "app",
 		SchemaVersion: evidencevo.ContractVersion,
 		Events: []evidencevo.EvidenceEvent{{
-			EventID: "event_" + traceID, EventType: "claim.created",
+			EventID:       "event_" + traceID,
+			EventType:     "claim.created",
 			SchemaVersion: evidencevo.ContractVersion,
-			ObservedAt:    at, EmittedAt: at, Producer: "bkn-agent", TraceID: traceID,
-			SpanID: "span_" + traceID, RequestID: requestID, OperationName: "claim.create",
-			Payload: map[string]any{"claim_id": "claim_" + traceID, "visibility": "visible"},
+			ObservedAt:    at,
+			EmittedAt:     at,
+			Producer:      "bkn-agent",
+			TraceID:       traceID,
+			SpanID:        "span_" + traceID,
+			RequestID:     requestID,
+			OperationName: "claim.create",
+			Payload:       map[string]any{"claim_id": "claim_" + traceID, "visibility": "visible"},
 		}},
 	}
 	if err := store.StoreEvidence(context.Background(), evidencevo.WithEvents(trace, trace.Events)); err != nil {
@@ -2247,7 +2365,8 @@ func seedTwoPointOneSummaryTrace(t *testing.T, store *evidencestore.Store, reque
 
 func summaryScope(account string) evidencevo.QueryScope {
 	return evidencevo.QueryScope{
-		TenantID: "tenant_demo", AccountID: account, AccountType: "app",
+		AccountID:   account,
+		AccountType: "app",
 	}
 }
 

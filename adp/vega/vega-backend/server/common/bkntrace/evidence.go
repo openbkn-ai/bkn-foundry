@@ -20,9 +20,10 @@ import (
 	"strings"
 	"time"
 
+	"vega-backend/interfaces"
+
 	"github.com/bytedance/sonic"
 	"go.opentelemetry.io/otel/trace"
-	"vega-backend/interfaces"
 )
 
 const (
@@ -64,7 +65,6 @@ type Artifact struct {
 	ObservedAt    string   `json:"observed_at"`
 	ContentHash   string   `json:"content_hash,omitempty"`
 	Content       any      `json:"content"`
-	TenantID      string   `json:"bkn.tenant.id,omitempty"`
 	AccountID     string   `json:"bkn.account.id"`
 	AccountType   string   `json:"bkn.account.type"`
 	AgentOrApp    string   `json:"agent_or_app,omitempty"`
@@ -74,7 +74,6 @@ type RequestContext struct {
 	RequestID          string
 	AccountID          string
 	AccountType        string
-	TenantID           string
 	InteractionID      string
 	OperationID        string
 	CausationEventID   string
@@ -113,7 +112,6 @@ type eventContext struct {
 	requestID        string
 	accountID        string
 	accountType      string
-	tenantID         string
 	interactionID    string
 	operationID      string
 	causationEventID string
@@ -220,15 +218,26 @@ func buildArtifact(ec eventContext, subject DataQuerySubject, refs []EvidenceRef
 	}
 	return Artifact{
 		ArtifactID: "art_" + shortHash(HashValue([]string{
-			ec.traceID, ec.requestID, ec.interactionID, ec.operationID, artifactType,
+			ec.traceID,
+			ec.requestID,
+			ec.interactionID,
+			ec.operationID,
+			artifactType,
 		})),
-		ArtifactType: artifactType, RequestID: ec.requestID, TraceID: ec.traceID,
-		InteractionID: ec.interactionID, OperationID: ec.operationID, SourceRef: sourceRef,
-		BusinessRefs: businessRefs, ContentType: "application/json",
-		SchemaVersion: ArtifactContractVersion, ObservedAt: ec.observedAt,
-		Content:   content,
-		TenantID:  ec.tenantID,
-		AccountID: ec.accountID, AccountType: ec.accountType, AgentOrApp: ModuleName,
+		ArtifactType:  artifactType,
+		RequestID:     ec.requestID,
+		TraceID:       ec.traceID,
+		InteractionID: ec.interactionID,
+		OperationID:   ec.operationID,
+		SourceRef:     sourceRef,
+		BusinessRefs:  businessRefs,
+		ContentType:   "application/json",
+		SchemaVersion: ArtifactContractVersion,
+		ObservedAt:    ec.observedAt,
+		Content:       content,
+		AccountID:     ec.accountID,
+		AccountType:   ec.accountType,
+		AgentOrApp:    ModuleName,
 	}
 }
 
@@ -294,9 +303,11 @@ func EmitDataQueryEvidence(
 	payload := batch{
 		ContractVersion: ArtifactContractVersion,
 		Trace: map[string]any{
-			"trace_id": ec.traceID, "traceparent": ec.traceparent, "bkn.request.id": ec.requestID,
-			"bkn.tenant.id":  ec.tenantID,
-			"bkn.account.id": ec.accountID, "bkn.account.type": ec.accountType,
+			"trace_id":         ec.traceID,
+			"traceparent":      ec.traceparent,
+			"bkn.request.id":   ec.requestID,
+			"bkn.account.id":   ec.accountID,
+			"bkn.account.type": ec.accountType,
 		},
 		Events: events,
 	}
@@ -341,7 +352,6 @@ func SubmitEvents(ctx context.Context, reqCtx RequestContext, events []Event) {
 			"trace_id":         ec.traceID,
 			"traceparent":      ec.traceparent,
 			"bkn.request.id":   ec.requestID,
-			"bkn.tenant.id":    ec.tenantID,
 			"bkn.account.id":   ec.accountID,
 			"bkn.account.type": ec.accountType,
 		},
@@ -568,7 +578,6 @@ func contextFromRequest(ctx context.Context, reqCtx RequestContext) (eventContex
 		requestID:        requestID,
 		accountID:        accountID,
 		accountType:      accountType,
-		tenantID:         strings.TrimSpace(reqCtx.TenantID),
 		interactionID:    interactionID,
 		operationID:      operationID,
 		causationEventID: strings.TrimSpace(reqCtx.CausationEventID),

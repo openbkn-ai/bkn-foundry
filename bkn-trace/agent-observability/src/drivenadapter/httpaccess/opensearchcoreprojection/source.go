@@ -156,10 +156,9 @@ func (s *Source) searchReceipts(ctx context.Context, query iprojectionsource.Que
 		)
 	}
 	for field, value := range map[string]string{
-		"owner.tenant_id": query.Scope.TenantID,
-		"request_id":      query.RequestID,
-		"trace_id":        query.TraceID,
-		"interaction_id":  query.InteractionID,
+		"request_id":     query.RequestID,
+		"trace_id":       query.TraceID,
+		"interaction_id": query.InteractionID,
 	} {
 		if value != "" {
 			must = append(must, exactKeywordQuery(field, value))
@@ -272,13 +271,6 @@ func (s *Source) searchReceiptsForInteractions(ctx context.Context, query iproje
 		size = query.Limit + 1
 	}
 	must := []map[string]any{{"exists": map[string]any{"field": "receipt_id"}}}
-	for field, value := range map[string]string{
-		"owner.tenant_id": query.Scope.TenantID,
-	} {
-		if value != "" {
-			must = append(must, exactKeywordQuery(field, value))
-		}
-	}
 	must = append(must, map[string]any{"terms": map[string]any{"interaction_id.keyword": interactionIDs}})
 	body, err := json.Marshal(map[string]any{
 		"size":  size,
@@ -368,7 +360,6 @@ func interactionMatchesScope(receipts []receiptDocument, scope evidencevo.QueryS
 		knowledgeNetworkIDs = append(knowledgeNetworkIDs, networkID)
 	}
 	record := evidencevo.RecordScope{
-		TenantID:               receipts[0].Owner.TenantID,
 		EffectiveSubjectID:     receipts[0].Owner.EffectiveSubjectID,
 		ApplicationPrincipalID: receipts[0].Owner.ApplicationPrincipalID,
 		KnowledgeNetworkIDs:    knowledgeNetworkIDs,
@@ -414,7 +405,6 @@ func exactKeywordQuery(field string, value string) map[string]any {
 func receiptMatchesScope(receipt receiptDocument, scope evidencevo.QueryScope) bool {
 	networks := receiptKnowledgeNetworks(receipt)
 	record := evidencevo.RecordScope{
-		TenantID:               receipt.Owner.TenantID,
 		EffectiveSubjectID:     receipt.Owner.EffectiveSubjectID,
 		ApplicationPrincipalID: receipt.Owner.ApplicationPrincipalID,
 		KnowledgeNetworkIDs:    networks,
@@ -422,8 +412,7 @@ func receiptMatchesScope(receipt receiptDocument, scope evidencevo.QueryScope) b
 	if scope.AccessProfile != nil {
 		return evidencevo.CanReadRecord(*scope.AccessProfile, record, evidencevo.AccessViewBusiness)
 	}
-	return receipt.Owner.TenantID == scope.TenantID &&
-		string(receipt.Owner.EffectiveSubjectType) == scope.AccountType &&
+	return string(receipt.Owner.EffectiveSubjectType) == scope.AccountType &&
 		receipt.Owner.EffectiveSubjectID == scope.AccountID
 }
 
@@ -436,8 +425,9 @@ func tracesFromReceipts(receipts []receiptDocument) []evidencevo.NormalizedTrace
 		trace := byTrace[receipt.TraceID]
 		if trace == nil {
 			value := evidencevo.NormalizedTrace{
-				TraceID: receipt.TraceID, RequestID: receipt.RequestID,
-				ConversationID: receipt.ConversationID, TenantID: receipt.Owner.TenantID,
+				TraceID:                receipt.TraceID,
+				RequestID:              receipt.RequestID,
+				ConversationID:         receipt.ConversationID,
 				AccountID:              receipt.Owner.EffectiveSubjectID,
 				AccountType:            string(receipt.Owner.EffectiveSubjectType),
 				EffectiveSubjectID:     receipt.Owner.EffectiveSubjectID,
@@ -556,7 +546,7 @@ func receiptScopeCandidates(scope evidencevo.QueryScope) []map[string]any {
 		return receiptLegacyOwnerCandidate(scope)
 	}
 	profile := *scope.AccessProfile
-	if evidencevo.HasTenantWideTraceAccess(profile) {
+	if evidencevo.HasGlobalTraceAccess(profile) {
 		return nil
 	}
 	if scope.View != "" && scope.View != evidencevo.AccessViewBusiness {

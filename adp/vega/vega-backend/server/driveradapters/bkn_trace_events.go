@@ -24,7 +24,6 @@ func vegaTraceRequestContext(c *gin.Context, ctx context.Context) bkntrace.Reque
 		RequestID:          traceContext.RequestID,
 		AccountID:          accountInfo.ID,
 		AccountType:        accountInfo.Type,
-		TenantID:           strings.TrimSpace(c.GetHeader("x-tenant-id")),
 		InteractionID:      traceContext.InteractionID,
 		OperationID:        traceContext.OperationID,
 		CausationEventID:   traceContext.CausationEventID,

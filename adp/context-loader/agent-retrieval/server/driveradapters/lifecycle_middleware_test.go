@@ -642,7 +642,7 @@ func TestLifecycleUnavailableErrorDistinguishesMissingConfigurationFromOutage(t 
 func trustedLifecycleHTTPContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := common.SetTraceContextToCtx(c.Request.Context(), common.TraceContext{
-			RequestID: "req_rest_lifecycle_0001", TenantID: "tenant-1"})
+			RequestID: "req_rest_lifecycle_0001"})
 		ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 			AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 			TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},
@@ -712,6 +712,5 @@ func setRouteLifecycleHeaders(request *http.Request) {
 	request.Header.Set("Authorization", "Bearer token")
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set(common.HeaderBKNRequestID, "req_route_lifecycle_0001")
-	request.Header.Set(common.HeaderTenantID, "tenant-1")
 	request.Header.Set(common.HeaderTraceparent, "00-4b3d59daeff5bfbb23d46c47a5051ec9-00f067aa0ba902b7-01")
 }

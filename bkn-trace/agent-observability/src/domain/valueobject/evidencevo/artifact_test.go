@@ -304,7 +304,6 @@ func validArtifact() EvidenceArtifact {
 		AsOf:          "2024-07-31T23:59:59Z",
 		SourceVersion: "main",
 		Content:       map[string]any{"text": "question"},
-		TenantID:      "tenant_demo",
 		AccountID:     "acct_demo",
 		AccountType:   "app",
 		AgentOrApp:    "supply-chain-agent",

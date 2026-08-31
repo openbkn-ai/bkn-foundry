@@ -49,11 +49,6 @@ Description = "操作审计分页时间无效。"
 Solution = "请提供有效的 RFC3339 before_time 参数。"
 ErrorLink = ""
 
-[BknBackend.OperationAudit.MissingScope]
-Description = "缺少操作审计查询作用域。"
-Solution = "请提供租户标识。"
-ErrorLink = ""
-
 [BknBackend.OperationAudit.AccessDenied]
 Description = "没有查看操作审计记录的权限。"
 Solution = "请检查访问范围或联系管理员。"

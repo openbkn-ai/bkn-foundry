@@ -92,8 +92,8 @@ func (r enterpriseInteractionFactsReader) ReadInteraction(
 		return enterpriseroute.InteractionFacts{}, false, err
 	}
 	sourceRead := enterpriseroute.SourceReadContext{
-		Authorization: scope.Authorization, TenantID: scope.TenantID,
-		AccountID: scope.AccountID, AccountType: scope.AccountType,
+		Authorization: scope.Authorization,
+		AccountID:     scope.AccountID, AccountType: scope.AccountType,
 		EffectiveSubjectID: scope.AccountID, EffectiveSubjectType: trustedSubjectType(scope.AccountType),
 	}
 	if scope.AccessProfile != nil {

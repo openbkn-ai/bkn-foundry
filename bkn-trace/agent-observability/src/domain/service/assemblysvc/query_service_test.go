@@ -54,8 +54,9 @@ func TestQueryUsesLatestImmutableRevisionEventSetAndEnforcesOwner(t *testing.T) 
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", ApplicationPrincipalID: "app-1", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "agent-1",
+		ApplicationPrincipalID: "app-1",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "agent-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "thread-1", IdempotencyKey: "conv-1",
@@ -111,10 +112,10 @@ func TestQueryAuthorizesManagedKnowledgeNetworkInteraction(t *testing.T) {
 
 	sessions, ledger, owner, interaction := queryFixture(t)
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-1", EffectiveSubjectID: "builder-1",
-		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"supplychain"},
-		AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID:         "builder-1",
+		Roles:                      []string{"network_builder"},
+		ManagedKnowledgeNetworkIDs: []string{"supplychain"},
+		AccountActive:              true}
 	requester := owner
 	requester.EffectiveSubjectID = profile.EffectiveSubjectID
 	view, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
@@ -151,10 +152,10 @@ func TestQueryReturnsCompleteManagedInteractionWithoutPerEdgeAuthorization(t *te
 	}
 
 	profile := evidencevo.AccessProfile{
-		TenantID: "tenant-1", EffectiveSubjectID: "builder-1",
-		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"supplychain"},
-		AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID:         "builder-1",
+		Roles:                      []string{"network_builder"},
+		ManagedKnowledgeNetworkIDs: []string{"supplychain"},
+		AccountActive:              true}
 	requester := owner
 	requester.EffectiveSubjectID = profile.EffectiveSubjectID
 	view, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
@@ -175,10 +176,10 @@ func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T
 	sessions, ledger, owner, interaction := queryFixture(t)
 	tests := map[string]evidencevo.AccessProfile{
 		"partial network scope": {
-			TenantID: "tenant-1", EffectiveSubjectID: "builder-1",
-			Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"other-network"},
-			AccountActive: true, TenantActive: true,
-		},
+			EffectiveSubjectID:         "builder-1",
+			Roles:                      []string{"network_builder"},
+			ManagedKnowledgeNetworkIDs: []string{"other-network"},
+			AccountActive:              true},
 	}
 	for name, profile := range tests {
 		name, profile := name, profile
@@ -197,16 +198,16 @@ func TestQueryRejectsInteractionOutsideManagedKnowledgeNetworkScope(t *testing.T
 	}
 
 	admin := evidencevo.AccessProfile{
-		TenantID: "tenant-1", EffectiveSubjectID: "admin-1",
-		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
-	}
+		EffectiveSubjectID: "admin-1",
+		Roles:              []string{"super_admin"},
+		AccountActive:      true}
 	requester := owner
 	requester.EffectiveSubjectID = admin.EffectiveSubjectID
 	if _, err := assemblysvc.NewQueryService(sessions, ledger).GetInteractionAuthorized(
 		context.Background(), requester, interaction.ID,
 		evidencevo.QueryScope{AccessProfile: &admin, View: evidencevo.AccessViewBusiness},
 	); err != nil {
-		t.Fatalf("admin must read the complete business Trace, got %v", err)
+		t.Fatalf("super_admin must read the complete business Trace, got %v", err)
 	}
 }
 
@@ -226,7 +227,8 @@ func TestQueryProjectsResolvedBusinessNamesWithoutChangingRecordAuthorization(t 
 	}}
 	service := assemblysvc.NewQueryServiceWithBusinessResolver(sessions, ledger, resolver)
 	view, err := service.GetInteractionAuthorized(context.Background(), owner, interaction.ID, evidencevo.QueryScope{
-		TenantID: "tenant-1", AccountID: "agent-1", AccountType: "service",
+		AccountID:     "agent-1",
+		AccountType:   "service",
 		Authorization: "Bearer current-user-token",
 	})
 	if err != nil {
@@ -340,8 +342,9 @@ func TestQueryAllowsOnlyEarlierImmutableClaimSupportFromSameConversation(t *test
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", ApplicationPrincipalID: "app-1",
-		EffectiveSubjectType: sessionvo.SubjectService, EffectiveSubjectID: "agent-1",
+		ApplicationPrincipalID: "app-1",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "agent-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "thread-cross-round", IdempotencyKey: "conv-cross-round",
@@ -431,8 +434,9 @@ func queryFixture(t *testing.T) (*sessionstore.Store, *ledgerstore.Store, sessio
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", ApplicationPrincipalID: "app-1",
-		EffectiveSubjectType: sessionvo.SubjectService, EffectiveSubjectID: "agent-1",
+		ApplicationPrincipalID: "app-1",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "agent-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "thread-projection", IdempotencyKey: "conv-projection",

@@ -136,7 +136,6 @@ func TestIngestAcceptsIntegratedProducerTwoPointOneFixtures(t *testing.T) {
 				t.Fatalf("decode integrated producer fixture: %v", err)
 			}
 			trace := batch["trace"].(map[string]any)
-			trace["bkn.tenant.id"] = "tenant_fixture"
 			trace["bkn.account.id"] = "account_fixture"
 			trace["bkn.account.type"] = "app"
 
@@ -800,7 +799,6 @@ func TestIngestRejectsTraceOwnershipDrift(t *testing.T) {
 			batch["trace"].(map[string]any)["bkn.request.id"] = "req_other"
 			batch["events"].([]map[string]any)[0]["bkn.request.id"] = "req_other"
 		},
-		"tenant":  func(batch map[string]any) { batch["trace"].(map[string]any)["bkn.tenant.id"] = "tenant_other" },
 		"account": func(batch map[string]any) { batch["trace"].(map[string]any)["bkn.account.id"] = "acct_other" },
 	}
 	for name, mutate := range tests {
@@ -849,7 +847,6 @@ func TestIngestPreservesLegacyCausalityAfterTwoPointOneAppend(t *testing.T) {
 	trace["trace_id"] = "8c0d0000000000000000000000000001"
 	trace["traceparent"] = "00-8c0d0000000000000000000000000001-1f12000000000001-01"
 	trace["bkn.request.id"] = "req_phase2_001"
-	trace["bkn.tenant.id"] = "tenant_demo"
 	trace["bkn.account.id"] = "acct_demo"
 	trace["bkn.account.type"] = "app"
 	if _, validationErrors, err := service.Ingest(context.Background(), mustJSON(t, batch)); err != nil || len(validationErrors) > 0 {
@@ -1248,7 +1245,7 @@ func TestIngestRejectsInvalidTimestamp(t *testing.T) {
 func TestIngestRejectsUnsupportedVisibilityState(t *testing.T) {
 	store := &fakeStore{}
 	service := New(store)
-	body := strings.Replace(validBatch(), `"visibility": "visible"`, `"visibility": "tenant_denied"`, 1)
+	body := strings.Replace(validBatch(), `"visibility": "visible"`, `"visibility": "custom_denied"`, 1)
 
 	_, validationErrors, err := service.Ingest(context.Background(), []byte(body))
 	if err != nil {
@@ -1479,7 +1476,7 @@ func TestBusinessGraphAddsDisplayOnlyFromResolvedResolverMetadata(t *testing.T) 
 			ResolutionStatus: "resolved", SourceVersion: "schema-v7",
 		},
 	}}}
-	scope := evidencevo.QueryScope{TenantID: "tenant_1", AccountID: "user_1", AccountType: "user"}
+	scope := evidencevo.QueryScope{AccountID: "user_1", AccountType: "user"}
 
 	response, found, err := NewWithBusinessResolver(store, resolver).GetBusinessGraphByTraceID(
 		context.Background(), "trace_graph_display", evidencevo.EvidenceQueryOptions{Scope: scope},
@@ -1544,7 +1541,7 @@ func TestBusinessGraphPromotesClaimedRetrievalSourceToResolvedBusinessEvidence(t
 		},
 	}}}
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant_1", AccountID: "user_1", AccountType: "user",
+		AccountID: "user_1", AccountType: "user",
 	}
 
 	response, found, err := NewWithBusinessResolver(
@@ -1695,7 +1692,7 @@ func TestTraceEvidenceReadsFallBackToAuthorizedCoreProjection(t *testing.T) {
 	}}
 	service := NewWithProjectionSource(&fakeStore{}, source)
 	options := evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
-		TenantID: "tenant_1", AccountID: "user_1", AccountType: "user",
+		AccountID: "user_1", AccountType: "user",
 	}}
 
 	if _, found, err := service.GetEvidenceChainByTraceID(context.Background(), trace.TraceID, options); err != nil || !found {
@@ -1743,7 +1740,7 @@ func TestReceiptBusinessRefsPopulateEvidenceChainAndBusinessGraph(t *testing.T) 
 	}}
 	service := NewWithBusinessResolverAndProjectionSource(&fakeStore{}, resolver, source)
 	options := evidencevo.EvidenceQueryOptions{Scope: evidencevo.QueryScope{
-		TenantID: "tenant_1", AccountID: "user_1", AccountType: "user",
+		AccountID: "user_1", AccountType: "user",
 	}}
 
 	chain, found, err := service.GetEvidenceChainByRequestID(context.Background(), trace.RequestID, options)
@@ -2069,7 +2066,6 @@ func twoPointOneBatch(events []map[string]any) map[string]any {
 			"traceparent":         "00-11111111111111111111111111111111-1000000000000001-01",
 			"bkn.request.id":      "req_biz_001",
 			"bkn.conversation.id": "agent:thread_supply_chain",
-			"bkn.tenant.id":       "tenant_e2e",
 			"bkn.account.id":      "account_e2e_admin",
 			"bkn.account.type":    "user",
 		},
@@ -2272,7 +2268,7 @@ func businessGraphTraceWithUnauthorizedAndUnresolvedRefs(traceID, requestID stri
 	trace := queryTrace(traceID, requestID)
 	trace.Events[2].Payload["business_refs"] = []any{
 		map[string]any{"ref_id": "object:kn_demo:customer", "ref_type": "object", "visibility": "visible", "version_status": "versioned"},
-		map[string]any{"ref_id": "object:kn_demo:unauthorized", "ref_type": "object", "visibility": "unauthorized", "policy_decision_ref": "policy:deny:1", "redaction_reason": "tenant_scope_denied"},
+		map[string]any{"ref_id": "object:kn_demo:unauthorized", "ref_type": "object", "visibility": "unauthorized", "policy_decision_ref": "policy:deny:1", "redaction_reason": "resource_scope_denied"},
 		map[string]any{"ref_id": "object:kn_demo:unresolved", "ref_type": "object", "visibility": "unresolved", "failure_status": "resolver_not_found"},
 	}
 	return trace
@@ -2307,7 +2303,6 @@ func validBatch() string {
     "trace_id": "8c0d0000000000000000000000000001",
     "bkn.request.id": "req_phase2_001",
     "traceparent": "00-8c0d0000000000000000000000000001-1f12000000000001-01",
-    "bkn.tenant.id": "tenant_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2374,7 +2369,6 @@ func missingClaimIDBatch() string {
     "trace_id": "8c0d0000000000000000000000000002",
     "bkn.request.id": "req_phase2_002",
     "traceparent": "00-8c0d0000000000000000000000000002-1f12000000000002-01",
-    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2408,7 +2402,6 @@ func toolEventsBatch() string {
     "trace_id": "8c0d0000000000000000000000000006",
     "bkn.request.id": "req_phase2_tool_006",
     "traceparent": "00-8c0d0000000000000000000000000006-1f12000000000006-01",
-    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2466,7 +2459,6 @@ func sensitiveBatch() string {
     "trace_id": "8c0d0000000000000000000000000003",
     "bkn.request.id": "req_phase2_003",
     "traceparent": "00-8c0d0000000000000000000000000003-1f12000000000003-01",
-    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2499,7 +2491,6 @@ func unknownClaimIDBatch() string {
     "trace_id": "8c0d0000000000000000000000000004",
     "bkn.request.id": "req_phase2_004",
     "traceparent": "00-8c0d0000000000000000000000000004-1f12000000000004-01",
-    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },
@@ -2535,7 +2526,6 @@ func emptyEventsBatch() string {
     "trace_id": "8c0d0000000000000000000000000005",
     "bkn.request.id": "req_phase2_005",
     "traceparent": "00-8c0d0000000000000000000000000005-1f12000000000005-01",
-    "bkn.tenant.id": "bd_demo",
     "bkn.account.id": "acct_demo",
     "bkn.account.type": "app"
   },

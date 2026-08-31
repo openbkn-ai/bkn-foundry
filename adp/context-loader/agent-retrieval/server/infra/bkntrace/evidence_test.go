@@ -794,7 +794,6 @@ func TestSubmitEventsPreservesCallerOwnedConversationID(t *testing.T) {
 		common.HeaderBKNInteractionID:   "int_context_loader_0002",
 		common.HeaderBKNOperationID:     "op_context_retrieval_0002",
 		common.HeaderBKNAttempt:         "1",
-		common.HeaderTenantID:           "tenant_demo",
 		common.HeaderBKNEventObservedAt: "2026-07-27T09:00:00Z",
 	}
 	traceID := trace.TraceID{0x71, 0x22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
@@ -872,8 +871,6 @@ func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 		for header, want := range map[string]string{
 			"x-account-id":                   "acct_demo",
 			"x-account-type":                 "user",
-			"x-tenant-id":                    "tenant_demo",
-			"X-BKN-Tenant-ID":                "tenant_demo",
 			"X-BKN-Application-Principal-ID": "context-loader",
 			"X-BKN-Effective-Subject-Type":   "user",
 			"X-BKN-Effective-Subject-ID":     "acct_demo",
@@ -912,20 +909,28 @@ func TestPostBatchSendsTrace30EventWithTrustedProducerIdentity(t *testing.T) {
 	})}
 	payload := batch{
 		Trace: map[string]any{
-			"trace_id": "71210000000000000000000000000001", "bkn.request.id": "req_context_loader_phase2_0001",
-			"bkn.tenant.id":  "tenant_demo",
-			"bkn.account.id": "acct_demo", "bkn.account.type": "user",
+			"trace_id":            "71210000000000000000000000000001",
+			"bkn.request.id":      "req_context_loader_phase2_0001",
+			"bkn.account.id":      "acct_demo",
+			"bkn.account.type":    "user",
 			"bkn.conversation.id": "conv_demo",
 		},
 		Events: []Event{{
-			"event_id": "evt_demo", "event_type": "retrieval.completed",
-			"observed_at": "2026-07-25T08:00:00Z", "emitted_at": "2026-07-25T08:00:00Z",
-			"span_id": "7121000000000001", "interaction_id": "int_context_loader_0001",
-			"operation_id": "op_context_retrieval_0001", "attempt": 1,
-			"payload": map[string]any{"source_refs": []map[string]any{{
-				"ref_id": "resource:forecast_resource", "ref_type": "data_resource",
-				"version_status": "unversioned",
-			}}},
+			"event_id":       "evt_demo",
+			"event_type":     "retrieval.completed",
+			"observed_at":    "2026-07-25T08:00:00Z",
+			"emitted_at":     "2026-07-25T08:00:00Z",
+			"span_id":        "7121000000000001",
+			"interaction_id": "int_context_loader_0001",
+			"operation_id":   "op_context_retrieval_0001",
+			"attempt":        1,
+			"payload": map[string]any{
+				"source_refs": []map[string]any{{
+					"ref_id":         "resource:forecast_resource",
+					"ref_type":       "data_resource",
+					"version_status": "unversioned",
+				}},
+			},
 		}},
 		DeclaredBusinessRefs: []BusinessRef{{
 			RefType: "data_resource", RefID: "resource:forecast_resource", Version: "schema-v3",
@@ -980,7 +985,6 @@ func captureIngestedTrace(t *testing.T, ctx context.Context) map[string]any {
 			"trace_id":            event["trace_id"],
 			"bkn.request.id":      event["request_id"],
 			"bkn.conversation.id": event["conversation_id"],
-			"bkn.tenant.id":       r.Header.Get("x-tenant-id"),
 			"bkn.account.id":      r.Header.Get("x-account-id"),
 			"bkn.account.type":    r.Header.Get("x-account-type"),
 		}

@@ -55,7 +55,6 @@ const (
 	// Operation audit query
 	VegaBackend_OperationAudit_InvalidRange       = "VegaBackend.OperationAudit.InvalidRange"
 	VegaBackend_OperationAudit_InvalidBeforeTime  = "VegaBackend.OperationAudit.InvalidBeforeTime"
-	VegaBackend_OperationAudit_MissingScope       = "VegaBackend.OperationAudit.MissingScope"
 	VegaBackend_OperationAudit_AccessDenied       = "VegaBackend.OperationAudit.AccessDenied"
 	VegaBackend_OperationAudit_ServiceUnavailable = "VegaBackend.OperationAudit.ServiceUnavailable"
 	VegaBackend_OperationAudit_QueryFailed        = "VegaBackend.OperationAudit.QueryFailed"
@@ -104,7 +103,6 @@ var (
 		// Operation audit query
 		VegaBackend_OperationAudit_InvalidRange,
 		VegaBackend_OperationAudit_InvalidBeforeTime,
-		VegaBackend_OperationAudit_MissingScope,
 		VegaBackend_OperationAudit_AccessDenied,
 		VegaBackend_OperationAudit_ServiceUnavailable,
 		VegaBackend_OperationAudit_QueryFailed,

@@ -20,7 +20,7 @@ func TestListInteractionEventsReturnsOnlyAuthorizedInteractionInIngestOrder(t *t
 	t.Parallel()
 
 	store := ledgerstore.New()
-	owner := sessionvo.Owner{TenantID: "tenant-1"}
+	owner := sessionvo.Owner{ApplicationPrincipalID: "app-1"}
 	for _, event := range []ledgervo.Event{
 		ledgerEvent("evt-2", owner, "int-1", 2),
 		ledgerEvent("evt-other", owner, "int-2", 1),
@@ -40,7 +40,7 @@ func TestListInteractionEventsReturnsOnlyAuthorizedInteractionInIngestOrder(t *t
 	}
 
 	otherOwner := owner
-	otherOwner.TenantID = "tenant-2"
+	otherOwner.ApplicationPrincipalID = "app-2"
 	events, err = store.ListInteractionEvents(context.Background(), otherOwner, "int-1")
 	if err != nil || len(events) != 0 {
 		t.Fatalf("owner scope leaked evidence: %#v, %v", events, err)

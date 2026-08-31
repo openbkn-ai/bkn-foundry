@@ -37,7 +37,6 @@ func TestEnsureCurrentConversationIsIdempotent(t *testing.T) {
 		Now: func() time.Time { return time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC) },
 	})
 	owner := sessionvo.Owner{
-		TenantID:               "tenant-1",
 		ApplicationPrincipalID: "app-1",
 		EffectiveSubjectType:   sessionvo.SubjectUser,
 		EffectiveSubjectID:     "user-1",
@@ -2382,7 +2381,6 @@ func newTestServiceWithCapacity(capacity sessionsvc.CapacityLimits) *sessionsvc.
 
 func testOwner() sessionvo.Owner {
 	return sessionvo.Owner{
-		TenantID:               "tenant-1",
 		ApplicationPrincipalID: "app-1",
 		EffectiveSubjectType:   sessionvo.SubjectUser,
 		EffectiveSubjectID:     "user-1",
@@ -2640,28 +2638,33 @@ func TestListOperationExecutionsByTraceIDReturnsAuthorizedAttemptsInTimeOrder(t 
 	}
 
 	profile := evidencevo.AccessProfile{
-		TenantID: owner.TenantID, EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
-		AccountActive: true, TenantActive: true,
+		EffectiveSubjectID:     owner.EffectiveSubjectID,
+		ApplicationPrincipalID: owner.ApplicationPrincipalID,
+		AccountActive:          true,
 	}
 	scoped, err := service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
-		TenantID: owner.TenantID, AccountID: owner.EffectiveSubjectID, AccountType: "user",
-		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+		AccountID:     owner.EffectiveSubjectID,
+		AccountType:   "user",
+		AccessProfile: &profile,
+		View:          evidencevo.AccessViewTechnical,
 	}, validTraceIDOne)
 	if err != nil || len(scoped) != 2 {
 		t.Fatalf("owner technical scope must return only owned attempts: executions=%+v err=%v", scoped, err)
 	}
-	profile.Roles = []string{"admin"}
+	profile.Roles = []string{"super_admin"}
 	scoped, err = service.ListOperationExecutionsByTraceIDScoped(context.Background(), evidencevo.QueryScope{
-		TenantID: owner.TenantID, AccountID: owner.EffectiveSubjectID, AccountType: "user",
+		AccountID: owner.EffectiveSubjectID, AccountType: "user",
 		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
 	}, validTraceIDOne)
 	if err != nil || len(scoped) != 3 {
-		t.Fatalf("tenant admin technical scope must include the other owner: executions=%+v err=%v", scoped, err)
+		t.Fatalf("super_admin technical scope must include the other owner: executions=%+v err=%v", scoped, err)
 	}
 
 	interactionScoped, err := service.ListOperationExecutionsByInteractionIDScoped(context.Background(), evidencevo.QueryScope{
-		TenantID: owner.TenantID, AccountID: owner.EffectiveSubjectID, AccountType: "user",
-		AccessProfile: &profile, View: evidencevo.AccessViewTechnical,
+		AccountID:     owner.EffectiveSubjectID,
+		AccountType:   "user",
+		AccessProfile: &profile,
+		View:          evidencevo.AccessViewTechnical,
 	}, "int-early")
 	if err != nil || len(interactionScoped) != 1 || interactionScoped[0].Fact.OperationID != "op-early" {
 		t.Fatalf("scoped interaction must return its one authorized attempt: executions=%+v err=%v", interactionScoped, err)
