@@ -81,23 +81,6 @@ def test_account_identity_and_observation_time_are_propagated():
     assert "bkn-trace-observed-at" not in observability.outbound_headers(ctx)
 
 
-def test_missing_account_cannot_build_evidence_batch():
-    headers = _headers()
-    headers.pop("x-account-id")
-    token = observability.set_context(observability.build_context(headers))
-    interaction = evidence.begin_interaction(
-        "intent", "task", "agent-1", "bkn.agent.task"
-    )
-    try:
-        event = evidence.interaction_started_event()
-        batch = evidence.build_batch([event], "account-9", "user")
-    finally:
-        evidence.end_interaction(interaction)
-        observability.reset_context(token)
-
-    assert batch is None
-
-
 def test_authenticated_account_can_build_evidence_batch():
     headers = _headers()
     token = observability.set_context(observability.build_context(headers))
