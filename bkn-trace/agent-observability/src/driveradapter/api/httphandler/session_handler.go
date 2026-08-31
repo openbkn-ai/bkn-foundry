@@ -103,7 +103,7 @@ type finishAttemptRequest struct {
 	TraceID              string                       `json:"trace_id" binding:"required"`
 	SpanID               string                       `json:"span_id,omitempty"`
 	ObservedEvidenceRefs []string                     `json:"observed_evidence_refs,omitempty"`
-	BusinessRefs         []businessRefRequest         `json:"business_refs,omitempty"`
+	BusinessRefs         []sessionvo.BusinessRef      `json:"business_refs,omitempty"`
 	ArtifactRefs         []string                     `json:"artifact_refs,omitempty"`
 	PartialReasons       []string                     `json:"partial_reasons,omitempty"`
 }
@@ -616,7 +616,7 @@ func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *ht
 		RequestID: request.RequestID, TraceID: request.TraceID,
 		SpanID:               request.SpanID,
 		ObservedEvidenceRefs: request.ObservedEvidenceRefs,
-		BusinessRefs:         businessRefsFromWire(request.BusinessRefs),
+		BusinessRefs:         request.BusinessRefs,
 		ArtifactRefs:         request.ArtifactRefs,
 		PartialReasons:       request.PartialReasons,
 	}

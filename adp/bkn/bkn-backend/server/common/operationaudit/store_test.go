@@ -8,7 +8,6 @@ package operationaudit
 import (
 	"context"
 	"database/sql/driver"
-	"errors"
 	"regexp"
 	"testing"
 	"time"
@@ -152,44 +151,5 @@ func auditRow(eventID string, eventTime time.Time) []driver.Value {
 	return []driver.Value{
 		eventID, eventTime, eventTime, "kn-a", "user-a", "Alice", "user", "oauth", "",
 		"req-a", "api", "POST", "create", "object_type", "material", "物料", "success", "", "", []byte(`{"changed_fields":["name"]}`), "1.0",
-	}
-}
-
-func TestRecordFallsBackToLegacyBusinessDomainColumn(t *testing.T) {
-	db, mock, err := sqlmock.New()
-	if err != nil {
-		t.Fatalf("new sql mock: %v", err)
-	}
-	defer db.Close()
-	store := NewStore(db, "MARIADB")
-	eventTime := time.Date(2026, 8, 30, 10, 0, 0, 0, time.UTC)
-	currentArgs := []driver.Value{
-		"evt-1", eventTime, eventTime, "kn-a",
-		"user-a", "Alice", "user", "oauth", "", "req-a", "api", "POST",
-		"create", "object_type", "material", "物料", "success", "", "",
-		`{"changed_fields":["name"]}`, "1.0",
-	}
-
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_operation_audit")).
-		WithArgs(currentArgs...).
-		WillReturnError(errors.New("Error 1364 (HY000): Field 'business_domain_id' doesn't have a default value"))
-	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO t_operation_audit")).
-		WithArgs(append(currentArgs, "")...).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-
-	err = store.Record(context.Background(), Entry{
-		EventID: "evt-1", EventTime: eventTime, RecordedAt: eventTime,
-		KnowledgeNetworkID: "kn-a",
-		ActorID:            "user-a", ActorName: "Alice", ActorType: "user", AuthMethod: "oauth",
-		RequestID: "req-a", SourceChannel: "api", Method: "POST", Action: "create",
-		TargetType: "object_type", TargetID: "material", TargetName: "物料", Outcome: "success",
-		ChangeSummary: map[string]any{"changed_fields": []string{"name"}},
-		SchemaVersion: "1.0",
-	})
-	if err != nil {
-		t.Fatalf("record with legacy schema: %v", err)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("unmet sql expectations: %v", err)
 	}
 }

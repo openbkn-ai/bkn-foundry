@@ -558,25 +558,6 @@ definitions:
       unresolved_ref_count:
         type: integer
     type: object
-  httphandler.businessRefRequest:
-    properties:
-      as_of:
-        type: string
-      display_hint:
-        type: string
-      ref_id:
-        description: RefID uses the complete canonical shape defined by RefType, including
-          every required scope segment.
-        type: string
-      ref_type:
-        $ref: '#/definitions/sessionvo.BusinessRefType'
-      version:
-        type: string
-    required:
-    - ref_id
-    - ref_type
-    - version
-    type: object
   httphandler.closeConversationRequest:
     properties:
       idempotency_key:
@@ -645,7 +626,7 @@ definitions:
         type: string
       business_refs:
         items:
-          $ref: '#/definitions/httphandler.businessRefRequest'
+          $ref: '#/definitions/sessionvo.BusinessRef'
         type: array
       causation_event_ids:
         items:
@@ -677,7 +658,7 @@ definitions:
         type: string
       operation_business_edges:
         items:
-          $ref: '#/definitions/httphandler.operationBusinessEdgeRequest'
+          $ref: '#/definitions/sessionvo.OperationBusinessEdge'
         type: array
       operation_id:
         type: string
@@ -743,7 +724,7 @@ definitions:
         type: array
       business_refs:
         items:
-          $ref: '#/definitions/httphandler.businessRefRequest'
+          $ref: '#/definitions/sessionvo.BusinessRef'
         type: array
       error:
         $ref: '#/definitions/sessionvo.PayloadEnvelope'
@@ -869,22 +850,6 @@ definitions:
     required:
     - idempotency_key
     - outcome
-    type: object
-  httphandler.operationBusinessEdgeRequest:
-    properties:
-      business_ref:
-        $ref: '#/definitions/httphandler.businessRefRequest'
-      observed_at:
-        type: string
-      operation_id:
-        type: string
-      role:
-        $ref: '#/definitions/sessionvo.OperationBusinessRole'
-    required:
-    - business_ref
-    - observed_at
-    - operation_id
-    - role
     type: object
   httphandler.operationCallFactsResponse:
     properties:
@@ -1548,6 +1513,22 @@ definitions:
     - row_version
     - tool_name
     - updated_at
+    type: object
+  sessionvo.OperationBusinessEdge:
+    properties:
+      business_ref:
+        $ref: '#/definitions/sessionvo.BusinessRef'
+      observed_at:
+        type: string
+      operation_id:
+        type: string
+      role:
+        $ref: '#/definitions/sessionvo.OperationBusinessRole'
+    required:
+    - business_ref
+    - observed_at
+    - operation_id
+    - role
     type: object
   sessionvo.OperationBusinessRole:
     enum:

@@ -204,6 +204,7 @@
 "trace_id must contain 32 lowercase hexadecimal characters" = "trace_id 必须包含 32 个小写十六进制字符"
 "failed_only is not part of the operation audit query contract" = "failed_only 不属于操作审计查询合同"
 "trusted evidence identity is required" = "缺少可信证据身份"
+"trusted account context is required" = "缺少可信账号上下文"
 "trusted gateway must provide the complete lifecycle owner identity" = "可信网关必须提供完整的生命周期所有者身份"
 "authenticated lifecycle owner identity is incomplete" = "已认证的生命周期所有者身份不完整"
 "authenticated lifecycle owner scope does not match the authorized request" = "生命周期所有者范围与已授权请求不一致"

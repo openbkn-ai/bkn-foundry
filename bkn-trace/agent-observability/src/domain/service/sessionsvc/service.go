@@ -1780,8 +1780,8 @@ func ownedConversation(tx isessionstore.Transaction, owner sessionvo.Owner, conv
 	if !found {
 		return sessionvo.Conversation{}, resourceNotDisclosed(CauseConversationNotFound)
 	}
-	// Owner is compared whole: tenant, business domain, application principal,
-	// effective subject type and id, delegation. One differing field is enough, and
+	// Owner is compared whole: application principal, effective subject type and
+	// id, and delegation. One differing field is enough, and
 	// the same OAuth client reaching in from another process is the usual way that
 	// happens - which reads to the caller exactly like the conversation not existing.
 	if !conversation.Owner.Equal(owner) {

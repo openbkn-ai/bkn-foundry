@@ -8,7 +8,7 @@ package opensearchevidencestore
 import "github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/domain/valueobject/evidencevo"
 
 func scopeCandidateMust(scope evidencevo.QueryScope) []map[string]any {
-	must := make([]map[string]any, 0, 2)
+	var must []map[string]any
 
 	if scope.AccessProfile == nil {
 		return appendLegacyOwnerMust(must, scope)

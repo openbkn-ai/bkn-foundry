@@ -204,6 +204,7 @@
 "trace_id must contain 32 lowercase hexadecimal characters" = "trace_id must contain 32 lowercase hexadecimal characters"
 "failed_only is not part of the operation audit query contract" = "failed_only is not part of the operation audit query contract"
 "trusted evidence identity is required" = "trusted evidence identity is required"
+"trusted account context is required" = "trusted account context is required"
 "trusted gateway must provide the complete lifecycle owner identity" = "trusted gateway must provide the complete lifecycle owner identity"
 "authenticated lifecycle owner identity is incomplete" = "authenticated lifecycle owner identity is incomplete"
 "authenticated lifecycle owner scope does not match the authorized request" = "authenticated lifecycle owner scope does not match the authorized request"

@@ -43,40 +43,17 @@ def operation_audit_request_id(headers):
         return request_id, False
     return "req_" + secrets.token_hex(16), True
 
-_INSERT_CURRENT = """INSERT INTO t_model_manager_operation_audit
+_INSERT = """INSERT INTO t_model_manager_operation_audit
         (event_id,event_time,recorded_at,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message)
         VALUES (%(event_id)s,%(event_time)s,%(recorded_at)s,%(actor_id)s,%(actor_name)s,%(actor_type)s,%(auth_method)s,%(request_id)s,%(source_channel)s,%(method)s,%(action)s,%(target_type)s,%(target_id)s,%(target_name)s,%(outcome)s,%(failure_code)s,%(failure_message)s)
         ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)"""
-
-# Same statement plus the pre-0.1.5 column, used only when the database has not
-# been migrated yet.
-_INSERT_LEGACY_BUSINESS_DOMAIN = """INSERT INTO t_model_manager_operation_audit
-        (event_id,event_time,recorded_at,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,business_domain_id)
-        VALUES (%(event_id)s,%(event_time)s,%(recorded_at)s,%(actor_id)s,%(actor_name)s,%(actor_type)s,%(auth_method)s,%(request_id)s,%(source_channel)s,%(method)s,%(action)s,%(target_type)s,%(target_id)s,%(target_name)s,%(outcome)s,%(failure_code)s,%(failure_message)s,%(business_domain_id)s)
-        ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)"""
-
-
-def _is_legacy_business_domain_column_error(error):
-    """A 0.1.5 image can reach a database that still carries the pre-0.1.5
-    business_domain_id column: an upgrade that bypassed the migration hook, or a
-    data-migrator run that has not finished. That column is NOT NULL without a
-    default, so the current-schema INSERT fails and every management fact would be
-    lost for the whole window. Delete this once 0.1.5 is the minimum schema."""
-    message = str(error)
-    return "business_domain_id" in message and "default value" in message
-
 
 def _write(entry):
     pool = PymysqlPool.get_pool()
     connection = pool.connection()
     cursor = connection.cursor()
     try:
-        try:
-            cursor.execute(_INSERT_CURRENT, entry)
-        except Exception as error:  # noqa: BLE001 - retried below or re-raised
-            if not _is_legacy_business_domain_column_error(error):
-                raise
-            cursor.execute(_INSERT_LEGACY_BUSINESS_DOMAIN, dict(entry, business_domain_id=""))
+        cursor.execute(_INSERT, entry)
         connection.commit()
     finally:
         cursor.close(); connection.close()

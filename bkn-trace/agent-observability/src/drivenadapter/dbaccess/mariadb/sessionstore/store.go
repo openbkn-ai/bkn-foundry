@@ -54,6 +54,8 @@ func (s *Store) Migrate(ctx context.Context) error {
 // EnsureSchema validates the database against the embedded image manifest. When
 // allowMigrate is false it performs no DDL and refuses a database behind the
 // image instead of deferring the failure to a lifecycle write.
+const tenantRemovalMigrationVersion = "022"
+
 func (s *Store) EnsureSchema(ctx context.Context, allowMigrate bool) error {
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -113,7 +115,7 @@ func (s *Store) EnsureSchema(ctx context.Context, allowMigrate bool) error {
 		return fmt.Errorf("BKN Trace schema is behind this image (missing migration %s); set BKN_TRACE_CORE_AUTO_MIGRATE=true before startup", plan[0].Version)
 	}
 	for _, migration := range plan {
-		if migration.Version == "019" {
+		if migration.Version == tenantRemovalMigrationVersion {
 			if err := validateTenantRemoval(ctx, conn); err != nil {
 				return err
 			}

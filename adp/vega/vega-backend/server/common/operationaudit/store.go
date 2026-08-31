@@ -94,11 +94,6 @@ func (s *Store) Record(ctx context.Context, entry Entry) error {
 	_, err := s.db.ExecContext(ctx, "INSERT INTO "+tableName+" (event_id,event_time,recorded_at,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)",
 		arguments...,
 	)
-	if isLegacyBusinessDomainColumnError(err) {
-		_, err = s.db.ExecContext(ctx, "INSERT INTO "+tableName+" (event_id,event_time,recorded_at,actor_id,actor_name,actor_type,auth_method,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,business_domain_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id=VALUES(event_id)",
-			append(arguments, "")...,
-		)
-	}
 	if err != nil {
 		return fmt.Errorf("record operation audit: %w", err)
 	}
@@ -197,21 +192,4 @@ func validate(entry Entry) error {
 		return errors.New("operation audit fact exceeds bounded field size")
 	}
 	return nil
-}
-
-// A 0.1.5 binary can reach a database that still carries the pre-0.1.5
-// business_domain_id column: an upgrade that bypasses the Helm migration hook
-// (`kubectl set image`) or a data-migrator run that has not finished yet. That
-// column is NOT NULL without a default, so the tenant-only INSERT above fails
-// with "Field 'business_domain_id' doesn't have a default value" and every
-// management fact would be dropped for the whole window. Retry once against the
-// legacy shape instead. Both directions self-heal: once the column is gone the
-// first statement succeeds and the fallback is never reached. Delete this
-// fallback when 0.1.5 is the minimum supported schema.
-func isLegacyBusinessDomainColumnError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	return strings.Contains(message, "business_domain_id") && strings.Contains(message, "default value")
 }
