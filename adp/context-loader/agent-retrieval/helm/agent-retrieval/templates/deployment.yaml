@@ -82,10 +82,6 @@ spec:
             {{- end}}
               - name: BKN_TRACE_CORE_URL
                 value: {{ required "observability.lifecycle.core_url is required" .Values.observability.lifecycle.core_url | quote }}
-            {{- if .Values.observability.lifecycle.default_tenant_id }}
-              - name: BKN_TRACE_DEFAULT_TENANT_ID
-                value: {{ .Values.observability.lifecycle.default_tenant_id | quote }}
-            {{- end}}
             {{- if .Values.observability.evidence.ingest_url }}
               - name: BKN_TRACE_EVIDENCE_INGEST_URL
                 value: {{ .Values.observability.evidence.ingest_url | quote }}

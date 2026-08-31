@@ -248,7 +248,6 @@ CREATE TABLE IF NOT EXISTS t_operation_audit (
   event_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   event_time DATETIME(6) NOT NULL,
   recorded_at DATETIME(6) NOT NULL,
-  tenant_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   knowledge_network_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   actor_id VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   actor_name VARCHAR(255) NOT NULL,
@@ -268,7 +267,6 @@ CREATE TABLE IF NOT EXISTS t_operation_audit (
   change_summary TEXT NOT NULL,
   schema_version VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   PRIMARY KEY (event_id),
-  INDEX idx_bkn_audit_tenant_time (tenant_id, event_time, event_id),
   INDEX idx_bkn_audit_network_time (knowledge_network_id, event_time, event_id),
   INDEX idx_bkn_audit_actor_time (actor_id, event_time, event_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin COMMENT='BKN Backend management operation audit facts';

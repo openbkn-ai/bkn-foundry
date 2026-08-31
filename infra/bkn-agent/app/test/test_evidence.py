@@ -14,7 +14,6 @@ def _ctx():
         traceparent="00-1234567890abcdef1234567890abcdef-1234567890abcdef-01",
         entry_boundary="external",
         upstream_span_id="1234567890abcdef",
-        tenant_id="tenant-test",
     )
 
 

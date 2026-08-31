@@ -32,7 +32,6 @@ def test_build_model_call_events_hashes_prompt_output_and_preserves_context():
         "bkn-request-id": "req_model_call_0001",
         "x-account-id": "acct_demo",
         "x-account-type": "user",
-        "x-tenant-id": "tenant_demo",
         "bkn-interaction-id": "interaction_model_001",
         "bkn-operation-id": "operation_model_001",
         "bkn-causation-event-id": "event_tool_called_001",
@@ -59,7 +58,6 @@ def test_build_model_call_events_hashes_prompt_output_and_preserves_context():
     assert events[0]["trace_id"] == "81230000000000000000000000000001"
     assert events[0]["span_id"] == "8123000000000001"
     assert events[0]["bkn.request.id"] == "req_model_call_0001"
-    assert ctx["tenant_id"] == "tenant_demo"
     assert events[0]["event_type"] == "model.call.observed"
     assert events[0]["interaction_id"] == "interaction_model_001"
     assert events[0]["operation_id"] == "operation_model_001"

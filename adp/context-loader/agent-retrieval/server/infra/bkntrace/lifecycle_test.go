@@ -53,7 +53,7 @@ func TestGuardBeginUsesCoreCreatedAtForOperationEvidence(t *testing.T) {
 		}
 	})
 	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		RequestID: "req_cursor_operation_0001", TenantID: "tenant-1"})
+		RequestID: "req_cursor_operation_0001"})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 	})
@@ -82,8 +82,6 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 		for name, expected := range map[string]string{
 			"x-account-id":                   "user-1",
 			"x-account-type":                 "user",
-			"x-tenant-id":                    "tenant-1",
-			"X-BKN-Tenant-ID":                "tenant-1",
 			"X-BKN-Application-Principal-ID": "client-1",
 			"X-BKN-Effective-Subject-Type":   "user",
 			"X-BKN-Effective-Subject-ID":     "user-1",
@@ -114,9 +112,6 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 			}
 			if body["lease_token"] != "lease-1" || body["lease_epoch"] != float64(7) {
 				t.Errorf("ensure request did not reuse authoritative lease: %#v", body)
-			}
-			if _, forged := body["tenant_id"]; forged {
-				t.Errorf("owner identity must not be sent in JSON: %#v", body)
 			}
 			input, _ := body["input"].(map[string]any)
 			inputByteLength, _ := input["byte_length"].(float64)
@@ -165,8 +160,7 @@ func TestLifecycleClientEnsureOperationUsesTrustedContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		TenantID: "tenant-1"})
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{})
 	ctx = common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser, AuthMethod: "api_key",
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1", VisitorName: "供应链管理员"},
@@ -300,8 +294,7 @@ func TestLifecycleClientStartsExplicitRetryWithAuthoritativeLease(t *testing.T) 
 }
 
 func trustedLifecycleTestContext() context.Context {
-	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{
-		TenantID: "tenant-1"})
+	ctx := common.SetTraceContextToCtx(context.Background(), common.TraceContext{})
 	return common.SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 		TokenInfo: &interfaces.TokenInfo{ClientID: "client-1"},

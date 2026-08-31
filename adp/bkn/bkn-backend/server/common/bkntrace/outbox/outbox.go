@@ -45,7 +45,6 @@ var ErrDisabled = errors.New("bkn trace producer outbox is disabled")
 // immutable event. It is persisted inside the sanitized envelope so a retry
 // does not depend on the original HTTP request still being available.
 type Owner struct {
-	TenantID               string `json:"tenant_id"`
 	ApplicationPrincipalID string `json:"application_principal_id"`
 	EffectiveSubjectType   string `json:"effective_subject_type"`
 	EffectiveSubjectID     string `json:"effective_subject_id"`
@@ -53,7 +52,7 @@ type Owner struct {
 }
 
 func (o Owner) Valid() bool {
-	return o.TenantID != "" && o.ApplicationPrincipalID != "" &&
+	return o.ApplicationPrincipalID != "" &&
 		o.EffectiveSubjectID != "" && (o.EffectiveSubjectType == "user" || o.EffectiveSubjectType == "service")
 }
 
@@ -244,10 +243,10 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 	}
 	now := time.Now().UTC()
 	_, err = tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (
-		event_id, payload_hash, event_type, schema_version, tenant_id, producer_id, producer_stream_id, producer_epoch, producer_sequence,
+		event_id, payload_hash, event_type, schema_version, producer_id, producer_stream_id, producer_epoch, producer_sequence,
 		envelope, status, state_version, attempts, available_at, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`, tableOutbox),
-		event.EventID, event.PayloadHash, event.EventType, event.SchemaVersion, owner.TenantID, event.ProducerID, event.ProducerStreamID, event.ProducerEpoch, event.ProducerSequence,
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`, tableOutbox),
+		event.EventID, event.PayloadHash, event.EventType, event.SchemaVersion, event.ProducerID, event.ProducerStreamID, event.ProducerEpoch, event.ProducerSequence,
 		string(stored), StatusPending, now, now, now)
 	if err != nil {
 		return Event{}, err
@@ -541,14 +540,12 @@ func (w *Worker) deliver(record *Record) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-BKN-Trace-Query-Token", w.repository.config.QueryGatewayToken)
 	req.Header.Set("X-BKN-Trace-Ingest-Token", w.repository.config.IngestToken)
-	req.Header.Set("X-BKN-Tenant-ID", record.Owner.TenantID)
 	req.Header.Set("X-BKN-Application-Principal-ID", record.Owner.ApplicationPrincipalID)
 	req.Header.Set("X-BKN-Effective-Subject-Type", record.Owner.EffectiveSubjectType)
 	req.Header.Set("X-BKN-Effective-Subject-ID", record.Owner.EffectiveSubjectID)
 	req.Header.Set("X-BKN-Delegation-ID", record.Owner.DelegationID)
 	req.Header.Set("x-account-id", record.Owner.EffectiveSubjectID)
 	req.Header.Set("x-account-type", record.Owner.EffectiveSubjectType)
-	req.Header.Set("x-tenant-id", record.Owner.TenantID)
 	resp, err := w.client.Do(req)
 	if err != nil {
 		_, _ = w.repository.Complete(context.Background(), record, StatusRetry, "core_timeout", retryAt(record.Attempts))
@@ -611,7 +608,6 @@ type Summary struct {
 type Detail struct {
 	Summary
 	Envelope json.RawMessage `json:"envelope"`
-	TenantID string          `json:"tenant_id"`
 }
 
 type ActionRequest struct {
@@ -713,10 +709,10 @@ func (r *Repository) Get(ctx context.Context, outboxID int64) (Detail, error) {
 	var detail Detail
 	var raw string
 	err := r.db.QueryRowContext(ctx, fmt.Sprintf(`SELECT outbox_id, event_id, producer_stream_id, producer_epoch, producer_sequence, status, attempts,
-		COALESCE(last_error_code, ''), COALESCE(last_error_fingerprint, ''), created_at, updated_at, state_version, tenant_id, envelope
+		COALESCE(last_error_code, ''), COALESCE(last_error_fingerprint, ''), created_at, updated_at, state_version, envelope
 		FROM %s WHERE outbox_id = ?`, tableOutbox), outboxID).Scan(
 		&detail.OutboxID, &detail.EventID, &detail.ProducerStreamID, &detail.ProducerEpoch, &detail.ProducerSequence, &detail.Status, &detail.Attempts,
-		&detail.ErrorCode, &detail.ErrorFingerprint, &detail.CreatedAt, &detail.UpdatedAt, &detail.StateVersion, &detail.TenantID, &raw)
+		&detail.ErrorCode, &detail.ErrorFingerprint, &detail.CreatedAt, &detail.UpdatedAt, &detail.StateVersion, &raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Detail{}, ErrNotFound
 	}
@@ -768,9 +764,9 @@ func (r *Repository) act(ctx context.Context, outboxID int64, action string, req
 	if !errors.Is(err, sql.ErrNoRows) {
 		return ActionResult{}, err
 	}
-	var status, eventID, tenantID string
+	var status, eventID string
 	var version uint64
-	err = tx.QueryRowContext(ctx, fmt.Sprintf("SELECT status, state_version, event_id, tenant_id FROM %s WHERE outbox_id = ? FOR UPDATE", tableOutbox), outboxID).Scan(&status, &version, &eventID, &tenantID)
+	err = tx.QueryRowContext(ctx, fmt.Sprintf("SELECT status, state_version, event_id FROM %s WHERE outbox_id = ? FOR UPDATE", tableOutbox), outboxID).Scan(&status, &version, &eventID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ActionResult{}, ErrNotFound
 	}
@@ -798,8 +794,8 @@ func (r *Repository) act(ctx context.Context, outboxID int64, action string, req
 		return ActionResult{}, err
 	}
 	result := ActionResult{Status: toStatus, StateVersion: version + 1, At: now}
-	_, err = tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (outbox_id, event_id, tenant_id, action_type, from_status, to_status, reason_code, reason_note, operator_id, operator_type, idempotency_key, request_hash, expected_state_version, result_status, result_state_version, result_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, tableAudit), outboxID, eventID, tenantID, action, status, toStatus, request.ReasonCode, request.ReasonNote, request.OperatorID, request.OperatorType, request.IdempotencyKey, requestHash, version, result.Status, result.StateVersion, result.At, now)
+	_, err = tx.ExecContext(ctx, fmt.Sprintf(`INSERT INTO %s (outbox_id, event_id, action_type, from_status, to_status, reason_code, reason_note, operator_id, operator_type, idempotency_key, request_hash, expected_state_version, result_status, result_state_version, result_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, tableAudit), outboxID, eventID, action, status, toStatus, request.ReasonCode, request.ReasonNote, request.OperatorID, request.OperatorType, request.IdempotencyKey, requestHash, version, result.Status, result.StateVersion, result.At, now)
 	if err != nil {
 		return ActionResult{}, err
 	}

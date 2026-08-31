@@ -103,7 +103,7 @@ type finishAttemptRequest struct {
 	TraceID              string                       `json:"trace_id" binding:"required"`
 	SpanID               string                       `json:"span_id,omitempty"`
 	ObservedEvidenceRefs []string                     `json:"observed_evidence_refs,omitempty"`
-	BusinessRefs         []businessRefRequest         `json:"business_refs,omitempty"`
+	BusinessRefs         []sessionvo.BusinessRef      `json:"business_refs,omitempty"`
 	ArtifactRefs         []string                     `json:"artifact_refs,omitempty"`
 	PartialReasons       []string                     `json:"partial_reasons,omitempty"`
 }
@@ -519,7 +519,6 @@ func (h *SessionHandler) GetInteractionBusinessGraph(w http.ResponseWriter, r *h
 
 func trustedQueryScope(r *http.Request, owner sessionvo.Owner) evidencevo.QueryScope {
 	return evidencevo.QueryScope{
-		TenantID:  owner.TenantID,
 		AccountID: owner.EffectiveSubjectID, AccountType: string(owner.EffectiveSubjectType),
 		Authorization: strings.TrimSpace(r.Header.Get("Authorization")),
 	}
@@ -617,7 +616,7 @@ func (h *SessionHandler) handleOperationSubresource(w http.ResponseWriter, r *ht
 		RequestID: request.RequestID, TraceID: request.TraceID,
 		SpanID:               request.SpanID,
 		ObservedEvidenceRefs: request.ObservedEvidenceRefs,
-		BusinessRefs:         businessRefsFromWire(request.BusinessRefs),
+		BusinessRefs:         request.BusinessRefs,
 		ArtifactRefs:         request.ArtifactRefs,
 		PartialReasons:       request.PartialReasons,
 	}
@@ -696,13 +695,12 @@ func terminalStatusForAction(action string) (sessionvo.InteractionStatus, bool) 
 
 func trustedOwnerFromRequest(r *http.Request) (sessionvo.Owner, bool) {
 	owner := sessionvo.Owner{
-		TenantID:               strings.TrimSpace(r.Header.Get("X-BKN-Tenant-ID")),
 		ApplicationPrincipalID: strings.TrimSpace(r.Header.Get("X-BKN-Application-Principal-ID")),
 		EffectiveSubjectType:   sessionvo.SubjectType(strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-Type"))),
 		EffectiveSubjectID:     strings.TrimSpace(r.Header.Get("X-BKN-Effective-Subject-ID")),
 		DelegationID:           strings.TrimSpace(r.Header.Get("X-BKN-Delegation-ID")),
 	}
-	valid := owner.TenantID != "" && owner.ApplicationPrincipalID != "" && owner.EffectiveSubjectID != "" &&
+	valid := owner.ApplicationPrincipalID != "" && owner.EffectiveSubjectID != "" &&
 		(owner.EffectiveSubjectType == sessionvo.SubjectUser || owner.EffectiveSubjectType == sessionvo.SubjectService)
 	return owner, valid
 }

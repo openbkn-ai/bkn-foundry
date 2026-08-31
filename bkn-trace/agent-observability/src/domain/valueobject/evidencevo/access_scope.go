@@ -18,7 +18,6 @@ const (
 // AccessProfile is derived from trusted gateway identity and current BKN Safe grants.
 // Callers cannot supply roles or managed knowledge networks in request payloads.
 type AccessProfile struct {
-	TenantID                   string
 	ActorID                    string
 	EffectiveSubjectID         string
 	ApplicationPrincipalID     string
@@ -26,13 +25,11 @@ type AccessProfile struct {
 	Roles                      []string
 	ManagedKnowledgeNetworkIDs []string
 	AccountActive              bool
-	TenantActive               bool
 	Fingerprint                string
 }
 
 // RecordScope is the immutable access projection attached to a persisted run.
 type RecordScope struct {
-	TenantID               string
 	EffectiveSubjectID     string
 	ApplicationPrincipalID string
 	KnowledgeNetworkIDs    []string
@@ -40,17 +37,17 @@ type RecordScope struct {
 
 // CanReadRecord applies the same record-level decision to every read surface.
 func CanReadRecord(profile AccessProfile, record RecordScope, view AccessView) bool {
-	if !validAccessBoundary(profile, record) {
+	if !profile.AccountActive {
 		return false
 	}
 
 	switch view {
 	case AccessViewBusiness:
 		return ownsRecord(profile, record) || managesRecordNetwork(profile, record) ||
-			HasTenantWideTraceAccess(profile)
+			HasGlobalTraceAccess(profile)
 	case AccessViewTechnical:
 		return ownsRecord(profile, record) || managesRecordNetwork(profile, record) ||
-			HasTenantWideTraceAccess(profile)
+			HasGlobalTraceAccess(profile)
 	case AccessViewSecurity:
 		return hasAnyRole(profile, "security", "super_admin")
 	case AccessViewAudit:
@@ -60,10 +57,10 @@ func CanReadRecord(profile AccessProfile, record RecordScope, view AccessView) b
 	}
 }
 
-// HasTenantWideTraceAccess is the only role-based bypass for a complete Trace
-// record. It never bypasses account or tenant boundaries.
-func HasTenantWideTraceAccess(profile AccessProfile) bool {
-	return profile.AccountActive && profile.TenantActive && hasAnyRole(profile, "admin", "super_admin")
+// HasGlobalTraceAccess preserves the existing administrator bypass for a complete
+// Trace record after removing the tenant boundary.
+func HasGlobalTraceAccess(profile AccessProfile) bool {
+	return profile.AccountActive && hasAnyRole(profile, "admin", "super_admin")
 }
 
 // NeedsCrossAccountCandidates allows stores to widen only the candidate query;
@@ -75,10 +72,10 @@ func NeedsCrossAccountCandidates(scope QueryScope) bool {
 	profile := *scope.AccessProfile
 	switch defaultAccessView(scope.View) {
 	case AccessViewBusiness:
-		return HasTenantWideTraceAccess(profile) ||
+		return HasGlobalTraceAccess(profile) ||
 			hasAnyRole(profile, "network_builder") && len(profile.ManagedKnowledgeNetworkIDs) > 0
 	case AccessViewTechnical:
-		return HasTenantWideTraceAccess(profile)
+		return HasGlobalTraceAccess(profile)
 	case AccessViewSecurity:
 		return hasAnyRole(profile, "security", "super_admin")
 	case AccessViewAudit:
@@ -93,15 +90,6 @@ func defaultAccessView(view AccessView) AccessView {
 		return AccessViewBusiness
 	}
 	return view
-}
-
-func validAccessBoundary(profile AccessProfile, record RecordScope) bool {
-	if !profile.AccountActive || !profile.TenantActive ||
-		profile.TenantID == "" || record.TenantID == "" ||
-		profile.TenantID != record.TenantID {
-		return false
-	}
-	return true
 }
 
 func ownsRecord(profile AccessProfile, record RecordScope) bool {

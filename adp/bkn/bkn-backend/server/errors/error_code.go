@@ -54,7 +54,6 @@ const (
 	// Operation audit query
 	BknBackend_OperationAudit_InvalidRange       = "BknBackend.OperationAudit.InvalidRange"
 	BknBackend_OperationAudit_InvalidBeforeTime  = "BknBackend.OperationAudit.InvalidBeforeTime"
-	BknBackend_OperationAudit_MissingScope       = "BknBackend.OperationAudit.MissingScope"
 	BknBackend_OperationAudit_AccessDenied       = "BknBackend.OperationAudit.AccessDenied"
 	BknBackend_OperationAudit_ServiceUnavailable = "BknBackend.OperationAudit.ServiceUnavailable"
 	BknBackend_OperationAudit_QueryFailed        = "BknBackend.OperationAudit.QueryFailed"
@@ -103,7 +102,6 @@ var (
 		// operation audit query
 		BknBackend_OperationAudit_InvalidRange,
 		BknBackend_OperationAudit_InvalidBeforeTime,
-		BknBackend_OperationAudit_MissingScope,
 		BknBackend_OperationAudit_AccessDenied,
 		BknBackend_OperationAudit_ServiceUnavailable,
 		BknBackend_OperationAudit_QueryFailed,

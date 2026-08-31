@@ -77,9 +77,9 @@ func TestOperationAuditIdentityUsesVerifiedVisitor(t *testing.T) {
 }
 
 func TestOperationAuditEventIDIsStableForOneRequestAttempt(t *testing.T) {
-	first := operationAuditEventID("tenant-a", "req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a")
-	second := operationAuditEventID("tenant-a", "req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a")
-	differentTarget := operationAuditEventID("tenant-a", "req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-b")
+	first := operationAuditEventID("req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a")
+	second := operationAuditEventID("req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a")
+	differentTarget := operationAuditEventID("req-a", http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-b")
 	if first != second || first == differentTarget {
 		t.Fatalf("stable IDs = %q, %q, %q", first, second, differentTarget)
 	}
@@ -113,7 +113,6 @@ func TestOperationAuditMiddlewareRecordsOneReadableSuccessFact(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/bkn-backend/v1/knowledge-networks/kn-a/object-types", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer bak_example")
-	req.Header.Set("x-tenant-id", "tenant-a")
 	req.Header.Set("bkn-request-id", "req-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, req)
@@ -158,7 +157,6 @@ func TestOperationAuditMiddlewareRecordsBoundedFailureAndReplacesInvalidRequestI
 	})
 	req := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", bytes.NewReader([]byte(`{"name":"供应链","password":"secret"}`)))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-tenant-id", "tenant-a")
 	req.Header.Set("bkn-request-id", string(make([]byte, 129)))
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, req)
@@ -190,7 +188,6 @@ func TestOperationAuditMiddlewareRecordsDeniedAttempt(t *testing.T) {
 		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"code": "permission_denied", "message": "无权删除该知识网络"}})
 	})
 	request := httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
-	request.Header.Set("x-tenant-id", "tenant-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 
@@ -209,7 +206,6 @@ func TestOperationAuditMiddlewareDoesNotTrustUnverifiedIdentityHeaders(t *testin
 		c.JSON(http.StatusUnauthorized, gin.H{"error": gin.H{"code": "unauthorized", "message": "invalid token"}})
 	})
 	request := httptest.NewRequest(http.MethodDelete, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
-	request.Header.Set("x-tenant-id", "tenant-a")
 	request.Header.Set("x-account-id", "spoofed-user")
 	request.Header.Set("x-account-type", "admin")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
@@ -233,7 +229,6 @@ func TestOperationAuditMiddlewareUsesInternalCallerIdentityHeaders(t *testing.T)
 		c.Status(http.StatusNoContent)
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/in/v1/knowledge-networks/kn-a", nil)
-	request.Header.Set("x-tenant-id", "tenant-a")
 	request.Header.Set("x-account-id", "internal-user")
 	request.Header.Set("x-account-type", "user")
 	engine.ServeHTTP(httptest.NewRecorder(), request)
@@ -247,11 +242,15 @@ func TestOperationAuditMiddlewareUsesInternalCallerIdentityHeaders(t *testing.T)
 	}
 }
 
-func TestOperationAuditMiddlewareDoesNotPersistUnscopedFact(t *testing.T) {
-	t.Setenv("BKN_OPERATION_AUDIT_TENANT_ID", "")
+func TestOperationAuditMiddlewarePersistsFactWithoutLegacyScopeHeader(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &recordingOperationAuditStore{}
-	handler := &restHandler{auditRecorder: store}
+	handler := &restHandler{
+		auditRecorder: store,
+		auditIdentityResolver: func(context.Context, string, hydra.Visitor) operationAuditActor {
+			return operationAuditActor{ActorID: "user-a", ActorName: "Alice", ActorType: "user", AuthMethod: "oauth"}
+		},
+	}
 	engine := gin.New()
 	engine.Use(handler.OperationAudit())
 	engine.PUT("/api/bkn-backend/v1/knowledge-networks/:kn_id", func(c *gin.Context) {
@@ -261,8 +260,8 @@ func TestOperationAuditMiddlewareDoesNotPersistUnscopedFact(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
 	engine.ServeHTTP(httptest.NewRecorder(), request)
 
-	if len(store.entries) != 0 {
-		t.Fatalf("unscoped audit fact must not be persisted: %#v", store.entries)
+	if len(store.entries) != 1 {
+		t.Fatalf("authenticated audit fact must be persisted without a removed scope header: %#v", store.entries)
 	}
 }
 
@@ -278,7 +277,6 @@ func TestOperationAuditMiddlewareForcesNonExecutableJSONResponse(t *testing.T) {
 		_, _ = c.Writer.Write([]byte(`{"message":"<script>alert(\"reflected\")</script>"}`))
 	})
 	request := httptest.NewRequest(http.MethodPut, "/api/bkn-backend/v1/knowledge-networks/kn-a", nil)
-	request.Header.Set("x-tenant-id", "tenant-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 

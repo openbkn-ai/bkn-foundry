@@ -45,7 +45,6 @@ type LogRecord struct {
 	SafeSummary         string          `json:"safe_summary"`
 	ServiceName         string          `json:"service_name"`
 	Environment         string          `json:"deployment_environment"`
-	TenantID            string          `json:"tenant_id"`
 	ActorID             string          `json:"actor_id,omitempty"`
 	EffectiveSubjectID  string          `json:"effective_subject_id,omitempty"`
 	ApplicationID       string          `json:"application_id,omitempty"`
@@ -98,7 +97,6 @@ type LogQuery struct {
 
 	// Trusted authorization scope is derived server-side from the Access Profile.
 	// Source adapters use it to push isolation filters into their native query.
-	AuthorizedTenantID            string
 	AuthorizedSubjectID           string
 	AuthorizedApplicationID       string
 	AuthorizedCategories          []string

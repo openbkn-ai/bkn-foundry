@@ -24,7 +24,7 @@ func (f *fakeManagementService) GetPool(ctx context.Context) (*logicssandbox.San
 	return &logicssandbox.SandboxPoolResp{MaxSessions: 3, CurrentActiveSessions: 1}, nil
 }
 
-// sentinelWorkspacePath is the sentinel value for cross-tenant sensitive fields. It should not appear in the response when the gate is in effect;
+// sentinelWorkspacePath is the sentinel value for platform-wide sensitive fields. It should not appear in the response when the gate is in effect;
 // If the assertion is changed to always true (for example, let fake not fill in the field and rely on omitempty to make it disappear naturally), this set of use cases.
 // It is impossible to detect whether requireAdmin actually blocks the request.
 const sentinelWorkspacePath = "/workspace/sess_leak_probe"
@@ -32,7 +32,7 @@ const sentinelWorkspacePath = "/workspace/sess_leak_probe"
 func (f *fakeManagementService) ListSessions(ctx context.Context, req *logicssandbox.SandboxSessionListReq) (*logicssandbox.SandboxSessionListResp, error) {
 	return &logicssandbox.SandboxSessionListResp{
 		Items: []*logicssandbox.SandboxSessionSummary{
-			{ID: "sess_leak_probe", UserID: "other-tenant-user"},
+			{ID: "sess_leak_probe", UserID: "other-user"},
 		},
 		Total: 1,
 	}, nil
@@ -42,7 +42,7 @@ func (f *fakeManagementService) GetSessionDetail(ctx context.Context, sessionID 
 	return &logicssandbox.SandboxSessionDetailResp{
 		SandboxSessionSummary: &logicssandbox.SandboxSessionSummary{
 			ID:     sessionID,
-			UserID: "other-tenant-user",
+			UserID: "other-user",
 		},
 		WorkspacePath: sentinelWorkspacePath,
 		PodName:       "sandbox-pod-leak-probe",
@@ -114,7 +114,7 @@ func TestManagementHandlerPublicRoutesRequireAdmin(t *testing.T) {
 				// fake service will return the sentinel value, so these two assertions are only required when requireAdmin.
 				// This is true only when the request is actually aborted.
 				So(resp.Body.String(), ShouldNotContainSubstring, sentinelWorkspacePath)
-				So(resp.Body.String(), ShouldNotContainSubstring, "other-tenant-user")
+				So(resp.Body.String(), ShouldNotContainSubstring, "other-user")
 			}
 		})
 

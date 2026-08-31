@@ -27,7 +27,7 @@ func (store *Store) Create(job archivesvc.Job) error {
 	if err != nil {
 		return err
 	}
-	_, err = store.db.Exec(`INSERT INTO bkn_trace_archive_jobs (archive_job_id, tenant_id, archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_payloads, candidate_count, manifest_ref, error_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, job.ID, job.TenantID, job.Kind, nullableTime(job.Range.From), job.Range.To.UTC(), job.Status, ids, payloads, job.CandidateCount, nullableString(job.ManifestRef), nullableString(job.ErrorMessage), job.CreatedAt.UTC(), job.UpdatedAt.UTC())
+	_, err = store.db.Exec(`INSERT INTO bkn_trace_archive_jobs (archive_job_id, archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_payloads, candidate_count, manifest_ref, error_message, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, job.ID, job.Kind, nullableTime(job.Range.From), job.Range.To.UTC(), job.Status, ids, payloads, job.CandidateCount, nullableString(job.ManifestRef), nullableString(job.ErrorMessage), job.CreatedAt.UTC(), job.UpdatedAt.UTC())
 	return err
 }
 
@@ -46,14 +46,14 @@ func (store *Store) Update(job archivesvc.Job) error {
 	return err
 }
 
-func (store *Store) Latest(tenantID string, kind observabilityvo.ArchiveKind) (archivesvc.Job, bool) {
-	row := store.db.QueryRow(`SELECT archive_job_id, range_from, range_to, archive_status, candidate_ids, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE tenant_id=? AND archive_kind=? ORDER BY created_at DESC LIMIT 1`, tenantID, kind)
-	return scan(row, tenantID, kind)
+func (store *Store) Latest(kind observabilityvo.ArchiveKind) (archivesvc.Job, bool) {
+	row := store.db.QueryRow(`SELECT archive_job_id, range_from, range_to, archive_status, candidate_ids, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE archive_kind=? ORDER BY created_at DESC LIMIT 1`, kind)
+	return scan(row, kind)
 }
 
 func (store *Store) Get(jobID string) (archivesvc.Job, bool) {
-	row := store.db.QueryRow(`SELECT tenant_id, archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_payloads, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE archive_job_id=?`, jobID)
-	var tenantID, kind string
+	row := store.db.QueryRow(`SELECT archive_kind, range_from, range_to, archive_status, candidate_ids, candidate_payloads, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE archive_job_id=?`, jobID)
+	var kind string
 	var rangeFrom sql.NullTime
 	var rangeTo time.Time
 	var status string
@@ -62,7 +62,7 @@ func (store *Store) Get(jobID string) (archivesvc.Job, bool) {
 	var count int
 	var manifest, message string
 	var createdAt, updatedAt time.Time
-	err := row.Scan(&tenantID, &kind, &rangeFrom, &rangeTo, &status, &ids, &payloads, &count, &manifest, &message, &createdAt, &updatedAt)
+	err := row.Scan(&kind, &rangeFrom, &rangeTo, &status, &ids, &payloads, &count, &manifest, &message, &createdAt, &updatedAt)
 	if err != nil {
 		return archivesvc.Job{}, false
 	}
@@ -71,18 +71,30 @@ func (store *Store) Get(jobID string) (archivesvc.Job, bool) {
 	if json.Unmarshal(ids, &candidateIDs) != nil || json.Unmarshal(payloads, &candidates) != nil {
 		return archivesvc.Job{}, false
 	}
-	job := archivesvc.Job{ID: jobID, TenantID: tenantID, Kind: observabilityvo.ArchiveKind(kind), Range: observabilityvo.ArchiveRange{To: rangeTo.UTC()}, Status: observabilityvo.ArchiveStatus(status), CandidateIDs: candidateIDs, Candidates: candidates, CandidateCount: count, ManifestRef: manifest, ErrorMessage: message, CreatedAt: createdAt.UTC(), UpdatedAt: updatedAt.UTC()}
+	job := archivesvc.Job{
+		ID:             jobID,
+		Kind:           observabilityvo.ArchiveKind(kind),
+		Range:          observabilityvo.ArchiveRange{To: rangeTo.UTC()},
+		Status:         observabilityvo.ArchiveStatus(status),
+		CandidateIDs:   candidateIDs,
+		Candidates:     candidates,
+		CandidateCount: count,
+		ManifestRef:    manifest,
+		ErrorMessage:   message,
+		CreatedAt:      createdAt.UTC(),
+		UpdatedAt:      updatedAt.UTC(),
+	}
 	if rangeFrom.Valid {
 		job.Range.From = rangeFrom.Time.UTC()
 	}
 	return job, true
 }
 
-func (store *Store) List(tenantID string, kind observabilityvo.ArchiveKind, limit int) []archivesvc.Job {
+func (store *Store) List(kind observabilityvo.ArchiveKind, limit int) []archivesvc.Job {
 	if limit <= 0 {
 		return nil
 	}
-	rows, err := store.db.Query(`SELECT archive_job_id, range_from, range_to, archive_status, candidate_ids, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE tenant_id=? AND archive_kind=? ORDER BY created_at DESC LIMIT ?`, tenantID, kind, limit)
+	rows, err := store.db.Query(`SELECT archive_job_id, range_from, range_to, archive_status, candidate_ids, candidate_count, COALESCE(manifest_ref,''), COALESCE(error_message,''), created_at, updated_at FROM bkn_trace_archive_jobs WHERE archive_kind=? ORDER BY created_at DESC LIMIT ?`, kind, limit)
 	if err != nil {
 		return nil
 	}
@@ -103,7 +115,18 @@ func (store *Store) List(tenantID string, kind observabilityvo.ArchiveKind, limi
 		if json.Unmarshal(ids, &candidateIDs) != nil {
 			return nil
 		}
-		job := archivesvc.Job{ID: id, TenantID: tenantID, Kind: kind, Range: observabilityvo.ArchiveRange{To: rangeTo.UTC()}, Status: observabilityvo.ArchiveStatus(status), CandidateIDs: candidateIDs, CandidateCount: count, ManifestRef: manifest, ErrorMessage: message, CreatedAt: createdAt.UTC(), UpdatedAt: updatedAt.UTC()}
+		job := archivesvc.Job{
+			ID:             id,
+			Kind:           kind,
+			Range:          observabilityvo.ArchiveRange{To: rangeTo.UTC()},
+			Status:         observabilityvo.ArchiveStatus(status),
+			CandidateIDs:   candidateIDs,
+			CandidateCount: count,
+			ManifestRef:    manifest,
+			ErrorMessage:   message,
+			CreatedAt:      createdAt.UTC(),
+			UpdatedAt:      updatedAt.UTC(),
+		}
 		if rangeFrom.Valid {
 			job.Range.From = rangeFrom.Time.UTC()
 		}
@@ -112,7 +135,7 @@ func (store *Store) List(tenantID string, kind observabilityvo.ArchiveKind, limi
 	return jobs
 }
 
-func scan(row *sql.Row, tenantID string, kind observabilityvo.ArchiveKind) (archivesvc.Job, bool) {
+func scan(row *sql.Row, kind observabilityvo.ArchiveKind) (archivesvc.Job, bool) {
 	var id, status string
 	var rangeFrom sql.NullTime
 	var rangeTo time.Time
@@ -127,7 +150,18 @@ func scan(row *sql.Row, tenantID string, kind observabilityvo.ArchiveKind) (arch
 	if err := json.Unmarshal(ids, &candidateIDs); err != nil {
 		return archivesvc.Job{}, false
 	}
-	job := archivesvc.Job{ID: id, TenantID: tenantID, Kind: kind, Range: observabilityvo.ArchiveRange{To: rangeTo.UTC()}, Status: observabilityvo.ArchiveStatus(status), CandidateIDs: candidateIDs, CandidateCount: count, ManifestRef: manifest, ErrorMessage: message, CreatedAt: createdAt.UTC(), UpdatedAt: updatedAt.UTC()}
+	job := archivesvc.Job{
+		ID:             id,
+		Kind:           kind,
+		Range:          observabilityvo.ArchiveRange{To: rangeTo.UTC()},
+		Status:         observabilityvo.ArchiveStatus(status),
+		CandidateIDs:   candidateIDs,
+		CandidateCount: count,
+		ManifestRef:    manifest,
+		ErrorMessage:   message,
+		CreatedAt:      createdAt.UTC(),
+		UpdatedAt:      updatedAt.UTC(),
+	}
 	if rangeFrom.Valid {
 		job.Range.From = rangeFrom.Time.UTC()
 	}

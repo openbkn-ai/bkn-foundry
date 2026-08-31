@@ -15,18 +15,20 @@ import (
 
 func TestScopeCandidateMustPushesDownBusinessRecordScope(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "builder-a", ApplicationPrincipalID: "app-a",
-		Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
-		AccountActive: true, TenantActive: true,
+		EffectiveSubjectID:         "builder-a",
+		ApplicationPrincipalID:     "app-a",
+		Roles:                      []string{"network_builder"},
+		ManagedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
+		AccountActive:              true,
 	}
 	must := scopeCandidateMust(evidencevo.QueryScope{
-		TenantID: "tenant-a", AccountID: "builder-a", AccountType: "user",
+		AccountID: "builder-a", AccountType: "user",
 		View: evidencevo.AccessViewBusiness, AccessProfile: profile,
 	})
 
 	rendered := mustJSON(t, must)
 	for _, expected := range []string{
-		"bkn.tenant.id", "effective_subject_id", "application_principal_id",
+		"effective_subject_id", "application_principal_id",
 		"bkn.account.id", "bkn.account.type", "knowledge_network_ids", "kn-a", "kn-b",
 		`"minimum_should_match":1`,
 	} {
@@ -38,13 +40,15 @@ func TestScopeCandidateMustPushesDownBusinessRecordScope(t *testing.T) {
 
 func TestScopeCandidateMustDoesNotTreatTypeWideNetworkGrantAsBusinessContentAccess(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "builder-a",
-		Roles:         []string{"network_builder"},
-		AccountActive: true, TenantActive: true,
+		EffectiveSubjectID: "builder-a",
+		Roles:              []string{"network_builder"},
+		AccountActive:      true,
 	}
 	must := scopeCandidateMust(evidencevo.QueryScope{
-		TenantID: "tenant-a", AccountID: "builder-a", AccountType: "user",
-		View: evidencevo.AccessViewBusiness, AccessProfile: profile,
+		AccountID:     "builder-a",
+		AccountType:   "user",
+		View:          evidencevo.AccessViewBusiness,
+		AccessProfile: profile,
 	})
 
 	rendered := mustJSON(t, must)
@@ -60,13 +64,16 @@ func TestScopeCandidateMustDoesNotTreatTypeWideNetworkGrantAsBusinessContentAcce
 
 func TestScopeCandidateMustRequiresNetworkBuilderRoleForManagedNetworkCandidates(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "user-a",
-		Roles: []string{"normal_user"}, ManagedKnowledgeNetworkIDs: []string{"kn-a"},
-		AccountActive: true, TenantActive: true,
+		EffectiveSubjectID:         "user-a",
+		Roles:                      []string{"normal_user"},
+		ManagedKnowledgeNetworkIDs: []string{"kn-a"},
+		AccountActive:              true,
 	}
 	must := scopeCandidateMust(evidencevo.QueryScope{
-		TenantID: "tenant-a", AccountID: "user-a", AccountType: "user",
-		View: evidencevo.AccessViewBusiness, AccessProfile: profile,
+		AccountID:     "user-a",
+		AccountType:   "user",
+		View:          evidencevo.AccessViewBusiness,
+		AccessProfile: profile,
 	})
 
 	rendered := mustJSON(t, must)
@@ -75,46 +82,44 @@ func TestScopeCandidateMustRequiresNetworkBuilderRoleForManagedNetworkCandidates
 	}
 }
 
-func TestScopeCandidateMustAllowsExplicitTechnicalCrossAccountScanInsideTenantDomain(t *testing.T) {
+func TestScopeCandidateMustAllowsExplicitGlobalTechnicalScan(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "admin-a",
-		Roles: []string{"super_admin"}, AccountActive: true, TenantActive: true,
+		EffectiveSubjectID: "admin-a",
+		Roles:              []string{"super_admin"},
+		AccountActive:      true,
 	}
 	must := scopeCandidateMust(evidencevo.QueryScope{
-		TenantID: "tenant-a", AccountID: "admin-a", AccountType: "user",
-		View: evidencevo.AccessViewTechnical, AccessProfile: profile,
+		AccountID:     "admin-a",
+		AccountType:   "user",
+		View:          evidencevo.AccessViewTechnical,
+		AccessProfile: profile,
 	})
 
 	rendered := mustJSON(t, must)
 	if strings.Contains(rendered, "bkn.account.id") || strings.Contains(rendered, "effective_subject_id") {
 		t.Fatalf("explicit technical view must not add business owner filters: %s", rendered)
 	}
-	for _, expected := range []string{"bkn.tenant.id"} {
-		if !strings.Contains(rendered, expected) {
-			t.Fatalf("technical candidates must remain tenant/domain bounded: %s", rendered)
-		}
+	if rendered != "null" {
+		t.Fatalf("global technical candidates must not retain a removed deployment partition: %s", rendered)
 	}
 }
 
-func TestScopeCandidateMustAllowsAdminBusinessScanInsideTenantDomain(t *testing.T) {
+func TestScopeCandidateMustAllowsAdminGlobalScan(t *testing.T) {
 	profile := &evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: "admin-a",
-		Roles: []string{"admin"}, AccountActive: true, TenantActive: true,
+		EffectiveSubjectID: "admin-a",
+		Roles:              []string{"admin"},
+		AccountActive:      true,
 	}
 	must := scopeCandidateMust(evidencevo.QueryScope{
-		TenantID: "tenant-a", AccountID: "admin-a", AccountType: "user",
-		View: evidencevo.AccessViewBusiness, AccessProfile: profile,
+		AccountID:     "admin-a",
+		AccountType:   "user",
+		View:          evidencevo.AccessViewBusiness,
+		AccessProfile: profile,
 	})
 
 	rendered := mustJSON(t, must)
-	if strings.Contains(rendered, "bkn.account.id") || strings.Contains(rendered, "effective_subject_id") ||
-		strings.Contains(rendered, "knowledge_network_ids") {
-		t.Fatalf("admin business candidates must not be narrowed by owner or managed-network filters: %s", rendered)
-	}
-	for _, expected := range []string{"bkn.tenant.id"} {
-		if !strings.Contains(rendered, expected) {
-			t.Fatalf("admin candidates must remain tenant/domain bounded: %s", rendered)
-		}
+	if rendered != "null" {
+		t.Fatalf("admin candidates must not retain owner filters: %s", rendered)
 	}
 }
 

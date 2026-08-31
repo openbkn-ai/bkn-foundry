@@ -475,9 +475,6 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	if !strings.Contains(string(values), `ingest_token_secret_name: "bkn-trace-evidence-ingest"`) {
 		t.Fatal("Helm must wire the standard evidence ingest Secret by default")
 	}
-	if !strings.Contains(string(values), `default_tenant_id: "openbkn-local"`) {
-		t.Fatalf("Helm lifecycle values must align with the observability single-tenant scope: %s", values)
-	}
 	deploymentPath := filepath.Clean("../../../helm/agent-retrieval/templates/deployment.yaml")
 	deployment, err := os.ReadFile(deploymentPath)
 	if err != nil {
@@ -501,9 +498,6 @@ func TestHelmEnforcesInstalledLifecycleCoreByDefault(t *testing.T) {
 	}
 	if !strings.Contains(rendering, `optional: true`) {
 		t.Fatal("evidence ingest Secret reference must stay optional so standalone retrieval still starts")
-	}
-	if !strings.Contains(rendering, `name: BKN_TRACE_DEFAULT_TENANT_ID`) {
-		t.Fatal("Helm must support an explicit single-tenant trust scope")
 	}
 }
 

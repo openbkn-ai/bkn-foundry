@@ -75,7 +75,7 @@ func TestUpdateResourceIndexName(t *testing.T) {
 }
 
 func TestGenerateDocumentID(t *testing.T) {
-	keys := []interfaces.KeyValue{{Key: "tenant_id", Value: "tenant-1"}, {Key: "id", Value: 42}}
+	keys := []interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}, {Key: "id", Value: 42}}
 
 	docID, err := generateDocumentID(keys)
 	require.NoError(t, err)
@@ -85,23 +85,23 @@ func TestGenerateDocumentID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, docID, sameDocID)
 
-	reorderedDocID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 42}, {Key: "tenant_id", Value: "tenant-1"}})
+	reorderedDocID, err := generateDocumentID([]interfaces.KeyValue{{Key: "id", Value: 42}, {Key: "customer_id", Value: "customer-1"}})
 	require.NoError(t, err)
 	assert.NotEqual(t, docID, reorderedDocID)
 
-	documentKeys, err := extractKeyValues([]string{"tenant_id", "id"}, map[string]any{"tenant_id": "tenant-2", "id": 99})
+	documentKeys, err := extractKeyValues([]string{"customer_id", "id"}, map[string]any{"customer_id": "customer-2", "id": 99})
 	require.NoError(t, err)
 	docID, err = generateDocumentID(documentKeys)
 	require.NoError(t, err)
 	assert.Len(t, docID, 64)
 
-	first, err := generateDocumentID([]interfaces.KeyValue{{Key: "tenant_id", Value: "a-b"}, {Key: "id", Value: "c"}})
+	first, err := generateDocumentID([]interfaces.KeyValue{{Key: "customer_id", Value: "a-b"}, {Key: "id", Value: "c"}})
 	require.NoError(t, err)
-	second, err := generateDocumentID([]interfaces.KeyValue{{Key: "tenant_id", Value: "a"}, {Key: "id", Value: "b-c"}})
+	second, err := generateDocumentID([]interfaces.KeyValue{{Key: "customer_id", Value: "a"}, {Key: "id", Value: "b-c"}})
 	require.NoError(t, err)
 	assert.NotEqual(t, first, second)
 
-	_, err = extractKeyValues([]string{"tenant_id", "id"}, map[string]any{"tenant_id": "tenant-2"})
+	_, err = extractKeyValues([]string{"customer_id", "id"}, map[string]any{"customer_id": "customer-2"})
 	require.ErrorContains(t, err, `build key field "id" is missing`)
 }
 

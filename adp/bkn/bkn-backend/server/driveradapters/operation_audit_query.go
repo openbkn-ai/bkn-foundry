@@ -37,7 +37,6 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 		return
 	}
 	filter := operationaudit.Filter{
-		TenantID:   strings.TrimSpace(c.GetHeader("x-tenant-id")),
 		From:       from,
 		To:         to,
 		ActorID:    strings.TrimSpace(c.Query("actor_id")),
@@ -45,12 +44,6 @@ func (r *restHandler) ListOperationAudits(c *gin.Context) {
 		TargetType: strings.TrimSpace(c.Query("target_type")),
 		TargetID:   strings.TrimSpace(c.Query("target_id")),
 		Outcome:    strings.TrimSpace(c.Query("outcome")),
-	}
-	if filter.TenantID == "" {
-		replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_MissingScope, gin.H{
-			"required_headers": []string{"x-tenant-id"},
-		})
-		return
 	}
 	requestedActor := filter.ActorID
 	applyOperationAuditScope(&filter, nil, visitor.ID, profile)
@@ -92,15 +85,7 @@ func (r *restHandler) GetOperationAudit(c *gin.Context) {
 		replyOperationAuditError(c, http.StatusServiceUnavailable, berrors.BknBackend_OperationAudit_ServiceUnavailable, nil)
 		return
 	}
-	scope := operationaudit.Scope{
-		TenantID: strings.TrimSpace(c.GetHeader("x-tenant-id")),
-	}
-	if scope.TenantID == "" {
-		replyOperationAuditError(c, http.StatusBadRequest, berrors.BknBackend_OperationAudit_MissingScope, gin.H{
-			"required_headers": []string{"x-tenant-id"},
-		})
-		return
-	}
+	scope := operationaudit.Scope{}
 	applyOperationAuditScope(nil, &scope, visitor.ID, profile)
 	entry, found, err := r.auditQueryStore.Get(c.Request.Context(), strings.TrimSpace(c.Param("event_id")), scope)
 	if err != nil {
@@ -185,7 +170,6 @@ type operationAuditResponseDTO struct {
 	EventID            string         `json:"event_id"`
 	EventTime          string         `json:"event_time"`
 	RecordedAt         string         `json:"recorded_at"`
-	TenantID           string         `json:"tenant_id"`
 	KnowledgeNetworkID string         `json:"knowledge_network_id"`
 	ActorID            string         `json:"actor_id"`
 	ActorName          string         `json:"actor_name"`
@@ -216,11 +200,26 @@ func operationAuditResponses(entries []operationaudit.Entry) []operationAuditRes
 
 func operationAuditResponse(entry operationaudit.Entry) operationAuditResponseDTO {
 	return operationAuditResponseDTO{
-		EventID: entry.EventID, EventTime: entry.EventTime.UTC().Format(time.RFC3339Nano), RecordedAt: entry.RecordedAt.UTC().Format(time.RFC3339Nano),
-		TenantID: entry.TenantID, KnowledgeNetworkID: entry.KnowledgeNetworkID,
-		ActorID: entry.ActorID, ActorName: entry.ActorName, ActorType: entry.ActorType, AuthMethod: entry.AuthMethod, CredentialID: entry.CredentialID,
-		RequestID: entry.RequestID, SourceChannel: entry.SourceChannel, Method: entry.Method, Action: entry.Action,
-		TargetType: entry.TargetType, TargetID: entry.TargetID, TargetName: entry.TargetName, Outcome: entry.Outcome,
-		FailureCode: entry.FailureCode, FailureMessage: entry.FailureMessage, ChangeSummary: entry.ChangeSummary, SchemaVersion: entry.SchemaVersion,
+		EventID:            entry.EventID,
+		EventTime:          entry.EventTime.UTC().Format(time.RFC3339Nano),
+		RecordedAt:         entry.RecordedAt.UTC().Format(time.RFC3339Nano),
+		KnowledgeNetworkID: entry.KnowledgeNetworkID,
+		ActorID:            entry.ActorID,
+		ActorName:          entry.ActorName,
+		ActorType:          entry.ActorType,
+		AuthMethod:         entry.AuthMethod,
+		CredentialID:       entry.CredentialID,
+		RequestID:          entry.RequestID,
+		SourceChannel:      entry.SourceChannel,
+		Method:             entry.Method,
+		Action:             entry.Action,
+		TargetType:         entry.TargetType,
+		TargetID:           entry.TargetID,
+		TargetName:         entry.TargetName,
+		Outcome:            entry.Outcome,
+		FailureCode:        entry.FailureCode,
+		FailureMessage:     entry.FailureMessage,
+		ChangeSummary:      entry.ChangeSummary,
+		SchemaVersion:      entry.SchemaVersion,
 	}
 }

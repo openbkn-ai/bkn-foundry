@@ -27,7 +27,6 @@ func ontologyTraceRequestContext(c *gin.Context, ctx context.Context, visitor hy
 		RequestID:              traceContext.RequestID,
 		AccountID:              visitor.ID,
 		AccountType:            string(visitor.Type),
-		TenantID:               strings.TrimSpace(c.GetHeader("x-tenant-id")),
 		ApplicationPrincipalID: strings.TrimSpace(os.Getenv("BKN_TRACE_APPLICATION_PRINCIPAL_ID")),
 		EffectiveSubjectID:     visitor.ID,
 		EffectiveSubjectType:   ontologyTraceSubjectType(string(visitor.Type)),

@@ -225,7 +225,6 @@ const (
 	ErrExtOperationAuditAccessDenied           ErrorCode = "OperationAuditAccessDenied"
 	ErrExtOperationAuditInvalidRange           ErrorCode = "OperationAuditInvalidRange"
 	ErrExtOperationAuditInvalidBeforeTime      ErrorCode = "OperationAuditInvalidBeforeTime"
-	ErrExtOperationAuditMissingScope           ErrorCode = "OperationAuditMissingScope"
 	ErrExtOperationAuditQueryFailed            ErrorCode = "OperationAuditQueryFailed"
 	ErrExtOperationAuditNotFound               ErrorCode = "OperationAuditNotFound"
 )

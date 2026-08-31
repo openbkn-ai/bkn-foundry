@@ -85,8 +85,7 @@ func validateEvent(event ledgervo.Event) error {
 	}
 	if event.EventID == "" || event.EventType == "" || event.ConversationID == "" ||
 		event.InteractionID == "" || event.ProducerID == "" || event.ProducerStreamID == "" ||
-		event.ProducerEpoch == 0 || event.ProducerSequence == 0 ||
-		event.Owner.TenantID == "" {
+		event.ProducerEpoch == 0 || event.ProducerSequence == 0 {
 		return &DomainError{Code: CodeInvalidEvent, Message: "required evidence event fields are missing"}
 	}
 	if event.PayloadHash != ledgervo.CanonicalPayloadHash(event.Envelope) {

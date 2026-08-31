@@ -55,7 +55,7 @@ func TestListOperationAuditsAppliesServerSideRoleScope(t *testing.T) {
 		wantActor      string
 		wantNetworkIDs []string
 	}{
-		{name: "admin tenant scope", profile: bkntrace.OperationAuditProfile{ActorID: "admin-a", Roles: []string{"admin"}}},
+		{name: "admin global scope", profile: bkntrace.OperationAuditProfile{ActorID: "admin-a", Roles: []string{"admin"}}},
 		{name: "network builder direct networks", profile: bkntrace.OperationAuditProfile{ActorID: "builder-a", Roles: []string{"network_builder"}, ManagedKnowledgeNetworkIDs: []string{"kn-b", "kn-a"}}, wantNetworkIDs: []string{"kn-b", "kn-a"}},
 		{name: "normal user own facts", profile: bkntrace.OperationAuditProfile{ActorID: "user-a", Roles: []string{"normal_user"}}, wantActor: "user-a"},
 	}
@@ -74,13 +74,12 @@ func TestListOperationAuditsAppliesServerSideRoleScope(t *testing.T) {
 			engine.GET("/api/bkn-backend/v1/operation-audits", handler.ListOperationAudits)
 			request := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/operation-audits?from=2026-08-01T00:00:00Z&to=2026-08-08T00:00:00Z", nil)
 			request.Header.Set("Authorization", "Bearer token")
-			request.Header.Set("x-tenant-id", "tenant-a")
 			response := httptest.NewRecorder()
 			engine.ServeHTTP(response, request)
 			if response.Code != http.StatusOK {
 				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 			}
-			if store.filter.TenantID != "tenant-a" || store.filter.ActorID != test.wantActor || !sameStrings(store.filter.KnowledgeNetworkIDs, test.wantNetworkIDs) {
+			if store.filter.ActorID != test.wantActor || !sameStrings(store.filter.KnowledgeNetworkIDs, test.wantNetworkIDs) {
 				t.Fatalf("filter = %#v", store.filter)
 			}
 		})
@@ -103,7 +102,6 @@ func TestOperationAuditQueryRejectsUnboundedRangeAndHidesUnauthorizedDetail(t *t
 
 	unbounded := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/operation-audits?from=2026-01-01T00:00:00Z&to=2026-08-08T00:00:00Z", nil)
 	unbounded.Header.Set("Authorization", "Bearer token")
-	unbounded.Header.Set("x-tenant-id", "tenant-a")
 	unboundedResponse := httptest.NewRecorder()
 	engine.ServeHTTP(unboundedResponse, unbounded)
 	if unboundedResponse.Code != http.StatusBadRequest {
@@ -112,7 +110,6 @@ func TestOperationAuditQueryRejectsUnboundedRangeAndHidesUnauthorizedDetail(t *t
 
 	detail := httptest.NewRequest(http.MethodGet, "/api/bkn-backend/v1/operation-audits/evt-secret", nil)
 	detail.Header.Set("Authorization", "Bearer token")
-	detail.Header.Set("x-tenant-id", "tenant-a")
 	detailResponse := httptest.NewRecorder()
 	engine.ServeHTTP(detailResponse, detail)
 	if detailResponse.Code != http.StatusNotFound || !sameStrings(store.scope.KnowledgeNetworkIDs, []string{"kn-a"}) {
@@ -216,7 +213,6 @@ func TestOperationAuditErrorsAreLocalized(t *testing.T) {
 
 			request := httptest.NewRequest(http.MethodGet, test.path, nil)
 			request.Header.Set("Authorization", "Bearer token")
-			request.Header.Set("x-tenant-id", "tenant-a")
 			request.Header.Set(rest.AcceptLanguageHeader, test.language)
 			response := httptest.NewRecorder()
 			engine.ServeHTTP(response, request)

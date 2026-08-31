@@ -39,13 +39,13 @@ func TestGetHeaderFromCtx(t *testing.T) {
 		ctx := context.Background()
 		authCtx := &interfaces.AccountAuthContext{
 			AccountID:   "user-1",
-			AccountType: interfaces.AccessorType("tenant"),
+			AccountType: interfaces.AccessorType("service"),
 		}
 		ctx = SetAccountAuthContextToCtx(ctx, authCtx)
 
 		header := GetHeaderFromCtx(ctx)
 		convey.So(header[string(interfaces.HeaderXAccountID)], convey.ShouldEqual, "user-1")
-		convey.So(header[string(interfaces.HeaderXAccountType)], convey.ShouldEqual, "tenant")
+		convey.So(header[string(interfaces.HeaderXAccountType)], convey.ShouldEqual, "service")
 	})
 }
 
@@ -99,14 +99,14 @@ func TestGetHeaderFromCtxPropagatesTraceContext(t *testing.T) {
 		})
 		ctx = SetAccountAuthContextToCtx(ctx, &interfaces.AccountAuthContext{
 			AccountID:   "user-1",
-			AccountType: interfaces.AccessorType("tenant"),
+			AccountType: interfaces.AccessorType("service"),
 		})
 
 		header := GetHeaderFromCtx(ctx)
 		convey.So(header[HeaderBKNRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000001")
 		convey.So(header[HeaderLegacyRequestID], convey.ShouldEqual, "req_01JZVALIDREQUESTID000000001")
 		convey.So(header[HeaderTraceparent], convey.ShouldEqual, "00-10111213141516171819202122232425-3031323334353637-01")
-		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=tenant")
+		convey.So(header[HeaderBaggage], convey.ShouldEqual, "bkn.account.type=service")
 	})
 
 	convey.Convey("GetHeaderFromCtx derives account baggage from trusted auth context", t, func() {
@@ -150,7 +150,6 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 	convey.Convey("valid business causality is propagated", t, func() {
 		ctx := SetTraceContextToCtx(context.Background(), TraceContext{
 			RequestID:          "req_01JZVALIDREQUESTID000000005",
-			TenantID:           "tenant-supply-chain",
 			InteractionID:      "third-party-interaction-0001",
 			OperationID:        "context-retrieval-0001",
 			CausationEventID:   "agent-tool-called-0001",
@@ -161,7 +160,6 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 		})
 
 		header := GetHeaderFromCtx(ctx)
-		convey.So(header[HeaderTenantID], convey.ShouldEqual, "tenant-supply-chain")
 		convey.So(header[HeaderBKNInteractionID], convey.ShouldEqual, "third-party-interaction-0001")
 		convey.So(header[HeaderBKNOperationID], convey.ShouldEqual, "context-retrieval-0001")
 		convey.So(header[HeaderBKNCausationEventID], convey.ShouldEqual, "agent-tool-called-0001")
@@ -226,25 +224,6 @@ func TestBusinessCausalityHeadersAreValidatedAndPropagated(t *testing.T) {
 	})
 }
 
-func TestTraceContextUsesConfiguredTenantOnlyWhenInboundTenantIsMissing(t *testing.T) {
-	t.Setenv("BKN_TRACE_DEFAULT_TENANT_ID", "openbkn-local")
-	defaulted := TraceContextFromHeaders(func(string) string { return "" })
-	if defaulted.TenantID != "openbkn-local" {
-		t.Fatalf("default tenant = %q, want openbkn-local", defaulted.TenantID)
-	}
-	trustedTenant := TraceContextFromHeaders(func(key string) string {
-		switch key {
-		case HeaderTenantID:
-			return "tenant-from-gateway"
-		default:
-			return ""
-		}
-	})
-	if trustedTenant.TenantID != "tenant-from-gateway" {
-		t.Fatalf("inbound tenant was overwritten: %q", trustedTenant.TenantID)
-	}
-}
-
 func TestCopyRequestScopedValuesKeepsTheTargetContextIntact(t *testing.T) {
 	type transportKey struct{}
 	// Stands in for the MCP client session the transport puts on the context
@@ -253,8 +232,7 @@ func TestCopyRequestScopedValuesKeepsTheTargetContextIntact(t *testing.T) {
 	// sessionless while the unit tests stayed green.
 	transport := context.WithValue(context.Background(), transportKey{}, "session-1")
 
-	request := SetTraceContextToCtx(context.Background(), TraceContext{
-		TenantID: "tenant-1"})
+	request := SetTraceContextToCtx(context.Background(), TraceContext{})
 	request = SetAccountAuthContextToCtx(request, &interfaces.AccountAuthContext{
 		AccountID: "user-1", AccountType: interfaces.AccessorTypeUser,
 	})
@@ -266,7 +244,7 @@ func TestCopyRequestScopedValuesKeepsTheTargetContextIntact(t *testing.T) {
 		t.Fatal("the transport's own context values were dropped")
 	}
 	traceContext, ok := GetTraceContextFromCtx(merged)
-	if !ok || traceContext.TenantID != "tenant-1" {
+	if !ok || traceContext.RequestID == "" {
 		t.Fatalf("request trace context did not survive the copy: %#v", traceContext)
 	}
 	auth, ok := GetAccountAuthContextFromCtx(merged)

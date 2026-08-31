@@ -80,14 +80,10 @@ jobs:
         env:
           OPENBKN_TOKEN: ${{ secrets.OPENBKN_TOKEN }}
           OPENBKN_AUTH_ENABLED: ${{ secrets.OPENBKN_AUTH_ENABLED }}
-          OPENBKN_BUSINESS_DOMAIN: ${{ secrets.OPENBKN_BUSINESS_DOMAIN }}
         run: |
           if [ -z "$OPENBKN_TOKEN" ] && [ "$OPENBKN_AUTH_ENABLED" != "false" ]; then
             echo "Set repository secrets OPENBKN_TOKEN or OPENBKN_AUTH_ENABLED=false"
             exit 1
-          fi
-          if [ -z "$OPENBKN_BUSINESS_DOMAIN" ]; then
-            export OPENBKN_BUSINESS_DOMAIN=bd_public
           fi
           cp config/env.openbkn.example.ini config/env.ini
           python -m pytest testcases/openbkn-smoke --confcutdir=testcases/openbkn-smoke -q

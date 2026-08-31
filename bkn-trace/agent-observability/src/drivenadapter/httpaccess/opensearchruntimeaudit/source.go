@@ -59,9 +59,6 @@ func (*Source) Metadata() observabilityvo.SourceStatus {
 }
 
 func (source *Source) Search(ctx context.Context, query observabilityvo.LogQuery) (observabilityvo.SourcePage, error) {
-	if query.AuthorizedTenantID == "" {
-		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
-	}
 	statuses, compatible := receiptStatuses(query)
 	if !compatible || !matchesFixedFilters(query) {
 		return observabilityvo.SourcePage{CountAccuracy: "exact"}, nil
@@ -78,12 +75,8 @@ func (source *Source) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	if !supported {
 		return observabilityvo.LogRecord{}, false, nil
 	}
-	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
-	if scope.TenantID == "" {
-		return observabilityvo.LogRecord{}, false, fmt.Errorf("trusted tenant scope is required for receipt log detail")
-	}
 	page, err := source.search(ctx, buildQuery(observabilityvo.LogQuery{
-		AuthorizedTenantID: scope.TenantID, Limit: 1,
+		Limit: 1,
 	}, []sessionvo.ReceiptStatus{sessionvo.ReceiptCompleted, sessionvo.ReceiptFailed}, receiptID))
 	if err != nil || len(page.Records) == 0 {
 		return observabilityvo.LogRecord{}, false, err
@@ -143,7 +136,6 @@ func buildQuery(query observabilityvo.LogQuery, statuses []sessionvo.ReceiptStat
 	}
 	filters := []any{
 		map[string]any{"exists": map[string]any{"field": "receipt_id"}},
-		term("owner.tenant_id.keyword", query.AuthorizedTenantID),
 		terms("receipt_status.keyword", statuses),
 	}
 	addTerm := func(field, value string) {
@@ -254,8 +246,7 @@ func projectReceipt(document sessionvo.ReceiptProjectionDocument) observabilityv
 		EventTimestamp: timestamp, ObservedTimestamp: timestamp,
 		SeverityNumber: severityNumber, SeverityText: severityText, Outcome: outcome,
 		SafeSummary: "Executed " + targetName, ServiceName: "bkn-trace-core", Environment: "unknown",
-		TenantID: document.Owner.TenantID,
-		ActorID:  document.Owner.EffectiveSubjectID, EffectiveSubjectID: document.Owner.EffectiveSubjectID,
+		ActorID: document.Owner.EffectiveSubjectID, EffectiveSubjectID: document.Owner.EffectiveSubjectID,
 		ApplicationID: document.Owner.ApplicationPrincipalID, IngressPrincipal: "bkn-trace-core", TrustLevel: "trusted",
 		RequestID: document.RequestID, TraceID: document.TraceID, ConversationID: document.ConversationID,
 		InteractionID: document.InteractionID, OperationID: document.OperationID, ToolName: document.ToolName,

@@ -23,7 +23,6 @@ var (
 // DelegationID is currently an audit and fingerprint dimension; Resolver does not
 // independently validate delegation until BKN Safe exposes a verifiable contract.
 type TrustedIdentity struct {
-	TenantID               string
 	ActorID                string
 	EffectiveSubjectID     string
 	ApplicationPrincipalID string

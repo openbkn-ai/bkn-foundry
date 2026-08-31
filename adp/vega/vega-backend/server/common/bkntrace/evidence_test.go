@@ -16,8 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"go.opentelemetry.io/otel/trace"
 	"vega-backend/interfaces"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type evidenceRoundTripFunc func(*http.Request) (*http.Response, error)
@@ -42,7 +43,6 @@ func testRequestContext() RequestContext {
 		RequestID:          "req_vega_data_0001",
 		AccountID:          "acct_demo",
 		AccountType:        "user",
-		TenantID:           "tenant_demo",
 		InteractionID:      "int_vega_query_0001",
 		OperationID:        "op_vega_query_0001",
 		CausationEventID:   "evt_retrieval_completed_0001",
@@ -193,8 +193,7 @@ func TestBuildDataQueryEvidenceLinksAuthorizedQueryAndResultArtifacts(t *testing
 			artifact.TraceID != "73220000000000000000000000000001" {
 			t.Fatalf("artifact does not preserve trace ownership: %#v", artifact)
 		}
-		if artifact.TenantID != "tenant_demo" ||
-			artifact.AccountID != "acct_demo" || artifact.AccountType != "user" {
+		if artifact.AccountID != "acct_demo" || artifact.AccountType != "user" {
 			t.Fatalf("artifact does not preserve authorization scope: %#v", artifact)
 		}
 	}
@@ -232,12 +231,17 @@ func TestPostArtifactSendsDedicatedIngestTokenAndFullBusinessContent(t *testing.
 		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(""))}, nil
 	})}
 	artifact := Artifact{
-		ArtifactID: "art_query_001", ArtifactType: ArtifactTypeQuery,
-		RequestID: "req_vega_data_0001", TraceID: "73220000000000000000000000000001",
-		ContentType: "application/json", SchemaVersion: ArtifactContractVersion,
-		ObservedAt: "2026-07-25T08:00:00Z", ContentHash: ArtifactContentHash(map[string]any{"order_id": "PO-2024-001"}),
-		Content:  map[string]any{"order_id": "PO-2024-001"},
-		TenantID: "tenant_demo", AccountID: "acct_demo", AccountType: "user",
+		ArtifactID:    "art_query_001",
+		ArtifactType:  ArtifactTypeQuery,
+		RequestID:     "req_vega_data_0001",
+		TraceID:       "73220000000000000000000000000001",
+		ContentType:   "application/json",
+		SchemaVersion: ArtifactContractVersion,
+		ObservedAt:    "2026-07-25T08:00:00Z",
+		ContentHash:   ArtifactContentHash(map[string]any{"order_id": "PO-2024-001"}),
+		Content:       map[string]any{"order_id": "PO-2024-001"},
+		AccountID:     "acct_demo",
+		AccountType:   "user",
 	}
 	if err := postArtifact("http://trace.local/api/agent-observability/v1/evidence/artifacts", time.Second, artifact); err != nil {
 		t.Fatal(err)

@@ -46,7 +46,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 		return observabilityvo.SourcePage{CountAccuracy: "partial"}, nil
 	}
 	authorization := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
-	if authorization == "" || query.AuthorizedTenantID == "" {
+	if authorization == "" {
 		return observabilityvo.SourcePage{}, errors.New("vega audit source requires caller authorization and trusted scope")
 	}
 	parameters := url.Values{}
@@ -72,7 +72,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
 	}
-	setTrustedHeaders(request, authorization, query.AuthorizedTenantID)
+	setTrustedHeaders(request, authorization)
 	response, err := client.http.Do(request)
 	if err != nil {
 		return observabilityvo.SourcePage{}, err
@@ -102,15 +102,14 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 
 func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.LogRecord, bool, error) {
 	authorization := strings.TrimSpace(observabilityvo.SourceAuthorization(ctx))
-	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
-	if authorization == "" || scope.TenantID == "" {
+	if authorization == "" {
 		return observabilityvo.LogRecord{}, false, errors.New("vega audit source requires caller authorization and trusted scope")
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, client.baseURL+"/api/vega-backend/v1/operation-audits/"+url.PathEscape(sourceLogID(logID)), nil)
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
 	}
-	setTrustedHeaders(request, authorization, scope.TenantID)
+	setTrustedHeaders(request, authorization)
 	response, err := client.http.Do(request)
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, err
@@ -133,7 +132,6 @@ type auditEntry struct {
 	EventID        string    `json:"event_id"`
 	EventTime      time.Time `json:"event_time"`
 	RecordedAt     time.Time `json:"recorded_at"`
-	TenantID       string    `json:"tenant_id"`
 	ActorID        string    `json:"actor_id"`
 	ActorName      string    `json:"actor_name"`
 	ActorType      string    `json:"actor_type"`
@@ -156,11 +154,10 @@ func project(entry auditEntry) observabilityvo.LogRecord {
 	if entry.Outcome != "success" {
 		severityNumber, severityText = 17, "ERROR"
 	}
-	return observabilityvo.LogRecord{EventID: entry.EventID, EventTime: entry.EventTime, RecordedAt: entry.RecordedAt, ActorNameSnapshot: firstNonEmpty(entry.ActorName, entry.ActorID), ActorType: firstNonEmpty(entry.ActorType, "user"), AuthMethod: firstNonEmpty(entry.AuthMethod, "unknown"), SourceChannel: firstNonEmpty(entry.SourceChannel, "api"), BusinessModule: "data_resource_knowledge_network", Action: entry.Action, TargetType: entry.TargetType, TargetID: entry.TargetID, TargetNameSnapshot: firstNonEmpty(entry.TargetName, entry.TargetID), FailureCode: entry.FailureCode, FailureMessage: entry.FailureMessage, SchemaVersion: firstNonEmpty(entry.SchemaVersion, "1.0"), LogID: sourceID + ":" + entry.EventID, SourceID: sourceID, SourceLogID: entry.EventID, Category: observabilityvo.CategoryAuditAdmin, EventName: "resource_config.changed", EventTimestamp: entry.EventTime, ObservedTimestamp: entry.RecordedAt, SeverityNumber: severityNumber, SeverityText: severityText, Outcome: entry.Outcome, SafeSummary: strings.TrimSpace(strings.Join([]string{entry.Method, entry.Action, entry.TargetType, firstNonEmpty(entry.TargetName, entry.TargetID)}, " ")), ServiceName: "vega-backend", Environment: "unknown", TenantID: entry.TenantID, ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID, RequestID: entry.RequestID, IngressPrincipal: "vega", TrustLevel: "trusted", ResourceRef: &observabilityvo.ResourceRef{ResourceType: entry.TargetType, ResourceID: entry.TargetID}, Attributes: map[string]any{"method": entry.Method}}
+	return observabilityvo.LogRecord{EventID: entry.EventID, EventTime: entry.EventTime, RecordedAt: entry.RecordedAt, ActorNameSnapshot: firstNonEmpty(entry.ActorName, entry.ActorID), ActorType: firstNonEmpty(entry.ActorType, "user"), AuthMethod: firstNonEmpty(entry.AuthMethod, "unknown"), SourceChannel: firstNonEmpty(entry.SourceChannel, "api"), BusinessModule: "data_resource_knowledge_network", Action: entry.Action, TargetType: entry.TargetType, TargetID: entry.TargetID, TargetNameSnapshot: firstNonEmpty(entry.TargetName, entry.TargetID), FailureCode: entry.FailureCode, FailureMessage: entry.FailureMessage, SchemaVersion: firstNonEmpty(entry.SchemaVersion, "1.0"), LogID: sourceID + ":" + entry.EventID, SourceID: sourceID, SourceLogID: entry.EventID, Category: observabilityvo.CategoryAuditAdmin, EventName: "resource_config.changed", EventTimestamp: entry.EventTime, ObservedTimestamp: entry.RecordedAt, SeverityNumber: severityNumber, SeverityText: severityText, Outcome: entry.Outcome, SafeSummary: strings.TrimSpace(strings.Join([]string{entry.Method, entry.Action, entry.TargetType, firstNonEmpty(entry.TargetName, entry.TargetID)}, " ")), ServiceName: "vega-backend", Environment: "unknown", ActorID: entry.ActorID, EffectiveSubjectID: entry.ActorID, RequestID: entry.RequestID, IngressPrincipal: "vega", TrustLevel: "trusted", ResourceRef: &observabilityvo.ResourceRef{ResourceType: entry.TargetType, ResourceID: entry.TargetID}, Attributes: map[string]any{"method": entry.Method}}
 }
-func setTrustedHeaders(request *http.Request, authorization, tenantID string) {
+func setTrustedHeaders(request *http.Request, authorization string) {
 	request.Header.Set("Authorization", authorization)
-	request.Header.Set("x-tenant-id", tenantID)
 }
 func sourceLogID(logID string) string { return strings.TrimPrefix(logID, sourceID+":") }
 func normalizedLimit(value int) int {

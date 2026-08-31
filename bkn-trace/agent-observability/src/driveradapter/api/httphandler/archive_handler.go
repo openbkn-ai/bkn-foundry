@@ -30,11 +30,11 @@ func NewArchiveHandler(service *archivesvc.Service, authorizer *EvidenceHandler)
 
 func (handler *ArchiveHandler) Overview(kind observabilityvo.ArchiveKind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		profile, ok := handler.authorize(w, r, http.MethodGet)
+		_, ok := handler.authorize(w, r, http.MethodGet)
 		if !ok {
 			return
 		}
-		overview, err := handler.service.Overview(r.Context(), kind, profile.TenantID)
+		overview, err := handler.service.Overview(r.Context(), kind)
 		if err != nil {
 			writeObservabilityError(w, r, http.StatusServiceUnavailable, "archive_overview_failed", "archive overview is unavailable")
 			return
@@ -50,7 +50,7 @@ func (handler *ArchiveHandler) Overview(kind observabilityvo.ArchiveKind) http.H
 }
 func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		profile, ok := handler.authorize(w, r, http.MethodPost)
+		_, ok := handler.authorize(w, r, http.MethodPost)
 		if !ok {
 			return
 		}
@@ -59,7 +59,7 @@ func (handler *ArchiveHandler) Create(kind observabilityvo.ArchiveKind) http.Han
 			writeObservabilityError(w, r, http.StatusBadRequest, "invalid_archive_request", "archive request body must be an empty object")
 			return
 		}
-		job, err := handler.service.Create(r.Context(), kind, profile.TenantID)
+		job, err := handler.service.Create(r.Context(), kind)
 		if err != nil {
 			switch {
 			case errors.Is(err, archivesvc.ErrNothingToArchive):
@@ -84,11 +84,11 @@ func (handler *ArchiveHandler) ListOrCreate(kind observabilityvo.ArchiveKind) ht
 			handler.Create(kind)(w, r)
 			return
 		}
-		profile, ok := handler.authorize(w, r, http.MethodGet)
+		_, ok := handler.authorize(w, r, http.MethodGet)
 		if !ok {
 			return
 		}
-		jobs := handler.service.List(profile.TenantID, kind, 20)
+		jobs := handler.service.List(kind, 20)
 		response := make([]rdto.ArchiveJobResponse, 0, len(jobs))
 		for _, job := range jobs {
 			response = append(response, rdto.NewArchiveJob(job))
@@ -107,16 +107,16 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 	if len(parts) == 2 && parts[1] == "retry-cleanup" {
 		method = http.MethodPost
 	}
-	profile, ok := handler.authorize(w, r, method)
+	_, ok := handler.authorize(w, r, method)
 	if !ok {
 		return
 	}
 	if method == http.MethodGet {
 		if len(parts) == 2 && parts[1] == "download" {
-			handler.download(w, r, parts[0], profile.TenantID)
+			handler.download(w, r, parts[0])
 			return
 		}
-		job, found := handler.service.Get(parts[0], profile.TenantID)
+		job, found := handler.service.Get(parts[0])
 		if !found {
 			writeObservabilityError(w, r, http.StatusNotFound, "archive_job_not_found", "archive job was not found")
 			return
@@ -124,7 +124,7 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 		writeJSON(w, r, http.StatusOK, rdto.NewArchiveJob(job))
 		return
 	}
-	job, err := handler.service.RetryCleanup(r.Context(), parts[0], profile.TenantID)
+	job, err := handler.service.RetryCleanup(r.Context(), parts[0])
 	if err != nil {
 		writeObservabilityError(w, r, http.StatusBadRequest, "archive_retry_failed", "archive cleanup cannot be retried")
 		return
@@ -132,8 +132,8 @@ func (handler *ArchiveHandler) GetOrRetry(w http.ResponseWriter, r *http.Request
 	writeJSON(w, r, http.StatusOK, rdto.NewArchiveJob(job))
 }
 
-func (handler *ArchiveHandler) download(w http.ResponseWriter, r *http.Request, jobID, tenantID string) {
-	download, err := handler.service.OpenDownload(r.Context(), jobID, tenantID)
+func (handler *ArchiveHandler) download(w http.ResponseWriter, r *http.Request, jobID string) {
+	download, err := handler.service.OpenDownload(r.Context(), jobID)
 	if err != nil {
 		writeObservabilityError(w, r, http.StatusBadRequest, "archive_download_unavailable", "archive download is unavailable")
 		return

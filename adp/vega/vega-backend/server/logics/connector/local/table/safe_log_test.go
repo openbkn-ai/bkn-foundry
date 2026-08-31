@@ -8,8 +8,8 @@ import (
 )
 
 func TestSQLSummaryDoesNotLeakSQLOrArgs(t *testing.T) {
-	sql := "SELECT email, phone FROM customer WHERE email = ? AND tenant_id = ?"
-	args := []any{"alice@example.com", "tenant-secret"}
+	sql := "SELECT email, phone FROM customer WHERE email = ? AND customer_id = ?"
+	args := []any{"alice@example.com", "customer-secret"}
 
 	summary := SQLSummary(sql, args)
 
@@ -19,5 +19,5 @@ func TestSQLSummaryDoesNotLeakSQLOrArgs(t *testing.T) {
 	assert.NotContains(t, summary, sql)
 	assert.NotContains(t, strings.ToLower(summary), "select email")
 	assert.NotContains(t, summary, "alice@example.com")
-	assert.NotContains(t, summary, "tenant-secret")
+	assert.NotContains(t, summary, "customer-secret")
 }

@@ -30,7 +30,6 @@ type cursorPayload struct {
 	Version          string                                    `json:"v"`
 	SortVersion      string                                    `json:"sort"`
 	FilterHash       string                                    `json:"filter"`
-	TenantID         string                                    `json:"tenant"`
 	EffectiveSubject string                                    `json:"subject"`
 	ApplicationID    string                                    `json:"application,omitempty"`
 	ScopeFingerprint string                                    `json:"scope"`
@@ -150,7 +149,7 @@ func cursorMatches(
 	now time.Time,
 ) bool {
 	return payload.Version == cursorVersion && payload.SortVersion == cursorSortVersion &&
-		payload.FilterHash == logFilterHash(query) && payload.TenantID == profile.TenantID &&
+		payload.FilterHash == logFilterHash(query) &&
 		payload.EffectiveSubject == profile.EffectiveSubjectID &&
 		payload.ApplicationID == profile.ApplicationPrincipalID &&
 		payload.ScopeFingerprint == profile.Fingerprint &&

@@ -46,7 +46,7 @@ If all answers are “no” → do not add a new service.
   - Breaking changes: only by introducing `/api/v2` and providing a deprecation window (e.g., 2 releases or 90 days)
 - **Contract**:
   - HTTP: OpenAPI 3.1 (unified error model + pagination/filter/sort)
-  - Skill: Claude Skills (tool/function calling). Must declare auth/tenant/audit and input/output schemas.
+  - Skill: Claude Skills (tool/function calling). Must declare auth/resource authorization/audit and input/output schemas.
 
 - **Compatibility definition (MUST)**:
   - **Request/Input compatibility**: older clients/callers must still work when fields are missing or use older values; do not change optional fields to required.
@@ -135,8 +135,6 @@ auth:
   required: true
   scopes:
     - knowledge:read
-tenant:
-  required: true
 audit:
   required: true
 

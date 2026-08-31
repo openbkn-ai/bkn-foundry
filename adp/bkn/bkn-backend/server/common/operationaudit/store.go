@@ -44,7 +44,6 @@ type Entry struct {
 	EventID            string
 	EventTime          time.Time
 	RecordedAt         time.Time
-	TenantID           string
 	KnowledgeNetworkID string
 	ActorID            string
 	ActorName          string
@@ -66,7 +65,6 @@ type Entry struct {
 }
 
 type Filter struct {
-	TenantID            string
 	KnowledgeNetworkIDs []string
 	ActorID             string
 	Action              string
@@ -81,7 +79,6 @@ type Filter struct {
 }
 
 type Scope struct {
-	TenantID            string
 	KnowledgeNetworkIDs []string
 	ActorID             string
 }
@@ -122,18 +119,14 @@ func (s *Store) Record(ctx context.Context, entry Entry) error {
 		return fmt.Errorf("change summary exceeds %d bytes", maximumSummarySize)
 	}
 
-	query := "INSERT INTO " + tableName + " (event_id,event_time,recorded_at,tenant_id,knowledge_network_id,actor_id,actor_name,actor_type,auth_method,credential_id,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,change_summary,schema_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id = VALUES(event_id)"
+	query := "INSERT INTO " + tableName + " (event_id,event_time,recorded_at,knowledge_network_id,actor_id,actor_name,actor_type,auth_method,credential_id,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,change_summary,schema_version) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id = VALUES(event_id)"
 	arguments := []any{
-		entry.EventID, entry.EventTime, entry.RecordedAt, entry.TenantID, entry.KnowledgeNetworkID,
+		entry.EventID, entry.EventTime, entry.RecordedAt, entry.KnowledgeNetworkID,
 		entry.ActorID, entry.ActorName, entry.ActorType, entry.AuthMethod, entry.CredentialID, entry.RequestID, entry.SourceChannel,
 		entry.Method, entry.Action, entry.TargetType, entry.TargetID, entry.TargetName, entry.Outcome, entry.FailureCode,
 		entry.FailureMessage, string(summary), entry.SchemaVersion,
 	}
 	_, err = s.db.ExecContext(ctx, query, arguments...)
-	if isLegacyBusinessDomainColumnError(err) {
-		legacyQuery := "INSERT INTO " + tableName + " (event_id,event_time,recorded_at,tenant_id,knowledge_network_id,actor_id,actor_name,actor_type,auth_method,credential_id,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,change_summary,schema_version,business_domain_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE event_id = VALUES(event_id)"
-		_, err = s.db.ExecContext(ctx, legacyQuery, append(arguments, "")...)
-	}
 	if err != nil {
 		return fmt.Errorf("insert operation audit event: %w", err)
 	}
@@ -144,8 +137,8 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 	if s == nil || s.db == nil {
 		return Page{}, errors.New("operation audit store is not configured")
 	}
-	if filter.TenantID == "" || filter.From.IsZero() || filter.To.IsZero() || !filter.From.Before(filter.To) {
-		return Page{}, errors.New("tenant and a valid time range are required")
+	if filter.From.IsZero() || filter.To.IsZero() || !filter.From.Before(filter.To) {
+		return Page{}, errors.New("valid time range is required")
 	}
 	limit := filter.Limit
 	if limit <= 0 {
@@ -155,8 +148,8 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 		limit = maximumPageSize
 	}
 
-	query := "SELECT " + selectColumns + " FROM " + tableName + " WHERE tenant_id = ?"
-	args := []any{filter.TenantID}
+	query := "SELECT " + selectColumns + " FROM " + tableName + " WHERE event_time >= ? AND event_time < ?"
+	args := []any{filter.From, filter.To}
 	networkIDs := normalizedIDs(filter.KnowledgeNetworkIDs)
 	if len(networkIDs) > 0 {
 		query += " AND knowledge_network_id IN (" + placeholders(len(networkIDs)) + ")"
@@ -180,8 +173,6 @@ func (s *Store) List(ctx context.Context, filter Filter) (Page, error) {
 			args = append(args, criterion.value)
 		}
 	}
-	query += " AND event_time >= ? AND event_time < ?"
-	args = append(args, filter.From, filter.To)
 	if !filter.BeforeTime.IsZero() {
 		if filter.BeforeEventID == "" {
 			return Page{}, errors.New("cursor event id is required with cursor time")
@@ -227,11 +218,11 @@ func (s *Store) Get(ctx context.Context, eventID string, scope Scope) (Entry, bo
 	if s == nil || s.db == nil {
 		return Entry{}, false, errors.New("operation audit store is not configured")
 	}
-	if eventID == "" || scope.TenantID == "" {
-		return Entry{}, false, errors.New("event id and tenant are required")
+	if eventID == "" {
+		return Entry{}, false, errors.New("event id is required")
 	}
-	query := "SELECT " + selectColumns + " FROM " + tableName + " WHERE event_id = ? AND tenant_id = ?"
-	args := []any{eventID, scope.TenantID}
+	query := "SELECT " + selectColumns + " FROM " + tableName + " WHERE event_id = ?"
+	args := []any{eventID}
 	networkIDs := normalizedIDs(scope.KnowledgeNetworkIDs)
 	if len(networkIDs) > 0 {
 		query += " AND knowledge_network_id IN (" + placeholders(len(networkIDs)) + ")"
@@ -254,7 +245,7 @@ func (s *Store) Get(ctx context.Context, eventID string, scope Scope) (Entry, bo
 }
 
 func validateEntry(entry Entry) error {
-	if entry.EventID == "" || entry.EventTime.IsZero() || entry.RecordedAt.IsZero() || entry.TenantID == "" ||
+	if entry.EventID == "" || entry.EventTime.IsZero() || entry.RecordedAt.IsZero() ||
 		entry.KnowledgeNetworkID == "" || entry.ActorID == "" || entry.ActorName == "" ||
 		entry.RequestID == "" || entry.TargetID == "" || entry.TargetName == "" {
 		return errors.New("operation audit entry is missing required fields")
@@ -310,7 +301,7 @@ func placeholders(count int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", count), ",")
 }
 
-const selectColumns = "event_id,event_time,recorded_at,tenant_id,knowledge_network_id,actor_id,actor_name,actor_type,auth_method,credential_id,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,change_summary,schema_version"
+const selectColumns = "event_id,event_time,recorded_at,knowledge_network_id,actor_id,actor_name,actor_type,auth_method,credential_id,request_id,source_channel,method,action,target_type,target_id,target_name,outcome,failure_code,failure_message,change_summary,schema_version"
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -320,10 +311,27 @@ func scanEntry(row scanner) (Entry, error) {
 	var entry Entry
 	var summary []byte
 	err := row.Scan(
-		&entry.EventID, &entry.EventTime, &entry.RecordedAt, &entry.TenantID, &entry.KnowledgeNetworkID,
-		&entry.ActorID, &entry.ActorName, &entry.ActorType, &entry.AuthMethod, &entry.CredentialID, &entry.RequestID,
-		&entry.SourceChannel, &entry.Method, &entry.Action, &entry.TargetType, &entry.TargetID, &entry.TargetName,
-		&entry.Outcome, &entry.FailureCode, &entry.FailureMessage, &summary, &entry.SchemaVersion,
+		&entry.EventID,
+		&entry.EventTime,
+		&entry.RecordedAt,
+		&entry.KnowledgeNetworkID,
+		&entry.ActorID,
+		&entry.ActorName,
+		&entry.ActorType,
+		&entry.AuthMethod,
+		&entry.CredentialID,
+		&entry.RequestID,
+		&entry.SourceChannel,
+		&entry.Method,
+		&entry.Action,
+		&entry.TargetType,
+		&entry.TargetID,
+		&entry.TargetName,
+		&entry.Outcome,
+		&entry.FailureCode,
+		&entry.FailureMessage,
+		&summary,
+		&entry.SchemaVersion,
 	)
 	if err != nil {
 		return Entry{}, err
@@ -334,21 +342,4 @@ func scanEntry(row scanner) (Entry, error) {
 		}
 	}
 	return entry, nil
-}
-
-// A 0.1.5 binary can reach a database that still carries the pre-0.1.5
-// business_domain_id column: an upgrade that bypasses the Helm migration hook
-// (`kubectl set image`) or a data-migrator run that has not finished yet. That
-// column is NOT NULL without a default, so the tenant-only INSERT above fails
-// with "Field 'business_domain_id' doesn't have a default value" and every
-// management fact would be dropped for the whole window. Retry once against the
-// legacy shape instead. Both directions self-heal: once the column is gone the
-// first statement succeeds and the fallback is never reached. Delete this
-// fallback when 0.1.5 is the minimum supported schema.
-func isLegacyBusinessDomainColumnError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	return strings.Contains(message, "business_domain_id") && strings.Contains(message, "default value")
 }

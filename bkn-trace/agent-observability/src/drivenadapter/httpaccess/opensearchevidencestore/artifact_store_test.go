@@ -89,7 +89,8 @@ func TestOpenSearchArtifactStoreRoundTripsScalarArrayAndObjectContentThroughCano
 			}
 
 			scope := evidencevo.QueryScope{
-				TenantID: artifact.TenantID, AccountID: artifact.AccountID, AccountType: artifact.AccountType,
+				AccountID:   artifact.AccountID,
+				AccountType: artifact.AccountType,
 			}
 			restored, found, err := store.GetArtifact(context.Background(), artifact.ArtifactID, scope)
 			if err != nil || !found {
@@ -130,7 +131,8 @@ func TestOpenSearchArtifactStoreFailsClosedByOwnership(t *testing.T) {
 		t.Fatal(err)
 	}
 	exact := evidencevo.QueryScope{
-		TenantID: artifact.TenantID, AccountID: artifact.AccountID, AccountType: artifact.AccountType,
+		AccountID:   artifact.AccountID,
+		AccountType: artifact.AccountType,
 	}
 
 	got, found, err := store.GetArtifact(context.Background(), artifact.ArtifactID, exact)
@@ -138,7 +140,7 @@ func TestOpenSearchArtifactStoreFailsClosedByOwnership(t *testing.T) {
 		t.Fatalf("exact owner must read artifact: found=%v err=%v artifact=%+v", found, err, got)
 	}
 	denied := exact
-	denied.TenantID = "other-tenant"
+	denied.AccountID = "other-account"
 	if leaked, found, err := store.GetArtifact(context.Background(), artifact.ArtifactID, denied); err != nil || found || leaked.ArtifactID != "" {
 		t.Fatalf("mismatched ownership must look absent: found=%v err=%v artifact=%+v", found, err, leaked)
 	}
@@ -160,10 +162,15 @@ func TestOpenSearchArtifactStorePersistsRecordScopeForNetworkBuilder(t *testing.
 	if _, err := store.StoreArtifact(context.Background(), artifact); err != nil {
 		t.Fatal(err)
 	}
-	scope := evidencevo.QueryScope{View: evidencevo.AccessViewBusiness, AccessProfile: &evidencevo.AccessProfile{
-		TenantID: artifact.TenantID, EffectiveSubjectID: "builder-a", Roles: []string{"network_builder"},
-		ManagedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"}, AccountActive: true, TenantActive: true,
-	}}
+	scope := evidencevo.QueryScope{
+		View: evidencevo.AccessViewBusiness,
+		AccessProfile: &evidencevo.AccessProfile{
+			EffectiveSubjectID:         "builder-a",
+			Roles:                      []string{"network_builder"},
+			ManagedKnowledgeNetworkIDs: []string{"kn-a", "kn-b"},
+			AccountActive:              true,
+		},
+	}
 
 	restored, found, err := store.GetArtifact(context.Background(), artifact.ArtifactID, scope)
 
@@ -199,7 +206,8 @@ func TestOpenSearchArtifactListUsesOwnershipFiltersAndReturnFilter(t *testing.T)
 		t.Fatal(err)
 	}
 	scope := evidencevo.QueryScope{
-		TenantID: owned.TenantID, AccountID: owned.AccountID, AccountType: owned.AccountType,
+		AccountID:   owned.AccountID,
+		AccountType: owned.AccountType,
 	}
 
 	result, err := store.ListArtifactsByRequestID(context.Background(), owned.RequestID, iartifactstore.QueryOptions{
@@ -210,7 +218,7 @@ func TestOpenSearchArtifactListUsesOwnershipFiltersAndReturnFilter(t *testing.T)
 	if err != nil || len(result.Entries) != 1 || result.Entries[0].ArtifactID != owned.ArtifactID || result.Truncated {
 		t.Fatalf("expected only owned artifact: artifacts=%+v err=%v", result, err)
 	}
-	for _, field := range []string{"bkn.tenant.id", "bkn.account.id", "bkn.account.type", "bkn.request.id"} {
+	for _, field := range []string{"bkn.account.id", "bkn.account.type", "bkn.request.id"} {
 		if !strings.Contains(backend.lastSearch, field) {
 			t.Fatalf("artifact search must filter %s: %s", field, backend.lastSearch)
 		}
@@ -280,7 +288,7 @@ func normalizedOpenSearchArtifact(t *testing.T) evidencevo.EvidenceArtifact {
 		RequestID: "req_os_artifact", TraceID: "4bf92f3577b34da6a3ce929d0e0e4736",
 		ContentType: "application/json", SchemaVersion: evidencevo.ArtifactContractVersion,
 		ObservedAt: "2026-07-26T08:00:00Z", Content: map[string]any{"text": "result"},
-		TenantID: "tenant_os", AccountID: "acct_os", AccountType: "app",
+		AccountID: "acct_os", AccountType: "app",
 	})
 	if len(validationErrors) != 0 {
 		t.Fatalf("normalize artifact: %+v", validationErrors)

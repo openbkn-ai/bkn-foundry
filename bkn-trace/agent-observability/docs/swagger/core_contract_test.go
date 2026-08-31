@@ -101,7 +101,6 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 	definitions := []string{
 		"assemblysvc.BusinessRefView",
 		"assemblysvc.ProjectedResult",
-		"httphandler.businessRefRequest",
 		"httphandler.evidenceEventRequest",
 		"httphandler.ensureOperationRequest",
 		"httphandler.finishAttemptRequest",
@@ -117,7 +116,7 @@ func TestGeneratedSwaggerLifecycleArtifactsStayStructurallyEquivalent(t *testing
 		"sessionvo.OperationCallFact",
 		"sessionvo.OperationProtocol",
 		"sessionvo.PayloadEnvelope",
-		"httphandler.operationBusinessEdgeRequest",
+		"sessionvo.OperationBusinessEdge",
 		"sessionvo.OperationBusinessRole",
 		"sessionvo.Receipt",
 	}

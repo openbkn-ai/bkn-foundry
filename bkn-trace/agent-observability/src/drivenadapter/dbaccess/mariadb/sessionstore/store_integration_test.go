@@ -176,8 +176,9 @@ func TestConcurrentEnsureCurrentHasOneGeneration(t *testing.T) {
 	}
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	owner := sessionvo.Owner{
-		TenantID: "tenant-race", ApplicationPrincipalID: "app-race", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-race",
+		ApplicationPrincipalID: "app-race",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-race",
 	}
 
 	const workers = 12
@@ -230,8 +231,9 @@ func TestIdleOneShotExpirationAndInteractionStartCommitOneWinner(t *testing.T) {
 	}
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	owner := sessionvo.Owner{
-		TenantID: "tenant-one-shot", ApplicationPrincipalID: "app-one-shot", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-one-shot",
+		ApplicationPrincipalID: "app-one-shot",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-one-shot",
 	}
 
 	for iteration := 0; iteration < 10; iteration++ {
@@ -314,8 +316,9 @@ func TestEvidenceLedgerAndProjectionOutboxCommitAtomically(t *testing.T) {
 	sessions := sessionsvc.New(store, sessionsvc.Options{})
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	owner := sessionvo.Owner{
-		TenantID: "tenant-ledger", ApplicationPrincipalID: "app-ledger", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-ledger",
+		ApplicationPrincipalID: "app-ledger",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-ledger",
 	}
 	conversation, err := sessions.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "ledger-" + suffix, IdempotencyKey: "ensure",
@@ -405,8 +408,9 @@ func TestTerminalRaceCommitsOneWinner(t *testing.T) {
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	owner := sessionvo.Owner{
-		TenantID: "tenant-terminal", ApplicationPrincipalID: "app-terminal", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-terminal",
+		ApplicationPrincipalID: "app-terminal",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-terminal",
 	}
 	conversation, err := service.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "terminal-" + suffix, IdempotencyKey: "ensure",
@@ -476,8 +480,9 @@ func TestExpiredLeaseReaperWinsAgainstTerminalRequest(t *testing.T) {
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	owner := sessionvo.Owner{
-		TenantID: "tenant-reaper", ApplicationPrincipalID: "app-reaper", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-reaper",
+		ApplicationPrincipalID: "app-reaper",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-reaper",
 	}
 	conversation, err := service.EnsureCurrentConversation(
 		context.Background(),
@@ -588,8 +593,9 @@ func TestProjectionOutboxRejectsStaleLeaseCompletion(t *testing.T) {
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	owner := sessionvo.Owner{
-		TenantID: "tenant-outbox", ApplicationPrincipalID: "app-outbox", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-outbox",
+		ApplicationPrincipalID: "app-outbox",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-outbox",
 	}
 	if _, err := service.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "outbox-" + suffix, IdempotencyKey: "ensure",
@@ -734,9 +740,9 @@ func TestProjectionRebuildFromMariaDBAuthorityAfterOutboxCleanup(t *testing.T) {
 	}
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	owner := sessionvo.Owner{
-		TenantID: "tenant-rebuild-" + suffix, ApplicationPrincipalID: "app-rebuild",
-		EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID:   "subject-rebuild",
+		ApplicationPrincipalID: "app-rebuild",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-rebuild",
 	}
 	conversation, err := sessionsvc.New(store, sessionsvc.Options{}).
 		EnsureCurrentConversation(
@@ -790,8 +796,9 @@ func TestAuthorityRebuildMatchesLiveOperationAndReceiptProjectionModels(t *testi
 	}
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	owner := sessionvo.Owner{
-		TenantID: "tenant-model-" + suffix, ApplicationPrincipalID: "app-model",
-		EffectiveSubjectType: sessionvo.SubjectService, EffectiveSubjectID: "subject-model",
+		ApplicationPrincipalID: "app-model",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-model",
 	}
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	conversation, err := service.EnsureCurrentConversation(
@@ -898,8 +905,9 @@ func TestMariaDBAuthorityRebuildsIntoOpenSearchAlias(t *testing.T) {
 	}
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	owner := sessionvo.Owner{
-		TenantID: "tenant-combined-" + suffix, ApplicationPrincipalID: "app-combined",
-		EffectiveSubjectType: sessionvo.SubjectService, EffectiveSubjectID: "subject-combined",
+		ApplicationPrincipalID: "app-combined",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-combined",
 	}
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	conversation, err := service.EnsureCurrentConversation(
@@ -998,8 +1006,9 @@ func BenchmarkMariaDBEnsureCurrent(b *testing.B) {
 	}
 	service := sessionsvc.New(store, sessionsvc.Options{})
 	owner := sessionvo.Owner{
-		TenantID: "tenant-capacity", ApplicationPrincipalID: "app-capacity", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-capacity",
+		ApplicationPrincipalID: "app-capacity",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-capacity",
 	}
 	prefix := fmt.Sprintf("capacity-%d-", time.Now().UnixNano())
 	var sequence atomic.Uint64
@@ -1039,8 +1048,9 @@ func BenchmarkMariaDBEvidenceIngest(b *testing.B) {
 	}
 	sessions := sessionsvc.New(store, sessionsvc.Options{})
 	owner := sessionvo.Owner{
-		TenantID: "tenant-evidence-capacity", ApplicationPrincipalID: "app-evidence-capacity", EffectiveSubjectType: sessionvo.SubjectService,
-		EffectiveSubjectID: "subject-evidence-capacity",
+		ApplicationPrincipalID: "app-evidence-capacity",
+		EffectiveSubjectType:   sessionvo.SubjectService,
+		EffectiveSubjectID:     "subject-evidence-capacity",
 	}
 	prefix := fmt.Sprintf("evidence-capacity-%d-", time.Now().UnixNano())
 	conversation, err := sessions.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{

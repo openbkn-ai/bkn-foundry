@@ -252,11 +252,6 @@ Description = "The operation-audit cursor time is invalid."
 Solution = "Provide before_time in RFC3339 format."
 ErrorLink = ""
 
-[VegaBackend.OperationAudit.MissingScope]
-Description = "The operation-audit scope is incomplete."
-Solution = "Provide the x-tenant-id header."
-ErrorLink = ""
-
 [VegaBackend.OperationAudit.AccessDenied]
 Description = "You are not permitted to view operation-audit records."
 Solution = "Request an admin, audit, or super_admin role."

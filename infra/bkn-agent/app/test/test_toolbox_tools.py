@@ -572,7 +572,6 @@ def test_context_loader_search_without_receipt_links_real_retrieval_event_to_cla
         traceparent=("00-ce31e2d297bd4ee0b1313ca3bdcd1acf-abcdef1234567890-01"),
         entry_boundary="external",
         upstream_span_id="abcdef1234567890",
-        tenant_id="tenant-demo",
     )
     token = observability.set_context(ctx)
     interaction_token = evidence.begin_interaction(

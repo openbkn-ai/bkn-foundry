@@ -25,9 +25,10 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"bkn-backend/common/bkntrace/outbox"
 	"bkn-backend/interfaces"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -75,7 +76,6 @@ type RequestContext struct {
 	RequestID              string
 	AccountID              string
 	AccountType            string
-	TenantID               string
 	ApplicationPrincipalID string
 	EffectiveSubjectID     string
 	EffectiveSubjectType   string
@@ -374,10 +374,10 @@ func trustedOwner(reqCtx RequestContext, ec eventContext) outbox.Owner {
 		subjectType = coreSubjectType(ec.accountType)
 	}
 	return outbox.Owner{
-		TenantID:               strings.TrimSpace(reqCtx.TenantID),
 		ApplicationPrincipalID: strings.TrimSpace(reqCtx.ApplicationPrincipalID),
-		EffectiveSubjectType:   subjectType, EffectiveSubjectID: subjectID,
-		DelegationID: strings.TrimSpace(reqCtx.DelegationID),
+		EffectiveSubjectType:   subjectType,
+		EffectiveSubjectID:     subjectID,
+		DelegationID:           strings.TrimSpace(reqCtx.DelegationID),
 	}
 }
 

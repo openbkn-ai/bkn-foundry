@@ -31,14 +31,29 @@ func NewArchiveSource(backend archiveClient, index string) *ArchiveSource {
 	return &ArchiveSource{backend: backend, index: index}
 }
 
-func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, tenantID string, archiveRange observabilityvo.ArchiveRange) ([]archivesvc.Candidate, error) {
+func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.ArchiveKind, archiveRange observabilityvo.ArchiveRange) ([]archivesvc.Candidate, error) {
 	if kind != observabilityvo.ArchiveKindLog {
 		return nil, nil
 	}
-	body, _ := json.Marshal(map[string]any{"size": 10000, "sort": []any{map[string]any{"created_at": map[string]any{"order": "asc"}}}, "query": map[string]any{"bool": map[string]any{"filter": []any{
-		map[string]any{"term": map[string]any{"owner.tenant_id.keyword": tenantID}},
-		map[string]any{"range": map[string]any{"created_at": map[string]any{"lt": archiveRange.To.Format(time.RFC3339Nano)}}},
-	}}}})
+	body, _ := json.Marshal(map[string]any{
+		"size": 10000,
+		"sort": []any{map[string]any{
+			"created_at": map[string]any{"order": "asc"},
+		}},
+		"query": map[string]any{
+			"bool": map[string]any{
+				"filter": []any{
+					map[string]any{
+						"range": map[string]any{
+							"created_at": map[string]any{
+								"lt": archiveRange.To.Format(time.RFC3339Nano),
+							},
+						},
+					},
+				},
+			},
+		},
+	})
 	payload, err := source.backend.Search(ctx, source.index, body)
 	if err != nil {
 		return nil, err
@@ -67,7 +82,7 @@ func (source *ArchiveSource) Freeze(ctx context.Context, kind observabilityvo.Ar
 	return candidates, nil
 }
 
-func (source *ArchiveSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, _ string, candidates []archivesvc.Candidate) error {
+func (source *ArchiveSource) Purge(ctx context.Context, kind observabilityvo.ArchiveKind, candidates []archivesvc.Candidate) error {
 	if kind != observabilityvo.ArchiveKindLog || len(candidates) == 0 {
 		return nil
 	}

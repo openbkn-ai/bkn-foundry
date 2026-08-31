@@ -153,12 +153,20 @@ func TestListDisclosesDurableDegradedCoverageAfterSuccessfulSourceQuery(t *testi
 		SourceID: "runtime", DeploymentID: "local", State: observabilityvo.SourceCoverageDegraded,
 		Reason: "telemetry_dropped", DroppedRecords: 4,
 	}}
-	service := NewWithOptions([]Source{fakeSource{id: "runtime", records: []observabilityvo.LogRecord{{
-		LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a",
-		EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
-	}}}}, Options{
-		CursorKey: []byte("coverage-test"), CoverageStore: coverageStore, CoverageDeploymentID: "local",
-	})
+	service := NewWithOptions([]Source{fakeSource{
+		id: "runtime",
+		records: []observabilityvo.LogRecord{{
+			LogID:            "log-1",
+			Category:         observabilityvo.CategoryRuntimeSystem,
+			EventTimestamp:   time.Now().UTC(),
+			TrustLevel:       "trusted",
+			IngressPrincipal: "otel-gateway",
+		}}}},
+		Options{
+			CursorKey:            []byte("coverage-test"),
+			CoverageStore:        coverageStore,
+			CoverageDeploymentID: "local",
+		})
 
 	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 10})
 	if err != nil {
@@ -175,12 +183,16 @@ func TestListDisclosesDurableDegradedCoverageAfterSuccessfulSourceQuery(t *testi
 
 func TestListReturnsLogsButMarksCoveragePartialWhenStateCannotBeRead(t *testing.T) {
 	coverageStore := &coverageStore{err: errors.New("coverage database unavailable")}
-	service := NewWithOptions([]Source{fakeSource{id: "runtime", records: []observabilityvo.LogRecord{{
-		LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, TenantID: "tenant-a",
-		EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
-	}}}}, Options{
-		CursorKey: []byte("coverage-error-test"), CoverageStore: coverageStore, CoverageDeploymentID: "local",
-	})
+	service := NewWithOptions([]Source{fakeSource{
+		id: "runtime",
+		records: []observabilityvo.LogRecord{{
+			LogID: "log-1",
+		}}}},
+		Options{
+			CursorKey:            []byte("coverage-error-test"),
+			CoverageStore:        coverageStore,
+			CoverageDeploymentID: "local",
+		})
 
 	result, err := service.List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 10})
 	if err != nil || !result.Partial || len(result.SourceStatus) != 1 {
@@ -277,8 +289,13 @@ func TestOperationAuditModeQueriesReceiptRuntimeSource(t *testing.T) {
 	source := &categorizedSource{
 		id: "bkn-trace-runtime", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		records: []observabilityvo.LogRecord{{
-			LogID: "bkn-trace-runtime:receipt-a", Category: observabilityvo.CategoryRuntimeBusiness,
-			EventName: "operation.executed", TraceID: "trace-a", TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core",
+			LogID:            "bkn-trace-runtime:receipt-a",
+			Category:         observabilityvo.CategoryRuntimeBusiness,
+			EventName:        "operation.executed",
+			TraceID:          "trace-a",
+			EventTimestamp:   time.Now().UTC(),
+			TrustLevel:       "trusted",
+			IngressPrincipal: "bkn-trace-core",
 		}},
 	}
 	service := NewWithOptions([]Source{source}, Options{OperationAuditOnly: true, CursorKey: []byte("runtime-source-test")})
@@ -330,7 +347,14 @@ func TestListReturnsCompleteRecordsMatchingAnyManagedNetwork(t *testing.T) {
 func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) {
 	profile := activeProfile("admin-a", "super_admin")
 	available := fakeSource{id: "otel", records: []observabilityvo.LogRecord{
-		{LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
+		{
+			LogID:            "system-a",
+			Category:         observabilityvo.CategoryRuntimeSystem,
+			EventName:        "service.started",
+			EventTimestamp:   time.Now(),
+			TrustLevel:       "trusted",
+			IngressPrincipal: "otel-gateway",
+		},
 	}}
 	unavailable := fakeSource{id: "safe", err: errors.New("source unavailable")}
 
@@ -350,10 +374,16 @@ func TestListReportsPartialAndFailsWhenEveryAuthorizedSourceFails(t *testing.T) 
 
 func TestListDoesNotMarkAvailableResultsPartialForNotIntegratedSources(t *testing.T) {
 	profile := activeProfile("admin-a", "super_admin")
-	available := fakeSource{id: "safe", records: []observabilityvo.LogRecord{{
-		LogID: "audit-a", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created", TenantID: "tenant-a",
-		EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
-	}}}
+	available := fakeSource{
+		id: "safe",
+		records: []observabilityvo.LogRecord{{
+			LogID:            "audit-a",
+			Category:         observabilityvo.CategoryAuditAdmin,
+			EventName:        "user.created",
+			EventTimestamp:   time.Now().UTC(),
+			TrustLevel:       "trusted",
+			IngressPrincipal: "bkn-safe",
+		}}}
 	service := New([]Source{
 		available,
 		NewNotIntegratedSource("future-source", []string{observabilityvo.CategoryAuditAdmin}, []string{"Future module"}),
@@ -456,8 +486,12 @@ func TestListTimesOutOneSourceAndReturnsTheHealthySource(t *testing.T) {
 	healthy := categorizedSource{
 		id: "healthy", categories: []string{observabilityvo.CategoryRuntimeSystem},
 		records: []observabilityvo.LogRecord{{
-			LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-			TenantID: "tenant-a", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+			LogID:            "system-a",
+			Category:         observabilityvo.CategoryRuntimeSystem,
+			EventName:        "service.started",
+			EventTimestamp:   time.Now(),
+			TrustLevel:       "trusted",
+			IngressPrincipal: "otel-gateway",
 		}},
 	}
 	service := NewWithOptions([]Source{slow, &healthy}, Options{
@@ -513,9 +547,13 @@ func TestDetailAndFacetsUseTheSameRecordAuthorization(t *testing.T) {
 
 func TestOperationAuditDetailUsesTheSameCategoryAuthorizationAsList(t *testing.T) {
 	securityRecord := validTestRecord(observabilityvo.LogRecord{
-		LogID: "security-a", Category: observabilityvo.CategoryAuditSecurity, EventName: "access.denied",
-		TenantID: "tenant-a", EventTimestamp: time.Now(),
-		TrustLevel: "trusted", IngressPrincipal: "bkn-safe", ActorID: "admin-a",
+		LogID:            "security-a",
+		Category:         observabilityvo.CategoryAuditSecurity,
+		EventName:        "access.denied",
+		EventTimestamp:   time.Now(),
+		TrustLevel:       "trusted",
+		IngressPrincipal: "bkn-safe",
+		ActorID:          "admin-a",
 	})
 	service := NewWithOptions([]Source{fakeDetailSource{
 		fakeSource: fakeSource{id: "security-audit", records: []observabilityvo.LogRecord{securityRecord}},
@@ -604,8 +642,15 @@ func TestNotIntegratedAuthorizedSourcesAreDisclosedWithoutFalseHealth(t *testing
 
 func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
 	source := &capturingSource{records: []observabilityvo.LogRecord{{
-		LogID: "administrator-log", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
-		TenantID: "tenant-a", ActorID: "audit-a", EffectiveSubjectID: "audit-a", ActorNameSnapshot: "Administrator", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+		LogID:              "administrator-log",
+		Category:           observabilityvo.CategoryAuditAdmin,
+		EventName:          "user.created",
+		ActorID:            "audit-a",
+		EffectiveSubjectID: "audit-a",
+		ActorNameSnapshot:  "Administrator",
+		EventTimestamp:     time.Now(),
+		TrustLevel:         "trusted",
+		IngressPrincipal:   "bkn-safe",
 	}}}
 	service := New([]Source{source})
 	profile := activeProfile("builder-a", "network_builder")
@@ -613,9 +658,6 @@ func TestListPushesTrustedAuthorizationScopeToSources(t *testing.T) {
 
 	if _, err := service.List(context.Background(), profile, observabilityvo.LogQuery{}); err != nil {
 		t.Fatalf("builder list failed: %v", err)
-	}
-	if source.query.AuthorizedTenantID != "tenant-a" {
-		t.Fatalf("trusted isolation scope was not pushed down: %+v", source.query)
 	}
 	if len(source.query.AuthorizedCategories) != 3 || len(source.query.AuthorizedKnowledgeNetworkIDs) != 2 {
 		t.Fatalf("role and managed-network scope was not pushed down: %+v", source.query)
@@ -657,8 +699,12 @@ func TestListDoesNotQueryOrDiscloseUnauthorizedSources(t *testing.T) {
 	runtimeSource := &categorizedSource{
 		id: "runtime", categories: []string{observabilityvo.CategoryRuntimeSystem},
 		records: []observabilityvo.LogRecord{{
-			LogID: "system-a", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-			TenantID: "tenant-a", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+			LogID:            "system-a",
+			Category:         observabilityvo.CategoryRuntimeSystem,
+			EventName:        "service.started",
+			EventTimestamp:   time.Now(),
+			TrustLevel:       "trusted",
+			IngressPrincipal: "otel-gateway",
 		}},
 	}
 	auditSource := &categorizedSource{
@@ -688,8 +734,12 @@ func TestOperationAuditListDoesNotQueryOTLPRuntimeSource(t *testing.T) {
 	auditSource := &categorizedSource{
 		id: "admin-audit", categories: []string{observabilityvo.CategoryAuditAdmin},
 		records: []observabilityvo.LogRecord{{
-			LogID: "audit-a", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
-			TenantID: "tenant-a", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+			LogID:            "audit-a",
+			Category:         observabilityvo.CategoryAuditAdmin,
+			EventName:        "user.created",
+			EventTimestamp:   time.Now(),
+			TrustLevel:       "trusted",
+			IngressPrincipal: "bkn-safe",
 		}},
 	}
 
@@ -711,8 +761,8 @@ func TestOperationAuditAssociatedDrilldownOnlyDisclosesOwnedConversation(t *test
 	service := NewWithOptions([]Source{&categorizedSource{
 		id: "bkn-trace-core", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		records: []observabilityvo.LogRecord{
-			{LogID: "owned", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created", TenantID: "tenant-a", EventTimestamp: now, EffectiveSubjectID: "user-a", ActorID: "user-a", ConversationID: "conv-a", TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core"},
-			{LogID: "other", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created", TenantID: "tenant-a", EventTimestamp: now.Add(-time.Second), EffectiveSubjectID: "user-b", ActorID: "user-b", ConversationID: "conv-a", TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core"},
+			{LogID: "owned", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created", EventTimestamp: now, EffectiveSubjectID: "user-a", ActorID: "user-a", ConversationID: "conv-a", TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core"},
+			{LogID: "other", Category: observabilityvo.CategoryRuntimeBusiness, EventName: "conversation.created", EventTimestamp: now.Add(-time.Second), EffectiveSubjectID: "user-b", ActorID: "user-b", ConversationID: "conv-a", TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core"},
 		},
 	}}, Options{OperationAuditOnly: true})
 
@@ -734,10 +784,15 @@ func TestOperationAuditOnlyWhitelistsConversationCreatedWithoutOpeningRuntimeBus
 	conversationSource := &categorizedSource{
 		id: "bkn-trace-core", categories: []string{observabilityvo.CategoryRuntimeBusiness},
 		records: []observabilityvo.LogRecord{{
-			LogID: "conversation-a", Category: observabilityvo.CategoryRuntimeBusiness,
-			EventName: "conversation.created", TenantID: "tenant-a", EventTimestamp: now,
-			EffectiveSubjectID: "admin-a", ActorID: "admin-a", ConversationID: "conv-a",
-			TrustLevel: "trusted", IngressPrincipal: "bkn-trace-core",
+			LogID:              "conversation-a",
+			Category:           observabilityvo.CategoryRuntimeBusiness,
+			EventName:          "conversation.created",
+			EventTimestamp:     now,
+			EffectiveSubjectID: "admin-a",
+			ActorID:            "admin-a",
+			ConversationID:     "conv-a",
+			TrustLevel:         "trusted",
+			IngressPrincipal:   "bkn-trace-core",
 		}},
 	}
 	service := NewWithOptions([]Source{runtimeSource, conversationSource}, Options{OperationAuditOnly: true})
@@ -754,8 +809,11 @@ func TestOperationAuditOnlyWhitelistsConversationCreatedWithoutOpeningRuntimeBus
 func TestListExcludesUntrustedUnknownAndCategoryMismatchedRecords(t *testing.T) {
 	now := time.Now().UTC()
 	base := observabilityvo.LogRecord{
-		Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-		TenantID: "tenant-a", EventTimestamp: now, TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		Category:         observabilityvo.CategoryRuntimeSystem,
+		EventName:        "service.started",
+		EventTimestamp:   now,
+		TrustLevel:       "trusted",
+		IngressPrincipal: "otel-gateway",
 	}
 	trusted := base
 	trusted.LogID = "trusted"
@@ -780,16 +838,30 @@ func TestListExcludesUntrustedUnknownAndCategoryMismatchedRecords(t *testing.T) 
 func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 	timestamp := time.Now().UTC().Truncate(time.Second)
 	result, err := New([]Source{
-		fakeSource{id: "adapter-a", records: []observabilityvo.LogRecord{{
-			LogID: "log-z", SourceID: "producer-z", SourceLogID: "log-z",
-			Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-			TenantID: "tenant-a", EventTimestamp: timestamp, TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
-		}}},
-		fakeSource{id: "adapter-z", records: []observabilityvo.LogRecord{{
-			LogID: "log-a", SourceID: "producer-a", SourceLogID: "log-a",
-			Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-			TenantID: "tenant-a", EventTimestamp: timestamp, TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
-		}}},
+		fakeSource{
+			id: "adapter-a",
+			records: []observabilityvo.LogRecord{{
+				LogID:            "log-z",
+				SourceID:         "producer-z",
+				SourceLogID:      "log-z",
+				Category:         observabilityvo.CategoryRuntimeSystem,
+				EventName:        "service.started",
+				EventTimestamp:   timestamp,
+				TrustLevel:       "trusted",
+				IngressPrincipal: "otel-gateway",
+			}}},
+		fakeSource{
+			id: "adapter-z",
+			records: []observabilityvo.LogRecord{{
+				LogID:            "log-a",
+				SourceID:         "producer-a",
+				SourceLogID:      "log-a",
+				Category:         observabilityvo.CategoryRuntimeSystem,
+				EventName:        "service.started",
+				EventTimestamp:   timestamp,
+				TrustLevel:       "trusted",
+				IngressPrincipal: "otel-gateway",
+			}}},
 	}).List(context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{})
 	if err != nil {
 		t.Fatal(err)
@@ -802,9 +874,9 @@ func TestListUsesTheContractTieBreakersAcrossSources(t *testing.T) {
 func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Second)
 	source := fakeSource{id: "runtime", records: []observabilityvo.LogRecord{
-		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
-		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
-		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: base.Add(-2 * time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
+		{LogID: "log-3", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
+		{LogID: "log-2", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
+		{LogID: "log-1", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base.Add(-2 * time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"},
 	}}
 	service := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key"))
 	profile := activeProfile("admin-a", "admin")
@@ -832,8 +904,8 @@ func TestListUsesSignedCursorAndRejectsTamperingOrScopeChanges(t *testing.T) {
 func TestListSupportsPageNumberPaginationWithoutExposingCursors(t *testing.T) {
 	base := time.Now().UTC().Truncate(time.Second)
 	source := &filteredPageSource{pages: [][]observabilityvo.LogRecord{
-		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
-		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", TenantID: "tenant-a", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
+		{{LogID: "log-new", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base, TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
+		{{LogID: "log-old", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started", EventTimestamp: base.Add(-time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway"}},
 	}}
 	result, err := NewWithCursorKey([]Source{source}, []byte("test-cursor-signing-key")).List(
 		context.Background(), activeProfile("admin-a", "admin"), observabilityvo.LogQuery{Limit: 1, Page: 2},
@@ -848,14 +920,21 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 	filtered := make([]observabilityvo.LogRecord, 200)
 	for index := range filtered {
 		filtered[index] = observabilityvo.LogRecord{
-			LogID: "filtered-" + time.Duration(index).String(), Category: observabilityvo.CategoryRuntimeSystem,
-			EventName: "service.started", TenantID: "tenant-other", EventTimestamp: base.Add(-time.Duration(index) * time.Second),
-			TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+			LogID:            "filtered-" + time.Duration(index).String(),
+			Category:         observabilityvo.CategoryRuntimeSystem,
+			EventName:        "service.started",
+			EventTimestamp:   base.Add(-time.Duration(index) * time.Second),
+			TrustLevel:       "untrusted",
+			IngressPrincipal: "otel-gateway",
 		}
 	}
 	visible := observabilityvo.LogRecord{
-		LogID: "visible", Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-		TenantID: "tenant-a", EventTimestamp: base.Add(-201 * time.Second), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		LogID:            "visible",
+		Category:         observabilityvo.CategoryRuntimeSystem,
+		EventName:        "service.started",
+		EventTimestamp:   base.Add(-201 * time.Second),
+		TrustLevel:       "trusted",
+		IngressPrincipal: "otel-gateway",
 	}
 	service := NewWithCursorKey([]Source{&filteredPageSource{pages: [][]observabilityvo.LogRecord{filtered, {visible}}}}, []byte("test-cursor-signing-key"))
 	profile := activeProfile("admin-a", "admin")
@@ -873,8 +952,12 @@ func TestListAdvancesPastACompletelyFilteredSourcePage(t *testing.T) {
 
 func TestListPreservesPaginationForPartiallyProjectedSourceCounts(t *testing.T) {
 	record := observabilityvo.LogRecord{
-		LogID: "audit-visible", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
-		TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
+		LogID:            "audit-visible",
+		Category:         observabilityvo.CategoryAuditAdmin,
+		EventName:        "user.created",
+		EventTimestamp:   time.Now().UTC(),
+		TrustLevel:       "trusted",
+		IngressPrincipal: "bkn-safe",
 	}
 	result, err := NewWithCursorKey([]Source{partialCountSource{record: record}}, []byte("test-cursor-signing-key")).List(
 		context.Background(), activeProfile("admin-a", "super_admin"), observabilityvo.LogQuery{Limit: 20},
@@ -993,10 +1076,18 @@ func TestMatchesQueryMatchesActorNameSnapshot(t *testing.T) {
 }
 
 func TestListDoesNotPushActorNameQueryToSources(t *testing.T) {
-	source := &capturingSource{records: []observabilityvo.LogRecord{{
-		LogID: "administrator-log", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
-		TenantID: "tenant-a", ActorID: "audit-a", EffectiveSubjectID: "audit-a", ActorNameSnapshot: "Administrator", EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "bkn-safe",
-	}}}
+	source := &capturingSource{
+		records: []observabilityvo.LogRecord{{
+			LogID:              "administrator-log",
+			Category:           observabilityvo.CategoryAuditAdmin,
+			EventName:          "user.created",
+			ActorID:            "audit-a",
+			EffectiveSubjectID: "audit-a",
+			ActorNameSnapshot:  "Administrator",
+			EventTimestamp:     time.Now(),
+			TrustLevel:         "trusted",
+			IngressPrincipal:   "bkn-safe",
+		}}}
 	service := New([]Source{source})
 	result, err := service.List(context.Background(), activeProfile("audit-a", "audit"), observabilityvo.LogQuery{
 		ActorQuery: "Administrator", Categories: []string{observabilityvo.CategoryAuditAdmin},
@@ -1017,9 +1108,13 @@ func TestListDoesNotPushActorNameQueryToSources(t *testing.T) {
 
 func TestOperationAuditOnlyRejectsIncompletePublicProjection(t *testing.T) {
 	record := validTestRecord(observabilityvo.LogRecord{
-		LogID: "audit-invalid", Category: observabilityvo.CategoryAuditAdmin, EventName: "user.created",
-		TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "source-a",
-		BusinessModule: "legacy_unknown_module",
+		LogID:            "audit-invalid",
+		Category:         observabilityvo.CategoryAuditAdmin,
+		EventName:        "user.created",
+		EventTimestamp:   time.Now().UTC(),
+		TrustLevel:       "trusted",
+		IngressPrincipal: "source-a",
+		BusinessModule:   "legacy_unknown_module",
 	})
 	service := NewWithOptions([]Source{fakeSource{id: "source-a", records: []observabilityvo.LogRecord{record}}}, Options{
 		OperationAuditOnly: true,
@@ -1039,9 +1134,13 @@ func TestOperationAuditOnlyRejectsIncompletePublicProjection(t *testing.T) {
 
 func TestOperationAuditListDoesNotReportReachableSourcesUnavailableForLegacyRows(t *testing.T) {
 	record := validTestRecord(observabilityvo.LogRecord{
-		LogID: "audit-legacy", Category: observabilityvo.CategoryAuditAdmin, EventName: "resource_config.changed",
-		TenantID: "tenant-a", EventTimestamp: time.Now().UTC(), TrustLevel: "trusted", IngressPrincipal: "source-a",
-		BusinessModule: "legacy_unknown_module",
+		LogID:            "audit-legacy",
+		Category:         observabilityvo.CategoryAuditAdmin,
+		EventName:        "resource_config.changed",
+		EventTimestamp:   time.Now().UTC(),
+		TrustLevel:       "trusted",
+		IngressPrincipal: "source-a",
+		BusinessModule:   "legacy_unknown_module",
 	})
 	service := NewWithOptions([]Source{fakeSource{id: "source-a", records: []observabilityvo.LogRecord{record}}}, Options{
 		OperationAuditOnly: true,
@@ -1065,24 +1164,35 @@ func boolInt(value bool) int {
 
 func activeProfile(subject, role string) evidencevo.AccessProfile {
 	return evidencevo.AccessProfile{
-		TenantID: "tenant-a", EffectiveSubjectID: subject,
-		Roles: []string{role}, AccountActive: true, TenantActive: true,
+		EffectiveSubjectID: subject,
+		Roles:              []string{role},
+		AccountActive:      true,
 	}
 }
 
 func ownedBusinessLog(id, owner, traceID string) observabilityvo.LogRecord {
 	return observabilityvo.LogRecord{
-		LogID: id, Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed", TenantID: "tenant-a",
-		EffectiveSubjectID: owner, TraceID: traceID, EventTimestamp: time.Now(),
-		TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		LogID:              id,
+		Category:           observabilityvo.CategoryRuntimeBusiness,
+		EventName:          "knowledge.read.completed",
+		EffectiveSubjectID: owner,
+		TraceID:            traceID,
+		EventTimestamp:     time.Now(),
+		TrustLevel:         "trusted",
+		IngressPrincipal:   "otel-gateway",
 	}
 }
 
 func managedBusinessLog(id string, networks []string) observabilityvo.LogRecord {
 	return observabilityvo.LogRecord{
-		LogID: id, Category: observabilityvo.CategoryRuntimeBusiness, EventName: "knowledge.read.completed", TenantID: "tenant-a",
-		EffectiveSubjectID: "other-a", KnowledgeNetworkIDs: networks,
-		EventTimestamp: time.Now(), TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+		LogID:               id,
+		Category:            observabilityvo.CategoryRuntimeBusiness,
+		EventName:           "knowledge.read.completed",
+		EffectiveSubjectID:  "other-a",
+		KnowledgeNetworkIDs: networks,
+		EventTimestamp:      time.Now(),
+		TrustLevel:          "trusted",
+		IngressPrincipal:    "otel-gateway",
 	}
 }
 
@@ -1158,11 +1268,13 @@ func BenchmarkListEightSources(b *testing.B) {
 		records := make([]observabilityvo.LogRecord, 200)
 		for recordIndex := range records {
 			records[recordIndex] = validTestRecord(observabilityvo.LogRecord{
-				LogID:    "log-" + time.Duration(sourceIndex*200+recordIndex).String(),
-				SourceID: "source-" + time.Duration(sourceIndex).String(),
-				Category: observabilityvo.CategoryRuntimeSystem, EventName: "service.started",
-				TenantID: "tenant-a", EventTimestamp: base.Add(-time.Duration(recordIndex) * time.Millisecond),
-				TrustLevel: "trusted", IngressPrincipal: "otel-gateway",
+				LogID:            "log-" + time.Duration(sourceIndex*200+recordIndex).String(),
+				SourceID:         "source-" + time.Duration(sourceIndex).String(),
+				Category:         observabilityvo.CategoryRuntimeSystem,
+				EventName:        "service.started",
+				EventTimestamp:   base.Add(-time.Duration(recordIndex) * time.Millisecond),
+				TrustLevel:       "trusted",
+				IngressPrincipal: "otel-gateway",
 			})
 		}
 		sources[sourceIndex] = fakeSource{id: "source-" + time.Duration(sourceIndex).String(), records: records}

@@ -36,7 +36,6 @@ const receiptProjectionIndexMapping = `{
       "terminal_at": {"type": "date"},
       "owner": {
         "properties": {
-          "tenant_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
           "effective_subject_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
           "application_principal_id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}}
         }

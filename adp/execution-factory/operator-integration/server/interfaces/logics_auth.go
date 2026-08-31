@@ -107,7 +107,7 @@ type IAuthorizationService interface {
 	// MultiCheckOperationPermission Multi-operation permission check.
 	MultiCheckOperationPermission(ctx context.Context, accessor *AuthAccessor, resourceID string, resourceType AuthResourceType, operations ...AuthOperationType) error
 	// CheckAdminPermission checks super-administrative permissions. The judgment semantics is consistent with Enforcer.CanAdmin of bkn-safe.
-	// Used to protect operation and maintenance observation interfaces that return cross-tenant data and do not belong to any single resource.
+	// Used to protect operation and maintenance observation interfaces that return platform-wide data and do not belong to any single resource.
 	CheckAdminPermission(ctx context.Context, accessor *AuthAccessor) error
 
 	// CreateOwnerPolicy creates owner permissions.

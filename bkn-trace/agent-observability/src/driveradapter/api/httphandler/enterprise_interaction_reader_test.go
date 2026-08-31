@@ -16,7 +16,7 @@ import (
 
 func TestEnterpriseInteractionReaderUsesTrustedTechnicalScope(t *testing.T) {
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant-1", AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
+		AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
 		AccessProfile: &evidencevo.AccessProfile{
 			ApplicationPrincipalID: "openbkn-studio", EffectiveSubjectID: "user-1", DelegationID: "delegation-1",
 		},
@@ -52,7 +52,7 @@ func TestEnterpriseInteractionReaderUsesTrustedTechnicalScope(t *testing.T) {
 
 func TestEnterpriseInteractionReaderListsOnlyTrustedTechnicalScope(t *testing.T) {
 	scope := evidencevo.QueryScope{
-		TenantID: "tenant-1", AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
+		AccountID: "user-1", AccountType: "user", View: evidencevo.AccessViewTechnical,
 	}
 	reader := NewEnterpriseInteractionFactsReader(
 		fakeInteractionSummarySource{

@@ -52,7 +52,7 @@ Kubernetes 集群拓扑与运维操作的知识网络。
 | ID | Name | File Path | Description |
 |----|------|-----------|-------------|
 | node_ready_count | Ready 节点数量 | `metrics/node_ready_count.bkn` | 统计当前知识网络快照中状态为 Ready 的工作节点数量；节点对象无单独业务时间字段时，以**全量/当前视图**解释结果，时间维度默认 **none**（与排班、节点心跳类数据源对齐时再挂时间列）。 |
-| pod_count_by_namespace | 各命名空间 Pod 数量 | `metrics/pod_count_by_namespace.bkn` | 按命名空间分组统计 Pod 条数，用于观察多租户/多团队的资源分布与热点命名空间。 |
+| pod_count_by_namespace | 各命名空间 Pod 数量 | `metrics/pod_count_by_namespace.bkn` | 按命名空间分组统计 Pod 条数，用于观察多团队的资源分布与热点命名空间。 |
 | pod_pending_count | Pending 状态 Pod 数量 | `metrics/pod_pending_count.bkn` | 统计 Pending 状态的 Pod 数量，用于与 Running 指标对照观察调度/资源瓶颈（镜像拉取、资源不足等）。 |
 | pod_running_count | Running 状态 Pod 数量 | `metrics/pod_running_count.bkn` | 在选定时间窗口内统计状态为 Running 的 Pod 数量，用于衡量工作负载在线规模与排障时的基线对比。 |
 | service_count_by_type | 各类型 Service 数量 | `metrics/service_count_by_type.bkn` | 按 Service 类型（ClusterIP / NodePort / LoadBalancer 等）分组计数，用于核对对外暴露面与集群内服务发现规模。 |

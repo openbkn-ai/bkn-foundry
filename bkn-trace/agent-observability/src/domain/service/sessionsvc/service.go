@@ -499,20 +499,15 @@ func (s *Service) ListOperationExecutionsByTraceIDScoped(
 	traceID string,
 ) ([]sessionvo.OperationExecution, error) {
 	if strings.TrimSpace(scope.AccountID) == "" ||
-		strings.TrimSpace(scope.AccountType) == "" ||
-		strings.TrimSpace(scope.TenantID) == "" {
+		strings.TrimSpace(scope.AccountType) == "" {
 		return nil, errors.New("trusted trace query scope is incomplete")
 	}
 	return s.listOperationExecutionsByTraceID(ctx, traceID, func(owner sessionvo.Owner) bool {
 		if scope.AccessProfile != nil {
 			return evidencevo.CanReadRecord(*scope.AccessProfile, evidencevo.RecordScope{
-				TenantID:               owner.TenantID,
 				EffectiveSubjectID:     owner.EffectiveSubjectID,
 				ApplicationPrincipalID: owner.ApplicationPrincipalID,
 			}, evidencevo.AccessViewTechnical)
-		}
-		if scope.TenantID != "" && owner.TenantID != scope.TenantID {
-			return false
 		}
 		if scope.AccountType == "app" || scope.AccountType == "service" {
 			return owner.ApplicationPrincipalID == scope.AccountID
@@ -530,8 +525,7 @@ func (s *Service) ListOperationExecutionsByInteractionIDScoped(
 	interactionID string,
 ) ([]sessionvo.OperationExecution, error) {
 	if strings.TrimSpace(scope.AccountID) == "" ||
-		strings.TrimSpace(scope.AccountType) == "" ||
-		strings.TrimSpace(scope.TenantID) == "" {
+		strings.TrimSpace(scope.AccountType) == "" {
 		return nil, errors.New("trusted trace query scope is incomplete")
 	}
 	interactionID = strings.TrimSpace(interactionID)
@@ -598,12 +592,8 @@ func (s *Service) listOperationExecutionsByTraceID(
 func canReadTechnicalOwner(scope evidencevo.QueryScope, owner sessionvo.Owner) bool {
 	if scope.AccessProfile != nil {
 		return evidencevo.CanReadRecord(*scope.AccessProfile, evidencevo.RecordScope{
-			TenantID:           owner.TenantID,
 			EffectiveSubjectID: owner.EffectiveSubjectID, ApplicationPrincipalID: owner.ApplicationPrincipalID,
 		}, evidencevo.AccessViewTechnical)
-	}
-	if scope.TenantID != "" && owner.TenantID != scope.TenantID {
-		return false
 	}
 	if scope.AccountType == "app" || scope.AccountType == "service" {
 		return owner.ApplicationPrincipalID == scope.AccountID
@@ -1790,8 +1780,8 @@ func ownedConversation(tx isessionstore.Transaction, owner sessionvo.Owner, conv
 	if !found {
 		return sessionvo.Conversation{}, resourceNotDisclosed(CauseConversationNotFound)
 	}
-	// Owner is compared whole: tenant, business domain, application principal,
-	// effective subject type and id, delegation. One differing field is enough, and
+	// Owner is compared whole: application principal, effective subject type and
+	// id, and delegation. One differing field is enough, and
 	// the same OAuth client reaching in from another process is the usual way that
 	// happens - which reads to the caller exactly like the conversation not existing.
 	if !conversation.Owner.Equal(owner) {
@@ -1955,7 +1945,7 @@ func (s *Service) appendHistoricalProvenanceBuildRequest(
 }
 
 func validateOwner(owner sessionvo.Owner) error {
-	if owner.TenantID == "" || owner.ApplicationPrincipalID == "" || owner.EffectiveSubjectID == "" ||
+	if owner.ApplicationPrincipalID == "" || owner.EffectiveSubjectID == "" ||
 		(owner.EffectiveSubjectType != sessionvo.SubjectUser && owner.EffectiveSubjectType != sessionvo.SubjectService) {
 		return ErrInvalidOwner
 	}

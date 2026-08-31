@@ -53,7 +53,6 @@ func TestOperationAuditGeneratesRequestIDWhenTheCallerDoesNotSendOne(t *testing.
 	engine.POST("/operator/register", func(c *gin.Context) { c.Status(http.StatusCreated) })
 
 	request := httptest.NewRequest(http.MethodPost, "/operator/register", nil)
-	request.Header.Set("x-tenant-id", "tenant-a")
 	response := httptest.NewRecorder()
 	engine.ServeHTTP(response, request)
 

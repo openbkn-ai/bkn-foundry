@@ -49,11 +49,6 @@ Description = "The operation-audit pagination time is invalid."
 Solution = "Provide a valid RFC3339 before_time parameter."
 ErrorLink = ""
 
-[BknBackend.OperationAudit.MissingScope]
-Description = "The operation-audit query scope is missing."
-Solution = "Provide the tenant identifier."
-ErrorLink = ""
-
 [BknBackend.OperationAudit.AccessDenied]
 Description = "You are not permitted to view operation-audit records."
 Solution = "Check the access scope or contact an administrator."

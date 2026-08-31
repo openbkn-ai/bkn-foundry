@@ -82,8 +82,9 @@ func TestLedgerHandlerRejectsCallerControlledIdentityFields(t *testing.T) {
 	payload := map[string]any{
 		"event_id": "evt-forged-owner", "event_type": "operation.output.observed",
 		"bkn.trace.schema.version": "3.0.0", "payload_hash": ledgervo.CanonicalPayloadHash(envelope),
-		"tenant_id": "forged", "conversation_id": "conv-1", "interaction_id": "int-1",
-		"operation_id": "op-1", "producer_id": "context-loader", "producer_stream_id": "stream-1",
+		"conversation_id": "conv-1", "interaction_id": "int-1",
+		"application_principal_id": "forged-app",
+		"operation_id":             "op-1", "producer_id": "context-loader", "producer_stream_id": "stream-1",
 		"producer_epoch": 1, "producer_sequence": 1,
 		"started_at":  time.Date(2026, 7, 30, 9, 59, 59, 0, time.UTC),
 		"observed_at": time.Date(2026, 7, 30, 10, 0, 0, 0, time.UTC),

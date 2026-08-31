@@ -31,8 +31,8 @@ func TestInteractionBusinessGraphReturnsAuthorizedSemanticViewWithoutLeaseSecret
 	lifecycle := sessionsvc.New(sessions, sessionsvc.Options{})
 	ledger := ledgerstore.New()
 	owner := sessionvo.Owner{
-		TenantID: "tenant-1", ApplicationPrincipalID: "app-1",
-		EffectiveSubjectType: sessionvo.SubjectUser, EffectiveSubjectID: "user-1",
+		ApplicationPrincipalID: "app-1",
+		EffectiveSubjectType:   sessionvo.SubjectUser, EffectiveSubjectID: "user-1",
 	}
 	conversation, err := lifecycle.EnsureCurrentConversation(context.Background(), sessionsvc.EnsureConversationCommand{
 		Owner: owner, ExternalConversationKey: "thread", IdempotencyKey: "conv",
@@ -81,7 +81,7 @@ func TestEnsureConversationRejectsBodyIdentityFields(t *testing.T) {
 	body := []byte(`{
 		"external_conversation_key":"cursor-thread-42",
 		"idempotency_key":"ensure-42",
-		"tenant_id":"forged-tenant",
+
 		"effective_subject_id":"forged-user"
 	}`)
 	request := httptest.NewRequest(http.MethodPost, "/api/agent-observability/v1/conversations:ensure-current", bytes.NewReader(body))
@@ -805,7 +805,6 @@ type lifecycleTestErrorEnvelope struct {
 }
 
 func setTrustedOwnerHeaders(request *http.Request) {
-	request.Header.Set("X-BKN-Tenant-ID", "tenant-1")
 	request.Header.Set("X-BKN-Application-Principal-ID", "app-1")
 	request.Header.Set("X-BKN-Effective-Subject-Type", "user")
 	request.Header.Set("X-BKN-Effective-Subject-ID", "user-1")

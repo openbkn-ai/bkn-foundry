@@ -22,8 +22,8 @@ import (
 
 func TestBuildBatchCursorFilter(t *testing.T) {
 	filter := buildBatchCursorFilter(
-		[]string{"tenant_id", "id"},
-		[]interfaces.KeyValue{{Key: "tenant_id", Value: "tenant-1"}, {Key: "id", Value: 100}},
+		[]string{"customer_id", "id"},
+		[]interfaces.KeyValue{{Key: "customer_id", Value: "customer-1"}, {Key: "id", Value: 100}},
 	)
 
 	require.Equal(t, "or", filter.Operation)
@@ -31,13 +31,13 @@ func TestBuildBatchCursorFilter(t *testing.T) {
 	assert.Equal(t, &interfaces.FilterCondCfg{
 		Operation: "and",
 		SubConds: []*interfaces.FilterCondCfg{
-			{Name: "tenant_id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: "tenant-1", ValueFrom: interfaces.ValueFrom_Const}},
+			{Name: "customer_id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const}},
 		},
 	}, filter.SubConds[0])
 	assert.Equal(t, &interfaces.FilterCondCfg{
 		Operation: "and",
 		SubConds: []*interfaces.FilterCondCfg{
-			{Name: "tenant_id", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{Value: "tenant-1", ValueFrom: interfaces.ValueFrom_Const}},
+			{Name: "customer_id", Operation: "==", ValueOptCfg: interfaces.ValueOptCfg{Value: "customer-1", ValueFrom: interfaces.ValueFrom_Const}},
 			{Name: "id", Operation: "gt", ValueOptCfg: interfaces.ValueOptCfg{Value: 100, ValueFrom: interfaces.ValueFrom_Const}},
 		},
 	}, filter.SubConds[1])

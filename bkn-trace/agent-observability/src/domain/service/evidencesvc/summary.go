@@ -907,7 +907,6 @@ func (s *Service) appendCanonicalInteractions(
 
 func canReadCanonicalConversation(conversation sessionvo.Conversation, scope evidencevo.QueryScope) bool {
 	record := evidencevo.RecordScope{
-		TenantID:               conversation.Owner.TenantID,
 		EffectiveSubjectID:     conversation.Owner.EffectiveSubjectID,
 		ApplicationPrincipalID: conversation.Owner.ApplicationPrincipalID,
 	}
@@ -917,9 +916,6 @@ func canReadCanonicalConversation(conversation sessionvo.Conversation, scope evi
 			view = evidencevo.AccessViewBusiness
 		}
 		return evidencevo.CanReadRecord(*scope.AccessProfile, record, view)
-	}
-	if scope.TenantID == "" || record.TenantID == "" || scope.TenantID != record.TenantID {
-		return false
 	}
 	return scope.AccountID != "" &&
 		(scope.AccountID == record.EffectiveSubjectID || scope.AccountID == record.ApplicationPrincipalID)
@@ -1599,25 +1595,26 @@ func (s *Service) listConversationIdentityPage(ctx context.Context, options evid
 
 func canUseSummaryIdentityPage(options evidencevo.SummaryQueryOptions) bool {
 	return trustedQueryScope(options.Scope) &&
-		(options.Scope.AccessProfile == nil || options.Scope.AccessProfile.AccountActive && options.Scope.AccessProfile.TenantActive) &&
-		summaryAccessBoundaryMatches(options.Scope) &&
-		(options.Scope.AccessProfile == nil || !evidencevo.NeedsCrossAccountCandidates(options.Scope) || evidencevo.HasTenantWideTraceAccess(*options.Scope.AccessProfile)) &&
+		(options.Scope.AccessProfile == nil || options.Scope.AccessProfile.AccountActive) &&
+		(options.Scope.AccessProfile == nil || summaryScopeMatchesProfile(options.Scope)) &&
+		(options.Scope.AccessProfile == nil || !evidencevo.NeedsCrossAccountCandidates(options.Scope) || evidencevo.HasGlobalTraceAccess(*options.Scope.AccessProfile)) &&
 		options.TraceID == "" && options.ConversationID == "" && options.InteractionID == "" &&
 		!hasSummaryContentFilters(options)
+}
+
+func summaryScopeMatchesProfile(scope evidencevo.QueryScope) bool {
+	profile := scope.AccessProfile
+	if profile == nil || evidencevo.HasGlobalTraceAccess(*profile) {
+		return true
+	}
+	return scope.AccountID == profile.EffectiveSubjectID ||
+		scope.AccountID == profile.ApplicationPrincipalID
 }
 
 func hasSummaryContentFilters(options evidencevo.SummaryQueryOptions) bool {
 	return options.Status != "" || options.AgentOrApp != "" || options.ExcludeAgentOrApp != "" ||
 		options.Service != "" || options.Tool != "" || options.ErrorKeyword != "" ||
 		options.KnowledgeNetwork != "" || options.EvidenceCompleteness != "" || options.Keyword != ""
-}
-
-func summaryAccessBoundaryMatches(scope evidencevo.QueryScope) bool {
-	if scope.AccessProfile == nil {
-		return true
-	}
-	profile := *scope.AccessProfile
-	return profile.TenantID != "" && scope.TenantID == profile.TenantID
 }
 
 func summaryIdentityQuery(options evidencevo.SummaryQueryOptions) isessionstore.SummaryPageQuery {

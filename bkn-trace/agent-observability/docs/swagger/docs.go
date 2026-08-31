@@ -2747,9 +2747,6 @@ const docTemplate = `{
                 "bkn.request.id": {
                     "type": "string"
                 },
-                "bkn.tenant.id": {
-                    "type": "string"
-                },
                 "business_refs": {
                     "type": "array",
                     "items": {
@@ -3157,32 +3154,6 @@ const docTemplate = `{
                 }
             }
         },
-        "httphandler.businessRefRequest": {
-            "type": "object",
-            "required": [
-                "ref_id",
-                "ref_type",
-                "version"
-            ],
-            "properties": {
-                "as_of": {
-                    "type": "string"
-                },
-                "display_hint": {
-                    "type": "string"
-                },
-                "ref_id": {
-                    "description": "RefID uses the complete canonical shape defined by RefType, including every required scope segment.",
-                    "type": "string"
-                },
-                "ref_type": {
-                    "$ref": "#/definitions/sessionvo.BusinessRefType"
-                },
-                "version": {
-                    "type": "string"
-                }
-            }
-        },
         "httphandler.closeConversationRequest": {
             "type": "object",
             "properties": {
@@ -3300,7 +3271,7 @@ const docTemplate = `{
                 "business_refs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httphandler.businessRefRequest"
+                        "$ref": "#/definitions/sessionvo.BusinessRef"
                     }
                 },
                 "causation_event_ids": {
@@ -3348,7 +3319,7 @@ const docTemplate = `{
                 "operation_business_edges": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httphandler.operationBusinessEdgeRequest"
+                        "$ref": "#/definitions/sessionvo.OperationBusinessEdge"
                     }
                 },
                 "operation_id": {
@@ -3431,7 +3402,7 @@ const docTemplate = `{
                 "business_refs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/httphandler.businessRefRequest"
+                        "$ref": "#/definitions/sessionvo.BusinessRef"
                     }
                 },
                 "error": {
@@ -3600,29 +3571,6 @@ const docTemplate = `{
                 },
                 "reason": {
                     "type": "string"
-                }
-            }
-        },
-        "httphandler.operationBusinessEdgeRequest": {
-            "type": "object",
-            "required": [
-                "business_ref",
-                "observed_at",
-                "operation_id",
-                "role"
-            ],
-            "properties": {
-                "business_ref": {
-                    "$ref": "#/definitions/httphandler.businessRefRequest"
-                },
-                "observed_at": {
-                    "type": "string"
-                },
-                "operation_id": {
-                    "type": "string"
-                },
-                "role": {
-                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
                 }
             }
         },
@@ -4569,6 +4517,29 @@ const docTemplate = `{
                 }
             }
         },
+        "sessionvo.OperationBusinessEdge": {
+            "type": "object",
+            "required": [
+                "business_ref",
+                "observed_at",
+                "operation_id",
+                "role"
+            ],
+            "properties": {
+                "business_ref": {
+                    "$ref": "#/definitions/sessionvo.BusinessRef"
+                },
+                "observed_at": {
+                    "type": "string"
+                },
+                "operation_id": {
+                    "type": "string"
+                },
+                "role": {
+                    "$ref": "#/definitions/sessionvo.OperationBusinessRole"
+                }
+            }
+        },
         "sessionvo.OperationBusinessRole": {
             "type": "string",
             "enum": [
@@ -4674,8 +4645,7 @@ const docTemplate = `{
             "required": [
                 "application_principal_id",
                 "effective_subject_id",
-                "effective_subject_type",
-                "tenant_id"
+                "effective_subject_type"
             ],
             "properties": {
                 "application_principal_id": {
@@ -4689,9 +4659,6 @@ const docTemplate = `{
                 },
                 "effective_subject_type": {
                     "$ref": "#/definitions/sessionvo.SubjectType"
-                },
-                "tenant_id": {
-                    "type": "string"
                 }
             }
         },

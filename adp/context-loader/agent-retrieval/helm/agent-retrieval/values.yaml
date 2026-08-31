@@ -170,9 +170,6 @@ observability:
     # agent-observability before agent-retrieval. Lifecycle is no longer served
     # on public port 8080; existing custom values must migrate to this URL.
     core_url: "http://agent-observability-internal:8081"
-    # 0.1.3 defaults to the same single-tenant scope as agent-observability.
-    # A trusted inbound x-tenant-id always takes precedence in multi-tenant deployments.
-    default_tenant_id: "openbkn-local"
   evidence:
     ingest_url: "http://agent-observability:8080/api/agent-observability/v1/evidence/events"
     timeout_ms: 2000

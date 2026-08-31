@@ -22,7 +22,7 @@ import (
 //
 // It only takes effect on the public side: the internal side (internal-v1) is called between services, and the built-in classification injection during startup also takes this path.
 // (see driveradapters/category/init_data.go), following the existing idiom within the service to skip the determination.
-// The read interface (GetCategoryList) does not judge: the taxonomy is just a name dictionary and does not contain tenant data. Tightening will interrupt the non-super management front end.
+// The read interface (GetCategoryList) does not judge: the taxonomy is just a name dictionary and contains no caller-specific data. Tightening will interrupt the non-super management front end.
 func (c *categoryManager) requireOperatorTypePermission(ctx context.Context, userID string,
 	operation interfaces.AuthOperationType) error {
 	if !common.IsPublicAPIFromCtx(ctx) {

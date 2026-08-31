@@ -32,8 +32,12 @@ func TestSearchProjectsBKNsafeUserAccessFacts(t *testing.T) {
 	from := time.Date(2026, 8, 13, 11, 0, 0, 0, time.UTC)
 	ctx := observabilityvo.WithSourceAuthorization(context.Background(), "Bearer audit-token")
 	page, err := client.Search(ctx, observabilityvo.LogQuery{
-		ActorID: "user-a", Action: "login", Outcomes: []string{"failure"}, TimeFrom: &from, Limit: 20,
-		AuthorizedTenantID: "tenant-a", AuthorizedCategories: []string{observabilityvo.CategoryAccessUser},
+		ActorID:              "user-a",
+		Action:               "login",
+		Outcomes:             []string{"failure"},
+		TimeFrom:             &from,
+		Limit:                20,
+		AuthorizedCategories: []string{observabilityvo.CategoryAccessUser},
 	})
 	if err != nil {
 		t.Fatalf("search BKN Safe access: %v", err)
@@ -59,7 +63,7 @@ func TestProjectUsesEnglishUnknownActorFallback(t *testing.T) {
 		Action:    "login",
 		Outcome:   "success",
 		CreatedAt: time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC),
-	}, "tenant-a")
+	})
 
 	if record.ActorNameSnapshot != "Unknown user" ||
 		record.TargetNameSnapshot != "Unknown user" ||

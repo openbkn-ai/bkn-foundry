@@ -17,12 +17,12 @@ import (
 
 func TestSummaryOwnerWherePreservesLegacySubjectBoundary(t *testing.T) {
 	where, args := summaryOwnerWhere("r", isessionstore.SummaryPageQuery{Scope: evidencevo.QueryScope{
-		TenantID: "tenant-1", AccountID: "subject-1", AccountType: "service",
+		AccountID: "subject-1", AccountType: "service",
 	}})
 	wantWhere := []string{
-		"r.tenant_id=?", "r.effective_subject_type=?", "r.effective_subject_id=?",
+		"r.effective_subject_type=?", "r.effective_subject_id=?",
 	}
-	wantArgs := []any{"tenant-1", "service", "subject-1"}
+	wantArgs := []any{"service", "subject-1"}
 	if !reflect.DeepEqual(where, wantWhere) || !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("where=%v args=%v", where, args)
 	}

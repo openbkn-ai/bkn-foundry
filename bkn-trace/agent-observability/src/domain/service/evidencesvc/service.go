@@ -386,7 +386,6 @@ func (s *Service) GetArtifactForInteraction(
 func artifactMatchesTrace(artifact evidencevo.EvidenceArtifact, trace evidencevo.NormalizedTrace) bool {
 	return artifact.TraceID == trace.TraceID &&
 		artifact.RequestID == trace.RequestID &&
-		artifact.TenantID == trace.TenantID &&
 		artifact.AccountID == trace.AccountID &&
 		artifact.AccountType == trace.AccountType
 }
@@ -1247,8 +1246,7 @@ func claimedFactBusinessRefs(event evidencevo.EvidenceEvent) []any {
 }
 
 func trustedQueryScope(scope evidencevo.QueryScope) bool {
-	return strings.TrimSpace(scope.AccountID) != "" && strings.TrimSpace(scope.AccountType) != "" &&
-		strings.TrimSpace(scope.TenantID) != ""
+	return strings.TrimSpace(scope.AccountID) != "" && strings.TrimSpace(scope.AccountType) != ""
 }
 
 func hasBusinessExecutionEnvelope(traces []evidencevo.NormalizedTrace) bool {
@@ -1858,7 +1856,6 @@ func normalize(req evidencevo.IngestRequest, errors *evidencevo.ValidationErrors
 		TraceID:        req.Trace.TraceID,
 		RequestID:      req.Trace.RequestID,
 		ConversationID: req.Trace.ConversationID,
-		TenantID:       req.Trace.TenantID,
 		AccountID:      req.Trace.AccountID,
 		AccountType:    req.Trace.AccountType,
 		SchemaVersion:  req.SchemaVersion,
@@ -1877,9 +1874,6 @@ func checkTrace(trace evidencevo.TraceContext, errors *evidencevo.ValidationErro
 	required(trace.RequestID, "$.trace.bkn.request.id", errors)
 	required(trace.AccountID, "$.trace.bkn.account.id", errors)
 	required(trace.AccountType, "$.trace.bkn.account.type", errors)
-	if trace.TenantID == "" {
-		add(errors, "BKN_TRACE_PERMISSION_CONTEXT_MISSING", "$.trace.bkn.tenant.id", "phase-two ingest requires bkn.tenant.id")
-	}
 	if trace.TraceID != "" && !traceIDRE.MatchString(trace.TraceID) {
 		add(errors, "BKN_TRACE_REQUIRED_FIELD_MISSING", "$.trace.trace_id", "missing valid trace id")
 	}

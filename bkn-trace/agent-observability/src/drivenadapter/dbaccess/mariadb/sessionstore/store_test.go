@@ -52,7 +52,7 @@ func TestMigrationPlanReturnsOnlyUnappliedVersions(t *testing.T) {
 	}
 }
 
-func TestMigrationPlanUpgradesExistingCoreSchemaWithoutBusinessDomain(t *testing.T) {
+func TestMigrationPlanUpgradesExistingCoreSchemaThroughTenantRemoval(t *testing.T) {
 	migrations := Migrations()
 	applied := make(map[string]string, 4)
 	for _, migration := range migrations[:4] {
@@ -60,12 +60,13 @@ func TestMigrationPlanUpgradesExistingCoreSchemaWithoutBusinessDomain(t *testing
 	}
 	plan, err := migrationPlan(migrations, applied)
 	if err != nil {
-		t.Fatalf("plan tenant-only schema migration: %v", err)
+		t.Fatalf("plan latest schema migration: %v", err)
 	}
-	if len(plan) != 5 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
+	if len(plan) != 6 || plan[0].Version != "017" || !strings.Contains(plan[0].SQL, "bkn_trace_ee_provenance_analyses") ||
 		plan[2].Version != "019" || !strings.Contains(plan[2].SQL, "bkn_trace_ee_historical_provenance_projections") ||
 		plan[3].Version != "020" || !strings.Contains(plan[3].SQL, "DROP COLUMN IF EXISTS business_domain_id") ||
-		plan[4].Version != "021" || !strings.Contains(plan[4].SQL, "DROP COLUMN IF EXISTS tenant_id") {
+		plan[4].Version != "021" || !strings.Contains(plan[4].SQL, "bkn_trace_ee_historical_provenance_projections") ||
+		plan[5].Version != tenantRemovalMigrationVersion || !strings.Contains(plan[5].SQL, "bkn_trace_conversations") {
 		t.Fatalf("unexpected tenant-only schema plan: %#v", plan)
 	}
 }
@@ -75,11 +76,31 @@ func TestMigrationPlanRemovesTenantScopeFromHistoricalProvenanceProjection(t *te
 	if len(migrations) == 0 {
 		t.Fatal("migration manifest is empty")
 	}
-	last := migrations[len(migrations)-1]
-	if last.Version != "021" ||
-		!strings.Contains(last.SQL, "bkn_trace_ee_historical_provenance_projections") ||
-		!strings.Contains(last.SQL, "DROP COLUMN IF EXISTS tenant_id") {
-		t.Fatalf("expected v021 to remove projection tenant scope, got %#v", last)
+	projectionMigration := migrations[len(migrations)-2]
+	if projectionMigration.Version != "021" ||
+		!strings.Contains(projectionMigration.SQL, "bkn_trace_ee_historical_provenance_projections") ||
+		!strings.Contains(projectionMigration.SQL, "DROP COLUMN IF EXISTS tenant_id") {
+		t.Fatalf("expected v021 to remove projection tenant scope, got %#v", projectionMigration)
+	}
+}
+
+func TestMigrationPlanRemovesTenantScopeFromEveryCoreTable(t *testing.T) {
+	migrations := Migrations()
+	tenantMigration := migrations[len(migrations)-1]
+	if tenantMigration.Version != tenantRemovalMigrationVersion {
+		t.Fatalf("tenant removal must be the latest migration: %#v", tenantMigration)
+	}
+	for _, table := range []string{
+		"bkn_trace_conversations",
+		"bkn_trace_idempotency_records",
+		"bkn_trace_receipts",
+		"bkn_trace_evidence_event_ledger",
+		"bkn_trace_event_conflicts",
+		"bkn_trace_archive_jobs",
+	} {
+		if !strings.Contains(tenantMigration.SQL, "ALTER TABLE "+table+" DROP COLUMN IF EXISTS tenant_id") {
+			t.Errorf("tenant removal migration does not drop %s.tenant_id", table)
+		}
 	}
 }
 
@@ -93,12 +114,13 @@ func TestMigrationPlanAddsLocaleToExistingProvenanceHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("plan provenance locale migration: %v", err)
 	}
-	if len(plan) != 4 || plan[0].Version != "018" ||
+	if len(plan) != 5 || plan[0].Version != "018" ||
 		!strings.Contains(plan[0].SQL, "ADD COLUMN IF NOT EXISTS locale") ||
 		!strings.Contains(plan[0].SQL, "DEFAULT 'zh-CN'") ||
 		plan[1].Version != "019" || !strings.Contains(plan[1].SQL, "bkn_trace_ee_historical_provenance_tombstones") ||
 		plan[2].Version != "020" || !strings.Contains(plan[2].SQL, "DROP COLUMN IF EXISTS business_domain_id") ||
-		plan[3].Version != "021" || !strings.Contains(plan[3].SQL, "DROP COLUMN IF EXISTS tenant_id") {
+		plan[3].Version != "021" || !strings.Contains(plan[3].SQL, "bkn_trace_ee_historical_provenance_projections") ||
+		plan[4].Version != tenantRemovalMigrationVersion || !strings.Contains(plan[4].SQL, "bkn_trace_conversations") {
 		t.Fatalf("unexpected provenance locale migration plan: %#v", plan)
 	}
 }

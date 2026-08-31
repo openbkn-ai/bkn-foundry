@@ -20,7 +20,7 @@ const maximumExecutionAuditRange = 30 * 24 * time.Hour
 
 type operationAuditQueryStore interface {
 	List(ctx context.Context, filter operationaudit.Filter) (operationaudit.Page, error)
-	Get(ctx context.Context, eventID, tenantID string) (operationaudit.Entry, bool, error)
+	Get(ctx context.Context, eventID string) (operationaudit.Entry, bool, error)
 }
 
 func (r *restPublicHandler) ListOperationAudits(c *gin.Context) {
@@ -31,16 +31,12 @@ func (r *restPublicHandler) ListOperationAudits(c *gin.Context) {
 	if !ok {
 		return
 	}
-	filter := operationaudit.Filter{TenantID: strings.TrimSpace(c.GetHeader("x-tenant-id")), From: from, To: to}
+	filter := operationaudit.Filter{From: from, To: to}
 	filter.ActorID = strings.TrimSpace(c.Query("actor_id"))
 	filter.Action = strings.TrimSpace(c.Query("action"))
 	filter.TargetType = strings.TrimSpace(c.Query("target_type"))
 	filter.TargetID = strings.TrimSpace(c.Query("target_id"))
 	filter.Outcome = strings.TrimSpace(c.Query("outcome"))
-	if filter.TenantID == "" {
-		replyExecutionAuditError(c, http.StatusBadRequest, infraerrors.ErrExtOperationAuditMissingScope, map[string]any{"required_headers": []string{"x-tenant-id"}})
-		return
-	}
 	if value, err := strconv.Atoi(c.Query("limit")); err == nil {
 		filter.Limit = value
 	}
@@ -65,12 +61,7 @@ func (r *restPublicHandler) GetOperationAudit(c *gin.Context) {
 	if !r.executionAuditReader(c) {
 		return
 	}
-	tenantID := strings.TrimSpace(c.GetHeader("x-tenant-id"))
-	if tenantID == "" {
-		replyExecutionAuditError(c, http.StatusBadRequest, infraerrors.ErrExtOperationAuditMissingScope, map[string]any{"required_headers": []string{"x-tenant-id"}})
-		return
-	}
-	entry, found, err := r.auditQueryStore.Get(c.Request.Context(), strings.TrimSpace(c.Param("event_id")), tenantID)
+	entry, found, err := r.auditQueryStore.Get(c.Request.Context(), strings.TrimSpace(c.Param("event_id")))
 	if err != nil {
 		replyExecutionAuditError(c, http.StatusInternalServerError, infraerrors.ErrExtOperationAuditQueryFailed, nil)
 		return

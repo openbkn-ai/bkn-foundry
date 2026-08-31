@@ -31,7 +31,7 @@ func (s *authServiceImpl) CheckCreatePermission(ctx context.Context, accessor *i
 // CheckAdminPermission checks super-administrative permissions.
 // Determine the reuse of bkn-safe’s safe_admin:console:manage capability bit—that is, the semantics of Enforcer.CanAdmin—.
 // Therefore, the execution factory and bkn-safe always have the same determination of "over-management", and there is no need to hardcode the administrator account in this service.
-// Used to protect operation and maintenance observation interfaces that return cross-tenant data and are not affiliated with any single business resource.
+// Used to protect operation and maintenance observation interfaces that return platform-wide data and are not affiliated with any single business resource.
 func (s *authServiceImpl) CheckAdminPermission(ctx context.Context, accessor *interfaces.AuthAccessor) error {
 	authorized, err := s.OperationCheckAll(ctx, accessor,
 		interfaces.SafeAdminConsoleResourceID,

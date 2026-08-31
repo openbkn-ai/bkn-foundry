@@ -161,21 +161,27 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 		facts := operationAuditFacts(c, rule, requestBody, responseBody.body.Bytes())
 		now := time.Now().UTC()
 		requestID := operationAuditRequestID(c)
-		tenantID := operationAuditScopeValue(c.GetHeader("x-tenant-id"), "BKN_OPERATION_AUDIT_TENANT_ID")
-		if tenantID == "" {
-			logger.Errorf("operation audit fact rejected: request_id=%s action=%s target_type=%s missing_tenant=true", requestID, rule.Action, rule.TargetType)
-			return
-		}
 		entry := operationaudit.Entry{
-			EventID: operationAuditEventID(tenantID, requestID, c.Request.Method, c.Request.URL.Path), EventTime: now, RecordedAt: now,
-			TenantID:           tenantID,
+			EventID:            operationAuditEventID(requestID, c.Request.Method, c.Request.URL.Path),
+			EventTime:          now,
+			RecordedAt:         now,
 			KnowledgeNetworkID: facts.knowledgeNetworkID,
-			ActorID:            actor.ActorID, ActorName: actor.ActorName, ActorType: actor.ActorType,
-			AuthMethod: actor.AuthMethod, CredentialID: actor.CredentialID,
-			RequestID: requestID, SourceChannel: operationAuditSourceChannel(c.FullPath()), Method: c.Request.Method,
-			Action: rule.Action, TargetType: rule.TargetType, TargetID: facts.targetID, TargetName: facts.targetName,
-			Outcome: facts.outcome, FailureCode: facts.failureCode, FailureMessage: facts.failureMessage,
-			ChangeSummary: facts.changeSummary,
+			ActorID:            actor.ActorID,
+			ActorName:          actor.ActorName,
+			ActorType:          actor.ActorType,
+			AuthMethod:         actor.AuthMethod,
+			CredentialID:       actor.CredentialID,
+			RequestID:          requestID,
+			SourceChannel:      operationAuditSourceChannel(c.FullPath()),
+			Method:             c.Request.Method,
+			Action:             rule.Action,
+			TargetType:         rule.TargetType,
+			TargetID:           facts.targetID,
+			TargetName:         facts.targetName,
+			Outcome:            facts.outcome,
+			FailureCode:        facts.failureCode,
+			FailureMessage:     facts.failureMessage,
+			ChangeSummary:      facts.changeSummary,
 		}
 		if entry.KnowledgeNetworkID == "" {
 			entry.KnowledgeNetworkID = entry.TargetID
@@ -186,8 +192,8 @@ func (r *restHandler) OperationAudit() gin.HandlerFunc {
 	}
 }
 
-func operationAuditEventID(tenantID, requestID, method, path string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{tenantID, requestID, strings.ToUpper(method), path}, "\n")))
+func operationAuditEventID(requestID, method, path string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{requestID, strings.ToUpper(method), path}, "\n")))
 	return fmt.Sprintf("evt_%x", sum[:])
 }
 

@@ -5,7 +5,7 @@ info:
   description: |
     Read-only Sandbox Runtime observability APIs for Execution Factory Lab.
 
-    These endpoints live on the public face only. Responses carry cross-tenant fields
+    These endpoints live on the public face only. Responses carry platform-wide sensitive fields
     (user_id, capability_id, workspace_path, pod_name, python_package_index_url), so
     every route additionally requires the caller to be a super admin — the same
     safe_admin:console:manage capability bkn-safe's Enforcer.CanAdmin checks.

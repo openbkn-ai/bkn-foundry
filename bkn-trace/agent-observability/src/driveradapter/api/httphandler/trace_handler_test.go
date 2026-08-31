@@ -89,7 +89,7 @@ func TestTraceHandlerReturnsTypedTraceDetailWithRawOperationFacts(t *testing.T) 
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/trace_handler_001", nil)
 	req = req.WithContext(context.WithValue(req.Context(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{
-		TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
+		AccountID: "user-1", AccountType: "user",
 	}))
 	rec := httptest.NewRecorder()
 
@@ -136,7 +136,7 @@ func TestTraceHandlerReturnsOperationOnlyDetailWithoutEvidenceProjection(t *test
 	)
 	req := httptest.NewRequest(http.MethodGet, "/api/agent-observability/v1/traces/trace-operation-only", nil)
 	req = req.WithContext(context.WithValue(req.Context(), trustedQueryScopeContextKey{}, evidencevo.QueryScope{
-		TenantID: "tenant-1", AccountID: "user-1", AccountType: "user",
+		AccountID: "user-1", AccountType: "user",
 	}))
 	rec := httptest.NewRecorder()
 

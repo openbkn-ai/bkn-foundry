@@ -54,6 +54,8 @@ func (s *Store) Migrate(ctx context.Context) error {
 // EnsureSchema validates the database against the embedded image manifest. When
 // allowMigrate is false it performs no DDL and refuses a database behind the
 // image instead of deferring the failure to a lifecycle write.
+const tenantRemovalMigrationVersion = "022"
+
 func (s *Store) EnsureSchema(ctx context.Context, allowMigrate bool) error {
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
@@ -113,8 +115,114 @@ func (s *Store) EnsureSchema(ctx context.Context, allowMigrate bool) error {
 		return fmt.Errorf("BKN Trace schema is behind this image (missing migration %s); set BKN_TRACE_CORE_AUTO_MIGRATE=true before startup", plan[0].Version)
 	}
 	for _, migration := range plan {
+		if migration.Version == tenantRemovalMigrationVersion {
+			if err := validateTenantRemoval(ctx, conn); err != nil {
+				return err
+			}
+		}
 		if err := applySchemaMigration(ctx, conn, migration); err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+func validateTenantRemoval(ctx context.Context, conn *sql.Conn) error {
+	var tenantColumnCount int
+	if err := conn.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema = DATABASE()
+		  AND table_name = 'bkn_trace_conversations'
+		  AND column_name = 'tenant_id'`).Scan(&tenantColumnCount); err != nil {
+		return fmt.Errorf("check BKN Trace tenant-removal prerequisite: %w", err)
+	}
+	if tenantColumnCount == 0 {
+		return nil
+	}
+
+	checks := []struct {
+		name  string
+		query string
+	}{
+		{
+			name: "conversation owner identity",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_conversations
+				GROUP BY application_principal_id, effective_subject_type,
+					effective_subject_id, delegation_id
+				HAVING COUNT(DISTINCT tenant_id) > 1
+			) conflicts`,
+		},
+		{
+			name: "conversation generation",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_conversations
+				GROUP BY application_principal_id, effective_subject_type,
+					effective_subject_id, delegation_id, external_conversation_key, generation
+				HAVING COUNT(*) > 1
+			) conflicts`,
+		},
+		{
+			name: "active conversation",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_conversations
+				WHERE current_slot IS NOT NULL
+				GROUP BY application_principal_id, effective_subject_type,
+					effective_subject_id, delegation_id, external_conversation_key, current_slot
+				HAVING COUNT(*) > 1
+			) conflicts`,
+		},
+		{
+			name: "idempotency",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_idempotency_records
+				GROUP BY scope, application_principal_id, effective_subject_type,
+					effective_subject_id, delegation_id, external_conversation_key, idempotency_key
+				HAVING COUNT(*) > 1
+			) conflicts`,
+		},
+		{
+			name: "producer stream sequence",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_evidence_event_ledger
+				GROUP BY producer_stream_id, producer_epoch, producer_sequence
+				HAVING COUNT(*) > 1
+			) conflicts`,
+		},
+		{
+			name: "producer stream identity",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_evidence_event_ledger
+				GROUP BY producer_id, producer_stream_id
+				HAVING COUNT(DISTINCT tenant_id) > 1
+			) conflicts`,
+		},
+		{
+			name: "receipt owner identity",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_receipts
+				GROUP BY application_principal_id, effective_subject_type,
+					effective_subject_id, delegation_id
+				HAVING COUNT(DISTINCT tenant_id) > 1
+			) conflicts`,
+		},
+		{
+			name: "archive namespace",
+			query: `SELECT COUNT(*) FROM (
+				SELECT 1 FROM bkn_trace_archive_jobs
+				GROUP BY archive_kind
+				HAVING COUNT(DISTINCT tenant_id) > 1
+			) conflicts`,
+		},
+	}
+
+	for _, check := range checks {
+		var conflicts int
+		if err := conn.QueryRowContext(ctx, check.query).Scan(&conflicts); err != nil {
+			return fmt.Errorf("check BKN Trace %s collisions before tenant removal: %w", check.name, err)
+		}
+		if conflicts > 0 {
+			return fmt.Errorf("refuse BKN Trace tenant removal: %d conflicting %s key groups require owner resolution", conflicts, check.name)
 		}
 	}
 	return nil
@@ -393,11 +501,11 @@ func (t *transaction) FindCurrentConversation(owner sessionvo.Owner, externalKey
 		return sessionvo.Conversation{}, false
 	}
 	row := t.tx.QueryRowContext(t.ctx, conversationSelect+`
-		WHERE tenant_id=? AND application_principal_id=?
+		WHERE application_principal_id=?
 		  AND effective_subject_type=? AND effective_subject_id=? AND delegation_id=?
 		  AND external_conversation_key=?
 		ORDER BY generation DESC LIMIT 1 FOR UPDATE`,
-		owner.TenantID, owner.ApplicationPrincipalID,
+		owner.ApplicationPrincipalID,
 		owner.EffectiveSubjectType, owner.EffectiveSubjectID, owner.DelegationID, externalKey,
 	)
 	return t.scanConversation(row)
@@ -481,11 +589,10 @@ func (t *transaction) FindIdempotency(
 	err := t.tx.QueryRowContext(t.ctx, `
 		SELECT request_hash, resource_type, resource_id, created_at
 		FROM bkn_trace_idempotency_records
-		WHERE scope=? AND tenant_id=?
-		  AND application_principal_id=? AND effective_subject_type=?
+		WHERE scope=? AND application_principal_id=? AND effective_subject_type=?
 		  AND effective_subject_id=? AND delegation_id=? AND external_conversation_key=?
 		  AND idempotency_key=? FOR UPDATE`,
-		scope, owner.TenantID, owner.ApplicationPrincipalID,
+		scope, owner.ApplicationPrincipalID,
 		owner.EffectiveSubjectType, owner.EffectiveSubjectID, owner.DelegationID,
 		externalKey, idempotencyKey,
 	).Scan(&record.RequestHash, &record.ResourceType, &record.ResourceID, &record.CreatedAt)
@@ -505,12 +612,11 @@ func (t *transaction) SaveIdempotency(record sessionvo.IdempotencyRecord) {
 	}
 	_, t.err = t.tx.ExecContext(t.ctx, `
 		INSERT INTO bkn_trace_idempotency_records (
-			scope, tenant_id, application_principal_id,
+			scope, application_principal_id,
 			effective_subject_type, effective_subject_id, delegation_id, external_conversation_key,
 			idempotency_key, request_hash, resource_type, resource_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		record.Scope, record.Owner.TenantID,
-		record.Owner.ApplicationPrincipalID, record.Owner.EffectiveSubjectType,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		record.Scope, record.Owner.ApplicationPrincipalID, record.Owner.EffectiveSubjectType,
 		record.Owner.EffectiveSubjectID, record.Owner.DelegationID, record.ExternalConversationKey,
 		record.IdempotencyKey, record.RequestHash, record.ResourceType,
 		record.ResourceID, record.CreatedAt,
@@ -522,10 +628,10 @@ func (t *transaction) ListConversations(owner sessionvo.Owner, limit int) []sess
 		return nil
 	}
 	rows, err := t.tx.QueryContext(t.ctx, conversationSelect+`
-		WHERE tenant_id=? AND application_principal_id=?
+		WHERE application_principal_id=?
 		  AND effective_subject_type=? AND effective_subject_id=? AND delegation_id=?
 		ORDER BY updated_at DESC, conversation_id DESC LIMIT ?`,
-		owner.TenantID, owner.ApplicationPrincipalID,
+		owner.ApplicationPrincipalID,
 		owner.EffectiveSubjectType, owner.EffectiveSubjectID, owner.DelegationID, limit,
 	)
 	if err != nil {
@@ -559,14 +665,13 @@ func (t *transaction) SaveConversation(conversation sessionvo.Conversation) {
 	case errors.Is(err, sql.ErrNoRows):
 		_, t.err = t.tx.ExecContext(t.ctx, `
 			INSERT INTO bkn_trace_conversations (
-				conversation_id, tenant_id, application_principal_id,
+				conversation_id, application_principal_id,
 				agent_name, actor_name_snapshot, creation_auth_method,
 				effective_subject_type, effective_subject_id, delegation_id,
 				external_conversation_key, generation, status, one_shot, row_version,
 				created_at, updated_at, closed_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			conversation.ID, conversation.Owner.TenantID,
-			conversation.Owner.ApplicationPrincipalID, conversation.AgentName,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			conversation.ID, conversation.Owner.ApplicationPrincipalID, conversation.AgentName,
 			conversation.ActorNameSnapshot, conversation.CreationAuthMethod, conversation.Owner.EffectiveSubjectType,
 			conversation.Owner.EffectiveSubjectID, conversation.Owner.DelegationID,
 			conversation.ExternalConversationKey, conversation.Generation, conversation.Status,
@@ -1114,18 +1219,17 @@ func (t *transaction) SaveReceipt(receipt sessionvo.Receipt) {
 	case errors.Is(err, sql.ErrNoRows):
 		_, t.err = t.tx.ExecContext(t.ctx, `
 			INSERT INTO bkn_trace_receipts (
-				receipt_id, schema_version, tenant_id,
+				receipt_id, schema_version,
 				application_principal_id, effective_subject_type, effective_subject_id,
 				delegation_id, conversation_id, interaction_id, operation_id, attempt_no,
 				operation_key, tool_name, receipt_status,
 				evidence_durability, required_receipt, request_id, trace_id,
 				causation_event_ids, observed_evidence_refs, business_refs, artifact_refs,
 				partial_reasons, row_version, issued_at, terminal_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
 				NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''), NULLIF(?, ''),
 				NULLIF(?, ''), NULLIF(?, ''), ?, ?, ?)`,
-			receipt.ID, receipt.SchemaVersion, receipt.Owner.TenantID,
-			receipt.Owner.ApplicationPrincipalID, receipt.Owner.EffectiveSubjectType,
+			receipt.ID, receipt.SchemaVersion, receipt.Owner.ApplicationPrincipalID, receipt.Owner.EffectiveSubjectType,
 			receipt.Owner.EffectiveSubjectID, receipt.Owner.DelegationID,
 			receipt.ConversationID, receipt.InteractionID, receipt.OperationID, receipt.Attempt,
 			receipt.OperationKey, receipt.ToolName, receipt.Status,
@@ -1161,13 +1265,13 @@ func (t *transaction) ListRequests(owner sessionvo.Owner, limit int) []sessionvo
 			COUNT(DISTINCT operation_id), COUNT(*),
 			MAX(COALESCE(terminal_at, issued_at))
 		FROM bkn_trace_receipts
-		WHERE tenant_id=? AND application_principal_id=?
+		WHERE application_principal_id=?
 		  AND effective_subject_type=? AND effective_subject_id=? AND delegation_id=?
 		  AND request_id IS NOT NULL AND request_id<>''
 		GROUP BY request_id
 		ORDER BY MAX(COALESCE(terminal_at, issued_at)) DESC, request_id DESC
 		LIMIT ?`,
-		owner.TenantID, owner.ApplicationPrincipalID,
+		owner.ApplicationPrincipalID,
 		owner.EffectiveSubjectType, owner.EffectiveSubjectID, owner.DelegationID, limit,
 	)
 	if err != nil {
@@ -1211,11 +1315,11 @@ func (t *transaction) FindRequest(owner sessionvo.Owner, requestID string) (sess
 			COUNT(DISTINCT operation_id), COUNT(*),
 			MAX(COALESCE(terminal_at, issued_at))
 		FROM bkn_trace_receipts
-		WHERE tenant_id=? AND application_principal_id=?
+		WHERE application_principal_id=?
 		  AND effective_subject_type=? AND effective_subject_id=? AND delegation_id=?
 		  AND request_id=?
 		GROUP BY request_id`,
-		owner.TenantID, owner.ApplicationPrincipalID,
+		owner.ApplicationPrincipalID,
 		owner.EffectiveSubjectType, owner.EffectiveSubjectID, owner.DelegationID, requestID,
 	).Scan(
 		&value.RequestID, &value.ConversationID, &value.InteractionID,
@@ -1239,11 +1343,11 @@ func (t *transaction) listRequestTraceIDs(owner sessionvo.Owner, requestID strin
 	rows, err := t.tx.QueryContext(t.ctx, `
 		SELECT DISTINCT trace_id
 		FROM bkn_trace_receipts
-		WHERE tenant_id=? AND application_principal_id=?
+		WHERE application_principal_id=?
 		  AND effective_subject_type=? AND effective_subject_id=? AND delegation_id=?
 		  AND request_id=? AND trace_id IS NOT NULL AND trace_id<>''
 		ORDER BY trace_id`,
-		owner.TenantID, owner.ApplicationPrincipalID,
+		owner.ApplicationPrincipalID,
 		owner.EffectiveSubjectType, owner.EffectiveSubjectID, owner.DelegationID, requestID,
 	)
 	if err != nil {
@@ -1487,7 +1591,7 @@ func (t *transaction) SaveAssemblyRevision(revision sessionvo.AssemblyRevision) 
 	)
 }
 
-const conversationSelect = `SELECT conversation_id, tenant_id, application_principal_id,
+const conversationSelect = `SELECT conversation_id, application_principal_id,
 	agent_name, actor_name_snapshot, creation_auth_method,
 	effective_subject_type, effective_subject_id,
 	COALESCE(delegation_id, ''), external_conversation_key, generation, status,
@@ -1514,7 +1618,7 @@ func scanConversationRows(row rowScanner) (sessionvo.Conversation, error) {
 	var value sessionvo.Conversation
 	var closedAt sql.NullTime
 	err := row.Scan(
-		&value.ID, &value.Owner.TenantID, &value.Owner.ApplicationPrincipalID, &value.AgentName,
+		&value.ID, &value.Owner.ApplicationPrincipalID, &value.AgentName,
 		&value.ActorNameSnapshot, &value.CreationAuthMethod, &value.Owner.EffectiveSubjectType,
 		&value.Owner.EffectiveSubjectID, &value.Owner.DelegationID,
 		&value.ExternalConversationKey, &value.Generation, &value.Status,
@@ -1664,7 +1768,7 @@ func marshalOptionalPayload(payload *sessionvo.PayloadEnvelope) string {
 	return marshalJSON(*payload)
 }
 
-const receiptSelect = `SELECT receipt_id, schema_version, tenant_id, application_principal_id,
+const receiptSelect = `SELECT receipt_id, schema_version, application_principal_id,
 	effective_subject_type, effective_subject_id,
 	COALESCE(delegation_id, ''), conversation_id, interaction_id, operation_id,
 	attempt_no, operation_key, tool_name, receipt_status,
@@ -1690,8 +1794,7 @@ func scanReceiptRows(row rowScanner) (sessionvo.Receipt, error) {
 	var causation, evidence, business, artifacts, reasons string
 	var terminalAt sql.NullTime
 	err := row.Scan(
-		&value.ID, &value.SchemaVersion, &value.Owner.TenantID,
-		&value.Owner.ApplicationPrincipalID, &value.Owner.EffectiveSubjectType,
+		&value.ID, &value.SchemaVersion, &value.Owner.ApplicationPrincipalID, &value.Owner.EffectiveSubjectType,
 		&value.Owner.EffectiveSubjectID, &value.Owner.DelegationID,
 		&value.ConversationID, &value.InteractionID, &value.OperationID, &value.Attempt,
 		&value.OperationKey, &value.ToolName,

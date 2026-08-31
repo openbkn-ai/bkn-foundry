@@ -269,7 +269,7 @@ func TestBuildRequest_Headers(t *testing.T) {
 				HTTPRequestParams: interfaces.HTTPRequestParams{
 					Headers: map[string]any{
 						"X-Api-Key":       "secret-key",
-						"X-Tenant-Id":     "tenant-1",
+						"X-Region-Id":     "region-1",
 						"Authorization":   "Bearer token-1",
 						"X-Numeric-Value": 42,
 					},
@@ -280,7 +280,7 @@ func TestBuildRequest_Headers(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			So(httpReq.Header.Get("X-Api-Key"), ShouldEqual, "secret-key")
-			So(httpReq.Header.Get("X-Tenant-Id"), ShouldEqual, "tenant-1")
+			So(httpReq.Header.Get("X-Region-Id"), ShouldEqual, "region-1")
 			So(httpReq.Header.Get("Authorization"), ShouldEqual, "Bearer token-1")
 			So(httpReq.Header.Get("X-Numeric-Value"), ShouldEqual, "42")
 		})

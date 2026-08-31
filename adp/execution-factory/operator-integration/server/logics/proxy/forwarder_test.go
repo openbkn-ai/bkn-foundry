@@ -172,7 +172,7 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 
 		Convey("query 参数追加到 URL，且不丢模板里已有的 query", func() {
 			httpReq, err := f.buildRequest(ctx, &interfaces.HTTPRequest{
-				HTTPRouter: interfaces.HTTPRouter{Method: http.MethodGet, URL: "http://svc:9000/search?tenant=t1"},
+				HTTPRouter: interfaces.HTTPRouter{Method: http.MethodGet, URL: "http://svc:9000/search?region=r1"},
 				HTTPRequestParams: interfaces.HTTPRequestParams{
 					QueryParams: map[string]any{"limit": 20, "keyword": "a b"},
 				},
@@ -180,7 +180,7 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 
 			So(err, ShouldBeNil)
 			query := httpReq.URL.Query()
-			So(query.Get("tenant"), ShouldEqual, "t1")
+			So(query.Get("region"), ShouldEqual, "r1")
 			So(query.Get("limit"), ShouldEqual, "20")
 			So(query.Get("keyword"), ShouldEqual, "a b")
 		})
@@ -189,12 +189,12 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 			httpReq, err := f.buildRequest(ctx, &interfaces.HTTPRequest{
 				HTTPRouter: interfaces.HTTPRouter{Method: http.MethodGet, URL: "http://svc:9000/ping"},
 				HTTPRequestParams: interfaces.HTTPRequestParams{
-					Headers: map[string]any{"X-Tenant-Id": "t-1", "X-Api-Key": "ak-live"},
+					Headers: map[string]any{"X-Region-Id": "r-1", "X-Api-Key": "ak-live"},
 				},
 			})
 
 			So(err, ShouldBeNil)
-			So(httpReq.Header.Get("X-Tenant-Id"), ShouldEqual, "t-1")
+			So(httpReq.Header.Get("X-Region-Id"), ShouldEqual, "r-1")
 			So(httpReq.Header.Get("X-Api-Key"), ShouldEqual, "ak-live")
 		})
 
@@ -217,10 +217,10 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 			httpReq, err := f.buildRequest(ctx, &interfaces.HTTPRequest{
 				HTTPRouter: interfaces.HTTPRouter{
 					Method: http.MethodPost,
-					URL:    "http://svc:9000/tenants/{tenant_id}/items",
+					URL:    "http://svc:9000/regions/{region_id}/items",
 				},
 				HTTPRequestParams: interfaces.HTTPRequestParams{
-					PathParams:  map[string]string{"tenant_id": "t-9"},
+					PathParams:  map[string]string{"region_id": "r-9"},
 					QueryParams: map[string]any{"dry_run": true},
 					Headers:     map[string]any{"X-Account-Id": "u-1"},
 					Body:        map[string]any{"name": "demo"},
@@ -228,7 +228,7 @@ func TestBuildRequest_PathQueryHeaderBody(t *testing.T) {
 			})
 
 			So(err, ShouldBeNil)
-			So(httpReq.URL.Path, ShouldEqual, "/tenants/t-9/items")
+			So(httpReq.URL.Path, ShouldEqual, "/regions/r-9/items")
 			So(httpReq.URL.Query().Get("dry_run"), ShouldEqual, "true")
 			So(httpReq.Header.Get("X-Account-Id"), ShouldEqual, "u-1")
 			payload, readErr := io.ReadAll(httpReq.Body)

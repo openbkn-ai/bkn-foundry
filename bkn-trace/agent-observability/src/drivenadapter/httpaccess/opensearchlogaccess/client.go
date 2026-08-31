@@ -95,11 +95,7 @@ func (client *Client) Search(ctx context.Context, query observabilityvo.LogQuery
 }
 
 func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.LogRecord, bool, error) {
-	scope := observabilityvo.SourceAccessScopeFromContext(ctx)
-	if strings.TrimSpace(scope.TenantID) == "" {
-		return observabilityvo.LogRecord{}, false, fmt.Errorf("trusted tenant scope is required for OpenSearch log detail")
-	}
-	body, err := json.Marshal(buildDetailQuery(logID, scope))
+	body, err := json.Marshal(buildDetailQuery(logID))
 	if err != nil {
 		return observabilityvo.LogRecord{}, false, fmt.Errorf("encode OpenSearch log detail query: %w", err)
 	}
@@ -122,10 +118,9 @@ func (client *Client) Get(ctx context.Context, logID string) (observabilityvo.Lo
 	return record, err == nil, err
 }
 
-func buildDetailQuery(logID string, scope observabilityvo.SourceAccessScope) map[string]any {
+func buildDetailQuery(logID string) map[string]any {
 	filters := []any{
 		map[string]any{"term": map[string]any{"attributes.log_id.keyword": logID}},
-		map[string]any{"term": map[string]any{"attributes.tenant_id.keyword": scope.TenantID}},
 		map[string]any{"term": map[string]any{"attributes.trust_level.keyword": "trusted"}},
 	}
 	return map[string]any{
@@ -153,7 +148,6 @@ func buildQuery(query observabilityvo.LogQuery) map[string]any {
 			filters = append(filters, map[string]any{"terms": map[string]any{field: values}})
 		}
 	}
-	addTerm("attributes.tenant_id.keyword", query.AuthorizedTenantID)
 	addTerm("attributes.trust_level.keyword", "trusted")
 	authorizedCategories := intersectValues(query.Categories, query.AuthorizedCategories)
 	if len(query.Categories) == 0 {
@@ -276,7 +270,6 @@ func mapDocument(id string, payload []byte) (observabilityvo.LogRecord, error) {
 		SafeSummary:         stringAttribute(document.Attributes, "safe_summary", ""),
 		ServiceName:         stringAttribute(document.Resource, "service.name", stringAttribute(document.Attributes, "service.name", "")),
 		Environment:         stringAttribute(document.Resource, "deployment.environment", ""),
-		TenantID:            stringAttribute(document.Attributes, "tenant_id", ""),
 		ActorID:             stringAttribute(document.Attributes, "actor_id", ""),
 		EffectiveSubjectID:  stringAttribute(document.Attributes, "effective_subject_id", ""),
 		ApplicationID:       stringAttribute(document.Attributes, "application_id", ""),

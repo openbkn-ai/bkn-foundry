@@ -58,9 +58,9 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := accessProfileResponse(evidencevo.AccessProfile{
-				TenantID: "tenant-a", ActorID: "user-a", EffectiveSubjectID: "user-a",
+				ActorID: "user-a", EffectiveSubjectID: "user-a",
 				Roles: test.roles, ManagedKnowledgeNetworkIDs: test.managedNetworks,
-				AccountActive: true, TenantActive: true, Fingerprint: "sha256:profile-a",
+				AccountActive: true, Fingerprint: "sha256:profile-a",
 			})
 
 			if !response.BusinessProvenanceOwn || !response.TechnicalTrace {
@@ -79,8 +79,7 @@ func TestAccessProfileResponseUsesTheR62RoleMatrix(t *testing.T) {
 
 func TestAccessProfileResponseFailsClosedForInactiveIdentity(t *testing.T) {
 	response := accessProfileResponse(evidencevo.AccessProfile{
-		Roles: []string{"super_admin"}, AccountActive: false, TenantActive: true,
-	})
+		Roles: []string{"super_admin"}, AccountActive: false})
 	if response.BusinessProvenanceOwn || response.TechnicalTrace || response.GlobalLogSearch ||
 		len(response.AllowedLogCategories) != 0 || response.LogSensitiveFields || response.LogExport ||
 		response.LogPolicyRead {

@@ -84,7 +84,7 @@ func (client *Client) WriteAndVerify(ctx context.Context, job archivesvc.Job, ca
 		lines = append(lines, append(append([]byte(nil), candidate.Payload...), '\n'))
 	}
 	content := bytes.Join(lines, nil)
-	dataKey := fmt.Sprintf("%s/%s/%s.jsonl", client.config.Prefix, job.TenantID, job.ID)
+	dataKey := fmt.Sprintf("%s/%s/data.jsonl", client.config.Prefix, job.ID)
 	if err := client.upload(ctx, dataKey, content); err != nil {
 		return "", err
 	}
@@ -94,7 +94,7 @@ func (client *Client) WriteAndVerify(ctx context.Context, job archivesvc.Job, ca
 	if err != nil {
 		return "", err
 	}
-	manifestKey := fmt.Sprintf("%s/%s/%s/manifest.json", client.config.Prefix, job.TenantID, job.ID)
+	manifestKey := fmt.Sprintf("%s/%s/manifest.json", client.config.Prefix, job.ID)
 	if err := client.upload(ctx, manifestKey, manifestBody); err != nil {
 		return "", err
 	}

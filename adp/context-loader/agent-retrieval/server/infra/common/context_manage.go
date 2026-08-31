@@ -13,7 +13,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -38,9 +37,7 @@ const (
 	HeaderBKNCausationEventID   = "bkn-causation-event-id"
 	HeaderBKNClaimID            = "bkn-claim-id"
 	HeaderBKNAttempt            = "bkn-attempt"
-	HeaderTenantID              = "x-tenant-id"
 	HeaderBKNEventObservedAt    = "bkn-event-observed-at"
-	envDefaultTenantID          = "BKN_TRACE_DEFAULT_TENANT_ID"
 )
 
 type traceContextKey string
@@ -69,7 +66,6 @@ var bknRequestIDRe = regexp.MustCompile(`^req_[A-Za-z0-9_-]{8,128}$`)
 // service validates and propagates them, but never creates or infers them.
 type TraceContext struct {
 	RequestID          string
-	TenantID           string
 	Baggage            map[string]string
 	ConversationID     string
 	InteractionID      string
@@ -160,7 +156,6 @@ func SetTraceContextToCtx(ctx context.Context, traceContext TraceContext) contex
 		traceContext.RequestID = NewBKNRequestID()
 	}
 	traceContext.Baggage = sanitizeBaggage(traceContext.Baggage)
-	traceContext.TenantID = sanitizeBusinessTraceID(traceContext.TenantID)
 	traceContext.ConversationID = sanitizeBusinessTraceID(traceContext.ConversationID)
 	traceContext.InteractionID = sanitizeBusinessTraceID(traceContext.InteractionID)
 	traceContext.OperationID = sanitizeBusinessTraceID(traceContext.OperationID)
@@ -237,10 +232,7 @@ func TraceContextFromHeaders(getHeader func(string) string) TraceContext {
 	observedAt := strings.TrimSpace(getHeader(HeaderBKNEventObservedAt))
 	_, observedAtErr := time.Parse(time.RFC3339Nano, observedAt)
 	return TraceContext{
-		RequestID: requestID,
-		TenantID:  sanitizeBusinessTraceID(firstNonEmpty(getHeader(HeaderTenantID), os.Getenv(envDefaultTenantID))),
-		// A trusted inbound domain always wins; the deployment default only keeps
-		// single-domain installs working for clients that carry no domain at all.
+		RequestID:          requestID,
 		Baggage:            parseBaggage(getHeader(HeaderBaggage)),
 		ConversationID:     sanitizeBusinessTraceID(getHeader(HeaderBKNConversationID)),
 		InteractionID:      sanitizeBusinessTraceID(getHeader(HeaderBKNInteractionID)),
@@ -288,9 +280,6 @@ func GetHeaderFromCtx(ctx context.Context) (header map[string]string) {
 			header[HeaderBaggage] = baggage
 		}
 		setBusinessTraceHeaders(header, traceContext)
-		if traceContext.TenantID != "" {
-			header[HeaderTenantID] = traceContext.TenantID
-		}
 		if traceContext.ObservedAtProvided {
 			header[HeaderBKNEventObservedAt] = traceContext.ObservedAt
 		}
@@ -321,7 +310,14 @@ func setBusinessTraceHeaders(header map[string]string, traceContext TraceContext
 // StripBusinessTraceHeaders removes OpenBKN-only causality before an untrusted outbound hop.
 func StripBusinessTraceHeaders(header map[string]string) {
 	for key := range header {
-		for _, protected := range []string{HeaderBKNConversationID, HeaderBKNInteractionID, HeaderBKNOperationID, HeaderBKNCausationEventID, HeaderBKNClaimID, HeaderBKNAttempt, HeaderBKNEventObservedAt, HeaderTenantID} {
+		for _, protected := range []string{
+			HeaderBKNConversationID,
+			HeaderBKNInteractionID,
+			HeaderBKNOperationID,
+			HeaderBKNCausationEventID,
+			HeaderBKNClaimID,
+			HeaderBKNAttempt,
+			HeaderBKNEventObservedAt} {
 			if strings.EqualFold(key, protected) {
 				delete(header, key)
 				break

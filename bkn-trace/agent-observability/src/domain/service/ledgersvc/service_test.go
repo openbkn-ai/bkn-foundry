@@ -58,7 +58,7 @@ func TestEvidenceLedgerRecordsAcceptedAndHashConflictMetrics(t *testing.T) {
 	if _, err := service.Ingest(context.Background(), event); err != nil {
 		t.Fatalf("ingest event: %v", err)
 	}
-	event.Owner.TenantID = "tenant-2"
+	event.Owner.ApplicationPrincipalID = "app-2"
 	if _, err := service.Ingest(context.Background(), event); !ledgersvc.IsCode(err, ledgersvc.CodeEventPayloadConflict) {
 		t.Fatalf("expected immutable event conflict, got %v", err)
 	}
@@ -96,7 +96,7 @@ func TestEvidenceReplayCannotChangeImmutableOwnershipMetadata(t *testing.T) {
 	if _, err := service.Ingest(context.Background(), event); err != nil {
 		t.Fatalf("ingest event: %v", err)
 	}
-	event.Owner.TenantID = "tenant-2"
+	event.Owner.ApplicationPrincipalID = "app-2"
 	if _, err := service.Ingest(context.Background(), event); !ledgersvc.IsCode(err, ledgersvc.CodeEventPayloadConflict) {
 		t.Fatalf("expected immutable event conflict, got %v", err)
 	}
@@ -366,8 +366,9 @@ func testEvent() ledgervo.Event {
 		EventID: "evt-1", EventType: "operation.output.observed", SchemaVersion: "3.0.0",
 		PayloadHash: ledgervo.CanonicalPayloadHash(envelope),
 		Owner: sessionvo.Owner{
-			TenantID: "tenant-1", ApplicationPrincipalID: "app-1", EffectiveSubjectType: sessionvo.SubjectService,
-			EffectiveSubjectID: "agent-1",
+			ApplicationPrincipalID: "app-1",
+			EffectiveSubjectType:   sessionvo.SubjectService,
+			EffectiveSubjectID:     "agent-1",
 		},
 		ConversationID: "conv-1", InteractionID: "int-1", OperationID: "op-1", Attempt: 1,
 		ProducerID: "context-loader", ProducerStreamID: "stream-1", ProducerEpoch: 1, ProducerSequence: 1,

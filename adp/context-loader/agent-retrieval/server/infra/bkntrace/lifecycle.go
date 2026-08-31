@@ -58,7 +58,6 @@ type errorEnvelope struct {
 }
 
 type Owner struct {
-	TenantID               string `json:"tenant_id"`
 	ApplicationPrincipalID string `json:"application_principal_id"`
 	EffectiveSubjectType   string `json:"effective_subject_type"`
 	EffectiveSubjectID     string `json:"effective_subject_id"`
@@ -500,10 +499,6 @@ func (c *LifecycleClient) do(
 }
 
 func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error {
-	traceContext, ok := common.GetTraceContextFromCtx(ctx)
-	if !ok || traceContext.TenantID == "" {
-		return fmt.Errorf("trusted tenant context is required")
-	}
 	auth, ok := common.GetAccountAuthContextFromCtx(ctx)
 	if !ok || auth.AccountID == "" || auth.AccountType == interfaces.AccessorTypeAnonymous {
 		return fmt.Errorf("trusted account context is required")
@@ -521,8 +516,6 @@ func setTrustedLifecycleHeaders(ctx context.Context, headers http.Header) error 
 	// service boundary, never from the lifecycle request body.
 	headers.Set("x-account-id", auth.AccountID)
 	headers.Set("x-account-type", string(auth.AccountType))
-	headers.Set("x-tenant-id", traceContext.TenantID)
-	headers.Set("X-BKN-Tenant-ID", traceContext.TenantID)
 	headers.Set("X-BKN-Application-Principal-ID", applicationID)
 	headers.Set("X-BKN-Effective-Subject-Type", subjectType)
 	headers.Set("X-BKN-Effective-Subject-ID", auth.AccountID)
