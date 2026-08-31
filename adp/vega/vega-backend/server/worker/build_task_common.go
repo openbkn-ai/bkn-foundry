@@ -79,6 +79,58 @@ func extractKeyValues(fields []string, document map[string]any) ([]interfaces.Ke
 	return values, nil
 }
 
+// normalizeJSONDocumentFields 将数据库 JSON 值转换为托管 OpenSearch 索引 mapping 所需的对象形态。
+func normalizeJSONDocumentFields(document map[string]any, properties []*interfaces.Property) error {
+	for _, property := range properties {
+		if property == nil || property.Type != interfaces.DataType_Json {
+			continue
+		}
+		value, exists := document[property.Name]
+		if !exists || value == nil {
+			continue
+		}
+
+		object, err := normalizeJSONObject(value)
+		if err != nil {
+			return fmt.Errorf("JSON field %q: %w", property.Name, err)
+		}
+		document[property.Name] = object
+	}
+	return nil
+}
+
+func normalizeJSONObject(value any) (map[string]any, error) {
+	if object, ok := value.(map[string]any); ok {
+		return object, nil
+	}
+
+	var text string
+	switch typed := value.(type) {
+	case string:
+		text = typed
+	case []byte:
+		text = string(typed)
+	default:
+		return nil, fmt.Errorf("expected object, JSON text, or null; got %T", value)
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, nil
+	}
+
+	var parsed any
+	if err := sonic.Unmarshal([]byte(text), &parsed); err != nil {
+		return nil, fmt.Errorf("invalid JSON: %w", err)
+	}
+	if parsed == nil {
+		return nil, nil
+	}
+	object, ok := parsed.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("expected JSON object or null; got %T", parsed)
+	}
+	return object, nil
+}
+
 // updateResourceIndexName updates the index name of a resource
 func updateResourceIndexName(ctx context.Context, resource *interfaces.Resource, rs interfaces.ResourceService, indexName string) error {
 	if resource.LocalIndexName == indexName {

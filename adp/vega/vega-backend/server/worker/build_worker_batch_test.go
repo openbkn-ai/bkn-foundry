@@ -155,6 +155,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		cf := vmock.NewMockConnectorFactory(ctrl)
 		connector := vmock.NewMockTableConnector(ctrl)
 		resource := workerTestResource()
+		resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "payload", Type: interfaces.DataType_Json})
 		resource.LocalIndexStatus = interfaces.ResourceLocalIndexStatusAvailable
 		resource.LocalIndexName = "current-index"
 		resource.SyncMark = `{"mode":"batch","cursor":[]}`
@@ -177,13 +178,20 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).DoAndReturn(
 			func(_ context.Context, _ *interfaces.Resource, params *interfaces.ResourceDataQueryParams) (*interfaces.QueryResult, error) {
 				assert.Nil(t, params.FilterCondCfg)
-				return &interfaces.QueryResult{Total: 1, Entries: []map[string]any{{"id": int64(1)}}}, nil
+				return &interfaces.QueryResult{Total: 1, Entries: []map[string]any{{
+					"id":      int64(1),
+					"payload": `{"region":"cn"}`,
+				}}}, nil
 			})
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
 		indexed := false
 		lim.EXPECT().IndexDocuments(gomock.Any(), "current-index", gomock.Any()).DoAndReturn(
-			func(context.Context, string, map[string]map[string]any) ([]string, error) {
+			func(_ context.Context, _ string, documents map[string]map[string]any) ([]string, error) {
+				require.Len(t, documents, 1)
+				for _, document := range documents {
+					assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
+				}
 				indexed = true
 				return nil, nil
 			})

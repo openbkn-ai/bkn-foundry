@@ -105,6 +105,55 @@ func TestGenerateDocumentID(t *testing.T) {
 	require.ErrorContains(t, err, `build key field "id" is missing`)
 }
 
+func TestNormalizeJSONDocumentFields(t *testing.T) {
+	schema := []*interfaces.Property{
+		{Name: "payload", Type: interfaces.DataType_Json},
+		{Name: "name", Type: interfaces.DataType_String},
+	}
+
+	t.Run("normalizes objects JSON text bytes null and empty values", func(t *testing.T) {
+		document := map[string]any{
+			"object":  map[string]any{"region": "cn"},
+			"payload": `{"region":"cn"}`,
+			"name":    "unchanged",
+		}
+		schemaWithValues := append([]*interfaces.Property{}, schema...)
+		schemaWithValues = append(schemaWithValues,
+			&interfaces.Property{Name: "object", Type: interfaces.DataType_Json},
+			&interfaces.Property{Name: "bytes", Type: interfaces.DataType_Json},
+			&interfaces.Property{Name: "null_value", Type: interfaces.DataType_Json},
+			&interfaces.Property{Name: "empty_value", Type: interfaces.DataType_Json},
+		)
+		document["bytes"] = []byte(`{"tier":2}`)
+		document["null_value"] = "null"
+		document["empty_value"] = "  "
+
+		require.NoError(t, normalizeJSONDocumentFields(document, schemaWithValues))
+		assert.Equal(t, map[string]any{"region": "cn"}, document["object"])
+		assert.Equal(t, map[string]any{"region": "cn"}, document["payload"])
+		assert.Equal(t, map[string]any{"tier": float64(2)}, document["bytes"])
+		assert.Nil(t, document["null_value"])
+		assert.Nil(t, document["empty_value"])
+		assert.Equal(t, "unchanged", document["name"])
+	})
+
+	for name, value := range map[string]any{
+		"invalid JSON":        `{`,
+		"JSON scalar":         `"value"`,
+		"JSON array":          `[]`,
+		"unexpected Go value": 42,
+	} {
+		t.Run(name, func(t *testing.T) {
+			document := map[string]any{"payload": value}
+
+			err := normalizeJSONDocumentFields(document, schema)
+
+			require.Error(t, err)
+			assert.ErrorContains(t, err, `JSON field "payload"`)
+		})
+	}
+}
+
 func TestPrepareFullBuildIndex(t *testing.T) {
 	t.Run("empty mark rebuild deletes existing task index", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
