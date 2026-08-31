@@ -129,7 +129,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 					progressMarks = append(progressMarks, *progress.SyncedMark)
 				}
 				return true, nil
-			}).Times(3)
+			}).Times(2)
 		cf.EXPECT().CreateConnectorInstance(gomock.Any(), "mysql", gomock.Any()).Return(connector, nil)
 		connector.EXPECT().Connect(gomock.Any()).Return(nil)
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.QueryResult{Total: 0}, nil)
@@ -146,7 +146,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		err = bbw.executeBuild(context.Background(), &interfaces.Catalog{ID: "c1", ConnectorType: "mysql"}, resource, task)
 
 		require.NoError(t, err)
-		assert.Equal(t, []int64{0, 0}, totalCounts)
+		assert.Equal(t, []int64{0}, totalCounts)
 		assert.Equal(t, []string{"", `{"mode":"batch","cursor":[]}`}, progressMarks)
 		assert.Equal(t, `{"mode":"batch","cursor":[]}`, resource.SyncMark)
 		require.NoError(t, mockDB.ExpectationsWereMet())
@@ -255,12 +255,6 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 		connector.EXPECT().ExecuteQuery(gomock.Any(), resource, gomock.Any()).Return(&interfaces.QueryResult{}, nil)
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
 		bts.EXPECT().InternalGetStatusByID(gomock.Any(), task.ID).Return(interfaces.BuildTaskStatusRunning, nil)
-		bts.EXPECT().InternalSetProgress(gomock.Any(), nil, task.ID, gomock.Any()).DoAndReturn(
-			func(_ context.Context, _ *sql.Tx, _ string, progress interfaces.BuildTaskProgress) (bool, error) {
-				require.NotNil(t, progress.TotalCount)
-				assert.EqualValues(t, 0, *progress.TotalCount)
-				return true, nil
-			})
 		bts.EXPECT().InternalMarkCompleted(gomock.Any(), nil, task.ID).Return(true, nil)
 
 		err := bbw.executeBuild(context.Background(), &interfaces.Catalog{ConnectorType: "mysql"}, resource, task)

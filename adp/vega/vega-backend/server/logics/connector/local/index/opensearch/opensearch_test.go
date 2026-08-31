@@ -63,8 +63,8 @@ func TestSplitBulkDocumentsByBytes(t *testing.T) {
 		}))
 	})
 
-	t.Run("stops before the next document exceeds half", func(t *testing.T) {
-		assert.Equal(t, 1, splitBulkDocumentsByBytes([][]byte{
+	t.Run("keeps the next document in the right chunk when it exceeds half", func(t *testing.T) {
+		assert.Equal(t, 0, splitBulkDocumentsByBytes([][]byte{
 			make([]byte, 4), make([]byte, 12), make([]byte, 12),
 		}))
 	})
@@ -111,7 +111,7 @@ func TestCreateDocumentsSplitsRejectedLargeRequests(t *testing.T) {
 			})
 
 			require.NoError(t, err)
-			assert.Equal(t, []int{4, 3, 1}, requestDocumentCounts)
+			assert.Equal(t, []int{4, 2, 2}, requestDocumentCounts)
 			assert.ElementsMatch(t, []string{"doc-1", "doc-2", "doc-3", "doc-4"}, ids)
 		})
 	}
@@ -141,7 +141,7 @@ func TestCreateDocumentsStopsAfterOneRejectedSplit(t *testing.T) {
 	})
 
 	require.Error(t, err)
-	assert.Equal(t, []int{4, 3}, requestDocumentCounts)
+	assert.Equal(t, []int{4, 2}, requestDocumentCounts)
 }
 
 func splitBulkLines(t *testing.T, body []byte) [][]byte {

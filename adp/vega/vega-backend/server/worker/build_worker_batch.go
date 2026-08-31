@@ -411,12 +411,14 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 		totalRows := result.Total
 		readRows := len(result.Entries)
 		if firstQuery {
-			totalCount := int64(totalRows)
-			if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID,
-				interfaces.BuildTaskProgress{TotalCount: &totalCount}); err != nil {
-				return fmt.Errorf("set build task total count: %w", err)
-			}
 			firstQuery = false
+			if totalRows > 0 || readRows > 0 {
+				totalCount := int64(totalRows)
+				if _, err := bbw.bts.InternalSetProgress(ctx, nil, buildTaskInfo.ID,
+					interfaces.BuildTaskProgress{TotalCount: &totalCount}); err != nil {
+					return fmt.Errorf("set build task total count: %w", err)
+				}
+			}
 		}
 
 		if readRows > 0 {
