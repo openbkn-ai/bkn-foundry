@@ -421,6 +421,9 @@ func (bbw *batchBuildWorker) executeBuild(ctx context.Context, catalog *interfac
 				if err != nil {
 					return err
 				}
+				if err := normalizeJSONDocumentFields(doc, resource.SchemaDefinition); err != nil {
+					return fmt.Errorf("normalize document for local index: %w", err)
+				}
 				docID, err := generateDocumentID(keyValues)
 				if err != nil {
 					return err
