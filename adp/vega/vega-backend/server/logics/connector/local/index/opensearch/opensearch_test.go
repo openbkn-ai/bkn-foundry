@@ -63,8 +63,8 @@ func TestSplitBulkDocumentsByBytes(t *testing.T) {
 		}))
 	})
 
-	t.Run("keeps the next document in the right chunk when it exceeds half", func(t *testing.T) {
-		assert.Equal(t, 0, splitBulkDocumentsByBytes([][]byte{
+	t.Run("chooses the cut point closest to half", func(t *testing.T) {
+		assert.Equal(t, 1, splitBulkDocumentsByBytes([][]byte{
 			make([]byte, 4), make([]byte, 12), make([]byte, 12),
 		}))
 	})

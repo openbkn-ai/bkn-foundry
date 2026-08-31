@@ -476,8 +476,9 @@ func (c *OpenSearchConnector) indexBulkChunk(ctx context.Context, documents [][]
 }
 
 // splitBulkDocumentsByBytes 返回左批最后一条文档的下标。
-// 该下标属于左批，右批从下一条文档开始。优先选择字节数不超过总量一半的最大左批；
-// 首条文档本身超过一半时返回 0，以保证两批都非空。调用方必须传入至少两条文档。
+// 该下标属于左批，右批从下一条文档开始。优先选择字节数最接近总量一半的切点；
+// 首条文档本身超过一半或最后一条文档导致右批为空时，选择能保证两批非空的切点。
+// 调用方必须传入至少两条文档。
 func splitBulkDocumentsByBytes(documents [][]byte) int {
 	totalBytes := 0
 	for _, document := range documents {
@@ -490,7 +491,15 @@ func splitBulkDocumentsByBytes(documents [][]byte) int {
 			if i == 0 {
 				return 0
 			}
-			return i - 1
+			if i == len(documents)-1 {
+				return i - 1
+			}
+			leftDistance := targetBytes - currentBytes
+			rightDistance := currentBytes + len(document) - targetBytes
+			if leftDistance <= rightDistance {
+				return i - 1
+			}
+			return i
 		}
 		currentBytes += len(document)
 	}
