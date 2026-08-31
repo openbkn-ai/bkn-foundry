@@ -57,7 +57,7 @@ do
         echo "$BUSINESS_DOMAIN_ENABLED"
 
         export AUTH_ENABLED=true
-        export BUSINESS_DOMAIN_ENABLED=true
+        export BUSINESS_DOMAIN_ENABLED=false
 
         go run ./server/main.go;;
     "h")

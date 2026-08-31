@@ -11,7 +11,7 @@ DEV_CONFIG_PROFILE ?= $(shell d="$(CURDIR)"; \
 	done; \
 	printf "%s/.env/execution-factory" "$(CURDIR)")
 AUTH_ENABLED ?= true
-BUSINESS_DOMAIN_ENABLED ?= true
+BUSINESS_DOMAIN_ENABLED ?= false
 
 help:
 	@echo "operator-integration - available commands:"

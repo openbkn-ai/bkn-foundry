@@ -103,7 +103,7 @@ auth:
 
 # Business domain switch.
 businessDomain:
-  enabled: true
+  enabled: false
 
 depServices:
   class-443:
