@@ -110,6 +110,22 @@ func TestNetworkBuilderCanReadCompleteRecordForManagedKnowledgeNetwork(t *testin
 	}
 }
 
+func TestNetworkBuilderCanReadManagedNetworkRecordWithoutOwnerProjection(t *testing.T) {
+	profile := AccessProfile{
+		AccountActive:              true,
+		EffectiveSubjectID:         "builder-a",
+		Roles:                      []string{"network_builder"},
+		ManagedKnowledgeNetworkIDs: []string{"kn-a"},
+	}
+	record := RecordScope{KnowledgeNetworkIDs: []string{"kn-a"}}
+
+	for _, view := range []AccessView{AccessViewBusiness, AccessViewTechnical} {
+		if !CanReadRecord(profile, record, view) {
+			t.Fatalf("managed network scope must remain sufficient for %s records without an owner projection", view)
+		}
+	}
+}
+
 func TestNetworkBuilderTypeWideGrantDoesNotImplyBusinessContentAccess(t *testing.T) {
 	profile := AccessProfile{
 		AccountActive:      true,

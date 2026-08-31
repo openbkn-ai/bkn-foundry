@@ -43,11 +43,11 @@ func CanReadRecord(profile AccessProfile, record RecordScope, view AccessView) b
 
 	switch view {
 	case AccessViewBusiness:
-		return HasGlobalTraceAccess(profile) ||
-			validRecordBoundary(record) && (ownsRecord(profile, record) || managesRecordNetwork(profile, record))
+		return ownsRecord(profile, record) || managesRecordNetwork(profile, record) ||
+			HasGlobalTraceAccess(profile)
 	case AccessViewTechnical:
-		return HasGlobalTraceAccess(profile) ||
-			validRecordBoundary(record) && (ownsRecord(profile, record) || managesRecordNetwork(profile, record))
+		return ownsRecord(profile, record) || managesRecordNetwork(profile, record) ||
+			HasGlobalTraceAccess(profile)
 	case AccessViewSecurity:
 		return hasAnyRole(profile, "security", "super_admin")
 	case AccessViewAudit:
@@ -90,10 +90,6 @@ func defaultAccessView(view AccessView) AccessView {
 		return AccessViewBusiness
 	}
 	return view
-}
-
-func validRecordBoundary(record RecordScope) bool {
-	return record.EffectiveSubjectID != "" || record.ApplicationPrincipalID != ""
 }
 
 func ownsRecord(profile AccessProfile, record RecordScope) bool {
