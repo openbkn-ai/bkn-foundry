@@ -180,7 +180,7 @@ func TestBatchBuildWorkerExecuteBuild(t *testing.T) {
 				assert.Nil(t, params.FilterCondCfg)
 				return &interfaces.QueryResult{Total: 1, Entries: []map[string]any{{
 					"id":      int64(1),
-					"payload": []byte(`{"region":"cn"}`),
+					"payload": `{"region":"cn"}`,
 				}}}, nil
 			})
 		connector.EXPECT().Close(gomock.Any()).Return(nil)
