@@ -8,6 +8,9 @@ package projectiongrant
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -68,9 +71,81 @@ func TestVerifyRejectsExpiredOrWrongAudienceGrant(t *testing.T) {
 	}); err == nil {
 		t.Fatal("expired grant was accepted")
 	}
-	if _, err = Verify(token, map[string]ed25519.PublicKey{"key-1": publicKey}, VerifyOptions{
-		Now: now.Add(-2 * time.Hour), ExpectedIssuer: "trace-core-projection", ExpectedAudience: "another-service",
+	validToken, err := Sign(validClaims(now), privateKey)
+	if err != nil {
+		t.Fatalf("sign valid grant: %v", err)
+	}
+	if _, err = Verify(validToken, map[string]ed25519.PublicKey{"key-1": publicKey}, VerifyOptions{
+		Now: now.Add(time.Minute), ExpectedIssuer: "trace-core-projection", ExpectedAudience: "another-service",
 	}); err == nil {
 		t.Fatal("wrong audience grant was accepted")
 	}
+}
+
+func TestVerifyRequiresExplicitIssuerAndAudience(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	now := time.Date(2026, 8, 31, 1, 0, 0, 0, time.UTC)
+	token, err := Sign(validClaims(now), privateKey)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	if _, err = Verify(token, map[string]ed25519.PublicKey{"key-1": publicKey}, VerifyOptions{Now: now.Add(time.Minute)}); err == nil {
+		t.Fatal("verification without an expected issuer and audience was accepted")
+	}
+}
+
+func TestVerifyRejectsTamperedGrantAndInconsistentHeader(t *testing.T) {
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	now := time.Date(2026, 8, 31, 1, 0, 0, 0, time.UTC)
+	token, err := Sign(validClaims(now), privateKey)
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	options := VerifyOptions{Now: now.Add(time.Minute), ExpectedIssuer: "trace-core-projection", ExpectedAudience: "bkn-projection-read"}
+	for _, malformed := range []string{
+		token[:len(token)-1] + "x",
+		replaceHeaderField(t, token, "alg", "none"),
+		replaceHeaderField(t, token, "kid", "unknown"),
+	} {
+		if _, err = Verify(malformed, map[string]ed25519.PublicKey{"key-1": publicKey}, options); err == nil {
+			t.Fatalf("malformed grant was accepted: %q", malformed)
+		}
+	}
+}
+
+func validClaims(now time.Time) Claims {
+	return Claims{
+		Version: 1, Issuer: "trace-core-projection", KeyID: "key-1", Audience: "bkn-projection-read",
+		EventID: "event-1", InteractionID: "interaction-1", FactsHash: "hash", KnowledgeNetworkIDs: []string{"kn-1"},
+		IssuedAt: now, ExpiresAt: now.Add(time.Hour),
+	}
+}
+
+func replaceHeaderField(t *testing.T, token, field, value string) string {
+	t.Helper()
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatal("invalid test token")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatalf("decode header: %v", err)
+	}
+	var header map[string]string
+	if err = json.Unmarshal(raw, &header); err != nil {
+		t.Fatalf("unmarshal header: %v", err)
+	}
+	header[field] = value
+	raw, err = json.Marshal(header)
+	if err != nil {
+		t.Fatalf("marshal header: %v", err)
+	}
+	parts[0] = base64.RawURLEncoding.EncodeToString(raw)
+	return strings.Join(parts, ".")
 }

@@ -79,6 +79,9 @@ func Sign(claims Claims, privateKey ed25519.PrivateKey) (string, error) {
 }
 
 func Verify(token string, keys map[string]ed25519.PublicKey, options VerifyOptions) (Claims, error) {
+	if strings.TrimSpace(options.ExpectedIssuer) == "" || strings.TrimSpace(options.ExpectedAudience) == "" {
+		return Claims{}, errors.New("projection grant verification requires issuer and audience")
+	}
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return Claims{}, errors.New("projection grant has invalid compact encoding")
@@ -109,10 +112,10 @@ func Verify(token string, keys map[string]ed25519.PublicKey, options VerifyOptio
 	if claims.KeyID != head.KeyID {
 		return Claims{}, errors.New("projection grant key ID does not match header")
 	}
-	if options.ExpectedIssuer != "" && claims.Issuer != options.ExpectedIssuer {
+	if claims.Issuer != options.ExpectedIssuer {
 		return Claims{}, errors.New("projection grant issuer is invalid")
 	}
-	if options.ExpectedAudience != "" && claims.Audience != options.ExpectedAudience {
+	if claims.Audience != options.ExpectedAudience {
 		return Claims{}, errors.New("projection grant audience is invalid")
 	}
 	now := options.Now
