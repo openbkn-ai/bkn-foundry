@@ -21,7 +21,6 @@ const HistoricalProvenanceBuildRequestedEventType = "historical_provenance.build
 // caller credentials or mutable session state.
 type HistoricalProvenanceBuildRequest struct {
 	InteractionID       string              `json:"interaction_id"`
-	TenantID            string              `json:"tenant_id"`
 	FactsHash           string              `json:"facts_hash"`
 	KnowledgeNetworkIDs []string            `json:"knowledge_network_ids"`
 	Facts               []OperationCallFact `json:"facts"`
@@ -29,11 +28,10 @@ type HistoricalProvenanceBuildRequest struct {
 
 func NewHistoricalProvenanceBuildRequest(
 	interactionID string,
-	owner Owner,
 	facts []OperationCallFact,
 ) (HistoricalProvenanceBuildRequest, error) {
-	if interactionID == "" || owner.TenantID == "" {
-		return HistoricalProvenanceBuildRequest{}, errors.New("historical provenance scope is required")
+	if interactionID == "" {
+		return HistoricalProvenanceBuildRequest{}, errors.New("historical provenance interaction ID is required")
 	}
 	canonicalFacts := append([]OperationCallFact(nil), facts...)
 	slices.SortFunc(canonicalFacts, func(left, right OperationCallFact) int {
@@ -55,7 +53,6 @@ func NewHistoricalProvenanceBuildRequest(
 	sum := sha256.Sum256(canonical)
 	return HistoricalProvenanceBuildRequest{
 		InteractionID:       interactionID,
-		TenantID:            owner.TenantID,
 		FactsHash:           hex.EncodeToString(sum[:]),
 		KnowledgeNetworkIDs: explicitKnowledgeNetworkIDs(canonicalFacts),
 		Facts:               canonicalFacts,

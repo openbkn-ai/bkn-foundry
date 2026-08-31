@@ -6,6 +6,8 @@
 package sessionvo
 
 import (
+	"bytes"
+	"encoding/json"
 	"testing"
 	"time"
 )
@@ -20,9 +22,7 @@ func TestHistoricalProvenanceBuildRequestCanonicalizesFactsAndExplicitNetworks(t
 		{OperationID: "op-no-network", Attempt: 1, StartedAt: startedAt, ToolName: "run_sql", Input: mustInlinePayload(t, `{"query":"select 1"}`)},
 	}
 
-	request, err := NewHistoricalProvenanceBuildRequest("interaction-1", Owner{
-		TenantID: "tenant-1",
-	}, facts)
+	request, err := NewHistoricalProvenanceBuildRequest("interaction-1", facts)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
@@ -35,11 +35,16 @@ func TestHistoricalProvenanceBuildRequestCanonicalizesFactsAndExplicitNetworks(t
 	if request.FactsHash == "" {
 		t.Fatal("facts hash is required")
 	}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	if bytes.Contains(payload, []byte(`"tenant_id"`)) {
+		t.Fatalf("historical provenance request must not serialize tenant scope: %s", payload)
+	}
 
 	reversed := []OperationCallFact{facts[2], facts[0], facts[1]}
-	second, err := NewHistoricalProvenanceBuildRequest("interaction-1", Owner{
-		TenantID: "tenant-1",
-	}, reversed)
+	second, err := NewHistoricalProvenanceBuildRequest("interaction-1", reversed)
 	if err != nil {
 		t.Fatalf("build reversed request: %v", err)
 	}
