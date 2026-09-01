@@ -27,6 +27,32 @@ import (
 	"bkn-backend/interfaces"
 )
 
+const projectionGrantHeader = "X-BKN-Projection-Grant"
+
+// GetKNByProjectionGrant exports one current network for a sealed historical
+// projection build. It has no caller, tenant, or business-domain fallback.
+func (r *restHandler) GetKNByProjectionGrant(c *gin.Context) {
+	if r.projectionGrantVerifier == nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	knID := c.Param("kn_id")
+	if _, err := r.projectionGrantVerifier.Authorize(c.GetHeader(projectionGrantHeader), knID); err != nil {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	kn, err := r.kns.GetKNByID(c.Request.Context(), knID, interfaces.MAIN_BRANCH, interfaces.Mode_Export)
+	if err != nil {
+		if httpErr, ok := err.(*rest.HTTPError); ok {
+			rest.ReplyError(c, httpErr)
+			return
+		}
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	rest.ReplyOK(c, http.StatusOK, kn)
+}
+
 // Create knowledge networks (internal).
 func (r *restHandler) CreateKNByIn(c *gin.Context) {
 	logger.Debug("Handler CreateKNByIn Start")

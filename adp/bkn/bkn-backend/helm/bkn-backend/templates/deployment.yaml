@@ -87,6 +87,17 @@ spec:
             value: {{ .Values.bknSafe.url | quote }}
           - name: BKN_SAFE_BASE_URL
             value: {{ .Values.bknSafe.url | quote }}
+          {{- if .Values.bknTrace.projectionRead.enabled }}
+          - name: BKN_TRACE_PROJECTION_GRANT_ISSUER
+            value: {{ required "bknTrace.projectionRead.issuer is required when projection reads are enabled" .Values.bknTrace.projectionRead.issuer | quote }}
+          - name: BKN_TRACE_PROJECTION_GRANT_AUDIENCE
+            value: {{ required "bknTrace.projectionRead.audience is required when projection reads are enabled" .Values.bknTrace.projectionRead.audience | quote }}
+          - name: BKN_TRACE_PROJECTION_GRANT_PUBLIC_KEYS
+            valueFrom:
+              secretKeyRef:
+                name: {{ required "bknTrace.projectionRead.publicKeysSecretName is required when projection reads are enabled" .Values.bknTrace.projectionRead.publicKeysSecretName | quote }}
+                key: {{ .Values.bknTrace.projectionRead.publicKeysSecretKey | quote }}
+          {{- end }}
           {{- if .Values.bknTrace.evidence.ingestUrl }}
           - name: BKN_TRACE_EVIDENCE_INGEST_URL
             value: {{ .Values.bknTrace.evidence.ingestUrl | quote }}

@@ -235,6 +235,38 @@ paths:
           type: string
         in: path
         required: true
+  /api/bkn-backend/in/v1/trace/projection/knowledge-networks/{kn_id}:
+    get:
+      summary: Export one knowledge network for a sealed Trace projection
+      description: |
+        Internal Trace-only capability. The caller supplies a signed Ed25519
+        ProjectionReadGrant in X-BKN-Projection-Grant; it is not a user bearer
+        token. BKN verifies issuer, audience, key ID, expiry, signature and that
+        the exact path kn_id is in the grant. It never resolves user identity,
+        tenant, business domain, a list, or a reverse lookup. A missing, invalid,
+        expired, or non-matching grant returns 404.
+      parameters:
+        - name: kn_id
+          description: The single knowledge network explicitly authorized by the grant.
+          schema:
+            type: string
+          in: path
+          required: true
+        - name: X-BKN-Projection-Grant
+          description: Signed ProjectionReadGrant. Do not send an Authorization bearer token.
+          schema:
+            type: string
+          in: header
+          required: true
+      responses:
+        "200":
+          description: Current export of the authorized knowledge network.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/KnowledgeNetworkDetail"
+        "404":
+          description: Projection reads are disabled, the grant is invalid or does not authorize this network, or the network does not exist.
   /api/bkn-backend/v1/knowledge-networks/{kn_id}/validation:
     post:
       summary: Validate a business knowledge network
