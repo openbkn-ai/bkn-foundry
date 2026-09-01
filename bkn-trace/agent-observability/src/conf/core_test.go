@@ -6,9 +6,76 @@
 package conf
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"testing"
 	"time"
 )
+
+func TestCoreConfigRejectsMalformedProjectionGrantPrivateKey(t *testing.T) {
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY", "not-base64")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("malformed projection grant private key must be rejected")
+	}
+}
+
+func TestCoreConfigRejectsInvalidHistoricalProvenanceEnablement(t *testing.T) {
+	t.Setenv("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED", "sometimes")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("invalid historical provenance enablement must be rejected")
+	}
+}
+
+func TestCoreConfigRequiresProjectionForHistoricalProvenance(t *testing.T) {
+	t.Setenv("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED", "true")
+	t.Setenv("BKN_TRACE_PROJECTION_ENABLED", "false")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("historical provenance must require Core projection")
+	}
+}
+
+func TestCoreConfigRejectsProjectionGrantTTLShorterThanAutomaticRetryWindow(t *testing.T) {
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_TTL", "1m")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("projection grant TTL shorter than the automatic retry window must be rejected")
+	}
+}
+
+func TestCoreConfigRejectsProjectionGrantPrivateKeyWithoutGrantIdentity(t *testing.T) {
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY", validProjectionGrantPrivateKey())
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("projection grant private key without issuer, key ID, and audience must be rejected")
+	}
+}
+
+func TestCoreConfigParsesProjectionGrantTTLAndIdentity(t *testing.T) {
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY", validProjectionGrantPrivateKey())
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_ISSUER", "trace-core")
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_KEY_ID", "trace-key-2026-09")
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_AUDIENCE", "bkn-projection-read")
+	t.Setenv("BKN_TRACE_PROJECTION_GRANT_TTL", "24h5m")
+
+	config, err := NewCoreConfig()
+	if err != nil {
+		t.Fatalf("new core config: %v", err)
+	}
+	if config.ProjectionGrantTTL != 24*time.Hour+5*time.Minute ||
+		config.ProjectionGrantIssuer != "trace-core" ||
+		config.ProjectionGrantKeyID != "trace-key-2026-09" ||
+		config.ProjectionGrantAudience != "bkn-projection-read" {
+		t.Fatalf("unexpected projection grant config: %#v", config)
+	}
+}
+
+func validProjectionGrantPrivateKey() string {
+	privateKey := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	return base64.StdEncoding.EncodeToString(privateKey)
+}
 
 func TestCoreConfigRequiresExplicitMariaDBDSN(t *testing.T) {
 	t.Setenv("BKN_TRACE_CORE_STORE", "mariadb")

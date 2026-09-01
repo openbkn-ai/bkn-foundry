@@ -66,6 +66,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionsource"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isourcecoveragestore"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
@@ -189,8 +190,12 @@ func NewApp() (*App, error) {
 	}
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
 	provenanceHandler := enterpriseroute.HistoricalProvenanceHandler()
-	sessionService := sessionsvc.New(sessionStore, sessionsvc.Options{
-		EnableHistoricalProvenance: provenanceHandler != nil && coreConfig.ProjectionEnabled,
+	if coreConfig.HistoricalProvenanceEnabled && provenanceHandler == nil {
+		return nil, errors.New("historical provenance projection requires a registered enterprise handler")
+	}
+	historicalProvenanceEnabled := coreConfig.HistoricalProvenanceEnabled
+	sessionOptions := sessionsvc.Options{
+		EnableHistoricalProvenance: historicalProvenanceEnabled,
 		Capacity: sessionsvc.CapacityLimits{
 			MaxOperationsPerInteraction:   coreConfig.MaxOperationsPerInteraction,
 			MaxClaimsPerInteraction:       coreConfig.MaxClaimsPerInteraction,
@@ -203,7 +208,20 @@ func NewApp() (*App, error) {
 			return coreConfig.EvidenceCollectionState
 		},
 		Metrics: metrics,
-	})
+	}
+	if historicalProvenanceEnabled {
+		if len(coreConfig.ProjectionGrantPrivateKey) == 0 {
+			return nil, errors.New("historical provenance projection requires BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY")
+		}
+		sessionOptions.ProjectionGrantIssuer = coreConfig.ProjectionGrantIssuer
+		sessionOptions.ProjectionGrantKeyID = coreConfig.ProjectionGrantKeyID
+		sessionOptions.ProjectionGrantAudience = coreConfig.ProjectionGrantAudience
+		sessionOptions.ProjectionGrantTTL = coreConfig.ProjectionGrantTTL
+		sessionOptions.ProjectionGrantSigner = func(claims projectiongrant.Claims) (string, error) {
+			return projectiongrant.Sign(claims, coreConfig.ProjectionGrantPrivateKey)
+		}
+	}
+	sessionService := sessionsvc.New(sessionStore, sessionOptions)
 	archiveStore := archivesvc.NewMemoryStore()
 	if databaseStore, ok := sessionStore.(interface{ Database() *sql.DB }); ok {
 		archiveStore = archivestore.New(databaseStore.Database())

@@ -145,11 +145,26 @@ core:
   evidenceCollectionState: enabled
   projection:
     enabled: false
+    # Single runtime authority for signed historical-provenance projection.
+    # The EE image must register its handler when this is enabled.
+    historicalProvenance:
+      enabled: false
     index: bkn-trace-core
     interval: 1s
     # Rebuilding projections is an explicit maintenance operation. Leave empty
     # during normal startup so a rollout does not continuously rebuild indexes.
     rebuildVersion: ""
+    # Required only when historicalProvenance.enabled is true. The private key
+    # remains in an externally managed Secret.
+    grant:
+      issuer: trace-core-projection
+      keyID: trace-projection-key
+      audience: bkn-projection-read
+      # Covers the 24-hour automatic outbox retry window plus delivery margin.
+      # DLQ replay is intentionally not a grant-renewal path.
+      ttl: 24h5m
+      existingSecret: ""
+      privateKeyKey: private-key
   mariadb:
     existingSecret: bkn-trace-core-mariadb
     dsnKey: dsn

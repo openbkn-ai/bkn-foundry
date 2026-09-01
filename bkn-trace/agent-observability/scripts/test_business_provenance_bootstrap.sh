@@ -18,7 +18,10 @@ enabled="$(helm template agent-observability "${chart_dir}" \
     --set enterpriseBusinessProvenance.enabled=true \
     --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
     --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
-    --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer)"
+    --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer \
+    --set core.projection.enabled=true \
+    --set core.projection.historicalProvenance.enabled=true \
+    --set core.projection.grant.existingSecret=trace-projection-grant)"
 
 for required in \
     'name: agent-observability-business-provenance-bootstrap' \
@@ -28,12 +31,41 @@ for required in \
     'value: "http://bkn-safe:3000/api/safe/v1"' \
     'value: "http://bkn-agent:30800/api/bkn-agent/v1"' \
     'name: "bkn-agent-provenance-bootstrap"' \
-    'app.bootstrap.business_provenance'; do
+    'app.bootstrap.business_provenance' \
+    'name: BKN_TRACE_PROJECTION_GRANT_ISSUER' \
+    'value: "trace-core-projection"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_KEY_ID' \
+    'value: "trace-projection-key"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_AUDIENCE' \
+    'value: "bkn-projection-read"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_TTL' \
+    'value: "24h5m"' \
+    'name: "trace-projection-grant"' \
+    'key: "private-key"'; do
     grep -q "${required}" <<<"${enabled}" || {
         echo "rendered bootstrap Job missing: ${required}" >&2
         exit 1
     }
 done
+
+historical_only="$(helm template agent-observability "${chart_dir}" \
+    --set core.projection.enabled=true \
+    --set core.projection.historicalProvenance.enabled=true \
+    --set core.projection.grant.existingSecret=trace-projection-grant \
+    --show-only templates/deployment.yaml)"
+for required in \
+    'name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED' \
+    'name: BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY' \
+    'name: "trace-projection-grant"'; do
+    grep -q "${required}" <<<"${historical_only}" || {
+        echo "historical provenance configuration must not depend on bootstrap selection: ${required}" >&2
+        exit 1
+    }
+done
+grep -A1 'name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED' <<<"${historical_only}" | grep -q 'value: "true"' || {
+    echo "historical provenance enablement must render true next to its environment variable" >&2
+    exit 1
+}
 
 private_registry="$(helm template agent-observability "${chart_dir}" \
     --set image.registry=registry.internal/openbkn \

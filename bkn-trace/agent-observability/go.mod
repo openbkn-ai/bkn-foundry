@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/go-sql-driver/mysql v1.10.0
-	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.3
+	github.com/openbkn-ai/bkn-foundry/comm-go v0.1.4-0.20260831021942-4643567ee25d
 	github.com/swaggo/http-swagger/v2 v2.0.2
 	github.com/swaggo/swag v1.8.12
 	gopkg.in/yaml.v2 v2.4.0

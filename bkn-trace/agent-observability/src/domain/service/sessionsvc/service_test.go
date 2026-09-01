@@ -8,6 +8,7 @@ package sessionsvc_test
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -22,6 +23,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/icoremetrics"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/iprojectionoutbox"
 	"github.com/openbkn-ai/bkn-foundry/bkn-trace/agent-observability/src/port/driven/isessionstore"
+	"github.com/openbkn-ai/bkn-foundry/comm-go/projectiongrant"
 )
 
 const (
@@ -601,6 +603,7 @@ func TestTerminalInteractionEnqueuesImmutableHistoricalProvenanceBuildRequest(t 
 		t.Fatalf("lease outbox: %v", err)
 	}
 	var request sessionvo.HistoricalProvenanceBuildRequest
+	var eventID string
 	found := false
 	for _, item := range items {
 		if item.EventType != sessionvo.HistoricalProvenanceBuildRequestedEventType {
@@ -609,6 +612,7 @@ func TestTerminalInteractionEnqueuesImmutableHistoricalProvenanceBuildRequest(t 
 		if err := json.Unmarshal(item.Payload, &request); err != nil {
 			t.Fatalf("decode provenance request: %v", err)
 		}
+		eventID = item.EventID
 		found = true
 	}
 	if !found {
@@ -620,8 +624,48 @@ func TestTerminalInteractionEnqueuesImmutableHistoricalProvenanceBuildRequest(t 
 	if request.FactsHash == "" || len(request.Facts) != 1 || request.Facts[0].OperationID != operation.ID {
 		t.Fatalf("request does not contain sealed facts: %#v", request)
 	}
+	claims, err := projectiongrant.Verify(request.ProjectionReadGrant, map[string]ed25519.PublicKey{
+		"test-key": testHistoricalProvenanceGrantPrivateKey().Public().(ed25519.PublicKey),
+	}, projectiongrant.VerifyOptions{
+		Now: time.Now(), ExpectedIssuer: "trace-core", ExpectedAudience: "bkn-projection-read",
+	})
+	if err != nil {
+		t.Fatalf("verify projection read grant: %v", err)
+	}
+	if claims.EventID != eventID || claims.InteractionID != completed.ID || claims.FactsHash != request.FactsHash {
+		t.Fatalf("grant does not bind the terminal event facts: %#v", claims)
+	}
 	if bytes.Contains(itemPayloadForEvent(items, sessionvo.HistoricalProvenanceBuildRequestedEventType), []byte("Bearer")) {
 		t.Fatal("historical provenance request must not serialize a user bearer token")
+	}
+}
+
+func TestTerminalInteractionFailsClosedWithoutHistoricalProvenanceGrantSigner(t *testing.T) {
+	t.Parallel()
+
+	store := sessionstore.New()
+	service := sessionsvc.New(store, sessionsvc.Options{EnableHistoricalProvenance: true})
+	_, _, owner, _, interaction, operation, receipt := mustCreateOperationForService(t, store, service)
+	if _, _, err := service.CompleteOperationAttempt(context.Background(), sessionsvc.FinishAttemptCommand{
+		Owner: owner, OperationID: operation.ID, Attempt: operation.Attempt, ReceiptID: receipt.ID,
+		Output: operationOutput("ok"), EvidenceDurability: sessionvo.DurabilityDurable,
+		RequestID: "req-provenance-without-grant", TraceID: validTraceIDOne,
+	}); err != nil {
+		t.Fatalf("complete operation: %v", err)
+	}
+	if _, err := service.TerminateInteraction(context.Background(), sessionsvc.TerminateInteractionCommand{
+		Owner: owner, InteractionID: interaction.ID, Status: sessionvo.InteractionCompleted,
+		TerminalIdempotencyKey: "terminal-provenance-without-grant", LeaseToken: interaction.LeaseToken, LeaseEpoch: interaction.LeaseEpoch,
+		Manifest: sessionvo.ClosureManifest{Version: "1", CompletionReason: "answer_returned", ExpectedOperations: []sessionvo.ExpectedOperation{{OperationID: operation.ID, Required: true}}, ExpectedReceipts: []sessionvo.ExpectedReceipt{{ReceiptID: receipt.ID, Required: true}}},
+	}); err == nil {
+		t.Fatal("terminal interaction must fail closed when historical provenance has no projection grant signer")
+	}
+	items, err := store.Lease(context.Background(), 20, time.Minute)
+	if err != nil {
+		t.Fatalf("lease outbox: %v", err)
+	}
+	if payload := itemPayloadForEvent(items, sessionvo.HistoricalProvenanceBuildRequestedEventType); payload != nil {
+		t.Fatalf("unsigned historical provenance event must not be enqueued: %s", payload)
 	}
 }
 
@@ -2439,8 +2483,20 @@ func mustCreateOperationWithStore(t *testing.T) (*sessionstore.Store, *sessionsv
 func mustCreateOperationWithHistoricalProvenance(t *testing.T) (*sessionstore.Store, *sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
 	t.Helper()
 	store := sessionstore.New()
-	service := sessionsvc.New(store, sessionsvc.Options{EnableHistoricalProvenance: true})
+	service := sessionsvc.New(store, sessionsvc.Options{
+		EnableHistoricalProvenance: true,
+		ProjectionGrantIssuer:      "trace-core",
+		ProjectionGrantKeyID:       "test-key",
+		ProjectionGrantAudience:    "bkn-projection-read",
+		ProjectionGrantSigner: func(claims projectiongrant.Claims) (string, error) {
+			return projectiongrant.Sign(claims, testHistoricalProvenanceGrantPrivateKey())
+		},
+	})
 	return mustCreateOperationForService(t, store, service)
+}
+
+func testHistoricalProvenanceGrantPrivateKey() ed25519.PrivateKey {
+	return ed25519.NewKeyFromSeed(bytes.Repeat([]byte{1}, ed25519.SeedSize))
 }
 
 func mustCreateOperationForService(t *testing.T, store *sessionstore.Store, service *sessionsvc.Service) (*sessionstore.Store, *sessionsvc.Service, sessionvo.Owner, sessionvo.Conversation, sessionvo.Interaction, sessionvo.Operation, sessionvo.Receipt) {
