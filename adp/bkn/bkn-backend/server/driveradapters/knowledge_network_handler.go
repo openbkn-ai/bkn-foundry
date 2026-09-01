@@ -106,11 +106,6 @@ func (r *restHandler) CreateKN(c *gin.Context, visitor hydra.Visitor) {
 
 	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("创建业务知识网络请求参数: [%s,%v]", c.Request.RequestURI, kn))
-	if httpErr := rejectClientSpecifiedKNChildIDs(ctx, mode, &kn); httpErr != nil {
-		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-		rest.ReplyError(c, httpErr)
-		return
-	}
 
 	// Validate that the imported model is a knowledge network.
 	if kn.ModuleType != "" && kn.ModuleType != interfaces.MODULE_TYPE_KN {

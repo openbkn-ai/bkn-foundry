@@ -171,11 +171,6 @@ func (r *restHandler) CreateObjectTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Apply the branch from the URL to all requested object types.
 	for i := range objectTypes {
-		if httpErr := rejectClientSpecifiedChildIDs(ctx, mode, objectTypes[i].OTID); httpErr != nil {
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
 		objectTypes[i].KNID = knID
 		objectTypes[i].Branch = branch
 	}

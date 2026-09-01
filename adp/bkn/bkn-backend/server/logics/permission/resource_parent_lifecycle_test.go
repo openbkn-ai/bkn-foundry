@@ -17,7 +17,16 @@ import (
 )
 
 func TestPrepareKNChildResourceID(t *testing.T) {
-	id, err := PrepareKNChildResourceID(context.Background(), "", interfaces.ImportMode_Normal)
+	requestedID := "customer_object_id"
+	id, err := PrepareKNChildResourceID(context.Background(), requestedID, interfaces.ImportMode_Normal)
+	if err != nil {
+		t.Fatalf("PrepareKNChildResourceID() with a requested ID returned %v", err)
+	}
+	if id != requestedID {
+		t.Fatalf("PrepareKNChildResourceID() = %q, want requested ID %q", id, requestedID)
+	}
+
+	id, err = PrepareKNChildResourceID(context.Background(), "", interfaces.ImportMode_Normal)
 	if err != nil {
 		t.Fatalf("PrepareKNChildResourceID() error = %v", err)
 	}

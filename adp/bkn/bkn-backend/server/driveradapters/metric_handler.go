@@ -126,13 +126,6 @@ func (r *restHandler) CreateMetrics(c *gin.Context, vis hydra.Visitor) {
 		return
 	}
 	metrics := body.Entries
-	for _, metric := range metrics {
-		if httpErr := rejectClientSpecifiedChildIDs(ctx, mode, metric.ID); httpErr != nil {
-			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
-			rest.ReplyError(c, httpErr)
-			return
-		}
-	}
 
 	if err := ValidateMetricRequests(ctx, metrics, strictMode); err != nil {
 		var httpErr *rest.HTTPError

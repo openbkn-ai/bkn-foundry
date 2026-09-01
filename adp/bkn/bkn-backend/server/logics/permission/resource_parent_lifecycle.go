@@ -206,7 +206,7 @@ func logAuthorizationCleanupFailure(cleanupKind, resourceType, resourceID, paren
 		"error", err.Error())
 }
 
-// PrepareKNChildResourceID generates missing IDs and validates IDs retained by internal import flows.
+// PrepareKNChildResourceID preserves valid client-provided IDs and generates an ID when omitted.
 func PrepareKNChildResourceID(ctx context.Context, requestedID, _ string) (string, error) {
 	id := requestedID
 	if id == "" {
