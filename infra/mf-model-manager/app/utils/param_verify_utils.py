@@ -13,7 +13,7 @@ from app.dao.prompt_dao import prompt_dao
 # Validate parameters for adding a model.
 
 
-async def llm_add_verify(schema_para, userId):
+async def llm_add_verify(schema_para, userId, check_duplicate=True):
     # model_name
     model_name = schema_para.get("model_name", "")
     if not isinstance(model_name, str) or model_name == "":
@@ -89,8 +89,8 @@ async def llm_add_verify(schema_para, userId):
         if "quota" in schema_para.keys() and schema_para["quota"] is not True and schema_para["quota"] is not False:
             raise RequestValidationError([{"loc": ('body', "quota"), "type": "value_error.type_error"}])
         api_key = schema_para['model_config'].get("api_key", None)
-        if llm_model_dao.check_model_unique(schema_para['model_config']["api_url"],
-                                            schema_para['model_config']["api_model"], userId, api_key):
+        if check_duplicate and llm_model_dao.check_model_unique(schema_para['model_config']["api_url"],
+                                                                schema_para['model_config']["api_model"], userId, api_key):
             error_dict = LLMAdd2Error.copy()
             error_dict["code"] = "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat"
             return error_with_message(

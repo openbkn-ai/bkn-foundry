@@ -14,10 +14,14 @@ class TestAddModel(TestCase):
     def setUp(self) -> None:
         self.name_check = small_model_dao.name_check
         self.add_model_with_default = small_model_dao.add_model_with_default
+        self.find_model_by_duplicate_config = small_model_dao.find_model_by_duplicate_config
+        self.check_single_permission = small_model_controller.permission_manager.check_single_permission
 
     def tearDown(self) -> None:
         small_model_dao.name_check = self.name_check
         small_model_dao.add_model_with_default = self.add_model_with_default
+        small_model_dao.find_model_by_duplicate_config = self.find_model_by_duplicate_config
+        small_model_controller.permission_manager.check_single_permission = self.check_single_permission
         StandLogger.stand_log_shutdown()
 
     def test_add_model_success(self):
@@ -25,6 +29,7 @@ class TestAddModel(TestCase):
         asyncio.set_event_loop(loop)
         small_model_dao.name_check = mock.Mock(return_value=[])
         small_model_dao.add_model_with_default = mock.Mock(return_value=True)
+        small_model_dao.find_model_by_duplicate_config = mock.Mock(return_value=None)
         para = logics.AddExternalSmallModel(
             model_name="1",
             model_type="embedding",
@@ -38,6 +43,47 @@ class TestAddModel(TestCase):
         self.assertEqual(isinstance(json.loads(res.body)["id"], str), True)
         self.assertTrue(json.loads(res.body)["default"])
         self.assertFalse(small_model_dao.add_model_with_default.call_args.args[-1])
+
+    def test_add_model_returns_duplicate_identity_without_changing_default(self):
+        small_model_dao.name_check = mock.Mock(return_value=[])
+        small_model_dao.find_model_by_duplicate_config = mock.Mock(return_value={
+            "id": "123", "name": "existing-name", "type": "embedding",
+        })
+        small_model_dao.add_model_with_default = mock.Mock()
+        small_model_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, True])
+        para = logics.AddExternalSmallModel(
+            model_name="new-name", model_type="embedding",
+            model_config={"api_url": "http://x", "api_model": "m"},
+            batch_size=16, max_tokens=512, embedding_dim=768, default=True,
+        )
+
+        response = asyncio.run(small_model_controller.add_model(para, "1", "zh", "user"))
+
+        body = json.loads(response.body)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(body["error_code"], "RESOURCE_EXISTED")
+        self.assertEqual(body["details"]["existing_model"]["type"], "embedding")
+        self.assertTrue(body["details"]["can_set_default"])
+        small_model_dao.add_model_with_default.assert_not_called()
+
+    def test_add_model_duplicate_reports_no_default_permission(self):
+        small_model_dao.name_check = mock.Mock(return_value=[])
+        small_model_dao.find_model_by_duplicate_config = mock.Mock(return_value={
+            "id": "123", "name": "existing-name", "type": "embedding",
+        })
+        small_model_dao.add_model_with_default = mock.Mock()
+        small_model_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, False])
+        para = logics.AddExternalSmallModel(
+            model_name="new-name", model_type="embedding",
+            model_config={"api_url": "http://x", "api_model": "m"},
+            batch_size=16, max_tokens=512, embedding_dim=768, default=True,
+        )
+
+        response = asyncio.run(small_model_controller.add_model(para, "1", "zh", "user"))
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(json.loads(response.body)["details"]["can_set_default"])
+        small_model_dao.add_model_with_default.assert_not_called()
 
 
 class TestVolcengineMultimodalEmbeddingRequest(TestCase):

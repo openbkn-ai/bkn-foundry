@@ -64,6 +64,19 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
                                                                       role=role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
+        duplicate_model = small_model_dao.find_model_by_duplicate_config(config_info)
+        if duplicate_model:
+            can_set_default = request.default and await can_manage_default_small_model(userId, role)
+            detail = "该模型配置已存在。" if can_set_default else "该模型配置已存在，且无权切换默认模型。"
+            return JSONResponse(status_code=409, content={
+                "code": "ModelFactory.ExternalSmallModel.AddModel.DuplicateConfig",
+                "error_code": "RESOURCE_EXISTED",
+                "description": "模型配置已存在。",
+                "detail": detail,
+                "solution": "请使用已有模型，或选择不同的模型配置。",
+                "existing_id": duplicate_model["id"],
+                "details": {"existing_model": duplicate_model, "can_set_default": can_set_default},
+            })
         if request.default and not await can_manage_default_small_model(userId, role):
             return JSONResponse(status_code=403, content=NotPermissionError)
         if base_config.AUTH_ENABLED:
@@ -413,10 +426,7 @@ async def set_default_model(model_para, userId, language, role):
         model_info = small_model_dao.get_model_info_by_id(model_id)
         if len(model_info) == 0:
             return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
-        permission = await permission_manager.check_single_permission(user_id=userId, resource_id=model_id,
-                                                                      operations="modify",
-                                                                      resource_type="small_model",
-                                                                      role=role)
+        permission = await can_manage_default_small_model(userId, role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
         if not set_default:

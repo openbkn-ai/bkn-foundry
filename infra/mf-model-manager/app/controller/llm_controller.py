@@ -63,13 +63,29 @@ async def add_model(schema_para, userId, language, role=""):
             "ModelFactory.Validation.BooleanParameter",
             parameter="default")
         return JSONResponse(status_code=400, content=error_dict)
-    if requested_default and not await can_manage_default_llm(userId, role):
-        return JSONResponse(status_code=403, content=NotPermissionError)
-    content = await llm_add_verify(schema_para, userId)
+    content = await llm_add_verify(schema_para, userId, check_duplicate=False)
     if content:
         StandLogger.error(content)
         content = content.copy()
         return JSONResponse(status_code=400, content=content)
+    duplicate_model = llm_model_dao.find_model_by_unique_config(
+        schema_para["model_config"]["api_url"], schema_para["model_config"]["api_model"],
+        schema_para["model_config"].get("api_key"),
+    )
+    if duplicate_model:
+        can_set_default = requested_default and await can_manage_default_llm(userId, role)
+        detail = "该模型配置已存在。" if can_set_default else "该模型配置已存在，且无权切换默认模型。"
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={
+            "code": "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat",
+            "error_code": "RESOURCE_EXISTED",
+            "description": "模型配置已存在。",
+            "detail": detail,
+            "solution": "请使用已有模型，或选择不同的模型配置。",
+            "existing_id": duplicate_model["id"],
+            "details": {"existing_model": duplicate_model, "can_set_default": can_set_default},
+        })
+    if requested_default and not await can_manage_default_llm(userId, role):
+        return JSONResponse(status_code=403, content=NotPermissionError)
     else:
         try:
             model_configs = schema_para['model_config']

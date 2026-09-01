@@ -17,6 +17,31 @@ para_dict = {
 
 
 class SmallModelDao:
+    @connect_execute_close_db
+    def find_model_by_duplicate_config(self, config_info: AddExternalSmallModelInfo, connection, cursor):
+        """Return only display-safe fields when a small-model configuration exists.
+
+        Model type is part of the identity so embedding and reranker defaults and
+        configurations remain fully isolated.
+        """
+        cursor.execute(
+            """select f_model_id, f_model_name, f_model_type, f_model_config, f_adapter, f_adapter_code
+               from t_small_model where f_model_type=%s""",
+            config_info.model_type,
+        )
+        expected_config = json.dumps(config_info.model_config, ensure_ascii=False, sort_keys=True)
+        for item in cursor.fetchall():
+            stored_config = json.dumps(json.loads(item["f_model_config"]), ensure_ascii=False, sort_keys=True)
+            stored_adapter = item["f_adapter"] in (1, True, "1")
+            if (stored_config == expected_config and stored_adapter == bool(config_info.adapter)
+                    and (item["f_adapter_code"] or "") == (config_info.adapter_code or "")):
+                return {
+                    "id": str(item["f_model_id"]),
+                    "name": item["f_model_name"],
+                    "type": item["f_model_type"],
+                }
+        return None
+
     @connect_execute_commit_close_db
     def add_model_info(self, config_info: AddExternalSmallModelInfo, userId, connection, cursor):
         sql = """insert into t_small_model(f_model_id, f_model_name, f_model_type, f_model_config, f_create_time, f_update_time,f_create_by,f_update_by,
