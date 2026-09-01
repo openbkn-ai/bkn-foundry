@@ -75,6 +75,8 @@ spec:
               value: {{ .Values.core.evidenceCollectionState | quote }}
             - name: BKN_TRACE_PROJECTION_ENABLED
               value: {{ ternary "true" "false" .Values.core.projection.enabled | quote }}
+            - name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED
+              value: {{ ternary "true" "false" .Values.core.projection.historicalProvenance.enabled | quote }}
             - name: BKN_TRACE_PROJECTION_INDEX
               value: {{ .Values.core.projection.index | quote }}
             - name: BKN_TRACE_PROJECTION_INTERVAL
@@ -83,7 +85,7 @@ spec:
             - name: BKN_TRACE_PROJECTION_REBUILD_VERSION
               value: {{ . | quote }}
             {{- end }}
-            {{- if and .Values.core.projection.enabled .Values.enterpriseBusinessProvenance.enabled }}
+            {{- if .Values.core.projection.historicalProvenance.enabled }}
             - name: BKN_TRACE_PROJECTION_GRANT_ISSUER
               value: {{ required "core.projection.grant.issuer is required for enterprise provenance projection" .Values.core.projection.grant.issuer | quote }}
             - name: BKN_TRACE_PROJECTION_GRANT_KEY_ID

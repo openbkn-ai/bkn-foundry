@@ -190,7 +190,10 @@ func NewApp() (*App, error) {
 	}
 	logHandler := httphandler.NewLogHandler(logsvc.NewWithOptions(logSources, logOptions), evidenceHandler)
 	provenanceHandler := enterpriseroute.HistoricalProvenanceHandler()
-	historicalProvenanceEnabled := provenanceHandler != nil && coreConfig.ProjectionEnabled
+	if coreConfig.HistoricalProvenanceEnabled && provenanceHandler == nil {
+		return nil, errors.New("historical provenance projection requires a registered enterprise handler")
+	}
+	historicalProvenanceEnabled := coreConfig.HistoricalProvenanceEnabled
 	sessionOptions := sessionsvc.Options{
 		EnableHistoricalProvenance: historicalProvenanceEnabled,
 		Capacity: sessionsvc.CapacityLimits{

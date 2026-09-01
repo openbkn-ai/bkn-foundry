@@ -20,6 +20,7 @@ enabled="$(helm template agent-observability "${chart_dir}" \
     --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
     --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer \
     --set core.projection.enabled=true \
+    --set core.projection.historicalProvenance.enabled=true \
     --set core.projection.grant.existingSecret=trace-projection-grant)"
 
 for required in \
@@ -43,6 +44,22 @@ for required in \
     'key: "private-key"'; do
     grep -q "${required}" <<<"${enabled}" || {
         echo "rendered bootstrap Job missing: ${required}" >&2
+        exit 1
+    }
+done
+
+historical_only="$(helm template agent-observability "${chart_dir}" \
+    --set core.projection.enabled=true \
+    --set core.projection.historicalProvenance.enabled=true \
+    --set core.projection.grant.existingSecret=trace-projection-grant \
+    --show-only templates/deployment.yaml)"
+for required in \
+    'name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED' \
+    'value: "true"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY' \
+    'name: "trace-projection-grant"'; do
+    grep -q "${required}" <<<"${historical_only}" || {
+        echo "historical provenance configuration must not depend on bootstrap selection: ${required}" >&2
         exit 1
     }
 done

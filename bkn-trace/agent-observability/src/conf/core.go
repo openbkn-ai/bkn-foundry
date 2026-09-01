@@ -24,6 +24,7 @@ type CoreConfig struct {
 	AbandonInterval               time.Duration
 	OneShotIdleTTL                time.Duration
 	ProjectionEnabled             bool
+	HistoricalProvenanceEnabled   bool
 	ProjectionIndex               string
 	ProjectionInterval            time.Duration
 	ProjectionBootstrapVersion    string
@@ -65,6 +66,13 @@ func NewCoreConfig() (CoreConfig, error) {
 		autoMigrate = parsed
 	}
 	projectionEnabled, _ := strconv.ParseBool(strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_ENABLED")))
+	historicalProvenanceEnabled, err := optionalBoolEnv("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED")
+	if err != nil {
+		return CoreConfig{}, err
+	}
+	if historicalProvenanceEnabled && !projectionEnabled {
+		return CoreConfig{}, fmt.Errorf("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED requires BKN_TRACE_PROJECTION_ENABLED")
+	}
 	projectionInterval := time.Second
 	if configured := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_INTERVAL")); configured != "" {
 		if parsed, err := time.ParseDuration(configured); err == nil && parsed > 0 {
@@ -119,7 +127,7 @@ func NewCoreConfig() (CoreConfig, error) {
 	return CoreConfig{
 		Store: store, MariaDBDSN: strings.TrimSpace(os.Getenv("BKN_TRACE_CORE_MARIADB_DSN")),
 		AutoMigrate: autoMigrate, AbandonInterval: interval, OneShotIdleTTL: oneShotIdleTTL,
-		ProjectionEnabled: projectionEnabled, ProjectionIndex: projectionIndex,
+		ProjectionEnabled: projectionEnabled, HistoricalProvenanceEnabled: historicalProvenanceEnabled, ProjectionIndex: projectionIndex,
 		ProjectionInterval:            projectionInterval,
 		ProjectionBootstrapVersion:    projectionBootstrapVersion,
 		ProjectionRebuildVersion:      projectionRebuildVersion,
@@ -133,6 +141,18 @@ func NewCoreConfig() (CoreConfig, error) {
 		MaxClaimsPerInteraction:       maxClaimsPerInteraction,
 		MaxEvidenceRefsPerInteraction: maxEvidenceRefsPerInteraction,
 	}, nil
+}
+
+func optionalBoolEnv(name string) (bool, error) {
+	configured := strings.TrimSpace(os.Getenv(name))
+	if configured == "" {
+		return false, nil
+	}
+	parsed, err := strconv.ParseBool(configured)
+	if err != nil {
+		return false, fmt.Errorf("parse %s: %w", name, err)
+	}
+	return parsed, nil
 }
 
 func projectionGrantPrivateKeyFromEnv() (ed25519.PrivateKey, error) {

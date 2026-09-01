@@ -20,6 +20,23 @@ func TestCoreConfigRejectsMalformedProjectionGrantPrivateKey(t *testing.T) {
 	}
 }
 
+func TestCoreConfigRejectsInvalidHistoricalProvenanceEnablement(t *testing.T) {
+	t.Setenv("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED", "sometimes")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("invalid historical provenance enablement must be rejected")
+	}
+}
+
+func TestCoreConfigRequiresProjectionForHistoricalProvenance(t *testing.T) {
+	t.Setenv("BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED", "true")
+	t.Setenv("BKN_TRACE_PROJECTION_ENABLED", "false")
+
+	if _, err := NewCoreConfig(); err == nil {
+		t.Fatal("historical provenance must require Core projection")
+	}
+}
+
 func TestCoreConfigRejectsProjectionGrantTTLShorterThanAutomaticRetryWindow(t *testing.T) {
 	t.Setenv("BKN_TRACE_PROJECTION_GRANT_TTL", "1m")
 
