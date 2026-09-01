@@ -74,16 +74,23 @@ async def add_model(schema_para, userId, language, role=""):
     )
     if duplicate_model:
         can_set_default = requested_default and await can_manage_default_llm(userId, role)
-        detail = "该模型配置已存在。" if can_set_default else "该模型配置已存在，且无权切换默认模型。"
-        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={
+        can_reveal_existing = await permission_manager.check_display(
+            userId, role, "large_model", duplicate_model["id"])
+        if not can_reveal_existing:
+            can_set_default = False
+        message_key = ("ModelFactory.ModelConfigConflict.CanSetDefault" if can_set_default else
+                       "ModelFactory.ModelConfigConflict.NoDefaultPermission" if can_reveal_existing else
+                       "ModelFactory.ModelConfigConflict.Hidden")
+        conflict = error_with_message({
             "code": "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat",
             "error_code": "RESOURCE_EXISTED",
-            "description": "模型配置已存在。",
-            "detail": detail,
-            "solution": "请使用已有模型，或选择不同的模型配置。",
-            "existing_id": duplicate_model["id"],
-            "details": {"existing_model": duplicate_model, "can_set_default": can_set_default},
-        })
+            "description": "", "detail": "", "solution": "", "link": "",
+            "details": {"can_set_default": can_set_default, "can_reveal_existing": can_reveal_existing},
+        }, message_key)
+        if can_reveal_existing:
+            conflict["existing_id"] = duplicate_model["id"]
+            conflict["details"]["existing_model"] = duplicate_model
+        return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=conflict)
     if requested_default and not await can_manage_default_llm(userId, role):
         return JSONResponse(status_code=403, content=NotPermissionError)
     else:

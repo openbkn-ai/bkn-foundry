@@ -194,6 +194,10 @@ class TestAcceptLanguageResolver(unittest.TestCase):
                 "Model name already exists.", "模型名称已存在。"),
             "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat": (
                 "Model configuration already exists.", "模型配置已存在。"),
+            "ModelFactory.ModelConfigConflict.NoDefaultPermission": (
+                "Model configuration already exists.", "模型配置已存在。"),
+            "ModelFactory.ModelConfigConflict.Hidden": (
+                "Model configuration already exists.", "模型配置已存在。"),
         }
         for code, (english_description, chinese_description) in cases.items():
             with self.subTest(code=code):
@@ -205,6 +209,20 @@ class TestAcceptLanguageResolver(unittest.TestCase):
                 self.assertEqual(chinese["code"], code)
                 self.assertEqual(english["description"], english_description)
                 self.assertEqual(chinese["description"], chinese_description)
+
+    def test_duplicate_conflict_permission_detail_is_localized(self):
+        content = error_with_message(
+            {"code": "ModelFactory.ConnectController.LLMAdd.BaseAndModelRepeat",
+             "description": "", "detail": "", "solution": "", "link": ""},
+            "ModelFactory.ModelConfigConflict.NoDefaultPermission")
+
+        english, _ = localized_error_content(content, "en-US", 409)
+        chinese, _ = localized_error_content(content, "zh-CN", 409)
+
+        self.assertEqual(
+            english["detail"],
+            "An existing model has this configuration, but you are not allowed to switch the default model.")
+        self.assertEqual(chinese["detail"], "已有模型使用该配置，但你无权切换默认模型。")
 
     def test_sse_error_keeps_code_and_uses_request_locale(self):
         code = "ModelFactory.LLM.Error"

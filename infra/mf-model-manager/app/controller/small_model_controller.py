@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from app.commons.errors.codes import ParamValidationErrors
 from app.commons.i18n import get_error_message
+from app.commons.locale import error_with_message
 from app.commons.snow_id import worker
 from app.core.config import base_config
 from app.dao.small_model_dao import small_model_dao
@@ -67,16 +68,23 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
         duplicate_model = small_model_dao.find_model_by_duplicate_config(config_info)
         if duplicate_model:
             can_set_default = request.default and await can_manage_default_small_model(userId, role)
-            detail = "该模型配置已存在。" if can_set_default else "该模型配置已存在，且无权切换默认模型。"
-            return JSONResponse(status_code=409, content={
+            can_reveal_existing = await permission_manager.check_display(
+                userId, role, "small_model", duplicate_model["id"])
+            if not can_reveal_existing:
+                can_set_default = False
+            message_key = ("ModelFactory.ModelConfigConflict.CanSetDefault" if can_set_default else
+                           "ModelFactory.ModelConfigConflict.NoDefaultPermission" if can_reveal_existing else
+                           "ModelFactory.ModelConfigConflict.Hidden")
+            conflict = error_with_message({
                 "code": "ModelFactory.ExternalSmallModel.AddModel.DuplicateConfig",
                 "error_code": "RESOURCE_EXISTED",
-                "description": "模型配置已存在。",
-                "detail": detail,
-                "solution": "请使用已有模型，或选择不同的模型配置。",
-                "existing_id": duplicate_model["id"],
-                "details": {"existing_model": duplicate_model, "can_set_default": can_set_default},
-            })
+                "description": "", "detail": "", "solution": "", "link": "",
+                "details": {"can_set_default": can_set_default, "can_reveal_existing": can_reveal_existing},
+            }, message_key)
+            if can_reveal_existing:
+                conflict["existing_id"] = duplicate_model["id"]
+                conflict["details"]["existing_model"] = duplicate_model
+            return JSONResponse(status_code=409, content=conflict)
         if request.default and not await can_manage_default_small_model(userId, role):
             return JSONResponse(status_code=403, content=NotPermissionError)
         if base_config.AUTH_ENABLED:

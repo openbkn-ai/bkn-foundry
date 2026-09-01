@@ -25,7 +25,8 @@ class SmallModelDao:
         configurations remain fully isolated.
         """
         cursor.execute(
-            """select f_model_id, f_model_name, f_model_type, f_model_config, f_adapter, f_adapter_code
+            """select f_model_id, f_model_name, f_model_type, f_model_config, f_adapter, f_adapter_code,
+                      f_batch_size, f_max_tokens, f_embedding_dim
                from t_small_model where f_model_type=%s""",
             config_info.model_type,
         )
@@ -34,7 +35,10 @@ class SmallModelDao:
             stored_config = json.dumps(json.loads(item["f_model_config"]), ensure_ascii=False, sort_keys=True)
             stored_adapter = item["f_adapter"] in (1, True, "1")
             if (stored_config == expected_config and stored_adapter == bool(config_info.adapter)
-                    and (item["f_adapter_code"] or "") == (config_info.adapter_code or "")):
+                    and (item["f_adapter_code"] or "") == (config_info.adapter_code or "")
+                    and item["f_batch_size"] == config_info.batch_size
+                    and item["f_max_tokens"] == config_info.max_tokens
+                    and item["f_embedding_dim"] == config_info.embedding_dim):
                 return {
                     "id": str(item["f_model_id"]),
                     "name": item["f_model_name"],
