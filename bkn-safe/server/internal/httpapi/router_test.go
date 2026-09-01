@@ -40,6 +40,13 @@ func newTestServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB) {
 	return r, e, db
 }
 
+func seedEnabledUser(t *testing.T, db *gorm.DB, id string) {
+	t.Helper()
+	if err := db.Create(&model.User{ID: id, Account: id, Enabled: true}).Error; err != nil {
+		t.Fatalf("create enabled user %s: %v", id, err)
+	}
+}
+
 func do(t *testing.T, r *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
@@ -62,9 +69,10 @@ func TestHealth(t *testing.T) {
 }
 
 func TestAuthzCheckEndpoint(t *testing.T) {
-	r, e, _ := newTestServer(t)
+	r, e, db := newTestServer(t)
 	// grant app-admin agent:* use, bind user.
 	const role, user = "role-app", "u-1"
+	seedEnabledUser(t, db, user)
 	_ = e.GrantRolePermission(role, "agent", "*", "use")
 	_ = e.AssignRole(user, role)
 
@@ -189,6 +197,16 @@ func TestPolicyWriteWildcardGuard(t *testing.T) {
 			"resource":    map[string]string{"type": "agent", "id": "a-1"},
 			"operations":  []string{"*"},
 		}},
+		{"type-wide action execution", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "action_type", "id": "*"},
+			"operations":  []string{"execute"},
+		}},
+		{"pattern-wide action execution", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "action_type", "id": "kn-1/*"},
+			"operations":  []string{"execute"},
+		}},
 	}
 	for _, c := range refused {
 		t.Run("refuse "+c.name, func(t *testing.T) {
@@ -235,6 +253,11 @@ func TestPolicyWriteWildcardGuard(t *testing.T) {
 			"accessor_id": "u-1",
 			"resource":    map[string]string{"type": "agent", "id": "*"},
 			"operations":  []string{"use"},
+		}},
+		{"concrete action execution", map[string]any{
+			"accessor_id": "u-1",
+			"resource":    map[string]string{"type": "action_type", "id": "kn-1/action-1"},
+			"operations":  []string{"execute"},
 		}},
 	}
 	for _, c := range allowed {

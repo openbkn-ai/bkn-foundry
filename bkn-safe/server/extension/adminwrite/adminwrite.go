@@ -66,6 +66,7 @@ var (
 	// sentinel through errors.Is.
 	ErrNoUpdatableFields      = fmt.Errorf("%w: no updatable fields provided", ErrInvalid)
 	ErrWildcardGrant          = fmt.Errorf("%w: wildcard grant", ErrInvalid)
+	ErrTypeWideActionExecute  = fmt.Errorf("%w: type-wide action execute", ErrInvalid)
 	ErrAdminConsolePermission = fmt.Errorf("%w: admin console permission", ErrForbidden)
 )
 
@@ -104,7 +105,8 @@ type Services interface {
 	// DeleteRole deletes a custom role and purges its bindings and grants.
 	DeleteRole(ctx context.Context, id string) error
 	// GrantRolePermission grants a custom role an op over a resource pattern.
-	// Refuses wildcard types/ops and the admin-console capability (ErrInvalid).
+	// Refuses wildcard types/ops, type-wide action_type/execute, and the
+	// admin-console capability.
 	GrantRolePermission(ctx context.Context, roleID, resourceType, resourceID, op string) error
 	// RevokeRolePermission revokes one operation from a custom role.
 	//

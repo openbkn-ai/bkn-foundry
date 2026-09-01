@@ -64,6 +64,9 @@ func newAdminServer(t *testing.T) (*gin.Engine, *authz.Enforcer, *gorm.DB, *auth
 		t.Fatalf("grant super-admin: %v", err)
 	}
 	users := auth.NewUserStore(db)
+	if err := db.Create(&model.User{ID: adminSub, Account: adminSub, Enabled: true}).Error; err != nil {
+		t.Fatalf("create admin account: %v", err)
+	}
 	// Mount the rbac_basic write routes for the test. In production only the
 	// enterprise build registers a mounter; a community deployment registers
 	// none and the routes 404. These tests are about the RBAC + guarded-service
@@ -177,7 +180,7 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 	grantRoleOps(t, e, auditRole, "admin-audit", "view")
 	grantRoleOps(t, e, adminRole, "admin-audit", "view")
 
-	for _, userID := range []string{adminUser, securityUser, auditUser, "target-user"} {
+	for _, userID := range []string{adminUser, securityUser, auditUser, "target-user", "grant-target-user"} {
 		if err := users.CreateLocalUser(ctx, &model.User{ID: userID, Account: userID, Name: userID, Enabled: true}, "pw-init0"); err != nil {
 			t.Fatalf("create user %s: %v", userID, err)
 		}
@@ -200,11 +203,11 @@ func TestThreeAdminRolesUseEndpointLevelPermissions(t *testing.T) {
 	// instance, and a role-permission grant over the whole catalog type.
 	seedCatalogOps(t, db, "catalog", "view_detail")
 	grantObject := gin.H{
-		"accessor_id": "target-user",
+		"accessor_id": "grant-target-user",
 		"resource":    gin.H{"type": "catalog", "id": "c1"},
 		"operations":  []string{"view_detail"},
 	}
-	revokeObject := gin.H{"accessor_id": "target-user", "resource": gin.H{"type": "catalog", "id": "c1"}}
+	revokeObject := gin.H{"accessor_id": "grant-target-user", "resource": gin.H{"type": "catalog", "id": "c1"}}
 	rolePermission := gin.H{"resource": gin.H{"type": "catalog", "id": "*"}, "operations": []string{"view_detail"}}
 	const (
 		rolePermsPath = "/api/safe/v1/admin/roles/target-role/permissions"
@@ -623,7 +626,7 @@ func TestUserListSearchAndFindByAccount(t *testing.T) {
 		Total int                     `json:"total"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &list)
-	if list.Total != 3 || len(list.Users) != 3 {
+	if list.Total != 4 || len(list.Users) != 4 {
 		t.Fatalf("list all: total=%d len=%d", list.Total, len(list.Users))
 	}
 
@@ -854,10 +857,10 @@ func TestDepartmentMembershipWrite(t *testing.T) {
 }
 
 func TestAuditTrail(t *testing.T) {
-	r, _, db, userStore := newAdminServer(t)
-	if err := userStore.CreateLocalUser(t.Context(), &model.User{
-		ID: adminSub, Account: "admin", Name: "Administrator", Enabled: true,
-	}, "pw-init0"); err != nil {
+	r, _, db, _ := newAdminServer(t)
+	if err := db.Model(&model.User{}).Where("id = ?", adminSub).Updates(map[string]any{
+		"account": "admin", "name": "Administrator",
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 

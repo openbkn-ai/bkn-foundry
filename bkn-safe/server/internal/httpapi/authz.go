@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -22,6 +23,14 @@ var threeAdminRoleIDs = []string{
 	"d8998f72-ad03-11e8-aa06-000c29358ad6", // security
 	"def246f2-ad03-11e8-aa06-000c29358ad6", // audit
 }
+
+const (
+	resourceFilterRecommendedResourceChunkSize  = 200
+	resourceFilterRecommendedOperationChunkSize = 5
+	resourceFilterHardResourceLimit             = 500
+	resourceFilterHardOperationLimit            = 8
+	resourceFilterHardMatrixCellLimit           = 2000
+)
 
 // resourceRef is the clean { type, id } object reference used across the authz API.
 type resourceRef struct {
@@ -45,6 +54,15 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		if !bind(c, &req) {
 			return
 		}
+		active, err := activeAccount(c, db, req.AccessorID)
+		if err != nil {
+			replyPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !active {
+			c.JSON(http.StatusOK, gin.H{"allowed": false})
+			return
+		}
 		ok, err := e.Check(req.AccessorID, req.Resource.Type, req.Resource.ID, req.Operation)
 		if err != nil {
 			serverError(c, err)
@@ -61,6 +79,15 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			Resource   resourceRef `json:"resource" binding:"required"`
 		}
 		if !bind(c, &req) {
+			return
+		}
+		active, err := activeAccount(c, db, req.AccessorID)
+		if err != nil {
+			replyPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !active {
+			c.JSON(http.StatusOK, gin.H{"operations": []string{}})
 			return
 		}
 		candidates, err := catalogOps(db, req.Resource.Type)
@@ -94,9 +121,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	// made the resource visible. Omitting candidate_operations falls back to the
 	// resource type's catalog ops, as POST /operations does.
 	//
-	// Errors: 400 on a malformed body or a missing accessor_id; 500 on an engine
-	// failure. An empty resource list is not an error — it returns an empty
-	// result, so paginating callers need no special case.
+	// Duplicate resources and operations are collapsed in first-seen order.
+	// Errors: 400 on malformed input, 413 above the batch limits, 503 when account
+	// state cannot be read, and 500 on an engine failure. An empty resource list
+	// is not an error, so paginating callers need no special case.
 	g.POST("/resource-filter", func(c *gin.Context) {
 		var req struct {
 			AccessorID           string        `json:"accessor_id" binding:"required"`
@@ -109,6 +137,8 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		if !bind(c, &req) {
 			return
 		}
+		req.VisibilityOperations = uniqueStrings(req.VisibilityOperations)
+		req.CandidateOperations = uniqueStrings(req.CandidateOperations)
 		refs := make([]authz.ResourceRef, 0, len(req.Resources)+len(req.ResourceIDs))
 		for _, r := range req.Resources {
 			refs = append(refs, authz.ResourceRef{Type: r.Type, ID: r.ID})
@@ -121,6 +151,32 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			for _, id := range req.ResourceIDs {
 				refs = append(refs, authz.ResourceRef{Type: req.ResourceType, ID: id})
 			}
+		}
+		refs = uniqueResourceRefs(refs)
+		if len(refs) > resourceFilterHardResourceLimit {
+			replyResourceFilterTooLarge(c)
+			return
+		}
+		requestOperations := uniqueStrings(append(
+			append([]string{}, req.VisibilityOperations...),
+			req.CandidateOperations...,
+		))
+		if len(requestOperations) > resourceFilterHardOperationLimit {
+			replyResourceFilterTooLarge(c)
+			return
+		}
+		if len(req.CandidateOperations) > 0 && len(refs)*len(requestOperations) > resourceFilterHardMatrixCellLimit {
+			replyResourceFilterTooLarge(c)
+			return
+		}
+		active, err := activeAccount(c, db, req.AccessorID)
+		if err != nil {
+			replyPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !active {
+			c.JSON(http.StatusOK, gin.H{"resources": []gin.H{}})
+			return
 		}
 
 		// One evaluation pass for the whole batch — including mixed types — when
@@ -156,18 +212,38 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			}
 			byType[r.Type] = append(byType[r.Type], r)
 		}
+		catalogCandidates := make(map[string][]string, len(order))
+		matrixCells := 0
 		for _, rtype := range order {
 			candidates, err := catalogOps(db, rtype)
 			if err != nil {
 				serverError(c, err)
 				return
 			}
-			results, err := e.FilterResourceOps(req.AccessorID, byType[rtype], req.VisibilityOperations, candidates)
+			candidates = uniqueStrings(candidates)
+			operations := uniqueStrings(append(append([]string{}, req.VisibilityOperations...), candidates...))
+			matrixCells += len(byType[rtype]) * len(operations)
+			if len(operations) > resourceFilterHardOperationLimit || matrixCells > resourceFilterHardMatrixCellLimit {
+				replyResourceFilterTooLarge(c)
+				return
+			}
+			catalogCandidates[rtype] = candidates
+		}
+		resultsByResource := make(map[authz.ResourceRef]authz.FilteredResource, len(refs))
+		for _, rtype := range order {
+			results, err := e.FilterResourceOps(req.AccessorID, byType[rtype], req.VisibilityOperations, catalogCandidates[rtype])
 			if err != nil {
 				serverError(c, err)
 				return
 			}
-			appendResults(results)
+			for _, result := range results {
+				resultsByResource[authz.ResourceRef{Type: result.Type, ID: result.ID}] = result
+			}
+		}
+		for _, ref := range refs {
+			if result, ok := resultsByResource[ref]; ok {
+				appendResults([]authz.FilteredResource{result})
+			}
 		}
 		c.JSON(http.StatusOK, gin.H{"resources": out})
 	})
@@ -187,6 +263,10 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		// input validation is the only thing standing between a caller and an
 		// arbitrary policy row. It is staged deliberately — see policyGuard.
 		if err := rejectWildcardGrant(req.Resource.Type, req.Operations); err != nil {
+			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		if err := rejectTypeWideActionExecute(req.Resource.Type, req.Resource.ID, req.Operations); err != nil {
 			replyPublicError(c, http.StatusBadRequest)
 			return
 		}
@@ -251,6 +331,15 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 		op := c.Query("operation")
 		if accessorID == "" || rtype == "" || op == "" {
 			replyPublicError(c, http.StatusBadRequest)
+			return
+		}
+		active, err := activeAccount(c, db, accessorID)
+		if err != nil {
+			replyPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !active {
+			c.JSON(http.StatusOK, gin.H{"ids": []string{}})
 			return
 		}
 		ids, err := e.AccessibleResources(accessorID, rtype, op)
@@ -517,6 +606,22 @@ func rejectWildcardGrant(resourceType string, operations []string) error {
 	return nil
 }
 
+// rejectTypeWideActionExecute keeps execution authority instance-scoped. A KN
+// grant deliberately does not inherit to action_type/execute, and accepting an
+// action_type wildcard here would bypass that boundary for every Action Type,
+// including instances created later.
+func rejectTypeWideActionExecute(resourceType, resourceID string, operations []string) error {
+	if resourceType != "action_type" || !strings.Contains(resourceID, "*") {
+		return nil
+	}
+	for _, operation := range operations {
+		if operation == "execute" {
+			return errors.New("action_type/execute requires a concrete resource id")
+		}
+	}
+	return nil
+}
+
 // roleByID loads a role without writing an HTTP response; nil means not found.
 // (loadRole is the handler-facing variant that answers 404 itself.)
 func roleByID(c *gin.Context, db *gorm.DB, id string) (*model.Role, error) {
@@ -710,6 +815,58 @@ func accessorExists(c *gin.Context, db *gorm.DB, id string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// activeAccount reports whether id resolves to an enabled local account. Role,
+// department and group subjects are valid policy holders, but they are not
+// request actors and must not be accepted by decision endpoints as users.
+func activeAccount(c *gin.Context, db *gorm.DB, id string) (bool, error) {
+	var count int64
+	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
+		Where("id = ? AND enabled = ?", id, true).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func uniqueStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		if seen[value] {
+			continue
+		}
+		seen[value] = true
+		out = append(out, value)
+	}
+	return out
+}
+
+func uniqueResourceRefs(refs []authz.ResourceRef) []authz.ResourceRef {
+	out := make([]authz.ResourceRef, 0, len(refs))
+	seen := make(map[authz.ResourceRef]bool, len(refs))
+	for _, ref := range refs {
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		out = append(out, ref)
+	}
+	return out
+}
+
+func replyResourceFilterTooLarge(c *gin.Context) {
+	replyPublicErrorDetails(c, http.StatusRequestEntityTooLarge, gin.H{
+		"recommended_chunk": gin.H{
+			"resources":  resourceFilterRecommendedResourceChunkSize,
+			"operations": resourceFilterRecommendedOperationChunkSize,
+		},
+		"hard_limits": gin.H{
+			"resources":    resourceFilterHardResourceLimit,
+			"operations":   resourceFilterHardOperationLimit,
+			"matrix_cells": resourceFilterHardMatrixCellLimit,
+		},
+	})
 }
 
 // catalogOps returns the operation ids registered for a resource type.

@@ -116,7 +116,7 @@ func New(deps Deps) *gin.Engine {
 		meVerifier = newCachingVerifier(meVerifier, verifierCacheTTL)
 	}
 	if deps.Enforcer != nil && verifier != nil && deps.Users != nil && deps.Directory != nil {
-		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), RequireAdmin(verifier, deps.Enforcer))
+		admin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		// Audit every mutating admin request. Use() must precede the route
 		// registrations below: gin snapshots the group's handler chain at
 		// register time. The middleware sits after RequireAdmin, so it only runs
@@ -136,7 +136,7 @@ func New(deps Deps) *gin.Engine {
 		// register time — the relaxation has to be its own group or it would be
 		// no relaxation at all.
 		ownerDirectory := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(),
-			RequireAdminOrResourceOwner(verifier, deps.Enforcer))
+			RequireAdminOrResourceOwner(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			ownerDirectory.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}
@@ -157,7 +157,7 @@ func New(deps Deps) *gin.Engine {
 		// identifiable without any credential at all. Audit sits after the gate
 		// for the same reason: a hidden route must not produce a record shaped
 		// differently from a route that does not exist.
-		gatedAdmin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), adminwrite.Gate(), RequireAdmin(verifier, deps.Enforcer))
+		gatedAdmin := r.Group("/api/safe/v1/admin", sharedrest.PrivateNoCacheMiddleware(), adminwrite.Gate(), RequireAdmin(verifier, deps.Enforcer), RequireActiveAccount(deps.DB))
 		if deps.Audit != nil {
 			gatedAdmin.Use(auditMiddleware(deps.Audit, deps.Directory, deps.DB))
 		}

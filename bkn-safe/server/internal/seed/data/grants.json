@@ -152,8 +152,8 @@
       "role_name": "network_builder",
       "resource_type": "knowledge_network",
       "id_pattern": "*",
-      "_note": "无 authorize:构建者管得了每一张网,但「把某张网授权给谁」只有它的创建者(建网时写给创建者的对象授权里带 authorize)和平台管理员能做。类型级放开会让角色的每个成员都能把任意网络授出去,而 authorize 又只能由管理员收回。",
-      "operations": ["view_detail", "create", "modify", "delete", "query_data", "task_manage"]
+      "_note": "network_builder only holds type-wide create; all operations on an existing KN come from concrete instance grants.",
+      "operations": ["create"]
     },
     {
       "role_id": "1572fb82-526f-11f0-bde6-e674ec8dde71",

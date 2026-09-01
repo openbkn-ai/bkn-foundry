@@ -210,6 +210,7 @@ func TestOwnershipPushMakesCheckInherit(t *testing.T) {
 	r, e, db := newTestServer(t)
 	declareHierarchy(t, db)
 	const user = "u-1"
+	seedEnabledUser(t, db, user)
 	_ = e.GrantObjectPermission(user, "catalog", "cat-a", "resource_manage")
 
 	check := func() bool {

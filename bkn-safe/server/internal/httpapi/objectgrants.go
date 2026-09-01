@@ -517,7 +517,7 @@ func listGroupedObjectGrants(c *gin.Context, qdb *gorm.DB, groupBy, whereSQL str
 func isUserAccessor(c *gin.Context, db *gorm.DB, id string) (bool, error) {
 	var n int64
 	if err := db.WithContext(c.Request.Context()).Model(&model.User{}).
-		Where("id = ?", id).Count(&n).Error; err != nil {
+		Where("id = ? AND enabled = ?", id, true).Count(&n).Error; err != nil {
 		return false, err
 	}
 	return n > 0, nil
