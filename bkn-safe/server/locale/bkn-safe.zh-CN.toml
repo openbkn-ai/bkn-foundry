@@ -32,11 +32,6 @@ Description = "不支持当前请求方法。"
 Solution = "请使用接口支持的请求方法。"
 ErrorLink = ""
 
-[BknSafe.PayloadTooLarge]
-Description = "请求超过支持的批量限制。"
-Solution = "请将请求拆分为更小的批次后重试。"
-ErrorLink = ""
-
 [BknSafe.ServiceUnavailable]
 Description = "服务暂时不可用。"
 Solution = "请稍后重试。"

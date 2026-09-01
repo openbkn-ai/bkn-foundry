@@ -32,11 +32,6 @@ Description = "This request method is not supported."
 Solution = "Use a method supported by this endpoint."
 ErrorLink = ""
 
-[BknSafe.PayloadTooLarge]
-Description = "The request exceeds the supported batch limits."
-Solution = "Split the request into smaller batches and try again."
-ErrorLink = ""
-
 [BknSafe.ServiceUnavailable]
 Description = "The service is temporarily unavailable."
 Solution = "Try again later."

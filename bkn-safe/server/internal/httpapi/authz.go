@@ -24,14 +24,6 @@ var threeAdminRoleIDs = []string{
 	"def246f2-ad03-11e8-aa06-000c29358ad6", // audit
 }
 
-const (
-	resourceFilterRecommendedResourceChunkSize  = 200
-	resourceFilterRecommendedOperationChunkSize = 5
-	resourceFilterHardResourceLimit             = 500
-	resourceFilterHardOperationLimit            = 8
-	resourceFilterHardMatrixCellLimit           = 2000
-)
-
 // resourceRef is the clean { type, id } object reference used across the authz API.
 type resourceRef struct {
 	Type string `json:"type" binding:"required"`
@@ -122,9 +114,9 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 	// resource type's catalog ops, as POST /operations does.
 	//
 	// Duplicate resources and operations are collapsed in first-seen order.
-	// Errors: 400 on malformed input, 413 above the batch limits, 503 when account
-	// state cannot be read, and 500 on an engine failure. An empty resource list
-	// is not an error, so paginating callers need no special case.
+	// Errors: 400 on malformed input, 503 when account state cannot be read, and
+	// 500 on an engine failure. An empty resource list is not an error, so
+	// paginating callers need no special case.
 	g.POST("/resource-filter", func(c *gin.Context) {
 		var req struct {
 			AccessorID           string        `json:"accessor_id" binding:"required"`
@@ -153,22 +145,6 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			}
 		}
 		refs = uniqueResourceRefs(refs)
-		if len(refs) > resourceFilterHardResourceLimit {
-			replyResourceFilterTooLarge(c)
-			return
-		}
-		requestOperations := uniqueStrings(append(
-			append([]string{}, req.VisibilityOperations...),
-			req.CandidateOperations...,
-		))
-		if len(requestOperations) > resourceFilterHardOperationLimit {
-			replyResourceFilterTooLarge(c)
-			return
-		}
-		if len(req.CandidateOperations) > 0 && len(refs)*len(requestOperations) > resourceFilterHardMatrixCellLimit {
-			replyResourceFilterTooLarge(c)
-			return
-		}
 		active, err := activeAccount(c, db, req.AccessorID)
 		if err != nil {
 			replyPublicError(c, http.StatusServiceUnavailable)
@@ -213,7 +189,6 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 			byType[r.Type] = append(byType[r.Type], r)
 		}
 		catalogCandidates := make(map[string][]string, len(order))
-		matrixCells := 0
 		for _, rtype := range order {
 			candidates, err := catalogOps(db, rtype)
 			if err != nil {
@@ -221,12 +196,6 @@ func registerAuthz(r *gin.Engine, e *authz.Enforcer, db *gorm.DB) {
 				return
 			}
 			candidates = uniqueStrings(candidates)
-			operations := uniqueStrings(append(append([]string{}, req.VisibilityOperations...), candidates...))
-			matrixCells += len(byType[rtype]) * len(operations)
-			if len(operations) > resourceFilterHardOperationLimit || matrixCells > resourceFilterHardMatrixCellLimit {
-				replyResourceFilterTooLarge(c)
-				return
-			}
 			catalogCandidates[rtype] = candidates
 		}
 		resultsByResource := make(map[authz.ResourceRef]authz.FilteredResource, len(refs))
@@ -853,20 +822,6 @@ func uniqueResourceRefs(refs []authz.ResourceRef) []authz.ResourceRef {
 		out = append(out, ref)
 	}
 	return out
-}
-
-func replyResourceFilterTooLarge(c *gin.Context) {
-	replyPublicErrorDetails(c, http.StatusRequestEntityTooLarge, gin.H{
-		"recommended_chunk": gin.H{
-			"resources":  resourceFilterRecommendedResourceChunkSize,
-			"operations": resourceFilterRecommendedOperationChunkSize,
-		},
-		"hard_limits": gin.H{
-			"resources":    resourceFilterHardResourceLimit,
-			"operations":   resourceFilterHardOperationLimit,
-			"matrix_cells": resourceFilterHardMatrixCellLimit,
-		},
-	})
 }
 
 // catalogOps returns the operation ids registered for a resource type.

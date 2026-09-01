@@ -20,7 +20,6 @@ const (
 	NotFound           = "BknSafe.NotFound"
 	Conflict           = "BknSafe.Conflict"
 	MethodNotAllowed   = "BknSafe.MethodNotAllowed"
-	PayloadTooLarge    = "BknSafe.PayloadTooLarge"
 	ServiceUnavailable = "BknSafe.ServiceUnavailable"
 	InternalError      = "BknSafe.InternalError"
 
@@ -40,7 +39,6 @@ var (
 		NotFound,
 		Conflict,
 		MethodNotAllowed,
-		PayloadTooLarge,
 		ServiceUnavailable,
 		InternalError,
 		AdminWriteInvalid,
@@ -77,8 +75,6 @@ func ForStatus(status int) string {
 		return Conflict
 	case http.StatusMethodNotAllowed:
 		return MethodNotAllowed
-	case http.StatusRequestEntityTooLarge:
-		return PayloadTooLarge
 	case http.StatusServiceUnavailable:
 		return ServiceUnavailable
 	default:

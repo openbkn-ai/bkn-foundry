@@ -307,63 +307,29 @@ func TestResourceFilterDeduplicatesAndPreservesFirstSeenOrder(t *testing.T) {
 		"candidate_operations":  []string{"view_detail", "query_data", "modify", "delete", "authorize"},
 	})
 	if w.Code != http.StatusOK {
-		t.Fatalf("duplicates above raw limits must be judged after deduplication: %d %s", w.Code, w.Body.String())
+		t.Fatalf("large duplicate input should be accepted after deduplication: %d %s", w.Code, w.Body.String())
 	}
 }
 
-func TestResourceFilterBatchLimits(t *testing.T) {
+func TestResourceFilterDoesNotRejectLargeBatch(t *testing.T) {
 	r, _, db := newTestServer(t)
-	const user = "u-limits"
+	const user = "u-large-batch"
 	seedEnabledUser(t, db, user)
 
-	resources := func(n int) []map[string]string {
-		out := make([]map[string]string, 0, n)
-		for i := 0; i < n; i++ {
-			out = append(out, map[string]string{"type": "resource", "id": strconv.Itoa(i + 1)})
-		}
-		return out
+	resources := make([]map[string]string, 0, 501)
+	for i := 0; i < 501; i++ {
+		resources = append(resources, map[string]string{"type": "resource", "id": strconv.Itoa(i + 1)})
 	}
-	operations := func(n int) []string {
-		out := make([]string, 0, n)
-		for i := 0; i < n; i++ {
-			out = append(out, "op-"+strconv.Itoa(i+1))
-		}
-		return out
+	operations := make([]string, 0, 9)
+	for i := 0; i < 9; i++ {
+		operations = append(operations, "op-"+strconv.Itoa(i+1))
 	}
-	cases := []struct {
-		name           string
-		resourceCount  int
-		operationCount int
-		wantStatus     int
-	}{
-		{"default batch target", 200, 5, http.StatusOK},
-		{"hard resource boundary", 500, 4, http.StatusOK},
-		{"hard operation boundary", 250, 8, http.StatusOK},
-		{"over hard resources", 501, 1, http.StatusRequestEntityTooLarge},
-		{"over matrix cells", 401, 5, http.StatusRequestEntityTooLarge},
-		{"over hard operations", 1, 9, http.StatusRequestEntityTooLarge},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			w := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
-				"accessor_id":          user,
-				"resources":            resources(tc.resourceCount),
-				"candidate_operations": operations(tc.operationCount),
-			})
-			if w.Code != tc.wantStatus {
-				t.Fatalf("status = %d, want %d: %s", w.Code, tc.wantStatus, w.Body.String())
-			}
-			if tc.wantStatus == http.StatusRequestEntityTooLarge {
-				var body struct {
-					ErrorDetails map[string]any `json:"error_details"`
-				}
-				if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-					t.Fatalf("decode 413 response: %v", err)
-				}
-				if body.ErrorDetails["recommended_chunk"] == nil || body.ErrorDetails["hard_limits"] == nil {
-					t.Fatalf("413 details = %v, want recommended_chunk and hard_limits", body.ErrorDetails)
-				}
-			}
-		})
+	w := do(t, r, http.MethodPost, "/api/safe/v1/authz/resource-filter", map[string]any{
+		"accessor_id":          user,
+		"resources":            resources,
+		"candidate_operations": operations,
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("large batch status = %d, want 200: %s", w.Code, w.Body.String())
 	}
 }
