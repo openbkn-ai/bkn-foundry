@@ -83,6 +83,21 @@ spec:
             - name: BKN_TRACE_PROJECTION_REBUILD_VERSION
               value: {{ . | quote }}
             {{- end }}
+            {{- if and .Values.core.projection.enabled .Values.enterpriseBusinessProvenance.enabled }}
+            - name: BKN_TRACE_PROJECTION_GRANT_ISSUER
+              value: {{ required "core.projection.grant.issuer is required for enterprise provenance projection" .Values.core.projection.grant.issuer | quote }}
+            - name: BKN_TRACE_PROJECTION_GRANT_KEY_ID
+              value: {{ required "core.projection.grant.keyID is required for enterprise provenance projection" .Values.core.projection.grant.keyID | quote }}
+            - name: BKN_TRACE_PROJECTION_GRANT_AUDIENCE
+              value: {{ required "core.projection.grant.audience is required for enterprise provenance projection" .Values.core.projection.grant.audience | quote }}
+            - name: BKN_TRACE_PROJECTION_GRANT_TTL
+              value: {{ required "core.projection.grant.ttl is required for enterprise provenance projection" .Values.core.projection.grant.ttl | quote }}
+            - name: BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "core.projection.grant.existingSecret is required for enterprise provenance projection" .Values.core.projection.grant.existingSecret | quote }}
+                  key: {{ .Values.core.projection.grant.privateKeyKey | quote }}
+            {{- end }}
             {{- if eq .Values.core.store "mariadb" }}
             - name: BKN_TRACE_CORE_MARIADB_DSN
               valueFrom:

@@ -18,7 +18,9 @@ enabled="$(helm template agent-observability "${chart_dir}" \
     --set enterpriseBusinessProvenance.enabled=true \
     --set enterpriseBusinessProvenance.agentURL=http://bkn-agent:30800 \
     --set enterpriseBusinessProvenance.agentID=business_provenance_optimizer \
-    --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer)"
+    --set enterpriseBusinessProvenance.agentName=BusinessProvenanceOptimizer \
+    --set core.projection.enabled=true \
+    --set core.projection.grant.existingSecret=trace-projection-grant)"
 
 for required in \
     'name: agent-observability-business-provenance-bootstrap' \
@@ -28,7 +30,17 @@ for required in \
     'value: "http://bkn-safe:3000/api/safe/v1"' \
     'value: "http://bkn-agent:30800/api/bkn-agent/v1"' \
     'name: "bkn-agent-provenance-bootstrap"' \
-    'app.bootstrap.business_provenance'; do
+    'app.bootstrap.business_provenance' \
+    'name: BKN_TRACE_PROJECTION_GRANT_ISSUER' \
+    'value: "trace-core-projection"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_KEY_ID' \
+    'value: "trace-projection-key"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_AUDIENCE' \
+    'value: "bkn-projection-read"' \
+    'name: BKN_TRACE_PROJECTION_GRANT_TTL' \
+    'value: "24h5m"' \
+    'name: "trace-projection-grant"' \
+    'key: "private-key"'; do
     grep -q "${required}" <<<"${enabled}" || {
         echo "rendered bootstrap Job missing: ${required}" >&2
         exit 1

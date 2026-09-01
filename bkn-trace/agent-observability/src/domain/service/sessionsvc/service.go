@@ -29,8 +29,11 @@ import (
 var ErrInvalidOwner = errors.New("trusted conversation owner is incomplete")
 
 const (
-	defaultAssemblyTimeout    = 5 * time.Minute
-	defaultProjectionGrantTTL = 5 * time.Minute
+	defaultAssemblyTimeout = 5 * time.Minute
+	// The grant travels in an at-least-once outbox payload. It must remain
+	// usable throughout the worker's 24-hour automatic retry window, plus a
+	// small delivery margin. DLQ replay is deliberately not a grant renewal path.
+	defaultProjectionGrantTTL = 24*time.Hour + 5*time.Minute
 )
 
 type CapacityLimits struct {

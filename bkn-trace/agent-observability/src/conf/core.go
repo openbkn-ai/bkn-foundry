@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+const minimumProjectionGrantTTL = 24*time.Hour + 5*time.Minute
+
 type CoreConfig struct {
 	Store                         string
 	MariaDBDSN                    string
@@ -77,11 +79,11 @@ func NewCoreConfig() (CoreConfig, error) {
 	projectionGrantIssuer := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_ISSUER"))
 	projectionGrantKeyID := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_KEY_ID"))
 	projectionGrantAudience := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_AUDIENCE"))
-	projectionGrantTTL := 5 * time.Minute
+	projectionGrantTTL := minimumProjectionGrantTTL
 	if configured := strings.TrimSpace(os.Getenv("BKN_TRACE_PROJECTION_GRANT_TTL")); configured != "" {
 		parsed, err := time.ParseDuration(configured)
-		if err != nil || parsed <= 0 {
-			return CoreConfig{}, fmt.Errorf("BKN_TRACE_PROJECTION_GRANT_TTL must be a positive duration")
+		if err != nil || parsed < minimumProjectionGrantTTL {
+			return CoreConfig{}, fmt.Errorf("BKN_TRACE_PROJECTION_GRANT_TTL must be at least %s", minimumProjectionGrantTTL)
 		}
 		projectionGrantTTL = parsed
 	}
