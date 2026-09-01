@@ -8,6 +8,7 @@ package drivenadapters
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net/http"
@@ -154,7 +155,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	}
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
-	header := common.GetHeaderForChildOperation(ctx, "ontology.object.query", 1)
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", objectQueryIdentity(uri+"?"+query.Encode(), req))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
@@ -172,6 +173,17 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	}
 	resolveTotalCount(req, resp)
 	return
+}
+
+func objectQueryIdentity(target string, req *interfaces.QueryObjectInstancesReq) string {
+	encoded, err := sonic.ConfigStd.Marshal(struct {
+		Target string                              `json:"target"`
+		Body   *interfaces.QueryObjectInstancesReq `json:"body"`
+	}{Target: target, Body: req})
+	if err != nil {
+		return "marshal-error"
+	}
+	return fmt.Sprintf("sha256:%x", sha256.Sum256(encoded))
 }
 
 // resolveTotalCount recovers the "zero hits" case that the wire format cannot carry.
