@@ -22,7 +22,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/logger"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "bkn-backend/bkn-specification/bkn"
@@ -150,6 +149,12 @@ func (ms *metricService) deleteDatasetDocs(ctx context.Context, knID string, bra
 func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries []*interfaces.MetricDefinition, strictMode bool, importMode string) (ids []string, err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CreateMetrics")
 	defer span.End()
+	ctx, parentTracker, trackerOwner := permission.WithResourceParentTracker(ctx)
+	defer func() {
+		if trackerOwner && err != nil {
+			_ = parentTracker.Cleanup(ctx, ms.ps)
+		}
+	}()
 
 	if len(entries) == 0 {
 		return nil, rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_InvalidParameter_RequestBody).
@@ -204,10 +209,12 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 	}
 
 	for _, m := range entries {
-		if strings.TrimSpace(m.ID) == "" {
-			m.ID = xid.New().String()
-		} else {
-			m.ID = strings.TrimSpace(m.ID)
+		m.ID, err = permission.PrepareKNChildResourceID(ctx, m.ID, importMode)
+		if err != nil {
+			return nil, err
+		}
+		if err = permission.ValidateKNChildAuthorizationIDs(ctx, m.KnID, []string{m.ID}); err != nil {
+			return nil, err
 		}
 		m.Creator = accountInfo
 		m.Updater = accountInfo
@@ -254,6 +261,17 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 		}
 		ids = append(ids, def.ID)
 	}
+	createdIDs := make([]string, 0, len(creates))
+	for _, def := range creates {
+		createdIDs = append(createdIDs, def.ID)
+	}
+	parentItems := interfaces.KNChildResourceParents(entries[0].KnID, createdIDs)
+	if err = ms.ps.UpsertResourceParents(ctx, interfaces.RESOURCE_TYPE_METRIC,
+		interfaces.RESOURCE_TYPE_KN, parentItems); err != nil {
+		return nil, err
+	}
+	permission.TrackResourceParents(ctx, interfaces.RESOURCE_TYPE_METRIC,
+		interfaces.RESOURCE_TYPE_KN, parentItems)
 
 	err = ms.InsertDatasetData(ctx, creates)
 	if err != nil {
@@ -381,11 +399,7 @@ func (ms *metricService) GetMetricByID(ctx context.Context, knID, branch, metric
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetMetricByID")
 	defer span.End()
 
-	err := ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{metricID}); err != nil {
 		return nil, err
 	}
 
@@ -395,6 +409,11 @@ func (ms *metricService) GetMetricByID(ctx context.Context, knID, branch, metric
 			return nil, rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
 		}
 		return nil, rest.NewHTTPError(ctx, http.StatusInternalServerError, berrors.BknBackend_Metric_InternalError).WithErrorDetails(err.Error())
+	}
+	if err = ms.ps.CheckPermission(ctx,
+		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_METRIC, knID, metricID),
+		[]string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		return nil, err
 	}
 	span.SetStatus(codes.Ok, "")
 	return def, nil
@@ -478,11 +497,20 @@ func (ms *metricService) UpdateMetric(ctx context.Context, tx *sql.Tx, req *inte
 		return rest.NewHTTPError(ctx, http.StatusBadRequest, berrors.BknBackend_Metric_InvalidParameter).
 			WithErrorDetails(metricInvalidParameterDetail(ctx, "MetricIdentityRequired", nil))
 	}
+	if err = permission.ValidateKNChildAuthorizationIDs(ctx, knID, []string{metricID}); err != nil {
+		return err
+	}
+	_, exists, err := ms.CheckMetricExistByID(ctx, knID, branch, metricID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
+	}
 
-	err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
+	err = ms.ps.CheckPermission(ctx,
+		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_METRIC, knID, metricID),
+		[]string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
 	}
@@ -554,16 +582,39 @@ func (ms *metricService) UpdateMetric(ctx context.Context, tx *sql.Tx, req *inte
 func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knID, branch string, metricIDs []string) (err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeleteMetricsByIDs")
 	defer span.End()
+	if tx == nil {
+		var cleanupTracker *permission.AuthorizationCleanupTracker
+		var trackerOwner bool
+		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
+		defer func() {
+			if trackerOwner && err == nil {
+				_ = cleanupTracker.Cleanup(ctx, ms.ps)
+			}
+		}()
+	}
 
 	if len(metricIDs) == 0 {
 		return nil
 	}
 
-	err = ms.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
+	metricIDs = common.DuplicateSlice(metricIDs)
+	if err = permission.ValidateKNChildAuthorizationIDs(ctx, knID, metricIDs); err != nil {
+		return err
+	}
+	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
+	operation := interfaces.OPERATION_TYPE_MODIFY
+	if len(metricIDs) == 1 {
+		_, exists, checkErr := ms.CheckMetricExistByID(ctx, knID, branch, metricIDs[0])
+		if checkErr != nil {
+			return checkErr
+		}
+		if !exists {
+			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_Metric_NotFound)
+		}
+		resource = interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_METRIC, knID, metricIDs[0])
+		operation = interfaces.OPERATION_TYPE_DELETE
+	}
+	if err := ms.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
 		return err
 	}
 
@@ -608,6 +659,8 @@ func (ms *metricService) DeleteMetricsByIDs(ctx context.Context, tx *sql.Tx, knI
 	}
 
 	ms.deleteDatasetDocs(ctx, knID, branch, metricIDs)
+	permission.TrackKNChildAuthorizationCleanup(ctx,
+		interfaces.RESOURCE_TYPE_METRIC, knID, metricIDs)
 	return nil
 }
 
@@ -639,6 +692,8 @@ func (ms *metricService) DeleteMetricsByKnID(ctx context.Context, tx *sql.Tx, kn
 
 	ms.deleteDatasetDocs(ctx, knID, branch, ids)
 	logger.Infof("DeleteMetricsByKnID success, kn_id=%s branch=%s rows=%d metric_docs=%d", knID, branch, rowsAff, len(ids))
+	permission.TrackKNChildAuthorizationCleanup(ctx,
+		interfaces.RESOURCE_TYPE_METRIC, knID, ids)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

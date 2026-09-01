@@ -170,6 +170,11 @@ func (r *restHandler) CreateRelationTypes(c *gin.Context, visitor hydra.Visitor)
 
 	// Apply the branch from the URL to all requested relation types.
 	for i := range relationTypes {
+		if httpErr := rejectClientSpecifiedChildIDs(ctx, mode, relationTypes[i].RTID); httpErr != nil {
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
 		relationTypes[i].KNID = knID
 		relationTypes[i].Branch = branch
 	}

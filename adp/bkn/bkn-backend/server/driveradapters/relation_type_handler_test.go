@@ -65,7 +65,7 @@ func Test_RelationTypeRestHandler_CreateRelationTypes(t *testing.T) {
 
 		relationType := &interfaces.RelationType{
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-				RTID:               "rt1",
+				RTID:               "",
 				RTName:             "relation1",
 				SourceObjectTypeID: "ot1",
 				TargetObjectTypeID: "ot2",
@@ -673,7 +673,7 @@ func Test_RelationTypeRestHandler_HandleRelationTypeGetOverride(t *testing.T) {
 
 		relationType := &interfaces.RelationType{
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-				RTID:               "rt1",
+				RTID:               "",
 				RTName:             "relation1",
 				SourceObjectTypeID: "ot1",
 				TargetObjectTypeID: "ot2",
@@ -768,7 +768,7 @@ func Test_RelationTypeRestHandler_CreateRelationTypesByIn(t *testing.T) {
 
 		relationType := &interfaces.RelationType{
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-				RTID:               "rt1",
+				RTID:               "",
 				RTName:             "relation1",
 				SourceObjectTypeID: "ot1",
 				TargetObjectTypeID: "ot2",
@@ -953,7 +953,7 @@ func Test_RelationTypeRestHandler_HandleRelationTypeGetOverrideByIn(t *testing.T
 
 		relationType := &interfaces.RelationType{
 			RelationTypeWithKeyField: interfaces.RelationTypeWithKeyField{
-				RTID:               "rt1",
+				RTID:               "",
 				RTName:             "relation1",
 				SourceObjectTypeID: "ot1",
 				TargetObjectTypeID: "ot2",

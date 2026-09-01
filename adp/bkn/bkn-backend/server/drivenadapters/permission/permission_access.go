@@ -143,6 +143,20 @@ func (pa *permissionAccess) CheckPermission(ctx context.Context, check interface
 	return checkResult.Result, nil
 }
 
+func isKNChildResourceType(resourceType string) bool {
+	switch resourceType {
+	case interfaces.RESOURCE_TYPE_CONCEPT_GROUP,
+		interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.RESOURCE_TYPE_RELATION_TYPE,
+		interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		interfaces.RESOURCE_TYPE_METRIC,
+		interfaces.RESOURCE_TYPE_RISK_TYPE:
+		return true
+	default:
+		return false
+	}
+}
+
 // Create a policy.
 func (pa *permissionAccess) CreateResources(ctx context.Context, policies []interfaces.PermissionPolicy) error {
 	ctx, span := oteltrace.StartNamedClientSpan(ctx, "请求创建决策接口")
@@ -275,6 +289,18 @@ func (pa *permissionAccess) DeleteResources(ctx context.Context, res []interface
 
 	// Add trace attributes for a successful response.
 	oteltrace.AddHttpAttrs4Ok(span, respCode)
+	return nil
+}
+
+// UpsertResourceParents is a no-op for the legacy permission backend, which has
+// no instance hierarchy API. The bkn-safe and shadow adapters override it.
+func (pa *permissionAccess) UpsertResourceParents(_ context.Context, _, _ string,
+	_ []interfaces.PermissionResourceParent) error {
+	return nil
+}
+
+// DeleteResourceParents is a no-op for the legacy permission backend.
+func (pa *permissionAccess) DeleteResourceParents(_ context.Context, _ string, _ []string) error {
 	return nil
 }
 

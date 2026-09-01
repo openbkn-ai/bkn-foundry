@@ -23,7 +23,6 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/otellog"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/otel/oteltrace"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/rest"
-	"github.com/rs/xid"
 	"go.opentelemetry.io/otel/codes"
 
 	bknsdk "bkn-backend/bkn-specification/bkn"
@@ -168,12 +167,18 @@ func (ats *actionTypeService) validateActionSourceStrict(ctx context.Context, at
 	return nil
 }
 
-func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx, actionTypes []*interfaces.ActionType, mode string, strictMode bool) ([]string, error) {
+func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx, actionTypes []*interfaces.ActionType, mode string, strictMode bool) (ids []string, err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "CreateActionTypes")
 	defer span.End()
+	ctx, parentTracker, trackerOwner := permission.WithResourceParentTracker(ctx)
+	defer func() {
+		if trackerOwner && err != nil {
+			_ = parentTracker.Cleanup(ctx, ats.ps)
+		}
+	}()
 
 	// Check whether the user ID can modify the business knowledge network.
-	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
+	err = ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
 		Type: interfaces.RESOURCE_TYPE_KN,
 		ID:   actionTypes[0].KNID,
 	}, []string{interfaces.OPERATION_TYPE_MODIFY})
@@ -212,9 +217,12 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 
 	currentTime := time.Now().UnixMilli()
 	for _, actionType := range actionTypes {
-		// Generate a distributed ID when the submitted model ID is empty.
-		if actionType.ATID == "" {
-			actionType.ATID = xid.New().String()
+		actionType.ATID, err = permission.PrepareKNChildResourceID(ctx, actionType.ATID, mode)
+		if err != nil {
+			return nil, err
+		}
+		if err = permission.ValidateKNChildAuthorizationIDs(ctx, actionType.KNID, []string{actionType.ATID}); err != nil {
+			return nil, err
 		}
 
 		accountInfo := interfaces.AccountInfo{}
@@ -274,6 +282,13 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 				WithErrorDetails(err.Error())
 		}
 	}
+	parentItems := interfaces.KNChildResourceParents(actionTypes[0].KNID, atIDs)
+	if err = ats.ps.UpsertResourceParents(ctx, interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		interfaces.RESOURCE_TYPE_KN, parentItems); err != nil {
+		return []string{}, err
+	}
+	permission.TrackResourceParents(ctx, interfaces.RESOURCE_TYPE_ACTION_TYPE,
+		interfaces.RESOURCE_TYPE_KN, parentItems)
 
 	// Update.
 	for _, actionType := range updateActionTypes {
@@ -436,14 +451,15 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "GetActionTypesByIDs")
 	defer span.End()
 
-	// Check whether the user ID can view the business knowledge network.
-	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL})
-	if err != nil {
-		return []*interfaces.ActionType{}, err
+	atIDs = common.DuplicateSlice(atIDs)
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, atIDs); err != nil {
+		return nil, err
 	}
+	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
+	if len(atIDs) == 1 {
+		resource = interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs[0])
+	}
+	var err error
 
 	// De-duplicate IDs before querying.
 	atIDs = common.DuplicateSlice(atIDs)
@@ -464,6 +480,9 @@ func (ats *actionTypeService) GetActionTypesByIDs(ctx context.Context, knID stri
 		span.SetStatus(codes.Error, errStr)
 		return []*interfaces.ActionType{}, rest.NewHTTPError(ctx, http.StatusNotFound,
 			berrors.BknBackend_ActionType_ActionTypeNotFound).WithErrorDetails(errStr)
+	}
+	if err = ats.ps.CheckPermission(ctx, resource, []string{interfaces.OPERATION_TYPE_VIEW_DETAIL}); err != nil {
+		return nil, err
 	}
 
 	// TODO: localize bound and impacted object types and their API documents.
@@ -508,11 +527,20 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "UpdateActionType")
 	defer span.End()
 
-	// Check whether the user ID can modify the business knowledge network.
-	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   actionType.KNID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, actionType.KNID, []string{actionType.ATID}); err != nil {
+		return err
+	}
+	_, exists, err := ats.CheckActionTypeExistByID(ctx, actionType.KNID, actionType.Branch, actionType.ATID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
+	}
+	err = ats.ps.CheckPermission(ctx,
+		interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE,
+			actionType.KNID, actionType.ATID),
+		[]string{interfaces.OPERATION_TYPE_MODIFY})
 	if err != nil {
 		return err
 	}
@@ -604,19 +632,40 @@ func (ats *actionTypeService) UpdateActionType(ctx context.Context, tx *sql.Tx, 
 	return nil
 }
 
-func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, atIDs []string) error {
+func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sql.Tx, knID string, branch string, atIDs []string) (err error) {
 	ctx, span := oteltrace.StartNamedInternalSpan(ctx, "DeleteActionTypesByIDs")
 	defer span.End()
-
-	// Check whether the user ID can modify the business knowledge network.
-	err := ats.ps.CheckPermission(ctx, interfaces.PermissionResource{
-		Type: interfaces.RESOURCE_TYPE_KN,
-		ID:   knID,
-	}, []string{interfaces.OPERATION_TYPE_MODIFY})
-	if err != nil {
-		return err
+	if tx == nil {
+		var cleanupTracker *permission.AuthorizationCleanupTracker
+		var trackerOwner bool
+		ctx, cleanupTracker, trackerOwner = permission.WithAuthorizationCleanupTracker(ctx)
+		defer func() {
+			if trackerOwner && err == nil {
+				_ = cleanupTracker.Cleanup(ctx, ats.ps)
+			}
+		}()
 	}
 
+	atIDs = common.DuplicateSlice(atIDs)
+	if err := permission.ValidateKNChildAuthorizationIDs(ctx, knID, atIDs); err != nil {
+		return err
+	}
+	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: knID}
+	operation := interfaces.OPERATION_TYPE_MODIFY
+	if len(atIDs) == 1 {
+		_, exists, err := ats.CheckActionTypeExistByID(ctx, knID, branch, atIDs[0])
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return rest.NewHTTPError(ctx, http.StatusNotFound, berrors.BknBackend_ActionType_ActionTypeNotFound)
+		}
+		resource = interfaces.KNChildPermissionResource(interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs[0])
+		operation = interfaces.OPERATION_TYPE_DELETE
+	}
+	if err := ats.ps.CheckPermission(ctx, resource, []string{operation}); err != nil {
+		return err
+	}
 	if tx == nil {
 		// 0. Begin the transaction.
 		tx, err = ats.db.Begin()
@@ -669,6 +718,8 @@ func (ats *actionTypeService) DeleteActionTypesByIDs(ctx context.Context, tx *sq
 			return err
 		}
 	}
+	permission.TrackKNChildAuthorizationCleanup(ctx,
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs)
 
 	span.SetStatus(codes.Ok, "")
 	return nil
@@ -685,6 +736,11 @@ func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *s
 			berrors.BknBackend_ActionType_InternalError_MissingTransaction).
 			WithErrorDetails("missing transaction")
 	}
+	atIDs, err := ats.ata.GetActionTypeIDsByKnID(ctx, knID, branch)
+	if err != nil {
+		return rest.NewHTTPError(ctx, http.StatusInternalServerError,
+			berrors.BknBackend_ActionType_InternalError).WithErrorDetails(err.Error())
+	}
 
 	// Delete action types.
 	rowsAffect, err := ats.ata.DeleteActionTypesByKnID(ctx, tx, knID, branch)
@@ -697,6 +753,8 @@ func (ats *actionTypeService) DeleteActionTypesByKnID(ctx context.Context, tx *s
 
 	logger.Infof("DeleteActionTypesByKnID success, the kn_id is [%s], branch is [%s], rowsAffect is [%d]",
 		knID, branch, rowsAffect)
+	permission.TrackKNChildAuthorizationCleanup(ctx,
+		interfaces.RESOURCE_TYPE_ACTION_TYPE, knID, atIDs)
 	span.SetStatus(codes.Ok, "")
 	return nil
 }

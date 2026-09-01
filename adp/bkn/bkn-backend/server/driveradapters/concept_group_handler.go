@@ -130,6 +130,11 @@ func (r *restHandler) CreateConceptGroup(c *gin.Context, visitor hydra.Visitor) 
 	}
 	cg.KNID = knID
 	cg.Branch = branch
+	if httpErr := rejectClientSpecifiedChildIDs(ctx, mode, cg.CGID); httpErr != nil {
+		oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+		rest.ReplyError(c, httpErr)
+		return
+	}
 
 	// Record API request parameters: c.Request.RequestURI and body.
 	otellog.LogInfo(ctx, fmt.Sprintf("创建概念分组请求参数: [%s,%v]", c.Request.RequestURI, cg))

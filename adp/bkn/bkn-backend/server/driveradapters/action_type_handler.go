@@ -170,6 +170,11 @@ func (r *restHandler) CreateActionTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Apply the branch from the URL to all requested action types.
 	for i := range actionTypes {
+		if httpErr := rejectClientSpecifiedChildIDs(ctx, mode, actionTypes[i].ATID); httpErr != nil {
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
 		actionTypes[i].KNID = knID
 		actionTypes[i].Branch = branch
 	}

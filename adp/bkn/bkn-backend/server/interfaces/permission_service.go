@@ -16,5 +16,7 @@ type PermissionService interface {
 
 	CreateResources(ctx context.Context, resources []PermissionResource, ops []string) error
 	DeleteResources(ctx context.Context, resourceType string, ids []string) error
+	UpsertResourceParents(ctx context.Context, resourceType, parentType string, items []PermissionResourceParent) error
+	DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error
 	UpdateResource(ctx context.Context, resource PermissionResource) error
 }

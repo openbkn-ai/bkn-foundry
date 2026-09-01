@@ -13,7 +13,10 @@ import (
 	"reflect"
 	"testing"
 
+	"go.uber.org/mock/gomock"
+
 	"bkn-backend/interfaces"
+	bmock "bkn-backend/interfaces/mock"
 )
 
 // capturedFilter is the decoded /resource-filter request body.
@@ -70,6 +73,108 @@ func knFilter(ids []string, ops, candidates []string) interfaces.PermissionResou
 		Operations:          ops,
 		CandidateOperations: candidates,
 		AllowOperation:      true,
+	}
+}
+
+func TestSafeResourceParentRequests(t *testing.T) {
+	type capturedRequest struct {
+		method string
+		body   map[string]any
+	}
+	requests := make([]capturedRequest, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/safe/v1/authz/resource-parents" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		requests = append(requests, capturedRequest{method: r.Method, body: body})
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	client := newSafeClient(srv.URL)
+	items := []interfaces.PermissionResourceParent{{ResourceID: "kn-1/ot-1", ParentID: "kn-1"}}
+	if err := client.upsertResourceParents(context.Background(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.RESOURCE_TYPE_KN, items); err != nil {
+		t.Fatalf("upsertResourceParents() error = %v", err)
+	}
+	if err := client.deleteResourceParents(context.Background(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/ot-1"}); err != nil {
+		t.Fatalf("deleteResourceParents() error = %v", err)
+	}
+
+	if len(requests) != 2 {
+		t.Fatalf("request count = %d, want 2", len(requests))
+	}
+	if requests[0].method != http.MethodPut {
+		t.Fatalf("upsert method = %s, want PUT", requests[0].method)
+	}
+	if requests[0].body["resource_type"] != interfaces.RESOURCE_TYPE_OBJECT_TYPE ||
+		requests[0].body["parent_type"] != interfaces.RESOURCE_TYPE_KN {
+		t.Fatalf("unexpected upsert body: %#v", requests[0].body)
+	}
+	wantItems := []any{map[string]any{"resource_id": "kn-1/ot-1", "parent_id": "kn-1"}}
+	if !reflect.DeepEqual(requests[0].body["items"], wantItems) {
+		t.Fatalf("upsert items = %#v, want %#v", requests[0].body["items"], wantItems)
+	}
+	if requests[1].method != http.MethodDelete {
+		t.Fatalf("delete method = %s, want DELETE", requests[1].method)
+	}
+	if requests[1].body["resource_type"] != interfaces.RESOURCE_TYPE_OBJECT_TYPE {
+		t.Fatalf("unexpected delete body: %#v", requests[1].body)
+	}
+	wantResourceIDs := []any{"kn-1/ot-1"}
+	if !reflect.DeepEqual(requests[1].body["resource_ids"], wantResourceIDs) {
+		t.Fatalf("delete resource IDs = %#v, want %#v", requests[1].body["resource_ids"], wantResourceIDs)
+	}
+}
+
+func TestSafeResourceParentEmptyInputsDoNotCallServer(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	client := newSafeClient(srv.URL)
+	if err := client.upsertResourceParents(context.Background(), "type", "parent", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.deleteResourceParents(context.Background(), "type", nil); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("empty inputs made %d requests, want 0", calls)
+	}
+}
+
+func TestShadowDeleteResourcesWritesChildCleanupOnlyToSafe(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	legacy := bmock.NewMockPermissionAccess(ctrl)
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/api/safe/v1/authz/policies" {
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	access := &shadowPermissionAccess{PermissionAccess: legacy, safe: newSafeClient(srv.URL)}
+	resource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_RISK_TYPE, ID: "kn-1/risk-1"}
+	if err := access.DeleteResources(context.Background(), []interfaces.PermissionResource{resource}); err != nil {
+		t.Fatalf("DeleteResources() error = %v", err)
+	}
+	want := map[string]any{"resource": map[string]any{"type": "risk_type", "id": "kn-1/risk-1"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("request body = %#v, want %#v", got, want)
 	}
 }
 

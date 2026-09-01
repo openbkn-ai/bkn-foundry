@@ -74,7 +74,7 @@ func Test_ObjectTypeRestHandler_CreateObjectTypes(t *testing.T) {
 
 		objectType := &interfaces.ObjectType{
 			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-				OTID:   "ot1",
+				OTID:   "",
 				OTName: "object1",
 				DataProperties: []*interfaces.DataProperty{
 					{
@@ -813,7 +813,7 @@ func Test_ObjectTypeRestHandler_CreateObjectTypesByIn(t *testing.T) {
 			Entries: []*interfaces.ObjectType{
 				{
 					ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{
-						OTID:   "ot1",
+						OTID:   "",
 						OTName: "object1",
 						DataProperties: []*interfaces.DataProperty{
 							{Name: "prop1", Type: "string", DisplayName: "prop1"},

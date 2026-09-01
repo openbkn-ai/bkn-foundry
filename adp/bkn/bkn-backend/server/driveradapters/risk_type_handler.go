@@ -121,6 +121,11 @@ func (r *restHandler) CreateRiskTypes(c *gin.Context, visitor hydra.Visitor) {
 
 	// Apply the branch from the URL to all requested risk types.
 	for i := range riskTypes {
+		if httpErr := rejectClientSpecifiedChildIDs(ctx, mode, riskTypes[i].RTID); httpErr != nil {
+			oteltrace.AddHttpAttrs4HttpError(span, httpErr)
+			rest.ReplyError(c, httpErr)
+			return
+		}
 		riskTypes[i].KNID = knID
 		riskTypes[i].Branch = branch
 	}

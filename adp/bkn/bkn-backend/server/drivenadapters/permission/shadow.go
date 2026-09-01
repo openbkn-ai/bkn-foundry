@@ -83,6 +83,28 @@ func (c *safeClient) filterResources(ctx context.Context, accessorID string,
 	return out, nil
 }
 
+func (c *safeClient) upsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	if len(items) == 0 {
+		return nil
+	}
+	return c.do(ctx, http.MethodPut, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": resourceType,
+		"parent_type":   parentType,
+		"items":         items,
+	}, nil)
+}
+
+func (c *safeClient) deleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	if len(resourceIDs) == 0 {
+		return nil
+	}
+	return c.do(ctx, http.MethodDelete, "/api/safe/v1/authz/resource-parents", map[string]any{
+		"resource_type": resourceType,
+		"resource_ids":  resourceIDs,
+	}, nil)
+}
+
 func (c *safeClient) allowedAll(ctx context.Context, accessorID, rtype, rid string, ops []string) (bool, error) {
 	for _, op := range ops {
 		ok, err := c.checkOne(ctx, accessorID, rtype, rid, op)
@@ -135,6 +157,34 @@ func (s *shadowPermissionAccess) CheckPermission(ctx context.Context, check inte
 		log.Printf("[authz-shadow] DIFF: accessor=%s %s:%s ops=%v isf=%v bkn-safe=%v", check.Accessor.ID, check.Resource.Type, check.Resource.ID, check.Operations, isfOK, safeOK)
 	}
 	return isfOK, isfErr
+}
+
+func (s *shadowPermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	return s.safe.upsertResourceParents(ctx, resourceType, parentType, items)
+}
+
+func (s *shadowPermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	return s.safe.deleteResourceParents(ctx, resourceType, resourceIDs)
+}
+
+func (s *shadowPermissionAccess) DeleteResources(ctx context.Context, resources []interfaces.PermissionResource) error {
+	legacyResources := make([]interfaces.PermissionResource, 0, len(resources))
+	for _, resource := range resources {
+		if !isKNChildResourceType(resource.Type) {
+			legacyResources = append(legacyResources, resource)
+			continue
+		}
+		if err := s.safe.do(ctx, http.MethodDelete, "/api/safe/v1/authz/policies", map[string]any{
+			"resource": map[string]string{"type": resource.Type, "id": resource.ID},
+		}, nil); err != nil {
+			return err
+		}
+	}
+	if len(legacyResources) == 0 {
+		return nil
+	}
+	return s.PermissionAccess.DeleteResources(ctx, legacyResources)
 }
 
 // ---- full bkn-safe adapter: bkn-safe authoritative ----
@@ -211,6 +261,15 @@ func (s *safePermissionAccess) DeleteResources(ctx context.Context, resources []
 		}
 	}
 	return nil
+}
+
+func (s *safePermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
+	items []interfaces.PermissionResourceParent) error {
+	return s.safe.upsertResourceParents(ctx, resourceType, parentType, items)
+}
+
+func (s *safePermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
+	return s.safe.deleteResourceParents(ctx, resourceType, resourceIDs)
 }
 
 // MaybeShadow applies the AUTHZ_PROVIDER switch. Default/unknown => ISF (inner).

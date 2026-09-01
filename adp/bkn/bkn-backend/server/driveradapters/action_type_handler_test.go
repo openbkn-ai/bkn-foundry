@@ -66,7 +66,7 @@ func Test_ActionTypeRestHandler_CreateActionTypes(t *testing.T) {
 
 		actionType := &interfaces.ActionType{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
-				ATID:         "at1",
+				ATID:         "",
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
 				ActionType:   interfaces.ACTION_TYPE_ADD,
@@ -604,7 +604,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverride(t *testing.T) {
 
 		actionType := &interfaces.ActionType{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
-				ATID:         "at1",
+				ATID:         "",
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
 				ActionType:   interfaces.ACTION_TYPE_ADD,
@@ -688,7 +688,7 @@ func Test_ActionTypeRestHandler_CreateActionTypesByIn(t *testing.T) {
 
 			actionType := &interfaces.ActionType{
 				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
-					ATID:         "at1",
+					ATID:         "",
 					ATName:       "action1",
 					ObjectTypeID: "ot1",
 					ActionType:   interfaces.ACTION_TYPE_ADD,
@@ -833,7 +833,7 @@ func Test_ActionTypeRestHandler_HandleActionTypeGetOverrideByIn(t *testing.T) {
 
 		actionType := &interfaces.ActionType{
 			ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{
-				ATID:         "at1",
+				ATID:         "",
 				ATName:       "action1",
 				ObjectTypeID: "ot1",
 				ActionType:   interfaces.ACTION_TYPE_ADD,
