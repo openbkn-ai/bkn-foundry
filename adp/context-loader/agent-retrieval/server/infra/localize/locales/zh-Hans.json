@@ -128,6 +128,7 @@
     "LogicPropertyGenerationFailed": "生成动态参数失败。"
   },
   "find_skills": {
+    "skills_not_modeled": "当前知识网络未建模技能对象类（skills），因此没有可召回的 Skill。如需启用技能召回，请先在该网络中创建 skills 对象类并绑定技能数据。",
     "network_scope_too_wide": "当前知识网络中的 Skill 不是全局生效，网络级范围未返回结果。请补充 object_type_id；如已定位到实例，再补充 instance_identities 后重试。",
     "network_no_skills": "当前知识网络下未找到可召回的 Skill。请确认 Skill 是否已创建并在当前知识网络中可见。",
     "object_type_no_binding": "当前对象类未配置 Skill 绑定关系，无法在该范围内召回 Skill。请确认该对象类是否已绑定 Skill。",

@@ -179,26 +179,84 @@ func TestFindSkills_ObjectTypeNotFound(t *testing.T) {
 	}
 }
 
-func TestFindSkills_SkillsObjectTypeNotFound(t *testing.T) {
-	bkn := &testBknBackend{
-		getObjectTypeDetailFunc: func(_ context.Context, _ string, otIDs []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
-			if len(otIDs) != 1 {
-				t.Fatalf("expected a single object type lookup, got %v", otIDs)
+// A network that models no skills object type has no skills to recall. The caller
+// asked what skills exist; "none" is the answer, not a failure. Reporting
+// bkn-backend's ObjectTypeNotFound here pointed triage at the caller's
+// object_type_id, which does exist. See #1224.
+func TestFindSkills_SkillsObjectTypeNotModeledReturnsEmptyResult(t *testing.T) {
+	skillsLookup := func(result []*interfaces.ObjectType, lookupErr error) *testBknBackend {
+		return &testBknBackend{
+			getObjectTypeDetailFunc: func(_ context.Context, _ string, otIDs []string, includeDetail bool) ([]*interfaces.ObjectType, error) {
+				if len(otIDs) != 1 {
+					t.Fatalf("expected a single object type lookup, got %v", otIDs)
+				}
+				switch otIDs[0] {
+				case "contract":
+					if includeDetail {
+						t.Fatal("expected includeDetail=false for business object type existence check")
+					}
+					return []*interfaces.ObjectType{{ID: "contract", Name: "contract"}}, nil
+				case "skills":
+					if !includeDetail {
+						t.Fatal("expected includeDetail=true for skills contract check")
+					}
+					return result, lookupErr
+				default:
+					t.Fatalf("unexpected object type lookup: %v", otIDs)
+					return nil, nil
+				}
+			},
+		}
+	}
+
+	cases := []struct {
+		name string
+		bkn  *testBknBackend
+	}{
+		// What bkn-backend actually answers: its batch lookup fails the whole call
+		// when any requested id is missing, so the absent skills object type arrives
+		// as a 404 carrying BknBackend.ObjectType.ObjectTypeNotFound.
+		{"downstream reports the object type as not found", skillsLookup(nil, &infraErr.HTTPError{
+			HTTPCode: 404,
+			Code:     bknBackendObjectTypeNotFoundCode,
+		})},
+		{"downstream returns no entries", skillsLookup([]*interfaces.ObjectType{}, nil)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewFindSkillsServiceWith(&testLogger{}, newTestConfig(), &testOntologyQuery{}, tc.bkn)
+
+			resp, err := svc.FindSkills(zhCtx(), &interfaces.FindSkillsReq{
+				KnID: "kn1", ObjectTypeID: "contract", TopK: 10,
+			})
+			if err != nil {
+				t.Fatalf("a network without skills is an empty result, not an error: %v", err)
 			}
-			switch otIDs[0] {
-			case "contract":
-				if includeDetail {
-					t.Fatal("expected includeDetail=false for business object type existence check")
-				}
+			if resp == nil {
+				t.Fatal("expected a response")
+			}
+			if len(resp.Entries) != 0 {
+				t.Fatalf("expected no entries, got %d", len(resp.Entries))
+			}
+			if resp.Message == "" || resp.Message == "find_skills.skills_not_modeled" {
+				t.Fatalf("expected a translated explanation, got %q", resp.Message)
+			}
+		})
+	}
+}
+
+// Only bkn-backend's ObjectTypeNotFound means "no skills modeled". Any other 404 —
+// an unknown kn_id, a routing miss — is a real failure and must keep surfacing.
+func TestFindSkills_UnrelatedNotFoundStillFails(t *testing.T) {
+	bkn := &testBknBackend{
+		getObjectTypeDetailFunc: func(_ context.Context, _ string, otIDs []string, _ bool) ([]*interfaces.ObjectType, error) {
+			if otIDs[0] == "contract" {
 				return []*interfaces.ObjectType{{ID: "contract", Name: "contract"}}, nil
-			case "skills":
-				if !includeDetail {
-					t.Fatal("expected includeDetail=true for skills contract check")
-				}
-				return []*interfaces.ObjectType{}, nil
-			default:
-				t.Fatalf("unexpected object type lookup: %v", otIDs)
-				return nil, nil
+			}
+			return nil, &infraErr.HTTPError{
+				HTTPCode: 404,
+				Code:     "BknBackend.KnowledgeNetwork.NotFound",
 			}
 		},
 	}
@@ -208,18 +266,14 @@ func TestFindSkills_SkillsObjectTypeNotFound(t *testing.T) {
 		KnID: "kn1", ObjectTypeID: "contract", TopK: 10,
 	})
 	if err == nil {
-		t.Fatal("expected error when skills object type is missing")
+		t.Fatalf("an unknown knowledge network must stay an error, got %#v", resp)
 	}
-	if resp != nil {
-		t.Fatalf("expected nil response on error, got %#v", resp)
-	}
-
 	httpErr := &infraErr.HTTPError{}
 	if !errors.As(err, &httpErr) {
 		t.Fatalf("expected HTTPError, got %T", err)
 	}
-	if httpErr.HTTPCode != 404 {
-		t.Fatalf("expected HTTP 404, got %d", httpErr.HTTPCode)
+	if httpErr.Code != "BknBackend.KnowledgeNetwork.NotFound" {
+		t.Fatalf("expected the downstream code to survive, got %q", httpErr.Code)
 	}
 }
 

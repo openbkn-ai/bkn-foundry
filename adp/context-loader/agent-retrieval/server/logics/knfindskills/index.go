@@ -9,6 +9,7 @@ package knfindskills
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -26,6 +27,26 @@ import (
 )
 
 var requiredSkillsDataProperties = []string{"skill_id", "name"}
+
+// bknBackendObjectTypeNotFoundCode is the error code bkn-backend returns when a
+// requested object type id is absent from the knowledge network. Its batch lookup
+// fails the whole call as soon as one id is missing, so this is exactly what a
+// network with no skills object type looks like from here.
+const bknBackendObjectTypeNotFoundCode = "BknBackend.ObjectType.ObjectTypeNotFound"
+
+// errSkillsNotModeled marks "this knowledge network has no skills object type",
+// which is a property of the network rather than a failure of the call.
+var errSkillsNotModeled = errors.New("skills object type is not modeled in this knowledge network")
+
+// isObjectTypeNotFound reports whether err is bkn-backend saying the object type
+// does not exist. It matches the downstream error code rather than the bare 404,
+// because an unknown kn_id is also a 404 and must keep surfacing as one.
+func isObjectTypeNotFound(err error) bool {
+	var he *infraErr.HTTPError
+	return errors.As(err, &he) &&
+		he.HTTPCode == http.StatusNotFound &&
+		he.Code == bknBackendObjectTypeNotFoundCode
+}
 
 type findSkillsServiceImpl struct {
 	logger        interfaces.Logger
@@ -97,15 +118,32 @@ func (s *findSkillsServiceImpl) FindSkills(ctx context.Context, req *interfaces.
 		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadRequest, err.Error())
 	}
 
-	skillsObjType, err := s.loadAndValidateSkillsContract(ctx, req.KnID, fsCfg.SkillsObjectTypeID)
-	if err != nil {
-		return nil, err
-	}
-
+	// Validate the caller-supplied object type FIRST. A wrong object_type_id is the
+	// caller's error and must keep reporting ObjectTypeNotFound; a missing skills
+	// object type is a property of the network and is answered with an empty result
+	// just below. Running the skills contract first made the two indistinguishable.
 	if req.ObjectTypeID != fsCfg.SkillsObjectTypeID {
 		if err := s.validateObjectTypeExists(ctx, req.KnID, req.ObjectTypeID); err != nil {
 			return nil, err
 		}
+	}
+
+	skillsObjType, err := s.loadAndValidateSkillsContract(ctx, req.KnID, fsCfg.SkillsObjectTypeID)
+	if err != nil {
+		// A network that binds no skills has nothing to recall. The caller asked
+		// "what skills does this object type have"; the answer is "none", not a
+		// failure — and reporting bkn-backend's ObjectTypeNotFound sent triage
+		// after the caller's object_type_id, which does exist. See #1224.
+		if errors.Is(err, errSkillsNotModeled) {
+			s.logger.WithContext(ctx).Infof(
+				"[FindSkills] kn_id=%s has no skills object type %q; returning an empty result",
+				req.KnID, fsCfg.SkillsObjectTypeID)
+			return &interfaces.FindSkillsResp{
+				Entries: []*interfaces.SkillItem{},
+				Message: translateMessage(ctx, "find_skills.skills_not_modeled"),
+			}, nil
+		}
+		return nil, err
 	}
 
 	s.logger.WithContext(ctx).Infof("[FindSkills] kn_id=%s, mode=%d, object_type_id=%s, instance_count=%d, has_skill_query=%v",
@@ -160,14 +198,13 @@ func (s *findSkillsServiceImpl) FindSkills(ctx context.Context, req *interfaces.
 func (s *findSkillsServiceImpl) loadAndValidateSkillsContract(ctx context.Context, knID, skillsObjectTypeID string) (*interfaces.ObjectType, error) {
 	objectTypes, err := s.bknBackend.GetObjectTypeDetail(ctx, knID, []string{skillsObjectTypeID}, true)
 	if err != nil {
+		if isObjectTypeNotFound(err) {
+			return nil, errSkillsNotModeled
+		}
 		return nil, err
 	}
 	if len(objectTypes) == 0 {
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusNotFound, map[string]interface{}{
-			"kn_id":                 knID,
-			"skills_object_type_id": skillsObjectTypeID,
-			"reason":                "skills object type not found in current knowledge network",
-		})
+		return nil, errSkillsNotModeled
 	}
 
 	skillsObjType := objectTypes[0]

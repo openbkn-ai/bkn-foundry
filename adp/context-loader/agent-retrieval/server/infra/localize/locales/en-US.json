@@ -128,6 +128,7 @@
     "LogicPropertyGenerationFailed": "Unable to generate dynamic parameters."
   },
   "find_skills": {
+    "skills_not_modeled": "This knowledge network has no skills object type modeled, so there are no skills to recall. To enable skill recall, create the skills object type in this network and bind skill data to it.",
     "network_scope_too_wide": "Skills in this knowledge network are not globally effective, and no results were found at the network level. Please provide object_type_id; if you can identify the instance, also provide instance_identities and retry.",
     "network_no_skills": "No recallable skills found in the current knowledge network. Please confirm that skills have been created and are visible in this knowledge network.",
     "object_type_no_binding": "No skill binding configured for this object type, unable to recall skills in this scope. Please confirm that skills are bound to this object type.",
