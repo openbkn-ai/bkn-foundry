@@ -307,7 +307,6 @@ func isDuplicateKeyError(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "duplicate") ||
 		strings.Contains(message, "unique constraint") ||
-		strings.Contains(message, "唯一性约束") ||
 		strings.Contains(message, "error -6602") ||
 		strings.Contains(message, "error -6612") ||
 		strings.Contains(message, "error -6625")
