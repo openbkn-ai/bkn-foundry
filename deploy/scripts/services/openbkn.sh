@@ -1253,6 +1253,8 @@ _openbkn_config_sets_image_registry() {
 }
 
 # Inject default --set values for bkn-foundry if user did not override them.
+# Keep the legacy 0.1.4 charts from enabling the retired business-system dependency
+# when this script is used with a release manifest that still pins those charts.
 _openbkn_apply_default_set_values() {
     # image.registry precedence in ONLINE mode: explicit --set image.registry=… wins;
     # else an explicit --registry flag is applied; else if CONFIG_YAML_PATH already sets
@@ -1282,6 +1284,11 @@ _openbkn_apply_default_set_values() {
         _reg_resolved="$(_openbkn_resolve_registry "swr")"
         CORE_SET_VALUES+=("image.registry=${_reg_resolved}")
         log_info "Image registry default applied: --set image.registry=${_reg_resolved} (override with --registry=ghcr or --set image.registry=...)."
+    fi
+
+    if ! get_set_value "businessDomain.enabled" "${CORE_SET_VALUES[@]-}" >/dev/null 2>&1; then
+        CORE_SET_VALUES+=("businessDomain.enabled=false")
+        log_info "Default applied: --set businessDomain.enabled=false (override with --set businessDomain.enabled=true)"
     fi
 
     # Lightweight resource overrides for resource-constrained environments (mac kind / k3s).
