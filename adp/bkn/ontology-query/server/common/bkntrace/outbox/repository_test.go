@@ -90,6 +90,24 @@ func TestEnqueueReReadsAfterDuplicateKeyRace(t *testing.T) {
 	}
 }
 
+func TestIsDuplicateKeyErrorSupportsMariaDBAndDM8(t *testing.T) {
+	tests := []struct {
+		message string
+		want    bool
+	}{
+		{"Error 1062 (23000): Duplicate entry", true},
+		{"UNIQUE constraint failed", true},
+		{"Error -6602: 违反唯一性约束", true},
+		{"Error -6625: 违反表[T]唯一性约束[UQ_T]", true},
+		{"connection reset", false},
+	}
+	for _, tc := range tests {
+		if got := isDuplicateKeyError(errors.New(tc.message)); got != tc.want {
+			t.Fatalf("isDuplicateKeyError(%q) = %v, want %v", tc.message, got, tc.want)
+		}
+	}
+}
+
 func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

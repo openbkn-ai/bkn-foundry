@@ -155,7 +155,7 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	}
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
-	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", objectQueryIdentity(uri+"?"+query.Encode(), req))
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.object.query", ontologyQueryIdentity(uri+"?"+query.Encode(), req))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
@@ -175,13 +175,13 @@ func (o *ontologyQueryClient) QueryObjectInstances(ctx context.Context, req *int
 	return
 }
 
-func objectQueryIdentity(target string, req *interfaces.QueryObjectInstancesReq) string {
+func ontologyQueryIdentity(target string, body any) string {
 	encoded, err := sonic.ConfigStd.Marshal(struct {
-		Target string                              `json:"target"`
-		Body   *interfaces.QueryObjectInstancesReq `json:"body"`
-	}{Target: target, Body: req})
+		Target string `json:"target"`
+		Body   any    `json:"body"`
+	}{Target: target, Body: body})
 	if err != nil {
-		return "marshal-error"
+		return fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(target)))
 	}
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(encoded))
 }
@@ -495,7 +495,7 @@ func (o *ontologyQueryClient) ExploreSubgraph(ctx context.Context, req *interfac
 	}
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
-	header := common.GetHeaderForChildOperation(ctx, "ontology.subgraph.explore", 1)
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.subgraph.explore", ontologyQueryIdentity(uri+"?"+query.Encode(), req))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
@@ -552,7 +552,7 @@ func (o *ontologyQueryClient) QueryInstanceSubgraph(ctx context.Context, req *in
 	o.logger.WithContext(ctx).Debugf("[OntologyQuery#QueryInstanceSubgraph] Request Body: %s", string(bodyJSON))
 
 	// Build request headers.
-	header := common.GetHeaderForChildOperation(ctx, "ontology.subgraph.query", 1)
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.subgraph.query", ontologyQueryIdentity(uri, body))
 	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	header["x-http-method-override"] = "GET"
 
@@ -591,12 +591,11 @@ func (o *ontologyQueryClient) QueryMetricData(ctx context.Context, knID, metricI
 	query.Set("fill_null", strconv.FormatBool(fillNull))
 	target := fmt.Sprintf("%s%s?%s", o.baseURL, uri, query.Encode())
 
-	header := common.GetHeaderForChildOperation(ctx, "ontology.metric.query", 1)
-	header[rest.ContentTypeKey] = rest.ContentTypeJSON
-
 	if req == nil {
 		req = &interfaces.MetricQueryDownstreamReq{}
 	}
+	header := common.GetHeaderForChildOperationIdentity(ctx, "ontology.metric.query", ontologyQueryIdentity(uri+"?"+query.Encode(), req))
+	header[rest.ContentTypeKey] = rest.ContentTypeJSON
 	_, respBody, err := o.httpClient.PostBytes(ctx, target, header, req)
 	if err != nil {
 		o.logger.WithContext(ctx).Warnf("[OntologyQuery#QueryMetricData] kn=%s metric=%s failed: %v", knID, metricID, err)
