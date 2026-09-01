@@ -55,7 +55,6 @@ historical_only="$(helm template agent-observability "${chart_dir}" \
     --show-only templates/deployment.yaml)"
 for required in \
     'name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED' \
-    'value: "true"' \
     'name: BKN_TRACE_PROJECTION_GRANT_PRIVATE_KEY' \
     'name: "trace-projection-grant"'; do
     grep -q "${required}" <<<"${historical_only}" || {
@@ -63,6 +62,10 @@ for required in \
         exit 1
     }
 done
+grep -A1 'name: BKN_TRACE_HISTORICAL_PROVENANCE_ENABLED' <<<"${historical_only}" | grep -q 'value: "true"' || {
+    echo "historical provenance enablement must render true next to its environment variable" >&2
+    exit 1
+}
 
 private_registry="$(helm template agent-observability "${chart_dir}" \
     --set image.registry=registry.internal/openbkn \
