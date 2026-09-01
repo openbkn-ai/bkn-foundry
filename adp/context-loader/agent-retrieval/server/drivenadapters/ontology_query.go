@@ -247,6 +247,26 @@ func classifyQueryError(ctx context.Context, err error) error {
 	return err
 }
 
+// classifyActionError maps a downstream ontology-query failure on the action
+// endpoints, which carry an operation-specific "dependency unavailable" detail.
+//
+// A 4xx is the caller's or the model's fault, so classifyQueryError surfaces it
+// verbatim; only a 5xx or a transport error is a real dependency fault and keeps
+// the localized fallback detail.
+//
+// Without the split, a modelling error reached the caller as an outage: an action
+// type bound to an object type with no data source makes ontology-query answer 400
+// "对象类 X 未绑定数据源", and get_action_info reported that as 502 "依赖服务不可用",
+// pointing triage at pod health instead of at the knowledge network. See #1225.
+func classifyActionError(ctx context.Context, err error, fallbackDetailKey string) error {
+	var he *infraErr.HTTPError
+	if errors.As(err, &he) && he.HTTPCode >= http.StatusBadRequest && he.HTTPCode < http.StatusInternalServerError {
+		return classifyQueryError(ctx, err)
+	}
+	return infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
+		infraErr.LocalizedDetail(ctx, fallbackDetailKey))
+}
+
 // QueryLogicProperties queries logical property values.
 func (o *ontologyQueryClient) QueryLogicProperties(ctx context.Context, req *interfaces.QueryLogicPropertiesReq) (resp *interfaces.QueryLogicPropertiesResp, err error) {
 	uri := fmt.Sprintf(queryLogicPropertiesURI, req.KnID, req.OtID)
@@ -310,8 +330,7 @@ func (o *ontologyQueryClient) QueryActions(ctx context.Context, req *interfaces.
 	_, respBody, err := o.httpClient.PostBytes(ctx, url, header, body)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#QueryActions] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ActionQueryRequestFailed"))
+		return nil, classifyActionError(ctx, err, "ActionQueryRequestFailed")
 	}
 
 	resp = &interfaces.QueryActionsResponse{}
@@ -392,8 +411,7 @@ func (o *ontologyQueryClient) GetActionExecution(ctx context.Context, req *inter
 	_, respBody, err := o.httpClient.GetBytes(ctx, reqURL, nil, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#GetActionExecution] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ActionExecutionLookupFailed"))
+		return nil, classifyActionError(ctx, err, "ActionExecutionLookupFailed")
 	}
 
 	result := map[string]any{}
@@ -453,8 +471,7 @@ func (o *ontologyQueryClient) ListActionExecutions(ctx context.Context, req *int
 	_, respBody, err := o.httpClient.GetBytes(ctx, reqURL, query, header)
 	if err != nil {
 		o.logger.WithContext(ctx).Errorf("[OntologyQuery#ListActionExecutions] Request failed, err: %v", err)
-		return nil, infraErr.DefaultHTTPError(ctx, http.StatusBadGateway,
-			infraErr.LocalizedDetail(ctx, "ActionExecutionHistoryRequestFailed"))
+		return nil, classifyActionError(ctx, err, "ActionExecutionHistoryRequestFailed")
 	}
 
 	result := map[string]any{}
