@@ -344,6 +344,18 @@ func GetHeaderForChildOperation(ctx context.Context, operationName string, callO
 	return GetHeaderFromCtx(SetTraceContextToCtx(ctx, traceContext))
 }
 
+// GetHeaderForChildOperationIdentity derives a stable child operation for one
+// concrete downstream operation. identity must remain stable across retries.
+func GetHeaderForChildOperationIdentity(ctx context.Context, operationName, identity string) map[string]string {
+	traceContext, ok := GetTraceContextFromCtx(ctx)
+	if !ok {
+		return GetHeaderFromCtx(ctx)
+	}
+	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d|%s", traceContext.OperationID, strings.TrimSpace(operationName), traceContext.Attempt, strings.TrimSpace(identity))))
+	traceContext.OperationID = "op_" + hex.EncodeToString(sum[:])
+	return GetHeaderFromCtx(SetTraceContextToCtx(ctx, traceContext))
+}
+
 func childOperationID(parentOperationID, operationName string, attempt, callOrdinal int) string {
 	if callOrdinal < 1 {
 		callOrdinal = 1

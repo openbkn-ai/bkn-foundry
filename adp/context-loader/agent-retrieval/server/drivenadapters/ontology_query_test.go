@@ -59,6 +59,30 @@ func TestQueryObjectInstances_Success(t *testing.T) {
 	})
 }
 
+func TestOntologyQueryIdentityIsStablePerConcreteQuery(t *testing.T) {
+	first := &interfaces.QueryObjectInstancesReq{KnID: "kn-1", OtID: "customer", Limit: 10}
+	replay := &interfaces.QueryObjectInstancesReq{KnID: "kn-1", OtID: "customer", Limit: 10}
+	different := &interfaces.QueryObjectInstancesReq{KnID: "kn-1", OtID: "order", Limit: 10}
+	const target = "/api/bkn-backend/v1/knowledge-networks/kn-1/object-types/customer/objects?include_type_info=false"
+	if ontologyQueryIdentity(target, first) != ontologyQueryIdentity(target, replay) {
+		t.Fatal("equivalent queries must have a stable identity")
+	}
+	if ontologyQueryIdentity(target, first) == ontologyQueryIdentity(target, different) {
+		t.Fatal("different queries must not share an identity")
+	}
+	if ontologyQueryIdentity(target, first) == ontologyQueryIdentity(target+"&ignoring_store_cache=true", first) {
+		t.Fatal("different query parameters must not share an identity")
+	}
+}
+
+func TestOntologyQueryIdentityFallbackDistinguishesTargets(t *testing.T) {
+	first := ontologyQueryIdentity("/query/object-a", func() {})
+	second := ontologyQueryIdentity("/query/object-b", func() {})
+	if first == second {
+		t.Fatal("marshal failures for different targets must not collapse to one identity")
+	}
+}
+
 // TestQueryObjectInstances_HTTPError test QueryObjectInstances HTTP error.
 func TestQueryObjectInstances_HTTPError(t *testing.T) {
 	convey.Convey("TestQueryObjectInstances_HTTPError", t, func() {

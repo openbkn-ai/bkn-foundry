@@ -41,7 +41,10 @@ const (
 	tableAudit  = "ontology_query_trace_outbox_action_audit"
 )
 
-var ErrDisabled = errors.New("bkn trace producer outbox is disabled")
+var (
+	ErrDisabled        = errors.New("bkn trace producer outbox is disabled")
+	ErrEventIDConflict = errors.New("evidence event id conflicts with existing outbox record")
+)
 
 // Owner is the trusted lifecycle identity that Core requires when ingesting an
 // immutable event. It is persisted inside the sanitized envelope so a retry
@@ -197,6 +200,35 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 	if event.EventID == "" || event.EventType == "" || len(event.Envelope) == 0 {
 		return Event{}, errors.New("evidence event is incomplete")
 	}
+	event.SchemaVersion = "3.0.0"
+	event.ProducerID = r.config.ProducerID
+	event.ProducerStreamID = r.config.ProducerStreamID
+	if event.EmittedAt.IsZero() {
+		event.EmittedAt = time.Now().UTC()
+	}
+	if event.StartedAt.IsZero() {
+		event.StartedAt = event.ObservedAt
+	}
+	if event.ObservedAt.IsZero() || event.EmittedAt.Before(event.ObservedAt) {
+		return Event{}, errors.New("invalid evidence timestamps")
+	}
+	coreEnvelope, err := sonic.ConfigStd.Marshal(struct {
+		Event json.RawMessage `json:"event"`
+		Owner Owner           `json:"owner"`
+	}{Event: event.Envelope, Owner: owner})
+	if err != nil {
+		return Event{}, err
+	}
+	event.Envelope = coreEnvelope
+	event.PayloadHash = CanonicalHash(event.Envelope)
+	if existing, found, err := r.loadExistingEvent(ctx, event.EventID); err != nil {
+		return Event{}, err
+	} else if found {
+		if existing.PayloadHash == event.PayloadHash {
+			return existing, nil
+		}
+		return Event{}, ErrEventIDConflict
+	}
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Event{}, err
@@ -212,30 +244,7 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("UPDATE %s SET next_sequence = ?, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ?", tableStream), next+1, time.Now().UTC(), r.config.ProducerID, r.config.ProducerStreamID); err != nil {
 		return Event{}, err
 	}
-	event.SchemaVersion = "3.0.0"
-	event.ProducerID = r.config.ProducerID
-	event.ProducerStreamID = r.config.ProducerStreamID
-	event.ProducerEpoch = epoch
-	event.ProducerSequence = next
-	if event.EmittedAt.IsZero() {
-		event.EmittedAt = time.Now().UTC()
-	}
-	if event.StartedAt.IsZero() {
-		event.StartedAt = event.ObservedAt
-	}
-	if event.ObservedAt.IsZero() || event.EmittedAt.Before(event.ObservedAt) {
-		return Event{}, errors.New("invalid evidence timestamps")
-	}
-	event.PayloadHash = CanonicalHash(event.Envelope)
-	coreEnvelope, err := sonic.ConfigStd.Marshal(struct {
-		Event json.RawMessage `json:"event"`
-		Owner Owner           `json:"owner"`
-	}{Event: event.Envelope, Owner: owner})
-	if err != nil {
-		return Event{}, err
-	}
-	event.Envelope = coreEnvelope
-	event.PayloadHash = CanonicalHash(event.Envelope)
+	event.ProducerEpoch, event.ProducerSequence = epoch, next
 	stored, err := sonic.ConfigStd.Marshal(struct {
 		Event Event `json:"event"`
 		Owner Owner `json:"owner"`
@@ -251,12 +260,56 @@ func (r *Repository) Enqueue(ctx context.Context, event Event, owner Owner) (Eve
 		event.EventID, event.PayloadHash, event.EventType, event.SchemaVersion, event.ProducerID, event.ProducerStreamID, event.ProducerEpoch, event.ProducerSequence,
 		string(stored), StatusPending, now, now, now)
 	if err != nil {
+		if isDuplicateKeyError(err) {
+			if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+				return Event{}, rollbackErr
+			}
+			existing, found, loadErr := r.loadExistingEvent(ctx, event.EventID)
+			if loadErr != nil {
+				return Event{}, loadErr
+			}
+			if found && existing.PayloadHash == event.PayloadHash {
+				return existing, nil
+			}
+			if found {
+				return Event{}, ErrEventIDConflict
+			}
+		}
 		return Event{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return Event{}, err
 	}
 	return event, nil
+}
+
+func (r *Repository) loadExistingEvent(ctx context.Context, eventID string) (Event, bool, error) {
+	var payloadHash, stored string
+	err := r.db.QueryRowContext(ctx, fmt.Sprintf("SELECT payload_hash, envelope FROM %s WHERE event_id = ?", tableOutbox), eventID).Scan(&payloadHash, &stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Event{}, false, nil
+	}
+	if err != nil {
+		return Event{}, false, err
+	}
+	var row struct {
+		Event Event `json:"event"`
+		Owner Owner `json:"owner"`
+	}
+	if err := sonic.ConfigStd.Unmarshal([]byte(stored), &row); err != nil {
+		return Event{}, false, err
+	}
+	row.Event.PayloadHash = payloadHash
+	return row.Event, true, nil
+}
+
+func isDuplicateKeyError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "duplicate") ||
+		strings.Contains(message, "unique constraint") ||
+		strings.Contains(message, "error -6602") ||
+		strings.Contains(message, "error -6612") ||
+		strings.Contains(message, "error -6625")
 }
 
 // ClaimHeadOfLine atomically leases only the oldest incomplete event in this

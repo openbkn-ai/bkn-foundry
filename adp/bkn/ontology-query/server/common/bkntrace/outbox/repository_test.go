@@ -7,12 +7,106 @@ package outbox
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
+
+func TestEnqueueReplaysIdenticalEvidenceAndRejectsConflict(t *testing.T) {
+	owner := Owner{ApplicationPrincipalID: "ontology-query", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"}
+	now := time.Now().UTC()
+	event := Event{EventID: "evt-replay", EventType: "data.query.observed", ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`)}
+	core, _ := json.Marshal(struct {
+		Event json.RawMessage `json:"event"`
+		Owner Owner           `json:"owner"`
+	}{event.Envelope, owner})
+	hash := CanonicalHash(core)
+	existing := event
+	existing.Envelope, existing.PayloadHash, existing.ProducerSequence = core, hash, 7
+	stored, _ := json.Marshal(struct {
+		Event Event `json:"event"`
+		Owner Owner `json:"owner"`
+	}{existing, owner})
+
+	for _, tc := range []struct {
+		name, storedHash string
+		wantConflict     bool
+	}{{"replay", hash, false}, {"conflict", "different", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, _ := sqlmock.New()
+			defer db.Close()
+			repository := &Repository{db: db, config: Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"}, dialect: dialectMariaDB}
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs(event.EventID).WillReturnRows(sqlmock.NewRows([]string{"payload_hash", "envelope"}).AddRow(tc.storedHash, string(stored)))
+			got, err := repository.Enqueue(context.Background(), event, owner)
+			if tc.wantConflict && !errors.Is(err, ErrEventIDConflict) {
+				t.Fatalf("error = %v, want conflict", err)
+			}
+			if !tc.wantConflict && (err != nil || got.ProducerSequence != 7) {
+				t.Fatalf("replay = %#v, %v", got, err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestEnqueueReReadsAfterDuplicateKeyRace(t *testing.T) {
+	db, mock, _ := sqlmock.New()
+	defer db.Close()
+	repository := &Repository{db: db, config: Config{ProducerID: "bkn-ontology", ProducerStreamID: "ontology-query"}, dialect: dialectMariaDB}
+	owner := Owner{ApplicationPrincipalID: "ontology-query", EffectiveSubjectType: "service", EffectiveSubjectID: "svc-1"}
+	now := time.Now().UTC()
+	event := Event{EventID: "evt-race", EventType: "data.query.observed", ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`)}
+	core, _ := json.Marshal(struct {
+		Event json.RawMessage `json:"event"`
+		Owner Owner           `json:"owner"`
+	}{event.Envelope, owner})
+	hash := CanonicalHash(core)
+	existing := event
+	existing.Envelope, existing.PayloadHash, existing.ProducerSequence = core, hash, 1
+	stored, _ := json.Marshal(struct {
+		Event Event `json:"event"`
+		Owner Owner `json:"owner"`
+	}{existing, owner})
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs("evt-race").WillReturnError(sql.ErrNoRows)
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).WithArgs("bkn-ontology", "ontology-query").WillReturnRows(sqlmock.NewRows([]string{"current_epoch", "next_sequence"}).AddRow(uint64(1), uint64(1)))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE "+tableStream+" SET next_sequence = ?, updated_at = ? WHERE producer_id = ? AND producer_stream_id = ?")).WithArgs(uint64(2), sqlmock.AnyArg(), "bkn-ontology", "ontology-query").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta("INSERT INTO " + tableOutbox)).WillReturnError(errors.New("Error 1062: Duplicate entry"))
+	mock.ExpectRollback()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs("evt-race").WillReturnRows(sqlmock.NewRows([]string{"payload_hash", "envelope"}).AddRow(hash, string(stored)))
+	got, err := repository.Enqueue(context.Background(), event, owner)
+	if err != nil || got.ProducerSequence != 1 {
+		t.Fatalf("duplicate-key replay = %#v, %v", got, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIsDuplicateKeyErrorSupportsMariaDBAndDM8(t *testing.T) {
+	tests := []struct {
+		message string
+		want    bool
+	}{
+		{"Error 1062 (23000): Duplicate entry", true},
+		{"UNIQUE constraint failed", true},
+		{"Error -6602: 违反唯一性约束", true},
+		{"Error -6625: 违反表[T]唯一性约束[UQ_T]", true},
+		{"connection reset", false},
+	}
+	for _, tc := range tests {
+		if got := isDuplicateKeyError(errors.New(tc.message)); got != tc.want {
+			t.Fatalf("isDuplicateKeyError(%q) = %v, want %v", tc.message, got, tc.want)
+		}
+	}
+}
 
 func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -40,6 +134,7 @@ func TestEnqueueUsesCurrentEpochFromStreamState(t *testing.T) {
 		StartedAt: now, ObservedAt: now, EmittedAt: now, Envelope: []byte(`{"payload":{}}`),
 	}
 
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs("evt-1").WillReturnError(sql.ErrNoRows)
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).
 		WithArgs("bkn-ontology", "ontology-query").
@@ -79,6 +174,7 @@ func TestEnqueueRejectsZeroEpoch(t *testing.T) {
 		dialect: dialectMariaDB,
 	}
 	now := time.Now().UTC()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT payload_hash, envelope FROM " + tableOutbox + " WHERE event_id = ?")).WithArgs("evt-zero").WillReturnError(sql.ErrNoRows)
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT current_epoch, next_sequence FROM "+tableStream+" WHERE producer_id = ? AND producer_stream_id = ? FOR UPDATE")).
 		WithArgs("bkn-ontology", "ontology-query").
