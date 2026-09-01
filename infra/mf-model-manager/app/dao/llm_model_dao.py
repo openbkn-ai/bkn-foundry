@@ -285,6 +285,27 @@ class ModelDao():
         return False
 
     @connect_execute_close_db
+    def find_model_by_unique_config(self, base, model, api_key, connection, cursor):
+        """Return safe identity fields for a duplicate LLM configuration, if any."""
+        cursor.execute(
+            """select f_model_id, f_model_name, f_model_type, f_model_config, f_default
+               from t_llm_model where f_model=%s""",
+            model,
+        )
+        for item in cursor.fetchall():
+            model_config = json.loads(item["f_model_config"])
+            configured_base = model_config.get("api_base", model_config.get("api_url"))
+            if configured_base == base and (
+                    api_key is None or model_config.get("api_key") == api_key):
+                return {
+                    "id": str(item["f_model_id"]),
+                    "name": item["f_model_name"],
+                    "type": item["f_model_type"],
+                    "default": item["f_default"] in (1, True, "1"),
+                }
+        return None
+
+    @connect_execute_close_db
     def get_model_default_paras(self, connection, cursor):
         sql = """select f_model_id,f_model_name,f_model_series,f_model from t_llm_model"""
 

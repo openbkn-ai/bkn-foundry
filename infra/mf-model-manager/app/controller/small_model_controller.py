@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from app.commons.errors.codes import ParamValidationErrors
 from app.commons.i18n import get_error_message
+from app.commons.locale import error_with_message
 from app.commons.snow_id import worker
 from app.core.config import base_config
 from app.dao.small_model_dao import small_model_dao
@@ -64,6 +65,40 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
                                                                       role=role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
+        duplicate_model = small_model_dao.find_model_by_duplicate_config(config_info)
+        if duplicate_model:
+            can_manage_default = request.default and await can_manage_default_small_model(userId, role)
+            can_reveal_existing = await permission_manager.check_display(
+                userId, role, "small_model", duplicate_model["id"])
+            if not can_reveal_existing:
+                default_switch_reason = "NO_DISPLAY_PERMISSION"
+            elif not request.default:
+                default_switch_reason = "NOT_REQUESTED"
+            elif not can_manage_default:
+                default_switch_reason = "NO_MODIFY_PERMISSION"
+            elif duplicate_model.get("default", False):
+                default_switch_reason = "ALREADY_DEFAULT"
+            else:
+                default_switch_reason = None
+            can_set_default = default_switch_reason is None
+            message_key = {
+                None: "ModelFactory.ModelConfigConflict.CanSetDefault",
+                "NO_MODIFY_PERMISSION": "ModelFactory.ModelConfigConflict.NoDefaultPermission",
+                "NO_DISPLAY_PERMISSION": "ModelFactory.ModelConfigConflict.Hidden",
+                "ALREADY_DEFAULT": "ModelFactory.ModelConfigConflict.AlreadyDefault",
+                "NOT_REQUESTED": "ModelFactory.ModelConfigConflict.Exists",
+            }[default_switch_reason]
+            conflict = error_with_message({
+                "code": "ModelFactory.ExternalSmallModel.AddModel.DuplicateConfig",
+                "error_code": "RESOURCE_EXISTED",
+                "description": "", "detail": "", "solution": "", "link": "",
+                "details": {"can_set_default": can_set_default, "can_reveal_existing": can_reveal_existing,
+                            "default_switch_reason": default_switch_reason},
+            }, message_key)
+            if can_reveal_existing:
+                conflict["existing_id"] = duplicate_model["id"]
+                conflict["details"]["existing_model"] = duplicate_model
+            return JSONResponse(status_code=409, content=conflict)
         if request.default and not await can_manage_default_small_model(userId, role):
             return JSONResponse(status_code=403, content=NotPermissionError)
         if base_config.AUTH_ENABLED:
@@ -413,10 +448,7 @@ async def set_default_model(model_para, userId, language, role):
         model_info = small_model_dao.get_model_info_by_id(model_id)
         if len(model_info) == 0:
             return JSONResponse(status_code=400, content=ModelFactory_ExternalSmallModel_GetInfo_IdNotExist_Error)
-        permission = await permission_manager.check_single_permission(user_id=userId, resource_id=model_id,
-                                                                      operations="modify",
-                                                                      resource_type="small_model",
-                                                                      role=role)
+        permission = await can_manage_default_small_model(userId, role)
         if not permission:
             return JSONResponse(status_code=403, content=NotPermissionError)
         if not set_default:

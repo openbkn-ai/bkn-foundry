@@ -131,8 +131,10 @@ class TestAddModel(TestCase):
         self.add_data_with_default = llm_model_dao.add_data_with_default
         self.get_model_by_name = llm_model_dao.get_model_by_name
         self.check_model_unique = llm_model_dao.check_model_unique
+        self.find_model_by_unique_config = llm_model_dao.find_model_by_unique_config
         self.redis_util = llm_controller.redis_util
         self.check_single_permission = llm_controller.permission_manager.check_single_permission
+        self.check_display = llm_controller.permission_manager.check_display
         self.add_permission = llm_controller.permission_manager.add_permission
         self.delete_permission = llm_controller.permission_manager.delete_permission
 
@@ -140,8 +142,10 @@ class TestAddModel(TestCase):
         llm_model_dao.add_data_with_default = self.add_data_with_default
         llm_model_dao.get_model_by_name = self.get_model_by_name
         llm_model_dao.check_model_unique = self.check_model_unique
+        llm_model_dao.find_model_by_unique_config = self.find_model_by_unique_config
         llm_controller.redis_util = self.redis_util
         llm_controller.permission_manager.check_single_permission = self.check_single_permission
+        llm_controller.permission_manager.check_display = self.check_display
         llm_controller.permission_manager.add_permission = self.add_permission
         llm_controller.permission_manager.delete_permission = self.delete_permission
         StandLogger.stand_log_shutdown()
@@ -165,6 +169,7 @@ class TestAddModel(TestCase):
         llm_model_dao.add_data_with_default = mock.Mock(return_value=True)
         llm_model_dao.get_model_by_name = mock.Mock(return_value=())
         llm_model_dao.check_model_unique = mock.Mock(return_value=False)
+        llm_model_dao.find_model_by_unique_config = mock.Mock(return_value=None)
         llm_controller.redis_util = mock.MagicMock(delete_str=mock.AsyncMock())
         res = loop.run_until_complete(
             llm_controller.add_model(request, "111", "zh"))
@@ -172,6 +177,92 @@ class TestAddModel(TestCase):
         self.assertEqual(isinstance(json.loads(res.body)["id"], str), True)
         self.assertTrue(json.loads(res.body)["default"])
         self.assertFalse(llm_model_dao.add_data_with_default.call_args.args[-1])
+
+    def test_add_model_returns_duplicate_identity_without_changing_default(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        request = {
+            "model_config": {"api_model": "existing", "api_url": "https://example.com", "api_key": "key"},
+            "model_series": "openai", "model_name": "new-name", "model_type": "llm",
+            "max_model_len": 128, "default": True,
+        }
+        llm_model_dao.get_model_by_name = mock.Mock(return_value=[])
+        llm_model_dao.find_model_by_unique_config = mock.Mock(return_value={
+            "id": "123", "name": "existing-name", "type": "llm",
+        })
+        llm_model_dao.add_data_with_default = mock.Mock()
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, True])
+        llm_controller.permission_manager.check_display = mock.AsyncMock(return_value=True)
+
+        response = loop.run_until_complete(llm_controller.add_model(request, "111", "zh"))
+
+        body = json.loads(response.body)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(body["error_code"], "RESOURCE_EXISTED")
+        self.assertEqual(body["existing_id"], "123")
+        self.assertEqual(body["details"]["existing_model"]["name"], "existing-name")
+        self.assertTrue(body["details"]["can_set_default"])
+        llm_model_dao.add_data_with_default.assert_not_called()
+
+    def test_add_model_duplicate_reports_no_default_permission(self):
+        request = {
+            "model_config": {"api_model": "existing", "api_url": "https://example.com", "api_key": "key"},
+            "model_series": "openai", "model_name": "new-name", "model_type": "llm",
+            "max_model_len": 128, "default": True,
+        }
+        llm_model_dao.get_model_by_name = mock.Mock(return_value=[])
+        llm_model_dao.find_model_by_unique_config = mock.Mock(return_value={
+            "id": "123", "name": "existing-name", "type": "llm",
+        })
+        llm_model_dao.add_data_with_default = mock.Mock()
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, False])
+        llm_controller.permission_manager.check_display = mock.AsyncMock(return_value=True)
+
+        response = asyncio.run(llm_controller.add_model(request, "111", "zh"))
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(json.loads(response.body)["details"]["can_set_default"])
+        llm_model_dao.add_data_with_default.assert_not_called()
+
+    def test_add_model_does_not_reveal_duplicate_without_display_permission(self):
+        request = {
+            "model_config": {"api_model": "existing", "api_url": "https://example.com", "api_key": "key"},
+            "model_series": "openai", "model_name": "new-name", "model_type": "llm",
+            "max_model_len": 128, "default": True,
+        }
+        llm_model_dao.get_model_by_name = mock.Mock(return_value=[])
+        llm_model_dao.find_model_by_unique_config = mock.Mock(return_value={
+            "id": "123", "name": "existing-name", "type": "llm",
+        })
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, True])
+        llm_controller.permission_manager.check_display = mock.AsyncMock(return_value=False)
+
+        response = asyncio.run(llm_controller.add_model(request, "111", "zh"))
+
+        body = json.loads(response.body)
+        self.assertEqual(response.status_code, 409)
+        self.assertNotIn("existing_id", body)
+        self.assertNotIn("existing_model", body["details"])
+        self.assertFalse(body["details"]["can_set_default"])
+
+    def test_add_model_reports_duplicate_that_is_already_default(self):
+        request = {
+            "model_config": {"api_model": "existing", "api_url": "https://example.com", "api_key": "key"},
+            "model_series": "openai", "model_name": "new-name", "model_type": "llm",
+            "max_model_len": 128, "default": True,
+        }
+        llm_model_dao.get_model_by_name = mock.Mock(return_value=[])
+        llm_model_dao.find_model_by_unique_config = mock.Mock(return_value={
+            "id": "123", "name": "existing-name", "type": "llm", "default": True,
+        })
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, True])
+        llm_controller.permission_manager.check_display = mock.AsyncMock(return_value=True)
+
+        response = asyncio.run(llm_controller.add_model(request, "111", "zh"))
+
+        body = json.loads(response.body)
+        self.assertFalse(body["details"]["can_set_default"])
+        self.assertEqual(body["details"]["default_switch_reason"], "ALREADY_DEFAULT")
 
     def test_add_model_rejects_explicit_default_without_modify_permission(self):
         loop = asyncio.new_event_loop()
