@@ -198,6 +198,8 @@ class TestAcceptLanguageResolver(unittest.TestCase):
                 "Model configuration already exists.", "模型配置已存在。"),
             "ModelFactory.ModelConfigConflict.Hidden": (
                 "Model configuration already exists.", "模型配置已存在。"),
+            "ModelFactory.ModelConfigConflict.AlreadyDefault": (
+                "Model configuration already exists.", "模型配置已存在。"),
         }
         for code, (english_description, chinese_description) in cases.items():
             with self.subTest(code=code):

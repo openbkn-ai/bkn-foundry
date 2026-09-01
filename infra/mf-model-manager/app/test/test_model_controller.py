@@ -245,6 +245,25 @@ class TestAddModel(TestCase):
         self.assertNotIn("existing_model", body["details"])
         self.assertFalse(body["details"]["can_set_default"])
 
+    def test_add_model_reports_duplicate_that_is_already_default(self):
+        request = {
+            "model_config": {"api_model": "existing", "api_url": "https://example.com", "api_key": "key"},
+            "model_series": "openai", "model_name": "new-name", "model_type": "llm",
+            "max_model_len": 128, "default": True,
+        }
+        llm_model_dao.get_model_by_name = mock.Mock(return_value=[])
+        llm_model_dao.find_model_by_unique_config = mock.Mock(return_value={
+            "id": "123", "name": "existing-name", "type": "llm", "default": True,
+        })
+        llm_controller.permission_manager.check_single_permission = mock.AsyncMock(side_effect=[True, True])
+        llm_controller.permission_manager.check_display = mock.AsyncMock(return_value=True)
+
+        response = asyncio.run(llm_controller.add_model(request, "111", "zh"))
+
+        body = json.loads(response.body)
+        self.assertFalse(body["details"]["can_set_default"])
+        self.assertEqual(body["details"]["default_switch_reason"], "ALREADY_DEFAULT")
+
     def test_add_model_rejects_explicit_default_without_modify_permission(self):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)

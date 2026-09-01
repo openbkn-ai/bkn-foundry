@@ -148,6 +148,8 @@ error_messages = {
     "ModelFactory.ModelConfigConflict.CanSetDefault": {"description": "模型配置已存在。", "detail": "已有模型使用该配置，请确认是否将其切换为默认模型。", "solution": "确认切换默认模型，或使用不同的模型配置。"},
     "ModelFactory.ModelConfigConflict.NoDefaultPermission": {"description": "模型配置已存在。", "detail": "已有模型使用该配置，但你无权切换默认模型。", "solution": "请使用已有模型，或联系管理员切换默认模型。"},
     "ModelFactory.ModelConfigConflict.Hidden": {"description": "模型配置已存在。", "detail": "存在匹配的模型，但你无权查看或切换该模型。", "solution": "请使用不同的模型配置或联系管理员。"},
+    "ModelFactory.ModelConfigConflict.AlreadyDefault": {"description": "模型配置已存在。", "detail": "已有模型已经是默认模型。", "solution": "无需切换默认模型。"},
+    "ModelFactory.ModelConfigConflict.Exists": {"description": "模型配置已存在。", "detail": "已有模型使用该配置。", "solution": "请使用已有模型或不同的模型配置。"},
     "ModelFactory.ConnectController.LLMAdd.InvalidConfiguration": {"description": "模型配置无效。", "detail": "无法校验当前模型配置。", "solution": "请检查模型配置后重试。"},
     "ModelFactory.ModelController.EditDefaultModel.PermissionDenied": {"description": "权限不足。", "detail": "只有管理员可以编辑默认模型。", "solution": "请联系管理员执行此操作。"},
     "ModelFactory.ModelController.EditDefaultModel.AlreadyDefault": {"description": "该模型已是默认模型。", "detail": "无需重复将该模型设为默认模型。", "solution": "请选择其他模型或保持当前默认模型不变。"},

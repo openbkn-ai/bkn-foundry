@@ -67,19 +67,33 @@ async def add_model(request: logics.AddExternalSmallModel, userId, language, rol
             return JSONResponse(status_code=403, content=NotPermissionError)
         duplicate_model = small_model_dao.find_model_by_duplicate_config(config_info)
         if duplicate_model:
-            can_set_default = request.default and await can_manage_default_small_model(userId, role)
+            can_manage_default = request.default and await can_manage_default_small_model(userId, role)
             can_reveal_existing = await permission_manager.check_display(
                 userId, role, "small_model", duplicate_model["id"])
             if not can_reveal_existing:
-                can_set_default = False
-            message_key = ("ModelFactory.ModelConfigConflict.CanSetDefault" if can_set_default else
-                           "ModelFactory.ModelConfigConflict.NoDefaultPermission" if can_reveal_existing else
-                           "ModelFactory.ModelConfigConflict.Hidden")
+                default_switch_reason = "NO_DISPLAY_PERMISSION"
+            elif not request.default:
+                default_switch_reason = "NOT_REQUESTED"
+            elif not can_manage_default:
+                default_switch_reason = "NO_MODIFY_PERMISSION"
+            elif duplicate_model.get("default", False):
+                default_switch_reason = "ALREADY_DEFAULT"
+            else:
+                default_switch_reason = None
+            can_set_default = default_switch_reason is None
+            message_key = {
+                None: "ModelFactory.ModelConfigConflict.CanSetDefault",
+                "NO_MODIFY_PERMISSION": "ModelFactory.ModelConfigConflict.NoDefaultPermission",
+                "NO_DISPLAY_PERMISSION": "ModelFactory.ModelConfigConflict.Hidden",
+                "ALREADY_DEFAULT": "ModelFactory.ModelConfigConflict.AlreadyDefault",
+                "NOT_REQUESTED": "ModelFactory.ModelConfigConflict.Exists",
+            }[default_switch_reason]
             conflict = error_with_message({
                 "code": "ModelFactory.ExternalSmallModel.AddModel.DuplicateConfig",
                 "error_code": "RESOURCE_EXISTED",
                 "description": "", "detail": "", "solution": "", "link": "",
-                "details": {"can_set_default": can_set_default, "can_reveal_existing": can_reveal_existing},
+                "details": {"can_set_default": can_set_default, "can_reveal_existing": can_reveal_existing,
+                            "default_switch_reason": default_switch_reason},
             }, message_key)
             if can_reveal_existing:
                 conflict["existing_id"] = duplicate_model["id"]

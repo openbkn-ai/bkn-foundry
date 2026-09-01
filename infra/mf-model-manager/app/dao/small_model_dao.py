@@ -26,7 +26,7 @@ class SmallModelDao:
         """
         cursor.execute(
             """select f_model_id, f_model_name, f_model_type, f_model_config, f_adapter, f_adapter_code,
-                      f_batch_size, f_max_tokens, f_embedding_dim
+                      f_batch_size, f_max_tokens, f_embedding_dim, f_default
                from t_small_model where f_model_type=%s""",
             config_info.model_type,
         )
@@ -43,6 +43,7 @@ class SmallModelDao:
                     "id": str(item["f_model_id"]),
                     "name": item["f_model_name"],
                     "type": item["f_model_type"],
+                    "default": item["f_default"] in (1, True, "1"),
                 }
         return None
 

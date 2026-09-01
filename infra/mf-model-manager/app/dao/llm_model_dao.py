@@ -288,7 +288,8 @@ class ModelDao():
     def find_model_by_unique_config(self, base, model, api_key, connection, cursor):
         """Return safe identity fields for a duplicate LLM configuration, if any."""
         cursor.execute(
-            "select f_model_id, f_model_name, f_model_type, f_model_config from t_llm_model where f_model=%s",
+            """select f_model_id, f_model_name, f_model_type, f_model_config, f_default
+               from t_llm_model where f_model=%s""",
             model,
         )
         for item in cursor.fetchall():
@@ -300,6 +301,7 @@ class ModelDao():
                     "id": str(item["f_model_id"]),
                     "name": item["f_model_name"],
                     "type": item["f_model_type"],
+                    "default": item["f_default"] in (1, True, "1"),
                 }
         return None
 
