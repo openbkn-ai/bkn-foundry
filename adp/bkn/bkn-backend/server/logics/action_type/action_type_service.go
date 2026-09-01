@@ -217,7 +217,7 @@ func (ats *actionTypeService) CreateActionTypes(ctx context.Context, tx *sql.Tx,
 
 	currentTime := time.Now().UnixMilli()
 	for _, actionType := range actionTypes {
-		actionType.ATID, err = permission.PrepareKNChildResourceID(ctx, actionType.ATID, mode)
+		actionType.ATID, err = permission.PrepareKNChildResourceID(ctx, actionType.ATID)
 		if err != nil {
 			return nil, err
 		}

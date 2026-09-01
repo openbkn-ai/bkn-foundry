@@ -137,7 +137,7 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 	}
 
 	currentTime := time.Now().UnixMilli()
-	conceptGroup.CGID, err = permission.PrepareKNChildResourceID(ctx, conceptGroup.CGID, mode)
+	conceptGroup.CGID, err = permission.PrepareKNChildResourceID(ctx, conceptGroup.CGID)
 	if err != nil {
 		return "", err
 	}

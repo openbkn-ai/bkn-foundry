@@ -1,7 +1,6 @@
 // Copyright openbkn.ai
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 package permission
 
@@ -18,7 +17,7 @@ import (
 
 func TestPrepareKNChildResourceID(t *testing.T) {
 	requestedID := "customer_object_id"
-	id, err := PrepareKNChildResourceID(context.Background(), requestedID, interfaces.ImportMode_Normal)
+	id, err := PrepareKNChildResourceID(context.Background(), requestedID)
 	if err != nil {
 		t.Fatalf("PrepareKNChildResourceID() with a requested ID returned %v", err)
 	}
@@ -26,20 +25,20 @@ func TestPrepareKNChildResourceID(t *testing.T) {
 		t.Fatalf("PrepareKNChildResourceID() = %q, want requested ID %q", id, requestedID)
 	}
 
-	id, err = PrepareKNChildResourceID(context.Background(), "", interfaces.ImportMode_Normal)
+	id, err = PrepareKNChildResourceID(context.Background(), "")
 	if err != nil {
 		t.Fatalf("PrepareKNChildResourceID() error = %v", err)
 	}
 	if len(id) != 20 {
 		t.Fatalf("generated ID length = %d, want 20", len(id))
 	}
-	if _, err := PrepareKNChildResourceID(context.Background(), "bad/id", interfaces.ImportMode_Overwrite); err == nil {
+	if _, err := PrepareKNChildResourceID(context.Background(), "bad/id"); err == nil {
 		t.Fatal("ID containing a slash must be rejected")
 	}
-	if _, err := PrepareKNChildResourceID(context.Background(), "bad*id", interfaces.ImportMode_Overwrite); err == nil {
+	if _, err := PrepareKNChildResourceID(context.Background(), "bad*id"); err == nil {
 		t.Fatal("ID containing a wildcard must be rejected")
 	}
-	if _, err := PrepareKNChildResourceID(context.Background(), " child-id", interfaces.ImportMode_Overwrite); err == nil {
+	if _, err := PrepareKNChildResourceID(context.Background(), " child-id"); err == nil {
 		t.Fatal("ID containing surrounding whitespace must be rejected")
 	}
 }

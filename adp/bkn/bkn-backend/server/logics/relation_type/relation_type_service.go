@@ -145,7 +145,7 @@ func (rts *relationTypeService) CreateRelationTypes(ctx context.Context, tx *sql
 
 	currentTime := time.Now().UnixMilli()
 	for _, relationType := range relationTypes {
-		relationType.RTID, err = permission.PrepareKNChildResourceID(ctx, relationType.RTID, mode)
+		relationType.RTID, err = permission.PrepareKNChildResourceID(ctx, relationType.RTID)
 		if err != nil {
 			return nil, err
 		}

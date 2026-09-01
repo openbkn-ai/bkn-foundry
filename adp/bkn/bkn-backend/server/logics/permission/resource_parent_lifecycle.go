@@ -1,7 +1,6 @@
 // Copyright openbkn.ai
 //
-// Licensed under the Apache License, Version 2.0.
-// See the LICENSE file in the project root for details.
+// Licensed under the OpenBKN License. See LICENSE-OPENBKN.txt in the project root.
 
 package permission
 
@@ -207,7 +206,7 @@ func logAuthorizationCleanupFailure(cleanupKind, resourceType, resourceID, paren
 }
 
 // PrepareKNChildResourceID preserves valid client-provided IDs and generates an ID when omitted.
-func PrepareKNChildResourceID(ctx context.Context, requestedID, _ string) (string, error) {
+func PrepareKNChildResourceID(ctx context.Context, requestedID string) (string, error) {
 	id := requestedID
 	if id == "" {
 		id = xid.New().String()

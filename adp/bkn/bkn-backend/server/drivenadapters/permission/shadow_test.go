@@ -178,6 +178,49 @@ func TestShadowDeleteResourcesWritesChildCleanupOnlyToSafe(t *testing.T) {
 	}
 }
 
+func TestShadowResourceParentErrorsDoNotAffectAuthoritativePath(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		http.Error(w, `{"error":"safe unavailable"}`, http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	access := &shadowPermissionAccess{safe: newSafeClient(srv.URL)}
+	items := []interfaces.PermissionResourceParent{{ResourceID: "kn-1/ot-1", ParentID: "kn-1"}}
+	if err := access.UpsertResourceParents(context.Background(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		interfaces.RESOURCE_TYPE_KN, items); err != nil {
+		t.Fatalf("UpsertResourceParents() error = %v, want nil in shadow mode", err)
+	}
+	if err := access.DeleteResourceParents(context.Background(), interfaces.RESOURCE_TYPE_OBJECT_TYPE,
+		[]string{"kn-1/ot-1"}); err != nil {
+		t.Fatalf("DeleteResourceParents() error = %v, want nil in shadow mode", err)
+	}
+	if calls != 2 {
+		t.Fatalf("bkn-safe call count = %d, want 2", calls)
+	}
+}
+
+func TestShadowDeleteResourcesSafeFailureStillCallsLegacy(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	legacy := bmock.NewMockPermissionAccess(ctrl)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":"safe unavailable"}`, http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	legacyResource := interfaces.PermissionResource{Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1"}
+	legacy.EXPECT().DeleteResources(gomock.Any(), []interfaces.PermissionResource{legacyResource}).Return(nil)
+	access := &shadowPermissionAccess{PermissionAccess: legacy, safe: newSafeClient(srv.URL)}
+	resources := []interfaces.PermissionResource{
+		{Type: interfaces.RESOURCE_TYPE_OBJECT_TYPE, ID: "kn-1/ot-1"},
+		legacyResource,
+	}
+	if err := access.DeleteResources(context.Background(), resources); err != nil {
+		t.Fatalf("DeleteResources() error = %v, want nil from authoritative legacy adapter", err)
+	}
+}
+
 // TestSafeFilterResourcesIsOneCall pins the two properties the batch endpoint
 // exists for: a page costs one round trip regardless of size, and the candidate
 // operations reach bkn-safe instead of collapsing to the visibility op.

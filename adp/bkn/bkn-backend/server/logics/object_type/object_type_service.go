@@ -175,7 +175,7 @@ func (ots *objectTypeService) CreateObjectTypes(ctx context.Context, tx *sql.Tx,
 
 	currentTime := time.Now().UnixMilli()
 	for _, objectType := range objectTypes {
-		objectType.OTID, err = permission.PrepareKNChildResourceID(ctx, objectType.OTID, mode)
+		objectType.OTID, err = permission.PrepareKNChildResourceID(ctx, objectType.OTID)
 		if err != nil {
 			return nil, err
 		}

@@ -209,7 +209,7 @@ func (ms *metricService) CreateMetrics(ctx context.Context, tx *sql.Tx, entries 
 	}
 
 	for _, m := range entries {
-		m.ID, err = permission.PrepareKNChildResourceID(ctx, m.ID, importMode)
+		m.ID, err = permission.PrepareKNChildResourceID(ctx, strings.TrimSpace(m.ID))
 		if err != nil {
 			return nil, err
 		}

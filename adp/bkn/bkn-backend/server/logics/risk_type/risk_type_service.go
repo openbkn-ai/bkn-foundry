@@ -117,7 +117,7 @@ func (rts *riskTypeService) CreateRiskTypes(ctx context.Context, tx *sql.Tx, ris
 
 	currentTime := time.Now().UnixMilli()
 	for _, rt := range riskTypes {
-		rt.RTID, err = permission.PrepareKNChildResourceID(ctx, rt.RTID, mode)
+		rt.RTID, err = permission.PrepareKNChildResourceID(ctx, rt.RTID)
 		if err != nil {
 			return nil, err
 		}

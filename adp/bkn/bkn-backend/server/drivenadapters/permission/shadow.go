@@ -161,11 +161,19 @@ func (s *shadowPermissionAccess) CheckPermission(ctx context.Context, check inte
 
 func (s *shadowPermissionAccess) UpsertResourceParents(ctx context.Context, resourceType, parentType string,
 	items []interfaces.PermissionResourceParent) error {
-	return s.safe.upsertResourceParents(ctx, resourceType, parentType, items)
+	if err := s.safe.upsertResourceParents(ctx, resourceType, parentType, items); err != nil {
+		log.Printf("[authz-shadow] bkn-safe resource-parent upsert error (ISF authoritative): resource_type=%s parent_type=%s count=%d err=%v",
+			resourceType, parentType, len(items), err)
+	}
+	return nil
 }
 
 func (s *shadowPermissionAccess) DeleteResourceParents(ctx context.Context, resourceType string, resourceIDs []string) error {
-	return s.safe.deleteResourceParents(ctx, resourceType, resourceIDs)
+	if err := s.safe.deleteResourceParents(ctx, resourceType, resourceIDs); err != nil {
+		log.Printf("[authz-shadow] bkn-safe resource-parent delete error (ISF authoritative): resource_type=%s count=%d err=%v",
+			resourceType, len(resourceIDs), err)
+	}
+	return nil
 }
 
 func (s *shadowPermissionAccess) DeleteResources(ctx context.Context, resources []interfaces.PermissionResource) error {
@@ -178,7 +186,8 @@ func (s *shadowPermissionAccess) DeleteResources(ctx context.Context, resources 
 		if err := s.safe.do(ctx, http.MethodDelete, "/api/safe/v1/authz/policies", map[string]any{
 			"resource": map[string]string{"type": resource.Type, "id": resource.ID},
 		}, nil); err != nil {
-			return err
+			log.Printf("[authz-shadow] bkn-safe policy delete error (ISF authoritative): resource_type=%s resource_id=%s err=%v",
+				resource.Type, resource.ID, err)
 		}
 	}
 	if len(legacyResources) == 0 {
