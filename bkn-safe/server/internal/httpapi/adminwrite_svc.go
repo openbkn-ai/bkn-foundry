@@ -119,6 +119,9 @@ func (s *adminWriteServices) GrantRolePermission(ctx context.Context, roleID, re
 	if err := rejectWildcardGrant(resourceType, []string{op}); err != nil {
 		return fmt.Errorf("%w: %s", adminwrite.ErrWildcardGrant, err.Error())
 	}
+	if err := rejectTypeWideActionExecute(resourceType, resourceID, []string{op}); err != nil {
+		return fmt.Errorf("%w: %s", adminwrite.ErrTypeWideActionExecute, err.Error())
+	}
 	if resourceType == adminConsoleResourceType {
 		return adminwrite.ErrAdminConsolePermission
 	}

@@ -13,15 +13,11 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 )
 
-// TestSeedDeclaresNoHierarchyForResources pins the hierarchy DORMANT.
-//
-// The mechanism below (declaration, climb, enumeration) works and is kept, but
-// the catalog/resource pair no longer uses it: vega resolves the fallback at its
-// own decision point, where the resource row it is judging already carries
-// catalog_id (#817). Nothing has to reach bkn-safe, and with no declaration the
-// climb never fires — so this asserts the ABSENCE, which is the thing a future
-// edit could silently undo.
-func TestSeedDeclaresNoHierarchyForResources(t *testing.T) {
+// TestSeedDeclaresKnowledgeNetworkHierarchy pins the KN authorization contract:
+// six domain resource types inherit selected operations from their owning KN,
+// while action_type/execute remains instance-only and Vega's resource type is
+// deliberately unaffected.
+func TestSeedDeclaresKnowledgeNetworkHierarchy(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -31,22 +27,99 @@ func TestSeedDeclaresNoHierarchyForResources(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var types []model.ResourceType
-	if err := db.Where("parent_type_id <> ''").Find(&types).Error; err != nil {
-		t.Fatalf("load resource types: %v", err)
-	}
-	for _, rt := range types {
-		t.Errorf("resource type %q declares parent %q — the shipped catalog declares no hierarchy, "+
-			"and adding one turns the climb back on for every decision on that type", rt.ID, rt.ParentTypeID)
+	children := []string{"concept_group", "object_type", "relation_type", "action_type", "metric", "risk_type"}
+	for _, child := range children {
+		var rt model.ResourceType
+		if err := db.First(&rt, "id = ?", child).Error; err != nil {
+			t.Fatalf("load resource type %s: %v", child, err)
+		}
+		if rt.ParentTypeID != "knowledge_network" {
+			t.Errorf("%s parent = %q, want knowledge_network", child, rt.ParentTypeID)
+		}
 	}
 
-	var ops []model.Operation
-	if err := db.Where("parent_operation_id <> ''").Find(&ops).Error; err != nil {
-		t.Fatalf("load operations: %v", err)
+	wantMappings := map[string]string{
+		"view_detail": "view_detail",
+		"modify":      "modify",
+		"delete":      "modify",
+		"authorize":   "authorize",
+		"task_manage": "task_manage",
 	}
-	for _, op := range ops {
-		t.Errorf("operation %s/%s maps to %q on a parent, but no type declares a parent",
-			op.ResourceTypeID, op.ID, op.ParentOperationID)
+	for _, child := range children {
+		for operation, parentOperation := range wantMappings {
+			var op model.Operation
+			if err := db.First(&op, "resource_type_id = ? AND id = ?", child, operation).Error; err != nil {
+				t.Fatalf("load operation %s/%s: %v", child, operation, err)
+			}
+			if op.ParentOperationID != parentOperation {
+				t.Errorf("%s/%s parent operation = %q, want %q", child, operation, op.ParentOperationID, parentOperation)
+			}
+		}
+	}
+	for _, child := range []string{"object_type", "relation_type", "metric"} {
+		var op model.Operation
+		if err := db.First(&op, "resource_type_id = ? AND id = ?", child, "query_data").Error; err != nil {
+			t.Fatalf("load operation %s/query_data: %v", child, err)
+		}
+		if op.ParentOperationID != "query_data" {
+			t.Errorf("%s/query_data parent operation = %q, want query_data", child, op.ParentOperationID)
+		}
+	}
+
+	var execute model.Operation
+	if err := db.First(&execute, "resource_type_id = ? AND id = ?", "action_type", "execute").Error; err != nil {
+		t.Fatalf("load action_type/execute: %v", err)
+	}
+	if execute.ParentOperationID != "" {
+		t.Errorf("action_type/execute must be instance-only, got parent operation %q", execute.ParentOperationID)
+	}
+
+	var vegaResource model.ResourceType
+	if err := db.First(&vegaResource, "id = ?", "resource").Error; err != nil {
+		t.Fatalf("load Vega resource type: %v", err)
+	}
+	if vegaResource.ParentTypeID != "" {
+		t.Errorf("Vega resource parent = %q, want no hierarchy", vegaResource.ParentTypeID)
+	}
+
+	parents := []model.ResourceParent{
+		{ResourceTypeID: "object_type", ResourceID: "kn-1/shared", ParentTypeID: "knowledge_network", ParentID: "kn-1"},
+		{ResourceTypeID: "object_type", ResourceID: "kn-2/shared", ParentTypeID: "knowledge_network", ParentID: "kn-2"},
+		{ResourceTypeID: "action_type", ResourceID: "kn-1/run", ParentTypeID: "knowledge_network", ParentID: "kn-1"},
+	}
+	if err := db.Create(&parents).Error; err != nil {
+		t.Fatalf("create resource parents: %v", err)
+	}
+	const user = "u-1"
+	for _, op := range []string{"view_detail", "modify", "query_data", "authorize", "task_manage"} {
+		if err := e.GrantObjectPermission(user, "knowledge_network", "kn-1", op); err != nil {
+			t.Fatalf("grant KN operation %s: %v", op, err)
+		}
+	}
+	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
+		if ok, err := e.Check(user, "object_type", "kn-1/shared", op); err != nil {
+			t.Fatal(err)
+		} else if !ok {
+			t.Errorf("KN grant did not inherit to object_type/%s", op)
+		}
+	}
+	if ok, err := e.Check(user, "object_type", "kn-2/shared", "view_detail"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Error("same child id in another KN inherited across the KN boundary")
+	}
+	if ok, err := e.Check(user, "action_type", "kn-1/run", "execute"); err != nil {
+		t.Fatal(err)
+	} else if ok {
+		t.Error("KN grants must not imply action_type/execute")
+	}
+	if err := e.GrantObjectPermission(user, "action_type", "kn-1/run", "execute"); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := e.Check(user, "action_type", "kn-1/run", "execute"); err != nil {
+		t.Fatal(err)
+	} else if !ok {
+		t.Error("concrete action_type/execute grant must be effective")
 	}
 }
 

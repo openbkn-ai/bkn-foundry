@@ -26,6 +26,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/license"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 	"github.com/openbkn-ai/bkn-foundry/comm-go/entitlement"
 )
 
@@ -49,6 +50,9 @@ func newLicenseServer(t *testing.T) (*gin.Engine, *gorm.DB, ed25519.PrivateKey) 
 	}
 	if err := e.Grant(adminSub, "*", "*"); err != nil {
 		t.Fatalf("grant super-admin: %v", err)
+	}
+	if err := db.Create(&model.User{ID: adminSub, Account: adminSub, Enabled: true}).Error; err != nil {
+		t.Fatalf("create admin account: %v", err)
 	}
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {

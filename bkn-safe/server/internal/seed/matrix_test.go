@@ -38,11 +38,20 @@ func TestRoleResourceMatrix(t *testing.T) {
 		// 改删判这张表再回落到目录（#801）。
 		"resource":       "view_detail",
 		"connector_type": "create", "knowledge_network": "create",
+		"concept_group": "view_detail", "object_type": "query_data", "relation_type": "query_data",
+		"action_type": "execute", "metric": "query_data", "risk_type": "view_detail",
 		"tool_box": "execute", "mcp": "execute", "operator": "execute", "skill": "execute",
 		"small_model": "execute",
 	}
+	networkBuilderAllowed := make(map[string]string, len(repOp))
+	for resourceType, operation := range repOp {
+		networkBuilderAllowed[resourceType] = operation
+	}
+	for _, childType := range []string{"concept_group", "object_type", "relation_type", "action_type", "metric", "risk_type"} {
+		delete(networkBuilderAllowed, childType)
+	}
 	roleAllowed := map[string]map[string]string{
-		networkBuilder: repOp,
+		networkBuilder: networkBuilderAllowed,
 		// The data types (catalog / resource / knowledge_network) are absent on
 		// purpose: the ordinary role holds no data grant, and visibility comes
 		// only from an explicit grant (#513).

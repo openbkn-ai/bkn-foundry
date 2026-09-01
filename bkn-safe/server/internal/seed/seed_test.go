@@ -595,16 +595,9 @@ func TestSeedRevokesNormalUserDataGrants(t *testing.T) {
 	}
 }
 
-// network_builder manages every knowledge network but may not hand one out.
-//
-// Sharing a network is the creator's call: bkn-backend writes `authorize` to
-// whoever created it, and that object grant is what the owner surface reads. A
-// type-wide `authorize` would instead let every member of the role give any
-// network to anyone — and since `authorize` can only be taken back by a platform
-// administrator, that power could not be walked back from inside the role.
-//
-// The rest of the row stays: the role is still the business-plane administrator.
-func TestNetworkBuilderCannotShareNetworksItDidNotCreate(t *testing.T) {
+// network_builder has type-wide create only. Every operation on an existing KN
+// comes from a concrete instance grant written by the owning service.
+func TestNetworkBuilderOnlyCreatesKnowledgeNetworksTypeWide(t *testing.T) {
 	db := newDB(t)
 	e, err := authz.New(db)
 	if err != nil {
@@ -621,31 +614,33 @@ func TestNetworkBuilderCannotShareNetworksItDidNotCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if ok, err := e.Check(builder, "knowledge_network", network, "authorize"); err != nil {
+	if ok, err := e.Check(builder, "knowledge_network", network, "create"); err != nil {
 		t.Fatal(err)
-	} else if ok {
-		t.Error("network_builder must not hold type-wide authorize on knowledge networks")
+	} else if !ok {
+		t.Error("network_builder must retain type-wide knowledge_network/create")
 	}
-
-	for _, op := range []string{"view_detail", "create", "modify", "delete", "query_data", "task_manage"} {
+	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
 		ok, err := e.Check(builder, "knowledge_network", network, op)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !ok {
-			t.Errorf("network_builder lost %q — it is still the business-plane administrator", op)
+		if ok {
+			t.Errorf("network_builder must not hold type-wide knowledge_network/%s", op)
 		}
 	}
 
-	// The creator's own grant is untouched: that is where sharing comes from.
+	// The creator's own grant is untouched: existing-network authority comes
+	// from this instance-level path.
 	const creator = "u-creator"
-	if err := e.GrantObjectPermission(creator, "knowledge_network", network, "authorize"); err != nil {
-		t.Fatal(err)
-	}
-	if ok, err := e.Check(creator, "knowledge_network", network, "authorize"); err != nil {
-		t.Fatal(err)
-	} else if !ok {
-		t.Error("the creator's object-level authorize must still decide sharing")
+	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
+		if err := e.GrantObjectPermission(creator, "knowledge_network", network, op); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := e.Check(creator, "knowledge_network", network, op); err != nil {
+			t.Fatal(err)
+		} else if !ok {
+			t.Errorf("creator's object-level knowledge_network/%s grant must be effective", op)
+		}
 	}
 }
 

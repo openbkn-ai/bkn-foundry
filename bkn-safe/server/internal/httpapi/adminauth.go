@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 )
@@ -52,6 +53,30 @@ func RequireAdmin(v TokenVerifier, e *authz.Enforcer) gin.HandlerFunc {
 			return
 		}
 		c.Set(ctxAccessorID, sub)
+		c.Next()
+	}
+}
+
+// RequireActiveAccount closes the gap between token validity and local account
+// state. A token can remain introspectable briefly after an administrator is
+// disabled; management and owner-delegation routes must stop at the local state
+// immediately instead of continuing to honor cached Casbin grants.
+func RequireActiveAccount(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sub := c.GetString(ctxAccessorID)
+		if sub == "" {
+			abortPublicError(c, http.StatusUnauthorized)
+			return
+		}
+		active, err := activeAccount(c, db, sub)
+		if err != nil {
+			abortPublicError(c, http.StatusServiceUnavailable)
+			return
+		}
+		if !active {
+			abortPublicError(c, http.StatusForbidden)
+			return
+		}
 		c.Next()
 	}
 }

@@ -136,15 +136,17 @@ VS Code / Cursor：打开 `bkn-safe` 根目录，选 **Run and Debug → bkn-saf
 | `candidate_operations` | 投影：返回的 `operations` 从该候选集中取子集，与资源因何可见无关 | 回落到该资源类型的操作目录（与 `POST /operations` 一致） |
 
 资源可用 `resources: [{type,id}]` 给出，也可用 `resource_type` + `resource_ids`
-的单类型形式；两者可同时出现，一次请求内允许混合资源类型。
+的单类型形式；两者可同时出现，一次请求内允许混合资源类型。重复资源和操作会按首次
+出现位置去重，响应顺序稳定。
 
 判定语义与单条 `POST /check` 完全一致：直接授权、角色继承（含角色间传递）、
 根部门公共授权、超管通配、`act` 通配一视同仁。内部不逐 (资源 × 操作) 调用引擎，
 而是先解析该访问者的授权集再在内存中投影，故耗时与资源数近似线性；两条路径由
 `TestFilterResourceOpsMatchesCheck` 钉住一致性。
 
-错误行为：请求体不合法或缺 `accessor_id` 返回 `400`；给了 `resource_ids` 却没给
-`resource_type` 返回 `400`；引擎失败返回 `500`。**空资源列表不是错误**，返回
+账号不存在或已禁用时正常返回空集合；请求体不合法或缺 `accessor_id` 返回 `400`；
+给了 `resource_ids` 却没给 `resource_type` 返回 `400`；账号状态存储不可用返回
+`503`；其他引擎失败返回 `500`。**空资源列表不是错误**，返回
 `{"resources": []}`，分页调用方无需特判。
 
 ## 授权档位（付费能力门控）

@@ -16,6 +16,7 @@ import (
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/authz"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/database"
 	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/directory"
+	"github.com/openbkn-ai/bkn-foundry/bkn-safe/server/internal/model"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -41,6 +42,9 @@ func newCommunityServer(t *testing.T) (*gin.Engine, *authz.Enforcer) {
 	}
 	if err := e.Grant(adminSub, "*", "*"); err != nil {
 		t.Fatalf("grant super-admin: %v", err)
+	}
+	if err := db.Create(&model.User{ID: adminSub, Account: adminSub, Enabled: true}).Error; err != nil {
+		t.Fatalf("create admin account: %v", err)
 	}
 	// Explicitly clear the socket and register NOTHING — the community build.
 	adminwrite.ResetForTest()

@@ -29,7 +29,13 @@ func TestAdminConsoleGateAloneAuthorizesNothing(t *testing.T) {
 		&model.User{ID: "grantee-1", Account: "grantee-1", Name: "grantee-1", Enabled: true}, "pw-init0"); err != nil {
 		t.Fatalf("create grantee: %v", err)
 	}
-	const roleID = "custom-role"
+	const (
+		roleID = "custom-role"
+		caller = "console-only-user"
+	)
+	if err := db.Create(&model.User{ID: caller, Account: caller, Enabled: true}).Error; err != nil {
+		t.Fatalf("create caller: %v", err)
+	}
 	if err := db.Create(&model.Role{ID: roleID, Name: roleID, Source: model.RoleSourceCustom}).Error; err != nil {
 		t.Fatalf("create custom role: %v", err)
 	}
@@ -37,7 +43,6 @@ func TestAdminConsoleGateAloneAuthorizesNothing(t *testing.T) {
 
 	// The caller holds ONLY safe_admin:console:manage: it passes RequireAdmin and
 	// must be refused by every endpoint's own point.
-	const caller = "console-only-user"
 	grantAdminSurface(t, e, "role-console-only")
 	bindRole(t, e, caller, "role-console-only")
 
@@ -113,12 +118,15 @@ func TestRolePermissionWritePointSplit(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r, e, db, _ := newAdminServer(t)
+			r, e, db, users := newAdminServer(t)
 			if err := db.Create(&model.Role{ID: "custom-role", Name: "custom-role", Source: model.RoleSourceCustom}).Error; err != nil {
 				t.Fatalf("create custom role: %v", err)
 			}
 			seedCatalogOps(t, db, "catalog", "view_detail")
 			const caller = "point-user"
+			if err := users.CreateLocalUser(t.Context(), &model.User{ID: caller, Account: caller, Enabled: true}, "pw-init0"); err != nil {
+				t.Fatalf("create caller: %v", err)
+			}
 			grantAdminSurface(t, e, "role-point")
 			for rtype, ops := range c.ops {
 				grantRoleOps(t, e, "role-point", rtype, ops...)
@@ -157,6 +165,9 @@ func TestPolicyReadPoints(t *testing.T) {
 	}
 
 	const reviewer = "reviewer-user"
+	if err := users.CreateLocalUser(t.Context(), &model.User{ID: reviewer, Account: reviewer, Enabled: true}, "pw-init0"); err != nil {
+		t.Fatalf("create reviewer: %v", err)
+	}
 	grantAdminSurface(t, e, "role-reviewer")
 	grantRoleOps(t, e, "role-reviewer", "admin-authz", "view")
 	grantRoleOps(t, e, "role-reviewer", "admin-role", "view")
