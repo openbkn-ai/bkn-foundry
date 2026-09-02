@@ -69,15 +69,6 @@ var (
 		DataType_Datetime:  {},
 		DataType_Timestamp: {},
 	}
-
-	BUILD_KEY_TYPES = map[string]struct{}{
-		DataType_Integer:         {},
-		DataType_UnsignedInteger: {},
-		DataType_String:          {},
-		DataType_Date:            {},
-		DataType_Datetime:        {},
-		DataType_Timestamp:       {},
-	}
 )
 
 func DataType_IsString(t string) bool {
@@ -92,11 +83,5 @@ func DataType_IsNumber(t string) bool {
 
 func DataType_IsDate(t string) bool {
 	_, ok := DATE_TYPES[t]
-	return ok
-}
-
-// The DataType_IsBuildKey determines whether the field type can be used as a stable build cursor.
-func DataType_IsBuildKey(t string) bool {
-	_, ok := BUILD_KEY_TYPES[t]
 	return ok
 }

@@ -318,6 +318,18 @@ func (btw *BuildTaskWorker) runBatchTask(ctx context.Context, taskID string) err
 		}
 		return nil
 	}
+	if resource.IndexConfig == nil || len(resource.IndexConfig.PrimaryKeyFields) == 0 ||
+		len(resource.IndexConfig.IncrementalFields) == 0 {
+		err = errors.New("batch build resource requires primary_key_fields and incremental_fields")
+		btw.failTask(taskCtx, taskID, err.Error())
+		return err
+	}
+	if task.IndexConfig == nil || len(task.IndexConfig.PrimaryKeyFields) == 0 ||
+		len(task.IndexConfig.IncrementalFields) == 0 {
+		err = errors.New("batch build task snapshot requires primary_key_fields and incremental_fields")
+		btw.failTask(taskCtx, taskID, err.Error())
+		return err
+	}
 	if err := validateBuildTaskResourceFingerprint(resource, task); err != nil {
 		btw.failTask(taskCtx, taskID, err.Error())
 		return err
@@ -438,7 +450,7 @@ func validateIncrementalBatchResource(resource *interfaces.Resource, task *inter
 		return fmt.Errorf("invalid incremental checkpoint: %w", err)
 	}
 	if err := sync_checkpoint.ValidateCursor(checkpoint,
-		resource.IndexConfig.BuildKeyFields, resource.SchemaDefinition); err != nil {
+		resource.IndexConfig.IncrementalFields, resource.SchemaDefinition); err != nil {
 		return fmt.Errorf("invalid incremental checkpoint: %w", err)
 	}
 	return nil

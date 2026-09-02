@@ -16,7 +16,9 @@ const (
 	VegaBackend_BuildTask_InvalidExecuteType                       = "VegaBackend.BuildTask.InvalidExecuteType"
 	VegaBackend_BuildTask_InvalidParameter_ResourceID              = "VegaBackend.BuildTask.InvalidParameter.ResourceID"
 	VegaBackend_BuildTask_InvalidParameter_Mode                    = "VegaBackend.BuildTask.InvalidParameter.Mode"
-	VegaBackend_BuildTask_InvalidParameter_BuildKeyFields          = "VegaBackend.BuildTask.InvalidParameter.BuildKeyFields"
+	VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields        = "VegaBackend.BuildTask.InvalidParameter.PrimaryKeyFields"
+	VegaBackend_BuildTask_InvalidParameter_IncrementalFields       = "VegaBackend.BuildTask.InvalidParameter.IncrementalFields"
+	VegaBackend_BuildTask_StreamingUnsupported                     = "VegaBackend.BuildTask.StreamingUnsupported"
 	VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields = "VegaBackend.BuildTask.InvalidParameter.UnsupportedSchemaFields"
 	VegaBackend_BuildTask_InvalidParameter_Analyzer                = "VegaBackend.BuildTask.InvalidParameter.Analyzer"
 	VegaBackend_BuildTask_InvalidParameter_EmbeddingModel          = "VegaBackend.BuildTask.InvalidParameter.EmbeddingModel"
@@ -48,7 +50,9 @@ var BuildTaskErrCodeList = []string{
 	VegaBackend_BuildTask_InvalidExecuteType,
 	VegaBackend_BuildTask_InvalidParameter_ResourceID,
 	VegaBackend_BuildTask_InvalidParameter_Mode,
-	VegaBackend_BuildTask_InvalidParameter_BuildKeyFields,
+	VegaBackend_BuildTask_InvalidParameter_PrimaryKeyFields,
+	VegaBackend_BuildTask_InvalidParameter_IncrementalFields,
+	VegaBackend_BuildTask_StreamingUnsupported,
 	VegaBackend_BuildTask_InvalidParameter_UnsupportedSchemaFields,
 	VegaBackend_BuildTask_InvalidParameter_Analyzer,
 	VegaBackend_BuildTask_InvalidParameter_EmbeddingModel,

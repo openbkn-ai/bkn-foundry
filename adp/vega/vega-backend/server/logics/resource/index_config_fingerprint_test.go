@@ -49,8 +49,8 @@ func TestIndexConfigFingerprint(t *testing.T) {
 		}},
 		{"effective analyzer", func(resource *interfaces.Resource) { resource.IndexConfig.DefaultFulltextAnalyzer = "english" }},
 		{"effective model ID", func(resource *interfaces.Resource) { resource.IndexConfig.DefaultEmbeddingModel = "model-b" }},
-		{"build key order", func(resource *interfaces.Resource) {
-			resource.IndexConfig.BuildKeyFields = []string{"created_at", "id"}
+		{"incremental field order", func(resource *interfaces.Resource) {
+			resource.IndexConfig.IncrementalFields = []string{"id", "created_at"}
 		}},
 		{"field added", func(resource *interfaces.Resource) {
 			resource.SchemaDefinition = append(resource.SchemaDefinition, &interfaces.Property{Name: "extra", Type: interfaces.DataType_String})
@@ -116,8 +116,9 @@ func TestBuildTaskIndexConfigFingerprintMatchesResourceSnapshot(t *testing.T) {
 
 	taskFingerprint, err := BuildTaskIndexConfigFingerprint(&interfaces.BuildTaskIndexConfig{
 		IndexConfigContract: interfaces.IndexConfigContract{
-			BuildKeyFields: append([]string(nil), resource.IndexConfig.BuildKeyFields...),
-			Fields:         fields,
+			PrimaryKeyFields:  append([]string(nil), resource.IndexConfig.PrimaryKeyFields...),
+			IncrementalFields: append([]string(nil), resource.IndexConfig.IncrementalFields...),
+			Fields:            fields,
 		},
 	})
 	require.NoError(t, err)
@@ -140,8 +141,9 @@ func TestBuildTaskIndexConfigFingerprintSupportsUpgradedSnapshot(t *testing.T) {
 
 	taskFingerprint, err := BuildTaskIndexConfigFingerprint(&interfaces.BuildTaskIndexConfig{
 		IndexConfigContract: interfaces.IndexConfigContract{
-			BuildKeyFields: append([]string(nil), resource.IndexConfig.BuildKeyFields...),
-			Fields:         fields,
+			PrimaryKeyFields:  append([]string(nil), resource.IndexConfig.PrimaryKeyFields...),
+			IncrementalFields: append([]string(nil), resource.IndexConfig.IncrementalFields...),
+			Fields:            fields,
 		},
 		Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 			"title": {
@@ -206,7 +208,8 @@ func fingerprintTestResource(reordered bool) *interfaces.Resource {
 		return &interfaces.Resource{
 			SchemaDefinition: []*interfaces.Property{title, createdAt, id},
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields:          []string{"id", "created_at"},
+				PrimaryKeyFields:        []string{"id"},
+				IncrementalFields:       []string{"created_at", "id"},
 				DefaultFulltextAnalyzer: "standard",
 				DefaultEmbeddingModel:   "model-a",
 			},
@@ -216,7 +219,8 @@ func fingerprintTestResource(reordered bool) *interfaces.Resource {
 	return &interfaces.Resource{
 		SchemaDefinition: []*interfaces.Property{id, title, createdAt},
 		IndexConfig: &interfaces.ResourceIndexConfig{
-			BuildKeyFields:          []string{"id", "created_at"},
+			PrimaryKeyFields:        []string{"id"},
+			IncrementalFields:       []string{"created_at", "id"},
 			DefaultFulltextAnalyzer: "standard",
 			DefaultEmbeddingModel:   "model-a",
 		},

@@ -797,7 +797,10 @@ func sampleBuildTask() *interfaces.BuildTask {
 		FinishTime:       2000,
 		LastProgressTime: 1800,
 		IndexConfig: &interfaces.BuildTaskIndexConfig{
-			IndexConfigContract: interfaces.IndexConfigContract{BuildKeyFields: []string{"id"}},
+			IndexConfigContract: interfaces.IndexConfigContract{
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"id"},
+			},
 			Features: map[string]interfaces.BuildTaskFieldIndexFeature{
 				"title": {
 					Vector:   &interfaces.SmallModel{ModelID: "embedding", EmbeddingDim: 1024},

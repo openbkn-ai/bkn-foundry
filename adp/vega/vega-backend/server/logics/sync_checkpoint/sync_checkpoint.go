@@ -68,15 +68,15 @@ func DecodeBatch(mark string) (*SyncCheckpoint, error) {
 // keys and converts JSON numbers to the exact integer types required by the
 // schema. An empty cursor is a valid established baseline and starts from the
 // first source row without a cursor filter.
-func ValidateCursor(checkpoint *SyncCheckpoint, buildKeyFields []string, schema []*interfaces.Property) error {
+func ValidateCursor(checkpoint *SyncCheckpoint, incrementalFields []string, schema []*interfaces.Property) error {
 	if checkpoint == nil {
 		return fmt.Errorf("validate batch checkpoint: checkpoint is required")
 	}
 	if len(checkpoint.Cursor) == 0 {
 		return nil
 	}
-	if len(checkpoint.Cursor) != len(buildKeyFields) {
-		return fmt.Errorf("validate batch checkpoint: expected %d cursor values, got %d", len(buildKeyFields), len(checkpoint.Cursor))
+	if len(checkpoint.Cursor) != len(incrementalFields) {
+		return fmt.Errorf("validate batch checkpoint: expected %d cursor values, got %d", len(incrementalFields), len(checkpoint.Cursor))
 	}
 
 	properties := make(map[string]*interfaces.Property, len(schema))
@@ -90,7 +90,7 @@ func ValidateCursor(checkpoint *SyncCheckpoint, buildKeyFields []string, schema 
 		properties[property.Name] = property
 	}
 
-	for i, field := range buildKeyFields {
+	for i, field := range incrementalFields {
 		cursorValue := &checkpoint.Cursor[i]
 		if cursorValue.Key != field {
 			return fmt.Errorf("validate batch checkpoint: expected key %q at position %d, got %q", field, i, cursorValue.Key)
@@ -142,6 +142,7 @@ func convertCursorValue(value any, dataType string) (any, error) {
 		}
 	case interfaces.DataType_String,
 		interfaces.DataType_Date,
+		interfaces.DataType_Time,
 		interfaces.DataType_Datetime,
 		interfaces.DataType_Timestamp:
 		text, ok := value.(string)

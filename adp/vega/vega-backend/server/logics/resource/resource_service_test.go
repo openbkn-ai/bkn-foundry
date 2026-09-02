@@ -148,43 +148,44 @@ func TestResourceServiceInternalMetadataUpdateConflict(t *testing.T) {
 	})
 }
 
-func TestValidateIndexConfigBuildKeyFields(t *testing.T) {
+func TestValidateIndexConfigKeyFields(t *testing.T) {
 	schema := []*interfaces.Property{
 		{Name: "id", Type: interfaces.DataType_Integer},
 		{Name: "updated_at", Type: interfaces.DataType_Timestamp},
 		{Name: "body", Type: interfaces.DataType_Text},
 	}
 
-	t.Run("allows an empty build key configuration", func(t *testing.T) {
-		require.NoError(t, validateIndexConfigBuildKeyFields(context.Background(), schema, nil))
+	t.Run("allows an empty key configuration", func(t *testing.T) {
+		require.NoError(t, validateIndexConfigKeyFields(context.Background(), schema, nil))
 	})
 
-	t.Run("allows build keys defined in schema", func(t *testing.T) {
-		err := validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
-			BuildKeyFields: []string{"updated_at", "id"},
+	t.Run("allows configured primary and incremental fields", func(t *testing.T) {
+		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			PrimaryKeyFields:  []string{"id"},
+			IncrementalFields: []string{"updated_at", "id"},
 		})
 		require.NoError(t, err)
 	})
 
-	t.Run("rejects build keys absent from schema", func(t *testing.T) {
-		err := validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
-			BuildKeyFields: []string{"missing_id"},
+	t.Run("rejects primary keys absent from schema", func(t *testing.T) {
+		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			PrimaryKeyFields: []string{"missing_id"},
 		})
-		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields)
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
 		require.Equal(t, http.StatusBadRequest, httpErr.HTTPCode)
-		require.Contains(t, httpErr.BaseError.ErrorDetails, `build_key_fields field "missing_id"`)
+		require.Contains(t, httpErr.BaseError.ErrorDetails, `primary_key_fields field "missing_id"`)
 	})
 
-	t.Run("rejects duplicate and unsupported build key types", func(t *testing.T) {
-		err := validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
-			BuildKeyFields: []string{"id", "id"},
+	t.Run("rejects duplicate primary keys and unsupported incremental types", func(t *testing.T) {
+		err := validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			PrimaryKeyFields: []string{"id", "id"},
 		})
-		requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields)
+		requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_PrimaryKeyFields)
 
-		err = validateIndexConfigBuildKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
-			BuildKeyFields: []string{"body"},
+		err = validateIndexConfigKeyFields(context.Background(), schema, &interfaces.ResourceIndexConfig{
+			IncrementalFields: []string{"body"},
 		})
-		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_BuildKeyFields)
+		httpErr := requireResourceHTTPError(t, err, verrors.VegaBackend_Resource_InvalidParameter_IncrementalFields)
 		assert.Contains(t, httpErr.BaseError.ErrorDetails, `unsupported type "text"`)
 	})
 }
@@ -1130,6 +1131,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			Description:      "old",
 			LocalIndexName:   "vega-build-r1-task-1",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SyncMark:         `{"mode":"batch","cursor":[]}`,
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{{Name: "id", Type: interfaces.DataType_String}},
 		}, &interfaces.ResourceRequest{
@@ -1221,7 +1224,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields: []string{"id"},
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"id"},
 			},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
@@ -1229,7 +1233,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields: []string{"updated_at", "id"},
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"updated_at", "id"},
 			},
 		})
 
@@ -1255,24 +1260,29 @@ func TestResourceServiceUpdate(t *testing.T) {
 				if got.LocalIndexName != "vega-build-r1-task-1" {
 					t.Fatalf("expected LocalIndexName to be preserved, got %q", got.LocalIndexName)
 				}
-				if got.IndexConfig == nil || len(got.IndexConfig.BuildKeyFields) != 2 {
+				if got.IndexConfig == nil || len(got.IndexConfig.IncrementalFields) != 2 {
 					t.Fatalf("expected updated index config, got %#v", got.IndexConfig)
 				}
 				return 1, nil
 			})
+		mockRA.EXPECT().UpdateLocalIndexState(gomock.Any(), gomock.Not(nil), "r1",
+			interfaces.ResourceLocalIndexStatusAvailable, "vega-build-r1-task-1", "").Return(true, nil)
 		err := rs.Update(context.Background(), &interfaces.Resource{
 			ID:               "r1",
 			CatalogID:        "cat1",
 			Category:         interfaces.ResourceCategoryTable,
 			Name:             "table",
 			LocalIndexName:   "vega-build-r1-task-1",
+			LocalIndexStatus: interfaces.ResourceLocalIndexStatusAvailable,
+			SyncMark:         `{"mode":"batch","cursor":[]}`,
 			SourceIdentifier: "public.orders",
 			SchemaDefinition: []*interfaces.Property{
 				{Name: "id", Type: interfaces.DataType_Integer},
 				{Name: "updated_at", Type: interfaces.DataType_Timestamp},
 			},
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields: []string{"id"},
+				PrimaryKeyFields:  []string{"id"},
+				IncrementalFields: []string{"id"},
 			},
 		}, &interfaces.ResourceRequest{
 			CatalogID:        "cat1",
@@ -1280,7 +1290,8 @@ func TestResourceServiceUpdate(t *testing.T) {
 			Name:             "table",
 			SourceIdentifier: "public.orders",
 			IndexConfig: &interfaces.ResourceIndexConfig{
-				BuildKeyFields:          []string{"updated_at", "id"},
+				PrimaryKeyFields:        []string{"id"},
+				IncrementalFields:       []string{"updated_at", "id"},
 				DefaultFulltextAnalyzer: "ik_max_word",
 				DefaultEmbeddingModel:   "embedding",
 			},

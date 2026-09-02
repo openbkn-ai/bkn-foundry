@@ -44,7 +44,7 @@ func TestResourceAccessCreate(t *testing.T) {
 				"public.orders",
 				`{"properties":{"row_count":42}}`,
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
-				`{"build_key_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
+				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				"",
 				"[]",
 				interfaces.ResourceLocalIndexStatusAvailable,
@@ -110,7 +110,8 @@ func TestResourceAccessGetByID(t *testing.T) {
 		require.NotNil(t, got)
 		assert.Equal(t, "resource-1", got.ID)
 		require.NotNil(t, got.IndexConfig)
-		assert.Equal(t, []string{"updated_at", "id"}, got.IndexConfig.BuildKeyFields)
+		assert.Equal(t, []string{"id"}, got.IndexConfig.PrimaryKeyFields)
+		assert.Equal(t, []string{"updated_at", "id"}, got.IndexConfig.IncrementalFields)
 		assert.Equal(t, interfaces.ResourceLocalIndexStatusAvailable, got.LocalIndexStatus)
 		assert.Equal(t, "vega-build-resource-1-task-1", got.LocalIndexName)
 		assert.Equal(t, `{"mode":"batch","cursor":[10,"a"]}`, got.SyncMark)
@@ -387,7 +388,7 @@ func TestResourceAccessUpdate(t *testing.T) {
 				`"pii","core"`,
 				res.Description,
 				`[{"name":"id","display_name":"","type":"integer","description":"","original_name":"","original_type":"","original_description":"","features":null,"attributes":null}]`,
-				`{"build_key_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
+				`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 				"",
 				"[]",
 				res.Updater.ID,
@@ -801,7 +802,8 @@ func sampleResource() *interfaces.Resource {
 		SourceMetadata:     map[string]any{"properties": map[string]any{"row_count": 42}},
 		SchemaDefinition:   []*interfaces.Property{{Name: "id", Type: "integer"}},
 		IndexConfig: &interfaces.ResourceIndexConfig{
-			BuildKeyFields:          []string{"updated_at", "id"},
+			PrimaryKeyFields:        []string{"id"},
+			IncrementalFields:       []string{"updated_at", "id"},
 			DefaultFulltextAnalyzer: "ik_max_word",
 			DefaultEmbeddingModel:   "embedding",
 		},
@@ -868,7 +870,7 @@ func resourceNameRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.SourceIdentifier,
 		`{"properties":{"row_count":42}}`,
 		`[{"name":"id","type":"integer"}]`,
-		`{"build_key_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
+		`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 		resource.LocalIndexStatus,
 		resource.LocalIndexName,
 		resource.SyncMark,
@@ -959,7 +961,7 @@ func resourceRowValues(resource *interfaces.Resource) []driver.Value {
 		resource.SourceIdentifier,
 		`{"properties":{"row_count":42}}`,
 		`[{"name":"id","type":"integer"}]`,
-		`{"build_key_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
+		`{"primary_key_fields":["id"],"incremental_fields":["updated_at","id"],"default_fulltext_analyzer":"ik_max_word","default_embedding_model":"embedding"}`,
 		resource.LocalIndexStatus,
 		resource.LocalIndexName,
 		resource.SyncMark,

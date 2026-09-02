@@ -129,8 +129,8 @@ paths:
         （`pending` / `running` / `stopping`）；已存在 active Task 时返回 400
         `VegaBackend.BuildTask.Exist`。终态 Task 不阻止创建新任务。
 
-        - `streaming` 模式要求 Resource 在 `source_metadata.primary_keys` 中声明主键。
-        - `batch` 模式要求 `build_key_fields` 非空。
+        - 当前版本暂不支持 `streaming` 模式。
+        - `batch` 模式要求 `primary_key_fields` 和 `incremental_fields` 均非空。
         - 所有字段都需要在 Resource 的 schema 中存在；否则 400。
         - 创建后 status = `pending`。
       requestBody:
@@ -470,7 +470,11 @@ components:
       description: 创建任务时从 Resource 派生的索引配置快照
       type: object
       properties:
-        build_key_fields:
+        primary_key_fields:
+          type: array
+          items:
+            type: string
+        incremental_fields:
           type: array
           items:
             type: string
