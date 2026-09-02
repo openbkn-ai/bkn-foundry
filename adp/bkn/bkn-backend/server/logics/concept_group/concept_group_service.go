@@ -126,6 +126,12 @@ func (cgs *conceptGroupService) CreateConceptGroup(ctx context.Context, tx *sql.
 			_ = parentTracker.Cleanup(ctx, cgs.ps)
 		}
 	}()
+	ctx, policyTracker, policyTrackerOwner := permission.WithCreatedPolicyTracker(ctx)
+	defer func() {
+		if policyTrackerOwner && err != nil {
+			_ = policyTracker.Cleanup(ctx, cgs.ps)
+		}
+	}()
 
 	if !permission.KNImportPermissionPrechecked(ctx) {
 		err = cgs.ps.CheckPermission(ctx, interfaces.PermissionResource{

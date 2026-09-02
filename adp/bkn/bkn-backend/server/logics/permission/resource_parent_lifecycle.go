@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ const authorizationCleanupTimeout = 5 * time.Second
 
 type resourceParentTrackerKey struct{}
 type authorizationCleanupTrackerKey struct{}
+type createdPolicyTrackerKey struct{}
 
 type trackedResourceParent struct {
 	resourceType string
@@ -50,6 +52,18 @@ type trackedAuthorizationCleanup struct {
 type AuthorizationCleanupTracker struct {
 	mu      sync.Mutex
 	entries map[string]trackedAuthorizationCleanup
+}
+
+type trackedCreatedPolicy struct {
+	resourceType string
+	resourceID   string
+}
+
+// CreatedPolicyTracker records Safe policies created inside a business transaction.
+// The transaction owner removes them if any nested operation or the commit fails.
+type CreatedPolicyTracker struct {
+	mu      sync.Mutex
+	entries map[string]trackedCreatedPolicy
 }
 
 // WithResourceParentTracker returns the existing transaction tracker or installs a new one.
@@ -101,6 +115,69 @@ func (tracker *ResourceParentTracker) Cleanup(ctx context.Context, ps interfaces
 		if err := ps.DeleteResourceParents(cleanupCtx, entry.resourceType, []string{entry.resourceID}); err != nil {
 			logAuthorizationCleanupFailure("resource_parent", entry.resourceType, entry.resourceID,
 				entry.parentType, entry.parentID, err)
+			cleanupErrs = append(cleanupErrs, err)
+		}
+	}
+	return errors.Join(cleanupErrs...)
+}
+
+// WithCreatedPolicyTracker returns the existing transaction tracker or installs a new one.
+// The owner flag identifies the caller responsible for cleanup on transaction failure.
+func WithCreatedPolicyTracker(ctx context.Context) (context.Context, *CreatedPolicyTracker, bool) {
+	if tracker, ok := ctx.Value(createdPolicyTrackerKey{}).(*CreatedPolicyTracker); ok {
+		return ctx, tracker, false
+	}
+	tracker := &CreatedPolicyTracker{entries: map[string]trackedCreatedPolicy{}}
+	return context.WithValue(ctx, createdPolicyTrackerKey{}, tracker), tracker, true
+}
+
+// TrackCreatedPolicies adds resources that may have been written by Safe to the
+// active transaction tracker. Callers track before the write so partial remote
+// success is compensated when the write returns an error.
+func TrackCreatedPolicies(ctx context.Context, resources []interfaces.PermissionResource) {
+	tracker, ok := ctx.Value(createdPolicyTrackerKey{}).(*CreatedPolicyTracker)
+	if !ok || len(resources) == 0 {
+		return
+	}
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	for _, resource := range resources {
+		key := resource.Type + "\x00" + resource.ID
+		tracker.entries[key] = trackedCreatedPolicy{
+			resourceType: resource.Type,
+			resourceID:   resource.ID,
+		}
+	}
+}
+
+// Cleanup removes all tracked policies in deterministic type batches. It is
+// safe to call more than once.
+func (tracker *CreatedPolicyTracker) Cleanup(ctx context.Context, ps interfaces.PermissionService) error {
+	tracker.mu.Lock()
+	byType := make(map[string][]string)
+	for _, entry := range tracker.entries {
+		byType[entry.resourceType] = append(byType[entry.resourceType], entry.resourceID)
+	}
+	tracker.entries = map[string]trackedCreatedPolicy{}
+	tracker.mu.Unlock()
+
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authorizationCleanupTimeout)
+	defer cancel()
+
+	resourceTypes := make([]string, 0, len(byType))
+	for resourceType := range byType {
+		resourceTypes = append(resourceTypes, resourceType)
+	}
+	sort.Strings(resourceTypes)
+
+	var cleanupErrs []error
+	for _, resourceType := range resourceTypes {
+		resourceIDs := byType[resourceType]
+		sort.Strings(resourceIDs)
+		if err := ps.DeleteResources(cleanupCtx, resourceType, resourceIDs); err != nil {
+			for _, resourceID := range resourceIDs {
+				logAuthorizationCleanupFailure("policy", resourceType, resourceID, "", "", err)
+			}
 			cleanupErrs = append(cleanupErrs, err)
 		}
 	}

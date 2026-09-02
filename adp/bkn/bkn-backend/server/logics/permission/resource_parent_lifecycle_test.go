@@ -63,6 +63,37 @@ func TestResourceParentTrackerCompensatesNestedWrites(t *testing.T) {
 	}
 }
 
+func TestCreatedPolicyTrackerCompensatesNestedWritesInTypeBatches(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ps := bmock.NewMockPermissionService(ctrl)
+	ctx, tracker, owner := WithCreatedPolicyTracker(context.Background())
+	if !owner {
+		t.Fatal("new tracker must have an owner")
+	}
+	childCtx, childTracker, childOwner := WithCreatedPolicyTracker(ctx)
+	if childOwner || childTracker != tracker {
+		t.Fatal("nested calls must share the outer transaction tracker")
+	}
+	TrackCreatedPolicies(childCtx, []interfaces.PermissionResource{
+		{Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, ID: "kn-1/at-2"},
+		{Type: interfaces.RESOURCE_TYPE_KN, ID: "kn-1"},
+		{Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, ID: "kn-1/at-1"},
+		{Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, ID: "kn-1/at-1"},
+	})
+	gomock.InOrder(
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_ACTION_TYPE,
+			[]string{"kn-1/at-1", "kn-1/at-2"}).Return(nil),
+		ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_KN,
+			[]string{"kn-1"}).Return(nil),
+	)
+	if err := tracker.Cleanup(ctx, ps); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+	if err := tracker.Cleanup(ctx, ps); err != nil {
+		t.Fatalf("second Cleanup() error = %v", err)
+	}
+}
+
 func TestCleanupKNChildAuthorizationAttemptsPolicyAndParent(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	ps := bmock.NewMockPermissionService(ctrl)

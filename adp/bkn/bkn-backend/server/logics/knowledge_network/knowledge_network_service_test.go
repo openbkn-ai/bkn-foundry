@@ -1683,7 +1683,9 @@ func Test_knowledgeNetworkService_CreateKN(t *testing.T) {
 			kna.EXPECT().CheckKNExistByName(gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			kna.EXPECT().CreateKN(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), interfaces.BKN_DATASET_ID, gomock.Any()).Return(nil)
-			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
+				ID: "kn1", Type: interfaces.RESOURCE_TYPE_KN, Name: "kn1",
+			}}, interfaces.KN_CREATOR_OPERATIONS).Return(nil)
 			smock.ExpectCommit()
 
 			knID, err := service.CreateKN(ctx, kn, mode, true)

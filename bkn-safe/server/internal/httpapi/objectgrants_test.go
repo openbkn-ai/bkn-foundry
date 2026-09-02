@@ -340,21 +340,25 @@ func ownerGrantFixture(t *testing.T) (*gin.Engine, *authz.Enforcer) {
 	t.Helper()
 	r, e, db, users := newAdminServer(t)
 	ctx := t.Context()
-	for _, u := range []struct{ id, account string }{
-		{"u-owner", "builder"},
-		{"u-mate", "teammate"},
-		{"u-stranger", "stranger"},
+	for _, u := range []struct {
+		id, account string
+		enabled     bool
+	}{
+		{"u-owner", "builder", true},
+		{"u-mate", "teammate", true},
+		{"u-stranger", "stranger", true},
+		{"u-disabled", "disabled", false},
 	} {
-		if err := users.CreateLocalUser(ctx, &model.User{ID: u.id, Account: u.account, Name: u.account, Enabled: true}, "pw-init0"); err != nil {
+		if err := users.CreateLocalUser(ctx, &model.User{ID: u.id, Account: u.account, Name: u.account, Enabled: u.enabled}, "pw-init0"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	// task_manage is registered for the type but deliberately NOT granted below,
-	// so a test can ask for an operation that is valid yet unheld.
+	// Create is registered for the type but deliberately not granted on the
+	// instance, so a test can ask for an operation that is valid yet unheld.
 	seedCatalogOps(t, db, "knowledge_network",
-		"view_detail", "modify", "delete", "query_data", "authorize", "task_manage")
-	// Exactly what bkn-backend writes on create (COMMON_OPERATIONS).
-	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize"} {
+		"view_detail", "create", "modify", "delete", "query_data", "authorize", "task_manage")
+	// Exactly what bkn-backend writes to a newly created KN instance.
+	for _, op := range []string{"view_detail", "modify", "delete", "query_data", "authorize", "task_manage"} {
 		if err := e.GrantObjectPermission("u-owner", "knowledge_network", "kn-mine", op); err != nil {
 			t.Fatal(err)
 		}
@@ -380,6 +384,19 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 		t.Error("shared grant did not take effect at enforce time")
 	}
 
+	// POST is replacement, not merge.
+	w = tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("owner replacement share: want 204, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "query_data"); ok {
+		t.Error("replacement share retained an omitted operation")
+	}
+
 	// And can take it back.
 	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
 		"accessor_id": "u-mate",
@@ -390,6 +407,14 @@ func TestObjectGrantsOwnerMayShareOwnObject(t *testing.T) {
 	}
 	if ok, _ := e.Check("u-mate", "knowledge_network", "kn-mine", "view_detail"); ok {
 		t.Error("owner revoke did not remove the grant")
+	}
+	// DELETE is idempotent when the direct grant is already absent.
+	w = tokReq(t, r, http.MethodDelete, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+	}, "u-owner")
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("idempotent owner revoke: want 204, got %d (%s)", w.Code, w.Body.String())
 	}
 }
 
@@ -415,13 +440,13 @@ func TestObjectGrantsOwnerLimits(t *testing.T) {
 			},
 		},
 		{
-			// task_manage is registered for the type but the owner does not hold
+			// create is registered for the type but the owner does not hold
 			// it, so it cannot be handed out.
 			"cannot grant an op it does not hold",
 			map[string]any{
 				"accessor_id": "u-mate",
 				"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
-				"operations":  []string{"view_detail", "task_manage"},
+				"operations":  []string{"view_detail", "create"},
 			},
 		},
 		{
@@ -445,6 +470,18 @@ func TestObjectGrantsOwnerLimits(t *testing.T) {
 		t.Error("a rejected request must not write a partial grant")
 	}
 
+	// Disabled accounts are not valid grant targets and no policy is written.
+	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-disabled",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-owner"); w.Code != http.StatusBadRequest {
+		t.Fatalf("disabled grantee: want 400, got %d (%s)", w.Code, w.Body.String())
+	}
+	if ok, _ := e.Check("u-disabled", "knowledge_network", "kn-mine", "view_detail"); ok {
+		t.Error("a disabled grantee received a policy")
+	}
+
 	// Someone with no stake in the object gets nothing.
 	if w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
 		"accessor_id": "u-mate",
@@ -455,9 +492,24 @@ func TestObjectGrantsOwnerLimits(t *testing.T) {
 	}
 }
 
-// A role holding type-wide authorize (network_builder does, on
-// knowledge_network) may delegate any instance of that type — the seeded policy
-// already says so. It is still a delegate: the same two limits apply.
+func TestObjectGrantsAuthorizeRevocationRemovesSharingAuthority(t *testing.T) {
+	r, e := ownerGrantFixture(t)
+	if _, err := e.RemoveAccessorResourcePolicies("u-owner", "knowledge_network", "kn-mine"); err != nil {
+		t.Fatal(err)
+	}
+
+	w := tokReq(t, r, http.MethodPost, "/api/safe/v1/me/object-grants", map[string]any{
+		"accessor_id": "u-mate",
+		"resource":    map[string]any{"type": "knowledge_network", "id": "kn-mine"},
+		"operations":  []string{"view_detail"},
+	}, "u-owner")
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("sharing after authorize revocation: want 403, got %d (%s)", w.Code, w.Body.String())
+	}
+}
+
+// A role holding type-wide authorize may delegate any instance of that type.
+// This existing non-creator path remains restricted by the same two limits.
 func TestObjectGrantsTypeWideAuthorize(t *testing.T) {
 	r, e := ownerGrantFixture(t)
 	if err := e.GrantRolePermission("role-builder", "knowledge_network", "*", "authorize"); err != nil {
@@ -579,7 +631,7 @@ func TestObjectGrantsOwnerDirectoryLookups(t *testing.T) {
 // rule anyone trusted with one object could take it from the person who made it.
 func TestObjectGrantsDelegateCannotStripAuthorizeHolder(t *testing.T) {
 	r, e := ownerGrantFixture(t)
-	// u-stranger is a network_builder: type-wide authorize on the whole type, no
+	// u-stranger holds type-wide authorize on the whole type, with no direct
 	// stake in this particular network.
 	mustGrantRole(t, e, "role-builder", "knowledge_network", "authorize")
 	mustGrantRole(t, e, "role-builder", "knowledge_network", "view_detail")

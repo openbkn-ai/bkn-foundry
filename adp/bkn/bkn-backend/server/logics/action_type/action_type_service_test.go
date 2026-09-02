@@ -1216,10 +1216,63 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
 			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
+				ID: "kn1/at1", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "at1",
+			}}, []string{interfaces.OPERATION_TYPE_EXECUTE}).Return(nil)
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldBeNil)
 			So(len(atIDs), ShouldEqual, 1)
+		})
+
+		Convey("Safe failure rolls back and compensates partial action type policies\n", func() {
+			actionTypes := []*interfaces.ActionType{{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1"},
+				KNID:                   "kn1",
+				Branch:                 interfaces.MAIN_BRANCH,
+			}}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
+			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
+			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
+				ID: "kn1/at1", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "at1",
+			}}, []string{interfaces.OPERATION_TYPE_EXECUTE}).Return(errors.New("safe write failed"))
+			smock.ExpectRollback()
+			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_ACTION_TYPE,
+				[]string{"kn1/at1"}).Return(nil)
+
+			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, interfaces.ImportMode_Normal, false)
+			So(err, ShouldNotBeNil)
+			So(atIDs, ShouldBeEmpty)
+		})
+
+		Convey("Commit failure compensates created action type policies\n", func() {
+			actionTypes := []*interfaces.ActionType{{
+				ActionTypeWithKeyField: interfaces.ActionTypeWithKeyField{ATID: "at1", ATName: "at1"},
+				KNID:                   "kn1",
+				Branch:                 interfaces.MAIN_BRANCH,
+			}}
+
+			smock.ExpectBegin()
+			ps.EXPECT().CheckPermission(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ata.EXPECT().CheckActionTypeExistByID(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
+			ata.EXPECT().CheckActionTypeExistByName(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return("", false, nil)
+			ata.EXPECT().CreateActionType(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CreateResources(gomock.Any(), []interfaces.PermissionResource{{
+				ID: "kn1/at1", Type: interfaces.RESOURCE_TYPE_ACTION_TYPE, Name: "at1",
+			}}, []string{interfaces.OPERATION_TYPE_EXECUTE}).Return(nil)
+			smock.ExpectCommit().WillReturnError(errors.New("commit failed"))
+			ps.EXPECT().DeleteResources(gomock.Any(), interfaces.RESOURCE_TYPE_ACTION_TYPE,
+				[]string{"kn1/at1"}).Return(nil)
+
+			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, interfaces.ImportMode_Normal, false)
+			So(err, ShouldNotBeNil)
+			So(atIDs, ShouldResemble, []string{"at1"})
 		})
 
 		Convey("Failed when permission check fails\n", func() {
@@ -1289,6 +1342,13 @@ func Test_actionTypeService_CreateActionTypes(t *testing.T) {
 				So(atType.ATID, ShouldNotBeEmpty)
 			}).Return(nil)
 			vbs.EXPECT().WriteDatasetDocuments(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
+			ps.EXPECT().CreateResources(gomock.Any(), gomock.Any(), []string{interfaces.OPERATION_TYPE_EXECUTE}).
+				DoAndReturn(func(_ context.Context, resources []interfaces.PermissionResource, _ []string) error {
+					So(len(resources), ShouldEqual, 1)
+					So(resources[0].Type, ShouldEqual, interfaces.RESOURCE_TYPE_ACTION_TYPE)
+					So(resources[0].ID, ShouldStartWith, "kn1/")
+					return nil
+				})
 			smock.ExpectCommit()
 			atIDs, err := service.CreateActionTypes(ctx, nil, actionTypes, mode, false)
 			So(err, ShouldBeNil)

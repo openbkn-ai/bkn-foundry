@@ -55,6 +55,16 @@ var (
 		OPERATION_TYPE_AUTHORIZE,
 		OPERATION_TYPE_TASK_MANAGE,
 	}
+	// KN_CREATOR_OPERATIONS is the fixed instance-level grant installed for a
+	// newly created knowledge network. Create remains a type-level capability.
+	KN_CREATOR_OPERATIONS = []string{
+		OPERATION_TYPE_VIEW_DETAIL,
+		OPERATION_TYPE_MODIFY,
+		OPERATION_TYPE_DELETE,
+		OPERATION_TYPE_QUERY_DATA,
+		OPERATION_TYPE_AUTHORIZE,
+		OPERATION_TYPE_TASK_MANAGE,
+	}
 )
 
 // PermissionCheck describes a permission check.
