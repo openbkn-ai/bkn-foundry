@@ -128,6 +128,8 @@ func (s *queryAuthorizationService) AuthorizeMetricDryRun(ctx context.Context,
 	if err != nil {
 		return err
 	}
+	// A dry-run definition is caller-supplied and has no persisted metric
+	// resource of its own, so #459 requires the containing KN as its root gate.
 	resources := []interfaces.PermissionResource{
 		{Type: interfaces.PermissionResourceTypeKnowledgeNetwork, ID: knID},
 	}
@@ -281,6 +283,9 @@ func (s *queryAuthorizationService) AuthorizeSubgraphByObjects(ctx context.Conte
 	if err := validateQueryIdentity(ctx, query.KNID, query.Branch, "objects"); err != nil {
 		return err
 	}
+	if s == nil || s.models == nil {
+		return dependencyResolutionFailed(ctx, fmt.Errorf("ontology model access is not configured"))
+	}
 	objectTypeIDs := make([]string, 0, len(query.Entries))
 	resources := make([]interfaces.PermissionResource, 0, len(query.Entries)*2)
 	for _, entry := range query.Entries {
@@ -427,10 +432,11 @@ func objectTypeResources(ctx context.Context, knID string,
 	if err := validateStandaloneResourceID(objectType.DataSource.ID); err != nil {
 		return nil, invalidQuery(ctx, err.Error())
 	}
-	return append(resources, interfaces.PermissionResource{
-		Type: interfaces.PermissionResourceTypeResource,
-		ID:   objectType.DataSource.ID,
-	}), nil
+	// The published resource reference must be complete, but Vega owns the
+	// resource-to-catalog authorization fallback because only Vega has the
+	// trusted catalog relationship. It rechecks query_data as the same caller
+	// immediately before reading the resource.
+	return resources, nil
 }
 
 func relationTypeResources(ctx context.Context, knID, relationTypeID string,
@@ -459,10 +465,10 @@ func relationTypeResources(ctx context.Context, knID, relationTypeID string,
 	if err := validateStandaloneResourceID(backing.ID); err != nil {
 		return nil, invalidQuery(ctx, err.Error())
 	}
-	return append(resources, interfaces.PermissionResource{
-		Type: interfaces.PermissionResourceTypeResource,
-		ID:   backing.ID,
-	}), nil
+	// Do not preempt Vega's resource-to-catalog fallback with a direct Safe
+	// resource check. The downstream resource query carries the same caller and
+	// enforces query_data before any physical read.
+	return resources, nil
 }
 
 func indirectBackingResource(relationType interfaces.RelationType) (interfaces.ResourceInfo, bool, error) {

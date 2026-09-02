@@ -33,7 +33,6 @@ func TestAuthorizeMetricQueryUsesPublishedDependencies(t *testing.T) {
 	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
 		{Type: "metric", ID: "kn-a/metric-1"},
 		{Type: "object_type", ID: "kn-a/orders"},
-		{Type: "resource", ID: "orders-resource"},
 	}).Return(nil)
 
 	if err := service.AuthorizeMetricQuery(context.Background(), "kn-a", "main", "metric-1"); err != nil {
@@ -52,7 +51,6 @@ func TestAuthorizeMetricDryRunDoesNotInventMetricResource(t *testing.T) {
 	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
 		{Type: "knowledge_network", ID: "kn-a"},
 		{Type: "object_type", ID: "kn-a/orders"},
-		{Type: "resource", ID: "orders-resource"},
 	}).Return(nil)
 
 	err := service.AuthorizeMetricDryRun(context.Background(), "kn-a", "main", &interfaces.MetricDefinition{
@@ -88,11 +86,8 @@ func TestAuthorizeSubgraphBySourceUsesServerResolvedPaths(t *testing.T) {
 		interfaces.RelationType{RTID: "places", Type: interfaces.RELATION_TYPE_DIRECT}, true, nil)
 	requested := []interfaces.PermissionResource{
 		{Type: "object_type", ID: "kn-a/customer"},
-		{Type: "resource", ID: "customer-resource"},
 		{Type: "object_type", ID: "kn-a/customer"},
-		{Type: "resource", ID: "customer-resource"},
 		{Type: "object_type", ID: "kn-a/order"},
-		{Type: "resource", ID: "order-resource"},
 		{Type: "relation_type", ID: "kn-a/places"},
 	}
 	permissions.EXPECT().FilterQueryData(gomock.Any(), requested).Return(requested, nil)
@@ -133,7 +128,7 @@ func TestAuthorizeSubgraphBySourceFiltersDeniedCandidatePath(t *testing.T) {
 		func(_ context.Context, requested []interfaces.PermissionResource) ([]interfaces.PermissionResource, error) {
 			allowed := make([]interfaces.PermissionResource, 0, len(requested))
 			for _, resource := range requested {
-				if resource.ID != "kn-a/secret" && resource.ID != "secret-resource" && resource.ID != "kn-a/owns-secret" {
+				if resource.ID != "kn-a/secret" && resource.ID != "kn-a/owns-secret" {
 					allowed = append(allowed, resource)
 				}
 			}
@@ -213,12 +208,55 @@ func TestAuthorizeObjectTypeScopesSameChildIDByKnowledgeNetwork(t *testing.T) {
 			publishedObjectType(knID, "orders", knID+"-orders-resource"), true, nil)
 		permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
 			{Type: "object_type", ID: knID + "/orders"},
-			{Type: "resource", ID: knID + "-orders-resource"},
 		}).Return(nil)
 		if err := service.AuthorizeObjectTypeQuery(context.Background(), knID, "main", "orders"); err != nil {
 			t.Fatalf("AuthorizeObjectTypeQuery(%s) error = %v", knID, err)
 		}
 	}
+}
+
+func TestAuthorizeObjectTypeQueryDelegatesResourceCatalogFallbackToVega(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	permissions := omock.NewMockPermissionService(ctrl)
+	service := &queryAuthorizationService{models: models, permissions: permissions}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+		publishedObjectType("kn-a", "orders", "orders-resource"), true, nil)
+	permissions.EXPECT().RequireQueryData(gomock.Any(), []interfaces.PermissionResource{
+		{Type: "object_type", ID: "kn-a/orders"},
+	}).Return(nil)
+
+	if err := service.AuthorizeObjectTypeQuery(context.Background(), "kn-a", "main", "orders"); err != nil {
+		t.Fatalf("AuthorizeObjectTypeQuery() error = %v", err)
+	}
+}
+
+func TestAuthorizeObjectTypeQueryFailsClosedWhenPublishedResourceIsMissing(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	models := omock.NewMockOntologyManagerAccess(ctrl)
+	service := &queryAuthorizationService{
+		models:      models,
+		permissions: omock.NewMockPermissionService(ctrl),
+	}
+
+	models.EXPECT().GetObjectType(gomock.Any(), "kn-a", "main", "orders").Return(
+		interfaces.ObjectType{
+			ObjectTypeWithKeyField: interfaces.ObjectTypeWithKeyField{OTID: "orders"},
+			KNID:                   "kn-a",
+			Branch:                 "main",
+		}, true, nil)
+
+	err := service.AuthorizeObjectTypeQuery(context.Background(), "kn-a", "main", "orders")
+	assertQueryAuthHTTPStatus(t, err, http.StatusServiceUnavailable)
+}
+
+func TestAuthorizeSubgraphByObjectsFailsClosedWithoutModelAccess(t *testing.T) {
+	var service *queryAuthorizationService
+	err := service.AuthorizeSubgraphByObjects(context.Background(), &interfaces.SubGraphQueryBaseOnObjects{
+		KNID: "kn-a", Branch: "main",
+	})
+	assertQueryAuthHTTPStatus(t, err, http.StatusServiceUnavailable)
 }
 
 func assertQueryAuthHTTPStatus(t *testing.T, err error, expected int) {

@@ -11,7 +11,6 @@ const (
 	PermissionResourceTypeObjectType       = "object_type"
 	PermissionResourceTypeRelationType     = "relation_type"
 	PermissionResourceTypeMetric           = "metric"
-	PermissionResourceTypeResource         = "resource"
 
 	PermissionOperationQueryData = "query_data"
 )
